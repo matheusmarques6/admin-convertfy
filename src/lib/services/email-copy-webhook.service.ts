@@ -821,6 +821,10 @@ export async function dispatchEmailCopyWebhook(
                 // Orçamento min/max de caracteres por campo — o gerador DEVE
                 // respeitar para a copy caber no layout (ver copy-spec.ts).
                 copy_spec: normalizeCopySpec(matched?.copy_spec, b.block_type),
+                // Tags canônicas {{TAG}} do template que este bloco preenche
+                // (contrato 1:1 campo↔template — docs/email-reference-tags.md).
+                // Vazio em blueprints legados/fallback sem esqueleto de tags.
+                tags: Array.isArray(matched?.tags) ? matched.tags : [],
               }
             },
           ),

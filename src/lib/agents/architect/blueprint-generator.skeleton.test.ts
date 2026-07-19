@@ -42,6 +42,29 @@ describe("applySkeletonToBlueprint", () => {
     expect(out.subject_hint).toBe("hint")
   })
 
+  it("carrega as tags do reference em cada bloco (contrato pro n8n)", () => {
+    const llm: GeneratedBlueprint = {
+      objective: "",
+      messaging: "",
+      subject_hint: null,
+      blocks: [],
+    }
+    const out = applySkeletonToBlueprint(llm, skeleton())
+    expect(out.blocks[1].tags).toEqual([
+      "HERO_EYEBROW",
+      "HERO_HEADLINE",
+      "HERO_BODY",
+      "HERO_CTA_URL",
+      "HERO_CTA_LABEL",
+      "HERO_IMAGE",
+    ])
+    expect(out.blocks[2].tags).toEqual([
+      "OFFER_HEADLINE",
+      "COUPON_CODE",
+      "COUPON_HINT",
+    ])
+  })
+
   it("estrutura do esqueleto GANHA quando o LLM funde/pula/inventa blocos", () => {
     const llm: GeneratedBlueprint = {
       objective: "obj",

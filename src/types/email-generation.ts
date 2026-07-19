@@ -24,6 +24,12 @@ export interface BlueprintBlock {
   // retrocompat — blueprints gravados antes do copy_spec caem no default
   // canônico por tipo (normalizeCopySpec).
   copy_spec?: CopySpecField[] | null
+  // Tags canônicas {{TAG}} do reference que compõem este bloco (docs/
+  // email-reference-tags.md), na forma indexada real ({{PRODUCT_1_NAME}}).
+  // Preenchidas pelo esqueleto determinístico (applySkeletonToBlueprint);
+  // ausentes em blueprints legados/fallback. Enviadas ao n8n para matching
+  // 1:1 campo↔template.
+  tags?: string[]
 }
 
 export interface EmailBlueprint {

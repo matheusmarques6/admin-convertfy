@@ -392,6 +392,7 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
                 label: "Hero",
                 purpose: "PURPOSE-HERO",
                 copy_spec: [{ key: "eyebrow", min_chars: 8, max_chars: 24 }],
+                tags: ["HERO_EYEBROW", "HERO_IMAGE"],
               },
               {
                 type: "coupon",
@@ -420,12 +421,16 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
             type: string
             purpose: string | null
             copy_spec: Array<{ key: string; min_chars: number; max_chars: number }>
+            tags: string[]
           }>
         }>
       }>
     }
     const blocks = body.flows[0].emails[0].blocks
     expect(blocks.map((b) => b.type)).toEqual(["header", "hero", "coupon"])
+    // Tags canônicas do bloco repassadas ao n8n; sem tags no blueprint → []
+    expect(blocks[1].tags).toEqual(["HERO_EYEBROW", "HERO_IMAGE"])
+    expect(blocks[0].tags).toEqual([])
 
     // ANTES do fix: blocks[position] deslocava 1 → type nunca casava →
     // purpose null e copy_spec default em TODOS (provado na Luxe Lift w#3).

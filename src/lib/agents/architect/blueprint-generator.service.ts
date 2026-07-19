@@ -72,6 +72,10 @@ export interface GeneratedBlock {
   // do HTML lido (fórmula em copy-spec.ts). Clampado aos guarda-corpos
   // absolutos no parse; ausente/inválido → default canônico por tipo.
   copy_spec: CopySpecField[]
+  // Tags canônicas do reference que formam o bloco (só quando a estrutura
+  // veio do esqueleto determinístico) — persistidas no JSONB e repassadas
+  // ao n8n no payload de copy.
+  tags?: string[]
 }
 
 export interface GeneratedBlueprint {
@@ -191,6 +195,7 @@ export function applySkeletonToBlueprint(
   }
   const blocks: GeneratedBlock[] = skeleton.blocks.map((sb, i) => {
     const src = pick(sb.type, i)
+    const seen = new Set<string>()
     return {
       type: sb.type,
       label: src?.label?.trim() ? src.label : sb.type,
@@ -198,6 +203,8 @@ export function applySkeletonToBlueprint(
       needs_image: sb.needs_image,
       image_brief: sb.needs_image ? (src?.image_brief ?? null) : null,
       copy_spec: sb.copy_spec,
+      // Tags indexadas reais ({{PRODUCT_1_NAME}}), dedup na ordem do DOM.
+      tags: sb.tags.filter((t) => (seen.has(t) ? false : (seen.add(t), true))),
     }
   })
   return { ...blueprint, blocks }
