@@ -539,8 +539,11 @@ export async function dispatchEmailCopyWebhook(
 
   // Blocos do blueprint efetivo por chave — fonte do purpose/copy_spec
   // enviados por bloco ao n8n. Os email_blocks são SEMEADOS do blueprint
-  // na mesma ordem, então blocks[position] do blueprint corresponde ao
-  // email_block de mesma position (validado por type antes de usar).
+  // na mesma ordem, MAS position é 1-based (seed-blocks: idx+1) e o array
+  // do blueprint é 0-based — o bloco da position P é blocks[P-1]. Indexar
+  // por blocks[P] deslocava tudo em 1: o type nunca casava e TODOS os
+  // blocos iam pro n8n sem purpose e com copy_spec default (bug provado na
+  // geração Luxe Lift welcome#3 de 18/jul). Validado por type antes de usar.
   const blueprintBlocksByKey = new Map<string, BlueprintBlock[]>()
   for (const bp of effectiveBlueprints.values()) {
     blueprintBlocksByKey.set(
@@ -787,9 +790,15 @@ export async function dispatchEmailCopyWebhook(
               // Bloco correspondente no blueprint (mesma position, semeado
               // na mesma ordem). Se a estrutura divergiu (reseed antigo,
               // edicao manual), o type não casa → default canônico do tipo.
-              const bpBlock = blueprintBlocksByKey.get(key)?.[b.position]
-              const matched =
-                bpBlock && bpBlock.type === b.block_type ? bpBlock : null
+              const bpBlocks = blueprintBlocksByKey.get(key)
+              // position 1-based → índice position-1. Fallback: rows legadas
+              // com position 0-based tentam o próprio índice. Ambos guardados
+              // pela igualdade de type.
+              const byIndex = (i: number) => {
+                const cand = bpBlocks?.[i]
+                return cand && cand.type === b.block_type ? cand : null
+              }
+              const matched = byIndex(b.position - 1) ?? byIndex(b.position)
               return {
                 block_id: b.id,
                 position: b.position,

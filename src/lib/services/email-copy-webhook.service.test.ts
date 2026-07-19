@@ -363,3 +363,118 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
     expect(email.estrutura_geral).toBeNull()
   })
 })
+
+describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off-by-one)", () => {
+  it("bloco na position P recebe purpose/copy_spec de blueprint.blocks[P-1]", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    // email_blocks semeados 1-BASED (seed-blocks: idx+1), mesma ordem do blueprint.
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "header", label: "Header", content: {} },
+      { id: "b2", email_id: "e1", position: 2, block_type: "hero", label: "Hero", content: {} },
+      { id: "b3", email_id: "e1", position: 3, block_type: "coupon", label: "Cupom", content: {} },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ",
+            messaging: "MSG",
+            subject_hint: null,
+            blocks: [
+              { type: "header", label: "Header", purpose: "PURPOSE-HEADER", copy_spec: [] },
+              {
+                type: "hero",
+                label: "Hero",
+                purpose: "PURPOSE-HERO",
+                copy_spec: [{ key: "eyebrow", min_chars: 8, max_chars: 24 }],
+              },
+              {
+                type: "coupon",
+                label: "Cupom",
+                purpose: "PURPOSE-COUPON",
+                copy_spec: [{ key: "code", min_chars: 4, max_chars: 15 }],
+              },
+            ],
+          },
+        ],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{
+        emails: Array<{
+          blocks: Array<{
+            position: number
+            type: string
+            purpose: string | null
+            copy_spec: Array<{ key: string; min_chars: number; max_chars: number }>
+          }>
+        }>
+      }>
+    }
+    const blocks = body.flows[0].emails[0].blocks
+    expect(blocks.map((b) => b.type)).toEqual(["header", "hero", "coupon"])
+
+    // ANTES do fix: blocks[position] deslocava 1 → type nunca casava →
+    // purpose null e copy_spec default em TODOS (provado na Luxe Lift w#3).
+    expect(blocks[0].purpose).toBe("PURPOSE-HEADER")
+    expect(blocks[1].purpose).toBe("PURPOSE-HERO")
+    expect(blocks[2].purpose).toBe("PURPOSE-COUPON")
+    expect(blocks[1].copy_spec).toEqual([{ key: "eyebrow", min_chars: 8, max_chars: 24 }])
+    expect(blocks[2].copy_spec).toEqual([{ key: "code", min_chars: 4, max_chars: 15 }])
+  })
+
+  it("rows legadas 0-based ainda casam (fallback pro próprio índice)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 0, block_type: "hero", label: "Hero", content: {} },
+      { id: "b2", email_id: "e1", position: 1, block_type: "coupon", label: "Cupom", content: {} },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ",
+            messaging: "MSG",
+            subject_hint: null,
+            blocks: [
+              { type: "hero", label: "Hero", purpose: "P-HERO", copy_spec: [] },
+              { type: "coupon", label: "Cupom", purpose: "P-COUPON", copy_spec: [] },
+            ],
+          },
+        ],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blocks: Array<{ purpose: string | null }> }> }>
+    }
+    const blocks = body.flows[0].emails[0].blocks
+    expect(blocks[0].purpose).toBe("P-HERO")
+    expect(blocks[1].purpose).toBe("P-COUPON")
+  })
+})
