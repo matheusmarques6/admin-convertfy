@@ -193,3 +193,27 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(res.source).toBe("none")
   })
 })
+
+describe("findDroppedImageTags (guard dos slots de imagem)", () => {
+  it("detecta tags de imagem removidas pelo Montador", async () => {
+    const { findDroppedImageTags } = await import("./component-assembler.service")
+    const chosen = JSON.stringify([
+      { block_index: 0, html: '<td background="{{HERO_IMAGE}}"><img alt="{{HERO_IMAGE_ALT}}"></td>' },
+      { block_index: 1, html: '<img src="{{PRODUCT_1_IMAGE}}"><img src="{{PRODUCT_1_THUMB_2}}">' },
+    ])
+    const output = '<html><body><td>{{HERO_CTA_LABEL}}</td><img src="{{PRODUCT_1_IMAGE}}"></body></html>'
+    expect(findDroppedImageTags(chosen, output)).toEqual([
+      "HERO_IMAGE",
+      "HERO_IMAGE_ALT",
+      "PRODUCT_1_THUMB_2",
+    ])
+  })
+
+  it("vazio quando todas as tags de imagem sobrevivem (ou não há nenhuma)", async () => {
+    const { findDroppedImageTags } = await import("./component-assembler.service")
+    expect(
+      findDroppedImageTags('<img src="{{HERO_IMAGE}}">', '<img src="{{ HERO_IMAGE }}">'),
+    ).toEqual([])
+    expect(findDroppedImageTags("<p>sem imagem</p>", "<p>out</p>")).toEqual([])
+  })
+})

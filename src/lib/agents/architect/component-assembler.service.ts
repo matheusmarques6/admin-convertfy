@@ -94,6 +94,8 @@ Regras:
 
 Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.
 
+REGRA DOS SLOTS DE IMAGEM: TODA tag de imagem presente nas variantes escolhidas ({{HERO_IMAGE}}, {{PRODUCT_N_IMAGE}}, {{BODY_IMAGE}}, {{PRODUCTS_IMAGE}}, {{*_THUMB_*}} etc.) DEVE aparecer no documento final, no bloco correspondente, com o MESMO atributo (src ou background-image) da variante original. NUNCA remova, simplifique ou converta uma seção com imagem em versão só-texto ao harmonizar — o pipeline downstream gera as imagens a partir dessas tags; sem elas o email sai em branco. Bloco mínimo criado do zero para seção hero ou products DEVE incluir o slot de imagem tagueado ({{HERO_IMAGE}} / {{PRODUCT_1_IMAGE}}).
+
 REGRA DAS TAGS CANÔNICAS: os HTMLs das variantes usam placeholders padronizados no formato {{TAG_MAIUSCULA}} (ex.: {{HERO_HEADLINE}}, {{PRODUCT_1_NAME}}, {{COUPON_CODE}}). PRESERVE cada placeholder EXATAMENTE como está no HTML da variante — NUNCA renomeie, traduza, abrevie ou invente tags novas. Se precisar de um placeholder num trecho que não tem (bloco criado do zero), use SOMENTE tags no padrão SECAO_CAMPO já presente nas outras variantes do documento (ex.: {{BODY_TITLE}}, {{BODY_TEXT}}, {{CTA_LABEL}}) — jamais um nome novo fora desse padrão. A correlação downstream (estrutura, copy e orçamento de caracteres) depende desses nomes exatos.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
@@ -138,6 +140,29 @@ export interface AssemblerChoice {
   variant_id: string
   reasoning?: string
   brand_evidence?: string
+}
+
+// Tags de imagem canônicas ({{HERO_IMAGE}}, {{PRODUCT_1_THUMB_2}}...).
+const IMAGE_TAG_PATTERN = /\{\{\s*([A-Z][A-Z0-9_]*(?:IMAGE|THUMB)[A-Z0-9_]*)\s*\}\}/g
+
+/**
+ * Guard determinístico: tags de imagem presentes nos HTMLs das variantes
+ * escolhidas mas AUSENTES no documento montado — o Montador as removeu ao
+ * harmonizar (bug provado na Luxe Lift welcome#3: hero/products/body com
+ * slot tagueado no input, zero tags de imagem no output → email em branco).
+ * Puro, testável.
+ */
+export function findDroppedImageTags(
+  chosenHtml: string,
+  outputHtml: string,
+): string[] {
+  const collect = (s: string) =>
+    new Set(Array.from(s.matchAll(IMAGE_TAG_PATTERN), (m) => m[1]))
+  const input = collect(chosenHtml)
+  const output = collect(outputHtml)
+  return Array.from(input)
+    .filter((t) => !output.has(t))
+    .sort()
 }
 
 // ── Parsing + resolução (puro, testável) ───────────────────────────
@@ -594,6 +619,23 @@ export async function assembleStoreReference(
 
   const variantIds = chosen.map((v) => v.id)
 
+  // Guard: o Montador removeu tags de imagem das variantes ao harmonizar?
+  // Warning + telemetria (image_tags_dropped nos Logs de geração) — sem
+  // derrubar o run, mas visível para auditoria imediata.
+  let droppedImageTags: string[] = []
+  if (usedLlm) {
+    droppedImageTags = findDroppedImageTags(chosenHtmlJson, html)
+    if (droppedImageTags.length > 0) {
+      log.warn("assembler.image_tags_dropped", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        model: harmConfig.model,
+        droppedImageTags,
+      })
+    }
+  }
+
   // Fonte do reference deste run. "llm" = Montador gerou HTML válido. Caso
   // contrário (timeout/erro/output não-HTML), NÃO geramos HTML degradado nem
   // persistimos: caímos no HTML reference global curado
@@ -649,6 +691,9 @@ export async function assembleStoreReference(
       html_chars: html.length,
       variant_ids: variantIds.length,
       missing_blocks: missingCount,
+      // Guard dos slots de imagem: tags presentes nas variantes escolhidas
+      // que sumiram do documento montado (deveria ser sempre []).
+      image_tags_dropped: droppedImageTags,
     },
     tokensInput: harmTokensIn,
     tokensOutput: harmTokensOut,

@@ -134,4 +134,10 @@ describe("paridade dos prompts default com as migrations", () => {
   it("DEFAULT_ASSEMBLER_SYSTEM contém a regra das tags canônicas", () => {
     expect(DEFAULT_ASSEMBLER_SYSTEM).toContain("REGRA DAS TAGS CANÔNICAS")
   })
+
+  // Espelha a migration 20260928 — o Montador não pode remover slots de
+  // imagem das variantes (causa do email em branco da Luxe Lift w#3).
+  it("DEFAULT_ASSEMBLER_SYSTEM contém a regra dos slots de imagem", () => {
+    expect(DEFAULT_ASSEMBLER_SYSTEM).toContain("REGRA DOS SLOTS DE IMAGEM")
+  })
 })
