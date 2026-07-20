@@ -225,3 +225,25 @@ describe("runRefinerGuards", () => {
     expect(r.ok).toBe(true)
   })
 })
+
+describe("runRefinerGuards — spacer de tabela com &nbsp; não é texto", () => {
+  it("respiro inserido como <tr><td>&nbsp;</td></tr> passa no guard", () => {
+    // É o formato emitido por fixOrphanSpacerDivs no output do
+    // applySpacingDelta — o &nbsp; é espaço invisível, não conteúdo.
+    const after = AFTER_OK.replace(
+      "</tr>\n<tr><td><a",
+      '</tr><tr><td style="height:96px;line-height:96px;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>\n<tr><td><a',
+    )
+    const r = runRefinerGuards(BEFORE, after, deltaSerif, OPTS)
+    expect(r.violations).not.toContain("texto_alterado")
+  })
+
+  it("texto REAL adicionado continua reprovando", () => {
+    const bad = AFTER_OK.replace(
+      "</tr>\n<tr><td><a",
+      '</tr><tr><td>OFERTA SECRETA</td></tr>\n<tr><td><a',
+    )
+    const r = runRefinerGuards(BEFORE, bad, deltaSerif, OPTS)
+    expect(r.violations).toContain("texto_alterado")
+  })
+})

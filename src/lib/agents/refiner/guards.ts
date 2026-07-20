@@ -33,12 +33,20 @@ export interface GuardOpts {
 
 /** textContent normalizado: remove <style>/<script>, tags e colapsa espaços. */
 function normalizeText(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
+  return (
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      // Entidades de espaço INVISÍVEL contam como espaço, não como texto:
+      // o spacer de tabela válido (fixOrphanSpacerDivs, aplicado ao output
+      // do applySpacingDelta) carrega `&nbsp;` — sem isto, cada respiro
+      // inserido disparava `texto_alterado` e o delta inteiro era
+      // descartado (Luxe Lift w#3, 20/jul).
+      .replace(/&(?:nbsp|#0*160|ensp|emsp|thinsp|#8194|#8195|#8201|#8202|zwnj|zwj|#8204|#8205|#847);/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  )
 }
 
 function attrSet(html: string, attr: "href" | "src"): Set<string> {
