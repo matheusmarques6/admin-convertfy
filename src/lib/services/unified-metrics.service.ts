@@ -234,7 +234,10 @@ export async function getUnifiedFlows(
         .select(selectCols)
         .eq("org_id", orgId)
         .eq("period_label", periodLabel)
-      if (onlyLive) q = q.eq("flow_status", "live")
+      // "enabled"/"active": rotulos crus da API Omnisend gravados antes da
+      // normalizacao pra "live" no sync — sem eles aqui, linhas com receita
+      // ficavam invisiveis (jul/2026). Klaviyo nao muda: draft/manual seguem fora.
+      if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
       if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
       return q
     })(),
@@ -244,7 +247,7 @@ export async function getUnifiedFlows(
         .select(selectCols)
         .eq("org_id", orgId)
         .eq("period_label", periodLabel)
-      if (onlyLive) q = q.eq("flow_status", "live")
+      if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
       if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
       return q
     })(),

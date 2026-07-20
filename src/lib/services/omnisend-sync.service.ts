@@ -124,16 +124,21 @@ function getAutomationStats(a: OmnisendAutomation): OmnisendCampaignStats {
 
 /** Normaliza o status da automation para o formato esperado pelo cache.
  *  A v2026 retorna `isEnabled: boolean`; quando true mapeamos para "live"
- *  para bater com o filtro `flow_status=live` em getUnifiedFlows. */
-function getAutomationStatusStr(a: OmnisendAutomation): string {
+ *  para bater com o filtro `flow_status=live` em getUnifiedFlows.
+ *  Invariante: todo caso em que isAutomationLive() === true DEVE gravar
+ *  "live" — quando a API manda status string ("enabled"/"active") sem
+ *  isEnabled, o repasse cru deixava as linhas invisíveis pro dashboard
+ *  (bug confirmado jul/2026: 331 linhas 30d com 'enabled', leitura =live). */
+export function getAutomationStatusStr(a: OmnisendAutomation): string {
   if (a.isEnabled === true) return "live"
   if (a.isEnabled === false) return "disabled"
+  if (a.status === "enabled" || a.status === "active" || a.status === "live") return "live"
   if (a.status) return a.status
   return "unknown"
 }
 
 /** True quando a automation esta ativamente rodando (aceita ambos os formatos). */
-function isAutomationLive(a: OmnisendAutomation): boolean {
+export function isAutomationLive(a: OmnisendAutomation): boolean {
   if (a.isEnabled === true) return true
   if (a.isEnabled === false) return false
   return a.status === "enabled" || a.status === "active" || a.status === "live"
