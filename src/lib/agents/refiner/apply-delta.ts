@@ -106,6 +106,10 @@ export interface SectionJunction {
   junction: number
   beforeSnippet: string
   afterSnippet: string
+  /** background-color da seção ANTES da junção (null = não detectado). */
+  beforeBg: string | null
+  /** background-color da seção DEPOIS da junção (null = não detectado). */
+  afterBg: string | null
 }
 
 /** Delta completo do Refinador v2 — 3 seções independentes. */
@@ -134,6 +138,10 @@ export const RADIUS_MAX_PX = 24
 export const SPACING_MAX_PX = 160
 export const SPACER_MIN_PX = 8
 export const MAX_SPACER_INSERTS = 6
+// Teto próprio para spacers INSERIDOS — menor que o de ajuste de valores
+// existentes. Respiros de 100-160px num email de 600px são desproporcionais
+// (Luxe Lift w#1, jul/2026: faixas de 100/120px entre seções).
+export const SPACER_INSERT_MAX_PX = 64
 
 // font-family DENTRO de style="" inline. O lookbehind não é necessário:
 // varremos só o corpo (após </head>) e o <style> block nunca aparece lá.
@@ -391,7 +399,7 @@ export function extractSpacingOccurrences(html: string): SpacingOccurrence[] {
 
 const clampSpacing = (v: number): number => Math.max(0, Math.min(SPACING_MAX_PX, Math.round(v)))
 const clampSpacerHeight = (v: number): number =>
-  Math.max(SPACER_MIN_PX, Math.min(SPACING_MAX_PX, Math.round(v)))
+  Math.max(SPACER_MIN_PX, Math.min(SPACER_INSERT_MAX_PX, Math.round(v)))
 
 // Void elements não abrem escopo no scanner de seções.
 const VOID_TAGS = new Set([
@@ -449,6 +457,17 @@ function scanSections(html: string): SectionSpan[] {
   return sections
 }
 
+/**
+ * background-color "da seção": a PRIMEIRA declaração dentro do span — em
+ * emails de tabela a cor da linha é declarada no <td> de abertura, antes
+ * de qualquer elemento interno. Heurística: pode pegar um bg interno
+ * quando a linha não declara cor (aceitável; null quando não há nenhum).
+ */
+function sectionBg(html: string, span: SectionSpan): string | null {
+  const m = html.slice(span.start, span.end).match(/background-color\s*:\s*([^;"'<>]+)/i)
+  return m ? m[1].trim() : null
+}
+
 function edgeSnippet(html: string, span: SectionSpan, edge: "head" | "tail"): string {
   const text = html
     .slice(span.start, span.end)
@@ -470,6 +489,8 @@ export function extractSectionJunctions(html: string): SectionJunction[] {
       junction: i,
       beforeSnippet: edgeSnippet(html, sections[i], "tail"),
       afterSnippet: edgeSnippet(html, sections[i + 1], "head"),
+      beforeBg: sectionBg(html, sections[i]),
+      afterBg: sectionBg(html, sections[i + 1]),
     })
   }
   return junctions
@@ -527,7 +548,15 @@ export function applySpacingDelta(
       .sort((a, b) => b.junction - a.junction)
     for (const ins of valid) {
       const at = sections[ins.junction].end
-      const spacer = `<div style="height:${clampSpacerHeight(ins.height_px)}px"></div>`
+      // Spacer HERDA a cor de fundo das vizinhas: iguais → essa cor (respiro
+      // invisível dentro do bloco); diferentes → cor da seção SEGUINTE (lê
+      // como padding-top do próximo bloco). Sem cor detectada → sem bg (fica
+      // o fundo do wrapper). Sem isto, respiro dentro de seção escura virava
+      // faixa clara cortando o bloco (rodapé Luxe Lift w#1, jul/2026).
+      const prevBg = sectionBg(out, sections[ins.junction])
+      const nextBg = sectionBg(out, sections[ins.junction + 1])
+      const bg = prevBg && nextBg ? (prevBg === nextBg ? prevBg : nextBg) : (nextBg ?? prevBg)
+      const spacer = `<div style="height:${clampSpacerHeight(ins.height_px)}px${bg ? `;background-color:${bg}` : ""}"></div>`
       out = out.slice(0, at) + spacer + out.slice(at)
     }
     // Junção DENTRO de <table> (</tr>…<tr>): a div solta sofre foster

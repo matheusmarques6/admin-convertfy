@@ -49,6 +49,16 @@ describe("fixOrphanSpacerDivs", () => {
     expect(out).toContain("height:24px;line-height:24px")
   })
 
+  it("carrega o background-color da div para o <td> convertido (Refinador pinta o respiro)", () => {
+    const html =
+      '<table><tr><td>A</td></tr><div style="height:32px;background-color:var(--heading)"></div><tr><td>B</td></tr></table>'
+    const out = fixOrphanSpacerDivs(html)
+    expect(out).not.toContain("<div")
+    expect(out).toContain(
+      '<tr><td style="height:32px;line-height:32px;font-size:0;mso-line-height-rule:exactly;background-color:var(--heading);">&nbsp;</td></tr>',
+    )
+  })
+
   it("nao toca em <div> validas dentro de <td> (ex: hero overlay)", () => {
     const html =
       '<table><tr><td><div style="height:750px;background-image:url(x)"></div></td></tr></table>'

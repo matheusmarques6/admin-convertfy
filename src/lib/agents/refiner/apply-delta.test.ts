@@ -232,15 +232,18 @@ describe("extractSectionJunctions / applySpacingDelta", () => {
     expect(out.match(/height:64px/g)).toHaveLength(1)
   })
 
-  it("teto de 6 inserções e clamp da altura do spacer", () => {
+  it("teto de 6 inserções e clamp da altura do spacer (insert ≤ 64px)", () => {
     const inserts = Array.from({ length: 8 }, (_, i) => ({
       junction: i % 3,
       height_px: 500,
     }))
     const out = applySpacingDelta(EMAIL_V2, [], inserts)
-    const spacers = out.match(/<div style="height:160px"><\/div>/g) ?? []
+    // Clamp de INSERT é 64 (SPACER_INSERT_MAX_PX), não os 160 do adjust —
+    // respiro de 100-160px num email de 600px é desproporcional.
+    const spacers = out.match(/<div style="height:64px"><\/div>/g) ?? []
     expect(spacers.length).toBeLessThanOrEqual(6)
     expect(spacers.length).toBeGreaterThan(0)
+    expect(out).not.toContain('height:160px')
   })
 })
 
@@ -263,13 +266,13 @@ describe("applySpacingDelta — spacers em junção de TABELA (foster parenting)
     // Sanidade da fixture: as junções REALMENTE existem entre as <tr>s.
     expect(extractSectionJunctions(EMAIL_TABLE)).toHaveLength(2)
     const out = applySpacingDelta(EMAIL_TABLE, [], [
-      { junction: 0, height_px: 96 },
+      { junction: 0, height_px: 48 },
     ])
     // Nenhuma div-spacer órfã sobrevivendo entre linhas da tabela:
     expect(out).not.toMatch(/<\/tr>\s*<div\b[^>]*height/i)
     // O respiro existe como linha de tabela Outlook-safe:
     expect(out).toContain(
-      'height:96px;line-height:96px;font-size:0;mso-line-height-rule:exactly;',
+      'height:48px;line-height:48px;font-size:0;mso-line-height-rule:exactly;',
     )
   })
 
@@ -280,6 +283,44 @@ describe("applySpacingDelta — spacers em junção de TABELA (foster parenting)
     )
     const out = applySpacingDelta(withOrphan, [], [{ junction: 0, height_px: 64 }])
     expect(out).not.toMatch(/<\/tr>\s*<div\b[^>]*height/i)
+  })
+})
+
+describe("applySpacingDelta — spacer herda o background das seções vizinhas", () => {
+  // Bug Luxe Lift w#1 (jul/2026): respiro inserido entre duas linhas do
+  // rodapé escuro nascia SEM cor → faixa clara cortando o bloco contínuo.
+  const EMAIL_BG = `<!DOCTYPE html><html><body style="margin:0">
+<table role="presentation" style="width:600px; max-width:600px;">
+  <tr><td style="background-color:var(--bg); padding-top:24px;">Corpo claro</td></tr>
+  <tr><td style="background-color:var(--heading); padding-top:24px;">Footer logo</td></tr>
+  <tr><td style="background-color:var(--heading); padding-top:24px;">Footer links</td></tr>
+</table>
+</body></html>`
+
+  it("junções expõem beforeBg/afterBg para o LLM", () => {
+    const junctions = extractSectionJunctions(EMAIL_BG)
+    expect(junctions).toHaveLength(2)
+    expect(junctions[0]).toMatchObject({ beforeBg: "var(--bg)", afterBg: "var(--heading)" })
+    expect(junctions[1]).toMatchObject({ beforeBg: "var(--heading)", afterBg: "var(--heading)" })
+  })
+
+  it("vizinhas da MESMA cor → spacer pintado com ela (respiro invisível)", () => {
+    const out = applySpacingDelta(EMAIL_BG, [], [{ junction: 1, height_px: 32 }])
+    expect(out).toContain(
+      'height:32px;line-height:32px;font-size:0;mso-line-height-rule:exactly;background-color:var(--heading);',
+    )
+  })
+
+  it("vizinhas de cores DIFERENTES → spacer usa a cor da seção seguinte", () => {
+    const out = applySpacingDelta(EMAIL_BG, [], [{ junction: 0, height_px: 32 }])
+    expect(out).toContain(
+      'height:32px;line-height:32px;font-size:0;mso-line-height-rule:exactly;background-color:var(--heading);',
+    )
+  })
+
+  it("sem cor detectada nas vizinhas → spacer sem background (comportamento anterior)", () => {
+    const out = applySpacingDelta(EMAIL_V2, [], [{ junction: 2, height_px: 32 }])
+    expect(out).toContain('<div style="height:32px"></div>')
   })
 })
 

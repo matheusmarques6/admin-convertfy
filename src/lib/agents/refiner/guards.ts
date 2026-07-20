@@ -163,10 +163,10 @@ export function runRefinerGuards(
 
   // 6. Tamanho dentro da faixa (anti-regeneração). Crescimento ganha
   // folga ABSOLUTA além dos 30%: @import + fallback stacks (2KB) e cada
-  // spacer inserido (~120 bytes) são adição legítima de tamanho fixo.
-  // Encolhimento não ganha folga — conteúdo perdido é perda.
+  // spacer inserido (~160 bytes com background-color herdado) é adição
+  // legítima de tamanho fixo. Encolhimento não ganha folga.
   if (before.length > 0) {
-    const growthAllowance = 2000 + spacing.insert.length * 120
+    const growthAllowance = 2000 + spacing.insert.length * 160
     const ratio = after.length / before.length
     const growthOk = after.length <= before.length * 1.3 + growthAllowance
     if (ratio < 0.7 || !growthOk) {

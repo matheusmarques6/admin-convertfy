@@ -31,7 +31,7 @@ export function fixSpacerColumnWidths(html: string): string {
 }
 
 const ORPHAN_SPACER_RE =
-  /<\/tr>\s*<div\b[^>]*?height\s*:\s*(\d+)\s*px[^>]*>\s*<\/div>/gi
+  /<\/tr>\s*<div\b([^>]*?height\s*:\s*(\d+)\s*px[^>]*)>\s*<\/div>/gi
 
 export function fixOrphanSpacerDivs(html: string): string {
   // Itera até estabilizar: divs órfãs CONSECUTIVAS (`</tr><div/><div/>`)
@@ -41,8 +41,13 @@ export function fixOrphanSpacerDivs(html: string): string {
   for (let i = 0; i < 8; i++) {
     const next = out.replace(
       ORPHAN_SPACER_RE,
-      (_m, px) =>
-        `</tr><tr><td style="height:${px}px;line-height:${px}px;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>`,
+      (_m, attrs: string, px: string) => {
+        // background-color da div (Refinador pinta o respiro com a cor das
+        // seções vizinhas) precisa sobreviver à conversão — spacer sem cor
+        // dentro de seção escura vira faixa clara cortando o bloco.
+        const bg = /background-color\s*:\s*([^;"'<>]+)/i.exec(attrs)?.[1]?.trim()
+        return `</tr><tr><td style="height:${px}px;line-height:${px}px;font-size:0;mso-line-height-rule:exactly;${bg ? `background-color:${bg};` : ""}">&nbsp;</td></tr>`
+      },
     )
     if (next === out) break
     out = next

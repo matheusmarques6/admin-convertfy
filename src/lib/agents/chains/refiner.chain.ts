@@ -105,7 +105,7 @@ Assinaturas de respiro (escolha pela personalidade, coerente com typography/shap
 
 Ferramentas:
 - "adjust": muda valores EXISTENTES do inventário spacing_occurrences (index → value_px 0-160). PREFIRA adjust.
-- "insert": cria respiro NOVO entre seções — use as junções numeradas de section_junctions (junction → height_px 8-160, máximo 6 inserções). Use SÓ onde falta respiro estrutural entre duas fases coladas.
+- "insert": cria respiro NOVO entre seções — use as junções numeradas de section_junctions (junction → height_px 8-64, típico 24-48; máximo 6 inserções). Use SÓ onde falta respiro estrutural entre duas fases coladas. Cada junção traz beforeBg/afterBg (cor de fundo das seções vizinhas) e o spacer herda essa cor automaticamente. NUNCA insira respiro nas junções do rodapé (logo final, links legais, redes sociais, endereço/unsubscribe) — essa área é um bloco visual contínuo.
 - Máximo ~10 adjusts. Não redistribua tudo — ajuste os pontos que violam as 3 leis ou que contradizem a assinatura escolhida.
 </spacing_rules>
 
