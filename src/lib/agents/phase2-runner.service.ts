@@ -806,8 +806,13 @@ export async function runPhase2Image(
             invalidValue: blueprintAspectRaw,
           })
         }
+        // Reserve-bottom (área escura pro overlay de texto) é semântica de
+        // HERO — aplicada a products/reviews/body escurecia o rodapé de
+        // imagens que nunca recebem texto. SYNC CONTRACT com
+        // resolve-block-prompt.service.ts.
         const reserveBottom =
-          ctx.blueprint?.image_overlay_reserve_bottom ?? true
+          (ctx.blueprint?.image_overlay_reserve_bottom ?? true) &&
+          (blk.block_type as string) === "hero"
         // Aspect POR BLOCO (blocks[].image_aspect, derivado das tags do
         // template via registry) — prioridade máxima sobre o nível-email.
         const blockAspectRaw = blockAspectFromBlueprint(

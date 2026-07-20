@@ -40,7 +40,7 @@ Requirements:
 - Clean, modern e-commerce aesthetic that reflects the brand persona
 - Show or evoke the niche/products (visual cues, lifestyle, product hints)
 - No text in the image (text is overlaid in HTML)
-- Landscape aspect ratio (600x300)
+- Compose for the block's role in the email ({block_purpose}) — the exact aspect-ratio instruction is appended below
 - Product/lifestyle photography style aligned with brand tone`
 
 export function renderImagePrompt(
@@ -526,6 +526,21 @@ export async function generateEmailImage(
     }
 
     if (!imageBuffer) {
+      // Body DEGENERADO em whitespace: 200 OK, content-type json, milhares de
+      // chars de espaço/newline e nenhum payload útil (gpt-5.4-image-2 entra
+      // em loop de whitespace — 3 ocorrências provadas em Luxe Lift jul/2026,
+      // cada uma custou uma imagem do email). É estocástico → RETRYABLE, igual
+      // ao body vazio. Threshold: <40 chars visíveis OU <5% de densidade.
+      const visibleLen = rawText.replace(/\s/g, "").length
+      if (visibleLen < 40 || visibleLen / rawText.length < 0.05) {
+        throw new OpenRouterMidStreamError({
+          errorType: "whitespace_body",
+          status: res.status,
+          ms,
+          snippet: rawText.slice(0, 120),
+          retryable: true,
+        })
+      }
       // Não-retryable: body não-vazio mas sem imagem extraível — quase sempre é
       // refusal textual do modelo (ex.: política de conteúdo sobre rostos, agora
       // que testimonials gera avatares) ou formato inesperado. Retry não ajuda.

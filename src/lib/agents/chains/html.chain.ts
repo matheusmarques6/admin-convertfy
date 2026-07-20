@@ -163,6 +163,16 @@ If the hero has NO image (generation failed upstream): render a text-only hero
 rows and drop only the img. NEVER invent a URL or reuse another block's image.
 </hero_overlay_hard_rule>
 
+<image_slot_rules>
+Image placement is TAG-DRIVEN. The reference marks image slots with {{*_IMAGE}} / {{*_THUMB}} placeholders (e.g. {{HERO_IMAGE}}, {{PRODUCTS_IMAGE}}, {{REVIEW_1_IMAGE}}); each <image_map> entry carries "tag", "block_type", "aspect_ratio" and "render_width_px". These rules OVERRIDE item 4 of <substitute_only_these> wherever they conflict:
+
+1. MATCH BY TAG: fill a slot ONLY with the image_map entry whose "tag" matches the slot's placeholder name (indexes count: {{REVIEW_2_IMAGE}} matches tag REVIEW_2_IMAGE, not REVIEW_1_IMAGE). If no entry carries the tag, match by block position (entry id IMG_{position} vs the block the slot belongs to). Still no match → rule 3.
+2. ONE SLOT PER IMAGE: each image_map URL appears AT MOST ONCE in the whole email. NEVER reuse an image to fill a second slot, never use one block's image inside another block. Fewer images than slots means some slots stay unfilled — that is correct.
+3. UNFILLED SLOT → REMOVE: a slot with no matching image is REMOVED — delete the placeholder element (or its dedicated <tr>); if siblings share the row, collapse only that cell. Do NOT leave the raw {{TAG}} token, do NOT substitute a different image, do NOT invent a URL.
+4. TEXT SLOTS ARE NOT IMAGE SLOTS: never insert an <img> where the reference has a TEXT placeholder ({{BADGE_1_TEXT}}, {{USP_1_TITLE}}, {{REVIEW_1_NAME}}...). A colored box holding a text token is a TEXT element even if it visually resembles a placeholder box.
+5. RENDER SIZE: every inserted <img> carries width="{render_width_px}" as an HTML attribute AND style="display:block;width:100%;max-width:{render_width_px}px;height:auto;". Respect the entry's aspect_ratio — a 1:1 avatar/thumb stays small and square, never stretched into a banner.
+</image_slot_rules>
+
 Emit ONLY the final HTML.`
 
 export const DEFAULT_HTML_USER_TEMPLATE = `<store>
@@ -420,9 +430,22 @@ const UNRESOLVED_CONTENT_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g
 function stripUnresolvedPlaceholders(html: string): string {
   const matches = html.match(UNRESOLVED_CONTENT_TOKEN)
   if (matches && matches.length > 0) {
+    const unique = Array.from(new Set(matches))
+    // Slot de IMAGEM perdido é mais grave que copy não preenchida: o email
+    // sai sem um visual que o Montador pediu, e com QA desligado ninguém vê.
+    // Warn dedicado separa os dois casos na telemetria.
+    const imageTokens = unique.filter((t) =>
+      /_(?:IMAGE|THUMB)(?:_\d+)?\s*\}\}$/.test(t),
+    )
+    if (imageTokens.length > 0) {
+      log.warn("html.image_slot_unfilled", {
+        count: imageTokens.length,
+        tokens: imageTokens.slice(0, 10),
+      })
+    }
     log.warn("html.unresolved_placeholders", {
       count: matches.length,
-      sample: Array.from(new Set(matches)).slice(0, 10),
+      sample: unique.slice(0, 10),
     })
     return html.replace(UNRESOLVED_CONTENT_TOKEN, "")
   }

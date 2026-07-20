@@ -74,6 +74,11 @@ const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
 // emails em copy_ready travados). Atingindo o cap, marca como
 // failed:stale_copy_ready_exhausted para sair do loop.
 const MAX_STALE_DISPATCH = Number(process.env.WATCHDOG_STALE_DISPATCH_MAX ?? 3)
+// Runs de telemetria abertos como 'running' e nunca fechados (processo
+// morreu no meio — ex.: geração de imagem do hero Luxe Lift 20/jul ficou
+// 'running' pra sempre e a falha ficou invisível). 20min >> qualquer
+// geração legítima (imagem 90s timeout, HTML 200s).
+const STALE_RUN_MIN = Number(process.env.WATCHDOG_STALE_RUN_MIN ?? 20)
 const MAX_SIGNALS_PER_RUN = 20
 const MAX_COPY_RECOVERY_PER_RUN = 10
 const MAX_PHASE2_TIMEOUT_PER_RUN = 10
@@ -88,6 +93,7 @@ interface WatchdogSummary {
   stale_copy_ready: number
   stale_dispatch_exhausted: number
   stale_image_done: number
+  orphan_runs_closed: number
   started_at: string
   finished_at: string
   duration_ms: number
@@ -685,6 +691,42 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
   return { dispatched }
 }
 
+// ── Front 6: fecha runs de telemetria órfãos em 'running' ──────────────
+//
+// email_generation_runs abre um run 'running' antes da chamada ao modelo e
+// atualiza pra success/error ao fim. Se o processo morre no meio (drop de
+// runtime, timeout de função), o run fica 'running' PARA SEMPRE e a falha
+// some da telemetria — o hero da Luxe Lift (20/jul) perdeu a imagem assim,
+// sem nenhum erro registrado. Não re-dispatcha nada (os fronts 3/5 cuidam
+// do EMAIL); só fecha o RUN pra falha ficar visível na UI/queries.
+async function closeOrphanRunningRuns(): Promise<number> {
+  const admin = createAdminClient()
+  const threshold = new Date(Date.now() - STALE_RUN_MIN * 60_000).toISOString()
+  const { data, error } = await admin
+    .from("email_generation_runs")
+    .update({
+      status: "error",
+      error_message: `watchdog: run órfão em 'running' há mais de ${STALE_RUN_MIN}min — processo morreu sem fechar o run`,
+    })
+    .eq("status", "running")
+    .lt("created_at", threshold)
+    .select("id, agent, email_id")
+
+  if (error) {
+    log.error("watchdog.orphan_runs.close_failed", { error: error.message })
+    return 0
+  }
+  const rows = (data ?? []) as Array<{ id: string; agent: string; email_id: string | null }>
+  if (rows.length > 0) {
+    log.warn("watchdog.orphan_runs.closed", {
+      count: rows.length,
+      agents: [...new Set(rows.map((r) => r.agent))],
+      emailIds: [...new Set(rows.map((r) => r.email_id).filter(Boolean))].slice(0, 10),
+    })
+  }
+  return rows.length
+}
+
 export async function GET(request: NextRequest) {
   const authError = requireCronAuth(request)
   if (authError) return authError
@@ -702,6 +744,7 @@ export async function GET(request: NextRequest) {
   let staleCopyReady = 0
   let staleDispatchExhausted = 0
   let staleImageDone = 0
+  let orphanRunsClosed = 0
 
   // Front 1: sinais
   try {
@@ -757,6 +800,15 @@ export async function GET(request: NextRequest) {
     })
   }
 
+  // Front 6: runs de telemetria órfãos em 'running'
+  try {
+    orphanRunsClosed = await closeOrphanRunningRuns()
+  } catch (err) {
+    log.error("watchdog.orphan_runs.fatal", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   const finishedAt = new Date().toISOString()
   const duration = Date.now() - t0
 
@@ -769,6 +821,7 @@ export async function GET(request: NextRequest) {
     stale_copy_ready: staleCopyReady,
     stale_dispatch_exhausted: staleDispatchExhausted,
     stale_image_done: staleImageDone,
+    orphan_runs_closed: orphanRunsClosed,
     started_at: startedAt,
     finished_at: finishedAt,
     duration_ms: duration,

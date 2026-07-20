@@ -269,8 +269,11 @@ export async function resolveBlockPrompt(
       invalidValue: blueprintAspectRaw,
     })
   }
+  // Reserve-bottom é semântica de HERO (overlay de texto) — só heroes a
+  // recebem. SYNC CONTRACT com phase2-runner.service.ts.
   const overlayReserveBottom =
-    blueprint?.image_overlay_reserve_bottom ?? true
+    (blueprint?.image_overlay_reserve_bottom ?? true) &&
+    (blk.block_type as string) === "hero"
   // Aspect POR BLOCO (blocks[].image_aspect via tags do template) —
   // prioridade máxima. SYNC CONTRACT com phase2-runner.service.ts.
   const blockAspectRaw = blockAspectFromBlueprint(

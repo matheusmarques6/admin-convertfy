@@ -67,7 +67,8 @@ export const HTML_PROMPT_VAR_DESCRIPTIONS: Record<
   objective: "Objetivo editorial do email (do blueprint)",
   messaging: "Mensagem central do email (do blueprint)",
   reference_html: "HTML de referência (autoridade de forma)",
-  image_map_json: "Array de imagens [{id,url,aspect_ratio,overlay}]",
+  image_map_json:
+    "Array de imagens [{id,url,tag,block_type,aspect_ratio,render_width_px,overlay}]",
   top_products_json: "Array de produtos top da loja",
   blocks_with_content_json: "Blocos com content + purpose por bloco",
 }

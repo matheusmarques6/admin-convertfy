@@ -36,7 +36,10 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 
+import { lookupTag } from "@/lib/email-workspace/tag-registry"
+
 import { loadGlobalReferenceTemplate } from "../reference-template"
+import { isAspectKey } from "../image/aspect-ratio"
 import { precheckBrandReady, resolveBrandTokens } from "./brand-guards"
 import { DEFAULT_REFERENCE_SKELETON } from "./default-reference"
 import { deriveColorRoles } from "./color-roles"
@@ -79,10 +82,19 @@ interface EmailBlockRow {
   content: Record<string, unknown> | null
 }
 
-interface ImageMapEntry {
+export interface ImageMapEntry {
   id: string
   url: string
+  /**
+   * Tag canônica do slot no reference ({{HERO_IMAGE}}, {{REVIEW_1_IMAGE}}...).
+   * É a chave de casamento slot↔imagem no prompt do HTML agent. null quando o
+   * blueprint não expõe a tag (rows pré-contrato).
+   */
+  tag: string | null
+  block_type: string
   aspect_ratio: string
+  /** Largura de RENDER sugerida no HTML (attribute width do <img>). */
+  render_width_px: number
   overlay: "needs_html_overlay" | "burned"
 }
 
@@ -249,29 +261,84 @@ function purposeOf(
   return bp?.purpose?.trim() || fallbackLabel
 }
 
-function buildImageMap(
+/**
+ * Largura de render do <img> no email (600px de coluna útil): thumbs e
+ * ícones 1:1 de features são pequenos; o resto ocupa a coluna inteira.
+ */
+function renderWidthFor(tag: string | null, blockType: string): number {
+  if (tag && /THUMB/.test(tag)) return 120
+  if (blockType === "features") return 120
+  return 600
+}
+
+export function buildImageMap(
   blocks: EmailBlockRow[],
   blueprint: EmailBlueprint | null,
 ): ImageMapEntry[] {
-  const aspect = blueprint?.image_aspect ?? "4:5"
-  // NULL/undefined cai em "needs_html_overlay" (default conservador):
-  // text overlay funciona sobre qualquer imagem, mas "burned" sobre
-  // uma imagem que precisa de overlay perde a copy. Blueprints legacy
-  // sem o campo (criados antes de 20260623) sao tratados como "precisa
-  // de overlay" ate o backfill rodar.
-  const overlay: "needs_html_overlay" | "burned" =
+  const globalAspect = blueprint?.image_aspect ?? "4:5"
+  // NULL/undefined cai em "needs_html_overlay" (default conservador) — mas
+  // SÓ para o hero: overlay de texto é semântica de hero. Imagem de
+  // products/reviews/body com overlay ganhava tratamento de banner
+  // (o bug Luxe Lift w#1: foto de produto 4:3 esticada como hero 4:5).
+  const heroOverlay: "needs_html_overlay" | "burned" =
     blueprint?.image_overlay_reserve_bottom === false ? "burned" : "needs_html_overlay"
+
+  // Casa email_block (position 1-based) com blueprint.blocks[position-1],
+  // guardado por type + fallback pro próprio índice (rows legadas 0-based) —
+  // mesma convenção do dispatch de copy e do aspect por bloco.
+  const bpBlocks = blueprint?.blocks
+  const bpFor = (position: number, type: string): BlueprintBlock | null => {
+    if (!Array.isArray(bpBlocks)) return null
+    const byIndex = (i: number) => {
+      const cand = bpBlocks[i]
+      return cand && cand.type === type ? cand : null
+    }
+    return byIndex(position - 1) ?? byIndex(position)
+  }
 
   const entries: ImageMapEntry[] = []
   for (const blk of blocks) {
     const content = blk.content ?? {}
+    const bp = bpFor(blk.position, blk.block_type)
+    const imageTag =
+      bp?.tags?.find((t) => lookupTag(t)?.kind === "image") ?? null
+
     const url = (content.image_url as string | undefined)?.trim()
-    if (!url) continue
-    entries.push({
-      id: `IMG_${blk.position}`,
-      url,
-      aspect_ratio: aspect,
-      overlay,
+    if (url) {
+      // Aspecto POR BLOCO (tags do template via registry) vence o global —
+      // o achatamento pro nível-email mandava toda imagem como 4:5.
+      const blockAspect =
+        bp?.image_aspect && isAspectKey(bp.image_aspect) ? bp.image_aspect : null
+      entries.push({
+        id: `IMG_${blk.position}`,
+        url,
+        tag: imageTag,
+        block_type: blk.block_type,
+        aspect_ratio: blockAspect ?? globalAspect,
+        render_width_px: renderWidthFor(imageTag, blk.block_type),
+        overlay: blk.block_type === "hero" ? heroOverlay : "burned",
+      })
+    }
+
+    // Avatares de testimonial: o phase2-runner grava em items[].avatar_url
+    // (1 avatar POR depoimento), não em content.image_url — sem esta leitura
+    // as imagens eram geradas (e pagas) mas nunca chegavam ao HTML agent.
+    const items = Array.isArray(content.items)
+      ? (content.items as Array<Record<string, unknown>>)
+      : []
+    items.forEach((item, idx) => {
+      const avatarUrl =
+        typeof item?.avatar_url === "string" ? item.avatar_url.trim() : ""
+      if (!avatarUrl) return
+      entries.push({
+        id: `IMG_${blk.position}_AVATAR_${idx + 1}`,
+        url: avatarUrl,
+        tag: `REVIEW_${idx + 1}_IMAGE`,
+        block_type: blk.block_type,
+        aspect_ratio: "1:1",
+        render_width_px: 96,
+        overlay: "burned",
+      })
     })
   }
   return entries

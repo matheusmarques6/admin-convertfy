@@ -52,4 +52,16 @@ describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ADAPTIVE HEIGHT")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<formatting_hard_rules>")
   })
+
+  // Espelha a migration 20260930: casamento slot↔imagem por TAG, sem
+  // reuso de URL, slot sem imagem é removido, width por render_width_px.
+  // Sem este bloco o agente clona a única imagem disponível em todos os
+  // slots (Luxe Lift w#1: 1 imagem replicada 10x no HTML final).
+  it("contém as image_slot_rules (paridade com o prompt do banco)", () => {
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<image_slot_rules>")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ONE SLOT PER IMAGE")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("UNFILLED SLOT → REMOVE")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("TEXT SLOTS ARE NOT IMAGE SLOTS")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("render_width_px")
+  })
 })

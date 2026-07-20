@@ -600,6 +600,34 @@ describe("generateEmailImage — retry em falha transitória", () => {
     expect(String(err)).not.toMatch(/Resposta \(truncada\): $/)
   })
 
+  it("200 OK + body degenerado em whitespace → retryable, sucesso na 2a tentativa", async () => {
+    // Caso real (Luxe Lift, jul/2026): 200, content-type json, ~6KB de
+    // espaço/newline e nenhum payload útil. trim() != "" (tem um resto de
+    // envelope), então não cai no EmptyBody — precisa do check de densidade.
+    const whitespaceBody =
+      "\n         \n\n".repeat(400) +
+      '{"choices":[{"message":{"content":"\\n \\n"}}]}'
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => whitespaceBody,
+        headers: { get: () => "application/json" },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => okImageBody(),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
   it("200 OK + SSE com error-frame → retryable, sucesso na 2a tentativa", async () => {
     const sseError =
       ': OPENROUTER PROCESSING\n\ndata: {"error":{"message":"provider disconnected","metadata":{"error_type":"provider_error"}}}\n\n'
