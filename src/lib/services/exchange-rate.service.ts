@@ -16,9 +16,9 @@ const log = logger.child("ExchangeRate")
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 const API_URL = "https://open.er-api.com/v6/latest/BRL"
 
-// Global store ID used as key in dashboard_cache for exchange rates
-const GLOBAL_CACHE_KEY = "global_exchange_rates"
-const CACHE_TYPE = "exchange_rates"
+// Chave da linha única em exchange_rate_cache (tabela própria — migration
+// 20260720_exchange_rate_cache.sql; câmbio é global, não pertence a loja)
+const GLOBAL_CACHE_KEY = "latest"
 
 interface ExchangeRates {
   rates: Record<string, number> // e.g. { USD: 0.175, EUR: 0.161, ... } (1 BRL = X foreign)
@@ -95,17 +95,14 @@ async function getExchangeRates(): Promise<ExchangeRates | null> {
   try {
     const supabase = createAdminClient()
     const { data: cached } = await supabase
-      .from("dashboard_cache")
-      .select("data, created_at")
-      .eq("store_id", GLOBAL_CACHE_KEY)
-      .eq("cache_type", CACHE_TYPE)
-      .eq("period", "latest")
+      .from("exchange_rate_cache")
+      .select("rates")
+      .eq("key", GLOBAL_CACHE_KEY)
       .gt("expires_at", new Date().toISOString())
       .single()
 
-    if (cached?.data) {
-      const dbRates = cached.data as unknown as { rates: Record<string, number> }
-      memoryCache = { rates: dbRates.rates, fetchedAt: Date.now() }
+    if (cached?.rates) {
+      memoryCache = { rates: cached.rates as Record<string, number>, fetchedAt: Date.now() }
       log.info("[ExchangeRate] Loaded from DB cache")
       return memoryCache
     }
@@ -150,16 +147,14 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
     try {
       const supabase = createAdminClient()
       const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString()
-      await supabase.from("dashboard_cache").upsert(
+      await supabase.from("exchange_rate_cache").upsert(
         {
-          store_id: GLOBAL_CACHE_KEY,
-          cache_type: CACHE_TYPE,
-          period: "latest",
-          data: { rates: data.rates },
-          created_at: new Date().toISOString(),
+          key: GLOBAL_CACHE_KEY,
+          rates: data.rates,
+          fetched_at: new Date().toISOString(),
           expires_at: expiresAt,
         },
-        { onConflict: "store_id,cache_type,period" }
+        { onConflict: "key" }
       )
     } catch (e) {
       log.warn("[ExchangeRate] Failed to save to DB cache:", e)
