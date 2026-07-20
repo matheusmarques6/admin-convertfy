@@ -57,11 +57,19 @@ describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
   // reuso de URL, slot sem imagem é removido, width por render_width_px.
   // Sem este bloco o agente clona a única imagem disponível em todos os
   // slots (Luxe Lift w#1: 1 imagem replicada 10x no HTML final).
-  it("contém as image_slot_rules (paridade com o prompt do banco)", () => {
+  it("contém as image_slot_rules v2 (paridade com o prompt do banco)", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<image_slot_rules>")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ONE SLOT PER IMAGE")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("UNFILLED SLOT → REMOVE")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("TEXT SLOTS ARE NOT IMAGE SLOTS")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("render_width_px")
+    // v2 pós-incidente: prompt novo + payload antigo esvaziava o email
+    // (remoção de slot sem tag pra casar). O guard torna o prompt seguro
+    // em qualquer combinação de deploy — regra 3 só vale com payload
+    // taggeado, e o aspect_ratio é respeitado nos dois modos.
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("LEGACY PAYLOAD GUARD")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain(
+      "NEVER remove a slot because a tag is missing",
+    )
   })
 })
