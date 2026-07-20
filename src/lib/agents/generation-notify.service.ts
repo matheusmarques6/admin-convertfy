@@ -41,7 +41,9 @@ async function checkDedupKey(dedupKey: string): Promise<boolean> {
 // Ordem de resolucao:
 //   1. profile owner do client (`client_stores.client_id -> clients.owner_id`)
 //   2. assignees de deals da loja nos ultimos 30 dias (best-effort)
-//   3. fallback: todos profiles com role IN ('admin','owner','cs')
+//   3. fallback: todos profiles com role IN ('admin','cs') — no enum
+//      user_role não existe 'owner'; os donos da org têm role 'admin'
+//      (org_members.role='owner' é outro enum, mapeado a partir deles)
 // Retorna lista deduplicada {id, email, name}.
 export async function getStoreInvolvedAdmins(
   storeId: string,
@@ -79,12 +81,12 @@ export async function getStoreInvolvedAdmins(
 
   let userIds = Array.from(ids)
 
-  // 3. fallback: todos admins/owners/cs
+  // 3. fallback: todos admins/cs
   if (userIds.length === 0) {
     const { data: roleRows } = await admin
       .from("profiles")
       .select("id")
-      .in("role", ["admin", "owner", "cs"])
+      .in("role", ["admin", "cs"])
     userIds = ((roleRows ?? []) as Array<{ id: string }>).map((r) => r.id)
   }
 
