@@ -13,6 +13,23 @@
  * Módulo puro (zero deps) — consumido pelo html.chain (output do HTML
  * agent) e pelo refiner/apply-delta (output do Refinador).
  */
+/**
+ * Célula-espaçadora de coluna SEM width em tabela `table-layout:fixed`:
+ * no layout fixo, colunas sem width dividem IGUALMENTE o espaço restante —
+ * um spacer que deveria ter ~24px engole metade da coluna de texto
+ * (Luxe Lift carrinho#1: imagem 238 + spacer 151 + texto 151 em 600px,
+ * texto quebrando a cada 2 palavras). Adiciona width="24" a toda
+ * `<td class="...mobile-spacer...">` sem atributo width.
+ */
+export function fixSpacerColumnWidths(html: string): string {
+  // Token de classe EXATO (delimitado por espaço/início/fim do valor):
+  // `\b` casaria também `mobile-spacer-lg` — o `-` conta como boundary.
+  return html.replace(
+    /<td\b(?![^>]*\bwidth\s*=)([^>]*\bclass="(?:[^"]*\s)?mobile-spacer(?:\s[^"]*)?"[^>]*)>/gi,
+    '<td width="24"$1>',
+  )
+}
+
 const ORPHAN_SPACER_RE =
   /<\/tr>\s*<div\b[^>]*?height\s*:\s*(\d+)\s*px[^>]*>\s*<\/div>/gi
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { DEFAULT_HTML_SYSTEM_PROMPT, fixOrphanSpacerDivs } from "./html.chain"
+import {
+  DEFAULT_HTML_SYSTEM_PROMPT,
+  fixOrphanSpacerDivs,
+  fixSpacerColumnWidths,
+} from "./html.chain"
 
 describe("fixOrphanSpacerDivs", () => {
   it("converte <div height> orfao (entre </tr> e <tr>) num spacer <tr><td>", () => {
@@ -51,6 +55,52 @@ describe("fixOrphanSpacerDivs", () => {
     const out = fixOrphanSpacerDivs(html)
     // Continua igual — a div esta legitimamente dentro de um <td>.
     expect(out).toBe(html)
+  })
+})
+
+describe("fixSpacerColumnWidths", () => {
+  it("injeta width=\"24\" em <td class=\"mobile-spacer\"> sem width", () => {
+    // Caso Luxe Lift carrinho#1: em table-layout:fixed, o spacer sem width
+    // dividia o espaco restante meio-a-meio com a coluna de texto (151px cada).
+    const html =
+      '<table style="table-layout:fixed;width:600px"><tr>' +
+      '<td width="238"><img src="p.jpg"></td>' +
+      '<td class="mobile-spacer" style="font-size:0">&nbsp;</td>' +
+      "<td>Texto do produto aqui</td>" +
+      "</tr></table>"
+    const out = fixSpacerColumnWidths(html)
+    expect(out).toContain('<td width="24" class="mobile-spacer" style="font-size:0">')
+    // As demais celulas ficam intactas.
+    expect(out).toContain('<td width="238">')
+    expect(out).toContain("<td>Texto do produto aqui</td>")
+  })
+
+  it("nao mexe em mobile-spacer que JA tem width", () => {
+    const html = '<td width="32" class="mobile-spacer">&nbsp;</td>'
+    expect(fixSpacerColumnWidths(html)).toBe(html)
+  })
+
+  it("casa a classe entre outras classes e em qualquer ordem de atributos", () => {
+    const html =
+      '<td style="font-size:0" class="hide-desktop mobile-spacer col">&nbsp;</td>'
+    const out = fixSpacerColumnWidths(html)
+    expect(out).toContain(
+      '<td width="24" style="font-size:0" class="hide-desktop mobile-spacer col">',
+    )
+  })
+
+  it("nao casa classe parcial (ex: mobile-spacer-lg) nem outras celulas", () => {
+    const html =
+      '<td class="mobile-spacer-lg">&nbsp;</td><td class="content">X</td>'
+    expect(fixSpacerColumnWidths(html)).toBe(html)
+  })
+
+  it("corrige todas as ocorrencias do documento", () => {
+    const row =
+      '<td class="mobile-spacer">&nbsp;</td>'
+    const html = `<tr>${row}</tr><tr>${row}</tr><tr>${row}</tr>`
+    const out = fixSpacerColumnWidths(html)
+    expect(out.match(/width="24"/g)?.length).toBe(3)
   })
 })
 

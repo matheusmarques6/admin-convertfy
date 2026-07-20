@@ -394,8 +394,8 @@ function collapseRunawaySpacers(html: string): string {
 // Módulo próprio (puro) porque o Refinador também precisa aplicar no output
 // dele (apply-delta.ts) sem importar este chain inteiro. Import + re-export
 // mantém o uso interno (abaixo) e os importadores/testes existentes.
-import { fixOrphanSpacerDivs } from "../html/orphan-spacer"
-export { fixOrphanSpacerDivs }
+import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "../html/orphan-spacer"
+export { fixOrphanSpacerDivs, fixSpacerColumnWidths }
 
 /** Erro de output truncado — o modelo nao fechou o documento (`</html>`). */
 export class HtmlTruncatedError extends Error {
@@ -462,6 +462,7 @@ function postProcessHtml(rawText: string, locale?: string): string {
     throw new HtmlTruncatedError(raw.length)
   }
   raw = fixOrphanSpacerDivs(raw)
+  raw = fixSpacerColumnWidths(raw)
   raw = stripUnresolvedPlaceholders(raw)
   if (locale) raw = enforceLangAttribute(raw, locale)
   return raw
