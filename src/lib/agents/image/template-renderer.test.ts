@@ -179,4 +179,33 @@ describe("renderImageTemplate — multi-bloco no mesmo template", () => {
     const t = `{{#case x}}{{#when 'a'}}found{{/when}}{{/case}}`
     expect(renderImageTemplate(t, { x: "a" })).toBe("found")
   })
+
+  // Migration 20261001: o template do agente de imagem passou a ter 3 níveis
+  // de case aninhados (block_type → flow_type → email_number). Garante que o
+  // resolver innermost-first aguenta a profundidade e que ramos não-casados
+  // (products/features) não vazam texto de hero.
+  it("3 níveis de case aninhados (block_type → flow_type → email_number)", () => {
+    const t =
+      `{{#case block_type}}` +
+      `{{#when "hero"}}{{#case flow_type}}{{#when "welcome"}}{{#case email_number}}` +
+      `{{#when 1}}HERO-W1{{/when}}{{#when 2}}HERO-W2{{/when}}` +
+      `{{/case}}{{/when}}{{/case}}{{/when}}` +
+      `{{#when "products"}}PRODUCT-STILL{{/when}}` +
+      `{{#when "features"}}ICON-SMALL{{/when}}` +
+      `{{/case}}`
+    expect(
+      renderImageTemplate(t, { block_type: "hero", flow_type: "welcome", email_number: 1 }),
+    ).toBe("HERO-W1")
+    expect(
+      renderImageTemplate(t, { block_type: "products", flow_type: "welcome", email_number: 1 }),
+    ).toBe("PRODUCT-STILL")
+    expect(
+      renderImageTemplate(t, { block_type: "features", flow_type: "welcome", email_number: 2 }),
+    ).toBe("ICON-SMALL")
+    // block_type sem cena mapeada → bloco inteiro vira vazio (só ART
+    // DIRECTION + restrições sobrevivem no template real).
+    expect(
+      renderImageTemplate(t, { block_type: "coupon", flow_type: "welcome", email_number: 1 }),
+    ).toBe("")
+  })
 })

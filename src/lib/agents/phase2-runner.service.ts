@@ -52,6 +52,7 @@ import {
   productRefDescriptionFallback,
 } from "./image/mode-resolution"
 import { isUsableProductImage } from "./image/product-image-guard"
+import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import {
   DEFAULT_HTML_SYSTEM_PROMPT,
@@ -623,20 +624,19 @@ export async function runPhase2Image(
       const nicheText =
         ((ctx.storeRaw as Record<string, unknown>)?.niche as string | undefined) ??
         ""
-      const personaText =
-        ((ctx.storeRaw as Record<string, unknown>)?.icp_persona as
-          | string
-          | undefined) ?? ""
-      const imageBriefBase = (() => {
-        const b = ctx.blueprint?.blocks?.find(
-          (x) => x.type === "testimonials",
-        )
-        return typeof b?.image_brief === "string" ? b.image_brief : ""
-      })()
+      // icp_persona é um OBJETO estruturado (pilar de pesquisa) — interpolar
+      // direto produzia "[object Object]" no prompt (Luxe Lift, 20/jul).
+      const personaText = personaToText(
+        (ctx.storeRaw as Record<string, unknown>)?.icp_persona,
+      )
 
+      // NÃO prefixar o image_brief do bloco: ele descreve a IMAGEM PRINCIPAL
+      // da seção de reviews (ex.: "cartões de avaliação, sem rostos
+      // identificáveis") e CONTRADIZ o prompt de selfie do avatar — o modelo
+      // recebia as duas ordens no mesmo prompt. O prompt dedicado abaixo é
+      // autossuficiente.
       const renderAvatarPrompt = (idx: number, author: string): string => {
         const lines = [
-          imageBriefBase ? `ART DIRECTION: ${imageBriefBase}` : "",
           `Generate a square (1:1) portrait avatar for a customer testimonial.`,
           `Customer name: ${author || `Customer ${idx + 1}`}`,
           `Brand: ${brandName}${nicheText ? ` (niche: ${nicheText})` : ""}`,

@@ -31,6 +31,7 @@ import type {
   StoreImageOverrides,
 } from "@/types/email-generation"
 import { mapTomVozToMood } from "./mood-mapping"
+import { personaToText } from "./persona-text"
 import { deriveCenario } from "./cenario-derivation"
 import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
@@ -138,9 +139,19 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     ""
 
   const PALETA_1 = (brand?.colors_primary ?? [])[0]?.hex ?? ""
-  const PALETA_2 = (brand?.colors_secondary ?? [])[0]?.hex ?? ""
+  // Fallback em cascata: sem cor secundária, usa a 2a primária e por fim o
+  // NEUTRO — PALETA_2 vazia deixava buraco no prompt ("com acentos de .").
+  const PALETA_2 =
+    (brand?.colors_secondary ?? [])[0]?.hex ??
+    ((brand?.colors_primary ?? [])[1]?.hex || NEUTRO)
 
-  const PUBLICO = (marca.persona as string) ?? ""
+  // Fallback pro pilar de pesquisa (client_stores.icp_persona — OBJETO,
+  // normalizado via personaToText) quando o briefing não populou
+  // marca.persona. PUBLICO vazio deixava buracos tipo "universo de ." e
+  // "Target audience: ." no prompt.
+  const PUBLICO =
+    personaToText(marca.persona) ||
+    personaToText(input.storeRaw?.icp_persona)
   const IDIOMA = (input.storeRaw.language as string) ?? "pt-BR"
   const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
 
@@ -174,7 +185,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     nicho,
     posicionamento,
     tom_voz: tomVoz,
-    persona: (marca.persona as string) ?? "",
+    persona: PUBLICO,
     diferencial: (marca.diferencial as string) ?? "",
     slogan: (marca.slogan as string) ?? "",
     restricoes,
