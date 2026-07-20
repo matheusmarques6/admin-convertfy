@@ -30,6 +30,9 @@ export interface BlueprintBlock {
   // ausentes em blueprints legados/fallback. Enviadas ao n8n para matching
   // 1:1 campo↔template.
   tags?: string[]
+  // Proporção de geração da imagem DESTE bloco (AspectKey) — derivada das
+  // tags de imagem do template (tag-registry). Prioridade máxima na fase 2.
+  image_aspect?: string | null
 }
 
 export interface EmailBlueprint {

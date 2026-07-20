@@ -25,6 +25,7 @@ import {
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import {
   resolveAspectForBlock,
+  blockAspectFromBlueprint,
   aspectInstructionForPrompt,
   isAspectKey,
   type AspectKey,
@@ -270,7 +271,17 @@ export async function resolveBlockPrompt(
   }
   const overlayReserveBottom =
     blueprint?.image_overlay_reserve_bottom ?? true
+  // Aspect POR BLOCO (blocks[].image_aspect via tags do template) —
+  // prioridade máxima. SYNC CONTRACT com phase2-runner.service.ts.
+  const blockAspectRaw = blockAspectFromBlueprint(
+    blueprint?.blocks as
+      | Array<{ type?: string; image_aspect?: string | null }>
+      | undefined,
+    (blk.position as number | undefined) ?? null,
+    (blk.block_type as string | undefined) ?? null,
+  )
   const aspect: AspectKey = resolveAspectForBlock({
+    blockAspect: blockAspectRaw,
     blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
     flowType,
     emailNumber,

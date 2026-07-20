@@ -40,6 +40,12 @@ export interface TagSpec {
   /** Orçamento de caracteres (só kind='copy'). */
   min?: number
   max?: number
+  /**
+   * Proporção de GERAÇÃO da imagem (só kind='image') — AspectKey do
+   * pipeline (aspect-ratio.ts). O slot do template define o formato:
+   * hero overlay alto, produto quadrado, editorial 4:3.
+   */
+  aspect?: string
 }
 
 // Helper compacto p/ declarar entradas.
@@ -50,11 +56,16 @@ const copy = (
   min: number,
   max: number,
 ): TagSpec => ({ section, blockType, copyKey, kind: "copy", min, max })
-const img = (section: string, blockType: string): TagSpec => ({
+const img = (
+  section: string,
+  blockType: string,
+  aspect?: string,
+): TagSpec => ({
   section,
   blockType,
   copyKey: null,
   kind: "image",
+  ...(aspect ? { aspect } : {}),
 })
 const url = (section: string, blockType: string | null): TagSpec => ({
   section,
@@ -97,7 +108,7 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   HERO_CTA_N_LABEL: copy("HERO", "hero", "cta", 8, 16),
   HERO_CTA_URL: url("HERO", "hero"),
   HERO_CTA_N_URL: url("HERO", "hero"),
-  HERO_IMAGE: img("HERO", "hero"),
+  HERO_IMAGE: img("HERO", "hero", "4:5"),
   HERO_IMAGE_ALT: data("HERO", "hero"),
 
   // ── Seção de texto ───────────────────────────────────────────────
@@ -108,8 +119,8 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   BODY_QUOTE_LINE_N: copy("BODY", "text", "quote", 15, 60),
   BODY_CTA_LABEL: copy("BODY", "text", "cta", 8, 20),
   BODY_CTA_URL: url("BODY", "text"),
-  BODY_IMAGE: img("BODY", "text"),
-  BODY_IMAGE_N: img("BODY", "text"),
+  BODY_IMAGE: img("BODY", "text", "4:3"),
+  BODY_IMAGE_N: img("BODY", "text", "4:3"),
   BODY_IMAGE_ALT: data("BODY", "text"),
   BODY_BG_IMAGE: data("BODY", "text"),
 
@@ -128,7 +139,7 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   PRODUCTS_SUBHEAD: copy("PRODUCTS", "products", "subtitle", 20, 80),
   PRODUCTS_CTA_LABEL: copy("PRODUCTS", "products", "cta", 8, 20),
   PRODUCTS_CTA_URL: url("PRODUCTS", "products"),
-  PRODUCTS_IMAGE: img("PRODUCTS", "products"),
+  PRODUCTS_IMAGE: img("PRODUCTS", "products", "4:3"),
   PRODUCTS_IMAGE_ALT: data("PRODUCTS", "products"),
   PRODUCTS_BG_IMAGE: data("PRODUCTS", "products"),
   PRODUCT_CTA_LABEL: copy("PRODUCTS", "products", "cta", 6, 16),
@@ -142,9 +153,9 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   PRODUCT_N_USP_N: copy("PRODUCTS", "products", "usp", 8, 35),
   PRODUCT_N_CTA_LABEL: copy("PRODUCTS", "products", "cta", 6, 16),
   PRODUCT_N_URL: url("PRODUCTS", "products"),
-  PRODUCT_N_IMAGE: img("PRODUCTS", "products"),
+  PRODUCT_N_IMAGE: img("PRODUCTS", "products", "1:1"),
   PRODUCT_N_IMAGE_ALT: data("PRODUCTS", "products"),
-  PRODUCT_N_THUMB_N: img("PRODUCTS", "products"),
+  PRODUCT_N_THUMB_N: img("PRODUCTS", "products", "1:1"),
 
   // ── USPs / Benefícios / Passos ───────────────────────────────────
   USP_HEADLINE: copy("USP", "features", "headline", 15, 40),
@@ -153,11 +164,11 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   USP_N_TEXT: copy("USP", "features", "text", 60, 120),
   USP_N_ICON: data("USP", "features"),
   USP_ICON: data("USP", "features"),
-  USP_N_IMAGE: img("USP", "features"),
+  USP_N_IMAGE: img("USP", "features", "1:1"),
   USP_N_IMAGE_ALT: data("USP", "features"),
   STEP_N_TITLE: copy("USP", "features", "title", 8, 30),
   STEP_N_TEXT: copy("USP", "features", "text", 40, 100),
-  STEP_N_IMAGE: img("USP", "features"),
+  STEP_N_IMAGE: img("USP", "features", "1:1"),
   STEP_N_NUMBER: data("USP", "features"),
 
   // ── Reviews / Prova social ───────────────────────────────────────
@@ -165,7 +176,7 @@ export const TAG_REGISTRY: Record<string, TagSpec> = {
   REVIEWS_TEXT: copy("REVIEWS", "testimonials", "intro", 40, 140),
   REVIEWS_CTA_LABEL: copy("REVIEWS", "testimonials", "cta", 8, 20),
   REVIEWS_CTA_URL: url("REVIEWS", "testimonials"),
-  REVIEWS_IMAGE: img("REVIEWS", "testimonials"),
+  REVIEWS_IMAGE: img("REVIEWS", "testimonials", "4:3"),
   REVIEWS_IMAGE_ALT: data("REVIEWS", "testimonials"),
   REVIEW_N_TEXT: copy("REVIEWS", "testimonials", "text", 55, 85),
   REVIEW_N_NAME: copy("REVIEWS", "testimonials", "author", 5, 30),

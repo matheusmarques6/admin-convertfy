@@ -34,6 +34,12 @@ export interface ExtractedBlock {
   /** Tags originais do bloco, na ordem do documento. */
   tags: string[]
   needs_image: boolean
+  /**
+   * Proporção de geração da imagem do bloco (AspectKey), derivada da
+   * PRIMEIRA tag de imagem com aspect no registry — o slot do template
+   * define o formato. null quando o bloco não tem imagem.
+   */
+  image_aspect: string | null
   copy_spec: CopySpecField[]
 }
 
@@ -114,6 +120,9 @@ export function extractStructureFromReference(
       section: current.section,
       tags: current.tags,
       needs_image: current.specs.some((s) => s.kind === "image"),
+      image_aspect:
+        current.specs.find((s) => s.kind === "image" && s.aspect)?.aspect ??
+        null,
       copy_spec: buildCopySpec(current.specs),
     })
     current = null

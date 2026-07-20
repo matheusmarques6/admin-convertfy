@@ -76,6 +76,10 @@ export interface GeneratedBlock {
   // veio do esqueleto determinístico) — persistidas no JSONB e repassadas
   // ao n8n no payload de copy.
   tags?: string[]
+  // Proporção de geração da imagem DESTE bloco (AspectKey), derivada das
+  // tags do template via registry. A fase 2 usa com prioridade máxima
+  // (block > blueprint.image_aspect > matriz > default).
+  image_aspect?: string | null
 }
 
 export interface GeneratedBlueprint {
@@ -204,6 +208,7 @@ export function applySkeletonToBlueprint(
       purpose: src?.purpose ?? "",
       needs_image: sb.needs_image,
       image_brief: sb.needs_image ? (src?.image_brief ?? null) : null,
+      image_aspect: sb.image_aspect,
       copy_spec: sb.copy_spec,
       // Tags indexadas reais ({{PRODUCT_1_NAME}}), dedup na ordem do DOM.
       tags: sb.tags.filter((t) => (seen.has(t) ? false : (seen.add(t), true))),

@@ -55,6 +55,14 @@ describe("extractStructureFromReference", () => {
     expect(byType.coupon.needs_image).toBe(false)
   })
 
+  it("image_aspect vem da tag de imagem via registry (hero → 4:5)", () => {
+    const s = extractStructureFromReference(CANONICAL_HTML)!
+    const byType = Object.fromEntries(s.blocks.map((b) => [b.type, b]))
+    expect(byType.hero.image_aspect).toBe("4:5")
+    expect(byType.features.image_aspect).toBeNull()
+    expect(byType.coupon.image_aspect).toBeNull()
+  })
+
   it("copy_spec vem do registry com dedup por copyKey", () => {
     const s = extractStructureFromReference(CANONICAL_HTML)!
     const hero = s.blocks.find((b) => b.type === "hero")!

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   getAspectDimensions,
   resolveAspectForBlock,
+  blockAspectFromBlueprint,
   aspectInstructionForPrompt,
   isAspectKey,
   type AspectKey,
@@ -192,5 +193,47 @@ describe("aspectInstructionForPrompt", () => {
     expect(out).toContain("3:5")
     expect(out).toContain("vertical portrait")
     expect(out).toContain("720x1200")
+  })
+})
+
+describe("aspect por BLOCO (blocks[].image_aspect via tags do template)", () => {
+  it("blockAspect válido vence blueprint/matriz/default", () => {
+    expect(
+      resolveAspectForBlock({
+        blockAspect: "1:1",
+        blueprintAspect: "4:3",
+        flowType: "welcome",
+        emailNumber: 3,
+      }),
+    ).toBe("1:1")
+  })
+
+  it("blockAspect inválido/ausente cai na cascata antiga", () => {
+    expect(
+      resolveAspectForBlock({
+        blockAspect: "banana",
+        blueprintAspect: "4:3",
+        flowType: "welcome",
+        emailNumber: 3,
+      }),
+    ).toBe("4:3")
+    expect(
+      resolveAspectForBlock({ flowType: "welcome", emailNumber: 3 }),
+    ).toBe("3:5")
+  })
+
+  it("blockAspectFromBlueprint casa position 1-based com blocks[position-1] guardado por type", () => {
+    const blocks = [
+      { type: "header", image_aspect: null },
+      { type: "hero", image_aspect: "4:5" },
+      { type: "products", image_aspect: "1:1" },
+    ]
+    expect(blockAspectFromBlueprint(blocks, 2, "hero")).toBe("4:5")
+    expect(blockAspectFromBlueprint(blocks, 3, "products")).toBe("1:1")
+    // type não casa em nenhum dos dois índices → null
+    expect(blockAspectFromBlueprint(blocks, 1, "products")).toBeNull()
+    // rows legadas 0-based: fallback pro próprio índice
+    expect(blockAspectFromBlueprint(blocks, 1, "hero")).toBe("4:5")
+    expect(blockAspectFromBlueprint(null, 2, "hero")).toBeNull()
   })
 })

@@ -63,12 +63,44 @@ export function isAspectKey(s: unknown): s is AspectKey {
   )
 }
 
+/**
+ * Aspect POR BLOCO a partir dos blocks do blueprint: casa o email_block
+ * (position 1-based) com blueprint.blocks[position-1], guardado por type
+ * (mesma convenção do dispatch de copy — fallback pro próprio índice para
+ * rows legadas 0-based). null se não casar ou o bloco não tiver aspect.
+ */
+export function blockAspectFromBlueprint(
+  blueprintBlocks: Array<{ type?: string; image_aspect?: string | null }> | null | undefined,
+  position: number | null | undefined,
+  blockType: string | null | undefined,
+): string | null {
+  if (!Array.isArray(blueprintBlocks) || position == null || !blockType) {
+    return null
+  }
+  const byIndex = (i: number) => {
+    const cand = blueprintBlocks[i]
+    return cand && cand.type === blockType ? cand : null
+  }
+  const matched = byIndex(position - 1) ?? byIndex(position)
+  return matched?.image_aspect ?? null
+}
+
 export function resolveAspectForBlock(input: {
+  /**
+   * Aspect POR BLOCO (blocks[].image_aspect) — derivado das tags de imagem
+   * do reference via tag-registry (esqueleto determinístico). Prioridade
+   * máxima: o template sabe a geometria do próprio slot.
+   */
+  blockAspect?: AspectKey | string | null
   blueprintAspect?: AspectKey | string | null
   flowType?: string | null
   emailNumber?: number | null
 }): AspectKey {
-  // 1. Override do blueprint vence (se for AspectKey valido)
+  // 0. Aspect do BLOCO (tags do template) vence tudo
+  if (input.blockAspect && isAspectKey(input.blockAspect)) {
+    return input.blockAspect
+  }
+  // 1. Override do blueprint (nível email) vence matriz/default
   if (input.blueprintAspect && isAspectKey(input.blueprintAspect)) {
     return input.blueprintAspect
   }

@@ -42,6 +42,7 @@ import {
 import { renderImageTemplate } from "./image/template-renderer"
 import {
   resolveAspectForBlock,
+  blockAspectFromBlueprint,
   aspectInstructionForPrompt,
   isAspectKey,
   type AspectKey,
@@ -807,18 +808,32 @@ export async function runPhase2Image(
         }
         const reserveBottom =
           ctx.blueprint?.image_overlay_reserve_bottom ?? true
+        // Aspect POR BLOCO (blocks[].image_aspect, derivado das tags do
+        // template via registry) — prioridade máxima sobre o nível-email.
+        const blockAspectRaw = blockAspectFromBlueprint(
+          ctx.blueprint?.blocks as
+            | Array<{ type?: string; image_aspect?: string | null }>
+            | undefined,
+          blk.position as number | undefined,
+          blk.block_type as string | undefined,
+        )
+        const blockAspectIsValid =
+          !!blockAspectRaw && isAspectKey(blockAspectRaw)
         const aspect: AspectKey = resolveAspectForBlock({
+          blockAspect: blockAspectRaw,
           blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
           flowType: ctx.flowType,
           emailNumber: ctx.emailNumber,
         })
-        // AE-12 review C1: source so eh "blueprint" se o valor era VALIDO.
-        // Caso contrario, o resolveAspectForBlock caiu na matriz ou default.
-        const aspectSource = blueprintAspectIsValid
-          ? "blueprint"
-          : ctx.flowType === "welcome" && ctx.emailNumber != null
-            ? "matrix"
-            : "default"
+        // AE-12 review C1: source so eh "block"/"blueprint" se o valor era
+        // VALIDO. Caso contrario, caiu na matriz ou default.
+        const aspectSource = blockAspectIsValid
+          ? "block"
+          : blueprintAspectIsValid
+            ? "blueprint"
+            : ctx.flowType === "welcome" && ctx.emailNumber != null
+              ? "matrix"
+              : "default"
         log.info("phase2.image.aspect_resolved", {
           emailId,
           blockId: blk.id,
