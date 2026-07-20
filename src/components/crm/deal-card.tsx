@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
   ArrowRightLeft,
@@ -17,6 +17,7 @@ import {
   Trophy,
   X as XIcon,
 } from "lucide-react"
+import { WhatsAppChatPopup } from "./inbox/whatsapp-chat-popup"
 
 // ─── Tipos ──────────────────────────────────────────────────────
 
@@ -274,12 +275,11 @@ export function DealCard({
     return null
   }, [deal.next_step, deal.activities_pending, days, isCritical, isWarn])
 
-  // WhatsApp link
-  const waLink = useMemo(() => {
-    if (!deal.contact_phone) return null
-    const digits = deal.contact_phone.replace(/\D/g, "")
-    if (digits.length < 10) return null
-    return `https://wa.me/${digits}`
+  // WhatsApp: popup in-app com a conversa do inbox (não mais wa.me)
+  const [waOpen, setWaOpen] = useState(false)
+  const hasWhatsApp = useMemo(() => {
+    if (!deal.contact_phone) return false
+    return deal.contact_phone.replace(/\D/g, "").length >= 10
   }, [deal.contact_phone])
 
   const mailtoLink = deal.contact_email
@@ -553,15 +553,20 @@ export function DealCard({
           )}
         </div>
         <div className="flex gap-1 shrink-0">
-          {waLink && (
-            <a
-              href={waLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title="Abrir no WhatsApp"
-              aria-label="Abrir no WhatsApp"
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px]"
+          {hasWhatsApp && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setWaOpen(true)
+              }}
+              onKeyDown={(e) => {
+                // Enter/Space não podem borbulhar pro onKeyDown do card
+                if (e.key === "Enter" || e.key === " ") e.stopPropagation()
+              }}
+              title="Abrir conversa no WhatsApp"
+              aria-label="Abrir conversa no WhatsApp"
+              className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-[6px]"
               style={{
                 background: "var(--crm-gray-0)",
                 border: "1px solid var(--crm-gray-200)",
@@ -569,7 +574,7 @@ export function DealCard({
               }}
             >
               <MessageSquare className="h-3 w-3" />
-            </a>
+            </button>
           )}
           {mailtoLink && (
             <a
@@ -591,6 +596,20 @@ export function DealCard({
       </div>
 
       {/* Stage color visual hint REMOVIDO — nao existe no prototipo V2 */}
+
+      {/* Popup montado SÓ quando aberto — o card renderiza N vezes no
+          board, não infla a árvore. Vai por portal pro body (não briga
+          com o drag-and-drop). */}
+      {waOpen && deal.contact_phone && (
+        <WhatsAppChatPopup
+          open
+          onClose={() => setWaOpen(false)}
+          phone={deal.contact_phone}
+          contactName={deal.client?.name ?? deal.title}
+          dealId={deal.id}
+          clientId={deal.client?.id}
+        />
+      )}
     </div>
   )
 }
