@@ -118,24 +118,31 @@ Non-negotiable output-formatting rules. They override any conflicting habit and 
 </formatting_hard_rules>
 
 <hero_overlay_hard_rule>
-This rule governs the HERO block only. The hero is ALWAYS text-over-image
-(overlay): the image is a BACKGROUND and headline/copy/CTA sit ON TOP of it.
-NEVER stack the text below the image, and NEVER expect the text baked inside
-the image.
+This rule governs the HERO block only.
 
-THE REFERENCE (library variant) IS THE AUTHORITY — do NOT re-invent the hero:
-- If the hero in reference_html is ALREADY an overlay (its cell/div carries a
-  \`background-image\`, OR an HTML comment describing the overlay construction,
-  e.g. \`<!-- hero: overlay, adaptive height, kicker 12px -->\`), PRESERVE it
-  faithfully. Repaint ONLY: swap the background-image URL for the image_map
-  URL, apply color_roles + fonts, pour in the copy. KEEP every inline
-  font-size, padding, gradient, structure AND the comment exactly as authored.
-  Do NOT re-derive heights or sizes. Follow any instruction written in the
-  comment verbatim.
-- Only if the hero is a PLAIN image slot with no overlay authored do you BUILD
-  the overlay, following the construction rules below.
+THE REFERENCE (library variant) IS THE AUTHORITY for the hero's FORM — do NOT
+re-invent it. Identify which of the three authored forms the reference uses:
 
-CONSTRUCTION (only when the reference had no overlay authored):
+1. OVERLAY-authored — the hero cell/div carries a \`background-image\`, OR an
+   HTML comment describing the overlay construction (e.g. \`<!-- hero: overlay,
+   adaptive height, kicker 12px -->\`): PRESERVE it faithfully. Repaint ONLY:
+   swap the background-image URL for the image_map URL, apply color_roles +
+   fonts, pour in the copy. KEEP every inline font-size, padding, gradient,
+   structure AND the comment exactly as authored. Do NOT re-derive heights or
+   sizes. Follow any instruction written in the comment verbatim.
+
+2. STACKED-authored — the hero has an \`<img>\` slot AND its own authored text
+   rows (headline/subcopy/CTA in separate \`<tr>\`s or elements around the
+   image): PRESERVE the stacked layout exactly as authored. Swap the img src
+   for the image_map URL (full width, natural aspect ratio — never crop it
+   into a fixed-height strip), pour the copy into the authored slots. NEVER
+   convert an authored stacked hero into an overlay, NEVER turn the image into
+   the background of a fixed-height div, NEVER use \`position:absolute\` here.
+
+3. PLAIN image slot with NO authored hero text adjacent: BUILD the overlay,
+   following the construction rules below.
+
+CONSTRUCTION (only for form 3 — plain slot, no overlay/stack authored):
 - ADAPTIVE HEIGHT — never a fixed height that the text can overflow. Use a
   table cell with the image as \`background-image\` (\`background-size:cover;
   background-position:center top\`) and GENEROUS VERTICAL PADDING (e.g.
@@ -152,8 +159,8 @@ CONSTRUCTION (only when the reference had no overlay authored):
   may bleed from one cell into the next.
 
 If the hero has NO image (generation failed upstream): render a text-only hero
-(solid brand color, text in normal flow). NEVER invent a URL or reuse another
-block's image.
+(solid brand color, text in normal flow); in form 2 keep the authored text
+rows and drop only the img. NEVER invent a URL or reuse another block's image.
 </hero_overlay_hard_rule>
 
 Emit ONLY the final HTML.`
@@ -383,24 +390,12 @@ function collapseRunawaySpacers(html: string): string {
   )
 }
 
-/**
- * Corrige "spacer divs" orfaos que o modelo as vezes injeta ENTRE blocos:
- * `</tr><div style="height:64px"></div><tr>`. Uma <div> NAO pode ser filha
- * direta de <table> — pela regra de parsing do HTML5 (foster parenting), o
- * navegador/cliente de email move a div para ANTES da tabela, empilhando um
- * GAP de espaco vazio no TOPO do email (hero deslocado pra baixo; bug
- * Luxe Lift Welcome, jul/2026). Converte cada div-spacer solta num spacer de
- * TABELA valido no MESMO ponto (respeita o respiro que o modelo quis dar entre
- * os blocos, sem o deslocamento). `mso-line-height-rule:exactly` garante a
- * altura no Outlook. Defensivo: o prompt ja proibe, isto e a rede de seguranca.
- */
-export function fixOrphanSpacerDivs(html: string): string {
-  return html.replace(
-    /<\/tr>\s*<div\b[^>]*?height\s*:\s*(\d+)\s*px[^>]*>\s*<\/div>/gi,
-    (_m, px) =>
-      `</tr><tr><td style="height:${px}px;line-height:${px}px;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>`,
-  )
-}
+// Corrige "spacer divs" órfãos entre blocos (foster parenting → gap no topo).
+// Módulo próprio (puro) porque o Refinador também precisa aplicar no output
+// dele (apply-delta.ts) sem importar este chain inteiro. Import + re-export
+// mantém o uso interno (abaixo) e os importadores/testes existentes.
+import { fixOrphanSpacerDivs } from "../html/orphan-spacer"
+export { fixOrphanSpacerDivs }
 
 /** Erro de output truncado — o modelo nao fechou o documento (`</html>`). */
 export class HtmlTruncatedError extends Error {

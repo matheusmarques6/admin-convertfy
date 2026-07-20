@@ -41,13 +41,14 @@ describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
   // overlay=needs_html_overlay vira texto-sobre-background SEMPRE, mesmo
   // que a reference empilhe. Sem este bloco o fallback regride pro bug
   // da hero empilhada.
-  it("contém a hero_overlay_hard_rule v2 (paridade com o prompt do banco)", () => {
+  it("contém a hero_overlay_hard_rule v3 (paridade com o prompt do banco)", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<hero_overlay_hard_rule>")
-    // v2: a variante da biblioteca é a autoridade + altura adaptável (sem
-    // position:absolute) — espelha a migration 20260922.
+    // v3 (migration 20260929): a forma AUTORADA da variante é a autoridade —
+    // overlay preservado, EMPILHADO preservado, construção só em slot puro.
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain(
       "THE REFERENCE (library variant) IS THE AUTHORITY",
     )
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("STACKED-authored")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ADAPTIVE HEIGHT")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<formatting_hard_rules>")
   })

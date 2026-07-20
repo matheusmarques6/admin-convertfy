@@ -13,6 +13,7 @@
  */
 
 import type { WhitelistFont } from "./font-whitelist"
+import { fixOrphanSpacerDivs } from "../html/orphan-spacer"
 
 export interface FontOccurrence {
   index: number
@@ -491,13 +492,30 @@ export function applySpacingDelta(
     const byIndex = new Map(adjust.map((a) => [a.index, a]))
     const { head, body } = splitAtBody(out)
     let counter = -1
-    const newBody = body.replace(SPACING_PROP_RE, (full: string, prop: string, px: string) => {
-      if (Math.round(parseFloat(px)) < SPACER_MIN_PX) return full
-      counter++
-      const target = byIndex.get(counter)
-      if (!target) return full
-      return `${prop}: ${clampSpacing(target.value_px)}px`
-    })
+    const newBody = body.replace(
+      SPACING_PROP_RE,
+      (full: string, prop: string, px: string, offset: number) => {
+        if (Math.round(parseFloat(px)) < SPACER_MIN_PX) return full
+        counter++
+        const target = byIndex.get(counter)
+        if (!target) return full
+        // Guard: `height` de elemento com background-image é MÍDIA (hero
+        // overlay), não respiro — o Refinador chegou a encolher o hero de
+        // 320px para 160px (Luxe Lift w#3), esmagando a imagem e estourando
+        // o texto do overlay. Ocorrência continua contando no índice (sync
+        // com o inventário do LLM), só a mudança é recusada.
+        if (prop.toLowerCase() === "height") {
+          const tagStart = body.lastIndexOf("<", offset)
+          if (
+            tagStart !== -1 &&
+            body.slice(tagStart, offset).includes("background-image")
+          ) {
+            return full
+          }
+        }
+        return `${prop}: ${clampSpacing(target.value_px)}px`
+      },
+    )
     out = head + newBody
   }
 
@@ -512,6 +530,12 @@ export function applySpacingDelta(
       const spacer = `<div style="height:${clampSpacerHeight(ins.height_px)}px"></div>`
       out = out.slice(0, at) + spacer + out.slice(at)
     }
+    // Junção DENTRO de <table> (</tr>…<tr>): a div solta sofre foster
+    // parenting no cliente de email — é arrancada da tabela e empilhada no
+    // TOPO do documento (~430px de gap na Luxe Lift w#3, 5 spacers), e o
+    // respiro pedido nunca acontece. Normaliza pro spacer de tabela válido
+    // no MESMO ponto. Junções fora de tabela mantêm a div.
+    out = fixOrphanSpacerDivs(out)
   }
   return out
 }

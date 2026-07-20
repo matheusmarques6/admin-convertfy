@@ -243,3 +243,67 @@ describe("extractSectionJunctions / applySpacingDelta", () => {
     expect(spacers.length).toBeGreaterThan(0)
   })
 })
+
+describe("applySpacingDelta — spacers em junção de TABELA (foster parenting)", () => {
+  // Email real (Montador) é table-based: as junções ficam entre </tr> e <tr>.
+  // Uma <div> ali é inválida — o cliente de email a arranca da tabela e
+  // empilha no TOPO (gap de ~430px na Luxe Lift w#3). O spacer precisa
+  // virar <tr><td> válido no MESMO ponto.
+  // Wrapper 600px é a PRÓPRIA <table> (como no email real do Montador) —
+  // os filhos diretos são <tr>, então as junções caem entre </tr> e <tr>.
+  const EMAIL_TABLE = `<!DOCTYPE html><html><body style="margin:0">
+<table role="presentation" class="email-container" style="width:600px; max-width:600px;">
+  <tr><td style="padding-top:24px;">HERO SHOP NOW</td></tr>
+  <tr><td style="padding-bottom:60px;">Coupon WELCOME10</td></tr>
+  <tr><td style="margin-top:88px;">Footer text</td></tr>
+</table>
+</body></html>`
+
+  it("insert entre </tr> e <tr> vira <tr><td> válido — nunca <div> órfã", () => {
+    // Sanidade da fixture: as junções REALMENTE existem entre as <tr>s.
+    expect(extractSectionJunctions(EMAIL_TABLE)).toHaveLength(2)
+    const out = applySpacingDelta(EMAIL_TABLE, [], [
+      { junction: 0, height_px: 96 },
+    ])
+    // Nenhuma div-spacer órfã sobrevivendo entre linhas da tabela:
+    expect(out).not.toMatch(/<\/tr>\s*<div\b[^>]*height/i)
+    // O respiro existe como linha de tabela Outlook-safe:
+    expect(out).toContain(
+      'height:96px;line-height:96px;font-size:0;mso-line-height-rule:exactly;',
+    )
+  })
+
+  it("normaliza a div órfã mesmo se o HTML já vier com uma (rede de segurança)", () => {
+    const withOrphan = EMAIL_TABLE.replace(
+      "</tr>\n  <tr><td style=\"padding-bottom:60px;\">",
+      "</tr><div style=\"height:80px\"></div>\n  <tr><td style=\"padding-bottom:60px;\">",
+    )
+    const out = applySpacingDelta(withOrphan, [], [{ junction: 0, height_px: 64 }])
+    expect(out).not.toMatch(/<\/tr>\s*<div\b[^>]*height/i)
+  })
+})
+
+describe("applySpacingDelta — guard: height de elemento com background-image", () => {
+  const EMAIL_HERO_BG = `<!DOCTYPE html><html><body style="margin:0">
+<div style="max-width:600px;margin:0 auto;">
+  <div style="background-image:url('https://cdn/hero.png');background-size:cover;height:320px;">HERO</div>
+  <div style="padding-top:64px;">Texto</div>
+</div>
+</body></html>`
+
+  it("recusa adjust que mexeria no height do hero bg (mídia, não respiro)", () => {
+    // Inventário: height:320 (index 0), padding-top:64 (index 1).
+    const occ = extractSpacingOccurrences(EMAIL_HERO_BG)
+    expect(occ[0]).toMatchObject({ prop: "height", currentPx: 320 })
+
+    const out = applySpacingDelta(EMAIL_HERO_BG, [{ index: 0, value_px: 160 }], [])
+    expect(out).toContain("height:320px")   // intacto
+    expect(out).not.toContain("height: 160px")
+  })
+
+  it("índices seguem sincronizados: adjust no padding (index 1) ainda funciona", () => {
+    const out = applySpacingDelta(EMAIL_HERO_BG, [{ index: 1, value_px: 120 }], [])
+    expect(out).toContain("padding-top: 120px")
+    expect(out).toContain("height:320px")
+  })
+})
