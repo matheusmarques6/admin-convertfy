@@ -157,9 +157,16 @@ export async function GET(request: NextRequest) {
     const MAX_ROWS = 10000
     const rows: LogRow[] = []
     for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+      // Select EXPLÍCITO — nunca "*": a view expõe input_vars/parsed_output
+      // (JSONB gigantes; runs de html carregam o reference_html inteiro em
+      // input_vars). Puxá-los força detoast de dezenas de KB POR LINHA ×
+      // 1000/página → statement timeout 57014 (incidente 20/jul). A lista
+      // só precisa dos metadados; o detalhe ([id]) lê a tabela direto.
       let query = admin
         .from("v_email_generation_logs")
-        .select("*")
+        .select(
+          "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, store_id, store_name, email_id, email_name, email_position, flow_id, flow_type, is_qa_vision",
+        )
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .range(offset, offset + PAGE - 1)
