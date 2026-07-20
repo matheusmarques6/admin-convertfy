@@ -657,12 +657,18 @@ export async function runPhase2Image(
           (typeof item.author === "string" && item.author.trim()) ||
           `Customer ${idx + 1}`
         const prompt = renderAvatarPrompt(idx, author)
+        // Instrumentação opt-in do agente de imagem (tokens + custo real do
+        // OpenRouter). Default zerado pro caminho de erro/sem-usage não quebrar.
+        let imgMeta = { tokensInput: 0, tokensOutput: 0, costCents: 0 }
         try {
           const imageUrl = await generateEmailImage(prompt, storeId, {
             aspect: "1:1",
             overlayReserveBottom: false,
             mode: "text2img",
             systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
+            onMeta: (m) => {
+              imgMeta = m
+            },
           })
           const alt = `${author} — customer of ${brandName}`
           await logGenerationRun({
@@ -676,6 +682,9 @@ export async function runPhase2Image(
             model: "openai/gpt-5.4-image-2",
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
+            tokensInput: imgMeta.tokensInput,
+            tokensOutput: imgMeta.tokensOutput,
+            costCents: imgMeta.costCents,
             parsedOutput: {
               blockId: blk.id,
               kind: "testimonial_avatar",
@@ -704,6 +713,9 @@ export async function runPhase2Image(
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             errorMessage: msg,
+            tokensInput: imgMeta.tokensInput,
+            tokensOutput: imgMeta.tokensOutput,
+            costCents: imgMeta.costCents,
             parsedOutput: {
               blockId: blk.id,
               kind: "testimonial_avatar",
@@ -765,6 +777,10 @@ export async function runPhase2Image(
       let promptWithAspect = ""
       // Run 'running' aberto antes da chamada de imagem (live view).
       let imgRunId = ""
+      // Instrumentação opt-in do agente de imagem (tokens + custo real do
+      // OpenRouter). Fora do try pra o catch também repassar (zerado se o
+      // onMeta não chegou a disparar).
+      let imgMeta = { tokensInput: 0, tokensOutput: 0, costCents: 0 }
       try {
         // CONTRATO COM AE-16: o campo opcional em `email_blocks.content` se
         // chama EXATAMENTE `image_instruction` (string). Se AE-16 nomear
@@ -968,6 +984,9 @@ export async function runPhase2Image(
             // Quando ausente (config v1 ainda ativa), generateEmailImage
             // não envia role:"system" e mantém comportamento legacy.
             systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
+            onMeta: (m) => {
+              imgMeta = m
+            },
           },
         )
 
@@ -1001,6 +1020,9 @@ export async function runPhase2Image(
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
+          tokensInput: imgMeta.tokensInput,
+          tokensOutput: imgMeta.tokensOutput,
+          costCents: imgMeta.costCents,
           parsedOutput: { blockId: blk.id, imageUrl },
         })
         return true
@@ -1020,6 +1042,9 @@ export async function runPhase2Image(
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
           errorMessage: msg,
+          tokensInput: imgMeta.tokensInput,
+          tokensOutput: imgMeta.tokensOutput,
+          costCents: imgMeta.costCents,
         })
         // NÃO aborta: sinaliza falha e deixa as outras imagens seguirem. O
         // bloco fica sem `image_url` (placeholder no HTML). Quem decide o
