@@ -31,7 +31,11 @@ import type {
 } from "@/types/email-workspace"
 import type { BlueprintBlock } from "@/types/email-generation"
 import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
-import { lookupTag } from "@/lib/email-workspace/tag-registry"
+import {
+  fieldsFromCopySpec,
+  fieldsFromTags,
+} from "@/lib/agents/architect/deterministic-blueprint.builder"
+import { deriveToneKeys } from "@/lib/agents/shared/component-dimensions"
 
 const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
@@ -552,7 +556,7 @@ export async function dispatchEmailCopyWebhook(
     })
   }
 
-  // Blocos do blueprint efetivo por chave — fonte do purpose/copy_spec
+  // Blocos do blueprint efetivo por chave — fonte do purpose/fields/variant
   // enviados por bloco ao n8n. Os email_blocks são SEMEADOS do blueprint
   // na mesma ordem, MAS position é 1-based (seed-blocks: idx+1) e o array
   // do blueprint é 0-based — o bloco da position P é blocks[P-1]. Indexar
@@ -645,6 +649,13 @@ export async function dispatchEmailCopyWebhook(
   const onboardingRow = onboardingRes.data as {
     form_responses?: Record<string, unknown> | null
   } | null
+
+  // Tons canônicos da loja (Urgente/Aspiracional/Educacional/Descontraído/
+  // Premium/Amigável) — derivados do tom de voz; vão por email no payload v2.
+  const storeTones = deriveToneKeys(
+    (store.tone_description as string | null) ??
+      (store.tom_de_voz as string | null),
+  )
 
   // Idioma: a coluna client_stores.language (o que o admin edita na tela)
   // vence. Como a coluna nasce com DEFAULT 'pt-BR', fazemos um upgrade
@@ -829,15 +840,19 @@ export async function dispatchEmailCopyWebhook(
         const key = `${f.flow_type}:${e.number}`
         const bp = blueprintByKey.get(key)
         const textOnly = textOnlyByKey.has(key)
-        // Somente-texto: o fluxo diferente do n8n usa a "Estrutura geral"
-        // (email_outline_templates) daquele email específico pra gerar o
-        // texto; sem outline curado, vai null e o n8n decide o fallback.
-        const outline = textOnly ? (outlineByKey.get(key) ?? null) : null
+        // Payload v2: a "Estrutura geral" (email_outline_templates) vai para
+        // TODOS os emails — nos somente-texto continua sendo a fonte da copy;
+        // nos demais é contexto do objetivo/tom daquele email do flow.
+        const outline = outlineByKey.get(key) ?? null
         return {
           email_id: e.id,
           email_number: e.number,
           name: e.name,
           text_only: textOnly,
+          // Objetivo efetivo deste email (blueprint > estrutura geral) e os
+          // tons canônicos da loja — contexto direto pro gerador de copy.
+          objective: bp?.objective ?? outline?.objective ?? null,
+          tones: storeTones,
           // Chave ADITIVA: variantes escolhidas pelo Curador para este email
           // (contexto de copy por bloco). Vazio quando o Montador não rodou.
           component_variants: (variantIdsByKey.get(key) ?? [])
@@ -881,37 +896,41 @@ export async function dispatchEmailCopyWebhook(
                 return cand && cand.type === b.block_type ? cand : null
               }
               const matched = byIndex(b.position - 1) ?? byIndex(b.position)
+              const tags = Array.isArray(matched?.tags) ? matched.tags : []
+              // fields v2 — ÚNICA fonte de orçamento/diretriz por campo no
+              // payload (docs/email-copy-payload-v2.md). Cascata:
+              //   1. snapshot persistido no blueprint (builder/packageBlueprint
+              //      — origem "schema"/"tag_registry"/"llm" já resolvida);
+              //   2. blueprint sem snapshot mas com tags canônicas → derivação
+              //      do tag-registry;
+              //   3. sem nada (blueprint legado/fallback global) → conversão
+              //      do copy_spec normalizado (default canônico do tipo).
+              const fields =
+                Array.isArray(matched?.fields) && matched.fields.length > 0
+                  ? matched.fields
+                  : tags.length > 0
+                    ? fieldsFromTags(tags)
+                    : fieldsFromCopySpec(
+                        normalizeCopySpec(matched?.copy_spec, b.block_type),
+                      )
               return {
                 block_id: b.id,
                 position: b.position,
                 type: b.block_type,
                 label: b.label,
-                // Diretiva de conteúdo da seção (do Blueprint agent) — o que
-                // a copy precisa entregar neste bloco específico.
+                // Diretiva de conteúdo da seção — copy_guidance da variante
+                // casada (rota determinística) ou purpose do Blueprint LLM.
                 purpose: matched?.purpose?.trim() || null,
-                // Orçamento min/max de caracteres por campo — o gerador DEVE
-                // respeitar para a copy caber no layout (ver copy-spec.ts).
-                copy_spec: normalizeCopySpec(matched?.copy_spec, b.block_type),
+                // Variante da biblioteca que originou este bloco (quando o
+                // Curador casou uma) — permite ao n8n cruzar com a lista
+                // component_variants do email (copy_guidance/output_schema).
+                variant_id: matched?.variant_id ?? null,
+                variant_name: matched?.variant_name ?? null,
                 // Tags canônicas {{TAG}} do template que este bloco preenche
                 // (contrato 1:1 campo↔template — docs/email-reference-tags.md).
                 // Vazio em blueprints legados/fallback sem esqueleto de tags.
-                tags: Array.isArray(matched?.tags) ? matched.tags : [],
-                // Orçamento POR TAG (só tags de copy): a forma mais direta do
-                // n8n gerar cada campo — 1 tag = 1 texto dentro de min/max.
-                // Deriva do tag-registry; tags de imagem/url/dados ficam fora.
-                fields: (Array.isArray(matched?.tags) ? matched.tags : [])
-                  .map((t) => {
-                    const spec = lookupTag(t)
-                    return spec && spec.kind === "copy"
-                      ? {
-                          tag: t,
-                          key: spec.copyKey,
-                          min_chars: spec.min,
-                          max_chars: spec.max,
-                        }
-                      : null
-                  })
-                  .filter((f) => f !== null),
+                tags,
+                fields,
               }
             },
           ),

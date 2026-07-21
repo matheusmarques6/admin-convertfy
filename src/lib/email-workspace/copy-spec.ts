@@ -20,7 +20,10 @@
  * Funções puras (sem deps de server/client) — testáveis e reusáveis.
  */
 
-import type { CopySpecField } from "@/types/email-generation"
+import type {
+  BlueprintBlockField,
+  CopySpecField,
+} from "@/types/email-generation"
 
 export type { CopySpecField }
 
@@ -192,6 +195,47 @@ export interface CopyDeviation {
  * content (string não-vazia) cujo tamanho está fora do budget. Campos que
  * o gerador não preencheu não contam como desvio.
  */
+export interface FieldDeviation {
+  key: string
+  kind: "max_len" | "required_empty"
+  length: number
+  max_len: number
+}
+
+/**
+ * Audita o content gravado contra o contrato v2 de `fields` (snapshot
+ * persistido no blueprint pelo builder/packageBlueprint). Campos type=image
+ * ficam fora (preenchidos pela fase 2, não pelo n8n). Mesmas regras do
+ * runSchemaChecks do QA — aqui roda no callback do n8n, observabilidade
+ * apenas (nunca rejeita a copy).
+ */
+export function findFieldDeviations(
+  content: Record<string, unknown> | null | undefined,
+  fields: BlueprintBlockField[],
+): FieldDeviation[] {
+  const out: FieldDeviation[] = []
+  for (const f of fields) {
+    if (f.type === "image") continue
+    const raw = content?.[f.key]
+    const text =
+      typeof raw === "string"
+        ? raw.trim()
+        : typeof raw === "number"
+          ? String(raw)
+          : ""
+    if (!text) {
+      if (f.required) {
+        out.push({ key: f.key, kind: "required_empty", length: 0, max_len: f.max_len })
+      }
+      continue
+    }
+    if (f.max_len > 0 && text.length > f.max_len) {
+      out.push({ key: f.key, kind: "max_len", length: text.length, max_len: f.max_len })
+    }
+  }
+  return out
+}
+
 export function findCopyDeviations(
   content: Record<string, unknown> | null | undefined,
   spec: CopySpecField[],

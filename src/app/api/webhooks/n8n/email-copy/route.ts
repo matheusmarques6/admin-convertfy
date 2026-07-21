@@ -31,8 +31,10 @@ import {
 import { logger } from "@/lib/logger"
 import {
   findCopyDeviations,
+  findFieldDeviations,
   normalizeCopySpec,
 } from "@/lib/email-workspace/copy-spec"
+import type { BlueprintBlock } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 import {
@@ -327,21 +329,52 @@ export async function POST(request: NextRequest) {
     }
     blocksWritten += blocksByPosition
 
-    // 3.5) Auditoria do copy_spec: mede a copy gravada contra o budget
-    // canônico do tipo de cada bloco (o payload de dispatch enviou o spec
-    // ao n8n — aqui verificamos o quanto ele obedeceu). Observabilidade
-    // apenas: NÃO rejeita nem trunca; endurecer só depois de medir a taxa
-    // de desvio em produção.
+    // 3.5) Auditoria da copy contra o contrato v2 (payload de dispatch —
+    // docs/email-copy-payload-v2.md): se o blueprint da loja tem snapshot de
+    // `fields` no bloco casado, valida required/max_len por campo
+    // (source:'schema'). Senão mede contra o copy_spec REAL do bloco casado
+    // — antes o spec era ignorado (normalizeCopySpec(null, ...) caía sempre
+    // no default do tipo). Observabilidade apenas: NÃO rejeita nem trunca;
+    // endurecer só depois de medir a taxa de desvio em produção.
+    const { data: bpRow } = await admin
+      .from("store_email_blueprints")
+      .select("blocks")
+      .eq("store_id", body.store_id)
+      .eq("flow_type", flowType)
+      .eq("email_number", emailNumber)
+      .maybeSingle()
+    const bpBlocks: BlueprintBlock[] = Array.isArray(
+      (bpRow as { blocks?: unknown } | null)?.blocks,
+    )
+      ? ((bpRow as { blocks: BlueprintBlock[] }).blocks)
+      : []
+
     const copyDeviations: Array<Record<string, unknown>> = []
     for (let i = 0; i < body.blocks.length; i++) {
-      const blockType = orderedTypes[i]
+      // Resolve o bloco real pelo block_id (o array do callback pode ser um
+      // SUBCONJUNTO dos blocos do email — mixed mode envia só os vazios);
+      // fallback pro índice i quando o id não existe mais (pós-reseed).
+      const idxById = orderedIds.indexOf(body.blocks[i].block_id)
+      const idx = idxById >= 0 ? idxById : i
+      const blockType = orderedTypes[idx]
       if (!blockType) continue
-      const deviations = findCopyDeviations(
-        body.blocks[i].content as Record<string, unknown>,
-        normalizeCopySpec(null, blockType),
-      )
-      for (const d of deviations) {
-        copyDeviations.push({ position: i, type: blockType, ...d })
+      // Blueprint na mesma ordem dos email_blocks (0-based ↔ rows ordenadas
+      // por position) — guardado pela igualdade de type, como no dispatch.
+      const cand = bpBlocks[idx]
+      const matched = cand && cand.type === blockType ? cand : null
+      const content = body.blocks[i].content as Record<string, unknown>
+      if (Array.isArray(matched?.fields) && matched.fields.length > 0) {
+        for (const d of findFieldDeviations(content, matched.fields)) {
+          copyDeviations.push({ position: idx, type: blockType, source: "schema", ...d })
+        }
+      } else {
+        const deviations = findCopyDeviations(
+          content,
+          normalizeCopySpec(matched?.copy_spec, blockType),
+        )
+        for (const d of deviations) {
+          copyDeviations.push({ position: idx, type: blockType, source: "copy_spec", ...d })
+        }
       }
     }
     if (copyDeviations.length > 0) {

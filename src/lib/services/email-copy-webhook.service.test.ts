@@ -336,7 +336,7 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
     expect(calls).toContainEqual(["e2", "welcome", 2, "store1"])
   })
 
-  it("email normal segue com text_only:false e estrutura_geral null", async () => {
+  it("email normal: text_only:false e estrutura_geral TAMBÉM presente (payload v2 envia p/ todos)", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
     ])
@@ -360,7 +360,7 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
 
     const email = payloadFromFetch().flows[0].emails[0]
     expect(email.text_only).toBe(false)
-    expect(email.estrutura_geral).toBeNull()
+    expect(email.estrutura_geral?.objective).toBe("OUT-OBJ")
   })
 })
 
@@ -420,8 +420,8 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
             position: number
             type: string
             purpose: string | null
-            copy_spec: Array<{ key: string; min_chars: number; max_chars: number }>
             tags: string[]
+            fields: Array<Record<string, unknown>>
           }>
         }>
       }>
@@ -431,18 +431,35 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     // Tags canônicas do bloco repassadas ao n8n; sem tags no blueprint → []
     expect(blocks[1].tags).toEqual(["HERO_EYEBROW", "HERO_IMAGE"])
     expect(blocks[0].tags).toEqual([])
-    // fields: orçamento POR TAG (só copy — HERO_IMAGE fica de fora)
-    expect(
-      (blocks[1] as unknown as { fields: unknown }).fields,
-    ).toEqual([{ tag: "HERO_EYEBROW", key: "eyebrow", min_chars: 8, max_chars: 24 }])
+    // v2: copy_spec NÃO existe mais no payload — fields é a única fonte.
+    expect(blocks[1]).not.toHaveProperty("copy_spec")
+    // Bloco com tags mas sem snapshot → derivação tag_registry (só copy —
+    // HERO_IMAGE fica de fora).
+    expect(blocks[1].fields).toEqual([
+      expect.objectContaining({
+        key: "eyebrow",
+        tag: "HERO_EYEBROW",
+        max_len: 24,
+        min_len: 8,
+        source: "tag_registry",
+      }),
+    ])
+    // Bloco sem tags nem snapshot → conversão do copy_spec (origem "llm").
+    expect(blocks[2].fields).toEqual([
+      expect.objectContaining({
+        key: "code",
+        max_len: 15,
+        min_len: 4,
+        tag: null,
+        source: "llm",
+      }),
+    ])
 
     // ANTES do fix: blocks[position] deslocava 1 → type nunca casava →
-    // purpose null e copy_spec default em TODOS (provado na Luxe Lift w#3).
+    // purpose null e fields default em TODOS (provado na Luxe Lift w#3).
     expect(blocks[0].purpose).toBe("PURPOSE-HEADER")
     expect(blocks[1].purpose).toBe("PURPOSE-HERO")
     expect(blocks[2].purpose).toBe("PURPOSE-COUPON")
-    expect(blocks[1].copy_spec).toEqual([{ key: "eyebrow", min_chars: 8, max_chars: 24 }])
-    expect(blocks[2].copy_spec).toEqual([{ key: "code", min_chars: 4, max_chars: 15 }])
   })
 
   it("rows legadas 0-based ainda casam (fallback pro próprio índice)", async () => {
@@ -485,6 +502,146 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     const blocks = body.flows[0].emails[0].blocks
     expect(blocks[0].purpose).toBe("P-HERO")
     expect(blocks[1].purpose).toBe("P-COUPON")
+  })
+})
+
+describe("dispatchEmailCopyWebhook — payload v2 (fields/variant/tones)", () => {
+  function firstEmail(): {
+    objective: string | null
+    tones: string[]
+    blocks: Array<Record<string, unknown>>
+  } {
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{
+        emails: Array<{
+          objective: string | null
+          tones: string[]
+          blocks: Array<Record<string, unknown>>
+        }>
+      }>
+    }
+    return body.flows[0].emails[0]
+  }
+
+  it("bloco com snapshot de fields no blueprint usa o snapshot VERBATIM + variant_id/variant_name", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero", content: {} },
+    ]
+    const snapshot = [
+      {
+        key: "headline",
+        label: "Headline",
+        type: "text_short",
+        max_len: 40,
+        min_len: null,
+        required: true,
+        example: "Bem-vindo!",
+        guidance: "Tom acolhedor",
+        tag: "HERO_HEADLINE",
+        source: "schema",
+      },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ-BP",
+            messaging: "MSG",
+            subject_hint: null,
+            blocks: [
+              {
+                type: "hero",
+                label: "Hero",
+                purpose: "P-HERO",
+                copy_spec: [],
+                tags: ["HERO_HEADLINE"],
+                variant_id: "var-1",
+                variant_name: "Hero Editorial",
+                fields: snapshot,
+              },
+            ],
+          },
+        ],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const block = firstEmail().blocks[0]
+    // Snapshot vence a derivação por tags (senão viria source tag_registry).
+    expect(block.fields).toEqual(snapshot)
+    expect(block.variant_id).toBe("var-1")
+    expect(block.variant_name).toBe("Hero Editorial")
+    expect(block).not.toHaveProperty("copy_spec")
+  })
+
+  it("objective (blueprint > outline) e tones canônicos da loja vão por email", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.client_stores[0].tom_de_voz = "Voz premium, urgente nas ofertas"
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ-BP",
+            messaging: "MSG",
+            subject_hint: null,
+          },
+        ],
+      ]),
+    )
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const email = firstEmail()
+    expect(email.objective).toBe("OBJ-BP")
+    expect(email.tones).toEqual(["Urgente", "Premium"])
+  })
+
+  it("sem blueprint: objective cai no da estrutura geral; sem tom de voz: tones []", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_outline_templates = [
+      {
+        flow_type: "welcome",
+        email_number: 1,
+        objective: "OBJ-OUTLINE",
+        guidance: null,
+        suggested_blocks: [],
+        tone_hint: null,
+        is_active: true,
+      },
+    ]
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const email = firstEmail()
+    expect(email.objective).toBe("OBJ-OUTLINE")
+    expect(email.tones).toEqual([])
   })
 })
 

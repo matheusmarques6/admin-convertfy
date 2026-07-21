@@ -3,8 +3,10 @@ import {
   clampCopySpecField,
   defaultCopySpec,
   findCopyDeviations,
+  findFieldDeviations,
   normalizeCopySpec,
 } from "./copy-spec"
+import type { BlueprintBlockField } from "@/types/email-generation"
 
 describe("copy-spec", () => {
   describe("defaultCopySpec", () => {
@@ -108,6 +110,63 @@ describe("copy-spec", () => {
       expect(findCopyDeviations({ headline: "Lorem ipsum dolor sit" }, spec)).toEqual([])
       expect(findCopyDeviations({}, spec)).toEqual([])
       expect(findCopyDeviations(null, spec)).toEqual([])
+    })
+  })
+
+  describe("findFieldDeviations (contrato v2 — auditoria do callback)", () => {
+    const field = (p: Partial<BlueprintBlockField>): BlueprintBlockField => ({
+      key: "headline",
+      label: "Headline",
+      type: "text_short",
+      max_len: 40,
+      min_len: null,
+      required: true,
+      example: "",
+      guidance: "",
+      tag: null,
+      source: "schema",
+      ...p,
+    })
+
+    it("copy dentro do contrato → sem desvios", () => {
+      expect(
+        findFieldDeviations({ headline: "Bem-vindo à loja" }, [field({})]),
+      ).toEqual([])
+    })
+
+    it("required vazio → required_empty; opcional vazio → nada", () => {
+      const fields = [
+        field({}),
+        field({ key: "hint", required: false, max_len: 90 }),
+      ]
+      expect(findFieldDeviations({}, fields)).toEqual([
+        { key: "headline", kind: "required_empty", length: 0, max_len: 40 },
+      ])
+    })
+
+    it("max_len estourado → max_len (com o tamanho real)", () => {
+      const long = "x".repeat(60)
+      expect(findFieldDeviations({ headline: long }, [field({})])).toEqual([
+        { key: "headline", kind: "max_len", length: 60, max_len: 40 },
+      ])
+    })
+
+    it("type=image fica fora (preenchido pela fase 2, não pelo n8n)", () => {
+      const fields = [
+        field({ key: "hero_image", type: "image", required: true, max_len: 0 }),
+      ]
+      expect(findFieldDeviations({}, fields)).toEqual([])
+    })
+
+    it("max_len 0 = sem teto; number vira string e conta", () => {
+      expect(
+        findFieldDeviations({ headline: "x".repeat(500) }, [
+          field({ max_len: 0 }),
+        ]),
+      ).toEqual([])
+      expect(
+        findFieldDeviations({ headline: 12345 }, [field({ max_len: 3 })]),
+      ).toEqual([{ key: "headline", kind: "max_len", length: 5, max_len: 3 }])
     })
   })
 })
