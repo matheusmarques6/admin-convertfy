@@ -141,19 +141,15 @@ export function WhatsAppChatPopup({
       aria-label={`Conversa WhatsApp com ${contactName || phone}`}
     >
       <div
-        className="relative flex w-full flex-col overflow-hidden"
-        style={{
-          maxWidth: 460,
-          height: "80vh",
-          background: "var(--crm-gray-0)",
-          border: "1px solid var(--crm-border)",
-          borderRadius: "var(--crm-radius-lg)",
-        }}
+        className="relative w-full"
+        style={{ maxWidth: 460, height: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Fechar flutuante — o onBack do ChatPanel é md:hidden, então
-            em desktop o modo conversa não teria fechar visível. Fica
-            SOBRE o header do ChatPanel (que não pode ser modificado). */}
+            em desktop o modo conversa não teria fechar visível. Fica meio
+            pra FORA do canto do card (wrapper sem overflow-hidden) pra não
+            sobrepor o select de status do header do ChatPanel — misclick
+            na seta do select fechava o popup e perdia rascunho. */}
         {state.status === "ready" && state.threadId && (
           <button
             onClick={onClose}
@@ -161,8 +157,8 @@ export function WhatsAppChatPopup({
             title="Fechar conversa"
             className="absolute z-10 flex h-6 w-6 items-center justify-center"
             style={{
-              top: 9,
-              right: 10,
+              top: -10,
+              right: -10,
               background: "var(--crm-gray-0)",
               border: "1px solid var(--crm-border)",
               borderRadius: 6,
@@ -173,6 +169,14 @@ export function WhatsAppChatPopup({
             <X style={{ width: 14, height: 14 }} />
           </button>
         )}
+        <div
+        className="flex h-full w-full flex-col overflow-hidden"
+        style={{
+          background: "var(--crm-gray-0)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: "var(--crm-radius-lg)",
+        }}
+      >
         {state.status === "loading" && (
           <PopupShell contactName={contactName} phone={phone} onClose={onClose}>
             <div className="flex flex-1 flex-col gap-3 p-6" aria-label="Carregando conversa">
@@ -253,6 +257,7 @@ export function WhatsAppChatPopup({
             }
           />
         )}
+        </div>
       </div>
     </div>,
     document.body,
