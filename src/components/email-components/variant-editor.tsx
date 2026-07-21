@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState, type ReactNode } from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, Pencil } from "lucide-react"
 import type {
   ComponentOutputField,
 } from "@/types/email-generation"
@@ -22,6 +22,7 @@ import {
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
+  EGBtn,
   EGCard,
   EGCheck,
   EGInput,
@@ -97,6 +98,7 @@ export function VariantEditor({
 }) {
   const [pv, setPv] = useState<PreviewMode>("preview")
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [editRendered, setEditRendered] = useState(false)
 
   const set = (patch: Partial<VariantDraft>) => onChange({ ...draft, ...patch })
 
@@ -389,7 +391,10 @@ export function VariantEditor({
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setPv(k)}
+                  onClick={() => {
+                    setPv(k)
+                    setEditRendered(false)
+                  }}
                   style={{
                     flex: 1,
                     padding: "6px 8px",
@@ -467,12 +472,55 @@ export function VariantEditor({
             <>
               <div
                 style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginBottom: 10,
+                }}
+              >
+                <EGBtn
+                  variant="secondary"
+                  onClick={() => setEditRendered(!editRendered)}
+                  title={
+                    editRendered
+                      ? "Fechar edição do HTML"
+                      : "Editar o HTML com render ao vivo"
+                  }
+                  style={{ height: 30, padding: "0 12px", fontSize: 12 }}
+                >
+                  {editRendered ? <Check size={13} /> : <Pencil size={13} />}
+                  {editRendered ? "Concluir" : "Editar"}
+                </EGBtn>
+              </div>
+              {editRendered && (
+                <textarea
+                  value={draft.html}
+                  onChange={(e) => set({ html: e.target.value })}
+                  rows={14}
+                  placeholder="Cole aqui o HTML do email renderizado"
+                  style={{
+                    ...egInputStyle,
+                    height: "auto",
+                    padding: "11px 12px",
+                    lineHeight: 1.5,
+                    resize: "vertical",
+                    fontFamily: F.mono,
+                    fontSize: 12,
+                    whiteSpace: "pre",
+                    marginBottom: 10,
+                  }}
+                />
+              )}
+              <div
+                style={{
                   border: `1px solid ${C.border}`,
                   borderRadius: 8,
                   overflow: "hidden",
                 }}
               >
-                <EGRenderFrame html={draft.html} minHeight={520} />
+                <EGRenderFrame
+                  html={draft.html}
+                  minHeight={editRendered ? 360 : 520}
+                />
               </div>
               <div
                 style={{
@@ -482,7 +530,9 @@ export function VariantEditor({
                   marginTop: 10,
                 }}
               >
-                Render real do HTML atual (mesmo motor do email final).
+                {editRendered
+                  ? "Cole o HTML do email renderizado — o render abaixo atualiza ao vivo. Use Salvar para persistir."
+                  : "Render real do HTML atual (mesmo motor do email final)."}
               </div>
             </>
           )}
