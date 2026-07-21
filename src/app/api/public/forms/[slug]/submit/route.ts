@@ -89,6 +89,11 @@ export async function POST(
     if (fErr) throw fErr
     if (!form) throw new AppError("Form nao encontrado", 404, "not-found")
 
+    // created_by do form pode apontar pra um profile que foi removido. Se a
+    // FK falhar no insert do lead, viramos essa referencia p/ null e reusamos
+    // no deal/activity — em vez de derrubar a submissao inteira com 400.
+    let effectiveCreatedBy: string | null = form.created_by ?? null
+
     // 2. Fields.
     const { data: fields, error: fieldsErr } = await admin
       .from("crm_form_fields")
@@ -262,26 +267,43 @@ export async function POST(
       }
 
       if (!leadId) {
-        const { data: lead, error: lErr } = await admin
+        const leadPayload: Record<string, unknown> = {
+          name: leadData.name,
+          email: leadData.email ?? null,
+          phone: leadData.phone ?? null,
+          company: leadData.company ?? null,
+          source: leadData.source,
+          status: "new",
+          created_by: effectiveCreatedBy,
+          utm: utmData,
+          custom_fields:
+            Object.keys(customFieldsData).length > 0 ? customFieldsData : {},
+        }
+
+        let leadRes = await admin
           .from("crm_leads")
-          .insert({
-            name: leadData.name,
-            email: leadData.email ?? null,
-            phone: leadData.phone ?? null,
-            company: leadData.company ?? null,
-            source: leadData.source,
-            status: "new",
-            created_by: form.created_by,
-            utm: utmData,
-            custom_fields:
-              Object.keys(customFieldsData).length > 0
-                ? customFieldsData
-                : {},
-          })
+          .insert(leadPayload)
           .select("id")
           .single()
-        if (lErr) throw lErr
-        leadId = lead.id
+
+        // Rede de seguranca: FK 23503 = created_by aponta pra profile
+        // inexistente. Reinsere sem created_by (a coluna aceita null).
+        if (leadRes.error && (leadRes.error as { code?: string }).code === "23503") {
+          log.warn(
+            "[FormSubmit] created_by invalido (FK) — reinserindo lead sem created_by",
+            { form_id: form.id, created_by: form.created_by },
+          )
+          effectiveCreatedBy = null
+          leadPayload.created_by = null
+          leadRes = await admin
+            .from("crm_leads")
+            .insert(leadPayload)
+            .select("id")
+            .single()
+        }
+
+        if (leadRes.error) throw leadRes.error
+        leadId = leadRes.data.id
       } else {
         // Lead deduplicado por email — faz merge dos custom fields existentes
         // com os novos (novos sobrescrevem em caso de conflito) e, se o lead
@@ -362,7 +384,7 @@ export async function POST(
             utm: utmData,
             tags: [],
             lead_id: leadId,
-            owner_id: form.created_by, // fallback assignee
+            owner_id: effectiveCreatedBy, // fallback assignee
             position: nextPos,
             custom_fields:
               Object.keys(dealCustomFieldsData).length > 0
@@ -380,7 +402,7 @@ export async function POST(
             deal_id: deal.id,
             type: "system",
             content: `Deal criado automaticamente via formulario "${form.name}"`,
-            created_by: form.created_by,
+            created_by: effectiveCreatedBy,
             is_internal: true,
           })
         } else if (dErr) {
@@ -549,7 +571,20 @@ export async function POST(
       },
     })
   } catch (error) {
-    log.error("Public submit error:", error)
+    // Log detalhado pra diagnostico: PostgrestError expoe code/details/hint,
+    // que o errorResponse nao repassa ao cliente (so a mensagem mapeada).
+    const e = error as {
+      message?: string
+      code?: string
+      details?: string
+      hint?: string
+    }
+    log.error("Public submit error", {
+      message: e?.message,
+      code: e?.code,
+      details: e?.details,
+      hint: e?.hint,
+    })
     return errorResponse(request, error, "public-form-submit")
   }
 }
