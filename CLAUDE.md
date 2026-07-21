@@ -1152,5 +1152,50 @@ image_done → qa_running → ready/failed`.
 
 ---
 
-*Última atualização: Marco 2026*
+## Hub de Geração de Emails (redesign jul/2026 — maquete EG)
+
+O hub `/admin/settings/email-generation` (8 abas) foi redesenhado conforme a
+maquete "Geração de Emails" (Convertfy DS v3, light-only — precedente
+logs-workspace). Átomos compartilhados em
+`src/components/email-generation/ui/{eg-theme.ts,eg-atoms.tsx}` (EGCard,
+EGInput, EGToggle, EGBadge, EGCatPills, EGRenderFrame...). O workspace virou
+shell fino; Settings/References/Test vivem em arquivos próprios.
+
+**Dimensões de matching NOVAS** (migration 20261003): variantes de
+`email_component_variants` usam `objectives TEXT[]` (9 rótulos PT: Promoção,
+Boas-vindas...) e `tones TEXT[]` (6: Urgente, Premium...) no lugar de
+`niche_affinity/positioning/mood` (DEPRECADAS — drop futuro via
+`APPLY_MANUALLY_drop_component_legacy_dims.sql`). Fonte única:
+`src/lib/agents/shared/component-dimensions.ts` (`flowTypeToObjective`,
+`deriveToneKeys`). O deriver (`component-deriver.ts`) pontua
+objective=3/tones×2/density=1; o Curador recebe também
+`quando_usar/quando_nao_usar/product_slots` no JSON de candidatos
+(prompt atualizado na migration 20261004).
+
+**Variantes enriquecidas**: `when_use`, `when_not_use`, `copy_guidance`,
+`long_description`, `product_slots`, `output_schema JSONB`
+([{key,label,type∈text_short|text_long|number|url|image|boolean,max_len,
+required,example,guidance}]). Teste ad-hoc por variante: `POST
+/api/admin/components/[id]/test` (agente `component_test`, migration
+20261006, telemetria em email_generation_runs quando há loja).
+
+**Settings do pipeline** (migration 20261005, aba Configurações):
+`qa_vision_enabled` (NULL=env), `refiner_enabled`, `max_blocks_per_email`
+(clamp no generate.service), `default_model` (fallback sem config ativa),
+`usd_brl_rate` (override do câmbio nos gen-logs), `cost_alert_usd`
+(notifyCostAlert in-app após rollup).
+
+**Aba Geradas**: tabela global via `GET /api/admin/generated-emails`
+(email_flow_emails com generation_batch_id, índice parcial
+idx_efe_generated_recent) + drill-down no GeneratedInspector.
+
+**Teste com contexto livre**: `test_context` no POST generate-email flui
+pro Architect via `{{outline_guidance}}` (prioridade) e pro payload n8n
+(chave aditiva `test_context`). O payload de copy também leva
+`component_variants` por email (variant_id, name, copy_guidance,
+output_schema — aditivo; n8n ignora até consumir).
+
+---
+
+*Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

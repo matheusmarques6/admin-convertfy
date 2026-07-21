@@ -591,6 +591,57 @@ export async function dispatchEmailCopyWebhook(
   const briefing = (briefingRes.data as StoreBriefing | null) ?? null
   const topProductsTable = (topProductsRes.data as TopProductRow[] | null) ?? []
   const competitors = (competitorsRes.data as CompetitorRow[] | null) ?? []
+
+  // Variantes da biblioteca escolhidas pelo Curador (store_email_references.
+  // variant_ids) por flow×email — anexadas ADITIVAMENTE por email no payload
+  // (copy_guidance + output_schema enriquecem a copy; o n8n ignora a chave
+  // até o flow ser atualizado). Falha aqui nunca derruba o dispatch.
+  const variantIdsByKey = new Map<string, string[]>()
+  const variantById = new Map<
+    string,
+    {
+      id: string
+      name: string
+      copy_guidance: string | null
+      output_schema: unknown[]
+    }
+  >()
+  try {
+    const { data: storeRefs } = await admin
+      .from("store_email_references")
+      .select("flow_type, email_number, variant_ids")
+      .eq("store_id", storeId)
+      .in("flow_type", flowTypes)
+    const allIds = new Set<string>()
+    for (const r of (storeRefs ?? []) as Array<{
+      flow_type: string
+      email_number: number
+      variant_ids: string[] | null
+    }>) {
+      const ids = (r.variant_ids ?? []).filter(Boolean)
+      variantIdsByKey.set(`${r.flow_type}:${r.email_number}`, ids)
+      ids.forEach((id) => allIds.add(id))
+    }
+    if (allIds.size > 0) {
+      const { data: variantRows } = await admin
+        .from("email_component_variants")
+        .select("id, name, copy_guidance, output_schema")
+        .in("id", Array.from(allIds))
+      for (const v of (variantRows ?? []) as Array<{
+        id: string
+        name: string
+        copy_guidance: string | null
+        output_schema: unknown[] | null
+      }>) {
+        variantById.set(v.id, { ...v, output_schema: v.output_schema ?? [] })
+      }
+    }
+  } catch (err) {
+    log.warn("email_copy.webhook.component_variants_failed", {
+      storeId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
   const onboardingRow = onboardingRes.data as {
     form_responses?: Record<string, unknown> | null
   } | null
@@ -787,6 +838,17 @@ export async function dispatchEmailCopyWebhook(
           email_number: e.number,
           name: e.name,
           text_only: textOnly,
+          // Chave ADITIVA: variantes escolhidas pelo Curador para este email
+          // (contexto de copy por bloco). Vazio quando o Montador não rodou.
+          component_variants: (variantIdsByKey.get(key) ?? [])
+            .map((id) => variantById.get(id))
+            .filter((v) => v != null)
+            .map((v) => ({
+              variant_id: v.id,
+              name: v.name,
+              copy_guidance: v.copy_guidance,
+              output_schema: v.output_schema,
+            })),
           estrutura_geral: outline
             ? {
                 objective: outline.objective,
