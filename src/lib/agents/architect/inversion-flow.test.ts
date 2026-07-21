@@ -28,6 +28,7 @@ function variant(section: string, name: string): EmailComponentVariant {
     block_type: section,
     name,
     html: `<div data-sec="${section}">${name}</div>`,
+    rendered_html: null,
     description: null,
     long_description: null,
     slots: [],

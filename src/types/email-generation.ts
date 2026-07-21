@@ -309,6 +309,9 @@ export interface EmailComponentVariant {
   block_type: string
   name: string
   html: string
+  // Exemplo real do email renderizado, colado manualmente no editor
+  // (aba "HTML renderizado"). Não é usado pelo pipeline.
+  rendered_html: string | null
   // Descrição curta (sem HTML) da variante. Usada pelo passo A do Montador
   // (escolha por descrição, barato) para escolher a variante sem mandar o HTML
   // completo de todas. Null quando ainda não preenchida.

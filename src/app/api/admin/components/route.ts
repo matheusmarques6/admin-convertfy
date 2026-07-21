@@ -19,6 +19,7 @@ const postSchema = z.object({
   block_type: z.enum(COMPONENT_CATEGORY_KEYS as [string, ...string[]]),
   name: z.string().min(1),
   html: z.string().min(1),
+  rendered_html: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   long_description: z.string().nullable().optional(),
   slots: z.array(z.string()).default([]),

@@ -6,7 +6,8 @@
  * Grid 2 colunas: esquerda = Identificação + Contexto para a IA + Schema de
  * output (+ seção Avançado com slots/tags/thumbnail); direita (sticky) =
  * Estrutura & Preview com 3 sub-abas (Preview com exemplos do schema, HTML
- * editável, HTML renderizado cru).
+ * editável, HTML renderizado — exemplo real do email colado manualmente,
+ * campo próprio `rendered_html`).
  */
 
 import { useMemo, useState, type ReactNode } from "react"
@@ -39,6 +40,8 @@ export interface VariantDraft {
   block_type: string
   name: string
   html: string
+  // Exemplo real do email renderizado, colado manualmente (aba própria).
+  rendered_html: string
   description: string
   long_description: string
   when_use: string
@@ -463,8 +466,8 @@ export function VariantEditor({
                   marginTop: 10,
                 }}
               >
-                Cole aqui o HTML do bloco com todos os elementos. A aba “HTML
-                renderizado” mostra o render real.
+                Cole aqui o HTML do bloco com todos os elementos. A aba
+                “Preview” mostra o render.
               </div>
             </>
           )}
@@ -493,8 +496,8 @@ export function VariantEditor({
               </div>
               {editRendered && (
                 <textarea
-                  value={draft.html}
-                  onChange={(e) => set({ html: e.target.value })}
+                  value={draft.rendered_html}
+                  onChange={(e) => set({ rendered_html: e.target.value })}
                   rows={14}
                   placeholder="Cole aqui o HTML do email renderizado"
                   style={{
@@ -510,18 +513,35 @@ export function VariantEditor({
                   }}
                 />
               )}
-              <div
-                style={{
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 8,
-                  overflow: "hidden",
-                }}
-              >
-                <EGRenderFrame
-                  html={draft.html}
-                  minHeight={editRendered ? 360 : 520}
-                />
-              </div>
+              {draft.rendered_html ? (
+                <div
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                  }}
+                >
+                  <EGRenderFrame
+                    html={draft.rendered_html}
+                    minHeight={editRendered ? 360 : 520}
+                  />
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: `1px dashed ${C.border}`,
+                    borderRadius: 8,
+                    padding: "60px 24px",
+                    textAlign: "center",
+                    fontSize: 12.5,
+                    color: C.g400,
+                    fontFamily: F.sans,
+                  }}
+                >
+                  Nenhum HTML renderizado colado ainda — clique em Editar para
+                  colar o exemplo real do email.
+                </div>
+              )}
               <div
                 style={{
                   fontSize: 11.5,
@@ -532,7 +552,7 @@ export function VariantEditor({
               >
                 {editRendered
                   ? "Cole o HTML do email renderizado — o render abaixo atualiza ao vivo. Use Salvar para persistir."
-                  : "Render real do HTML atual (mesmo motor do email final)."}
+                  : "Exemplo real do email renderizado (colado manualmente). Independente do HTML do componente."}
               </div>
             </>
           )}
