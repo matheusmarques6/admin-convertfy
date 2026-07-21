@@ -352,7 +352,14 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
       })
       const json = await res.json()
       if (!res.ok || json.success === false) {
-        setError(json.error?.message || "Erro ao enviar. Tente novamente.")
+        // errorResponse devolve { error: string, code, details? } — error e
+        // STRING, nao objeto. Sem isso o visitante so via o generico e o
+        // motivo real (ex.: campo obrigatorio) nunca aparecia.
+        const serverMsg =
+          typeof json.error === "string"
+            ? json.error
+            : json.error?.message
+        setError(serverMsg || "Erro ao enviar. Tente novamente.")
         return
       }
 
