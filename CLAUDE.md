@@ -1205,5 +1205,49 @@ rotas de prompts/logs, via helper em `prompt-management.service.ts`.
 
 ---
 
+## Blueprint híbrido + payload n8n v2 (jul/2026)
+
+O agente Blueprint virou **determinístico-primeiro com LLM fallback
+normalizado** (migrations 20261022-24). Router em
+`blueprint-generator.service.ts`:
+
+- **Rota A (determinística)**: `mode='auto'` + skeleton OK
+  (`extractStructureFromReference`) + cobertura 100% dos blocos de copy —
+  ou `mode='deterministic'`. Builder puro em
+  `deterministic-blueprint.builder.ts`: casa variantes do Curador com o
+  skeleton (FIFO por categoria via `blockTypeToCategory`), purpose ←
+  `copy_guidance`, image_brief ← campos type=image do `output_schema`.
+  Subject via mini-LLM `subject` (Haiku, config própria). Persiste com
+  `model='deterministic'`, custo ~zero.
+- **Rota B (LLM fallback)**: skeleton null, cobertura <100% ou
+  `mode='llm'` — fluxo LLM de antes, intacto.
+- **AS DUAS rotas terminam em `packageBlueprint`** (normalizador único):
+  todo bloco sai com `variant_id/variant_name` + `fields` v2
+  (`{key,label,type,max_len,min_len,required,example,guidance,tag,source}`,
+  source ∈ schema|tag_registry|llm). Tipo canônico `BlueprintBlockField`
+  em `src/types/email-generation.ts`. O n8n nunca percebe qual rota rodou.
+- Kill-switch sem deploy: `email_generation_settings.blueprint_mode`
+  ('auto'|'llm'|'deterministic', aba Configurações). Telemetria: run
+  `agent='blueprint'` com `parsed_output.blueprint_path`
+  ('deterministic'|'llm_fallback') + coverage + fallback_reason.
+
+**Payload n8n v2** (`docs/email-copy-payload-v2.md`): `fields` v2 é a
+ÚNICA fonte por bloco (snapshot do blueprint → tag_registry → conversão
+do copy_spec); `copy_spec` REMOVIDO do payload; `variant_id/variant_name`
+por bloco; `objective` + `tones` canônicos por email; `estrutura_geral`
+para TODOS os emails. O flow do n8n deve ser atualizado na MESMA janela
+do deploy (rollback = revert do admin). Callback audita a copy contra o
+snapshot de fields (`findFieldDeviations` em copy-spec.ts) —
+observabilidade, nunca rejeita.
+
+**Agentes downstream com dados das variantes**: QA valida
+`output_schema` (`runSchemaChecks` — issues `copy_excede_max_len`/
+`campo_obrigatorio_vazio`, não-bloqueantes); Montador recebe
+`notas_implementacao` (long_description); Refiner recebe `{{tones}}`;
+editor de variantes avisa incoerência key↔tag
+(`validateSchemaTagCoherence`, warning não-bloqueante).
+
+---
+
 *Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
