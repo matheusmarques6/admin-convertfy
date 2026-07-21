@@ -2233,6 +2233,22 @@ function InstallTab({
         que apontem pro formulário. <b>Se você já embedou com o iframe antigo, troque pelo código
         acima</b> — o iframe puro não repassa nada.
       </p>
+      <div className="rounded-[6px] border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-[11px] text-amber-900 dark:text-amber-300 leading-relaxed">
+        ⚠️ <b>Importante:</b> se o anúncio manda o visitante pra OUTRA página (ex.: a home com{" "}
+        <code className="font-mono">?utm_source=...</code>) e o formulário fica em uma página
+        diferente, instale a linha do <code className="font-mono">&lt;script&gt;</code> no{" "}
+        <b>site inteiro</b> (no <code className="font-mono">&lt;head&gt;</code> global / código
+        personalizado do site). É ela que captura a origem na página de ENTRADA e guarda pra quando
+        o visitante chegar no formulário. A <code className="font-mono">&lt;div&gt;</code> fica só
+        onde o form aparece.
+      </div>
+      <CopyBox
+        label="Script pro site inteiro (head global)"
+        value={`<script src="${appOrigin}/api/script/form-embed.js" defer></script>`}
+        copied={copied === "sitewide"}
+        onCopy={() => copy("sitewide", `<script src="${appOrigin}/api/script/form-embed.js" defer></script>`)}
+        mono
+      />
       <CopyBox
         label="Alternativa: iframe puro (sem rastreamento de origem)"
         value={iframe}
