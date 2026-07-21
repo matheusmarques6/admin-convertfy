@@ -655,6 +655,7 @@ function DrawerHeader({
                   placeholder="Título do deal"
                   onSave={(v) => onPatch({ title: v })}
                   displayStyle={{ fontSize: 18, fontWeight: 600 }}
+                  alwaysShowEdit
                 />
               ) : (
                 leadName
