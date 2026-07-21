@@ -891,6 +891,8 @@ export default function FormEditorPage({
                   utm_campaign: null,
                   utm_term: null,
                   utm_content: null,
+                  gclid: null,
+                  fbclid: null,
                 }}
                 preview
                 embed
@@ -1714,6 +1716,21 @@ function InstallTab({
   const iframe = `<iframe src="${embedUrl}" style="border:0;background:transparent;width:100%;min-height:600px" title="${name}" allowtransparency="true"></iframe>`
   const buttonLink = `<a href="${publicUrl}" target="_blank" rel="noopener noreferrer">Abrir formulário</a>`
 
+  // Snippet com rastreamento de origem: o script roda NA pagina host, le
+  // utm_*/gclid/fbclid da URL dela (o iframe estatico nunca enxerga isso),
+  // persiste first touch e monta o iframe repassando os parametros. Tambem
+  // decora links pra /forms/ no clique.
+  let appOrigin = ""
+  try {
+    appOrigin = new URL(publicUrl).origin
+  } catch {
+    appOrigin = ""
+  }
+  const trackedEmbed = [
+    `<div data-convertfy-form="${publicUrl}"></div>`,
+    `<script src="${appOrigin}/api/script/form-embed.js" defer></script>`,
+  ].join("\n")
+
   const copy = (label: string, text: string) => {
     navigator.clipboard.writeText(text)
     setCopied(label)
@@ -1750,11 +1767,27 @@ function InstallTab({
       <Divider />
 
       <SectionTitle
-        title="Passo 2 — Embedar no seu site"
+        title="Passo 2 — Embedar no seu site (com rastreamento de origem)"
         hint="Cole esse código onde quiser que o form apareça."
       />
       <CopyBox
-        label="HTML iframe"
+        label="Código recomendado"
+        value={trackedEmbed}
+        copied={copied === "tracked"}
+        onCopy={() => copy("tracked", trackedEmbed)}
+        mono
+      />
+      <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed">
+        Esse código captura automaticamente <code className="font-mono">utm_source</code>,{" "}
+        <code className="font-mono">utm_medium</code>, <code className="font-mono">utm_campaign</code>,{" "}
+        <code className="font-mono">gclid</code> e <code className="font-mono">fbclid</code> da URL
+        da página onde for colado e repassa pro formulário — assim cada lead chega com a origem da
+        campanha preenchida. Também guarda a origem por 90 dias (first touch) e completa links/botões
+        que apontem pro formulário. <b>Se você já embedou com o iframe antigo, troque pelo código
+        acima</b> — o iframe puro não repassa nada.
+      </p>
+      <CopyBox
+        label="Alternativa: iframe puro (sem rastreamento de origem)"
         value={iframe}
         copied={copied === "iframe"}
         onCopy={() => copy("iframe", iframe)}
@@ -1762,7 +1795,8 @@ function InstallTab({
       />
       <p className="text-[11px] text-slate-500 dark:text-white/45 leading-relaxed">
         O form se ajusta à largura do container. Pra fixar uma altura, edite{" "}
-        <code className="font-mono">min-height</code> no estilo.
+        <code className="font-mono">min-height</code> no estilo (no código recomendado, use o
+        atributo <code className="font-mono">data-convertfy-height=&quot;600&quot;</code> na div).
       </p>
 
       <Divider />

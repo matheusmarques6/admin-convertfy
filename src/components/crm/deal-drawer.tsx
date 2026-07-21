@@ -51,13 +51,15 @@ const fmtBRL = (v: number): string =>
     maximumFractionDigits: 0,
   })
 
-/** UTM/referrer capturados no submit do formulário público. */
+/** UTM/click-ids/referrer capturados no submit do formulário público. */
 interface UtmData {
   source?: string | null
   medium?: string | null
   campaign?: string | null
   term?: string | null
   content?: string | null
+  gclid?: string | null
+  fbclid?: string | null
   referrer?: string | null
 }
 
@@ -1855,14 +1857,23 @@ function ContactAndFields({
 
 // ─── Origem (UTM) ────────────────────────────────────────────────
 
+/** Parâmetros que identificam campanha de verdade (referrer NÃO conta). */
+function hasCampaignParams(utm: UtmData): boolean {
+  return Boolean(
+    utm.source || utm.medium || utm.campaign || utm.term || utm.content ||
+    utm.gclid || utm.fbclid,
+  )
+}
+
 /** UTM do deal com fallback pro lead vinculado (deals antigos sem backfill). */
 function resolveUtm(deal: DealDetailResponse["deal"]): UtmData | null {
-  for (const candidate of [deal.utm, deal.lead?.utm]) {
-    if (!candidate) continue
-    const hasValue = Object.values(candidate).some(
-      (v) => typeof v === "string" && v.trim() !== "",
-    )
-    if (hasValue) return candidate
+  const candidates = [deal.utm, deal.lead?.utm].filter(
+    (c): c is UtmData => Boolean(c),
+  )
+  // Prioriza quem tem parâmetro de campanha; referrer sozinho é último caso.
+  for (const c of candidates) if (hasCampaignParams(c)) return c
+  for (const c of candidates) {
+    if (typeof c.referrer === "string" && c.referrer.trim() !== "") return c
   }
   return null
 }
@@ -1874,6 +1885,10 @@ function formatDealSource(source: string): string {
   return source
 }
 
+function truncateMiddle(v: string, max: number): string {
+  return v.length > max ? `${v.slice(0, max)}…` : v
+}
+
 function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
   const utm = resolveUtm(deal)
 
@@ -1883,14 +1898,25 @@ function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
   if (utm?.campaign) rows.push({ label: "Campanha", value: utm.campaign })
   if (utm?.term) rows.push({ label: "Termo", value: utm.term })
   if (utm?.content) rows.push({ label: "Conteúdo", value: utm.content })
-  if (utm?.referrer) {
+  if (utm?.gclid) {
+    rows.push({ label: "Google Ads", value: truncateMiddle(utm.gclid, 24), title: `gclid: ${utm.gclid}` })
+  }
+  if (utm?.fbclid) {
+    rows.push({ label: "Meta Ads", value: truncateMiddle(utm.fbclid, 24), title: `fbclid: ${utm.fbclid}` })
+  }
+  // Referrer é contexto secundário: só vira linha quando há parâmetros de
+  // campanha junto — sozinho ele não diz de onde o cliente veio.
+  if (utm?.referrer && rows.length > 0) {
     const short = utm.referrer.replace(/^https?:\/\//, "")
     rows.push({
       label: "Referrer",
-      value: short.length > 48 ? `${short.slice(0, 48)}…` : short,
+      value: truncateMiddle(short, 48),
       title: utm.referrer,
     })
   }
+  const referrerOnly = utm?.referrer && rows.length === 0
+    ? utm.referrer.replace(/^https?:\/\//, "")
+    : null
 
   return (
     <div
@@ -1954,6 +1980,7 @@ function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
           )}
           <span style={{ fontSize: 12, color: "var(--crm-gray-400)" }}>
             Sem UTMs registradas
+            {referrerOnly ? ` · navegou de ${truncateMiddle(referrerOnly, 40)}` : ""}
           </span>
         </div>
       )}

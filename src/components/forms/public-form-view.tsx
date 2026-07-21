@@ -96,6 +96,8 @@ interface Props {
     utm_campaign: string | null
     utm_term: string | null
     utm_content: string | null
+    gclid: string | null
+    fbclid: string | null
   }
   /**
    * Quando true, intercepta o submit e mostra success state fake. Usado

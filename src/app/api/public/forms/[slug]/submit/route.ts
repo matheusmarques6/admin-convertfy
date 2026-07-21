@@ -36,6 +36,8 @@ const submitSchema = z.object({
   utm_campaign: z.string().nullable().optional(),
   utm_term: z.string().nullable().optional(),
   utm_content: z.string().nullable().optional(),
+  gclid: z.string().nullable().optional(),
+  fbclid: z.string().nullable().optional(),
   referrer: z.string().nullable().optional(),
 })
 
@@ -196,15 +198,19 @@ export async function POST(
     const isCsAlert = isCsForm && matchedStoreId && matchedClientId
     let leadId: string | null = null
 
-    // UTM/referrer da visita — gravado no lead E no deal (origem do cliente).
+    // UTM/click-ids/referrer da visita — gravado no lead E no deal
+    // (origem do cliente).
     const utmData = {
       source: parsed.utm_source ?? null,
       medium: parsed.utm_medium ?? null,
       campaign: parsed.utm_campaign ?? null,
       term: parsed.utm_term ?? null,
       content: parsed.utm_content ?? null,
+      gclid: parsed.gclid ?? null,
+      fbclid: parsed.fbclid ?? null,
       referrer: parsed.referrer ?? null,
     }
+    const hasUtmData = Object.values(utmData).some((v) => v !== null)
 
     if (isCsAlert) {
       const { error: alertErr } = await admin.from("store_alerts").insert({
@@ -262,22 +268,33 @@ export async function POST(
           .single()
         if (lErr) throw lErr
         leadId = lead.id
-      } else if (Object.keys(customFieldsData).length > 0) {
+      } else {
         // Lead deduplicado por email — faz merge dos custom fields existentes
-        // com os novos (novos sobrescrevem em caso de conflito).
+        // com os novos (novos sobrescrevem em caso de conflito) e, se o lead
+        // ainda nao tem UTM registrada, grava a origem desta submissao
+        // (first touch ja gravado NUNCA e sobrescrito).
         const { data: existing } = await admin
           .from("crm_leads")
-          .select("custom_fields")
+          .select("custom_fields, utm")
           .eq("id", leadId)
           .single()
-        const merged = {
-          ...((existing?.custom_fields as Record<string, unknown> | null) ?? {}),
-          ...customFieldsData,
+
+        const updates: Record<string, unknown> = {}
+        if (Object.keys(customFieldsData).length > 0) {
+          updates.custom_fields = {
+            ...((existing?.custom_fields as Record<string, unknown> | null) ?? {}),
+            ...customFieldsData,
+          }
         }
-        await admin
-          .from("crm_leads")
-          .update({ custom_fields: merged })
-          .eq("id", leadId)
+        const existingUtm = (existing?.utm as Record<string, unknown> | null) ?? {}
+        const existingHasUtm = Object.values(existingUtm).some(
+          (v) => typeof v === "string" && v.trim() !== "",
+        )
+        if (hasUtmData && !existingHasUtm) updates.utm = utmData
+
+        if (Object.keys(updates).length > 0) {
+          await admin.from("crm_leads").update(updates).eq("id", leadId)
+        }
       }
     }
 
@@ -362,23 +379,40 @@ export async function POST(
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
     const ua = request.headers.get("user-agent") ?? null
 
-    const { error: sErr } = await admin
+    const submissionPayload: Record<string, unknown> = {
+      form_id: form.id,
+      org_id: form.org_id,
+      lead_id: leadId,
+      deal_id: dealId,
+      answers: parsed.answers,
+      ip_address: ip,
+      user_agent: ua,
+      referrer: parsed.referrer ?? null,
+      utm_source: parsed.utm_source ?? null,
+      utm_medium: parsed.utm_medium ?? null,
+      utm_campaign: parsed.utm_campaign ?? null,
+      utm_term: parsed.utm_term ?? null,
+      utm_content: parsed.utm_content ?? null,
+      gclid: parsed.gclid ?? null,
+      fbclid: parsed.fbclid ?? null,
+    }
+
+    let { error: sErr } = await admin
       .from("crm_form_submissions")
-      .insert({
-        form_id: form.id,
-        org_id: form.org_id,
-        lead_id: leadId,
-        deal_id: dealId,
-        answers: parsed.answers,
-        ip_address: ip,
-        user_agent: ua,
-        referrer: parsed.referrer ?? null,
-        utm_source: parsed.utm_source ?? null,
-        utm_medium: parsed.utm_medium ?? null,
-        utm_campaign: parsed.utm_campaign ?? null,
-        utm_term: parsed.utm_term ?? null,
-        utm_content: parsed.utm_content ?? null,
-      })
+      .insert(submissionPayload)
+
+    // Retry sem gclid/fbclid se a migration ainda nao rodou no ambiente —
+    // perder a submission inteira por 2 colunas novas seria pior.
+    if (sErr && /column .* does not exist/i.test(sErr.message)) {
+      log.warn("[FormSubmit] retrying submission sem gclid/fbclid (migration pendente)")
+      delete submissionPayload.gclid
+      delete submissionPayload.fbclid
+      const retry = await admin
+        .from("crm_form_submissions")
+        .insert(submissionPayload)
+      sErr = retry.error
+    }
+
     if (sErr) {
       log.error("[FormSubmit] Falha ao salvar submission (mas lead/deal foram criados)", { sErr })
     }

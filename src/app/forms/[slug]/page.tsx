@@ -64,13 +64,15 @@ export default async function PublicFormPage({
   const data = await loadForm(slug)
   if (!data) notFound()
 
-  // Captura UTM pra repassar no submit.
+  // Captura UTM + click IDs de ads pra repassar no submit.
   const utm = {
     utm_source: typeof sp.utm_source === "string" ? sp.utm_source : null,
     utm_medium: typeof sp.utm_medium === "string" ? sp.utm_medium : null,
     utm_campaign: typeof sp.utm_campaign === "string" ? sp.utm_campaign : null,
     utm_term: typeof sp.utm_term === "string" ? sp.utm_term : null,
     utm_content: typeof sp.utm_content === "string" ? sp.utm_content : null,
+    gclid: typeof sp.gclid === "string" ? sp.gclid : null,
+    fbclid: typeof sp.fbclid === "string" ? sp.fbclid : null,
   }
 
   return (
