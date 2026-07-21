@@ -8,9 +8,18 @@
 import { useState, useEffect } from "react"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { Loader2, Plus, Pencil, Trash2, X, Save, Play } from "lucide-react"
+import {
+  Loader2,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Save,
+  Play,
+  Layers as LayersIcon,
+} from "lucide-react"
 import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
+import { EGBadge, EGBtn, EGSecTitle } from "./ui/eg-atoms"
 import { toast } from "@/lib/hooks/use-toast"
 import type {
   ImageMapEntry,
@@ -31,18 +40,16 @@ export function ReferencesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-slate-700 dark:text-white/75">
-          {templates.length} referência{templates.length === 1 ? "" : "s"}
-        </div>
-        <button
-          type="button"
-          onClick={() => setEditing("new")}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12px] font-semibold"
-        >
+      <div className="flex items-start justify-between gap-4">
+        <EGSecTitle
+          icon={<LayersIcon size={18} />}
+          title={`${templates.length} Referência${templates.length === 1 ? "" : "s"}`}
+          sub="Emails-modelo que o dispatcher pega via matching automático. Ative/desative para orientar a escolha."
+        />
+        <EGBtn variant="dark" onClick={() => setEditing("new")}>
           <Plus className="h-3.5 w-3.5" />
           Nova referência
-        </button>
+        </EGBtn>
       </div>
 
       {isLoading && (
@@ -59,54 +66,55 @@ export function ReferencesTab() {
         </div>
       )}
 
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {templates.map((tpl) => (
           <button
             key={tpl.id}
             type="button"
             onClick={() => setEditing(tpl)}
-            className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-4 text-left hover:border-slate-300 dark:hover:border-white/[0.15] transition-colors"
+            className="rounded-[11px] border border-black/[0.08] bg-white p-4 text-left shadow-sm hover:border-[#A8B2EE] transition-colors"
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h4 className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
-                  {tpl.name}
-                </h4>
-                {(tpl.flow_type || tpl.email_number) && (
-                  <span className="text-[11px] text-slate-500 dark:text-white/45">
-                    {FLOW_TYPE_LABELS[tpl.flow_type ?? ""] ?? tpl.flow_type ?? ""}
-                    {tpl.email_number ? ` #${tpl.email_number}` : ""}
-                  </span>
-                )}
-              </div>
-              <Badge
-                variant={tpl.is_active ? "positive" : "neutral"}
-                showDot
-              >
+              <span className="text-[14px] font-semibold text-[#4E62D8] truncate">
+                {tpl.name}
+              </span>
+              <EGBadge tone={tpl.is_active ? "pos" : "neut"} dot>
                 {tpl.is_active ? "Ativo" : "Inativo"}
-              </Badge>
+              </EGBadge>
             </div>
+            {(tpl.flow_type || tpl.email_number) && (
+              <div className="mt-1 text-[12.5px] text-slate-500">
+                {FLOW_TYPE_LABELS[tpl.flow_type ?? ""] ?? tpl.flow_type ?? ""}
+                {tpl.email_number ? ` #${tpl.email_number}` : ""}
+              </div>
+            )}
             {tpl.tags.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {tpl.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="text-[10px] bg-slate-100 dark:bg-white/[0.06] text-slate-500 dark:text-white/50 px-1.5 py-0.5 rounded"
+                    className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded"
                   >
                     {tag}
                   </span>
                 ))}
               </div>
             )}
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400 dark:text-white/35">
+            <div className="mt-2.5 flex items-center gap-2 text-[11.5px] text-slate-400 tabular-nums">
               <span>{new Date(tpl.created_at).toLocaleDateString("pt-BR")}</span>
-              {tpl.html && <span>HTML</span>}
+              {tpl.html && (
+                <span className="rounded bg-[#EEF0FB] px-1.5 py-0.5 font-semibold text-[#4E62D8]">
+                  HTML
+                </span>
+              )}
               {tpl.copy && <span>Copy</span>}
               {!tpl.html && !tpl.copy && <span>Vazio</span>}
             </div>
-            <div className="mt-2 flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400">
-              <Pencil className="h-3 w-3" />
-              Editar
+            <div className="mt-3 border-t border-black/[0.06] pt-3">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600">
+                <Pencil className="h-3.5 w-3.5" />
+                Editar
+              </span>
             </div>
           </button>
         ))}

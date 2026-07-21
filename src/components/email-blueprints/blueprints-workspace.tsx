@@ -14,8 +14,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Mail } from "lucide-react"
-import { PageHeader } from "@/components/ui/page-header"
-import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { EGFlowPills, EGNotice, EGSecTitle } from "@/components/email-generation/ui/eg-atoms"
 import type { BlueprintRow } from "@/lib/email-blueprints/types"
 import { BlueprintList } from "./blueprint-list"
 import { BlueprintEditor } from "./blueprint-editor"
@@ -53,33 +52,26 @@ export function BlueprintsWorkspace({ initial }: Props) {
     filtered.find((b) => b.email_number === effectiveNumber) ?? null
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        icon={Mail}
+    <div className="space-y-4">
+      <EGSecTitle
+        icon={<Mail size={18} />}
         title="Email / Blueprints"
-        description="Estrutura de blocos por flow_type + email_number. Edite a composição usada em futuras lojas seedadas."
+        sub="Estrutura de blocos por flow_type › email_number. Edite a composição usada em futuras lojas seedadas."
       />
 
-      <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-[12px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <EGNotice tone="warn">
         Mudanças aqui só afetam <b>lojas geradas no futuro</b> (ou re-seed
         manual). Emails de lojas existentes mantêm a composição original.
-      </div>
+      </EGNotice>
 
-      <div className="overflow-x-auto pb-1">
-        <SegmentedTabs
-          value={selectedFlowType}
-          onValueChange={(v) => {
-            setSelectedFlowType(v)
-            setSelectedEmailNumber(null)
-          }}
-        >
-          {flowTypes.map((ft) => (
-            <SegmentedTabItem key={ft} value={ft}>
-              {ft}
-            </SegmentedTabItem>
-          ))}
-        </SegmentedTabs>
-      </div>
+      <EGFlowPills
+        items={flowTypes.map((ft) => ({ key: ft, label: ft }))}
+        value={selectedFlowType}
+        onChange={(v) => {
+          setSelectedFlowType(v)
+          setSelectedEmailNumber(null)
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_380px]">
         <BlueprintList

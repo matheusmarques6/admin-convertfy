@@ -17,10 +17,11 @@ import {
   Zap,
   Compass,
   Type,
+  UserRound,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
-import { PageHeader } from "@/components/ui/page-header"
-import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { C, F } from "@/components/email-generation/ui/eg-theme"
+import { EGSecTitle } from "@/components/email-generation/ui/eg-atoms"
 import type { AgentType } from "@/types/email-generation"
 import type { ListPromptsResult, PromptRow } from "@/lib/services/prompt-management.service"
 import { PromptEditor } from "@/components/agents/prompt-editor"
@@ -75,44 +76,78 @@ export function PromptsWorkspace({ initial }: Props) {
   const group = byType[tab]
 
   return (
-    <div className="space-y-5 max-w-[1100px]">
-      <PageHeader
+    <div className="max-w-[1100px]">
+      <EGSecTitle
+        icon={<UserRound size={18} />}
         title="Agentes / Prompts"
-        description="Edite prompts por tipo de agente com versionamento e rollback. Mudanças afetam toda nova geração."
+        sub="Edite prompts por tipo de agente com versionamento e rollback. Mudanças afetam toda nova geração."
       />
 
-      <SegmentedTabs value={tab} onValueChange={(v) => setTab(v as AgentType)}>
+      {/* Chips de agente (maquete EG): borda brand + versão quando ativo */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          marginBottom: 18,
+        }}
+      >
         {(Object.keys(AGENT_LABELS) as AgentType[]).map((at) => {
           const Icon = AGENT_ICONS[at]
+          const on = at === tab
+          const version = byType[at].active?.version
           return (
-            <SegmentedTabItem key={at} value={at}>
-              <span className="inline-flex items-center gap-1.5">
-                <Icon className="h-3.5 w-3.5" />
-                {AGENT_LABELS[at]}
-                {byType[at].active && (
-                  <span className="text-[10px] text-slate-400 dark:text-white/40">
-                    v{byType[at].active!.version}
-                  </span>
-                )}
-              </span>
-            </SegmentedTabItem>
+            <button
+              key={at}
+              type="button"
+              onClick={() => setTab(at)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 12px",
+                borderRadius: 7,
+                border: `1px solid ${on ? C.brand : C.border}`,
+                background: on ? C.blue50 : C.white,
+                color: on ? C.brand : C.g600,
+                fontSize: 12.5,
+                fontWeight: on ? 600 : 500,
+                fontFamily: F.sans,
+                cursor: "pointer",
+              }}
+            >
+              <Icon size={14} />
+              {AGENT_LABELS[at]}
+              {version != null && (
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    color: on ? C.brand : C.g400,
+                  }}
+                >
+                  v{version}
+                </span>
+              )}
+            </button>
           )
         })}
-      </SegmentedTabs>
+      </div>
 
-      <PromptEditor
-        key={tab}
-        agentType={tab}
-        activePrompt={group.active}
-        onSaved={() => mutate()}
-      />
+      <div className="space-y-5">
+        <PromptEditor
+          key={tab}
+          agentType={tab}
+          activePrompt={group.active}
+          onSaved={() => mutate()}
+        />
 
-      <PromptHistory
-        agentType={tab}
-        active={group.active}
-        history={group.history as PromptRow[]}
-        onChanged={() => mutate()}
-      />
+        <PromptHistory
+          agentType={tab}
+          active={group.active}
+          history={group.history as PromptRow[]}
+          onChanged={() => mutate()}
+        />
+      </div>
     </div>
   )
 }

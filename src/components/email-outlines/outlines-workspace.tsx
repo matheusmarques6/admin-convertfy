@@ -8,9 +8,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { LayoutTemplate } from "lucide-react"
-import { PageHeader } from "@/components/ui/page-header"
-import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { Layers, Plus } from "lucide-react"
+import { C, F } from "@/components/email-generation/ui/eg-theme"
+import {
+  EGFlowPills,
+  EGSecTitle,
+} from "@/components/email-generation/ui/eg-atoms"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 const FLOW_TYPES = [
@@ -216,44 +219,52 @@ export function OutlinesWorkspace() {
   }
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        icon={LayoutTemplate}
+    <div>
+      <EGSecTitle
+        icon={<Layers size={18} />}
         title="Email / Estrutura geral"
-        description="Diretriz de alto nível por email do flow. O agente a expande no blueprint detalhado de cada loja."
+        sub="Diretriz de alto nível por email do flow. O agente a expande no blueprint detalhado de cada loja."
       />
 
-      <div className="overflow-x-auto pb-1">
-        <SegmentedTabs
-          value={tab}
-          onValueChange={(v) => {
-            setTab(v)
-            setSelectedId(null)
-            setForm(emptyForm(v))
-          }}
-        >
-          {FLOW_TYPES.map((ft) => (
-            <SegmentedTabItem key={ft} value={ft}>
-              {ft}
-            </SegmentedTabItem>
-          ))}
-        </SegmentedTabs>
-      </div>
+      <EGFlowPills
+        items={FLOW_TYPES.map((ft) => ({ key: ft, label: ft }))}
+        value={tab}
+        onChange={(v) => {
+          setTab(v)
+          setSelectedId(null)
+          setForm(emptyForm(v))
+        }}
+      />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[160px_minmax(0,1fr)]">
+        <div className="space-y-1.5">
           <button
             type="button"
             onClick={startNew}
-            className="w-full rounded-[6px] border border-dashed border-slate-300 px-3 py-2 text-[13px] text-slate-600 hover:bg-slate-50 dark:border-white/15 dark:text-white/60 dark:hover:bg-white/[0.04]"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              width: "100%",
+              height: 36,
+              borderRadius: 8,
+              border: `1px solid ${C.blue100}`,
+              background: C.blue50,
+              color: C.brand,
+              fontSize: 12.5,
+              fontWeight: 600,
+              fontFamily: F.sans,
+              cursor: "pointer",
+            }}
           >
-            + Novo email de {tab}
+            <Plus size={14} /> Novo email
           </button>
           {loading ? (
             <p className="px-1 text-[12px] text-slate-400">Carregando…</p>
           ) : filtered.length === 0 ? (
-            <p className="px-1 text-[12px] text-slate-400">
-              Nenhum outline de {tab}.
+            <p className="px-1 py-2 text-[12px] text-slate-400">
+              Nenhum email definido.
             </p>
           ) : (
             filtered.map((o) => (
@@ -261,15 +272,15 @@ export function OutlinesWorkspace() {
                 key={o.id}
                 type="button"
                 onClick={() => selectOutline(o)}
-                className={`block w-full rounded-[6px] border px-3 py-2 text-left text-[13px] ${
+                className={`block w-full rounded-[8px] border px-3 py-2 text-left text-[13px] bg-white ${
                   selectedId === o.id
-                    ? "border-slate-900 bg-slate-50 dark:border-white/40 dark:bg-white/[0.06]"
-                    : "border-slate-200 hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-white/[0.04]"
+                    ? "border-[#4E62D8] bg-[#EEF0FB] font-semibold text-[#4E62D8]"
+                    : "border-black/[0.08] text-slate-700 hover:bg-slate-50"
                 }`}
               >
                 Email #{o.email_number}
                 {textOnlyFlags[`${o.flow_type}:${o.email_number}`] && (
-                  <span className="ml-2 rounded-[3px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                  <span className="ml-2 rounded-[3px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">
                     texto
                   </span>
                 )}
@@ -281,7 +292,7 @@ export function OutlinesWorkspace() {
           )}
         </div>
 
-        <div className="space-y-3 rounded-[6px] border border-slate-200 p-4 dark:border-white/[0.08]">
+        <div className="space-y-3 rounded-[12px] border border-black/[0.08] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium">
               {selectedId ? `Editar (${tab} #${form.email_number})` : "Novo outline"}

@@ -22,46 +22,49 @@ export function BlueprintList({
   onSelect,
 }: Props) {
   return (
-    <div className="rounded-[6px] border border-slate-200 bg-white p-2 dark:border-white/[0.08] dark:bg-white/[0.02]">
-      <div className="space-y-1">
-        {blueprints.map((b) => {
-          const isActive = b.email_number === selectedEmailNumber
-          return (
-            <button
-              key={`${b.flow_type}:${b.email_number}`}
-              type="button"
-              onClick={() => onSelect(b.email_number)}
-              className={cn(
-                "w-full rounded-[4px] px-2 py-2 text-left text-[12px] transition-colors",
-                "hover:bg-slate-50 dark:hover:bg-white/[0.04]",
-                isActive &&
-                  "bg-slate-100 dark:bg-white/[0.06]",
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  Email #{b.email_number}
-                </span>
-                <span className="flex items-center gap-1">
-                  {b.text_only && <BadgeTextOnly />}
-                  <BadgeSource source={b.source} />
-                </span>
-              </div>
-              <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500 dark:text-white/40">
-                {b.objective}
-              </p>
-              <p className="mt-1 text-[10px] text-slate-400 dark:text-white/30">
-                {b.blocks.length} bloco{b.blocks.length === 1 ? "" : "s"}
-              </p>
-            </button>
-          )
-        })}
-        {blueprints.length === 0 && (
-          <p className="px-2 py-3 text-center text-[12px] text-slate-400">
-            Nenhum blueprint pra este flow.
-          </p>
-        )}
-      </div>
+    <div className="space-y-1.5">
+      {blueprints.map((b) => {
+        const isActive = b.email_number === selectedEmailNumber
+        return (
+          <button
+            key={`${b.flow_type}:${b.email_number}`}
+            type="button"
+            onClick={() => onSelect(b.email_number)}
+            className={cn(
+              "w-full rounded-[9px] border px-3 py-2.5 text-left text-[12px] transition-colors bg-white",
+              isActive
+                ? "border-[#4E62D8] bg-[#EEF0FB]"
+                : "border-black/[0.08] hover:bg-slate-50",
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={cn(
+                  "font-semibold",
+                  isActive ? "text-[#4E62D8]" : "text-slate-900",
+                )}
+              >
+                Email #{b.email_number}
+              </span>
+              <span className="flex items-center gap-1">
+                {b.text_only && <BadgeTextOnly />}
+                <BadgeSource source={b.source} />
+              </span>
+            </div>
+            <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
+              {b.objective}
+            </p>
+            <p className="mt-1 text-[10px] text-slate-400">
+              {b.blocks.length} bloco{b.blocks.length === 1 ? "" : "s"}
+            </p>
+          </button>
+        )
+      })}
+      {blueprints.length === 0 && (
+        <p className="px-2 py-3 text-center text-[12px] text-slate-400">
+          Nenhum blueprint pra este flow.
+        </p>
+      )}
     </div>
   )
 }
