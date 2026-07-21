@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
   ArrowRightLeft,
@@ -17,7 +17,7 @@ import {
   Trophy,
   X as XIcon,
 } from "lucide-react"
-import { WhatsAppChatPopup } from "./inbox/whatsapp-chat-popup"
+import { normalizePhone } from "@/lib/whatsapp/phone"
 
 // ─── Tipos ──────────────────────────────────────────────────────
 
@@ -275,12 +275,19 @@ export function DealCard({
     return null
   }, [deal.next_step, deal.activities_pending, days, isCritical, isWarn])
 
-  // WhatsApp: popup in-app com a conversa do inbox (não mais wa.me)
-  const [waOpen, setWaOpen] = useState(false)
+  // WhatsApp: abre o WhatsApp Web/app (wa.me) com o número do lead.
   const hasWhatsApp = useMemo(() => {
     if (!deal.contact_phone) return false
     return deal.contact_phone.replace(/\D/g, "").length >= 10
   }, [deal.contact_phone])
+  const openWhatsApp = () => {
+    const raw = deal.contact_phone
+    if (!raw) return
+    const digits = normalizePhone(raw) ?? raw.replace(/\D/g, "")
+    if (digits) {
+      window.open(`https://wa.me/${digits}`, "_blank", "noopener,noreferrer")
+    }
+  }
 
   const mailtoLink = deal.contact_email
     ? `mailto:${deal.contact_email}`
@@ -558,14 +565,14 @@ export function DealCard({
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                setWaOpen(true)
+                openWhatsApp()
               }}
               onKeyDown={(e) => {
                 // Enter/Space não podem borbulhar pro onKeyDown do card
                 if (e.key === "Enter" || e.key === " ") e.stopPropagation()
               }}
-              title="Abrir conversa no WhatsApp"
-              aria-label="Abrir conversa no WhatsApp"
+              title="Abrir no WhatsApp"
+              aria-label="Abrir no WhatsApp"
               className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-[6px]"
               style={{
                 background: "var(--crm-gray-0)",
@@ -596,22 +603,6 @@ export function DealCard({
       </div>
 
       {/* Stage color visual hint REMOVIDO — nao existe no prototipo V2 */}
-
-      {/* Popup montado SÓ quando aberto — o card renderiza N vezes no
-          board, não infla a árvore. Vai por portal pro body (não briga
-          com o drag-and-drop). */}
-      {waOpen && deal.contact_phone && (
-        <WhatsAppChatPopup
-          open
-          onClose={() => setWaOpen(false)}
-          phone={deal.contact_phone}
-          // Sem fallback pro title — título de deal não pode virar
-          // nome de contato persistido na thread.
-          contactName={deal.client?.name}
-          dealId={deal.id}
-          clientId={deal.client?.id}
-        />
-      )}
     </div>
   )
 }
