@@ -225,7 +225,10 @@ async function markEmailFailed(
 }
 
 // ── Helper: soma cost dos runs do email no batch e grava em email ───
-async function rollupTotalCost(emailId: string, batchId: string): Promise<void> {
+async function rollupTotalCost(
+  emailId: string,
+  batchId: string,
+): Promise<number> {
   const admin = createAdminClient()
   const { data } = await admin
     .from("email_generation_runs")
@@ -240,6 +243,28 @@ async function rollupTotalCost(emailId: string, batchId: string): Promise<void> 
     .from("email_flow_emails")
     .update({ total_cost_cents: total })
     .eq("id", emailId)
+  return total
+}
+
+// Rollup + alerta de custo (settings.cost_alert_usd). Fire-and-forget:
+// nunca propaga falha pro pipeline.
+async function rollupCostAndMaybeAlert(input: {
+  storeId: string
+  emailId: string
+  batchId: string
+  costAlertUsd: number | null
+}): Promise<void> {
+  const total = await rollupTotalCost(input.emailId, input.batchId)
+  if (input.costAlertUsd != null && total / 100 > input.costAlertUsd) {
+    const { notifyCostAlert } = await import("./generation-notify.service")
+    await notifyCostAlert({
+      storeId: input.storeId,
+      emailId: input.emailId,
+      batchId: input.batchId,
+      totalCostCents: total,
+      thresholdUsd: input.costAlertUsd,
+    }).catch(() => {})
+  }
 }
 
 // ── Helper: carrega contexto minimo para image + html + qa ────────────
@@ -322,7 +347,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     orgId
       ? admin
           .from("email_generation_settings")
-          .select("generate_images")
+          .select(
+            "generate_images, qa_vision_enabled, refiner_enabled, cost_alert_usd",
+          )
           .eq("org_id", orgId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -352,7 +379,17 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       .maybeSingle(),
   ])
 
-  const generateImages = (settingsRes.data?.generate_images as boolean | undefined) ?? true
+  const settingsRow = settingsRes.data as {
+    generate_images?: boolean | null
+    qa_vision_enabled?: boolean | null
+    refiner_enabled?: boolean | null
+    cost_alert_usd?: number | null
+  } | null
+  const generateImages = settingsRow?.generate_images ?? true
+  // NULL = respeita env (decisão fica no qa.chain); true/false = override da UI.
+  const qaVisionEnabled = settingsRow?.qa_vision_enabled ?? null
+  const refinerEnabled = settingsRow?.refiner_enabled ?? true
+  const costAlertUsd = settingsRow?.cost_alert_usd ?? null
 
   // Defesa contra o bug recorrente "store_brand_identities" (plural —
   // tabela nao existe). Supabase JS engole 42P01 em maybeSingle() e
@@ -382,6 +419,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     htmlConfig: (htmlConfigRes.data as EmailAgentConfig | null) ?? null,
     topProducts,
     generateImages,
+    qaVisionEnabled,
+    refinerEnabled,
+    costAlertUsd,
     blueprintObjective,
     // ── AE-11: contexto extra para o agente de imagem ───────────
     blueprint: blueprintFull,
@@ -1144,6 +1184,12 @@ async function runRefinerStep(input: {
 }): Promise<string> {
   const { ctx, finalHtml, storeId, flowId, emailId, triggeredBy, batchId, routeT0 } = input
 
+  // Kill-switch via settings (aba Configurações → Refino tipográfico).
+  if (ctx.refinerEnabled === false) {
+    log.info("phase2.refiner.disabled_by_settings", { emailId })
+    return finalHtml
+  }
+
   // Sem row ativa → no-op absoluto (nem run é criado). Kill switch por DB.
   const config = ctx.refinerConfig
   if (!config) return finalHtml
@@ -1604,7 +1650,7 @@ export async function runPhase2HtmlQa(
     await markEmailFailed(emailId, failureReason)
     await safeNotifyEmailFailed(storeId, emailId, failureReason, batchId || null)
     if (batchId) {
-      await rollupTotalCost(emailId, batchId).catch(() => {})
+      await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
       await checkBatchTerminal(storeId, batchId).catch(() => {})
     }
     return { status: "failed" }
@@ -1675,7 +1721,7 @@ export async function runPhase2HtmlQa(
         issues_count: renderIssues.length,
       },
     }).catch(() => {})
-    if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
+    if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
     log.info("phase2.qa.disabled_ready", { storeId, emailId, batchId })
     return { status: "ready" }
@@ -1728,6 +1774,7 @@ export async function runPhase2HtmlQa(
       briefing: ctx.briefing,
       brand: ctx.brand,
       blueprintObjective: ctx.blueprintObjective,
+      qaVisionEnabled: ctx.qaVisionEnabled,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"
@@ -1755,7 +1802,7 @@ export async function runPhase2HtmlQa(
       })
       .eq("id", emailId)
     await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
-    if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
+    if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
     log.info("phase2.qa.blocked", { emailId, issuesCount: qaResult.issues.length })
     return { status: "failed" }
@@ -1771,7 +1818,7 @@ export async function runPhase2HtmlQa(
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)
-  if (batchId) await rollupTotalCost(emailId, batchId).catch(() => {})
+  if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
   if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
 
   log.info("phase2.done", { storeId, emailId, batchId })

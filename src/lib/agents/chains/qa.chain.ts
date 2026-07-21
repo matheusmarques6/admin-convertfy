@@ -329,6 +329,10 @@ export interface RunQaAgentInput {
   briefing: StoreBriefing | null
   brand: StoreBrandIdentity | null
   blueprintObjective: string
+  // Override do QA Vision vindo de email_generation_settings.qa_vision_enabled.
+  // null/undefined = respeita a env EMAIL_QA_VISION_ENABLED (comportamento
+  // original); true/false = decisão explícita da aba Configurações.
+  qaVisionEnabled?: boolean | null
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -573,7 +577,8 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   // (sem image_nicho_mismatch high da Etapa 1 textual).
   // Falha graceful: vision throw/timeout vira 0 issues + log.warn em
   // runQaVisionCheck — nao bloqueia o passed do textual.
-  const visionEnabled = process.env.EMAIL_QA_VISION_ENABLED === "true"
+  const visionEnabled =
+    input.qaVisionEnabled ?? process.env.EMAIL_QA_VISION_ENABLED === "true"
   // Marca se vision realmente executou (lido pela view v_email_generation_logs
   // pra derivar bucket 'qavision' no dashboard).
   let visionRan = false

@@ -131,6 +131,58 @@ async function sendTransactionalBatch(params: {
   return { sent, failed }
 }
 
+// ── Alerta de custo por execução (settings.cost_alert_usd) ─────────────
+// In-app para admins quando o custo total rolled-up de um email no batch
+// ultrapassa o limiar configurado. Idempotente via dedup-key (1h).
+export async function notifyCostAlert(params: {
+  storeId: string
+  emailId: string
+  batchId: string
+  totalCostCents: number
+  thresholdUsd: number
+}): Promise<void> {
+  try {
+    const dedupKey = `email_gen_cost_alert:${params.emailId}:${params.batchId}`
+    if (await checkDedupKey(dedupKey)) return
+
+    const admin = createAdminClient()
+    const { data: emailRow } = await admin
+      .from("email_flow_emails")
+      .select("name, number")
+      .eq("id", params.emailId)
+      .maybeSingle()
+    const { data: storeRow } = await admin
+      .from("client_stores")
+      .select("store_name")
+      .eq("id", params.storeId)
+      .maybeSingle()
+    const storeName = (storeRow?.store_name as string | undefined) ?? "Loja"
+    const emailName = (emailRow?.name as string | undefined) ?? "Email"
+    const totalUsd = (params.totalCostCents / 100).toFixed(2)
+
+    await notificationService.notifyByRole(["admin"], {
+      title: `Custo de geracao acima do limite: ${storeName}`,
+      body: `${emailName}: US$ ${totalUsd} (limite US$ ${params.thresholdUsd.toFixed(2)})`,
+      type: "warning",
+      link: `/admin/settings/email-generation-logs?batch=${params.batchId}`,
+      event_id: `email-gen-cost-${params.emailId}-${params.batchId}`,
+      metadata: {
+        dedup_key: dedupKey,
+        source: "email-generation",
+        store_id: params.storeId,
+        email_id: params.emailId,
+        batch_id: params.batchId,
+        total_cost_cents: params.totalCostCents,
+        threshold_usd: params.thresholdUsd,
+      },
+    })
+  } catch (err) {
+    log.warn("notify.cost_alert.fatal", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 // ── AE-7.2: notifyEmailFailed ──────────────────────────────────────────
 // Dispara para tag CTO + email transacional quando um email termina em
 // `failed` no pipeline (qualquer fase: copy timeout, image, html, qa, etc).

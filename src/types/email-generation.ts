@@ -178,6 +178,16 @@ export interface EmailGenerationSettings {
   notify_on_error: boolean
   notify_on_success: boolean
   notify_emails: string[]
+  // Parâmetros globais do pipeline (migration 20261005).
+  // qa_vision_enabled: NULL = respeita env EMAIL_QA_VISION_ENABLED.
+  qa_vision_enabled: boolean | null
+  refiner_enabled: boolean
+  max_blocks_per_email: number
+  default_model: string | null
+  // Câmbio US$→R$ nos logs (NULL = cotação online com cache).
+  usd_brl_rate: number | null
+  // Alerta por execução acima deste custo (US$). NULL = sem alerta.
+  cost_alert_usd: number | null
   updated_at: string
   updated_by: string | null
 }

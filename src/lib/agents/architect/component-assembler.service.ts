@@ -314,6 +314,9 @@ export interface AssembleReferenceInput {
   // Estrutura geral do outline (categoria + rótulo original), na ordem. É o
   // que o Montador segue pra gerar 1 bloco por componente.
   structure: OutlineSection[]
+  // Modelo default da aba Configurações — usado nos fallbacks quando o
+  // agente (Curador/Montador) NÃO tem config ativa em email_agent_configs.
+  defaultModel?: string | null
 }
 
 export type ReferenceSource = "llm" | "global" | "none"
@@ -403,7 +406,7 @@ export async function assembleStoreReference(
         user_template: chooserRow.user_template,
       }
     : {
-        model: DEFAULT_CHOOSER_MODEL,
+        model: input.defaultModel ?? DEFAULT_CHOOSER_MODEL,
         temperature: 0.2,
         max_tokens: 2048,
         system_prompt: DEFAULT_CHOOSER_SYSTEM,
@@ -536,7 +539,7 @@ export async function assembleStoreReference(
         user_template: harmRow.user_template,
       }
     : {
-        model: DEFAULT_MODEL,
+        model: input.defaultModel ?? DEFAULT_MODEL,
         temperature: 0.3,
         max_tokens: 16384,
         system_prompt: DEFAULT_ASSEMBLER_SYSTEM,

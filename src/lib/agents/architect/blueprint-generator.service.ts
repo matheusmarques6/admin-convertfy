@@ -286,6 +286,8 @@ export interface GenerateBlueprintInput {
   referenceHtml: string
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
   pesquisa: string
+  // Modelo default da aba Configurações — fallback sem config ativa.
+  defaultModel?: string | null
 }
 
 export interface GenerateBlueprintResult {
@@ -311,7 +313,7 @@ export async function generateStoreBlueprint(
         user_template: cfgRow.user_template,
       }
     : {
-        model: DEFAULT_MODEL,
+        model: input.defaultModel ?? DEFAULT_MODEL,
         temperature: 0.4,
         // 8192 p/ caber 1 bloco por seção, purpose detalhado + image_brief.
         max_tokens: 8192,

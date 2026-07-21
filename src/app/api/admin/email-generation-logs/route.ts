@@ -274,10 +274,19 @@ export async function GET(request: NextRequest) {
     const externalRuns = byAgent.get("copy")?.runs ?? 0
     const totalRuns = trackedRuns + externalRuns
 
-    // Pega cotação atual (cacheada 1h pelo exchange-rate.service).
+    // Câmbio: override manual em email_generation_settings.usd_brl_rate
+    // (aba Configurações) tem prioridade; sem override, cotação online
+    // (cacheada 1h pelo exchange-rate.service).
     let fxBrlRate: number | null = null
     try {
-      fxBrlRate = await convertToBRL(1, "USD")
+      const { data: fxSettings } = await admin
+        .from("email_generation_settings")
+        .select("usd_brl_rate")
+        .not("usd_brl_rate", "is", null)
+        .limit(1)
+        .maybeSingle()
+      const manualRate = (fxSettings?.usd_brl_rate as number | null) ?? null
+      fxBrlRate = manualRate ?? (await convertToBRL(1, "USD"))
     } catch (e) {
       log.warn("fx_brl_failed", { error: e instanceof Error ? e.message : String(e) })
     }

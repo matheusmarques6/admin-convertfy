@@ -16,6 +16,13 @@ const patchSchema = z.object({
   notify_on_error: z.boolean().optional(),
   notify_on_success: z.boolean().optional(),
   notify_emails: z.array(z.string().email()).optional(),
+  // Parâmetros globais do pipeline (migration 20261005)
+  qa_vision_enabled: z.boolean().nullable().optional(),
+  refiner_enabled: z.boolean().optional(),
+  max_blocks_per_email: z.number().int().min(3).max(15).optional(),
+  default_model: z.string().min(1).nullable().optional(),
+  usd_brl_rate: z.number().positive().max(100).nullable().optional(),
+  cost_alert_usd: z.number().positive().max(1000).nullable().optional(),
 })
 
 export async function GET(request: NextRequest) {

@@ -144,9 +144,36 @@ export async function generateBlueprintAndReference(
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica p/ os agentes.
   const pesquisa = pesquisaToFullText(store as PesquisaFields)
 
+  // Parâmetros globais do pipeline (aba Configurações): clamp de blocos por
+  // email e modelo default usado como fallback quando o agente não tem
+  // config ativa em email_agent_configs.
+  const orgId = (store.org_id as string | undefined) ?? null
+  let maxBlocksPerEmail: number | null = null
+  let defaultModel: string | null = null
+  if (orgId) {
+    const { data: settingsRow } = await admin
+      .from("email_generation_settings")
+      .select("max_blocks_per_email, default_model")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    maxBlocksPerEmail =
+      (settingsRow?.max_blocks_per_email as number | undefined) ?? null
+    defaultModel = (settingsRow?.default_model as string | undefined) ?? null
+  }
+
   // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
   // (categoria + rótulo original de cada bloco, na ordem).
-  const structure = resolveStructure(outline)
+  let structure = resolveStructure(outline)
+  if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
+    log.info("architect.structure_clamped", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      from: structure.length,
+      to: maxBlocksPerEmail,
+    })
+    structure = structure.slice(0, maxBlocksPerEmail)
+  }
   const { html, source } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
@@ -166,6 +193,7 @@ export async function generateBlueprintAndReference(
     outlineToneHint: outline?.tone_hint ?? "",
     referenceTemplateHtml: refTemplateHtml ?? "",
     structure,
+    defaultModel,
   })
 
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.
@@ -184,6 +212,7 @@ export async function generateBlueprintAndReference(
     outline,
     pesquisa,
     referenceHtml: html ?? "",
+    defaultModel,
   })
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.
