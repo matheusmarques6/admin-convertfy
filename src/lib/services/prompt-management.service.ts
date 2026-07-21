@@ -415,5 +415,32 @@ export function canManagePrompts(actor: PromptManagementActor): boolean {
   return false
 }
 
+/**
+ * Gate reutilizável para as rotas do hub de Geração de Emails: busca o
+ * profile e lança ForbiddenError se o usuário não puder gerir prompts
+ * (admin/owner OU tag `dev`). Mesmo critério de `/api/admin/agents/prompts`
+ * e `/api/admin/settings/email-generation-logs`.
+ */
+export async function assertCanManagePrompts(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<PromptManagementActor> {
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, role, tags")
+    .eq("id", userId)
+    .maybeSingle()
+  const actor: PromptManagementActor = {
+    id: userId,
+    role: (profile as { role?: string | null } | null)?.role ?? null,
+    tags: ((profile as { tags?: string[] } | null)?.tags ?? []) as string[],
+  }
+  if (!canManagePrompts(actor)) {
+    const { ForbiddenError } = await import("@/lib/api/errors")
+    throw new ForbiddenError()
+  }
+  return actor
+}
+
 // Re-export para uso em error responses
 export { AppError, ConflictError, NotFoundError, ValidationError }

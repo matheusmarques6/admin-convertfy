@@ -168,6 +168,10 @@ export async function GET(request: NextRequest) {
           "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, store_id, store_name, email_id, email_name, email_position, flow_id, flow_type, is_qa_vision",
         )
         .gte("created_at", since)
+        // component_test é teste ad-hoc da biblioteca (aba Componentes), não
+        // faz parte de nenhuma geração real — fora dos KPIs do pipeline (senão
+        // cairia no bucket 'seed' e inflaria custo/execuções).
+        .neq("agent", "component_test")
         .order("created_at", { ascending: false })
         .range(offset, offset + PAGE - 1)
 

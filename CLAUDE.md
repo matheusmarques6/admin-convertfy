@@ -1189,11 +1189,19 @@ required,example,guidance}]). Teste ad-hoc por variante: `POST
 (email_flow_emails com generation_batch_id, índice parcial
 idx_efe_generated_recent) + drill-down no GeneratedInspector.
 
-**Teste com contexto livre**: `test_context` no POST generate-email flui
-pro Architect via `{{outline_guidance}}` (prioridade) e pro payload n8n
-(chave aditiva `test_context`). O payload de copy também leva
-`component_variants` por email (variant_id, name, copy_guidance,
-output_schema — aditivo; n8n ignora até consumir).
+**Teste com contexto livre**: `test_context` no POST generate-email vai
+APENAS pro payload de copy do n8n (chave aditiva `test_context`) — NÃO pro
+Architect, porque a arquitetura/blueprint/variantes são persistidos em
+store_email_references/store_email_blueprints (linha de produção reusada
+pelo dispatch) e enviesá-los com contexto de teste vazaria pra copies de
+produção. O payload de copy também leva `component_variants` por email
+(variant_id, name, copy_guidance, output_schema — aditivo; n8n ignora até
+consumir).
+
+**Autorização das rotas do hub**: todas as rotas novas/alteradas
+(`/api/admin/components*`, `generated-emails`, `email-generation-settings`)
+usam `assertCanManagePrompts` (admin/owner OU tag `dev`) — mesmo gate das
+rotas de prompts/logs, via helper em `prompt-management.service.ts`.
 
 ---
 

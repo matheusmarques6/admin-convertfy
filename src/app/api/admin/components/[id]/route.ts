@@ -5,6 +5,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 
@@ -38,8 +39,9 @@ export async function PATCH(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const parsed = patchSchema.parse(await request.json())
     const { data, error } = await admin
@@ -63,8 +65,9 @@ export async function DELETE(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const { error } = await admin
       .from("email_component_variants")

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("EmailGenerationSettings")
@@ -28,8 +29,9 @@ const patchSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const orgId = request.nextUrl.searchParams.get("org_id")
     if (!orgId) {
@@ -60,6 +62,7 @@ export async function PATCH(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const body = await request.json()
     const parsed = patchSchema.parse(body)

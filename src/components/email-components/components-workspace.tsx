@@ -381,6 +381,10 @@ export function ComponentsWorkspace() {
             onChange={setDraft}
             testCard={
               <VariantTestCard
+                // key atrelada à variante: remonta (reseta result/briefing) ao
+                // trocar de variante ou clicar "Nova" — senão o card mostraria
+                // os campos/preview do teste da variante ANTERIOR.
+                key={selectedId ?? "new"}
                 variantId={selectedId}
                 html={draft.html}
                 schema={draft.output_schema}

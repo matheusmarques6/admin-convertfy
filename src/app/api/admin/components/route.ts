@@ -6,6 +6,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
@@ -37,8 +38,9 @@ const postSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const blockType = request.nextUrl.searchParams.get("block_type")
     const isActiveRaw = request.nextUrl.searchParams.get("is_active")
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const parsed = postSchema.parse(await request.json())
     const { data, error } = await admin

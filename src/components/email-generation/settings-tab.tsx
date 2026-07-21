@@ -21,6 +21,7 @@ import {
   EGInput,
   EGLabel,
   EGSecTitle,
+  EGSelect,
   EGToggle,
 } from "./ui/eg-atoms"
 
@@ -197,18 +198,30 @@ export function SettingsTab() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <SettingRow
               title="QA Vision"
-              sub={
-                merged.qa_vision_enabled === null
-                  ? "Revisão visual automática do HTML (padrão: env do servidor)"
-                  : "Revisão visual automática do HTML"
-              }
+              sub="Revisão visual automática do HTML"
             >
-              <EGToggle
-                on={merged.qa_vision_enabled === true}
-                onChange={(v) =>
-                  setForm((f) => ({ ...f, qa_vision_enabled: v }))
-                }
-              />
+              <div style={{ width: 170, flexShrink: 0 }}>
+                <EGSelect
+                  value={
+                    merged.qa_vision_enabled === null
+                      ? "default"
+                      : merged.qa_vision_enabled
+                        ? "on"
+                        : "off"
+                  }
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      qa_vision_enabled: v === "default" ? null : v === "on",
+                    }))
+                  }
+                  options={[
+                    { value: "default", label: "Padrão do servidor" },
+                    { value: "on", label: "Ligado" },
+                    { value: "off", label: "Desligado" },
+                  ]}
+                />
+              </div>
             </SettingRow>
             <SettingRow
               title="Refino tipográfico"

@@ -16,6 +16,7 @@ import {
   requireAuth,
   successResponse,
 } from "@/lib/api/errors"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 import type {
   ComponentOutputField,
@@ -106,6 +107,7 @@ export async function POST(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const parsed = bodySchema.parse(await request.json())
 

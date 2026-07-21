@@ -9,6 +9,7 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GeneratedEmails")
@@ -60,8 +61,9 @@ interface RawRow {
 export async function GET(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertCanManagePrompts(admin, user.id)
 
     const sp = request.nextUrl.searchParams
     const storeId = sp.get("store_id")

@@ -93,3 +93,26 @@ export function resolveSections(
 ): string[] {
   return resolveStructure(outline).map((s) => s.section)
 }
+
+/**
+ * Limita a estrutura a no máximo `max` blocos SEM cortar as bordas: preserva
+ * a abertura (header/hero...) e o footer (compliance/descadastro), aparando o
+ * MIOLO. Cortar a cauda direto (slice(0,max)) removeria o footer e o CTA/oferta
+ * finais — regressão legal e de conversão.
+ */
+export function clampStructure(
+  structure: OutlineSection[],
+  max: number,
+): OutlineSection[] {
+  if (!Number.isFinite(max) || max < 1 || structure.length <= max) {
+    return structure
+  }
+  const last = structure[structure.length - 1]
+  const footer = last?.section === "footer" ? last : null
+  const head = footer ? structure.slice(0, -1) : structure
+  // Reserva 1 slot para o footer quando ele existe; mantém a abertura e
+  // apara o miolo pelo fim.
+  const room = footer ? Math.max(1, max - 1) : max
+  const trimmed = head.slice(0, room)
+  return footer ? [...trimmed, footer] : trimmed
+}

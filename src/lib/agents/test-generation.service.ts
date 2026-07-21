@@ -42,8 +42,12 @@ export interface TestGenerationInput {
   fullPipeline?: boolean
   /**
    * Contexto livre do operador (aba Testar → "Objetivo / contexto").
-   * Vai pro Architect (via {{outline_guidance}}) e pro payload da copy
-   * (chave aditiva `test_context`).
+   * Vai APENAS pro payload da copy (chave aditiva `test_context`) — NÃO
+   * pro Architect: a arquitetura/blueprint/variantes são persistidos em
+   * store_email_references/store_email_blueprints (linha de PRODUÇÃO,
+   * reusada pelo dispatch), então enviesá-los com o contexto de teste
+   * vazaria pra copies de produção. A copy é regenerada a cada dispatch,
+   * então recebê-lo ali é seguro.
    */
   testContext?: string
 }
@@ -118,7 +122,6 @@ export async function runTestGeneration(
         batchId,
         triggeredBy,
         force: true,
-        contextOverride: input.testContext,
       })
     } catch (err) {
       return {
@@ -221,7 +224,6 @@ export async function runTestGeneration(
         emailNumber,
         batchId,
         triggeredBy,
-        contextOverride: input.testContext,
       })
     }
 
