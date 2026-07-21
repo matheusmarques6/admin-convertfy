@@ -55,8 +55,38 @@ function ruleValues(value: QualifiedRule["value"]): string[] {
   return s === "" ? [] : [s]
 }
 
-function evaluateRule(rule: QualifiedRule, answers: Record<string, unknown>): boolean {
-  const rawStrings = rawToStrings(answers[rule.field_id])
+/** Campo mínimo p/ resolver a regra por label quando o id não bate. */
+export interface QualifiedField {
+  id: string
+  label?: string | null
+}
+
+/**
+ * Resolve o valor da resposta para uma regra: tenta o `field_id`; se o id
+ * não existe nas answers (ex.: ids regenerados no editor), faz fallback pelo
+ * `field_label` — acha o campo atual com esse label e usa o id dele.
+ */
+function resolveAnswer(
+  rule: QualifiedRule,
+  answers: Record<string, unknown>,
+  fields?: QualifiedField[],
+): unknown {
+  if (rule.field_id && Object.prototype.hasOwnProperty.call(answers, rule.field_id)) {
+    return answers[rule.field_id]
+  }
+  if (rule.field_label && fields) {
+    const f = fields.find((x) => (x.label ?? "") === rule.field_label)
+    if (f) return answers[f.id]
+  }
+  return answers[rule.field_id]
+}
+
+function evaluateRule(
+  rule: QualifiedRule,
+  answers: Record<string, unknown>,
+  fields?: QualifiedField[],
+): boolean {
+  const rawStrings = rawToStrings(resolveAnswer(rule, answers, fields))
   const vals = ruleValues(rule.value)
   const first = vals[0]
 
@@ -97,11 +127,12 @@ function evaluateRule(rule: QualifiedRule, answers: Record<string, unknown>): bo
 export function evaluateQualified(
   config: QualifiedLeadConfig | undefined,
   answers: Record<string, unknown>,
+  fields?: QualifiedField[],
 ): boolean {
   if (!config?.enabled) return false
   const rules = config.rules ?? []
   if (rules.length === 0) return false
-  const results = rules.map((r) => evaluateRule(r, answers))
+  const results = rules.map((r) => evaluateRule(r, answers, fields))
   return config.logic === "or" ? results.some(Boolean) : results.every(Boolean)
 }
 
@@ -169,6 +200,7 @@ export async function enqueueConversionEvents(
       phone: params.lead.phone,
       firstName: params.lead.firstName,
       lastName: params.lead.lastName,
+      externalId: params.leadId,
       clientIpAddress: params.request.ip,
       clientUserAgent: params.request.userAgent,
       fbc: params.request.fbc,

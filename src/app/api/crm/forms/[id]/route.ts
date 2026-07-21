@@ -117,6 +117,7 @@ const fieldUpsertSchema = z.object({
 
 const qualifiedRuleSchema = z.object({
   field_id: z.string(),
+  field_label: z.string().optional(),
   operator: z.enum([
     "equals", "not_equals", "in", "not_in",
     "contains", "gt", "gte", "lt", "lte", "is_set",
@@ -200,7 +201,10 @@ export async function PATCH(
       if (error) throw error
     }
 
-    // Replace dos fields (delete + insert).
+    // Upsert dos fields PRESERVANDO o id. Regenerar ids (delete+insert)
+    // quebra tudo que referencia crm_form_fields.id — regras de tracking e
+    // as answers historicas das submissoes. Por isso: mantem ids existentes,
+    // insere novos e deleta so os que sumiram do editor.
     if (fields !== undefined) {
       // Garante que o form e da org (RLS bypass com admin client exige check manual).
       const { data: ownForm } = await admin
@@ -213,30 +217,49 @@ export async function PATCH(
         throw new AppError("Form nao encontrado", 404, "not-found")
       }
 
-      await admin.from("crm_form_fields").delete().eq("form_id", id)
+      // Whitelist explicita (evita campos extras que nao existem no schema).
+      const toRow = (f: unknown, idx: number, keepId: boolean) => {
+        const row = f as Record<string, unknown>
+        const base: Record<string, unknown> = {
+          form_id: id,
+          field_type: row.field_type,
+          label: row.label,
+          placeholder: row.placeholder ?? null,
+          description: row.description ?? null,
+          required: row.required ?? false,
+          position: (row.position as number | undefined) ?? idx,
+          // options/validation sao NOT NULL no banco; defaulta com [] / {}
+          options: row.options ?? [],
+          validation: row.validation ?? {},
+          map_to_lead_field: row.map_to_lead_field ?? null,
+        }
+        if (keepId) base.id = row.id
+        return base
+      }
 
-      if (fields.length > 0) {
-        const payload = fields.map((f, idx) => {
-          // Whitelist explicita (evita campos extras que nao existem no schema)
-          const row = f as Record<string, unknown>
-          return {
-            form_id: id,
-            field_type: row.field_type,
-            label: row.label,
-            placeholder: row.placeholder ?? null,
-            description: row.description ?? null,
-            required: row.required ?? false,
-            position: (row.position as number | undefined) ?? idx,
-            // options/validation sao NOT NULL no banco; defaulta com [] / {}
-            options: row.options ?? [],
-            validation: row.validation ?? {},
-            map_to_lead_field: row.map_to_lead_field ?? null,
-          }
-        })
-        const { error: fErr } = await admin
+      const existing = fields.filter((f) => !!f.id)
+      const novos = fields.filter((f) => !f.id)
+      const keepIds = existing.map((f) => f.id as string)
+
+      // Deleta os campos removidos no editor (ids atuais que nao voltaram).
+      let del = admin.from("crm_form_fields").delete().eq("form_id", id)
+      if (keepIds.length > 0) {
+        del = del.not("id", "in", `(${keepIds.join(",")})`)
+      }
+      const { error: delErr } = await del
+      if (delErr) throw delErr
+
+      if (existing.length > 0) {
+        const { error: upErr } = await admin
           .from("crm_form_fields")
-          .insert(payload)
-        if (fErr) throw fErr
+          .upsert(existing.map((f, i) => toRow(f, i, true)))
+        if (upErr) throw upErr
+      }
+      if (novos.length > 0) {
+        const { error: insErr } = await admin
+          .from("crm_form_fields")
+          .insert(novos.map((f, i) => toRow(f, i, false)))
+        if (insErr) throw insErr
       }
     }
 

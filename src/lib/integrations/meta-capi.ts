@@ -1,6 +1,6 @@
 import { fetchWithRetry } from "@/lib/utils/retry"
 import { logger } from "@/lib/logger"
-import { hashEmail, hashName, hashPhone } from "@/lib/tracking/hash-pii"
+import { hashEmail, hashName, hashPhone, hashPII } from "@/lib/tracking/hash-pii"
 
 const log = logger.child("MetaCAPI")
 
@@ -24,6 +24,8 @@ export interface RawUserData {
   phone?: string | null
   firstName?: string | null
   lastName?: string | null
+  /** Id estável do lead (ex.: crm_leads.id) — vira external_id hasheado. */
+  externalId?: string | null
   /** IP do cliente (nao hasheado). */
   clientIpAddress?: string | null
   /** User-Agent do cliente (nao hasheado). */
@@ -40,6 +42,7 @@ export interface MetaUserData {
   ph?: string[]
   fn?: string[]
   ln?: string[]
+  external_id?: string[]
   client_ip_address?: string
   client_user_agent?: string
   fbc?: string
@@ -90,6 +93,9 @@ export function buildMetaUserData(raw: RawUserData): MetaUserData {
 
   const ln = hashName(raw.lastName)
   if (ln) userData.ln = [ln]
+
+  const ext = hashPII(raw.externalId)
+  if (ext) userData.external_id = [ext]
 
   if (raw.clientIpAddress) userData.client_ip_address = raw.clientIpAddress
   if (raw.clientUserAgent) userData.client_user_agent = raw.clientUserAgent

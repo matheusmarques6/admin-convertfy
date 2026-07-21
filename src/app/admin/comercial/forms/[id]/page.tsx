@@ -1750,7 +1750,12 @@ function TrackingTab({
     patch({
       qualified_rules: [
         ...tracking.qualified_rules,
-        { field_id: savedFields[0]?.id ?? "", operator: "in", value: [] },
+        {
+          field_id: savedFields[0]?.id ?? "",
+          field_label: savedFields[0]?.label,
+          operator: "in",
+          value: [],
+        },
       ],
     })
   const updateRule = (idx: number, up: Partial<QualifiedRule>) =>
@@ -1975,7 +1980,10 @@ function RuleRow({
         <div className="relative flex-1 min-w-0">
           <select
             value={rule.field_id}
-            onChange={(e) => onChange({ field_id: e.target.value })}
+            onChange={(e) => {
+              const f = fields.find((x) => x.id === e.target.value)
+              onChange({ field_id: e.target.value, field_label: f?.label })
+            }}
             className="crm-input w-full appearance-none pr-8 text-[12px]"
           >
             {fields.map((f) => (

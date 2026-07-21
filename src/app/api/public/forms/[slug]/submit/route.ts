@@ -505,7 +505,11 @@ export async function POST(
     let qualified = false
     if (metaConfigured && leadId) {
       eventId = randomUUID()
-      qualified = evaluateQualified(trackingCfg.qualified_lead, parsed.answers)
+      qualified = evaluateQualified(
+        trackingCfg.qualified_lead,
+        parsed.answers,
+        fields ?? undefined,
+      )
 
       // Nome completo -> first/last pro user_data do Meta.
       const fullName = (leadData.name ?? "").trim()

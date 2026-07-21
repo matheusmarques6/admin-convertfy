@@ -126,6 +126,17 @@ export function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+/** Grava um cookie (best-effort). Falha silenciosa: o valor ainda vai no submit. */
+function setCookie(name: string, value: string, days = 90): void {
+  if (typeof document === "undefined") return
+  try {
+    const maxAge = days * 24 * 60 * 60
+    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`
+  } catch {
+    /* contexto sem cookie — ok, o valor ainda é enviado no POST */
+  }
+}
+
 /**
  * Deriva o _fbc a partir do fbclid quando o cookie ainda nao existe.
  * Formato do Meta: fb.1.<timestamp_ms>.<fbclid>.
@@ -133,4 +144,31 @@ export function getCookie(name: string): string | null {
 export function deriveFbc(fbclid: string | null | undefined): string | null {
   if (!fbclid) return null
   return `fb.1.${Date.now()}.${fbclid}`
+}
+
+/**
+ * Garante um `_fbp`. O cookie normalmente é setado pelo fbevents.js; quando
+ * ele é bloqueado (ad-blocker) o cookie nunca existe e o Meta reclama que o
+ * fbp não é enviado. Aqui geramos no formato do Meta (`fb.1.<ts>.<rand>`),
+ * persistimos e retornamos — melhora a correspondência (~+16%).
+ */
+export function ensureFbp(): string {
+  const existing = getCookie("_fbp")
+  if (existing) return existing
+  const fbp = `fb.1.${Date.now()}.${Math.floor(Math.random() * 1e10)}`
+  setCookie("_fbp", fbp)
+  return fbp
+}
+
+/**
+ * Garante um `_fbc`. Usa o cookie se existir; senão deriva do `fbclid` e
+ * persiste (sobrevive à navegação). Retorna null quando não há fbclid nem
+ * cookie (tráfego orgânico/direto — fbc legitimamente ausente).
+ */
+export function ensureFbc(fbclid: string | null | undefined): string | null {
+  const existing = getCookie("_fbc")
+  if (existing) return existing
+  const derived = deriveFbc(fbclid)
+  if (derived) setCookie("_fbc", derived)
+  return derived
 }

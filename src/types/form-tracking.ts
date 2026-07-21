@@ -37,6 +37,12 @@ export const QUALIFIED_OPERATORS: Array<{ value: QualifiedOperator; label: strin
 /** Uma condição do evento qualificado. `field_id` = crm_form_fields.id. */
 export interface QualifiedRule {
   field_id: string
+  /**
+   * Label do campo no momento em que a regra foi montada. Backup estável
+   * para resolver o campo quando o `field_id` não bate (ex.: histórico de
+   * ids regenerados). Avaliação tenta id primeiro, depois label.
+   */
+  field_label?: string
   operator: QualifiedOperator
   /** Valor de comparação. Array para `in`/`not_in`; ignorado em `is_set`. */
   value?: string | string[] | number | null

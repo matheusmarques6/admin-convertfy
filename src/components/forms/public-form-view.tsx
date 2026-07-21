@@ -7,8 +7,8 @@ import {
   fireMetaEvent,
   loadGtag,
   fireGtagConversion,
-  getCookie,
-  deriveFbc,
+  ensureFbp,
+  ensureFbc,
 } from "@/lib/tracking/browser-pixels"
 
 interface FormField {
@@ -330,10 +330,10 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
       return
     }
     try {
-      // Click ids p/ matching de conversao. _fbc/_fbp sao cookies do pixel;
-      // se _fbc ainda nao existir, deriva do fbclid do query string.
-      const fbc = getCookie("_fbc") ?? deriveFbc(clickIds?.fbclid)
-      const fbp = getCookie("_fbp")
+      // Click ids p/ matching de conversao. Garante _fbp (gera se o
+      // ad-blocker impediu o fbevents de setar) e _fbc (deriva do fbclid).
+      const fbc = ensureFbc(clickIds?.fbclid)
+      const fbp = ensureFbp()
       const eventSourceUrl = typeof window !== "undefined" ? window.location.href : null
 
       const res = await fetch(`/api/public/forms/${slug}/submit`, {
