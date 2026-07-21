@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest"
 import type { EmailComponentVariant } from "@/types/email-generation"
 import {
-  derivePositioning,
-  deriveMoodKeys,
+  flowTypeToObjective,
+  deriveToneKeys,
+} from "@/lib/agents/shared/component-dimensions"
+import {
   buildMatchContext,
   scoreVariant,
   prefilterCandidates,
@@ -37,73 +39,100 @@ function makeVariant(p: Partial<EmailComponentVariant>): EmailComponentVariant {
   }
 }
 
-describe("derivePositioning", () => {
-  it("mapeia premium/popular/medio por substring", () => {
-    expect(derivePositioning("Premium")).toBe("premium")
-    expect(derivePositioning("posicionamento popular")).toBe("popular")
-    expect(derivePositioning("médio")).toBe("medio")
+describe("flowTypeToObjective", () => {
+  it("mapeia flows canônicos para o objetivo", () => {
+    expect(flowTypeToObjective("welcome")).toBe("Boas-vindas")
+    expect(flowTypeToObjective("abandoned_cart")).toBe("Carrinho abandonado")
+    expect(flowTypeToObjective("site_abandoned")).toBe("Carrinho abandonado")
+    expect(flowTypeToObjective("browse_abandonment")).toBe("Carrinho abandonado")
+    expect(flowTypeToObjective("upsell")).toBe("Upsell")
+    expect(flowTypeToObjective("win_back")).toBe("Win-back")
+    expect(flowTypeToObjective("post_purchase")).toBe("Pós-compra")
+    expect(flowTypeToObjective("shipping_stages")).toBe("Pós-compra")
   })
-  it("retorna null para vazio/desconhecido", () => {
-    expect(derivePositioning("")).toBeNull()
-    expect(derivePositioning(null)).toBeNull()
-    expect(derivePositioning("indefinido")).toBeNull()
+  it("custom/desconhecido/vazio vira null", () => {
+    expect(flowTypeToObjective("custom")).toBeNull()
+    expect(flowTypeToObjective("")).toBeNull()
+    expect(flowTypeToObjective(null)).toBeNull()
   })
 })
 
-describe("deriveMoodKeys", () => {
-  it("extrai a chave do tom de voz", () => {
-    expect(deriveMoodKeys("Formal")).toEqual(["formal"])
-    expect(deriveMoodKeys("divertido e jovem")).toEqual(["divertido"])
+describe("deriveToneKeys", () => {
+  it("extrai tons por keyword do tom de voz", () => {
+    expect(deriveToneKeys("Formal e premium")).toEqual(["Premium"])
+    expect(deriveToneKeys("divertido e jovem")).toEqual(["Descontraído"])
+    expect(deriveToneKeys("acolhedor, próximo")).toEqual(["Amigável"])
+  })
+  it("acumula tons do tom de voz + tone_hint sem duplicar", () => {
+    const tones = deriveToneKeys("premium", "Urgente, premium")
+    expect(tones).toContain("Premium")
+    expect(tones).toContain("Urgente")
+    expect(tones.filter((t) => t === "Premium")).toHaveLength(1)
   })
   it("retorna [] para vazio ou desconhecido", () => {
-    expect(deriveMoodKeys("")).toEqual([])
-    expect(deriveMoodKeys("sério")).toEqual([])
+    expect(deriveToneKeys("")).toEqual([])
+    expect(deriveToneKeys("sério")).toEqual([])
+    expect(deriveToneKeys(null, null)).toEqual([])
   })
 })
 
 describe("buildMatchContext", () => {
-  it("normaliza nicho por substring (override de imagem reusa a mesma taxonomia)", () => {
+  it("deriva objetivo do flow e tons do tom de voz + hint", () => {
     const ctx = buildMatchContext({
-      nicho: "Acessórios Automotivos",
-      posicionamento: "premium",
-      tom_voz: "formal",
+      flow_type: "welcome",
+      tom_voz: "premium",
+      tone_hint: "Urgente, amigável",
     })
-    expect(ctx.nicheKey).toBe("automotivo")
-    expect(ctx.positioning).toBe("premium")
-    expect(ctx.moodKeys).toEqual(["formal"])
+    expect(ctx.objective).toBe("Boas-vindas")
+    expect(ctx.tones).toContain("Premium")
+    expect(ctx.tones).toContain("Urgente")
+    expect(ctx.tones).toContain("Amigável")
   })
-  it("nicho desconhecido vira null", () => {
-    expect(buildMatchContext({ nicho: "xyz" }).nicheKey).toBeNull()
+  it("flow desconhecido vira objective null", () => {
+    expect(buildMatchContext({ flow_type: "xyz" }).objective).toBeNull()
   })
 })
 
 describe("scoreVariant", () => {
-  it("nicho específico pontua mais que wildcard", () => {
-    const ctx = buildMatchContext({ nicho: "beleza" })
-    const match = makeVariant({ niche_affinity: ["beleza"] })
-    const wildcard = makeVariant({ niche_affinity: [] })
+  it("objetivo específico pontua mais que wildcard", () => {
+    const ctx = buildMatchContext({ flow_type: "welcome" })
+    const match = makeVariant({ objectives: ["Boas-vindas"] })
+    const wildcard = makeVariant({ objectives: [] })
     expect(scoreVariant(match, ctx)).toBeGreaterThan(scoreVariant(wildcard, ctx))
   })
-  it("soma mood overlap e densidade", () => {
-    const ctx = buildMatchContext({ tom_voz: "formal", density: "minimal" })
+  it("objetivo errado pontua menos que wildcard", () => {
+    const ctx = buildMatchContext({ flow_type: "welcome" })
+    const wrong = makeVariant({ objectives: ["Win-back"] })
+    const wildcard = makeVariant({ objectives: [] })
+    expect(scoreVariant(wrong, ctx)).toBeLessThan(scoreVariant(wildcard, ctx))
+  })
+  it("soma overlap de tons e densidade", () => {
+    const ctx = buildMatchContext({
+      flow_type: null,
+      tom_voz: "premium",
+      density: "minimal",
+    })
     const base = makeVariant({})
-    const rich = makeVariant({ mood: ["formal"], density: "minimal" })
+    const rich = makeVariant({ tones: ["Premium"], density: "minimal" })
     expect(scoreVariant(rich, ctx)).toBeGreaterThan(scoreVariant(base, ctx))
   })
 })
 
 describe("prefilterCandidates", () => {
   const ctx = buildMatchContext({
-    nicho: "pet",
-    posicionamento: "popular",
-    tom_voz: "casual",
+    flow_type: "abandoned_cart",
+    tom_voz: "urgente e casual",
   })
 
   it("ordena por score e corta em top-K", () => {
     const variants = [
-      makeVariant({ id: "a", niche_affinity: ["pet"], positioning: ["popular"] }),
-      makeVariant({ id: "b", niche_affinity: [] }),
-      makeVariant({ id: "c", niche_affinity: ["moda"] }),
+      makeVariant({
+        id: "a",
+        objectives: ["Carrinho abandonado"],
+        tones: ["Urgente"],
+      }),
+      makeVariant({ id: "b", objectives: [] }),
+      makeVariant({ id: "c", objectives: ["Newsletter"] }),
     ]
     const out = prefilterCandidates(variants, ctx, 2)
     expect(out).toHaveLength(2)
@@ -120,7 +149,11 @@ describe("prefilterCandidates", () => {
   })
 
   it("sempre retorna ao menos 1 (fallback de degrade seguro)", () => {
-    const out = prefilterCandidates([makeVariant({ niche_affinity: ["moda"] })], ctx, 5)
+    const out = prefilterCandidates(
+      [makeVariant({ objectives: ["Newsletter"] })],
+      ctx,
+      5,
+    )
     expect(out).toHaveLength(1)
   })
 })

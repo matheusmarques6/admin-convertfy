@@ -93,7 +93,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "outline_guidance", desc: "Diretriz da estrutura (outline)" },
     { key: "outline_tone_hint", desc: "Tom sugerido (outline)" },
     { key: "blocks_json", desc: "Seções do outline (ordenadas)" },
-    { key: "candidates_json", desc: "Candidatos por seção (id+nome+descrição+metadados, SEM html)" },
+    { key: "candidates_json", desc: "Candidatos por seção (id, nome, descrição, quando usar/NÃO usar, objectives, tones, density, product_slots — SEM html)" },
   ],
   // Passo B — Montador: recebe o HTML das variantes ESCOLHIDAS e monta.
   assembler: [

@@ -46,10 +46,13 @@ const CHOOSER_TOP_K = 8
 // ── PASSO A — Curador: escolhe 1 variant_id por seção, só pela DESCRIÇÃO ──
 const DEFAULT_CHOOSER_MODEL = "anthropic/claude-sonnet-4.6"
 
-const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email. Para CADA posição da sequência do email, escolha UMA variante da biblioteca — a que melhor serve ao objetivo do email e à identidade da loja — usando o NOME, a DESCRIÇÃO e os metadados (mood/density) de cada variante. Você NÃO recebe o HTML das variantes; decide pela descrição.
+const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email. Para CADA posição da sequência do email, escolha UMA variante da biblioteca — a que melhor serve ao objetivo do email e à identidade da loja — usando o NOME, a DESCRIÇÃO e os metadados de cada variante: quando_usar / quando_nao_usar (contexto de uso escrito pelo time), objectives (objetivos de email compatíveis), tones (tons compatíveis), density e product_slots. Você NÃO recebe o HTML das variantes; decide pela descrição e pelo contexto.
 
 Regras:
 - Uma escolha por block_index da sequência. Use APENAS variant_id presente nas opções daquela posição.
+- Respeite quando_nao_usar: se o contexto do email bate com um "quando NÃO usar", prefira outra variante da posição.
+- Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
+- Para posições de produtos, considere product_slots (quantos produtos o bloco comporta).
 - Se a descrição estiver vazia, decida pelo nome + metadados.
 - Não invente variant_id.
 
@@ -355,9 +358,9 @@ export async function assembleStoreReference(
   input: AssembleReferenceInput,
 ): Promise<AssembleReferenceResult> {
   const matchCtx = buildMatchContext({
-    nicho: input.nicho,
-    posicionamento: input.posicionamento,
+    flow_type: input.flowType,
     tom_voz: input.tomVoz,
+    tone_hint: input.outlineToneHint,
   })
 
   const sections = input.structure.map((s) => s.section)
@@ -417,8 +420,12 @@ export async function assembleStoreReference(
         variant_id: v.id,
         name: v.name,
         description: v.description ?? "",
-        mood: v.mood,
+        quando_usar: v.when_use ?? "",
+        quando_nao_usar: v.when_not_use ?? "",
+        objectives: v.objectives ?? [],
+        tones: v.tones ?? [],
         density: v.density,
+        product_slots: v.product_slots ?? 0,
       })),
     })),
   )

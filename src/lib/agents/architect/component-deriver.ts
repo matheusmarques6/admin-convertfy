@@ -2,8 +2,9 @@
  * Deriver determinístico do Component Assembler (Epic AE).
  *
  * Pré-filtra variantes de componente (`email_component_variants`) por
- * afinidade com a loja/marca ANTES da escolha final pelo LLM. Espelha o
- * padrão dos derivers do agente de imagem (cenario-derivation/mood-mapping).
+ * afinidade com o email/loja ANTES da escolha final pelo LLM, usando as
+ * dimensões objectives/tones/density (as antigas niche/positioning/mood
+ * foram substituídas — ver migration 20261003).
  *
  * Puro (zero dependência de DB).
  */
@@ -12,60 +13,29 @@ import type {
   ComponentDensity,
   EmailComponentVariant,
 } from "@/types/email-generation"
-import { deriveNicheKey, type NicheKey } from "@/lib/agents/shared/niche-keys"
-
-export type PositioningKey = "popular" | "medio" | "premium"
-
-// Mood: alinhado ao enum de `tom_voz` do briefing (image/mood-mapping.ts).
-export const MOOD_KEYS = ["formal", "casual", "afetivo", "divertido"] as const
-export type MoodKeyName = (typeof MOOD_KEYS)[number]
+import {
+  flowTypeToObjective,
+  deriveToneKeys,
+  type ComponentObjective,
+  type ComponentTone,
+} from "@/lib/agents/shared/component-dimensions"
 
 export interface ComponentMatchContext {
-  nicheKey: NicheKey | null
-  positioning: PositioningKey | null
-  moodKeys: MoodKeyName[]
+  objective: ComponentObjective | null
+  tones: ComponentTone[]
   density?: ComponentDensity | null
 }
 
-// ── Normalizadores (valor cru do briefing → chave canônica) ────────
-
-export function derivePositioning(
-  posicionamento: string | null | undefined,
-): PositioningKey | null {
-  const p = (posicionamento ?? "").trim().toLowerCase()
-  if (!p) return null
-  if (p.includes("premium") || p.includes("luxo") || p.includes("alto")) {
-    return "premium"
-  }
-  if (p.includes("popular") || p.includes("aces") || p.includes("baixo")) {
-    return "popular"
-  }
-  if (p.includes("medio") || p.includes("médio") || p.includes("interm")) {
-    return "medio"
-  }
-  return null
-}
-
-export function deriveMoodKeys(
-  tomVoz: string | null | undefined,
-): MoodKeyName[] {
-  const t = (tomVoz ?? "").trim().toLowerCase()
-  if (!t) return []
-  const hit = MOOD_KEYS.find((k) => t.includes(k))
-  return hit ? [hit] : []
-}
-
-/** Monta o contexto de matching a partir dos campos crus do briefing. */
+/** Monta o contexto de matching a partir do flow e dos campos crus do briefing. */
 export function buildMatchContext(input: {
-  nicho?: string | null
-  posicionamento?: string | null
+  flow_type?: string | null
   tom_voz?: string | null
+  tone_hint?: string | null
   density?: ComponentDensity | null
 }): ComponentMatchContext {
   return {
-    nicheKey: deriveNicheKey(input.nicho),
-    positioning: derivePositioning(input.posicionamento),
-    moodKeys: deriveMoodKeys(input.tom_voz),
+    objective: flowTypeToObjective(input.flow_type),
+    tones: deriveToneKeys(input.tom_voz, input.tone_hint),
     density: input.density ?? null,
   }
 }
@@ -74,12 +44,10 @@ export function buildMatchContext(input: {
 
 // Pesos (maior = mais decisivo). Wildcards (campo vazio na variante)
 // pontuam baixo: servem de fallback sem ofuscar matches específicos.
-const W_NICHE = 3
-const W_NICHE_WILDCARD = 0.5
-const W_POSITIONING = 2
-const W_POSITIONING_WILDCARD = 0.5
-const W_MOOD = 1
-const W_MOOD_WILDCARD = 0.25
+const W_OBJECTIVE = 3
+const W_OBJECTIVE_WILDCARD = 0.5
+const W_TONE = 2
+const W_TONE_WILDCARD = 0.25
 const W_DENSITY = 1
 
 export function scoreVariant(
@@ -88,26 +56,21 @@ export function scoreVariant(
 ): number {
   let s = 0
 
-  // Nicho
-  if (variant.niche_affinity.length === 0) {
-    s += W_NICHE_WILDCARD
-  } else if (ctx.nicheKey && variant.niche_affinity.includes(ctx.nicheKey)) {
-    s += W_NICHE
+  // Objetivo do email (derivado do flow_type)
+  const objectives = variant.objectives ?? []
+  if (objectives.length === 0) {
+    s += W_OBJECTIVE_WILDCARD
+  } else if (ctx.objective && objectives.includes(ctx.objective)) {
+    s += W_OBJECTIVE
   }
 
-  // Posicionamento
-  if (variant.positioning.length === 0) {
-    s += W_POSITIONING_WILDCARD
-  } else if (ctx.positioning && variant.positioning.includes(ctx.positioning)) {
-    s += W_POSITIONING
-  }
-
-  // Mood (interseção)
-  if (variant.mood.length === 0) {
-    s += W_MOOD_WILDCARD
+  // Tons (interseção com tom de voz da marca + tone_hint do outline)
+  const tones = variant.tones ?? []
+  if (tones.length === 0) {
+    s += W_TONE_WILDCARD
   } else {
-    const overlap = ctx.moodKeys.filter((m) => variant.mood.includes(m)).length
-    s += overlap * W_MOOD
+    const overlap = ctx.tones.filter((t) => tones.includes(t)).length
+    s += overlap * W_TONE
   }
 
   // Densidade (desempate)
