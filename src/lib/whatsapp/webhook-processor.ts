@@ -20,6 +20,7 @@ import { createWhatsAppCloudClient, type WebhookMessage, type WhatsAppCloudAPI }
 import { buildMessageContent, shouldApplyStatus } from "./message-content"
 import { persistInboundMedia } from "./media"
 import { notifyCrmInboundMessage } from "@/lib/services/crm-inbox-notification.service"
+import { phoneVariants } from "./phone"
 
 const log = logger.child("WhatsAppProcessor")
 
@@ -335,11 +336,17 @@ export async function getOrCreateThread(
   const { orgId, channelId, contactName } = args
   const phoneE164 = args.contactExternalId
 
+  // Lookup pelas variantes BR do nono dígito: a Meta às vezes reporta
+  // o wa_id SEM o 9 e o outbound (resolve/popup) grava COM — sem as
+  // variantes o inbound criava uma SEGUNDA thread (split de conversa).
+  // Só o LOOKUP usa variantes; o insert mantém o wa_id original.
   const { data: existingThread } = await admin
     .from("crm_threads")
     .select("id")
     .eq("channel_id", channelId)
-    .eq("contact_external_id", phoneE164)
+    .in("contact_external_id", phoneVariants(phoneE164))
+    .order("last_message_at", { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (existingThread) {
@@ -363,13 +370,16 @@ export async function getOrCreateThread(
     .single()
 
   if (error) {
-    // Race na criação (23505): outro worker criou a thread — rebusca.
+    // Race na criação (23505): outro worker criou a thread — rebusca
+    // (também pelas variantes, espelhando o lookup inicial).
     if (error.code === "23505") {
       const { data: raced } = await admin
         .from("crm_threads")
         .select("id")
         .eq("channel_id", channelId)
-        .eq("contact_external_id", phoneE164)
+        .in("contact_external_id", phoneVariants(phoneE164))
+        .order("last_message_at", { ascending: false })
+        .limit(1)
         .maybeSingle()
       return raced?.id ?? null
     }
