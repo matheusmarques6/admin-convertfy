@@ -150,15 +150,18 @@ export async function generateBlueprintAndReference(
   const orgId = (store.org_id as string | undefined) ?? null
   let maxBlocksPerEmail: number | null = null
   let defaultModel: string | null = null
+  let blueprintMode: "auto" | "llm" | "deterministic" = "auto"
   if (orgId) {
     const { data: settingsRow } = await admin
       .from("email_generation_settings")
-      .select("max_blocks_per_email, default_model")
+      .select("max_blocks_per_email, default_model, blueprint_mode")
       .eq("org_id", orgId)
       .maybeSingle()
     maxBlocksPerEmail =
       (settingsRow?.max_blocks_per_email as number | undefined) ?? null
     defaultModel = (settingsRow?.default_model as string | undefined) ?? null
+    const rawMode = settingsRow?.blueprint_mode as string | undefined
+    if (rawMode === "llm" || rawMode === "deterministic") blueprintMode = rawMode
   }
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
@@ -175,7 +178,7 @@ export async function generateBlueprintAndReference(
     // Apara o MIOLO preservando abertura + footer (não corta a cauda direto).
     structure = clampStructure(structure, maxBlocksPerEmail)
   }
-  const { html, source } = await assembleStoreReference({
+  const { html, source, slots } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
     emailNumber: input.emailNumber,
@@ -214,6 +217,8 @@ export async function generateBlueprintAndReference(
     pesquisa,
     referenceHtml: html ?? "",
     defaultModel,
+    slots,
+    blueprintMode,
   })
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.

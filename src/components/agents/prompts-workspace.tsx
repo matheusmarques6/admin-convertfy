@@ -18,6 +18,7 @@ import {
   Compass,
   Type,
   UserRound,
+  Mail,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
@@ -41,6 +42,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   campaign_image: "Imagens de campanha",
   refiner: "Refinador Tipográfico",
   component_test: "Teste de bloco",
+  subject: "Assunto",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -57,6 +59,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   campaign_image: ImageIcon,
   refiner: Type,
   component_test: Blocks,
+  subject: Mail,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

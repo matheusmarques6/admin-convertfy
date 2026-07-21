@@ -103,6 +103,7 @@ export function SettingsTab() {
       form.qa_vision_enabled !== undefined
         ? form.qa_vision_enabled
         : settings?.qa_vision_enabled ?? null,
+    blueprint_mode: form.blueprint_mode ?? settings?.blueprint_mode ?? "auto",
     refiner_enabled: form.refiner_enabled ?? settings?.refiner_enabled ?? true,
     max_blocks_per_email:
       form.max_blocks_per_email ?? settings?.max_blocks_per_email ?? 9,
@@ -219,6 +220,27 @@ export function SettingsTab() {
                     { value: "default", label: "Padrão do servidor" },
                     { value: "on", label: "Ligado" },
                     { value: "off", label: "Desligado" },
+                  ]}
+                />
+              </div>
+            </SettingRow>
+            <SettingRow
+              title="Blueprint"
+              sub="Rota da estrutura: Auto = determinístico quando as variantes cobrem 100%, senão LLM"
+            >
+              <div style={{ width: 170, flexShrink: 0 }}>
+                <EGSelect
+                  value={merged.blueprint_mode}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      blueprint_mode: v as "auto" | "llm" | "deterministic",
+                    }))
+                  }
+                  options={[
+                    { value: "auto", label: "Auto (híbrido)" },
+                    { value: "llm", label: "Sempre LLM" },
+                    { value: "deterministic", label: "Sempre determinístico" },
                   ]}
                 />
               </div>

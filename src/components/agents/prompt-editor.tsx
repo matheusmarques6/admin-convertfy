@@ -172,6 +172,20 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "section_junctions_json", desc: "Junções numeradas entre as seções do wrapper 600px (pontos de inserção de spacer)" },
     { key: "font_whitelist", desc: "Whitelist de fontes por tom (injetada pelo código — fonte única em font-whitelist.ts)" },
   ],
+  // Assunto — mini-LLM da rota determinística do blueprint (subject+messaging)
+  subject: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "nicho", desc: "Nicho do negócio" },
+    { key: "tom_voz", desc: "Tom de voz" },
+    { key: "persona", desc: "Persona-alvo (ICP)" },
+    { key: "flow_type", desc: "Tipo do flow" },
+    { key: "email_number", desc: "Número do email no flow" },
+    { key: "outline_objective", desc: "Objetivo do email (outline)" },
+    { key: "outline_guidance", desc: "Diretriz do email (outline)" },
+    { key: "tones", desc: "Tom sugerido (outline tone_hint)" },
+    { key: "copy_guidance_resumo", desc: "Resumo das orientações de copy das variantes casadas" },
+    { key: "top_products", desc: "Lista de produtos top" },
+  ],
   // Teste de bloco — vars renderizadas por /api/admin/components/[id]/test
   component_test: [
     { key: "variant_name", desc: "Nome da variante testada" },

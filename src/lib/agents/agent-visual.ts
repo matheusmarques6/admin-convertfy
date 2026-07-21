@@ -9,6 +9,7 @@
 export type PipelineAgentKey =
   | "copy"
   | "blueprint"
+  | "subject"
   | "assembler_chooser"
   | "assembler"
   | "image"
@@ -44,7 +45,15 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   blueprint: {
     name: "Blueprint",
-    desc: "Extrai estrutura de 9–19 blocos do email de referência",
+    desc: "Estrutura do email — determinístico (variantes) ou LLM fallback",
+    color: "#4E62D8",
+    bg: "#EEF0FB",
+    border: "#C7CDEF",
+    kind: "texto",
+  },
+  subject: {
+    name: "Assunto",
+    desc: "Subject hint + messaging da loja (rota determinística do blueprint)",
     color: "#4E62D8",
     bg: "#EEF0FB",
     border: "#C7CDEF",
@@ -136,6 +145,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
 export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "copy",
   "blueprint",
+  "subject",
   "assembler_chooser",
   "assembler",
   "image",

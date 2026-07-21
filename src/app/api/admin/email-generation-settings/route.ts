@@ -24,6 +24,7 @@ const patchSchema = z.object({
   default_model: z.string().min(1).nullable().optional(),
   usd_brl_rate: z.number().positive().max(100).nullable().optional(),
   cost_alert_usd: z.number().positive().max(1000).nullable().optional(),
+  blueprint_mode: z.enum(["auto", "llm", "deterministic"]).optional(),
 })
 
 export async function GET(request: NextRequest) {

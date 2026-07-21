@@ -30,6 +30,14 @@ import {
   type AgentInvokeConfig,
 } from "./llm-invoke"
 import { loadEffectiveBlueprint } from "./blueprint-loader"
+import {
+  buildDeterministicBlueprint,
+  matchVariantsToSkeleton,
+  packageBlueprint,
+  type BlueprintFieldV2,
+  type MatchResult,
+} from "./deterministic-blueprint.builder"
+import type { AssemblySlot } from "./component-assembler.service"
 
 const log = logger.child("BlueprintGenerator")
 
@@ -80,6 +88,14 @@ export interface GeneratedBlock {
   // tags do template via registry. A fase 2 usa com prioridade máxima
   // (block > blueprint.image_aspect > matriz > default).
   image_aspect?: string | null
+  // ── Vínculo com a biblioteca (empacotador único — TODAS as rotas) ──
+  // Variante do Curador casada a este bloco (proveniência/auditoria) e o
+  // snapshot `fields` v2 — o contrato ÚNICO do payload de copy do n8n,
+  // congelado no momento da geração (edições posteriores da variante não
+  // mudam emails já gerados). Ver deterministic-blueprint.builder.ts.
+  variant_id?: string | null
+  variant_name?: string | null
+  fields?: BlueprintFieldV2[]
 }
 
 export interface GeneratedBlueprint {
@@ -288,6 +304,13 @@ export interface GenerateBlueprintInput {
   pesquisa: string
   // Modelo default da aba Configurações — fallback sem config ativa.
   defaultModel?: string | null
+  // Slots do Curador (mesmo run do Montador) — a ÚNICA fonte confiável do
+  // vínculo variante↔bloco (variant_ids da reference pula os missing).
+  slots?: AssemblySlot[]
+  // Toggle por org (aba Configurações): 'auto' = determinístico quando o
+  // skeleton existe e a cobertura é 100%, senão LLM; 'llm' força o fallback;
+  // 'deterministic' força o builder (testes/rollout).
+  blueprintMode?: "auto" | "llm" | "deterministic"
 }
 
 export interface GenerateBlueprintResult {
@@ -296,13 +319,278 @@ export interface GenerateBlueprintResult {
   model: string | null
 }
 
+// ── Mini-LLM de subject (rota determinística) ──────────────────────
+
+// Fallback usado apenas se email_agent_configs não tiver row ativa para
+// agent_type='subject' (a migration 20261022 semeia a versão canônica).
+const DEFAULT_SUBJECT_MODEL = "claude-haiku-4-5-20251001"
+const DEFAULT_SUBJECT_SYSTEM = `Você escreve a direção editorial de UM email de e-commerce.
+Gere:
+- subject_hint: sugestão de linha de assunto (≤55 caracteres, no idioma/tom da loja, sem emoji forçado).
+- messaging: 2-3 frases de direção editorial do email (o ângulo/argumento central que a copy deve seguir), adaptadas à loja.
+Responda APENAS JSON: {"subject_hint":"...","messaging":"..."}.`
+const DEFAULT_SUBJECT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — TOM DE VOZ: {{tom_voz}}
+PERSONA: {{persona}}
+FLOW: {{flow_type}} — EMAIL #{{email_number}}
+OBJETIVO: {{outline_objective}}
+DIRETRIZ: {{outline_guidance}}
+TONS: {{tones}}
+ORIENTAÇÕES DE COPY DOS BLOCOS: {{copy_guidance_resumo}}
+TOP PRODUTOS: {{top_products}}
+
+Gere o JSON agora.`
+
+interface SubjectHintResult {
+  subject_hint: string | null
+  messaging: string | null
+}
+
+/**
+ * Chamada barata (Haiku, ~400 tokens) que substitui a única contribuição
+ * criativa de nível-email do antigo Blueprint LLM. Falha → null (o caller
+ * mantém os fallbacks determinísticos) — nunca derruba o pipeline.
+ */
+async function generateSubjectHint(input: {
+  storeId: string
+  batchId: string
+  triggeredBy?: string
+  brandName: string
+  nicho: string
+  tomVoz: string
+  persona: string
+  flowType: string
+  emailNumber: number
+  outline: EmailOutlineTemplate | null
+  copyGuidanceResumo: string
+  topProductNames: string[]
+}): Promise<SubjectHintResult | null> {
+  const cfgRow = await loadActiveAgentConfig("subject")
+  const config: AgentInvokeConfig = cfgRow
+    ? {
+        model: cfgRow.model,
+        temperature: cfgRow.temperature,
+        max_tokens: cfgRow.max_tokens,
+        system_prompt: cfgRow.system_prompt,
+        user_template: cfgRow.user_template,
+      }
+    : {
+        model: DEFAULT_SUBJECT_MODEL,
+        temperature: 0.7,
+        max_tokens: 400,
+        system_prompt: DEFAULT_SUBJECT_SYSTEM,
+        user_template: DEFAULT_SUBJECT_USER,
+      }
+
+  const vars: Record<string, string> = {
+    brand_name: input.brandName,
+    nicho: input.nicho,
+    tom_voz: input.tomVoz,
+    persona: input.persona,
+    flow_type: input.flowType,
+    email_number: String(input.emailNumber),
+    outline_objective: input.outline?.objective ?? "",
+    outline_guidance: input.outline?.guidance ?? "",
+    tones: input.outline?.tone_hint ?? "",
+    copy_guidance_resumo: input.copyGuidanceResumo,
+    top_products: input.topProductNames.join(", "),
+  }
+
+  const t0 = Date.now()
+  const runId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "subject",
+    agentConfigId: cfgRow?.id,
+    model: config.model,
+  })
+
+  try {
+    const res = await invokeAgent(config, vars)
+    const json = JSON.parse(extractJson(res.raw)) as Record<string, unknown>
+    const subjectHint =
+      typeof json.subject_hint === "string" && json.subject_hint.trim()
+        ? json.subject_hint.trim()
+        : null
+    const messaging =
+      typeof json.messaging === "string" && json.messaging.trim()
+        ? json.messaging.trim()
+        : null
+    await finishGenerationRun(runId, {
+      storeId: input.storeId,
+      triggeredBy: input.triggeredBy,
+      batchId: input.batchId,
+      agent: "subject",
+      agentConfigId: cfgRow?.id,
+      status: "success",
+      model: config.model,
+      inputVars: vars,
+      rawOutput: res.raw.slice(0, 2000),
+      parsedOutput: { has_subject: subjectHint !== null, has_messaging: messaging !== null },
+      tokensInput: res.tokensInput,
+      tokensOutput: res.tokensOutput,
+      costCents: computeCostCents(config.model, res.tokensInput, res.tokensOutput),
+      durationMs: Date.now() - t0,
+    })
+    return { subject_hint: subjectHint, messaging }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log.warn("subject.invoke_failed", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      error: msg,
+    })
+    await finishGenerationRun(runId, {
+      storeId: input.storeId,
+      triggeredBy: input.triggeredBy,
+      batchId: input.batchId,
+      agent: "subject",
+      agentConfigId: cfgRow?.id,
+      status: "error",
+      model: config.model,
+      errorMessage: msg,
+      durationMs: Date.now() - t0,
+    }).catch(() => {})
+    return null
+  }
+}
+
+/** Resumo compacto das orientações de copy das variantes casadas (p/ o subject). */
+function copyGuidanceResumo(match: MatchResult | null): string {
+  if (!match) return ""
+  const parts: string[] = []
+  for (const m of match.matches.values()) {
+    const g = (m.variant.copy_guidance ?? "").trim()
+    if (g) parts.push(`- ${m.variant.name}: ${g}`)
+  }
+  return parts.slice(0, 10).join("\n")
+}
+
 /**
  * Gera (ou recupera por fallback) o blueprint da loja e faz upsert em
  * `store_email_blueprints`. Sempre retorna um blueprint utilizável.
+ *
+ * ROTAS (spec do blueprint híbrido):
+ *  A — determinística: skeleton OK + cobertura 100% dos blocos de copy
+ *      (ou mode='deterministic'): builder puro + mini-LLM 'subject'.
+ *      model='deterministic', custo ~zero.
+ *  B — LLM fallback: skeleton null, cobertura <100% ou mode='llm' —
+ *      o Blueprint LLM roda EXATAMENTE como sempre (com o skeleton imposto
+ *      quando existe, cascata global→default→mínimo preservada).
+ * As DUAS rotas terminam no MESMO empacotador (packageBlueprint): todo bloco
+ * sai com `fields` v2 + variant_id onde casou — o output tem sempre o mesmo
+ * formato, e o dado curado vence o LLM nos blocos com variante.
  */
 export async function generateStoreBlueprint(
   input: GenerateBlueprintInput,
 ): Promise<GenerateBlueprintResult> {
+  const skeletonEarly = extractStructureFromReference(input.referenceHtml)
+  const variantSlots = (input.slots ?? []).filter(
+    (s): s is Extract<AssemblySlot, { kind: "variant" }> => s.kind === "variant",
+  )
+  const match = skeletonEarly
+    ? matchVariantsToSkeleton(skeletonEarly, variantSlots)
+    : null
+  const mode = input.blueprintMode ?? "auto"
+  const useDeterministic =
+    mode !== "llm" &&
+    skeletonEarly !== null &&
+    match !== null &&
+    (mode === "deterministic" || match.coverage >= 1)
+
+  if (useDeterministic && skeletonEarly && match) {
+    return generateDeterministicBlueprint(input, skeletonEarly, match)
+  }
+
+  return generateLlmBlueprint(input, skeletonEarly, match, mode)
+}
+
+/** ROTA A — builder determinístico + mini-LLM subject. */
+async function generateDeterministicBlueprint(
+  input: GenerateBlueprintInput,
+  skeleton: ExtractedStructure,
+  match: MatchResult,
+): Promise<GenerateBlueprintResult> {
+  const t0 = Date.now()
+  const runId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "blueprint",
+    model: "deterministic",
+  })
+
+  const blueprint = buildDeterministicBlueprint({
+    skeleton,
+    match,
+    outline: input.outline,
+  })
+
+  // Única contribuição criativa restante: subject + messaging adaptados à
+  // loja. Falha → mantém os fallbacks determinísticos (guidance do outline).
+  const subj = await generateSubjectHint({
+    storeId: input.storeId,
+    batchId: input.batchId,
+    triggeredBy: input.triggeredBy,
+    brandName: input.brandName,
+    nicho: input.nicho,
+    tomVoz: input.tomVoz,
+    persona: input.persona,
+    flowType: input.flowType,
+    emailNumber: input.emailNumber,
+    outline: input.outline,
+    copyGuidanceResumo: copyGuidanceResumo(match),
+    topProductNames: input.topProductNames,
+  })
+  if (subj) {
+    blueprint.subject_hint = subj.subject_hint
+    if (subj.messaging) blueprint.messaging = subj.messaging
+  }
+
+  await upsertStoreBlueprint(input, blueprint, "ai", "deterministic")
+
+  await finishGenerationRun(runId, {
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "blueprint",
+    status: "success",
+    model: "deterministic",
+    parsedOutput: {
+      blocks: blueprint.blocks.length,
+      source: "ai",
+      blueprint_path: "deterministic",
+      coverage: match.coverage,
+      copy_blocks: match.copyBlocks,
+      covered_copy_blocks: match.coveredCopyBlocks,
+      unused_variant_ids: match.unusedVariantIds,
+      unmatched_block_indexes: match.unmatchedBlockIndexes,
+      subject_source: subj ? "llm" : "fallback",
+      skeleton_used: true,
+      skeleton_blocks: skeleton.blocks.length,
+      skeleton_unknown_tags: skeleton.unknownTags,
+    },
+    costCents: 0,
+    durationMs: Date.now() - t0,
+  })
+
+  return { blueprint, source: "ai", model: "deterministic" }
+}
+
+/** ROTA B — Blueprint LLM como sempre foi + empacotamento normalizado. */
+async function generateLlmBlueprint(
+  input: GenerateBlueprintInput,
+  skeletonEarly: ExtractedStructure | null,
+  match: MatchResult | null,
+  mode: "auto" | "llm" | "deterministic",
+): Promise<GenerateBlueprintResult> {
+  const fallbackReason =
+    mode === "llm"
+      ? "forced"
+      : skeletonEarly === null
+        ? "no_skeleton"
+        : "low_coverage"
   const cfgRow = await loadActiveAgentConfig("blueprint")
   const config: AgentInvokeConfig = cfgRow
     ? {
@@ -321,11 +609,11 @@ export async function generateStoreBlueprint(
         user_template: DEFAULT_BLUEPRINT_USER,
       }
 
-  // Estrutura determinística das tags canônicas do reference (tag-registry).
-  // Quando presente: o LLM só preenche os campos criativos e o merge
-  // pós-parse impõe estrutura/copy_spec do esqueleto. null = reference
-  // legado (sem tags canônicas) → fluxo atual intacto.
-  const skeleton = extractStructureFromReference(input.referenceHtml)
+  // Estrutura determinística das tags canônicas do reference (tag-registry),
+  // já extraída pelo roteador. Quando presente: o LLM só preenche os campos
+  // criativos e o merge pós-parse impõe estrutura/copy_spec do esqueleto.
+  // null = reference legado (sem tags canônicas) → fluxo atual intacto.
+  const skeleton = skeletonEarly
   if (skeleton && skeleton.unknownTags.length > 0) {
     log.warn("blueprint.unknown_tags", {
       storeId: input.storeId,
@@ -371,6 +659,10 @@ export async function generateStoreBlueprint(
   let rawOutput = ""
   let invokeError: string | null = null
 
+  // O match variante↔bloco por índice só vale quando o blueprint seguiu a
+  // segmentação do skeleton (applySkeletonToBlueprint) — NUNCA nos fallbacks
+  // (global/default/mínimo), cuja estrutura é outra.
+  let skeletonApplied = false
   try {
     const res = await invokeAgent(config, vars)
     rawOutput = res.raw
@@ -382,6 +674,7 @@ export async function generateStoreBlueprint(
     // Estrutura determinística ganha do LLM (tags canônicas no reference).
     if (blueprint && skeleton) {
       blueprint = applySkeletonToBlueprint(blueprint, skeleton)
+      skeletonApplied = true
     }
   } catch (err) {
     invokeError = err instanceof Error ? err.message : String(err)
@@ -431,6 +724,13 @@ export async function generateStoreBlueprint(
     model = null
   }
 
+  // ── EMPACOTADOR ÚNICO: mesmo formato de output da rota determinística ──
+  // Todo bloco sai com `fields` v2; onde o Curador casou uma variante, o
+  // dado curado (purpose/image_brief/fields do schema) VENCE o LLM. O
+  // matching por índice só é confiável quando o blueprint seguiu o skeleton;
+  // fallbacks/sem-skeleton → fields caem em tags/copy_spec (sem variante).
+  blueprint = packageBlueprint(blueprint, skeletonApplied ? match : null)
+
   // Só persiste o blueprint quando o LLM gerou de verdade (source='ai'). No
   // fallback (DEFAULT_BLUEPRINTS in-code ou mínimo) NÃO grava: preserva um
   // blueprint store bom anterior e deixa loadEffectiveBlueprint cair no
@@ -455,6 +755,10 @@ export async function generateStoreBlueprint(
     parsedOutput: {
       blocks: blueprint.blocks.length,
       source,
+      // Rota do blueprint híbrido + motivo do fallback pro LLM.
+      blueprint_path: "llm_fallback",
+      fallback_reason: fallbackReason,
+      coverage: match?.coverage ?? null,
       // Fonte do fallback registrada na página de Logs de geração.
       fallback_source: fallbackSource,
       attempted_model: config.model,

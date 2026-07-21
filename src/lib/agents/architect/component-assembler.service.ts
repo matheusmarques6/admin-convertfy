@@ -328,6 +328,10 @@ export interface AssembleReferenceResult {
   // de Logs de geração: "llm" = Montador gerou; "global" = caiu no template
   // curado (email_reference_templates); "none" = sem LLM e sem global curado.
   source: ReferenceSource
+  // Slots ordenados da estrutura (variante escolhida ou missing) — insumo do
+  // builder determinístico de blueprint NO MESMO RUN. Não confundir com
+  // variantIds (que pula os missing e por isso não casa com a estrutura).
+  slots: AssemblySlot[]
 }
 
 /** Carrega as variantes ativas agrupadas por block_type. */
@@ -390,6 +394,11 @@ export async function assembleStoreReference(
       html: curatedReference || "",
       variantIds: [],
       source: curatedReference ? "global" : "none",
+      slots: sections.map((section, i) => ({
+        kind: "missing" as const,
+        section,
+        label: input.structure[i]?.label ?? section,
+      })),
     }
   }
 
@@ -525,6 +534,7 @@ export async function assembleStoreReference(
       html: curatedReference || "",
       variantIds: [],
       source: curatedReference ? "global" : "none",
+      slots,
     }
   }
 
@@ -713,7 +723,7 @@ export async function assembleStoreReference(
     durationMs: Date.now() - t1,
   })
 
-  return { html, variantIds, source }
+  return { html, variantIds, source, slots }
 }
 
 async function upsertStoreReference(

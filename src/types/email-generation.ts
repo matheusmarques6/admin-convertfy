@@ -110,6 +110,10 @@ export type AgentType =
   // Componentes → "Testar com IA"): gera os campos do output_schema a
   // partir de um briefing curto, sem tocar em emails reais.
   | "component_test"
+  // subject: mini-LLM barato da rota determinística do blueprint híbrido —
+  // gera subject_hint + messaging adaptados à loja (única contribuição
+  // criativa de nível-email que sobrou do antigo Blueprint LLM).
+  | "subject"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -192,6 +196,10 @@ export interface EmailGenerationSettings {
   usd_brl_rate: number | null
   // Alerta por execução acima deste custo (US$). NULL = sem alerta.
   cost_alert_usd: number | null
+  // Rota do blueprint híbrido: 'auto' = determinístico quando skeleton OK +
+  // cobertura 100%, senão LLM; 'llm' força o fallback; 'deterministic'
+  // força o builder (migration 20261022).
+  blueprint_mode: "auto" | "llm" | "deterministic"
   updated_at: string
   updated_by: string | null
 }
@@ -217,6 +225,8 @@ export type GenerationRunAgent =
   | "refiner"
   // component_test: teste ad-hoc de variante da biblioteca (aba Componentes).
   | "component_test"
+  // subject: mini-LLM de subject/messaging (rota determinística do blueprint).
+  | "subject"
 
 export interface EmailGenerationRun {
   id: string

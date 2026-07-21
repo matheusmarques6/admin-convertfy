@@ -9,7 +9,7 @@ const log = logger.child("EmailAgentConfigs")
 export const dynamic = "force-dynamic"
 
 const postSchema = z.object({
-  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "campaign_suggestion", "campaign_trends", "campaign_architect", "campaign_image"]),
+  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "assembler_chooser", "campaign_suggestion", "campaign_trends", "campaign_architect", "campaign_image", "refiner", "component_test", "subject"]),
   model: z.string().min(1).default("claude-sonnet-4-6"),
   system_prompt: z.string().min(1),
   user_template: z.string().min(1),

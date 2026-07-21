@@ -104,6 +104,7 @@ function bucketOf(row: LogRow): PipelineAgentKey {
   if (
     row.agent === "copy" ||
     row.agent === "blueprint" ||
+    row.agent === "subject" ||
     row.agent === "assembler_chooser" ||
     row.agent === "assembler" ||
     row.agent === "image" ||
