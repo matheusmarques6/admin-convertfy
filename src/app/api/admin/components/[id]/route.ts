@@ -6,6 +6,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 
 const log = logger.child("EmailComponent")
 
@@ -14,10 +15,16 @@ export const dynamic = "force-dynamic"
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   html: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  long_description: z.string().nullable().optional(),
   slots: z.array(z.string()).optional(),
-  niche_affinity: z.array(z.string()).optional(),
-  positioning: z.array(z.string()).optional(),
-  mood: z.array(z.string()).optional(),
+  objectives: z.array(z.string()).optional(),
+  tones: z.array(z.string()).optional(),
+  when_use: z.string().nullable().optional(),
+  when_not_use: z.string().nullable().optional(),
+  copy_guidance: z.string().nullable().optional(),
+  product_slots: z.number().int().min(0).max(20).optional(),
+  output_schema: z.array(outputFieldSchema).optional(),
   density: z.enum(["minimal", "balanced", "rich"]).nullable().optional(),
   tags: z.array(z.string()).optional(),
   thumbnail: z.string().nullable().optional(),

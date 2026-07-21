@@ -8,6 +8,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
+import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 
 const log = logger.child("EmailComponents")
 
@@ -17,10 +18,16 @@ const postSchema = z.object({
   block_type: z.enum(COMPONENT_CATEGORY_KEYS as [string, ...string[]]),
   name: z.string().min(1),
   html: z.string().min(1),
+  description: z.string().nullable().optional(),
+  long_description: z.string().nullable().optional(),
   slots: z.array(z.string()).default([]),
-  niche_affinity: z.array(z.string()).default([]),
-  positioning: z.array(z.string()).default([]),
-  mood: z.array(z.string()).default([]),
+  objectives: z.array(z.string()).default([]),
+  tones: z.array(z.string()).default([]),
+  when_use: z.string().nullable().optional(),
+  when_not_use: z.string().nullable().optional(),
+  copy_guidance: z.string().nullable().optional(),
+  product_slots: z.number().int().min(0).max(20).default(0),
+  output_schema: z.array(outputFieldSchema).default([]),
   density: z.enum(["minimal", "balanced", "rich"]).nullable().optional(),
   tags: z.array(z.string()).default([]),
   thumbnail: z.string().nullable().optional(),

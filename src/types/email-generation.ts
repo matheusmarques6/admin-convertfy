@@ -263,9 +263,31 @@ export interface EmailReferenceTemplate {
 export type ComponentDensity = "minimal" | "balanced" | "rich"
 export type GeneratedSource = "ai" | "manual"
 
+// Tipo de campo do output_schema de uma variante (slug no banco; rótulo PT
+// na UI via FIELD_TYPE_LABELS_PT de component-dimensions.ts).
+export type ComponentFieldType =
+  | "text_short"
+  | "text_long"
+  | "number"
+  | "url"
+  | "image"
+  | "boolean"
+
+// Um campo que a IA gera para o bloco. Alimenta o preview da variante e as
+// orientações de copy no prompt.
+export interface ComponentOutputField {
+  key: string
+  label: string
+  type: ComponentFieldType
+  max_len: number
+  required: boolean
+  example: string
+  guidance: string
+}
+
 // Biblioteca global de variantes de componente, catalogadas por block_type.
-// As dimensões de matching (niche_affinity/positioning/mood/density) alimentam
-// o pré-filtro determinístico do assembler antes da escolha final pelo LLM.
+// As dimensões de matching (objectives/tones/density) alimentam o pré-filtro
+// determinístico do assembler antes da escolha final pelo LLM.
 export interface EmailComponentVariant {
   id: string
   block_type: string
@@ -275,11 +297,25 @@ export interface EmailComponentVariant {
   // (escolha por descrição, barato) para escolher a variante sem mandar o HTML
   // completo de todas. Null quando ainda não preenchida.
   description: string | null
+  // Notas de implementação longas (quirks de Outlook, hospedagem de asset...).
+  long_description: string | null
   slots: string[]
+  // DEPRECADO (jul/2026): substituídas por objectives/tones. As colunas ainda
+  // existem no banco até a migration de limpeza; não usar em código novo.
   niche_affinity: string[]
   positioning: string[]
   mood: string[]
+  // Novas dimensões de matching (rótulos PT — ver component-dimensions.ts).
+  objectives: string[]
+  tones: string[]
   density: ComponentDensity | null
+  // Contexto para a IA (Curador escolhe melhor; Copy escreve melhor).
+  when_use: string | null
+  when_not_use: string | null
+  copy_guidance: string | null
+  // Nº de produtos que o bloco comporta (grade 2x2 = 4; 0 = nenhum).
+  product_slots: number
+  output_schema: ComponentOutputField[]
   tags: string[]
   thumbnail: string | null
   is_active: boolean
