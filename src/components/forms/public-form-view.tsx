@@ -2,6 +2,14 @@
 
 import { useEffect, useState, useMemo, useId } from "react"
 import { CheckCircle2, AlertCircle, Loader2, ChevronDown } from "lucide-react"
+import {
+  loadMetaPixel,
+  fireMetaEvent,
+  loadGtag,
+  fireGtagConversion,
+  getCookie,
+  deriveFbc,
+} from "@/lib/tracking/browser-pixels"
 
 interface FormField {
   id: string
@@ -76,6 +84,15 @@ interface FormTheme {
   badgeColor?: string
 }
 
+/** Descritor de tracking retornado pelo GET publico (sem token/regras). */
+interface FormTracking {
+  meta_browser_pixel: boolean
+  meta_pixel_id: string | null
+  google_enabled: boolean
+  google_ads_id: string | null
+  google_ads_conversion_label: string | null
+}
+
 interface FormConfig {
   id: string
   name: string
@@ -85,6 +102,15 @@ interface FormConfig {
   logo_url: string | null
   success_message: string | null
   redirect_url: string | null
+  tracking?: FormTracking
+}
+
+/** Resposta de tracking do submit — event ids p/ deduplicar com o browser. */
+interface SubmitTracking {
+  event_id: string | null
+  qualified: boolean
+  qualified_event_id: string | null
+  qualified_event_name: string | null
 }
 
 interface Props {
@@ -98,6 +124,11 @@ interface Props {
     utm_content: string | null
     gclid: string | null
     fbclid: string | null
+  }
+  /** Click ids capturados do query string na pagina (Meta/Google). */
+  clickIds?: {
+    fbclid: string | null
+    gclid: string | null
   }
   /**
    * Quando true, intercepta o submit e mostra success state fake. Usado
@@ -187,9 +218,36 @@ function shadowCss(level: "none" | "sm" | "md" | "lg"): string {
   }
 }
 
+// ── Disparo dos pixels de conversao no sucesso do submit ──
+
+function fireConversionPixels(
+  tracking: FormTracking | undefined,
+  submit: SubmitTracking | undefined,
+): void {
+  if (!tracking) return
+  // Meta: evento Lead (deduplicado por event_id) + qualificado se aplicavel.
+  if (tracking.meta_browser_pixel && tracking.meta_pixel_id) {
+    fireMetaEvent("Lead", { eventId: submit?.event_id ?? undefined })
+    if (submit?.qualified && submit.qualified_event_name) {
+      fireMetaEvent(submit.qualified_event_name, {
+        eventId: submit.qualified_event_id ?? undefined,
+        custom: true,
+      })
+    }
+  }
+  // Google Ads: conversao via gtag ("AW-XXXX/label").
+  if (
+    tracking.google_enabled &&
+    tracking.google_ads_id &&
+    tracking.google_ads_conversion_label
+  ) {
+    fireGtagConversion(`${tracking.google_ads_id}/${tracking.google_ads_conversion_label}`)
+  }
+}
+
 // ── Component ──
 
-export function PublicFormView({ slug, payload, utm, preview = false, embed = false }: Props) {
+export function PublicFormView({ slug, payload, utm, clickIds, preview = false, embed = false }: Props) {
   const { form, fields } = payload
   const theme = form.theme ?? {}
   const t = defaults(theme)
@@ -224,6 +282,22 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
     setAnswers(init)
   }, [fields])
 
+  // Inicializa os pixels de browser (Meta/Google) uma vez, no mount. O
+  // preview do editor nunca dispara pixel real.
+  useEffect(() => {
+    if (preview) return
+    const tracking = form.tracking
+    if (!tracking) return
+    if (tracking.meta_browser_pixel && tracking.meta_pixel_id) {
+      loadMetaPixel(tracking.meta_pixel_id)
+      fireMetaEvent("PageView")
+    }
+    if (tracking.google_enabled && tracking.google_ads_id) {
+      loadGtag(tracking.google_ads_id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const update = (id: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [id]: value }))
   }
@@ -256,6 +330,12 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
       return
     }
     try {
+      // Click ids p/ matching de conversao. _fbc/_fbp sao cookies do pixel;
+      // se _fbc ainda nao existir, deriva do fbclid do query string.
+      const fbc = getCookie("_fbc") ?? deriveFbc(clickIds?.fbclid)
+      const fbp = getCookie("_fbp")
+      const eventSourceUrl = typeof window !== "undefined" ? window.location.href : null
+
       const res = await fetch(`/api/public/forms/${slug}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -263,6 +343,11 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
           answers,
           ...utm,
           referrer: typeof document !== "undefined" ? document.referrer || null : null,
+          fbc,
+          fbp,
+          fbclid: clickIds?.fbclid ?? null,
+          gclid: clickIds?.gclid ?? null,
+          event_source_url: eventSourceUrl,
         }),
       })
       const json = await res.json()
@@ -270,6 +355,10 @@ export function PublicFormView({ slug, payload, utm, preview = false, embed = fa
         setError(json.error?.message || "Erro ao enviar. Tente novamente.")
         return
       }
+
+      // Dispara os pixels de browser (deduplicados com o server via event_id).
+      fireConversionPixels(form.tracking, json.tracking as SubmitTracking | undefined)
+
       if (json.redirect_url) {
         window.location.href = json.redirect_url
         return

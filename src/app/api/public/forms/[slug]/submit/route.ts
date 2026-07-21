@@ -17,11 +17,18 @@
  */
 
 import { NextRequest } from "next/server"
+import { randomUUID } from "crypto"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
+import { normalizeTrackingConfig } from "@/types/form-tracking"
+import {
+  enqueueConversionEvents,
+  evaluateQualified,
+  qualifiedEventId,
+} from "@/lib/services/conversion-dispatch.service"
 
 const log = logger.child("PublicFormsSubmit")
 
@@ -36,9 +43,14 @@ const submitSchema = z.object({
   utm_campaign: z.string().nullable().optional(),
   utm_term: z.string().nullable().optional(),
   utm_content: z.string().nullable().optional(),
-  gclid: z.string().nullable().optional(),
-  fbclid: z.string().nullable().optional(),
   referrer: z.string().nullable().optional(),
+  // Click ids p/ matching de conversao (Meta/Google). Capturados no
+  // browser (cookies _fbc/_fbp + query fbclid/gclid).
+  fbc: z.string().nullable().optional(),
+  fbp: z.string().nullable().optional(),
+  fbclid: z.string().nullable().optional(),
+  gclid: z.string().nullable().optional(),
+  event_source_url: z.string().nullable().optional(),
 })
 
 interface FormFieldRow {
@@ -64,7 +76,9 @@ export async function POST(
     const { data: form, error: fErr } = await admin
       .from("crm_forms")
       .select(
-        "id, org_id, pipeline_id, stage_id, success_message, redirect_url, created_by, name, scope",
+        `id, org_id, pipeline_id, stage_id, success_message, redirect_url,
+         created_by, name, scope,
+         facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -393,29 +407,39 @@ export async function POST(
       utm_campaign: parsed.utm_campaign ?? null,
       utm_term: parsed.utm_term ?? null,
       utm_content: parsed.utm_content ?? null,
-      gclid: parsed.gclid ?? null,
+      fbc: parsed.fbc ?? null,
+      fbp: parsed.fbp ?? null,
       fbclid: parsed.fbclid ?? null,
+      gclid: parsed.gclid ?? null,
     }
 
-    let { error: sErr } = await admin
+    let { data: submissionRow, error: sErr } = await admin
       .from("crm_form_submissions")
       .insert(submissionPayload)
+      .select("id")
+      .maybeSingle()
 
-    // Retry sem gclid/fbclid se a migration ainda nao rodou no ambiente —
-    // perder a submission inteira por 2 colunas novas seria pior.
+    // Retry sem as colunas de tracking se a migration ainda nao rodou no
+    // ambiente — perder a submission inteira por colunas novas seria pior.
     if (sErr && /column .* does not exist/i.test(sErr.message)) {
-      log.warn("[FormSubmit] retrying submission sem gclid/fbclid (migration pendente)")
-      delete submissionPayload.gclid
+      log.warn("[FormSubmit] retrying submission sem tracking cols (migration pendente)")
+      delete submissionPayload.fbc
+      delete submissionPayload.fbp
       delete submissionPayload.fbclid
+      delete submissionPayload.gclid
       const retry = await admin
         .from("crm_form_submissions")
         .insert(submissionPayload)
+        .select("id")
+        .maybeSingle()
+      submissionRow = retry.data
       sErr = retry.error
     }
 
     if (sErr) {
       log.error("[FormSubmit] Falha ao salvar submission (mas lead/deal foram criados)", { sErr })
     }
+    const submissionId = submissionRow?.id ?? null
 
     // 8. Dispara triggers de automacao (lead_created e deal_created
     //    se aplicavel). Fire-and-forget.
@@ -448,6 +472,65 @@ export async function POST(
       }).catch((err) => log.error("[FormSubmit] dispatch deal_created", err))
     }
 
+    // 9. Eventos de conversao (Meta CAPI). So quando o Meta esta
+    //    configurado no form. A INSERT na fila e aguardada (durabilidade);
+    //    o envio HTTP roda destacado no serviço e o cron
+    //    /api/cron/conversion-dispatch garante a entrega do que faltar.
+    const trackingCfg = normalizeTrackingConfig(form.tracking_config)
+    const metaConfigured =
+      trackingCfg.meta.enabled && !!form.facebook_pixel_id && !!form.meta_capi_token
+    let eventId: string | null = null
+    let qualified = false
+    if (metaConfigured && leadId) {
+      eventId = randomUUID()
+      qualified = evaluateQualified(trackingCfg.qualified_lead, parsed.answers)
+
+      // Nome completo -> first/last pro user_data do Meta.
+      const fullName = (leadData.name ?? "").trim()
+      const spaceIdx = fullName.indexOf(" ")
+      const firstName = spaceIdx > 0 ? fullName.slice(0, spaceIdx) : fullName || null
+      const lastName = spaceIdx > 0 ? fullName.slice(spaceIdx + 1).trim() : null
+
+      // custom_data: maximo de parametros do lead p/ otimizacao.
+      const customData: Record<string, unknown> = { ...customFieldsData }
+      if (leadData.company) customData.company = leadData.company
+      if (leadData.source) customData.lead_source = leadData.source
+      if (parsed.utm_source) customData.utm_source = parsed.utm_source
+      if (parsed.utm_medium) customData.utm_medium = parsed.utm_medium
+      if (parsed.utm_campaign) customData.utm_campaign = parsed.utm_campaign
+      if (parsed.utm_term) customData.utm_term = parsed.utm_term
+      if (parsed.utm_content) customData.utm_content = parsed.utm_content
+
+      await enqueueConversionEvents({
+        orgId: form.org_id,
+        formId: form.id,
+        submissionId,
+        leadId,
+        eventId,
+        qualified,
+        qualifiedEventName: trackingCfg.qualified_lead.event_name,
+        eventSourceUrl: parsed.event_source_url ?? parsed.referrer ?? null,
+        meta: {
+          pixelId: form.facebook_pixel_id as string,
+          capiTokenEnc: form.meta_capi_token as string,
+          testEventCode: form.meta_test_event_code ?? null,
+        },
+        lead: {
+          email: leadData.email ?? null,
+          phone: leadData.phone ?? null,
+          firstName,
+          lastName,
+        },
+        customData,
+        request: {
+          ip,
+          userAgent: ua,
+          fbc: parsed.fbc ?? null,
+          fbp: parsed.fbp ?? null,
+        },
+      })
+    }
+
     log.info("[FormSubmit] success", { form_id: form.id, lead_id: leadId, deal_id: dealId })
 
     return successResponse(request, {
@@ -456,6 +539,14 @@ export async function POST(
       deal_id: dealId,
       success_message: form.success_message ?? null,
       redirect_url: form.redirect_url ?? null,
+      // Tracking p/ o browser deduplicar (mesmo event_id do server) e
+      // disparar fbq/gtag no sucesso.
+      tracking: {
+        event_id: eventId,
+        qualified,
+        qualified_event_id: eventId && qualified ? qualifiedEventId(eventId) : null,
+        qualified_event_name: qualified ? trackingCfg.qualified_lead.event_name : null,
+      },
     })
   } catch (error) {
     log.error("Public submit error:", error)

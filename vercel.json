@@ -82,6 +82,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/conversion-dispatch",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/campaign-copy-watchdog",
       "schedule": "*/5 * * * *"
     },

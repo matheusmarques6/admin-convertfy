@@ -23,9 +23,11 @@ import {
   Monitor,
   Eye,
   ChevronDown,
+  Target,
 } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
 import { PublicFormView } from "@/components/forms/public-form-view"
+import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -91,6 +93,41 @@ interface FormTheme {
   badgeColor?: string
 }
 
+/** Estado local da aba de rastreamento (pixels). */
+interface TrackingState {
+  meta_enabled: boolean
+  meta_browser_pixel: boolean
+  facebook_pixel_id: string
+  /** Token digitado — so enviado no save quando nao-vazio. */
+  meta_capi_token: string
+  /** Vem do GET: se ja existe token salvo (nunca retornado em claro). */
+  has_meta_capi_token: boolean
+  meta_test_event_code: string
+  google_enabled: boolean
+  google_ads_id: string
+  google_ads_conversion_label: string
+  qualified_enabled: boolean
+  qualified_event_name: string
+  qualified_logic: "and" | "or"
+  qualified_rules: QualifiedRule[]
+}
+
+const EMPTY_TRACKING: TrackingState = {
+  meta_enabled: false,
+  meta_browser_pixel: true,
+  facebook_pixel_id: "",
+  meta_capi_token: "",
+  has_meta_capi_token: false,
+  meta_test_event_code: "",
+  google_enabled: false,
+  google_ads_id: "",
+  google_ads_conversion_label: "",
+  qualified_enabled: false,
+  qualified_event_name: "Lead qualificado",
+  qualified_logic: "and",
+  qualified_rules: [],
+}
+
 interface FormDetail {
   form: {
     id: string
@@ -104,6 +141,22 @@ interface FormDetail {
     success_message: string | null
     redirect_url: string | null
     logo_url: string | null
+    facebook_pixel_id: string | null
+    google_ads_id: string | null
+    google_analytics_id: string | null
+    meta_test_event_code: string | null
+    google_ads_conversion_label: string | null
+    has_meta_capi_token: boolean
+    tracking_config: {
+      meta: { enabled: boolean; browser_pixel: boolean }
+      google: { enabled: boolean }
+      qualified_lead: {
+        enabled: boolean
+        event_name: string
+        logic: "and" | "or"
+        rules: QualifiedRule[]
+      }
+    }
   }
   fields: FormField[]
   submissions: Array<{
@@ -346,12 +399,13 @@ const THEME_PRESETS: Array<{
 ]
 
 // Tabs
-type TabKey = "content" | "style" | "fields" | "after" | "install"
+type TabKey = "content" | "style" | "fields" | "after" | "tracking" | "install"
 const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: "content", label: "Conteúdo", icon: FileText },
   { key: "style", label: "Estilo", icon: Palette },
   { key: "fields", label: "Campos", icon: ListChecks },
   { key: "after", label: "Após envio", icon: Send },
+  { key: "tracking", label: "Rastreamento", icon: Target },
   { key: "install", label: "Instalar", icon: Code },
 ]
 
@@ -432,6 +486,7 @@ export default function FormEditorPage({
   const [redirectUrl, setRedirectUrl] = useState("")
   const [theme, setTheme] = useState<FormTheme>({})
   const [fields, setFields] = useState<FormField[]>([])
+  const [tracking, setTracking] = useState<TrackingState>(EMPTY_TRACKING)
 
   const [activeTab, setActiveTab] = useState<TabKey>("style")
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
@@ -460,6 +515,22 @@ export default function FormEditorPage({
     setRedirectUrl(data.form.redirect_url ?? "")
     setTheme(data.form.theme ?? {})
     setFields(data.fields)
+    const tc = data.form.tracking_config
+    setTracking({
+      meta_enabled: tc?.meta?.enabled ?? false,
+      meta_browser_pixel: tc?.meta?.browser_pixel ?? true,
+      facebook_pixel_id: data.form.facebook_pixel_id ?? "",
+      meta_capi_token: "",
+      has_meta_capi_token: data.form.has_meta_capi_token ?? false,
+      meta_test_event_code: data.form.meta_test_event_code ?? "",
+      google_enabled: tc?.google?.enabled ?? false,
+      google_ads_id: data.form.google_ads_id ?? "",
+      google_ads_conversion_label: data.form.google_ads_conversion_label ?? "",
+      qualified_enabled: tc?.qualified_lead?.enabled ?? false,
+      qualified_event_name: tc?.qualified_lead?.event_name ?? "Lead qualificado",
+      qualified_logic: tc?.qualified_lead?.logic ?? "and",
+      qualified_rules: tc?.qualified_lead?.rules ?? [],
+    })
   }, [data])
 
   const stagesForPipeline =
@@ -510,6 +581,27 @@ export default function FormEditorPage({
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
           fields: fields.map((f, i) => ({ ...f, position: i })),
+          // Rastreamento (pixels). meta_capi_token so vai quando digitado.
+          facebook_pixel_id: tracking.facebook_pixel_id || null,
+          meta_test_event_code: tracking.meta_test_event_code || null,
+          google_ads_id: tracking.google_ads_id || null,
+          google_ads_conversion_label: tracking.google_ads_conversion_label || null,
+          tracking_config: {
+            meta: {
+              enabled: tracking.meta_enabled,
+              browser_pixel: tracking.meta_browser_pixel,
+            },
+            google: { enabled: tracking.google_enabled },
+            qualified_lead: {
+              enabled: tracking.qualified_enabled,
+              event_name: tracking.qualified_event_name || "Lead qualificado",
+              logic: tracking.qualified_logic,
+              rules: tracking.qualified_rules,
+            },
+          },
+          ...(tracking.meta_capi_token.trim()
+            ? { meta_capi_token: tracking.meta_capi_token.trim() }
+            : {}),
         }),
       })
       const json = await res.json()
@@ -518,11 +610,15 @@ export default function FormEditorPage({
         return
       }
       setSavedAt(new Date())
+      // Reflete o token salvo sem revela-lo: limpa o input e marca "configurado".
+      if (tracking.meta_capi_token.trim()) {
+        setTracking((t) => ({ ...t, meta_capi_token: "", has_meta_capi_token: true }))
+      }
       mutate()
     } finally {
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, fields, mutate])
+  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, fields, tracking, mutate])
 
   const togglePublish = async () => {
     if (!data) return
@@ -697,6 +793,13 @@ export default function FormEditorPage({
               setSuccessMessage={setSuccessMessage}
               redirectUrl={redirectUrl}
               setRedirectUrl={setRedirectUrl}
+            />
+          )}
+          {activeTab === "tracking" && (
+            <TrackingTab
+              tracking={tracking}
+              setTracking={setTracking}
+              fields={fields}
             />
           )}
           {activeTab === "install" && (
@@ -1596,6 +1699,350 @@ function FieldsTab({
         ))}
       </div>
     </Stack>
+  )
+}
+
+function Switch({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors " +
+        (checked ? "bg-slate-900 dark:bg-white" : "bg-slate-300 dark:bg-white/20")
+      }
+    >
+      <span
+        className={
+          "inline-block h-3.5 w-3.5 rounded-full bg-white dark:bg-[#1A1D27] shadow-sm transition-transform " +
+          (checked ? "translate-x-4" : "translate-x-1")
+        }
+      />
+    </button>
+  )
+}
+
+function TrackingTab({
+  tracking,
+  setTracking,
+  fields,
+}: {
+  tracking: TrackingState
+  setTracking: React.Dispatch<React.SetStateAction<TrackingState>>
+  fields: FormField[]
+}) {
+  const patch = (p: Partial<TrackingState>) => setTracking((t) => ({ ...t, ...p }))
+
+  // Só campos já salvos (com id) podem ser referenciados por uma regra.
+  const savedFields = fields.filter(
+    (f): f is FormField & { id: string } => !!f.id,
+  )
+
+  const addRule = () =>
+    patch({
+      qualified_rules: [
+        ...tracking.qualified_rules,
+        { field_id: savedFields[0]?.id ?? "", operator: "in", value: [] },
+      ],
+    })
+  const updateRule = (idx: number, up: Partial<QualifiedRule>) =>
+    patch({
+      qualified_rules: tracking.qualified_rules.map((r, i) =>
+        i === idx ? { ...r, ...up } : r,
+      ),
+    })
+  const removeRule = (idx: number) =>
+    patch({
+      qualified_rules: tracking.qualified_rules.filter((_, i) => i !== idx),
+    })
+
+  return (
+    <Stack>
+      {/* ── Meta Ads ── */}
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          title="Meta Ads (Facebook / Instagram)"
+          hint="Envia o evento Lead via Conversions API (server-side) quando alguém se cadastra, com o máximo de parâmetros pra otimização."
+        />
+        <Switch
+          checked={tracking.meta_enabled}
+          onChange={(v) => patch({ meta_enabled: v })}
+        />
+      </div>
+      {tracking.meta_enabled && (
+        <>
+          <Field label="ID do Pixel" hint="Encontrado no Gerenciador de Eventos do Meta.">
+            <input
+              className="crm-input w-full font-mono text-[12px]"
+              placeholder="1234567890123456"
+              value={tracking.facebook_pixel_id}
+              onChange={(e) => patch({ facebook_pixel_id: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Token da Conversions API"
+            hint={
+              tracking.has_meta_capi_token
+                ? "Já configurado. Preencha só para substituir. Fica criptografado."
+                : "Access token gerado no Gerenciador de Eventos. Fica criptografado e nunca é exibido."
+            }
+          >
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="crm-input w-full font-mono text-[12px]"
+              placeholder={
+                tracking.has_meta_capi_token ? "•••••••••• configurado" : "EAAB..."
+              }
+              value={tracking.meta_capi_token}
+              onChange={(e) => patch({ meta_capi_token: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Código de teste (opcional)"
+            hint="Test Event Code pra validar no Gerenciador de Eventos antes de ir pra produção."
+          >
+            <input
+              className="crm-input w-full font-mono text-[12px]"
+              placeholder="TEST12345"
+              value={tracking.meta_test_event_code}
+              onChange={(e) => patch({ meta_test_event_code: e.target.value })}
+            />
+          </Field>
+          <label className="flex items-start gap-2 text-[12px] text-slate-700 dark:text-white/75">
+            <input
+              type="checkbox"
+              checked={tracking.meta_browser_pixel}
+              onChange={(e) => patch({ meta_browser_pixel: e.target.checked })}
+              className="mt-0.5 accent-slate-900 dark:accent-white"
+            />
+            <span>
+              Também disparar o pixel no navegador (PageView + Lead), deduplicado com a
+              API pelo mesmo event_id.
+            </span>
+          </label>
+        </>
+      )}
+
+      <Divider />
+
+      {/* ── Google Ads ── */}
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          title="Google Ads"
+          hint="Dispara a conversão via gtag no navegador quando o lead envia o formulário."
+        />
+        <Switch
+          checked={tracking.google_enabled}
+          onChange={(v) => patch({ google_enabled: v })}
+        />
+      </div>
+      {tracking.google_enabled && (
+        <>
+          <Field label="ID de conversão" hint='Formato "AW-XXXXXXXXX".'>
+            <input
+              className="crm-input w-full font-mono text-[12px]"
+              placeholder="AW-123456789"
+              value={tracking.google_ads_id}
+              onChange={(e) => patch({ google_ads_id: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Rótulo da conversão"
+            hint="A label do evento (send_to = ID/label)."
+          >
+            <input
+              className="crm-input w-full font-mono text-[12px]"
+              placeholder="AbC-D_efG-hIjK"
+              value={tracking.google_ads_conversion_label}
+              onChange={(e) => patch({ google_ads_conversion_label: e.target.value })}
+            />
+          </Field>
+        </>
+      )}
+
+      <Divider />
+
+      {/* ── Lead qualificado ── */}
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          title="Evento “Lead qualificado”"
+          hint="Evento custom enviado ao Meta só quando as condições abaixo forem satisfeitas (ex.: faturamento acima de 500k)."
+        />
+        <Switch
+          checked={tracking.qualified_enabled}
+          onChange={(v) => patch({ qualified_enabled: v })}
+        />
+      </div>
+      {tracking.qualified_enabled && (
+        <>
+          <Field label="Nome do evento">
+            <input
+              className="crm-input w-full"
+              placeholder="Lead qualificado"
+              value={tracking.qualified_event_name}
+              onChange={(e) => patch({ qualified_event_name: e.target.value })}
+            />
+          </Field>
+          <Field label="Combinação das condições">
+            <ToggleGroup
+              value={tracking.qualified_logic}
+              onChange={(v) => patch({ qualified_logic: v })}
+              options={[
+                { value: "and", label: "Todas (E)" },
+                { value: "or", label: "Qualquer (OU)" },
+              ]}
+            />
+          </Field>
+
+          {savedFields.length === 0 ? (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+              Crie e salve os campos do formulário primeiro para poder montar condições.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {tracking.qualified_rules.length === 0 && (
+                <p className="text-[11px] text-slate-500 dark:text-white/45">
+                  Sem condições, o evento não é disparado. Adicione ao menos uma.
+                </p>
+              )}
+              {tracking.qualified_rules.map((rule, idx) => (
+                <RuleRow
+                  key={idx}
+                  rule={rule}
+                  fields={savedFields}
+                  onChange={(up) => updateRule(idx, up)}
+                  onRemove={() => removeRule(idx)}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={addRule}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-white/75 hover:text-slate-900 dark:hover:text-white"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar condição
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </Stack>
+  )
+}
+
+function RuleRow({
+  rule,
+  fields,
+  onChange,
+  onRemove,
+}: {
+  rule: QualifiedRule
+  fields: Array<FormField & { id: string }>
+  onChange: (up: Partial<QualifiedRule>) => void
+  onRemove: () => void
+}) {
+  const selField = fields.find((f) => f.id === rule.field_id)
+  const opts = (selField?.options ?? []).map((o) =>
+    typeof o === "string" ? { label: o, value: o } : o,
+  )
+  const hasOptions = opts.length > 0
+  const needsValue = rule.operator !== "is_set"
+  const selectedValues = Array.isArray(rule.value)
+    ? rule.value.map(String)
+    : rule.value != null && rule.value !== ""
+      ? [String(rule.value)]
+      : []
+
+  const toggleOption = (v: string) => {
+    const set = new Set(selectedValues)
+    if (set.has(v)) set.delete(v)
+    else set.add(v)
+    onChange({ value: Array.from(set) })
+  }
+
+  return (
+    <div className="rounded-[6px] border border-black/[0.06] dark:border-white/[0.08] p-2.5 space-y-2 bg-slate-50/50 dark:bg-white/[0.02]">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <select
+            value={rule.field_id}
+            onChange={(e) => onChange({ field_id: e.target.value })}
+            className="crm-input w-full appearance-none pr-8 text-[12px]"
+          >
+            {fields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+        </div>
+        <div className="relative w-36 shrink-0">
+          <select
+            value={rule.operator}
+            onChange={(e) =>
+              onChange({ operator: e.target.value as QualifiedRule["operator"] })
+            }
+            className="crm-input w-full appearance-none pr-8 text-[12px]"
+          >
+            {QUALIFIED_OPERATORS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 text-slate-400 hover:text-red-500"
+          aria-label="Remover condição"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {needsValue &&
+        (hasOptions ? (
+          <div className="flex flex-wrap gap-1.5">
+            {opts.map((o) => {
+              const active = selectedValues.includes(o.value)
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => toggleOption(o.value)}
+                  className={
+                    "px-2 py-1 rounded-[4px] text-[11px] border transition-colors " +
+                    (active
+                      ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white"
+                      : "border-black/[0.10] dark:border-white/[0.12] text-slate-600 dark:text-white/60 hover:border-slate-400")
+                  }
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <input
+            className="crm-input w-full text-[12px]"
+            placeholder="Valor"
+            value={typeof rule.value === "string" ? rule.value : (selectedValues[0] ?? "")}
+            onChange={(e) => onChange({ value: e.target.value })}
+          />
+        ))}
+    </div>
   )
 }
 

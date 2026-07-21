@@ -10,6 +10,8 @@ import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { encrypt } from "@/lib/crypto"
+import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmFormDetail")
@@ -35,6 +37,8 @@ export async function GET(
         `id, name, slug, description, status, theme, logo_url,
          success_message, redirect_url, pipeline_id, stage_id,
          facebook_pixel_id, google_ads_id, google_analytics_id,
+         meta_capi_token, meta_test_event_code, google_ads_conversion_label,
+         tracking_config,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, scope, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name, color)`,
@@ -45,6 +49,19 @@ export async function GET(
 
     if (error) throw error
     if (!form) throw new AppError("Form nao encontrado", 404, "not-found")
+
+    // Sanitiza: nunca retorna o token da CAPI em claro — so um boolean.
+    // Normaliza tracking_config pra a UI receber sempre o shape completo.
+    const {
+      meta_capi_token,
+      tracking_config,
+      ...formRest
+    } = form as Record<string, unknown> & { meta_capi_token?: string | null }
+    const sanitizedForm = {
+      ...formRest,
+      tracking_config: normalizeTrackingConfig(tracking_config),
+      has_meta_capi_token: !!meta_capi_token,
+    }
 
     const { data: fields } = await admin
       .from("crm_form_fields")
@@ -62,7 +79,7 @@ export async function GET(
       .limit(20)
 
     return successResponse(request, {
-      form,
+      form: sanitizedForm,
       fields: fields || [],
       submissions: submissions || [],
     })
@@ -98,6 +115,30 @@ const fieldUpsertSchema = z.object({
     .optional(),
 })
 
+const qualifiedRuleSchema = z.object({
+  field_id: z.string(),
+  operator: z.enum([
+    "equals", "not_equals", "in", "not_in",
+    "contains", "gt", "gte", "lt", "lte", "is_set",
+  ]),
+  value: z
+    .union([z.string(), z.array(z.string()), z.number(), z.null()])
+    .optional(),
+})
+
+const trackingConfigSchema = z.object({
+  meta: z.object({ enabled: z.boolean(), browser_pixel: z.boolean() }).optional(),
+  google: z.object({ enabled: z.boolean() }).optional(),
+  qualified_lead: z
+    .object({
+      enabled: z.boolean(),
+      event_name: z.string().min(1).max(120),
+      logic: z.enum(["and", "or"]),
+      rules: z.array(qualifiedRuleSchema),
+    })
+    .optional(),
+})
+
 const patchFormSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/).optional(),
@@ -112,6 +153,12 @@ const patchFormSchema = z.object({
   facebook_pixel_id: z.string().nullable().optional(),
   google_ads_id: z.string().nullable().optional(),
   google_analytics_id: z.string().nullable().optional(),
+  // Tracking de conversao. meta_capi_token so e gravado quando vem uma
+  // string nao-vazia (cifrada aqui); vazio/omitido mantem o atual.
+  meta_capi_token: z.string().nullable().optional(),
+  meta_test_event_code: z.string().nullable().optional(),
+  google_ads_conversion_label: z.string().nullable().optional(),
+  tracking_config: trackingConfigSchema.optional(),
   // Quando fields fornecido, faz replace total: deleta os antigos e
   // insere os novos. Editor envia o array completo a cada save.
   fields: z.array(fieldUpsertSchema).optional(),
@@ -130,12 +177,18 @@ export async function PATCH(
 
     const body = await request.json()
     const parsed = patchFormSchema.parse(body)
-    const { fields, redirect_url, logo_url, ...formData } = parsed
+    const { fields, redirect_url, logo_url, meta_capi_token, ...formData } = parsed
 
     // Coerce empty string -> null pra colunas URL.
     const update: Record<string, unknown> = { ...formData }
     if (redirect_url !== undefined) update.redirect_url = redirect_url || null
     if (logo_url !== undefined) update.logo_url = logo_url || null
+
+    // Token da CAPI: so grava (cifrado) quando vem string nao-vazia. Vazio
+    // ou omitido = mantem o atual (a UI so envia quando o usuario altera).
+    if (typeof meta_capi_token === "string" && meta_capi_token.trim()) {
+      update.meta_capi_token = encrypt(meta_capi_token.trim())
+    }
 
     // Atualiza form.
     if (Object.keys(update).length > 0) {

@@ -23,6 +23,9 @@ interface FormPayload {
     logo_url: string | null
     success_message: string | null
     redirect_url: string | null
+    // Descritor de tracking (pixels) — sem token/regras. Tipagem completa
+    // no PublicFormView.
+    tracking?: Record<string, unknown>
   }
   fields: Array<{
     id: string
@@ -75,12 +78,19 @@ export default async function PublicFormPage({
     fbclid: typeof sp.fbclid === "string" ? sp.fbclid : null,
   }
 
+  // Click ids pra matching de conversao (Meta fbclid / Google gclid).
+  const clickIds = {
+    fbclid: typeof sp.fbclid === "string" ? sp.fbclid : null,
+    gclid: typeof sp.gclid === "string" ? sp.gclid : null,
+  }
+
   return (
     <PublicFormView
       slug={slug}
       // theme e um JSON column livre — cast pro tipo amplo do renderer.
       payload={data as unknown as ComponentProps<typeof PublicFormView>["payload"]}
       utm={utm}
+      clickIds={clickIds}
       embed={sp.embed === "1" || sp.embed === "true"}
     />
   )
