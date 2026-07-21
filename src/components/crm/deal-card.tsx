@@ -605,7 +605,9 @@ export function DealCard({
           open
           onClose={() => setWaOpen(false)}
           phone={deal.contact_phone}
-          contactName={deal.client?.name ?? deal.title}
+          // Sem fallback pro title — título de deal não pode virar
+          // nome de contato persistido na thread.
+          contactName={deal.client?.name}
           dealId={deal.id}
           clientId={deal.client?.id}
         />

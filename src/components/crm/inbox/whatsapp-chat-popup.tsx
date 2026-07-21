@@ -24,6 +24,7 @@ import { createPortal } from "react-dom"
 import useSWR from "swr"
 import { ExternalLink, Loader2, MessageSquare, Send, X } from "lucide-react"
 import type { ThreadDetail } from "@/types/crm-inbox"
+import { normalizePhone } from "@/lib/whatsapp/phone"
 import { useRealtimeInbox } from "@/hooks/use-realtime-inbox"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { ChatPanel } from "./chat-panel"
@@ -123,7 +124,7 @@ export function WhatsAppChatPopup({
 
   if (!open || typeof document === "undefined") return null
 
-  const waFallback = `https://wa.me/${phone.replace(/\D/g, "")}`
+  const waFallback = `https://wa.me/${normalizePhone(phone) ?? phone.replace(/\D/g, "")}`
 
   return createPortal(
     <div
@@ -140,7 +141,7 @@ export function WhatsAppChatPopup({
       aria-label={`Conversa WhatsApp com ${contactName || phone}`}
     >
       <div
-        className="flex w-full flex-col overflow-hidden"
+        className="relative flex w-full flex-col overflow-hidden"
         style={{
           maxWidth: 460,
           height: "80vh",
@@ -150,6 +151,28 @@ export function WhatsAppChatPopup({
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Fechar flutuante — o onBack do ChatPanel é md:hidden, então
+            em desktop o modo conversa não teria fechar visível. Fica
+            SOBRE o header do ChatPanel (que não pode ser modificado). */}
+        {state.status === "ready" && state.threadId && (
+          <button
+            onClick={onClose}
+            aria-label="Fechar conversa"
+            title="Fechar conversa"
+            className="absolute z-10 flex h-6 w-6 items-center justify-center"
+            style={{
+              top: 9,
+              right: 10,
+              background: "var(--crm-gray-0)",
+              border: "1px solid var(--crm-border)",
+              borderRadius: 6,
+              color: "var(--crm-gray-500)",
+              cursor: "pointer",
+            }}
+          >
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        )}
         {state.status === "loading" && (
           <PopupShell contactName={contactName} phone={phone} onClose={onClose}>
             <div className="flex flex-1 flex-col gap-3 p-6" aria-label="Carregando conversa">

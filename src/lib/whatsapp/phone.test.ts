@@ -40,11 +40,17 @@ describe("phoneVariants", () => {
     expect(variants).toHaveLength(2)
   })
 
-  it("gera variante COM o nono dígito pra número BR de 12 dígitos", () => {
+  it("gera variante COM o nono dígito pra celular BR de 12 dígitos (assinante 6-9)", () => {
     const variants = phoneVariants("551187654321")
     expect(variants).toContain("551187654321")
     expect(variants).toContain("5511987654321")
     expect(variants).toHaveLength(2)
+  })
+
+  it("telefone FIXO BR (assinante 2-5) NÃO ganha variante do 9", () => {
+    expect(phoneVariants("551132654321")).toEqual(["551132654321"])
+    expect(phoneVariants("551145678901")).toEqual(["551145678901"])
+    expect(phoneVariants("551155554444")).toEqual(["551155554444"])
   })
 
   it("não gera variante quando o assinante de 9 dígitos não começa com 9", () => {

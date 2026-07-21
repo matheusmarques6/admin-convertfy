@@ -28,7 +28,10 @@ export function normalizePhone(raw: string): string | null {
  *
  * Só se aplica a números BR (prefixo 55) com comprimento certo:
  *  - 13 dígitos (55 + DDD + 9 dígitos começando com 9) → variante sem o 9
- *  - 12 dígitos (55 + DDD + 8 dígitos) → variante com o 9
+ *  - 12 dígitos (55 + DDD + 8 dígitos de CELULAR, i.e. começando com
+ *    6-9) → variante com o 9. Fixos (assinante começando com 2-5) NÃO
+ *    ganham variante — adicionar o 9 num fixo fabricaria um celular
+ *    válido de OUTRA pessoa e casaria a thread errada.
  * Internacional não-BR retorna só o próprio número.
  */
 export function phoneVariants(phone: string): string[] {
@@ -37,7 +40,7 @@ export function phoneVariants(phone: string): string[] {
     if (phone.length === 13 && phone[4] === "9") {
       // 55 + DDD (idx 2-3) + assinante a partir do idx 4
       variants.add(phone.slice(0, 4) + phone.slice(5))
-    } else if (phone.length === 12) {
+    } else if (phone.length === 12 && "6789".includes(phone[4])) {
       variants.add(phone.slice(0, 4) + "9" + phone.slice(4))
     }
   }
