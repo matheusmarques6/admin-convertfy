@@ -15,6 +15,7 @@ import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -94,7 +95,13 @@ function payloadFromDraft(draft: VariantDraft) {
     tones: draft.tones,
     density: draft.density || null,
     product_slots: draft.product_slots,
-    output_schema: draft.output_schema,
+    // Canoniza a chave técnica no save — destrava rascunhos com chaves em
+    // maiúsculo/acento sem obrigar a reeditar campo a campo (o servidor
+    // também normaliza, mas garantir aqui melhora o feedback imediato).
+    output_schema: draft.output_schema.map((f) => ({
+      ...f,
+      key: normalizeOutputKey(f.key),
+    })),
     slots: csvToArr(draft.slots),
     tags: csvToArr(draft.tags),
     thumbnail: draft.thumbnail.trim() || null,
@@ -173,7 +180,12 @@ export function ComponentsWorkspace() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           })
-      if (!res.ok) throw new Error(String(res.status))
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as {
+          error?: string
+        } | null
+        throw new Error(err?.error || `Erro ${res.status}`)
+      }
       const json = (await res.json()) as {
         variant?: EmailComponentVariant
         data?: { variant?: EmailComponentVariant }
@@ -184,10 +196,11 @@ export function ComponentsWorkspace() {
       if (saved?.id) setSelectedId(saved.id)
       // Se mudou de seção, acompanha a variante na nova categoria
       if (saved && saved.block_type !== cat) setCat(saved.block_type)
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Falha ao salvar. Verifique os campos.",
+        description: e instanceof Error ? e.message : undefined,
       })
     } finally {
       setSaving(false)

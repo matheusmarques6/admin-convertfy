@@ -11,6 +11,7 @@ import type { ComponentOutputField } from "@/types/email-generation"
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS_PT,
+  sanitizeOutputKeyInput,
   type ComponentFieldType,
 } from "@/lib/agents/shared/component-dimensions"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
@@ -39,9 +40,11 @@ function SchemaRow({
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input
           value={field.key}
-          onChange={(e) => onChange({ ...field, key: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...field, key: sanitizeOutputKeyInput(e.target.value) })
+          }
           placeholder="chave_tecnica"
-          title="Chave técnica (minúsculas/underscore)"
+          title="Chave técnica (minúsculas/underscore) — casa com o {{PLACEHOLDER}} do HTML sem diferenciar maiúsculas"
           style={{ ...rowInput, flex: 1, fontFamily: F.mono, fontSize: 12 }}
         />
         <input
