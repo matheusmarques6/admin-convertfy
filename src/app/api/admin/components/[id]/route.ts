@@ -7,6 +7,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
+import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 
 const log = logger.child("EmailComponent")
@@ -14,6 +15,9 @@ const log = logger.child("EmailComponent")
 export const dynamic = "force-dynamic"
 
 const patchSchema = z.object({
+  // Tipo de seção (pill de categoria). Sem isto, mudar "Tipo de seção" no
+  // editor não persistia — o Zod removia a chave e a variante não migrava.
+  block_type: z.enum(COMPONENT_CATEGORY_KEYS as [string, ...string[]]).optional(),
   name: z.string().min(1).optional(),
   html: z.string().min(1).optional(),
   rendered_html: z.string().nullable().optional(),
