@@ -66,6 +66,9 @@ const QA_ISSUE_TYPES = [
   "image_paleta_off",
   "image_overlay_reserva_ausente",
   "image_cena_inadequada",
+  // ── Validação contra output_schema (blueprint híbrido) ─
+  "copy_excede_max_len",
+  "campo_obrigatorio_vazio",
 ] as const satisfies readonly QaIssueType[]
 
 const QA_SEVERITIES = ["low", "medium", "high"] as const satisfies readonly QaIssueSeverity[]
@@ -221,6 +224,69 @@ export function runDeterministicChecks(
   return issues
 }
 
+// ── Validação determinística contra o output_schema da variante ───────
+// (blueprint híbrido: blueprint.blocks[].fields — snapshot v2 gravado pelo
+// builder). Matching bloco↔blueprint por índice + type (blocks chegam
+// ordenados por position; mesma convenção position-1 do dispatch). Sem
+// fields → skip silencioso (emails legados/fallback). Custo zero.
+interface SchemaCheckBlueprintBlock {
+  type: string
+  fields?: Array<{
+    key: string
+    type: string
+    max_len: number
+    required: boolean
+  }> | null
+}
+
+export function runSchemaChecks(
+  blocks: Array<{ block_type: string; content: Record<string, unknown> }>,
+  blueprintBlocks: SchemaCheckBlueprintBlock[],
+): QaIssue[] {
+  const issues: QaIssue[] = []
+
+  blocks.forEach((block, i) => {
+    const bp = blueprintBlocks[i]
+    if (!bp || bp.type !== block.block_type) return
+    const fields = bp.fields ?? []
+    if (fields.length === 0) return
+
+    for (const f of fields) {
+      // Campos de imagem são preenchidos pelo pipeline (image agent), não
+      // pela copy — fora da validação.
+      if (f.type === "image") continue
+      const value = block.content?.[f.key]
+
+      if (f.required && (value == null || String(value).trim() === "")) {
+        issues.push({
+          type: "campo_obrigatorio_vazio",
+          severity: "medium",
+          message: `Campo obrigatório "${f.key}" vazio no bloco ${block.block_type} #${i + 1}`,
+          location: `bloco ${i + 1} (${block.block_type}) · ${f.key}`,
+        })
+        continue
+      }
+
+      if (
+        f.max_len > 0 &&
+        typeof value === "string" &&
+        value.length > f.max_len
+      ) {
+        const excess = (value.length - f.max_len) / f.max_len
+        issues.push({
+          type: "copy_excede_max_len",
+          // ≤15% acima = low (aperto leve); >15% = medium (estoura o layout).
+          severity: excess > 0.15 ? "medium" : "low",
+          message: `Campo "${f.key}" com ${value.length} chars (máx ${f.max_len}) no bloco ${block.block_type} #${i + 1}`,
+          location: `bloco ${i + 1} (${block.block_type}) · ${f.key}`,
+        })
+      }
+    }
+  })
+
+  return issues
+}
+
 // ── Render do user prompt ─────────────────────────────────────────────
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
@@ -333,6 +399,10 @@ export interface RunQaAgentInput {
   // null/undefined = respeita a env EMAIL_QA_VISION_ENABLED (comportamento
   // original); true/false = decisão explícita da aba Configurações.
   qaVisionEnabled?: boolean | null
+  // Blocos do blueprint efetivo (com fields v2 do blueprint híbrido) —
+  // habilita runSchemaChecks (validação max_len/required contra o
+  // output_schema da variante). Ausente/vazio → skip.
+  blueprintBlocks?: SchemaCheckBlueprintBlock[]
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -351,7 +421,10 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   } = input
 
   // ── 1. Pre-checks deterministicos ────────────────────────────────────
-  const deterministicIssues = runDeterministicChecks(html, blocks)
+  const deterministicIssues = [
+    ...runDeterministicChecks(html, blocks),
+    ...runSchemaChecks(blocks, input.blueprintBlocks ?? []),
+  ]
 
   // ── 2. Carrega config ativo ──────────────────────────────────────────
   const config = await loadActiveQaConfig()

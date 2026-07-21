@@ -125,6 +125,8 @@ export const DEFAULT_REFINER_USER_TEMPLATE = `<store>
   <current_font_body>{{current_font_body}}</current_font_body>
 </store>
 
+<tones>{{tones}}</tones>
+
 <email>
   <name>{{email_name}}</name>
   <subject>{{subject}}</subject>

@@ -88,6 +88,7 @@ export const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Voc
 
 Regras:
 - Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
+- Cada componente escolhido pode trazer \`notas_implementacao\` (quirks de Outlook, VML, hospedagem de assets, restrições técnicas): RESPEITE essas notas ao harmonizar — nunca remova a técnica que elas descrevem e NÃO as copie para o HTML final.
 - Monte os blocos na ordem de block_index (intercalando <componentes_escolhidos> e <blocos_sem_variante> pela posição).
 - BLOCOS SEM VARIANTE: para CADA item de <blocos_sem_variante>, NÃO pule a posição. Extraia a seção correspondente de <htmls_referencia> (o reference PADRÃO) e inclua-a naquela posição, precedida do comentário HTML exatamente: <!-- bloco {section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->. Se o reference padrão não tiver essa seção, crie um bloco mínimo daquele tipo com o MESMO comentário. O bloco SEMPRE aparece.
 - Container único de 600px centralizado.
@@ -567,6 +568,10 @@ export async function assembleStoreReference(
             label: s.label,
             name: s.variant.name,
             html: s.variant.html,
+            // Notas de implementação da variante (quirks de Outlook, VML,
+            // hospedagem de asset...) — o Montador RESPEITA ao harmonizar,
+            // sem copiá-las pro HTML. Vazio quando não curadas.
+            notas_implementacao: s.variant.long_description ?? "",
           }]
         : [],
     ),

@@ -19,6 +19,7 @@
  */
 
 import type {
+  BlueprintBlockField,
   ComponentOutputField,
   CopySpecField,
   EmailOutlineTemplate,
@@ -33,23 +34,9 @@ import type {
 } from "./blueprint-generator.service"
 
 // ── Contrato v2 de fields (o que o n8n vê — IGUAL em todas as rotas) ──
-export interface BlueprintFieldV2 {
-  /** Chave do content que o n8n devolve no callback (content[key] = valor). */
-  key: string
-  label: string
-  type: "text_short" | "text_long" | "number" | "url" | "image" | "boolean"
-  /** Limite duro de caracteres (0 = sem limite). */
-  max_len: number
-  /** Mínimo sugerido (só quando derivado do tag-registry/copy_spec). */
-  min_len: number | null
-  required: boolean
-  example: string
-  guidance: string
-  /** Tag {{TAG}} correspondente no template (null = sem slot casado). */
-  tag: string | null
-  /** Proveniência (debug do n8n): de onde veio este field. */
-  source: "schema" | "tag_registry" | "llm"
-}
+// Definição canônica em types/email-generation.ts (BlueprintBlockField);
+// alias local mantido pelos consumidores do builder.
+export type BlueprintFieldV2 = BlueprintBlockField
 
 // Variante "enxuta" que o builder precisa (AssemblySlot carrega a completa).
 type SlotVariant = Extract<AssemblySlot, { kind: "variant" }>["variant"]

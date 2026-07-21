@@ -40,6 +40,7 @@ import {
   renderImagePrompt,
 } from "./chains/image.chain"
 import { renderImageTemplate } from "./image/template-renderer"
+import { deriveToneKeys } from "./shared/component-dimensions"
 import {
   resolveAspectForBlock,
   blockAspectFromBlueprint,
@@ -1226,6 +1227,13 @@ async function runRefinerStep(input: {
       brand_name: (storeRaw.store_name as string) || "Loja",
       niche: (storeRaw.niche as string) || "",
       locale: (storeRaw.language as string) || "pt-BR",
+      // Tons canônicos derivados do tom de voz da loja (component-dimensions)
+      // — sinal adicional pra estratégia tipográfica (Premium→serifada...).
+      tones: deriveToneKeys(
+        ((storeRaw.tone_description as string) ??
+          (storeRaw.tom_de_voz as string)) ||
+          null,
+      ).join(", "),
       pesquisa_full_text: pesquisaToFullText(storeRaw as PesquisaFields),
       current_font_heading: ctx.brand?.font_heading || "",
       current_font_body: ctx.brand?.font_body || "",
@@ -1775,6 +1783,8 @@ export async function runPhase2HtmlQa(
       brand: ctx.brand,
       blueprintObjective: ctx.blueprintObjective,
       qaVisionEnabled: ctx.qaVisionEnabled,
+      // fields v2 do blueprint híbrido → validação max_len/required no QA.
+      blueprintBlocks: ctx.blueprint?.blocks ?? [],
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"

@@ -16,6 +16,7 @@ import type {
 } from "@/types/email-generation"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
+import { validateSchemaTagCoherence } from "@/lib/email-workspace/schema-tag-coherence"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -195,6 +196,33 @@ export function ComponentsWorkspace() {
       }
       const saved = json.variant ?? json.data?.variant
       toast({ title: "Variante salva" })
+      // Warning NÃO-BLOQUEANTE de coerência schema↔tags do HTML: campo sem
+      // {{TAG}} gera copy sem slot no template; tag de copy sem campo fica
+      // no fallback tag-registry. Não impede o save (variantes legadas).
+      const coherence = validateSchemaTagCoherence(
+        payload.html,
+        payload.output_schema,
+      )
+      if (
+        coherence.keysWithoutTag.length > 0 ||
+        coherence.copyTagsWithoutKey.length > 0
+      ) {
+        const parts: string[] = []
+        if (coherence.keysWithoutTag.length > 0) {
+          parts.push(
+            `Campos sem {{TAG}} no HTML: ${coherence.keysWithoutTag.join(", ")}`,
+          )
+        }
+        if (coherence.copyTagsWithoutKey.length > 0) {
+          parts.push(
+            `Tags de copy sem campo no schema: ${coherence.copyTagsWithoutKey.join(", ")}`,
+          )
+        }
+        toast({
+          title: "Atenção: schema e HTML não estão 100% alinhados",
+          description: parts.join(" · "),
+        })
+      }
       await load()
       if (saved?.id) setSelectedId(saved.id)
       // Se mudou de seção, acompanha a variante na nova categoria

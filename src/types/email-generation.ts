@@ -9,6 +9,24 @@ export interface CopySpecField {
   max_chars: number
 }
 
+// Um campo do contrato v2 do payload de copy (blueprint híbrido, JSONB
+// blocks[].fields). Snapshot congelado na geração: origem "schema" =
+// output_schema da variante casada; "tag_registry" = derivado das tags
+// canônicas; "llm" = convertido do copy_spec do Blueprint LLM. O n8n
+// recebe SEMPRE este shape, independente da rota.
+export interface BlueprintBlockField {
+  key: string
+  label: string
+  type: "text_short" | "text_long" | "number" | "url" | "image" | "boolean"
+  max_len: number
+  min_len: number | null
+  required: boolean
+  example: string
+  guidance: string
+  tag: string | null
+  source: "schema" | "tag_registry" | "llm"
+}
+
 export interface BlueprintBlock {
   type: string
   label: string
@@ -33,6 +51,12 @@ export interface BlueprintBlock {
   // Proporção de geração da imagem DESTE bloco (AspectKey) — derivada das
   // tags de imagem do template (tag-registry). Prioridade máxima na fase 2.
   image_aspect?: string | null
+  // ── Blueprint híbrido (migration 20261022) ──────────────────────────
+  // Variante do Curador casada a este bloco + snapshot fields v2 (contrato
+  // único do payload n8n). Ausentes em blueprints legados.
+  variant_id?: string | null
+  variant_name?: string | null
+  fields?: BlueprintBlockField[]
 }
 
 export interface EmailBlueprint {
@@ -137,6 +161,11 @@ export type QaIssueType =
   | "image_paleta_off"
   | "image_overlay_reserva_ausente"
   | "image_cena_inadequada"
+  // ── Validação determinística contra o output_schema da variante ─────
+  // (blueprint.blocks[].fields, blueprint híbrido): copy estourando o
+  // max_len do campo / campo required vazio. Custo zero (sem LLM).
+  | "copy_excede_max_len"
+  | "campo_obrigatorio_vazio"
 
 export interface QaIssue {
   type: QaIssueType
