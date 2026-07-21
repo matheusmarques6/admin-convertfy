@@ -17,7 +17,7 @@ import { PromptsWorkspace } from "@/components/agents/prompts-workspace"
 import { BlueprintsWorkspace } from "@/components/email-blueprints/blueprints-workspace"
 import { ComponentsWorkspace } from "@/components/email-components/components-workspace"
 import { OutlinesWorkspace } from "@/components/email-outlines/outlines-workspace"
-import { GeneratedInspector } from "@/components/email-generation/generated-inspector"
+import { GeneratedTab } from "@/components/email-generation/generated-tab"
 import { SettingsTab } from "@/components/email-generation/settings-tab"
 import { ReferencesTab } from "@/components/email-generation/references-tab"
 import { TestTab } from "@/components/email-generation/test-tab"
@@ -151,7 +151,7 @@ export function EmailGenerationWorkspace({
       {tab === "blueprints" && <BlueprintsWorkspace initial={blueprints} />}
       {tab === "outlines" && <OutlinesWorkspace />}
       {tab === "components" && <ComponentsWorkspace />}
-      {tab === "generated" && <GeneratedInspector />}
+      {tab === "generated" && <GeneratedTab />}
       {tab === "settings" && <SettingsTab />}
       {tab === "references" && <ReferencesTab />}
       {tab === "test" && <TestTab />}

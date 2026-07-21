@@ -81,14 +81,25 @@ function ConsumedBadge({
   )
 }
 
-export function GeneratedInspector() {
+export function GeneratedInspector({
+  initialStoreId,
+  initialKey,
+  onBack,
+}: {
+  /** Pré-seleciona a loja (drill-down da tabela global da aba Geradas). */
+  initialStoreId?: string
+  /** Pré-seleciona o email no formato `flow_type:email_number`. */
+  initialKey?: string
+  /** Quando presente, mostra o botão "Voltar à lista". */
+  onBack?: () => void
+} = {}) {
   const { data: storesData } = useSWR<{
     stores: Array<{ id: string; store_name: string }>
   }>("/api/admin/stores", fetcher)
   const stores = storesData?.stores ?? []
 
-  const [storeId, setStoreId] = useState("")
-  const [selKey, setSelKey] = useState<string | null>(null)
+  const [storeId, setStoreId] = useState(initialStoreId ?? "")
+  const [selKey, setSelKey] = useState<string | null>(initialKey ?? null)
   const [regenerating, setRegenerating] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [htmlView, setHtmlView] = useState<"preview" | "code">("preview")
@@ -126,6 +137,15 @@ export function GeneratedInspector() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-white/80"
+          >
+            ← Voltar à lista
+          </button>
+        )}
         <label className="space-y-1">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
             <Store className="h-3.5 w-3.5" /> Loja
