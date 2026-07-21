@@ -51,6 +51,16 @@ const fmtBRL = (v: number): string =>
     maximumFractionDigits: 0,
   })
 
+/** UTM/referrer capturados no submit do formulário público. */
+interface UtmData {
+  source?: string | null
+  medium?: string | null
+  campaign?: string | null
+  term?: string | null
+  content?: string | null
+  referrer?: string | null
+}
+
 interface DealDrawerProps {
   dealId: string | null
   onClose: () => void
@@ -89,6 +99,7 @@ interface DealDetailResponse {
     probability: number | null
     status: string
     source: string | null
+    utm?: UtmData | null
     tags: string[] | null
     notes: string | null
     lost_reason: string | null
@@ -120,6 +131,7 @@ interface DealDetailResponse {
       email: string | null
       phone?: string | null
       company?: string | null
+      utm?: UtmData | null
       ai_qualification_score?: number | null
       ai_qualification_reason?: string | null
     } | null
@@ -1834,6 +1846,117 @@ function ContactAndFields({
           </span>
         )}
       </div>
+
+      {/* Origem (UTM) */}
+      <OriginBox deal={deal} />
+    </div>
+  )
+}
+
+// ─── Origem (UTM) ────────────────────────────────────────────────
+
+/** UTM do deal com fallback pro lead vinculado (deals antigos sem backfill). */
+function resolveUtm(deal: DealDetailResponse["deal"]): UtmData | null {
+  for (const candidate of [deal.utm, deal.lead?.utm]) {
+    if (!candidate) continue
+    const hasValue = Object.values(candidate).some(
+      (v) => typeof v === "string" && v.trim() !== "",
+    )
+    if (hasValue) return candidate
+  }
+  return null
+}
+
+function formatDealSource(source: string): string {
+  if (source.startsWith("form:")) {
+    return `Formulário · ${source.slice("form:".length)}`
+  }
+  return source
+}
+
+function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
+  const utm = resolveUtm(deal)
+
+  const rows: Array<{ label: string; value: string; title?: string }> = []
+  if (utm?.source) rows.push({ label: "Fonte", value: utm.source })
+  if (utm?.medium) rows.push({ label: "Mídia", value: utm.medium })
+  if (utm?.campaign) rows.push({ label: "Campanha", value: utm.campaign })
+  if (utm?.term) rows.push({ label: "Termo", value: utm.term })
+  if (utm?.content) rows.push({ label: "Conteúdo", value: utm.content })
+  if (utm?.referrer) {
+    const short = utm.referrer.replace(/^https?:\/\//, "")
+    rows.push({
+      label: "Referrer",
+      value: short.length > 48 ? `${short.slice(0, 48)}…` : short,
+      title: utm.referrer,
+    })
+  }
+
+  return (
+    <div
+      style={{
+        gridColumn: "1 / -1",
+        background: "var(--crm-gray-0)",
+        border: "1px solid var(--crm-border)",
+        borderRadius: 10,
+        padding: "16px 18px",
+      }}
+    >
+      <h3
+        className="m-0"
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--crm-gray-700)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 12,
+        }}
+      >
+        Origem
+      </h3>
+      {rows.length > 0 ? (
+        <div
+          className="grid gap-x-6 gap-y-2"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+        >
+          {rows.map((r) => (
+            <div key={r.label} className="flex flex-col gap-0.5" title={r.title}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "var(--crm-gray-500)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                {r.label}
+              </span>
+              <span
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--crm-gray-800)",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {r.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {deal.source && (
+            <span style={{ fontSize: 12.5, color: "var(--crm-gray-800)" }}>
+              {formatDealSource(deal.source)}
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: "var(--crm-gray-400)" }}>
+            Sem UTMs registradas
+          </span>
+        </div>
+      )}
     </div>
   )
 }

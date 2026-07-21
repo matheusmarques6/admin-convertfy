@@ -196,6 +196,16 @@ export async function POST(
     const isCsAlert = isCsForm && matchedStoreId && matchedClientId
     let leadId: string | null = null
 
+    // UTM/referrer da visita — gravado no lead E no deal (origem do cliente).
+    const utmData = {
+      source: parsed.utm_source ?? null,
+      medium: parsed.utm_medium ?? null,
+      campaign: parsed.utm_campaign ?? null,
+      term: parsed.utm_term ?? null,
+      content: parsed.utm_content ?? null,
+      referrer: parsed.referrer ?? null,
+    }
+
     if (isCsAlert) {
       const { error: alertErr } = await admin.from("store_alerts").insert({
         store_id: matchedStoreId,
@@ -242,14 +252,7 @@ export async function POST(
             source: leadData.source,
             status: "new",
             created_by: form.created_by,
-            utm: {
-              source: parsed.utm_source ?? null,
-              medium: parsed.utm_medium ?? null,
-              campaign: parsed.utm_campaign ?? null,
-              term: parsed.utm_term ?? null,
-              content: parsed.utm_content ?? null,
-              referrer: parsed.referrer ?? null,
-            },
+            utm: utmData,
             custom_fields:
               Object.keys(customFieldsData).length > 0
                 ? customFieldsData
@@ -325,6 +328,7 @@ export async function POST(
             probability: 50,
             status: "open",
             source: leadData.source,
+            utm: utmData,
             tags: [],
             lead_id: leadId,
             owner_id: form.created_by, // fallback assignee

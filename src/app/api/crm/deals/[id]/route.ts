@@ -39,7 +39,7 @@ export async function GET(
         pipeline:pipelines (id, name, scope, color, layout),
         stage:pipeline_stages!deals_stage_id_fkey (id, name, color, stage_type),
         lead:crm_leads!deals_lead_id_fkey (
-          id, name, email, phone, company, source, status,
+          id, name, email, phone, company, source, status, utm,
           ai_qualification_score, ai_qualification_reason
         )
       `)
