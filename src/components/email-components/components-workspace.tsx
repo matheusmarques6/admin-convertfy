@@ -25,6 +25,7 @@ import {
   EGSecTitle,
 } from "@/components/email-generation/ui/eg-atoms"
 import { VariantEditor, type VariantDraft } from "./variant-editor"
+import { VariantTestCard } from "./variant-test-card"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
 
@@ -375,7 +376,17 @@ export function ComponentsWorkspace() {
             </div>
           </div>
 
-          <VariantEditor draft={draft} onChange={setDraft} />
+          <VariantEditor
+            draft={draft}
+            onChange={setDraft}
+            testCard={
+              <VariantTestCard
+                variantId={selectedId}
+                html={draft.html}
+                schema={draft.output_schema}
+              />
+            }
+          />
         </div>
       </div>
     </div>

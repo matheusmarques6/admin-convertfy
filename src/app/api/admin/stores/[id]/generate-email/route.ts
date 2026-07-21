@@ -31,6 +31,9 @@ const bodySchema = z.object({
   // Teste COMPLETO: fase 1 (Architect) → copy nova via n8n só deste email
   // → fase 2 relaxada automática ao chegar copy_ready. Assíncrono.
   full_pipeline: z.boolean().optional().default(false),
+  // Contexto livre do operador (aba Testar → "Objetivo / contexto"):
+  // flui pro Architect via {{outline_guidance}} e pro payload da copy.
+  test_context: z.string().max(2000).optional(),
 })
 
 export async function POST(
@@ -64,6 +67,7 @@ export async function POST(
       batchId,
       phase2Only: parsed.phase2_only,
       fullPipeline: parsed.full_pipeline,
+      testContext: parsed.test_context,
     })
 
     // Path with_copy: dispara phase2 em background.

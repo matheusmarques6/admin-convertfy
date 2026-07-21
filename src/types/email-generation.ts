@@ -106,6 +106,10 @@ export type AgentType =
   // reescreve HTML). 3 estratégias: serifada (luxo), sans com
   // personalidade (moda) ou mono-fonte com contraste de peso.
   | "refiner"
+  // component_test: teste ad-hoc de uma variante da biblioteca (aba
+  // Componentes → "Testar com IA"): gera os campos do output_schema a
+  // partir de um briefing curto, sem tocar em emails reais.
+  | "component_test"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -211,6 +215,8 @@ export type GenerationRunAgent =
   | "campaign_image"
   // refiner: Refinador Tipográfico (fase 2, entre html e qa).
   | "refiner"
+  // component_test: teste ad-hoc de variante da biblioteca (aba Componentes).
+  | "component_test"
 
 export interface EmailGenerationRun {
   id: string

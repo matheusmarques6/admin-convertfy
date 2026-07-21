@@ -172,6 +172,16 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "section_junctions_json", desc: "Junções numeradas entre as seções do wrapper 600px (pontos de inserção de spacer)" },
     { key: "font_whitelist", desc: "Whitelist de fontes por tom (injetada pelo código — fonte única em font-whitelist.ts)" },
   ],
+  // Teste de bloco — vars renderizadas por /api/admin/components/[id]/test
+  component_test: [
+    { key: "variant_name", desc: "Nome da variante testada" },
+    { key: "section", desc: "Seção da biblioteca (rótulo humano)" },
+    { key: "when_use", desc: "Quando usar (contexto da variante)" },
+    { key: "copy_guidance", desc: "Orientações de copy da variante" },
+    { key: "output_schema_json", desc: "Schema de campos da variante (JSON)" },
+    { key: "store_context", desc: "Contexto da loja opcional (marca/nicho/tom)" },
+    { key: "briefing", desc: "Briefing curto digitado no teste" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

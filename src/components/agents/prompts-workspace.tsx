@@ -39,6 +39,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   campaign_architect: "Arquiteto",
   campaign_image: "Imagens de campanha",
   refiner: "Refinador Tipográfico",
+  component_test: "Teste de bloco",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -54,6 +55,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   campaign_architect: Compass,
   campaign_image: ImageIcon,
   refiner: Type,
+  component_test: Blocks,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

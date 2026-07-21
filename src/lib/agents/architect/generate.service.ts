@@ -46,6 +46,12 @@ export interface GenerateArchitectInput {
    * regeração de copy depois.
    */
   force?: boolean
+  /**
+   * Contexto livre do operador (aba Testar → "Objetivo / contexto").
+   * Concatenado à diretriz do outline — flui pros prompts do Curador,
+   * Montador e Blueprint via {{outline_guidance}}, sem mudar template algum.
+   */
+  contextOverride?: string
 }
 
 /**
@@ -163,6 +169,17 @@ export async function generateBlueprintAndReference(
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
   // (categoria + rótulo original de cada bloco, na ordem).
+  // Contexto livre do operador (Testar): entra como PRIORIDADE ao final da
+  // diretriz do outline — os prompts já consomem {{outline_guidance}}.
+  const contextOverride = input.contextOverride?.trim() ?? ""
+  const effectiveGuidance = contextOverride
+    ? `${outline?.guidance ?? ""}\n\n[CONTEXTO ADICIONAL DO OPERADOR — PRIORIDADE]\n${contextOverride}`.trim()
+    : outline?.guidance ?? ""
+  const outlineForBlueprint =
+    outline && contextOverride
+      ? { ...outline, guidance: effectiveGuidance }
+      : outline
+
   let structure = resolveStructure(outline)
   if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
     log.info("architect.structure_clamped", {
@@ -189,7 +206,7 @@ export async function generateBlueprintAndReference(
     briefingJson: JSON.stringify(marca),
     pesquisa,
     outlineObjective: outline?.objective ?? "",
-    outlineGuidance: outline?.guidance ?? "",
+    outlineGuidance: effectiveGuidance,
     outlineToneHint: outline?.tone_hint ?? "",
     referenceTemplateHtml: refTemplateHtml ?? "",
     structure,
@@ -209,7 +226,7 @@ export async function generateBlueprintAndReference(
     persona,
     tomVoz,
     topProductNames,
-    outline,
+    outline: outlineForBlueprint,
     pesquisa,
     referenceHtml: html ?? "",
     defaultModel,

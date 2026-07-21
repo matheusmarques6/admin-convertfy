@@ -60,6 +60,12 @@ export interface DispatchEmailCopyOptions {
    * Luxe Lift welcome#3 foi 1 bloco de 12.
    */
   regenerateAll?: boolean
+  /**
+   * Contexto livre do operador (aba Testar → "Objetivo / contexto").
+   * Entra no payload como chave top-level ADITIVA `test_context` — o n8n
+   * ignora chaves desconhecidas até o flow ser atualizado pra consumi-la.
+   */
+  testContext?: string
 }
 
 interface EmailFlowRow {
@@ -647,6 +653,8 @@ export async function dispatchEmailCopyWebhook(
     event: "email_copy.requested" as const,
     timestamp: new Date().toISOString(),
     trigger_source: options.triggerSource,
+    // Chave aditiva: contexto livre do operador (teste). null fora do teste.
+    test_context: options.testContext?.trim() || null,
     callback: {
       url: `${getAppUrl()}/api/webhooks/n8n/email-copy`,
       secret: process.env.N8N_WEBHOOK_SECRET ?? "",

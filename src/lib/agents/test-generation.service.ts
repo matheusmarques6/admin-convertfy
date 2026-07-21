@@ -40,6 +40,12 @@ export interface TestGenerationInput {
    * email progride copy_generating → copy_ready → rendering → ready.
    */
   fullPipeline?: boolean
+  /**
+   * Contexto livre do operador (aba Testar → "Objetivo / contexto").
+   * Vai pro Architect (via {{outline_guidance}}) e pro payload da copy
+   * (chave aditiva `test_context`).
+   */
+  testContext?: string
 }
 
 export interface TestGenerationResult {
@@ -112,6 +118,7 @@ export async function runTestGeneration(
         batchId,
         triggeredBy,
         force: true,
+        contextOverride: input.testContext,
       })
     } catch (err) {
       return {
@@ -148,6 +155,7 @@ export async function runTestGeneration(
       // blocos que o reconcile criou vazios e preservava a copy antiga
       // dos demais (Luxe Lift w#3: 1 bloco de 12 foi pro n8n).
       regenerateAll: true,
+      testContext: input.testContext,
     })
 
     if (!dispatch.ok) {
@@ -213,6 +221,7 @@ export async function runTestGeneration(
         emailNumber,
         batchId,
         triggeredBy,
+        contextOverride: input.testContext,
       })
     }
 
@@ -251,6 +260,7 @@ export async function runTestGeneration(
     triggerSource: "manual_store_button",
     flowIds: [flowId],
     triggeredBy,
+    testContext: input.testContext,
   })
   log.info("test.dispatched_n8n", { storeId, emailId, flowId, batchId })
   return {

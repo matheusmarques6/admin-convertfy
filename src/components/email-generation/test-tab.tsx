@@ -14,11 +14,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Store,
-  Mail,
   Eye,
+  Zap,
 } from "lucide-react"
 import { FLOW_TYPE_LABELS } from "./flow-labels"
+import { C, F, egStripeBg } from "./ui/eg-theme"
+import {
+  EGBtn,
+  EGCard,
+  EGLabel,
+  EGSecTitle,
+  EGSelect,
+  EGTextarea,
+} from "./ui/eg-atoms"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -81,6 +89,7 @@ export function TestTab() {
   const [selectedStoreId, setSelectedStoreId] = useState("")
   const [selectedFlowId, setSelectedFlowId] = useState("")
   const [selectedEmailId, setSelectedEmailId] = useState("")
+  const [testContext, setTestContext] = useState("")
   const [generating, setGenerating] = useState(false)
   const [batchId, setBatchId] = useState<string | null>(null)
   const [result, setResult] = useState<{
@@ -226,6 +235,7 @@ export function TestTab() {
           emailId: selectedEmailId,
           flowType: selectedFlow.flow_type,
           emailNumber: selectedEmail.number,
+          ...(testContext.trim() ? { test_context: testContext.trim() } : {}),
         }),
       })
 
@@ -346,241 +356,236 @@ export function TestTab() {
     }
   }
 
+  const hasRun = Boolean(result || generating || statusInfo)
+
   return (
-    <div className="max-w-[700px] space-y-5">
-      <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Play className="h-4 w-4 text-slate-700 dark:text-white/80" />
-          <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
-            Testar geração de email
-          </h3>
-        </div>
-        <p className="text-[12px] text-slate-500 dark:text-white/45">
-          Verifica se o email tem copy. Com copy: Montador → Blueprint → render
-          (seed → imagem → HTML). Sem copy: Montador → Blueprint → N8N (a copy é
-          gerada e o render vem depois).
-        </p>
+    <div>
+      <EGSecTitle
+        icon={<Zap size={18} />}
+        title="Testar geração"
+        sub="Rode o pipeline completo com um briefing de teste e veja o email montado."
+      />
 
-        <div className="space-y-3">
-          {/* Store selector */}
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
-              <Store className="h-3.5 w-3.5" />
-              Loja
-            </label>
-            {loadingStores ? (
-              <div className="flex items-center gap-2 text-[12px] text-slate-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando lojas...
-              </div>
-            ) : (
-              <select
-                value={selectedStoreId}
-                onChange={(e) => {
-                  setSelectedStoreId(e.target.value)
-                  setSelectedFlowId("")
-                  setSelectedEmailId("")
-                  setResult(null)
-                  setBatchId(null)
-                }}
-                className="crm-input w-full"
-              >
-                <option value="">Selecione uma loja...</option>
-                {stores.map((s) => (
-                  <option key={s.id} value={s.id}>{s.store_name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Flow selector */}
-          {selectedStoreId && (
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                <Mail className="h-3.5 w-3.5" />
-                Flow
-              </label>
-              {loadingFlows ? (
-                <div className="flex items-center gap-2 text-[12px] text-slate-400">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando flows...
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "380px minmax(0,1fr)",
+          gap: 20,
+          alignItems: "start",
+        }}
+      >
+        {/* ── Coluna esquerda: briefing de teste ── */}
+        <EGCard title="Briefing de teste">
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <EGLabel>Loja</EGLabel>
+              {loadingStores ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    color: C.g400,
+                    fontFamily: F.sans,
+                  }}
+                >
+                  <Loader2 size={14} className="animate-spin" /> Carregando
+                  lojas…
                 </div>
-              ) : flows.length === 0 ? (
-                <p className="text-[12px] text-amber-600 dark:text-amber-400">
-                  Nenhum flow encontrado. Inicialize os flows desta loja primeiro.
-                </p>
               ) : (
-                <select
-                  value={selectedFlowId}
-                  onChange={(e) => {
-                    setSelectedFlowId(e.target.value)
+                <EGSelect
+                  value={selectedStoreId}
+                  onChange={(v) => {
+                    setSelectedStoreId(v)
+                    setSelectedFlowId("")
                     setSelectedEmailId("")
                     setResult(null)
                     setBatchId(null)
                   }}
-                  className="crm-input w-full"
-                >
-                  <option value="">Selecione um flow...</option>
-                  {flows.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {FLOW_TYPE_LABELS[f.flow_type] ?? f.flow_type} — {f.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Selecione uma loja..."
+                  options={stores.map((s) => ({
+                    value: s.id,
+                    label: s.store_name,
+                  }))}
+                />
               )}
             </div>
-          )}
 
-          {/* Email selector */}
-          {selectedFlow && selectedFlow.emails.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-white/80">
-                <Mail className="h-3.5 w-3.5" />
-                Email
-              </label>
-              <select
-                value={selectedEmailId}
-                onChange={(e) => {
-                  setSelectedEmailId(e.target.value)
-                  setResult(null)
-                  setBatchId(null)
+            {selectedStoreId && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
                 }}
-                className="crm-input w-full"
               >
-                <option value="">Selecione um email...</option>
-                {selectedFlow.emails.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    #{e.number} — {e.name} {e.subject ? `(${e.subject})` : ""} [{e.status}]
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* Generate + preview vars buttons */}
-        <div className="pt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleGenerate()}
-            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
-            className="inline-flex items-center gap-2 h-9 px-5 rounded-[6px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[13px] font-semibold disabled:opacity-40 transition-opacity"
-          >
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            {generating ? "Gerando..." : "Executar geração"}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleGenerate(false, true)}
-            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
-            title="Fluxo completo real: fase 1 (Curador → Montador → Blueprint) → copy NOVA via n8n só deste e-mail → fase 2 (imagem → HTML → QA) automática. Assíncrono."
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-[#1F1F1F] dark:border-white/40 bg-white dark:bg-white/[0.03] text-[#1F1F1F] dark:text-white text-[13px] font-semibold disabled:opacity-40 transition-opacity"
-          >
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Rocket className="h-4 w-4" />
-            )}
-            Geração completa (fase 1 + copy n8n + fase 2)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleGenerate(true)}
-            disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
-            title="Reusa Montador/Blueprint/copy existentes e roda só imagem → HTML → QA (requer copy no email)"
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[13px] font-medium disabled:opacity-40 transition-opacity"
-          >
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            Só fase 2 (render)
-          </button>
-          <button
-            type="button"
-            onClick={handlePreviewVars}
-            disabled={previewingVars || !selectedStoreId || !selectedEmailId}
-            title="Mostra as 20 vars que o HTML Agent vai receber, sem invocar o LLM"
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[13px] font-medium disabled:opacity-40 transition-opacity"
-          >
-            {previewingVars ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-            Pré-visualizar vars HTML
-          </button>
-        </div>
-      </div>
-
-      {/* Preview vars panel */}
-      {(previewVars || previewError) && (
-        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Eye className="h-4 w-4 text-slate-700 dark:text-white/80" />
-              <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
-                Vars resolvidas — HTML Agent v2
-              </h3>
-              {previewVars && (
-                <span className="text-[11px] text-slate-400 dark:text-white/40">
-                  {Object.keys(previewVars).length} keys
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewVars(null)
-                setPreviewError(null)
-              }}
-              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white/60"
-            >
-              fechar
-            </button>
-          </div>
-          {previewError ? (
-            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-3 py-2 text-[12px] text-red-800 dark:text-red-200">
-              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              <span>{previewError}</span>
-            </div>
-          ) : (
-            <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
-              {previewVars &&
-                Object.entries(previewVars).map(([key, value]) => {
-                  const isEmpty = !value || value.trim() === ""
-                  const isLong = value.length > 200
-                  return (
-                    <details
-                      key={key}
-                      className="rounded-[4px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2"
-                      open={!isLong && !isEmpty}
+                <div>
+                  <EGLabel>Flow</EGLabel>
+                  {loadingFlows ? (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: C.g400,
+                        fontFamily: F.sans,
+                      }}
                     >
-                      <summary className="flex items-center justify-between cursor-pointer text-[12px]">
-                        <code className="font-mono font-semibold text-slate-800 dark:text-white/90">
-                          {`{{${key}}}`}
-                        </code>
-                        <span className="text-[10px] text-slate-400 dark:text-white/35">
-                          {isEmpty ? "vazio" : `${value.length} chars`}
-                        </span>
-                      </summary>
-                      <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-white/70 max-h-[300px] overflow-y-auto">
-                        {isEmpty ? "(vazio)" : value}
-                      </pre>
-                    </details>
-                  )
-                })}
-            </div>
-          )}
-        </div>
-      )}
+                      Carregando…
+                    </div>
+                  ) : flows.length === 0 ? (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: C.warn,
+                        fontFamily: F.sans,
+                      }}
+                    >
+                      Nenhum flow — inicialize os flows desta loja primeiro.
+                    </div>
+                  ) : (
+                    <EGSelect
+                      value={selectedFlowId}
+                      onChange={(v) => {
+                        setSelectedFlowId(v)
+                        setSelectedEmailId("")
+                        setResult(null)
+                        setBatchId(null)
+                      }}
+                      placeholder="Selecione..."
+                      options={flows.map((f) => ({
+                        value: f.id,
+                        label: `${FLOW_TYPE_LABELS[f.flow_type] ?? f.flow_type} — ${f.name}`,
+                      }))}
+                    />
+                  )}
+                </div>
+                <div>
+                  <EGLabel>Email #</EGLabel>
+                  <EGSelect
+                    value={selectedEmailId}
+                    onChange={(v) => {
+                      setSelectedEmailId(v)
+                      setResult(null)
+                      setBatchId(null)
+                    }}
+                    placeholder="Selecione..."
+                    disabled={!selectedFlow || selectedFlow.emails.length === 0}
+                    options={(selectedFlow?.emails ?? []).map((e) => ({
+                      value: e.id,
+                      label: `#${e.number} — ${e.name} [${e.status}]`,
+                    }))}
+                  />
+                </div>
+              </div>
+            )}
 
-      {/* Progress / Result */}
-      {(result || generating || statusInfo) && (
-        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-4">
+            <div>
+              <EGLabel hint="opcional">Objetivo / contexto</EGLabel>
+              <EGTextarea
+                rows={3}
+                value={testContext}
+                onChange={setTestContext}
+                placeholder="Ex: Black Friday, 40% em tudo, para amantes de moda"
+              />
+            </div>
+
+            <EGBtn
+              variant="dark"
+              onClick={() => handleGenerate(false, true)}
+              disabled={
+                generating ||
+                !selectedStoreId ||
+                !selectedFlowId ||
+                !selectedEmailId
+              }
+              title="Fluxo completo real: fase 1 (Curador → Montador → Blueprint) → copy NOVA via n8n só deste e-mail → fase 2 (imagem → HTML → QA) automática. Assíncrono."
+              style={{ width: "100%" }}
+            >
+              {generating ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Rocket size={15} />
+              )}
+              Rodar pipeline (fase 1 + copy n8n + fase 2)
+            </EGBtn>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <EGBtn
+                variant="secondary"
+                onClick={() => handleGenerate()}
+                disabled={
+                  generating ||
+                  !selectedStoreId ||
+                  !selectedFlowId ||
+                  !selectedEmailId
+                }
+                title="Com copy: Montador → Blueprint → render. Sem copy: dispara ao N8N."
+              >
+                <Play size={14} /> Executar geração
+              </EGBtn>
+              <EGBtn
+                variant="secondary"
+                onClick={() => handleGenerate(true)}
+                disabled={
+                  generating ||
+                  !selectedStoreId ||
+                  !selectedFlowId ||
+                  !selectedEmailId
+                }
+                title="Reusa Montador/Blueprint/copy existentes e roda só imagem → HTML → QA (requer copy no email)"
+              >
+                <Play size={14} /> Só fase 2
+              </EGBtn>
+              <EGBtn
+                variant="secondary"
+                onClick={handlePreviewVars}
+                disabled={previewingVars || !selectedStoreId || !selectedEmailId}
+                title="Mostra as vars que o HTML Agent vai receber, sem invocar o LLM"
+              >
+                {previewingVars ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Eye size={14} />
+                )}
+                Pré-visualizar vars
+              </EGBtn>
+            </div>
+          </div>
+        </EGCard>
+
+        {/* ── Coluna direita: resultado ── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            minWidth: 0,
+          }}
+        >
+          <EGCard title="Resultado">
+            {!hasRun ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 360,
+                  border: `1px dashed ${C.border}`,
+                  borderRadius: 10,
+                  color: C.g400,
+                  fontFamily: F.sans,
+                  fontSize: 13,
+                  textAlign: "center",
+                  background: egStripeBg,
+                }}
+              >
+                <span>
+                  Rode o pipeline para ver o email montado aqui,
+                  <br />
+                  bloco a bloco, com custo por agente.
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-4">
           {/* Status header */}
           <div className="flex items-center gap-2">
             {result?.status === "dispatched" ? (
@@ -872,8 +877,73 @@ export function TestTab() {
               )}
             </div>
           )}
+              </div>
+            )}
+          </EGCard>
+
+      {/* Preview vars panel */}
+      {(previewVars || previewError) && (
+        <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-slate-700 dark:text-white/80" />
+              <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                Vars resolvidas — HTML Agent v2
+              </h3>
+              {previewVars && (
+                <span className="text-[11px] text-slate-400 dark:text-white/40">
+                  {Object.keys(previewVars).length} keys
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPreviewVars(null)
+                setPreviewError(null)
+              }}
+              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white/60"
+            >
+              fechar
+            </button>
+          </div>
+          {previewError ? (
+            <div className="flex items-start gap-2 rounded-[4px] bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 px-3 py-2 text-[12px] text-red-800 dark:text-red-200">
+              <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>{previewError}</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+              {previewVars &&
+                Object.entries(previewVars).map(([key, value]) => {
+                  const isEmpty = !value || value.trim() === ""
+                  const isLong = value.length > 200
+                  return (
+                    <details
+                      key={key}
+                      className="rounded-[4px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2"
+                      open={!isLong && !isEmpty}
+                    >
+                      <summary className="flex items-center justify-between cursor-pointer text-[12px]">
+                        <code className="font-mono font-semibold text-slate-800 dark:text-white/90">
+                          {`{{${key}}}`}
+                        </code>
+                        <span className="text-[10px] text-slate-400 dark:text-white/35">
+                          {isEmpty ? "vazio" : `${value.length} chars`}
+                        </span>
+                      </summary>
+                      <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-white/70 max-h-[300px] overflow-y-auto">
+                        {isEmpty ? "(vazio)" : value}
+                      </pre>
+                    </details>
+                  )
+                })}
+            </div>
+          )}
         </div>
       )}
+        </div>
+      </div>
     </div>
   )
 }

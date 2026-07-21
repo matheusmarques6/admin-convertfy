@@ -50,11 +50,15 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "qa",
   "blueprint",
   "assembler",
+  // Curador (passo A do Montador). A ausência dele aqui fazia listPrompts
+  // descartar as rows e a aba do Curador aparecer vazia.
+  "assembler_chooser",
   "campaign_suggestion",
   "campaign_trends",
   "campaign_architect",
   "campaign_image",
   "refiner",
+  "component_test",
 ]
 
 // ── Validação de output_schema ─────────────────────────────
@@ -153,6 +157,7 @@ export async function listPrompts(opts: {
     campaign_architect: { active: null, history: [] },
     campaign_image: { active: null, history: [] },
     refiner: { active: null, history: [] },
+    component_test: { active: null, history: [] },
   }
 
   for (const row of rows) {
