@@ -8,7 +8,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Plus } from "lucide-react"
+import { Layers, Plus, GripVertical, X } from "lucide-react"
+import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DropResult,
+} from "@hello-pangea/dnd"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
   EGFlowPills,
@@ -16,6 +22,24 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+
+// Rótulo PT-BR por chave de categoria (fonte: COMPONENT_CATEGORIES).
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
+  COMPONENT_CATEGORIES.map((c) => [c.key, c.label]),
+)
+
+// Item da sequência de blocos. `id` é estável por instância (necessário pro
+// drag-and-drop, já que o MESMO bloco pode aparecer várias vezes). Só o `key`
+// (chave da categoria) é persistido; o `id` vive apenas no cliente.
+interface BlockItem {
+  id: string
+  key: string
+}
+
+let _blockSeq = 0
+const newBlockId = () => `blk_${_blockSeq++}`
+const keysToBlockItems = (keys: string[]): BlockItem[] =>
+  keys.map((key) => ({ id: newBlockId(), key }))
 
 const FLOW_TYPES = [
   "welcome",
@@ -33,8 +57,9 @@ interface FormState {
   email_number: string
   objective: string
   guidance: string
-  // Chaves canônicas das 8 categorias (fixas). Ordem = ordem de seleção.
-  suggested_blocks: string[]
+  // Sequência ordenada de blocos (aceita repetições). Persiste como string[]
+  // de chaves de categoria; aqui carrega `id` estável pro drag-and-drop.
+  suggested_blocks: BlockItem[]
   tone_hint: string
   // Cupom padrão do email (código único). A variação por idioma/loja é depois.
   coupon_code: string
@@ -117,7 +142,7 @@ export function OutlinesWorkspace() {
       email_number: String(o.email_number),
       objective: o.objective,
       guidance: o.guidance ?? "",
-      suggested_blocks: o.suggested_blocks ?? [],
+      suggested_blocks: keysToBlockItems(o.suggested_blocks ?? []),
       tone_hint: o.tone_hint ?? "",
       coupon_code: o.coupon_code ?? "",
       is_active: o.is_active,
@@ -135,7 +160,7 @@ export function OutlinesWorkspace() {
     const base = {
       objective: form.objective,
       guidance: form.guidance || null,
-      suggested_blocks: form.suggested_blocks,
+      suggested_blocks: form.suggested_blocks.map((b) => b.key),
       tone_hint: form.tone_hint || null,
       coupon_code: form.coupon_code.trim() || null,
       is_active: form.is_active,
@@ -183,15 +208,32 @@ export function OutlinesWorkspace() {
   const set = (patch: Partial<FormState>) =>
     setForm((f) => ({ ...f, ...patch }))
 
-  // Alterna uma categoria de bloco. Selecionar = adiciona no fim (preserva a
-  // ordem de montagem do email); desselecionar = remove.
-  const toggleBlock = (key: string) =>
+  // Adiciona uma categoria ao FIM da sequência (pode repetir o mesmo bloco).
+  const addBlock = (key: string) =>
     setForm((f) => ({
       ...f,
-      suggested_blocks: f.suggested_blocks.includes(key)
-        ? f.suggested_blocks.filter((b) => b !== key)
-        : [...f.suggested_blocks, key],
+      suggested_blocks: [...f.suggested_blocks, { id: newBlockId(), key }],
     }))
+
+  const removeBlock = (id: string) =>
+    setForm((f) => ({
+      ...f,
+      suggested_blocks: f.suggested_blocks.filter((b) => b.id !== id),
+    }))
+
+  // Reordena a sequência ao soltar o item arrastado.
+  const onBlocksDragEnd = (result: DropResult) => {
+    if (!result.destination) return
+    const from = result.source.index
+    const to = result.destination.index
+    if (from === to) return
+    setForm((f) => {
+      const next = [...f.suggested_blocks]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return { ...f, suggested_blocks: next }
+    })
+  }
 
   // Chave do email em edição (novo ou selecionado) no formato da flag.
   const currentKey = `${tab}:${Number(form.email_number) || 1}`
@@ -348,42 +390,93 @@ export function OutlinesWorkspace() {
             />
           </label>
 
-          {/* Blocos do email — seleção fixa das 8 categorias da biblioteca. */}
-          <div className="block space-y-1.5">
+          {/* Blocos do email — paleta fixa (8 categorias) + sequência
+              ordenável por drag-and-drop. Aceita o MESMO bloco várias vezes. */}
+          <div className="block space-y-2">
             <span className="text-[12px] text-slate-500">
               Blocos do email{" "}
               <span className="text-slate-400">
-                (categorias fixas — clique para incluir)
+                (clique para adicionar — pode repetir)
               </span>
             </span>
+
+            {/* Paleta */}
             <div className="flex flex-wrap gap-1.5">
-              {COMPONENT_CATEGORIES.map((cat) => {
-                const active = form.suggested_blocks.includes(cat.key)
-                const order = form.suggested_blocks.indexOf(cat.key) + 1
-                return (
-                  <button
-                    key={cat.key}
-                    type="button"
-                    onClick={() => toggleBlock(cat.key)}
-                    className={`inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[12px] transition-colors ${
-                      active
-                        ? "border-[#4E62D8] bg-[#EEF0FB] font-semibold text-[#4E62D8]"
-                        : "border-black/[0.08] text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {active && (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] bg-[#4E62D8] text-[10px] font-semibold text-white">
-                        {order}
-                      </span>
-                    )}
-                    {cat.label}
-                  </button>
-                )
-              })}
+              {COMPONENT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => addBlock(cat.key)}
+                  className="inline-flex items-center gap-1 rounded-[6px] border border-black/[0.08] px-2.5 py-1 text-[12px] text-slate-600 hover:border-[#4E62D8] hover:bg-[#EEF0FB] hover:text-[#4E62D8] transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  {cat.label}
+                </button>
+              ))}
             </div>
+
+            {/* Sequência (drag-and-drop) */}
+            {form.suggested_blocks.length === 0 ? (
+              <p className="rounded-[8px] border border-dashed border-slate-300 px-3 py-4 text-center text-[11px] text-slate-400">
+                Nenhum bloco. Clique nas categorias acima para montar a estrutura
+                do email, na ordem de cima pra baixo.
+              </p>
+            ) : (
+              <DragDropContext onDragEnd={onBlocksDragEnd}>
+                <Droppable droppableId="outline-blocks">
+                  {(dropProvided) => (
+                    <div
+                      ref={dropProvided.innerRef}
+                      {...dropProvided.droppableProps}
+                      className="space-y-1 rounded-[8px] border border-black/[0.08] bg-slate-50/60 p-1.5"
+                    >
+                      {form.suggested_blocks.map((item, idx) => (
+                        <Draggable key={item.id} draggableId={item.id} index={idx}>
+                          {(dragProvided, dragSnapshot) => (
+                            <div
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              className={`flex items-center gap-2 rounded-[6px] border bg-white px-2 py-1.5 text-[12px] ${
+                                dragSnapshot.isDragging
+                                  ? "border-[#4E62D8] shadow-md"
+                                  : "border-black/[0.08]"
+                              }`}
+                              style={dragProvided.draggableProps.style}
+                            >
+                              <span
+                                {...dragProvided.dragHandleProps}
+                                className="cursor-grab text-slate-400 active:cursor-grabbing"
+                                aria-label="Arrastar"
+                              >
+                                <GripVertical className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-[#EEF0FB] text-[10px] font-semibold text-[#4E62D8]">
+                                {idx + 1}
+                              </span>
+                              <span className="flex-1 text-slate-700">
+                                {CATEGORY_LABEL[item.key] ?? item.key}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeBlock(item.id)}
+                                className="shrink-0 rounded-[4px] p-0.5 text-slate-400 hover:text-red-600"
+                                aria-label="Remover bloco"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {dropProvided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
+            )}
             <p className="text-[11px] text-slate-400">
-              O número indica a ordem no email. O Montador usa exatamente estas
-              seções.
+              A ordem (de cima pra baixo) é a ordem no email. O Montador usa
+              exatamente esta sequência.
             </p>
           </div>
 

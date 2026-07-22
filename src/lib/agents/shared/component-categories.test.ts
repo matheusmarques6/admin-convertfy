@@ -21,10 +21,18 @@ describe("normalizeSuggestedBlocks", () => {
     ])
   })
 
-  it("descarta valores fora do vocabulário e deduplica", () => {
+  it("descarta valores fora do vocabulário mas PRESERVA repetições", () => {
+    // banana some (inválido); os headers repetidos ficam (email pode repetir
+    // o mesmo bloco em vários lugares).
     expect(
       normalizeSuggestedBlocks(["header", "banana", "Header", "HEADER"]),
-    ).toEqual(["header"])
+    ).toEqual(["header", "header", "header"])
+  })
+
+  it("preserva ordem e repetições de blocos válidos", () => {
+    expect(
+      normalizeSuggestedBlocks(["products", "cta", "products", "cta", "footer"]),
+    ).toEqual(["products", "cta", "products", "cta", "footer"])
   })
 
   it("tolera entrada não-array / itens não-string", () => {
