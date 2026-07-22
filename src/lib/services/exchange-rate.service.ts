@@ -99,7 +99,7 @@ async function getExchangeRates(): Promise<ExchangeRates | null> {
       .select("rates")
       .eq("key", GLOBAL_CACHE_KEY)
       .gt("expires_at", new Date().toISOString())
-      .single()
+      .maybeSingle()
 
     if (cached?.rates) {
       memoryCache = { rates: cached.rates as Record<string, number>, fetchedAt: Date.now() }

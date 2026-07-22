@@ -56,7 +56,7 @@ export async function getCache<T = Record<string, unknown>>(
       .eq("cache_type", cacheType)
       .eq("period", period)
       .gt("expires_at", new Date().toISOString())
-      .single()
+      .maybeSingle()
 
     if (cached?.data) {
       // Check cache version - skip old entries when calculation logic changes
@@ -102,7 +102,7 @@ export async function getStaleCache<T = Record<string, unknown>>(
       .eq("cache_type", cacheType)
       .eq("period", period)
       .gt("expires_at", staleThreshold) // Expired but within grace period
-      .single()
+      .maybeSingle()
 
     if (cached?.data) {
       const cachedData = cached.data as Record<string, unknown>

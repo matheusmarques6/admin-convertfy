@@ -53,7 +53,7 @@ export async function getCachedShopifyData(
       .eq("store_id", storeId)
       .eq("cache_type", "shopify")
       .eq("period", period)
-      .single()
+      .maybeSingle()
 
     if (data && new Date(data.expires_at) > new Date()) {
       const cached = data.data as Record<string, unknown>
