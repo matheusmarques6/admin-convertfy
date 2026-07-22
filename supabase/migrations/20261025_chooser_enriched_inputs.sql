@@ -49,7 +49,7 @@ WHERE agent_type = 'assembler_chooser'
 UPDATE email_agent_configs
 SET system_prompt = system_prompt || '
 
-DADOS NOVOS POR CANDIDATO: orientacao_copy (diretriz de copy do bloco), campos_copy (campos que o bloco exige da copy — key/type/max_len/required) e notas_implementacao (notas técnicas do layout). Use-os como sinal de viabilidade: se o bloco exige dados que a loja não tem (ex.: campo de cupom sem oferta no contexto), prefira outra variante. CONTEXTO NOVO: <perfil_marca> é a âncora de identidade (a escolha precisa caber na marca) e <top_products> lista os produtos reais da loja — NUNCA escolha variante que exige mais produtos (product_slots) do que a loja tem cadastrado.'
+DADOS NOVOS POR CANDIDATO: orientacao_copy (diretriz de copy do bloco), campos_copy (campos que o bloco exige da copy — key/type/max_len/required) e notas_implementacao (notas técnicas do layout). Use-os como sinal de viabilidade: se o bloco exige dados que a loja não tem (ex.: campo de cupom sem oferta no contexto), prefira outra variante. CONTEXTO NOVO: <perfil_marca> é a âncora de identidade (a escolha precisa caber na marca) e <top_products> lista os produtos reais da loja — NUNCA escolha variante que exige mais produtos (product_slots) do que a loja tem cadastrado. VARIEDADE: evite repetir a mesma variante em posições diferentes do mesmo email; quando a mesma seção aparece 2+ vezes, escolha variantes diferentes se houver opções.'
 WHERE agent_type = 'assembler_chooser'
   AND is_active = true
   AND system_prompt NOT LIKE '%campos_copy%';

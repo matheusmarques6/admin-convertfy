@@ -55,6 +55,7 @@ Regras:
 - Use <perfil_marca> como âncora de identidade: a variante escolhida precisa caber na marca, não só no objetivo.
 - Para posições de produtos, cruze product_slots com <top_products>: NUNCA escolha variante que exige mais produtos do que a loja tem cadastrado.
 - Use orientacao_copy/campos_copy como sinal de viabilidade: se o bloco exige dados que a loja não tem (ex.: campo de cupom sem oferta no contexto), prefira outra variante.
+- Evite repetir a mesma variante em posições diferentes do mesmo email; quando a mesma seção aparece 2+ vezes, escolha variantes diferentes se houver opções.
 - Se a descrição estiver vazia, decida pelo nome + metadados.
 - Não invente variant_id.
 
