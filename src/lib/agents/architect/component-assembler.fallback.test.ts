@@ -87,6 +87,7 @@ const baseInput = {
   mood: "",
   persona: "",
   briefingJson: "{}",
+  topProductNames: [],
   pesquisa: "",
   outlineObjective: "",
   outlineGuidance: "",
@@ -132,6 +133,43 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_A")
     expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_B")
     expect(chooserVars.candidates_json).not.toContain("<div>")
+  })
+
+  it("passo A recebe orientacao_copy/campos_copy/notas + perfil da marca + top products", async () => {
+    h.variants = [
+      {
+        ...variant("v1", "hero", "<div>x</div>"),
+        copy_guidance: "GUIDANCE-COPY",
+        long_description: "NOTAS-LAYOUT",
+        output_schema: [
+          {
+            key: "headline",
+            label: "Headline",
+            type: "text_short",
+            max_len: 40,
+            required: true,
+            example: "EXEMPLO-NAO-VAI",
+            guidance: "GUIDE-CAMPO-NAO-VAI",
+          },
+        ],
+      },
+    ]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
+    await assembleStoreReference({
+      ...baseInput,
+      briefingJson: '{"nicho":"PERFIL-MARCA"}',
+      topProductNames: ["Produto A", "Produto B"],
+    })
+    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    expect(chooserVars.candidates_json).toContain("GUIDANCE-COPY")
+    expect(chooserVars.candidates_json).toContain("NOTAS-LAYOUT")
+    expect(chooserVars.candidates_json).toContain('"headline"')
+    // campos_copy é o schema COMPACTO: example/guidance por campo ficam fora.
+    expect(chooserVars.candidates_json).not.toContain("EXEMPLO-NAO-VAI")
+    expect(chooserVars.candidates_json).not.toContain("GUIDE-CAMPO-NAO-VAI")
+    expect(chooserVars.briefing_marca).toContain("PERFIL-MARCA")
+    expect(chooserVars.top_products).toContain("1. Produto A")
+    expect(chooserVars.top_products).toContain("2. Produto B")
   })
 
   it("passo B falha + há reference global curado → usa o global, NÃO persiste (source=global)", async () => {

@@ -46,13 +46,15 @@ const CHOOSER_TOP_K = 8
 // ── PASSO A — Curador: escolhe 1 variant_id por seção, só pela DESCRIÇÃO ──
 const DEFAULT_CHOOSER_MODEL = "anthropic/claude-sonnet-4.6"
 
-const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email. Para CADA posição da sequência do email, escolha UMA variante da biblioteca — a que melhor serve ao objetivo do email e à identidade da loja — usando o NOME, a DESCRIÇÃO e os metadados de cada variante: quando_usar / quando_nao_usar (contexto de uso escrito pelo time), objectives (objetivos de email compatíveis), tones (tons compatíveis), density e product_slots. Você NÃO recebe o HTML das variantes; decide pela descrição e pelo contexto.
+const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email. Para CADA posição da sequência do email, escolha UMA variante da biblioteca — a que melhor serve ao objetivo do email e à identidade da loja — usando o NOME, a DESCRIÇÃO e os metadados de cada variante: quando_usar / quando_nao_usar (contexto de uso escrito pelo time), objectives (objetivos de email compatíveis), tones (tons compatíveis), density, product_slots, orientacao_copy (diretriz de copy do bloco), campos_copy (o que o bloco exige da copy: campos, tipos e limites) e notas_implementacao (notas técnicas do layout). Você NÃO recebe o HTML das variantes; decide pela descrição e pelo contexto.
 
 Regras:
 - Uma escolha por block_index da sequência. Use APENAS variant_id presente nas opções daquela posição.
 - Respeite quando_nao_usar: se o contexto do email bate com um "quando NÃO usar", prefira outra variante da posição.
 - Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
-- Para posições de produtos, considere product_slots (quantos produtos o bloco comporta).
+- Use <perfil_marca> como âncora de identidade: a variante escolhida precisa caber na marca, não só no objetivo.
+- Para posições de produtos, cruze product_slots com <top_products>: NUNCA escolha variante que exige mais produtos do que a loja tem cadastrado.
+- Use orientacao_copy/campos_copy como sinal de viabilidade: se o bloco exige dados que a loja não tem (ex.: campo de cupom sem oferta no contexto), prefira outra variante.
 - Se a descrição estiver vazia, decida pelo nome + metadados.
 - Não invente variant_id.
 
@@ -72,6 +74,14 @@ const DEFAULT_CHOOSER_USER = `<store>
 - diretriz: {{outline_guidance}}
 - tom sugerido: {{outline_tone_hint}}
 </outline>
+
+<perfil_marca>
+{{briefing_marca}}
+</perfil_marca>
+
+<top_products>
+{{top_products}}
+</top_products>
 
 <estrutura_geral_ordenada>
 {{blocks_json}}
@@ -301,6 +311,9 @@ export interface AssembleReferenceInput {
   persona: string
   // Briefing da marca (JSON serializado) — ancora as escolhas no briefing.
   briefingJson: string
+  // Top 5 produtos da loja (títulos, rank asc) — o Curador cruza com
+  // product_slots dos candidatos. Vazio quando a loja não tem produtos.
+  topProductNames: string[]
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
   pesquisa: string
   // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance + tom.
@@ -439,6 +452,20 @@ export async function assembleStoreReference(
         tones: v.tones ?? [],
         density: v.density,
         product_slots: v.product_slots ?? 0,
+        // Dados de conteúdo da variante — sinal do que o bloco EXIGE da
+        // copy/loja pra funcionar (decisão jul/2026: o Curador escolhe
+        // melhor sabendo o que o bloco vai pedir).
+        orientacao_copy: v.copy_guidance ?? "",
+        notas_implementacao: v.long_description ?? "",
+        // output_schema COMPACTO (sem example/guidance — controle de
+        // tokens; a versão completa vai pro blueprint/n8n, não pra cá).
+        campos_copy: (v.output_schema ?? []).map((f) => ({
+          key: f.key,
+          label: f.label,
+          type: f.type,
+          max_len: f.max_len,
+          required: f.required,
+        })),
       })),
     })),
   )
@@ -452,6 +479,15 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    // Perfil da marca (store_briefings.marca) — mesmo JSON que o Montador
+    // já recebia; agora ancora TAMBÉM a escolha das variantes.
+    briefing_marca: input.briefingJson,
+    // Top 5 produtos da loja — cruza com product_slots dos candidatos
+    // (não escolher bloco de 4 produtos em loja com 2).
+    top_products:
+      input.topProductNames.length > 0
+        ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
+        : "(sem produtos cadastrados)",
     blocks_json: blocksJson,
     candidates_json: chooserCandidatesJson,
   }

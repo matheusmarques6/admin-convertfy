@@ -191,6 +191,7 @@ export async function generateBlueprintAndReference(
     mood,
     persona,
     briefingJson: JSON.stringify(marca),
+    topProductNames,
     pesquisa,
     outlineObjective: outline?.objective ?? "",
     outlineGuidance: outline?.guidance ?? "",
