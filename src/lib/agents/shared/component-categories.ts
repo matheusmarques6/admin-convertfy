@@ -55,3 +55,28 @@ const BLOCKTYPE_TO_CATEGORY: Record<string, string> = {
 export function blockTypeToCategory(blockType: string): string | null {
   return BLOCKTYPE_TO_CATEGORY[blockType] ?? null
 }
+
+/**
+ * Normaliza uma lista de blocos sugeridos (Estrutura geral) para as chaves
+ * canônicas das 8 categorias. Mantém APENAS chaves válidas, deduplica e
+ * preserva a ordem de seleção. Aceita tanto a chave (`offer`) quanto um
+ * block_type técnico (`coupon` → `offer`), pra tolerar dados legados/rótulos.
+ * Retorna o subconjunto fixo — a fonte de acertividade do Montador.
+ */
+export function normalizeSuggestedBlocks(blocks: unknown): string[] {
+  if (!Array.isArray(blocks)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of blocks) {
+    if (typeof raw !== "string") continue
+    const key = raw.trim().toLowerCase()
+    if (!key) continue
+    const canonical = COMPONENT_CATEGORY_KEYS.includes(key)
+      ? key
+      : blockTypeToCategory(key)
+    if (!canonical || seen.has(canonical)) continue
+    seen.add(canonical)
+    out.push(canonical)
+  }
+  return out
+}

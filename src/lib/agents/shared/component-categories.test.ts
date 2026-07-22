@@ -2,7 +2,36 @@ import { describe, it, expect } from "vitest"
 import {
   blockTypeToCategory,
   COMPONENT_CATEGORY_KEYS,
+  normalizeSuggestedBlocks,
 } from "./component-categories"
+
+describe("normalizeSuggestedBlocks", () => {
+  it("mantém as chaves canônicas na ordem de seleção", () => {
+    expect(normalizeSuggestedBlocks(["hero", "offer", "footer"])).toEqual([
+      "hero",
+      "offer",
+      "footer",
+    ])
+  })
+
+  it("traduz block_types técnicos para categoria (coupon → offer)", () => {
+    expect(normalizeSuggestedBlocks(["coupon", "testimonials"])).toEqual([
+      "offer",
+      "reviews",
+    ])
+  })
+
+  it("descarta valores fora do vocabulário e deduplica", () => {
+    expect(
+      normalizeSuggestedBlocks(["header", "banana", "Header", "HEADER"]),
+    ).toEqual(["header"])
+  })
+
+  it("tolera entrada não-array / itens não-string", () => {
+    expect(normalizeSuggestedBlocks(null)).toEqual([])
+    expect(normalizeSuggestedBlocks([1, "hero", null])).toEqual(["hero"])
+  })
+})
 
 describe("blockTypeToCategory", () => {
   it("mapeia tipos do blueprint para seções de negócio", () => {

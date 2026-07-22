@@ -8,13 +8,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Plus } from "lucide-react"
+import { Layers, Plus, X } from "lucide-react"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
   EGFlowPills,
   EGSecTitle,
 } from "@/components/email-generation/ui/eg-atoms"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
+import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+import { STORE_LANGUAGE_OPTIONS } from "@/lib/i18n/store-language"
 
 const FLOW_TYPES = [
   "welcome",
@@ -27,13 +29,21 @@ const FLOW_TYPES = [
   "post_purchase",
 ] as const
 
+// Linha do editor de cupom por idioma (mapa { idioma: código } no banco).
+interface CouponRow {
+  lang: string
+  code: string
+}
+
 interface FormState {
   flow_type: string
   email_number: string
   objective: string
   guidance: string
-  suggested_blocks: string
+  // Chaves canônicas das 8 categorias (fixas). Ordem = ordem de seleção.
+  suggested_blocks: string[]
   tone_hint: string
+  coupon_codes: CouponRow[]
   is_active: boolean
 }
 
@@ -43,17 +53,29 @@ function emptyForm(flowType: string): FormState {
     email_number: "1",
     objective: "",
     guidance: "",
-    suggested_blocks: "",
+    suggested_blocks: [],
     tone_hint: "",
+    coupon_codes: [],
     is_active: true,
   }
 }
 
-const csvToArr = (s: string): string[] =>
-  s
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean)
+/** Record { idioma: código } → linhas do editor (ordem estável por idioma). */
+const couponRecordToRows = (rec: Record<string, string> | null | undefined): CouponRow[] =>
+  Object.entries(rec ?? {})
+    .filter(([lang, code]) => lang && code)
+    .map(([lang, code]) => ({ lang, code }))
+
+/** Linhas do editor → Record { idioma: código } (descarta linhas incompletas). */
+const couponRowsToRecord = (rows: CouponRow[]): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const r of rows) {
+    const lang = r.lang.trim()
+    const code = r.code.trim()
+    if (lang && code) out[lang] = code
+  }
+  return out
+}
 
 const inputCls =
   "w-full rounded-[6px] border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-slate-400 dark:border-white/[0.08] dark:bg-white/[0.03]"
@@ -118,8 +140,9 @@ export function OutlinesWorkspace() {
       email_number: String(o.email_number),
       objective: o.objective,
       guidance: o.guidance ?? "",
-      suggested_blocks: (o.suggested_blocks ?? []).join(", "),
+      suggested_blocks: o.suggested_blocks ?? [],
       tone_hint: o.tone_hint ?? "",
+      coupon_codes: couponRecordToRows(o.coupon_codes),
       is_active: o.is_active,
     })
   }
@@ -135,8 +158,9 @@ export function OutlinesWorkspace() {
     const base = {
       objective: form.objective,
       guidance: form.guidance || null,
-      suggested_blocks: csvToArr(form.suggested_blocks),
+      suggested_blocks: form.suggested_blocks,
       tone_hint: form.tone_hint || null,
+      coupon_codes: couponRowsToRecord(form.coupon_codes),
       is_active: form.is_active,
     }
     try {
@@ -181,6 +205,39 @@ export function OutlinesWorkspace() {
 
   const set = (patch: Partial<FormState>) =>
     setForm((f) => ({ ...f, ...patch }))
+
+  // Alterna uma categoria de bloco. Selecionar = adiciona no fim (preserva a
+  // ordem de montagem do email); desselecionar = remove.
+  const toggleBlock = (key: string) =>
+    setForm((f) => ({
+      ...f,
+      suggested_blocks: f.suggested_blocks.includes(key)
+        ? f.suggested_blocks.filter((b) => b !== key)
+        : [...f.suggested_blocks, key],
+    }))
+
+  // Idiomas ainda não usados (evita dois códigos para o mesmo idioma).
+  const usedLangs = new Set(form.coupon_codes.map((r) => r.lang))
+  const firstFreeLang =
+    STORE_LANGUAGE_OPTIONS.find((o) => !usedLangs.has(o.value))?.value ?? ""
+
+  const addCouponRow = () =>
+    setForm((f) => ({
+      ...f,
+      coupon_codes: [...f.coupon_codes, { lang: firstFreeLang, code: "" }],
+    }))
+
+  const updateCouponRow = (idx: number, patch: Partial<CouponRow>) =>
+    setForm((f) => ({
+      ...f,
+      coupon_codes: f.coupon_codes.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    }))
+
+  const removeCouponRow = (idx: number) =>
+    setForm((f) => ({
+      ...f,
+      coupon_codes: f.coupon_codes.filter((_, i) => i !== idx),
+    }))
 
   // Chave do email em edição (novo ou selecionado) no formato da flag.
   const currentKey = `${tab}:${Number(form.email_number) || 1}`
@@ -337,17 +394,107 @@ export function OutlinesWorkspace() {
             />
           </label>
 
-          <label className="block space-y-1">
+          {/* Blocos do email — seleção fixa das 8 categorias da biblioteca. */}
+          <div className="block space-y-1.5">
             <span className="text-[12px] text-slate-500">
-              Blocos sugeridos (vírgula)
+              Blocos do email{" "}
+              <span className="text-slate-400">
+                (categorias fixas — clique para incluir)
+              </span>
             </span>
-            <input
-              className={inputCls}
-              value={form.suggested_blocks}
-              onChange={(e) => set({ suggested_blocks: e.target.value })}
-              placeholder="header, hero, coupon, products, footer"
-            />
-          </label>
+            <div className="flex flex-wrap gap-1.5">
+              {COMPONENT_CATEGORIES.map((cat) => {
+                const active = form.suggested_blocks.includes(cat.key)
+                const order = form.suggested_blocks.indexOf(cat.key) + 1
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => toggleBlock(cat.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[12px] transition-colors ${
+                      active
+                        ? "border-[#4E62D8] bg-[#EEF0FB] font-semibold text-[#4E62D8]"
+                        : "border-black/[0.08] text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {active && (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[4px] bg-[#4E62D8] text-[10px] font-semibold text-white">
+                        {order}
+                      </span>
+                    )}
+                    {cat.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              O número indica a ordem no email. O Montador usa exatamente estas
+              seções.
+            </p>
+          </div>
+
+          {/* Cupom por idioma — código literal que varia conforme o idioma
+              efetivo da loja. Idioma sem código = sem cupom nesse idioma. */}
+          <div className="block space-y-1.5">
+            <span className="text-[12px] text-slate-500">
+              Cupom por idioma{" "}
+              <span className="text-slate-400">
+                (código literal — varia conforme o idioma da loja)
+              </span>
+            </span>
+            <div className="space-y-1.5">
+              {form.coupon_codes.length === 0 && (
+                <p className="text-[11px] text-slate-400">
+                  Nenhum cupom. Adicione um código por idioma se este email
+                  tiver cupom.
+                </p>
+              )}
+              {form.coupon_codes.map((row, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <select
+                    className={`${inputCls} w-[190px] shrink-0`}
+                    value={row.lang}
+                    onChange={(e) => updateCouponRow(idx, { lang: e.target.value })}
+                  >
+                    {STORE_LANGUAGE_OPTIONS.map((o) => (
+                      <option
+                        key={o.value}
+                        value={o.value}
+                        disabled={o.value !== row.lang && usedLangs.has(o.value)}
+                      >
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={`${inputCls} font-mono uppercase`}
+                    value={row.code}
+                    onChange={(e) =>
+                      updateCouponRow(idx, { code: e.target.value.toUpperCase() })
+                    }
+                    placeholder="BEMVINDO10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCouponRow(idx)}
+                    className="shrink-0 rounded-[6px] border border-slate-200 p-1.5 text-slate-400 hover:text-red-600"
+                    aria-label="Remover cupom"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              {firstFreeLang && (
+                <button
+                  type="button"
+                  onClick={addCouponRow}
+                  className="inline-flex items-center gap-1 rounded-[6px] border border-dashed border-slate-300 px-2.5 py-1 text-[12px] text-slate-600 hover:bg-slate-50"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Adicionar idioma
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block space-y-1">

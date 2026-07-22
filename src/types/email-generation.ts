@@ -392,6 +392,12 @@ export interface EmailOutlineTemplate {
   guidance: string | null
   suggested_blocks: string[]
   tone_hint: string | null
+  /**
+   * Códigos de cupom literais por idioma da loja (ex:
+   * `{ "pt-BR": "BEMVINDO10", "en": "WELCOME10" }`). O pipeline escolhe pelo
+   * idioma efetivo da loja; idioma ausente => sem cupom injetado.
+   */
+  coupon_codes: Record<string, string>
   is_active: boolean
   version: number
   created_at: string

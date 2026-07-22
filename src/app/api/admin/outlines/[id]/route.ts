@@ -6,6 +6,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { normalizeSuggestedBlocks } from "@/lib/agents/shared/component-categories"
 
 const log = logger.child("EmailOutline")
 
@@ -14,8 +15,23 @@ export const dynamic = "force-dynamic"
 const patchSchema = z.object({
   objective: z.string().min(1).optional(),
   guidance: z.string().nullable().optional(),
-  suggested_blocks: z.array(z.string()).optional(),
+  suggested_blocks: z
+    .array(z.string())
+    .transform(normalizeSuggestedBlocks)
+    .optional(),
   tone_hint: z.string().nullable().optional(),
+  coupon_codes: z
+    .record(z.string(), z.string())
+    .transform((rec) => {
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(rec)) {
+        const key = k.trim()
+        const code = (v ?? "").trim()
+        if (key && code) out[key] = code
+      }
+      return out
+    })
+    .optional(),
   is_active: z.boolean().optional(),
 })
 

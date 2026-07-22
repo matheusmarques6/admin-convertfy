@@ -307,6 +307,8 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
       guidance: "OUT-GUIDE",
       suggested_blocks: ["header", "text", "footer"],
       tone_hint: "caloroso",
+      // Este outline de teste não tem coupon_codes → sem cupom no idioma.
+      coupon_code: null,
     })
     expect(email.blueprint?.objective).toBe("OBJ-GLOBAL")
   })

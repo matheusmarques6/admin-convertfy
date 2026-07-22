@@ -23,6 +23,7 @@ import {
   loadTextOnlyBlueprints,
 } from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
+import { resolveCouponCodeForLang } from "@/lib/email-workspace/implementation/coupon-info"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import type {
@@ -149,6 +150,7 @@ interface OutlineRow {
   guidance: string | null
   suggested_blocks: string[] | null
   tone_hint: string | null
+  coupon_codes: Record<string, string> | null
 }
 
 interface TopProductRow {
@@ -360,7 +362,7 @@ export async function dispatchEmailCopyWebhook(
       loadTextOnlyBlueprints(admin, flowTypes),
       admin
         .from("email_outline_templates")
-        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint")
+        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint, coupon_codes")
         .in("flow_type", flowTypes)
         .eq("is_active", true),
     ])
@@ -711,6 +713,54 @@ export async function dispatchEmailCopyWebhook(
     })
   }
 
+  // ── Cupom por idioma (Estrutura geral) ───────────────────────────────
+  // Resolve o código literal de cada email pelo idioma efetivo da loja e o
+  // grava no bloco `coupon` quando ainda está VAZIO (respeita código já
+  // preenchido — manual ou copy). Idioma sem código configurado ⇒ nenhum
+  // cupom (não injetamos código de outra língua). Determinístico e
+  // best-effort: falhas são logadas mas não bloqueiam o dispatch.
+  const couponCodeByEmailId = new Map<string, string>()
+  const couponUpdates: Array<{ id: string; content: Record<string, unknown> }> = []
+  for (const e of emails) {
+    const flow = flowsById.get(e.flow_id)
+    if (!flow) continue
+    const outline = outlineByKey.get(`${flow.flow_type}:${e.number}`)
+    const code = resolveCouponCodeForLang(
+      outline?.coupon_codes ?? null,
+      resolvedLang.code,
+    )
+    if (!code) continue
+    couponCodeByEmailId.set(e.id, code)
+    for (const b of blocksByEmail.get(e.id) ?? []) {
+      if (b.block_type !== "coupon") continue
+      const content = (b.content ?? {}) as Record<string, unknown>
+      const existing = typeof content.code === "string" ? content.code.trim() : ""
+      if (existing) continue
+      const nextContent = { ...content, code }
+      b.content = nextContent // reflete no payload montado adiante
+      couponUpdates.push({ id: b.id, content: nextContent })
+    }
+  }
+  if (couponUpdates.length > 0) {
+    await Promise.all(
+      couponUpdates.map((u) =>
+        admin
+          .from("email_blocks")
+          .update({ content: u.content })
+          .eq("id", u.id)
+          .then(({ error }) => {
+            if (error) {
+              log.warn("email_copy.webhook.coupon_write_failed", {
+                storeId,
+                blockId: u.id,
+                error: error.message,
+              })
+            }
+          }),
+      ),
+    )
+  }
+
   const payload = {
     event: "email_copy.requested" as const,
     timestamp: new Date().toISOString(),
@@ -864,12 +914,17 @@ export async function dispatchEmailCopyWebhook(
               copy_guidance: v.copy_guidance,
               output_schema: v.output_schema,
             })),
+          // Código literal do cupom já resolvido pelo idioma da loja (null se
+          // este email não tem cupom no idioma vigente). Já gravado no bloco
+          // `coupon`; repetido aqui pra o n8n ter o valor à mão na copy.
+          coupon_code: couponCodeByEmailId.get(e.id) ?? null,
           estrutura_geral: outline
             ? {
                 objective: outline.objective,
                 guidance: outline.guidance,
                 suggested_blocks: outline.suggested_blocks ?? [],
                 tone_hint: outline.tone_hint,
+                coupon_code: couponCodeByEmailId.get(e.id) ?? null,
               }
             : null,
           blueprint: bp

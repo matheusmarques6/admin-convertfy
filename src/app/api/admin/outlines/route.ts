@@ -7,18 +7,40 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { normalizeSuggestedBlocks } from "@/lib/agents/shared/component-categories"
 
 const log = logger.child("EmailOutlines")
 
 export const dynamic = "force-dynamic"
+
+// Mapa { idioma: código } — chaves e valores não vazios. Normaliza pra evitar
+// entradas em branco vindas da UI (linha adicionada e não preenchida).
+const couponCodesSchema = z
+  .record(z.string(), z.string())
+  .default({})
+  .transform((rec) => {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(rec)) {
+      const key = k.trim()
+      const code = (v ?? "").trim()
+      if (key && code) out[key] = code
+    }
+    return out
+  })
 
 const postSchema = z.object({
   flow_type: z.string().min(1),
   email_number: z.number().int().min(1),
   objective: z.string().min(1),
   guidance: z.string().nullable().optional(),
-  suggested_blocks: z.array(z.string()).default([]),
+  // Fixa nas 8 categorias canônicas — descarta qualquer coisa fora do
+  // vocabulário (fonte de acertividade do Montador).
+  suggested_blocks: z
+    .array(z.string())
+    .default([])
+    .transform(normalizeSuggestedBlocks),
   tone_hint: z.string().nullable().optional(),
+  coupon_codes: couponCodesSchema,
   is_active: z.boolean().default(true),
 })
 
