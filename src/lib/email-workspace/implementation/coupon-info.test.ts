@@ -3,35 +3,8 @@ import {
   discountLabelFromCode,
   couponInfo,
   emailCoupons,
-  resolveCouponCodeForLang,
 } from "./coupon-info"
 import type { EmailBlock } from "@/types/email-workspace"
-
-describe("resolveCouponCodeForLang", () => {
-  const map = { "pt-BR": "BEMVINDO10", en: "WELCOME10", es: "BIENVENIDO10" }
-
-  it("casa idioma exato", () => {
-    expect(resolveCouponCodeForLang(map, "pt-BR")).toBe("BEMVINDO10")
-    expect(resolveCouponCodeForLang(map, "en")).toBe("WELCOME10")
-  })
-
-  it("casa por língua-base ignorando região (pt ~ pt-BR)", () => {
-    expect(resolveCouponCodeForLang(map, "pt")).toBe("BEMVINDO10")
-    expect(resolveCouponCodeForLang({ pt: "OI10" }, "pt-PT")).toBe("OI10")
-  })
-
-  it("NÃO faz fallback entre idiomas diferentes", () => {
-    // Loja em francês, mapa sem 'fr' → null (não injeta cupom de outra língua).
-    expect(resolveCouponCodeForLang(map, "fr")).toBeNull()
-  })
-
-  it("ignora entradas vazias e mapa/idioma ausentes", () => {
-    expect(resolveCouponCodeForLang({ "pt-BR": "  " }, "pt-BR")).toBeNull()
-    expect(resolveCouponCodeForLang({}, "pt-BR")).toBeNull()
-    expect(resolveCouponCodeForLang(null, "pt-BR")).toBeNull()
-    expect(resolveCouponCodeForLang(map, "")).toBeNull()
-  })
-})
 
 describe("discountLabelFromCode", () => {
   it("deriva % do sufixo numérico", () => {

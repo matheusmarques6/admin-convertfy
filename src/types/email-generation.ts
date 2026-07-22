@@ -393,11 +393,11 @@ export interface EmailOutlineTemplate {
   suggested_blocks: string[]
   tone_hint: string | null
   /**
-   * Códigos de cupom literais por idioma da loja (ex:
-   * `{ "pt-BR": "BEMVINDO10", "en": "WELCOME10" }`). O pipeline escolhe pelo
-   * idioma efetivo da loja; idioma ausente => sem cupom injetado.
+   * Código de cupom padrão deste email (global). A variação por idioma/loja é
+   * feita depois, por loja, no bloco `coupon`. Usado como default do bloco
+   * `coupon` quando ainda está vazio. `null` = email sem cupom.
    */
-  coupon_codes: Record<string, string>
+  coupon_code: string | null
   is_active: boolean
   version: number
   created_at: string

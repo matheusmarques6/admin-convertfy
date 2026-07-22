@@ -20,17 +20,12 @@ const patchSchema = z.object({
     .transform(normalizeSuggestedBlocks)
     .optional(),
   tone_hint: z.string().nullable().optional(),
-  coupon_codes: z
-    .record(z.string(), z.string())
-    .transform((rec) => {
-      const out: Record<string, string> = {}
-      for (const [k, v] of Object.entries(rec)) {
-        const key = k.trim()
-        const code = (v ?? "").trim()
-        if (key && code) out[key] = code
-      }
-      return out
-    })
+  // `.optional()` por último: campo AUSENTE no PATCH => undefined (não mexe na
+  // coluna). Presente com "" ou null => limpa (null). Com texto => trim.
+  coupon_code: z
+    .string()
+    .nullable()
+    .transform((v) => (v ?? "").trim() || null)
     .optional(),
   is_active: z.boolean().optional(),
 })

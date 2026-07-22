@@ -13,19 +13,14 @@ const log = logger.child("EmailOutlines")
 
 export const dynamic = "force-dynamic"
 
-// Mapa { idioma: código } — chaves e valores não vazios. Normaliza pra evitar
-// entradas em branco vindas da UI (linha adicionada e não preenchida).
-const couponCodesSchema = z
-  .record(z.string(), z.string())
-  .default({})
-  .transform((rec) => {
-    const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(rec)) {
-      const key = k.trim()
-      const code = (v ?? "").trim()
-      if (key && code) out[key] = code
-    }
-    return out
+// Cupom padrão do email (código único). String vazia => null.
+const couponCodeSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((v) => {
+    const code = (v ?? "").trim()
+    return code || null
   })
 
 const postSchema = z.object({
@@ -40,7 +35,7 @@ const postSchema = z.object({
     .default([])
     .transform(normalizeSuggestedBlocks),
   tone_hint: z.string().nullable().optional(),
-  coupon_codes: couponCodesSchema,
+  coupon_code: couponCodeSchema,
   is_active: z.boolean().default(true),
 })
 

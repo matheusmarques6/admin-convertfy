@@ -23,7 +23,6 @@ import {
   loadTextOnlyBlueprints,
 } from "@/lib/agents/architect/blueprint-loader"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
-import { resolveCouponCodeForLang } from "@/lib/email-workspace/implementation/coupon-info"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import type {
@@ -150,7 +149,7 @@ interface OutlineRow {
   guidance: string | null
   suggested_blocks: string[] | null
   tone_hint: string | null
-  coupon_codes: Record<string, string> | null
+  coupon_code: string | null
 }
 
 interface TopProductRow {
@@ -362,7 +361,7 @@ export async function dispatchEmailCopyWebhook(
       loadTextOnlyBlueprints(admin, flowTypes),
       admin
         .from("email_outline_templates")
-        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint, coupon_codes")
+        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint, coupon_code")
         .in("flow_type", flowTypes)
         .eq("is_active", true),
     ])
@@ -713,22 +712,18 @@ export async function dispatchEmailCopyWebhook(
     })
   }
 
-  // ── Cupom por idioma (Estrutura geral) ───────────────────────────────
-  // Resolve o código literal de cada email pelo idioma efetivo da loja e o
-  // grava no bloco `coupon` quando ainda está VAZIO (respeita código já
-  // preenchido — manual ou copy). Idioma sem código configurado ⇒ nenhum
-  // cupom (não injetamos código de outra língua). Determinístico e
-  // best-effort: falhas são logadas mas não bloqueiam o dispatch.
+  // ── Cupom padrão do email (Estrutura geral) ──────────────────────────
+  // Grava o código de cupom (único, global) do outline no bloco `coupon`
+  // quando ainda está VAZIO (respeita código já preenchido — manual ou por
+  // loja). A variação por idioma/loja é feita depois, na etapa por-loja.
+  // Determinístico e best-effort: falhas são logadas, não bloqueiam o dispatch.
   const couponCodeByEmailId = new Map<string, string>()
   const couponUpdates: Array<{ id: string; content: Record<string, unknown> }> = []
   for (const e of emails) {
     const flow = flowsById.get(e.flow_id)
     if (!flow) continue
     const outline = outlineByKey.get(`${flow.flow_type}:${e.number}`)
-    const code = resolveCouponCodeForLang(
-      outline?.coupon_codes ?? null,
-      resolvedLang.code,
-    )
+    const code = (outline?.coupon_code ?? "").trim()
     if (!code) continue
     couponCodeByEmailId.set(e.id, code)
     for (const b of blocksByEmail.get(e.id) ?? []) {
