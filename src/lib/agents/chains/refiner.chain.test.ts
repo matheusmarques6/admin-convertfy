@@ -2,7 +2,48 @@ import { describe, expect, it } from "vitest"
 import {
   RefinerDeltaInvalidError,
   parseRefinerDelta,
+  extractRefinedHtml,
+  refinedHtmlGuard,
 } from "./refiner.chain"
+
+describe("extractRefinedHtml", () => {
+  const doc = `<!DOCTYPE html><html><body><table></table></body></html>`
+
+  it("remove fences e prosa em volta do documento", () => {
+    expect(extractRefinedHtml("```html\n" + doc + "\n```")).toBe(doc)
+    expect(extractRefinedHtml("Aqui está:\n" + doc + "\nPronto!")).toBe(doc)
+  })
+
+  it("sem HTML → string vazia", () => {
+    expect(extractRefinedHtml("desculpa, não consegui")).toBe("")
+  })
+})
+
+describe("refinedHtmlGuard", () => {
+  const orig = `<!DOCTYPE html><html><body><table><tr><td>${"x".repeat(200)}</td></tr></table></body></html>`
+
+  it("passa quando é HTML válido e preserva nº de <table> + tamanho", () => {
+    const refined = orig.replace("x", "y")
+    expect(refinedHtmlGuard(orig, refined)).toEqual({ ok: true })
+  })
+
+  it("reprova vazio / sem </html> / não-HTML", () => {
+    expect(refinedHtmlGuard(orig, "").ok).toBe(false)
+    expect(refinedHtmlGuard(orig, "<table></table>").ok).toBe(false) // sem </html>
+  })
+
+  it("reprova quando o nº de <table> mudou", () => {
+    const r = refinedHtmlGuard(orig, orig.replace("</table>", "</table><table></table>"))
+    expect(r.ok).toBe(false)
+    expect(r.reason).toContain("table_count")
+  })
+
+  it("reprova quando encolheu abaixo de 70% (truncamento)", () => {
+    const r = refinedHtmlGuard(orig, `<!DOCTYPE html><html><body><table></table></body></html>`)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toBe("shrunk")
+  })
+})
 
 describe("parseRefinerDelta", () => {
   it("parseia o shape v2 completo (3 seções)", () => {

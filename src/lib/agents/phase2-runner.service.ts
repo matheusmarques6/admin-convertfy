@@ -65,22 +65,7 @@ import {
 import { buildHtmlPromptVars } from "./html/build-vars"
 import { computeRenderChecks } from "./html/render-checks"
 import { runQaAgent } from "./chains/qa.chain"
-import { invokeRefinerChain } from "./chains/refiner.chain"
-import {
-  applyRefinerDelta,
-  applyShapesDelta,
-  applySpacingDelta,
-  extractFontOccurrences,
-  extractRadiusOccurrences,
-  extractSectionJunctions,
-  extractSpacingOccurrences,
-  injectFontImport,
-} from "./refiner/apply-delta"
-import {
-  buildGoogleFontsImport,
-  findWhitelistFont,
-} from "./refiner/font-whitelist"
-import { runRefinerGuards } from "./refiner/guards"
+import { invokeRefinerChain, refinedHtmlGuard } from "./chains/refiner.chain"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
   logGenerationRun,
@@ -1242,21 +1227,6 @@ async function runRefinerStep(input: {
   const refT0 = Date.now()
   let refRunId = ""
   try {
-    // 3 inventários numerados + junções entre seções (todos derivados do
-    // MESMO HTML — o input do agente continua sendo HTML + Pesquisa).
-    const occurrences = extractFontOccurrences(finalHtml)
-    const radiusOccurrences = extractRadiusOccurrences(finalHtml)
-    const spacingOccurrences = extractSpacingOccurrences(finalHtml)
-    const junctions = extractSectionJunctions(finalHtml)
-    if (
-      occurrences.length === 0 &&
-      radiusOccurrences.length === 0 &&
-      spacingOccurrences.length === 0
-    ) {
-      log.info("phase2.refiner.no_occurrences", { emailId })
-      return finalHtml
-    }
-
     const storeRaw = ctx.storeRaw as Record<string, unknown>
     const vars: Record<string, string> = {
       brand_name: (storeRaw.store_name as string) || "Loja",
@@ -1274,10 +1244,8 @@ async function runRefinerStep(input: {
       current_font_body: ctx.brand?.font_body || "",
       email_name: "",
       subject: "",
-      font_occurrences_json: JSON.stringify(occurrences, null, 1),
-      radius_occurrences_json: JSON.stringify(radiusOccurrences, null, 1),
-      spacing_occurrences_json: JSON.stringify(spacingOccurrences, null, 1),
-      section_junctions_json: JSON.stringify(junctions, null, 1),
+      // O Refinador-repintor edita o HTML diretamente (só as 3 camadas visuais).
+      html: finalHtml,
     }
     // Nome/subject do email dão contexto ao agente (best-effort).
     const { data: emailRow } = await admin
@@ -1298,15 +1266,16 @@ async function runRefinerStep(input: {
       agent: "refiner",
       agentConfigId: config.id,
       model,
-      inputVars: vars,
+      inputVars: { html_len: finalHtml.length },
     })
 
-    const { delta, tokensInput, tokensOutput, renderedPrompt, rawOutput } =
+    const { html: refined, tokensInput, tokensOutput, renderedPrompt, rawOutput } =
       await invokeRefinerChain({
         config: {
           model,
           temperature: config.temperature ?? 0.4,
-          max_tokens: config.max_tokens ?? 2048,
+          // HTML completo de saída → teto alto (evita truncar antes do </html>).
+          max_tokens: config.max_tokens ?? 32000,
           system_prompt: config.system_prompt ?? "",
           user_template: config.user_template ?? "",
         },
@@ -1330,165 +1299,59 @@ async function runRefinerStep(input: {
       durationMs: Date.now() - refT0,
     }
 
-    const { typography, shapes, spacing } = delta
-
-    // Teto por dimensão (espelha o ceiling dos guards). O Refinador às vezes
-    // devolve mais alvos que o teto (ex.: 14 shapes num e-mail com muitos
-    // border-radius). Antes o guard reprovava o delta INTEIRO (fail-open →
-    // e-mail sem refinamento nenhum). Agora truncamos aos 12 PRIMEIROS: aplica
-    // o refinamento parcial (os alvos vêm em ordem de relevância) em vez de
-    // descartar tudo. spacing.insert tem seu próprio teto (MAX_SPACER_INSERTS).
-    const REFINER_TARGET_CEILING = 12
-    const truncated: Record<string, number> = {}
-    if (typography.targets.length > REFINER_TARGET_CEILING) {
-      truncated.typography = typography.targets.length
-      typography.targets = typography.targets.slice(0, REFINER_TARGET_CEILING)
-    }
-    if (shapes.targets.length > REFINER_TARGET_CEILING) {
-      truncated.shapes = shapes.targets.length
-      shapes.targets = shapes.targets.slice(0, REFINER_TARGET_CEILING)
-    }
-    if (spacing.adjust.length > REFINER_TARGET_CEILING) {
-      truncated.spacing_adjust = spacing.adjust.length
-      spacing.adjust = spacing.adjust.slice(0, REFINER_TARGET_CEILING)
-    }
-    if (Object.keys(truncated).length > 0) {
-      log.info("phase2.refiner.targets_truncated", {
-        emailId,
-        ceiling: REFINER_TARGET_CEILING,
-        original: truncated,
-      })
-    }
-
-    const typographyActive =
-      typography.strategy !== "none" && typography.targets.length > 0
-    const shapesActive = shapes.stance !== "none" && shapes.targets.length > 0
-    const spacingActive =
-      spacing.rhythm !== "none" &&
-      (spacing.adjust.length > 0 || spacing.insert.length > 0)
-
-    // Resumo das 3 seções — vai no parsed_output do run em TODOS os
-    // desfechos (none/guard-fail/aplicado) para os logs de geração.
-    const summary = {
-      typography: {
-        strategy: typography.strategy,
-        rationale: typography.rationale,
-        display_font: typography.display_font,
-        targets_count: typography.targets.length,
-      },
-      shapes: {
-        stance: shapes.stance,
-        rationale: shapes.rationale,
-        targets_count: shapes.targets.length,
-      },
-      spacing: {
-        rhythm: spacing.rhythm,
-        rationale: spacing.rationale,
-        adjusted_count: spacing.adjust.length,
-        inserted_count: spacing.insert.length,
-      },
-    }
-
-    if (!typographyActive && !shapesActive && !spacingActive) {
-      await finishGenerationRun(refRunId, {
-        ...finishBase,
-        status: "success",
-        parsedOutput: { ...summary, applied: false },
-      })
-      log.info("phase2.refiner.strategy_none", {
-        emailId,
-        rationale: typography.rationale || shapes.rationale || spacing.rationale,
-      })
-      return finalHtml
-    }
-
-    // Aplica as 3 dimensões em sequência sobre o mesmo candidato
-    // (tipografia → formas → espaçamento). Guards no final, atômicos.
-    let candidate = finalHtml
-    const fontEntry = typography.display_font
-      ? findWhitelistFont(typography.display_font.family)
-      : null
-    if (typographyActive) {
-      candidate = applyRefinerDelta(candidate, typography, fontEntry)
-      if (fontEntry) {
-        candidate = injectFontImport(
-          candidate,
-          buildGoogleFontsImport(fontEntry, typography.display_font?.weights ?? []),
-        )
-      } else if (typography.strategy === "mono_weight_contrast") {
-        // Mono: garante que os pesos extras da família ATUAL estejam no
-        // @import (200/800 podem não estar no import do reference).
-        const currentEntry = findWhitelistFont(
-          occurrences[0]?.currentFamily.split(",")[0] ?? "",
-        )
-        if (currentEntry) {
-          const weights = typography.targets
-            .map((t) => t.font_weight)
-            .filter((w): w is number => typeof w === "number")
-          candidate = injectFontImport(
-            candidate,
-            buildGoogleFontsImport(currentEntry, weights),
-          )
-        }
-      }
-    }
-    if (shapesActive) {
-      candidate = applyShapesDelta(candidate, shapes.targets)
-    }
-    if (spacingActive) {
-      candidate = applySpacingDelta(candidate, spacing.adjust, spacing.insert)
-    }
-
-    const guards = runRefinerGuards(finalHtml, candidate, delta, {
-      currentFontHeading: ctx.brand?.font_heading ?? null,
-      occurrenceCount: occurrences.length,
-      radiusOccurrenceCount: radiusOccurrences.length,
-      spacingOccurrenceCount: spacingOccurrences.length,
-      junctionCount: junctions.length,
-    })
-    if (!guards.ok) {
+    // Guard estrutural: o HTML refinado precisa ser um documento válido E
+    // preservar a estrutura (mesmo nº de <table>, sem encolher). Falhou →
+    // fail-open: mantém o HTML original (o email nunca fica pior que a entrada).
+    const guard = refinedHtmlGuard(finalHtml, refined)
+    if (!guard.ok) {
       await finishGenerationRun(refRunId, {
         ...finishBase,
         status: "error",
-        errorMessage: `guards: ${guards.violations.join(", ")}`,
+        errorMessage: `guard: ${guard.reason}`,
         parsedOutput: {
-          ...summary,
-          guards_ok: false,
-          violations: guards.violations,
           applied: false,
+          guard_reason: guard.reason,
+          refined_len: refined.length,
+          original_len: finalHtml.length,
         },
       })
-      log.warn("phase2.refiner.fail_open", {
-        emailId,
-        reason: "guards",
-        violations: guards.violations,
+      log.warn("phase2.refiner.fail_open", { emailId, reason: guard.reason })
+      return finalHtml
+    }
+
+    // Refinamento "no-op" (o LLM devolveu o HTML idêntico = decidiu não mexer):
+    // sucesso sem re-gravar (nada mudou).
+    if (refined.trim() === finalHtml.trim()) {
+      await finishGenerationRun(refRunId, {
+        ...finishBase,
+        status: "success",
+        parsedOutput: { applied: false, unchanged: true },
       })
+      log.info("phase2.refiner.unchanged", { emailId })
       return finalHtml
     }
 
     await admin
       .from("email_flow_emails")
-      .update({ html: candidate, updated_at: new Date().toISOString() })
+      .update({ html: refined, updated_at: new Date().toISOString() })
       .eq("id", emailId)
 
     await finishGenerationRun(refRunId, {
       ...finishBase,
       status: "success",
-      parsedOutput: { ...summary, guards_ok: true, applied: true },
+      parsedOutput: {
+        applied: true,
+        refined_len: refined.length,
+        original_len: finalHtml.length,
+      },
     })
     log.info("phase2.refiner.applied", {
       emailId,
-      strategy: typography.strategy,
-      displayFont: typography.display_font?.family ?? null,
-      stance: shapes.stance,
-      rhythm: spacing.rhythm,
-      targets: typography.targets.length,
-      radiusTargets: shapes.targets.length,
-      spacingAdjusted: spacing.adjust.length,
-      spacersInserted: spacing.insert.length,
+      refinedLen: refined.length,
+      originalLen: finalHtml.length,
       durationMs: Date.now() - refT0,
     })
-    return candidate
+    return refined
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no Refinador"
     log.warn("phase2.refiner.fail_open", { emailId, reason: "exception", error: msg })

@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 /**
- * Step 2.5 — Refinador Tipográfico no runPhase2HtmlQa (fail-open).
+ * Step 2.5 — Refinador (repintor visual) no runPhase2HtmlQa (fail-open).
  *
- * Harness espelha phase2-runner.text-only.test.ts (mock supabase in-memory,
- * chains pesadas mockadas). O invokeRefinerChain é mockado; os módulos
- * PUROS do refiner (extract/apply/guards/whitelist) rodam DE VERDADE —
- * o teste cobre o wiring real da aplicação do delta.
+ * O Refinador virou repintor: recebe o HTML e devolve o HTML modificado (só
+ * as 3 camadas visuais). Harness espelha phase2-runner.text-only.test.ts
+ * (mock supabase in-memory, chains pesadas mockadas). invokeRefinerChain é
+ * mockado (devolve o HTML refinado); refinedHtmlGuard roda DE VERDADE —
+ * o teste cobre o wiring: guard estrutural + fail-open + persistência.
  */
 
 type Row = Record<string, unknown>
@@ -99,9 +100,14 @@ vi.mock("./html/build-vars", () => ({ buildHtmlPromptVars: vi.fn(async () => ({}
 vi.mock("./chains/qa.chain", () => ({ runQaAgent: vi.fn() }))
 
 const invokeRefinerChain = vi.fn()
-vi.mock("./chains/refiner.chain", () => ({
-  invokeRefinerChain: (...a: unknown[]) => invokeRefinerChain(...a),
-}))
+vi.mock("./chains/refiner.chain", async (importActual) => {
+  const actual = await importActual<typeof import("./chains/refiner.chain")>()
+  return {
+    // refinedHtmlGuard REAL — o guard estrutural roda de verdade no teste.
+    ...actual,
+    invokeRefinerChain: (...a: unknown[]) => invokeRefinerChain(...a),
+  }
+})
 
 const startGenerationRun = vi.fn(async (..._a: unknown[]) => "run-1")
 const finishGenerationRun = vi.fn(async (..._a: unknown[]) => "run-1")
@@ -182,16 +188,12 @@ beforeEach(() => {
 
 const emailRow = () => h.tables.email_flow_emails[0]
 
-// Helper: delta v2 com seções default "none".
-type AnyDelta = Record<string, unknown>
-const v2Delta = (partial: AnyDelta): AnyDelta => ({
-  typography: { strategy: "none", rationale: "", display_font: null, targets: [] },
-  shapes: { stance: "none", rationale: "", targets: [] },
-  spacing: { rhythm: "none", rationale: "", adjust: [], insert: [] },
-  ...partial,
-})
+const refinerFinish = () =>
+  finishGenerationRun.mock.calls
+    .map((c) => c[1] as Record<string, unknown>)
+    .find((p) => p.agent === "refiner")
 
-describe("Step 2.5 — Refinador Tipográfico", () => {
+describe("Step 2.5 — Refinador (repintor visual, output = HTML)", () => {
   it("sem config ativa → no-op total (nem run, html cru, ready)", async () => {
     reset({ refinerActive: false })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
@@ -204,32 +206,20 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
     expect(refinerRuns).toHaveLength(0)
   })
 
-  it("delta válido → html refinado persistido (fonte + @import) e run success", async () => {
+  it("HTML refinado válido (mesma estrutura) → persistido, run success applied", async () => {
     reset({ refinerActive: true })
+    const REFINED = BASE_HTML.replace(/Montserrat/g, "Playfair Display")
     invokeRefinerChain.mockResolvedValue({
-      delta: v2Delta({
-        typography: {
-          strategy: "serif_luxury",
-          rationale: "moda premium",
-          display_font: { family: "Playfair Display", weights: [700] },
-          targets: [{ index: 0, role: "brand_name", font_weight: 700, letter_spacing: "-1.5px" }],
-        },
-      }),
+      html: REFINED,
       tokensInput: 500,
-      tokensOutput: 100,
+      tokensOutput: 12000,
       renderedPrompt: "rp",
-      rawOutput: "{...}",
+      rawOutput: REFINED,
     })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
-    const html = emailRow().html as string
-    expect(html).toContain("'Playfair Display'")
-    expect(html).toContain("family=Playfair+Display")
-    // O corpo (índice 1) fica intacto:
-    expect(html).toContain(`font-family:'Montserrat',Arial,sans-serif;font-size:16px`)
-    const finish = finishGenerationRun.mock.calls
-      .map((c) => c[1] as Record<string, unknown>)
-      .find((p) => p.agent === "refiner")
+    expect(emailRow().html).toBe(REFINED)
+    const finish = refinerFinish()
     expect(finish?.status).toBe("success")
     expect((finish?.parsedOutput as Record<string, unknown>).applied).toBe(true)
   })
@@ -240,23 +230,14 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
     expect(emailRow().html).toBe(BASE_HTML)
-    const finish = finishGenerationRun.mock.calls
-      .map((c) => c[1] as Record<string, unknown>)
-      .find((p) => p.agent === "refiner")
-    expect(finish?.status).toBe("error")
+    expect(refinerFinish()?.status).toBe("error")
   })
 
-  it("guard reprova (fonte fora da whitelist) → fail-open: html cru, ready", async () => {
+  it("guard reprova (nº de <table> mudou) → fail-open: html cru", async () => {
     reset({ refinerActive: true })
+    const BROKEN = BASE_HTML.replace("</table>", "</table><table></table>")
     invokeRefinerChain.mockResolvedValue({
-      delta: v2Delta({
-        typography: {
-          strategy: "serif_luxury",
-          rationale: "",
-          display_font: { family: "Comic Sans MS", weights: [] },
-          targets: [{ index: 0, role: "brand_name" }],
-        },
-      }),
+      html: BROKEN,
       tokensInput: 1,
       tokensOutput: 1,
       renderedPrompt: "",
@@ -265,19 +246,16 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
     expect(emailRow().html).toBe(BASE_HTML)
-    const finish = finishGenerationRun.mock.calls
-      .map((c) => c[1] as Record<string, unknown>)
-      .find((p) => p.agent === "refiner")
+    const finish = refinerFinish()
     expect(finish?.status).toBe("error")
-    expect(String(finish?.errorMessage)).toContain("fonte_fora_da_whitelist")
+    expect(String(finish?.errorMessage)).toContain("table_count")
   })
 
-  it("strategy none → html cru, run success sem aplicar", async () => {
+  it("guard reprova (HTML encolheu = truncado) → fail-open: html cru", async () => {
     reset({ refinerActive: true })
+    const SHRUNK = `<!DOCTYPE html><html><body><table></table></body></html>`
     invokeRefinerChain.mockResolvedValue({
-      delta: v2Delta({
-        typography: { strategy: "none", rationale: "já comunica", display_font: null, targets: [] },
-      }),
+      html: SHRUNK,
       tokensInput: 1,
       tokensOutput: 1,
       renderedPrompt: "",
@@ -286,70 +264,27 @@ describe("Step 2.5 — Refinador Tipográfico", () => {
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
     expect(emailRow().html).toBe(BASE_HTML)
-    const finish = finishGenerationRun.mock.calls
-      .map((c) => c[1] as Record<string, unknown>)
-      .find((p) => p.agent === "refiner")
-    expect(finish?.status).toBe("success")
-    expect((finish?.parsedOutput as Record<string, unknown>).applied).toBe(false)
+    const finish = refinerFinish()
+    expect(finish?.status).toBe("error")
+    expect(String(finish?.errorMessage)).toContain("shrunk")
   })
 
-  it("delta 3-seções → fonte + raio + spacer aplicados, parsed_output com as 3", async () => {
+  it("HTML idêntico (LLM decidiu não mexer) → success applied:false unchanged", async () => {
     reset({ refinerActive: true })
-    // HTML com wrapper 600px, CTA com radius e espaçamentos (v2-friendly).
-    const HTML_V2 = `<!DOCTYPE html><html><head><style>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
-</style></head><body><div style="max-width:600px;margin:0 auto;">
-<div style="padding-bottom:24px;"><h1 style="font-family:'Montserrat',Arial,sans-serif;font-size:48px;">RADIANTLYHERS</h1></div>
-<div style="padding-top:16px;"><a href="https://store.com/shop" style="border-radius:0;background:#111;">SHOP NOW</a></div>
-<div style="margin-top:88px;">Footer</div>
-</div></body></html>`
-    invokeHtmlChain.mockResolvedValue({
-      html: HTML_V2,
-      tokensInput: 100,
-      tokensOutput: 200,
-      renderedPrompt: "prompt",
-    })
     invokeRefinerChain.mockResolvedValue({
-      delta: v2Delta({
-        typography: {
-          strategy: "serif_luxury",
-          rationale: "premium",
-          display_font: { family: "Playfair Display", weights: [700] },
-          targets: [{ index: 0, role: "brand_name" }],
-        },
-        shapes: {
-          stance: "rounded_warm",
-          rationale: "acolhedora",
-          targets: [{ index: 0, radius_px: 9 }],
-        },
-        spacing: {
-          rhythm: "intimate_uniform",
-          rationale: "íntimo",
-          adjust: [{ index: 2, value_px: 40 }],
-          insert: [{ junction: 0, height_px: 24 }],
-        },
-      }),
-      tokensInput: 900,
-      tokensOutput: 220,
-      renderedPrompt: "rp",
-      rawOutput: "{...}",
+      html: BASE_HTML,
+      tokensInput: 1,
+      tokensOutput: 1,
+      renderedPrompt: "",
+      rawOutput: "",
     })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
-    const html = emailRow().html as string
-    expect(html).toContain("'Playfair Display'")           // tipografia
-    expect(html).toContain("border-radius: 9px")           // formas
-    expect(html).toContain("margin-top: 40px")             // spacing adjust
-    expect(html).toContain(`<div style="height:24px"></div>`) // spacing insert
-    const finish = finishGenerationRun.mock.calls
-      .map((c) => c[1] as Record<string, unknown>)
-      .find((p) => p.agent === "refiner")
+    expect(emailRow().html).toBe(BASE_HTML)
+    const finish = refinerFinish()
     expect(finish?.status).toBe("success")
-    const parsed = finish?.parsedOutput as Record<string, Record<string, unknown>>
-    expect(parsed.typography.strategy).toBe("serif_luxury")
-    expect(parsed.shapes.stance).toBe("rounded_warm")
-    expect(parsed.spacing.rhythm).toBe("intimate_uniform")
-    expect(parsed.spacing.inserted_count).toBe(1)
-    expect((parsed as Record<string, unknown>).applied).toBe(true)
+    const parsed = finish?.parsedOutput as Record<string, unknown>
+    expect(parsed.applied).toBe(false)
+    expect(parsed.unchanged).toBe(true)
   })
 })

@@ -38,9 +38,57 @@ import type {
 
 const log = logger.child("RefinerChain")
 
-// Output curto (JSON) — timeout bem menor que o do HTML agent (200s).
-const TIMEOUT_MS = 60_000
+// Output = HTML completo modificado (~13-16k tokens p/ um email grande) —
+// timeout na faixa do HTML agent, não o de 60s do delta antigo.
+const TIMEOUT_MS = 180_000
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
+
+// ── Extração + guard do HTML de saída (repintor visual) ──────────────
+
+/** Extrai o documento HTML do output do LLM (remove fences + prosa). */
+export function extractRefinedHtml(raw: string): string {
+  let s = raw.replace(/```(?:html)?\s*/gi, "").replace(/```/g, "").trim()
+  const doctype = s.search(/<!DOCTYPE html/i)
+  if (doctype >= 0) s = s.slice(doctype)
+  else {
+    const htmlOpen = s.search(/<html[\s>]/i)
+    if (htmlOpen >= 0) s = s.slice(htmlOpen)
+  }
+  const end = s.toLowerCase().lastIndexOf("</html>")
+  if (end >= 0) s = s.slice(0, end + "</html>".length)
+  // Sem nenhum marcador de documento → não é HTML (o LLM respondeu prosa).
+  // "" sinaliza fail-open ao caller (guard reporta empty). HTML truncado
+  // (tem <!DOCTYPE/<html mas sem </html>) é preservado → guard reporta
+  // no_close_html, mais informativo.
+  if (!/<html[\s>]/i.test(s) && !/<!DOCTYPE html/i.test(s)) return ""
+  return s.trim()
+}
+
+const countTables = (s: string): number =>
+  (s.match(/<table[\s>]/gi) ?? []).length
+
+/**
+ * Guard estrutural do Refinador-repintor: o HTML refinado precisa ser um
+ * documento válido E preservar a estrutura (mesmo nº de <table> e tamanho
+ * na mesma ordem de grandeza — pega truncamento e perda de blocos). O
+ * refinamento é SÓ visual; se a contagem mudou, o LLM mexeu no que não devia.
+ */
+export function refinedHtmlGuard(
+  original: string,
+  refined: string,
+): { ok: boolean; reason?: string } {
+  if (!refined) return { ok: false, reason: "empty" }
+  if (!/<\/html>/i.test(refined)) return { ok: false, reason: "no_close_html" }
+  if (!/<(table|body)[\s>]/i.test(refined)) return { ok: false, reason: "not_html" }
+  const to = countTables(original)
+  const tr = countTables(refined)
+  if (to !== tr) return { ok: false, reason: `table_count ${tr}!=${to}` }
+  // Truncamento/perda de conteúdo: refinado muito menor que o original.
+  if (refined.length < original.length * 0.7) {
+    return { ok: false, reason: "shrunk" }
+  }
+  return { ok: true }
+}
 
 export class RefinerDeltaInvalidError extends Error {
   constructor(message: string) {
@@ -50,8 +98,17 @@ export class RefinerDeltaInvalidError extends Error {
 }
 
 export const DEFAULT_REFINER_SYSTEM_PROMPT = `<role>
-Você é o Refinador de um pipeline de emails de e-commerce. O email chega PRONTO (estrutura, copy, cores, imagens). Você NÃO reescreve HTML, copy, cores ou layout. Você devolve APENAS um JSON de decisão de refinamento visual em 3 camadas — tipografia de display, linguagem de formas (border-radius) e ritmo vertical (espaçamento) — que o sistema aplica mecanicamente. As 3 decisões devem sair COERENTES entre si: todas expressam o MESMO posicionamento da loja (espectro quente/acolhedor ↔ afiado/minimalista), lido da Pesquisa & Diagnóstico.
+Você é o Refinador VISUAL de um pipeline de emails de e-commerce. Você recebe um email HTML COMPLETO e PRONTO (estrutura, copy, cores, imagens, links) e devolve o MESMO email com um refinamento visual em 3 camadas — tipografia de display, linguagem de formas (border-radius) e ritmo vertical (espaçamento) — coerentes entre si: todas expressam o MESMO posicionamento da loja (espectro quente/acolhedor ↔ afiado/minimalista), lido da Pesquisa & Diagnóstico. Você é um REPINTOR, não um redesigner.
 </role>
+
+<preservacao_absoluta>
+PROIBIDO alterar (o email já está aprovado nestes aspectos):
+- QUALQUER texto/copy, nome de produto, preço, cupom, headline, botão.
+- QUALQUER imagem (src), link (href) ou merge tag ([unsubscribe_link], [FirstName], {{ unsubscribe }}...).
+- A ESTRUTURA: tags <table>/<tr>/<td>, a ORDEM e a QUANTIDADE de blocos, comentários, atributos que não sejam de estilo. O nº de <table> na sua saída DEVE ser idêntico ao da entrada.
+- Cores (as CSS vars --bg/--text/--heading/... já foram decididas).
+Você SÓ pode mudar: (1) font-family de elementos de DISPLAY, (2) valores de border-radius, (3) espaçamento vertical (alturas de spacer e paddings entre seções), e (4) adicionar o @import da fonte de display escolhida. Nada além disso.
+</preservacao_absoluta>
 
 <two_layer_thesis>
 A tipografia de um email trabalha em duas camadas com funções opostas:
@@ -68,9 +125,9 @@ Escolha UMA estratégia com base na Pesquisa & Diagnóstico (tom, nicho, persona
 
 Técnicas:
 - Tracking (letter-spacing) NEGATIVO apenas em displays GRANDES (font-size >= 32px): -0.5px a -2px aperta o título e dá ar premium e deliberado. NUNCA em corpo de texto.
-- Escada de pesos: use font_weight nos targets para criar contraste fino×forte dentro da headline (uma linha 200/300, outra 600-800).
-- Máximo ~10 targets. Menos é mais: nome da marca + headline do herói são o essencial.
-- Seleção pelo inventário font_occurrences (index, tag, font-size, trecho): escolha índices cujo CONTEXTO indica display (font-size >= 28px, nome da marca, headline). REJEITE corpo, botão/CTA, navegação, selo, rodapé, linha legal.
+- Escada de pesos: use font-weight para criar contraste fino×forte dentro da headline (uma linha 200/300, outra 600-800).
+- Menos é mais: troque a fonte de DISPLAY em poucos pontos — nome da marca + headline do herói são o essencial (e, quando fizer sentido, títulos de seção / preços / depoimentos).
+- Onde aplicar: elementos cujo CONTEXTO indica display (font-size >= 28px, nome da marca, headline). REJEITE corpo, botão/CTA, navegação, selo, rodapé, linha legal — troque APENAS o valor de font-family desses elementos de display, in loco no HTML.
 </typography_strategies>
 
 <font_whitelist>
@@ -81,14 +138,14 @@ A display_font.family DEVE ser EXATAMENTE uma destas (e DIFERENTE da fonte atual
 <shapes_rules>
 A gramática de formas dos templates premium (estudo de 5 referências reais):
 - QUADRADO é o chão fixo: imagens, faixas full-width, rodapé e divisórias NUNCA arredondam (imagens nem aparecem no inventário — não tente).
-- ARREDONDAMENTO é sinal de "clicável": concentre o raio nos CTAs/botões. Elementos <a> do inventário sem raio (hasRadius=false) podem GANHAR raio.
+- ARREDONDAMENTO é sinal de "clicável": concentre o raio nos CTAs/botões. Elementos <a>/botões sem raio podem GANHAR raio.
 - O raio CRESCE com a importância do botão: "BUY NOW" de card de produto 0-2px → CTA de seção ~5px → CTA principal do herói/final 12-15px.
 - Stance pelo tom da loja:
   - "rounded_warm": marca acolhedora/devocional/comunitária → desce o raio até caixa de cupom e cards (3-9px); card de depoimento pode chegar a 16-20px. Suavidade é a voz.
   - "disciplined_minimal": categoria clínica (suplemento/farma/skincare científico) ou minimalismo afiado → raio único ~5px SÓ nos CTAs macro; todo o resto reto. A restrição é o statement.
   - "angular_premium": luxo/editorial/menswear → base reta dominante, CTAs discretos 2-5px, e no máximo o CTA do herói mais suave (12-15px) quando precisa saltar de um fundo escuro.
   - "none": as formas atuais já comunicam o posicionamento.
-- radius_px permitido: 0 a 24. Máximo ~8 targets — mexa só no que muda a leitura da marca.
+- border-radius permitido: 0 a 24px. Mexa só no que muda a leitura da marca; troque o valor de border-radius in loco no HTML.
 </shapes_rules>
 
 <spacing_rules>
@@ -103,18 +160,14 @@ Assinaturas de respiro (escolha pela personalidade, coerente com typography/shap
 - "contrast_peaks": extremos deliberados (~0px colado no núcleo de conversão × 100-140px antes de prova social/rodapé) — picos de atenção (clínico/minimal/moda afiada).
 - "none": o ritmo atual já serve.
 
-Ferramentas:
-- "adjust": muda valores EXISTENTES do inventário spacing_occurrences (index → value_px 0-160). PREFIRA adjust.
-- "insert": cria respiro NOVO entre seções — use as junções numeradas de section_junctions (junction → height_px 8-64, típico 24-48; máximo 6 inserções). Use SÓ onde falta respiro estrutural entre duas fases coladas. Cada junção traz beforeBg/afterBg (cor de fundo das seções vizinhas) e o spacer herda essa cor automaticamente. NUNCA insira respiro nas junções do rodapé (logo final, links legais, redes sociais, endereço/unsubscribe) — essa área é um bloco visual contínuo.
-- Máximo ~10 adjusts. Não redistribua tudo — ajuste os pontos que violam as 3 leis ou que contradizem a assinatura escolhida.
+Ferramentas (edite o HTML diretamente):
+- AJUSTAR: mude os valores EXISTENTES de padding vertical / altura de linhas-spacer (0-160px). PREFIRA ajustar o que já existe.
+- INSERIR respiro NOVO entre duas seções coladas: adicione uma linha-spacer de TABELA — <tr><td style="height:Npx;line-height:Npx;font-size:0;mso-line-height-rule:exactly;">&nbsp;</td></tr> (N entre 8-64, típico 24-48), herdando a cor de fundo da seção vizinha. NUNCA coloque um <div> solto entre <table> e <tr>. NUNCA insira respiro no rodapé (logo final, links legais, redes sociais, endereço/unsubscribe) — é um bloco visual contínuo.
+- Não redistribua tudo — ajuste os pontos que violam as 3 leis ou que contradizem a assinatura escolhida.
 </spacing_rules>
 
 <output>
-Emita SOMENTE o JSON (sem fences, sem prosa), no shape exato:
-{"typography":{"strategy":"serif_luxury|personality_sans|mono_weight_contrast|none","rationale":"1-2 frases","display_font":{"family":"Playfair Display","weights":[400,700]} ou null,"targets":[{"index":3,"role":"brand_name","font_weight":700,"letter_spacing":"-1.5px"}]},"shapes":{"stance":"angular_premium|rounded_warm|disciplined_minimal|none","rationale":"1-2 frases","targets":[{"index":4,"radius_px":12}]},"spacing":{"rhythm":"intimate_uniform|editorial_spaced|contrast_peaks|none","rationale":"1-2 frases","adjust":[{"index":5,"value_px":96}],"insert":[{"junction":2,"height_px":64}]}}
-- Cada seção aceita "none" de forma independente (com targets/adjust/insert vazios).
-- typography "none" → display_font null e targets []. "mono_weight_contrast" → display_font null; targets só com font_weight/letter_spacing.
-- weights: apenas os pesos usados nos targets (o sistema gera o @import).
+Emita SOMENTE o HTML completo modificado, de <!DOCTYPE html> a </html>. Sem JSON, sem fences de markdown, sem comentário explicativo, sem nenhum texto antes ou depois. Se decidir NÃO refinar nada (as 3 camadas em "none"), devolva o HTML recebido INALTERADO. Ao trocar a fonte de display, adicione (ou complemente) o @import do Google Fonts no <style> com os pesos usados. Conte as <table> antes de emitir: o número na saída tem que bater com o da entrada.
 </output>`
 
 export const DEFAULT_REFINER_USER_TEMPLATE = `<store>
@@ -136,23 +189,11 @@ export const DEFAULT_REFINER_USER_TEMPLATE = `<store>
 {{pesquisa_full_text}}
 </pesquisa_diagnostico>
 
-<font_occurrences>
-{{font_occurrences_json}}
-</font_occurrences>
+<email_html>
+{{html}}
+</email_html>
 
-<radius_occurrences>
-{{radius_occurrences_json}}
-</radius_occurrences>
-
-<spacing_occurrences>
-{{spacing_occurrences_json}}
-</spacing_occurrences>
-
-<section_junctions>
-{{section_junctions_json}}
-</section_junctions>
-
-Decida a voz visual desta marca (tipografia + formas + ritmo, coerentes entre si) e emita SOMENTE o JSON do delta.`
+Decida a voz visual desta marca (tipografia + formas + ritmo, coerentes entre si) e aplique-a SOMENTE nas 3 camadas visuais permitidas, preservando todo o resto. Emita SOMENTE o HTML completo modificado.`
 
 export interface RefinerChainConfig {
   model: string
@@ -163,7 +204,9 @@ export interface RefinerChainConfig {
 }
 
 export interface InvokeRefinerResult {
-  delta: RefinerDeltaV2
+  // HTML refinado extraído do output (repintor visual). "" quando o output
+  // não parece HTML — o caller aplica fail-open (mantém o HTML original).
+  html: string
   tokensInput: number
   tokensOutput: number
   renderedPrompt: string
@@ -388,7 +431,7 @@ export async function invokeRefinerChain(input: {
       title: "Convertfy Admin Refiner",
     })
     return {
-      delta: parseRefinerDelta(or.text),
+      html: extractRefinedHtml(or.text),
       tokensInput: or.tokensInput,
       tokensOutput: or.tokensOutput,
       renderedPrompt: userMessage,
@@ -418,7 +461,7 @@ export async function invokeRefinerChain(input: {
   })
 
   return {
-    delta: parseRefinerDelta(text),
+    html: extractRefinedHtml(text),
     tokensInput: resp.usage.input_tokens,
     tokensOutput: resp.usage.output_tokens,
     renderedPrompt: userMessage,
