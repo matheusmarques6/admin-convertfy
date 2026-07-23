@@ -69,10 +69,60 @@ export async function DELETE(
 
     const adminClient = createAdminClient()
 
-    // Delete the store — all satellite tables have ON DELETE CASCADE
-    // (store_alerts, store_briefings, store_onboarding_data, agent_store_access,
-    //  client_onboardings, store_feedback_calls, dashboard_cache, campaigns_calendar,
-    //  klaviyo_metrics tables, advanced_reporting tables)
+    // ── Exclusão em cascata explícita ────────────────────────────────
+    // Duas FKs para client_stores NÃO têm ON DELETE CASCADE no banco:
+    //   • onboardings.store_id        (migration 20260513015053)
+    //   • campaign_generations.store_id (migration 20260305)
+    // Por isso o DELETE direto na loja falha com violação de foreign key
+    // ("onboardings_store_id_fkey"). Removemos os dependentes na ordem
+    // correta antes de apagar a loja. As demais tabelas satélite já têm
+    // ON DELETE CASCADE (store_alerts, store_briefings, store_onboarding_data,
+    // agent_store_access, store_feedback_calls, dashboard_cache, klaviyo_metrics,
+    // advanced_reporting, etc.) e caem junto no delete final.
+
+    // 1. IDs dos onboardings da loja (para limpar filhos sem cascade)
+    const { data: onboardingRows } = await adminClient
+      .from("onboardings")
+      .select("id")
+      .eq("store_id", storeId)
+    const onboardingIds = (onboardingRows ?? []).map((o) => o.id)
+
+    // 2. task_overrides é filho de onboardings SEM cascade → apagar antes
+    if (onboardingIds.length > 0) {
+      const { error: overridesError } = await adminClient
+        .from("task_overrides")
+        .delete()
+        .in("onboarding_id", onboardingIds)
+      if (overridesError) {
+        log.error("Failed to delete task_overrides", { storeId, error: overridesError })
+        throw new AppError(
+          "Erro ao excluir dados de onboarding da loja: " + overridesError.message,
+          500,
+        )
+      }
+    }
+
+    // 3. onboardings — cascateia para tasks e onboarding_versions (têm CASCADE)
+    const { error: onboardingError } = await adminClient
+      .from("onboardings")
+      .delete()
+      .eq("store_id", storeId)
+    if (onboardingError) {
+      log.error("Failed to delete onboardings", { storeId, error: onboardingError })
+      throw new AppError("Erro ao excluir o onboarding da loja: " + onboardingError.message, 500)
+    }
+
+    // 4. campaign_generations — 2º bloqueador sem cascade (cascateia seus filhos)
+    const { error: genError } = await adminClient
+      .from("campaign_generations")
+      .delete()
+      .eq("store_id", storeId)
+    if (genError) {
+      log.error("Failed to delete campaign_generations", { storeId, error: genError })
+      throw new AppError("Erro ao excluir gerações de campanha da loja: " + genError.message, 500)
+    }
+
+    // 5. A loja em si — as demais satélites caem por ON DELETE CASCADE
     const { error: deleteError } = await adminClient
       .from("client_stores")
       .delete()

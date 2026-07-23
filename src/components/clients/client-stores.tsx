@@ -942,18 +942,36 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       <AlertDialog open={!!deleteStore} onOpenChange={() => setDeleteStore(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover loja</AlertDialogTitle>
+            <AlertDialogTitle>
+              Remover a loja &quot;{deleteStore?.store_name}&quot;?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover a loja &quot;{deleteStore?.store_name}&quot;? As configurações de integração serão perdidas.
+              Esta ação é <strong>permanente e irreversível</strong>. Ao remover a loja,
+              todos os dados vinculados a ela serão apagados junto:
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="rounded-[6px] border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5 text-[13px] text-[#991B1B] dark:border-[rgba(252,165,165,0.3)] dark:bg-[#3B1111] dark:text-[#FCA5A5]">
+            <ul className="list-disc space-y-1 pl-4">
+              <li>
+                O processo de <strong>onboarding</strong> (briefing, tarefas, versões e
+                histórico), caso a loja esteja em onboarding.
+              </li>
+              <li>
+                As <strong>gerações e artefatos de campanha</strong> da loja.
+              </li>
+              <li>
+                Todas as <strong>configurações de integração</strong> (Shopify, Klaviyo,
+                Omnisend, GA4) e métricas sincronizadas.
+              </li>
+            </ul>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remover
+              Remover definitivamente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
