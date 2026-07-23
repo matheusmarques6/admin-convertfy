@@ -42,13 +42,19 @@ const log = logger.child("EmailDispatchQueue")
 const MAX_ARCHITECT_ATTEMPTS = Number(process.env.DISPATCH_MAX_ARCHITECT_ATTEMPTS ?? 2)
 // Emails gerados em paralelo por lote dentro de um tick.
 const ARCHITECT_BATCH = Number(process.env.DISPATCH_ARCHITECT_BATCH ?? 4)
-// Orçamento de tempo de um tick (deixa folga sob maxDuration=300).
-const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 240_000)
+// Janela para INICIAR um novo lote no tick. Um lote lento dura ≈ INVOKE_TIMEOUT_MS
+// (Montador, 240s em llm-invoke.ts), então para o lote fechar dentro do
+// maxDuration=300 do route precisamos de TICK_BUDGET + 240s ≤ 300s. Por isso 45s
+// (não 240): um lote que começa no limite da janela ainda termina em ~285s.
+// Lotes rápidos (reference já existe) rodam vários dentro dos 45s; o resto
+// continua no próximo tick (cron de minuto em minuto). Ajustável via env.
+const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 45_000)
 // Lease: um job tocado há menos disso é considerado "em processamento" por
 // outro tick e não é reclamado (evita gerar o mesmo email 2x = $$). Precisa
-// ser MAIOR que o INVOKE_TIMEOUT_MS do LLM (180s em llm-invoke.ts) + folga:
-// o heartbeat só roda após cada lote, então um lote de cauda longa não pode
-// estourar o lease — senão outro tick re-claima e paga Opus 2×.
+// ser MAIOR que a duração de um lote sem heartbeat (Montador ≈ INVOKE_TIMEOUT_MS
+// = 240s) + folga. O heartbeat roda após CADA lote, e os emails do lote rodam
+// em paralelo (ARCHITECT_BATCH) — a janela sem heartbeat ≈ o email mais lento,
+// não a soma. 360s > 240s + folga.
 const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? 360_000)
 
 // "skipped": email marcado "somente texto" (email_blueprints.text_only) —

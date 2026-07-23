@@ -23,10 +23,12 @@ import {
 
 const log = logger.child("ArchitectLLM")
 
-// O Montador gera o HTML completo (Opus 4.8, ~9 blocos) — 60s era curto e
-// dava timeout, derrubando pro fallback. 180s dá folga (cabe no maxDuration
-// 300s do route, já que Montador+Blueprint rodam antes da fase 2 em background).
-const INVOKE_TIMEOUT_MS = 180_000
+// O Montador gera o HTML completo (Opus 4.8, ~9 blocos): 60s era curto e 180s
+// ainda derrubava lojas grandes pro fallback. 240s dá folga e ainda cabe no
+// maxDuration=300s do route — o cron de dispatch limita o tick para que um lote
+// lento (~240s) sempre feche dentro dos 300s (ver TICK_BUDGET_MS em
+// email-dispatch-queue.service.ts). Ajustável sem deploy via env.
+const INVOKE_TIMEOUT_MS = Number(process.env.ARCHITECT_INVOKE_TIMEOUT_MS ?? 240_000)
 
 export interface AgentInvokeConfig {
   model: string
