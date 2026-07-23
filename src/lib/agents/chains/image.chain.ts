@@ -20,15 +20,17 @@ import {
 
 const log = logger.child("ImageChain")
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `{IMAGE_BRIEF}
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
+
+ART DIRECTION — per image slot (schema spec, the designer's slot comment, and the block copy this image accompanies — compose to fit, NEVER render any of this text):
+{IMAGE_SLOTS}
+{IMAGE_BRIEF}
 
 Create a background banner image for an email marketing block ({block_purpose}).
 
 Brand: {brand_name}
 Niche: {nicho}
-Brand persona: {persona}
-Brand differentiator: {diferencial}
-Tone: {tom_voz}, positioning: {posicionamento}
+Positioning: {posicionamento}
 Brand colors: {primary_colors}
 Secondary colors: {secondary_colors}
 
@@ -37,7 +39,7 @@ Top products of the store: {top_products}
 Email context: {block_purpose}
 
 Requirements:
-- Clean, modern e-commerce aesthetic that reflects the brand persona
+- Clean, modern e-commerce aesthetic aligned with the brand mood
 - Show or evoke the niche/products (visual cues, lifestyle, product hints)
 - No text in the image (text is overlaid in HTML)
 - Compose for the block's role in the email ({block_purpose}) — the exact aspect-ratio instruction is appended below

@@ -177,6 +177,13 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     flowType: input.flowType,
   })
 
+  // IMAGE_SLOTS é a fonte PRIMÁRIA (schema estruturado + slot_note + copy do
+  // grupo). Quando presente, suprime o IMAGE_BRIEF legado (que carrega os
+  // mesmos dados espremidos) pra não duplicar direção de arte no prompt.
+  const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent)
+  const legacyImageBrief =
+    bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
+
   return {
     brand_name: brandName,
     block_purpose: input.blockPurpose,
@@ -222,15 +229,12 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     IDIOMA,
     MOEDA,
     INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
-    // Prompt da imagem DESTE bloco (blueprint blocks[].image_brief), editado
-    // no popup do editor de blueprints. Fallback: image_brief nível-email
-    // (legado). Mantido como FALLBACK do IMAGE_SLOTS pra blueprints antigos
-    // sem fields estruturados.
-    IMAGE_BRIEF:
-      bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || "",
+    // Fallback legado do IMAGE_SLOTS (blueprints antigos sem fields
+    // estruturados). Suprimido quando IMAGE_SLOTS existe (evita duplicar).
+    IMAGE_BRIEF: imageSlots ? "" : legacyImageBrief,
     // Seções estruturadas por slot de imagem (schema + slot_note + copy do
     // grupo). Fonte PRIMÁRIA de direção de arte; vazio → cai no IMAGE_BRIEF.
-    IMAGE_SLOTS: buildImageSlots(bpBlock?.fields, input.blockContent),
+    IMAGE_SLOTS: imageSlots,
 
     // Contexto pro switch do template (snake_case porque o template usa
     // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser
