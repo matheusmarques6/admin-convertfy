@@ -628,6 +628,37 @@ describe("generateEmailImage — retry em falha transitória", () => {
     expect(url).toBe("https://signed.example/img.png")
   })
 
+  it("200 OK + whitespace longo no começo (>5% visível) → retryable, sucesso na 2a", async () => {
+    // Caso que ESCAPAVA: corpo grande com densidade visível >5% e >40 chars
+    // visíveis (não cai em <40 nem em <5%), mas com um bloco enorme de espaço
+    // no começo — o snippet dos 1os 500 chars saía vazio e a falha era tratada
+    // como não-retryable (Welcome 1 · Luxe Lift · 23/07). O 3o sinal
+    // (run de whitespace >=200) agora pega esse caso.
+    const leadingWs = " ".repeat(600)
+    const degenerateBody =
+      leadingWs +
+      '{"choices":[{"message":{"content":"texto de tamanho razoavel para passar dos 5% de densidade visivel e mais de 40 caracteres no corpo todo, sem nenhuma imagem"}}]}'
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => degenerateBody,
+        headers: { get: () => "application/json" },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => okImageBody(),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const url = await generateEmailImage("prompt", "store-1")
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(url).toBe("https://signed.example/img.png")
+  })
+
   it("200 OK + SSE com error-frame → retryable, sucesso na 2a tentativa", async () => {
     const sseError =
       ': OPENROUTER PROCESSING\n\ndata: {"error":{"message":"provider disconnected","metadata":{"error_type":"provider_error"}}}\n\n'

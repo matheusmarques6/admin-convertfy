@@ -201,6 +201,30 @@ function extractUsage(rawText: string): {
   }
 }
 
+/**
+ * Maior sequência contígua de whitespace no texto. Usado pra detectar o
+ * "loop de whitespace" do gpt-5.4-image-2 (200 OK sem imagem, corpo com um
+ * bloco enorme de espaço). Uma recusa em prosa nunca tem um run longo.
+ */
+function longestWhitespaceRun(s: string): number {
+  let max = 0
+  const re = /\s+/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(s)) !== null) {
+    if (m[0].length > max) max = m[0].length
+  }
+  return max
+}
+
+/**
+ * Recorte do texto começando no 1o caractere não-branco (até `len` chars).
+ * Evita snippet de erro vazio quando o corpo tem whitespace no começo.
+ */
+function visibleSlice(s: string, len: number): string {
+  const start = s.search(/\S/)
+  return start === -1 ? "" : s.slice(start, start + len)
+}
+
 async function callOpenRouterImage(
   apiKey: string,
   prompt: string,
@@ -537,16 +561,26 @@ export async function generateEmailImage(
     if (!imageBuffer) {
       // Body DEGENERADO em whitespace: 200 OK, content-type json, milhares de
       // chars de espaço/newline e nenhum payload útil (gpt-5.4-image-2 entra
-      // em loop de whitespace — 3 ocorrências provadas em Luxe Lift jul/2026,
+      // em loop de whitespace — ocorrências provadas em Luxe Lift jul/2026,
       // cada uma custou uma imagem do email). É estocástico → RETRYABLE, igual
-      // ao body vazio. Threshold: <40 chars visíveis OU <5% de densidade.
+      // ao body vazio. Detecção por 3 sinais: <40 chars visíveis, <5% de
+      // densidade, OU uma sequência longa (>=200) de whitespace. Este 3o
+      // sinal pega o caso que escapava dos outros dois — corpo grande com
+      // >5% de visível mas com um bloco enorme de espaço no começo (o snippet
+      // dos 1os 500 chars saía vazio). Uma recusa em prosa nunca tem 200
+      // chars de whitespace seguidos, então continua não-retryable.
       const visibleLen = rawText.replace(/\s/g, "").length
-      if (visibleLen < 40 || visibleLen / rawText.length < 0.05) {
+      const longestWsRun = longestWhitespaceRun(rawText)
+      if (
+        visibleLen < 40 ||
+        visibleLen / rawText.length < 0.05 ||
+        longestWsRun >= 200
+      ) {
         throw new OpenRouterMidStreamError({
           errorType: "whitespace_body",
           status: res.status,
           ms,
-          snippet: rawText.slice(0, 120),
+          snippet: visibleSlice(rawText, 120),
           retryable: true,
         })
       }
@@ -555,9 +589,11 @@ export async function generateEmailImage(
       // que testimonials gera avatares) ou formato inesperado. Retry não ajuda.
       // Instrumentação rica: status + content-type + length tornam o erro
       // acionável mesmo quando o snippet é curto/vazio (o bug que originou este
-      // fix mostrava "Resposta (truncada): " sem nenhum metadado). O phase2-runner
-      // grava esse `errorMessage` no run → aparece na UI sem depender dos logs.
-      const snippet = rawText.slice(0, 500)
+      // fix mostrava "Resposta (truncada): " sem nenhum metadado). O snippet
+      // começa no 1o caractere não-branco pra nunca sair vazio quando o corpo
+      // tem whitespace no começo. O phase2-runner grava esse `errorMessage` no
+      // run → aparece na UI sem depender dos logs.
+      const snippet = visibleSlice(rawText, 500)
       const contentType = res.headers?.get?.("content-type") ?? "unknown"
       log.error("image.parse_failed", {
         storeId,
@@ -565,7 +601,7 @@ export async function generateEmailImage(
         status: res.status,
         contentType,
         responseLength: rawText.length,
-        first500: rawText.slice(0, 500),
+        first500: snippet,
       })
       throw new Error(
         `Não foi possível extrair imagem da resposta do OpenRouter ` +
