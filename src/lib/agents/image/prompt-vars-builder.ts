@@ -37,6 +37,7 @@ import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import { deriveShotArchetype } from "./shot-archetype"
+import { buildImageSlots } from "./build-image-slots"
 import type { AspectKey } from "./aspect-ratio"
 import type { ImageMode } from "./mode-resolution"
 
@@ -73,6 +74,9 @@ export interface ImagePromptVarsInput {
   imageOverlayReserveBottom?: boolean
   aspect?: AspectKey
   mode?: ImageMode
+  // Copy REAL do bloco (email_blocks.content) — resolvida no phase2. Alimenta
+  // a `copy_do_grupo` de cada slot em IMAGE_SLOTS. Ausente → sem copy no slot.
+  blockContent?: Record<string, unknown> | null
 }
 
 /**
@@ -80,7 +84,6 @@ export interface ImagePromptVarsInput {
  */
 export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string, string> {
   const marca = (input.briefing?.marca ?? {}) as Record<string, unknown>
-  const detail = (input.briefing?.briefing ?? {}) as Record<string, unknown>
   const brand = input.brand
   const products = (input.topProducts ?? []).slice(0, 5)
 
@@ -92,9 +95,6 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     ? products.map((p, i) => `${i + 1}. ${p.name} (R$ ${p.price})`).join("; ")
     : "Nenhum produto disponível"
   const topProductsImages = products.map((p) => p.image_url).filter(Boolean).join(", ")
-
-  const restricoesArr = detail.restricoes as string[] | undefined
-  const restricoes = Array.isArray(restricoesArr) ? restricoesArr.join("; ") : ""
 
   // Fallback p/ client_stores.niche quando o briefing nao populou marca.nicho
   // (espelha architect/generate.service.ts). Sem isso, loja com niche so em
@@ -181,14 +181,15 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     brand_name: brandName,
     block_purpose: input.blockPurpose,
 
-    // Perfil da marca
+    // ── Ideia do email (F5) — do blueprint (nível email) ────
+    EMAIL_OBJETIVO: blueprint?.objective?.trim() ?? "",
+    EMAIL_IDEIA: blueprint?.messaging?.trim() ?? "",
+    EMAIL_ASSUNTO: blueprint?.subject_hint?.trim() ?? "",
+
+    // Perfil da marca (enxuto — tom/persona/diferencial/slogan/restrições
+    // saíram: são redundantes com MOOD/PUBLICO ou não-visuais).
     nicho,
     posicionamento,
-    tom_voz: tomVoz,
-    persona: PUBLICO,
-    diferencial: (marca.diferencial as string) ?? "",
-    slogan: (marca.slogan as string) ?? "",
-    restricoes,
 
     // Identidade visual
     primary_colors: primaryColors,
@@ -223,9 +224,13 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     INSTRUCAO_ADICIONAL: (input.instrucaoAdicional ?? "").trim(),
     // Prompt da imagem DESTE bloco (blueprint blocks[].image_brief), editado
     // no popup do editor de blueprints. Fallback: image_brief nível-email
-    // (legado). Entra como direção de arte autoritativa no template.
+    // (legado). Mantido como FALLBACK do IMAGE_SLOTS pra blueprints antigos
+    // sem fields estruturados.
     IMAGE_BRIEF:
       bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || "",
+    // Seções estruturadas por slot de imagem (schema + slot_note + copy do
+    // grupo). Fonte PRIMÁRIA de direção de arte; vazio → cai no IMAGE_BRIEF.
+    IMAGE_SLOTS: buildImageSlots(bpBlock?.fields, input.blockContent),
 
     // Contexto pro switch do template (snake_case porque o template usa
     // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser

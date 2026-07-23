@@ -73,12 +73,14 @@ const BASE_INPUT = {
 }
 
 describe("buildImagePromptVars — backwards compatibility", () => {
-  it("returns 19 legacy vars when called without new params", () => {
+  it("returns legacy vars when called without new params", () => {
     const vars = buildImagePromptVars(BASE_INPUT)
-    // legacy
+    // legacy (perfil enxuto: tom_voz/persona/diferencial/slogan/restricoes
+    // foram cortados — redundantes com MOOD/PUBLICO ou não-visuais).
     expect(vars.brand_name).toBe("L'HOMBRE")
     expect(vars.nicho).toBe("acessorios automotivos premium")
-    expect(vars.tom_voz).toBe("formal")
+    expect(vars.tom_voz).toBeUndefined()
+    expect(vars.persona).toBeUndefined()
     expect(vars.posicionamento).toBe("premium")
     expect(vars.primary_colors).toBe("#163A26")
     expect(vars.product_1_name).toBe("Capa de banco couro preto")

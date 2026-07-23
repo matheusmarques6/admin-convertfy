@@ -26,7 +26,9 @@ import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import {
   resolveAspectForBlock,
   blockAspectFromBlueprint,
+  imageDimsFromBlueprint,
   aspectInstructionForPrompt,
+  dimsInstructionForPrompt,
   isAspectKey,
   type AspectKey,
 } from "@/lib/agents/image/aspect-ratio"
@@ -289,6 +291,22 @@ export async function resolveBlockPrompt(
     flowType,
     emailNumber,
   })
+  // Dims declaradas no schema vencem o aspect tipado. SYNC CONTRACT com
+  // phase2-runner.service.ts.
+  const customDims = imageDimsFromBlueprint(
+    blueprint?.blocks as
+      | Array<{
+          type?: string
+          fields?: Array<{
+            type?: string
+            image_width?: number | null
+            image_height?: number | null
+          }>
+        }>
+      | undefined,
+    (blk.position as number | undefined) ?? null,
+    (blk.block_type as string | undefined) ?? null,
+  )
 
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
   const topProductImageUrl = topProducts[0]?.image_url ?? null
@@ -315,6 +333,7 @@ export async function resolveBlockPrompt(
     blockType: (blk.block_type as string) ?? undefined,
     blockLabel: (blk.label as string) ?? undefined,
     blockPosition: (blk.position as number) ?? undefined,
+    blockContent,
     imageOverlayReserveBottom: overlayReserveBottom,
     aspect,
     mode,
@@ -325,7 +344,14 @@ export async function resolveBlockPrompt(
     ? renderImageTemplate(imageConfig.user_template, promptVars)
     : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
 
-  let prompt = `${basePrompt}\n\n${aspectInstructionForPrompt(aspect, overlayReserveBottom)}`
+  const geometryInstruction = customDims
+    ? dimsInstructionForPrompt(
+        customDims.width,
+        customDims.height,
+        overlayReserveBottom,
+      )
+    : aspectInstructionForPrompt(aspect, overlayReserveBottom)
+  let prompt = `${basePrompt}\n\n${geometryInstruction}`
 
   // Se caiu em fallback text2img + temos top product, adicionar
   // descricao rica (mesma logica do phase2-runner).
