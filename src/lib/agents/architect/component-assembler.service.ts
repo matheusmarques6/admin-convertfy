@@ -104,7 +104,7 @@ Regras:
 - BLOCOS SEM VARIANTE: para CADA item de <blocos_sem_variante>, NÃO pule a posição. Extraia a seção correspondente de <htmls_referencia> (o reference PADRÃO) e inclua-a naquela posição, precedida do comentário HTML exatamente: <!-- bloco {section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->. Se o reference padrão não tiver essa seção, crie um bloco mínimo daquele tipo com o MESMO comentário. O bloco SEMPRE aparece.
 - Container único de 600px centralizado.
 - Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — unifique as cores das variantes nessas variáveis.
-- NÃO escreva a copy final: use placeholders curtos (ex.: {{HEADLINE}}, {{BODY}}, {{CTA_LABEL}}).
+- NÃO escreva a copy final e NÃO crie placeholders próprios: DEIXE o HTML de cada variante DO JEITO QUE VEM DA BIBLIOTECA, com os placeholders/tags que ele já traz. Nunca troque conteúdo por placeholder novo, nem simplifique — só preserve o que a variante trouxe.
 - NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
 
 Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.
