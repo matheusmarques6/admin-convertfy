@@ -172,6 +172,9 @@ export interface EmailFlowEmail {
   subject: string | null
   preheader: string | null
   html: string | null
+  // HTML do agente HTML ANTES do Refinador (o Refinador sobrescreve `html`).
+  // Alimenta o compare de 3 vias (Montador / HTML agent / Refinador).
+  html_pre_refiner?: string | null
   delay_hours: number | null
   status: EmailStatus
   progress_percent: number

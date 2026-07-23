@@ -1507,7 +1507,13 @@ export async function runPhase2HtmlQa(
 
     await admin
       .from("email_flow_emails")
-      .update({ html: rawHtml, updated_at: new Date().toISOString() })
+      // html_pre_refiner = snapshot do HTML agent ANTES do Refinador (que
+      // sobrescreve .html adiante) — alimenta o compare de 3 vias.
+      .update({
+        html: rawHtml,
+        html_pre_refiner: rawHtml,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", emailId)
 
     await finishGenerationRun(htmlRunId, {

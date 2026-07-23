@@ -840,6 +840,7 @@ export function EmailDetailView({
               item={refItem}
               loading={!generatedData}
               finalHtml={email.html || renderEmailHtml(email, blocks)}
+              htmlAgentHtml={email.html_pre_refiner ?? null}
               onCopyAll={(html) => copyToClipboard(html, "HTML de referência")}
             />
           )}
@@ -2490,12 +2491,15 @@ function EmailRefView({
   item,
   loading,
   finalHtml,
+  htmlAgentHtml,
   onCopyAll,
 }: {
   item: GeneratedRefItem | null
   loading: boolean
-  /** HTML final gerado do email — usado no modo comparar. */
+  /** HTML final gerado do email (pós-Refinador) — usado no modo comparar. */
   finalHtml: string | null
+  /** HTML do agente HTML ANTES do Refinador — coluna do meio no compare. */
+  htmlAgentHtml: string | null
   onCopyAll: (html: string) => void
 }) {
   // Modo de exibição: só a referência ou referência × HTML final lado a lado.
@@ -2650,24 +2654,31 @@ function EmailRefView({
           </div>
         </>
       ) : (
-        /* Comparação lado a lado: referência × HTML final. */
+        /* Comparação de 3 vias: Montador × HTML agent × Refinador. */
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
             gap: 16,
             alignItems: "start",
           }}
         >
           <RefCompareColumn
-            name="Referência (arquitetura)"
+            name="Montador (arquitetura)"
             tag="Montador · placeholders"
             swatch="var(--crm-brand)"
             html={shownHtml}
           />
           <RefCompareColumn
-            name="HTML final"
-            tag="Gerado · conteúdo real"
+            name="HTML agent"
+            tag="Gerado · pré-refino"
+            swatch="var(--crm-warn)"
+            html={htmlAgentHtml && htmlAgentHtml.trim() ? htmlAgentHtml : null}
+            emptyLabel="Não capturado (geração anterior ao refino separado)"
+          />
+          <RefCompareColumn
+            name="Refinador (final)"
+            tag="Refinado · final"
             swatch="var(--crm-pos)"
             html={finalHtml && finalHtml.trim() ? finalHtml : null}
             emptyLabel="HTML final ainda não gerado"

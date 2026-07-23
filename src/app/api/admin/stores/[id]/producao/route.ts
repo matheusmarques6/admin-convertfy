@@ -87,6 +87,7 @@ export async function GET(
           emails:email_flow_emails (
             id, flow_id, number, name, from_name, from_email, subject, preheader,
             delay_hours, status, progress_percent, klaviyo_message_id, html,
+            html_pre_refiner,
             created_at, updated_at,
             blocks:email_blocks (id, email_id, block_type, position, label, content, applied, applied_at, applied_by, created_at)
           )
