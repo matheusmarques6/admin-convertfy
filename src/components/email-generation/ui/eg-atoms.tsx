@@ -6,8 +6,8 @@
  * light-only (precedente: logs-workspace).
  */
 
-import { type ReactNode, type CSSProperties } from "react"
-import { ChevronDown, Check } from "lucide-react"
+import { type ReactNode, type CSSProperties, type SyntheticEvent, useState } from "react"
+import { ChevronDown, Check, Maximize2, Minimize2 } from "lucide-react"
 import { C, F, TNUM, egInputStyle } from "./eg-theme"
 
 // ── Card com título de seção ──────────────────────────────────────
@@ -710,31 +710,87 @@ export function EGRailItem({
 }
 
 // ── Preview via iframe (render real de HTML de email) ─────────────
+// Auto-ajusta a altura ao conteúdo (sem scroll interno) até um teto; acima
+// dele, mostra o botão "Expandir" pra ver o email inteiro (ex.: hero completa).
 export function EGRenderFrame({
   html,
   minHeight = 260,
+  collapsedMax,
 }: {
   html: string | null | undefined
   minHeight?: number
+  /** Teto da altura recolhida antes de oferecer "Expandir". Default: minHeight. */
+  collapsedMax?: number
 }) {
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#F3F4F6;padding:16px;font-family:Arial,Helvetica,sans-serif}</style></head><body>${
+  const [contentH, setContentH] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState(false)
+
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0}body{background:#F3F4F6;padding:16px;font-family:Arial,Helvetica,sans-serif}</style></head><body>${
     html ||
     '<div style="color:#9CA3AF;text-align:center;padding:40px;font-family:Arial">Sem HTML para renderizar</div>'
   }</body></html>`
+
+  // Teto recolhido: nunca menor que minHeight.
+  const cap = Math.max(minHeight, collapsedMax ?? minHeight)
+  // Altura real do conteúdo (medida no onLoad); fallback = minHeight.
+  const measured = Math.max(contentH ?? minHeight, minHeight)
+  const overflows = measured > cap + 8
+  // Recolhido corta no teto (com scroll); expandido/coube mostra tudo.
+  const frameH = !overflows || expanded ? measured : cap
+
+  // Mede a altura do conteúdo. sandbox="allow-same-origin" (SEM allow-scripts:
+  // scripts colados NÃO executam) permite ao pai ler o scrollHeight do doc.
+  const handleLoad = (e: SyntheticEvent<HTMLIFrameElement>) => {
+    try {
+      const d = e.currentTarget.contentDocument
+      const h = d?.body?.scrollHeight
+      if (h && Number.isFinite(h)) setContentH(h + 4)
+    } catch {
+      /* cross-origin improvável em srcDoc same-origin — ignora */
+    }
+  }
+
   return (
-    <iframe
-      title="render"
-      srcDoc={doc}
-      sandbox=""
-      style={{
-        width: "100%",
-        minHeight,
-        height: minHeight,
-        border: "none",
-        display: "block",
-        background: "#F3F4F6",
-      }}
-    />
+    <div style={{ position: "relative" }}>
+      <iframe
+        title="render"
+        srcDoc={doc}
+        sandbox="allow-same-origin"
+        onLoad={handleLoad}
+        scrolling={!overflows || expanded ? "no" : "auto"}
+        style={{
+          width: "100%",
+          height: frameH,
+          border: "none",
+          display: "block",
+          background: "#F3F4F6",
+        }}
+      />
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 8,
+            padding: "6px 12px",
+            border: `1px solid ${C.border}`,
+            background: C.white,
+            borderRadius: 8,
+            color: C.g700,
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: F.sans,
+            cursor: "pointer",
+          }}
+        >
+          {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          {expanded ? "Recolher" : "Expandir para ver o email inteiro"}
+        </button>
+      )}
+    </div>
   )
 }
 

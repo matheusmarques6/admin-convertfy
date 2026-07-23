@@ -524,6 +524,7 @@ export function VariantEditor({
                   <EGRenderFrame
                     html={draft.rendered_html}
                     minHeight={editRendered ? 360 : 520}
+                    collapsedMax={editRendered ? 520 : 720}
                   />
                 </div>
               ) : (
