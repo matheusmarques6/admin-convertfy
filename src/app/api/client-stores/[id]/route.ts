@@ -112,14 +112,19 @@ export async function DELETE(
       throw new AppError("Erro ao excluir o onboarding da loja: " + onboardingError.message, 500)
     }
 
-    // 4. campaign_generations — 2º bloqueador sem cascade (cascateia seus filhos)
-    const { error: genError } = await adminClient
-      .from("campaign_generations")
+    // 4. campaign_generation_stores — filho por-loja que referencia client_stores
+    //    SEM cascade. A coluna store_id vive AQUI, não em campaign_generations
+    //    (que é por client_id). Sem remover isto, o delete da loja quebra na FK.
+    const { error: genStoresError } = await adminClient
+      .from("campaign_generation_stores")
       .delete()
       .eq("store_id", storeId)
-    if (genError) {
-      log.error("Failed to delete campaign_generations", { storeId, error: genError })
-      throw new AppError("Erro ao excluir gerações de campanha da loja: " + genError.message, 500)
+    if (genStoresError) {
+      log.error("Failed to delete campaign_generation_stores", { storeId, error: genStoresError })
+      throw new AppError(
+        "Erro ao excluir gerações de campanha da loja: " + genStoresError.message,
+        500,
+      )
     }
 
     // 5. A loja em si — as demais satélites caem por ON DELETE CASCADE
