@@ -123,10 +123,11 @@ export async function PUT(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
-    const { paymentId, value, paymentDate } = body as {
+    const { paymentId, value, paymentDate, proofPath } = body as {
       paymentId?: string
       value?: number
       paymentDate?: string
+      proofPath?: string
     }
 
     if (!paymentId) {
@@ -159,6 +160,18 @@ export async function PUT(request: NextRequest) {
 
     // Reflete localmente na tabela invoices (idempotente por asaas_id)
     await supabase.from("invoices").update({ status: "paid" }).eq("asaas_id", paymentId)
+
+    // Comprovante anexado (best-effort — a coluna pode não existir se a
+    // migration 20260924_payment_proof ainda não tiver sido aplicada)
+    if (proofPath) {
+      const { error: proofErr } = await supabase
+        .from("invoices")
+        .update({ payment_proof_path: proofPath })
+        .eq("asaas_id", paymentId)
+      if (proofErr) {
+        log.info("Comprovante não persistido (coluna ausente?)", { error: proofErr.message })
+      }
+    }
 
     return successResponse(request, {
       success: true,

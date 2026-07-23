@@ -70,7 +70,7 @@ export async function PUT(request: NextRequest) {
     const allowedFields = [
       "description", "value", "due_date", "payment_method",
       "status", "subscription_id", "notes", "actual_payment_method",
-      "payment_date",
+      "payment_date", "payment_proof_path",
     ]
 
     const updates: Record<string, unknown> = {}

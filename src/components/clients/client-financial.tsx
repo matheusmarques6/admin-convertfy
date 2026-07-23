@@ -411,6 +411,15 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  // Modal "Marcar como pago" (anexa comprovante)
+  const [paidModalOpen, setPaidModalOpen] = useState(false)
+  const [paidTarget, setPaidTarget] = useState<{
+    source: "asaas" | "local"
+    id: string
+    value: number
+  } | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false)
   const [createdPayment, setCreatedPayment] = useState<{
     id: string
     invoiceUrl?: string
@@ -799,15 +808,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setStatusDialogOpen(true)
   }
 
-  // "Marcar como pago":
-  //  • cobrança local  → abre o modal Alterar Status já em "paid";
-  //  • fatura Asaas     → marca como recebida via receiveInCash (sem redirecionar
-  //                       e sem duplicar — reflete "pago" direto no Asaas).
-  async function handleMarkAsPaidNextDue(payment?: {
-    source: "asaas" | "local"
-    id: string
-    value?: number
-  }) {
+  // "Marcar como pago" → abre o modal para anexar o comprovante (PNG/JPG/PDF).
+  function openPaidModal(payment?: { source: "asaas" | "local"; id: string; value?: number }) {
     let target = payment
     if (!target) {
       target = [
@@ -818,49 +820,82 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           .filter((c) => c.status === "pending" || c.status === "overdue")
           .map((c) => ({ source: "local" as const, id: c.id, value: c.value })),
       ][0]
-      if (!target) {
-        toast({ variant: "destructive", title: "Nenhuma fatura pendente" })
-        return
-      }
     }
-
-    // Local: abre o modal de status já marcado como "paid"
-    if (target.source === "local") {
-      const charge = localCharges.find((c) => c.id === target!.id)
-      if (charge) openStatusDialog(charge, "paid")
+    if (!target) {
+      toast({ variant: "destructive", title: "Nenhuma fatura pendente" })
       return
     }
+    setPaidTarget({ source: target.source, id: target.id, value: target.value ?? 0 })
+    setProofFile(null)
+    setPaidModalOpen(true)
+  }
 
-    // Asaas: marca como recebido (receiveInCash) direto no Asaas
-    if (
-      !confirm(
-        "Marcar esta fatura do Asaas como paga? Ela será registrada como recebida no Asaas.",
-      )
-    ) {
-      return
-    }
+  // Confirma o pagamento: sobe o comprovante (se houver) e marca a fatura paga.
+  async function handleConfirmPaid() {
+    if (!paidTarget) return
+    setIsMarkingPaid(true)
     try {
-      const res = await fetch("/api/integrations/asaas/charges", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentId: target.id,
-          value: target.value,
-          paymentDate: new Date().toISOString().split("T")[0],
-        }),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || "Erro ao marcar como pago")
+      // 1. Upload do comprovante (opcional)
+      let proofPath: string | undefined
+      if (proofFile) {
+        const fd = new FormData()
+        fd.append("file", proofFile)
+        fd.append("client_id", clientId)
+        const up = await fetch("/api/upload/payment-proof", { method: "POST", body: fd })
+        const upData = await up.json()
+        if (!up.ok) throw new Error(upData.error || "Erro ao enviar comprovante")
+        proofPath = upData.path
+      }
+
+      // 2. Marca como pago conforme a origem
+      const today = new Date().toISOString().split("T")[0]
+      if (paidTarget.source === "asaas") {
+        const res = await fetch("/api/integrations/asaas/charges", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: paidTarget.id,
+            value: paidTarget.value,
+            paymentDate: today,
+            proofPath,
+          }),
+        })
+        const result = await res.json()
+        if (!res.ok) throw new Error(result.error || "Erro ao marcar como pago")
+      } else {
+        const res = await fetch("/api/client-charges", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ charge_id: paidTarget.id, status: "paid", payment_date: today }),
+        })
+        const result = await res.json()
+        if (!res.ok) throw new Error(result.error || "Erro ao marcar como pago")
+        // Comprovante em chamada separada (best-effort — coluna pode não existir)
+        if (proofPath) {
+          await fetch("/api/client-charges", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ charge_id: paidTarget.id, payment_proof_path: proofPath }),
+          }).catch(() => {})
+        }
+      }
+
       toast({ title: "Fatura marcada como paga" })
+      setPaidModalOpen(false)
+      setPaidTarget(null)
+      setProofFile(null)
       mutatePayments()
       mutateSubscriptions()
+      loadLocalData()
     } catch (err) {
-      console.error("Error marking Asaas payment as paid:", err)
+      console.error("Error marking as paid:", err)
       toast({
         variant: "destructive",
         title: "Erro ao marcar como pago",
         description: err instanceof Error ? err.message : undefined,
       })
+    } finally {
+      setIsMarkingPaid(false)
     }
   }
 
@@ -1325,7 +1360,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   <Button
                     size="sm"
                     onClick={() =>
-                      handleMarkAsPaidNextDue({
+                      openPaidModal({
                         source: nextPayment.source,
                         id: nextPayment.id,
                         value: nextPayment.value,
@@ -2303,6 +2338,61 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             <Button onClick={handleUpdateChargeStatus} disabled={isCreating}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar Alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Marcar como pago — anexar comprovante */}
+      <Dialog
+        open={paidModalOpen}
+        onOpenChange={(open) => {
+          setPaidModalOpen(open)
+          if (!open) {
+            setPaidTarget(null)
+            setProofFile(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Marcar como pago
+            </DialogTitle>
+            <DialogDescription>
+              Anexe o comprovante de pagamento (PNG, JPG ou PDF)
+              {paidTarget ? ` desta fatura de ${formatCurrency(paidTarget.value)}` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Comprovante de pagamento</Label>
+              <Input
+                type="file"
+                accept="image/png,image/jpeg,application/pdf"
+                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+              />
+              {proofFile ? (
+                <p className="text-xs text-muted-foreground">
+                  Selecionado: {proofFile.name}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Opcional, mas recomendado para registro.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPaidModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmPaid} disabled={isMarkingPaid}>
+              {isMarkingPaid && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar pagamento
             </Button>
           </DialogFooter>
         </DialogContent>
