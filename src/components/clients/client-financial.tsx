@@ -799,26 +799,68 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setStatusDialogOpen(true)
   }
 
-  // "Marcar como pago" só opera cobranças locais (client_charges). Faturas Asaas
-  // são confirmadas automaticamente pelo próprio Asaas (webhook/sync) e não têm
-  // registro local para marcar — por isso o botão só aparece quando a próxima
-  // cobrança é local. Abre o dialog de status já em "paid".
-  function handleMarkAsPaidNextDue(payment?: { id: string }) {
-    let targetId = payment?.id
-    if (!targetId) {
-      const found = localCharges.find(
-        (c) => c.status === "pending" || c.status === "overdue",
-      )
-      if (!found) {
+  // "Marcar como pago":
+  //  • cobrança local  → abre o modal Alterar Status já em "paid";
+  //  • fatura Asaas     → marca como recebida via receiveInCash (sem redirecionar
+  //                       e sem duplicar — reflete "pago" direto no Asaas).
+  async function handleMarkAsPaidNextDue(payment?: {
+    source: "asaas" | "local"
+    id: string
+    value?: number
+  }) {
+    let target = payment
+    if (!target) {
+      target = [
+        ...payments
+          .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
+          .map((p) => ({ source: "asaas" as const, id: p.id, value: p.value })),
+        ...localCharges
+          .filter((c) => c.status === "pending" || c.status === "overdue")
+          .map((c) => ({ source: "local" as const, id: c.id, value: c.value })),
+      ][0]
+      if (!target) {
         toast({ variant: "destructive", title: "Nenhuma fatura pendente" })
         return
       }
-      targetId = found.id
     }
 
-    const charge = localCharges.find((c) => c.id === targetId)
-    if (charge) {
-      openStatusDialog(charge, "paid")
+    // Local: abre o modal de status já marcado como "paid"
+    if (target.source === "local") {
+      const charge = localCharges.find((c) => c.id === target!.id)
+      if (charge) openStatusDialog(charge, "paid")
+      return
+    }
+
+    // Asaas: marca como recebido (receiveInCash) direto no Asaas
+    if (
+      !confirm(
+        "Marcar esta fatura do Asaas como paga? Ela será registrada como recebida no Asaas.",
+      )
+    ) {
+      return
+    }
+    try {
+      const res = await fetch("/api/integrations/asaas/charges", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: target.id,
+          value: target.value,
+          paymentDate: new Date().toISOString().split("T")[0],
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao marcar como pago")
+      toast({ title: "Fatura marcada como paga" })
+      mutatePayments()
+      mutateSubscriptions()
+    } catch (err) {
+      console.error("Error marking Asaas payment as paid:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro ao marcar como pago",
+        description: err instanceof Error ? err.message : undefined,
+      })
     }
   }
 
@@ -1280,15 +1322,19 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <Send className="h-3.5 w-3.5 mr-1.5" />
                     Reenviar link
                   </Button>
-                  {nextPayment.source === "local" && (
-                    <Button
-                      size="sm"
-                      onClick={() => handleMarkAsPaidNextDue({ id: nextPayment.id })}
-                    >
-                      <DollarSign className="h-3.5 w-3.5 mr-1.5" />
-                      Marcar como pago
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      handleMarkAsPaidNextDue({
+                        source: nextPayment.source,
+                        id: nextPayment.id,
+                        value: nextPayment.value,
+                      })
+                    }
+                  >
+                    <DollarSign className="h-3.5 w-3.5 mr-1.5" />
+                    Marcar como pago
+                  </Button>
                 </div>
               </div>
                 )

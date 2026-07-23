@@ -115,6 +115,60 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PUT - Marca uma cobrança Asaas como recebida (receiveInCash)
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
+
+    const body = await request.json()
+    const { paymentId, value, paymentDate } = body as {
+      paymentId?: string
+      value?: number
+      paymentDate?: string
+    }
+
+    if (!paymentId) {
+      throw new ValidationError("paymentId é obrigatório")
+    }
+
+    const { data: integration } = await supabase
+      .from("integrations")
+      .select("credentials, is_active")
+      .eq("type", "asaas")
+      .eq("is_active", true)
+      .eq("org_id", orgId)
+      .single()
+
+    if (!integration) {
+      throw new AppError("Integração Asaas não ativa", 400)
+    }
+
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
+
+    // O receiveInCash exige o valor recebido; se não vier no body, busca no Asaas.
+    const receivedValue = value ?? (await asaas.getPayment(paymentId)).value
+    validateMonetaryValue(receivedValue)
+
+    const received = await asaas.receivePaymentInCash(paymentId, {
+      paymentDate: paymentDate || new Date().toISOString().split("T")[0],
+      value: Number(receivedValue),
+      notifyCustomer: false,
+    })
+
+    // Reflete localmente na tabela invoices (idempotente por asaas_id)
+    await supabase.from("invoices").update({ status: "paid" }).eq("asaas_id", paymentId)
+
+    return successResponse(request, {
+      success: true,
+      payment: { id: received.id, status: received.status },
+    })
+  } catch (error) {
+    return errorResponse(request, error, "AsaasCharges PUT")
+  }
+}
+
 // DELETE - Cancel a payment
 export async function DELETE(request: NextRequest) {
   try {

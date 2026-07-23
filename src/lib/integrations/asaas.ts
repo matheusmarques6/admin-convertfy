@@ -182,6 +182,25 @@ export class AsaasService {
     })
   }
 
+  /**
+   * Marca uma cobrança como recebida em dinheiro / fora do Asaas (receiveInCash).
+   * Usado quando o pagamento entrou por fora (PIX direto, transferência) e o
+   * admin quer refletir "pago" sem esperar o webhook do Asaas.
+   */
+  async receivePaymentInCash(
+    id: string,
+    opts: { paymentDate: string; value: number; notifyCustomer?: boolean },
+  ): Promise<AsaasPayment> {
+    return this.request(`/payments/${id}/receiveInCash`, {
+      method: "POST",
+      body: JSON.stringify({
+        paymentDate: opts.paymentDate,
+        value: opts.value,
+        notifyCustomer: opts.notifyCustomer ?? false,
+      }),
+    })
+  }
+
   // Subscriptions
   async createSubscription(subscription: {
     customer: string
