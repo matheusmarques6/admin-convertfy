@@ -338,6 +338,15 @@ export interface ComponentOutputField {
   required: boolean
   example: string
   guidance: string
+  // ── Só para type="image" (opcionais) ────────────────────────────────
+  // Especificidade da imagem: o que ela deve transmitir. Junto de aspecto
+  // e dimensões, é dobrado no image_brief enviado ao agente de imagem
+  // (imageBriefFromSchema). Proporção é texto livre (ex.: "16:9");
+  // largura/altura em px.
+  image_spec?: string | null
+  image_aspect?: string | null
+  image_width?: number | null
+  image_height?: number | null
 }
 
 // Biblioteca global de variantes de componente, catalogadas por block_type.

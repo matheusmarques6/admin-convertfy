@@ -128,6 +128,82 @@ function SchemaRow({
           fontSize: 12.5,
         }}
       />
+      {field.type === "image" && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 12,
+            borderTop: `1px dashed ${C.border}`,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: C.g600,
+              fontFamily: F.sans,
+            }}
+          >
+            Imagem — briefing e formato
+          </div>
+          <textarea
+            value={field.image_spec ?? ""}
+            onChange={(e) => onChange({ ...field, image_spec: e.target.value })}
+            placeholder="O que a imagem deve transmitir (cena, produto, clima, o que você quer passar com ela)"
+            rows={2}
+            style={{
+              ...egInputStyle,
+              height: "auto",
+              padding: "8px 11px",
+              lineHeight: 1.4,
+              resize: "vertical",
+              fontSize: 12.5,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              value={field.image_aspect ?? ""}
+              onChange={(e) =>
+                onChange({ ...field, image_aspect: e.target.value })
+              }
+              placeholder="Proporção (ex.: 16:9)"
+              title="Proporção da imagem — texto livre, ex.: 16:9, 4:5, 1:1"
+              style={{ ...rowInput, flex: 1 }}
+            />
+            <input
+              type="number"
+              min={0}
+              value={field.image_width ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...field,
+                  image_width: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              placeholder="Largura (px)"
+              title="Largura em pixels"
+              style={{ ...rowInput, width: 110 }}
+            />
+            <input
+              type="number"
+              min={0}
+              value={field.image_height ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...field,
+                  image_height: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              placeholder="Altura (px)"
+              title="Altura em pixels"
+              style={{ ...rowInput, width: 110 }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

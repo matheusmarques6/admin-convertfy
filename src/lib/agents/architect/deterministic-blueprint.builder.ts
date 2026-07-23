@@ -212,10 +212,20 @@ export function imageBriefFromSchema(
   const parts = schema
     .filter((f) => f.type === "image")
     .map((f) => {
-      const g = (f.guidance ?? "").trim()
+      // Especificidade dedicada vence a orientação genérica.
+      const base = (f.image_spec ?? "").trim() || (f.guidance ?? "").trim()
       const ex = (f.example ?? "").trim()
-      if (g && ex) return `${g} (ex.: ${ex})`
-      return g || ex
+      const segs: string[] = []
+      if (base && ex) segs.push(`${base} (ex.: ${ex})`)
+      else if (base || ex) segs.push(base || ex)
+      const aspect = (f.image_aspect ?? "").trim()
+      if (aspect) segs.push(`proporção ${aspect}`)
+      const w = f.image_width ?? null
+      const h = f.image_height ?? null
+      if (w && h) segs.push(`${w}x${h}px`)
+      else if (w) segs.push(`largura ${w}px`)
+      else if (h) segs.push(`altura ${h}px`)
+      return segs.join(" · ")
     })
     .filter(Boolean)
   return parts.length > 0 ? parts.join(" · ") : null

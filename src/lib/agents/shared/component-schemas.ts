@@ -23,4 +23,9 @@ export const outputFieldSchema = z.object({
   required: z.boolean().default(false),
   example: z.string().default(""),
   guidance: z.string().default(""),
+  // Config extra do campo type="image" (todos opcionais).
+  image_spec: z.string().nullable().optional(),
+  image_aspect: z.string().nullable().optional(),
+  image_width: z.number().int().min(0).nullable().optional(),
+  image_height: z.number().int().min(0).nullable().optional(),
 })
