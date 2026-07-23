@@ -1179,10 +1179,15 @@ function isQaEnabled(): boolean {
  *   - `ready`: pipeline concluido com sucesso
  *   - `failed`: erro fatal ou QA bloqueou
  */
-// Orçamento restante mínimo pra rodar o Refinador: com mais de 210s já
-// consumidos na invocação (HTML lento), pula — o refinamento é upgrade,
-// não vale arriscar o timeout da rota (maxDuration=300s).
-const REFINER_BUDGET_GUARD_MS = 210_000
+// Orçamento restante mínimo pra rodar o Refinador. Ele virou REPINTOR
+// (gera o HTML completo, timeout próprio de 180s) — o valor antigo (210s)
+// era do Refinador-delta (60s) e permitia HTML(200s)+Refinador(180s)=380s
+// > maxDuration=300s → a função morria no meio, o email ficava preso em
+// `rendering` e o watchdog re-disparava (LOOP HTML↔Refinador). Agora o
+// Refinador só COMEÇA se ainda couber: 300s - 180s(timeout) - ~20s(buffer)
+// = 100s. HTML lento (>100s) → pula o refino (fail-open), mas a rota
+// SEMPRE termina. Correção definitiva = mover o Refinador pra rota própria.
+const REFINER_BUDGET_GUARD_MS = 100_000
 
 /**
  * Step 2.5 — Refinador Tipográfico (fail-open).
