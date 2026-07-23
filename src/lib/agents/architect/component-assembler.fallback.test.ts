@@ -88,7 +88,6 @@ const baseInput = {
   persona: "",
   briefingJson: "{}",
   topProductNames: [],
-  pesquisa: "",
   outlineObjective: "",
   outlineGuidance: "",
   outlineToneHint: "",
@@ -118,6 +117,18 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(res.html).toContain("</html>")
     expect(res.variantIds).toEqual(["v1"])
     expect(res.source).toBe("llm")
+  })
+
+  it("o Montador (passo B) NÃO recebe briefing_json nem pesquisa_diagnostico", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
+    await assembleStoreReference({ ...baseInput, briefingJson: '{"nicho":"X"}' })
+    // 2ª chamada = passo B (Montador). Estrutura, não conteúdo de marca.
+    const harmVars = invokeAgent.mock.calls[1][1] as Record<string, string>
+    expect(harmVars).not.toHaveProperty("briefing_json")
+    expect(harmVars).not.toHaveProperty("pesquisa_diagnostico")
+    // O Curador (passo A) CONTINUA recebendo o perfil da marca.
+    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    expect(chooserVars.briefing_marca).toContain("X")
   })
 
   it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {

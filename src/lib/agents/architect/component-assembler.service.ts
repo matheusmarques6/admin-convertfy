@@ -122,14 +122,6 @@ const DEFAULT_ASSEMBLER_USER = `<store>
 - mood: {{mood}}
 </store>
 
-<briefing>
-{{briefing_json}}
-</briefing>
-
-<pesquisa_diagnostico>
-{{pesquisa_diagnostico}}
-</pesquisa_diagnostico>
-
 <outline>
 - objetivo: {{outline_objective}}
 - diretriz: {{outline_guidance}}
@@ -315,8 +307,6 @@ export interface AssembleReferenceInput {
   // Top 5 produtos da loja (títulos, rank asc) — o Curador cruza com
   // product_slots dos candidatos. Vazio quando a loja não tem produtos.
   topProductNames: string[]
-  // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica.
-  pesquisa: string
   // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance + tom.
   outlineObjective: string
   outlineGuidance: string
@@ -628,8 +618,6 @@ export async function assembleStoreReference(
     persona: input.persona,
     tom_voz: input.tomVoz,
     mood: input.mood,
-    briefing_json: input.briefingJson,
-    pesquisa_diagnostico: input.pesquisa,
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
