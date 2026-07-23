@@ -3,7 +3,9 @@ import {
   getAspectDimensions,
   resolveAspectForBlock,
   blockAspectFromBlueprint,
+  imageDimsFromBlueprint,
   aspectInstructionForPrompt,
+  dimsInstructionForPrompt,
   isAspectKey,
   type AspectKey,
 } from "./aspect-ratio"
@@ -235,5 +237,58 @@ describe("aspect por BLOCO (blocks[].image_aspect via tags do template)", () => 
     // rows legadas 0-based: fallback pro próprio índice
     expect(blockAspectFromBlueprint(blocks, 1, "hero")).toBe("4:5")
     expect(blockAspectFromBlueprint(null, 2, "hero")).toBeNull()
+  })
+})
+
+describe("imageDimsFromBlueprint (dims declaradas no schema)", () => {
+  const blocks = [
+    { type: "header", fields: [] },
+    {
+      type: "hero",
+      fields: [
+        { key: "hero_headline", type: "text_short" },
+        { key: "hero_image", type: "image", image_width: 600, image_height: 700 },
+      ],
+    },
+    {
+      type: "products",
+      fields: [
+        { type: "image", image_width: 0, image_height: 0 }, // sem dims
+      ],
+    },
+  ]
+
+  it("devolve o primeiro field type=image com w e h > 0 (casa por position+type)", () => {
+    expect(imageDimsFromBlueprint(blocks, 2, "hero")).toEqual({
+      width: 600,
+      height: 700,
+    })
+  })
+
+  it("field de imagem sem dims (0x0) → null", () => {
+    expect(imageDimsFromBlueprint(blocks, 3, "products")).toBeNull()
+  })
+
+  it("bloco sem field de imagem, type divergente ou blueprint null → null", () => {
+    expect(imageDimsFromBlueprint(blocks, 1, "header")).toBeNull()
+    expect(imageDimsFromBlueprint(blocks, 2, "products")).toBeNull()
+    expect(imageDimsFromBlueprint(null, 2, "hero")).toBeNull()
+  })
+})
+
+describe("dimsInstructionForPrompt", () => {
+  it("reduz a proporção e descreve o frame exato", () => {
+    const txt = dimsInstructionForPrompt(600, 700, false)
+    expect(txt).toContain("600x700 pixels")
+    expect(txt).toContain("proportion 6:7")
+    expect(txt).toContain("vertical portrait")
+    expect(txt).not.toContain("bottom 30%")
+  })
+
+  it("reserveBottom acrescenta a área do overlay", () => {
+    expect(dimsInstructionForPrompt(1600, 800, true)).toContain("bottom 30%")
+    expect(dimsInstructionForPrompt(1600, 800, true)).toContain(
+      "horizontal landscape",
+    )
   })
 })

@@ -44,7 +44,9 @@ import { deriveToneKeys } from "./shared/component-dimensions"
 import {
   resolveAspectForBlock,
   blockAspectFromBlueprint,
+  imageDimsFromBlueprint,
   aspectInstructionForPrompt,
+  dimsInstructionForPrompt,
   isAspectKey,
   type AspectKey,
 } from "./image/aspect-ratio"
@@ -904,6 +906,25 @@ export async function runPhase2Image(
           source: aspectSource,
         })
 
+        // Dimensões EXATAS declaradas no campo de imagem do schema
+        // (image_width × image_height) — prioridade sobre o aspect tipado.
+        // Persistidas em blocks[].fields pelo builder (F1). SYNC CONTRACT
+        // com resolve-block-prompt.service.ts.
+        const customDims = imageDimsFromBlueprint(
+          ctx.blueprint?.blocks as
+            | Array<{
+                type?: string
+                fields?: Array<{
+                  type?: string
+                  image_width?: number | null
+                  image_height?: number | null
+                }>
+              }>
+            | undefined,
+          blk.position as number | undefined,
+          blk.block_type as string | undefined,
+        )
+
         // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
         const multimodalEnabled =
           process.env.IMAGE_MULTIMODAL_ENABLED === "true"
@@ -979,7 +1000,16 @@ export async function runPhase2Image(
           ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
           : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
 
-        promptWithAspect = `${prompt}\n\n${aspectInstructionForPrompt(aspect, reserveBottom)}`
+        // Dims declaradas no schema vencem o aspect tipado também na
+        // instrução de composição (o modelo compõe pro frame exato).
+        const geometryInstruction = customDims
+          ? dimsInstructionForPrompt(
+              customDims.width,
+              customDims.height,
+              reserveBottom,
+            )
+          : aspectInstructionForPrompt(aspect, reserveBottom)
+        promptWithAspect = `${prompt}\n\n${geometryInstruction}`
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
         // descricao textual rica do produto pra compensar a perda visual.
@@ -1015,6 +1045,8 @@ export async function runPhase2Image(
           storeId,
           {
             aspect,
+            // Dims declaradas no schema vencem o aspect tipado no resize.
+            customDims,
             overlayReserveBottom: reserveBottom,
             mode,
             referenceImageUrl:

@@ -244,6 +244,13 @@ export async function generateEmailImage(
   options?: {
     aspect?: AspectKey
     /**
+     * Dimensões EXATAS declaradas no campo de imagem do output_schema
+     * (image_width × image_height). Quando presentes (ambas > 0), o resize
+     * usa ESTAS dimensões com PRIORIDADE sobre o aspect tipado do layout —
+     * o designer decidiu o formato do slot. Ausentes → cai no `aspect`.
+     */
+    customDims?: { width: number; height: number } | null
+    /**
      * Informativo apenas — propagado em logs. A instrucao textual no
      * prompt e responsabilidade do caller (phase2-runner).
      */
@@ -605,9 +612,21 @@ export async function generateEmailImage(
 
   // AE-12: resize via sharp pra forcar aspect ratio. Best-effort: se o
   // resize falhar, segue com o buffer original (pipeline nao quebra).
+  // Prioridade: dimensões declaradas no schema (customDims) > aspect tipado.
   let finalBuffer: Buffer = imageBuffer
-  if (options?.aspect) {
-    const dims = getAspectDimensions(options.aspect)
+  const custom =
+    options?.customDims &&
+    options.customDims.width > 0 &&
+    options.customDims.height > 0
+      ? options.customDims
+      : null
+  const resizeDims = custom
+    ? custom
+    : options?.aspect
+      ? getAspectDimensions(options.aspect)
+      : null
+  if (resizeDims) {
+    const dims = resizeDims
     try {
       finalBuffer = await sharp(imageBuffer)
         .resize(dims.width, dims.height, {
@@ -618,7 +637,8 @@ export async function generateEmailImage(
         .toBuffer()
       log.info("image.resize", {
         storeId,
-        aspect: options.aspect,
+        aspect: options?.aspect,
+        source: custom ? "custom_dims" : "aspect",
         to: dims,
         bytesOriginal: imageBuffer.length,
         bytesResized: finalBuffer.length,
@@ -626,7 +646,7 @@ export async function generateEmailImage(
     } catch (err) {
       log.warn("image.resize_failed", {
         storeId,
-        aspect: options.aspect,
+        aspect: options?.aspect,
         error: err instanceof Error ? err.message : String(err),
       })
       // fallback: mantem buffer original

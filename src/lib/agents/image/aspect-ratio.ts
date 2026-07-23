@@ -85,6 +85,47 @@ export function blockAspectFromBlueprint(
   return matched?.image_aspect ?? null
 }
 
+/**
+ * Dimensões EXATAS declaradas no campo de imagem do bloco (image_width ×
+ * image_height do output_schema, persistidas em blocks[].fields). Casa o
+ * email_block (position 1-based) com blueprint.blocks[position-1] por type
+ * (mesma convenção do dispatch/aspect) e devolve as dims do PRIMEIRO field
+ * type=image com largura E altura > 0. null quando nada declarado — o caller
+ * cai no aspect tipado.
+ */
+export function imageDimsFromBlueprint(
+  blueprintBlocks:
+    | Array<{
+        type?: string
+        fields?: Array<{
+          type?: string
+          image_width?: number | null
+          image_height?: number | null
+        }>
+      }>
+    | null
+    | undefined,
+  position: number | null | undefined,
+  blockType: string | null | undefined,
+): { width: number; height: number } | null {
+  if (!Array.isArray(blueprintBlocks) || position == null || !blockType) {
+    return null
+  }
+  const byIndex = (i: number) => {
+    const cand = blueprintBlocks[i]
+    return cand && cand.type === blockType ? cand : null
+  }
+  const matched = byIndex(position - 1) ?? byIndex(position)
+  const fields = Array.isArray(matched?.fields) ? matched.fields : []
+  for (const f of fields) {
+    if (f.type !== "image") continue
+    const w = f.image_width ?? 0
+    const h = f.image_height ?? 0
+    if (w > 0 && h > 0) return { width: w, height: h }
+  }
+  return null
+}
+
 export function resolveAspectForBlock(input: {
   /**
    * Aspect POR BLOCO (blocks[].image_aspect) — derivado das tags de imagem
@@ -119,6 +160,38 @@ export function resolveAspectForBlock(input: {
  * final, mas a instrucao influencia composicao (modelo centraliza
  * produto, deixa area pra overlay etc.).
  */
+/** gcd para reduzir W:H a uma proporção legível (600x700 → 6:7). */
+function reduceRatio(w: number, h: number): string {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+  const g = gcd(w, h) || 1
+  return `${w / g}:${h / g}`
+}
+
+/**
+ * Instrução de proporção quando o slot declara dimensões EXATAS
+ * (image_width × image_height do schema). Espelha aspectInstructionForPrompt,
+ * mas com o frame exato do designer. SYNC CONTRACT com o phase2-runner e o
+ * resolve-block-prompt.
+ */
+export function dimsInstructionForPrompt(
+  width: number,
+  height: number,
+  reserveBottom: boolean,
+): string {
+  const orientation =
+    width > height
+      ? "horizontal landscape"
+      : width === height
+        ? "square"
+        : "vertical portrait"
+  let txt = `Render the image at exactly ${width}x${height} pixels (${orientation} composition, proportion ${reduceRatio(width, height)}) — compose for this exact frame.`
+  if (reserveBottom) {
+    txt +=
+      " Reserve the bottom 30% as a darker/cleaner area suitable for white text overlay."
+  }
+  return txt
+}
+
 export function aspectInstructionForPrompt(
   aspect: AspectKey,
   reserveBottom: boolean,
