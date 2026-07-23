@@ -1568,14 +1568,16 @@ export async function runPhase2HtmlQa(
     return { status: "failed" }
   }
 
-  // ── Step 2.5: Refinador Tipográfico (fail-open) ──────────────────────
-  // Voz da marca na fonte de DISPLAY (nome da marca, headline do herói):
-  // o LLM devolve um DELTA JSON pequeno (estratégia + fonte da whitelist +
-  // índices dos alvos) e o código aplica mecanicamente — nunca reescreve
-  // HTML/copy/links. Sem config ativa → no-op total. Qualquer falha ou
-  // guard reprovado → mantém o HTML original e segue pro QA (fail-open;
+  // ── Step 2.5: Refinador VISUAL / repintor (fail-open) ────────────────
+  // Voz da marca em 3 camadas visuais (fonte de DISPLAY, border-radius,
+  // ritmo vertical): o LLM RECEBE o HTML e DEVOLVE o HTML modificado — só o
+  // visual, preservando copy/imagens/estrutura/blocos. Sem config ativa →
+  // no-op total. Guard estrutural reprovado (não-HTML, nº de <table> mudou,
+  // encolheu) ou exceção → mantém o HTML original e segue pro QA (fail-open;
   // NUNCA markEmailFailed aqui). Status permanece `rendering` — o claim
-  // `rendering -> ready` abaixo fica intocado.
+  // `rendering -> ready` abaixo fica intocado. Requer a migration 20261031
+  // (prompt em formato HTML): sem ela o prompt antigo (delta) faz o LLM
+  // cuspir JSON → guard reprova → no-op silencioso.
   finalHtml = await runRefinerStep({
     ctx,
     finalHtml,
