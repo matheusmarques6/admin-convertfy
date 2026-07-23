@@ -25,6 +25,16 @@ export interface BlueprintBlockField {
   guidance: string
   tag: string | null
   source: "schema" | "tag_registry" | "llm"
+  // ── Só para type="image" (opcionais) — snapshot do output_schema +
+  // comentário do slot extraído do HTML da variante. Dirigem a geração de
+  // imagem (IMAGE_SLOTS + resize por dimensões declaradas). ──────────────
+  image_spec?: string | null
+  image_aspect?: string | null
+  image_width?: number | null
+  image_height?: number | null
+  // Comentário HTML (<!-- … -->) do <td>/<tr> que envolve o {{TAG}} de
+  // imagem na variante — direção de arte do designer, colada no slot.
+  slot_note?: string | null
 }
 
 export interface BlueprintBlock {

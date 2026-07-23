@@ -26,6 +26,7 @@ import type {
 } from "@/types/email-generation"
 import { lookupTag, normalizeTagName } from "@/lib/email-workspace/tag-registry"
 import { blockTypeToCategory } from "../shared/component-categories"
+import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
 import type { ExtractedStructure } from "./reference-structure"
 import type { AssemblySlot } from "./component-assembler.service"
 import type {
@@ -127,19 +128,39 @@ function variantHasCopyContext(v: SlotVariant): boolean {
  * Resolve a tag do template por copyKey OU pelo nome normalizado da tag
  * (schema.key "coupon_code" ↔ tag {{COUPON_CODE}}).
  */
+/** Resolve a {{TAG}} do template para um key de schema (copyKey ou nome). */
+function resolveTagForKey(key: string, blockTags: string[]): string | null {
+  return (
+    blockTags.find((t) => lookupTag(t)?.copyKey === key) ??
+    blockTags.find(
+      (t) => normalizeTagName(t).toLowerCase() === key.toLowerCase(),
+    ) ??
+    null
+  )
+}
+
 export function fieldsFromSchema(
   schema: ComponentOutputField[],
   blockTags: string[],
+  // HTML da variante — quando presente, extrai o comentário do <td>/<tr> de
+  // cada slot de imagem (slot_note). Ausente (ex.: rota B) → sem slot_note.
+  variantHtml?: string,
 ): BlueprintFieldV2[] {
+  // Tags de imagem do bloco (uma por campo type=image que casou tag) → extrai
+  // os comentários UMA vez.
+  const imageTags = schema
+    .filter((f) => f.type === "image")
+    .map((f) => resolveTagForKey(f.key.trim(), blockTags))
+    .filter((t): t is string => !!t)
+  const slotNotes =
+    variantHtml && imageTags.length > 0
+      ? extractImageSlotNotes(variantHtml, imageTags)
+      : {}
+
   return schema.map((f) => {
     const key = f.key.trim()
-    const tag =
-      blockTags.find((t) => lookupTag(t)?.copyKey === key) ??
-      blockTags.find(
-        (t) => normalizeTagName(t).toLowerCase() === key.toLowerCase(),
-      ) ??
-      null
-    return {
+    const tag = resolveTagForKey(key, blockTags)
+    const base: BlueprintFieldV2 = {
       key,
       label: f.label || key,
       type: f.type,
@@ -151,6 +172,14 @@ export function fieldsFromSchema(
       tag,
       source: "schema",
     }
+    if (f.type === "image") {
+      base.image_spec = f.image_spec ?? null
+      base.image_aspect = f.image_aspect ?? null
+      base.image_width = f.image_width ?? null
+      base.image_height = f.image_height ?? null
+      base.slot_note = (tag && slotNotes[tag]) || null
+    }
+    return base
   })
 }
 
@@ -262,7 +291,9 @@ export function buildDeterministicBlueprint(input: {
       variant_id: m?.variant.id ?? null,
       variant_name: m?.variant.name ?? null,
       fields:
-        schema.length > 0 ? fieldsFromSchema(schema, tags) : fieldsFromTags(tags),
+        schema.length > 0
+          ? fieldsFromSchema(schema, tags, m?.variant.html)
+          : fieldsFromTags(tags),
     }
   })
 
@@ -300,7 +331,7 @@ export function packageBlueprint(
 
     let fields: BlueprintFieldV2[]
     if (schema.length > 0) {
-      fields = fieldsFromSchema(schema, tags)
+      fields = fieldsFromSchema(schema, tags, m?.variant.html)
     } else if (tags.length > 0) {
       fields = fieldsFromTags(tags)
     } else {
