@@ -36,6 +36,12 @@ import {
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
+import {
+  loadCuradorMemory,
+  logCuradorChoice,
+  renderCuradorMemory,
+  type ChoiceEntry,
+} from "./curador-memory"
 
 const log = logger.child("ComponentAssembler")
 
@@ -58,6 +64,10 @@ Regras:
 - Para posições de produtos, cruze product_slots com <top_products>: NUNCA escolha variante que exige mais produtos do que a loja tem cadastrado.
 - Use orientacao_copy/campos_copy como sinal de viabilidade: se o bloco exige dados que a loja não tem (ex.: campo de cupom sem oferta no contexto), prefira outra variante.
 - Evite repetir a mesma variante em posições diferentes do mesmo email; quando a mesma seção aparece 2+ vezes, escolha variantes diferentes se houver opções.
+- Use <memoria> como sinal de continuidade e variedade:
+  - <email_anterior_desta_loja>: são as variantes escolhidas no email ANTERIOR do MESMO flow desta loja. Busque COERÊNCIA visual — mantenha a mesma linguagem de layout (ex.: se o email anterior usou hero com imagem de fundo, prefira um hero coerente aqui), sem copiar cegamente: cada email tem seu objetivo.
+  - <mesmo_email_em_outras_lojas>: são as variantes que ESTE mesmo email recebeu em OUTRAS lojas recentes. Busque VARIEDADE — evite repetir sempre as mesmas variantes usadas nas outras lojas quando houver alternativa igualmente adequada à marca e ao objetivo.
+  - A memória é sinal, não regra: adequação à marca e ao objetivo do email SEMPRE vence.
 - Se a descrição estiver vazia, decida pelo nome + metadados.
 - Não invente variant_id.
 
@@ -85,6 +95,10 @@ const DEFAULT_CHOOSER_USER = `<store>
 <top_products>
 {{top_products}}
 </top_products>
+
+<memoria>
+{{memoria}}
+</memoria>
 
 <estrutura_geral_ordenada>
 {{blocks_json}}
@@ -409,6 +423,15 @@ export async function assembleStoreReference(
     }
   }
 
+  // Memória do Curador: escolha do email anterior desta loja (coerência) +
+  // escolhas do mesmo email em outras lojas do org (variedade). Best-effort —
+  // nunca derruba a geração; org_id resolvido aqui é reusado no log.
+  const memory = await loadCuradorMemory(
+    input.storeId,
+    input.flowType,
+    input.emailNumber,
+  )
+
   // ── PASSO A — Curador: escolhe 1 variant_id por seção SÓ pela descrição.
   // O HTML das variantes NÃO entra aqui — evita gasto de input token com HTML
   // que não será usado (variantes rejeitadas).
@@ -490,6 +513,7 @@ export async function assembleStoreReference(
         : "(sem produtos cadastrados)",
     blocks_json: blocksJson,
     candidates_json: chooserCandidatesJson,
+    memoria: renderCuradorMemory(memory),
   }
 
   // Run 'running' visível na live view enquanto o LLM roda.
@@ -539,6 +563,22 @@ export async function assembleStoreReference(
   })
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
   const missingCount = slots.filter((s) => s.kind === "missing").length
+
+  // Registra as escolhas desta geração no histórico append-only (memória do
+  // Curador). Fire-and-forget: não bloqueia o run nem falha a geração.
+  const choiceEntries: ChoiceEntry[] = slots.flatMap((s) =>
+    s.kind === "variant"
+      ? [{ section: s.section, variant_id: s.variant.id, variant_name: s.variant.name }]
+      : [],
+  )
+  void logCuradorChoice({
+    storeId: input.storeId,
+    orgId: memory.orgId,
+    flowType: input.flowType,
+    emailNumber: input.emailNumber,
+    batchId: input.batchId,
+    choices: choiceEntries,
+  })
 
   await finishGenerationRun(chooserRunId, {
     storeId: input.storeId,
