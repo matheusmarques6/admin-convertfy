@@ -276,12 +276,12 @@ export function buildImageMap(
   blueprint: EmailBlueprint | null,
 ): ImageMapEntry[] {
   const globalAspect = blueprint?.image_aspect ?? "4:5"
-  // Hero v4 (força overlay em TODOS os flows, jul/2026): o hero é SEMPRE um
-  // overlay integrado (imagem de fundo + texto sobreposto) — o flag
-  // image_overlay_reserve_bottom deixou de rebaixar o hero pra "burned".
-  // Products/reviews/body seguem "burned" (não são hero) — o overlay de
-  // texto continua sendo semântica exclusiva do hero (linha do push abaixo).
-  const heroOverlay: "needs_html_overlay" | "burned" = "needs_html_overlay"
+  // Hero v5 (jul/2026): a imagem do hero é um <img> full-width de altura
+  // natural (NUNCA background-image/overlay/cover) e o texto é HTML separado.
+  // Logo o hero é "burned" (imagem colocada como-está, sem texto sobreposto),
+  // igual a products/reviews/body. O flag image_overlay_reserve_bottom não
+  // tem mais efeito no hero.
+  const heroOverlay: "needs_html_overlay" | "burned" = "burned"
 
   // Casa email_block (position 1-based) com blueprint.blocks[position-1],
   // guardado por type + fallback pro próprio índice (rows legadas 0-based) —

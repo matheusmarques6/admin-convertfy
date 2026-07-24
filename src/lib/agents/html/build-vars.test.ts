@@ -415,7 +415,7 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.locale).toBe("pt-BR")
   })
 
-  it("blueprint sem image_overlay_reserve_bottom → image_map overlay default 'needs_html_overlay'", async () => {
+  it("hero v5: image do hero é 'burned' (<img> full-width, texto HTML separado)", async () => {
     const vars = await setup({
       blueprint: { ...baseBlueprint, image_overlay_reserve_bottom: null },
       blocks: [
@@ -429,7 +429,7 @@ describe("buildHtmlPromptVars", () => {
       ],
     })
     const map = JSON.parse(vars.image_map_json)
-    expect(map[0].overlay).toBe("needs_html_overlay")
+    expect(map[0].overlay).toBe("burned")
   })
 
   it("sem store reference E sem template global → reference_html cai no esqueleto default (nunca vazio)", async () => {
@@ -447,7 +447,7 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.reference_html).toBe("<div>ref global</div>")
   })
 
-  it("hero v4: image_overlay_reserve_bottom=false NÃO rebaixa o hero → overlay='needs_html_overlay'", async () => {
+  it("hero v5: image_overlay_reserve_bottom não afeta mais o hero → overlay='burned'", async () => {
     const vars = await setup({
       blueprint: { ...baseBlueprint, image_overlay_reserve_bottom: false },
       blocks: [
@@ -461,7 +461,7 @@ describe("buildHtmlPromptVars", () => {
       ],
     })
     const map = JSON.parse(vars.image_map_json)
-    // O hero é SEMPRE overlay integrado (força overlay em todos os flows).
-    expect(map[0].overlay).toBe("needs_html_overlay")
+    // Hero v5: imagem é <img> full-width (burned), texto é HTML separado.
+    expect(map[0].overlay).toBe("burned")
   })
 })

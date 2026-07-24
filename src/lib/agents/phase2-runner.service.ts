@@ -850,12 +850,11 @@ export async function runPhase2Image(
             invalidValue: blueprintAspectRaw,
           })
         }
-        // Hero v4 (jul/2026): o hero é SEMPRE overlay integrado → a imagem
-        // SEMPRE compõe como fundo full-bleed com espaço pro texto. O flag
-        // image_overlay_reserve_bottom não rebaixa mais o hero. Semântica
-        // exclusiva de HERO (products/reviews/body nunca recebem texto).
-        // SYNC CONTRACT com resolve-block-prompt.service.ts.
-        const reserveBottom = (blk.block_type as string) === "hero"
+        // Hero v5 (jul/2026): a imagem do hero é um <img> standalone e o texto
+        // é HTML SEPARADO (não sobreposto) → a imagem NÃO reserva área pro
+        // texto. reserveBottom fica desligado (a instrução de "fundo/overlay"
+        // não se aplica mais). SYNC CONTRACT com resolve-block-prompt.service.ts.
+        const reserveBottom = false
         // Aspect POR BLOCO (blocks[].image_aspect, derivado das tags do
         // template via registry) — prioridade máxima sobre o nível-email.
         const blockAspectRaw = blockAspectFromBlueprint(

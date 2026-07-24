@@ -37,18 +37,18 @@ describe("enforceLangAttribute", () => {
 })
 
 describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
-  // Espelha a migration 20261035 (hero v4): o hero é SEMPRE um overlay
-  // integrado de background (imagem de fundo + texto sobreposto) em TODOS os
-  // flows — heroes empilhados são colapsados num único cell. Sem este bloco o
-  // fallback regride pra hero empilhada / sem fallback VML no Outlook.
-  it("contém a hero_overlay_hard_rule v4 (paridade com o prompt do banco)", () => {
+  // Espelha a migration 20261036 (hero v5): a imagem do hero é um <img>
+  // full-width de altura natural (nunca background/overlay/cover) e o texto é
+  // HTML separado em linhas próprias, em TODOS os flows. Sem este bloco o
+  // fallback regride pro overlay/background que ficou "muito ruim".
+  it("contém a hero_overlay_hard_rule v5 (paridade com o prompt do banco)", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<hero_overlay_hard_rule>")
-    // v4 (migration 20261035): overlay integrado sempre + fallback VML Outlook.
+    // v5 (migration 20261036): <img> full-width + texto HTML separado.
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain(
-      "THE HERO IS ALWAYS AN INTEGRATED BACKGROUND-IMAGE OVERLAY",
+      "THE HERO IMAGE IS A PLAIN, FULL-WIDTH",
     )
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("OUTLOOK FALLBACK")
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ADAPTIVE HEIGHT")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("NATURAL ASPECT")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("REAL HTML TEXT")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<formatting_hard_rules>")
   })
 

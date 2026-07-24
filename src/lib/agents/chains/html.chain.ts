@@ -120,47 +120,31 @@ Non-negotiable output-formatting rules. They override any conflicting habit and 
 <hero_overlay_hard_rule>
 This rule governs the HERO block only.
 
-THE HERO IS ALWAYS AN INTEGRATED BACKGROUND-IMAGE OVERLAY: a single full-bleed
-cell whose BACKGROUND is the hero image, with the brand logo/kicker, headline,
-subcopy and CTA laid OVER the image. This holds for EVERY flow and EVERY
-reference. If the reference authored the hero as a stacked \`<img>\` plus separate
-text rows, or as a plain image slot, COLLAPSE it into this one overlay cell.
-NEVER render the hero image as a standalone \`<img>\` row with the text stacked in
-a separate row above or below it.
+THE HERO IMAGE IS A PLAIN, FULL-WIDTH \`<img>\` — NEVER a CSS \`background-image\`,
+NEVER an overlay, NEVER text burned on top of the photo, NEVER
+\`background-size:cover\`, NEVER a fixed height. The headline, subcopy and CTA are
+REAL HTML TEXT in their OWN rows, stacked cleanly with the image (image on its
+own row; the text on separate rows, in the order the reference authored them).
+This holds for EVERY flow and EVERY reference — if a reference authored the hero
+as a background/overlay, CONVERT it to a plain \`<img>\` + separate text rows.
 
-REPAINT, don't reinvent: if the reference hero ALREADY carries a
-\`background-image\` overlay (or a \`<!-- hero: overlay ... -->\` comment), keep its
-structure and comment; swap ONLY the background-image URL for the image_map URL,
-apply color_roles + fonts, and pour in the copy.
+IMAGE PLACEMENT:
+- Render the hero image as a single tag:
+  \`<img src="{url}" alt="{short description}" width="600" style="display:block;
+  width:100%;max-width:600px;height:auto;border:0;">\`.
+- NATURAL ASPECT — \`height:auto\`. Show the WHOLE image; NEVER crop it into a
+  fixed-height strip, NEVER \`background-size:cover\`, NEVER set a height on the
+  image or its cell.
+- The image sits in its OWN \`<tr><td style="padding:0;font-size:0;line-height:0;">\`.
+  The text is in SEPARATE \`<tr>\`s. Nothing overlaps and nothing bleeds between
+  cells.
 
-CONSTRUCTION (this exact recipe is what prevents the image from being squashed
-into a thin strip — the bug older versions hit):
-- ONE hero cell \`<tr><td>\`. Put the image on the cell as BOTH the
-  \`background="{url}"\` attribute AND a \`background-image\` that layers a
-  legibility scrim UNDER the text:
-  \`background-image:linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.5) 100%), url('{url}')\`
-  with \`background-size:cover; background-position:center center;
-  background-repeat:no-repeat\`, over a solid dark \`background-color\` fallback.
-- ADAPTIVE HEIGHT via GENEROUS VERTICAL PADDING on the cell (e.g.
-  \`padding:56px 40px 60px 40px\`) so the cell GROWS with the text and the next
-  block always starts BELOW it. NEVER a fixed height, NEVER \`position:absolute\`
-  (both let the text overflow the image or the next block overlap it).
-- OUTLOOK FALLBACK (MANDATORY — Outlook desktop ignores CSS background-image;
-  without this the hero renders as an empty band). Wrap the overlaid content in
-  VML so the background still paints in Outlook:
-  \`<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;"><v:fill type="frame" src="{url}" color="{bgFallback}" /><v:textbox inset="0,0,0,0"><![endif]-->\`
-  ... the overlaid content ...
-  \`<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->\`
-- TEXT COLOR: white (\`#FFFFFF\`) by default — it reads over the scrim on any
-  photo. Use a dark brand color only if the copy stays clearly legible.
-- FONT SIZES by role — NEVER enlarge the eyebrow/kicker: eyebrow/kicker 11-13px
-  uppercase with letter-spacing, headline 34-44px, subcopy 15-17px, CTA 13-15px.
-- The hero is its OWN \`<tr><td>\`; the next block is a SEPARATE \`<tr>\`. Nothing
-  may bleed from one cell into the next.
+TEXT (real HTML, its own rows): kicker/eyebrow 11-13px uppercase with
+letter-spacing, headline 28-40px, subcopy 15-17px, CTA as a bulletproof button.
+Apply color_roles + fonts. NEVER place the text on top of the image.
 
-If the hero has NO image (generation failed upstream): render a text-only hero
-(solid brand color, text in normal flow). NEVER invent a URL or reuse another
-block's image.
+If the hero has NO image (generation failed upstream): drop the image row and
+keep the text rows. NEVER invent a URL or reuse another block's image.
 </hero_overlay_hard_rule>
 
 <image_slot_rules>

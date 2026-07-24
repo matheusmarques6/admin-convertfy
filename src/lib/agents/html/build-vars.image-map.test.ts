@@ -67,7 +67,7 @@ describe("buildImageMap", () => {
     expect(prod.tag).toBe("PRODUCTS_IMAGE")
   })
 
-  it("overlay needs_html_overlay SÓ no hero; demais blocos são burned", () => {
+  it("hero v5: todos os blocos são 'burned' (hero é <img> full-width, texto HTML separado)", () => {
     const entries = buildImageMap(
       [
         block(2, "hero", { image_url: "https://img/hero.png" }),
@@ -75,9 +75,7 @@ describe("buildImageMap", () => {
       ],
       makeBlueprint(),
     )
-    expect(entries.find((e) => e.block_type === "hero")!.overlay).toBe(
-      "needs_html_overlay",
-    )
+    expect(entries.find((e) => e.block_type === "hero")!.overlay).toBe("burned")
     expect(entries.find((e) => e.block_type === "products")!.overlay).toBe(
       "burned",
     )
@@ -133,7 +131,7 @@ describe("buildImageMap", () => {
     expect(entries.find((e) => e.block_type === "features")!.render_width_px).toBe(120)
   })
 
-  it("sem blueprint: aspecto global default 4:5, tag null, hero com overlay", () => {
+  it("sem blueprint: aspecto global default 4:5, tag null, hero 'burned'", () => {
     const entries = buildImageMap(
       [block(1, "hero", { image_url: "https://img/x.png" })],
       null,
@@ -142,7 +140,7 @@ describe("buildImageMap", () => {
       id: "IMG_1",
       tag: null,
       aspect_ratio: "4:5",
-      overlay: "needs_html_overlay",
+      overlay: "burned",
     })
   })
 
