@@ -37,18 +37,18 @@ describe("enforceLangAttribute", () => {
 })
 
 describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
-  // Espelha a migration 20261036 (hero v5): a imagem do hero é um <img>
-  // full-width de altura natural (nunca background/overlay/cover) e o texto é
-  // HTML separado em linhas próprias, em TODOS os flows. Sem este bloco o
-  // fallback regride pro overlay/background que ficou "muito ruim".
-  it("contém a hero_overlay_hard_rule v5 (paridade com o prompt do banco)", () => {
+  // Espelha a migration 20261037 (hero v6): as variantes de hero da
+  // biblioteca carregam {{HERO_IMAGE}} no lugar exato onde o render usa a
+  // imagem — o agente preserva a hero byte a byte e SÓ troca a tag pela URL
+  // do image_map. Sem este bloco o agente volta a "reconstruir" a hero.
+  it("contém a hero_overlay_hard_rule v6 (paridade com o prompt do banco)", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<hero_overlay_hard_rule>")
-    // v5 (migration 20261036): <img> full-width + texto HTML separado.
+    // v6 (migration 20261037): swap-only da tag {{HERO_IMAGE}}.
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain(
-      "THE HERO IMAGE IS A PLAIN, FULL-WIDTH",
+      "THE REFERENCE HERO IS ALREADY AUTHORED CORRECTLY",
     )
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("NATURAL ASPECT")
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("REAL HTML TEXT")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("{{HERO_IMAGE}}")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("byte-for-byte")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<formatting_hard_rules>")
   })
 

@@ -120,31 +120,23 @@ Non-negotiable output-formatting rules. They override any conflicting habit and 
 <hero_overlay_hard_rule>
 This rule governs the HERO block only.
 
-THE HERO IMAGE IS A PLAIN, FULL-WIDTH \`<img>\` — NEVER a CSS \`background-image\`,
-NEVER an overlay, NEVER text burned on top of the photo, NEVER
-\`background-size:cover\`, NEVER a fixed height. The headline, subcopy and CTA are
-REAL HTML TEXT in their OWN rows, stacked cleanly with the image (image on its
-own row; the text on separate rows, in the order the reference authored them).
-This holds for EVERY flow and EVERY reference — if a reference authored the hero
-as a background/overlay, CONVERT it to a plain \`<img>\` + separate text rows.
+THE REFERENCE HERO IS ALREADY AUTHORED CORRECTLY — including where its image
+goes: an \`<img>\` slot carrying the \`{{HERO_IMAGE}}\` placeholder. Your ONLY job
+on the hero image is to SWAP the \`{{HERO_IMAGE}}\` tag for the image_map URL
+(and \`{{HERO_IMAGE_ALT}}\` for a short description). PRESERVE everything else
+about the hero byte-for-byte: structure, row order (image row vs text rows),
+inline styles, widths, paddings, border-radius, comments, VML buttons. Do NOT
+rebuild the hero, do NOT reorder image and text rows, do NOT convert the image
+to a CSS background, do NOT add overlays/scrims/\`position:absolute\`, do NOT set
+a fixed height on the image (keep \`height:auto\` as authored), do NOT crop.
 
-IMAGE PLACEMENT:
-- Render the hero image as a single tag:
-  \`<img src="{url}" alt="{short description}" width="600" style="display:block;
-  width:100%;max-width:600px;height:auto;border:0;">\`.
-- NATURAL ASPECT — \`height:auto\`. Show the WHOLE image; NEVER crop it into a
-  fixed-height strip, NEVER \`background-size:cover\`, NEVER set a height on the
-  image or its cell.
-- The image sits in its OWN \`<tr><td style="padding:0;font-size:0;line-height:0;">\`.
-  The text is in SEPARATE \`<tr>\`s. Nothing overlaps and nothing bleeds between
-  cells.
+If the reference hero carries a hardcoded image URL instead of a tag (legacy
+variant), swap that URL for the image_map URL in place — same principle, change
+nothing else.
 
-TEXT (real HTML, its own rows): kicker/eyebrow 11-13px uppercase with
-letter-spacing, headline 28-40px, subcopy 15-17px, CTA as a bulletproof button.
-Apply color_roles + fonts. NEVER place the text on top of the image.
-
-If the hero has NO image (generation failed upstream): drop the image row and
-keep the text rows. NEVER invent a URL or reuse another block's image.
+If the hero has NO image in the image_map (generation failed upstream): remove
+only the image row (or placeholder cell) and keep the text rows. NEVER invent a
+URL, NEVER reuse another block's image.
 </hero_overlay_hard_rule>
 
 <image_slot_rules>
