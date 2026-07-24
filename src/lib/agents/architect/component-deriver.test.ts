@@ -8,6 +8,8 @@ import {
   buildMatchContext,
   scoreVariant,
   prefilterCandidates,
+  seededShuffle,
+  seedFrom,
 } from "./component-deriver"
 
 function makeVariant(p: Partial<EmailComponentVariant>): EmailComponentVariant {
@@ -39,6 +41,32 @@ function makeVariant(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     created_by: p.created_by ?? null,
   }
 }
+
+describe("seededShuffle + seedFrom (anti-viés de posição, reprodutível)", () => {
+  const base = ["a", "b", "c", "d", "e", "f", "g", "h"]
+
+  it("mesmo seed → mesma ordem (idempotente para retry do mesmo email)", () => {
+    const seed = seedFrom("store1", "welcome", 1, 0)
+    expect(seededShuffle(base, seed)).toEqual(seededShuffle(base, seed))
+  })
+
+  it("seeds diferentes (loja/email/bloco) → ordens diferentes", () => {
+    const s1 = seededShuffle(base, seedFrom("store1", "welcome", 1, 0))
+    const s2 = seededShuffle(base, seedFrom("store2", "welcome", 1, 0)) // outra loja
+    const s3 = seededShuffle(base, seedFrom("store1", "welcome", 2, 0)) // outro email
+    const s4 = seededShuffle(base, seedFrom("store1", "welcome", 1, 1)) // outro bloco
+    expect(s1).not.toEqual(s2)
+    expect(s1).not.toEqual(s3)
+    expect(s1).not.toEqual(s4)
+  })
+
+  it("não muta a original e preserva todos os elementos", () => {
+    const copy = [...base]
+    const out = seededShuffle(base, 123)
+    expect(base).toEqual(copy) // original intacta
+    expect([...out].sort()).toEqual([...base].sort()) // mesmo conjunto
+  })
+})
 
 describe("flowTypeToObjective", () => {
   it("mapeia flows canônicos para o objetivo", () => {

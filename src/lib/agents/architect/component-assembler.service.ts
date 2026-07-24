@@ -26,6 +26,8 @@ import {
 import {
   buildMatchContext,
   prefilterCandidates,
+  seededShuffle,
+  seedFrom,
 } from "./component-deriver"
 import type { OutlineSection } from "./outline-sections"
 import {
@@ -432,8 +434,15 @@ export async function assembleStoreReference(
       block_index: i,
       section: sections[i],
       label: input.structure[i]?.label ?? sections[i],
+      // Embaralha a APRESENTAÇÃO (não o fallback) pra remover o viés de posição
+      // do Curador. Seed por (loja, flow, email, bloco): varia entre lojas e
+      // entre emails, mas o mesmo email regenera igual. `candidatesByBlock`
+      // segue em ordem de score → `resolveChoices` mantém o top-1 como fallback.
       // SEM html: só descrição + metadados (escolha barata).
-      opcoes: finalists.map((v) => ({
+      opcoes: seededShuffle(
+        finalists,
+        seedFrom(input.storeId, input.flowType, input.emailNumber, i),
+      ).map((v) => ({
         variant_id: v.id,
         name: v.name,
         description: v.description ?? "",

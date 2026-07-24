@@ -50,6 +50,8 @@ vi.mock("../callbacks/telemetry.callback", () => ({
 vi.mock("./component-deriver", () => ({
   buildMatchContext: () => ({}),
   prefilterCandidates: (pool: unknown[]) => pool, // sem ranqueamento no teste
+  seededShuffle: (arr: unknown[]) => arr, // sem embaralhar no teste (ordem estável)
+  seedFrom: () => 0,
 }))
 
 import { assembleStoreReference } from "./component-assembler.service"
