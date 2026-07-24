@@ -447,7 +447,7 @@ describe("buildHtmlPromptVars", () => {
     expect(vars.reference_html).toBe("<div>ref global</div>")
   })
 
-  it("blueprint com image_overlay_reserve_bottom=false → overlay='burned'", async () => {
+  it("hero v4: image_overlay_reserve_bottom=false NÃO rebaixa o hero → overlay='needs_html_overlay'", async () => {
     const vars = await setup({
       blueprint: { ...baseBlueprint, image_overlay_reserve_bottom: false },
       blocks: [
@@ -461,6 +461,7 @@ describe("buildHtmlPromptVars", () => {
       ],
     })
     const map = JSON.parse(vars.image_map_json)
-    expect(map[0].overlay).toBe("burned")
+    // O hero é SEMPRE overlay integrado (força overlay em todos os flows).
+    expect(map[0].overlay).toBe("needs_html_overlay")
   })
 })

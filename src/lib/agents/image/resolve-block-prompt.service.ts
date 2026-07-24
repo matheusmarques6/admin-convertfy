@@ -271,11 +271,11 @@ export async function resolveBlockPrompt(
       invalidValue: blueprintAspectRaw,
     })
   }
-  // Reserve-bottom é semântica de HERO (overlay de texto) — só heroes a
-  // recebem. SYNC CONTRACT com phase2-runner.service.ts.
-  const overlayReserveBottom =
-    (blueprint?.image_overlay_reserve_bottom ?? true) &&
-    (blk.block_type as string) === "hero"
+  // Hero v4 (jul/2026): o hero é SEMPRE overlay integrado → a imagem SEMPRE
+  // compõe como fundo full-bleed com espaço pro texto. O flag
+  // image_overlay_reserve_bottom não rebaixa mais o hero. Semântica exclusiva
+  // de HERO. SYNC CONTRACT com phase2-runner.service.ts.
+  const overlayReserveBottom = (blk.block_type as string) === "hero"
   // Aspect POR BLOCO (blocks[].image_aspect via tags do template) —
   // prioridade máxima. SYNC CONTRACT com phase2-runner.service.ts.
   const blockAspectRaw = blockAspectFromBlueprint(

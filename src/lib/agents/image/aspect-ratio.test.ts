@@ -179,15 +179,15 @@ describe("aspectInstructionForPrompt", () => {
     expect(out).toContain("square")
   })
 
-  it("reserveBottom=true menciona reserve bottom", () => {
+  it("reserveBottom=true pede fundo full-bleed com espaço pro overlay", () => {
     const out = aspectInstructionForPrompt("4:5", true)
-    expect(out).toContain("Reserve the bottom")
-    expect(out).toContain("overlay")
+    expect(out).toContain("FULL-BLEED background")
+    expect(out).toContain("overlaid")
   })
 
-  it("reserveBottom=false NAO menciona reserve bottom", () => {
+  it("reserveBottom=false NAO pede fundo full-bleed", () => {
     const out = aspectInstructionForPrompt("4:5", false)
-    expect(out).not.toContain("Reserve the bottom")
+    expect(out).not.toContain("FULL-BLEED background")
   })
 
   it("3:5 vertical portrait com dims corretas", () => {
@@ -282,11 +282,13 @@ describe("dimsInstructionForPrompt", () => {
     expect(txt).toContain("600x700 pixels")
     expect(txt).toContain("proportion 6:7")
     expect(txt).toContain("vertical portrait")
-    expect(txt).not.toContain("bottom 30%")
+    expect(txt).not.toContain("FULL-BLEED background")
   })
 
-  it("reserveBottom acrescenta a área do overlay", () => {
-    expect(dimsInstructionForPrompt(1600, 800, true)).toContain("bottom 30%")
+  it("reserveBottom acrescenta o fundo full-bleed com espaço pro overlay", () => {
+    expect(dimsInstructionForPrompt(1600, 800, true)).toContain(
+      "FULL-BLEED background",
+    )
     expect(dimsInstructionForPrompt(1600, 800, true)).toContain(
       "horizontal landscape",
     )

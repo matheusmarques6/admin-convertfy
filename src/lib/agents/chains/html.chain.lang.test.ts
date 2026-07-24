@@ -37,18 +37,17 @@ describe("enforceLangAttribute", () => {
 })
 
 describe("DEFAULT_HTML_SYSTEM_PROMPT", () => {
-  // Espelha a migration 20260820 (append no prompt ativo): a hero com
-  // overlay=needs_html_overlay vira texto-sobre-background SEMPRE, mesmo
-  // que a reference empilhe. Sem este bloco o fallback regride pro bug
-  // da hero empilhada.
-  it("contém a hero_overlay_hard_rule v3 (paridade com o prompt do banco)", () => {
+  // Espelha a migration 20261035 (hero v4): o hero é SEMPRE um overlay
+  // integrado de background (imagem de fundo + texto sobreposto) em TODOS os
+  // flows — heroes empilhados são colapsados num único cell. Sem este bloco o
+  // fallback regride pra hero empilhada / sem fallback VML no Outlook.
+  it("contém a hero_overlay_hard_rule v4 (paridade com o prompt do banco)", () => {
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<hero_overlay_hard_rule>")
-    // v3 (migration 20260929): a forma AUTORADA da variante é a autoridade —
-    // overlay preservado, EMPILHADO preservado, construção só em slot puro.
+    // v4 (migration 20261035): overlay integrado sempre + fallback VML Outlook.
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain(
-      "THE REFERENCE (library variant) IS THE AUTHORITY",
+      "THE HERO IS ALWAYS AN INTEGRATED BACKGROUND-IMAGE OVERLAY",
     )
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("STACKED-authored")
+    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("OUTLOOK FALLBACK")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("ADAPTIVE HEIGHT")
     expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("<formatting_hard_rules>")
   })

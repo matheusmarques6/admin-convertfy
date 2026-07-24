@@ -11,11 +11,15 @@
  *
  * Este esqueleto é o piso de qualidade: table-based 600px, mobile-safe,
  * com os mesmos contratos que o Montador emite (data-block, :root com as
- * 6 CSS vars, placeholders {{TOKEN}} em CAPS, slot de imagem em
- * background-color:var(--accent), logo como texto estilizado, footer com
- * [unsubscribe_link] literal). O agente só repinta cores/fontes/copy.
+ * 6 CSS vars, placeholders {{TOKEN}} em CAPS, logo como texto estilizado,
+ * footer com [unsubscribe_link] literal). O agente só repinta cores/fontes/copy.
  *
- * Mantido deliberadamente enxuto (header, hero, headline, body, CTA,
+ * O HERO é um OVERLAY INTEGRADO (hero v4, jul/2026): um único cell full-bleed
+ * com a imagem de FUNDO (background-image + fallback VML pro Outlook + scrim de
+ * legibilidade) e kicker/headline/subcopy/CTA SOBREPOSTOS. Espelha a
+ * hero_overlay_hard_rule do agente de HTML — nunca empilha imagem e texto.
+ *
+ * Mantido deliberadamente enxuto (header, hero overlay, body, CTA,
  * body secundário, footer): seções genéricas que qualquer flow preenche.
  * Tokens não casados são removidos por stripUnresolvedPlaceholders sem
  * deixar artefato visível.
@@ -100,16 +104,28 @@ export const DEFAULT_REFERENCE_SKELETON = `<!DOCTYPE html>
             </td>
           </tr>
 
-          <!-- Hero image slot -->
+          <!-- hero: overlay, adaptive height, full-bleed background image with copy overlaid -->
           <tr>
-            <td data-block="hero-image" style="background-color:var(--accent);height:340px;font-size:0;line-height:0;" class="fluid">&nbsp;</td>
-          </tr>
-
-          <!-- Headline + subheadline -->
-          <tr>
-            <td data-block="hero-text" align="center" class="stack-pad" style="padding:40px 48px 8px 48px;">
-              <h1 style="margin:0 0 12px 0;font-family:'Inter',Arial,sans-serif;font-size:28px;line-height:36px;font-weight:700;color:var(--heading);">{{HEADLINE}}</h1>
-              <p style="margin:0;font-family:'Inter',Arial,sans-serif;font-size:16px;line-height:24px;color:var(--text);">{{SUBHEADLINE}}</p>
+            <td data-block="hero" align="center" valign="top" background="{{HERO_IMAGE}}" class="stack-pad" style="background-color:var(--heading);background-image:linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.5) 100%), url('{{HERO_IMAGE}}');background-size:cover;background-position:center center;background-repeat:no-repeat;padding:56px 40px 60px 40px;">
+              <!--[if gte mso 9]>
+              <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
+                <v:fill type="frame" src="{{HERO_IMAGE}}" color="#111111" />
+                <v:textbox inset="0,0,0,0">
+              <![endif]-->
+              <p style="margin:0 0 8px 0;font-family:'Inter',Arial,sans-serif;font-size:12px;line-height:16px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;">{{HERO_KICKER}}</p>
+              <h1 style="margin:0 0 12px 0;font-family:'Inter',Arial,sans-serif;font-size:38px;line-height:44px;font-weight:700;color:#FFFFFF;">{{HEADLINE}}</h1>
+              <p style="margin:0 0 24px 0;font-family:'Inter',Arial,sans-serif;font-size:16px;line-height:24px;color:#FFFFFF;">{{SUBHEADLINE}}</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                <tr>
+                  <td align="center" style="background-color:var(--button-bg);border-radius:4px;">
+                    <a href="{{CTA_URL}}" target="_blank" style="display:inline-block;padding:14px 36px;font-family:'Inter',Arial,sans-serif;font-size:14px;line-height:20px;font-weight:600;color:var(--button-text);text-decoration:none;">{{CTA_TEXT}}</a>
+                  </td>
+                </tr>
+              </table>
+              <!--[if gte mso 9]>
+                </v:textbox>
+              </v:rect>
+              <![endif]-->
             </td>
           </tr>
 

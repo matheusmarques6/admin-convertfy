@@ -187,7 +187,7 @@ export function dimsInstructionForPrompt(
   let txt = `Render the image at exactly ${width}x${height} pixels (${orientation} composition, proportion ${reduceRatio(width, height)}) — compose for this exact frame.`
   if (reserveBottom) {
     txt +=
-      " Reserve the bottom 30% as a darker/cleaner area suitable for white text overlay."
+      " Compose as a FULL-BLEED background scene that fills the entire frame edge to edge (the brand logo, headline, subcopy and CTA are overlaid ON TOP of it in HTML). Keep a clean, low-detail area with generous negative space in the upper/central portion, dark or calm enough for white text to stay legible, and keep the main subject clear of that area. No text or logos in the image itself."
   }
   return txt
 }
@@ -206,7 +206,7 @@ export function aspectInstructionForPrompt(
   let txt = `Render the image with a ${aspect} aspect ratio (${orientation} composition, ~${dims.width}x${dims.height}).`
   if (reserveBottom) {
     txt +=
-      " Reserve the bottom 30% as a darker/cleaner area suitable for white text overlay."
+      " Compose as a FULL-BLEED background scene that fills the entire frame edge to edge (the brand logo, headline, subcopy and CTA are overlaid ON TOP of it in HTML). Keep a clean, low-detail area with generous negative space in the upper/central portion, dark or calm enough for white text to stay legible, and keep the main subject clear of that area. No text or logos in the image itself."
   }
   return txt
 }
