@@ -23,6 +23,10 @@ import { logger } from "@/lib/logger"
 const log = logger.child("InternalRunPhase2")
 
 export const dynamic = "force-dynamic"
+// A fase 2 inteira roda no waitUntil DESTA função — declarado explícito
+// pra não depender do default do projeto (paridade com as rotas irmãs
+// run-phase2-image / run-phase2-html-qa).
+export const maxDuration = 300
 
 export async function POST(
   request: NextRequest,
