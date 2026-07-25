@@ -490,6 +490,9 @@ export default function FormEditorPage({
 
   const [activeTab, setActiveTab] = useState<TabKey>("style")
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
+  // No mobile os 2 painéis (config + preview) não cabem lado a lado —
+  // alterna entre eles com um segmented control. Ignorado no desktop (md+).
+  const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor")
   // Fundo simulado do preview (pra testar como o form ficara em diferentes
   // P.V.s antes de embedar). 'auto' adapta ao mode do tema.
   const [previewBg, setPreviewBg] = useState<"auto" | "white" | "gray" | "dark" | "checker">("auto")
@@ -697,9 +700,27 @@ export default function FormEditorPage({
   // ────────────────────────────────────────────────────
 
   return (
-    <div className="flex -m-4 md:-m-6 lg:-m-8 h-[calc(100vh-1rem)] md:h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-2rem)] overflow-hidden bg-white dark:bg-[#0F1117]">
+    <div className="relative flex -m-4 md:-m-6 lg:-m-8 h-[calc(100dvh-1rem)] md:h-[calc(100dvh-1.5rem)] lg:h-[calc(100dvh-2rem)] overflow-hidden bg-white dark:bg-[#0F1117]">
+      {/* Alternador flutuante Editor/Preview — só no mobile (md:hidden) */}
+      <div className="md:hidden absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-1 rounded-full border border-black/[0.08] bg-white p-1 shadow-lg dark:border-white/[0.10] dark:bg-[#1A1D27]">
+        <button
+          type="button"
+          onClick={() => setMobilePane("editor")}
+          className={`h-8 rounded-full px-4 text-[12px] font-medium transition-colors ${mobilePane === "editor" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 dark:text-white/70"}`}
+        >
+          Editor
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobilePane("preview")}
+          className={`h-8 rounded-full px-4 text-[12px] font-medium transition-colors ${mobilePane === "preview" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 dark:text-white/70"}`}
+        >
+          Preview
+        </button>
+      </div>
+
       {/* ─── PAINEL ESQUERDO: configuração ─── */}
-      <div className="w-[460px] shrink-0 flex flex-col border-r border-black/[0.06] dark:border-white/[0.08]">
+      <div className={`${mobilePane === "editor" ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-r border-black/[0.06] md:w-[460px] dark:border-white/[0.08]`}>
         {/* Top bar */}
         <div className="shrink-0 px-5 pt-5 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="flex items-center justify-between gap-2 mb-3">
@@ -853,7 +874,7 @@ export default function FormEditorPage({
       </div>
 
       {/* ─── PAINEL DIREITO: preview live ─── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#0A0B12]">
+      <div className={`${mobilePane === "preview" ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0 bg-slate-100 dark:bg-[#0A0B12]`}>
         {/* Toolbar */}
         <div className="shrink-0 h-12 px-4 flex items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0F1117]">
           <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/55 min-w-0">
@@ -972,12 +993,12 @@ export default function FormEditorPage({
             })(),
           }}
         >
-          <div className="min-h-full flex items-start justify-center p-6 md:p-10">
+          <div className="min-h-full flex items-start justify-center p-4 md:p-10">
             <div
               className={
                 "transition-all duration-200 " +
                 (previewMode === "mobile"
-                  ? "w-[380px] rounded-[24px] overflow-hidden border border-slate-300/40 dark:border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
+                  ? "w-[380px] max-w-full rounded-[24px] overflow-hidden border border-slate-300/40 dark:border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
                   : "w-full max-w-[680px] rounded-[8px] overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
               }
             >

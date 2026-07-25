@@ -24,6 +24,8 @@ import {
   Sparkles,
   FileText,
   UserCheck,
+  Plus,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import type { CrmAutomationDAG, CrmNodeType } from "@/types/crm-automation"
@@ -104,6 +106,9 @@ const nodeTypes = { crmNode: CrmFlowNode }
 
 export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // No mobile a palette (rail esquerdo) vira um drawer sobreposto ao canvas,
+  // aberto por um botão flutuante. No desktop é sempre visível (md:static).
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   const initialNodes: Node[] = useMemo(() => {
     return (initialDag?.nodes || [
@@ -223,34 +228,73 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
   const selectedNode = nodes.find((n) => n.id === selectedNodeId)
 
   return (
-    <div className="flex h-full" style={{ fontFamily: "var(--crm-font-sans)" }}>
-      {/* Left palette */}
-      <aside
-        className="border-r overflow-auto"
+    <div className="relative flex h-full" style={{ fontFamily: "var(--crm-font-sans)" }}>
+      {/* Botão flutuante que abre a palette no mobile */}
+      <button
+        type="button"
+        onClick={() => setPaletteOpen(true)}
+        className="md:hidden absolute top-3 left-3 z-30 inline-flex items-center gap-1.5 rounded-[6px] px-3 shadow-md"
         style={{
-          width: 200,
+          height: 36,
+          background: "var(--crm-gray-900)",
+          color: "var(--crm-gray-0)",
+          fontSize: "var(--crm-text-sm)",
+          fontWeight: "var(--crm-weight-medium)",
+        }}
+        aria-label="Adicionar node"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Node
+      </button>
+
+      {/* Backdrop do drawer da palette (mobile) */}
+      {paletteOpen && (
+        <div
+          className="md:hidden absolute inset-0 z-30"
+          style={{ background: "rgba(0,0,0,0.35)" }}
+          onClick={() => setPaletteOpen(false)}
+        />
+      )}
+
+      {/* Left palette — drawer sobreposto no mobile, rail fixo no desktop */}
+      <aside
+        className={`border-r overflow-auto absolute inset-y-0 left-0 z-40 w-[220px] shadow-xl md:static md:z-auto md:w-[200px] md:shadow-none ${paletteOpen ? "block" : "hidden md:block"}`}
+        style={{
           borderColor: "var(--crm-gray-200)",
           background: "var(--crm-gray-0)",
         }}
       >
         <div className="p-3">
-          <h3
-            style={{
-              fontSize: "var(--crm-text-xs)",
-              color: "var(--crm-gray-500)",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              fontWeight: "var(--crm-weight-medium)",
-              marginBottom: "var(--crm-space-3)",
-            }}
-          >
-            Adicionar node
-          </h3>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--crm-space-3)" }}>
+            <h3
+              style={{
+                fontSize: "var(--crm-text-xs)",
+                color: "var(--crm-gray-500)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                fontWeight: "var(--crm-weight-medium)",
+              }}
+            >
+              Adicionar node
+            </h3>
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(false)}
+              className="md:hidden flex h-7 w-7 items-center justify-center rounded-[4px]"
+              style={{ color: "var(--crm-gray-600)", background: "var(--crm-gray-100)" }}
+              aria-label="Fechar palette"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <div className="space-y-1">
             {NODE_TYPES_PALETTE.map((p) => (
               <button
                 key={p.type}
-                onClick={() => addNode(p.type)}
+                onClick={() => {
+                  addNode(p.type)
+                  setPaletteOpen(false)
+                }}
                 className="w-full text-left flex items-center gap-2 hover:bg-[color:var(--crm-gray-100)]"
                 style={{
                   padding: "6px 8px",
@@ -289,12 +333,11 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
         </ReactFlow>
       </div>
 
-      {/* Right inspector */}
+      {/* Right inspector — overlay full-width no mobile, rail no desktop */}
       {selectedNode && (
         <aside
-          className="border-l overflow-auto"
+          className="border-l overflow-auto absolute inset-y-0 right-0 z-40 w-full max-w-[360px] shadow-xl md:static md:z-auto md:w-[320px] md:max-w-none md:shadow-none"
           style={{
-            width: 320,
             borderColor: "var(--crm-gray-200)",
             background: "var(--crm-gray-0)",
           }}
@@ -310,18 +353,30 @@ export function AutomationBuilder({ initialDag, onChange }: AutomationBuilderPro
               >
                 Configurar node
               </h3>
-              <button
-                onClick={() => deleteNode(selectedNode.id)}
-                style={{
-                  fontSize: "var(--crm-text-xs)",
-                  color: "var(--crm-danger-fg)",
-                  cursor: "pointer",
-                  background: "none",
-                  border: "none",
-                }}
-              >
-                Excluir
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => deleteNode(selectedNode.id)}
+                  style={{
+                    fontSize: "var(--crm-text-xs)",
+                    color: "var(--crm-danger-fg)",
+                    cursor: "pointer",
+                    background: "none",
+                    border: "none",
+                  }}
+                >
+                  Excluir
+                </button>
+                {/* Fechar o inspector no mobile (o canvas fica atrás do overlay) */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedNodeId(null)}
+                  className="md:hidden flex h-7 w-7 items-center justify-center rounded-[4px]"
+                  style={{ color: "var(--crm-gray-600)", background: "var(--crm-gray-100)" }}
+                  aria-label="Fechar configuração"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
             <NodeInspector
               type={selectedNode.data.type}

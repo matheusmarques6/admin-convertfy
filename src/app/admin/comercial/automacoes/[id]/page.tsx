@@ -177,7 +177,9 @@ export default function AutomationDetailPage({
         </>
       }
     >
-      <div style={{ height: "calc(100vh - 44px - 44px)" }}>
+      {/* Altura do canvas: no mobile reserva topbar (56px) + header do shell
+          que pode quebrar em 2 linhas; no desktop mantém 100dvh - 2 topbars. */}
+      <div className="h-[calc(100dvh-160px)] min-h-[420px] md:h-[calc(100dvh-88px)]">
         {detail && dag ? (
           <AutomationBuilder initialDag={dag} onChange={setDag} />
         ) : (
