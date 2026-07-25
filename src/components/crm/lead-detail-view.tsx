@@ -179,11 +179,10 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
 
   return (
     <div
-      className="flex h-full flex-col"
+      className="flex h-full flex-col overflow-y-auto md:overflow-hidden"
       style={{
         background: "var(--crm-gray-50)",
         fontFamily: "var(--crm-font-sans)",
-        overflow: "hidden",
       }}
     >
       {/* Crumb topbar */}
@@ -239,16 +238,15 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
         </div>
       </div>
 
-      {/* Body 2-col */}
-      <div className="flex flex-1 min-h-0">
+      {/* Body 2-col no desktop; empilhado (aside sobre main) no mobile. */}
+      <div className="flex flex-col md:flex-row md:flex-1 md:min-h-0">
         {/* ── RAIL ESQUERDO: profile + KPIs + contato + tags ── */}
         <aside
-          className="flex flex-col gap-4 overflow-y-auto shrink-0"
+          className="flex flex-col gap-4 w-full md:w-[360px] md:shrink-0 md:overflow-y-auto border-b md:border-b-0 md:border-r"
           style={{
-            width: 360,
             padding: "24px 24px 32px",
             background: "var(--crm-gray-0)",
-            borderRight: "1px solid var(--crm-border)",
+            borderColor: "var(--crm-border)",
           }}
         >
           {/* Hero profile */}
@@ -504,10 +502,10 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
         </aside>
 
         {/* ── MAIN: tabs + content ── */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex flex-col min-w-0 md:flex-1">
           {/* Tabs */}
           <div
-            className="flex items-center gap-1 px-8"
+            className="flex items-center gap-1 overflow-x-auto scrollbar-hide px-4 md:px-8"
             style={{
               background: "var(--crm-gray-0)",
               borderBottom: "1px solid var(--crm-border)",
@@ -559,7 +557,7 @@ export function LeadDetailView({ leadId }: LeadDetailViewProps) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
+          <div className="md:flex-1 md:overflow-y-auto" style={{ padding: "24px 32px" }}>
             {activeTab === "overview" && (
               <OverviewTab lead={lead} activities={activities} />
             )}

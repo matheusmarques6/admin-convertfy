@@ -307,11 +307,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
   return (
     <div
-      className="flex h-full flex-col"
+      className="flex h-full flex-col overflow-y-auto md:overflow-hidden"
       style={{
         background: "var(--crm-gray-50)",
         fontFamily: "var(--crm-font-sans)",
-        overflow: "hidden",
       }}
     >
       {/* TOPBAR */}
@@ -413,15 +412,14 @@ export function DealDetailView({ dealId }: { dealId: string }) {
       </div>
 
       {/* BODY: 3 colunas */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col md:flex-row md:flex-1 md:min-h-0 md:overflow-hidden">
         {/* ─── RAIL ESQUERDO ─────────────────────────────────── */}
         <aside
-          className="flex flex-col gap-4 overflow-y-auto shrink-0"
+          className="flex flex-col gap-4 w-full md:w-[320px] md:shrink-0 md:overflow-y-auto border-b md:border-b-0 md:border-r"
           style={{
-            width: 320,
             padding: "20px 20px 32px",
             background: "var(--crm-gray-0)",
-            borderRight: "1px solid var(--crm-border)",
+            borderColor: "var(--crm-border)",
           }}
         >
           {/* Hero card com avatar + score */}
@@ -777,10 +775,10 @@ export function DealDetailView({ dealId }: { dealId: string }) {
         </aside>
 
         {/* ─── MAIN: tabs + timeline ──────────────────────────── */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex flex-col min-w-0 md:flex-1">
           {/* Tabs principais */}
           <div
-            className="flex items-center gap-1 px-6"
+            className="flex items-center gap-1 overflow-x-auto scrollbar-hide px-4 md:px-6"
             style={{
               background: "var(--crm-gray-0)",
               borderBottom: "1px solid var(--crm-border)",
@@ -836,7 +834,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto" style={{ padding: "20px 24px" }}>
+          <div className="md:flex-1 md:overflow-y-auto" style={{ padding: "20px 24px" }}>
             {activeTab === "historico" && (
               <HistoricoTab
                 activities={filteredActivities}

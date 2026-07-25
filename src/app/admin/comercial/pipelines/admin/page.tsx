@@ -115,7 +115,8 @@ export default function PipelinesAdminPage() {
       <div
         className="flex items-center justify-between px-4 md:px-8"
         style={{
-          padding: "12px 32px",
+          paddingTop: 12,
+          paddingBottom: 12,
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-border)",
         }}
@@ -155,7 +156,8 @@ export default function PipelinesAdminPage() {
       <div
         className="px-4 md:px-8"
         style={{
-          padding: "20px 32px",
+          paddingTop: 20,
+          paddingBottom: 20,
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-border)",
         }}
@@ -180,7 +182,7 @@ export default function PipelinesAdminPage() {
         >
           Gerencie etapas, SLA, regras de automação e visibilidade dos seus pipelines.
         </p>
-        <div className="flex items-center gap-8 mt-4">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mt-4">
           <Stat label="Pipelines" value={totals.pipelines} />
           <div className="w-px h-8" style={{ background: "var(--crm-gray-200)" }} />
           <Stat label="Deals abertos" value={totals.deals} />

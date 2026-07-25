@@ -69,7 +69,7 @@ export function SalesDashboardClient({
         </select>
       }
     >
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         {isLoading || !d ? (
           <PageSkeleton variant="metrics" showHeader={false} className="px-0 py-0" />
         ) : d.open_count === 0 && d.won_count === 0 && d.lost_count === 0 ? (
@@ -134,14 +134,14 @@ export function SalesDashboardClient({
                   Por pipeline
                 </h3>
                 <div
-                  className="overflow-hidden"
+                  className="overflow-x-auto scrollbar-thin"
                   style={{
                     border: "1px solid var(--crm-gray-200)",
                     borderRadius: "var(--crm-radius-md)",
                     background: "var(--crm-gray-0)",
                   }}
                 >
-                  <table className="w-full" style={{ fontSize: "var(--crm-text-base)" }}>
+                  <table className="w-full min-w-[520px]" style={{ fontSize: "var(--crm-text-base)" }}>
                     <thead>
                       <tr style={{ background: "var(--crm-gray-50)", height: "var(--crm-table-header-height)" }}>
                         <Th>PIPELINE</Th>
@@ -199,14 +199,14 @@ export function SalesDashboardClient({
                   Por fonte
                 </h3>
                 <div
-                  className="overflow-hidden"
+                  className="overflow-x-auto scrollbar-thin"
                   style={{
                     border: "1px solid var(--crm-gray-200)",
                     borderRadius: "var(--crm-radius-md)",
                     background: "var(--crm-gray-0)",
                   }}
                 >
-                  <table className="w-full" style={{ fontSize: "var(--crm-text-base)" }}>
+                  <table className="w-full min-w-[440px]" style={{ fontSize: "var(--crm-text-base)" }}>
                     <thead>
                       <tr style={{ background: "var(--crm-gray-50)", height: "var(--crm-table-header-height)" }}>
                         <Th>FONTE</Th>
