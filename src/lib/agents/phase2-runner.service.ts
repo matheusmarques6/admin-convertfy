@@ -1189,6 +1189,29 @@ function isQaEnabled(): boolean {
 const REFINER_BUDGET_GUARD_MS = 540_000
 
 /**
+ * Serializa a paleta da identidade visual (colors_primary + colors_secondary)
+ * em linhas "Papel: #HEX (Nome)" para a var `brand_colors` do Refinador.
+ * Sem identidade/paleta → "" (o prompt trata vazio como "não mexa em cores").
+ */
+function serializeBrandColors(
+  brand: { colors_primary?: unknown; colors_secondary?: unknown } | null,
+): string {
+  if (!brand) return ""
+  const rows: string[] = []
+  for (const group of [brand.colors_primary, brand.colors_secondary]) {
+    if (!Array.isArray(group)) continue
+    for (const c of group as Array<{ hex?: string; name?: string; role?: string }>) {
+      const hex = (c?.hex ?? "").trim()
+      if (!hex) continue
+      const role = (c?.role ?? "").trim() || "Cor"
+      const name = (c?.name ?? "").trim()
+      rows.push(`${role}: ${hex}${name ? ` (${name})` : ""}`)
+    }
+  }
+  return rows.join("\n")
+}
+
+/**
  * Step 2.5 — Refinador Tipográfico (fail-open).
  *
  * Retorna o HTML refinado quando tudo passa; em QUALQUER falha (sem config,
@@ -1246,6 +1269,10 @@ async function runRefinerStep(input: {
       pesquisa_full_text: pesquisaToFullText(storeRaw as PesquisaFields),
       current_font_heading: ctx.brand?.font_heading || "",
       current_font_body: ctx.brand?.font_body || "",
+      // Paleta da identidade visual (camada 4 do Refinador: conformidade de
+      // fonte/cor). Formato legível "Papel: #HEX (Nome)". Vazio quando a
+      // loja não tem identidade → o prompt manda não mexer em cores.
+      brand_colors: serializeBrandColors(ctx.brand),
       email_name: "",
       subject: "",
       // O Refinador-repintor edita o HTML diretamente (só as 3 camadas visuais).
