@@ -394,11 +394,16 @@ function collapseRunawaySpacers(html: string): string {
 import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "../html/orphan-spacer"
 export { fixOrphanSpacerDivs, fixSpacerColumnWidths }
 
-/** Erro de output truncado — o modelo nao fechou o documento (`</html>`). */
+/** Erro de output truncado — o modelo nao fechou o documento (`</html>`).
+ *  Carrega o output CRU pro runner persistir em raw_output do run de erro —
+ *  sem isso o "OUTPUT BRUTO" do painel de logs ficava vazio e era impossivel
+ *  inspecionar ONDE o modelo parou (debug do truncamento do z-ai/glm-5.2). */
 export class HtmlTruncatedError extends Error {
-  constructor(htmlLength: number) {
+  readonly raw: string
+  constructor(htmlLength: number, raw = "") {
     super(`HTML output truncado (sem </html>, ${htmlLength} chars)`)
     this.name = "HtmlTruncatedError"
+    this.raw = raw
   }
 }
 
@@ -469,7 +474,7 @@ function postProcessHtml(rawText: string, locale?: string): string {
   // Lancar aqui faz runPhase2HtmlQa marcar `failed: html_failed` (visivel +
   // retry) em vez de salvar um email quebrado como "sucesso" -> render vazio.
   if (!/<\/html>\s*$/i.test(raw)) {
-    throw new HtmlTruncatedError(raw.length)
+    throw new HtmlTruncatedError(raw.length, raw)
   }
   raw = fixOrphanSpacerDivs(raw)
   raw = fixSpacerColumnWidths(raw)

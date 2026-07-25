@@ -1579,6 +1579,13 @@ export async function runPhase2HtmlQa(
     const isBrandIncomplete =
       err instanceof Error && err.name === "BrandIncompleteError"
     const failureReason = isBrandIncomplete ? "brand_incomplete" : "html_failed"
+    // Truncamento carrega o output CRU no erro (HtmlTruncatedError.raw) —
+    // persistido no run pra o "OUTPUT BRUTO" do painel mostrar ONDE o
+    // modelo parou (antes ficava vazio e o truncamento era indepurável).
+    const truncatedRaw =
+      err instanceof Error && err.name === "HtmlTruncatedError"
+        ? ((err as { raw?: string }).raw ?? "")
+        : ""
     log.error("phase2.html.error", { emailId, error: msg, failureReason })
     await finishGenerationRun(htmlRunId, {
       storeId,
@@ -1590,6 +1597,7 @@ export async function runPhase2HtmlQa(
       status: "error",
       durationMs: Date.now() - htmlT0,
       errorMessage: msg,
+      ...(truncatedRaw ? { rawOutput: truncatedRaw } : {}),
     })
     await markEmailFailed(emailId, failureReason)
     await safeNotifyEmailFailed(storeId, emailId, failureReason, batchId || null)
