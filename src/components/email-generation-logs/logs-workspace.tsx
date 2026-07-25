@@ -669,11 +669,12 @@ function AgentSummary({ payload }: { payload: Payload }) {
       right={<SelectPill label="Custo (US$)" />}
       pad={0}
     >
-      <div style={{ padding: "14px 0 0" }}>
+      <div className="overflow-x-auto scrollbar-thin" style={{ padding: "14px 0 0" }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: SUMMARY_COLS,
+            minWidth: 680,
             gap: 14,
             padding: "0 16px 9px",
             borderBottom: `1px solid ${C.border}`,
@@ -709,6 +710,7 @@ function AgentSummary({ payload }: { payload: Payload }) {
               style={{
                 display: "grid",
                 gridTemplateColumns: SUMMARY_COLS,
+                minWidth: 680,
                 gap: 14,
                 alignItems: "center",
                 padding: "13px 16px",
@@ -1159,9 +1161,8 @@ function ExpandedDetail({ rowId }: { rowId: string }) {
       }}
     >
       <div
+        className="grid grid-cols-2 lg:grid-cols-4"
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
           gap: 14,
           marginBottom: 6,
         }}
@@ -1249,6 +1250,7 @@ function DetailRow({ row }: { row: RecentRow }) {
         style={{
           display: "grid",
           gridTemplateColumns: DETAIL_COLS,
+          minWidth: 880,
           gap: 12,
           alignItems: "center",
           padding: "11px 16px",
@@ -1395,11 +1397,12 @@ function DetailTable({ rows }: { rows: RecentRow[] }) {
         </div>
       }
     >
-      <div style={{ padding: "14px 0 0" }}>
+      <div className="overflow-x-auto scrollbar-thin" style={{ padding: "14px 0 0" }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: DETAIL_COLS,
+            minWidth: 880,
             gap: 12,
             padding: "0 16px 10px",
             borderBottom: `1px solid ${C.border}`,
