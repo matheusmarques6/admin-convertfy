@@ -266,14 +266,15 @@ export async function invokeHtmlChain(
       maxTokens: config.max_tokens,
       temperature: supportsTemperature ? config.temperature : undefined,
       // 120s cortava quando o reference_html (do Montador) é grande/complexo —
-      // o teste com Montador em gpt-5.4 estourou em 120,6s. 200s cortou o
-      // z-ai/glm-5.2 (reasoning model: pensa antes de escrever — timeout aos
-      // 200,2s na Luxe Lift, 24/jul). 280s dá fôlego pro GLM e cabe no
-      // maxDuration=300 da rota NO CENÁRIO ATUAL: Refinador tem guard de
-      // 100s (é pulado quando o HTML demora) e o QA está desligado. Se
-      // religar o QA (timeout 60s), reduzir para <=230s ou subir o
-      // maxDuration da rota run-phase2-html-qa.
-      timeoutMs: 280_000,
+      // o teste com Montador em gpt-5.4 estourou em 120,6s. 200s e depois
+      // 280s cortaram o z-ai/glm-5.2 (reasoning model: pensa antes de
+      // escrever — timeouts aos 200,2s e 280,4s na Luxe Lift, 24/jul).
+      // 540s (9min) exige Fluid Compute: rotas de fase 2 com maxDuration=800
+      // (imagem ~135s + HTML 540 + QA 60 + overhead ≈ 750 < 800). Os
+      // thresholds do watchdog acompanham (STALE_IMAGE_DONE_MIN /
+      // PHASE2_TIMEOUT_MIN) — senão o Front 5 "recupera" um render legítimo
+      // no meio do run.
+      timeoutMs: 540_000,
       title: "Convertfy Admin HTML",
     })
     const html = postProcessHtml(or.text, vars.locale)

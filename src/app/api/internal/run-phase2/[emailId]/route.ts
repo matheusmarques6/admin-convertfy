@@ -23,10 +23,12 @@ import { logger } from "@/lib/logger"
 const log = logger.child("InternalRunPhase2")
 
 export const dynamic = "force-dynamic"
-// A fase 2 inteira roda no waitUntil DESTA função — declarado explícito
-// pra não depender do default do projeto (paridade com as rotas irmãs
-// run-phase2-image / run-phase2-html-qa).
-export const maxDuration = 300
+// A fase 2 inteira roda no waitUntil DESTA função: imagem (~135s) + HTML
+// (timeout 540s p/ reasoning models como o z-ai/glm-5.2) + QA (60s) ≈ 750s.
+// 800 exige Fluid Compute habilitado no projeto (Vercel Pro) — se o deploy
+// falhar na validação de maxDuration, ligar Fluid Compute em Project
+// Settings → Functions.
+export const maxDuration = 800
 
 export async function POST(
   request: NextRequest,

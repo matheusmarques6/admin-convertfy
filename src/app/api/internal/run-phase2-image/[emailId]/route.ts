@@ -32,7 +32,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("InternalRunPhase2Image")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300
+export const maxDuration = 800
 
 interface DispatchBody {
   storeId?: string
