@@ -59,7 +59,7 @@ export default function ChannelsPage() {
       title="Canais conectados"
       subtitle="WhatsApp oficial (Cloud API), WhatsApp via QR e Instagram"
       actions={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             className="crm-button-ghost"
             style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
@@ -308,7 +308,7 @@ function ChannelCard({
   const evoDisconnected = isEvolution && evoState !== "open"
 
   return (
-    <div className="crm-card flex items-center justify-between">
+    <div className="crm-card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div className="flex items-center gap-3">
         <div
           className="flex h-9 w-9 items-center justify-center"
@@ -341,7 +341,7 @@ function ChannelCard({
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-3">
         {isEvolution && (
           <span
             style={{

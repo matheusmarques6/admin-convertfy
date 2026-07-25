@@ -170,8 +170,53 @@ function SalesLeadsPageInner() {
             }
           />
         ) : (
+          <>
+          {/* Mobile: lista de cards (a tabela de 7 colunas não cabe) */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {leads.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => setActiveLeadId(l.id)}
+                className="w-full text-left"
+                style={{
+                  border: "1px solid var(--crm-gray-200)",
+                  borderRadius: "var(--crm-radius-md)",
+                  background: "var(--crm-gray-0)",
+                  padding: "12px 14px",
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 truncate" style={{ color: "var(--crm-gray-900)", fontWeight: "var(--crm-weight-medium)", fontSize: "var(--crm-text-md)" }}>
+                    {l.name}
+                  </span>
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: "var(--crm-text-xs)",
+                      color: STATUS_LABELS[l.status]?.color || "var(--crm-gray-500)",
+                      fontWeight: "var(--crm-weight-medium)",
+                    }}
+                  >
+                    {STATUS_LABELS[l.status]?.label || l.status}
+                  </span>
+                </div>
+                {(l.company || l.email) && (
+                  <p className="mt-0.5 truncate" style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-600)" }}>
+                    {[l.company, l.email].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
+                  <span>{l.source || "—"}</span>
+                  <span>Score: {l.ai_qualification_score != null ? `${l.ai_qualification_score}` : "—"}</span>
+                  {l.assignee?.name && <span>{l.assignee.name}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop: tabela completa */}
           <div
-            className="overflow-hidden"
+            className="hidden overflow-x-auto scrollbar-thin md:block"
             style={{
               border: "1px solid var(--crm-gray-200)",
               borderRadius: "var(--crm-radius-md)",
@@ -230,6 +275,7 @@ function SalesLeadsPageInner() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
