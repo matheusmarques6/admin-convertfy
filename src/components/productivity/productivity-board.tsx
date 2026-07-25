@@ -241,7 +241,7 @@ export function ProductivityBoard() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white dark:bg-[#1A1D27] border-b border-[rgba(0,0,0,0.08)]">
-        <div className="flex justify-between items-center px-6 py-4">
+        <div className="flex flex-wrap justify-between items-center gap-3 px-4 md:px-6 py-4">
           <div className="flex items-center gap-3">
             <h1 className="text-page-title text-gray-900 dark:text-white m-0">
               Projetos
@@ -263,9 +263,9 @@ export function ProductivityBoard() {
 
         {/* New task inline form */}
         {showNewTask && (
-          <div className="mx-6 mb-2 p-4 bg-gray-50 dark:bg-[#242836] rounded-md border border-[rgba(0,0,0,0.08)]">
-            <div className="flex gap-3 items-end">
-              <div className="flex-1">
+          <div className="mx-4 md:mx-6 mb-2 p-4 bg-gray-50 dark:bg-[#242836] rounded-md border border-[rgba(0,0,0,0.08)]">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex-1 min-w-[180px]">
                 <label className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase block mb-1">Nome da tarefa</label>
                 <input
                   value={newTaskName}
