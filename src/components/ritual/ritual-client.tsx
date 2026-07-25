@@ -334,7 +334,7 @@ export function RitualClient() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto" }}>
-      <div style={{ padding: "20px 32px 0", flexShrink: 0 }}>
+      <div className="px-4 md:px-8 pt-5" style={{ flexShrink: 0 }}>
         <Breadcrumb />
 
         {/* Hero card */}
@@ -441,10 +441,13 @@ export function RitualClient() {
 
           {/* KPI strip */}
           {!isEmpty && (
-            <div style={{
-              marginTop: 16, display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
-              border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden",
-            }}>
+            <div
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+              style={{
+                marginTop: 16,
+                border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden",
+              }}
+            >
               {[
                 { label: "Lojas no ritual", value: queue.length, dot: null },
                 { label: "Em risco", value: healthCounts.risk, dot: "#B91C1C" },
@@ -471,7 +474,7 @@ export function RitualClient() {
 
       {/* Empty state */}
       {isEmpty && (
-        <div style={{ padding: "0 32px" }}>
+        <div className="px-4 md:px-8">
           <div style={{
             padding: 22, background: C.white,
             border: `1px solid ${C.border}`, borderRadius: 12,
@@ -510,13 +513,14 @@ export function RitualClient() {
 
       {/* Stores list */}
       {!isEmpty && (
-        <div style={{ padding: "0 32px 40px" }}>
+        <div className="px-4 md:px-8 pb-10">
           <div style={{
             background: C.white, border: `1px solid ${C.border}`, borderRadius: 12,
             overflow: "hidden", boxShadow: C.shadowSm,
           }}>
             <header style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
+              flexWrap: "wrap", gap: 10,
               padding: "14px 18px", borderBottom: `1px solid ${C.border}`,
             }}>
               <div>
@@ -586,9 +590,10 @@ export function RitualClient() {
               </div>
             )}
 
-            {/* Table head */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "40px 1.8fr 1fr 0.8fr 2fr 1fr 70px 80px",
+            {/* Table head — some no mobile (as linhas viram cards) */}
+            <div
+              className="hidden md:grid md:grid-cols-[40px_1.8fr_1fr_0.8fr_2fr_1fr_70px_80px]"
+              style={{
               padding: "10px 18px", background: C.g50,
               borderBottom: `1px solid ${C.border}`,
               fontSize: 10.5, fontWeight: 600, color: C.g500,
@@ -641,6 +646,7 @@ export function RitualClient() {
             marginTop: 18, padding: "14px 18px",
             background: C.white, border: `1px solid ${C.border}`,
             borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between",
+            flexWrap: "wrap", gap: 12,
           }}>
             <div style={{ fontSize: 12.5, color: C.g500 }}>
               Estimativa total: <strong style={{ fontWeight: 600, color: C.g700, ...TNUM }}>~{hours}h</strong>
@@ -707,9 +713,10 @@ function RitualHomeRow({
   const vertical = platformLabel(store.niche, store.platform, store.email_platform)
 
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "40px 1.8fr 1fr 0.8fr 2fr 1fr 70px 80px",
-      padding: "12px 18px", alignItems: "center", gap: 8,
+    <div
+      className="flex flex-col gap-1.5 md:grid md:grid-cols-[40px_1.8fr_1fr_0.8fr_2fr_1fr_70px_80px] md:items-center md:gap-2"
+      style={{
+      padding: "12px 18px",
       borderBottom: isLast ? "none" : `1px solid ${C.g100}`,
       background: isCritical ? "#FCFCFD" : C.white,
       cursor: "pointer", fontSize: 13,

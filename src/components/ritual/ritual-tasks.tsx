@@ -247,7 +247,7 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto" }}>
-      <div style={{ padding: "20px 32px 0", flexShrink: 0 }}>
+      <div className="px-4 md:px-8 pt-5" style={{ flexShrink: 0 }}>
         {/* Breadcrumb */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.g500, marginBottom: 12 }}>
           <span>Workflows</span>
@@ -333,7 +333,7 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
       </div>
 
       {/* Tasks list + sidebar */}
-      <div style={{ padding: "20px 32px 40px", display: "flex", gap: 16 }}>
+      <div className="flex flex-col md:flex-row px-4 md:px-8 pt-5 pb-10" style={{ gap: 16 }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
           {loading && (
             <div style={{ padding: 40, textAlign: "center", color: C.g500, fontSize: 13 }}>
@@ -358,8 +358,10 @@ export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
         </div>
 
         {/* Side: discarded */}
-        <aside style={{
-          width: 280, flexShrink: 0, alignSelf: "flex-start",
+        <aside
+          className="w-full md:w-[280px] md:shrink-0"
+          style={{
+          alignSelf: "flex-start",
           background: C.white, border: `1px dashed ${C.border}`, borderRadius: 12,
           padding: 14, position: "sticky", top: 20,
         }}>
