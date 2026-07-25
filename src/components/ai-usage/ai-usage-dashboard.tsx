@@ -206,11 +206,11 @@ export function AiUsageDashboard() {
           </div>
 
           {/* ── Por agente ─────────────────────────────────── */}
-          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-hidden">
+          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-x-auto">
             <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white px-4 pt-4 pb-2">
               Por agente / feature
             </h3>
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-white/[0.06]">
                   <th className={TH_CLASS}>Agente</th>
@@ -259,11 +259,11 @@ export function AiUsageDashboard() {
           </div>
 
           {/* ── Por modelo ─────────────────────────────────── */}
-          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-hidden">
+          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-x-auto">
             <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white px-4 pt-4 pb-2">
               Por modelo
             </h3>
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-white/[0.06]">
                   <th className={TH_CLASS}>Modelo</th>
@@ -291,11 +291,11 @@ export function AiUsageDashboard() {
           </div>
 
           {/* ── Recentes ───────────────────────────────────── */}
-          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-hidden">
+          <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-x-auto">
             <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white px-4 pt-4 pb-2">
               Execuções recentes
             </h3>
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-white/[0.06]">
                   <th className={TH_CLASS}>Quando</th>

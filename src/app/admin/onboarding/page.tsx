@@ -31,7 +31,7 @@ export default async function OnboardingPage() {
 
   return (
     <PagePermissionWrapper requiredFeatures={["onboarding_control", "onboarding_view"]}>
-      <div className="h-[calc(100vh-3.5rem)]">
+      <div className="h-[calc(100dvh-3.5rem)]">
         <OnboardingKanban
           initialOnboardings={
             initialOnboardings as OnboardingKanbanProps["initialOnboardings"]

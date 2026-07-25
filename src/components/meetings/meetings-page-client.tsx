@@ -400,7 +400,7 @@ export function MeetingsPageClient({
         </div>
 
         {/* Stats — DS v3.0: no icon-in-circle, naked inline icons */}
-        <div className="grid gap-4 grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
           <div className="rounded-[8px] border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-1">
               <Icon icon={Calendar} size={16} className="text-muted-foreground" />
@@ -432,7 +432,7 @@ export function MeetingsPageClient({
         {/* Content */}
         <div className="flex-1 min-h-0">
           {viewMode === "calendar" ? (
-            <div className="h-[calc(100vh-380px)]">
+            <div className="h-[calc(100dvh-380px)]">
               <MeetingCalendar
                 meetings={filteredMeetings}
                 onMeetingClick={handleEditMeeting}

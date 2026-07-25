@@ -138,7 +138,7 @@ export function CampaignCalendar({ campaigns, loading, onCampaignClick }: Campai
         selectedDate ? "lg:grid-cols-[1fr_320px]" : "grid-cols-1",
       )}>
         {/* Calendar grid */}
-        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] overflow-hidden">
+        <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] overflow-x-auto">
           {/* Month navigation */}
           <div className="flex items-center justify-between p-4 border-b border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.04)]">
             <Button variant="ghost" size="icon" onClick={() => navigateMonth(-1)}>
@@ -158,7 +158,7 @@ export function CampaignCalendar({ campaigns, loading, onCampaignClick }: Campai
           </div>
 
           {/* Day headers — starts on Monday */}
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 min-w-[520px]">
             {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map(day => (
               <div key={day} className="text-center text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] py-2">
                 {day}
@@ -167,7 +167,7 @@ export function CampaignCalendar({ campaigns, loading, onCampaignClick }: Campai
           </div>
 
           {/* Calendar cells */}
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 min-w-[520px]">
             {calendarDays.map((day, index) => {
               const dateKey = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, "0")}-${String(day.date.getDate()).padStart(2, "0")}`
               const dayCampaigns = campaignsByDate[dateKey] || []

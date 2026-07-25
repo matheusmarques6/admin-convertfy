@@ -289,7 +289,7 @@ export default async function BoardPage() {
 
   return (
     <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
-      <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)] flex flex-col space-y-4">
+      <div className="h-[calc(100dvh-10rem)] sm:h-[calc(100dvh-8rem)] flex flex-col space-y-4">
         {/* PageHeader — DS v3.0 Rule 14, no icon-in-circle */}
         <PageHeader
           title="Board"

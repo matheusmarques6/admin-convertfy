@@ -42,7 +42,7 @@ export default function InsightsPage() {
   return (
     <div className="max-w-[900px]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-[10px] bg-gradient-to-br from-[#4E62D8] to-[#7B8CEA] flex items-center justify-center">
             <Icon icon={Sparkles} size={20} className="text-white" />

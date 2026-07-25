@@ -264,7 +264,7 @@ function StoreCard({
 
         {/* Metrics row */}
         <div className="px-4 pb-4">
-          <div className="grid grid-cols-4 gap-2 rounded-[6px] bg-[#FAFBFC] dark:bg-[#161922] border border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] p-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-[6px] bg-[#FAFBFC] dark:bg-[#161922] border border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] p-3">
             <div>
               <p className="text-[9px] font-medium uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
                 Receita 30D

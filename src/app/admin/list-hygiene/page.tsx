@@ -124,8 +124,8 @@ export default function ListHygienePage() {
           <p className="text-sm text-gray-500 dark:text-white/50">Nenhuma loja com dados de audience disponivel.</p>
         </div>
       ) : (
-        <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] overflow-hidden">
-          <div className="hidden md:grid grid-cols-[1fr_100px_100px_100px_80px_80px_100px] gap-2 px-5 py-3 border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] bg-gray-50/50 dark:bg-white/[0.02]">
+        <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] overflow-x-auto">
+          <div className="grid min-w-[720px] grid-cols-[1fr_100px_100px_100px_80px_80px_100px] gap-2 px-5 py-3 border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] bg-gray-50/50 dark:bg-white/[0.02]">
             <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">Loja</span>
             <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider text-center">Total</span>
             <span className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider text-center">Engajados</span>
@@ -144,7 +144,7 @@ export default function ListHygienePage() {
                 store.suppressionRecommended && "bg-red-50/20 dark:bg-red-900/5"
               )}
             >
-              <div className="md:grid grid-cols-[1fr_100px_100px_100px_80px_80px_100px] gap-2 items-center">
+              <div className="grid min-w-[720px] grid-cols-[1fr_100px_100px_100px_80px_80px_100px] gap-2 items-center">
                 <div>
                   <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate">{store.storeName}</p>
                   <p className="text-[11px] text-gray-400 dark:text-white/40 truncate">{store.clientName}</p>

@@ -168,7 +168,7 @@ export function CampaignCentralShell() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-border">
+      <div className="flex gap-0 border-b border-border overflow-x-auto scrollbar-hide">
         {TABS.map((t) => {
           const Icon = t.Icon
           const on = tab === t.key
