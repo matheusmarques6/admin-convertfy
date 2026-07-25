@@ -110,7 +110,7 @@ export function Composer({
 
   return (
     <div
-      className="relative border-t px-4 py-3"
+      className="relative border-t px-4 pt-3 pb-safe-3"
       style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
     >
       {showQuickReplies && (
@@ -219,7 +219,10 @@ export function Composer({
 
           <textarea
             ref={textareaRef}
-            className="crm-input flex-1"
+            // !text-[16px] no mobile evita o "zoom automático" do iOS ao
+            // focar o campo (qualquer input <16px dispara o zoom e quebra o
+            // layout fixo). Volta a 13px (densidade do CRM) no desktop.
+            className="crm-input flex-1 !text-[16px] md:!text-[13px]"
             style={{ height: "auto", minHeight: 38, padding: 8, resize: "none", opacity: blocked ? 0.6 : 1 }}
             placeholder={
               blocked && isWhatsApp && windowClosed
@@ -241,7 +244,8 @@ export function Composer({
           <button
             onClick={send}
             disabled={!text.trim() || sending || blocked}
-            className="crm-button-primary"
+            aria-label="Enviar mensagem"
+            className="crm-button-primary shrink-0"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -250,13 +254,15 @@ export function Composer({
             }}
           >
             {sending ? "..." : <Send className="h-3.5 w-3.5" />}
-            Enviar
+            {/* Texto some no mobile pra liberar largura ao textarea. */}
+            <span className="hidden sm:inline">Enviar</span>
           </button>
         </div>
       )}
 
       {!recording && (
-        <div className="mt-1" style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
+        // Dica de atalho só faz sentido no desktop (mobile não tem ⌘/Ctrl).
+        <div className="mt-1 hidden md:block" style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
           ⌘/Ctrl + Enter para enviar{isWhatsApp ? ' · "/" respostas rápidas' : ""}
         </div>
       )}

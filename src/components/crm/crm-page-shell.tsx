@@ -21,9 +21,12 @@ export function CrmPageShell({ title, subtitle, actions, children }: CrmPageShel
       style={{ background: "var(--crm-gray-50)", fontFamily: "var(--crm-font-sans)" }}
     >
       <header
-        className="flex items-center justify-between border-b px-6"
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2 md:flex-nowrap md:px-6 md:py-0"
         style={{
-          height: "var(--crm-topbar-height)",
+          // minHeight (não height fixo): quando as ações quebram linha no
+          // mobile, o header cresce em vez de espremer/vazar. No desktop
+          // (md:flex-nowrap) nada quebra e a altura fica em 44px como antes.
+          minHeight: "var(--crm-topbar-height)",
           borderColor: "var(--crm-gray-200)",
           background: "var(--crm-gray-0)",
         }}
@@ -51,7 +54,7 @@ export function CrmPageShell({ title, subtitle, actions, children }: CrmPageShel
             </p>
           )}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </header>
       <main className="flex-1 overflow-auto">{children}</main>
     </div>

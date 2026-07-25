@@ -73,8 +73,8 @@ export function MessageBubble({ message: m, threadId, onRetry }: MessageBubblePr
   return (
     <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
+        className="max-w-[85%] md:max-w-[70%]"
         style={{
-          maxWidth: "70%",
           background: isOut ? "var(--crm-gray-900)" : "var(--crm-gray-0)",
           color: isOut ? "var(--crm-gray-0)" : "var(--crm-gray-900)",
           padding: hasMedia && usableUrl && m.content_type === "image" ? 4 : "8px 12px",

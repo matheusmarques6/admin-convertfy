@@ -294,6 +294,37 @@
   .dark .gradient-text {
     background-image: var(--dark-brand-gradient);
   }
+
+  /* ═══ SAFE-AREA (iOS notch / home indicator) ═══
+     Só têm efeito com viewport-fit=cover (definido no root layout).
+     max() garante um piso mínimo mesmo fora do iOS. */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  .pl-safe {
+    padding-left: max(env(safe-area-inset-left), 0px);
+  }
+  .pr-safe {
+    padding-right: max(env(safe-area-inset-right), 0px);
+  }
+  /* Adiciona a safe-area SOBRE um padding já existente (composer, barras). */
+  .pb-safe-3 {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  /* Altura dinâmica: usa dvh quando suportado (não "salta" com a barra de
+     URL do mobile). Fallback vh para browsers antigos. */
+  .h-dvh {
+    height: 100vh;
+    height: 100dvh;
+  }
+  .min-h-dvh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
 }
 
 

@@ -127,8 +127,10 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         hasActiveFilters={hasActiveFilters}
       />
 
-      {/* Painel da conversa — em mobile só aparece quando há thread ativa */}
-      <main className={cn("flex-1 flex-col min-w-0", activeThreadId ? "flex" : "hidden md:flex")}>
+      {/* Painel da conversa — em mobile só aparece quando há thread ativa.
+          min-h-0 é essencial: sem ele o container de mensagens (flex-1
+          overflow-auto) não recebe altura limitada e o composer some/rola. */}
+      <main className={cn("min-h-0 min-w-0 flex-1 flex-col", activeThreadId ? "flex" : "hidden md:flex")}>
         {!activeThreadId ? (
           <div className="flex flex-1 items-center justify-center">
             <CrmEmptyState

@@ -155,7 +155,7 @@ export function ConversationList({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto pb-safe">
         {threads.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <div

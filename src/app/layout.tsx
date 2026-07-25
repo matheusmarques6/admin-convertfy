@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
 import { Montserrat } from "next/font/google"
 import "./globals.css"
@@ -26,6 +26,16 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+}
+
+// viewport-fit=cover é o que HABILITA env(safe-area-inset-*) no iOS
+// (notch/home indicator). Sem isso o padding de safe-area do inbox e das
+// barras inferiores é sempre 0. Mantemos o zoom do usuário (sem
+// maximumScale/userScalable) por acessibilidade.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({

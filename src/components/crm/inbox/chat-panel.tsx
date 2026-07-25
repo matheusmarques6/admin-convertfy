@@ -175,23 +175,24 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
 
   return (
     <>
-      {/* Header */}
+      {/* Header — no mobile as ações (tags/atribuir/status) caem numa
+          segunda linha rolável; no desktop (md) tudo numa linha só de 44px. */}
       <div
-        className="flex items-center justify-between border-b px-4"
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2 md:flex-nowrap md:py-0"
         style={{
-          height: "var(--crm-topbar-height)",
+          minHeight: "var(--crm-topbar-height)",
           borderColor: "var(--crm-gray-200)",
           background: "var(--crm-gray-0)",
         }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
             onClick={onBack}
-            className="md:hidden flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px]"
+            className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px]"
             style={{ color: "var(--crm-gray-600)", background: "var(--crm-gray-100)" }}
             aria-label="Voltar para lista de conversas"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft className="h-4 w-4" />
           </button>
           <Phone className="hidden md:block h-3.5 w-3.5 shrink-0" style={{ color: "var(--crm-gray-500)" }} />
           <span
@@ -229,7 +230,7 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-end gap-2 overflow-x-auto scrollbar-hide md:w-auto">
           <ThreadTags
             threadId={thread.id}
             tags={thread.tags ?? []}
