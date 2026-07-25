@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
+import { useRealtimePipeline } from "@/hooks/use-realtime-pipeline"
 import {
   Plus,
   ChevronDown,
@@ -123,6 +124,21 @@ export function PipelineBoardView({
     const dealParam = searchParams.get("deal")
     if (dealParam) setActiveDealId(dealParam)
   }, [searchParams])
+
+  // Realtime: reflete leads novos e movimentações feitas por outros
+  // usuários/automações/webhooks sem exigir refresh manual.
+  const handleRealtimeUpdate = useCallback(() => {
+    mutate()
+  }, [mutate])
+  const handleNewDeal = useCallback((deal: Record<string, unknown>) => {
+    const title = typeof deal.title === "string" ? deal.title : "Novo lead"
+    setToast({ kind: "success", msg: `Novo deal: ${title}` })
+  }, [])
+  const { realtimeConnected } = useRealtimePipeline({
+    pipelineId,
+    onDataUpdate: handleRealtimeUpdate,
+    onNewDeal: handleNewDeal,
+  })
 
   const pipeline = data?.pipeline
   const allDeals = useMemo(() => data?.deals || [], [data])
@@ -434,6 +450,29 @@ export function PipelineBoardView({
                       ★
                     </span>
                   )}
+                  <span
+                    title={
+                      realtimeConnected
+                        ? "Atualização em tempo real ativa"
+                        : "Tempo real reconectando — atualizando periodicamente"
+                    }
+                    aria-label={
+                      realtimeConnected ? "Tempo real ativo" : "Tempo real reconectando"
+                    }
+                    style={{
+                      display: "inline-block",
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      backgroundColor: realtimeConnected
+                        ? "var(--crm-success, #16a34a)"
+                        : "var(--crm-gray-300)",
+                      boxShadow: realtimeConnected
+                        ? "0 0 0 3px rgba(22,163,74,0.15)"
+                        : "none",
+                    }}
+                  />
                   {pipeline.description && (
                     <>
                       <span style={{ fontSize: 13, color: "var(--crm-gray-300)" }}>
