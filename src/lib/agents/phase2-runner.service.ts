@@ -1178,14 +1178,15 @@ function isQaEnabled(): boolean {
  *   - `failed`: erro fatal ou QA bloqueou
  */
 // Orçamento restante mínimo pra rodar o Refinador. Ele virou REPINTOR
-// (gera o HTML completo, timeout próprio de 180s) — o valor antigo (210s)
-// era do Refinador-delta (60s) e permitia HTML(200s)+Refinador(180s)=380s
-// > maxDuration=300s → a função morria no meio, o email ficava preso em
-// `rendering` e o watchdog re-disparava (LOOP HTML↔Refinador). Agora o
-// Refinador só COMEÇA se ainda couber: 300s - 180s(timeout) - ~20s(buffer)
-// = 100s. HTML lento (>100s) → pula o refino (fail-open), mas a rota
-// SEMPRE termina. Correção definitiva = mover o Refinador pra rota própria.
-const REFINER_BUDGET_GUARD_MS = 100_000
+// (gera o HTML completo, timeout próprio de 180s). O guard garante que o
+// Refinador só COMEÇA se ainda couber no maxDuration da rota:
+// 800s (Fluid Compute) - 180s(timeout do Refinador) - 60s(QA) - ~20s(buffer)
+// = 540s. Com o HTML agent em reasoning model (z-ai/glm-5.2, timeout 540s),
+// o guard antigo de 100s pulava o refino SEMPRE (skipped_budget) — ativar o
+// Refinador era no-op. HTML mais lento que 540s → pula o refino (fail-open),
+// mas a rota SEMPRE termina sem ser morta pela Vercel (o loop
+// HTML↔Refinador de jul/2026 não volta).
+const REFINER_BUDGET_GUARD_MS = 540_000
 
 /**
  * Step 2.5 — Refinador Tipográfico (fail-open).
