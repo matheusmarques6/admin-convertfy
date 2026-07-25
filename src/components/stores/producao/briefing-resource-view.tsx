@@ -224,9 +224,10 @@ export function BriefingResourceView({
     >
       {/* Header */}
       <div
-        className="flex items-start justify-between sticky top-0 z-10"
+        className="flex items-start justify-between sticky top-0 z-10 px-4 md:px-8"
         style={{
-          padding: "20px 32px",
+          paddingTop: 20,
+          paddingBottom: 20,
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-border)",
         }}
@@ -328,11 +329,10 @@ export function BriefingResourceView({
 
       {/* Content */}
       <div
+        // Grid 2-col só na tab Marca (mockup tem aside direita) e só no
+        // desktop; no mobile empilha (block).
+        className={`px-4 md:px-8 pt-6 pb-12 ${activeTab === "marca" ? "block md:grid" : "block"}`}
         style={{
-          padding: "24px 32px 48px",
-          // Grid 2-col só na tab Marca (mockup tem aside direita).
-          // Tab Briefing fica full-width.
-          display: activeTab === "marca" ? "grid" : "block",
           gridTemplateColumns:
             activeTab === "marca" ? "minmax(0, 1fr) 280px" : undefined,
           gap: activeTab === "marca" ? 32 : 0,
@@ -681,9 +681,8 @@ function RowField({
 }) {
   return (
     <div
-      className="grid"
+      className="grid grid-cols-1 md:grid-cols-[200px_1fr]"
       style={{
-        gridTemplateColumns: "200px 1fr",
         gap: 16,
         padding: "16px 0",
         borderBottom: "1px solid var(--crm-gray-100)",

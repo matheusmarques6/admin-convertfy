@@ -733,9 +733,10 @@ export function BrandResourceView({
     >
       {/* Header */}
       <div
-        className="flex items-start justify-between sticky top-0 z-10"
+        className="flex items-start justify-between sticky top-0 z-10 px-4 md:px-8"
         style={{
-          padding: "20px 32px",
+          paddingTop: 20,
+          paddingBottom: 20,
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-border)",
         }}
@@ -946,8 +947,8 @@ export function BrandResourceView({
 
       {/* Bloco "Sobre a loja" */}
       <div
+        className="px-4 md:px-8 py-6"
         style={{
-          padding: "24px 32px",
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-border)",
         }}
@@ -1049,7 +1050,7 @@ export function BrandResourceView({
       </div>
 
       {/* Body */}
-      <div style={{ padding: "32px 32px 48px" }}>
+      <div className="px-4 md:px-8 pt-8 pb-12">
         <>
             {/* Logos — principal em destaque + variantes opcionais */}
             <SectionTitle title="Logo" subtitle="Versão principal da marca (usada nas automações) · variantes são opcionais" />
@@ -1174,7 +1175,7 @@ export function BrandResourceView({
             {/* Tipografia */}
             <>
                 <SectionTitle title="Tipografia" style={{ marginTop: 40 }} />
-                <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr", marginTop: 16 }}>
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2" style={{ marginTop: 16 }}>
                   {mode === "edit" ? (
                     <FontPreviewEdit
                       label="Display · headlines"

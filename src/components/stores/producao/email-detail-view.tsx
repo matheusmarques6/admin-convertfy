@@ -796,10 +796,10 @@ export function EmailDetailView({
       </div>
 
       {/* Body: center + right panel */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
         {/* Centro: preview */}
         <div
-          className="flex-1 overflow-y-auto"
+          className="flex-1 min-h-0 overflow-y-auto"
           style={{ background: "var(--crm-gray-50)" }}
         >
           {viewMode === "render" && (
@@ -846,13 +846,12 @@ export function EmailDetailView({
           )}
         </div>
 
-        {/* Painel direito: blocos + QA */}
+        {/* Painel direito: blocos + QA — vira faixa inferior no mobile */}
         <aside
-          className="flex flex-col shrink-0 overflow-hidden min-h-0"
+          className="flex flex-col shrink-0 overflow-hidden min-h-0 w-full md:w-[380px] max-h-[50vh] md:max-h-none border-t md:border-t-0 md:border-l"
           style={{
-            width: 380,
             background: "var(--crm-gray-0)",
-            borderLeft: "1px solid var(--crm-border)",
+            borderColor: "var(--crm-border)",
           }}
         >
           {/* Tabs */}

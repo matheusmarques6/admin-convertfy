@@ -521,14 +521,13 @@ export function ProductionWorkspace({
       </div>
 
       {/* ─── BODY: sidebar + main ───────────────────────────── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* SIDEBAR */}
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
+        {/* SIDEBAR — faixa rolável no topo no mobile, rail à esquerda no desktop */}
         <aside
-          className="flex flex-col shrink-0 overflow-y-auto"
+          className="flex flex-col shrink-0 overflow-y-auto w-full md:w-[268px] max-h-[38vh] md:max-h-none border-b md:border-b-0 md:border-r"
           style={{
-            width: 268,
             background: "var(--crm-gray-0)",
-            borderRight: "1px solid var(--crm-border)",
+            borderColor: "var(--crm-border)",
           }}
         >
           {/* Store hero card */}
