@@ -209,6 +209,31 @@ describe("dispatchEmailCopyWebhook — auto-seed e reasons", () => {
     expect(e1?.status).toBe("in_progress")
   })
 
+  it("dispatch novo ZERA copy_ready_dispatch_attempts — contador esgotado da geração anterior prendia o email em copy_ready pra sempre (Luxe Lift, 24/jul)", async () => {
+    resetTables([
+      {
+        id: "e1",
+        flow_id: "flow1",
+        number: 1,
+        name: "Welcome 1",
+        status: "copy_ready",
+        copy_ready_dispatch_attempts: 3,
+      },
+    ])
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: false,
+    })
+
+    expect(res.ok).toBe(true)
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    // Sem o reset, o Front 4 do watchdog (attempts < MAX) nunca mais pega o
+    // email e a fase 2 da geração nova nunca inicia — sem erro e sem log.
+    expect(e1?.copy_ready_dispatch_attempts).toBe(0)
+  })
+
   it("regerar email finalizado/publicado (live) NÃO é rebaixado de status", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "live" },

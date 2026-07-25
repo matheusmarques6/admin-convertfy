@@ -1108,6 +1108,13 @@ export async function dispatchEmailCopyWebhook(
         failure_reason: null,
         rendering_started_at: null,
         qa_started_at: null,
+        // Geração NOVA zera o cap de re-dispatch do watchdog. Sem isto, um
+        // email cujo contador esgotou (3 POSTs de fase 2 falhos) numa geração
+        // ANTERIOR ficava preso em copy_ready PRA SEMPRE na seguinte: o
+        // Front 4 do watchdog filtra attempts < MAX e nunca mais o pegava
+        // (bug provado na Luxe Lift, dispatch 24/jul 21h — copy voltou e a
+        // fase 2 nunca iniciou, sem erro e sem log).
+        copy_ready_dispatch_attempts: 0,
       })
       .in("id", emailIds)
       .in("status", [
