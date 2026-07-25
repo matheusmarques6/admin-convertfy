@@ -209,6 +209,8 @@ export interface InvokeRefinerResult {
   html: string
   tokensInput: number
   tokensOutput: number
+  /** Custo real em USD do OpenRouter (`usage.cost`); 0 no caminho Anthropic. */
+  costUsd: number
   renderedPrompt: string
   rawOutput: string
 }
@@ -434,6 +436,7 @@ export async function invokeRefinerChain(input: {
       html: extractRefinedHtml(or.text),
       tokensInput: or.tokensInput,
       tokensOutput: or.tokensOutput,
+      costUsd: or.costUsd,
       renderedPrompt: userMessage,
       rawOutput: or.text,
     }
@@ -464,6 +467,7 @@ export async function invokeRefinerChain(input: {
     html: extractRefinedHtml(text),
     tokensInput: resp.usage.input_tokens,
     tokensOutput: resp.usage.output_tokens,
+    costUsd: 0, // Anthropic-direto: sem accounting do OpenRouter.
     renderedPrompt: userMessage,
     rawOutput: text,
   }

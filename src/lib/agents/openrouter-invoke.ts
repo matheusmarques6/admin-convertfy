@@ -123,6 +123,12 @@ export interface ParsedBody {
   text: string
   tokensInput: number
   tokensOutput: number
+  /**
+   * Custo REAL em USD reportado pelo OpenRouter (`usage.cost`). 0 quando
+   * ausente (provider sem accounting / erro). Preferir isto ao cálculo por
+   * token — é o valor exato que o OpenRouter cobra (igual ao image.chain).
+   */
+  costUsd: number
 }
 
 /**
@@ -179,7 +185,7 @@ export function parseOpenRouterBody(
       message?: { content?: string }
       finish_reason?: string
     }>
-    usage?: { prompt_tokens?: number; completion_tokens?: number }
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
   }
 
   // Caso non-streaming clássico com finish_reason:"error" no choice.
@@ -198,6 +204,7 @@ export function parseOpenRouterBody(
     text,
     tokensInput: typed.usage?.prompt_tokens ?? 0,
     tokensOutput: typed.usage?.completion_tokens ?? 0,
+    costUsd: typed.usage?.cost ?? 0,
   }
 }
 
@@ -210,7 +217,7 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
   const lines = body.split(/\r?\n/)
   const frames: unknown[] = []
   let lastErrorMsg = ""
-  let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined
+  let usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | undefined
 
   for (const raw of lines) {
     const line = raw.trimStart()
@@ -232,7 +239,7 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
         message?: { content?: string }
         finish_reason?: string
       }>
-      usage?: { prompt_tokens?: number; completion_tokens?: number }
+      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
       error?: { message?: string; metadata?: { error_type?: string } }
     }
 
@@ -295,6 +302,7 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
     text,
     tokensInput: usage?.prompt_tokens ?? 0,
     tokensOutput: usage?.completion_tokens ?? 0,
+    costUsd: usage?.cost ?? 0,
   }
 }
 
@@ -359,6 +367,8 @@ export interface OpenRouterInvokeResult {
   text: string
   tokensInput: number
   tokensOutput: number
+  /** Custo real em USD do OpenRouter (`usage.cost`); 0 quando ausente. */
+  costUsd: number
 }
 
 export async function invokeOpenRouter(

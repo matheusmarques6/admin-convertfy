@@ -36,7 +36,7 @@ import type {
 } from "@/types/email-generation"
 import type { StoreBrandIdentity, StoreBriefing } from "@/types/email-workspace"
 import {
-  computeCostCents,
+  resolveCostCents,
   finishGenerationRun,
   logGenerationRun,
   startGenerationRun,
@@ -594,7 +594,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   const tokensInput = Math.ceil((systemPrompt.length + userPrompt.length) / 4)
   const combinedOutput = (rawOutput || "") + (retryRaw || "")
   const tokensOutput = Math.ceil(combinedOutput.length / 4)
-  const costCents = computeCostCents(model, tokensInput, tokensOutput)
+  const costCents = resolveCostCents({ model, tokensInput, tokensOutput })
 
   if (!parsed || !zod || !zod.success) {
     log.warn("qa.output_invalid_fallback", { emailId })

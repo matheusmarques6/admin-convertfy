@@ -62,6 +62,12 @@ export interface InvokeResult {
   raw: string
   tokensInput: number
   tokensOutput: number
+  /**
+   * Custo real em USD do OpenRouter (`usage.cost`) quando o modelo roteou por
+   * lá; 0 no caminho Anthropic-direto (sem accounting do OpenRouter → o custo
+   * cai na estimativa por token em resolveCostCents).
+   */
+  costUsd: number
 }
 
 /**
@@ -159,6 +165,7 @@ async function invokeViaAnthropic(
     raw,
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
+    costUsd: 0, // Anthropic-direto não passa pelo accounting do OpenRouter.
   }
 }
 
@@ -258,6 +265,7 @@ async function callOnceArchitect(
       raw: parsed.text,
       tokensInput: parsed.tokensInput,
       tokensOutput: parsed.tokensOutput,
+      costUsd: parsed.costUsd,
     }
   } catch (e) {
     if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {

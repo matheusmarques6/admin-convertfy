@@ -52,6 +52,7 @@ vi.mock("../callbacks/telemetry.callback", () => ({
   startGenerationRun: vi.fn().mockResolvedValue("run-1"),
   finishGenerationRun: vi.fn().mockResolvedValue("run-1"),
   computeCostCents: () => 0,
+  resolveCostCents: () => 0,
 }))
 
 import { generateStoreBlueprint } from "./blueprint-generator.service"

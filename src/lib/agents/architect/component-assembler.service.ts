@@ -19,7 +19,7 @@ import { logger } from "@/lib/logger"
 import type { EmailComponentVariant } from "@/types/email-generation"
 
 import {
-  computeCostCents,
+  resolveCostCents,
   finishGenerationRun,
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
@@ -530,6 +530,7 @@ export async function assembleStoreReference(
   let chooserRaw = ""
   let chooserTokensIn = 0
   let chooserTokensOut = 0
+  let chooserCostUsd = 0
   let choices: AssemblerChoice[] = []
   let chooserError: string | null = null
   try {
@@ -537,6 +538,7 @@ export async function assembleStoreReference(
     chooserRaw = res.raw
     chooserTokensIn = res.tokensInput
     chooserTokensOut = res.tokensOutput
+    chooserCostUsd = res.costUsd
     choices = parseAssemblerOutput(res.raw)
   } catch (err) {
     chooserError = err instanceof Error ? err.message : String(err)
@@ -595,11 +597,12 @@ export async function assembleStoreReference(
     parsedOutput: { choices: choices.length, chosen: chosen.length },
     tokensInput: chooserTokensIn,
     tokensOutput: chooserTokensOut,
-    costCents: computeCostCents(
-      chooserConfig.model,
-      chooserTokensIn,
-      chooserTokensOut,
-    ),
+    costCents: resolveCostCents({
+      model: chooserConfig.model,
+      tokensInput: chooserTokensIn,
+      tokensOutput: chooserTokensOut,
+      costUsd: chooserCostUsd,
+    }),
     durationMs: Date.now() - t0,
   })
 
@@ -692,6 +695,7 @@ export async function assembleStoreReference(
   let harmRaw = ""
   let harmTokensIn = 0
   let harmTokensOut = 0
+  let harmCostUsd = 0
   let html = ""
   let usedLlm = false
   let harmError: string | null = null
@@ -700,6 +704,7 @@ export async function assembleStoreReference(
     harmRaw = res.raw
     harmTokensIn = res.tokensInput
     harmTokensOut = res.tokensOutput
+    harmCostUsd = res.costUsd
     const extracted = extractHtml(res.raw)
     if (looksLikeHtml(extracted)) {
       html = extracted
@@ -797,7 +802,12 @@ export async function assembleStoreReference(
     tokensInput: harmTokensIn,
     tokensOutput: harmTokensOut,
     costCents: usedLlm
-      ? computeCostCents(harmConfig.model, harmTokensIn, harmTokensOut)
+      ? resolveCostCents({
+          model: harmConfig.model,
+          tokensInput: harmTokensIn,
+          tokensOutput: harmTokensOut,
+          costUsd: harmCostUsd,
+        })
       : 0,
     durationMs: Date.now() - t1,
   })

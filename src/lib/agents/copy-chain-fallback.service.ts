@@ -37,7 +37,7 @@ import {
   DEFAULT_COPY_SYSTEM_PROMPT,
   DEFAULT_COPY_USER_TEMPLATE,
 } from "./chains/copy.chain"
-import { logGenerationRun, computeCostCents } from "./callbacks/telemetry.callback"
+import { logGenerationRun, resolveCostCents } from "./callbacks/telemetry.callback"
 import { runPhase2InBackground } from "./phase2-runner.service"
 import { loadTopProducts } from "./top-products"
 import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
@@ -422,7 +422,7 @@ export async function runCopyChainInProcess(
       (systemPrompt + JSON.stringify(inputVars)).length / 4,
     )
     const tokensOutput = Math.ceil(rawOutput.length / 4)
-    const costCents = computeCostCents(model, tokensInput, tokensOutput)
+    const costCents = resolveCostCents({ model, tokensInput, tokensOutput })
     await logGenerationRun({
       storeId,
       flowId: flowId ?? undefined,

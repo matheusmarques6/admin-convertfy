@@ -71,7 +71,7 @@ import {
   logGenerationRun,
   startGenerationRun,
   finishGenerationRun,
-  computeCostCents,
+  resolveCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES } from "./image/limits"
@@ -1272,7 +1272,7 @@ async function runRefinerStep(input: {
       inputVars: { html_len: finalHtml.length },
     })
 
-    const { html: refined, tokensInput, tokensOutput, renderedPrompt, rawOutput } =
+    const { html: refined, tokensInput, tokensOutput, costUsd, renderedPrompt, rawOutput } =
       await invokeRefinerChain({
         config: {
           model,
@@ -1298,7 +1298,7 @@ async function runRefinerStep(input: {
       rawOutput,
       tokensInput,
       tokensOutput,
-      costCents: computeCostCents(model, tokensInput, tokensOutput),
+      costCents: resolveCostCents({ model, tokensInput, tokensOutput, costUsd }),
       durationMs: Date.now() - refT0,
     }
 
@@ -1496,6 +1496,7 @@ export async function runPhase2HtmlQa(
       html: rawHtml,
       tokensInput,
       tokensOutput,
+      costUsd,
       renderedPrompt,
     } = await invokeHtmlChain({
       config: {
@@ -1539,7 +1540,7 @@ export async function runPhase2HtmlQa(
       rawOutput: rawHtml,
       tokensInput,
       tokensOutput,
-      costCents: computeCostCents(model, tokensInput, tokensOutput),
+      costCents: resolveCostCents({ model, tokensInput, tokensOutput, costUsd }),
       durationMs: Date.now() - htmlT0,
     })
     finalHtml = rawHtml

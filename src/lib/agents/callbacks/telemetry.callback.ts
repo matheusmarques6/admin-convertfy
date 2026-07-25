@@ -37,26 +37,84 @@ export interface LogGenerationRunParams {
   errorStack?: string
 }
 
+// Preço público por MILHÃO de tokens (USD), com chaves NORMALIZADAS
+// (sem vendor, sem sufixo de data, pontos → hífens — ver normalizeModelKey).
+// Assim `anthropic/claude-sonnet-4.6`, `claude-sonnet-4-5-20250514` e
+// `claude-sonnet-4-6` caem todos na mesma linha, em vez de vazar pro default.
+const PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
+  "claude-opus-4-8": { input: 15.0, output: 75.0 },
+  "claude-opus-4-7": { input: 15.0, output: 75.0 },
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
+  "claude-sonnet-4-5": { input: 3.0, output: 15.0 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  // GPT-5.x (Montador/briefing via OpenRouter). Reasoning models: tokens_output
+  // já inclui os "thinking tokens" reportados, então output * preço cobre o
+  // reasoning. Quando o run vem do OpenRouter, resolveCostCents prefere o custo
+  // REAL (usage.cost) — esta tabela é só o fallback por token.
+  "gpt-5-4": { input: 2.5, output: 15.0 },
+  "gpt-5-4-image-2": { input: 2.5, output: 15.0 },
+  "gpt-5-3-chat": { input: 1.25, output: 10.0 },
+  "gpt-5-3": { input: 1.25, output: 10.0 },
+}
+const DEFAULT_PRICING = { input: 3.0, output: 15.0 }
+
 /**
- * Calcula custo em centavos (USD * 100) baseado nos pricing publicos.
+ * Normaliza o id do modelo para bater com as chaves de PRICING_PER_MTOK:
+ * remove o prefixo de vendor (`anthropic/`, `openai/`), o sufixo de data
+ * (`-20250514`) e troca `.` por `-`. Ex.: `anthropic/claude-sonnet-4.6` e
+ * `claude-sonnet-4-5-20250514` → `claude-sonnet-4-6` / `claude-sonnet-4-5`.
+ */
+export function normalizeModelKey(model: string): string {
+  return model
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z0-9_-]+\//, "") // vendor prefix
+    .replace(/-\d{8}$/, "") // sufixo de data (-YYYYMMDD)
+    .replace(/\./g, "-") // 4.6 → 4-6
+}
+
+/**
+ * Custo em centavos (USD * 100) por token, usando os pricing públicos.
+ * Preserva SUB-CENTAVO (escala de 1e-4 centavo, igual ao image.chain) — sem
+ * isso, etapas baratas (<½ centavo) arredondavam pra 0 e apareciam como
+ * `$0.000` na UI. Modelo desconhecido cai no default de Sonnet, mas AGORA
+ * loga um aviso (antes silenciava e cobrava errado sem ninguém ver).
  */
 export function computeCostCents(model: string, inputTokens: number, outputTokens: number): number {
-  const pricing: Record<string, { input: number; output: number }> = {
-    "claude-opus-4-8": { input: 15.0, output: 75.0 },
-    "anthropic/claude-opus-4.8": { input: 15.0, output: 75.0 },
-    "claude-opus-4-7": { input: 15.0, output: 75.0 },
-    "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
-    "claude-sonnet-4-5-20250514": { input: 3.0, output: 15.0 },
-    "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
-    // GPT-5.4 (Montador via OpenRouter). Reasoning model: tokens_output já
-    // inclui os "thinking tokens" reportados pelo OpenRouter, então
-    // tokens_output * output cobre o custo de reasoning. Preço base de tabela
-    // (input <272K). Se a fatura real divergir, alinhar aqui.
-    "openai/gpt-5.4": { input: 2.5, output: 15.0 },
+  const key = normalizeModelKey(model)
+  const p = PRICING_PER_MTOK[key]
+  if (!p) {
+    log.warn("cost.unknown_model_default_pricing", { model, normalized: key })
   }
-  const p = pricing[model] || { input: 3.0, output: 15.0 }
-  const usd = (inputTokens / 1_000_000) * p.input + (outputTokens / 1_000_000) * p.output
-  return Math.round(usd * 100)
+  const price = p ?? DEFAULT_PRICING
+  const usd =
+    (inputTokens / 1_000_000) * price.input +
+    (outputTokens / 1_000_000) * price.output
+  return usdToCents(usd)
+}
+
+/** USD → centavos preservando 4 casas de centavo (sub-centavo não some). */
+function usdToCents(usd: number): number {
+  return Math.round(usd * 1_000_000) / 10_000
+}
+
+/**
+ * Custo canônico de um run: usa o custo REAL do OpenRouter (`costUsd`,
+ * `usage.cost`) quando disponível — é o valor exato cobrado, imune a drift
+ * da tabela de preços e a nomes de modelo não-listados. Sem custo real
+ * (caminho Anthropic-direto ou provider sem accounting) cai na estimativa
+ * por token. Preferir SEMPRE este helper a computeCostCents nos call sites.
+ */
+export function resolveCostCents(args: {
+  model: string
+  tokensInput: number
+  tokensOutput: number
+  costUsd?: number | null
+}): number {
+  if (args.costUsd != null && args.costUsd > 0) {
+    return usdToCents(args.costUsd)
+  }
+  return computeCostCents(args.model, args.tokensInput, args.tokensOutput)
 }
 
 // triggered_by e UUID (FK profiles), mas callers de pipeline passam labels

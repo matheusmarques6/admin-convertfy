@@ -225,6 +225,8 @@ export interface InvokeHtmlResult {
   html: string
   tokensInput: number
   tokensOutput: number
+  /** Custo real em USD do OpenRouter (`usage.cost`); 0 no caminho Anthropic. */
+  costUsd: number
   /** User prompt renderizado (handlebars-lite aplicado em config.user_template
    *  + vars). Exposto p/ o caller persistir em email_generation_runs.
    *  rendered_prompt — telemetria de auditoria do input do modelo. */
@@ -287,6 +289,7 @@ export async function invokeHtmlChain(
       html,
       tokensInput: or.tokensInput,
       tokensOutput: or.tokensOutput,
+      costUsd: or.costUsd,
       renderedPrompt: userMessage,
     }
   }
@@ -363,6 +366,7 @@ export async function invokeHtmlChain(
     html,
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
+    costUsd: 0, // Anthropic-direto: sem accounting do OpenRouter.
     renderedPrompt: userMessage,
   }
 }

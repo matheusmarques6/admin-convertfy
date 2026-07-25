@@ -19,7 +19,7 @@ import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
 
 import { DEFAULT_BLUEPRINTS } from "../email-blueprint"
 import {
-  computeCostCents,
+  resolveCostCents,
   finishGenerationRun,
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
@@ -429,7 +429,12 @@ async function generateSubjectHint(input: {
       parsedOutput: { has_subject: subjectHint !== null, has_messaging: messaging !== null },
       tokensInput: res.tokensInput,
       tokensOutput: res.tokensOutput,
-      costCents: computeCostCents(config.model, res.tokensInput, res.tokensOutput),
+      costCents: resolveCostCents({
+        model: config.model,
+        tokensInput: res.tokensInput,
+        tokensOutput: res.tokensOutput,
+        costUsd: res.costUsd,
+      }),
       durationMs: Date.now() - t0,
     })
     return { subject_hint: subjectHint, messaging }
@@ -656,6 +661,7 @@ async function generateLlmBlueprint(
   let model: string | null = config.model
   let tokensInput = 0
   let tokensOutput = 0
+  let costUsd = 0
   let rawOutput = ""
   let invokeError: string | null = null
 
@@ -668,6 +674,7 @@ async function generateLlmBlueprint(
     rawOutput = res.raw
     tokensInput = res.tokensInput
     tokensOutput = res.tokensOutput
+    costUsd = res.costUsd
     blueprint = parseBlueprintOutput(res.raw)
     // LLM respondeu mas o JSON não pôde ser parseado em um blueprint válido.
     if (!blueprint) invokeError = "blueprint_unparseable_json"
@@ -770,7 +777,9 @@ async function generateLlmBlueprint(
     },
     tokensInput,
     tokensOutput,
-    costCents: model ? computeCostCents(model, tokensInput, tokensOutput) : 0,
+    costCents: model
+      ? resolveCostCents({ model, tokensInput, tokensOutput, costUsd })
+      : 0,
     durationMs: Date.now() - t0,
   })
 

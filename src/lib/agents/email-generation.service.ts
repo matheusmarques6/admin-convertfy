@@ -52,7 +52,7 @@ import { buildHtmlPromptVars } from "./html/build-vars"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import {
   logGenerationRun,
-  computeCostCents,
+  resolveCostCents,
 } from "./callbacks/telemetry.callback"
 import { notifyGenerationError } from "./generation-notify.service"
 
@@ -436,7 +436,7 @@ export async function generateEmail(
         relaxedBrandCheck,
       })
 
-      const { html: rawHtml, tokensInput, tokensOutput } = await invokeHtmlChain({
+      const { html: rawHtml, tokensInput, tokensOutput, costUsd } = await invokeHtmlChain({
         config: {
           model,
           temperature,
@@ -470,7 +470,7 @@ export async function generateEmail(
         rawOutput: rawHtml,
         tokensInput,
         tokensOutput,
-        costCents: computeCostCents(model, tokensInput, tokensOutput),
+        costCents: resolveCostCents({ model, tokensInput, tokensOutput, costUsd }),
         durationMs: Date.now() - htmlT0,
       })
     } catch (err) {

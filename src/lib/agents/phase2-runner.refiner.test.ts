@@ -116,6 +116,7 @@ vi.mock("./callbacks/telemetry.callback", () => ({
   startGenerationRun: (...a: unknown[]) => startGenerationRun(...a),
   finishGenerationRun: (...a: unknown[]) => finishGenerationRun(...a),
   computeCostCents: vi.fn(() => 0),
+  resolveCostCents: vi.fn(() => 0),
 }))
 vi.mock("./email-generation.service", () => ({ buildImagePromptVars: vi.fn(async () => ({})) }))
 vi.mock("./image/limits", () => ({ MAX_AI_IMAGES: 3 }))

@@ -39,7 +39,16 @@ describe("parseOpenRouterBody", () => {
       usage: { prompt_tokens: 12, completion_tokens: 34 },
     })
     const out = parseOpenRouterBody(body, ctx)
-    expect(out).toEqual({ text: "hello", tokensInput: 12, tokensOutput: 34 })
+    expect(out).toEqual({ text: "hello", tokensInput: 12, tokensOutput: 34, costUsd: 0 })
+  })
+
+  it("extrai o custo REAL (usage.cost) quando presente", () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "hi" } }],
+      usage: { prompt_tokens: 10, completion_tokens: 20, cost: 0.0042 },
+    })
+    const out = parseOpenRouterBody(body, ctx)
+    expect(out.costUsd).toBe(0.0042)
   })
 
   it("body vazio → OpenRouterEmptyBodyError(retryable)", () => {
@@ -246,7 +255,7 @@ describe("invokeOpenRouter", () => {
     )
     vi.stubGlobal("fetch", fetchMock)
     const out = await invokeOpenRouter(baseInput)
-    expect(out).toEqual({ text: "hi", tokensInput: 3, tokensOutput: 4 })
+    expect(out).toEqual({ text: "hi", tokensInput: 3, tokensOutput: 4, costUsd: 0 })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
