@@ -199,7 +199,7 @@ function FormCard({ form }: { form: FormRow }) {
       </div>
 
       {/* Metricas */}
-      <div style={{ padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-3" style={{ padding: "14px 18px", gap: 8 }}>
         <Metric value={String(submissions)} label="respostas" />
         <Metric value={`${rate}%`} label="conversão" color={rateColor} />
         <Metric value={relTime(form.updated_at)} label="atualizado" />

@@ -176,7 +176,7 @@ export function CadencesBoard({ pipelineId }: { pipelineId: string }) {
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" style={{ gap: 14, alignItems: "start" }}>
         {stages.map((col) => {
           const items = cardsByStage.get(col.id) ?? []
           const meta = COL_META[col.order] ?? COL_META[1]

@@ -46,9 +46,8 @@ export function CustomerSuccessShell() {
     >
       {/* Header */}
       <div
-        className="flex-shrink-0 sticky top-0 z-20"
+        className="flex-shrink-0 sticky top-0 z-20 px-4 md:px-8 pt-4 md:pt-[18px]"
         style={{
-          padding: "18px 32px 0",
           background: "var(--crm-gray-0)",
           borderBottom: "1px solid var(--crm-gray-200)",
         }}
@@ -79,8 +78,8 @@ export function CustomerSuccessShell() {
           </span>
         </div>
 
-        {/* Sub-tabs */}
-        <div className="flex" style={{ gap: 0 }}>
+        {/* Sub-tabs — roláveis no mobile */}
+        <div className="flex overflow-x-auto scrollbar-hide" style={{ gap: 0 }}>
           {TABS.map((t) => {
             const on = tab === t.key
             const Icon = t.icon
@@ -89,7 +88,7 @@ export function CustomerSuccessShell() {
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className="inline-flex items-center cf-focusable"
+                className="inline-flex shrink-0 items-center whitespace-nowrap cf-focusable"
                 style={{
                   gap: 7,
                   padding: "11px 16px",
@@ -116,7 +115,7 @@ export function CustomerSuccessShell() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "20px 32px 48px" }}>
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 pt-5 pb-12">
         {tab === "painel" && <Painel />}
         {tab === "pipelines" && <PipelinesTab />}
         {tab === "cadencias" && <CadenciasTab />}

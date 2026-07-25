@@ -179,13 +179,7 @@ export function Painel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* KPIs */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0,1fr))",
-          gap: 14,
-        }}
-      >
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" style={{ gap: 14 }}>
         <KpiCard
           icon={<Store className="h-4 w-4" />}
           label="Carteira ativa"
@@ -239,7 +233,7 @@ export function Painel() {
       </div>
 
       {/* Linha 1: distribuição por cadência + saúde */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 18 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr]" style={{ gap: 18 }}>
         <Panel title="Distribuição por cadência">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {(cadencia?.distribution ?? []).map((c) => (
@@ -360,7 +354,7 @@ export function Painel() {
       </div>
 
       {/* Linha 2: próximas calls + em risco + carga por CSM */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 18 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" style={{ gap: 18 }}>
         <Panel title="Próximas calls">
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {(proximas?.calls ?? []).length === 0 && <Empty label="Sem calls agendadas" />}
