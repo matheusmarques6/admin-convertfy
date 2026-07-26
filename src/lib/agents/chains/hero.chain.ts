@@ -182,6 +182,39 @@ export function parseHeroFragment(raw: string): string {
   return fragment
 }
 
+/**
+ * Guard estrutural do modo full_doc (puro): o documento devolvido precisa
+ * preservar a estrutura do input — só a hero pode ter mudado. Tags de
+ * imagem NÃO-hero devem sobreviver (a da hero pode ter sido consumida).
+ */
+export function heroFullDocGuard(
+  inputHtml: string,
+  outputHtml: string,
+): { ok: boolean; reason?: string } {
+  if (!/<\/html>/i.test(outputHtml)) return { ok: false, reason: "no_close_html" }
+  const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
+  const ti = count(inputHtml)
+  const to = count(outputHtml)
+  if (ti !== to) return { ok: false, reason: `table_count ${to}!=${ti}` }
+  if (outputHtml.length < inputHtml.length * 0.7) {
+    return { ok: false, reason: "shrunk" }
+  }
+  const nonHeroImageTags = (s: string) =>
+    new Set(
+      Array.from(
+        s.matchAll(/\{\{\s*([A-Z][A-Z0-9_]*(?:IMAGE|THUMB)[A-Z0-9_]*)\s*\}\}/g),
+        (m) => m[1],
+      ).filter((t) => !t.startsWith("HERO")),
+    )
+  const inTags = nonHeroImageTags(inputHtml)
+  const outTags = nonHeroImageTags(outputHtml)
+  const dropped = Array.from(inTags).filter((t) => !outTags.has(t))
+  if (dropped.length > 0) {
+    return { ok: false, reason: `image_tags_dropped:${dropped.slice(0, 5).join(",")}` }
+  }
+  return { ok: true }
+}
+
 export async function invokeHeroChain(input: {
   config: FormatChainConfig
   vars: Record<string, string>

@@ -245,15 +245,9 @@ export function SettingsTab() {
                 />
               </div>
             </SettingRow>
-            <SettingRow
-              title="Refino tipográfico"
-              sub="Ajustes finos de hierarquia (Refinador)"
-            >
-              <EGToggle
-                on={merged.refiner_enabled}
-                onChange={(v) => setForm((f) => ({ ...f, refiner_enabled: v }))}
-              />
-            </SettingRow>
+            {/* Toggle "Refino tipográfico" removido: o Refinador foi
+                substituído pelo agente Cores & Botões (split do HTML agent,
+                migration 20261039). A coluna refiner_enabled fica inerte. */}
             <SettingRow
               title="Trigger automático"
               sub="Iniciar geração automaticamente ao criar emails"

@@ -80,13 +80,27 @@ vi.mock("./image/mode-resolution", () => ({
 }))
 vi.mock("./image/product-image-guard", () => ({ isUsableProductImage: vi.fn(() => true) }))
 vi.mock("./image/resolve-block-prompt.service", () => ({ buildImageAlt: vi.fn(() => "") }))
-const invokeHtmlChain = vi.fn()
-vi.mock("./chains/html.chain", () => ({
-  DEFAULT_HTML_SYSTEM_PROMPT: "",
-  DEFAULT_HTML_USER_TEMPLATE: "",
-  invokeHtmlChain: (...a: unknown[]) => invokeHtmlChain(...a),
+// Cadeia de formatação (split do HTML agent): mocks pra nenhum chain real
+// ser invocado — os testes deste arquivo validam os guards ANTES da cadeia.
+const invokeHeroChain = vi.fn()
+vi.mock("./chains/hero.chain", () => ({
+  invokeHeroChain: (...a: unknown[]) => invokeHeroChain(...a),
+  heroFullDocGuard: vi.fn(() => ({ ok: true })),
 }))
-vi.mock("./html/build-vars", () => ({ buildHtmlPromptVars: vi.fn(async () => ({})) }))
+vi.mock("./chains/text-format.chain", () => ({
+  invokeTextFormatChain: vi.fn(),
+  textFormatGuard: vi.fn(() => ({ ok: true })),
+}))
+vi.mock("./chains/image-format.chain", () => ({ invokeImageFormatChain: vi.fn() }))
+vi.mock("./chains/color-format.chain", () => ({ invokeColorFormatChain: vi.fn() }))
+vi.mock("./html/format-context", () => ({
+  loadFormatChainContext: vi.fn(async () => ({ referenceHtml: "", slotMap: null })),
+  resolveHeroVariant: vi.fn(async () => ({ variant: null, source: null })),
+  buildHeroVars: vi.fn(() => ({})),
+  buildTextFormatVars: vi.fn(() => ({})),
+  buildImageFormatVars: vi.fn(() => ({})),
+  buildColorFormatVars: vi.fn(() => ({})),
+}))
 vi.mock("./chains/qa.chain", () => ({ runQaAgent: vi.fn() }))
 vi.mock("./callbacks/telemetry.callback", () => ({
   logGenerationRun: vi.fn(async () => ""),
@@ -129,7 +143,7 @@ function reset(emailStatus: string) {
 
 beforeEach(() => {
   generateEmailImage.mockReset()
-  invokeHtmlChain.mockReset()
+  invokeHeroChain.mockReset()
 })
 
 describe("fase 2 — guards de email somente texto (legado)", () => {
@@ -144,14 +158,14 @@ describe("fase 2 — guards de email somente texto (legado)", () => {
     expect(generateEmailImage).not.toHaveBeenCalled()
   })
 
-  it("runPhase2HtmlQa: text_only em image_done vira ready sem invokeHtmlChain", async () => {
+  it("runPhase2HtmlQa: text_only em image_done vira ready sem invocar a cadeia", async () => {
     reset("image_done")
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("skipped")
     const email = h.tables.email_flow_emails[0]
     expect(email.status).toBe("ready")
     expect(email.html).toBeNull()
-    expect(invokeHtmlChain).not.toHaveBeenCalled()
+    expect(invokeHeroChain).not.toHaveBeenCalled()
   })
 
   it("runPhase2HtmlQa: text_only em rendering (preso no meio) também settla ready", async () => {

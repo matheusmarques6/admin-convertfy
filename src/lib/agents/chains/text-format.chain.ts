@@ -62,7 +62,7 @@ ESP merge tags remain LITERAL in the output: [unsubscribe_link], [unsubscribe], 
 <hard_prohibitions>
 - DO NOT convert <table> to <div>. DO NOT add, remove, reorder, merge, or split blocks — block count and order must match the input exactly.
 - DO NOT change inline styles other than font-family values (colors stay as var(--xxx); the var values change only inside :root).
-- NEVER place a <div> (or any non-table element) as a direct child of <table>. Between </tr> and <tr> only <tr>...</tr> or comments may appear.
+- NEVER place a <div> (or any non-table element) as a direct child of <table> — email clients foster-parent it to the TOP of the email, creating a blank gap. Between </tr> and <tr> only <tr>...</tr> or comments may appear.
 - PREHEADER: ONE short hidden line of text. NEVER pad it with repeated &nbsp;, zero-width characters, or any spacer hack. Emit the preheader text once and move on.
 - DO NOT repeat any character, entity, or token more than a handful of times in a row.
 - DO NOT emit commentary, markdown fences, or any text before <!DOCTYPE html> or after </html>.

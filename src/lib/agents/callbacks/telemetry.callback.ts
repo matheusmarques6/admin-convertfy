@@ -35,6 +35,8 @@ export interface LogGenerationRunParams {
   durationMs?: number
   errorMessage?: string
   errorStack?: string
+  /** Nº da retentativa (0 = primeira). A UI de logs mostra em "Retries". */
+  retryCount?: number
 }
 
 // Preço público por MILHÃO de tokens (USD), com chaves NORMALIZADAS
@@ -160,7 +162,7 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     duration_ms: params.durationMs ?? 0,
     error_message: params.errorMessage ?? null,
     error_stack: params.errorStack ?? null,
-    retry_count: 0,
+    retry_count: params.retryCount ?? 0,
   }
 
   const { data, error } = await admin

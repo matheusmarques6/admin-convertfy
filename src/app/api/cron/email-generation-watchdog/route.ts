@@ -61,20 +61,22 @@ export const maxDuration = 300
 
 // ── Tunables (env, com defaults seguros) ──────────────────────────────
 const COPY_TIMEOUT_MIN = Number(process.env.WATCHDOG_COPY_TIMEOUT_MIN ?? 15)
-// 10min cortava a fase 2 com o HTML agent em reasoning model (z-ai/glm-5.2:
-// timeout próprio de 540s = 9min só de HTML). 20min cobre imagem + HTML +
-// QA com folga e continua pegando fase 2 genuinamente morta.
-const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 20)
+// 10min cortava a fase 2 com reasoning model; com a CADEIA de formatação
+// (hero 240s + texto 540s + imagem 180s + cores 240s, worst-case legítimo
+// ≈ 14min mesmo com o budget dinâmico cortando antes), 25min cobre a cadeia
+// inteira com folga e continua pegando fase 2 genuinamente morta.
+const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 25)
 const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ?? 3)
 // Bug 2 split: `image_done` e `rendering` sao estados intermediarios.
 // Se ficarem parados alem do threshold, o `after()` que deveria continuar o
 // pipeline crashou (cold start, drop de runtime) — recuperacao via Front 5
 // (in-process, sem depender de fetch). Threshold conta a partir de
 // `rendering_started_at`, que e renovado no claim do html-qa (phase2-runner)
-// pra dar budget proprio. Era 5min; com o HTML agent em reasoning model
-// (timeout 540s), 5min "recuperava" um render LEGITIMO no meio — 12min da
-// folga sobre os 9min do timeout do HTML.
-const STALE_IMAGE_DONE_MIN = Number(process.env.WATCHDOG_STALE_IMAGE_DONE_MIN ?? 12)
+// pra dar budget proprio. Era 5min (cortava render legitimo de reasoning
+// model), depois 12min; com a cadeia de formatação o step mais longo
+// (texto, 540s) + hero (240s) passam de 12min — 15min de folga. O resume
+// por html_pipeline_stage garante que a re-entrada NUNCA perde trabalho.
+const STALE_IMAGE_DONE_MIN = Number(process.env.WATCHDOG_STALE_IMAGE_DONE_MIN ?? 15)
 const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
 // Cap de re-dispatches do front 4 (POST /api/internal/run-phase2 para
 // emails em copy_ready travados). Atingindo o cap, marca como
@@ -675,11 +677,15 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
       // `runPhase2HtmlQa` ja e idempotente (claim atomico) e tolera retry.
       // `relaxedBrandCheck=true` mantem coerencia com a flag historica do
       // pipeline de teste (brand parcial degradada ao inves de bloquear).
+      // budgetMs=240s: o cron tem maxDuration=300 — com o resume por
+      // html_pipeline_stage a cadeia progride >=1 step por tick em vez de
+      // morrer no meio e perder o trabalho.
       const result = await runPhase2HtmlQa({
         storeId,
         emailId: r.id,
         triggeredBy: "watchdog:stale_image_done",
         relaxedBrandCheck: true,
+        budgetMs: 240_000,
       })
       dispatched++
       log.info("watchdog.stale_image_done.recovered", {

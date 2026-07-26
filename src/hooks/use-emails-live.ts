@@ -310,6 +310,10 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   copy_invalid_output: "Copy gerada nao validou no schema",
   rendering_failed: "Falha ao renderizar HTML/imagem",
   html_failed: "Falha ao gerar o HTML",
+  // Cadeia de formatação (split do HTML agent): reason aponta o agente exato.
+  hero_failed: "Falha ao montar a hero section",
+  text_format_failed: "Falha ao formatar a copy no HTML",
+  image_format_failed: "Falha ao posicionar as imagens no HTML",
   qa_failed: "QA reprovou (issues criticas)",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",

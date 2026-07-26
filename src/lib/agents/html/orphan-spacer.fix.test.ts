@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  DEFAULT_HTML_SYSTEM_PROMPT,
-  fixOrphanSpacerDivs,
-  fixSpacerColumnWidths,
-} from "./html.chain"
+import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "./post-process"
+import { DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT } from "../chains/text-format.chain"
 
 describe("fixOrphanSpacerDivs", () => {
   it("converte <div height> orfao (entre </tr> e <tr>) num spacer <tr><td>", () => {
@@ -114,9 +111,9 @@ describe("fixSpacerColumnWidths", () => {
   })
 })
 
-describe("DEFAULT_HTML_SYSTEM_PROMPT — no_orphan_spacer_div", () => {
+describe("DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT — no_orphan_spacer_div", () => {
   it("proibe explicitamente <div> como filho direto de <table>", () => {
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("direct child of <table>")
-    expect(DEFAULT_HTML_SYSTEM_PROMPT).toContain("foster-parent")
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("direct child of <table>")
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("foster-parent")
   })
 })

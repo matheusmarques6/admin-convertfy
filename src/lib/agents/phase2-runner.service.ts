@@ -20,6 +20,8 @@
  *     (story AE-7) — `notifyBatchComplete` ou `notifyBatchAllFailed`
  */
 
+import { createHash } from "crypto"
+
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
@@ -57,15 +59,43 @@ import {
 import { isUsableProductImage } from "./image/product-image-guard"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
-import {
-  DEFAULT_HTML_SYSTEM_PROMPT,
-  DEFAULT_HTML_USER_TEMPLATE,
-  invokeHtmlChain,
-} from "./chains/html.chain"
-import { buildHtmlPromptVars } from "./html/build-vars"
 import { computeRenderChecks } from "./html/render-checks"
 import { runQaAgent } from "./chains/qa.chain"
-import { invokeRefinerChain, refinedHtmlGuard } from "./chains/refiner.chain"
+// ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
+import {
+  invokeHeroChain,
+  heroFullDocGuard,
+  type HeroChainMode,
+} from "./chains/hero.chain"
+import {
+  invokeTextFormatChain,
+  textFormatGuard,
+} from "./chains/text-format.chain"
+import { invokeImageFormatChain } from "./chains/image-format.chain"
+import { invokeColorFormatChain } from "./chains/color-format.chain"
+import type { FormatChainConfig } from "./chains/format-invoke"
+import {
+  loadFormatChainContext,
+  resolveHeroVariant,
+  buildHeroVars,
+  buildTextFormatVars,
+  buildImageFormatVars,
+  buildColorFormatVars,
+  type FormatChainContext,
+} from "./html/format-context"
+import {
+  locateHeroRegion,
+  spliceHero,
+  heroUnchanged,
+  respliceHero,
+  stripSentinels,
+} from "./html/hero-locator"
+import { applyOps, type FormatOp } from "./html/apply-patches"
+import {
+  postProcessDocumentPreserveTags,
+  stripUnresolvedPlaceholders,
+  enforceLangAttribute,
+} from "./html/post-process"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
   logGenerationRun,
@@ -301,14 +331,27 @@ async function loadMinimalContext(storeId: string, emailId: string) {
 
   const orgId = (storeData as Record<string, unknown>)?.org_id as string | undefined
 
+  // Config ativa por agente da cadeia de formatação (hero/text/image/color).
+  const fmtConfig = (agentType: string) =>
+    admin
+      .from("email_agent_configs")
+      .select("*")
+      .eq("agent_type", agentType)
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
   const [
     brandRes,
     briefingRes,
-    htmlConfigRes,
     settingsRes,
     imageConfigRes,
     storeOverridesRes,
-    refinerConfigRes,
+    heroConfigRes,
+    textConfigRes,
+    imageFmtConfigRes,
+    colorConfigRes,
   ] = await Promise.all([
     admin
       .from("store_brand_identity")
@@ -324,20 +367,10 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    admin
-      .from("email_agent_configs")
-      .select("*")
-      .eq("agent_type", "html")
-      .eq("is_active", true)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
     orgId
       ? admin
           .from("email_generation_settings")
-          .select(
-            "generate_images, qa_vision_enabled, refiner_enabled, cost_alert_usd",
-          )
+          .select("generate_images, qa_vision_enabled, cost_alert_usd")
           .eq("org_id", orgId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -355,28 +388,20 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       .select("*")
       .eq("store_id", storeId)
       .maybeSingle(),
-    // Refinador Tipográfico (voz da marca na fonte de display). Sem row
-    // ativa → passo inteiro pulado no runner (rollout/kill switch por DB).
-    admin
-      .from("email_agent_configs")
-      .select("*")
-      .eq("agent_type", "refiner")
-      .eq("is_active", true)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    fmtConfig("hero_section"),
+    fmtConfig("text_format"),
+    fmtConfig("image_format"),
+    fmtConfig("color_format"),
   ])
 
   const settingsRow = settingsRes.data as {
     generate_images?: boolean | null
     qa_vision_enabled?: boolean | null
-    refiner_enabled?: boolean | null
     cost_alert_usd?: number | null
   } | null
   const generateImages = settingsRow?.generate_images ?? true
   // NULL = respeita env (decisão fica no qa.chain); true/false = override da UI.
   const qaVisionEnabled = settingsRow?.qa_vision_enabled ?? null
-  const refinerEnabled = settingsRow?.refiner_enabled ?? true
   const costAlertUsd = settingsRow?.cost_alert_usd ?? null
 
   // Defesa contra o bug recorrente "store_brand_identities" (plural —
@@ -404,11 +429,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     storeRaw: (storeData as Record<string, unknown>) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
     briefing: (briefingRes.data as StoreBriefing | null) ?? null,
-    htmlConfig: (htmlConfigRes.data as EmailAgentConfig | null) ?? null,
     topProducts,
     generateImages,
     qaVisionEnabled,
-    refinerEnabled,
     costAlertUsd,
     blueprintObjective,
     // ── AE-11: contexto extra para o agente de imagem ───────────
@@ -421,7 +444,13 @@ async function loadMinimalContext(storeId: string, emailId: string) {
         user_template: string
         model: string
       } | null) ?? null,
-    refinerConfig: (refinerConfigRes.data as EmailAgentConfig | null) ?? null,
+    // Configs da cadeia de formatação (null → defaults in-code do chain).
+    heroConfig: (heroConfigRes.data as EmailAgentConfig | null) ?? null,
+    textFormatConfig: (textConfigRes.data as EmailAgentConfig | null) ?? null,
+    imageFormatConfig:
+      (imageFmtConfigRes.data as EmailAgentConfig | null) ?? null,
+    colorFormatConfig:
+      (colorConfigRes.data as EmailAgentConfig | null) ?? null,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -453,10 +482,17 @@ export interface RunPhase2Params {
   emailId: string
   triggeredBy?: string
   /**
-   * Quando true (TestTab), buildHtmlPromptVars usa precheck relaxado:
+   * Quando true (TestTab), o precheck de brand é relaxado:
    * só falha se brand=null. Cores/logo faltando degradam pra defaults.
    */
   relaxedBrandCheck?: boolean
+  /**
+   * Orçamento de tempo da cadeia de formatação nesta invocação (ms).
+   * Default = PHASE2_CHAIN_BUDGET_MS ?? 760s (rota com maxDuration=800).
+   * O fallback in-process do watchdog (cron, maxDuration=300) passa
+   * 240_000 — com o resume por estágio, progride 1 step por tick.
+   */
+  budgetMs?: number
 }
 
 /**
@@ -536,6 +572,8 @@ export async function runPhase2Image(
       status: "rendering",
       rendering_started_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      // Geração NOVA nunca herda estágio da cadeia de formatação anterior.
+      html_pipeline_stage: null,
     })
     .eq("id", emailId)
     .eq("status", "copy_ready")
@@ -1177,230 +1215,627 @@ function isQaEnabled(): boolean {
  *   - `ready`: pipeline concluido com sucesso
  *   - `failed`: erro fatal ou QA bloqueou
  */
-// Orçamento restante mínimo pra rodar o Refinador. Ele virou REPINTOR
-// (gera o HTML completo, timeout próprio de 180s). O guard garante que o
-// Refinador só COMEÇA se ainda couber no maxDuration da rota:
-// 800s (Fluid Compute) - 180s(timeout do Refinador) - 60s(QA) - ~20s(buffer)
-// = 540s. Com o HTML agent em reasoning model (z-ai/glm-5.2, timeout 540s),
-// o guard antigo de 100s pulava o refino SEMPRE (skipped_budget) — ativar o
-// Refinador era no-op. HTML mais lento que 540s → pula o refino (fail-open),
-// mas a rota SEMPRE termina sem ser morta pela Vercel (o loop
-// HTML↔Refinador de jul/2026 não volta).
-const REFINER_BUDGET_GUARD_MS = 540_000
+// ── Cadeia de formatação: budget dinâmico + retry por step ───────────
+//
+// A cadeia (hero → texto → imagem → cores) roda inteira dentro do status
+// `rendering`. Cada step tem timeout próprio (env-overridable, espelho dos
+// chains) e o budget da ROTA é dinâmico: se o tempo restante não comporta o
+// próximo step, o estágio fica persistido em html_pipeline_stage e o
+// watchdog re-entra depois (resume do ponto exato — NUNCA failed por budget).
 
-/**
- * Serializa a paleta da identidade visual (colors_primary + colors_secondary)
- * em linhas "Papel: #HEX (Nome)" para a var `brand_colors` do Refinador.
- * Sem identidade/paleta → "" (o prompt trata vazio como "não mexa em cores").
- */
-function serializeBrandColors(
-  brand: { colors_primary?: unknown; colors_secondary?: unknown } | null,
-): string {
-  if (!brand) return ""
-  const rows: string[] = []
-  for (const group of [brand.colors_primary, brand.colors_secondary]) {
-    if (!Array.isArray(group)) continue
-    for (const c of group as Array<{ hex?: string; name?: string; role?: string }>) {
-      const hex = (c?.hex ?? "").trim()
-      if (!hex) continue
-      const role = (c?.role ?? "").trim() || "Cor"
-      const name = (c?.name ?? "").trim()
-      rows.push(`${role}: ${hex}${name ? ` (${name})` : ""}`)
-    }
+const DEFAULT_CHAIN_BUDGET_MS = 760_000
+function chainBudgetMs(): number {
+  const env = Number(process.env.PHASE2_CHAIN_BUDGET_MS)
+  return Number.isFinite(env) && env > 0 ? env : DEFAULT_CHAIN_BUDGET_MS
+}
+
+type FormatAgent =
+  | "hero_section"
+  | "text_format"
+  | "image_format"
+  | "color_format"
+
+// Espelham os defaults/envs dos chains — o runner precisa deles pro guard
+// de budget ANTES de invocar (o chain só conhece o próprio timeout).
+const FMT_STEP_TIMEOUT: Record<FormatAgent, { envVar: string; def: number }> = {
+  hero_section: { envVar: "HERO_CHAIN_TIMEOUT_MS", def: 240_000 },
+  text_format: { envVar: "TEXT_FORMAT_TIMEOUT_MS", def: 540_000 },
+  image_format: { envVar: "IMAGE_FORMAT_TIMEOUT_MS", def: 180_000 },
+  color_format: { envVar: "COLOR_FORMAT_TIMEOUT_MS", def: 240_000 },
+}
+function stepTimeoutMs(agent: FormatAgent): number {
+  const env = Number(process.env[FMT_STEP_TIMEOUT[agent].envVar])
+  return Number.isFinite(env) && env > 0 ? env : FMT_STEP_TIMEOUT[agent].def
+}
+
+// failure_reason por agente (color_format é fail-open — nunca gera failed).
+const FMT_FAILURE_REASON: Record<FormatAgent, string> = {
+  hero_section: "hero_failed",
+  text_format: "text_format_failed",
+  image_format: "image_format_failed",
+  color_format: "color_format_failed",
+}
+
+const FMT_DEFAULTS: Record<
+  FormatAgent,
+  { temperature: number; maxTokens: number }
+> = {
+  hero_section: { temperature: 0.3, maxTokens: 16384 },
+  text_format: { temperature: 0.3, maxTokens: 65536 },
+  image_format: { temperature: 0.2, maxTokens: 8192 },
+  color_format: { temperature: 0.3, maxTokens: 16384 },
+}
+const FMT_DEFAULT_MODEL = "z-ai/glm-5.2"
+
+function toChainConfig(
+  config: EmailAgentConfig | null,
+  agent: FormatAgent,
+): FormatChainConfig {
+  return {
+    model: config?.model || FMT_DEFAULT_MODEL,
+    temperature: config?.temperature ?? FMT_DEFAULTS[agent].temperature,
+    max_tokens: config?.max_tokens ?? FMT_DEFAULTS[agent].maxTokens,
+    system_prompt: config?.system_prompt ?? "",
+    user_template: config?.user_template ?? "",
   }
-  return rows.join("\n")
+}
+
+/** Hash curto pra auditoria "output do step N = input do step N+1". */
+function sha8(s: string): string {
+  return createHash("sha256").update(s).digest("hex").slice(0, 8)
 }
 
 /**
- * Step 2.5 — Refinador Tipográfico (fail-open).
- *
- * Retorna o HTML refinado quando tudo passa; em QUALQUER falha (sem config,
- * sem orçamento, chain lançou, guard reprovou) retorna o HTML original.
- * Nunca lança, nunca marca o email como failed. Telemetria completa em
- * email_generation_runs (agent='refiner') com input_vars/rendered_prompt/
- * raw_output/parsed_output para o painel de logs de geração.
+ * Nº de runs em erro deste (email, batch, agent) — a fonte de verdade do
+ * retry 1x, cobrindo retry in-process E cross-invocação (resume do watchdog).
  */
-async function runRefinerStep(input: {
+async function countStepErrors(
+  admin: ReturnType<typeof createAdminClient>,
+  emailId: string,
+  batchId: string,
+  agent: FormatAgent,
+): Promise<number> {
+  let q = admin
+    .from("email_generation_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("email_id", emailId)
+    .eq("agent", agent)
+    .eq("status", "error")
+  q = batchId ? q.eq("batch_id", batchId) : q.is("batch_id", null)
+  const { count } = await q
+  return count ?? 0
+}
+
+interface StepAttemptResult<T> {
+  value: T
+  tokensInput: number
+  tokensOutput: number
+  costUsd: number
+  renderedPrompt: string
+  rawOutput: string
+  parsed: Record<string, unknown>
+}
+
+type StepOutcome<T> =
+  | { kind: "ok"; value: T }
+  | { kind: "out_of_budget" }
+  | { kind: "failed"; lastError: string }
+
+/**
+ * Executa um step da cadeia com budget dinâmico + retry 1x + telemetria
+ * completa (input sha8/len, output no parsed, raw persistido no erro).
+ * NÃO marca o email failed — o caller decide (color_format é fail-open).
+ */
+async function executeFormatStep<T>(p: {
+  ids: {
+    storeId: string
+    flowId: string
+    emailId: string
+    triggeredBy?: string
+    batchId: string
+  }
+  agent: FormatAgent
+  config: EmailAgentConfig | null
+  model: string
+  routeT0: number
+  budgetMs: number
+  inputHtml: string
+  attempt: () => Promise<StepAttemptResult<T>>
+}): Promise<StepOutcome<T>> {
+  const admin = createAdminClient()
+  const { storeId, flowId, emailId, triggeredBy, batchId } = p.ids
+  const timeout = stepTimeoutMs(p.agent)
+
+  let priorErrors = await countStepErrors(admin, emailId, batchId, p.agent)
+  let lastError = ""
+
+  while (priorErrors < 2) {
+    const remaining = p.budgetMs - (Date.now() - p.routeT0)
+    if (remaining < timeout + 30_000) {
+      log.warn("phase2.fmt.out_of_budget", {
+        emailId,
+        agent: p.agent,
+        remainingMs: remaining,
+        stepTimeoutMs: timeout,
+      })
+      return { kind: "out_of_budget" }
+    }
+
+    const t0 = Date.now()
+    const runId = await startGenerationRun({
+      storeId,
+      flowId,
+      emailId,
+      triggeredBy,
+      batchId,
+      agent: p.agent,
+      agentConfigId: p.config?.id,
+      model: p.model,
+      retryCount: priorErrors,
+      inputVars: {
+        stage: p.agent,
+        input_html_len: p.inputHtml.length,
+        input_sha8: sha8(p.inputHtml),
+        attempt: priorErrors,
+      },
+    })
+
+    try {
+      const r = await p.attempt()
+      await finishGenerationRun(runId, {
+        storeId,
+        flowId,
+        emailId,
+        triggeredBy,
+        batchId,
+        agent: p.agent,
+        agentConfigId: p.config?.id,
+        status: "success",
+        model: p.model,
+        renderedPrompt: r.renderedPrompt,
+        rawOutput: r.rawOutput,
+        parsedOutput: r.parsed,
+        tokensInput: r.tokensInput,
+        tokensOutput: r.tokensOutput,
+        costCents: resolveCostCents({
+          model: p.model,
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+        }),
+        durationMs: Date.now() - t0,
+        retryCount: priorErrors,
+      })
+      return { kind: "ok", value: r.value }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      // Erros tipados carregam o output CRU (HtmlTruncatedError /
+      // HeroOutputInvalidError / OpsParseError) — persistido no run pra o
+      // "OUTPUT BRUTO" do painel mostrar ONDE o modelo parou.
+      const raw =
+        err instanceof Error && typeof (err as { raw?: unknown }).raw === "string"
+          ? ((err as { raw?: string }).raw ?? "")
+          : ""
+      log.error("phase2.fmt.step_error", {
+        emailId,
+        agent: p.agent,
+        attempt: priorErrors,
+        error: lastError,
+      })
+      await finishGenerationRun(runId, {
+        storeId,
+        flowId,
+        emailId,
+        triggeredBy,
+        batchId,
+        agent: p.agent,
+        agentConfigId: p.config?.id,
+        status: "error",
+        model: p.model,
+        durationMs: Date.now() - t0,
+        errorMessage: lastError,
+        retryCount: priorErrors,
+        ...(raw ? { rawOutput: raw } : {}),
+      }).catch(() => {})
+      priorErrors += 1
+    }
+  }
+
+  return { kind: "failed", lastError }
+}
+
+
+/**
+ * Cadeia de formatação (split do HTML agent): HERO → TEXTO → IMAGEM →
+ * CORES, com resume por html_pipeline_stage, retry 1x por step e budget
+ * dinâmico. Substitui o Step 2 (HTML monolítico) + Step 2.5 (Refinador).
+ *
+ * - hero/texto/imagem: 2ª falha → failed com o failure_reason do agente.
+ * - cores: FAIL-OPEN — 2ª falha ou budget esgotado → segue com o HTML do
+ *   step de imagem (o email já está completo; cores são polimento).
+ * - out_of_budget (hero/texto/imagem): estágio persistido, status continua
+ *   `rendering`, watchdog re-entra e retoma do ponto.
+ */
+async function runFormattingChain(p: {
   ctx: Awaited<ReturnType<typeof loadMinimalContext>>
-  finalHtml: string
   storeId: string
   flowId: string
   emailId: string
   triggeredBy?: string
   batchId: string
+  relaxedBrandCheck?: boolean
   routeT0: number
-}): Promise<string> {
-  const { ctx, finalHtml, storeId, flowId, emailId, triggeredBy, batchId, routeT0 } = input
-
-  // Kill-switch via settings (aba Configurações → Refino tipográfico).
-  if (ctx.refinerEnabled === false) {
-    log.info("phase2.refiner.disabled_by_settings", { emailId })
-    return finalHtml
-  }
-
-  // Sem row ativa → no-op absoluto (nem run é criado). Kill switch por DB.
-  const config = ctx.refinerConfig
-  if (!config) return finalHtml
-
-  if (Date.now() - routeT0 > REFINER_BUDGET_GUARD_MS) {
-    log.warn("phase2.refiner.skipped_budget", {
-      emailId,
-      elapsedMs: Date.now() - routeT0,
-    })
-    return finalHtml
-  }
-
+  budgetMs: number
+}): Promise<
+  | { status: "ok"; html: string }
+  | { status: "failed" }
+  | { status: "out_of_budget" }
+> {
   const admin = createAdminClient()
-  const refT0 = Date.now()
-  let refRunId = ""
+  const {
+    ctx,
+    storeId,
+    flowId,
+    emailId,
+    triggeredBy,
+    batchId,
+    relaxedBrandCheck,
+    routeT0,
+    budgetMs,
+  } = p
+  const ids = { storeId, flowId, emailId, triggeredBy, batchId }
+
+  const failStep = async (agent: FormatAgent, lastError: string) => {
+    const reason = FMT_FAILURE_REASON[agent]
+    log.error("phase2.fmt.step_failed", { emailId, agent, reason, lastError })
+    await markEmailFailed(emailId, reason)
+    await safeNotifyEmailFailed(storeId, emailId, reason, batchId || null)
+    if (batchId) {
+      await rollupCostAndMaybeAlert({
+        storeId,
+        emailId,
+        batchId,
+        costAlertUsd: ctx.costAlertUsd,
+      }).catch(() => {})
+      await checkBatchTerminal(storeId, batchId).catch(() => {})
+    }
+  }
+
+  // ── Contexto compartilhado da cadeia (queries 1x) ──────────────────
+  let fmtCtx: FormatChainContext
   try {
+    fmtCtx = await loadFormatChainContext({
+      emailId,
+      brand: ctx.brand,
+      briefing: ctx.briefing,
+      blueprint: ctx.blueprint,
+      topProducts: ctx.topProducts,
+      storeRaw: ctx.storeRaw,
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      admin,
+      relaxedBrandCheck,
+    })
+  } catch (err) {
+    const isBrandIncomplete =
+      err instanceof Error && err.name === "BrandIncompleteError"
+    const reason = isBrandIncomplete ? "brand_incomplete" : "context_load_failed"
+    log.error("phase2.fmt.context_error", {
+      emailId,
+      reason,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    await markEmailFailed(emailId, reason)
+    await safeNotifyEmailFailed(storeId, emailId, reason, batchId || null)
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    return { status: "failed" }
+  }
+
+  // ── Resume: retoma do último step CONCLUÍDO (watchdog re-entry) ─────
+  const { data: st } = await admin
+    .from("email_flow_emails")
+    .select("html, html_pipeline_stage")
+    .eq("id", emailId)
+    .maybeSingle()
+  let stage = (st?.html_pipeline_stage as "hero" | "text" | "image" | null) ?? null
+  let currentHtml = stage ? ((st?.html as string | null) ?? "") : ""
+  if (stage && !currentHtml) {
+    // Estado inconsistente (stage sem HTML) → recomeça a cadeia do zero.
+    log.warn("phase2.fmt.stage_without_html", { emailId, stage })
+    stage = null
+  }
+  if (stage) log.info("phase2.fmt.resumed_from", { emailId, stage })
+
+  const persistStage = async (
+    html: string,
+    stageVal: "hero" | "text" | "image" | null,
+    extra?: Record<string, unknown>,
+  ) => {
+    await admin
+      .from("email_flow_emails")
+      .update({
+        html,
+        html_pipeline_stage: stageVal,
+        updated_at: new Date().toISOString(),
+        ...(extra ?? {}),
+      })
+      .eq("id", emailId)
+  }
+
+  // ── STEP 1 — HERO SECTION ──────────────────────────────────────────
+  if (stage === null) {
+    const region = locateHeroRegion(fmtCtx.referenceHtml)
+    const heroMode: HeroChainMode = region ? "fragment" : "full_doc"
+    const { variant, source: variantSource } = await resolveHeroVariant(admin, {
+      storeId,
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      slotMap: fmtCtx.slotMap,
+      blueprint: ctx.blueprint,
+    })
+    const regionHtml = region
+      ? fmtCtx.referenceHtml.slice(region.start, region.end)
+      : ""
+    const vars = buildHeroVars(fmtCtx, {
+      mode: heroMode,
+      regionHtml,
+      variant,
+    })
+    const config = toChainConfig(ctx.heroConfig, "hero_section")
+
+    const outcome = await executeFormatStep<string>({
+      ids,
+      agent: "hero_section",
+      config: ctx.heroConfig,
+      model: config.model,
+      routeT0,
+      budgetMs,
+      inputHtml: fmtCtx.referenceHtml,
+      attempt: async () => {
+        const r = await invokeHeroChain({ config, vars, mode: heroMode })
+        let next: string
+        if (heroMode === "fragment" && region) {
+          next = spliceHero(fmtCtx.referenceHtml, region, r.output)
+        } else {
+          next = postProcessDocumentPreserveTags(r.output)
+          const guard = heroFullDocGuard(fmtCtx.referenceHtml, next)
+          if (!guard.ok) throw new Error(`guard: ${guard.reason}`)
+        }
+        return {
+          value: next,
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+          renderedPrompt: r.renderedPrompt,
+          rawOutput: r.rawOutput,
+          parsed: {
+            hero_mode: region ? region.mode : "full_doc",
+            variant_source: variantSource,
+            variant_id: variant?.id ?? null,
+            output_html_len: next.length,
+            output_sha8: sha8(next),
+          },
+        }
+      },
+    })
+
+    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
+    if (outcome.kind === "failed") {
+      await failStep("hero_section", outcome.lastError)
+      return { status: "failed" }
+    }
+    currentHtml = outcome.value
+    await persistStage(currentHtml, "hero")
+    stage = "hero"
+  }
+
+  // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
+  if (stage === "hero") {
+    const inputHtml = currentHtml
+    const vars = buildTextFormatVars(fmtCtx, inputHtml)
+    const config = toChainConfig(ctx.textFormatConfig, "text_format")
+
+    const outcome = await executeFormatStep<string>({
+      ids,
+      agent: "text_format",
+      config: ctx.textFormatConfig,
+      model: config.model,
+      routeT0,
+      budgetMs,
+      inputHtml,
+      attempt: async () => {
+        const r = await invokeTextFormatChain({ config, vars })
+        let out = r.html
+        let heroRespliced = false
+        // Hero byte-idêntica entre sentinelas; divergiu → re-splice
+        // determinístico (restaura a hero canônica do step anterior).
+        if (!heroUnchanged(inputHtml, out)) {
+          const restored = respliceHero(out, inputHtml)
+          if (restored) {
+            out = restored
+            heroRespliced = true
+          }
+          // Sem sentinelas em um dos lados: o guard abaixo acusa
+          // hero_sentinels_lost (ou o modo full_doc nunca teve sentinelas
+          // e o guard não cobra).
+        }
+        const guard = textFormatGuard(inputHtml, out)
+        if (!guard.ok) throw new Error(`guard: ${guard.reason}`)
+        return {
+          value: out,
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+          renderedPrompt: r.renderedPrompt,
+          rawOutput: r.rawOutput,
+          parsed: {
+            hero_respliced: heroRespliced,
+            output_html_len: out.length,
+            output_sha8: sha8(out),
+          },
+        }
+      },
+    })
+
+    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
+    if (outcome.kind === "failed") {
+      await failStep("text_format", outcome.lastError)
+      return { status: "failed" }
+    }
+    currentHtml = outcome.value
+    await persistStage(currentHtml, "text")
+    stage = "text"
+  }
+
+  // ── STEP 3 — FORMATAÇÃO DE IMAGEM ──────────────────────────────────
+  if (stage === "text") {
+    const inputHtml = currentHtml
+    const vars = buildImageFormatVars(fmtCtx, inputHtml)
+    const config = toChainConfig(ctx.imageFormatConfig, "image_format")
+
+    const outcome = await executeFormatStep<string>({
+      ids,
+      agent: "image_format",
+      config: ctx.imageFormatConfig,
+      model: config.model,
+      routeT0,
+      budgetMs,
+      inputHtml,
+      attempt: async () => {
+        const r = await invokeImageFormatChain({ config, vars })
+        const applied = applyOps(inputHtml, r.ops, { allowHero: false })
+        return {
+          value: applied.html,
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+          renderedPrompt: r.renderedPrompt,
+          rawOutput: r.rawOutput,
+          parsed: {
+            ops_applied: applied.applied,
+            ops_skipped: applied.skipped.map((s) => ({
+              action: s.op.action,
+              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
+              reason: s.reason,
+            })),
+            output_html_len: applied.html.length,
+            output_sha8: sha8(applied.html),
+          },
+        }
+      },
+    })
+
+    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
+    if (outcome.kind === "failed") {
+      await failStep("image_format", outcome.lastError)
+      return { status: "failed" }
+    }
+
+    // Limpeza final do documento (era o fim do postProcessHtml do agente
+    // monolítico): sentinelas fora, placeholders órfãos limpos, lang da
+    // loja. O color_format recebe o documento já apresentável.
+    currentHtml = enforceLangAttribute(
+      stripUnresolvedPlaceholders(stripSentinels(outcome.value)),
+      fmtCtx.locale,
+    )
+    // Snapshot pré-polimento (compare de 3 vias na UI) — semântica da
+    // coluna preservada: "HTML antes do último retoque visual".
+    await persistStage(currentHtml, "image", { html_pre_refiner: currentHtml })
+    stage = "image"
+  }
+
+  // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────
+  {
+    const inputHtml = currentHtml
+    const config = toChainConfig(ctx.colorFormatConfig, "color_format")
     const storeRaw = ctx.storeRaw as Record<string, unknown>
-    const vars: Record<string, string> = {
-      brand_name: (storeRaw.store_name as string) || "Loja",
+    const vars = buildColorFormatVars(fmtCtx, inputHtml, {
+      brand: ctx.brand,
       niche: (storeRaw.niche as string) || "",
-      locale: (storeRaw.language as string) || "pt-BR",
-      // Tons canônicos derivados do tom de voz da loja (component-dimensions)
-      // — sinal adicional pra estratégia tipográfica (Premium→serifada...).
       tones: deriveToneKeys(
         ((storeRaw.tone_description as string) ??
           (storeRaw.tom_de_voz as string)) ||
           null,
       ).join(", "),
-      pesquisa_full_text: pesquisaToFullText(storeRaw as PesquisaFields),
-      current_font_heading: ctx.brand?.font_heading || "",
-      current_font_body: ctx.brand?.font_body || "",
-      // Paleta da identidade visual (camada 4 do Refinador: conformidade de
-      // fonte/cor). Formato legível "Papel: #HEX (Nome)". Vazio quando a
-      // loja não tem identidade → o prompt manda não mexer em cores.
-      brand_colors: serializeBrandColors(ctx.brand),
-      email_name: "",
-      subject: "",
-      // O Refinador-repintor edita o HTML diretamente (só as 3 camadas visuais).
-      html: finalHtml,
-    }
-    // Nome/subject do email dão contexto ao agente (best-effort).
-    const { data: emailRow } = await admin
-      .from("email_flow_emails")
-      .select("name, subject")
-      .eq("id", emailId)
-      .maybeSingle<{ name: string | null; subject: string | null }>()
-    vars.email_name = emailRow?.name ?? ""
-    vars.subject = emailRow?.subject ?? ""
-
-    const model = config.model || "anthropic/claude-sonnet-4.6"
-    refRunId = await startGenerationRun({
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "refiner",
-      agentConfigId: config.id,
-      model,
-      inputVars: { html_len: finalHtml.length },
+      pesquisaFullText: pesquisaToFullText(storeRaw as PesquisaFields),
     })
 
-    const { html: refined, tokensInput, tokensOutput, costUsd, renderedPrompt, rawOutput } =
-      await invokeRefinerChain({
-        config: {
-          model,
-          temperature: config.temperature ?? 0.4,
-          // HTML completo de saída → teto alto (evita truncar antes do </html>).
-          max_tokens: config.max_tokens ?? 32000,
-          system_prompt: config.system_prompt ?? "",
-          user_template: config.user_template ?? "",
-        },
-        vars,
-      })
-
-    const finishBase = {
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "refiner" as const,
-      agentConfigId: config.id,
-      model,
-      renderedPrompt,
-      rawOutput,
-      tokensInput,
-      tokensOutput,
-      costCents: resolveCostCents({ model, tokensInput, tokensOutput, costUsd }),
-      durationMs: Date.now() - refT0,
-    }
-
-    // Guard estrutural: o HTML refinado precisa ser um documento válido E
-    // preservar a estrutura (mesmo nº de <table>, sem encolher). Falhou →
-    // fail-open: mantém o HTML original (o email nunca fica pior que a entrada).
-    const guard = refinedHtmlGuard(finalHtml, refined)
-    if (!guard.ok) {
-      await finishGenerationRun(refRunId, {
-        ...finishBase,
-        status: "error",
-        errorMessage: `guard: ${guard.reason}`,
-        parsedOutput: {
-          applied: false,
-          guard_reason: guard.reason,
-          refined_len: refined.length,
-          original_len: finalHtml.length,
-        },
-      })
-      log.warn("phase2.refiner.fail_open", { emailId, reason: guard.reason })
-      return finalHtml
-    }
-
-    // Refinamento "no-op" (o LLM devolveu o HTML idêntico = decidiu não mexer):
-    // sucesso sem re-gravar (nada mudou).
-    if (refined.trim() === finalHtml.trim()) {
-      await finishGenerationRun(refRunId, {
-        ...finishBase,
-        status: "success",
-        parsedOutput: { applied: false, unchanged: true },
-      })
-      log.info("phase2.refiner.unchanged", { emailId })
-      return finalHtml
-    }
-
-    await admin
-      .from("email_flow_emails")
-      .update({ html: refined, updated_at: new Date().toISOString() })
-      .eq("id", emailId)
-
-    await finishGenerationRun(refRunId, {
-      ...finishBase,
-      status: "success",
-      parsedOutput: {
-        applied: true,
-        refined_len: refined.length,
-        original_len: finalHtml.length,
+    const outcome = await executeFormatStep<{
+      html: string
+      applied: number
+      skipped: number
+    }>({
+      ids,
+      agent: "color_format",
+      config: ctx.colorFormatConfig,
+      model: config.model,
+      routeT0,
+      budgetMs,
+      inputHtml,
+      attempt: async () => {
+        const r = await invokeColorFormatChain({ config, vars })
+        const applied = applyOps(inputHtml, r.ops, { allowHero: true })
+        // Guard: ops replace não podem quebrar a estrutura (um find/replace
+        // que engole um </table> corrompe o documento).
+        const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
+        if (count(applied.html) !== count(inputHtml)) {
+          throw new Error("guard: table_count_changed_by_ops")
+        }
+        return {
+          value: {
+            html: applied.html,
+            applied: applied.applied,
+            skipped: applied.skipped.length,
+          },
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+          renderedPrompt: r.renderedPrompt,
+          rawOutput: r.rawOutput,
+          parsed: {
+            ops_applied: applied.applied,
+            ops_skipped: applied.skipped.map((s) => ({
+              action: s.op.action,
+              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
+              reason: s.reason,
+            })),
+            output_html_len: applied.html.length,
+            output_sha8: sha8(applied.html),
+          },
+        }
       },
     })
-    log.info("phase2.refiner.applied", {
-      emailId,
-      refinedLen: refined.length,
-      originalLen: finalHtml.length,
-      durationMs: Date.now() - refT0,
-    })
-    return refined
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro no Refinador"
-    log.warn("phase2.refiner.fail_open", { emailId, reason: "exception", error: msg })
-    await finishGenerationRun(refRunId, {
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "refiner",
-      agentConfigId: config.id,
-      status: "error",
-      errorMessage: msg,
-      durationMs: Date.now() - refT0,
-    }).catch(() => {})
-    return finalHtml
+
+    if (outcome.kind === "ok") {
+      currentHtml = outcome.value.html
+      await persistStage(currentHtml, null)
+    } else {
+      // FAIL-OPEN: cores são polimento — budget esgotado ou 2 falhas mantêm
+      // o HTML do step de imagem e seguem pra ready. Telemetria: skipped.
+      log.warn("phase2.fmt.color_fail_open", {
+        emailId,
+        reason: outcome.kind === "failed" ? outcome.lastError : "out_of_budget",
+      })
+      if (outcome.kind === "out_of_budget") {
+        await logGenerationRun({
+          storeId,
+          flowId,
+          emailId,
+          triggeredBy,
+          batchId,
+          agent: "color_format",
+          status: "skipped",
+          model: config.model,
+          parsedOutput: { reason: "out_of_budget" },
+        }).catch(() => {})
+      }
+      await persistStage(currentHtml, null)
+    }
   }
+
+  return { status: "ok", html: currentHtml }
 }
+
 
 export async function runPhase2HtmlQa(
   params: RunPhase2Params,
@@ -1483,151 +1918,30 @@ export async function runPhase2HtmlQa(
     return { status: "failed" }
   }
 
-  // ── Step 2: HTML generation (Master Prompt v2) ──────────────────────
-  const htmlT0 = Date.now()
-  let finalHtml = ""
-  // Run 'running' aberto antes do invokeHtmlChain (live view).
-  let htmlRunId = ""
-  try {
-    const htmlConfig = ctx.htmlConfig
-    const model = htmlConfig?.model ?? "claude-opus-4-7"
-    const temperature = htmlConfig?.temperature ?? 0.3
-    const maxTokens = htmlConfig?.max_tokens ?? 16384
-    const systemPrompt = htmlConfig?.system_prompt ?? DEFAULT_HTML_SYSTEM_PROMPT
-    const userTemplate = htmlConfig?.user_template ?? DEFAULT_HTML_USER_TEMPLATE
 
-    const inputVars = await buildHtmlPromptVars({
-      emailId,
-      brand: ctx.brand,
-      briefing: ctx.briefing,
-      blueprint: ctx.blueprint,
-      topProducts: ctx.topProducts,
-      storeRaw: ctx.storeRaw,
-      flowType: ctx.flowType,
-      emailNumber: ctx.emailNumber,
-      admin,
-      relaxedBrandCheck,
-    })
-
-    htmlRunId = await startGenerationRun({
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "html",
-      agentConfigId: htmlConfig?.id,
-      model,
-    })
-
-    const {
-      html: rawHtml,
-      tokensInput,
-      tokensOutput,
-      costUsd,
-      renderedPrompt,
-    } = await invokeHtmlChain({
-      config: {
-        model,
-        temperature,
-        max_tokens: maxTokens,
-        system_prompt: systemPrompt,
-        user_template: userTemplate,
-      },
-      vars: inputVars,
-    })
-
-    await admin
-      .from("email_flow_emails")
-      // html_pre_refiner = snapshot do HTML agent ANTES do Refinador (que
-      // sobrescreve .html adiante) — alimenta o compare de 3 vias.
-      .update({
-        html: rawHtml,
-        html_pre_refiner: rawHtml,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", emailId)
-
-    await finishGenerationRun(htmlRunId, {
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "html",
-      agentConfigId: htmlConfig?.id,
-      status: "success",
-      model,
-      // Telemetria: input completo do modelo. Sem renderedPrompt antes, nao
-      // era possivel auditar o que o agente HTML recebeu (ex.: reference do
-      // Montador chegou inteiro? blocks com content real?). agente de imagem
-      // ja grava (phase2-runner:712); HTML faltava paridade.
-      renderedPrompt,
-      // HTML completo na telemetria — antes o caminho de producao nem gravava
-      // raw_output, deixando o "OUTPUT BRUTO" vazio. Limitado pelo max_tokens.
-      rawOutput: rawHtml,
-      tokensInput,
-      tokensOutput,
-      costCents: resolveCostCents({ model, tokensInput, tokensOutput, costUsd }),
-      durationMs: Date.now() - htmlT0,
-    })
-    finalHtml = rawHtml
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro no HTML"
-    // BrandIncompleteError vira `failure_reason='brand_incomplete'` — UI
-    // mostra CTA "Completar brand identity" em vez de "Tentar de novo".
-    const isBrandIncomplete =
-      err instanceof Error && err.name === "BrandIncompleteError"
-    const failureReason = isBrandIncomplete ? "brand_incomplete" : "html_failed"
-    // Truncamento carrega o output CRU no erro (HtmlTruncatedError.raw) —
-    // persistido no run pra o "OUTPUT BRUTO" do painel mostrar ONDE o
-    // modelo parou (antes ficava vazio e o truncamento era indepurável).
-    const truncatedRaw =
-      err instanceof Error && err.name === "HtmlTruncatedError"
-        ? ((err as { raw?: string }).raw ?? "")
-        : ""
-    log.error("phase2.html.error", { emailId, error: msg, failureReason })
-    await finishGenerationRun(htmlRunId, {
-      storeId,
-      flowId,
-      emailId,
-      triggeredBy,
-      batchId,
-      agent: "html",
-      status: "error",
-      durationMs: Date.now() - htmlT0,
-      errorMessage: msg,
-      ...(truncatedRaw ? { rawOutput: truncatedRaw } : {}),
-    })
-    await markEmailFailed(emailId, failureReason)
-    await safeNotifyEmailFailed(storeId, emailId, failureReason, batchId || null)
-    if (batchId) {
-      await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
-      await checkBatchTerminal(storeId, batchId).catch(() => {})
-    }
-    return { status: "failed" }
-  }
-
-  // ── Step 2.5: Refinador VISUAL / repintor (fail-open) ────────────────
-  // Voz da marca em 3 camadas visuais (fonte de DISPLAY, border-radius,
-  // ritmo vertical): o LLM RECEBE o HTML e DEVOLVE o HTML modificado — só o
-  // visual, preservando copy/imagens/estrutura/blocos. Sem config ativa →
-  // no-op total. Guard estrutural reprovado (não-HTML, nº de <table> mudou,
-  // encolheu) ou exceção → mantém o HTML original e segue pro QA (fail-open;
-  // NUNCA markEmailFailed aqui). Status permanece `rendering` — o claim
-  // `rendering -> ready` abaixo fica intocado. Requer a migration 20261031
-  // (prompt em formato HTML): sem ela o prompt antigo (delta) faz o LLM
-  // cuspir JSON → guard reprova → no-op silencioso.
-  finalHtml = await runRefinerStep({
+  // ── Step 2: Cadeia de formatação (HERO → TEXTO → IMAGEM → CORES) ────
+  // Substitui o agente HTML monolítico + o Refinador (corte seco,
+  // migration 20261039). Resume por html_pipeline_stage; retry 1x por
+  // step; budget dinâmico (out_of_budget → status fica rendering e o
+  // watchdog re-entra pra retomar do ponto).
+  const budgetMs = params.budgetMs ?? chainBudgetMs()
+  const fmtResult = await runFormattingChain({
     ctx,
-    finalHtml,
     storeId,
     flowId,
     emailId,
     triggeredBy,
     batchId,
+    relaxedBrandCheck,
     routeT0,
+    budgetMs,
   })
+  if (fmtResult.status === "failed") return { status: "failed" }
+  if (fmtResult.status === "out_of_budget") {
+    log.warn("phase2.html_qa.out_of_budget", { emailId })
+    return { status: "skipped" }
+  }
+  const finalHtml = fmtResult.html
 
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,

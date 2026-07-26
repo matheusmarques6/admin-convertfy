@@ -16,9 +16,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { buildHtmlPromptVars } from "./build-vars"
-import { HtmlPromptVarsSchema } from "./contract"
+import { HtmlPromptVarsSchema, HTML_PROMPT_VAR_KEYS } from "./contract"
 import { renderImageTemplate } from "../image/template-renderer"
-import { DEFAULT_HTML_USER_TEMPLATE } from "../chains/html.chain"
+
+// O html.chain (monolítico) foi removido no split do agente HTML — o
+// template sintético abaixo cobre TODAS as vars do contrato legado, que é
+// o que este teste valida (cada var renderiza sem sobrar placeholder).
+const ALL_VARS_TEMPLATE = HTML_PROMPT_VAR_KEYS.map((k) => `<${k}>{{${k}}}</${k}>`).join("\n")
 import type { EmailBlueprint } from "@/types/email-generation"
 import type { StoreBrandIdentity } from "@/types/email-workspace"
 
@@ -278,7 +282,7 @@ describe("inputs da fase 2 — cenário de produção pós-regeneração", () =>
 
   it("prompt final renderizado: reference + copy dentro, nenhum placeholder de contrato órfão", async () => {
     const vars = await buildProdLikeVars()
-    const prompt = renderImageTemplate(DEFAULT_HTML_USER_TEMPLATE, vars)
+    const prompt = renderImageTemplate(ALL_VARS_TEMPLATE, vars)
     // O que o modelo PRECISA receber:
     expect(prompt).toContain("assinatura-montador-radiantlyhers-2026")
     expect(prompt).toContain("Your 10% off is here")
