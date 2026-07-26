@@ -90,7 +90,7 @@ import {
   respliceHero,
   stripSentinels,
 } from "./html/hero-locator"
-import { applyOps, type FormatOp } from "./html/apply-patches"
+import { applyOps } from "./html/apply-patches"
 import {
   postProcessDocumentPreserveTags,
   stripUnresolvedPlaceholders,

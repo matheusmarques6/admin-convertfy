@@ -1121,12 +1121,32 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 | 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
 | 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
-| 7 | **HTML** | `chains/html.chain.ts` + `html/build-vars.ts` | `claude-sonnet-4-6` (config; era opus-4-7) | 21 vars: `reference_html`+copy+brand+blocks | `email_flow_emails.html`; status `qa_running` |
+| 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `z-ai/glm-5.2` (seed 20261039) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
+| 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `z-ai/glm-5.2` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
+| 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `z-ai/glm-5.2` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
+| 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `z-ai/glm-5.2` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
 | 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
 
+**Split do HTML agent (migration 20261039, jul/2026 — corte seco)**: o agente
+`html` monolítico e o `refiner` foram DESATIVADOS (configs `is_active=false`,
+chains deletados) e substituídos pela cadeia 7a→7d, que roda inteira no status
+`rendering` com: resume por `email_flow_emails.html_pipeline_stage`
+('hero'|'text'|'image' = último step concluído; watchdog re-entra do ponto),
+retry 1x por step (2º erro → `failed` com `hero_failed`/`text_format_failed`/
+`image_format_failed`; 7d é fail-open), budget dinâmico da rota
+(`PHASE2_CHAIN_BUDGET_MS`, default 760s) e telemetria por step em
+`email_generation_runs` com sha8 encadeado (output de um step = input do
+próximo) + custo real do OpenRouter. O Montador agora persiste a escolha POR
+PARTE em `store_email_references.slot_map` e envolve cada bloco com
+marcadores `<!-- cfy:block:{i}:{section}:start/end -->` (hero-locator modo
+marker; legado cai no modo tag; irrecuperável → full-doc). O strip de
+placeholders + lang rodam UMA vez no fim da cadeia (após 7c). Executor legado
+`generateEmail` + rotas `generate-flow`/`test-generate` removidos. Nos logs, a
+linha sintética "Montagem HTML" soma os 4 agentes + legados.
+
 **Papel-chave**: o Montador (#3) GERA a arquitetura HTML (esqueleto, ordem dos
-blocos, CSS variables, placeholders `{{HEADLINE}}`) UMA vez por loja×email; o
-HTML agent (#7) só REPINTA e despeja copy — por isso #7 é Sonnet barato.
+blocos, CSS variables, placeholders `{{HEADLINE}}`) UMA vez por loja×email; a
+cadeia 7a-7d só FINALIZA (hero, copy, imagens, cores) — nunca redesenha.
 
 **Fallback por email**: Montador e Blueprint só gravam quando geram de verdade
 (`if usedLlm` / `if source==='ai'`). No fallback NÃO gravam → consumidor cai no
@@ -1147,8 +1167,10 @@ O botão manual "Gerar copies" continua disparando direto (sem Architect).
 Gerar/regenerar reference por loja = `POST /api/admin/stores/[id]/generate-blueprints`
 (`maxDuration=300`).
 
-Status machine: `draft → pending → copy_generating → copy_ready → rendering →
-image_done → qa_running → ready/failed`.
+Status machine (INTOCADA pelo split): `draft → pending → copy_generating →
+copy_ready → rendering → image_done → qa_running → ready/failed`. A cadeia
+7a-7d roda inteira dentro de `rendering`; a granularidade vem da telemetria
+(`email_generation_runs`) e de `html_pipeline_stage` (não é status).
 
 ---
 
