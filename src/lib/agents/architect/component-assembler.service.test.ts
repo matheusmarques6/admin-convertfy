@@ -12,6 +12,9 @@ import {
   assembleReferenceHtml,
   missingBlockNote,
   shuffle,
+  validateBlockMarkers,
+  slotMapFromSlots,
+  type AssemblySlot,
 } from "./component-assembler.service"
 
 function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
@@ -120,5 +123,77 @@ describe("missingBlockNote", () => {
     expect(missingBlockNote("offer")).toContain(
       "nao foi encontrada referencia para esse bloco",
     )
+  })
+})
+
+describe("validateBlockMarkers", () => {
+  const hero = mk({ id: "vh", block_type: "hero", name: "Hero A" })
+  const cta = mk({ id: "vc", block_type: "cta", name: "CTA A" })
+  const slots: AssemblySlot[] = [
+    { kind: "variant", variant: hero, section: "hero", label: "Hero" },
+    { kind: "variant", variant: cta, section: "cta", label: "CTA" },
+  ]
+  const ok = [
+    "<!-- cfy:block:0:hero:start -->",
+    "<div>hero</div>",
+    "<!-- cfy:block:0:hero:end -->",
+    "<!-- cfy:block:1:cta:start -->",
+    "<div>cta</div>",
+    "<!-- cfy:block:1:cta:end -->",
+  ].join("\n")
+
+  it("aceita pares corretos na ordem", () => {
+    const res = validateBlockMarkers(ok, slots)
+    expect(res.status).toBe("ok")
+    expect(res.html).toBe(ok)
+  })
+
+  it("sem marcador nenhum → absent (documento intacto)", () => {
+    const res = validateBlockMarkers("<div>x</div>", slots)
+    expect(res.status).toBe("absent")
+    expect(res.html).toBe("<div>x</div>")
+  })
+
+  it("contagem errada de pares → strip", () => {
+    const partial = "<!-- cfy:block:0:hero:start --><div>hero</div><!-- cfy:block:0:hero:end -->"
+    const res = validateBlockMarkers(partial, slots)
+    expect(res.status).toBe("stripped")
+    expect(res.html).not.toContain("cfy:block")
+    expect(res.html).toContain("<div>hero</div>")
+  })
+
+  it("section divergente do slot → strip", () => {
+    const wrong = ok.replace("cfy:block:1:cta:start", "cfy:block:1:body:start")
+    const res = validateBlockMarkers(wrong, slots)
+    expect(res.status).toBe("stripped")
+  })
+
+  it("pares fora de ordem/aninhados → strip", () => {
+    const nested = [
+      "<!-- cfy:block:0:hero:start -->",
+      "<!-- cfy:block:1:cta:start -->",
+      "<!-- cfy:block:0:hero:end -->",
+      "<!-- cfy:block:1:cta:end -->",
+    ].join("\n")
+    expect(validateBlockMarkers(nested, slots).status).toBe("stripped")
+  })
+
+  it("tolera section maiúscula (case-insensitive)", () => {
+    const upper = ok.replaceAll(":hero:", ":HERO:")
+    expect(validateBlockMarkers(upper, slots).status).toBe("ok")
+  })
+})
+
+describe("slotMapFromSlots", () => {
+  it("mapeia variante e missing com block_index posicional", () => {
+    const hero = mk({ id: "vh", block_type: "hero", name: "Hero A" })
+    const slots: AssemblySlot[] = [
+      { kind: "variant", variant: hero, section: "hero", label: "Hero" },
+      { kind: "missing", section: "offer", label: "Oferta" },
+    ]
+    expect(slotMapFromSlots(slots)).toEqual([
+      { block_index: 0, section: "hero", label: "Hero", variant_id: "vh", variant_name: "Hero A" },
+      { block_index: 1, section: "offer", label: "Oferta", variant_id: null, variant_name: null },
+    ])
   })
 })

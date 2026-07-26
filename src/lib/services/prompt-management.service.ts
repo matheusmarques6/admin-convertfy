@@ -60,6 +60,11 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "refiner",
   "component_test",
   "subject",
+  // Cadeia de formatação (split do HTML agent, migration 20261039).
+  "hero_section",
+  "text_format",
+  "image_format",
+  "color_format",
 ]
 
 // ── Validação de output_schema ─────────────────────────────
@@ -160,6 +165,10 @@ export async function listPrompts(opts: {
     refiner: { active: null, history: [] },
     component_test: { active: null, history: [] },
     subject: { active: null, history: [] },
+    hero_section: { active: null, history: [] },
+    text_format: { active: null, history: [] },
+    image_format: { active: null, history: [] },
+    color_format: { active: null, history: [] },
   }
 
   for (const row of rows) {

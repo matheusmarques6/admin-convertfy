@@ -16,7 +16,10 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import type { EmailComponentVariant } from "@/types/email-generation"
+import type {
+  EmailComponentVariant,
+  ReferenceSlotMapEntry,
+} from "@/types/email-generation"
 
 import {
   resolveCostCents,
@@ -127,7 +130,9 @@ Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem com
 
 REGRA DOS SLOTS DE IMAGEM: TODA tag de imagem presente nas variantes escolhidas ({{HERO_IMAGE}}, {{PRODUCT_N_IMAGE}}, {{BODY_IMAGE}}, {{PRODUCTS_IMAGE}}, {{*_THUMB_*}} etc.) DEVE aparecer no documento final, no bloco correspondente, com o MESMO atributo (src ou background-image) da variante original. NUNCA remova, simplifique ou converta uma seção com imagem em versão só-texto ao harmonizar — o pipeline downstream gera as imagens a partir dessas tags; sem elas o email sai em branco. Bloco mínimo criado do zero para seção hero ou products DEVE incluir o slot de imagem tagueado ({{HERO_IMAGE}} / {{PRODUCT_1_IMAGE}}).
 
-REGRA DAS TAGS CANÔNICAS: os HTMLs das variantes usam placeholders padronizados no formato {{TAG_MAIUSCULA}} (ex.: {{HERO_HEADLINE}}, {{PRODUCT_1_NAME}}, {{COUPON_CODE}}). PRESERVE cada placeholder EXATAMENTE como está no HTML da variante — NUNCA renomeie, traduza, abrevie ou invente tags novas. Se precisar de um placeholder num trecho que não tem (bloco criado do zero), use SOMENTE tags no padrão SECAO_CAMPO já presente nas outras variantes do documento (ex.: {{BODY_TITLE}}, {{BODY_TEXT}}, {{CTA_LABEL}}) — jamais um nome novo fora desse padrão. A correlação downstream (estrutura, copy e orçamento de caracteres) depende desses nomes exatos.`
+REGRA DAS TAGS CANÔNICAS: os HTMLs das variantes usam placeholders padronizados no formato {{TAG_MAIUSCULA}} (ex.: {{HERO_HEADLINE}}, {{PRODUCT_1_NAME}}, {{COUPON_CODE}}). PRESERVE cada placeholder EXATAMENTE como está no HTML da variante — NUNCA renomeie, traduza, abrevie ou invente tags novas. Se precisar de um placeholder num trecho que não tem (bloco criado do zero), use SOMENTE tags no padrão SECAO_CAMPO já presente nas outras variantes do documento (ex.: {{BODY_TITLE}}, {{BODY_TEXT}}, {{CTA_LABEL}}) — jamais um nome novo fora desse padrão. A correlação downstream (estrutura, copy e orçamento de caracteres) depende desses nomes exatos.
+
+REGRA DOS MARCADORES DE BLOCO: envolva CADA bloco do documento com um par de comentários HTML exatamente neste formato: <!-- cfy:block:{block_index}:{section}:start --> imediatamente ANTES do bloco e <!-- cfy:block:{block_index}:{section}:end --> imediatamente DEPOIS (ex.: <!-- cfy:block:1:hero:start --> ... <!-- cfy:block:1:hero:end -->). Use o block_index e a section EXATOS de <componentes_escolhidos>/<blocos_sem_variante>. Exatamente UM par por bloco, na ordem dos blocos, sem aninhamento. Estes marcadores e a nota obrigatória dos blocos sem variante são os ÚNICOS comentários permitidos além dos que já existem dentro do HTML das variantes.`
 
 const DEFAULT_ASSEMBLER_USER = `<store>
 - marca: {{brand_name}}
@@ -262,6 +267,78 @@ export type AssemblySlot =
 /** Nota obrigatória do bloco sem variante (mesma do prompt do Montador). */
 export function missingBlockNote(section: string): string {
   return `<!-- bloco ${section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->`
+}
+
+// ── Marcadores de bloco (cadeia de formatação, migration 20261039) ──
+// O Montador envolve cada bloco com <!-- cfy:block:{i}:{section}:start/end -->.
+// O hero-locator da fase 2 usa esses marcadores como modo primário pra achar
+// a região da hero. Marcadores inválidos são REMOVIDOS (nunca quebram o run)
+// — a fase 2 cai no modo tag-locator/full-doc.
+
+export const BLOCK_MARKER_PATTERN =
+  /<!--\s*cfy:block:(\d+):([A-Za-z0-9_-]+):(start|end)\s*-->/g
+
+export type BlockMarkerStatus = "ok" | "stripped" | "absent"
+
+/** Remove todos os marcadores cfy:block do documento. Pura. */
+export function stripBlockMarkers(html: string): string {
+  return html.replace(BLOCK_MARKER_PATTERN, "")
+}
+
+/**
+ * Valida os marcadores de bloco do output do Montador contra os slots:
+ * exatamente 1 par start/end por slot, índices e sections corretos, pares
+ * na ordem dos blocos e sem sobreposição/aninhamento. Inválido → strip
+ * (documento segue sem marcadores). Pura, testável.
+ */
+export function validateBlockMarkers(
+  html: string,
+  slots: AssemblySlot[],
+): { html: string; status: BlockMarkerStatus } {
+  const found = Array.from(html.matchAll(BLOCK_MARKER_PATTERN))
+  if (found.length === 0) return { html, status: "absent" }
+
+  const stripped = () => ({
+    html: stripBlockMarkers(html),
+    status: "stripped" as const,
+  })
+
+  if (found.length !== slots.length * 2) return stripped()
+
+  let cursor = -1
+  for (let i = 0; i < slots.length; i++) {
+    const start = found[i * 2]
+    const end = found[i * 2 + 1]
+    if (!start || !end) return stripped()
+    if (Number(start[1]) !== i || Number(end[1]) !== i) return stripped()
+    if (start[3] !== "start" || end[3] !== "end") return stripped()
+    const section = slots[i].section.toLowerCase()
+    if (
+      start[2].toLowerCase() !== section ||
+      end[2].toLowerCase() !== section
+    ) {
+      return stripped()
+    }
+    const startIdx = start.index ?? -1
+    const endIdx = end.index ?? -1
+    if (startIdx <= cursor || endIdx <= startIdx) return stripped()
+    cursor = endIdx
+  }
+  return { html, status: "ok" }
+}
+
+/**
+ * Escolha do Curador/Montador por parte do email — persistida em
+ * store_email_references.slot_map. Missing → variant_id null. Pura.
+ */
+export function slotMapFromSlots(slots: AssemblySlot[]): ReferenceSlotMapEntry[] {
+  return slots.map((s, i) => ({
+    block_index: i,
+    section: s.section,
+    label: s.label,
+    variant_id: s.kind === "variant" ? s.variant.id : null,
+    variant_name: s.kind === "variant" ? s.variant.name : null,
+  }))
 }
 
 function referenceShell(body: string): string {
@@ -723,6 +800,23 @@ export async function assembleStoreReference(
 
   const variantIds = chosen.map((v) => v.id)
 
+  // Marcadores de bloco (cadeia de formatação): valida os pares
+  // cfy:block:{i}:{section}:start/end do output; inválidos → strip
+  // (o hero-locator da fase 2 cai no modo tag). Nunca derruba o run.
+  let blockMarkers: BlockMarkerStatus = "absent"
+  if (usedLlm) {
+    const markerCheck = validateBlockMarkers(html, slots)
+    html = markerCheck.html
+    blockMarkers = markerCheck.status
+    if (blockMarkers === "stripped") {
+      log.warn("assembler.block_markers_stripped", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+      })
+    }
+  }
+
   // Guard: o Montador removeu tags de imagem das variantes ao harmonizar?
   // Warning + telemetria (image_tags_dropped nos Logs de geração) — sem
   // derrubar o run, mas visível para auditoria imediata.
@@ -754,7 +848,7 @@ export async function assembleStoreReference(
       : "none"
 
   if (usedLlm) {
-    await upsertStoreReference(input, html, variantIds, harmConfig.model)
+    await upsertStoreReference(input, html, variantIds, harmConfig.model, slots)
   } else {
     // html devolvido = o global curado (ou "" se não houver) — usado só pelo
     // Blueprint do mesmo run pra extrair a estrutura; NÃO é persistido.
@@ -798,6 +892,8 @@ export async function assembleStoreReference(
       // Guard dos slots de imagem: tags presentes nas variantes escolhidas
       // que sumiram do documento montado (deveria ser sempre []).
       image_tags_dropped: droppedImageTags,
+      // Marcadores cfy:block do output (ok = hero-locator usa modo marker).
+      block_markers: blockMarkers,
     },
     tokensInput: harmTokensIn,
     tokensOutput: harmTokensOut,
@@ -820,6 +916,7 @@ async function upsertStoreReference(
   html: string,
   variantIds: string[],
   model: string | null,
+  slots: AssemblySlot[],
 ): Promise<void> {
   const admin = createAdminClient()
   const { error } = await admin.from("store_email_references").upsert(
@@ -829,6 +926,9 @@ async function upsertStoreReference(
       email_number: input.emailNumber,
       html,
       variant_ids: variantIds,
+      // Escolha por parte do email (migration 20261039) — fonte primária do
+      // agente hero_section pra resolver a variante da hero na fase 2.
+      slot_map: slotMapFromSlots(slots),
       source: "ai",
       model,
       updated_at: new Date().toISOString(),

@@ -148,6 +148,19 @@ export type AgentType =
   // gera subject_hint + messaging adaptados à loja (única contribuição
   // criativa de nível-email que sobrou do antigo Blueprint LLM).
   | "subject"
+  // ── Cadeia de formatação (split do agente HTML, migration 20261039) ──
+  // Substituem 'html' (e 'refiner') no runtime — os dois valores legados
+  // permanecem no union pra exibir runs/configs históricos.
+  // hero_section: monta a hero a partir da variante escolhida pelo Montador
+  //   (html + rendered_html como gold reference); output = só o fragmento.
+  // text_format: posiciona a copy do n8n no documento inteiro (doc completo).
+  // image_format: posiciona as imagens geradas (output = JSON de ops).
+  // color_format: cores do email + botões na paleta aprovada (substitui o
+  //   Refinador; output = JSON de ops replace; fail-open).
+  | "hero_section"
+  | "text_format"
+  | "image_format"
+  | "color_format"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -266,6 +279,11 @@ export type GenerationRunAgent =
   | "component_test"
   // subject: mini-LLM de subject/messaging (rota determinística do blueprint).
   | "subject"
+  // Cadeia de formatação (split do HTML agent, migration 20261039).
+  | "hero_section"
+  | "text_format"
+  | "image_format"
+  | "color_format"
 
 export interface EmailGenerationRun {
   id: string
@@ -444,8 +462,20 @@ export interface StoreEmailBlueprint {
   updated_at: string
 }
 
+// Escolha do Curador/Montador por parte do email, persistida em
+// store_email_references.slot_map (migration 20261039). Missing →
+// variant_id/variant_name null. Fonte primária do agente hero_section.
+export interface ReferenceSlotMapEntry {
+  block_index: number
+  section: string
+  label: string
+  variant_id: string | null
+  variant_name: string | null
+}
+
 // Reference HTML GERADO por (loja × email). Ocupa o papel do reference_html
-// consumido pelo HTML agent (build-vars.ts), com fallback ao template global.
+// consumido pela cadeia de formatação (build-vars.ts), com fallback ao
+// template global.
 export interface StoreEmailReference {
   id: string
   store_id: string
@@ -453,6 +483,7 @@ export interface StoreEmailReference {
   email_number: number
   html: string
   variant_ids: string[]
+  slot_map: ReferenceSlotMapEntry[] | null
   source: GeneratedSource
   model: string | null
   version: number

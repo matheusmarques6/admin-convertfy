@@ -19,6 +19,8 @@ import {
   Type,
   UserRound,
   Mail,
+  Sparkles,
+  Palette,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
@@ -31,7 +33,7 @@ import { PromptHistory } from "@/components/agents/prompt-history"
 const AGENT_LABELS: Record<AgentType, string> = {
   copy: "Copy",
   image: "Imagens",
-  html: "HTML",
+  html: "HTML (legado)",
   qa: "QA",
   blueprint: "Blueprint",
   assembler: "Montador",
@@ -40,9 +42,14 @@ const AGENT_LABELS: Record<AgentType, string> = {
   campaign_trends: "Trends",
   campaign_architect: "Arquiteto",
   campaign_image: "Imagens de campanha",
-  refiner: "Refinador Tipográfico",
+  refiner: "Refinador (legado)",
   component_test: "Teste de bloco",
   subject: "Assunto",
+  // Cadeia de formatação (split do HTML agent).
+  hero_section: "Hero Section",
+  text_format: "Formatação de Texto",
+  image_format: "Formatação de Imagem",
+  color_format: "Cores & Botões",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -60,6 +67,10 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   refiner: Type,
   component_test: Blocks,
   subject: Mail,
+  hero_section: Sparkles,
+  text_format: Type,
+  image_format: ImageIcon,
+  color_format: Palette,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
