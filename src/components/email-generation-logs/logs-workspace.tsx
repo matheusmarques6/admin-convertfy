@@ -657,11 +657,45 @@ const TH_STYLE = {
   fontFamily: F.sans,
 }
 
+// Agentes da cadeia de formatação (split do HTML agent) + legados que
+// ocupavam o mesmo papel — a linha sintética "Montagem HTML" soma os 6 pra
+// responder "quanto custou montar o HTML todo" (e manter o comparativo
+// histórico com o monolítico/Refinador).
+const HTML_CHAIN_KEYS: PipelineAgentKey[] = [
+  "hero_section",
+  "text_format",
+  "image_format",
+  "color_format",
+  "html",
+  "refiner",
+]
+
 function AgentSummary({ payload }: { payload: Payload }) {
   const ranked = [...payload.by_agent].sort(
     (a, b) => b.cost_usd - a.cost_usd || b.runs - a.runs,
   )
   const maxRuns = Math.max(...ranked.map((a) => a.runs), 1)
+  const chainAggs = payload.by_agent.filter((a) =>
+    HTML_CHAIN_KEYS.includes(a.agent),
+  )
+  const chain = chainAggs.reduce(
+    (acc, a) => ({
+      runs: acc.runs + a.runs,
+      cost_usd: acc.cost_usd + a.cost_usd,
+      errors: acc.errors + a.errors,
+      retries: acc.retries + a.retries,
+      // Tempo = SOMA dos tempos médios dos steps (aprox. do tempo de
+      // montagem por email, não média de runs).
+      sum_avg_ms:
+        acc.sum_avg_ms + (a.avg_duration_ms != null ? a.avg_duration_ms : 0),
+    }),
+    { runs: 0, cost_usd: 0, errors: 0, retries: 0, sum_avg_ms: 0 },
+  )
+  const fxChain = payload.fx_brl_rate ?? 5.42
+  const chainSharePct =
+    payload.totals.cost_usd > 0
+      ? (chain.cost_usd / payload.totals.cost_usd) * 100
+      : 0
   return (
     <Panel
       title="Resumo por agente"
@@ -925,6 +959,83 @@ function AgentSummary({ payload }: { payload: Payload }) {
             </div>
           )
         })}
+        {chain.runs > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: SUMMARY_COLS,
+              minWidth: 680,
+              gap: 14,
+              alignItems: "center",
+              padding: "13px 16px",
+              borderBottom: `1px solid ${C.g100}`,
+              background: C.g25,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 34,
+                  borderRadius: 3,
+                  background: "#D97706",
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: C.g900, fontFamily: F.sans }}>
+                  Montagem HTML
+                </div>
+                <div style={{ fontSize: 11, color: C.g400, fontFamily: F.sans, marginTop: 2 }}>
+                  soma da cadeia (hero + texto + imagem + cores) + legados
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 14, fontWeight: 600, color: C.g900, fontFamily: F.sans, ...TNUM }}>
+              {fmtInt(chain.runs)}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.g900, fontFamily: F.sans, ...TNUM }}>
+                {usd(chain.cost_usd)}
+              </div>
+              <div style={{ fontSize: 11, color: C.g500, fontFamily: F.sans, ...TNUM }}>
+                {formatBRL(chain.cost_usd * fxChain)} · {chainSharePct.toFixed(0)}%
+              </div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 13, fontWeight: 500, color: C.g700, fontFamily: F.sans, ...TNUM }}>
+              {chain.runs === 0 ? "—" : usd3(chain.cost_usd / chain.runs)}
+            </div>
+            <div style={{ textAlign: "right", fontSize: 13, fontWeight: 500, color: C.g700, fontFamily: F.sans, ...TNUM }}>
+              {chain.sum_avg_ms > 0 ? `Σ ${formatDuration(chain.sum_avg_ms)}` : "—"}
+            </div>
+            <div style={{ textAlign: "right", fontSize: 12.5, color: C.g400, fontFamily: F.sans }}>
+              —
+            </div>
+            <div style={{ textAlign: "right" }}>
+              {chain.errors > 0 ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    background: C.warnBg,
+                    border: `1px solid ${C.warnBorder}`,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    color: C.warn,
+                    fontFamily: F.sans,
+                  }}
+                >
+                  {chain.errors} · {chain.retries}r
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: C.g400, fontFamily: F.sans, ...TNUM }}>0</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
       <div
         style={{
@@ -1034,6 +1145,7 @@ interface DetailPayload {
   batch_id: string | null
   retry_count: number | null
   input_vars: unknown
+  rendered_prompt: string | null
   raw_output: string | null
   parsed_output: unknown
   error_message: string | null
@@ -1220,6 +1332,12 @@ function ExpandedDetail({ rowId }: { rowId: string }) {
             ? JSON.stringify(d.input_vars, null, 2)
             : "(vazio)"
         }
+      />
+      {/* O input EXATO do modelo — fecha o gap "o que entrou" da cadeia
+          de formatação (o sha8 do input_vars aponta pro step anterior). */}
+      <Collapsible
+        label="Prompt renderizado"
+        code={d.rendered_prompt ?? "(vazio)"}
       />
       <Collapsible label="Output bruto" code={d.raw_output ?? "(vazio)"} />
       <Collapsible

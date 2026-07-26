@@ -13,6 +13,11 @@ export type PipelineAgentKey =
   | "assembler_chooser"
   | "assembler"
   | "image"
+  // Cadeia de formatação (split do HTML agent, migration 20261039).
+  | "hero_section"
+  | "text_format"
+  | "image_format"
+  | "color_format"
   | "html"
   | "refiner"
   | "qa"
@@ -83,17 +88,49 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#E0CBFF",
     kind: "imagem",
   },
+  hero_section: {
+    name: "Hero Section",
+    desc: "Monta a hero da variante escolhida — imagem, copy, identidade, logo",
+    color: "#D97706",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+    kind: "texto",
+  },
+  text_format: {
+    name: "Formatação de Texto",
+    desc: "Posiciona a copy do n8n no documento (sem tocar na hero)",
+    color: "#B45309",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+    kind: "texto",
+  },
+  image_format: {
+    name: "Formatação de Imagem",
+    desc: "Posiciona as imagens geradas nos slots (ops aplicadas por código)",
+    color: "#92400E",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+    kind: "texto",
+  },
+  color_format: {
+    name: "Cores & Botões",
+    desc: "Conforma cores e botões à identidade — substitui o Refinador",
+    color: "#BE185D",
+    bg: "#FDF2F8",
+    border: "#FBCFE8",
+    kind: "texto",
+  },
   html: {
-    name: "HTML",
-    desc: "Monta o HTML final — 600px, CSS vars, flexbox",
+    name: "HTML (legado)",
+    desc: "Agente monolítico substituído pela cadeia de formatação",
     color: "#D97706",
     bg: "#FFFBEB",
     border: "#FDE68A",
     kind: "texto",
   },
   refiner: {
-    name: "Refinador",
-    desc: "Voz da marca tipográfica — fonte de display por posicionamento",
+    name: "Refinador (legado)",
+    desc: "Substituído pelo agente Cores & Botões",
     color: "#BE185D",
     bg: "#FDF2F8",
     border: "#FBCFE8",
@@ -149,6 +186,10 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "assembler_chooser",
   "assembler",
   "image",
+  "hero_section",
+  "text_format",
+  "image_format",
+  "color_format",
   "html",
   "refiner",
   "qa",

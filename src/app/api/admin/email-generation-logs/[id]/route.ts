@@ -50,7 +50,9 @@ export async function GET(
     const { data: row, error } = await admin
       .from("email_generation_runs")
       .select(
-        "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, error_stack, input_vars, raw_output, parsed_output, store_id, email_id, flow_id, triggered_by",
+        // rendered_prompt = o input EXATO do modelo ("o que entrou") — sem
+        // ele o drawer só mostrava input_vars (metadados) e raw_output.
+        "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, error_stack, input_vars, rendered_prompt, raw_output, parsed_output, store_id, email_id, flow_id, triggered_by",
       )
       .eq("id", id)
       .maybeSingle()
