@@ -112,6 +112,20 @@ export function postProcessFullDocument(
   rawText: string,
   locale?: string,
 ): string {
+  let raw = postProcessDocumentPreserveTags(rawText)
+  raw = stripUnresolvedPlaceholders(raw)
+  if (locale) raw = enforceLangAttribute(raw, locale)
+  return raw
+}
+
+/**
+ * Variante da cadeia de formatação: MESMO pipeline defensivo, mas SEM o
+ * strip de placeholders e sem o lang — os agentes de texto/hero emitem
+ * documentos INTERMEDIÁRIOS cujas tags {{*_IMAGE}} pertencem ao próximo
+ * agente. O strip + lang rodam UMA vez no fim da cadeia (runner), depois
+ * do agente de imagem.
+ */
+export function postProcessDocumentPreserveTags(rawText: string): string {
   let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
   raw = collapseRunawaySpacers(raw)
   const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
@@ -125,7 +139,5 @@ export function postProcessFullDocument(
   }
   raw = fixOrphanSpacerDivs(raw)
   raw = fixSpacerColumnWidths(raw)
-  raw = stripUnresolvedPlaceholders(raw)
-  if (locale) raw = enforceLangAttribute(raw, locale)
   return raw
 }

@@ -45,6 +45,82 @@ export type HtmlPromptVars = z.infer<typeof HtmlPromptVarsSchema>
 
 export const HTML_PROMPT_VAR_KEYS = HtmlPromptVarsSchema.keyof().options
 
+// ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
+// 4 schemas no lugar do único: cada agente tem seu contrato de vars.
+// SYNC: PLACEHOLDERS_BY_AGENT (prompt-editor.tsx) espelha estas keys.
+
+const baseIdentity = {
+  brand_name: z.string(),
+  locale: z.string(),
+  color_bg: z.string().regex(HEX_RE),
+  color_text: z.string().regex(HEX_RE),
+  color_heading: z.string().regex(HEX_RE),
+  color_button_bg: z.string().regex(HEX_RE),
+  color_button_text: z.string().regex(HEX_RE),
+  color_accent: z.string().regex(HEX_RE),
+  font_heading: z.string(),
+  font_heading_weight: z.string(),
+  font_body: z.string(),
+  font_body_weight: z.string(),
+}
+
+export const HeroPromptVarsSchema = z.object({
+  ...baseIdentity,
+  logo_light: z.string(),
+  logo_dark: z.string(),
+  email_name: z.string(),
+  subject: z.string(),
+  montador_html: z.string(),
+  hero_region_html: z.string(),
+  hero_variant_html: z.string(),
+  hero_variant_rendered_html: z.string(),
+  hero_variant_schema_json: z.string(),
+  hero_content_json: z.string(),
+  hero_image_url: z.string(),
+  hero_image_alt: z.string(),
+  output_contract: z.string(),
+})
+export type HeroPromptVars = z.infer<typeof HeroPromptVarsSchema>
+
+export const TextFormatPromptVarsSchema = z.object({
+  ...baseIdentity,
+  html: z.string(),
+  email_name: z.string(),
+  subject: z.string(),
+  preheader: z.string(),
+  objective: z.string(),
+  messaging: z.string(),
+  blocks_with_content_json: z.string(),
+  fields_json: z.string(),
+  top_products_json: z.string(),
+})
+export type TextFormatPromptVars = z.infer<typeof TextFormatPromptVarsSchema>
+
+export const ImageFormatPromptVarsSchema = z.object({
+  brand_name: z.string(),
+  html: z.string(),
+  image_map_json: z.string(),
+  logo_light: z.string(),
+  logo_dark: z.string(),
+  top_products_json: z.string(),
+})
+export type ImageFormatPromptVars = z.infer<typeof ImageFormatPromptVarsSchema>
+
+export const ColorFormatPromptVarsSchema = z.object({
+  brand_name: z.string(),
+  niche: z.string(),
+  locale: z.string(),
+  tones: z.string(),
+  html: z.string(),
+  brand_colors: z.string(),
+  font_heading: z.string(),
+  font_body: z.string(),
+  pesquisa_full_text: z.string(),
+  email_name: z.string(),
+  subject: z.string(),
+})
+export type ColorFormatPromptVars = z.infer<typeof ColorFormatPromptVarsSchema>
+
 export const HTML_PROMPT_VAR_DESCRIPTIONS: Record<
   keyof HtmlPromptVars,
   string

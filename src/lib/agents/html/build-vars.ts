@@ -74,7 +74,7 @@ export interface HtmlPromptVarsInput {
   relaxedBrandCheck?: boolean
 }
 
-interface EmailBlockRow {
+export interface EmailBlockRow {
   id: string
   position: number
   block_type: string
@@ -98,7 +98,7 @@ export interface ImageMapEntry {
   overlay: "needs_html_overlay" | "burned"
 }
 
-interface BlockWithContent {
+export interface BlockWithContent {
   position: number
   type: string
   label: string
@@ -225,7 +225,7 @@ async function pngImgTagFromUrl(
  * com logo_main_svg/png resolve pra variante "main" (1a da cadeia) e segue o
  * mesmo caminho de antes. So ADICIONA cobertura pras demais variantes.
  */
-async function fetchLogoMarkup(
+export async function fetchLogoMarkup(
   brand: StoreBrandIdentity | null,
   admin: SupabaseClient,
 ): Promise<string> {
@@ -344,7 +344,7 @@ export function buildImageMap(
   return entries
 }
 
-function buildBlocksWithContent(
+export function buildBlocksWithContent(
   blocks: EmailBlockRow[],
   blueprint: EmailBlueprint | null,
   brandName: string,
@@ -362,7 +362,7 @@ function buildBlocksWithContent(
   }))
 }
 
-function buildTopProductsJson(products: TopProduct[]): string {
+export function buildTopProductsJson(products: TopProduct[]): string {
   if (products.length === 0) return "[]"
   const slim = products.slice(0, 5).map((p) => ({
     id: p.id ?? "",
