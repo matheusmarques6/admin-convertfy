@@ -372,113 +372,24 @@ export async function invokeHtmlChain(
   }
 }
 
-/**
- * Colapsa "spacer hacks" descontrolados de preheader. Modelos as vezes entram
- * num loop gerando `&nbsp;‌&nbsp;‌...` milhares de vezes (preheader padding),
- * estouram o max_tokens e TRUNCAM o email antes do corpo. Cortar qualquer run
- * >= 12 de nbsp/zero-width pra 3 evita o desperdicio e o bloat. Defensivo: o
- * prompt ja proibe o spacer, isto e a rede de seguranca.
- */
-function collapseRunawaySpacers(html: string): string {
-  // Cobre &nbsp; / &#160; / U+00A0 e zero-width: U+200C U+200D U+200B U+FEFF.
-  return html.replace(
-    /(?:&nbsp;|&#160;| |‌|‍|​|﻿){12,}/gi,
-    "&nbsp;&nbsp;&nbsp;",
-  )
+// Pós-processamento movido pra src/lib/agents/html/post-process.ts (split do
+// agente HTML em 4 agentes, migration 20261039) — a cadeia de formatação usa
+// o mesmo pipeline. Import + re-export mantém os importadores/testes deste
+// chain funcionando até o corte seco (que remove este arquivo).
+import {
+  postProcessFullDocument,
+  HtmlTruncatedError,
+  enforceLangAttribute,
+  fixOrphanSpacerDivs,
+  fixSpacerColumnWidths,
+} from "../html/post-process"
+export {
+  HtmlTruncatedError,
+  enforceLangAttribute,
+  fixOrphanSpacerDivs,
+  fixSpacerColumnWidths,
 }
 
-// Corrige "spacer divs" órfãos entre blocos (foster parenting → gap no topo).
-// Módulo próprio (puro) porque o Refinador também precisa aplicar no output
-// dele (apply-delta.ts) sem importar este chain inteiro. Import + re-export
-// mantém o uso interno (abaixo) e os importadores/testes existentes.
-import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "../html/orphan-spacer"
-export { fixOrphanSpacerDivs, fixSpacerColumnWidths }
-
-/** Erro de output truncado — o modelo nao fechou o documento (`</html>`).
- *  Carrega o output CRU pro runner persistir em raw_output do run de erro —
- *  sem isso o "OUTPUT BRUTO" do painel de logs ficava vazio e era impossivel
- *  inspecionar ONDE o modelo parou (debug do truncamento do z-ai/glm-5.2). */
-export class HtmlTruncatedError extends Error {
-  readonly raw: string
-  constructor(htmlLength: number, raw = "") {
-    super(`HTML output truncado (sem </html>, ${htmlLength} chars)`)
-    this.name = "HtmlTruncatedError"
-    this.raw = raw
-  }
-}
-
-// Placeholders de CONTEUDO do Montador: {{HEADLINE}}, {{HERO_TEXT}},
-// {{USP_1_TITLE}} etc — sempre MAIUSCULAS. NAO casa merge tags do provedor
-// (`{{ unsubscribe }}` minusculo/espacado, `{% ... %}`, `*|...|*`,
-// `[unsubscribe_link]`), que devem permanecer literais.
-const UNRESOLVED_CONTENT_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g
-
-/**
- * Limpa placeholders de conteudo nao-substituidos pelo agente. Se o Montador
- * usou `{{HEADLINE}}` mas o agente nao casou com blocks_with_content, o token
- * chegaria LITERAL ao cliente. Aqui logamos (observabilidade) e removemos —
- * melhor um campo vazio do que `{{HEADLINE}}` visivel no email.
- */
-function stripUnresolvedPlaceholders(html: string): string {
-  const matches = html.match(UNRESOLVED_CONTENT_TOKEN)
-  if (matches && matches.length > 0) {
-    const unique = Array.from(new Set(matches))
-    // Slot de IMAGEM perdido é mais grave que copy não preenchida: o email
-    // sai sem um visual que o Montador pediu, e com QA desligado ninguém vê.
-    // Warn dedicado separa os dois casos na telemetria.
-    const imageTokens = unique.filter((t) =>
-      /_(?:IMAGE|THUMB)(?:_\d+)?\s*\}\}$/.test(t),
-    )
-    if (imageTokens.length > 0) {
-      log.warn("html.image_slot_unfilled", {
-        count: imageTokens.length,
-        tokens: imageTokens.slice(0, 10),
-      })
-    }
-    log.warn("html.unresolved_placeholders", {
-      count: matches.length,
-      sample: unique.slice(0, 10),
-    })
-    return html.replace(UNRESOLVED_CONTENT_TOKEN, "")
-  }
-  return html
-}
-
-/**
- * Forca o atributo `lang` do <html> pro locale da loja. O modelo escolhia
- * o lang arbitrariamente (lang="en" em loja pt-BR e vice-versa — batch de
- * jul/2026 saiu misturado). O locale ja e' resolvido/normalizado por
- * buildHtmlPromptVars, entao a correcao aqui e' deterministica: substitui
- * o atributo se existir, injeta se faltar. No-op com locale vazio.
- */
-export function enforceLangAttribute(html: string, locale: string): string {
-  const trimmed = locale?.trim()
-  if (!trimmed || !/^[a-z]{2}(-[A-Z]{2})?$/.test(trimmed)) return html
-  if (/<html[^>]*\slang\s*=\s*["'][^"']*["']/i.test(html)) {
-    return html.replace(
-      /(<html[^>]*\slang\s*=\s*["'])[^"']*(["'])/i,
-      `$1${trimmed}$2`,
-    )
-  }
-  return html.replace(/<html(\s|>)/i, `<html lang="${trimmed}"$1`)
-}
-
-/** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver. */
-function postProcessHtml(rawText: string, locale?: string): string {
-  let raw = rawText.replace(/```(?:html)?\s*/gi, "").trim()
-  raw = collapseRunawaySpacers(raw)
-  const doctypeMatch = raw.match(/(<!DOCTYPE[\s\S]*<\/html>)/i)
-  if (doctypeMatch) raw = doctypeMatch[1]
-  // Guard de truncamento: sem `</html>` o documento esta incompleto (ex.: o
-  // modelo estourou max_tokens num spacer runaway antes de gerar o corpo).
-  // Lancar aqui faz runPhase2HtmlQa marcar `failed: html_failed` (visivel +
-  // retry) em vez de salvar um email quebrado como "sucesso" -> render vazio.
-  if (!/<\/html>\s*$/i.test(raw)) {
-    throw new HtmlTruncatedError(raw.length, raw)
-  }
-  raw = fixOrphanSpacerDivs(raw)
-  raw = fixSpacerColumnWidths(raw)
-  raw = stripUnresolvedPlaceholders(raw)
-  if (locale) raw = enforceLangAttribute(raw, locale)
-  return raw
-}
+/** Remove fences markdown e extrai o fragmento <!DOCTYPE...</html> se houver
+ *  (pipeline completo em post-process.ts). */
+const postProcessHtml = postProcessFullDocument
