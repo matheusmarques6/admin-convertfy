@@ -251,6 +251,13 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "logo_dark", desc: "Logo pra fundo escuro (vazio se não houver)" },
     { key: "top_products_json", desc: "Produtos top (urls de imagem/crop)" },
   ],
+  component_tagger: [
+    { key: "variant_name", desc: "Nome da variante" },
+    { key: "block_type", desc: "Seção da biblioteca" },
+    { key: "schema_json", desc: "Schema com key/placeholder/nature/example/guidance/image_spec" },
+    { key: "existing_tags", desc: "Placeholders que o HTML já tem (modo sync)" },
+    { key: "html", desc: "HTML exemplo-pronto da variante" },
+  ],
   color_format: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "niche", desc: "Nicho do negócio" },

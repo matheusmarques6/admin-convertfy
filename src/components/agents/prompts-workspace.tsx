@@ -21,6 +21,7 @@ import {
   Mail,
   Sparkles,
   Palette,
+  Tags,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
@@ -50,6 +51,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   text_format: "Formatação de Texto",
   image_format: "Formatação de Imagem",
   color_format: "Cores & Botões",
+  component_tagger: "Taguedor de Variantes",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -71,6 +73,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   text_format: Type,
   image_format: ImageIcon,
   color_format: Palette,
+  component_tagger: Tags,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

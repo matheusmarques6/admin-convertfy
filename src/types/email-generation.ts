@@ -161,6 +161,11 @@ export type AgentType =
   | "text_format"
   | "image_format"
   | "color_format"
+  // component_tagger: Taguedor de Variantes (migration 20261040) — converte
+  // o HTML "exemplo pronto" da variante em html_tagged ({{UPPER(key)}} no
+  // lugar das frases de exemplo do output_schema), 1x por variante, com
+  // proposta pendente revisável na aba Componentes.
+  | "component_tagger"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -284,6 +289,8 @@ export type GenerationRunAgent =
   | "text_format"
   | "image_format"
   | "color_format"
+  // Taguedor de Variantes (migration 20261040).
+  | "component_tagger"
 
 export interface EmailGenerationRun {
   id: string
@@ -358,10 +365,17 @@ export type ComponentFieldType =
 
 // Um campo que a IA gera para o bloco. Alimenta o preview da variante e as
 // orientações de copy no prompt.
+// Natureza do campo (épico Taguedor): quem produz o valor final.
+// copy = n8n escreve · imagem_gerada = agente de imagem cria · asset_fixo =
+// arte da biblioteca fica intacta (só texto sobreposto muda, se for campo).
+// Ausente → derivação: type='image' → imagem_gerada; senão copy.
+export type FieldNature = "copy" | "imagem_gerada" | "asset_fixo"
+
 export interface ComponentOutputField {
   key: string
   label: string
   type: ComponentFieldType
+  nature?: FieldNature
   max_len: number
   required: boolean
   example: string
@@ -417,6 +431,28 @@ export interface EmailComponentVariant {
   version: number
   created_at: string
   created_by: string | null
+  // ── Épico Taguedor (migration 20261040) ────────────────────────────
+  // Proposta de HTML tagueado (exemplo→{{UPPER(key)}}), estado da revisão
+  // e relatório por campo. Pipeline consome html_tagged SÓ com approved.
+  html_tagged: string | null
+  tagging_status: "pending" | "approved" | null
+  tagging_meta: TaggingMeta | null
+}
+
+// Relatório do taguedor por campo — anchored_by='inference' merece atenção
+// extra na revisão; 'existing_tag' = HTML já tinha tag equivalente (sync).
+export interface TaggingFieldReport {
+  key: string
+  placeholder: string
+  anchored_by: "exact" | "fuzzy" | "inference" | "existing_tag" | "not_found"
+  note?: string
+}
+
+export interface TaggingMeta {
+  model: string
+  generated_at: string
+  fields: TaggingFieldReport[]
+  issues: string[]
 }
 
 // Estrutura geral (INPUT) por email do flow — global, curável. Consumida
