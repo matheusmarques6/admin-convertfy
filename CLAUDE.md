@@ -1282,8 +1282,9 @@ NUNCA por geração) converte exemplo→`{{PLACEHOLDER}}` e salva em
 'pending'` com relatório por campo em `tagging_meta` (âncoras: exact/
 fuzzy/inference/existing_tag/not_found). Aprovação é HUMANA (aba
 Componentes: card Taguedor — relatório, revisão lado a lado editável,
-preview, aprovar/rejeitar; botão "Sincronizar biblioteca" roda batches de
-3 via `/api/admin/components/tag-batch` com `exclude_ids` anti-poison).
+preview, aprovar/rejeitar; botão "Sincronizar biblioteca" roda 1 variante
+por chamada via `/api/admin/components/tag-batch` com `exclude_ids`
+anti-poison — progresso feitas/total atualiza a cada variante).
 
 **Consumo**: `effectiveVariantHtml` (shared/component-dimensions) =
 `html_tagged` quando `approved`, senão `html` — usado pelo Montador

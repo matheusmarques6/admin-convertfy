@@ -192,11 +192,15 @@ export function ComponentsWorkspace() {
     // uma variante quebrada não travar a fila (ordenada por created_at).
     const failedIds: string[] = []
     try {
-      for (let i = 0; i < 40; i++) {
+      // 1 variante por chamada: o taguedor é um call de raciocínio de
+      // 1–3 min — com lote de 3 o contador ficava mudo por ~5-9 min e o
+      // lote podia estourar o maxDuration da rota. Assim o progresso
+      // atualiza a cada variante e cada chamada cabe folgada no timeout.
+      for (let i = 0; i < 100; i++) {
         const res = await fetch("/api/admin/components/tag-batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 3, exclude_ids: failedIds }),
+          body: JSON.stringify({ limit: 1, exclude_ids: failedIds }),
         })
         const json = (await res.json().catch(() => null)) as {
           error?: string
@@ -414,9 +418,15 @@ export function ComponentsWorkspace() {
             <RefreshCw size={14} />
           )}
           {sync
-            ? `Sincronizando… ${sync.processed} ok${
-                sync.failed > 0 ? ` · ${sync.failed} falhas` : ""
-              }${sync.remaining != null ? ` · ${sync.remaining} na fila` : ""}`
+            ? sync.remaining == null
+              ? "Sincronizando… 1ª variante (leva 1–3 min)"
+              : `Sincronizando… ${sync.processed + sync.failed}/${
+                  sync.processed + sync.failed + sync.remaining
+                }${
+                  sync.failed > 0
+                    ? ` · ${sync.failed} falha${sync.failed > 1 ? "s" : ""}`
+                    : ""
+                }`
             : `Sincronizar biblioteca${
                 tagStats.never > 0 ? ` (${tagStats.never})` : ""
               }`}
