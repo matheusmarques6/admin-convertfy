@@ -24,6 +24,28 @@ describe("buildImageSlots", () => {
     expect(buildImageSlots(null, null)).toBe("")
   })
 
+  it("T8: asset_fixo NÃO vira slot (arte da biblioteca fica intacta)", () => {
+    const fields = [
+      f({ key: "hero_image", type: "image", tag: "HERO_IMAGE" }),
+      f({
+        key: "selo_qualidade",
+        type: "image",
+        nature: "asset_fixo",
+        tag: "SELO_QUALIDADE",
+      }),
+    ]
+    const out = buildImageSlots(fields, {})
+    expect(out).toContain('<slot_imagem tag="HERO_IMAGE">')
+    expect(out).not.toContain("SELO_QUALIDADE")
+    // bloco SÓ com asset_fixo → sem slots (não cai no brief legado com arte)
+    expect(
+      buildImageSlots(
+        [f({ key: "selo", type: "image", nature: "asset_fixo" })],
+        {},
+      ),
+    ).toBe("")
+  })
+
   it("hero: schema + formato por dims + slot_note + copy do grupo (prefixo hero)", () => {
     const fields = [
       f({ key: "hero_headline", type: "text_short" }),

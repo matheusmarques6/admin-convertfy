@@ -210,6 +210,9 @@ export function fieldsFromSchema(
       key,
       label: f.label || key,
       type: f.type,
+      // Natureza explícita no snapshot (T8): consumidores (dispatch, image
+      // slots, QA) filtram por ela sem re-derivar do schema da variante.
+      nature: deriveFieldNature(f),
       max_len: f.max_len ?? 0,
       min_len: null,
       required: f.required === true,
@@ -280,12 +283,16 @@ export function fieldsFromCopySpec(
   }))
 }
 
-/** image_brief derivado dos campos type=image do output_schema da variante. */
+/**
+ * image_brief derivado dos campos type=image do output_schema da variante.
+ * asset_fixo fica de fora (T8): a arte da biblioteca não é gerada — briefar
+ * ela induziria o agente de imagem a recriá-la.
+ */
 export function imageBriefFromSchema(
   schema: ComponentOutputField[],
 ): string | null {
   const parts = schema
-    .filter((f) => f.type === "image")
+    .filter((f) => f.type === "image" && deriveFieldNature(f) !== "asset_fixo")
     .map((f) => {
       // Especificidade dedicada vence a orientação genérica.
       const base = (f.image_spec ?? "").trim() || (f.guidance ?? "").trim()
@@ -322,15 +329,16 @@ export function buildDeterministicBlueprint(input: {
     const purpose =
       (m?.variant.copy_guidance ?? "").trim() ||
       (m?.variant.description ?? "").trim()
+    // T8: schema com campo imagem_gerada liga needs_image mesmo sem tag
+    // canônica de imagem no skeleton — o slot vive no {{UPPER(key)}}.
+    const needsImage = sb.needs_image || schemaHasGeneratedImage(schema)
     return {
       type: sb.type,
       label: m?.slotLabel?.trim() || m?.variant.name || sb.type,
       purpose,
-      needs_image: sb.needs_image,
+      needs_image: needsImage,
       image_brief:
-        sb.needs_image && schema.length > 0
-          ? imageBriefFromSchema(schema)
-          : null,
+        needsImage && schema.length > 0 ? imageBriefFromSchema(schema) : null,
       image_aspect: sb.image_aspect,
       copy_spec: sb.copy_spec,
       tags,
@@ -376,8 +384,11 @@ export function packageBlueprint(
     const schema = m?.variant.output_schema ?? []
     const tags = b.tags ?? []
     const curatedPurpose = (m?.variant.copy_guidance ?? "").trim()
+    // T8: campo imagem_gerada no schema da variante casada liga needs_image
+    // (o slot é o {{UPPER(key)}} do HTML tagueado, não uma tag canônica).
+    const needsImage = b.needs_image || schemaHasGeneratedImage(schema)
     const curatedBrief =
-      b.needs_image && schema.length > 0 ? imageBriefFromSchema(schema) : null
+      needsImage && schema.length > 0 ? imageBriefFromSchema(schema) : null
 
     let fields: BlueprintFieldV2[]
     if (schema.length > 0) {
@@ -395,6 +406,7 @@ export function packageBlueprint(
     return {
       ...b,
       purpose: curatedPurpose || b.purpose,
+      needs_image: needsImage,
       image_brief: curatedBrief ?? b.image_brief ?? null,
       variant_id: m?.variant.id ?? b.variant_id ?? null,
       variant_name: m?.variant.name ?? b.variant_name ?? null,
@@ -407,4 +419,9 @@ export function packageBlueprint(
 function dedupePreservingOrder(items: string[]): string[] {
   const seen = new Set<string>()
   return items.filter((t) => (seen.has(t) ? false : (seen.add(t), true)))
+}
+
+/** O schema declara ao menos um campo de imagem GERADA (T8). */
+function schemaHasGeneratedImage(schema: ComponentOutputField[]): boolean {
+  return schema.some((f) => deriveFieldNature(f) === "imagem_gerada")
 }

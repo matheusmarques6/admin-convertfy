@@ -613,6 +613,70 @@ describe("dispatchEmailCopyWebhook — payload v2 (fields/variant/tones)", () =>
     expect(block).not.toHaveProperty("copy_spec")
   })
 
+  it("T8 (naturezas): payload leva SÓ campos de copy — imagem gerada e asset_fixo ficam fora", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero", content: {} },
+    ]
+    const base = {
+      label: "F",
+      max_len: 40,
+      min_len: null,
+      required: true,
+      example: "",
+      guidance: "",
+      tag: null,
+      source: "schema",
+    }
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ",
+            messaging: "MSG",
+            subject_hint: null,
+            blocks: [
+              {
+                type: "hero",
+                label: "Hero",
+                purpose: "P",
+                copy_spec: [],
+                tags: [],
+                variant_id: "var-1",
+                variant_name: "V",
+                fields: [
+                  { ...base, key: "headline", type: "text_short", nature: "copy" },
+                  // imagem do agente de imagem — fora do payload de copy
+                  { ...base, key: "hero_image", type: "image" },
+                  // arte fixa da biblioteca — fora do payload de copy
+                  { ...base, key: "selo", type: "image", nature: "asset_fixo" },
+                  // texto marcado como asset_fixo também fica de fora
+                  { ...base, key: "carimbo_texto", type: "text_short", nature: "asset_fixo" },
+                ],
+              },
+            ],
+          },
+        ],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const block = firstEmail().blocks[0]
+    const keys = (block.fields as Array<{ key: string }>).map((f) => f.key)
+    expect(keys).toEqual(["headline"])
+  })
+
   it("objective (blueprint > outline) e tones canônicos da loja vão por email", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },

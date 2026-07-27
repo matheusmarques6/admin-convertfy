@@ -62,6 +62,25 @@ describe("runSchemaChecks", () => {
     expect(issues).toEqual([])
   })
 
+  it("T8: nature asset_fixo fica fora da cobrança (mesmo required e type texto)", () => {
+    const fields = [
+      { key: "headline", type: "text_short", max_len: 40, required: true },
+      {
+        key: "carimbo_texto",
+        type: "text_short",
+        nature: "asset_fixo",
+        max_len: 20,
+        required: true,
+      },
+    ]
+    const issues = runSchemaChecks(
+      [{ block_type: "hero", content: { headline: "ok" } }],
+      [{ type: "hero", fields }],
+    )
+    // carimbo_texto required + ausente, mas é arte fixa → sem issue
+    expect(issues).toEqual([])
+  })
+
   it("skip silencioso: sem fields, type divergente ou sem blueprint", () => {
     const blocks = [{ block_type: "hero", content: {} }]
     expect(runSchemaChecks(blocks, [])).toEqual([])

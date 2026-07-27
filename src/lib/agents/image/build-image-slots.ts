@@ -10,6 +10,7 @@
  */
 
 import type { BlueprintBlockField } from "@/types/email-generation"
+import { deriveFieldNature } from "@/lib/agents/shared/component-dimensions"
 
 // Sufixos que marcam o "papel imagem" de um key — removidos pra achar o
 // prefixo do grupo (hero_image → hero; product_1_image → product_1).
@@ -90,7 +91,13 @@ export function buildImageSlots(
 ): string {
   const list = Array.isArray(fields) ? fields : []
   const cont = content ?? {}
-  const imageFields = list.filter((f) => f.type === "image")
+  // T8 (naturezas): só campos de imagem GERADA viram slot — asset_fixo é
+  // arte da biblioteca e fica intacta (briefá-la induziria o agente a
+  // recriá-la). Sem nature no snapshot, type=image deriva imagem_gerada
+  // (comportamento antigo preservado).
+  const imageFields = list.filter(
+    (f) => f.type === "image" && deriveFieldNature(f) === "imagem_gerada",
+  )
   if (imageFields.length === 0) return ""
 
   const sections = imageFields.map((f) => {

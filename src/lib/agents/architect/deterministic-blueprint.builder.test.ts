@@ -348,6 +348,22 @@ describe("imageBriefFromSchema", () => {
   it("null quando não há campos de imagem", () => {
     expect(imageBriefFromSchema([SCHEMA_HERO[0]])).toBeNull()
   })
+  it("T8: asset_fixo fica fora do brief (arte não é gerada)", () => {
+    const selo: ComponentOutputField = {
+      key: "selo",
+      label: "Selo",
+      type: "image",
+      nature: "asset_fixo",
+      max_len: 0,
+      required: false,
+      example: "selo.png",
+      guidance: "selo dourado da marca",
+    }
+    expect(imageBriefFromSchema([SCHEMA_HERO[0], selo])).toBeNull()
+    expect(imageBriefFromSchema([...SCHEMA_HERO, selo])).toBe(
+      "Foto lifestyle com overlay escuro (ex.: hero-welcome.jpg)",
+    )
+  })
 })
 
 // ── buildDeterministicBlueprint (rota A) ────────────────────────────
@@ -386,6 +402,72 @@ describe("buildDeterministicBlueprint", () => {
     expect(bp.blocks[0].variant_id).toBeNull()
     expect(bp.blocks[0].purpose).toBe("")
     expect(bp.blocks[0].fields?.[0]?.source).toBe("tag_registry")
+  })
+
+  it("T8: campo imagem_gerada no schema liga needs_image mesmo sem tag canônica de imagem", () => {
+    const vText = variant({
+      id: "vt",
+      block_type: "body",
+      copy_guidance: "g",
+      output_schema: [
+        {
+          key: "texto",
+          label: "Texto",
+          type: "text_long",
+          max_len: 200,
+          required: true,
+          example: "",
+          guidance: "",
+        },
+        {
+          key: "foto_ambiente",
+          label: "Foto",
+          type: "image",
+          max_len: 0,
+          required: false,
+          example: "",
+          guidance: "ambiente da marca",
+        },
+      ],
+    })
+    // textBlock não tem tag de imagem → needs_image false no skeleton.
+    const sk = skeleton([textBlock()])
+    const match = matchVariantsToSkeleton(sk, [slot("body", vText)])
+    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: null })
+    expect(bp.blocks[0].needs_image).toBe(true)
+    expect(bp.blocks[0].image_brief).toContain("ambiente da marca")
+    // nature explícita no snapshot dos fields
+    expect(
+      bp.blocks[0].fields?.find((f) => f.key === "foto_ambiente")?.nature,
+    ).toBe("imagem_gerada")
+    expect(bp.blocks[0].fields?.find((f) => f.key === "texto")?.nature).toBe(
+      "copy",
+    )
+  })
+
+  it("T8: schema só com asset_fixo NÃO liga needs_image", () => {
+    const vText = variant({
+      id: "vt",
+      block_type: "body",
+      copy_guidance: "g",
+      output_schema: [
+        {
+          key: "selo",
+          label: "Selo",
+          type: "image",
+          nature: "asset_fixo",
+          max_len: 0,
+          required: false,
+          example: "",
+          guidance: "",
+        },
+      ],
+    })
+    const sk = skeleton([textBlock()])
+    const match = matchVariantsToSkeleton(sk, [slot("body", vText)])
+    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: null })
+    expect(bp.blocks[0].needs_image).toBe(false)
+    expect(bp.blocks[0].image_brief).toBeNull()
   })
 })
 

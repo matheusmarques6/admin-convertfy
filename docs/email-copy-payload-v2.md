@@ -40,6 +40,7 @@ content}]}` com `content[key] = valor` — as keys são as mesmas de
   "key": "headline",            // key do content que o n8n deve devolver
   "label": "Headline",          // rótulo humano
   "type": "text_short",         // text_short | text_long | number | url | image | boolean
+  "nature": "copy",             // copy | imagem_gerada | asset_fixo (pode faltar em snapshots antigos)
   "max_len": 40,                // teto de caracteres (0 = sem teto)
   "min_len": 18,                // piso, ou null
   "required": true,             // campo obrigatório
@@ -50,13 +51,22 @@ content}]}` com `content[key] = valor` — as keys são as mesmas de
 }
 ```
 
+### Naturezas (épico Taguedor, jul/2026)
+
+Desde o T8, **o payload só envia campos de natureza `copy`** — o dispatch
+filtra `imagem_gerada` (do agente de imagem da fase 2) e `asset_fixo`
+(arte da biblioteca que fica intacta) ANTES de montar o bloco. Na prática
+o n8n nunca vê campo que não deva escrever; snapshots antigos sem
+`nature` derivam pela regra `type:"image"` → `imagem_gerada`, resto →
+`copy` (ou seja: só some do payload o que já não era copy).
+
 ### Regras por `type`
 
 - **`text_short` / `text_long`**: o n8n GERA copy. `max_len` é teto duro
   (a auditoria do callback loga `max_len` estourado; o QA reporta
   `copy_excede_max_len`). `required:true` + vazio → `campo_obrigatorio_vazio`.
-- **`image`**: **NÃO gerar copy** — o campo é preenchido pela fase 2
-  (agente de imagem). Ignorar.
+- **`image`**: não chega mais no payload (filtro por natureza acima) —
+  o campo é preenchido pela fase 2 (agente de imagem).
 - **`url` / `boolean` / `number`**: não gerar texto criativo; devolver
   apenas se o contexto fornecer o valor (ex.: código de cupom vindo do
   briefing), senão omitir.
@@ -86,9 +96,9 @@ copy (blocos estruturais como footer/divider podem chegar com `[]`).
 O callback audita o `content` devolvido contra o snapshot de `fields` do
 blueprint da loja (`store_email_blueprints.blocks[].fields`), quando
 existe (deviations com `source:"schema"` — required vazio / max_len
-estourado, ignorando `type:"image"`); senão contra o `copy_spec` real do
-bloco casado. Loga `email_copy.copy_out_of_spec` — **nunca rejeita nem
-trunca** a copy.
+estourado, cobrando só campos de natureza `copy`); senão contra o
+`copy_spec` real do bloco casado. Loga `email_copy.copy_out_of_spec` —
+**nunca rejeita nem trunca** a copy.
 
 ## Janela de corte e rollback
 

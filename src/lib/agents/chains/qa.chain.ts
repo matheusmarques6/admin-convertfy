@@ -42,6 +42,7 @@ import {
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
+import { deriveFieldNature } from "../shared/component-dimensions"
 import { runQaVisionCheck } from "./qa-vision.chain"
 
 const log = logger.child("QaChain")
@@ -234,6 +235,7 @@ interface SchemaCheckBlueprintBlock {
   fields?: Array<{
     key: string
     type: string
+    nature?: string | null
     max_len: number
     required: boolean
   }> | null
@@ -252,9 +254,10 @@ export function runSchemaChecks(
     if (fields.length === 0) return
 
     for (const f of fields) {
-      // Campos de imagem são preenchidos pelo pipeline (image agent), não
-      // pela copy — fora da validação.
-      if (f.type === "image") continue
+      // Só campos de COPY são cobrados: imagem é do pipeline (image agent)
+      // e asset_fixo é arte intacta da biblioteca — nenhum dos dois recebe
+      // valor do n8n (T8, naturezas).
+      if (deriveFieldNature(f) !== "copy") continue
       const value = block.content?.[f.key]
 
       if (f.required && (value == null || String(value).trim() === "")) {

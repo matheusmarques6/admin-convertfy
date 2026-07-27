@@ -18,6 +18,11 @@ export interface BlueprintBlockField {
   key: string
   label: string
   type: "text_short" | "text_long" | "number" | "url" | "image" | "boolean"
+  // Natureza do valor final (épico Taguedor): copy = n8n escreve ·
+  // imagem_gerada = agente de imagem cria · asset_fixo = arte da
+  // biblioteca intacta. Ausente (snapshots antigos) → derivação por tipo
+  // (deriveFieldNature: image → imagem_gerada; resto → copy).
+  nature?: FieldNature
   max_len: number
   min_len: number | null
   required: boolean

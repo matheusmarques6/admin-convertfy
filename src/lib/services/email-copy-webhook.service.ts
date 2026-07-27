@@ -35,7 +35,10 @@ import {
   fieldsFromCopySpec,
   fieldsFromTags,
 } from "@/lib/agents/architect/deterministic-blueprint.builder"
-import { deriveToneKeys } from "@/lib/agents/shared/component-dimensions"
+import {
+  deriveFieldNature,
+  deriveToneKeys,
+} from "@/lib/agents/shared/component-dimensions"
 
 const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
@@ -970,7 +973,7 @@ export async function dispatchEmailCopyWebhook(
               //      do tag-registry;
               //   3. sem nada (blueprint legado/fallback global) → conversão
               //      do copy_spec normalizado (default canônico do tipo).
-              const fields =
+              const allFields =
                 Array.isArray(matched?.fields) && matched.fields.length > 0
                   ? matched.fields
                   : tags.length > 0
@@ -978,6 +981,14 @@ export async function dispatchEmailCopyWebhook(
                     : fieldsFromCopySpec(
                         normalizeCopySpec(matched?.copy_spec, b.block_type),
                       )
+              // T8 (naturezas): o n8n escreve COPY — campos de imagem gerada
+              // são do agente de imagem e asset_fixo fica intacto; ambos fora
+              // do payload. Snapshots sem nature derivam do tipo (image →
+              // imagem_gerada; resto → copy) — comportamento antigo: só some
+              // o que já não era copy.
+              const fields = allFields.filter(
+                (fld) => deriveFieldNature(fld) === "copy",
+              )
               const semTag = fields.filter(
                 (fld) => !(fld as { tag?: string | null }).tag,
               ).length

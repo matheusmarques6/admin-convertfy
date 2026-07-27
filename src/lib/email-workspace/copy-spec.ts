@@ -24,6 +24,7 @@ import type {
   BlueprintBlockField,
   CopySpecField,
 } from "@/types/email-generation"
+import { deriveFieldNature } from "@/lib/agents/shared/component-dimensions"
 
 export type { CopySpecField }
 
@@ -204,10 +205,10 @@ export interface FieldDeviation {
 
 /**
  * Audita o content gravado contra o contrato v2 de `fields` (snapshot
- * persistido no blueprint pelo builder/packageBlueprint). Campos type=image
- * ficam fora (preenchidos pela fase 2, não pelo n8n). Mesmas regras do
- * runSchemaChecks do QA — aqui roda no callback do n8n, observabilidade
- * apenas (nunca rejeita a copy).
+ * persistido no blueprint pelo builder/packageBlueprint). Só campos de
+ * COPY são cobrados: imagem é da fase 2 e asset_fixo é arte intacta da
+ * biblioteca (T8, naturezas). Mesmas regras do runSchemaChecks do QA —
+ * aqui roda no callback do n8n, observabilidade apenas (nunca rejeita).
  */
 export function findFieldDeviations(
   content: Record<string, unknown> | null | undefined,
@@ -215,7 +216,7 @@ export function findFieldDeviations(
 ): FieldDeviation[] {
   const out: FieldDeviation[] = []
   for (const f of fields) {
-    if (f.type === "image") continue
+    if (deriveFieldNature(f) !== "copy") continue
     const raw = content?.[f.key]
     const text =
       typeof raw === "string"

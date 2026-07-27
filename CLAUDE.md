@@ -1271,5 +1271,41 @@ editor de variantes avisa incoerência key↔tag
 
 ---
 
+## Épico Taguedor (jul/2026 — migration 20261040)
+
+Paradigma: variante da biblioteca é um **exemplo PRONTO** (HTML com frases/
+URLs reais); o `output_schema.key` É o nome do placeholder (`UPPER(key)`)
+e o `example` referencia a frase que está no HTML. O agente
+`component_tagger` (z-ai/glm-5.2, roda 1x por variante — cadastro/batch,
+NUNCA por geração) converte exemplo→`{{PLACEHOLDER}}` e salva em
+`email_component_variants.html_tagged` como proposta `tagging_status=
+'pending'` com relatório por campo em `tagging_meta` (âncoras: exact/
+fuzzy/inference/existing_tag/not_found). Aprovação é HUMANA (aba
+Componentes: card Taguedor — relatório, revisão lado a lado editável,
+preview, aprovar/rejeitar; botão "Sincronizar biblioteca" roda batches de
+3 via `/api/admin/components/tag-batch` com `exclude_ids` anti-poison).
+
+**Consumo**: `effectiveVariantHtml` (shared/component-dimensions) =
+`html_tagged` quando `approved`, senão `html` — usado pelo Montador
+(chosen_html_json + fallback), pelo builder do blueprint e pelo guard
+`variantHasPlaceholders` (elegível com {{TAG}} no html OU tagged
+aprovado). O `html` original segue como gold reference do agente de hero.
+`fields.tag` resolve também por match literal `{{UPPER(key)}}` no HTML
+efetivo (além de copyKey/nome do tag-registry); o skeleton
+(`extractStructureFromReference`) aceita `opts.schemaTags`
+(`schemaTagsFromSlots`) — placeholders schema-backed contam no threshold
+canônico e entram nas `tags[]` do bloco sem mexer em copy_spec.
+
+**Naturezas** (`ComponentOutputField.nature`, seletor na aba Componentes;
+ausente → deriva: `image`→`imagem_gerada`, resto→`copy`): payload de copy
+do n8n leva SÓ `copy` (filtro no dispatch); `IMAGE_SLOTS`/`image_brief`/
+`needs_image` só consideram `imagem_gerada` (schema com imagem gerada
+liga needs_image mesmo sem tag canônica); `asset_fixo` = arte intacta —
+fora de tudo (QA `runSchemaChecks` e `findFieldDeviations` só cobram
+`copy`). Snapshot `BlueprintBlockField` carrega `nature` explícita;
+snapshots antigos derivam por tipo (zero breaking).
+
+---
+
 *Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
