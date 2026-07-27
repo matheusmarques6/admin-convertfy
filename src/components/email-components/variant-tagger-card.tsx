@@ -17,6 +17,7 @@ import {
   Eye,
   ListChecks,
   Loader2,
+  Pencil,
   Play,
   SplitSquareHorizontal,
   Tags,
@@ -74,6 +75,9 @@ export function VariantTaggerCard({
   const [view, setView] = useState<View>("report")
   // null = sem edição manual; string = HTML tagueado editado na revisão.
   const [editedHtml, setEditedHtml] = useState<string | null>(null)
+  // Modo manual: o humano faz as vezes do taguedor — parte do HTML
+  // original, insere os {{PLACEHOLDERS}} na mão e aprova direto.
+  const [manualMode, setManualMode] = useState(false)
 
   const schema = useMemo(
     () => (Array.isArray(variant.output_schema) ? variant.output_schema : []),
@@ -84,6 +88,22 @@ export function VariantTaggerCard({
   const taggedBase = variant.html_tagged ?? ""
   const tagged = editedHtml ?? taggedBase
   const busy = running || acting
+  // Sub-abas visíveis com proposta OU em edição manual.
+  const reviewing = status != null || manualMode
+
+  function startManual() {
+    // Semente = proposta existente (se houver) ou o HTML original — o
+    // curador substitui as frases de exemplo pelos {{PLACEHOLDERS}} na mão.
+    setEditedHtml(tagged.trim() ? tagged : variant.html)
+    setManualMode(true)
+    setView("review")
+  }
+
+  function cancelManual() {
+    setManualMode(false)
+    setEditedHtml(null)
+    setView("report")
+  }
 
   // Placeholders esperados (naturezas copy/imagem_gerada; asset_fixo fica
   // fora — a arte não vira slot). existing_tag/not_found do relatório não
@@ -150,6 +170,7 @@ export function VariantTaggerCard({
             : "Revise e aprove para o pipeline consumir.",
       })
       setEditedHtml(null)
+      setManualMode(false)
       setView("report")
       await onChanged()
     } catch (e) {
@@ -186,6 +207,7 @@ export function VariantTaggerCard({
         description: "O pipeline passa a consumir o HTML tagueado.",
       })
       setEditedHtml(null)
+      setManualMode(false)
       await onChanged()
     } catch (e) {
       toast({
@@ -285,16 +307,39 @@ export function VariantTaggerCard({
         >
           {schema.length === 0
             ? "A variante não tem schema de output — cadastre os campos antes de taguear."
-            : status == null
-              ? "Converte o HTML de exemplo em HTML tagueado ({{PLACEHOLDER}} por campo do schema). A proposta fica pendente até você aprovar."
-              : status === "pending"
-                ? "Revise a proposta abaixo (edite o HTML tagueado se precisar) e aprove — só então o pipeline consome."
-                : "O pipeline consome este HTML tagueado. Re-rode se o HTML ou o schema mudarem."}
+            : manualMode
+              ? "Modo manual: troque as frases de exemplo pelos {{PLACEHOLDERS}} na aba Revisão (os chips mostram o que falta) e aprove."
+              : status == null
+                ? "Converte o HTML de exemplo em HTML tagueado ({{PLACEHOLDER}} por campo do schema). A proposta fica pendente até você aprovar — ou taguee manualmente e faça as vezes do agente."
+                : status === "pending"
+                  ? "Revise a proposta abaixo (edite o HTML tagueado se precisar) e aprove — só então o pipeline consome."
+                  : "O pipeline consome este HTML tagueado. Re-rode se o HTML ou o schema mudarem."}
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          {status != null && (
-            <EGBtn variant="danger" onClick={() => void reject()} disabled={busy}>
-              <X size={14} /> Rejeitar
+          {manualMode ? (
+            <EGBtn variant="secondary" onClick={cancelManual} disabled={busy}>
+              <X size={14} /> Cancelar edição
+            </EGBtn>
+          ) : (
+            status != null && (
+              <EGBtn
+                variant="danger"
+                onClick={() => void reject()}
+                disabled={busy}
+              >
+                <X size={14} /> Rejeitar
+              </EGBtn>
+            )
+          )}
+          {!manualMode && (
+            <EGBtn
+              variant="secondary"
+              onClick={startManual}
+              disabled={busy || schema.length === 0}
+              title="Edite o HTML tagueado na mão (parte da proposta atual ou do HTML original) e aprove sem rodar o agente"
+            >
+              <Pencil size={14} />
+              {status == null ? "Taguear manualmente" : "Editar na mão"}
             </EGBtn>
           )}
           <EGBtn
@@ -311,7 +356,7 @@ export function VariantTaggerCard({
             {status == null ? "Rodar taguedor" : "Re-rodar"}
           </EGBtn>
           {(status === "pending" ||
-            (status === "approved" && editedHtml != null)) && (
+            (editedHtml != null && (manualMode || status === "approved"))) && (
             <EGBtn
               variant="dark"
               onClick={() => void approve()}
@@ -373,7 +418,7 @@ export function VariantTaggerCard({
         </div>
       )}
 
-      {status != null && (
+      {reviewing && (
         <>
           {/* Sub-abas */}
           <div
