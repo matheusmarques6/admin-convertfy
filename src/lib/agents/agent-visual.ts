@@ -15,6 +15,7 @@ export type PipelineAgentKey =
   | "image"
   // Cadeia de formatação (split do HTML agent, migration 20261039).
   | "hero_section"
+  | "copy_merge"
   | "text_format"
   | "image_format"
   | "color_format"
@@ -94,6 +95,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     color: "#D97706",
     bg: "#FFFBEB",
     border: "#FDE68A",
+    kind: "texto",
+  },
+  copy_merge: {
+    name: "Merge de Copy",
+    desc: "Estágio de CÓDIGO (Fase A): troca {{TAG}} pela copy ancorada — sem LLM, custo zero",
+    color: "#0F766E",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
     kind: "texto",
   },
   text_format: {
@@ -187,6 +196,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "assembler",
   "image",
   "hero_section",
+  "copy_merge",
   "text_format",
   "image_format",
   "color_format",

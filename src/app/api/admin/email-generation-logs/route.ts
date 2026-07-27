@@ -109,6 +109,7 @@ function bucketOf(row: LogRow): PipelineAgentKey {
     row.agent === "assembler" ||
     row.agent === "image" ||
     row.agent === "hero_section" ||
+    row.agent === "copy_merge" ||
     row.agent === "text_format" ||
     row.agent === "image_format" ||
     row.agent === "color_format" ||
