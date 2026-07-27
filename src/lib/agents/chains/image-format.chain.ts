@@ -107,6 +107,11 @@ export async function invokeImageFormatChain(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Image Format",
+    // Step mecânico (output = JSON pequeno de ops): thinking do GLM só
+    // adiciona minutos. FORMAT_OPS_REASONING=on re-liga sem deploy.
+    ...(process.env.FORMAT_OPS_REASONING === "on"
+      ? {}
+      : { reasoning: { enabled: false } }),
   })
 
   // parseOps lança OpsParseError (retryable no runner).

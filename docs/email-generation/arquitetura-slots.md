@@ -1,7 +1,15 @@
 # Arquitetura por Slots — agentes recebem só o que lhes convém
 
-> Proposta mapeada em jul/2026 (pós-épico Taguedor). Estado: **planejado,
-> não implementado**. Este doc é o contrato de referência para a migração.
+> Proposta mapeada em jul/2026 (pós-épico Taguedor). Estado: **Fase A
+> IMPLEMENTADA** (migration 20261042): protocolo de patch padronizado
+> (set_text/remove_row + matriz de posse `allowedTags` no applyOps),
+> estágio `copy_merge` (código, run próprio metrificado) entre a Hero e o
+> texto, e SKIP do text_format quando o merge resolve todos os slots.
+> Pendente da Fase A: **A3b** — view por slot no agente de exceção (hoje,
+> com exceções, o LLM ainda roda full-doc sobre o documento mergeado).
+> Item extra: reasoning OFF nos steps de JSON (image_format/color_format)
+> via parâmetro unificado do OpenRouter (`FORMAT_OPS_REASONING=on`
+> re-liga). Fases B–D seguem planejadas.
 
 ## Princípio
 

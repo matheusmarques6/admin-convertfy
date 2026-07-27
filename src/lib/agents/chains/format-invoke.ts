@@ -35,8 +35,10 @@ export async function invokeFormatModel(params: {
   temperature: number
   timeoutMs: number
   title: string
+  /** Controle de raciocínio (OpenRouter) — ver openrouter-invoke. */
+  reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
 }): Promise<FormatModelResult> {
-  const { model, systemPrompt, userMessage, maxTokens, temperature, timeoutMs, title } =
+  const { model, systemPrompt, userMessage, maxTokens, temperature, timeoutMs, title, reasoning } =
     params
 
   if (isOpenRouterModel(model)) {
@@ -48,6 +50,7 @@ export async function invokeFormatModel(params: {
       temperature,
       timeoutMs,
       title,
+      reasoning,
     })
     return {
       text: or.text,

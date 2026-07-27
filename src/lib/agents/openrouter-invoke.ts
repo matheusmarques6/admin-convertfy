@@ -361,6 +361,13 @@ export interface OpenRouterInvokeInput {
   timeoutMs?: number
   /** Vai no header X-Title — APENAS ASCII (header é ByteString/Latin1). */
   title?: string
+  /**
+   * Controle de raciocínio (parâmetro unificado do OpenRouter). Modelos
+   * reasoning (GLM) "pensam" minutos antes de emitir — steps mecânicos
+   * (output JSON pequeno) passam {enabled:false} pra cortar a latência.
+   * Omitido → default do modelo. Modelos sem suporte ignoram.
+   */
+  reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
 }
 
 export interface OpenRouterInvokeResult {
@@ -410,6 +417,7 @@ async function callOnce(
       ],
     }
     if (input.temperature != null) body.temperature = input.temperature
+    if (input.reasoning) body.reasoning = input.reasoning
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",

@@ -1306,6 +1306,20 @@ fora de tudo (QA `runSchemaChecks` e `findFieldDeviations` só cobram
 `copy`). Snapshot `BlueprintBlockField` carrega `nature` explícita;
 snapshots antigos derivam por tipo (zero breaking).
 
+**Fase A — arquitetura por slots (migration 20261042,
+`docs/email-generation/arquitetura-slots.md`)**: o Integrador
+(`apply-patches.ts`) tem protocolo único `{"ops":[...]}` com `set_text`
+(todas as ocorrências, MSO; `<>` neutralizados; imune a `$`) e
+`remove_row`, + matriz de posse `allowedTags` (op fora da alçada →
+`ownership_rejected`). Estágio `copy_merge` (`html/copy-merge.ts`, run
+`agent='copy_merge'`, custo zero) roda entre Hero e texto: campo `copy`
+com `fields.tag` + valor do n8n é trocado por CÓDIGO; merge resolveu
+tudo → text_format é PULADO (run `skipped`). Métricas por run:
+slots_total/ops_built/merged/left_for_llm/unanchored_keys/ops_skipped +
+len/sha8. Steps de JSON (image_format/color_format) rodam com
+`reasoning: {enabled:false}` no OpenRouter (`FORMAT_OPS_REASONING=on`
+re-liga). Pendente: A3b (view por slot no agente de exceção) e Fases B-D.
+
 ---
 
 *Última atualização: Julho 2026*
