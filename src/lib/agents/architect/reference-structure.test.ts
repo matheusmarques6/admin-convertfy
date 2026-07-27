@@ -129,6 +129,87 @@ describe("extractStructureFromReference", () => {
   })
 })
 
+describe("extractStructureFromReference — schemaTags (épico Taguedor)", () => {
+  const schemaTags = new Map<string, "copy" | "image">([
+    ["TESTIMONIAL_1_QUOTE_BODY", "copy"],
+    ["SECTION_BADGE_IMAGE", "image"],
+  ])
+
+  it("tag schema-backed entra nas tags do bloco em que aparece", () => {
+    const html = CANONICAL_HTML.replace(
+      "<p>{{HERO_BODY}}</p>",
+      "<p>{{HERO_BODY}}</p><q>{{TESTIMONIAL_1_QUOTE_BODY}}</q>",
+    )
+    const s = extractStructureFromReference(html, { schemaTags })!
+    const hero = s.blocks.find((b) => b.type === "hero")!
+    expect(hero.tags).toContain("TESTIMONIAL_1_QUOTE_BODY")
+    // Reconhecida (não é drift) e não muda a segmentação/copy_spec.
+    expect(s.unknownTags).not.toContain("TESTIMONIAL_1_QUOTE_BODY")
+    expect(s.knownTags).toContain("TESTIMONIAL_1_QUOTE_BODY")
+    expect(hero.copy_spec.map((f) => f.key)).toEqual([
+      "eyebrow",
+      "headline",
+      "body",
+      "cta",
+    ])
+  })
+
+  it("schema tag de imagem NÃO liga needs_image (papel do T8)", () => {
+    // Dentro do run de features (schema tags colam no run ATUAL — antes da
+    // primeira tag canônica da seção elas pertencem ao run anterior).
+    const html = CANONICAL_HTML.replace(
+      "<h2>{{USP_1_TITLE}}</h2>",
+      "<h2>{{USP_1_TITLE}}</h2><img src=\"{{SECTION_BADGE_IMAGE}}\">",
+    )
+    const s = extractStructureFromReference(html, { schemaTags })!
+    const usp = s.blocks.find((b) => b.type === "features")!
+    expect(usp.tags).toContain("SECTION_BADGE_IMAGE")
+    expect(usp.needs_image).toBe(false)
+  })
+
+  it("conta como conhecida no threshold (não derruba pra legado)", () => {
+    // 4 canônicas + 3 schema-backed: sem opts a razão conhecidas/total
+    // (4/7 < 0.7) derruba; com schemaTags passa.
+    const html = `<html><body>
+      <h1>{{HERO_HEADLINE}}</h1><p>{{HERO_BODY}}</p>
+      <a href="{{HERO_CTA_URL}}">{{HERO_CTA_LABEL}}</a>
+      <q>{{DEPOIMENTO_1}}</q><q>{{DEPOIMENTO_2}}</q><q>{{DEPOIMENTO_3}}</q>
+    </body></html>`
+    const tags = new Map<string, "copy" | "image">([
+      ["DEPOIMENTO_1", "copy"],
+      ["DEPOIMENTO_2", "copy"],
+      ["DEPOIMENTO_3", "copy"],
+    ])
+    expect(extractStructureFromReference(html)).toBeNull()
+    const s = extractStructureFromReference(html, { schemaTags: tags })
+    expect(s).not.toBeNull()
+    expect(s!.blocks[0].tags).toEqual(
+      expect.arrayContaining(["DEPOIMENTO_1", "DEPOIMENTO_2", "DEPOIMENTO_3"]),
+    )
+  })
+
+  it("schema tag antes do primeiro bloco cola no primeiro bloco criado", () => {
+    const html = CANONICAL_HTML.replace(
+      "<tr><td>{{LOGO}}</td></tr>",
+      "<span>{{TESTIMONIAL_1_QUOTE_BODY}}</span><tr><td>{{LOGO}}</td></tr>",
+    )
+    const s = extractStructureFromReference(html, { schemaTags })!
+    expect(s.blocks[0].tags[0]).toBe("TESTIMONIAL_1_QUOTE_BODY")
+    expect(s.blocks[0].type).toBe("header")
+  })
+
+  it("sem opts, schema tag segue como unknown (comportamento atual)", () => {
+    const html = CANONICAL_HTML.replace(
+      "<p>{{HERO_BODY}}</p>",
+      "<p>{{HERO_BODY}}</p><q>{{TESTIMONIAL_1_QUOTE_BODY}}</q>",
+    )
+    const s = extractStructureFromReference(html)!
+    expect(s.unknownTags).toContain("TESTIMONIAL_1_QUOTE_BODY")
+    const hero = s.blocks.find((b) => b.type === "hero")!
+    expect(hero.tags).not.toContain("TESTIMONIAL_1_QUOTE_BODY")
+  })
+})
+
 describe("skeletonToPromptJson", () => {
   it("serializa índice, type e tags normalizadas dedupadas", () => {
     const s = extractStructureFromReference(CANONICAL_HTML)!

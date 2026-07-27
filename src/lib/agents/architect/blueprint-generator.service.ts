@@ -34,6 +34,7 @@ import {
   buildDeterministicBlueprint,
   matchVariantsToSkeleton,
   packageBlueprint,
+  schemaTagsFromSlots,
   type BlueprintFieldV2,
   type MatchResult,
 } from "./deterministic-blueprint.builder"
@@ -490,10 +491,15 @@ function copyGuidanceResumo(match: MatchResult | null): string {
 export async function generateStoreBlueprint(
   input: GenerateBlueprintInput,
 ): Promise<GenerateBlueprintResult> {
-  const skeletonEarly = extractStructureFromReference(input.referenceHtml)
   const variantSlots = (input.slots ?? []).filter(
     (s): s is Extract<AssemblySlot, { kind: "variant" }> => s.kind === "variant",
   )
+  // Placeholders schema-backed das variantes escolhidas (épico Taguedor):
+  // a extração os reconhece como vocabulário legítimo — entram nas tags do
+  // bloco (fields.tag resolve por nome) e não derrubam o threshold canônico.
+  const skeletonEarly = extractStructureFromReference(input.referenceHtml, {
+    schemaTags: schemaTagsFromSlots(variantSlots),
+  })
   const match = skeletonEarly
     ? matchVariantsToSkeleton(skeletonEarly, variantSlots)
     : null

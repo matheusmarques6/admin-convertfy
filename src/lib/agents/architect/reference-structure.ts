@@ -51,6 +51,9 @@ export interface ExtractedStructure {
   unknownTags: string[]
 }
 
+/** Natureza da tag schema-backed (épico Taguedor): copy ou imagem gerada. */
+export type SchemaTagKind = "copy" | "image"
+
 // Mesmo formato de placeholder do html.chain (MAIÚSCULAS; aceita índices).
 // Tolerante a espaços internos ({{ TAG }}) por robustez.
 const TAG_PATTERN = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g
@@ -62,17 +65,27 @@ const MIN_KNOWN_RATIO = 0.7
 
 interface FoundTag {
   raw: string
-  spec: TagSpec
+  /** Spec do tag-registry — null para tag schema-backed. */
+  spec: TagSpec | null
+  schemaKind: SchemaTagKind | null
 }
 
 /**
  * Extrai a estrutura de blocos do reference. null se o HTML não usa o
  * vocabulário canônico (legado) — decide-se por threshold, não por erro.
+ *
+ * `opts.schemaTags` (épico Taguedor): placeholders {{UPPER(key)}} vindos do
+ * output_schema das variantes escolhidas. São vocabulário LEGÍTIMO (não
+ * drift): contam como conhecidas no threshold e entram nas tags[] do bloco
+ * em que aparecem — sem abrir bloco próprio (a seção vem das tags
+ * canônicas) e sem entrar no copy_spec (os fields da variante cobrem).
  */
 export function extractStructureFromReference(
   html: string,
+  opts?: { schemaTags?: ReadonlyMap<string, SchemaTagKind> },
 ): ExtractedStructure | null {
   if (!html || typeof html !== "string") return null
+  const schemaTags = opts?.schemaTags
 
   const found: FoundTag[] = []
   const known: string[] = []
@@ -84,7 +97,13 @@ export function extractStructureFromReference(
     const raw = m[1]
     const spec = lookupTag(raw)
     if (spec) {
-      found.push({ raw, spec })
+      found.push({ raw, spec, schemaKind: null })
+      if (!seenKnown.has(raw)) {
+        seenKnown.add(raw)
+        known.push(raw)
+      }
+    } else if (schemaTags?.has(raw)) {
+      found.push({ raw, spec: null, schemaKind: schemaTags.get(raw) ?? "copy" })
       if (!seenKnown.has(raw)) {
         seenKnown.add(raw)
         known.push(raw)
@@ -112,6 +131,9 @@ export function extractStructureFromReference(
     tags: string[]
     specs: TagSpec[]
   } | null = null
+  // Tags schema-backed vistas antes do primeiro bloco canônico — coladas no
+  // primeiro bloco criado (preserva a ordem do documento).
+  let pendingSchemaTags: string[] = []
 
   const flush = () => {
     if (!current) return
@@ -119,6 +141,9 @@ export function extractStructureFromReference(
       type: current.type,
       section: current.section,
       tags: current.tags,
+      // needs_image segue derivado SÓ das tags canônicas de imagem — ligar
+      // slots de imagem schema-backed no agente de imagem é papel das
+      // naturezas no pipeline (T8), não da extração.
       needs_image: current.specs.some((s) => s.kind === "image"),
       image_aspect:
         current.specs.find((s) => s.kind === "image" && s.aspect)?.aspect ??
@@ -129,6 +154,12 @@ export function extractStructureFromReference(
   }
 
   for (const { raw, spec } of found) {
+    if (!spec) {
+      // Schema-backed: cola no run atual sem mudar a segmentação.
+      if (current) current.tags.push(raw)
+      else pendingSchemaTags.push(raw)
+      continue
+    }
     // Tags de documento (META) não participam da segmentação.
     if (!spec.blockType) continue
     if (!current || current.section !== spec.section) {
@@ -138,6 +169,10 @@ export function extractStructureFromReference(
         type: spec.blockType,
         tags: [],
         specs: [],
+      }
+      if (pendingSchemaTags.length > 0) {
+        current.tags.push(...pendingSchemaTags)
+        pendingSchemaTags = []
       }
     }
     // Dedup por tag normalizada dentro do bloco (PRODUCT_1_NAME e

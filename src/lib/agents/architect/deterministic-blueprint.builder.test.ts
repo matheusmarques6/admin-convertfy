@@ -15,6 +15,7 @@ import {
   imageBriefFromSchema,
   buildDeterministicBlueprint,
   packageBlueprint,
+  schemaTagsFromSlots,
 } from "./deterministic-blueprint.builder"
 
 // ── Fixtures ────────────────────────────────────────────────────────
@@ -232,6 +233,77 @@ describe("fieldsFromSchema", () => {
       },
     ]
     expect(fieldsFromSchema(schema, ["HERO_HEADLINE"])[0].tag).toBeNull()
+  })
+
+  it("fallback literal (Taguedor): {{UPPER(key)}} no HTML da variante vira tag", () => {
+    const schema: ComponentOutputField[] = [
+      {
+        key: "testimonial_1_quote_body",
+        label: "Depoimento",
+        type: "text_long",
+        max_len: 200,
+        required: true,
+        example: "Melhor compra do ano.",
+        guidance: "",
+      },
+    ]
+    const html = "<table><tr><td>{{TESTIMONIAL_1_QUOTE_BODY}}</td></tr></table>"
+    // Fora do registry e fora das blockTags — só o HTML tagueado ancora.
+    const fields = fieldsFromSchema(schema, ["BODY_TEXT"], html)
+    expect(fields[0].tag).toBe("TESTIMONIAL_1_QUOTE_BODY")
+    // Sem o HTML (rota B sem variante casada) segue null.
+    expect(fieldsFromSchema(schema, ["BODY_TEXT"])[0].tag).toBeNull()
+    // Placeholder ausente do HTML → null (não inventa âncora).
+    expect(
+      fieldsFromSchema(schema, ["BODY_TEXT"], "<div>{{OUTRA_TAG}}</div>")[0]
+        .tag,
+    ).toBeNull()
+  })
+})
+
+describe("schemaTagsFromSlots", () => {
+  it("mapeia UPPER(key)→kind por natureza e exclui asset_fixo", () => {
+    const v = variant({
+      id: "v1",
+      block_type: "testimonial",
+      output_schema: [
+        {
+          key: "quote_body",
+          label: "Depoimento",
+          type: "text_long",
+          max_len: 200,
+          required: true,
+          example: "",
+          guidance: "",
+        },
+        {
+          key: "avatar_foto",
+          label: "Avatar",
+          type: "image",
+          max_len: 0,
+          required: false,
+          example: "",
+          guidance: "",
+        },
+        {
+          key: "selo_arte",
+          label: "Selo",
+          type: "image",
+          nature: "asset_fixo",
+          max_len: 0,
+          required: false,
+          example: "",
+          guidance: "",
+        },
+      ],
+    })
+    const map = schemaTagsFromSlots([
+      slot("testimonial", v),
+      { kind: "missing", section: "body", label: "Body" },
+    ])
+    expect(map.get("QUOTE_BODY")).toBe("copy")
+    expect(map.get("AVATAR_FOTO")).toBe("image")
+    expect(map.has("SELO_ARTE")).toBe(false)
   })
 })
 

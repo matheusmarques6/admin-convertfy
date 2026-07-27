@@ -26,8 +26,12 @@ import type {
 } from "@/types/email-generation"
 import { lookupTag, normalizeTagName } from "@/lib/email-workspace/tag-registry"
 import { blockTypeToCategory } from "../shared/component-categories"
+import {
+  deriveFieldNature,
+  placeholderForKey,
+} from "../shared/component-dimensions"
 import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
-import type { ExtractedStructure } from "./reference-structure"
+import type { ExtractedStructure, SchemaTagKind } from "./reference-structure"
 import type { AssemblySlot } from "./component-assembler.service"
 import type {
   GeneratedBlock,
@@ -121,6 +125,29 @@ function variantHasCopyContext(v: SlotVariant): boolean {
   )
 }
 
+/**
+ * Vocabulário schema-backed do email (épico Taguedor): {{UPPER(key)}} dos
+ * output_schemas das variantes escolhidas → kind (copy | image), para a
+ * extração do skeleton reconhecê-los como tags legítimas (não drift).
+ * asset_fixo fica de fora — a arte não vira placeholder.
+ */
+export function schemaTagsFromSlots(
+  slots: AssemblySlot[],
+): Map<string, SchemaTagKind> {
+  const map = new Map<string, SchemaTagKind>()
+  for (const s of slots) {
+    if (s.kind !== "variant") continue
+    for (const f of s.variant.output_schema ?? []) {
+      const nature = deriveFieldNature(f)
+      if (nature === "asset_fixo") continue
+      const ph = placeholderForKey(f.key)
+      if (!ph || map.has(ph)) continue
+      map.set(ph, nature === "imagem_gerada" ? "image" : "copy")
+    }
+  }
+  return map
+}
+
 // ── fields v2 — as 3 origens ─────────────────────────────────────────
 
 /**
@@ -139,6 +166,19 @@ function resolveTagForKey(key: string, blockTags: string[]): string | null {
   )
 }
 
+/**
+ * Fallback literal do épico Taguedor: o placeholder {{UPPER(key)}} está no
+ * HTML da variante (tagueado/manual)? Então ELE é a âncora — mesmo fora do
+ * tag-registry e mesmo quando o skeleton não capturou a tag no bloco.
+ */
+function literalTagInHtml(key: string, variantHtml?: string): string | null {
+  if (!variantHtml) return null
+  const ph = placeholderForKey(key)
+  if (!ph) return null
+  const re = new RegExp(`\\{\\{\\s*${ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`)
+  return re.test(variantHtml) ? ph : null
+}
+
 export function fieldsFromSchema(
   schema: ComponentOutputField[],
   blockTags: string[],
@@ -150,7 +190,11 @@ export function fieldsFromSchema(
   // os comentários UMA vez.
   const imageTags = schema
     .filter((f) => f.type === "image")
-    .map((f) => resolveTagForKey(f.key.trim(), blockTags))
+    .map(
+      (f) =>
+        resolveTagForKey(f.key.trim(), blockTags) ??
+        literalTagInHtml(f.key.trim(), variantHtml),
+    )
     .filter((t): t is string => !!t)
   const slotNotes =
     variantHtml && imageTags.length > 0
@@ -159,7 +203,8 @@ export function fieldsFromSchema(
 
   return schema.map((f) => {
     const key = f.key.trim()
-    const tag = resolveTagForKey(key, blockTags)
+    const tag =
+      resolveTagForKey(key, blockTags) ?? literalTagInHtml(key, variantHtml)
     const base: BlueprintFieldV2 = {
       key,
       label: f.label || key,
