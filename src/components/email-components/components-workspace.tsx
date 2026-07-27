@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Trash2, Check, Plus, Loader2 } from "lucide-react"
+import { Layers, Trash2, Check, Plus, Loader2, RefreshCw } from "lucide-react"
 import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
@@ -27,6 +27,7 @@ import {
   EGSecTitle,
 } from "@/components/email-generation/ui/eg-atoms"
 import { VariantEditor, type VariantDraft } from "./variant-editor"
+import { VariantTaggerCard } from "./variant-tagger-card"
 import { VariantTestCard } from "./variant-test-card"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
@@ -113,6 +114,13 @@ function payloadFromDraft(draft: VariantDraft) {
   }
 }
 
+/** Estado do loop de sincronização da biblioteca (batches de 3). */
+interface SyncProgress {
+  processed: number
+  failed: number
+  remaining: number | null
+}
+
 export function ComponentsWorkspace() {
   const [variants, setVariants] = useState<EmailComponentVariant[]>([])
   const [loading, setLoading] = useState(true)
@@ -120,6 +128,7 @@ export function ComponentsWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<VariantDraft>(emptyDraft(FIRST_CATEGORY))
   const [saving, setSaving] = useState(false)
+  const [sync, setSync] = useState<SyncProgress | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,6 +143,18 @@ export function ComponentsWorkspace() {
     }
   }, [])
 
+  // Recarrega sem o flicker do spinner (usado pelo card do taguedor e pelo
+  // sync — a lista já está na tela, só atualiza os dados).
+  const reloadSilent = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/components")
+      const json = (await res.json()) as { variants?: EmailComponentVariant[] }
+      setVariants(json.variants ?? [])
+    } catch {
+      /* mantém o estado atual */
+    }
+  }, [])
+
   useEffect(() => {
     void load()
   }, [load])
@@ -143,6 +164,74 @@ export function ComponentsWorkspace() {
     for (const v of variants) m[v.block_type] = (m[v.block_type] ?? 0) + 1
     return m
   }, [variants])
+
+  // Estado do taguedor na biblioteca (só variantes ativas — espelha a
+  // elegibilidade do batch): never = fila de sync; pending = propostas
+  // aguardando revisão; noSchema = pendência de curadoria (fora da fila).
+  const tagStats = useMemo(() => {
+    let never = 0
+    let pending = 0
+    let noSchema = 0
+    for (const v of variants) {
+      if (!v.is_active) continue
+      const hasSchema = (v.output_schema?.length ?? 0) > 0
+      if (v.tagging_status === "pending") pending++
+      else if (v.tagging_status == null) {
+        if (hasSchema) never++
+        else noSchema++
+      }
+    }
+    return { never, pending, noSchema }
+  }, [variants])
+
+  async function syncLibrary() {
+    setSync({ processed: 0, failed: 0, remaining: null })
+    let processed = 0
+    let failed = 0
+    // Ids que falharam neste loop — excluídos das próximas chamadas pra
+    // uma variante quebrada não travar a fila (ordenada por created_at).
+    const failedIds: string[] = []
+    try {
+      for (let i = 0; i < 40; i++) {
+        const res = await fetch("/api/admin/components/tag-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 3, exclude_ids: failedIds }),
+        })
+        const json = (await res.json().catch(() => null)) as {
+          error?: string
+          processed?: Array<{ id: string; name: string }>
+          failed?: Array<{ id: string; name: string; error: string }>
+          remaining?: number
+        } | null
+        if (!res.ok) throw new Error(json?.error || `Erro ${res.status}`)
+        const okCount = json?.processed?.length ?? 0
+        const failCount = json?.failed?.length ?? 0
+        processed += okCount
+        failed += failCount
+        for (const f of json?.failed ?? []) failedIds.push(f.id)
+        const remaining = json?.remaining ?? 0
+        setSync({ processed, failed, remaining })
+        void reloadSilent()
+        if (remaining <= 0 || (okCount === 0 && failCount === 0)) break
+      }
+      toast({
+        title: "Sincronização concluída",
+        description: `${processed} proposta(s) pendente(s) gerada(s)${
+          failed > 0 ? ` · ${failed} falha(s) — veja variante a variante` : ""
+        }. Revise e aprove na lista.`,
+      })
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Falha na sincronização",
+        description: e instanceof Error ? e.message : undefined,
+      })
+    } finally {
+      setSync(null)
+      await reloadSilent()
+    }
+  }
 
   const filtered = useMemo(
     () => variants.filter((v) => v.block_type === cat),
@@ -265,6 +354,75 @@ export function ComponentsWorkspace() {
         sub="Acervo de variantes por tipo de bloco. O agente escolhe a melhor para cada loja com base nas dimensões de matching."
       />
 
+      {/* Sync do Taguedor: fila de variantes que nunca passaram pelo agente */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            fontSize: 12.5,
+            color: C.g500,
+            fontFamily: F.sans,
+          }}
+        >
+          {tagStats.never > 0 && (
+            <EGBadge tone="neut" dot>
+              {tagStats.never} sem sincronizar
+            </EGBadge>
+          )}
+          {tagStats.pending > 0 && (
+            <EGBadge tone="warn" dot>
+              {tagStats.pending} proposta{tagStats.pending > 1 ? "s" : ""}{" "}
+              pendente{tagStats.pending > 1 ? "s" : ""}
+            </EGBadge>
+          )}
+          {tagStats.noSchema > 0 && (
+            <EGBadge tone="neut">
+              {tagStats.noSchema} sem schema (fora da fila)
+            </EGBadge>
+          )}
+          {!loading &&
+            tagStats.never === 0 &&
+            tagStats.pending === 0 &&
+            tagStats.noSchema === 0 && (
+              <span>
+                Biblioteca sincronizada — variantes ativas com schema já
+                passaram pelo taguedor.
+              </span>
+            )}
+        </div>
+        <EGBtn
+          variant="secondary"
+          onClick={() => void syncLibrary()}
+          disabled={sync != null || tagStats.never === 0}
+          title="Roda o taguedor nas variantes ativas que nunca passaram por ele (batches de 3). Tudo vira proposta pendente — nada é aprovado sozinho."
+        >
+          {sync ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RefreshCw size={14} />
+          )}
+          {sync
+            ? `Sincronizando… ${sync.processed} ok${
+                sync.failed > 0 ? ` · ${sync.failed} falhas` : ""
+              }${sync.remaining != null ? ` · ${sync.remaining} na fila` : ""}`
+            : `Sincronizar biblioteca${
+                tagStats.never > 0 ? ` (${tagStats.never})` : ""
+              }`}
+        </EGBtn>
+      </div>
+
       <EGCatPills
         items={COMPONENT_CATEGORIES.map((c) => ({
           key: c.key,
@@ -328,17 +486,40 @@ export function ComponentsWorkspace() {
               </div>
             ) : (
               <>
-                {filtered.map((v) => (
-                  <EGRailItem
-                    key={v.id}
-                    active={v.id === selectedId}
-                    onClick={() => selectVariant(v)}
-                    title={v.name}
-                    sub={v.description ?? undefined}
-                    dot
-                    dotColor={v.is_active ? "#10B981" : C.g300}
-                  />
-                ))}
+                {filtered.map((v) => {
+                  // Marcador do taguedor no rail: pendente (revisar) ou fora
+                  // de sync (nunca tagueada, com schema, ativa).
+                  const tagMark =
+                    v.tagging_status === "pending" ? (
+                      <span style={{ color: C.warn, fontWeight: 600 }}>
+                        tag pendente
+                      </span>
+                    ) : v.tagging_status == null &&
+                      v.is_active &&
+                      (v.output_schema?.length ?? 0) > 0 ? (
+                      <span>sem sync</span>
+                    ) : null
+                  return (
+                    <EGRailItem
+                      key={v.id}
+                      active={v.id === selectedId}
+                      onClick={() => selectVariant(v)}
+                      title={v.name}
+                      sub={
+                        tagMark ? (
+                          <>
+                            {tagMark}
+                            {v.description ? <> · {v.description}</> : null}
+                          </>
+                        ) : (
+                          v.description ?? undefined
+                        )
+                      }
+                      dot
+                      dotColor={v.is_active ? "#10B981" : C.g300}
+                    />
+                  )
+                })}
                 {filtered.length === 0 && (
                   <div
                     style={{
@@ -394,6 +575,23 @@ export function ComponentsWorkspace() {
               <EGBadge tone={draft.is_active ? "pos" : "neut"} dot>
                 {draft.is_active ? "Ativo" : "Inativo"}
               </EGBadge>
+              {selected && (
+                <EGBadge
+                  tone={
+                    selected.tagging_status === "approved"
+                      ? "pos"
+                      : selected.tagging_status === "pending"
+                        ? "warn"
+                        : "neut"
+                  }
+                >
+                  {selected.tagging_status === "approved"
+                    ? "Tag aprovada"
+                    : selected.tagging_status === "pending"
+                      ? "Tag pendente"
+                      : "Sem tag"}
+                </EGBadge>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               {selected && (
@@ -419,6 +617,18 @@ export function ComponentsWorkspace() {
               </EGBtn>
             </div>
           </div>
+
+          {/* Revisão do Taguedor — só para variantes já salvas. key por id:
+              trocar de variante remonta (zera edição manual do tagueado). */}
+          {selected && (
+            <div style={{ marginBottom: 20 }}>
+              <VariantTaggerCard
+                key={selected.id}
+                variant={selected}
+                onChanged={reloadSilent}
+              />
+            </div>
+          )}
 
           <VariantEditor
             draft={draft}

@@ -3,7 +3,11 @@
  * Separado de component-dimensions.ts para não puxar zod pro bundle client.
  */
 import { z } from "zod"
-import { FIELD_TYPES, normalizeOutputKey } from "./component-dimensions"
+import {
+  FIELD_NATURES,
+  FIELD_TYPES,
+  normalizeOutputKey,
+} from "./component-dimensions"
 
 /** Um campo do output_schema de uma variante. */
 export const outputFieldSchema = z.object({
@@ -19,6 +23,9 @@ export const outputFieldSchema = z.object({
   ),
   label: z.string().min(1),
   type: z.enum(FIELD_TYPES),
+  // Natureza do valor final (épico Taguedor). Ausente → derivação por tipo
+  // (image → imagem_gerada; resto → copy) via deriveFieldNature.
+  nature: z.enum(FIELD_NATURES).optional(),
   max_len: z.number().int().min(0).default(0),
   required: z.boolean().default(false),
   example: z.string().default(""),

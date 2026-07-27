@@ -7,7 +7,9 @@
  * maxDuration — a UI chama em loop até remaining=0. Tudo vira proposta
  * PENDENTE; nada é aprovado automaticamente.
  *
- * Body: { limit?: number }
+ * Body: { limit?: number, exclude_ids?: string[] }
+ * (exclude_ids = variantes que já falharam no loop da UI — evita re-tentar
+ * uma variante quebrada pra sempre e travar a fila.)
  * Resposta: { processed[], failed[], remaining }
  */
 import { NextRequest } from "next/server"
@@ -29,6 +31,7 @@ export const maxDuration = 300
 
 const bodySchema = z.object({
   limit: z.number().int().min(1).max(5).optional(),
+  exclude_ids: z.array(z.string().uuid()).max(500).optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -39,7 +42,10 @@ export async function POST(request: NextRequest) {
     await assertCanManagePrompts(admin, user.id)
 
     const parsed = bodySchema.parse(await request.json().catch(() => ({})))
-    const result = await tagPendingBatch(parsed.limit ?? 3)
+    const result = await tagPendingBatch(
+      parsed.limit ?? 3,
+      parsed.exclude_ids ?? [],
+    )
 
     log.info("tag-batch.done", {
       processed: result.processed.length,

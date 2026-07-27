@@ -23,8 +23,13 @@ import type {
   ComponentOutputField,
   TaggingFieldReport,
 } from "@/types/email-generation"
+import { placeholderForKey } from "../shared/component-dimensions"
 import { renderImageTemplate } from "../image/template-renderer"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+
+// Fonte única em shared/component-dimensions (client-safe pra UI de
+// revisão); re-export mantém os importadores do chain funcionando.
+export { placeholderForKey }
 
 const log = logger.child("ComponentTaggerChain")
 
@@ -46,15 +51,6 @@ export class TaggerOutputInvalidError extends Error {
     this.name = "TaggerOutputInvalidError"
     this.raw = raw
   }
-}
-
-/** Placeholder canônico da key do schema: section_headline → SECTION_HEADLINE. */
-export function placeholderForKey(key: string): string {
-  return key
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]+/g, "_")
-    .replace(/^_+|_+$/g, "")
 }
 
 export const DEFAULT_TAGGER_SYSTEM_PROMPT = `<role>

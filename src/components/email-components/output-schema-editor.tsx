@@ -7,10 +7,13 @@
  */
 
 import { Trash2, Plus } from "lucide-react"
-import type { ComponentOutputField } from "@/types/email-generation"
+import type { ComponentOutputField, FieldNature } from "@/types/email-generation"
 import {
+  FIELD_NATURES,
+  FIELD_NATURE_LABELS_PT,
   FIELD_TYPES,
   FIELD_TYPE_LABELS_PT,
+  deriveFieldNature,
   sanitizeOutputKeyInput,
   type ComponentFieldType,
 } from "@/lib/agents/shared/component-dimensions"
@@ -104,6 +107,29 @@ function SchemaRow({
             on={field.required}
             onChange={(v) => onChange({ ...field, required: v })}
             label="Obrig."
+          />
+        </div>
+        {/* Natureza (épico Taguedor): quem produz o valor final. Vazio =
+            derivada do tipo (image → imagem gerada; resto → copy). */}
+        <div style={{ width: 170, flexShrink: 0 }} title="Natureza do campo — copy: o n8n escreve · imagem gerada: o agente de imagem cria · asset fixo: a arte da biblioteca fica intacta">
+          <EGSelect
+            value={field.nature ?? ""}
+            onChange={(v) => {
+              const next = { ...field }
+              if (v) next.nature = v as FieldNature
+              else delete next.nature
+              onChange(next)
+            }}
+            options={[
+              {
+                value: "",
+                label: `Auto (${FIELD_NATURE_LABELS_PT[deriveFieldNature(field)]})`,
+              },
+              ...FIELD_NATURES.map((n) => ({
+                value: n,
+                label: FIELD_NATURE_LABELS_PT[n],
+              })),
+            ]}
           />
         </div>
         <input

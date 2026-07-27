@@ -61,6 +61,51 @@ export const FIELD_TYPE_LABELS_PT: Record<ComponentFieldType, string> = {
 }
 
 /**
+ * Naturezas de campo (épico Taguedor): quem produz o valor final.
+ * copy = n8n escreve · imagem_gerada = agente de imagem cria ·
+ * asset_fixo = arte da biblioteca fica intacta no email final.
+ */
+export const FIELD_NATURES = ["copy", "imagem_gerada", "asset_fixo"] as const
+export type ComponentFieldNature = (typeof FIELD_NATURES)[number]
+
+export const FIELD_NATURE_LABELS_PT: Record<ComponentFieldNature, string> = {
+  copy: "Copy (n8n)",
+  imagem_gerada: "Imagem gerada",
+  asset_fixo: "Asset fixo",
+}
+
+/**
+ * Placeholder canônico da key do schema (épico Taguedor):
+ * section_headline → SECTION_HEADLINE. Client-safe — a UI de revisão e o
+ * chain do taguedor usam a MESMA função (o chain re-exporta daqui).
+ */
+export function placeholderForKey(key: string): string {
+  return key
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+/**
+ * Natureza efetiva de um campo: a explícita quando setada; senão derivada
+ * do tipo (image → imagem_gerada; resto → copy). Fonte única da regra —
+ * taguedor, dispatch e agente de imagem usam a mesma derivação.
+ */
+export function deriveFieldNature(field: {
+  type: string
+  nature?: string | null
+}): ComponentFieldNature {
+  if (
+    field.nature &&
+    (FIELD_NATURES as readonly string[]).includes(field.nature)
+  ) {
+    return field.nature as ComponentFieldNature
+  }
+  return field.type === "image" ? "imagem_gerada" : "copy"
+}
+
+/**
  * Canoniza a chave técnica de um campo do output_schema para o formato
  * aceito pelo banco/validação: `^[a-z][a-z0-9_]*$`.
  *

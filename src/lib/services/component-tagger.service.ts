@@ -180,7 +180,10 @@ export interface TagBatchResult {
   remaining: number
 }
 
-export async function tagPendingBatch(limit = 3): Promise<TagBatchResult> {
+export async function tagPendingBatch(
+  limit = 3,
+  excludeIds: string[] = [],
+): Promise<TagBatchResult> {
   const admin = createAdminClient()
   const { data: rows, error } = await admin
     .from("email_component_variants")
@@ -192,8 +195,15 @@ export async function tagPendingBatch(limit = 3): Promise<TagBatchResult> {
 
   // Só variantes com schema (sem schema o taguedor não tem o que ancorar —
   // ficam de fora da fila e aparecem como pendência de curadoria na UI).
+  // excludeIds: a UI passa os ids que já falharam no loop — sem isso uma
+  // variante quebrada no topo da fila (created_at asc) seria re-tentada
+  // pra sempre e bloquearia o resto.
+  const excluded = new Set(excludeIds)
   const eligible = (rows ?? []).filter(
-    (r) => Array.isArray(r.output_schema) && r.output_schema.length > 0,
+    (r) =>
+      Array.isArray(r.output_schema) &&
+      r.output_schema.length > 0 &&
+      !excluded.has(r.id as string),
   )
   const batch = eligible.slice(0, Math.max(1, Math.min(limit, 5)))
 

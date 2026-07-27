@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from "vitest"
 import {
+  deriveFieldNature,
   normalizeOutputKey,
   sanitizeOutputKeyInput,
 } from "./component-dimensions"
@@ -67,5 +68,40 @@ describe("outputFieldSchema", () => {
 
   it("rejeita chave que normaliza para vazio", () => {
     expect(() => outputFieldSchema.parse({ ...base, key: "123" })).toThrow()
+  })
+
+  it("aceita nature válida e rejeita inválida (épico Taguedor)", () => {
+    const parsed = outputFieldSchema.parse({
+      ...base,
+      key: "selo",
+      nature: "asset_fixo",
+    })
+    expect(parsed.nature).toBe("asset_fixo")
+    // ausente → segue ausente (derivação fica pro deriveFieldNature)
+    expect(
+      outputFieldSchema.parse({ ...base, key: "titulo" }).nature,
+    ).toBeUndefined()
+    expect(() =>
+      outputFieldSchema.parse({ ...base, key: "x", nature: "zzz" }),
+    ).toThrow()
+  })
+})
+
+describe("deriveFieldNature", () => {
+  it("explícita vence a derivação por tipo", () => {
+    expect(
+      deriveFieldNature({ type: "image", nature: "asset_fixo" }),
+    ).toBe("asset_fixo")
+    expect(deriveFieldNature({ type: "text_short", nature: "imagem_gerada" }))
+      .toBe("imagem_gerada")
+  })
+
+  it("ausente/inválida → image vira imagem_gerada, resto copy", () => {
+    expect(deriveFieldNature({ type: "image" })).toBe("imagem_gerada")
+    expect(deriveFieldNature({ type: "text_long" })).toBe("copy")
+    expect(deriveFieldNature({ type: "url", nature: null })).toBe("copy")
+    expect(deriveFieldNature({ type: "image", nature: "outra_coisa" })).toBe(
+      "imagem_gerada",
+    )
   })
 })
