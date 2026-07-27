@@ -84,6 +84,11 @@ import {
   type FormatChainContext,
 } from "./html/format-context"
 import {
+  copyMerge,
+  mergeBlocksFromContext,
+  type MergeField,
+} from "./html/copy-merge"
+import {
   locateHeroRegion,
   spliceHero,
   heroUnchanged,
@@ -1632,6 +1637,74 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
+  if (stage === "hero") {
+    // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
+    // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
+    // Integrador; run próprio (agent='copy_merge') com métricas completas.
+    // Tudo resolvido → o LLM de texto é PULADO (run 'skipped').
+    const mergeInput = currentHtml
+    const mergeT0 = Date.now()
+    const merge = copyMerge(
+      mergeInput,
+      mergeBlocksFromContext(
+        fmtCtx.blocks as Array<{
+          position: number
+          block_type: string
+          content: Record<string, unknown> | null
+        }>,
+        fmtCtx.blueprint?.blocks as
+          | Array<{ type: string; fields?: MergeField[] | null }>
+          | undefined,
+      ),
+    )
+    await logGenerationRun({
+      ...ids,
+      agent: "copy_merge",
+      status: "success",
+      model: "deterministic",
+      inputVars: {
+        stage: "text",
+        input_html_len: mergeInput.length,
+        input_sha8: sha8(mergeInput),
+        slots_total: merge.report.slots_total,
+        ops_built: merge.report.ops_built,
+      },
+      parsedOutput: {
+        merged: merge.report.merged,
+        left_for_llm: merge.report.left_for_llm,
+        unanchored_keys: merge.report.unanchored_keys,
+        ops_skipped: merge.report.skipped.map((s) => ({
+          action: s.op.action,
+          tag: "tag" in s.op ? s.op.tag : null,
+          reason: s.reason,
+        })),
+        output_html_len: merge.html.length,
+        output_sha8: sha8(merge.html),
+      },
+      costCents: 0,
+      durationMs: Date.now() - mergeT0,
+    }).catch(() => {})
+    currentHtml = merge.html
+
+    if (merge.report.left_for_llm.length === 0) {
+      // Biblioteca 100% ancorada: nada pro LLM — a baleia é pulada.
+      await logGenerationRun({
+        ...ids,
+        agent: "text_format",
+        status: "skipped",
+        model: "deterministic",
+        parsedOutput: {
+          skip_reason: "copy_merge_resolveu_tudo",
+          output_html_len: currentHtml.length,
+          output_sha8: sha8(currentHtml),
+        },
+        costCents: 0,
+        durationMs: 0,
+      }).catch(() => {})
+      await persistStage(currentHtml, "text")
+      stage = "text"
+    }
+  }
   if (stage === "hero") {
     const inputHtml = currentHtml
     const vars = buildTextFormatVars(fmtCtx, inputHtml)

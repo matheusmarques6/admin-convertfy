@@ -296,6 +296,9 @@ export type GenerationRunAgent =
   | "color_format"
   // Taguedor de Variantes (migration 20261040).
   | "component_tagger"
+  // Merge determinístico de copy (Fase A — migration 20261042): estágio de
+  // CÓDIGO, sem LLM; run próprio pra metrificação (slots merged/left).
+  | "copy_merge"
 
 export interface EmailGenerationRun {
   id: string

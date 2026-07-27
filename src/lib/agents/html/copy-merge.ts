@@ -85,6 +85,39 @@ export function textTagsOutsideHero(html: string): string[] {
 }
 
 /**
+ * Adaptador: email_blocks × blueprint blocks → MergeBlock[]. Mesma
+ * convenção do dispatch/QA: position 1-based → índice position-1, guardada
+ * pela igualdade de type (estrutura divergente → bloco fica sem fields e
+ * o slot cai no agente de exceção).
+ */
+export function mergeBlocksFromContext(
+  blocks:
+    | Array<{
+        position: number
+        block_type: string
+        content: Record<string, unknown> | null
+      }>
+    | null
+    | undefined,
+  blueprintBlocks:
+    | Array<{ type: string; fields?: MergeField[] | null }>
+    | null
+    | undefined,
+): MergeBlock[] {
+  return (blocks ?? []).map((b) => {
+    const byIndex = (i: number) => {
+      const cand = blueprintBlocks?.[i]
+      return cand && cand.type === b.block_type ? cand : null
+    }
+    const matched = byIndex(b.position - 1) ?? byIndex(b.position)
+    return {
+      fields: Array.isArray(matched?.fields) ? matched.fields : [],
+      content: b.content ?? {},
+    }
+  })
+}
+
+/**
  * Monta e aplica o merge. As ops seguem o protocolo padrão do Integrador
  * (envelope {"ops":[...]}, ação set_text) — mesmo vocabulário que o
  * agente de exceção emite; a diferença é que aqui quem escreve é código.
