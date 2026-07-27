@@ -36,10 +36,15 @@ export async function GET(
     let emailStatus: string | null = null
     let emailFailureReason: string | null = null
     let emailUpdatedAt: string | null = null
+    // Estágio da cadeia de formatação (último step concluído) — a UI usa
+    // pra dizer em qual dos 4 agentes de montagem o email está.
+    let emailHtmlStage: string | null = null
 
     const { data: emailByBatch, error: emailLookupErr } = await admin
       .from("email_flow_emails")
-      .select("id, generation_batch_id, status, failure_reason, updated_at")
+      .select(
+        "id, generation_batch_id, status, failure_reason, updated_at, html_pipeline_stage",
+      )
       .eq("generation_batch_id", batchId)
       .maybeSingle()
     if (emailLookupErr) throw emailLookupErr
@@ -50,6 +55,8 @@ export async function GET(
       emailStatus = (emailByBatch.status as string | null) ?? null
       emailFailureReason = (emailByBatch.failure_reason as string | null) ?? null
       emailUpdatedAt = (emailByBatch.updated_at as string | null) ?? null
+      emailHtmlStage =
+        (emailByBatch.html_pipeline_stage as string | null) ?? null
     } else {
       // Fallback: o email pode ter sido sobrescrito por um batch mais novo.
       // Localiza pelo run e pega o `generation_batch_id` atual do email.
@@ -64,7 +71,9 @@ export async function GET(
         emailId = runHit.email_id as string
         const { data: emailRow } = await admin
           .from("email_flow_emails")
-          .select("generation_batch_id, status, failure_reason, updated_at")
+          .select(
+            "generation_batch_id, status, failure_reason, updated_at, html_pipeline_stage",
+          )
           .eq("id", emailId)
           .maybeSingle()
         currentBatchId =
@@ -72,6 +81,7 @@ export async function GET(
         emailStatus = (emailRow?.status as string | null) ?? null
         emailFailureReason = (emailRow?.failure_reason as string | null) ?? null
         emailUpdatedAt = (emailRow?.updated_at as string | null) ?? null
+        emailHtmlStage = (emailRow?.html_pipeline_stage as string | null) ?? null
       }
     }
 
@@ -89,6 +99,7 @@ export async function GET(
         email_status: null,
         email_failure_reason: null,
         email_updated_at: null,
+        html_pipeline_stage: null,
       })
     }
 
@@ -253,6 +264,7 @@ export async function GET(
       email_status: emailStatus,
       email_failure_reason: emailFailureReason,
       email_updated_at: emailUpdatedAt,
+      html_pipeline_stage: emailHtmlStage,
     })
   } catch (error) {
     log.error("generation-status.error", error)

@@ -144,18 +144,31 @@ export function TestTab() {
 
   // Texto do estagio atual da fase 2, derivado do email_status do polling —
   // evita o loading "mudo" e a mensagem inicial congelada do `result`.
+  // Dentro de `rendering`, o html_pipeline_stage (último step CONCLUÍDO da
+  // cadeia de formatação) diz em qual dos 4 agentes de montagem estamos.
   const phaseMessage = ((): string | null => {
     switch (statusInfo?.email_status) {
       case "pending":
         return "Na fila…"
       case "copy_generating":
       case "copy_generating_recovery":
-        return "Gerando copy…"
+        return "Gerando copy (n8n)…"
       case "copy_ready":
-        return "Copy pronta — gerando imagem…"
-      case "rendering":
+        return "Copy pronta — gerando imagens…"
       case "image_done":
-        return "Imagem pronta — gerando HTML…"
+        return "Imagens prontas — iniciando montagem HTML (Hero Section)…"
+      case "rendering": {
+        switch (statusInfo?.html_pipeline_stage) {
+          case "hero":
+            return "Hero pronta — Formatação de Texto…"
+          case "text":
+            return "Texto posicionado — Formatação de Imagem…"
+          case "image":
+            return "Imagens posicionadas — Cores & Botões…"
+          default:
+            return "Montagem HTML — Hero Section…"
+        }
+      }
       case "qa_running":
         return "HTML pronto — validando (QA)…"
       default:
@@ -168,6 +181,24 @@ export function TestTab() {
       setPollInterval(0)
     }
   }, [isTerminalStatus, pollInterval])
+
+  // ── Cronômetro: tempo total decorrido + tempo ao vivo por agente ─────
+  // `startedAt` marca o clique; o tick de 1s alimenta o header e o tempo
+  // do run em execução (runs "running" ainda não têm duration_ms).
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const timerActive = startedAt != null && (generating || pollInterval > 0)
+  useEffect(() => {
+    if (!timerActive) return
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [timerActive])
+
+  const fmtElapsed = (ms: number): string => {
+    const s = Math.max(0, Math.floor(ms / 1000))
+    const m = Math.floor(s / 60)
+    return m > 0 ? `${m}m${String(s % 60).padStart(2, "0")}s` : `${s}s`
+  }
 
   // Detecta inatividade — se o pipeline esta numa fase in-flight (rendering,
   // image_done, qa_running) e nao houve atualizacao ha >90s, mostra warning
@@ -206,21 +237,26 @@ export function TestTab() {
     setGenerating(true)
     setResult(null)
     setBatchId(null)
+    setStartedAt(Date.now())
+    setNowTick(Date.now())
+    const PHASE2_STEPS: RunStep[] = [
+      { agent: "image", status: "pending" },
+      { agent: "hero_section", status: "pending" },
+      { agent: "text_format", status: "pending" },
+      { agent: "image_format", status: "pending" },
+      { agent: "color_format", status: "pending" },
+      { agent: "qa", status: "pending" },
+    ]
     setSteps(
       phase2Only
-        ? [
-            { agent: "image", status: "pending" },
-            { agent: "html", status: "pending" },
-            { agent: "refiner", status: "pending" },
-          ]
+        ? PHASE2_STEPS
         : [
+            { agent: "assembler_chooser", status: "pending" },
             { agent: "assembler", status: "pending" },
             { agent: "blueprint", status: "pending" },
             { agent: "seed", status: "pending" },
             { agent: "copy", status: "pending" },
-            { agent: "image", status: "pending" },
-            { agent: "html", status: "pending" },
-            { agent: "refiner", status: "pending" },
+            ...PHASE2_STEPS,
           ],
     )
 
@@ -275,11 +311,11 @@ export function TestTab() {
           ? errMsg || "Falha na geração (sem detalhe retornado)"
           : errMsg,
         message: isFullPipeline
-          ? "Geração completa: fase 1 (Curador → Montador → Blueprint) concluída e copy nova disparada ao N8N só deste e-mail. Ao chegar a copy, a fase 2 (imagem → HTML → QA) roda sozinha — esta página atualiza automaticamente."
+          ? "Geração completa: fase 1 (Curador → Montador → Blueprint) concluída e copy nova disparada ao N8N só deste e-mail. Ao chegar a copy, a fase 2 (imagem → montagem HTML em 4 agentes → QA) roda sozinha — esta página atualiza automaticamente."
           : isDispatched
-            ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem/HTML/QA) virá depois, após o callback da copy."
+            ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem → montagem HTML → QA) virá depois, após o callback da copy."
             : isRunning
-              ? "Montador e Blueprint concluídos. Render (imagem + HTML + QA) rodando em background — esta página atualiza sozinha."
+              ? "Montador e Blueprint concluídos. Render (imagem → montagem HTML → QA) rodando em background — esta página atualiza sozinha."
               : undefined,
         batchId: responseData.batchId as string | undefined,
         emailId: responseData.emailId as string | undefined,
@@ -337,13 +373,20 @@ export function TestTab() {
   }
 
   const agentLabels: Record<string, string> = {
+    assembler_chooser: "Curador",
     assembler: "Montador",
     blueprint: "Blueprint (estrutura)",
+    subject: "Assunto",
     seed: "Seed Blocos",
-    copy: "Copy (IA)",
+    copy: "Copy (n8n)",
     image: "Imagem (IA)",
-    html: "HTML (IA)",
-    refiner: "Refinador (IA)",
+    hero_section: "Hero Section",
+    text_format: "Formatação de Texto",
+    image_format: "Formatação de Imagem",
+    color_format: "Cores & Botões",
+    qa: "QA",
+    html: "HTML (legado)",
+    refiner: "Refinador (legado)",
   }
 
   const statusIcon = (s: string) => {
@@ -498,7 +541,7 @@ export function TestTab() {
                 !selectedFlowId ||
                 !selectedEmailId
               }
-              title="Fluxo completo real: fase 1 (Curador → Montador → Blueprint) → copy NOVA via n8n só deste e-mail → fase 2 (imagem → HTML → QA) automática. Assíncrono."
+              title="Fluxo completo real: fase 1 (Curador → Montador → Blueprint) → copy NOVA via n8n só deste e-mail → fase 2 (imagem → Hero → Texto → Imagem → Cores → QA) automática. Assíncrono."
               style={{ width: "100%" }}
             >
               {generating ? (
@@ -531,7 +574,7 @@ export function TestTab() {
                   !selectedFlowId ||
                   !selectedEmailId
                 }
-                title="Reusa Montador/Blueprint/copy existentes e roda só imagem → HTML → QA (requer copy no email)"
+                title="Reusa Montador/Blueprint/copy existentes e roda só imagem → montagem HTML (4 agentes) → QA (requer copy no email)"
               >
                 <Play size={14} /> Só fase 2
               </EGBtn>
@@ -606,6 +649,18 @@ export function TestTab() {
                     ? "Erro na geração"
                     : "Gerando email..."}
             </h3>
+            {/* Tempo total decorrido desde o clique (congela no terminal) */}
+            {startedAt != null && (
+              <span
+                className={`ml-auto text-[11px] font-mono ${
+                  timerActive
+                    ? "text-blue-600 dark:text-blue-400"
+                    : "text-slate-400 dark:text-white/35"
+                }`}
+              >
+                ⏱ {fmtElapsed(nowTick - startedAt)}
+              </span>
+            )}
           </div>
 
           {/* Banner modo teste tolerante */}
@@ -618,8 +673,8 @@ export function TestTab() {
           {/* Banner geracao travada — watchdog vai limpar em breve */}
           {showStaleWarning && (() => {
             const faseMap: Record<string, string> = {
-              rendering: "imagem",
-              image_done: "HTML",
+              rendering: "montagem HTML (Hero → Texto → Imagem → Cores)",
+              image_done: "início da montagem HTML",
               qa_running: "QA",
             }
             const fase = faseMap[statusInfo?.email_status ?? ""] ?? statusInfo?.email_status ?? "atual"
@@ -699,6 +754,16 @@ export function TestTab() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-white/35">
+                    {/* Run em execução: tempo AO VIVO desde o created_at
+                        (duration_ms só existe quando o run termina). */}
+                    {latestRun?.status === "running" &&
+                      latestRun?.created_at && (
+                        <span className="text-blue-500 font-medium">
+                          {fmtElapsed(
+                            nowTick - Date.parse(latestRun.created_at),
+                          )}
+                        </span>
+                      )}
                     {latestRun?.duration_ms != null && (
                       <span>{(latestRun.duration_ms / 1000).toFixed(1)}s</span>
                     )}
@@ -720,15 +785,35 @@ export function TestTab() {
               )
             }
 
-            const agentKeys = [
+            // Ordem canônica do pipeline ATUAL (Curador → Montador →
+            // Blueprint → seed → copy → imagem → cadeia de formatação → QA).
+            // Agentes fora da base (subject, html/refiner legados) aparecem
+            // dinamicamente quando têm run no batch — sem linha fantasma.
+            const BASE_AGENT_KEYS = [
+              "assembler_chooser",
               "assembler",
               "blueprint",
               "seed",
               "copy",
               "image",
-              "html",
-              "refiner",
-            ] as const
+              "hero_section",
+              "text_format",
+              "image_format",
+              "color_format",
+              "qa",
+            ]
+            const keysFor = (runs: typeof allRuns): string[] => {
+              const present = new Set(
+                runs.map((r) =>
+                  r.agent === "copy_dispatch" ? "copy" : r.agent,
+                ),
+              )
+              const extras = Array.from(present).filter(
+                (a) => !BASE_AGENT_KEYS.includes(a),
+              )
+              return [...BASE_AGENT_KEYS, ...extras]
+            }
+            const agentKeys = keysFor(currentRuns)
 
             return (
               <>
@@ -774,9 +859,17 @@ export function TestTab() {
                             </span>
                           </div>
                           {/* Histórico: só agentes que de fato rodaram no batch
-                              (batches antigos não têm refiner — sem linha fantasma). */}
-                          {agentKeys
-                            .filter((agent) => batchRuns.some((r) => r.agent === agent))
+                              (batches antigos têm html/refiner; novos têm a
+                              cadeia de formatação — sem linha fantasma). */}
+                          {keysFor(batchRuns)
+                            .filter((agent) =>
+                              batchRuns.some(
+                                (r) =>
+                                  r.agent === agent ||
+                                  (agent === "copy" &&
+                                    r.agent === "copy_dispatch"),
+                              ),
+                            )
                             .map((agent) => renderAgentRow(batchRuns, agent))}
                         </div>
                       )
