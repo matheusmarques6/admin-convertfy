@@ -117,6 +117,43 @@ export function mergeBlocksFromContext(
   })
 }
 
+/** View por slot do agente de exceção (A3b): tag + linha envolvente. */
+export interface ExceptionSlot {
+  tag: string
+  /** <tr>…</tr> que envolve o token; fallback: ±200 chars de contexto. */
+  row_html: string
+}
+
+/**
+ * Monta a view dos slots NÃO resolvidos pelo merge — é TUDO que o agente
+ * de exceção enxerga do documento (nunca o doc inteiro).
+ */
+export function buildExceptionSlots(
+  html: string,
+  tags: string[],
+): ExceptionSlot[] {
+  return tags.map((tag) => {
+    const re = new RegExp(`\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`)
+    const m = re.exec(html)
+    if (!m) return { tag, row_html: "" }
+    const tokenStart = m.index
+    // <tr> envolvente (mesma heurística do Integrador, sem validação de
+    // removibilidade — aqui é só VISÃO, não remoção).
+    let rowStart = -1
+    for (const o of html.matchAll(/<tr\b[^>]*>/gi)) {
+      const idx = o.index ?? 0
+      if (idx >= tokenStart) break
+      rowStart = idx
+    }
+    const closeIdx = html.indexOf("</tr>", tokenStart)
+    if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
+      return { tag, row_html: html.slice(rowStart, closeIdx + 5) }
+    }
+    const start = Math.max(0, tokenStart - 200)
+    return { tag, row_html: html.slice(start, tokenStart + m[0].length + 200) }
+  })
+}
+
 /**
  * Monta e aplica o merge. As ops seguem o protocolo padrão do Integrador
  * (envelope {"ops":[...]}, ação set_text) — mesmo vocabulário que o

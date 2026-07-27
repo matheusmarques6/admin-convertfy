@@ -70,6 +70,7 @@ import {
 import {
   invokeTextFormatChain,
   textFormatGuard,
+  invokeTextExceptionChain,
 } from "./chains/text-format.chain"
 import { invokeImageFormatChain } from "./chains/image-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
@@ -86,6 +87,7 @@ import {
 import {
   copyMerge,
   mergeBlocksFromContext,
+  buildExceptionSlots,
   type MergeField,
 } from "./html/copy-merge"
 import {
@@ -95,7 +97,7 @@ import {
   respliceHero,
   stripSentinels,
 } from "./html/hero-locator"
-import { applyOps } from "./html/apply-patches"
+import { applyOps, parseOps } from "./html/apply-patches"
 import {
   postProcessDocumentPreserveTags,
   stripUnresolvedPlaceholders,
@@ -1637,6 +1639,8 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
+  // Relatório do merge visível aos ramos seguintes (exceção × legado).
+  let lastMergeReport: import("./html/copy-merge").CopyMergeReport | null = null
   if (stage === "hero") {
     // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
     // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
@@ -1644,6 +1648,7 @@ async function runFormattingChain(p: {
     // Tudo resolvido → o LLM de texto é PULADO (run 'skipped').
     const mergeInput = currentHtml
     const mergeT0 = Date.now()
+    lastMergeReport = null
     const merge = copyMerge(
       mergeInput,
       mergeBlocksFromContext(
@@ -1685,8 +1690,15 @@ async function runFormattingChain(p: {
       durationMs: Date.now() - mergeT0,
     }).catch(() => {})
     currentHtml = merge.html
+    lastMergeReport = merge.report
 
-    if (merge.report.left_for_llm.length === 0) {
+    // Skip só quando o doc TINHA slots e todos resolveram — documento
+    // legado sem {{TAGS}} (slots_total=0) precisa do full-doc pra colocar
+    // a copy (senão ela se perderia).
+    if (
+      merge.report.left_for_llm.length === 0 &&
+      merge.report.slots_total > 0
+    ) {
       // Biblioteca 100% ancorada: nada pro LLM — a baleia é pulada.
       await logGenerationRun({
         ...ids,
@@ -1705,6 +1717,74 @@ async function runFormattingChain(p: {
       stage = "text"
     }
   }
+  // ── A3b — agente de EXCEÇÃO por slot: só a fila do merge, output em
+  // ops do protocolo do Integrador (posse = tags da fila; hero vetada).
+  if (
+    stage === "hero" &&
+    lastMergeReport &&
+    lastMergeReport.left_for_llm.length > 0
+  ) {
+    const inputHtml = currentHtml
+    const leftTags = lastMergeReport.left_for_llm
+    const slots = buildExceptionSlots(inputHtml, leftTags)
+    const config = toChainConfig(ctx.textFormatConfig, "text_format")
+
+    const outcome = await executeFormatStep<string>({
+      ids,
+      agent: "text_format",
+      config: ctx.textFormatConfig,
+      model: config.model,
+      routeT0,
+      budgetMs,
+      inputHtml,
+      attempt: async () => {
+        const r = await invokeTextExceptionChain({
+          config,
+          vars: {
+            exception_slots_json: JSON.stringify(slots, null, 2),
+            blocks_with_content_json:
+              (buildTextFormatVars(fmtCtx, inputHtml) as Record<string, string>)
+                .blocks_with_content ?? "[]",
+          },
+        })
+        const ops = parseOps(r.rawOps)
+        const applied = applyOps(inputHtml, ops, {
+          allowHero: false,
+          allowedTags: new Set(leftTags),
+        })
+        return {
+          value: applied.html,
+          tokensInput: r.tokensInput,
+          tokensOutput: r.tokensOutput,
+          costUsd: r.costUsd,
+          renderedPrompt: r.renderedPrompt,
+          rawOutput: r.rawOutput,
+          parsed: {
+            mode: "exception_slots",
+            slots_sent: slots.length,
+            ops_applied: applied.applied,
+            ops_skipped: applied.skipped.map((s) => ({
+              action: s.op.action,
+              tag: "tag" in s.op ? s.op.tag : null,
+              reason: s.reason,
+            })),
+            output_html_len: applied.html.length,
+            output_sha8: sha8(applied.html),
+          },
+        }
+      },
+    })
+
+    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
+    if (outcome.kind === "failed") {
+      await failStep("text_format", outcome.lastError)
+      return { status: "failed" }
+    }
+    currentHtml = outcome.value
+    await persistStage(currentHtml, "text")
+    stage = "text"
+  }
+
   if (stage === "hero") {
     const inputHtml = currentHtml
     const vars = buildTextFormatVars(fmtCtx, inputHtml)

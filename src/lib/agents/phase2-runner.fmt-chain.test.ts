@@ -165,11 +165,13 @@ vi.mock("./chains/hero.chain", async (importActual) => {
   return { ...actual, invokeHeroChain: (...a: unknown[]) => invokeHeroChain(...a) }
 })
 const invokeTextFormatChain = vi.fn()
+const invokeTextExceptionChain = vi.fn()
 vi.mock("./chains/text-format.chain", async (importActual) => {
   const actual = await importActual<typeof import("./chains/text-format.chain")>()
   return {
     ...actual,
     invokeTextFormatChain: (...a: unknown[]) => invokeTextFormatChain(...a),
+    invokeTextExceptionChain: (...a: unknown[]) => invokeTextExceptionChain(...a),
   }
 })
 const invokeImageFormatChain = vi.fn()
@@ -247,6 +249,17 @@ function mockHappyChains() {
     ...chainResultBase,
     html: docAfterHero().replace("{{BODY_TEXT}}", "corpo final da copy"),
   }))
+  // A3b: com slots pendentes (LOGO/BODY_TEXT) o runner usa o agente de
+  // EXCEÇÃO (ops do protocolo do Integrador), não o full-doc.
+  invokeTextExceptionChain.mockResolvedValue({
+    ...chainResultBase,
+    rawOps: JSON.stringify({
+      ops: [
+        { action: "set_text", tag: "LOGO", value: "LogoX" },
+        { action: "set_text", tag: "BODY_TEXT", value: "corpo final da copy" },
+      ],
+    }),
+  })
   invokeImageFormatChain.mockResolvedValue({
     ...chainResultBase,
     ops: [{ action: "img", tag: "BODY_IMAGE", url: "https://cdn/body.png" }],
@@ -284,6 +297,7 @@ function reset(overrides: Row = {}) {
   h.tables.store_image_overrides = []
   invokeHeroChain.mockReset()
   invokeTextFormatChain.mockReset()
+  invokeTextExceptionChain.mockReset()
   invokeImageFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
 }
@@ -393,19 +407,30 @@ describe("cadeia de formatação — runner", () => {
     expect((email().html as string)).toContain("https://cdn/body.png")
   })
 
-  it("texto mexeu na hero → re-splice determinístico restaura a canônica", async () => {
+  it("A3b: op do agente de exceção mirando a hero é REJEITADA (posse)", async () => {
     mockHappyChains()
-    invokeTextFormatChain.mockImplementation(async () => ({
+    invokeTextExceptionChain.mockResolvedValue({
       ...chainResultBase,
-      html: docAfterHero()
-        .replace("{{BODY_TEXT}}", "corpo final da copy")
-        .replace("Hero pronta", "Hero ADULTERADA"),
-    }))
+      rawOps: JSON.stringify({
+        ops: [
+          { action: "set_text", tag: "BODY_TEXT", value: "corpo final da copy" },
+          { action: "set_text", tag: "LOGO", value: "LogoX" },
+          // fora da fila do merge → ownership_rejected; hero intacta
+          { action: "set_text", tag: "HERO_HEADLINE", value: "invasão" },
+        ],
+      }),
+    })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
     const html = email().html as string
     expect(html).toContain("Hero pronta")
-    expect(html).not.toContain("Hero ADULTERADA")
-    expect((runsOf("text_format")[0].parsed_output as Row).hero_respliced).toBe(true)
+    expect(html).not.toContain("invasão")
+    const parsed = runsOf("text_format")[0].parsed_output as Row
+    expect(parsed.mode).toBe("exception_slots")
+    expect(
+      (parsed.ops_skipped as Array<{ reason: string }>).some(
+        (o) => o.reason === "ownership_rejected",
+      ),
+    ).toBe(true)
   })
 })
