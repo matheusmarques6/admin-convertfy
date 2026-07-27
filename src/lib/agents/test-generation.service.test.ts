@@ -1,42 +1,51 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { architectMock, dispatchMock, adminMock, blocksData, emailRow } = vi.hoisted(() => {
-  const blocksData: { rows: Array<{ content: unknown }> } = { rows: [] }
-  // Row do email lida pelo guard de dedup do fullPipeline (select+maybeSingle)
-  const emailRow: { data: Record<string, unknown> | null } = { data: null }
-  const adminMock = {
-    from: vi.fn((table: string) => {
-      if (table === "email_blocks") {
+const { architectMock, dispatchMock, adminMock, blocksData, emailRow, updateCalls } =
+  vi.hoisted(() => {
+    const blocksData: { rows: Array<{ content: unknown }> } = { rows: [] }
+    // Row do email lida pelo guard de dedup do fullPipeline (select+maybeSingle)
+    const emailRow: { data: Record<string, unknown> | null } = { data: null }
+    const updateCalls: Array<Record<string, unknown>> = []
+    const adminMock = {
+      from: vi.fn((table: string) => {
+        if (table === "email_blocks") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: blocksData.rows, error: null }),
+            }),
+          }
+        }
+        // email_flow_emails: update chain encadeável (.eq().eq() do rollback)
+        // + select/maybeSingle (guard de dedup)
         return {
+          update: vi.fn((data: Record<string, unknown>) => {
+            updateCalls.push(data)
+            const chain: Record<string, unknown> = {}
+            chain.eq = () => chain
+            chain.then = (resolve: (v: { error: null }) => void) =>
+              resolve({ error: null })
+            return chain
+          }),
           select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: blocksData.rows, error: null }),
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockImplementation(async () => ({
+                data: emailRow.data,
+                error: null,
+              })),
+            }),
           }),
         }
-      }
-      // email_flow_emails: update chain + select/maybeSingle (guard de dedup)
-      return {
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: null }),
-        }),
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockImplementation(async () => ({
-              data: emailRow.data,
-              error: null,
-            })),
-          }),
-        }),
-      }
-    }),
-  }
-  return {
-    architectMock: vi.fn().mockResolvedValue({ referenceSource: "llm" }),
-    dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
-    adminMock,
-    blocksData,
-    emailRow,
-  }
-})
+      }),
+    }
+    return {
+      architectMock: vi.fn().mockResolvedValue({ referenceSource: "llm" }),
+      dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
+      adminMock,
+      blocksData,
+      emailRow,
+      updateCalls,
+    }
+  })
 
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: () => adminMock,
@@ -96,6 +105,7 @@ describe("runTestGeneration — fullPipeline (dedup de geração em voo)", () =>
     dispatchMock.mockClear()
     emailRow.data = null
     blocksData.rows = []
+    updateCalls.length = 0
   })
 
   it("email em copy_generating RECENTE: bloqueia com generation_in_progress", async () => {
@@ -152,6 +162,26 @@ describe("runTestGeneration — fullPipeline (dedup de geração em voo)", () =>
     expect(architectMock).toHaveBeenCalledWith(
       expect.objectContaining({ force: true }),
     )
+  })
+
+  it("dispatch falha: rollback restaura batch e flag ANTERIORES do email", async () => {
+    // Copy do batch antigo ainda pode estar em voo — sem rollback ela seria
+    // descartada como stale (batch divergente) e a flag da geração original
+    // seria apagada.
+    emailRow.data = {
+      status: "draft",
+      generation_batch_id: "batch-anterior",
+      updated_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+      auto_phase2_relaxed: false,
+    }
+    dispatchMock.mockResolvedValueOnce({ ok: false, reason: "batch_in_progress" })
+    const res = await runTestGeneration({ ...baseInput, fullPipeline: true })
+    expect(res.status).toBe("error")
+    const rollback = updateCalls.find(
+      (c) => c.generation_batch_id === "batch-anterior",
+    )
+    expect(rollback).toBeDefined()
+    expect(rollback?.auto_phase2_relaxed).toBe(false)
   })
 })
 

@@ -185,6 +185,29 @@ export async function POST(request: NextRequest) {
         dispatch_batch_id: body.dispatch_batch_id,
         current_batch_id: currentBatchId,
       })
+      // Rastro nos logs de geração — sem isso a copy "some" sem explicação.
+      // status='skipped' (NÃO success): o classificador do watchdog só conta
+      // copy success como atividade, então o descarte não adia kills.
+      await admin
+        .from("email_generation_runs")
+        .insert({
+          store_id: body.store_id,
+          flow_id: email.flow_id,
+          email_id: body.email_id,
+          agent: "copy",
+          status: "skipped",
+          model: body.meta?.model ?? "n8n",
+          parsed_output: {
+            skip_reason: "stale_dispatch_batch",
+            dispatch_batch_id: body.dispatch_batch_id,
+            current_batch_id: currentBatchId,
+            subject: body.subject,
+          },
+        })
+        .then(
+          () => {},
+          () => {},
+        )
       return successResponse(request, {
         stale: true,
         dispatch_batch_id: body.dispatch_batch_id,

@@ -67,6 +67,12 @@ export interface JobEmail {
   email_number: number
   architect: ArchitectStatus
   attempts: number
+  /**
+   * Job enfileirado com forceArchitect (regenerate-pipeline): o Architect
+   * REGERA mesmo com reference+blueprint persistidos (fura o guard de reuso
+   * do generate.service). Viaja no JSONB do job — sem coluna nova.
+   */
+  force?: boolean
 }
 
 export interface EnqueueOptions {
@@ -223,7 +229,13 @@ export async function enqueueDispatchJob(
           : existingRefs.has(`${flowType}:${r.number}`)
             ? "done"
             : "pending"
-      return { flow_type: flowType, email_number: r.number, architect, attempts: 0 }
+      return {
+        flow_type: flowType,
+        email_number: r.number,
+        architect,
+        attempts: 0,
+        ...(forceArchitect ? { force: true } : {}),
+      }
     })
     .filter((e): e is JobEmail => e !== null)
 
@@ -348,6 +360,8 @@ async function runArchitectForEmail(
       emailNumber: e.email_number,
       batchId: job.id,
       triggeredBy: job.triggered_by ?? undefined,
+      // regenerate-pipeline: fura o guard de reuso (upsert sobrescreve).
+      force: e.force === true,
     })
     referenceSource = res.referenceSource
   } catch (err) {

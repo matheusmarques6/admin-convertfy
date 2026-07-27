@@ -438,6 +438,11 @@ export async function dispatchEmailCopyWebhook(
   // bloqueia se já existe COPY em voo pros mesmos emails (dispatch duplicado
   // — incidente Luxe Lift 27/07, dois pipelines paralelos). Emails
   // ready/approved continuam re-testáveis (regenerateAll é o propósito).
+  // `in_progress` fica FORA da lista estreita: é status de usuário no
+  // workspace E o estacionamento pós-dispatch sem resgate pelo watchdog —
+  // incluí-lo tornaria o email permanentemente intestável quando o n8n
+  // não devolve a copy. A janela recente já é coberta pelo dedup do
+  // runTestGeneration (que roda ANTES da fase 1).
   if (
     options.triggerSource === "pesquisa_completa" ||
     options.triggerSource === "test_full_pipeline"
@@ -456,12 +461,7 @@ export async function dispatchEmailCopyWebhook(
             "approved",
             "live",
           ]
-        : [
-            "pending",
-            "in_progress",
-            "copy_generating",
-            "copy_generating_recovery",
-          ]
+        : ["pending", "copy_generating", "copy_generating_recovery"]
     const inProgress = emails.some((e) => ACTIVE_STATUSES.includes(e.status))
     if (inProgress) {
       log.info("email_copy.webhook.skip", { storeId, reason: "batch_in_progress" })

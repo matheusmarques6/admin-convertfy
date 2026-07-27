@@ -754,24 +754,34 @@ describe("GET /api/cron/email-generation-watchdog — front 5: stale image_done/
       col: "status",
       val: ["image_done", "rendering"],
     })
+    // Anti-corrida: o kill é pinado no batch do snapshot — geração nova
+    // (batch trocado) nunca é morta por um julgamento velho.
+    expect(failedUpdate?.filters).toContainEqual({
+      op: "eq",
+      col: "generation_batch_id",
+      val: batchId,
+    })
   })
 
-  it("copy mais nova que o último run do batch: marca failed:superseded e NÃO retoma", async () => {
+  it("copy RECENTE com runs do batch velhos (re-dispatch no mesmo batch): RETOMA, não mata", async () => {
+    // Cenário: copy nova chegou, fase 2 re-claimou e caiu antes do primeiro
+    // run — o último run do batch é velho, mas a copy é atividade recente.
+    // Matar aqui descartaria copy boa; retomar é o trabalho do Front 5.
     seedStaleRow()
-    state.latestBatchRunAt = new Date(Date.now() - 20 * 60_000).toISOString()
+    state.latestBatchRunAt = new Date(Date.now() - 40 * 60_000).toISOString()
     state.latestCopyRunAt = new Date(Date.now() - 2 * 60_000).toISOString()
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await GET(authedRequest() as any)
     expect(res.status).toBe(200)
-    expect(phase2Spy).not.toHaveBeenCalled()
+    expect(phase2Spy).toHaveBeenCalledTimes(1)
     const failedUpdate = state.updateCalls.find(
       (c) =>
         c.table === "email_flow_emails" &&
         c.data.status === "failed" &&
-        c.data.failure_reason === "superseded",
+        c.filters.some((f) => f.op === "in" && f.col === "status"),
     )
-    expect(failedUpdate).toBeDefined()
+    expect(failedUpdate).toBeUndefined()
   })
 
   it("sem telemetria do batch (maybeSingle vazio): retoma como antes", async () => {

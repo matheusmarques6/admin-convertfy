@@ -119,7 +119,7 @@ export function TestTab() {
   const selectedFlow = flows.find((f) => f.id === selectedFlowId)
   const selectedEmail = selectedFlow?.emails.find((e) => e.id === selectedEmailId)
 
-  const { data: statusData } = useSWR(
+  const { data: statusData, error: statusError } = useSWR(
     batchId && selectedStoreId
       ? `/api/admin/stores/${selectedStoreId}/generation-status/${batchId}`
       : null,
@@ -145,9 +145,11 @@ export function TestTab() {
   // Geração em voo = request em curso OU polling ativo de um batch ainda
   // não-terminal. Usado pra desabilitar os botões de disparo — reclicar
   // durante uma geração abria pipeline duplicado (o server também bloqueia,
-  // mas aqui evitamos até o convite).
+  // mas aqui evitamos até o convite). Escapes anti-trava: sem batch não há
+  // voo; erro persistente do fetch de status não pode congelar os botões.
   const generationInFlight =
-    generating || (pollInterval > 0 && !isTerminalStatus)
+    generating ||
+    (pollInterval > 0 && batchId != null && !statusError && !isTerminalStatus)
 
   // Texto do estagio atual da fase 2, derivado do email_status do polling —
   // evita o loading "mudo" e a mensagem inicial congelada do `result`.
@@ -189,6 +191,15 @@ export function TestTab() {
     }
   }, [isTerminalStatus, pollInterval])
 
+  // Anti-trava: erro persistente no fetch de status (500/rede) ou polling
+  // sem batch derruba o polling — senão generationInFlight congelaria os
+  // botões pra sempre (o watchdog do servidor cuida da geração em si).
+  useEffect(() => {
+    if (pollInterval > 0 && (statusError || batchId == null)) {
+      setPollInterval(0)
+    }
+  }, [pollInterval, statusError, batchId])
+
   // ── Cronômetro: tempo total decorrido + tempo ao vivo por agente ─────
   // `startedAt` marca o clique; o tick de 1s alimenta o header e o tempo
   // do run em execução (runs "running" ainda não têm duration_ms).
@@ -206,6 +217,19 @@ export function TestTab() {
     const m = Math.floor(s / 60)
     return m > 0 ? `${m}m${String(s % 60).padStart(2, "0")}s` : `${s}s`
   }
+
+  // Teto do polling: 25min sem chegar a estado terminal (mesma janela do
+  // watchdog PHASE2_TIMEOUT_MIN) → para de acompanhar e libera os botões.
+  // Cobre o batch irresolúvel ({status:"pending"} eterno) sem travar a UI.
+  useEffect(() => {
+    if (
+      pollInterval > 0 &&
+      startedAt != null &&
+      nowTick - startedAt > 25 * 60_000
+    ) {
+      setPollInterval(0)
+    }
+  }, [pollInterval, startedAt, nowTick])
 
   // Detecta inatividade — se o pipeline esta numa fase in-flight (rendering,
   // image_done, qa_running) e nao houve atualizacao ha >90s, mostra warning
@@ -341,10 +365,14 @@ export function TestTab() {
       // Timeout do gateway ≠ geração morta: no teste completo a fase 1 é
       // síncrona (~4-5min) e o TRABALHO CONTINUA no servidor depois do corte.
       // Reclicar aqui abria um pipeline duplicado (incidente Luxe Lift
-      // 27/07). O claim do batch é persistido ANTES da fase 1 — recupera o
-      // batch do email e segue acompanhando por polling.
-      const isTimeout = msg.startsWith("__timeout__") || /timed out/i.test(msg)
-      if (isTimeout && (fullPipeline || !phase2Only)) {
+      // 27/07). SÓ o marcador __timeout__ (504/corpo de gateway detectado no
+      // parse da resposta) conta — casar "timed out" no texto de um erro do
+      // SERVIDOR mascararia falha real (ex.: LLM timeout no Architect) como
+      // corte de conexão. O recovery só vale no fullPipeline: é o único
+      // caminho cujo claim grava o batch ANTES da fase 1 — nos demais, o
+      // batch do email ainda é o de uma geração antiga.
+      const isTimeout = msg.startsWith("__timeout__")
+      if (isTimeout && fullPipeline) {
         const recovered = await recoverBatchIdAfterTimeout()
         if (recovered) {
           setBatchId(recovered)
@@ -378,7 +406,10 @@ export function TestTab() {
   const recoverBatchIdAfterTimeout = async (): Promise<string | null> => {
     if (!selectedStoreId || !selectedEmailId) return null
     try {
-      const res = await fetch(`/api/admin/stores/${selectedStoreId}/emails`)
+      // flow_id restringe a resposta (o endpoint devolve html+blocks por
+      // email — a loja inteira seriam MBs pra ler um único campo).
+      const qs = selectedFlowId ? `?flow_id=${selectedFlowId}` : ""
+      const res = await fetch(`/api/admin/stores/${selectedStoreId}/emails${qs}`)
       if (!res.ok) return null
       // successResponse espalha os dados na RAIZ ({success, emails, ...});
       // o fallback .data cobre wrappers de proxy/versões antigas.
@@ -502,6 +533,7 @@ export function TestTab() {
                     setSelectedEmailId("")
                     setResult(null)
                     setBatchId(null)
+                    setPollInterval(0)
                   }}
                   placeholder="Selecione uma loja..."
                   options={stores.map((s) => ({
@@ -550,6 +582,7 @@ export function TestTab() {
                         setSelectedEmailId("")
                         setResult(null)
                         setBatchId(null)
+                        setPollInterval(0)
                       }}
                       placeholder="Selecione..."
                       options={flows.map((f) => ({
@@ -567,6 +600,7 @@ export function TestTab() {
                       setSelectedEmailId(v)
                       setResult(null)
                       setBatchId(null)
+                      setPollInterval(0)
                     }}
                     placeholder="Selecione..."
                     disabled={!selectedFlow || selectedFlow.emails.length === 0}
@@ -985,7 +1019,7 @@ export function TestTab() {
               <button
                 type="button"
                 onClick={() => handleGenerate()}
-                disabled={generating || !selectedStoreId || !selectedFlowId || !selectedEmailId}
+                disabled={generationInFlight || !selectedStoreId || !selectedFlowId || !selectedEmailId}
                 className="inline-flex items-center gap-2 h-8 px-4 rounded-[6px] border border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.03] text-slate-700 dark:text-white/80 text-[12px] font-medium disabled:opacity-40 transition-opacity"
               >
                 {generating ? (

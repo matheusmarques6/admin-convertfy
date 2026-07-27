@@ -35,9 +35,10 @@ const IN_FLIGHT_STATUSES = [
 
 // Janela de dedup: atividade mais antiga que isso é considerada travada e
 // o re-teste é permitido (o watchdog cuida de matar o que ficou pra trás).
-const GENERATION_DEDUP_WINDOW_MIN = Number(
-  process.env.GENERATION_DEDUP_WINDOW_MIN ?? 10,
-)
+const GENERATION_DEDUP_WINDOW_MIN = (() => {
+  const env = Number(process.env.GENERATION_DEDUP_WINDOW_MIN)
+  return Number.isFinite(env) && env > 0 ? env : 10
+})()
 
 export interface TestGenerationInput {
   storeId: string
@@ -182,6 +183,28 @@ export async function runTestGeneration(
     //    geração em voo durante os ~5min síncronos do Architect, e porque o
     //    flag atravessa o callback async do n8n (sem corrida com o callback,
     //    que pode chegar rápido).
+    //    IMPORTANTE (acoplamento com o dispatch_batch_id): o dispatch lê o
+    //    generation_batch_id do email e o ecoa no payload — o callback
+    //    descarta copy cujo batch divirja do vigente. O claim ANTES do
+    //    dispatch é o que faz a copy DESTE teste voltar com o batch certo.
+    //    Em falha (fase 1 ou dispatch), o rollback abaixo restaura o estado
+    //    anterior — senão uma copy legítima em voo do batch antigo seria
+    //    descartada como stale e a flag da geração original seria apagada.
+    const prevBatchId = (current?.generation_batch_id as string | null) ?? null
+    const prevRelaxed = current?.auto_phase2_relaxed === true
+    const rollbackClaim = async () => {
+      await admin
+        .from("email_flow_emails")
+        .update({
+          auto_phase2_relaxed: prevRelaxed,
+          generation_batch_id: prevBatchId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", emailId)
+        // Só desfaz se o claim DESTE teste ainda é o vigente — se o callback
+        // ou outra geração já moveu o batch, não sobrescreve.
+        .eq("generation_batch_id", batchId)
+    }
     await admin
       .from("email_flow_emails")
       .update({
@@ -202,11 +225,8 @@ export async function runTestGeneration(
         force: true,
       })
     } catch (err) {
-      // Sem fase 1 não haverá dispatch: limpa o flag pra não deixar marcado.
-      await admin
-        .from("email_flow_emails")
-        .update({ auto_phase2_relaxed: false })
-        .eq("id", emailId)
+      // Sem fase 1 não haverá dispatch: desfaz o claim (batch + flag).
+      await rollbackClaim()
       return {
         status: "error",
         path: "without_copy",
@@ -233,11 +253,8 @@ export async function runTestGeneration(
     })
 
     if (!dispatch.ok) {
-      // Sem copy a caminho: limpa o flag pra não deixar o email marcado.
-      await admin
-        .from("email_flow_emails")
-        .update({ auto_phase2_relaxed: false })
-        .eq("id", emailId)
+      // Sem copy a caminho: desfaz o claim (batch + flag).
+      await rollbackClaim()
       return {
         status: "error",
         path: "without_copy",

@@ -121,7 +121,13 @@ export function GeneratedInspector({
     try {
       const res = await fetch(
         `/api/admin/stores/${storeId}/generate-blueprints`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Regeneração EXPLÍCITA: sem force o guard de reuso do Architect
+          // devolve a arquitetura persistida e o botão viraria no-op.
+          body: JSON.stringify({ force: true }),
+        },
       )
       const json = (await res.json()) as { ok?: number; failed?: number }
       if (!res.ok) throw new Error()
