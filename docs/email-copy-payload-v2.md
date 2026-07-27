@@ -26,12 +26,22 @@ cascata de derivação do próprio dispatch.
 | `objective` | — | **NOVO** — objetivo efetivo do email (`blueprint.objective` > `estrutura_geral.objective`, ou `null`) |
 | `tones` | — | **NOVO** — tons canônicos da loja: subconjunto de `["Urgente","Aspiracional","Educacional","Descontraído","Premium","Amigável"]` (derivado do tom de voz; pode ser `[]`) |
 | `estrutura_geral` | só emails `text_only` | **TODOS os emails** (quando existe outline ativo para o flow×número; senão `null`) |
+| `dispatch_batch_id` | — | **NOVO (jul/2026, aditivo)** — batch da geração que originou o dispatch (`generation_batch_id` do email no momento do disparo; `null` se o email nunca teve batch) |
 | `component_variants`, `blueprint`, `text_only`, `email_id`, `email_number`, `name` | | inalterados |
 
-O callback (`/api/webhooks/n8n/email-copy`) **NÃO mudou**: o n8n continua
-devolvendo `{store_id, email_id, subject, preheader, blocks:[{block_id,
-content}]}` com `content[key] = valor` — as keys são as mesmas de
-`fields[].key`.
+O callback (`/api/webhooks/n8n/email-copy`) continua aceitando
+`{store_id, email_id, subject, preheader, blocks:[{block_id, content}]}`
+com `content[key] = valor` — as keys são as mesmas de `fields[].key`.
+
+**`dispatch_batch_id` no callback (aditivo, recomendado)**: o flow do n8n
+deve ECOAR o `dispatch_batch_id` recebido no payload de volta no corpo do
+callback (mesma chave, campo opcional). Quando presente E divergente do
+`generation_batch_id` vigente no email, o callback responde 200 no-op
+(`{stale: true}`) e descarta a copy — é copy atrasada de um dispatch
+antigo, e aceitá-la sobrescreveria uma geração mais nova (incidente Luxe
+Lift 27/07). Flows que ainda não ecoam o campo mantêm o comportamento
+anterior (copy aceita fora dos status idempotentes). Mudança aditiva: sem
+janela de deploy obrigatória.
 
 ## O shape de `fields` (v2)
 

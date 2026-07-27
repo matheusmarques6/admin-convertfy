@@ -60,6 +60,12 @@ const IDEMPOTENT_STATUSES = new Set([
 const schema = z.object({
   store_id: z.string().uuid(),
   email_id: z.string().uuid(),
+  // Eco do batch que originou o dispatch (chave aditiva no payload de
+  // dispatch; docs/email-copy-payload-v2.md). Quando presente E divergente
+  // do generation_batch_id vigente no email, a copy é STALE (dispatch
+  // antigo) e vira no-op — não sobrescreve a geração mais nova. Opcional:
+  // flows do n8n que ainda não ecoam o campo mantêm o comportamento atual.
+  dispatch_batch_id: z.string().uuid().optional().nullable(),
   subject: z.string().min(1),
   preheader: z.string().optional().nullable(),
   blocks: z.array(
@@ -162,6 +168,30 @@ export async function POST(request: NextRequest) {
       .eq("id", body.store_id)
       .maybeSingle()
     const brandName = (store?.store_name as string | undefined) || "Loja"
+
+    // 1.4) Copy STALE: o payload ecoa o batch do dispatch que a originou.
+    // Se o email já está numa geração MAIS NOVA (generation_batch_id
+    // divergente), esta copy é de um dispatch antigo — aceitar aqui
+    // sobrescreveria a geração vigente (incidente Luxe Lift 27/07, dois
+    // pipelines paralelos). No-op 200, mesmo contrato do duplicate abaixo.
+    const currentBatchId = (email.generation_batch_id as string | null) ?? null
+    if (
+      body.dispatch_batch_id &&
+      currentBatchId &&
+      body.dispatch_batch_id !== currentBatchId
+    ) {
+      log.warn("email_copy.stale_discarded", {
+        email_id: body.email_id,
+        dispatch_batch_id: body.dispatch_batch_id,
+        current_batch_id: currentBatchId,
+      })
+      return successResponse(request, {
+        stale: true,
+        dispatch_batch_id: body.dispatch_batch_id,
+        current_batch_id: currentBatchId,
+        email_id: body.email_id,
+      })
+    }
 
     // 1.5) AC AE-3.2 — idempotencia: callback duplicado para email ja
     // em status >= copy_ready vira no-op (200) sem disparar fase 2.

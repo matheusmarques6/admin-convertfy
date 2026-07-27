@@ -337,6 +337,56 @@ describe("POST /api/webhooks/n8n/email-copy — idempotency", () => {
   })
 })
 
+describe("POST /api/webhooks/n8n/email-copy — copy stale (dispatch_batch_id)", () => {
+  const BATCH_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+  const BATCH_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+  it("batch divergente do vigente: 200 no-op {stale:true}, nada é escrito", async () => {
+    mockEmail!.generation_batch_id = BATCH_B
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody({ dispatch_batch_id: BATCH_A })) as any)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    const data = json.data ?? json
+    expect(data.stale).toBe(true)
+    expect(data.current_batch_id).toBe(BATCH_B)
+    expect(updateCalls).toHaveLength(0)
+  })
+
+  it("batch igual ao vigente: copy aceita normalmente", async () => {
+    mockEmail!.generation_batch_id = BATCH_A
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody({ dispatch_batch_id: BATCH_A })) as any)
+    expect(res.status).toBe(200)
+    const statusUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(statusUpdate).toBeDefined()
+  })
+
+  it("payload sem dispatch_batch_id (n8n legado): comportamento atual mantido", async () => {
+    mockEmail!.generation_batch_id = BATCH_B
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    const statusUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(statusUpdate).toBeDefined()
+  })
+
+  it("email sem batch vigente: copy aceita mesmo com dispatch_batch_id no payload", async () => {
+    mockEmail!.generation_batch_id = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await POST(makeRequest(validBody({ dispatch_batch_id: BATCH_A })) as any)
+    expect(res.status).toBe(200)
+    const statusUpdate = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "copy_ready",
+    )
+    expect(statusUpdate).toBeDefined()
+  })
+})
+
 describe("POST /api/webhooks/n8n/email-copy — errors", () => {
   it("returns 404 when email_id is unknown", async () => {
     mockEmail = null

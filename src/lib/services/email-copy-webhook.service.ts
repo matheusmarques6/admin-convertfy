@@ -87,6 +87,7 @@ interface EmailRow {
   number: number
   name: string | null
   status: string
+  generation_batch_id: string | null
 }
 
 interface BlockRow {
@@ -332,7 +333,7 @@ export async function dispatchEmailCopyWebhook(
   // ── Buscar emails + blocks + blueprints + references em paralelo
   let emailsQuery = admin
     .from("email_flow_emails")
-    .select("id, flow_id, number, name, status")
+    .select("id, flow_id, number, name, status, generation_batch_id")
     .in("flow_id", flowIds)
     .order("number", { ascending: true })
 
@@ -392,7 +393,7 @@ export async function dispatchEmailCopyWebhook(
       log.info("email_copy.webhook.autoseed", { storeId, seeded })
       let retryQuery = admin
         .from("email_flow_emails")
-        .select("id, flow_id, number, name, status")
+        .select("id, flow_id, number, name, status, generation_batch_id")
         .in("flow_id", flowIds)
         .order("number", { ascending: true })
       if (options.onlyDrafts) {
@@ -928,6 +929,12 @@ export async function dispatchEmailCopyWebhook(
           email_number: e.number,
           name: e.name,
           text_only: textOnly,
+          // Chave ADITIVA: batch da geração que originou ESTE dispatch. O
+          // n8n deve ecoá-la de volta no callback (dispatch_batch_id) — o
+          // callback descarta copy cujo batch divergir do vigente no email
+          // (copy atrasada de dispatch antigo sobrescrevendo geração nova).
+          // null quando o email nunca teve batch (dispatch manual em draft).
+          dispatch_batch_id: e.generation_batch_id ?? null,
           // Objetivo efetivo deste email (blueprint > estrutura geral) e os
           // tons canônicos da loja — contexto direto pro gerador de copy.
           objective: bp?.objective ?? outline?.objective ?? null,
