@@ -4,24 +4,46 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const h = vi.hoisted(() => ({
   blueprintSource: "ai" as "ai" | "manual",
   textOnly: false,
+  // Guard de reuso: existência de reference/blueprint persistidos por loja.
+  storedRef: false,
+  storedBp: false,
   reconcileSpy: vi.fn(),
   assembleSpy: vi.fn(),
   blueprintSpy: vi.fn(),
 }))
 
 vi.mock("@/lib/supabase/server", () => {
-  // Builder mínimo: o Promise.all inicial só lê store/briefing/produtos/outline.
-  const chain: Record<string, unknown> = {
-    select: () => chain,
-    eq: () => chain,
-    order: () => chain,
-    limit: () => chain,
-    maybeSingle: () => Promise.resolve({ data: {}, error: null }),
-    then: (onF: (v: unknown) => unknown) =>
-      Promise.resolve({ data: [], error: null }).then(onF),
+  // Builder mínimo table-aware: o Promise.all inicial lê store/briefing/
+  // produtos/outline ({} genérico); o guard de reuso lê store_email_
+  // references/blueprints (controlado por h.storedRef/h.storedBp).
+  const makeChain = (table: string) => {
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      eq: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      maybeSingle: () => {
+        if (table === "store_email_references") {
+          return Promise.resolve({
+            data: h.storedRef ? { id: "ref1" } : null,
+            error: null,
+          })
+        }
+        if (table === "store_email_blueprints") {
+          return Promise.resolve({
+            data: h.storedBp ? { id: "bp1" } : null,
+            error: null,
+          })
+        }
+        return Promise.resolve({ data: {}, error: null })
+      },
+      then: (onF: (v: unknown) => unknown) =>
+        Promise.resolve({ data: [], error: null }).then(onF),
+    }
+    return chain
   }
   return {
-    createAdminClient: () => ({ from: () => chain }),
+    createAdminClient: () => ({ from: (t: string) => makeChain(t) }),
     createClient: () => ({}),
   }
 })
@@ -68,6 +90,8 @@ const input = { storeId: "store1", flowType: "welcome", emailNumber: 1, batchId:
 beforeEach(() => {
   h.blueprintSource = "ai"
   h.textOnly = false
+  h.storedRef = false
+  h.storedBp = false
   h.reconcileSpy.mockReset()
   h.reconcileSpy.mockResolvedValue({
     reconciled: true,
@@ -112,5 +136,34 @@ describe("generateBlueprintAndReference — email somente texto (text_only)", ()
     expect(h.assembleSpy).not.toHaveBeenCalled()
     expect(h.blueprintSpy).not.toHaveBeenCalled()
     expect(h.reconcileSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("generateBlueprintAndReference — guard de reuso (sem force)", () => {
+  it("reference+blueprint persistidos → 'store' SEM rodar Montador/Blueprint", async () => {
+    h.storedRef = true
+    h.storedBp = true
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("store")
+    expect(h.assembleSpy).not.toHaveBeenCalled()
+    expect(h.blueprintSpy).not.toHaveBeenCalled()
+    expect(h.reconcileSpy).not.toHaveBeenCalled()
+  })
+
+  it("force=true → regenera mesmo com reference+blueprint persistidos", async () => {
+    h.storedRef = true
+    h.storedBp = true
+    const res = await generateBlueprintAndReference({ ...input, force: true })
+    expect(res.referenceSource).toBe("llm")
+    expect(h.assembleSpy).toHaveBeenCalledTimes(1)
+    expect(h.blueprintSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("só reference sem blueprint (geração anterior incompleta) → regenera", async () => {
+    h.storedRef = true
+    h.storedBp = false
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("llm")
+    expect(h.assembleSpy).toHaveBeenCalledTimes(1)
   })
 })

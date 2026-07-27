@@ -87,6 +87,40 @@ export async function generateBlueprintAndReference(
     return { referenceSource: "global" }
   }
 
+  // REUSO: sem `force`, arquitetura já persistida para este loja×flow×email
+  // não é regerada. Curador+Montador+Blueprint são o maior custo do pipeline
+  // e o consumidor (dispatch/build-vars) lê direto de store_email_references/
+  // store_email_blueprints — regerar aqui só repagava LLM pra sobrescrever o
+  // mesmo resultado. Regeração explícita continua via force=true (teste
+  // completo / botão Regenerar). Só reusa quando AMBOS existem: reference sem
+  // blueprint (ou vice-versa) indica geração anterior incompleta → regera.
+  if (input.force !== true) {
+    const [refRes, bpRes] = await Promise.all([
+      admin
+        .from("store_email_references")
+        .select("id")
+        .eq("store_id", input.storeId)
+        .eq("flow_type", input.flowType)
+        .eq("email_number", input.emailNumber)
+        .maybeSingle(),
+      admin
+        .from("store_email_blueprints")
+        .select("id")
+        .eq("store_id", input.storeId)
+        .eq("flow_type", input.flowType)
+        .eq("email_number", input.emailNumber)
+        .maybeSingle(),
+    ])
+    if (refRes.data && bpRes.data) {
+      log.info("architect.reuse_existing", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+      })
+      return { referenceSource: "store" }
+    }
+  }
+
   const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml] = await Promise.all([
     admin
       .from("client_stores")

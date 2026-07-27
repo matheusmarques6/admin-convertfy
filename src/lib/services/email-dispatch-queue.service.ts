@@ -362,7 +362,14 @@ async function runArchitectForEmail(
   // persistiu em store_email_references) ou "global" (caiu no template curado
   // de email_reference_templates — intencional, não re-tenta). "none" (sem LLM
   // e sem global curado) ou exceção → conta tentativa; esgotou → 'failed'.
-  if (referenceSource === "llm" || referenceSource === "global") return "done"
+  // "store" = guard de reuso do Architect encontrou reference+blueprint já
+  // persistidos — settla como done sem repagar Curador/Montador/Blueprint.
+  if (
+    referenceSource === "llm" ||
+    referenceSource === "global" ||
+    referenceSource === "store"
+  )
+    return "done"
   return e.attempts + 1 >= MAX_ARCHITECT_ATTEMPTS ? "failed" : "pending"
 }
 

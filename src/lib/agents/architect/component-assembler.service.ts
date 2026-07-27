@@ -421,7 +421,9 @@ export interface AssembleReferenceInput {
   defaultModel?: string | null
 }
 
-export type ReferenceSource = "llm" | "global" | "none"
+// "store" = reference+blueprint já persistidos foram REUSADOS sem regerar
+// (guard de reuso do generate.service; só com force=false).
+export type ReferenceSource = "llm" | "global" | "none" | "store"
 
 export interface AssembleReferenceResult {
   html: string | null
