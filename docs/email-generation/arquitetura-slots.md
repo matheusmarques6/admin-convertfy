@@ -21,6 +21,33 @@ Pré-requisito que torna isso possível: o épico Taguedor. Com
 ÚNICO e ancorado no schema (`fields.tag` v2) — âncora determinística que
 o código sabe substituir sozinho.
 
+## Modelo mental: o email é um repositório git
+
+O jeito certo de pensar o Integrador (definido pelo Matheus, jul/2026):
+
+- **Repositório** = o HTML canônico do email, persistido (arquitetura do
+  Montador com `{{PLACEHOLDERS}}`).
+- **Sparse checkout** = a extração de view por agente: cada um "clona" só
+  a parte que lhe é necessária (copy → tags de texto com a linha
+  envolvente; imagem → slots de `<img>`; cores → inventário de cores).
+- **Commit** = a aplicação do patch pelo Integrador, mudando SÓ a parte
+  referenciada no output, com formatação/indentação feitas por código.
+- **CI** = as validações pré-merge (âncora única, tabelas balanceadas,
+  posse) — patch reprovado não entra; é pulado + telemetria.
+- **CODEOWNERS** = a matriz de posse por tag.
+- **Histórico/blame** = snapshot do documento após cada commit + sha8
+  encadeado (qual agente introduziu o quê; rollback por estágio).
+
+Consequências novas que o modelo destrava:
+
+1. **Paralelismo**: agentes de posses DISJUNTAS (Ajuste de Texto ×
+   Formatação de Imagem) rodam em paralelo sobre a mesma versão base e
+   commitam em sequência — conflito é impossível por construção. Ordem:
+   hero commita antes (estrutural); cores por último. Corta o tempo de
+   parede além do ganho do merge determinístico.
+2. **Rollback por estágio**: QA (ou o humano) reprova → volta ao commit
+   anterior e re-roda só o estágio culpado, em vez de regenerar o email.
+
 ## O Integrador (código, não LLM)
 
 Guarda o documento (arquitetura do Montador, com placeholders) e aplica
