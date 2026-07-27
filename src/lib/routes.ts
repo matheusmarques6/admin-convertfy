@@ -109,17 +109,6 @@ export const ROUTES = {
       FORMS: "/admin/operacional/forms",
       FORM_DETAIL: (id: string) => `/admin/operacional/forms/${id}` as const,
       REPORTS: "/admin/operacional/reports",
-      // Workflows Monday-style (Onboarding Ops, Acompanhamento, Feedback,
-      // Suporte) — kanbans com automacoes baseadas em triggers/actions.
-      WORKFLOWS: {
-        ROOT: "/admin/operacional/workflows",
-        DETAIL: (slug: string) =>
-          `/admin/operacional/workflows/${slug}` as const,
-        ONBOARDING: "/admin/operacional/workflows/onboarding",
-        ACOMPANHAMENTO: "/admin/operacional/workflows/acompanhamento",
-        FEEDBACK: "/admin/operacional/workflows/feedback",
-        SUPORTE: "/admin/operacional/workflows/suporte",
-      },
       // ── Customer Success (rotinas semanais/mensais do CS) ─────────────
       // URLs canonicas sob /admin/operacional/* — mesmo padrao de tudo
       // mais do workspace operacional. As URLs antigas /admin/<pagina>

@@ -54,10 +54,6 @@
       "schedule": "0 7 * * 1"
     },
     {
-      "path": "/api/cron/operational-overdue",
-      "schedule": "0 9 * * *"
-    },
-    {
       "path": "/api/cron/process-deal-won",
       "schedule": "* * * * *"
     },

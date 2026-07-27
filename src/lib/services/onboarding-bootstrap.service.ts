@@ -662,21 +662,18 @@ export async function ensureOnboardingBootstrap(
   const columnIds: Record<string, string> = {}
   for (const c of allCols ?? []) columnIds[c.slug] = c.id
 
-  // 3. Tutorial page default
+  // 3. Tutorial page default — upsert atomico.
+  // O bootstrap roda em caminhos concorrentes pra mesma org (request sincrono
+  // + re-sync em background via after()); o antigo SELECT-depois-INSERT nao era
+  // atomico e dois processos simultaneos estouravam 23505 em
+  // tutorial_pages_org_id_slug_key. ON CONFLICT DO NOTHING resolve a corrida:
+  // quem insere de fato recebe a linha (e semeia os blocks); o perdedor recebe
+  // vazio e relê a linha existente.
   let tutorialPageId: string
-  const { data: existingTut } = await admin
+  const { data: insertedTut, error: tutErr } = await admin
     .from("tutorial_pages")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("slug", TUTORIAL_DEFAULT_SLUG)
-    .maybeSingle()
-
-  if (existingTut?.id) {
-    tutorialPageId = existingTut.id
-  } else {
-    const { data: newTut, error: tutErr } = await admin
-      .from("tutorial_pages")
-      .insert({
+    .upsert(
+      {
         org_id: orgId,
         slug: TUTORIAL_DEFAULT_SLUG,
         name: "Tutorial de Implementacao",
@@ -684,15 +681,19 @@ export async function ensureOnboardingBootstrap(
         status: "published",
         current_version: 1,
         created_by: userId,
-      })
-      .select("id")
-      .single()
-    if (tutErr || !newTut) {
-      throw new Error(`Falha bootstrap tutorial: ${tutErr?.message}`)
-    }
-    tutorialPageId = newTut.id
+      },
+      { onConflict: "org_id,slug", ignoreDuplicates: true },
+    )
+    .select("id")
+    .maybeSingle()
 
-    // Inserir blocks default
+  if (tutErr) {
+    throw new Error(`Falha bootstrap tutorial: ${tutErr.message}`)
+  }
+
+  if (insertedTut?.id) {
+    // Linha recem-criada por este processo -> semear blocks default
+    tutorialPageId = insertedTut.id
     const blockRows = TUTORIAL_DEFAULT_BLOCKS.map((b, i) => ({
       page_id: tutorialPageId,
       type: b.type,
@@ -700,6 +701,18 @@ export async function ensureOnboardingBootstrap(
       content: b.content,
     }))
     await admin.from("tutorial_blocks").insert(blockRows)
+  } else {
+    // Ja existia (criada antes ou por um processo concorrente) -> reler
+    const { data: existingTut, error: readErr } = await admin
+      .from("tutorial_pages")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("slug", TUTORIAL_DEFAULT_SLUG)
+      .single()
+    if (readErr || !existingTut) {
+      throw new Error(`Falha bootstrap tutorial (releitura): ${readErr?.message}`)
+    }
+    tutorialPageId = existingTut.id
   }
 
   return { pipelineId, columnIds, tutorialPageId }
