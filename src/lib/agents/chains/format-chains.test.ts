@@ -119,3 +119,18 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("fail-open")
   })
 })
+
+describe("regras novas (Luxe Lift, jul/2026)", () => {
+  it("hero: hero_content é ARRAY (hero composta) + regra de slot vazio", () => {
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("is an ARRAY")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("coupon banner")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("empty_slot_rule")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain('empty label or empty href=""')
+  })
+  it("texto: ignora blocos já colocados + fatiamento de copy corrida + slot vazio", () => {
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("already_placed_blocks")
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("structured_copy_fallback")
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("Splitting is allowed; rewriting is not")
+    expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("empty_slot_rule")
+  })
+})

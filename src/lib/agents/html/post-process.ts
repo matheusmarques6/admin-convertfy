@@ -41,7 +41,7 @@ export class HtmlTruncatedError extends Error {
 export function collapseRunawaySpacers(html: string): string {
   // Cobre &nbsp; / &#160; / U+00A0 e zero-width: U+200C U+200D U+200B U+FEFF.
   return html.replace(
-    /(?:&nbsp;|&#160;| |‌|‍|​|﻿){12,}/gi,
+    /(?:&nbsp;|&#160;|\u00A0|\u200C|\u200D|\u200B|\uFEFF){12,}/gi,
     "&nbsp;&nbsp;&nbsp;",
   )
 }
@@ -100,6 +100,33 @@ export function enforceLangAttribute(html: string, locale: string): string {
     )
   }
   return html.replace(/<html(\s|>)/i, `<html lang="${trimmed}"$1`)
+}
+
+// SYNC: mesmo formato de BLOCK_MARKER_PATTERN (component-assembler) e do
+// hero-locator. Os marcadores são infraestrutura interna — jamais podem
+// chegar ao email do cliente.
+const CFY_BLOCK_MARKER =
+  /<!--\s*cfy:block:\d+:[A-Za-z0-9_-]+:(?:start|end)\s*-->[ \t]*\n?/g
+
+/** Remove os marcadores de bloco do Montador (limpeza final da cadeia). */
+export function stripCfyBlockMarkers(html: string): string {
+  return html.replace(CFY_BLOCK_MARKER, "")
+}
+
+/**
+ * Remove indentação com &nbsp;/U+00A0 no INÍCIO de linha. Origem do caso
+ * Luxe Lift (jul/2026): o collapseRunawaySpacers regrediu na extração do
+ * html.chain (U+00A0 virou ESPAÇO comum na alternação) e passou a colapsar
+ * indentação normal de 12+ espaços em "&nbsp;&nbsp;&nbsp;" — corrigido
+ * acima com escapes \uXXXX. Este strip fica como defesa permanente: run de
+ * nbsp no começo de linha nunca é conteúdo legítimo de email; &nbsp; no
+ * MEIO de texto fica intacto.
+ */
+export function stripNbspIndentation(html: string): string {
+  return html.replace(
+    /(^|\n)([ \t]*)(?:&nbsp;|&#160;|\u00A0)+[ \t]*/g,
+    "$1$2",
+  )
 }
 
 /**

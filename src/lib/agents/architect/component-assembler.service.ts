@@ -432,26 +432,50 @@ export interface AssembleReferenceResult {
   slots: AssemblySlot[]
 }
 
+// Placeholder canônico ({{TAG_MAIUSCULA}}) — mesmo formato do tag-registry.
+const ANY_PLACEHOLDER = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/
+
+/**
+ * Guard de elegibilidade: variante cujo HTML não tem NENHUM placeholder é
+ * impreenchível pelo pipeline (blueprint não a vê → n8n não gera copy →
+ * agentes não têm o que substituir → exemplo hardcoded vaza pro cliente —
+ * caso "body 2" da Luxe Lift, jul/2026). Fica fora do pool de candidatas
+ * até ser tagueada (manual ou taguedor). Pura, testável.
+ * FUTURO (épico taguedor): elegível também quando html_tagged aprovado.
+ */
+export function variantHasPlaceholders(v: EmailComponentVariant): boolean {
+  return ANY_PLACEHOLDER.test(v.html ?? "")
+}
+
 /** Carrega as variantes ativas agrupadas por block_type. */
-async function loadActiveVariantsByType(): Promise<
-  Map<string, EmailComponentVariant[]>
-> {
+async function loadActiveVariantsByType(): Promise<{
+  byType: Map<string, EmailComponentVariant[]>
+  excludedUntagged: Record<string, string[]>
+}> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("email_component_variants")
     .select("*")
     .eq("is_active", true)
   const byType = new Map<string, EmailComponentVariant[]>()
+  const excludedUntagged: Record<string, string[]> = {}
   if (error) {
     log.error("variants.load_failed", { error: error.message })
-    return byType
+    return { byType, excludedUntagged }
   }
   for (const v of (data as EmailComponentVariant[] | null) ?? []) {
+    if (!variantHasPlaceholders(v)) {
+      ;(excludedUntagged[v.block_type] ??= []).push(v.name)
+      continue
+    }
     const arr = byType.get(v.block_type) ?? []
     arr.push(v)
     byType.set(v.block_type, arr)
   }
-  return byType
+  if (Object.keys(excludedUntagged).length > 0) {
+    log.warn("chooser.candidates_excluded_untagged", { excludedUntagged })
+  }
+  return { byType, excludedUntagged }
 }
 
 /**
@@ -469,7 +493,8 @@ export async function assembleStoreReference(
   })
 
   const sections = input.structure.map((s) => s.section)
-  const poolByType = await loadActiveVariantsByType()
+  const { byType: poolByType, excludedUntagged } =
+    await loadActiveVariantsByType()
   const candidatesByBlock: EmailComponentVariant[][] = sections.map((section) =>
     prefilterCandidates(poolByType.get(section) ?? [], matchCtx, CHOOSER_TOP_K),
   )
@@ -671,7 +696,14 @@ export async function assembleStoreReference(
       chooserError ?? (chosen.length === 0 ? "no_candidates" : undefined),
     inputVars: { sections: input.structure.length },
     rawOutput: chooserRaw.slice(0, 8000),
-    parsedOutput: { choices: choices.length, chosen: chosen.length },
+    parsedOutput: {
+      choices: choices.length,
+      chosen: chosen.length,
+      // Guard de elegibilidade: variantes ativas SEM placeholder no HTML
+      // ficaram fora do pool (visível no drawer de logs — pressão de
+      // curadoria; ver variantHasPlaceholders).
+      candidates_excluded_untagged: excludedUntagged,
+    },
     tokensInput: chooserTokensIn,
     tokensOutput: chooserTokensOut,
     costCents: resolveCostCents({

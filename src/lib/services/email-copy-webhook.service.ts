@@ -756,6 +756,21 @@ export async function dispatchEmailCopyWebhook(
     )
   }
 
+  // Auditoria de ancoragem do spec: bloco cujos fields saem majoritariamente
+  // com tag:null tem schema↔HTML incoerentes na variante (keys do output_schema
+  // sem tag correspondente) — a copy volta desancorada do template (caso
+  // "review 3" da Luxe Lift, jul/2026). Observabilidade: warn + telemetria no
+  // run do copy_dispatch; nunca bloqueia o dispatch.
+  const fieldsSemTag: Array<{
+    flow_type: string
+    email_number: number
+    position: number
+    type: string
+    variant_name: string | null
+    sem_tag: number
+    total: number
+  }> = []
+
   const payload = {
     event: "email_copy.requested" as const,
     timestamp: new Date().toISOString(),
@@ -963,6 +978,20 @@ export async function dispatchEmailCopyWebhook(
                     : fieldsFromCopySpec(
                         normalizeCopySpec(matched?.copy_spec, b.block_type),
                       )
+              const semTag = fields.filter(
+                (fld) => !(fld as { tag?: string | null }).tag,
+              ).length
+              if (fields.length > 0 && semTag / fields.length > 0.5) {
+                fieldsSemTag.push({
+                  flow_type: f.flow_type,
+                  email_number: e.number,
+                  position: b.position,
+                  type: b.block_type,
+                  variant_name: matched?.variant_name ?? null,
+                  sem_tag: semTag,
+                  total: fields.length,
+                })
+              }
               return {
                 block_id: b.id,
                 position: b.position,
@@ -1015,6 +1044,14 @@ export async function dispatchEmailCopyWebhook(
     const headers: Record<string, string> = { "Content-Type": "application/json" }
     if (process.env.N8N_WEBHOOK_SECRET) {
       headers["x-webhook-secret"] = process.env.N8N_WEBHOOK_SECRET
+    }
+
+    if (fieldsSemTag.length > 0) {
+      log.warn("email_copy.fields_sem_tag", {
+        storeId,
+        blocks: fieldsSemTag.length,
+        sample: fieldsSemTag.slice(0, 10),
+      })
     }
 
     log.info("email_copy.webhook.start", {
@@ -1075,6 +1112,11 @@ export async function dispatchEmailCopyWebhook(
       flow_count: flows.length,
       email_count: emails.length,
       only_drafts: options.onlyDrafts ?? false,
+      // Blocos com spec desancorado (fields majoritariamente tag:null) —
+      // incoerência schema↔HTML na variante, visível no drawer de logs.
+      ...(fieldsSemTag.length > 0
+        ? { fields_sem_tag: fieldsSemTag.slice(0, 30) }
+        : {}),
     },
     error_message: dispatchError,
   })

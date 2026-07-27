@@ -108,7 +108,7 @@ const HTML_OK = {
 beforeEach(() => {
   h.upsertSpy.mockClear()
   invokeAgent.mockReset()
-  h.variants = [variant("v1", "hero", "<div>hero</div>")]
+  h.variants = [variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>")]
 })
 
 describe("assembleStoreReference — 2 passos (escolha + harmonização)", () => {
@@ -136,8 +136,8 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
 
   it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {
     h.variants = [
-      variant("v1", "hero", "<div>UNIQUE_HTML_A</div>"),
-      variant("v2", "hero", "<div>UNIQUE_HTML_B</div>"),
+      variant("v1", "hero", "<div>UNIQUE_HTML_A {{HERO_HEADLINE}}</div>"),
+      variant("v2", "hero", "<div>UNIQUE_HTML_B {{HERO_SUBHEAD}}</div>"),
     ]
     invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
     await assembleStoreReference(baseInput)
@@ -152,7 +152,7 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
   it("passo A recebe orientacao_copy/campos_copy/notas + perfil da marca + top products", async () => {
     h.variants = [
       {
-        ...variant("v1", "hero", "<div>x</div>"),
+        ...variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
         copy_guidance: "GUIDANCE-COPY",
         long_description: "NOTAS-LAYOUT",
         output_schema: [

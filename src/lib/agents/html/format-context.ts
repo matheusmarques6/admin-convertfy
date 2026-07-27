@@ -366,6 +366,46 @@ function identityVars(ctx: FormatChainContext): Record<string, string> {
   }
 }
 
+const TAG_IN_HTML = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g
+
+function tagsIn(html: string): Set<string> {
+  return new Set(Array.from(html.matchAll(TAG_IN_HTML), (m) => m[1]))
+}
+
+function blueprintTagsOf(
+  ctx: FormatChainContext,
+  position: number,
+): string[] {
+  const bp = Array.isArray(ctx.blueprint?.blocks)
+    ? ctx.blueprint.blocks[position - 1]
+    : undefined
+  return Array.isArray(bp?.tags) ? bp.tags : []
+}
+
+/**
+ * Blocos de copy cujos placeholders vivem DENTRO da região da hero.
+ * Variantes de hero compostas (banner de cupom + logo bar + hero) engolem
+ * blocos vizinhos — a copy deles precisa ir pro agente Hero, senão fica
+ * órfã (o agente de texto é proibido de tocar na região; caso Luxe Lift:
+ * "Use code '' for off"). Fallback: só o bloco type='hero'.
+ */
+export function blocksInsideHeroRegion(
+  ctx: FormatChainContext,
+  regionHtml: string,
+): BlockWithContent[] {
+  if (regionHtml) {
+    const regionTags = tagsIn(regionHtml)
+    if (regionTags.size > 0) {
+      const included = ctx.blocksWithContent.filter((b) =>
+        blueprintTagsOf(ctx, b.position).some((t) => regionTags.has(t)),
+      )
+      if (included.length > 0) return included
+    }
+  }
+  const hero = ctx.blocksWithContent.find((b) => b.type === "hero")
+  return hero ? [hero] : []
+}
+
 export function buildHeroVars(
   ctx: FormatChainContext,
   params: {
@@ -374,7 +414,7 @@ export function buildHeroVars(
     variant: HeroVariantData | null
   },
 ): Record<string, string> {
-  const heroBlock = ctx.blocksWithContent.find((b) => b.type === "hero")
+  const heroBlocks = blocksInsideHeroRegion(ctx, params.regionHtml)
   const heroImage = ctx.imageMap.find((e) => e.block_type === "hero")
   const vars = {
     ...identityVars(ctx),
@@ -389,7 +429,9 @@ export function buildHeroVars(
     hero_variant_schema_json: params.variant?.output_schema
       ? JSON.stringify(params.variant.output_schema, null, 2)
       : "",
-    hero_content_json: heroBlock ? JSON.stringify(heroBlock, null, 2) : "{}",
+    // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
+    hero_content_json:
+      heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
     // Preenchida pelo chain conforme o mode (fragment/full_doc) — presente
@@ -403,7 +445,20 @@ export function buildTextFormatVars(
   ctx: FormatChainContext,
   html: string,
 ): Record<string, string> {
-  const nonHeroBlocks = ctx.blocksWithContent.filter((b) => b.type !== "hero")
+  // Só blocos com trabalho REAL neste documento: bloco cujas tags do
+  // blueprint não existem mais no HTML já foi preenchido pelo agente Hero
+  // (região composta) — mandá-lo de novo convida o modelo a duplicar a
+  // copy em outro lugar. Bloco sem tags no blueprint (legado) passa.
+  const docTags = tagsIn(html)
+  const stillOpen = (b: BlockWithContent): boolean => {
+    const tags = blueprintTagsOf(ctx, b.position)
+    if (tags.length === 0) return true
+    return tags.some((t) => docTags.has(t))
+  }
+  const nonHeroBlocks = ctx.blocksWithContent.filter(
+    (b) => b.type !== "hero" && stillOpen(b),
+  )
+  const openPositions = new Set(nonHeroBlocks.map((b) => b.position))
   const fields = Array.isArray(ctx.blueprint?.blocks)
     ? ctx.blueprint.blocks
         .map((b, i) => ({
@@ -412,7 +467,7 @@ export function buildTextFormatVars(
           variant_name: b.variant_name ?? null,
           fields: b.fields ?? [],
         }))
-        .filter((b) => b.type !== "hero")
+        .filter((b) => b.type !== "hero" && openPositions.has(b.position))
     : []
   const vars = {
     ...identityVars(ctx),

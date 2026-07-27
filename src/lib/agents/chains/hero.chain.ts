@@ -61,8 +61,14 @@ If <hero_image>.url is EMPTY (generation failed upstream): remove only the image
 </hero_image_hard_rule>
 
 <copy_rules>
-Fill the hero's text placeholders ({{HERO_HEADLINE}}, {{HERO_SUBHEAD}}, {{HERO_CTA_LABEL}}...) with the matching fields from <hero_content>, VERBATIM — do not rewrite, translate, summarize, or invent copy. CTA hrefs come from <hero_content> URLs; if missing, use "#". A placeholder with no matching content stays as-is (the pipeline cleans it later — do NOT invent text for it).
+<hero_content> is an ARRAY: the copy of EVERY block that lives inside the hero region. Composite hero variants include neighbor blocks (coupon banner, logo bar) — their copy comes in the array too, each entry with its own type/label/content. Fill EVERY placeholder in the region ({{COUPON_CODE}}, {{HERO_HEADLINE}}, {{HERO_CTA_LABEL}}...) with the matching field from the RIGHT block, VERBATIM — do not rewrite, translate, summarize, or invent copy. CTA hrefs come from the blocks' URLs.
 </copy_rules>
+
+<empty_slot_rule>
+A slot with NO matching copy is REMOVED, never left half-empty:
+- CTA/button/link row whose block copy has no label+URL for it → delete the entire row/cell (same principle as the missing image). NEVER emit a button with empty label or empty href="".
+- A text placeholder with no matching content: remove its row if it is the row's only content; otherwise leave the token as-is (the pipeline strips it later). NEVER invent text.
+</empty_slot_rule>
 
 <merge_tags_are_literal>
 ESP merge tags ([unsubscribe_link], [first_name], {{ unsubscribe }}, {% ... %}, *|FNAME|*) remain LITERAL. Do not replace or remove them.

@@ -55,6 +55,18 @@ NOTHING between ${HERO_SENTINEL_START} and ${HERO_SENTINEL_END} may change — c
 Placeholders ending in _IMAGE or _THUMB (e.g. {{PRODUCTS_IMAGE}}, {{REVIEW_1_IMAGE}}, {{PRODUCT_1_THUMB_2}}) and their _ALT companions belong to the NEXT agent. Leave every one of them EXACTLY as-is — never fill, remove, or rename them, never substitute copy into them (a colored box holding a TEXT token is a TEXT element; a slot carrying an _IMAGE token is an image slot).
 </image_tags_survive>
 
+<already_placed_blocks>
+A block in <blocks_with_content> whose placeholders do NOT exist anywhere in the document was already placed by a previous agent (e.g. inside the hero region). IGNORE it completely — never re-place its copy into another block's slots, never duplicate it as extra rows.
+</already_placed_blocks>
+
+<structured_copy_fallback>
+When a block's copy arrives as ONE running text (e.g. several customer quotes concatenated inside 'body') but the document expects STRUCTURED fields for that block ({{REVIEW_1_TEXT}}, {{REVIEW_1_NAME}}, {{REVIEW_2_TEXT}}...), SPLIT the running text into those fields keeping every sentence VERBATIM: quotes go to the quote placeholders in document order; signatures like "— Sarah M., Manchester" go to the matching name/meta placeholders (strip the leading dash). Splitting is allowed; rewriting is not. Structured fields left without material follow <empty_slot_rule>.
+</structured_copy_fallback>
+
+<empty_slot_rule>
+A CTA/button/link row whose block has no label+URL copy → delete the entire row; NEVER emit a button with empty label or empty href="". A structured sub-row (e.g. a whole review card) with no material → delete that row. Text tokens you cannot fill and cannot remove cleanly stay as-is (the pipeline strips them later). NEVER invent copy.
+</empty_slot_rule>
+
 <merge_tags_are_literal>
 ESP merge tags remain LITERAL in the output: [unsubscribe_link], [unsubscribe], [email], [first_name], {{ unsubscribe }}, Liquid {% ... %}, *|UNSUB|*, *|FNAME|*, \${name}. Do NOT replace, do NOT remove.
 </merge_tags_are_literal>

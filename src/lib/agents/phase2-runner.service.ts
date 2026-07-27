@@ -94,6 +94,8 @@ import { applyOps } from "./html/apply-patches"
 import {
   postProcessDocumentPreserveTags,
   stripUnresolvedPlaceholders,
+  stripCfyBlockMarkers,
+  stripNbspIndentation,
   enforceLangAttribute,
 } from "./html/post-process"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
@@ -1732,10 +1734,15 @@ async function runFormattingChain(p: {
     }
 
     // Limpeza final do documento (era o fim do postProcessHtml do agente
-    // monolítico): sentinelas fora, placeholders órfãos limpos, lang da
-    // loja. O color_format recebe o documento já apresentável.
+    // monolítico): sentinelas + marcadores cfy:block fora, indentação
+    // &nbsp; do GLM removida, placeholders órfãos limpos, lang da loja.
+    // O color_format recebe o documento já apresentável.
     currentHtml = enforceLangAttribute(
-      stripUnresolvedPlaceholders(stripSentinels(outcome.value)),
+      stripUnresolvedPlaceholders(
+        stripNbspIndentation(
+          stripCfyBlockMarkers(stripSentinels(outcome.value)),
+        ),
+      ),
       fmtCtx.locale,
     )
     // Snapshot pré-polimento (compare de 3 vias na UI) — semântica da

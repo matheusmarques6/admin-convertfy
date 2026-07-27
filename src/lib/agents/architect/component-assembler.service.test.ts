@@ -14,6 +14,7 @@ import {
   shuffle,
   validateBlockMarkers,
   slotMapFromSlots,
+  variantHasPlaceholders,
   type AssemblySlot,
 } from "./component-assembler.service"
 
@@ -195,5 +196,25 @@ describe("slotMapFromSlots", () => {
       { block_index: 0, section: "hero", label: "Hero", variant_id: "vh", variant_name: "Hero A" },
       { block_index: 1, section: "offer", label: "Oferta", variant_id: null, variant_name: null },
     ])
+  })
+})
+
+describe("variantHasPlaceholders (guard de elegibilidade)", () => {
+  it("variante com {{TAG}} é elegível", () => {
+    expect(
+      variantHasPlaceholders(mk({ html: "<td>{{HERO_HEADLINE}}</td>" })),
+    ).toBe(true)
+  })
+  it("variante 100% hardcoded (caso body 2) NÃO é elegível", () => {
+    expect(
+      variantHasPlaceholders(
+        mk({ html: "<td>Lorem ipsum</td><img src=\"\" alt=\"\">" }),
+      ),
+    ).toBe(false)
+  })
+  it("merge tag minúscula do provedor não conta como placeholder", () => {
+    expect(
+      variantHasPlaceholders(mk({ html: "<a href=\"{{ unsubscribe }}\">x</a>" })),
+    ).toBe(false)
   })
 })
