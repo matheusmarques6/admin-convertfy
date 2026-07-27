@@ -292,7 +292,7 @@ vi.mock("@/lib/agents/copy-chain-fallback.service", () => ({
 }))
 
 // Front 5 retoma IN-PROCESS via runPhase2HtmlQa — mockado pra observar.
-const phase2Spy = vi.fn(async () => ({ status: "ready" }))
+const phase2Spy = vi.fn(async (_params: unknown) => ({ status: "ready" }))
 vi.mock("@/lib/agents/phase2-runner.service", () => ({
   runPhase2HtmlQa: (params: unknown) => phase2Spy(params),
 }))

@@ -18,6 +18,27 @@ import { dispatchEmailCopyWebhook } from "../services/email-copy-webhook.service
 
 const log = logger.child("TestGeneration")
 
+// Status de geração EM VOO (não-terminais). Um teste completo disparado
+// enquanto o email está num desses estados com atividade recente abriria
+// uma segunda geração paralela (incidente Luxe Lift 27/07: o gateway corta
+// a request aos 300s, o operador reclica e nasce um pipeline duplicado).
+const IN_FLIGHT_STATUSES = [
+  "pending",
+  "in_progress",
+  "copy_generating",
+  "copy_generating_recovery",
+  "copy_ready",
+  "rendering",
+  "image_done",
+  "qa_running",
+]
+
+// Janela de dedup: atividade mais antiga que isso é considerada travada e
+// o re-teste é permitido (o watchdog cuida de matar o que ficou pra trás).
+const GENERATION_DEDUP_WINDOW_MIN = Number(
+  process.env.GENERATION_DEDUP_WINDOW_MIN ?? 10,
+)
+
 export interface TestGenerationInput {
   storeId: string
   flowId: string
@@ -113,7 +134,64 @@ export async function runTestGeneration(
     log.info("test.full_pipeline.start", { storeId, emailId, batchId })
     const admin = createAdminClient()
 
-    // 1) Fase 1: Curador + Montador + Blueprint (força reescrita da estrutura).
+    // 0) DEDUP: se o email já está numa geração em voo com atividade
+    //    recente, NÃO abre outra. A fase 1 é síncrona (~4-5min) e o
+    //    gateway pode cortar a conexão antes dela terminar — o trabalho
+    //    continua no servidor, e um reclique abriria pipeline duplicado.
+    const { data: current } = await admin
+      .from("email_flow_emails")
+      .select("status, generation_batch_id, updated_at, auto_phase2_relaxed")
+      .eq("id", emailId)
+      .maybeSingle()
+    // Em voo = status não-terminal de geração OU claim de full pipeline
+    // ainda ativo (auto_phase2_relaxed cobre a janela da fase 1 síncrona,
+    // quando o status ainda é draft/ready — o claim abaixo seta o flag e o
+    // callback do n8n/o catch de erro o limpam).
+    const inFlight =
+      current != null &&
+      (IN_FLIGHT_STATUSES.includes(current.status as string) ||
+        current.auto_phase2_relaxed === true)
+    if (current && inFlight) {
+      const updatedAt = current.updated_at
+        ? new Date(current.updated_at as string).getTime()
+        : 0
+      const ageMs = Date.now() - updatedAt
+      if (ageMs < GENERATION_DEDUP_WINDOW_MIN * 60_000) {
+        log.warn("test.full_pipeline.dedup_blocked", {
+          storeId,
+          emailId,
+          status: current.status,
+          activeBatchId: current.generation_batch_id,
+          ageMs,
+        })
+        return {
+          status: "error",
+          path: "without_copy",
+          hasCopy: false,
+          error:
+            "generation_in_progress: já existe uma geração em andamento para este email " +
+            `(status ${current.status}). Aguarde ela terminar ou falhar antes de re-testar.`,
+          batchId,
+          emailId,
+        }
+      }
+    }
+
+    // 1) CLAIM antes da fase 1: batch + flag de auto-fase2 relaxada. Setado
+    //    AQUI (e não depois da fase 1) para que o dedup acima enxergue a
+    //    geração em voo durante os ~5min síncronos do Architect, e porque o
+    //    flag atravessa o callback async do n8n (sem corrida com o callback,
+    //    que pode chegar rápido).
+    await admin
+      .from("email_flow_emails")
+      .update({
+        auto_phase2_relaxed: true,
+        generation_batch_id: batchId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+
+    // 2) Fase 1: Curador + Montador + Blueprint (força reescrita da estrutura).
     try {
       await generateBlueprintAndReference({
         storeId,
@@ -124,6 +202,11 @@ export async function runTestGeneration(
         force: true,
       })
     } catch (err) {
+      // Sem fase 1 não haverá dispatch: limpa o flag pra não deixar marcado.
+      await admin
+        .from("email_flow_emails")
+        .update({ auto_phase2_relaxed: false })
+        .eq("id", emailId)
       return {
         status: "error",
         path: "without_copy",
@@ -135,18 +218,6 @@ export async function runTestGeneration(
         emailId,
       }
     }
-
-    // 2) Marca o email: batch + flag de auto-fase2 relaxada. O flag atravessa
-    //    o callback async do n8n (setado antes do dispatch pra não haver
-    //    corrida com o callback, que pode chegar rápido).
-    await admin
-      .from("email_flow_emails")
-      .update({
-        auto_phase2_relaxed: true,
-        generation_batch_id: batchId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", emailId)
 
     // 3) Dispara copy NOVA pro n8n, restrita a este email.
     const dispatch = await dispatchEmailCopyWebhook(storeId, {

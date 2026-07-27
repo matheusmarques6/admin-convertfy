@@ -432,19 +432,35 @@ export async function dispatchEmailCopyWebhook(
   // Idempotência do gatilho automático (Pesquisa & Diagnóstico): não re-dispara
   // se já houver um batch em andamento/concluído — evita batch duplicado num
   // re-callback do n8n. Só dispara se os emails estão em draft/failed.
-  if (options.triggerSource === "pesquisa_completa") {
-    const ACTIVE_STATUSES = [
-      "pending",
-      "in_progress",
-      "copy_generating",
-      "copy_generating_recovery",
-      "copy_ready",
-      "rendering",
-      "qa_running",
-      "ready",
-      "approved",
-      "live",
-    ]
+  //
+  // O teste completo (test_full_pipeline) ganha um guard mais estreito: só
+  // bloqueia se já existe COPY em voo pros mesmos emails (dispatch duplicado
+  // — incidente Luxe Lift 27/07, dois pipelines paralelos). Emails
+  // ready/approved continuam re-testáveis (regenerateAll é o propósito).
+  if (
+    options.triggerSource === "pesquisa_completa" ||
+    options.triggerSource === "test_full_pipeline"
+  ) {
+    const ACTIVE_STATUSES =
+      options.triggerSource === "pesquisa_completa"
+        ? [
+            "pending",
+            "in_progress",
+            "copy_generating",
+            "copy_generating_recovery",
+            "copy_ready",
+            "rendering",
+            "qa_running",
+            "ready",
+            "approved",
+            "live",
+          ]
+        : [
+            "pending",
+            "in_progress",
+            "copy_generating",
+            "copy_generating_recovery",
+          ]
     const inProgress = emails.some((e) => ACTIVE_STATUSES.includes(e.status))
     if (inProgress) {
       log.info("email_copy.webhook.skip", { storeId, reason: "batch_in_progress" })

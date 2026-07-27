@@ -142,6 +142,13 @@ export function TestTab() {
         statusInfo.email_status === "ready"),
   )
 
+  // Geração em voo = request em curso OU polling ativo de um batch ainda
+  // não-terminal. Usado pra desabilitar os botões de disparo — reclicar
+  // durante uma geração abria pipeline duplicado (o server também bloqueia,
+  // mas aqui evitamos até o convite).
+  const generationInFlight =
+    generating || (pollInterval > 0 && !isTerminalStatus)
+
   // Texto do estagio atual da fase 2, derivado do email_status do polling —
   // evita o loading "mudo" e a mensagem inicial congelada do `result`.
   // Dentro de `rendering`, o html_pipeline_stage (último step CONCLUÍDO da
@@ -282,7 +289,7 @@ export function TestTab() {
       } catch {
         throw new Error(
           res.status === 504 || text.includes("timed out")
-            ? "Timeout: a função do servidor expirou (300s). Verifique qual fase travou em /admin/settings/email-generation-logs e tente novamente."
+            ? "__timeout__: a conexão com o servidor expirou (300s)."
             : `Resposta inválida do servidor (HTTP ${res.status})`,
         )
       }
@@ -330,12 +337,58 @@ export function TestTab() {
         setPollInterval(2000)
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido"
+      // Timeout do gateway ≠ geração morta: no teste completo a fase 1 é
+      // síncrona (~4-5min) e o TRABALHO CONTINUA no servidor depois do corte.
+      // Reclicar aqui abria um pipeline duplicado (incidente Luxe Lift
+      // 27/07). O claim do batch é persistido ANTES da fase 1 — recupera o
+      // batch do email e segue acompanhando por polling.
+      const isTimeout = msg.startsWith("__timeout__") || /timed out/i.test(msg)
+      if (isTimeout && (fullPipeline || !phase2Only)) {
+        const recovered = await recoverBatchIdAfterTimeout()
+        if (recovered) {
+          setBatchId(recovered)
+          setPollInterval(2000)
+          setResult({
+            status: "running",
+            message:
+              "A conexão expirou (300s), mas a geração CONTINUA no servidor. " +
+              "Acompanhando pelo batch persistido — não reclique.",
+            batchId: recovered,
+            emailId: selectedEmailId ?? undefined,
+          })
+          return
+        }
+      }
       setResult({
         status: "error",
-        error: err instanceof Error ? err.message : "Erro desconhecido",
+        error: isTimeout
+          ? "Timeout: a conexão expirou (300s), mas a geração pode seguir rodando no servidor. Verifique em /admin/settings/email-generation-logs antes de re-testar."
+          : msg,
       })
     } finally {
       setGenerating(false)
+    }
+  }
+
+  /**
+   * Após timeout do gateway, o servidor já persistiu generation_batch_id no
+   * email (claim antes da fase 1) — busca pra retomar o polling sem reclique.
+   */
+  const recoverBatchIdAfterTimeout = async (): Promise<string | null> => {
+    if (!selectedStoreId || !selectedEmailId) return null
+    try {
+      const res = await fetch(`/api/admin/stores/${selectedStoreId}/emails`)
+      if (!res.ok) return null
+      const json = (await res.json()) as {
+        data?: { emails?: Array<{ id: string; generation_batch_id: string | null }> }
+      }
+      const emails = json.data?.emails ?? []
+      return (
+        emails.find((e) => e.id === selectedEmailId)?.generation_batch_id ?? null
+      )
+    } catch {
+      return null
     }
   }
 
@@ -537,7 +590,7 @@ export function TestTab() {
               variant="dark"
               onClick={() => handleGenerate(false, true)}
               disabled={
-                generating ||
+                generationInFlight ||
                 !selectedStoreId ||
                 !selectedFlowId ||
                 !selectedEmailId
@@ -557,7 +610,7 @@ export function TestTab() {
                 variant="secondary"
                 onClick={() => handleGenerate()}
                 disabled={
-                  generating ||
+                  generationInFlight ||
                   !selectedStoreId ||
                   !selectedFlowId ||
                   !selectedEmailId
@@ -570,7 +623,7 @@ export function TestTab() {
                 variant="secondary"
                 onClick={() => handleGenerate(true)}
                 disabled={
-                  generating ||
+                  generationInFlight ||
                   !selectedStoreId ||
                   !selectedFlowId ||
                   !selectedEmailId

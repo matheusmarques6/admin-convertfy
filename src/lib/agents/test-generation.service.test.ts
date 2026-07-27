@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { architectMock, dispatchMock, adminMock, blocksData } = vi.hoisted(() => {
+const { architectMock, dispatchMock, adminMock, blocksData, emailRow } = vi.hoisted(() => {
   const blocksData: { rows: Array<{ content: unknown }> } = { rows: [] }
+  // Row do email lida pelo guard de dedup do fullPipeline (select+maybeSingle)
+  const emailRow: { data: Record<string, unknown> | null } = { data: null }
   const adminMock = {
     from: vi.fn((table: string) => {
       if (table === "email_blocks") {
@@ -11,10 +13,18 @@ const { architectMock, dispatchMock, adminMock, blocksData } = vi.hoisted(() => 
           }),
         }
       }
-      // email_flow_emails update chain
+      // email_flow_emails: update chain + select/maybeSingle (guard de dedup)
       return {
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockImplementation(async () => ({
+              data: emailRow.data,
+              error: null,
+            })),
+          }),
         }),
       }
     }),
@@ -24,6 +34,7 @@ const { architectMock, dispatchMock, adminMock, blocksData } = vi.hoisted(() => 
     dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
     adminMock,
     blocksData,
+    emailRow,
   }
 })
 
@@ -76,6 +87,71 @@ describe("runTestGeneration — phase2Only", () => {
     const res = await runTestGeneration(baseInput)
     expect(architectMock).toHaveBeenCalledTimes(1)
     expect(res.triggerPhase2).toBe(true)
+  })
+})
+
+describe("runTestGeneration — fullPipeline (dedup de geração em voo)", () => {
+  beforeEach(() => {
+    architectMock.mockClear()
+    dispatchMock.mockClear()
+    emailRow.data = null
+    blocksData.rows = []
+  })
+
+  it("email em copy_generating RECENTE: bloqueia com generation_in_progress", async () => {
+    emailRow.data = {
+      status: "copy_generating",
+      generation_batch_id: "batch-antigo",
+      updated_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+      auto_phase2_relaxed: false,
+    }
+    const res = await runTestGeneration({ ...baseInput, fullPipeline: true })
+    expect(res.status).toBe("error")
+    expect(res.error).toContain("generation_in_progress")
+    expect(architectMock).not.toHaveBeenCalled()
+    expect(dispatchMock).not.toHaveBeenCalled()
+  })
+
+  it("claim de full pipeline em voo (auto_phase2_relaxed, status draft): bloqueia", async () => {
+    // Janela da fase 1 síncrona: status ainda draft, mas o claim marcou o flag.
+    emailRow.data = {
+      status: "draft",
+      generation_batch_id: "batch-em-voo",
+      updated_at: new Date(Date.now() - 60_000).toISOString(),
+      auto_phase2_relaxed: true,
+    }
+    const res = await runTestGeneration({ ...baseInput, fullPipeline: true })
+    expect(res.status).toBe("error")
+    expect(res.error).toContain("generation_in_progress")
+    expect(architectMock).not.toHaveBeenCalled()
+  })
+
+  it("email travado há mais que a janela (>10min): re-teste permitido", async () => {
+    emailRow.data = {
+      status: "copy_generating",
+      generation_batch_id: "batch-travado",
+      updated_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+      auto_phase2_relaxed: false,
+    }
+    const res = await runTestGeneration({ ...baseInput, fullPipeline: true })
+    expect(res.status).toBe("dispatched")
+    expect(architectMock).toHaveBeenCalledTimes(1)
+    expect(dispatchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("email draft sem geração em voo: pipeline roda normal", async () => {
+    emailRow.data = {
+      status: "draft",
+      generation_batch_id: null,
+      updated_at: new Date().toISOString(),
+      auto_phase2_relaxed: false,
+    }
+    const res = await runTestGeneration({ ...baseInput, fullPipeline: true })
+    expect(res.status).toBe("dispatched")
+    expect(res.fullPipeline).toBe(true)
+    expect(architectMock).toHaveBeenCalledWith(
+      expect.objectContaining({ force: true }),
+    )
   })
 })
 
