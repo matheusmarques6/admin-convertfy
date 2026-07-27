@@ -28,6 +28,7 @@ import { lookupTag, normalizeTagName } from "@/lib/email-workspace/tag-registry"
 import { blockTypeToCategory } from "../shared/component-categories"
 import {
   deriveFieldNature,
+  effectiveVariantHtml,
   placeholderForKey,
 } from "../shared/component-dimensions"
 import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
@@ -337,7 +338,11 @@ export function buildDeterministicBlueprint(input: {
       variant_name: m?.variant.name ?? null,
       fields:
         schema.length > 0
-          ? fieldsFromSchema(schema, tags, m?.variant.html)
+          ? fieldsFromSchema(
+              schema,
+              tags,
+              m ? effectiveVariantHtml(m.variant) : undefined,
+            )
           : fieldsFromTags(tags),
     }
   })
@@ -376,7 +381,11 @@ export function packageBlueprint(
 
     let fields: BlueprintFieldV2[]
     if (schema.length > 0) {
-      fields = fieldsFromSchema(schema, tags, m?.variant.html)
+      fields = fieldsFromSchema(
+        schema,
+        tags,
+        m ? effectiveVariantHtml(m.variant) : undefined,
+      )
     } else if (tags.length > 0) {
       fields = fieldsFromTags(tags)
     } else {

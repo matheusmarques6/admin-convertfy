@@ -25,9 +25,9 @@ function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     name: p.name ?? "v",
     html: p.html ?? "<div></div>",
     rendered_html: null,
-    html_tagged: null,
-    tagging_status: null,
-    tagging_meta: null,
+    html_tagged: p.html_tagged ?? null,
+    tagging_status: p.tagging_status ?? null,
+    tagging_meta: p.tagging_meta ?? null,
     description: p.description ?? null,
     long_description: p.long_description ?? null,
     slots: p.slots ?? [],
@@ -219,5 +219,56 @@ describe("variantHasPlaceholders (guard de elegibilidade)", () => {
     expect(
       variantHasPlaceholders(mk({ html: "<a href=\"{{ unsubscribe }}\">x</a>" })),
     ).toBe(false)
+  })
+  it("html_tagged APROVADO com placeholder torna elegível (T7)", () => {
+    expect(
+      variantHasPlaceholders(
+        mk({
+          html: "<td>Lorem ipsum</td>",
+          html_tagged: "<td>{{SECTION_HEADLINE}}</td>",
+          tagging_status: "approved",
+        }),
+      ),
+    ).toBe(true)
+  })
+  it("proposta PENDENTE não conta — só aprovado entra no pool", () => {
+    expect(
+      variantHasPlaceholders(
+        mk({
+          html: "<td>Lorem ipsum</td>",
+          html_tagged: "<td>{{SECTION_HEADLINE}}</td>",
+          tagging_status: "pending",
+        }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe("HTML efetivo no assemble (T5 — épico Taguedor)", () => {
+  it("assembleReferenceHtml usa html_tagged aprovado no lugar do exemplo", () => {
+    const v = mk({
+      id: "a",
+      block_type: "hero",
+      name: "H",
+      html: "<div>Frase de exemplo</div>",
+      html_tagged: "<div>{{HERO_HEADLINE_X}}</div>",
+      tagging_status: "approved",
+    })
+    const html = assembleReferenceHtml([v])
+    expect(html).toContain("{{HERO_HEADLINE_X}}")
+    expect(html).not.toContain("Frase de exemplo")
+  })
+  it("proposta pendente NÃO substitui o html original", () => {
+    const v = mk({
+      id: "a",
+      block_type: "hero",
+      name: "H",
+      html: "<div>{{HERO_HEADLINE}}</div>",
+      html_tagged: "<div>{{OUTRA_COISA}}</div>",
+      tagging_status: "pending",
+    })
+    const html = assembleReferenceHtml([v])
+    expect(html).toContain("{{HERO_HEADLINE}}")
+    expect(html).not.toContain("{{OUTRA_COISA}}")
   })
 })

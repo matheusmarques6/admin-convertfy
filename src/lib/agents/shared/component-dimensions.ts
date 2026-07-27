@@ -106,6 +106,23 @@ export function deriveFieldNature(field: {
 }
 
 /**
+ * HTML EFETIVO da variante para o PIPELINE (épico Taguedor): o html_tagged
+ * APROVADO (placeholders {{UPPER(key)}} revisados) quando existe; senão o
+ * html original. O html original permanece sendo o "exemplo pronto" — gold
+ * reference visual (agente de hero, previews da UI).
+ */
+export function effectiveVariantHtml(v: {
+  html: string
+  html_tagged?: string | null
+  tagging_status?: string | null
+}): string {
+  if (v.tagging_status === "approved" && (v.html_tagged ?? "").trim()) {
+    return v.html_tagged as string
+  }
+  return v.html
+}
+
+/**
  * Canoniza a chave técnica de um campo do output_schema para o formato
  * aceito pelo banco/validação: `^[a-z][a-z0-9_]*$`.
  *

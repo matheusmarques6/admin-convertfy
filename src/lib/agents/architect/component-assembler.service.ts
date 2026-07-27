@@ -32,6 +32,7 @@ import {
   seededShuffle,
   seedFrom,
 } from "./component-deriver"
+import { effectiveVariantHtml } from "../shared/component-dimensions"
 import type { OutlineSection } from "./outline-sections"
 import {
   invokeAgent,
@@ -356,7 +357,10 @@ ${body}
 /** Concatena os snippets escolhidos num shell de referência 600px. */
 export function assembleReferenceHtml(chosen: EmailComponentVariant[]): string {
   const body = chosen
-    .map((v) => `  <!-- ${v.block_type}: ${v.name} -->\n  ${v.html.trim()}`)
+    .map(
+      (v) =>
+        `  <!-- ${v.block_type}: ${v.name} -->\n  ${effectiveVariantHtml(v).trim()}`,
+    )
     .join("\n")
   return referenceShell(body)
 }
@@ -441,10 +445,12 @@ const ANY_PLACEHOLDER = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/
  * agentes não têm o que substituir → exemplo hardcoded vaza pro cliente —
  * caso "body 2" da Luxe Lift, jul/2026). Fica fora do pool de candidatas
  * até ser tagueada (manual ou taguedor). Pura, testável.
- * FUTURO (épico taguedor): elegível também quando html_tagged aprovado.
+ * Elegível quando o html TEM placeholder OU quando o taguedor produziu um
+ * html_tagged APROVADO com placeholder — é esse HTML efetivo que o
+ * pipeline consome (effectiveVariantHtml).
  */
 export function variantHasPlaceholders(v: EmailComponentVariant): boolean {
-  return ANY_PLACEHOLDER.test(v.html ?? "")
+  return ANY_PLACEHOLDER.test(effectiveVariantHtml(v) ?? "")
 }
 
 /** Carrega as variantes ativas agrupadas por block_type. */
@@ -755,7 +761,9 @@ export async function assembleStoreReference(
             section: s.section,
             label: s.label,
             name: s.variant.name,
-            html: s.variant.html,
+            // HTML efetivo (épico Taguedor): html_tagged aprovado quando
+            // existe — a arquitetura precisa carregar os {{PLACEHOLDERS}}.
+            html: effectiveVariantHtml(s.variant),
             // Notas de implementação da variante (quirks de Outlook, VML,
             // hospedagem de asset...) — o Montador RESPEITA ao harmonizar,
             // sem copiá-las pro HTML. Vazio quando não curadas.

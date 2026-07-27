@@ -27,9 +27,9 @@ function variant(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     name: p.name ?? "Variante",
     html: p.html ?? "<div></div>",
     rendered_html: p.rendered_html ?? null,
-    html_tagged: null,
-    tagging_status: null,
-    tagging_meta: null,
+    html_tagged: p.html_tagged ?? null,
+    tagging_status: p.tagging_status ?? null,
+    tagging_meta: p.tagging_meta ?? null,
     description: p.description ?? null,
     long_description: p.long_description ?? null,
     slots: p.slots ?? [],
@@ -448,5 +448,33 @@ describe("packageBlueprint", () => {
       source: "llm",
       max_len: 40,
     })
+  })
+
+  it("T5: html_tagged APROVADO alimenta o fallback literal do fields.tag", () => {
+    const vHero = variant({
+      id: "vh",
+      block_type: "hero",
+      copy_guidance: "g",
+      // Exemplo pronto sem placeholder; o taguedor aprovado tem a tag.
+      html: "<table><tr><td>Frase de exemplo</td></tr></table>",
+      html_tagged: "<table><tr><td>{{FRASE_DESTAQUE}}</td></tr></table>",
+      tagging_status: "approved",
+      output_schema: [
+        {
+          key: "frase_destaque",
+          label: "Frase",
+          type: "text_short",
+          max_len: 60,
+          required: true,
+          example: "Frase de exemplo",
+          guidance: "",
+        },
+      ],
+    })
+    const sk = skeleton([heroBlock()])
+    const match = matchVariantsToSkeleton(sk, [slot("hero", vHero)])
+    const out = packageBlueprint(llmBlueprint, match)
+    const field = out.blocks[0].fields?.find((f) => f.key === "frase_destaque")
+    expect(field?.tag).toBe("FRASE_DESTAQUE")
   })
 })
