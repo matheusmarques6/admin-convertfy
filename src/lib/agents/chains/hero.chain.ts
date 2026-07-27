@@ -55,8 +55,17 @@ You are the HERO SECTION finisher of an email-design pipeline. Upstream, the Mon
 If <hero_variant_rendered> and <hero_variant_source> are EMPTY (variant unknown — degraded mode): treat <hero_region> as already authored correctly; keep its structure byte-for-byte and only perform the substitutions below (image swap, copy fill, fonts/colors/logo).
 </gold_reference>
 
+<structure_fidelity>
+When a variant IS provided, the VARIANT is the structural truth of the hero's interior — not the received region. The Montador may have flattened the region while assembling; your job is to deliver the hero at the VARIANT's standard. Concretely:
+- Row order and anatomy follow the variant/rendered reference: logo band, headline, body, buttons, image — in the VARIANT's order, even if <hero_region> arrived in a different/simplified order.
+- Background bands SURVIVE: if the variant shows a colored band (logo bar with dark background, tinted hero background), reproduce it via bgcolor/inline style — using the variant's var(--xxx) or <color_roles>. Never let a designed band collapse to plain white.
+- CTA slots keep the variant's BUTTON finish: a padded cell/link with background color + text color from <color_roles> (or the variant's vars). NEVER downgrade a styled button into a bare underlined text link.
+- Logo contrast is settled AFTER the band background: dark band → <logos>.dark (fallback <logos>.light), light band → <logos>.light. A light/white logo sitting on a white background is ALWAYS wrong — if the variant's logo band is dark, keep it dark so the logo stays visible.
+- The received <hero_region> still defines the BOUNDARIES of the hero inside the email and any NEIGHBOR content that must be preserved verbatim (coupon bar text, menu links).
+</structure_fidelity>
+
 <hero_image_hard_rule>
-The hero image slot is an \`<img>\` carrying the \`{{HERO_IMAGE}}\` placeholder (or a hardcoded legacy URL). Your ONLY job on the image is to SWAP that placeholder/URL for <hero_image>.url (and \`{{HERO_IMAGE_ALT}}\` for a short description). Do NOT convert the image to a CSS background, do NOT add overlays/scrims/\`position:absolute\`, do NOT set a fixed height (keep \`height:auto\`), do NOT crop, do NOT reorder image row vs text rows.
+The hero image slot is an \`<img>\` carrying the \`{{HERO_IMAGE}}\` placeholder (or a hardcoded legacy URL). Your ONLY job on the image is to SWAP that placeholder/URL for <hero_image>.url (and \`{{HERO_IMAGE_ALT}}\` for a short description). Do NOT convert the image to a CSS background, do NOT add overlays/scrims/\`position:absolute\`, do NOT set a fixed height (keep \`height:auto\`), do NOT crop. The image row's POSITION follows the variant's order (see structure_fidelity); with no variant, do NOT reorder image row vs text rows.
 If <hero_image>.url is EMPTY (generation failed upstream): remove only the image row (or placeholder cell) and keep the text rows. NEVER invent a URL, NEVER reuse another image.
 </hero_image_hard_rule>
 
@@ -192,6 +201,10 @@ export function parseHeroFragment(raw: string): string {
  * Guard estrutural do modo full_doc (puro): o documento devolvido precisa
  * preservar a estrutura do input — só a hero pode ter mudado. Tags de
  * imagem NÃO-hero devem sobreviver (a da hero pode ter sido consumida).
+ * Tolerância de ±3 tabelas: o structure_fidelity permite reestruturar o
+ * INTERIOR da hero pra espelhar a variante (faixa de logo, botões), o que
+ * legitimamente muda algumas tabelas aninhadas — reescrita do documento
+ * inteiro continua barrada pelo shrink + tags de imagem.
  */
 export function heroFullDocGuard(
   inputHtml: string,
@@ -201,7 +214,9 @@ export function heroFullDocGuard(
   const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
   const ti = count(inputHtml)
   const to = count(outputHtml)
-  if (ti !== to) return { ok: false, reason: `table_count ${to}!=${ti}` }
+  if (Math.abs(ti - to) > 3) {
+    return { ok: false, reason: `table_count ${to}!=${ti}` }
+  }
   if (outputHtml.length < inputHtml.length * 0.7) {
     return { ok: false, reason: "shrunk" }
   }

@@ -96,6 +96,21 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("merge_tags_are_literal")
   })
 
+  it("hero: fidelidade estrutural à variante (caso Luxe Lift achatada)", () => {
+    // A variante é a verdade do interior da hero — região achatada pelo
+    // Montador não pode rebaixar o design (botão → link, faixa sumida,
+    // logo branca em fundo branco).
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("structure_fidelity")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("structural truth")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "NEVER downgrade a styled button",
+    )
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("Background bands SURVIVE")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "white background is ALWAYS wrong",
+    )
+  })
+
   it("texto herda merge tags, preheader e proíbe tocar hero/tags de imagem", () => {
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("merge_tags_are_literal")
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("PREHEADER")
