@@ -1,19 +1,35 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import { cleanExpiredCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 
-export const maxDuration = 60
+// Concentra TODA a limpeza periodica do banco. Subiu de 60s porque agora
+// tambem roda as 3 RPCs de expiracao que viviam no sync-reports.
+export const maxDuration = 300
 
 const log = logger.child("ReportsCleanup")
 
 /**
- * POST /api/reports/cleanup
+ * GET|POST /api/reports/cleanup
  *
- * Cron endpoint to clean up expired report jobs and stale custom-range cache.
- * Authenticated via CRON_SECRET (same as other cron endpoints).
+ * Faxina diaria do banco (cron 03:10 UTC): report jobs expirados, cache de
+ * range custom antigo, dashboard_cache expirado e as expiracoes de revenue
+ * summaries / cooldowns / metricas.
+ *
+ * O Vercel Cron invoca por GET — esta rota so exportava POST, entao vinha
+ * respondendo 405 e a limpeza nunca acontecia. POST fica para disparo
+ * manual. Autenticado via CRON_SECRET, como os demais crons.
  */
+export async function GET(request: NextRequest) {
+  return runCleanup(request)
+}
+
 export async function POST(request: NextRequest) {
+  return runCleanup(request)
+}
+
+async function runCleanup(request: NextRequest) {
   const authError = requireCronAuth(request)
   if (authError) return authError
 
@@ -57,13 +73,34 @@ export async function POST(request: NextRequest) {
       totalCacheDeleted = cacheCount ?? 0
     }
 
+    // --- 3. Expiracoes que rodavam no sync-reports (a cada 30min) ---
+    // Movidas para ca: sao DELETEs sem LIMIT que competiam por lock com os
+    // UPSERTs do proprio ciclo de sync. Aqui rodam 1x/dia, fora de pico.
+    // Cada uma e independente — uma falha nao aborta as demais.
+    const expiredCache = await cleanExpiredCache(supabase)
+
+    const { data: revClean, error: revErr } = await supabase.rpc("clean_expired_revenue_summaries")
+    if (revErr) log.error("clean_expired_revenue_summaries failed:", revErr)
+
+    const { data: cooldownClean, error: cdErr } = await supabase.rpc("clean_expired_cooldowns")
+    if (cdErr) log.error("clean_expired_cooldowns failed:", cdErr)
+
+    const { data: metricsClean, error: mtErr } = await supabase.rpc("clean_expired_metrics")
+    if (mtErr) log.error("clean_expired_metrics failed:", mtErr)
+
     log.info(
-      `Cleanup complete: ${totalJobsDeleted} expired jobs, ${totalCacheDeleted} stale cache rows deleted`
+      `Cleanup complete: ${totalJobsDeleted} expired jobs, ${totalCacheDeleted} stale cache rows, ` +
+        `${expiredCache} dashboard_cache, ${revClean ?? 0} revenue summaries, ` +
+        `${cooldownClean ?? 0} cooldowns, ${metricsClean ?? 0} metric rows deleted`
     )
 
     return NextResponse.json({
       deleted_jobs: totalJobsDeleted,
       deleted_cache_rows: totalCacheDeleted,
+      deleted_dashboard_cache: expiredCache,
+      deleted_revenue_summaries: revClean ?? 0,
+      deleted_cooldowns: cooldownClean ?? 0,
+      deleted_metric_rows: metricsClean ?? 0,
       timestamp: new Date().toISOString(),
     })
   } catch (error) {

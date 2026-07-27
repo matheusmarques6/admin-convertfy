@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
-import { cleanExpiredCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 import { getStoreCredentials, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 import {
@@ -610,24 +609,12 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      // Clean expired cache + revenue summary entries
-      const cleanedCount = await cleanExpiredCache(supabase)
-      if (cleanedCount > 0) log.info(`[Cron] Cleaned ${cleanedCount} expired cache entries`)
-
-      const { data: revCleanResult } = await supabase.rpc("clean_expired_revenue_summaries")
-      if (revCleanResult && revCleanResult > 0) {
-        log.info(`[Cron] Cleaned ${revCleanResult} expired revenue summaries`)
-      }
-
-      const { data: cooldownCleanResult } = await supabase.rpc("clean_expired_cooldowns")
-      if (cooldownCleanResult && cooldownCleanResult > 0) {
-        log.info(`[Cron] Cleaned ${cooldownCleanResult} expired cooldown entries`)
-      }
-
-      const { data: metricsCleanResult } = await supabase.rpc("clean_expired_metrics")
-      if (metricsCleanResult && metricsCleanResult > 0) {
-        log.info(`[Cron] Cleaned ${metricsCleanResult} expired flow/campaign metric rows`)
-      }
+      // As limpezas (cleanExpiredCache + as 3 RPCs de expiracao) FICAVAM
+      // aqui e rodavam a cada 30min, no inicio de um ciclo que ja faz
+      // ~700-1500 queries. Sao DELETEs sem LIMIT competindo por lock com
+      // os UPSERTs deste mesmo cron — suspeitos diretos dos 57014.
+      // Migraram para /api/reports/cleanup (cron diario as 03:10 UTC),
+      // que e onde limpeza de fato pertence.
 
       // Get all stores with Klaviyo credentials (either field)
       const { data: stores, error: storesError } = await supabase
@@ -1023,7 +1010,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         status: timedOut ? "partial" : errorCount > 0 ? "partial" : "ok",
         elapsed: `${elapsed}ms`,
-        cleanedCacheEntries: cleanedCount,
         summary: { ok: okCount, error: errorCount, skipped: skippedCount },
         reportQuota: quotaSummary,
         xsBudget: xsBudgetSummary,

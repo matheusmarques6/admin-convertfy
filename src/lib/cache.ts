@@ -163,18 +163,22 @@ export async function cleanExpiredCache(
   supabase: SupabaseClient
 ): Promise<number> {
   try {
-    const { data, error } = await supabase
+    // `count: "exact"` traz o total pelo header Content-Range. Nao usar
+    // .select() aqui: isso vira um RETURNING, e o Postgres materializa +
+    // o PostgREST serializa em JSON TODAS as linhas apagadas so para a
+    // gente contar — em tabela grande o DELETE segura o slot do pool e
+    // vira statement timeout (57014).
+    const { count: deleted, error } = await supabase
       .from("dashboard_cache")
-      .delete()
+      .delete({ count: "exact" })
       .lt("expires_at", new Date().toISOString())
-      .select("store_id")
 
     if (error) {
       log.warn("[Cache CLEANUP FAILED]:", error)
       return 0
     }
 
-    const count = data?.length || 0
+    const count = deleted ?? 0
     if (count > 0) {
       log.debug(`[Cache CLEANUP] Removed ${count} expired entries`)
     }
