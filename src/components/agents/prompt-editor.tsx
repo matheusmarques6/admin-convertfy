@@ -201,7 +201,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
   hero_section: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "locale", desc: "Idioma da loja" },
-    { key: "montador_html", desc: "Documento completo do Montador (contexto)" },
+    { key: "montador_html", desc: "Documento completo do Montador (SÓ no modo full_doc; vazio no fragment)" },
     { key: "hero_region_html", desc: "Região da hero localizada no documento (o que editar)" },
     { key: "hero_variant_html", desc: "HTML da variante de hero escolhida (biblioteca)" },
     { key: "hero_variant_rendered_html", desc: "HTML RENDERIZADO da variante (gold reference)" },

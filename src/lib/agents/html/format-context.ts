@@ -422,7 +422,14 @@ export function buildHeroVars(
     logo_dark: ctx.logoDark,
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
-    montador_html: ctx.referenceHtml,
+    // Fase C (arquitetura por slots): no modo fragment o agente NÃO recebe
+    // o documento inteiro do Montador — o splice é por código e a região da
+    // hero já vai separada em hero_region_html. O doc completo (~40KB) só
+    // entra no fallback full_doc, onde o agente devolve o documento inteiro
+    // com a hero trocada ("byte-for-byte identical to <montador_html>").
+    // Cortá-lo derruba o prompt de ~40KB pra ~8KB — menos tempo de
+    // reasoning do GLM (timeouts de 240s) e menos custo por run.
+    montador_html: params.mode === "full_doc" ? ctx.referenceHtml : "",
     hero_region_html: params.regionHtml,
     hero_variant_html: params.variant?.html ?? "",
     hero_variant_rendered_html: params.variant?.rendered_html ?? "",
