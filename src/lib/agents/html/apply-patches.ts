@@ -29,6 +29,12 @@ export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string }
   | { action: "remove_slot"; tag: string }
   | { action: "replace"; find: string; replace: string }
+  // ── Fase A (arquitetura por slots) ─────────────────────────────────
+  // set_text: troca TODAS as ocorrências de {{TAG}} pelo texto (tags se
+  // repetem legitimamente em branches MSO). remove_row: remove a <tr> do
+  // slot de TEXTO vazio (mesma validação do remove_slot).
+  | { action: "set_text"; tag: string; value: string }
+  | { action: "remove_row"; tag: string }
 
 export class OpsParseError extends Error {
   readonly raw: string
@@ -47,6 +53,8 @@ export interface SkippedOp {
     | "find_ambiguous"
     | "hero_protected"
     | "row_not_removable"
+    // Matriz de posse (Fase A): op numa tag fora da alçada do estágio.
+    | "ownership_rejected"
 }
 
 export interface ApplyOpsResult {
@@ -94,6 +102,16 @@ export function parseOps(raw: string): FormatOp[] {
         throw new OpsParseError("op remove_slot sem tag", raw)
       }
       out.push({ action: "remove_slot", tag: normalizeTag(o.tag) })
+    } else if (o.action === "set_text") {
+      if (typeof o.tag !== "string" || !o.tag || typeof o.value !== "string") {
+        throw new OpsParseError("op set_text sem tag/value", raw)
+      }
+      out.push({ action: "set_text", tag: normalizeTag(o.tag), value: o.value })
+    } else if (o.action === "remove_row") {
+      if (typeof o.tag !== "string" || !o.tag) {
+        throw new OpsParseError("op remove_row sem tag", raw)
+      }
+      out.push({ action: "remove_row", tag: normalizeTag(o.tag) })
     } else if (o.action === "replace") {
       if (
         typeof o.find !== "string" ||
@@ -139,7 +157,15 @@ function findAll(html: string, re: RegExp): Array<{ start: number; end: number }
 export function applyOps(
   html: string,
   ops: FormatOp[],
-  opts: { allowHero: boolean },
+  opts: {
+    allowHero: boolean
+    /**
+     * Matriz de posse (Fase A): quando presente, ops com tag só aplicam se
+     * a tag está na alçada do estágio — fora dela → ownership_rejected.
+     * Ops replace (find/replace, sem tag) não passam por esta checagem.
+     */
+    allowedTags?: ReadonlySet<string>
+  },
 ): ApplyOpsResult {
   let doc = html
   let applied = 0
@@ -157,7 +183,16 @@ export function applyOps(
   }
 
   for (const op of ops) {
-    if (op.action === "img") {
+    // Posse por tag (Fase A): vale para toda op ancorada em tag.
+    if (
+      op.action !== "replace" &&
+      opts.allowedTags &&
+      !opts.allowedTags.has(op.tag)
+    ) {
+      skipped.push({ op, reason: "ownership_rejected" })
+      continue
+    }
+    if (op.action === "img" || op.action === "set_text") {
       const spots = findAll(doc, tokenRegex(op.tag))
       if (spots.length === 0) {
         skipped.push({ op, reason: "tag_not_found" })
@@ -167,12 +202,22 @@ export function applyOps(
         skipped.push({ op, reason: "hero_protected" })
         continue
       }
-      doc = doc.replace(tokenRegex(op.tag), op.url)
-      if (op.alt) {
-        doc = doc.replace(tokenRegex(`${op.tag}_ALT`), op.alt)
+      if (op.action === "img") {
+        const url = op.url
+        doc = doc.replace(tokenRegex(op.tag), () => url)
+        if (op.alt) {
+          const alt = op.alt
+          doc = doc.replace(tokenRegex(`${op.tag}_ALT`), () => alt)
+        }
+      } else {
+        // Texto plano no lugar do token: neutraliza < e > pra copy nunca
+        // injetar markup (entidades existentes ficam como estão). Função
+        // no replace: valor com "$" (R$ 100) nunca vira grupo de captura.
+        const safe = op.value.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        doc = doc.replace(tokenRegex(op.tag), () => safe)
       }
       applied++
-    } else if (op.action === "remove_slot") {
+    } else if (op.action === "remove_slot" || op.action === "remove_row") {
       const spots = findAll(doc, tokenRegex(op.tag))
       if (spots.length === 0) {
         skipped.push({ op, reason: "tag_not_found" })
