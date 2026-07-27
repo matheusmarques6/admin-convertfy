@@ -196,12 +196,27 @@ export function ComponentsWorkspace() {
       // 1–3 min — com lote de 3 o contador ficava mudo por ~5-9 min e o
       // lote podia estourar o maxDuration da rota. Assim o progresso
       // atualiza a cada variante e cada chamada cabe folgada no timeout.
+      let gatewayErrors = 0
       for (let i = 0; i < 100; i++) {
         const res = await fetch("/api/admin/components/tag-batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ limit: 1, exclude_ids: failedIds }),
         })
+        // 502/503/504 = gateway estourou ANTES do servidor terminar — a
+        // variante geralmente É persistida mesmo assim. Não aborta: a
+        // próxima chamada relê a fila real. 3 seguidas → desiste.
+        if ([502, 503, 504].includes(res.status)) {
+          gatewayErrors++
+          if (gatewayErrors >= 3) {
+            throw new Error(
+              `Erro ${res.status} três vezes seguidas — clique em Sincronizar de novo em alguns minutos (o progresso feito fica salvo).`,
+            )
+          }
+          void reloadSilent()
+          continue
+        }
+        gatewayErrors = 0
         const json = (await res.json().catch(() => null)) as {
           error?: string
           processed?: Array<{ id: string; name: string }>
@@ -643,6 +658,8 @@ export function ComponentsWorkspace() {
           <VariantEditor
             draft={draft}
             onChange={setDraft}
+            taggedHtml={selected?.html_tagged ?? null}
+            taggingStatus={selected?.tagging_status ?? null}
             testCard={
               <VariantTestCard
                 // key atrelada à variante: remonta (reseta result/briefing) ao
