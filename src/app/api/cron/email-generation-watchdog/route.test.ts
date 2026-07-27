@@ -57,6 +57,11 @@ const state = {
     id: string
     generation_batch_id?: string | null
   }>,
+  // Front 5: store por email (getStoreIdForEmail via maybeSingle)
+  storeIdByEmail: new Map<string, string>(),
+  // Front 5: telemetria pro classifyStaleBatch (email_generation_runs)
+  latestBatchRunAt: null as string | null,
+  latestCopyRunAt: null as string | null,
   selectCalls: [] as SelectCall[],
   updateCalls: [] as UpdateCall[],
   insertCalls: [] as InsertCall[],
@@ -73,6 +78,9 @@ function resetState() {
   state.updateReturns = new Map()
   state.staleCopyReady = []
   state.staleImageDone = []
+  state.storeIdByEmail = new Map()
+  state.latestBatchRunAt = null
+  state.latestCopyRunAt = null
   state.brandIdentities = []
   state.selectCalls = []
   state.updateCalls = []
@@ -106,7 +114,35 @@ function buildQuery(table: string): any {
     },
     order: () => selectChain,
     limit: () => selectChain,
-    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    maybeSingle: () => {
+      state.selectCalls.push({ table, filters: [...filters] })
+      if (table === "email_flow_emails") {
+        // getStoreIdForEmail: .select("flow:email_flows(store_id)").eq("id",...)
+        const idFilter = filters.find((f) => f.op === "eq" && f.col === "id")
+        const storeId = idFilter
+          ? state.storeIdByEmail.get(String(idFilter.val))
+          : undefined
+        if (storeId) {
+          return Promise.resolve({
+            data: { flow: { store_id: storeId } },
+            error: null,
+          })
+        }
+      }
+      if (table === "email_generation_runs") {
+        // classifyStaleBatch: query de copy tem eq(agent,'copy'); a do batch
+        // tem eq(batch_id,...). Devolve o created_at configurado no state.
+        const isCopy = filters.some(
+          (f) => f.op === "eq" && f.col === "agent" && f.val === "copy",
+        )
+        const ts = isCopy ? state.latestCopyRunAt : state.latestBatchRunAt
+        return Promise.resolve({
+          data: ts ? { created_at: ts } : null,
+          error: null,
+        })
+      }
+      return Promise.resolve({ data: null, error: null })
+    },
     single: () => Promise.resolve({ data: null, error: null }),
     then: (resolve: (v: { data: unknown; error: null }) => void) => {
       state.selectCalls.push({ table, filters: [...filters] })
@@ -114,12 +150,19 @@ function buildQuery(table: string): any {
       if (table === "email_generation_queue_signals") {
         data = state.pendingSignals
       } else if (table === "email_flow_emails") {
-        // SELECT puro em email_flow_emails: tanto front 4 (stale copy_ready)
-        // quanto front 5 (stale image_done) usam. Distingue pelo filtro de status.
-        const statusFilter = filters.find(
+        // SELECT puro em email_flow_emails: front 4 (stale copy_ready) usa
+        // eq(status,'copy_ready'); front 5 (stale image_done) usa
+        // in(status,['image_done','rendering']). Distingue pelos filtros.
+        const statusEq = filters.find(
           (f) => f.op === "eq" && f.col === "status",
         )
-        if (statusFilter?.val === "image_done") {
+        const statusIn = filters.find(
+          (f) => f.op === "in" && f.col === "status",
+        )
+        const inImageDone =
+          Array.isArray(statusIn?.val) &&
+          (statusIn?.val as unknown[]).includes("image_done")
+        if (statusEq?.val === "image_done" || inImageDone) {
           data = state.staleImageDone
         } else {
           data = state.staleCopyReady
@@ -246,6 +289,12 @@ vi.mock("@/lib/services/email-generation-trigger.service", () => ({
 const fallbackSpy = vi.fn<(params: unknown) => Promise<void>>(async () => undefined)
 vi.mock("@/lib/agents/copy-chain-fallback.service", () => ({
   runCopyChainInProcess: (params: unknown) => fallbackSpy(params),
+}))
+
+// Front 5 retoma IN-PROCESS via runPhase2HtmlQa — mockado pra observar.
+const phase2Spy = vi.fn(async () => ({ status: "ready" }))
+vi.mock("@/lib/agents/phase2-runner.service", () => ({
+  runPhase2HtmlQa: (params: unknown) => phase2Spy(params),
 }))
 
 vi.mock("next/server", async () => {
@@ -639,5 +688,100 @@ describe("GET /api/cron/email-generation-watchdog — front 4: stale copy_ready"
         c.data.failure_reason === "stale_copy_ready_exhausted",
     )
     expect(exhaustUpdate).toBeDefined()
+  })
+})
+
+describe("GET /api/cron/email-generation-watchdog — front 5: stale image_done/rendering", () => {
+  const emailId = "eeeeeeee-eeee-4eee-8eee-555555555555"
+  const batchId = "bbbbbbbb-bbbb-4bbb-8bbb-555555555555"
+
+  function seedStaleRow() {
+    state.staleImageDone = [{ id: emailId, generation_batch_id: batchId }]
+    state.storeIdByEmail.set(emailId, "store-f5")
+  }
+
+  it("batch vivo (run recente, sem copy mais nova): retoma via runPhase2HtmlQa", async () => {
+    seedStaleRow()
+    // último run do batch há 2min; copy anterior a ele
+    state.latestBatchRunAt = new Date(Date.now() - 2 * 60_000).toISOString()
+    state.latestCopyRunAt = new Date(Date.now() - 20 * 60_000).toISOString()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    expect(phase2Spy).toHaveBeenCalledTimes(1)
+    expect(phase2Spy).toHaveBeenCalledWith(
+      expect.objectContaining({ emailId, storeId: "store-f5" }),
+    )
+    // Nenhum kill do Front 5 (assinatura: UPDATE failed com filtro in(status))
+    const failedUpdate = state.updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "failed" &&
+        c.filters.some((f) => f.op === "in" && f.col === "status"),
+    )
+    expect(failedUpdate).toBeUndefined()
+  })
+
+  it("batch zumbi (último run > 25min): marca failed:timeout_phase2 e NÃO retoma", async () => {
+    seedStaleRow()
+    // Telemetria diz que o batch parou há 5h (rendering_started_at renovado
+    // pelo claim mentiria) — o incidente Luxe Lift 27/07.
+    state.latestBatchRunAt = new Date(Date.now() - 5 * 60 * 60_000).toISOString()
+    state.latestCopyRunAt = new Date(Date.now() - 6 * 60 * 60_000).toISOString()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    expect(phase2Spy).not.toHaveBeenCalled()
+    // Front 3 também gera UPDATEs failed:timeout_phase2 no mock — o kill do
+    // Front 5 se distingue pelo filtro in(status) + eq(id) (idempotência).
+    const failedUpdate = state.updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "failed" &&
+        c.data.failure_reason === "timeout_phase2" &&
+        c.filters.some((f) => f.op === "in" && f.col === "status"),
+    )
+    expect(failedUpdate).toBeDefined()
+    expect(failedUpdate?.filters).toContainEqual({
+      op: "eq",
+      col: "id",
+      val: emailId,
+    })
+    expect(failedUpdate?.filters).toContainEqual({
+      op: "in",
+      col: "status",
+      val: ["image_done", "rendering"],
+    })
+  })
+
+  it("copy mais nova que o último run do batch: marca failed:superseded e NÃO retoma", async () => {
+    seedStaleRow()
+    state.latestBatchRunAt = new Date(Date.now() - 20 * 60_000).toISOString()
+    state.latestCopyRunAt = new Date(Date.now() - 2 * 60_000).toISOString()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    expect(phase2Spy).not.toHaveBeenCalled()
+    const failedUpdate = state.updateCalls.find(
+      (c) =>
+        c.table === "email_flow_emails" &&
+        c.data.status === "failed" &&
+        c.data.failure_reason === "superseded",
+    )
+    expect(failedUpdate).toBeDefined()
+  })
+
+  it("sem telemetria do batch (maybeSingle vazio): retoma como antes", async () => {
+    seedStaleRow()
+    state.latestBatchRunAt = null
+    state.latestCopyRunAt = null
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    expect(res.status).toBe(200)
+    expect(phase2Spy).toHaveBeenCalledTimes(1)
   })
 })

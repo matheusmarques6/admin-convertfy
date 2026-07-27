@@ -634,6 +634,101 @@ async function redispatchStaleCopyReady(): Promise<{
 // MAX_PHASE2_TIMEOUT_PER_RUN (10) por tick — cada html-qa leva ~100-180s,
 // cabem 1-2 por tick dentro do maxDuration=300s do cron. O resto fica pro
 // proximo tick (5min depois) ou pra Front 3 matar com timeout_phase2.
+/**
+ * Decide se um email em rendering/image_done deve ser MORTO em vez de
+ * retomado, usando a telemetria (email_generation_runs) como fonte de
+ * idade — imune ao rendering_started_at renovado pelo claim.
+ *
+ * - "timeout_phase2": último run do batch parou há mais de
+ *   PHASE2_TIMEOUT_MIN (batch morto; retomar é ressuscitar zumbi).
+ * - "superseded": chegou run de `copy` mais novo que o último run do
+ *   batch (geração nova assumiu o email; a antiga não deve continuar).
+ *   Seguro contra falso-positivo: a copy que ALIMENTOU o batch chega
+ *   antes da fase 2, e emails em rendering/image_done sempre têm runs
+ *   de fase 2 posteriores à própria copy.
+ * - null: batch vivo (ou sem telemetria pra julgar) — retomar.
+ */
+async function classifyStaleBatch(
+  emailId: string,
+  batchId: string | null,
+): Promise<"timeout_phase2" | "superseded" | null> {
+  if (!batchId) return null
+  const admin = createAdminClient()
+  const [batchRes, copyRes] = await Promise.all([
+    admin
+      .from("email_generation_runs")
+      .select("created_at")
+      .eq("email_id", emailId)
+      .eq("batch_id", batchId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from("email_generation_runs")
+      .select("created_at")
+      .eq("email_id", emailId)
+      .eq("agent", "copy")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+  const lastBatchRunAt = batchRes.data?.created_at
+    ? new Date(batchRes.data.created_at as string).getTime()
+    : null
+  if (lastBatchRunAt == null) return null
+
+  const lastCopyAt = copyRes.data?.created_at
+    ? new Date(copyRes.data.created_at as string).getTime()
+    : null
+  if (lastCopyAt != null && lastCopyAt > lastBatchRunAt) return "superseded"
+
+  const ageMs = Date.now() - lastBatchRunAt
+  if (ageMs > PHASE2_TIMEOUT_MIN * 60_000) return "timeout_phase2"
+
+  return null
+}
+
+/** Marca o email como failed com o reason do classifyStaleBatch + notifica. */
+async function markStaleEmailFailed(
+  emailId: string,
+  batchId: string | null,
+  storeId: string | null,
+  reason: "timeout_phase2" | "superseded",
+): Promise<void> {
+  const admin = createAdminClient()
+  const nowIso = new Date().toISOString()
+  const { error } = await admin
+    .from("email_flow_emails")
+    .update({
+      status: "failed",
+      failure_reason: reason,
+      failed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("id", emailId)
+    // Idempotência: só falha se ainda estiver no estado travado — se a
+    // geração nova já moveu o status, não sobrescreve.
+    .in("status", ["image_done", "rendering"])
+  if (error) {
+    log.error("watchdog.stale_image_done.mark_failed_error", {
+      emailId,
+      reason,
+      error: error.message,
+    })
+    return
+  }
+  log.warn("watchdog.stale_image_done.killed", { emailId, batchId, reason })
+  await safeNotifyEmailFailed({
+    storeId: storeId ?? "",
+    emailId,
+    failureReason: reason,
+    batchId,
+  })
+  if (batchId) {
+    await safeNotifyBatchTerminalIfDone(storeId, batchId)
+  }
+}
+
 async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
   const admin = createAdminClient()
   const now = Date.now()
@@ -670,6 +765,20 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
     const storeId = await getStoreIdForEmail(r.id)
     if (!storeId) {
       log.warn("watchdog.stale_image_done.no_store", { emailId: r.id })
+      continue
+    }
+    // Guard anti-zumbi: o claim do html-qa RENOVA rendering_started_at a
+    // cada retomada, então a coluna nunca envelhece até o Front 3 (25min)
+    // enquanto este front continuar reclamando — loop de ressurreição
+    // indefinido (incidente Luxe Lift 27/07: batch das 12:26 revivido às
+    // 17:51). A idade REAL do batch vem da telemetria: se o último run do
+    // batch parou há mais de PHASE2_TIMEOUT_MIN, o batch está morto —
+    // failed:timeout_phase2. Se chegou copy MAIS NOVA que o último run do
+    // batch, uma geração nova assumiu o email — failed:superseded. Só
+    // então vale retomar.
+    const verdict = await classifyStaleBatch(r.id, r.generation_batch_id)
+    if (verdict) {
+      await markStaleEmailFailed(r.id, r.generation_batch_id, storeId, verdict)
       continue
     }
     try {

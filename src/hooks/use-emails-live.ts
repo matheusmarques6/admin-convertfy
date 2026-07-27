@@ -306,6 +306,8 @@ export function getStatusLabel(status: EmailStatus): StatusLabel {
 
 const FAILURE_REASON_LABELS: Record<string, string> = {
   superseded_by_redo: "Substituido por novo batch",
+  superseded: "Substituido por geracao mais nova",
+  timeout_phase2: "Timeout na fase de render (HTML/imagem)",
   copy_timeout: "Timeout na geracao da copy",
   copy_invalid_output: "Copy gerada nao validou no schema",
   rendering_failed: "Falha ao renderizar HTML/imagem",
