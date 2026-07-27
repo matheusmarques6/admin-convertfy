@@ -1738,13 +1738,13 @@ async function runFormattingChain(p: {
       budgetMs,
       inputHtml,
       attempt: async () => {
+        const textVars = buildTextFormatVars(fmtCtx, inputHtml)
         const r = await invokeTextExceptionChain({
           config,
           vars: {
             exception_slots_json: JSON.stringify(slots, null, 2),
             blocks_with_content_json:
-              (buildTextFormatVars(fmtCtx, inputHtml) as Record<string, string>)
-                .blocks_with_content ?? "[]",
+              textVars.blocks_with_content_json ?? "[]",
           },
         })
         const ops = parseOps(r.rawOps)

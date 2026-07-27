@@ -214,7 +214,11 @@ vi.mock("./html/format-context", () => ({
   })),
   resolveHeroVariant: vi.fn(async () => ({ variant: null, source: null })),
   buildHeroVars: vi.fn(() => ({})),
-  buildTextFormatVars: vi.fn(() => ({})),
+  // A copy REAL do email — o agente de exceção precisa recebê-la em
+  // blocks_with_content_json (regressão: chave errada => sempre "[]").
+  buildTextFormatVars: vi.fn(() => ({
+    blocks_with_content_json: '[{"headline":"Copy do n8n"}]',
+  })),
   buildImageFormatVars: vi.fn(() => ({})),
   buildColorFormatVars: vi.fn(() => ({})),
 }))
@@ -432,5 +436,17 @@ describe("cadeia de formatação — runner", () => {
         (o) => o.reason === "ownership_rejected",
       ),
     ).toBe(true)
+  })
+
+  it("A3b: agente de exceção recebe a copy em blocks_with_content_json (não [])", async () => {
+    mockHappyChains()
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(invokeTextExceptionChain).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vars: expect.objectContaining({
+          blocks_with_content_json: '[{"headline":"Copy do n8n"}]',
+        }),
+      }),
+    )
   })
 })
