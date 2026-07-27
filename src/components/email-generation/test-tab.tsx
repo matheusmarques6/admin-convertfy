@@ -380,10 +380,13 @@ export function TestTab() {
     try {
       const res = await fetch(`/api/admin/stores/${selectedStoreId}/emails`)
       if (!res.ok) return null
-      const json = (await res.json()) as {
-        data?: { emails?: Array<{ id: string; generation_batch_id: string | null }> }
+      // successResponse espalha os dados na RAIZ ({success, emails, ...});
+      // o fallback .data cobre wrappers de proxy/versões antigas.
+      const json = (await res.json()) as Record<string, unknown>
+      const root = (json.data ?? json) as {
+        emails?: Array<{ id: string; generation_batch_id: string | null }>
       }
-      const emails = json.data?.emails ?? []
+      const emails = root.emails ?? []
       return (
         emails.find((e) => e.id === selectedEmailId)?.generation_batch_id ?? null
       )
