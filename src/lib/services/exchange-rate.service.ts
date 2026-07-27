@@ -2,8 +2,14 @@
  * Exchange Rate Service
  *
  * Fetches real-time exchange rates from open.er-api.com (free, no key required).
- * Uses in-memory cache (1h TTL) + DB fallback via dashboard_cache.
+ * Uses in-memory cache (1h TTL) + DB fallback via exchange_rate_cache.
  * All rates are relative to BRL (1 USD = X BRL).
+ *
+ * Protecoes contra cache stampede (incidente 2026-07-26, 503 em rajada):
+ * - singleflight: N chamadas concorrentes compartilham UMA busca em voo;
+ * - stale-on-error: falha de INFRA no L2 devolve cotacao velha em vez de
+ *   cair pro L3 — evitar castigar um banco que ja esta fora do ar;
+ * - cooldown: apos falha, servir stale por um periodo sem retentar.
  *
  * API docs: https://www.exchangerate-api.com/docs/free
  */
@@ -25,8 +31,27 @@ interface ExchangeRates {
   fetchedAt: number
 }
 
+// Janela em que, apos uma falha de L2/L3, servimos o cache velho sem
+// retentar. Curto de proposito: cotacao move devagar, mas o banco pode
+// voltar a qualquer momento.
+const FAILURE_COOLDOWN_MS = 60 * 1000 // 1 minute
+
 // In-memory L1 cache
 let memoryCache: ExchangeRates | null = null
+
+// Singleflight: a PROMISE em voo (nao o valor). Enquanto ela existe, toda
+// chamada concorrente aguarda a mesma busca em vez de abrir a sua.
+let inFlight: Promise<ExchangeRates | null> | null = null
+
+// Epoch ate o qual nao tentamos L2/L3 de novo (ver FAILURE_COOLDOWN_MS).
+let cooldownUntil = 0
+
+/** Reseta o estado de modulo. Existe para os testes — nao usar em runtime. */
+export function __resetExchangeRateCacheForTests(): void {
+  memoryCache = null
+  inFlight = null
+  cooldownUntil = 0
+}
 
 /** Resultado detalhado da conversao — `converted=false` sinaliza que o valor
  *  saiu NA MOEDA ORIGINAL (fallback), permitindo ao chamador exibir um badge
@@ -84,6 +109,11 @@ export async function convertToBRL(amount: number, currency: string): Promise<nu
 /**
  * Get exchange rates (1 BRL = X foreign currency).
  * Checks: in-memory cache → DB cache → API fetch.
+ *
+ * So esta funcao decide QUANDO buscar; o COMO fica em refreshRates(). A
+ * separacao existe para o singleflight: a promise em voo precisa envolver
+ * a cadeia L2+L3 inteira, senao duas chamadas concorrentes ainda abririam
+ * dois fetches externos.
  */
 async function getExchangeRates(): Promise<ExchangeRates | null> {
   // L1: In-memory cache
@@ -91,26 +121,64 @@ async function getExchangeRates(): Promise<ExchangeRates | null> {
     return memoryCache
   }
 
+  // Cooldown pos-falha: devolve o que tiver (stale ou null) sem tocar em
+  // L2/L3. Sem isto, um banco fora do ar vira uma tempestade de retries.
+  if (Date.now() < cooldownUntil) {
+    return memoryCache
+  }
+
+  // Singleflight: quem chegar durante a busca aguarda a MESMA promise.
+  if (inFlight) return inFlight
+
+  inFlight = refreshRates().finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+/**
+ * Cadeia L2 (banco) → L3 (API). Chamada apenas via getExchangeRates(), que
+ * garante uma execucao por vez.
+ */
+async function refreshRates(): Promise<ExchangeRates | null> {
   // L2: DB cache
   try {
     const supabase = createAdminClient()
-    const { data: cached } = await supabase
+    const { data: cached, error } = await supabase
       .from("exchange_rate_cache")
       .select("rates")
       .eq("key", GLOBAL_CACHE_KEY)
       .gt("expires_at", new Date().toISOString())
       .maybeSingle()
 
+    // CRITICO: o supabase-js NAO lanca excecao em erro HTTP — devolve
+    // { data: null, error }. Ignorar o `error` (como este codigo fazia)
+    // torna um 503 indistinguivel de "nao ha cache", e manda todo mundo
+    // pro L3 justamente quando o banco esta caindo.
+    if (error) {
+      log.warn("[ExchangeRate] L2 indisponivel, servindo stale", {
+        code: error.code,
+        message: error.message,
+        hasStale: memoryCache !== null,
+      })
+      cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS
+      return memoryCache
+    }
+
     if (cached?.rates) {
       memoryCache = { rates: cached.rates as Record<string, number>, fetchedAt: Date.now() }
       log.info("[ExchangeRate] Loaded from DB cache")
       return memoryCache
     }
-  } catch {
-    // DB cache miss — continue to API
+  } catch (e) {
+    // Falha de rede/transporte antes de chegar ao PostgREST — mesmo
+    // tratamento do erro logico acima.
+    log.warn("[ExchangeRate] L2 falhou (transporte), servindo stale:", e)
+    cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS
+    return memoryCache
   }
 
-  // L3: Fetch from API
+  // Miss legitimo (linha ausente ou expirada) → L3
   return fetchAndCacheRates()
 }
 
@@ -127,6 +195,7 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
 
     if (!response.ok) {
       log.warn(`[ExchangeRate] API returned ${response.status}`)
+      cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS
       return memoryCache // Return stale if available
     }
 
@@ -137,17 +206,19 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
 
     if (data.result !== "success" || !data.rates) {
       log.warn("[ExchangeRate] API returned unexpected format")
+      cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS
       return memoryCache
     }
 
     memoryCache = { rates: data.rates, fetchedAt: Date.now() }
     log.info(`[ExchangeRate] Fetched ${Object.keys(data.rates).length} rates from API`)
 
-    // Save to DB cache (fire-and-forget)
+    // Write-back no L2. Best-effort: o L1 ja foi populado acima, entao
+    // falhar aqui nao invalida a cotacao que vamos devolver.
     try {
       const supabase = createAdminClient()
       const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString()
-      await supabase.from("exchange_rate_cache").upsert(
+      const { error: upsertError } = await supabase.from("exchange_rate_cache").upsert(
         {
           key: GLOBAL_CACHE_KEY,
           rates: data.rates,
@@ -156,6 +227,9 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
         },
         { onConflict: "key" }
       )
+      if (upsertError) {
+        log.warn("[ExchangeRate] Failed to save to DB cache:", upsertError.message)
+      }
     } catch (e) {
       log.warn("[ExchangeRate] Failed to save to DB cache:", e)
     }
@@ -163,6 +237,7 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
     return memoryCache
   } catch (error) {
     log.error("[ExchangeRate] Failed to fetch rates:", error)
+    cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS
     return memoryCache // Return stale if available
   }
 }
