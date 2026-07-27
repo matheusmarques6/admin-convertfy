@@ -121,6 +121,10 @@ export async function tagComponentVariant(
       schema_json: JSON.stringify(schemaForPrompt, null, 2),
       existing_tags: existingTags.length > 0 ? existingTags.join(", ") : "(nenhum)",
       html: variant.html ?? "",
+      // Exemplo PERFEITO renderizado (colado na aba da variante) — permite
+      // a regra MISSING ELEMENT: campo cujo elemento sumiu do html mas
+      // aparece no rendered é INSERIDO na posição que o exemplo mostra.
+      rendered_html: (variant.rendered_html ?? "").trim() || "(vazio)",
     },
   })
 

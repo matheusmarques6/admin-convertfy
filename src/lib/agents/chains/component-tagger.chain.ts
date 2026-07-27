@@ -63,9 +63,14 @@ For each schema field, locate its anchor in the HTML and substitute:
 2. FUZZY: the example appears with minor differences (whitespace, punctuation, casing, entity encoding like &rsquo;) → replace the real occurrence. Report "fuzzy".
 3. EXISTING TAG: the HTML already carries a {{PLACEHOLDER}} that covers this field's role (same slot) → do NOT double-tag; keep the existing tag. Report "existing_tag" with the tag name in note.
 4. INFERENCE: the example is NOT findable (empty src="", phrase edited after) → pick the most plausible anchor from the layout, the field's guidance/image_spec and its position, replace it, and report "inference" with a short note explaining the choice. These are flagged for extra human review.
-5. NOT FOUND: no defensible anchor exists → change NOTHING for this field and report "not_found".
+5. MISSING ELEMENT: the example (or the field's role) is absent from the HTML but VISIBLE in <rendered_reference> — the finished example of this variant. The HTML layout is incomplete: INSERT a minimal new element for the placeholder at the position the rendered reference shows, cloning the markup style of the neighboring rows/cells (same table pattern, font stack, padding). The new element contains ONLY the placeholder. Report "inference" with note "inserted: element present in rendered reference but missing from HTML".
+6. NOT FOUND: the example is absent from the HTML AND the rendered reference gives no position for it → change NOTHING for this field and report "not_found".
 Duplicated examples (e.g. testimonial_1_* and testimonial_2_* sharing the same example text) are assigned in DOCUMENT ORDER: first occurrence → _1 field, second → _2.
 </anchoring_rules>
+
+<rendered_reference_role>
+<rendered_reference> is the variant rendered as a real finished email (may include neighboring sections). Use it ONLY to (a) locate where a field lives visually when the source HTML lost it, and (b) model inserted markup (rule 5). NEVER tag the rendered reference itself, NEVER copy unrelated sections from it into the output.
+</rendered_reference_role>
 
 <nature_rules>
 Each field carries a "nature":
@@ -75,7 +80,7 @@ Each field carries a "nature":
 </nature_rules>
 
 <hard_prohibitions>
-- Do NOT change structure, tags, attributes, inline styles, comments or spacing — ONLY the substitutions described above.
+- Do NOT change structure, tags, attributes, inline styles, comments or spacing — ONLY the substitutions described above and the minimal insertions of rule 5 (MISSING ELEMENT).
 - Do NOT invent placeholders that are not in the schema; do NOT rename existing {{TAGS}}.
 - Do NOT translate, rewrite or "improve" any remaining text.
 </hard_prohibitions>
@@ -107,6 +112,10 @@ export const DEFAULT_TAGGER_USER_TEMPLATE = `<variant>
 <html>
 {{html}}
 </html>
+
+<rendered_reference>
+{{rendered_html}}
+</rendered_reference>
 
 Tag this variant now, following the output contract.`
 
@@ -191,7 +200,10 @@ export function validateTaggedHtml(
   const issues: string[] = []
   const to = countTables(originalHtml)
   const tt = countTables(taggedHtml)
-  if (to !== tt) {
+  // Tabela SUMIU = estrutura perdida (hard fail). Até +2 tabelas são
+  // toleradas: a regra MISSING ELEMENT insere elemento clonando o padrão
+  // dos vizinhos, que pode envolver uma tabela aninhada.
+  if (tt < to || tt > to + 2) {
     return { ok: false, reason: `table_count ${tt}!=${to}`, issues }
   }
   if (taggedHtml.length < originalHtml.length * 0.5) {

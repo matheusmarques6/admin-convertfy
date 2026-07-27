@@ -109,6 +109,23 @@ describe("validateTaggedHtml", () => {
     expect(res.reason).toContain("table_count")
   })
 
+  it("até +2 tabelas toleradas (inserção MISSING ELEMENT); +3 → fail", () => {
+    const plus2 =
+      "<table><tr><td>{{SECTION_HEADLINE}}</td></tr></table>" +
+      "<table><tr><td>{{X}}</td></tr></table><table><tr><td>y</td></tr></table>"
+    expect(
+      validateTaggedHtml(original, plus2, [field({ key: "section_headline" })], [
+        { key: "section_headline", placeholder: "SECTION_HEADLINE", anchored_by: "exact" },
+      ]).ok,
+    ).toBe(true)
+    const plus3 = plus2 + "<table><tr><td>z</td></tr></table>"
+    expect(
+      validateTaggedHtml(original, plus3, [field({ key: "section_headline" })], [
+        { key: "section_headline", placeholder: "SECTION_HEADLINE", anchored_by: "exact" },
+      ]).ok,
+    ).toBe(false)
+  })
+
   it("relatório diz exact mas placeholder não está no HTML → issue", () => {
     const res = validateTaggedHtml(
       original,
@@ -151,5 +168,15 @@ describe("prompt default do taguedor", () => {
     expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain("asset_fixo")
     expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain(TAGGED_HTML_OPEN)
     expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain(TAGGING_REPORT_OPEN)
+  })
+
+  it("MISSING ELEMENT: rendered_reference localiza campo que sumiu do html", () => {
+    // Caso hero_subhead (jul/2026): example presente no rendered_html mas
+    // o elemento não existe no html → inserir em vez de not_found.
+    expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain("MISSING ELEMENT")
+    expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain("rendered_reference_role")
+    expect(DEFAULT_TAGGER_SYSTEM_PROMPT).toContain(
+      "missing from HTML",
+    )
   })
 })
