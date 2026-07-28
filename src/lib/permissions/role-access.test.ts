@@ -46,6 +46,7 @@ const MATRIX: Matrix = {
   "ops.campaigns.list":     { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   "ops.insights":           { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   "ops.list_hygiene":       { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
+  "ops.image_studio":       { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.reports":            { admin: true, dev: true, coo: true,  suporte: false, designer: false, implementacao: false },
   // Geral
   "geral.home":             { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },

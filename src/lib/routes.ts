@@ -153,6 +153,7 @@ export const ROUTES = {
     HEALTH: "/admin/health",
     INSIGHTS: "/admin/insights",
     LIST_HYGIENE: "/admin/list-hygiene",
+    IMAGE_STUDIO: "/admin/imagens",
     TOOLS: "/admin/tools",
     TOOLS_CURRENCY_AUDIT: "/admin/tools/currency-audit",
 

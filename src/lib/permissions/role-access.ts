@@ -38,6 +38,7 @@ export type NavItemId =
   | "ops.campaigns.list"
   | "ops.insights"
   | "ops.list_hygiene"
+  | "ops.image_studio"
   | "ops.reports"
   // Geral
   | "geral.home"
@@ -79,6 +80,7 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.campaigns.list",
   "ops.insights",
   "ops.list_hygiene",
+  "ops.image_studio",
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -117,6 +119,7 @@ const COO_ITEMS = new Set<NavItemId>([
   "ops.campaigns.list",
   "ops.insights",
   "ops.list_hygiene",
+  "ops.image_studio",
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -147,6 +150,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "ops.onboarding",
   "ops.cs.cadences",
   "ops.onboarding.tutorial",
+  "ops.image_studio",
   "geral.home",
   "geral.board",
   "geral.meetings",
@@ -159,6 +163,7 @@ const DESIGNER_IMPLEM_ITEMS = new Set<NavItemId>([
   "ops.dashboard",
   "ops.stores",
   "ops.onboarding",
+  "ops.image_studio",
   "geral.home",
   "geral.board",
 ])

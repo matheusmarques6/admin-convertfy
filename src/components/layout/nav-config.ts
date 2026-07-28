@@ -10,6 +10,7 @@
 
 import {
   Home,
+  ImagePlus,
   Users,
   Store,
   Calendar,
@@ -151,6 +152,7 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     items: [
       { id: "ops.campaigns.central", name: "Central de Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL, icon: Megaphone },
       { id: "ops.campaigns.list", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail },
+      { id: "ops.image_studio", name: "Geração de Imagens", href: ROUTES.ADMIN.IMAGE_STUDIO, icon: ImagePlus },
       { id: "ops.insights", name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
       { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
     ],
