@@ -1318,7 +1318,30 @@ tudo → text_format é PULADO (run `skipped`). Métricas por run:
 slots_total/ops_built/merged/left_for_llm/unanchored_keys/ops_skipped +
 len/sha8. Steps de JSON (image_format/color_format) rodam com
 `reasoning: {enabled:false}` no OpenRouter (`FORMAT_OPS_REASONING=on`
-re-liga). Pendente: A3b (view por slot no agente de exceção) e Fases B-D.
+re-liga).
+
+**Fases B–D — arquitetura por views (migrations 20261043-46, jul/2026)**:
+nenhum agente de formatação recebe mais o documento inteiro (regra: LLM
+devolve intenção — fragmento ou ops — e só código escreve no HTML).
+(F1) toda op/view carrega `block_id` opcional (= `email_blocks.id`, a
+chave do callback do n8n) — rastreabilidade ponta a ponta na telemetria.
+(F2) **Verificador de merge** (`merge_verifier`, Haiku, chain
+`merge-verifier.chain.ts`): roda entre o copy_merge e o agente de
+exceção, audita o merge com views (`buildMergeVerifierInput`) e tria a
+fila (`{block_id, tag, motivo, copy_candidata, acao_sugerida}`); modo em
+`email_generation_settings.merge_verifier_mode` ('on_flag' default /
+'always' / 'off'); erro → fallback mecânico, NUNCA derruba a geração;
+não escreve HTML. (F3) image_format recebe `image_slots_json` ({block_id,
+tag, row_html}) + `logo_candidates_json` — sem `{{html}}`. (F4)
+color_format recebe `color_inventory_json` (extractor
+`html/color-inventory.ts`) e emite op `recolor {from,to}` — troca global
+por VALOR de cor aplicada por código (`applyRecolor`, rgba preserva
+alpha). (F5) QA recebe `block_views_json` (views extraídas ANTES do strip
+dos marcadores; `html/qa-views.ts`) + checks globais em código
+(`runGlobalDocChecks`); `QaIssue.block_id` aditivo; qa.chain ganhou
+prompts DEFAULT in-code. Migrations 20261044-46 zeram os prompts ativos
+de image_format/color_format/qa (corte seco pros defaults — prompt velho
+referenciava `{{html}}`).
 
 ---
 

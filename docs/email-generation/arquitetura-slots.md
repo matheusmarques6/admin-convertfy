@@ -1,15 +1,37 @@
 # Arquitetura por Slots — agentes recebem só o que lhes convém
 
 > Proposta mapeada em jul/2026 (pós-épico Taguedor). Estado: **Fase A
-> IMPLEMENTADA** (migration 20261042): protocolo de patch padronizado
-> (set_text/remove_row + matriz de posse `allowedTags` no applyOps),
-> estágio `copy_merge` (código, run próprio metrificado) entre a Hero e o
-> texto, e SKIP do text_format quando o merge resolve todos os slots.
-> Pendente da Fase A: **A3b** — view por slot no agente de exceção (hoje,
-> com exceções, o LLM ainda roda full-doc sobre o documento mergeado).
-> Item extra: reasoning OFF nos steps de JSON (image_format/color_format)
-> via parâmetro unificado do OpenRouter (`FORMAT_OPS_REASONING=on`
-> re-liga). Fases B–D seguem planejadas.
+> IMPLEMENTADA** (migration 20261042) e **Fases B–D IMPLEMENTADAS**
+> (migrations 20261043–46, "views-arch F1–F5", jul/2026):
+>
+> - **F1 — block_id nos contratos**: toda op e toda view pode carregar o
+>   `email_blocks.id` (a MESMA chave do callback do n8n) — rastreabilidade
+>   n8n → banco → view → op → HTML na telemetria. Aditivo/opcional.
+> - **F2 — Verificador de merge (7b)**: agente LLM barato
+>   (`merge_verifier`, Haiku) audita o resultado do copy_merge com views e
+>   tria a fila do agente de exceção (`{block_id, tag, motivo,
+>   copy_candidata, acao_sugerida}`). Modo via
+>   `email_generation_settings.merge_verifier_mode` ('on_flag' default /
+>   'always' / 'off' = kill-switch). Erro/timeout → fallback mecânico;
+>   nunca derruba a geração. Ele não escreve HTML — output é roteamento.
+> - **F3 — image_format por views**: recebe `image_slots_json`
+>   ({block_id, tag, row_html}) + `logo_candidates_json` no lugar do
+>   documento; ops iguais, applyOps aplica no doc que o agente não viu.
+> - **F4 — color_format por inventário**: recebe `color_inventory_json`
+>   ({valor, ocorrencias, contextos} — cobre hex/short-hex/rgb/rgba/
+>   bgcolor/<style>) e emite ops `recolor {from, to}` — troca GLOBAL por
+>   valor de cor, aplicada por código (`applyRecolor`, alpha do rgba
+>   preservado). Atômico: impossível quebrar estrutura.
+> - **F5 — QA por views**: o LLM recebe `block_views_json` (texto visível,
+>   hrefs, imagens, block_id — extraídas ANTES do strip dos marcadores)
+>   em vez do documento; visão global virou código (`runGlobalDocChecks`:
+>   placeholder sobrando, <img> sem src, contagem de blocos × blueprint).
+>   `QaIssue.block_id` aditivo.
+>
+> A3b (view por slot no agente de exceção) foi implementada junto da Fase
+> A; a fila agora chega TRIADA pelo 7b quando ele roda. Item extra:
+> reasoning OFF nos steps de JSON (image_format/color_format) via
+> parâmetro unificado do OpenRouter (`FORMAT_OPS_REASONING=on` re-liga).
 
 ## Princípio
 
