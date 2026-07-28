@@ -89,6 +89,8 @@ export interface ImageStudioStore {
   store_name: string
   country: string
   language: string | null
+  /** Nicho da loja — dimensão de seleção em massa no estúdio. */
+  niche: string | null
   logo_url: string | null
   primary_color: string | null
 }

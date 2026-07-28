@@ -363,7 +363,7 @@ export function ImageStudioView() {
   }, [current, stores, upsertBatch, load])
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-4rem)] w-full max-w-[1500px] flex-col px-4 py-4">
+    <div className="flex h-[calc(100vh-4rem)] w-full flex-col px-4 py-4 sm:px-6">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -558,6 +558,9 @@ function BatchEditor({
     batch.variations.length > 0 ? batch.variations : [{}],
   )
   const [storeQuery, setStoreQuery] = useState("")
+  const [countryFilter, setCountryFilter] = useState("")
+  const [languageFilter, setLanguageFilter] = useState("")
+  const [nicheFilter, setNicheFilter] = useState("")
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [downloadingAll, setDownloadingAll] = useState(false)
@@ -640,19 +643,70 @@ function BatchEditor({
   }
 
   // ── Seleção de lojas ──
-  const toggleStore = (storeId: string) => {
-    const next = storeIds.includes(storeId)
-      ? storeIds.filter((id) => id !== storeId)
-      : [...storeIds, storeId]
+  const commitStoreIds = (next: string[]) => {
     setStoreIds(next)
     void saveBatch({ store_ids: next })
   }
 
+  const toggleStore = (storeId: string) => {
+    commitStoreIds(
+      storeIds.includes(storeId)
+        ? storeIds.filter((id) => id !== storeId)
+        : [...storeIds, storeId],
+    )
+  }
+
+  /** Opções de um eixo de segmentação, com contagem — alimenta os selects. */
+  const facetOptions = useCallback(
+    (pick: (s: ImageStudioStore) => string | null): Array<[string, number]> => {
+      const counts = new Map<string, number>()
+      for (const s of allStores) {
+        const v = (pick(s) ?? "").trim()
+        if (!v) continue
+        counts.set(v, (counts.get(v) ?? 0) + 1)
+      }
+      return Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    },
+    [allStores],
+  )
+
+  const countryOptions = useMemo(() => facetOptions((s) => s.country), [facetOptions])
+  const languageOptions = useMemo(() => facetOptions((s) => s.language), [facetOptions])
+  const nicheOptions = useMemo(() => facetOptions((s) => s.niche), [facetOptions])
+
+  // Lojas visíveis = busca + os 3 filtros combinados (AND).
   const filteredStores = useMemo(() => {
     const q = storeQuery.trim().toLowerCase()
-    if (!q) return allStores
-    return allStores.filter((s) => s.store_name.toLowerCase().includes(q))
-  }, [allStores, storeQuery])
+    return allStores.filter((s) => {
+      if (q && !s.store_name.toLowerCase().includes(q)) return false
+      if (countryFilter && (s.country ?? "").trim() !== countryFilter) return false
+      if (languageFilter && (s.language ?? "").trim() !== languageFilter) return false
+      if (nicheFilter && (s.niche ?? "").trim() !== nicheFilter) return false
+      return true
+    })
+  }, [allStores, storeQuery, countryFilter, languageFilter, nicheFilter])
+
+  const visibleIds = useMemo(
+    () => filteredStores.map((s) => s.store_id),
+    [filteredStores],
+  )
+  const visibleAllSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => storeIds.includes(id))
+
+  const selectVisible = () => {
+    commitStoreIds(Array.from(new Set([...storeIds, ...visibleIds])))
+  }
+  const unselectVisible = () => {
+    const visible = new Set(visibleIds)
+    commitStoreIds(storeIds.filter((id) => !visible.has(id)))
+  }
+  const hasFilters = !!(storeQuery.trim() || countryFilter || languageFilter || nicheFilter)
+  const clearFilters = () => {
+    setStoreQuery("")
+    setCountryFilter("")
+    setLanguageFilter("")
+    setNicheFilter("")
+  }
 
   // ── Variações ──
   const setVariationCount = (count: number) => {
@@ -728,7 +782,7 @@ function BatchEditor({
       </div>
 
       {/* Form do lote */}
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-[8px] border border-border bg-card p-3 lg:grid-cols-2">
+      <div className="mb-4 grid grid-cols-1 gap-3 rounded-[8px] border border-border bg-card p-3 lg:grid-cols-2 2xl:grid-cols-3">
         {/* Formato */}
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -806,7 +860,7 @@ function BatchEditor({
         </div>
 
         {/* Instrução */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 2xl:col-span-3">
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Instrução
           </label>
@@ -821,7 +875,7 @@ function BatchEditor({
         </div>
 
         {/* Variações por loja */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 2xl:col-span-3">
           <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Variações por loja
           </label>
@@ -872,7 +926,7 @@ function BatchEditor({
         </div>
 
         {/* Flags de adaptação */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 2xl:col-span-3">
           <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Adaptar por loja
           </label>
@@ -899,7 +953,7 @@ function BatchEditor({
         </div>
 
         {/* Contexto textual opt-in */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 2xl:col-span-3">
           <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Contexto textual (opcional)
           </label>
@@ -946,21 +1000,91 @@ function BatchEditor({
           )}
         </div>
 
-        {/* Seleção de lojas */}
-        <div className="lg:col-span-2">
+        {/* Seleção de lojas — busca + filtros (país/idioma/nicho) + ações em massa */}
+        <div className="lg:col-span-2 2xl:col-span-3">
           <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Lojas do lote ({storeIds.length} selecionada{storeIds.length === 1 ? "" : "s"})
+            Lojas do lote
+            <span className="ml-1.5 font-semibold normal-case tracking-normal text-foreground">
+              {storeIds.length} de {allStores.length} selecionada
+              {storeIds.length === 1 ? "" : "s"}
+            </span>
           </label>
-          <div className="mb-2 flex items-center gap-2 rounded-[6px] border border-border bg-background px-2.5 py-1.5">
-            <Search size={13} className="shrink-0 text-muted-foreground" />
-            <input
-              value={storeQuery}
-              onChange={(e) => setStoreQuery(e.target.value)}
-              placeholder="Buscar loja…"
-              className="w-full bg-transparent text-[12.5px] text-foreground outline-none"
+
+          {/* Busca + facetas */}
+          <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex items-center gap-2 rounded-[6px] border border-border bg-background px-2.5 py-1.5">
+              <Search size={13} className="shrink-0 text-muted-foreground" />
+              <input
+                value={storeQuery}
+                onChange={(e) => setStoreQuery(e.target.value)}
+                placeholder="Buscar loja…"
+                className="w-full bg-transparent text-[12.5px] text-foreground outline-none"
+              />
+            </div>
+            <FacetSelect
+              label="País"
+              value={countryFilter}
+              options={countryOptions}
+              onChange={setCountryFilter}
+            />
+            <FacetSelect
+              label="Idioma"
+              value={languageFilter}
+              options={languageOptions}
+              onChange={setLanguageFilter}
+            />
+            <FacetSelect
+              label="Nicho"
+              value={nicheFilter}
+              options={nicheOptions}
+              onChange={setNicheFilter}
             />
           </div>
-          <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+
+          {/* Ações em massa sobre o recorte visível */}
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={selectVisible}
+              disabled={visibleIds.length === 0 || visibleAllSelected}
+              className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2.5 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-40"
+            >
+              <CheckCircle2 size={12} />
+              Selecionar {visibleIds.length}
+              {hasFilters ? " filtrada" : " loja"}
+              {visibleIds.length === 1 ? "" : "s"}
+            </button>
+            <button
+              type="button"
+              onClick={unselectVisible}
+              disabled={!visibleIds.some((id) => storeIds.includes(id))}
+              className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2.5 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-40"
+            >
+              <X size={12} />
+              Remover visíveis
+            </button>
+            {storeIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => commitStoreIds([])}
+                className="rounded-[5px] px-2 py-1 text-[11.5px] font-medium text-muted-foreground hover:bg-muted"
+              >
+                Limpar seleção
+              </button>
+            )}
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-[5px] px-2 py-1 text-[11.5px] font-medium text-muted-foreground hover:bg-muted"
+              >
+                Limpar filtros
+              </button>
+            )}
+          </div>
+
+          {/* Chips das lojas visíveis */}
+          <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto rounded-[6px] border border-border bg-background/50 p-2">
             {filteredStores.map((s) => {
               const on = storeIds.includes(s.store_id)
               return (
@@ -968,7 +1092,9 @@ function BatchEditor({
                   key={s.store_id}
                   type="button"
                   onClick={() => toggleStore(s.store_id)}
-                  title={s.store_name}
+                  title={[s.store_name, s.country, s.language, s.niche]
+                    .filter(Boolean)
+                    .join(" · ")}
                   className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11.5px] font-medium ${
                     on
                       ? "border-foreground bg-foreground text-background"
@@ -987,8 +1113,8 @@ function BatchEditor({
               )
             })}
             {filteredStores.length === 0 && (
-              <span className="text-[12px] text-muted-foreground">
-                Nenhuma loja encontrada.
+              <span className="px-1 py-2 text-[12px] text-muted-foreground">
+                Nenhuma loja com esses filtros.
               </span>
             )}
           </div>
@@ -1054,7 +1180,7 @@ function BatchEditor({
                   {s.country || ""}
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
                 {variations.map((v, vi) => (
                   <ResultCard
                     key={`${s.store_id}-${vi}`}
@@ -1076,6 +1202,37 @@ function BatchEditor({
         </div>
       )}
     </div>
+  )
+}
+
+/** Select de faceta (país/idioma/nicho) com contagem por valor. */
+function FacetSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: Array<[string, number]>
+  onChange: (v: string) => void
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
+      className={`w-full rounded-[6px] border bg-background px-2.5 py-1.5 text-[12.5px] ${
+        value ? "border-foreground font-medium text-foreground" : "border-border text-foreground/70"
+      }`}
+    >
+      <option value="">{label}: todos</option>
+      {options.map(([v, count]) => (
+        <option key={v} value={v}>
+          {label}: {v} ({count})
+        </option>
+      ))}
+    </select>
   )
 }
 

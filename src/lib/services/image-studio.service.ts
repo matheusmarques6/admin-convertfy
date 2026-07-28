@@ -198,7 +198,7 @@ export async function listEligibleStores(orgId: string): Promise<ImageStudioStor
   const admin = createAdminClient()
   const { data } = await admin
     .from("client_stores")
-    .select("id, store_name, country, language")
+    .select("id, store_name, country, language, niche")
     .eq("org_id", orgId)
     .eq("is_active", true)
     .order("store_name")
@@ -209,6 +209,7 @@ export async function listEligibleStores(orgId: string): Promise<ImageStudioStor
     store_name: string | null
     country: string | null
     language: string | null
+    niche: string | null
   }>
   const meta = await loadStoreMeta(
     admin,
@@ -219,6 +220,7 @@ export async function listEligibleStores(orgId: string): Promise<ImageStudioStor
     store_name: s.store_name ?? "Loja",
     country: s.country ?? "",
     language: s.language ?? null,
+    niche: s.niche ?? null,
     logo_url: meta.get(s.id)?.logo_url ?? null,
     primary_color: meta.get(s.id)?.primary_color ?? null,
   }))
