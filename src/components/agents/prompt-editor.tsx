@@ -258,6 +258,12 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "existing_tags", desc: "Placeholders que o HTML já tem (modo sync)" },
     { key: "html", desc: "HTML exemplo-pronto da variante" },
   ],
+  merge_verifier: [
+    { key: "relatorio_merge_json", desc: "Relatório mecânico do copy_merge (slots/merged/left)" },
+    { key: "slots_preenchidos_json", desc: "Slots resolvidos por código (tag + valor aplicado)" },
+    { key: "slots_sobrando_json", desc: "Slots sem copy (tag + row_html + block_id)" },
+    { key: "copy_nao_usada_json", desc: "Copy do n8n que não entrou no documento" },
+  ],
   color_format: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "niche", desc: "Nicho do negócio" },

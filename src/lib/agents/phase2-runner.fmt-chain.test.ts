@@ -190,6 +190,15 @@ vi.mock("./chains/color-format.chain", async (importActual) => {
     invokeColorFormatChain: (...a: unknown[]) => invokeColorFormatChain(...a),
   }
 })
+const invokeMergeVerifierChain = vi.fn()
+vi.mock("./chains/merge-verifier.chain", async (importActual) => {
+  const actual =
+    await importActual<typeof import("./chains/merge-verifier.chain")>()
+  return {
+    ...actual,
+    invokeMergeVerifierChain: (...a: unknown[]) => invokeMergeVerifierChain(...a),
+  }
+})
 
 // ── Contexto da cadeia: reference com marcadores (modo marker real) ───
 const REFERENCE_HTML = [
@@ -272,6 +281,29 @@ function mockHappyChains() {
     ...chainResultBase,
     ops: [],
   })
+  // 7b: triagem padrão — pareia as duas sobras com copy candidata.
+  invokeMergeVerifierChain.mockResolvedValue({
+    ...chainResultBase,
+    result: {
+      aprovado: true,
+      excecoes: [
+        {
+          block_id: null,
+          tag: "LOGO",
+          motivo: "slot_vazio",
+          copy_candidata: { key: "logo", valor: "LogoX" },
+          acao_sugerida: "preencher",
+        },
+        {
+          block_id: null,
+          tag: "BODY_TEXT",
+          motivo: "slot_vazio",
+          copy_candidata: { key: "body", valor: "corpo final da copy" },
+          acao_sugerida: "preencher",
+        },
+      ],
+    },
+  })
 }
 
 function reset(overrides: Row = {}) {
@@ -304,6 +336,7 @@ function reset(overrides: Row = {}) {
   invokeTextExceptionChain.mockReset()
   invokeImageFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
+  invokeMergeVerifierChain.mockReset()
 }
 
 const email = () => h.tables.email_flow_emails[0]
@@ -448,5 +481,49 @@ describe("cadeia de formatação — runner", () => {
         }),
       }),
     )
+  })
+})
+
+describe("7b — Verificador de merge", () => {
+  it("triagem do verificador enriquece a fila do agente de exceção", async () => {
+    mockHappyChains()
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    // Run próprio, com a fila triada na telemetria.
+    const vRuns = runsOf("merge_verifier")
+    expect(vRuns.some((r) => r.status === "success")).toBe(true)
+    // As views do 7c carregam a triagem (motivo + copy candidata pareada).
+    const call = invokeTextExceptionChain.mock.calls[0][0] as {
+      vars: Record<string, string>
+    }
+    expect(call.vars.exception_slots_json).toContain("copy_candidata")
+    expect(call.vars.exception_slots_json).toContain("LogoX")
+    expect(call.vars.exception_slots_json).toContain("slot_vazio")
+  })
+
+  it("verificador falha → fallback mecânico: exceção roda com a fila crua e o email conclui", async () => {
+    mockHappyChains()
+    invokeMergeVerifierChain.mockRejectedValue(new Error("boom do verificador"))
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    expect(runsOf("merge_verifier")[0]?.status).toBe("error")
+    const call = invokeTextExceptionChain.mock.calls[0][0] as {
+      vars: Record<string, string>
+    }
+    // Sem triagem — view mecânica pura (nada de copy_candidata).
+    expect(call.vars.exception_slots_json).not.toContain("copy_candidata")
+    expect(call.vars.exception_slots_json).toContain("LOGO")
+  })
+
+  it("merge_verifier_mode=off → verificador nem roda (comportamento pré-7b)", async () => {
+    mockHappyChains()
+    h.tables.client_stores[0].org_id = "org1"
+    h.tables.email_generation_settings = [
+      { org_id: "org1", merge_verifier_mode: "off" },
+    ]
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    expect(invokeMergeVerifierChain).not.toHaveBeenCalled()
+    expect(runsOf("merge_verifier")).toHaveLength(0)
   })
 })

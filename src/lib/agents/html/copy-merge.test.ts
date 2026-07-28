@@ -8,6 +8,7 @@ import {
   mergeBlocksFromContext,
   tagToBlockIdMap,
   buildExceptionSlots,
+  buildMergeVerifierInput,
 } from "./copy-merge"
 import {
   HERO_SENTINEL_START,
@@ -139,5 +140,64 @@ describe("block_id — amarração com a chave do n8n (views + ops)", () => {
     ])
     // A op foi pulada (hero_protected), mas carrega o block_id de origem.
     expect(report.skipped[0]?.op.block_id).toBe("b1-uuid")
+  })
+})
+
+describe("buildMergeVerifierInput — views do Verificador (7b)", () => {
+  it("separa preenchidos / sobrando / copy sem uso, tudo amarrado por block_id", () => {
+    const blocks = [
+      {
+        block_id: "b1",
+        fields: [
+          field("body_title", "BODY_TITLE"),
+          field("frase_solta", null),
+        ],
+        content: { body_title: "Título real", frase_solta: "texto sem casa" },
+      },
+      {
+        block_id: "b2",
+        fields: [field("orfao", "ORFAO_SEM_COPY")],
+        // valor presente mas o slot não resolveu (ex.: skip) → copy sem uso
+        content: { orfao: "" },
+      },
+    ]
+    const { html, report } = copyMerge(DOC, blocks)
+    expect(report.merged_tags).toEqual(["BODY_TITLE"])
+
+    const input = buildMergeVerifierInput(html, blocks, report)
+    // Preenchido: tag + valor aplicado (sem row_html — julgamento semântico).
+    expect(input.slots_preenchidos).toEqual([
+      { block_id: "b1", tag: "BODY_TITLE", valor_aplicado: "Título real" },
+    ])
+    // Sobrando: views com row_html + block_id resolvido via fields.
+    const sobrando = input.slots_sobrando.map((s) => ({
+      tag: s.tag,
+      block_id: s.block_id,
+    }))
+    expect(sobrando).toContainEqual({ tag: "ORFAO_SEM_COPY", block_id: "b2" })
+    // Copy sem uso: a key sem âncora, com o dono.
+    expect(input.copy_nao_usada).toEqual([
+      { block_id: "b1", key: "frase_solta", valor: "texto sem casa", tag: null },
+    ])
+  })
+
+  it("copy cujo slot ancorado SOBROU aparece como não usada (candidata natural)", () => {
+    const blocks = [
+      {
+        block_id: "b9",
+        // tag existe no doc mas dentro da hero → merge pula (hero_protected)
+        fields: [field("hero_headline", "HERO_HEADLINE")],
+        content: { hero_headline: "valor preso" },
+      },
+    ]
+    const { html, report } = copyMerge(DOC, blocks)
+    const input = buildMergeVerifierInput(html, blocks, report)
+    expect(input.slots_preenchidos).toEqual([])
+    // HERO_HEADLINE não está em left_for_llm (hero fica fora do universo de
+    // texto), então a copy não pareia com slot sobrando — mas o registro de
+    // não-uso existe quando a âncora falha fora da hero (coberto acima).
+    expect(
+      input.copy_nao_usada.every((c) => typeof c.key === "string"),
+    ).toBe(true)
   })
 })

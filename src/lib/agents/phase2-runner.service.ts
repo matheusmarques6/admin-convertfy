@@ -88,9 +88,14 @@ import {
   copyMerge,
   mergeBlocksFromContext,
   buildExceptionSlots,
+  buildMergeVerifierInput,
   tagToBlockIdMap,
   type MergeField,
 } from "./html/copy-merge"
+import {
+  invokeMergeVerifierChain,
+  type MergeVerifierExcecao,
+} from "./chains/merge-verifier.chain"
 import {
   locateHeroRegion,
   spliceHero,
@@ -362,6 +367,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     textConfigRes,
     imageFmtConfigRes,
     colorConfigRes,
+    mergeVerifierConfigRes,
   ] = await Promise.all([
     admin
       .from("store_brand_identity")
@@ -380,7 +386,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     orgId
       ? admin
           .from("email_generation_settings")
-          .select("generate_images, qa_vision_enabled, cost_alert_usd")
+          .select(
+            "generate_images, qa_vision_enabled, cost_alert_usd, merge_verifier_mode",
+          )
           .eq("org_id", orgId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -402,17 +410,26 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     fmtConfig("text_format"),
     fmtConfig("image_format"),
     fmtConfig("color_format"),
+    fmtConfig("merge_verifier"),
   ])
 
   const settingsRow = settingsRes.data as {
     generate_images?: boolean | null
     qa_vision_enabled?: boolean | null
     cost_alert_usd?: number | null
+    merge_verifier_mode?: string | null
   } | null
   const generateImages = settingsRow?.generate_images ?? true
   // NULL = respeita env (decisão fica no qa.chain); true/false = override da UI.
   const qaVisionEnabled = settingsRow?.qa_vision_enabled ?? null
   const costAlertUsd = settingsRow?.cost_alert_usd ?? null
+  // Verificador de merge (7b): default on_flag; valor fora do domínio
+  // (settings antigas sem a coluna) cai no default.
+  const rawVerifierMode = settingsRow?.merge_verifier_mode
+  const mergeVerifierMode: "always" | "on_flag" | "off" =
+    rawVerifierMode === "always" || rawVerifierMode === "off"
+      ? rawVerifierMode
+      : "on_flag"
 
   // Defesa contra o bug recorrente "store_brand_identities" (plural —
   // tabela nao existe). Supabase JS engole 42P01 em maybeSingle() e
@@ -461,6 +478,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       (imageFmtConfigRes.data as EmailAgentConfig | null) ?? null,
     colorFormatConfig:
       (colorConfigRes.data as EmailAgentConfig | null) ?? null,
+    mergeVerifierConfig:
+      (mergeVerifierConfigRes.data as EmailAgentConfig | null) ?? null,
+    mergeVerifierMode,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -1417,6 +1437,19 @@ function toChainConfig(
   }
 }
 
+// Verificador de merge (7b): não é step da cadeia (sem failStep/budget
+// próprios — falha vira fallback mecânico), então tem defaults próprios.
+// Haiku direto na Anthropic: julgamento curto sobre views pequenas.
+function verifierChainConfig(config: EmailAgentConfig | null): FormatChainConfig {
+  return {
+    model: config?.model || "claude-haiku-4-5",
+    temperature: config?.temperature ?? 0.2,
+    max_tokens: config?.max_tokens ?? 2048,
+    system_prompt: config?.system_prompt ?? "",
+    user_template: config?.user_template ?? "",
+  }
+}
+
 /** Hash curto pra auditoria "output do step N = input do step N+1". */
 function sha8(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 8)
@@ -1772,6 +1805,9 @@ async function runFormattingChain(p: {
   // Blocos do merge (com block_id) — amarram as views do agente de exceção
   // à mesma chave do n8n.
   let lastMergeBlocks: import("./html/copy-merge").MergeBlock[] | null = null
+  // Triagem do Verificador (7b) por tag — null = verificador off/falhou/
+  // não rodou → o agente de exceção segue com a fila mecânica pura.
+  let verifierTriage: Map<string, MergeVerifierExcecao> | null = null
   if (stage === "hero") {
     // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
     // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
@@ -1824,6 +1860,129 @@ async function runFormattingChain(p: {
     currentHtml = merge.html
     lastMergeReport = merge.report
 
+    // ── 7b: Verificador de merge (LLM barato; migration 20261043) ────
+    // Audita o resultado do merge com views (nunca o documento) e tria a
+    // fila do agente de exceção. Modo via settings: on_flag (default) só
+    // roda quando o relatório acusa algo; always audita tudo; off = fila
+    // mecânica. FALLBACK OBRIGATÓRIO: erro/timeout aqui NUNCA derruba a
+    // geração — verifierTriage fica null e o fluxo segue como antes.
+    // Doc legado sem slots (slots_total=0) não tem o que triar — pula.
+    const verifierMode = ctx.mergeVerifierMode
+    const reportFlagged =
+      merge.report.left_for_llm.length > 0 ||
+      merge.report.unanchored_keys.length > 0 ||
+      merge.report.skipped.length > 0
+    if (verifierMode !== "off" && merge.report.slots_total > 0) {
+      const shouldRun = verifierMode === "always" || reportFlagged
+      if (!shouldRun) {
+        await logGenerationRun({
+          ...ids,
+          agent: "merge_verifier",
+          status: "skipped",
+          model: "n/a",
+          parsedOutput: { skip_reason: "merge_clean", mode: verifierMode },
+          costCents: 0,
+          durationMs: 0,
+        }).catch(() => {})
+      } else {
+        const vT0 = Date.now()
+        const vConfig = verifierChainConfig(ctx.mergeVerifierConfig)
+        try {
+          const vInput = buildMergeVerifierInput(
+            merge.html,
+            mergeBlocks,
+            merge.report,
+          )
+          const v = await invokeMergeVerifierChain({
+            config: vConfig,
+            vars: {
+              relatorio_merge_json: JSON.stringify(
+                {
+                  slots_total: merge.report.slots_total,
+                  merged: merge.report.merged,
+                  left_for_llm: merge.report.left_for_llm,
+                  unanchored_keys: merge.report.unanchored_keys,
+                },
+                null,
+                2,
+              ),
+              slots_preenchidos_json: JSON.stringify(
+                vInput.slots_preenchidos,
+                null,
+                2,
+              ),
+              slots_sobrando_json: JSON.stringify(
+                vInput.slots_sobrando,
+                null,
+                2,
+              ),
+              copy_nao_usada_json: JSON.stringify(
+                vInput.copy_nao_usada,
+                null,
+                2,
+              ),
+            },
+          })
+          // Só entradas fixáveis pelo 7c (tags que AINDA têm token no doc)
+          // alimentam a fila; flags sobre slots preenchidos são telemetria
+          // (o 7c não tem op pra reescrever valor já aplicado).
+          const leftSet = new Set(merge.report.left_for_llm)
+          const fixable = v.result.excecoes.filter((e) => leftSet.has(e.tag))
+          verifierTriage = new Map(fixable.map((e) => [e.tag, e]))
+          await logGenerationRun({
+            ...ids,
+            agent: "merge_verifier",
+            status: "success",
+            model: vConfig.model,
+            inputVars: {
+              stage: "text",
+              mode: verifierMode,
+              flagged: reportFlagged,
+              slots_preenchidos: vInput.slots_preenchidos.length,
+              slots_sobrando: vInput.slots_sobrando.length,
+              copy_nao_usada: vInput.copy_nao_usada.length,
+            },
+            renderedPrompt: v.renderedPrompt,
+            rawOutput: v.rawOutput.slice(0, 8000),
+            parsedOutput: {
+              aprovado: v.result.aprovado,
+              excecoes: v.result.excecoes,
+              fila_para_excecao: fixable.length,
+              flags_slots_preenchidos: v.result.excecoes.filter(
+                (e) => !leftSet.has(e.tag),
+              ),
+            },
+            tokensInput: v.tokensInput,
+            tokensOutput: v.tokensOutput,
+            costCents: resolveCostCents({
+              model: vConfig.model,
+              tokensInput: v.tokensInput,
+              tokensOutput: v.tokensOutput,
+              costUsd: v.costUsd,
+            }),
+            durationMs: Date.now() - vT0,
+          }).catch(() => {})
+        } catch (err) {
+          verifierTriage = null // fallback: fila mecânica decide
+          const msg = err instanceof Error ? err.message : String(err)
+          log.warn("phase2.fmt.merge_verifier_failed_fallback", {
+            emailId,
+            error: msg,
+          })
+          await logGenerationRun({
+            ...ids,
+            agent: "merge_verifier",
+            status: "error",
+            model: vConfig.model,
+            errorMessage: msg.slice(0, 500),
+            parsedOutput: { fallback: "mechanical_queue" },
+            costCents: 0,
+            durationMs: Date.now() - vT0,
+          }).catch(() => {})
+        }
+      }
+    }
+
     // Skip só quando o doc TINHA slots e todos resolveram — documento
     // legado sem {{TAGS}} (slots_total=0) precisa do full-doc pra colocar
     // a copy (senão ela se perderia).
@@ -1858,11 +2017,24 @@ async function runFormattingChain(p: {
   ) {
     const inputHtml = currentHtml
     const leftTags = lastMergeReport.left_for_llm
+    // View base por slot; quando o Verificador (7b) rodou, cada slot ganha
+    // a triagem dele (motivo + copy candidata pareada + ação sugerida) —
+    // fila triada. Sem verificador (off/falha) segue a view mecânica pura.
     const slots = buildExceptionSlots(
       inputHtml,
       leftTags,
       lastMergeBlocks ? tagToBlockIdMap(lastMergeBlocks) : undefined,
-    )
+    ).map((s) => {
+      const t = verifierTriage?.get(s.tag)
+      return t
+        ? {
+            ...s,
+            motivo: t.motivo,
+            copy_candidata: t.copy_candidata,
+            acao_sugerida: t.acao_sugerida,
+          }
+        : s
+    })
     const config = toChainConfig(ctx.textFormatConfig, "text_format")
 
     const outcome = await executeFormatStep<string>({

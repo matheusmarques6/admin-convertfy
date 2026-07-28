@@ -42,6 +42,8 @@ export interface CopyMergeReport {
   ops_built: number
   /** Aplicadas com sucesso pelo Integrador. */
   merged: number
+  /** Tags efetivamente resolvidas por código (views do verificador). */
+  merged_tags: string[]
   /** Puladas pelo Integrador, com razão (telemetria). */
   skipped: SkippedOp[]
   /** Tags de texto que SOBRARAM fora da hero — a fila do agente de exceção. */
@@ -186,6 +188,73 @@ export function buildExceptionSlots(
   })
 }
 
+// ── Views do Verificador de merge (7b) ────────────────────────────────
+
+/** Slot resolvido por código: o que foi aplicado, onde (sem row_html — o
+ *  token já sumiu do doc; o julgamento é semântico: tag × valor). */
+export interface VerifierFilledSlot {
+  block_id: string | null
+  tag: string
+  valor_aplicado: string
+}
+
+/** Copy que sobrou sem uso: sem âncora, ou com âncora que o merge não
+ *  resolveu (candidata natural do slot correspondente). */
+export interface VerifierUnusedCopy {
+  block_id: string | null
+  key: string
+  valor: string
+  /** Tag ancorada quando existe (slot sobrando correspondente). */
+  tag: string | null
+}
+
+export interface MergeVerifierInput {
+  slots_preenchidos: VerifierFilledSlot[]
+  slots_sobrando: ExceptionSlot[]
+  copy_nao_usada: VerifierUnusedCopy[]
+}
+
+/**
+ * Monta TUDO que o Verificador de merge (7b) enxerga — views derivadas do
+ * relatório + blocos do merge; nunca o documento inteiro. Puro/testável.
+ */
+export function buildMergeVerifierInput(
+  htmlAfterMerge: string,
+  blocks: MergeBlock[],
+  report: CopyMergeReport,
+): MergeVerifierInput {
+  const tagMap = tagToBlockIdMap(blocks)
+  const mergedSet = new Set(report.merged_tags)
+  const leftSet = new Set(report.left_for_llm)
+
+  const filled: VerifierFilledSlot[] = []
+  const unused: VerifierUnusedCopy[] = []
+  for (const b of blocks) {
+    for (const f of b.fields) {
+      if (deriveFieldNature(f) !== "copy") continue
+      const value = copyValue(b.content?.[f.key])
+      if (value == null) continue
+      const tag = f.tag ? f.tag.replace(/[{}\s]/g, "") : null
+      if (tag && mergedSet.has(tag)) {
+        filled.push({ block_id: b.block_id ?? null, tag, valor_aplicado: value })
+      } else if (!tag || leftSet.has(tag)) {
+        // Sem âncora, ou âncora que o merge não resolveu → copy sem uso.
+        unused.push({ block_id: b.block_id ?? null, key: f.key, valor: value, tag })
+      }
+    }
+  }
+
+  return {
+    slots_preenchidos: filled,
+    slots_sobrando: buildExceptionSlots(
+      htmlAfterMerge,
+      report.left_for_llm,
+      tagMap,
+    ),
+    copy_nao_usada: unused,
+  }
+}
+
 /**
  * Monta e aplica o merge. As ops seguem o protocolo padrão do Integrador
  * (envelope {"ops":[...]}, ação set_text) — mesmo vocabulário que o
@@ -231,12 +300,22 @@ export function copyMerge(
     allowedTags: opTags,
   })
 
+  // Tags resolvidas de fato: tinha op montada E não foi pulada pelo
+  // Integrador (op aplicada = todas as ocorrências do token trocadas).
+  const skippedTags = new Set(
+    res.skipped.map((s) => ("tag" in s.op ? s.op.tag : "")).filter(Boolean),
+  )
+  const mergedTags = ops
+    .flatMap((o) => ("tag" in o ? [o.tag] : []))
+    .filter((t) => !skippedTags.has(t))
+
   return {
     html: res.html,
     report: {
       slots_total: before.length,
       ops_built: ops.length,
       merged: res.applied,
+      merged_tags: mergedTags,
       skipped: res.skipped,
       left_for_llm: textTagsOutsideHero(res.html),
       unanchored_keys: Array.from(new Set(unanchored)),
