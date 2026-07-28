@@ -26,11 +26,9 @@ ALTER TABLE image_studio_batches
   CHECK (reference_mode IN ('all', 'per_variation'));
 
 -- Backfill: lotes que já tinham a imagem única passam a ter o array com ela.
-UPDATE image_studio_batches
-SET reference_image_urls = ARRAY[reference_image_url]
-WHERE reference_image_url IS NOT NULL
-  AND reference_image_url <> ''
-  AND cardinality(reference_image_urls) = 0;
+-- Uma linha só de propósito: colado em pedaços no SQL editor, um WHERE
+-- multilinha vira "syntax error at or near AND".
+UPDATE image_studio_batches SET reference_image_urls = ARRAY[reference_image_url] WHERE coalesce(reference_image_url, '') != '' AND cardinality(reference_image_urls) = 0;
 
 COMMENT ON COLUMN image_studio_batches.reference_image_urls IS
   'Imagens-base do lote (0..N). Substitui reference_image_url, mantida deprecada como fallback de leitura.';
