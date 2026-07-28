@@ -6,6 +6,8 @@
  * via `eventID` (o mesmo event_id que o submit retorna).
  */
 
+import type { MetaAdvancedMatching } from "@/types/form-tracking"
+
 interface PixelWindow extends Window {
   fbq?: FbqStub
   _fbq?: FbqStub
@@ -80,6 +82,36 @@ export function fireMetaEvent(
   } else {
     w.fbq(method, eventName, params)
   }
+}
+
+/**
+ * Aplica advanced matching ao pixel ja carregado.
+ *
+ * O jeito documentado do Meta de anexar dados do usuario ao pixel e
+ * re-chamar `fbq('init', pixelId, userData)` — o fbevents.js normaliza e
+ * hasheia (SHA-256) no proprio browser antes de enviar. `init` nao dispara
+ * PageView, entao chamar de novo e barato e seguro.
+ *
+ * ATENCAO: o matching passa a valer para os eventos disparados DEPOIS
+ * desta chamada. Chame imediatamente antes do evento que deve carrega-lo.
+ *
+ * Campos vazios sao descartados (o Meta rejeita string vazia). No-op se o
+ * fbq ainda nao existe ou se nao sobrou nenhum campo.
+ */
+export function setMetaUserData(
+  pixelId: string,
+  userData: MetaAdvancedMatching,
+): void {
+  const w = getWin()
+  if (!w?.fbq || !pixelId || !userData) return
+
+  const clean: Record<string, string> = {}
+  for (const [key, value] of Object.entries(userData)) {
+    if (typeof value === "string" && value.trim() !== "") clean[key] = value
+  }
+  if (Object.keys(clean).length === 0) return
+
+  w.fbq("init", pixelId, clean)
 }
 
 let gtagInitedId: string | null = null

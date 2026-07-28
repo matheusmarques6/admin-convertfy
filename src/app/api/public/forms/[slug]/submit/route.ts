@@ -23,7 +23,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
-import { normalizeTrackingConfig } from "@/types/form-tracking"
+import { normalizeTrackingConfig, type MetaAdvancedMatching } from "@/types/form-tracking"
+import { normalizePhoneDigits } from "@/lib/tracking/hash-pii"
 import {
   enqueueConversionEvents,
   evaluateQualified,
@@ -503,6 +504,11 @@ export async function POST(
       trackingCfg.meta.enabled && !!form.facebook_pixel_id && !!form.meta_capi_token
     let eventId: string | null = null
     let qualified = false
+    // Payload extra devolvido ao browser SO quando o lead qualifica: o
+    // advanced matching e os parametros do evento custom. Fica null no
+    // caso comum — o evento "Lead" do pixel continua sem params.
+    let qualifiedUserData: MetaAdvancedMatching | null = null
+    let qualifiedCustomData: Record<string, unknown> | null = null
     if (metaConfigured && leadId) {
       eventId = randomUUID()
       qualified = evaluateQualified(
@@ -526,6 +532,27 @@ export async function POST(
       if (parsed.utm_campaign) customData.utm_campaign = parsed.utm_campaign
       if (parsed.utm_term) customData.utm_term = parsed.utm_term
       if (parsed.utm_content) customData.utm_content = parsed.utm_content
+
+      // Espelho do matching/params pro pixel de browser. Enviado apenas
+      // no evento qualificado — o "Lead" comum segue anonimo do lado do
+      // browser (a CAPI ja manda o user_data hasheado dos dois).
+      // Valores em texto puro e normalizados; o fbevents hasheia no
+      // browser, chegando ao mesmo SHA-256 que `buildMetaUserData` gera
+      // aqui — os dois lados do mesmo event_id casam.
+      if (qualified) {
+        const am: MetaAdvancedMatching = {}
+        const em = leadData.email?.trim().toLowerCase()
+        const ph = normalizePhoneDigits(leadData.phone)
+        const fn = firstName?.trim().toLowerCase()
+        const ln = lastName?.trim().toLowerCase()
+        if (em) am.em = em
+        if (ph) am.ph = ph
+        if (fn) am.fn = fn
+        if (ln) am.ln = ln
+        if (leadId) am.external_id = leadId
+        if (Object.keys(am).length > 0) qualifiedUserData = am
+        if (Object.keys(customData).length > 0) qualifiedCustomData = customData
+      }
 
       await enqueueConversionEvents({
         orgId: form.org_id,
@@ -572,6 +599,10 @@ export async function POST(
         qualified,
         qualified_event_id: eventId && qualified ? qualifiedEventId(eventId) : null,
         qualified_event_name: qualified ? trackingCfg.qualified_lead.event_name : null,
+        // Advanced matching + params do evento qualificado (null quando
+        // nao qualifica). Ver comentario na montagem, acima.
+        qualified_user_data: qualifiedUserData,
+        qualified_custom_data: qualifiedCustomData,
       },
     })
   } catch (error) {
