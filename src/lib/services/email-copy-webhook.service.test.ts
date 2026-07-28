@@ -488,6 +488,87 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
   })
 })
 
+describe("dispatchEmailCopyWebhook — fallback DEFAULT_BLUEPRINTS no payload", () => {
+  it("sem blueprint no banco (loja e global): payload usa DEFAULT_BLUEPRINTS — blueprint preenchido + purpose por bloco", async () => {
+    // post_purchase só existe em DEFAULT_BLUEPRINTS (sem migration de seed
+    // global) — antes do fix chegava ao n8n com blueprint:null e blocos sem
+    // purpose.
+    resetTables([
+      { id: "e1", flow_id: "flowPP", number: 1, name: "Post Purchase 1", status: "draft" },
+    ])
+    h.tables.email_flows = [
+      { id: "flowPP", store_id: "store1", flow_type: "post_purchase", name: "Post Purchase", position: 1 },
+    ]
+    // Blocos semeados na mesma ordem do default (text, cta, footer), 1-based.
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "text", label: "Texto", content: {} },
+      { id: "b2", email_id: "e1", position: 2, block_type: "cta", label: "CTA", content: {} },
+      { id: "b3", email_id: "e1", position: 3, block_type: "footer", label: "Rodapé", content: {} },
+    ]
+    // Cascata do banco vazia — cenário do bug.
+    loadEffectiveBlueprintsBatch.mockResolvedValue(new Map())
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flowPP"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{
+        emails: Array<{
+          blueprint: { objective: string; messaging: string; subject_hint: string } | null
+          blocks: Array<{ type: string; purpose: string | null }>
+        }>
+      }>
+    }
+    const email = body.flows[0].emails[0]
+    expect(email.blueprint).toEqual({
+      objective: "Agradecer pela compra e reforçar confiança",
+      messaging: "Obrigado pela compra, suporte disponível, conteúdo de uso do produto",
+      subject_hint: "Obrigado pela compra! Confira dicas exclusivas",
+    })
+    expect(email.blocks.map((b) => b.purpose)).toEqual([
+      "Agradecimento e dicas do produto",
+      "Suporte ou FAQ",
+      "Rodapé padrão",
+    ])
+  })
+
+  it("row do banco vence: fallback NÃO sobrescreve blueprint vindo da cascata", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        [
+          "welcome__1",
+          {
+            flow_type: "welcome",
+            email_number: 1,
+            objective: "OBJ-DO-BANCO",
+            messaging: "MSG-DO-BANCO",
+            subject_hint: "HINT-DO-BANCO",
+            blocks: [{ type: "text", label: "Texto", purpose: "P-BANCO" }],
+          },
+        ],
+      ]),
+    )
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blueprint: { objective: string } | null }> }>
+    }
+    expect(body.flows[0].emails[0].blueprint?.objective).toBe("OBJ-DO-BANCO")
+  })
+})
+
 describe("dispatchEmailCopyWebhook — regenerateAll", () => {
   const mixedBlocks = () => [
     { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",

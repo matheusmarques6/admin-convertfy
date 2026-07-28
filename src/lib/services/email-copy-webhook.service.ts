@@ -22,6 +22,7 @@ import {
   loadEffectiveBlueprintsBatch,
   loadTextOnlyBlueprints,
 } from "@/lib/agents/architect/blueprint-loader"
+import { DEFAULT_BLUEPRINTS } from "@/lib/agents/email-blueprint"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
@@ -559,6 +560,35 @@ export async function dispatchEmailCopyWebhook(
       `${bp.flow_type}:${bp.email_number}`,
       Array.isArray(bp.blocks) ? bp.blocks : [],
     )
+  }
+
+  // Fallback in-code (última camada da cascata): combinações SEM row em
+  // store_email_blueprints NEM email_blueprints (ex.: post_purchase, que só
+  // existe no código; ou banco sem as migrations 20260627*) saíam no payload
+  // com blueprint:null e TODOS os blocos sem purpose/copy_spec — o n8n gerava
+  // copy às cegas. Completa as chaves faltantes com DEFAULT_BLUEPRINTS, a
+  // mesma fonte que o seed da estrutura já usa (resolveStoreOrGlobalBlockDefs),
+  // fechando a promessa da cascata banco → in-code também no payload.
+  // Row do banco sempre vence: só preenche onde não há nada.
+  for (const e of emails) {
+    const flow = flowsById.get(e.flow_id)
+    if (!flow) continue
+    const key = `${flow.flow_type}:${e.number}`
+    const def = DEFAULT_BLUEPRINTS[flow.flow_type]?.[e.number]
+    if (!def) continue
+    if (!blueprintByKey.has(key)) {
+      blueprintByKey.set(key, {
+        flow_type: flow.flow_type,
+        email_number: e.number,
+        objective: def.objective,
+        messaging: def.messaging,
+        subject_hint: def.subject_hint,
+      })
+    }
+    const existing = blueprintBlocksByKey.get(key)
+    if (!existing || existing.length === 0) {
+      blueprintBlocksByKey.set(key, def.blocks)
+    }
   }
 
   // "Estrutura geral" por chave — vai no payload dos emails somente-texto.
