@@ -22,6 +22,7 @@ import {
   loadEffectiveBlueprintsBatch,
   loadTextOnlyBlueprints,
 } from "@/lib/agents/architect/blueprint-loader"
+import { DEFAULT_BLUEPRINTS } from "@/lib/agents/email-blueprint"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
@@ -592,6 +593,38 @@ export async function dispatchEmailCopyWebhook(
     )
   }
 
+  // Fallback in-code (última camada da cascata): combinações SEM row em
+  // store_email_blueprints NEM email_blueprints (ex.: post_purchase, que só
+  // existe no código; ou banco sem as migrations 20260627*) saíam no payload
+  // com blueprint:null e TODOS os blocos sem purpose — o n8n gerava copy às
+  // cegas. Completa as chaves faltantes com DEFAULT_BLUEPRINTS, a mesma fonte
+  // que o seed da estrutura já usa (resolveStoreOrGlobalBlockDefs), fechando
+  // a promessa da cascata banco → in-code também no payload.
+  // Mapa SEPARADO de blueprintByKey: no `objective` por email a "Estrutura
+  // geral" (outline, curada no banco) vence o default in-code — a cascata lá
+  // é bp(banco) > outline > default. Row do banco sempre vence tudo.
+  const defaultBlueprintByKey = new Map<string, BlueprintRow>()
+  for (const e of emails) {
+    const flow = flowsById.get(e.flow_id)
+    if (!flow) continue
+    const key = `${flow.flow_type}:${e.number}`
+    const def = DEFAULT_BLUEPRINTS[flow.flow_type]?.[e.number]
+    if (!def) continue
+    if (!blueprintByKey.has(key) && !defaultBlueprintByKey.has(key)) {
+      defaultBlueprintByKey.set(key, {
+        flow_type: flow.flow_type,
+        email_number: e.number,
+        objective: def.objective,
+        messaging: def.messaging,
+        subject_hint: def.subject_hint,
+      })
+    }
+    const existing = blueprintBlocksByKey.get(key)
+    if (!existing || existing.length === 0) {
+      blueprintBlocksByKey.set(key, def.blocks)
+    }
+  }
+
   // "Estrutura geral" por chave — vai no payload dos emails somente-texto.
   const outlineByKey = new Map<string, OutlineRow>()
   for (const o of (outlinesRes.data ?? []) as OutlineRow[]) {
@@ -919,6 +952,9 @@ export async function dispatchEmailCopyWebhook(
       const flowEmails = (emailsByFlow.get(f.id) ?? []).map((e) => {
         const key = `${f.flow_type}:${e.number}`
         const bp = blueprintByKey.get(key)
+        // Default in-code — só usado quando o banco não tem blueprint.
+        const bpDefault = defaultBlueprintByKey.get(key) ?? null
+        const bpEffective = bp ?? bpDefault
         const textOnly = textOnlyByKey.has(key)
         // Payload v2: a "Estrutura geral" (email_outline_templates) vai para
         // TODOS os emails — nos somente-texto continua sendo a fonte da copy;
@@ -935,9 +971,11 @@ export async function dispatchEmailCopyWebhook(
           // (copy atrasada de dispatch antigo sobrescrevendo geração nova).
           // null quando o email nunca teve batch (dispatch manual em draft).
           dispatch_batch_id: e.generation_batch_id ?? null,
-          // Objetivo efetivo deste email (blueprint > estrutura geral) e os
-          // tons canônicos da loja — contexto direto pro gerador de copy.
-          objective: bp?.objective ?? outline?.objective ?? null,
+          // Objetivo efetivo deste email (blueprint do banco > estrutura
+          // geral > default in-code) e os tons canônicos da loja — contexto
+          // direto pro gerador de copy.
+          objective:
+            bp?.objective ?? outline?.objective ?? bpDefault?.objective ?? null,
           tones: storeTones,
           // Chave ADITIVA: variantes escolhidas pelo Curador para este email
           // (contexto de copy por bloco). Vazio quando o Montador não rodou.
@@ -963,11 +1001,11 @@ export async function dispatchEmailCopyWebhook(
                 coupon_code: couponCodeByEmailId.get(e.id) ?? null,
               }
             : null,
-          blueprint: bp
+          blueprint: bpEffective
             ? {
-                objective: bp.objective,
-                messaging: bp.messaging,
-                subject_hint: bp.subject_hint,
+                objective: bpEffective.objective,
+                messaging: bpEffective.messaging,
+                subject_hint: bpEffective.subject_hint,
               }
             : null,
           blocks: (options.regenerateAll
