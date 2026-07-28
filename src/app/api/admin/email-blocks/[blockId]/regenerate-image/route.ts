@@ -33,7 +33,10 @@ import { corsHeaders } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { randomUUID } from "crypto"
 import { resolveBlockPrompt } from "@/lib/agents/image/resolve-block-prompt.service"
-import { generateEmailImage } from "@/lib/agents/chains/image.chain"
+import {
+  generateEmailImage,
+  OPENROUTER_IMAGE_MODEL,
+} from "@/lib/agents/chains/image.chain"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 
 const log = logger.child("RegenerateImageAPI")
@@ -42,7 +45,7 @@ export const dynamic = "force-dynamic"
 
 const RATE_LIMIT_WINDOW_MS = 30_000
 const PROMPT_SNAPSHOT_LIMIT = 2_000
-const IMAGE_MODEL_LABEL = "openai/gpt-5.4-image-2"
+const IMAGE_MODEL_LABEL = OPENROUTER_IMAGE_MODEL
 
 export async function POST(
   request: NextRequest,

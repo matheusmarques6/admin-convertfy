@@ -55,6 +55,9 @@ const PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
   // REAL (usage.cost) — esta tabela é só o fallback por token.
   "gpt-5-4": { input: 2.5, output: 15.0 },
   "gpt-5-4-image-2": { input: 2.5, output: 15.0 },
+  // Nano Banana 2 — modelo de imagem padrão (jul/2026). Fallback por
+  // token; o custo real do OpenRouter (usage.cost) vence quando presente.
+  "gemini-3-1-flash-image": { input: 0.3, output: 30.0 },
   "gpt-5-3-chat": { input: 1.25, output: 10.0 },
   "gpt-5-3": { input: 1.25, output: 10.0 },
   // Kimi K3 (moonshotai/kimi-k3 via OpenRouter, migration 20261047).

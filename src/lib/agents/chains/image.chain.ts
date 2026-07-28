@@ -52,7 +52,17 @@ export function renderImagePrompt(
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? "")
 }
 
-const OPENROUTER_IMAGE_MODEL = "openai/gpt-5.4-image-2"
+/**
+ * Modelo de imagem padrão (OpenRouter). FONTE ÚNICA — telemetria e demais
+ * consumidores importam daqui em vez de repetir a string (o id vivia
+ * duplicado em 8 lugares e saía de sincronia a cada troca).
+ *
+ * Nano Banana 2 (jul/2026) substituiu o openai/gpt-5.4-image-2 em TODA a
+ * geração de imagem. Os agentes `image` e `campaign_image` também têm o
+ * modelo em email_agent_configs (migration 20260730) — a config do banco
+ * vence; esta constante é o fallback e o rótulo default de telemetria.
+ */
+export const OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image"
 
 const OPENROUTER_IMAGE_TIMEOUT_MS = 90_000
 
@@ -245,6 +255,11 @@ async function callOpenRouterImage(
           model,
           messages: buildMessages(prompt, refs, systemPrompt),
           response_format: "b64_json",
+          // Saída de IMAGEM precisa ser declarada no OpenRouter para os
+          // modelos Gemini (sem isto o Nano Banana responde só texto e a
+          // extração cai no fallback). Guardado pelos modelos de imagem —
+          // um modelo de texto rejeitaria o campo.
+          ...(/image/i.test(model) ? { modalities: ["image", "text"] } : {}),
         }),
       },
       OPENROUTER_IMAGE_TIMEOUT_MS,

@@ -105,7 +105,7 @@ export function ImageSpikeClient() {
               className={field}
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="openai/gpt-5.4-image-2 (padrão)"
+              placeholder="google/gemini-3.1-flash-image (padrão)"
             />
           </div>
           <div className="w-28">

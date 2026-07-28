@@ -399,7 +399,7 @@ const CONFIG_ID = "cfg-campaign-image-0001"
 function seedConfig(): void {
   fx.config = {
     id: CONFIG_ID,
-    model: "openai/gpt-5.4-image-2",
+    model: "google/gemini-3.1-flash-image",
     system_prompt: "SYS",
     user_template: GATED_TEMPLATE,
   }
@@ -598,7 +598,7 @@ describe("generateBatch", () => {
 
     await svc.generateBatch(BATCH, ORG)
     const opts = generateEmailImageMock.mock.calls[0][2]
-    expect(opts.model).toBe("openai/gpt-5.4-image-2")
+    expect(opts.model).toBe("google/gemini-3.1-flash-image")
     expect(opts.systemPrompt).toBe("SYS")
     expect(opts.aspect).toBe("4:3") // hero
   })
@@ -1079,7 +1079,7 @@ describe("telemetria (email_generation_runs)", () => {
       expect(arg.agent).toBe("campaign_image")
       expect(arg.batchId).toBe(BATCH)
       expect(arg.status).toBe("running")
-      expect(arg.model).toBe("openai/gpt-5.4-image-2")
+      expect(arg.model).toBe("google/gemini-3.1-flash-image")
       expect(arg.agentConfigId).toBe(CONFIG_ID)
       expect(typeof arg.renderedPrompt).toBe("string")
     }

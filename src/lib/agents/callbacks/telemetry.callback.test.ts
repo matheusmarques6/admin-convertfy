@@ -9,6 +9,11 @@ describe("normalizeModelKey", () => {
   it("remove o prefixo de vendor", () => {
     expect(normalizeModelKey("anthropic/claude-opus-4.8")).toBe("claude-opus-4-8")
     expect(normalizeModelKey("openai/gpt-5.4-image-2")).toBe("gpt-5-4-image-2")
+    // Nano Banana 2 (modelo de imagem padrão): o id normalizado precisa
+    // bater com a chave de PRICING_PER_MTOK, senão o custo cai no default.
+    expect(normalizeModelKey("google/gemini-3.1-flash-image")).toBe(
+      "gemini-3-1-flash-image",
+    )
   })
   it("remove o sufixo de data -YYYYMMDD", () => {
     expect(normalizeModelKey("claude-sonnet-4-5-20250514")).toBe("claude-sonnet-4-5")

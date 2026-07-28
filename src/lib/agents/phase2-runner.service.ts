@@ -40,6 +40,7 @@ import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
   renderImagePrompt,
+  OPENROUTER_IMAGE_MODEL,
 } from "./chains/image.chain"
 import { renderImageTemplate } from "./image/template-renderer"
 import { deriveToneKeys } from "./shared/component-dimensions"
@@ -908,7 +909,7 @@ export async function runPhase2Image(
             batchId,
             agent: "image",
             status: "success",
-            model: "openai/gpt-5.4-image-2",
+            model: OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             tokensInput: imgMeta.tokensInput,
@@ -938,7 +939,7 @@ export async function runPhase2Image(
             batchId,
             agent: "image",
             status: "error",
-            model: "openai/gpt-5.4-image-2",
+            model: OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             errorMessage: msg,
@@ -1222,7 +1223,7 @@ export async function runPhase2Image(
           triggeredBy,
           batchId,
           agent: "image",
-          model: "openai/gpt-5.4-image-2",
+          model: OPENROUTER_IMAGE_MODEL,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
         })
@@ -1276,7 +1277,7 @@ export async function runPhase2Image(
           batchId,
           agent: "image",
           status: "success",
-          model: "openai/gpt-5.4-image-2",
+          model: OPENROUTER_IMAGE_MODEL,
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
@@ -1297,7 +1298,7 @@ export async function runPhase2Image(
           batchId,
           agent: "image",
           status: "error",
-          model: "openai/gpt-5.4-image-2",
+          model: OPENROUTER_IMAGE_MODEL,
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,

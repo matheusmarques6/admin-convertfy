@@ -23,12 +23,13 @@
  */
 
 import { logger } from "@/lib/logger"
+import { OPENROUTER_IMAGE_MODEL } from "@/lib/agents/chains/image.chain"
 
 const log = logger.child("ImageSpike")
 
 const API = "https://openrouter.ai/api/v1/chat/completions"
 const GEN_API = "https://openrouter.ai/api/v1/generation"
-const DEFAULT_MODEL = "openai/gpt-5.4-image-2"
+const DEFAULT_MODEL = OPENROUTER_IMAGE_MODEL
 // Timeout alinhado com maxDuration=300 da rota. Abortar ANTES disso é o pior
 // dos mundos: se o OpenRouter já começou a gerar, abortar paga e joga fora a
 // imagem. Damos folga de 30s pro parse/resposta dentro do limite serverless.

@@ -56,6 +56,11 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "openai/gpt-5.4": { input: 3.75, output: 30.0 },
   "openai/gpt-5.4-image-2": { input: 5.0, output: 40.0 },
   // Google
+  // Nano Banana 2 (google/gemini-3.1-flash-image) — modelo de imagem
+  // padrão desde jul/2026. Preço de referência do tier Flash Image; o
+  // custo REAL do OpenRouter (usage.cost) tem precedência quando vem.
+  "gemini-3-1-flash-image": { input: 0.3, output: 30.0 },
+  "google/gemini-3.1-flash-image": { input: 0.3, output: 30.0 },
   "gemini-3-5-flash": { input: 0.075, output: 0.3 },
   "google/gemini-3.5-flash": { input: 0.075, output: 0.3 },
 }
