@@ -119,12 +119,15 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("NO DUPLICATE PRODUCTS")
   })
 
-  it("imagem herda as slot rules v6 adaptadas a ops", () => {
+  it("imagem herda as slot rules v6 adaptadas a ops (views, sem documento)", () => {
     expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("ONE SLOT PER IMAGE")
     expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("MATCH BY TAG")
     expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("remove_slot")
     expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("width=520&height=650&crop=center")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("cfy:hero")
+    // F3 (arquitetura por views): o agente não vê mais o documento — a
+    // menção a cfy:hero saiu do prompt (a proteção segue no applyOps).
+    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("do NOT see the email document")
+    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).not.toContain("{{html}}")
   })
 
   it("cores herda a conformidade de identidade do Refinador + regras de botão", () => {

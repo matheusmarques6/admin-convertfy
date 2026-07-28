@@ -2168,6 +2168,12 @@ async function runFormattingChain(p: {
       attempt: async () => {
         const r = await invokeImageFormatChain({ config, vars })
         const applied = applyOps(inputHtml, r.ops, { allowHero: false })
+        let slotsSent = 0
+        try {
+          slotsSent = (JSON.parse(vars.image_slots_json) as unknown[]).length
+        } catch {
+          /* view ausente (prompt custom antigo) — segue 0 */
+        }
         return {
           value: applied.html,
           tokensInput: r.tokensInput,
@@ -2176,6 +2182,7 @@ async function runFormattingChain(p: {
           renderedPrompt: r.renderedPrompt,
           rawOutput: r.rawOutput,
           parsed: {
+            slots_sent: slotsSent,
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,

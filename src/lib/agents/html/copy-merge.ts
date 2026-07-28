@@ -89,6 +89,74 @@ export function textTagsOutsideHero(html: string): string[] {
 }
 
 /**
+ * Tags de IMAGEM presentes no doc FORA da hero (a imagem da hero é posse
+ * do agente de hero). O {{TAG_ALT}} companheiro não conta como slot.
+ * Base das views do agente image_format (arquitetura por views).
+ */
+export function imageTagsOutsideHero(html: string): string[] {
+  const hero = extractHeroBySentinels(html)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const m of html.matchAll(TAG_TOKEN)) {
+    const start = m.index ?? 0
+    if (hero && start >= hero.start && start < hero.end) continue
+    const tag = m[1]
+    if (isTextTag(tag) || tag.endsWith("_ALT") || seen.has(tag)) continue
+    seen.add(tag)
+    out.push(tag)
+  }
+  return out
+}
+
+/**
+ * <tr>s (fora da hero) cujo TEXTO visível contém `needle` (ex.: nome da
+ * marca como "logo de texto"). View pro replace de logo do image_format —
+ * o row_html é VERBATIM do documento, então o find/replace do Integrador
+ * segue validando unicidade. Dedupe por região; máx. `limit` rows.
+ */
+export function rowsContainingText(
+  html: string,
+  needle: string,
+  limit = 4,
+): Array<{ row_html: string }> {
+  const clean = needle.trim()
+  if (!clean) return []
+  const hero = extractHeroBySentinels(html)
+  const lower = html.toLowerCase()
+  const needleLower = clean.toLowerCase()
+  const out: Array<{ row_html: string }> = []
+  const taken: Array<{ start: number; end: number }> = []
+
+  let idx = lower.indexOf(needleLower)
+  while (idx !== -1 && out.length < limit) {
+    const inHero = hero && idx >= hero.start && idx < hero.end
+    const inTaken = taken.some((r) => idx >= r.start && idx < r.end)
+    if (!inHero && !inTaken) {
+      let rowStart = -1
+      for (const o of html.matchAll(/<tr\b[^>]*>/gi)) {
+        const s = o.index ?? 0
+        if (s >= idx) break
+        rowStart = s
+      }
+      const closeIdx = html.indexOf("</tr>", idx)
+      if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
+        const end = closeIdx + 5
+        // Ocorrência dentro de atributo (alt="Marca") não é logo de texto —
+        // exige o nome visível como conteúdo de texto (entre > e <).
+        const row = html.slice(rowStart, end)
+        const textOnly = row.replace(/<[^>]*>/g, " ").toLowerCase()
+        if (textOnly.includes(needleLower)) {
+          out.push({ row_html: row })
+          taken.push({ start: rowStart, end })
+        }
+      }
+    }
+    idx = lower.indexOf(needleLower, idx + clean.length)
+  }
+  return out
+}
+
+/**
  * Adaptador: email_blocks × blueprint blocks → MergeBlock[]. Mesma
  * convenção do dispatch/QA: position 1-based → índice position-1, guardada
  * pela igualdade de type (estrutura divergente → bloco fica sem fields e

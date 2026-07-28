@@ -5,6 +5,8 @@ import { describe, it, expect } from "vitest"
 import {
   copyMerge,
   textTagsOutsideHero,
+  imageTagsOutsideHero,
+  rowsContainingText,
   mergeBlocksFromContext,
   tagToBlockIdMap,
   buildExceptionSlots,
@@ -199,5 +201,41 @@ describe("buildMergeVerifierInput — views do Verificador (7b)", () => {
     expect(
       input.copy_nao_usada.every((c) => typeof c.key === "string"),
     ).toBe(true)
+  })
+})
+
+describe("views do image_format (F3 — arquitetura por views)", () => {
+  it("imageTagsOutsideHero lista só tags de imagem fora da hero, sem _ALT", () => {
+    const doc = [
+      `${HERO_SENTINEL_START}<table><tr><td><img src="{{HERO_IMAGE}}"></td></tr></table>${HERO_SENTINEL_END}`,
+      '<table><tr><td><img src="{{PRODUCTS_IMAGE}}" alt="{{PRODUCTS_IMAGE_ALT}}"></td></tr>',
+      '<tr><td><img src="{{REVIEW_1_THUMB}}"></td></tr>',
+      "<tr><td>{{BODY_TITLE}}</td></tr></table>",
+    ].join("\n")
+    expect(imageTagsOutsideHero(doc)).toEqual([
+      "PRODUCTS_IMAGE",
+      "REVIEW_1_THUMB",
+    ])
+  })
+
+  it("rowsContainingText acha a <tr> do logo de texto (fora da hero, texto visível)", () => {
+    const doc = [
+      `${HERO_SENTINEL_START}<table><tr><td>Luxe Lift dentro da hero</td></tr></table>${HERO_SENTINEL_END}`,
+      '<table><tr><td style="font-weight:bold">LUXE LIFT</td></tr>',
+      '<tr><td><img alt="Luxe Lift produto" src="x.png"></td></tr></table>',
+    ].join("\n")
+    const rows = rowsContainingText(doc, "Luxe Lift")
+    // hero fora; ocorrência só em atributo (alt=) fora; texto visível entra
+    expect(rows).toHaveLength(1)
+    expect(rows[0].row_html).toContain("LUXE LIFT")
+  })
+
+  it("rowsContainingText: needle vazio → nada; respeita o limite", () => {
+    expect(rowsContainingText("<tr><td>Marca</td></tr>", "  ")).toEqual([])
+    const many = Array.from(
+      { length: 6 },
+      (_, i) => `<table><tr><td>Marca ${i}</td></tr></table>`,
+    ).join("")
+    expect(rowsContainingText(many, "Marca", 2)).toHaveLength(2)
   })
 })

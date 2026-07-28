@@ -96,10 +96,15 @@ export const TextFormatPromptVarsSchema = z.object({
 })
 export type TextFormatPromptVars = z.infer<typeof TextFormatPromptVarsSchema>
 
+// Arquitetura por views (F3): o agente NÃO recebe mais o documento —
+// só as views dos slots de imagem (row_html fatiado por código) e as
+// linhas candidatas a logo de texto. O applyOps segue aplicando as ops
+// no documento completo que o agente nunca viu.
 export const ImageFormatPromptVarsSchema = z.object({
   brand_name: z.string(),
-  html: z.string(),
+  image_slots_json: z.string(),
   image_map_json: z.string(),
+  logo_candidates_json: z.string(),
   logo_light: z.string(),
   logo_dark: z.string(),
   top_products_json: z.string(),

@@ -245,8 +245,9 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
   ],
   image_format: [
     { key: "brand_name", desc: "Nome da loja/marca" },
-    { key: "html", desc: "Documento de output do agente Formatação de Texto" },
+    { key: "image_slots_json", desc: "Views dos slots de imagem ({block_id, tag, row_html}) — o agente não vê o documento" },
     { key: "image_map_json", desc: "Imagens geradas por slot (sem a hero)" },
+    { key: "logo_candidates_json", desc: "Linhas candidatas a logo de texto (rows verbatim do doc)" },
     { key: "logo_light", desc: "Logo pra fundo claro" },
     { key: "logo_dark", desc: "Logo pra fundo escuro (vazio se não houver)" },
     { key: "top_products_json", desc: "Produtos top (urls de imagem/crop)" },
