@@ -1010,9 +1010,16 @@ function ResultCard({
     }
   }, [zoom])
 
+  // Sem linha de resultado = esta loja NUNCA gerou neste lote. Não é fila:
+  // o default "queued" fazia o card abrir com "Na fila" + spinner "Gerando…"
+  // sem nenhum job rodando — e sem polling para resolver, girava pra sempre
+  // até alguém clicar em Gerar (report jul/2026).
+  const hasResult = !!result
   const status = result?.status ?? "queued"
-  const sm = statusMeta(status)
-  const isPending = status === "queued" || status === "generating"
+  const sm = hasResult
+    ? statusMeta(status)
+    : { dot: "bg-muted-foreground/40", label: "Aguardando geração" }
+  const isPending = hasResult && (status === "queued" || status === "generating")
   const canDownload =
     !!result?.image_url && (status === "ready" || status === "adjustment")
   // Card preso: 'generating'/'queued' há mais que STUCK_MS. Um run que roda até
