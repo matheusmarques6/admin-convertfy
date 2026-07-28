@@ -18,6 +18,10 @@
 import { deriveFieldNature } from "../shared/component-dimensions"
 import { applyOps, type FormatOp, type SkippedOp } from "./apply-patches"
 import { extractHeroBySentinels } from "./hero-locator"
+import {
+  locateSlots,
+  enclosingRow as domEnclosingRow,
+} from "./dom-locator"
 
 /** Campo mínimo do snapshot fields v2 que o merge precisa. */
 export interface MergeField {
@@ -124,32 +128,27 @@ export function rowsContainingText(
   const clean = needle.trim()
   if (!clean) return []
   const hero = extractHeroBySentinels(html)
-  const lower = html.toLowerCase()
   const needleLower = clean.toLowerCase()
   const out: Array<{ row_html: string }> = []
-  const taken: Array<{ start: number; end: number }> = []
+  const taken = new Set<number>()
 
+  // Mesma fonte do resto do pipeline: a linha vem da ÁRVORE. `locateAllSlots`
+  // indexa o documento uma vez; aqui reusamos a resolução de linha por
+  // offset do texto que casa com a marca.
+  const lower = html.toLowerCase()
   let idx = lower.indexOf(needleLower)
   while (idx !== -1 && out.length < limit) {
     const inHero = hero && idx >= hero.start && idx < hero.end
-    const inTaken = taken.some((r) => idx >= r.start && idx < r.end)
-    if (!inHero && !inTaken) {
-      let rowStart = -1
-      for (const o of html.matchAll(/<tr\b[^>]*>/gi)) {
-        const s = o.index ?? 0
-        if (s >= idx) break
-        rowStart = s
-      }
-      const closeIdx = html.indexOf("</tr>", idx)
-      if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
-        const end = closeIdx + 5
+    if (!inHero) {
+      const row = domEnclosingRow(html, idx)
+      if (row && !taken.has(row.start)) {
         // Ocorrência dentro de atributo (alt="Marca") não é logo de texto —
         // exige o nome visível como conteúdo de texto (entre > e <).
-        const row = html.slice(rowStart, end)
-        const textOnly = row.replace(/<[^>]*>/g, " ").toLowerCase()
+        const rowHtml = html.slice(row.start, row.end)
+        const textOnly = rowHtml.replace(/<[^>]*>/g, " ").toLowerCase()
         if (textOnly.includes(needleLower)) {
-          out.push({ row_html: row })
-          taken.push({ start: rowStart, end })
+          out.push({ row_html: rowHtml })
+          taken.add(row.start)
         }
       }
     }
@@ -225,36 +224,33 @@ export interface ExceptionSlot {
  * Monta a view dos slots NÃO resolvidos pelo merge — é TUDO que o agente
  * de exceção enxerga do documento (nunca o doc inteiro). `tagToBlock`
  * (opcional) amarra cada slot ao email_blocks.id dono da tag.
+ *
+ * CONSISTÊNCIA (jul/2026): a região vem do MESMO localizador por árvore
+ * que o Integrador usa para aplicar a op (`dom-locator`). Antes, a view
+ * era fatiada por uma regex e a edição por outra heurística — o agente
+ * julgava uma região e o código mexia em outra, que é a raiz das seções
+ * removidas erradas. Agora, o que o agente vê É o que o código edita.
  */
 export function buildExceptionSlots(
   html: string,
   tags: string[],
   tagToBlock?: ReadonlyMap<string, string>,
 ): ExceptionSlot[] {
+  const located = locateSlots(html, tags)
   return tags.map((tag) => {
-    const block_id = tagToBlock?.get(tag) ?? null
-    const re = new RegExp(`\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`)
-    const m = re.exec(html)
-    if (!m) return { tag, row_html: "", block_id }
-    const tokenStart = m.index
-    // <tr> envolvente (mesma heurística do Integrador, sem validação de
-    // removibilidade — aqui é só VISÃO, não remoção).
-    let rowStart = -1
-    for (const o of html.matchAll(/<tr\b[^>]*>/gi)) {
-      const idx = o.index ?? 0
-      if (idx >= tokenStart) break
-      rowStart = idx
-    }
-    const closeIdx = html.indexOf("</tr>", tokenStart)
-    if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
-      return { tag, row_html: html.slice(rowStart, closeIdx + 5), block_id }
-    }
-    const start = Math.max(0, tokenStart - 200)
-    return {
-      tag,
-      row_html: html.slice(start, tokenStart + m[0].length + 200),
-      block_id,
-    }
+    const key = tag.replace(/[{}\s]/g, "")
+    const block_id = tagToBlock?.get(key) ?? null
+    const loc = located.get(key)
+    if (!loc) return { tag, row_html: "", block_id }
+    // Preferência: linha > célula > vizinhança do token (fallback quando o
+    // slot vive fora de tabela ou dentro de comentário condicional).
+    const range =
+      loc.row ??
+      loc.cell ?? {
+        start: Math.max(0, loc.token.start - 200),
+        end: Math.min(html.length, loc.token.end + 200),
+      }
+    return { tag, row_html: html.slice(range.start, range.end), block_id }
   })
 }
 

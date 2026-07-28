@@ -25,6 +25,10 @@
 
 import { extractHeroBySentinels } from "./hero-locator"
 import { applyRecolor, isColorLiteral } from "./color-inventory"
+import {
+  enclosingRow as locateEnclosingRow,
+  locateSlots,
+} from "./dom-locator"
 
 export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
@@ -254,12 +258,17 @@ export function applyOps(
       }
       applied++
     } else if (op.action === "remove_slot" || op.action === "remove_row") {
-      const spots = findAll(doc, tokenRegex(op.tag))
-      if (spots.length === 0) {
+      // Âncora do slot pelo MESMO localizador que monta a view do agente
+      // (dom-locator): a ocorrência ancorada na árvore vence a que vive em
+      // conditional comment do Outlook. Pegar a primeira ocorrência TEXTUAL
+      // fazia o aplicador mirar no branch MSO enquanto o agente julgava a
+      // linha real — view e edição divergiam.
+      const anchor = locateSlots(doc, [op.tag]).get(normalizeTag(op.tag))
+      if (!anchor) {
         skipped.push({ op, reason: "tag_not_found" })
         continue
       }
-      const spot = spots[0]
+      const spot = anchor.token
       if (intersectsHero(spot.start, spot.end)) {
         skipped.push({ op, reason: "hero_protected" })
         continue
@@ -298,9 +307,16 @@ export function applyOps(
 const IMAGE_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*(?:IMAGE|THUMB)[A-Z0-9_]*\s*\}\}/g
 
 /**
- * <tr> envolvente do token, validada: balanceada (sem <tr> aninhada no
- * meio) e sem OUTRO token de imagem dentro (o {{TAG_ALT}} companheiro do
- * slot removido é permitido). null → não removível.
+ * <tr> envolvente do token — resolvida pela ÁRVORE (parse5 com posição de
+ * origem), não por contagem de tags. A heurística anterior contava
+ * `<tr>`/`</tr>` numa fatia de texto e, em tabela aninhada (a norma nos
+ * componentes da biblioteca), ou desistia (`row_not_removable`) ou pegava
+ * a linha EXTERNA e removia a seção vizinha inteira.
+ *
+ * Continua validando que a linha não carrega OUTRO token de imagem além do
+ * removido (o `{{TAG_ALT}}` companheiro é permitido). null → não removível
+ * (inclusive quando o token vive em conditional comment do Outlook, onde
+ * não existe linha na árvore — recusar é correto, adivinhar não).
  */
 function enclosingRow(
   doc: string,
@@ -308,24 +324,12 @@ function enclosingRow(
   tokenEnd: number,
   tag: string,
 ): { start: number; end: number } | null {
-  const openRe = /<tr\b[^>]*>/gi
-  let rowStart = -1
-  for (const m of doc.matchAll(openRe)) {
-    const idx = m.index ?? 0
-    if (idx >= tokenStart) break
-    rowStart = idx
-  }
-  if (rowStart === -1) return null
-
-  const closeIdx = doc.indexOf("</tr>", tokenEnd)
-  if (closeIdx === -1) return null
-  const rowEnd = closeIdx + "</tr>".length
+  void tokenEnd // a âncora é o início do token; a árvore resolve o resto
+  const row = locateEnclosingRow(doc, tokenStart)
+  if (!row) return null
+  const { start: rowStart, end: rowEnd } = row
 
   const region = doc.slice(rowStart, rowEnd)
-  // Aninhamento: exatamente uma abertura e um fechamento de <tr> na região.
-  const opens = (region.match(/<tr\b/gi) ?? []).length
-  const closes = (region.match(/<\/tr\s*>/gi) ?? []).length
-  if (opens !== 1 || closes !== 1) return null
 
   // A <tr> não pode carregar OUTRO token de imagem além do removido
   // (e seu {{TAG_ALT}} companheiro).
