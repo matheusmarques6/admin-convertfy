@@ -25,10 +25,7 @@
 
 import { extractHeroBySentinels } from "./hero-locator"
 import { applyRecolor, isColorLiteral } from "./color-inventory"
-import {
-  enclosingRow as locateEnclosingRow,
-  locateSlots,
-} from "./dom-locator"
+import { resolveSlotRegion } from "./slot-annotate"
 
 export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
@@ -258,23 +255,31 @@ export function applyOps(
       }
       applied++
     } else if (op.action === "remove_slot" || op.action === "remove_row") {
-      // Âncora do slot pelo MESMO localizador que monta a view do agente
-      // (dom-locator): a ocorrência ancorada na árvore vence a que vive em
-      // conditional comment do Outlook. Pegar a primeira ocorrência TEXTUAL
-      // fazia o aplicador mirar no branch MSO enquanto o agente julgava a
-      // linha real — view e edição divergiam.
-      const anchor = locateSlots(doc, [op.tag]).get(normalizeTag(op.tag))
-      if (!anchor) {
-        skipped.push({ op, reason: "tag_not_found" })
+      // Endereço pela MESMA cascata que monta a view do agente (declarado
+      // > árvore): o que o agente julgou é o que é editado. Antes, o
+      // aplicador pegava a primeira ocorrência TEXTUAL — que pode ser a
+      // duplicata do branch MSO — enquanto o agente via a linha real.
+      const region = resolveSlotRegion(doc, op.tag)
+      if (region.source === "none") {
+        // Sem token e sem endereço declarado: a tag não existe mais no doc.
+        const stillThere = findAll(doc, tokenRegex(op.tag)).length > 0
+        skipped.push({
+          op,
+          reason: stillThere ? "row_not_removable" : "tag_not_found",
+        })
         continue
       }
-      const spot = anchor.token
-      if (intersectsHero(spot.start, spot.end)) {
+      const row = region.row
+      if (!row) {
+        skipped.push({ op, reason: "row_not_removable" })
+        continue
+      }
+      if (intersectsHero(row.start, row.end)) {
         skipped.push({ op, reason: "hero_protected" })
         continue
       }
-      const row = enclosingRow(doc, spot.start, spot.end, op.tag)
-      if (!row || intersectsHero(row.start, row.end)) {
+      // Guard preservado: a linha não pode carregar OUTRO slot de imagem.
+      if (!rowRemovable(doc, row, op.tag)) {
         skipped.push({ op, reason: "row_not_removable" })
         continue
       }
@@ -318,25 +323,15 @@ const IMAGE_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*(?:IMAGE|THUMB)[A-Z0-9_]*\s*\}\}/g
  * (inclusive quando o token vive em conditional comment do Outlook, onde
  * não existe linha na árvore — recusar é correto, adivinhar não).
  */
-function enclosingRow(
+function rowRemovable(
   doc: string,
-  tokenStart: number,
-  tokenEnd: number,
+  row: { start: number; end: number },
   tag: string,
-): { start: number; end: number } | null {
-  void tokenEnd // a âncora é o início do token; a árvore resolve o resto
-  const row = locateEnclosingRow(doc, tokenStart)
-  if (!row) return null
-  const { start: rowStart, end: rowEnd } = row
-
-  const region = doc.slice(rowStart, rowEnd)
-
+): boolean {
+  const region = doc.slice(row.start, row.end)
   // A <tr> não pode carregar OUTRO token de imagem além do removido
   // (e seu {{TAG_ALT}} companheiro).
   const allowed = new Set([tag, `${tag}_ALT`])
   const tokens = region.match(IMAGE_TOKEN) ?? []
-  const foreign = tokens.filter((t) => !allowed.has(t.replace(/[{}\s]/g, "")))
-  if (foreign.length > 0) return null
-
-  return { start: rowStart, end: rowEnd }
+  return tokens.every((t) => allowed.has(t.replace(/[{}\s]/g, "")))
 }

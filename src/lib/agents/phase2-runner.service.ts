@@ -102,6 +102,7 @@ import {
   viewsFromBlocksFallback,
   type QaBlockView,
 } from "./html/qa-views"
+import { annotateSlots, stripSlotAttributes } from "./html/slot-annotate"
 import {
   locateHeroRegion,
   spliceHero,
@@ -1753,6 +1754,23 @@ async function runFormattingChain(p: {
       .eq("id", emailId)
   }
 
+  // ── Anotação de slots (Fase 2 do endereçamento) ────────────────────
+  // Injeta data-cfy-slot/data-cfy-row por CÓDIGO (offset exato) antes de
+  // qualquer agente rodar. Feito aqui — e não no Montador — para valer
+  // também para as references JÁ persistidas, sem regerar nada. Os
+  // atributos são internos: a limpeza final (após o step de imagem) os
+  // remove junto com os marcadores cfy:block.
+  {
+    const ann = annotateSlots(fmtCtx.referenceHtml)
+    if (ann.annotated > 0) {
+      fmtCtx.referenceHtml = ann.html
+      log.info("phase2.fmt.slots_annotated", {
+        emailId,
+        annotated: ann.annotated,
+      })
+    }
+  }
+
   // ── STEP 1 — HERO SECTION ──────────────────────────────────────────
   if (stage === null) {
     const region = locateHeroRegion(fmtCtx.referenceHtml)
@@ -2290,7 +2308,9 @@ async function runFormattingChain(p: {
     currentHtml = enforceLangAttribute(
       stripUnresolvedPlaceholders(
         stripNbspIndentation(
-          stripCfyBlockMarkers(stripSentinels(outcome.value)),
+          stripSlotAttributes(
+            stripCfyBlockMarkers(stripSentinels(outcome.value)),
+          ),
         ),
       ),
       fmtCtx.locale,

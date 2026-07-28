@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest"
 import { buildExceptionSlots } from "./copy-merge"
 import { applyOps } from "./apply-patches"
 import { locateSlots } from "./dom-locator"
+import { annotateSlots } from "./slot-annotate"
 
 /** Estrutura real de um componente da biblioteca: tabela dentro de tabela. */
 const DOC = [
@@ -111,5 +112,36 @@ describe("slot fora de tabela", () => {
     expect(res.applied).toBe(0)
     expect(res.skipped[0].reason).toBe("row_not_removable")
     expect(res.html).toBe(html) // documento intacto
+  })
+})
+
+describe("Fase 2 — endereço declarado sobrevive à copy aplicada", () => {
+  it("remove a linha certa DEPOIS do token virar texto (sem token, sem chute)", () => {
+    const annotated = annotateSlots(DOC).html
+    // Merge aplica a copy: os tokens somem do documento.
+    const filled = annotated
+      .replace("{{REVIEW_1_TEXT}}", "Ótimo produto")
+      .replace("{{REVIEW_2_TEXT}}", "Recomendo")
+    expect(filled).not.toContain("{{REVIEW_")
+
+    // Sem endereço declarado isto seria impossível (nada a buscar).
+    const res = applyOps(filled, [{ action: "remove_row", tag: "REVIEW_1_TEXT" }], {
+      allowHero: true,
+    })
+    expect(res.applied).toBe(1)
+    expect(res.html).not.toContain("Ótimo produto")
+    expect(res.html).toContain("Recomendo") // irmão intacto
+    expect(res.html).toContain('id="section-reviews"') // seção intacta
+  })
+
+  it("a view do agente também usa o endereço declarado (mesma região)", () => {
+    const filled = annotateSlots(DOC).html.replace(
+      "{{REVIEW_1_TEXT}}",
+      "Ótimo produto",
+    )
+    const [slot] = buildExceptionSlots(filled, ["REVIEW_1_TEXT"])
+    expect(slot.row_html).toContain("Ótimo produto")
+    expect(slot.row_html).toContain('id="card-1"')
+    expect(slot.row_html).not.toContain('id="card-2"')
   })
 })

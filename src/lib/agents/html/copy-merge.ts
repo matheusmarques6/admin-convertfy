@@ -22,6 +22,7 @@ import {
   locateSlots,
   enclosingRow as domEnclosingRow,
 } from "./dom-locator"
+import { readAnnotatedSlots } from "./slot-annotate"
 
 /** Campo mínimo do snapshot fields v2 que o merge precisa. */
 export interface MergeField {
@@ -237,19 +238,24 @@ export function buildExceptionSlots(
   tagToBlock?: ReadonlyMap<string, string>,
 ): ExceptionSlot[] {
   const located = locateSlots(html, tags)
+  const annotated = readAnnotatedSlots(html)
   return tags.map((tag) => {
     const key = tag.replace(/[{}\s]/g, "")
     const block_id = tagToBlock?.get(key) ?? null
-    const loc = located.get(key)
-    if (!loc) return { tag, row_html: "", block_id }
-    // Preferência: linha > célula > vizinhança do token (fallback quando o
-    // slot vive fora de tabela ou dentro de comentário condicional).
+    // Cascata canônica: endereço declarado > árvore > vizinhança do token.
+    const declared = annotated.get(key)
     const range =
-      loc.row ??
-      loc.cell ?? {
-        start: Math.max(0, loc.token.start - 200),
-        end: Math.min(html.length, loc.token.end + 200),
-      }
+      declared?.row ??
+      declared?.cell ??
+      located.get(key)?.row ??
+      located.get(key)?.cell ??
+      (located.has(key)
+        ? {
+            start: Math.max(0, located.get(key)!.token.start - 200),
+            end: Math.min(html.length, located.get(key)!.token.end + 200),
+          }
+        : null)
+    if (!range) return { tag, row_html: "", block_id }
     return { tag, row_html: html.slice(range.start, range.end), block_id }
   })
 }
