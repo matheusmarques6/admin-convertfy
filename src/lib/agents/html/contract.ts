@@ -111,12 +111,15 @@ export const ImageFormatPromptVarsSchema = z.object({
 })
 export type ImageFormatPromptVars = z.infer<typeof ImageFormatPromptVarsSchema>
 
+// Arquitetura por views (F4): o agente NÃO recebe o documento — recebe o
+// inventário de cores extraído por código ({valor, ocorrencias, contextos})
+// e emite ops `recolor {from, to}` aplicadas globalmente pelo código.
 export const ColorFormatPromptVarsSchema = z.object({
   brand_name: z.string(),
   niche: z.string(),
   locale: z.string(),
   tones: z.string(),
-  html: z.string(),
+  color_inventory_json: z.string(),
   brand_colors: z.string(),
   font_heading: z.string(),
   font_body: z.string(),

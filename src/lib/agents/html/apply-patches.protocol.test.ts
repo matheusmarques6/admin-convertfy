@@ -64,6 +64,39 @@ describe("parseOps — block_id opcional (rastreabilidade n8n → op)", () => {
   })
 })
 
+describe("recolor — troca global por valor de cor (F4)", () => {
+  it("parseOps valida from/to como literais de cor", () => {
+    expect(
+      parseOps('{"ops":[{"action":"recolor","from":"#6B46C1","to":"#1F1F1F"}]}'),
+    ).toEqual([{ action: "recolor", from: "#6B46C1", to: "#1F1F1F" }])
+    expect(() =>
+      parseOps('{"ops":[{"action":"recolor","from":"#6B46C1","to":"</td>"}]}'),
+    ).toThrow("recolor")
+  })
+
+  it("aplica em TODAS as ocorrências (inclusive dentro da hero) e ignora a matriz de posse", () => {
+    const doc = `<table style="background:#6B46C1"><tr><td style="color:#6b46c1">x</td></tr></table>`
+    const res = applyOps(
+      doc,
+      [{ action: "recolor", from: "#6B46C1", to: "#1F1F1F" }],
+      { allowHero: true, allowedTags: new Set<string>() },
+    )
+    expect(res.applied).toBe(1)
+    expect(res.html).not.toMatch(/#6b46c1/i)
+    expect((res.html.match(/#1F1F1F/g) ?? []).length).toBe(2)
+  })
+
+  it("cor ausente no doc → find_not_found (telemetrizado, doc intocado)", () => {
+    const res = applyOps(
+      "<td>x</td>",
+      [{ action: "recolor", from: "#ABCDEF", to: "#000000" }],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(0)
+    expect(res.skipped[0].reason).toBe("find_not_found")
+  })
+})
+
 describe("applyOps — set_text", () => {
   it("troca TODAS as ocorrências (branches MSO) e neutraliza < >", () => {
     const doc = "<td>{{CTA_LABEL}}</td><!--[if mso]><td>{{CTA_LABEL}}</td><![endif]-->"

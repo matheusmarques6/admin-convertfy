@@ -2,8 +2,13 @@
  * Color Format Chain — agente 4 da cadeia de formatação ("Cores & Botões",
  * substitui o Refinador). Confere a cor geral do email e a cor/formatação
  * dos BOTÕES contra a paleta aprovada da identidade visual + nicho da
- * marca, e emite ops `replace` cirúrgicas (aplicadas por código,
- * allowHero=true — o botão da hero também entra na paleta).
+ * marca.
+ *
+ * Arquitetura por views (F4): o agente NÃO recebe o documento — recebe o
+ * INVENTÁRIO de cores extraído por código ({valor, ocorrencias, contextos})
+ * e emite ops `recolor {from, to}`, aplicadas globalmente por código
+ * (todas as formas textuais da cor; allowHero=true — o botão da hero
+ * também entra na paleta). Atômico: impossível quebrar estrutura.
  *
  * Fail-open no runner: falhou 2x → mantém o HTML anterior e segue pra
  * ready (cores são polimento; o email já está completo).
@@ -27,34 +32,35 @@ const timeoutMs = () => {
 }
 
 export const DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT = `<role>
-You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You receive a COMPLETE email (structure, copy, images all final) plus the store's approved brand palette, fonts and positioning research. Your job: make the email's colors and its BUTTONS conform to the approved visual identity. You DO NOT edit the document — you emit surgical find/replace operations that deterministic code applies.
+You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive its COLOR INVENTORY — every color value in the document, with occurrence count and usage contexts (background / color / border / bgcolor / css-var) — plus the store's approved brand palette, fonts and positioning research. Your job: decide WHICH color VALUES must change to conform to the approved identity. Deterministic code swaps each value globally in the real document.
 </role>
 
 <ops_vocabulary>
 Respond with ONLY this JSON (no fences, no commentary):
-{"ops":[{"action":"replace","find":"<exact unique snippet>","replace":"<its replacement>"}]}
-Each "find" MUST occur exactly once in the document (include enough surrounding characters to make it unique — e.g. the full style attribute, not just the hex). Ambiguous finds are discarded by the applier. Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
+{"ops":[{"action":"recolor","from":"#6B46C1","to":"#1F1F1F"}]}
+- "recolor" swaps EVERY occurrence of the color "from" (all textual forms: #hex, short #hex, rgb/rgba) for the color "to". It is GLOBAL — if the inventory shows the color in conflicting contexts (e.g. both a button background and body text), DO NOT emit the op.
+- "from" must be a "valor" from <color_inventory>; "to" must be a palette color (or a functional derivative: pure white/black for contrast).
+- Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
 </ops_vocabulary>
 
 <identity_conformance>
 The approved palette arrives in <brand_identity_colors> (hex + role) — your job is to GUARD it:
-- Compare the email's effective colors (section backgrounds, button colors, text/heading colors, :root var values) against the palette.
-- A color CLEARLY outside the palette (e.g. a blue button on a black/gold brand) → replace it with the palette hex of the equivalent role (Principal→buttons/highlights, Fundo→backgrounds, Destaque→accents), keeping readable contrast (light text on dark bg and vice versa).
+- Compare the inventory's colors against the palette using the contexts: background contexts → role Fundo; button/highlight colors → role Principal/Destaque; text colors must contrast with their backgrounds.
+- A color CLEARLY outside the palette (e.g. a blue button on a black/gold brand) → recolor it to the palette hex of the equivalent role, keeping readable contrast (light text on dark bg and vice versa).
 - Functional derivatives of the palette (pure white/black, neutral text grays, scrims/shadows) are LEGITIMATE — do not touch them.
-- NEVER introduce a color that is not in the palette. Empty <brand_identity_colors> → do not touch colors at all.
+- NEVER introduce a color that is not in the palette (white/black excepted). Empty <brand_identity_colors> → emit no ops at all.
 - When in doubt whether a color belongs to the identity, DO NOT touch it (fail-open — a small divergence beats a contrast break).
 </identity_conformance>
 
 <button_rules>
 Buttons/CTAs are your special focus:
-- Every button's background must be a palette color (role Principal or Destaque) and its text color must contrast with it (AA: light text on dark button, dark text on light button). Fix violations via replace ops on the button's inline styles/bgcolor.
-- CONSISTENCY: all CTAs in the email share the same visual language — same background/text colors for buttons of the same importance, consistent border-radius (do not introduce a new radius value; reuse the ones already present in the document), consistent padding.
-- The hero button IS in scope — the hero region (between the cfy:hero comments) may be touched by your ops, but ONLY for color/contrast conformance; never change its copy, size or structure.
-- Never restyle text links in body copy or the footer's legal links as buttons.
+- A button background outside the palette must become a palette color (role Principal or Destaque); its text color must contrast with it (AA: light text on dark button, dark text on light button).
+- CONSISTENCY: buttons of the same importance share the same colors — if the inventory shows two different button backgrounds with similar counts, unify to the palette role.
+- The hero button IS in scope — recolor applies to the whole document, hero included; color values only, never copy or structure (recolor cannot change structure by design).
 </button_rules>
 
 <preservation>
-FORBIDDEN: changing any copy/text, product name, price, href, image src, merge tag, font-family, structure (<table>/<tr>/<td>), block order, spacing, or border-radius values. You change COLOR VALUES ONLY (hex/rgb values inside style attributes, bgcolor attributes, and the :root CSS variable VALUES).
+You change COLOR VALUES ONLY. The applier makes anything else impossible: recolor swaps color literals and nothing more. Do not try to change copy, sizes, fonts or layout — there is no op for that.
 </preservation>`
 
 export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
@@ -80,11 +86,11 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{pesquisa_full_text}}
 </pesquisa_diagnostico>
 
-<document>
-{{html}}
-</document>
+<color_inventory>
+{{color_inventory_json}}
+</color_inventory>
 
-Audit the email's colors and buttons against the approved identity and emit the ops JSON now ({"ops":[]} if it already conforms).`
+Audit the inventory against the approved identity and emit the ops JSON now ({"ops":[]} if it already conforms).`
 
 export interface InvokeColorFormatResult {
   ops: FormatOp[]
@@ -125,8 +131,9 @@ export async function invokeColorFormatChain(input: {
   })
 
   // parseOps lança OpsParseError (retryable; 2ª falha → fail-open no runner).
-  // Só ops "replace" fazem sentido aqui — outras actions são descartadas.
-  const ops = parseOps(res.text).filter((op) => op.action === "replace")
+  // Arquitetura por views (F4): só ops "recolor" fazem sentido — o agente
+  // não vê o documento, então "replace" de trecho não tem como ser válido.
+  const ops = parseOps(res.text).filter((op) => op.action === "recolor")
 
   log.info("color_format.invoke.success", {
     model: config.model,

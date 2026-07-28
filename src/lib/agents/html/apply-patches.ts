@@ -24,6 +24,7 @@
  */
 
 import { extractHeroBySentinels } from "./hero-locator"
+import { applyRecolor, isColorLiteral } from "./color-inventory"
 
 export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
@@ -35,6 +36,11 @@ export type FormatOp =
   // slot de TEXTO vazio (mesma validação do remove_slot).
   | { action: "set_text"; tag: string; value: string; block_id?: string }
   | { action: "remove_row"; tag: string; block_id?: string }
+  // ── Arquitetura por views (F4, color_format) ───────────────────────
+  // recolor: troca GLOBAL por VALOR de cor — todas as formas textuais
+  // equivalentes (#AABBCC, #abc, rgb/rgba) viram `to`. Atômico: não tem
+  // como quebrar estrutura HTML. from/to validados como literais de cor.
+  | { action: "recolor"; from: string; to: string; block_id?: string }
 // block_id (opcional em toda op): amarra a op ao email_blocks.id de origem —
 // a MESMA chave do callback do n8n. Não muda a aplicação (que é por tag);
 // existe pra telemetria/auditoria ponta a ponta (n8n → view → op → HTML).
@@ -119,6 +125,16 @@ export function parseOps(raw: string): FormatOp[] {
         throw new OpsParseError("op remove_row sem tag", raw)
       }
       out.push({ action: "remove_row", tag: normalizeTag(o.tag), ...bid })
+    } else if (o.action === "recolor") {
+      if (
+        typeof o.from !== "string" ||
+        typeof o.to !== "string" ||
+        !isColorLiteral(o.from) ||
+        !isColorLiteral(o.to)
+      ) {
+        throw new OpsParseError("op recolor com from/to não-cor", raw)
+      }
+      out.push({ action: "recolor", from: o.from, to: o.to, ...bid })
     } else if (o.action === "replace") {
       if (
         typeof o.find !== "string" ||
@@ -190,16 +206,29 @@ export function applyOps(
   }
 
   for (const op of ops) {
-    // Posse por tag (Fase A): vale para toda op ancorada em tag.
+    // Posse por tag (Fase A): vale para toda op ancorada em tag
+    // (replace e recolor não têm tag — ficam fora da matriz).
     if (
       op.action !== "replace" &&
+      op.action !== "recolor" &&
       opts.allowedTags &&
       !opts.allowedTags.has(op.tag)
     ) {
       skipped.push({ op, reason: "ownership_rejected" })
       continue
     }
-    if (op.action === "img" || op.action === "set_text") {
+    if (op.action === "recolor") {
+      // Global e atômico por natureza; a matriz de posse por tag não se
+      // aplica (op sem tag) e a hero entra de propósito (allowHero do
+      // color_format é true; recolor nunca muda estrutura).
+      const r = applyRecolor(doc, op.from, op.to)
+      if (r.replaced === 0) {
+        skipped.push({ op, reason: "find_not_found" })
+        continue
+      }
+      doc = r.html
+      applied++
+    } else if (op.action === "img" || op.action === "set_text") {
       const spots = findAll(doc, tokenRegex(op.tag))
       if (spots.length === 0) {
         skipped.push({ op, reason: "tag_not_found" })

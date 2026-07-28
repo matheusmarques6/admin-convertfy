@@ -270,7 +270,7 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "niche", desc: "Nicho do negócio" },
     { key: "locale", desc: "Idioma da loja" },
     { key: "tones", desc: "Tons derivados do tom de voz" },
-    { key: "html", desc: "Documento de output do agente Formatação de Imagem" },
+    { key: "color_inventory_json", desc: "Inventário de cores do doc ({valor, ocorrencias, contextos}) — o agente não vê o documento" },
     { key: "brand_colors", desc: "Paleta aprovada com papéis (Principal/Fundo/Destaque)" },
     { key: "font_heading", desc: "Fonte de heading da identidade" },
     { key: "font_body", desc: "Fonte de corpo da identidade" },

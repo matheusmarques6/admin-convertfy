@@ -54,6 +54,7 @@ import {
   tagToBlockIdMap,
   type MergeField,
 } from "./copy-merge"
+import { extractColorInventory } from "./color-inventory"
 import type { HeroChainMode } from "../chains/hero.chain"
 
 const log = logger.child("FormatContext")
@@ -548,12 +549,17 @@ export function buildColorFormatVars(
     pesquisaFullText: string
   },
 ): Record<string, string> {
+  // Arquitetura por views (F4): o maior prompt da cadeia (doc inteiro)
+  // vira uma lista de ~10-30 cores com contextos — o agente decide QUAIS
+  // valores trocar por quais papéis da paleta; o código aplica o recolor
+  // global no documento que o agente nunca viu.
+  const inventory = extractColorInventory(html)
   const vars = {
     brand_name: ctx.brandName,
     niche: extras.niche,
     locale: ctx.locale,
     tones: extras.tones,
-    html,
+    color_inventory_json: JSON.stringify(inventory, null, 2),
     brand_colors: serializeBrandColors(extras.brand),
     font_heading: ctx.fontHeading,
     font_body: ctx.fontBody,

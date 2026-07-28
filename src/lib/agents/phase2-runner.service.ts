@@ -2186,7 +2186,12 @@ async function runFormattingChain(p: {
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
-              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
+              target:
+                s.op.action === "replace"
+                  ? s.op.find.slice(0, 60)
+                  : s.op.action === "recolor"
+                    ? s.op.from
+                    : s.op.tag,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
@@ -2272,7 +2277,12 @@ async function runFormattingChain(p: {
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
-              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
+              target:
+                s.op.action === "replace"
+                  ? s.op.find.slice(0, 60)
+                  : s.op.action === "recolor"
+                    ? s.op.from
+                    : s.op.tag,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
