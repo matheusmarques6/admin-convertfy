@@ -5,6 +5,7 @@
 
 import { z } from "zod"
 import {
+  MAX_REFERENCE_IMAGES,
   MAX_STORE_SPEC_CHARS,
   MAX_VARIATIONS,
 } from "@/lib/services/image-studio.service"
@@ -20,7 +21,8 @@ export const imageStudioBatchBodySchema = z
       .enum(["hero", "square", "story", "portrait", "landscape", "banner", "vertical"])
       .optional(),
     instruction: z.string().max(4000).optional(),
-    reference_image_url: z.string().url().nullable().optional(),
+    reference_image_urls: z.array(z.string().url()).max(MAX_REFERENCE_IMAGES).optional(),
+    reference_mode: z.enum(["all", "per_variation"]).optional(),
     adapt_flags: z
       .object({
         idioma: z.boolean().optional(),

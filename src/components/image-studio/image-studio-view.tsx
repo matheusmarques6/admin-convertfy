@@ -35,6 +35,7 @@ import type {
   ImageStudioAdaptFlags,
   ImageStudioBatchWithResults,
   ImageStudioFormat,
+  ImageStudioReferenceMode,
   ImageStudioResult,
   ImageStudioResultStatus,
   ImageStudioStore,
@@ -74,6 +75,8 @@ const TEXT_FIELD_LABELS: Array<{
 ]
 
 const MAX_VARIATIONS = 8
+/** Espelha MAX_REFERENCE_IMAGES do service (teto de imagens-base). */
+const MAX_REFERENCE_IMAGES = 6
 /** Lojas por request de geração (chunking contra o teto de 300s da função). */
 const GENERATE_CHUNK_STORES = 6
 /** Acima disso, confirmação explícita de custo antes de gerar. */
@@ -263,6 +266,8 @@ export function ImageStudioView() {
           name: `Lote ${batches.length + 1}`,
           format: "hero",
           instruction: "",
+          reference_image_urls: [],
+          reference_mode: "all",
           adapt_flags: { idioma: true, cores: true, logo: true, catalogo: true },
           text_context: {},
           store_ids: [],
@@ -554,7 +559,10 @@ function BatchEditor({
   const [textContext, setTextContext] = useState<ImageStudioTextContext>(
     batch.text_context ?? {},
   )
-  const [refUrl, setRefUrl] = useState<string | null>(batch.reference_image_url)
+  const [refUrls, setRefUrls] = useState<string[]>(batch.reference_image_urls ?? [])
+  const [refMode, setRefMode] = useState<ImageStudioReferenceMode>(
+    batch.reference_mode ?? "all",
+  )
   const [storeIds, setStoreIds] = useState<string[]>(batch.store_ids)
   const [variations, setVariations] = useState<ImageStudioVariation[]>(
     batch.variations.length > 0 ? batch.variations : [{}],
@@ -595,29 +603,46 @@ function BatchEditor({
     [batch.id, batch.results, onBatchChange],
   )
 
+  // Aceita N arquivos de uma vez: sobe em série (a rota é 1 arquivo por
+  // request) e ACRESCENTA à lista, respeitando o teto.
   const onUpload = useCallback(
-    async (file: File) => {
+    async (files: File[]) => {
+      if (files.length === 0) return
       setUploading(true)
+      const uploaded: string[] = []
       try {
-        const fd = new FormData()
-        fd.append("file", file)
-        fd.append("batch_id", batch.id)
-        const res = await fetch("/api/admin/image-studio/upload", {
-          method: "POST",
-          body: fd,
-        })
-        if (!res.ok) throw new Error(await parseError(res))
-        const j = (await res.json()) as { url: string }
-        setRefUrl(j.url)
-        await saveBatch({ reference_image_url: j.url })
+        for (const file of files) {
+          if (refUrls.length + uploaded.length >= MAX_REFERENCE_IMAGES) break
+          const fd = new FormData()
+          fd.append("file", file)
+          fd.append("batch_id", batch.id)
+          const res = await fetch("/api/admin/image-studio/upload", {
+            method: "POST",
+            body: fd,
+          })
+          if (!res.ok) throw new Error(await parseError(res))
+          const j = (await res.json()) as { url: string }
+          uploaded.push(j.url)
+        }
       } catch {
-        /* erro de upload — silencioso por ora */
+        /* erro de upload — o que subiu antes é preservado abaixo */
       } finally {
+        if (uploaded.length > 0) {
+          const next = [...refUrls, ...uploaded].slice(0, MAX_REFERENCE_IMAGES)
+          setRefUrls(next)
+          await saveBatch({ reference_image_urls: next })
+        }
         setUploading(false)
       }
     },
-    [batch.id, saveBatch],
+    [batch.id, refUrls, saveBatch],
   )
+
+  const removeRefUrl = (url: string) => {
+    const next = refUrls.filter((u) => u !== url)
+    setRefUrls(next)
+    void saveBatch({ reference_image_urls: next })
+  }
 
   const toggleFlag = (key: keyof ImageStudioAdaptFlags) => {
     const next = { ...flags, [key]: !flags[key] }
@@ -842,58 +867,100 @@ function BatchEditor({
           </select>
         </div>
 
-        {/* Imagem-base */}
+        {/* Imagens-base (0..N) + modo de uso */}
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Imagem-base (opcional)
+            Imagens-base (opcional)
+            {refUrls.length > 0 && (
+              <span className="ml-1.5 font-semibold normal-case tracking-normal text-foreground">
+                {refUrls.length}/{MAX_REFERENCE_IMAGES}
+              </span>
+            )}
           </label>
-          <div className="flex items-center gap-2">
-            {refUrl ? (
-              <span className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {refUrls.map((url, i) => (
+              <span key={url} className="group relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={refUrl}
-                  alt="Imagem-base"
-                  className="h-9 w-9 rounded-[5px] border border-border object-cover"
+                  src={url}
+                  alt={`Imagem-base ${i + 1}`}
+                  title={`Imagem-base ${i + 1}`}
+                  className="h-11 w-11 rounded-[5px] border border-border object-cover"
                 />
+                <span className="absolute left-0 top-0 rounded-br-[4px] rounded-tl-[4px] bg-black/60 px-1 text-[9px] font-bold text-white">
+                  {i + 1}
+                </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRefUrl(null)
-                    void saveBatch({ reference_image_url: null })
-                  }}
-                  className="text-[11px] text-rose-600 hover:underline"
+                  onClick={() => removeRefUrl(url)}
+                  title="Remover"
+                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white group-hover:flex"
                 >
-                  Remover
+                  <X size={10} />
                 </button>
               </span>
-            ) : (
+            ))}
+            {refUrls.length < MAX_REFERENCE_IMAGES && (
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-dashed border-border bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
               >
                 {uploading ? (
                   <Loader2 size={13} className="animate-spin" />
                 ) : (
                   <Upload size={13} />
                 )}
-                Enviar imagem
+                {refUrls.length > 0 ? "Adicionar" : "Enviar imagem"}
               </button>
             )}
             <input
               ref={fileRef}
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) void onUpload(f)
+                const files = Array.from(e.target.files ?? [])
+                if (files.length > 0) void onUpload(files)
                 e.target.value = ""
               }}
             />
           </div>
+
+          {/* Modo só faz diferença com 2+ imagens */}
+          {refUrls.length > 1 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  ["all", "Todas em cada imagem"],
+                  ["per_variation", "Uma por variação"],
+                ] as Array<[ImageStudioReferenceMode, string]>
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setRefMode(mode)
+                    void saveBatch({ reference_mode: mode })
+                  }}
+                  className={`rounded-full border px-2.5 py-1 text-[11.5px] font-medium ${
+                    refMode === mode
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="text-[10.5px] text-muted-foreground">
+                {refMode === "per_variation"
+                  ? `variação 1 → imagem 1, variação 2 → imagem 2… (repete em ciclo)`
+                  : "o modelo recebe todas as referências em cada geração"}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Instrução */}

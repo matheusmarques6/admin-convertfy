@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest"
 import {
   buildStudioInstruction,
   isImageStudioFormat,
+  MAX_REFERENCE_IMAGES,
   MAX_STORE_SPEC_CHARS,
   MAX_VARIATIONS,
+  normalizeReferenceUrls,
   normalizeStoreSpecs,
   normalizeVariations,
+  pickReferenceUrls,
   variationDirective,
 } from "./image-studio.service"
 
@@ -46,6 +49,43 @@ describe("variationDirective", () => {
 
   it("lote de 1 variação sem direção → vazio (sem ruído no prompt)", () => {
     expect(variationDirective([{}], 0)).toBe("")
+  })
+})
+
+describe("normalizeReferenceUrls", () => {
+  it("apara, descarta vazios e deduplica", () => {
+    expect(
+      normalizeReferenceUrls([" https://a/1.png ", "", "https://a/1.png", "https://a/2.png"]),
+    ).toEqual(["https://a/1.png", "https://a/2.png"])
+  })
+
+  it("corta no teto e ignora não-strings", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `https://a/${i}.png`)
+    expect(normalizeReferenceUrls(many)).toHaveLength(MAX_REFERENCE_IMAGES)
+    expect(normalizeReferenceUrls([1, null, { a: 1 }])).toEqual([])
+    expect(normalizeReferenceUrls(undefined)).toEqual([])
+  })
+})
+
+describe("pickReferenceUrls", () => {
+  const urls = ["a", "b", "c"]
+
+  it("modo 'all' devolve todas em qualquer variação", () => {
+    expect(pickReferenceUrls(urls, "all", 0)).toEqual(urls)
+    expect(pickReferenceUrls(urls, "all", 7)).toEqual(urls)
+  })
+
+  it("modo 'per_variation' casa variação com imagem e repete em ciclo", () => {
+    expect(pickReferenceUrls(urls, "per_variation", 0)).toEqual(["a"])
+    expect(pickReferenceUrls(urls, "per_variation", 1)).toEqual(["b"])
+    expect(pickReferenceUrls(urls, "per_variation", 2)).toEqual(["c"])
+    // 4ª variação volta pra 1ª imagem
+    expect(pickReferenceUrls(urls, "per_variation", 3)).toEqual(["a"])
+  })
+
+  it("sem imagens devolve vazio nos dois modos", () => {
+    expect(pickReferenceUrls([], "all", 0)).toEqual([])
+    expect(pickReferenceUrls([], "per_variation", 2)).toEqual([])
   })
 })
 

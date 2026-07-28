@@ -15,6 +15,9 @@ export type ImageStudioFormat =
   | "banner"
   | "vertical"
 
+/** Como as imagens-base do lote alimentam a geração. */
+export type ImageStudioReferenceMode = "all" | "per_variation"
+
 export type ImageStudioResultStatus =
   | "queued"
   | "generating"
@@ -64,7 +67,10 @@ export interface ImageStudioBatch {
   name: string
   format: ImageStudioFormat
   instruction: string
-  reference_image_url: string | null
+  /** Imagens-base do lote (0..N). */
+  reference_image_urls: string[]
+  /** all = todas em cada imagem; per_variation = variação i usa a imagem (i mod N). */
+  reference_mode: ImageStudioReferenceMode
   adapt_flags: ImageStudioAdaptFlags
   text_context: ImageStudioTextContext
   store_ids: string[]

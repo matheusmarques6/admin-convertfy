@@ -33,6 +33,7 @@ import type {
   ImageStudioBatch,
   ImageStudioBatchWithResults,
   ImageStudioFormat,
+  ImageStudioReferenceMode,
   ImageStudioResult,
   ImageStudioResultStatus,
   ImageStudioStore,
@@ -101,6 +102,45 @@ export function normalizeVariations(raw: unknown): ImageStudioVariation[] {
 /** Teto do adendo por loja (o prompt inteiro precisa caber com folga). */
 export const MAX_STORE_SPEC_CHARS = 1000
 
+/** Teto de imagens-base por lote (cada ref é baixada pelo provedor). */
+export const MAX_REFERENCE_IMAGES = 6
+
+/**
+ * Normaliza a lista de imagens-base: apara, descarta vazios, deduplica
+ * (mesma URL duas vezes só confundiria o modelo) e corta no teto. Pura.
+ */
+export function normalizeReferenceUrls(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : []
+  const seen = new Set<string>()
+  for (const item of list) {
+    if (typeof item !== "string") continue
+    const url = item.trim()
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    if (seen.size >= MAX_REFERENCE_IMAGES) break
+  }
+  return Array.from(seen)
+}
+
+/**
+ * Imagens-base efetivas de UMA geração, conforme o modo do lote:
+ *  - "all"           → todas (o modelo vê o conjunto inteiro)
+ *  - "per_variation" → só a imagem (variationIndex mod N), para cada
+ *    variação nascer ancorada numa referência diferente; o ciclo repete
+ *    quando há mais variações que imagens.
+ * Pura, testável.
+ */
+export function pickReferenceUrls(
+  urls: string[],
+  mode: ImageStudioReferenceMode,
+  variationIndex: number,
+): string[] {
+  if (urls.length === 0) return []
+  if (mode !== "per_variation") return urls
+  const i = ((variationIndex % urls.length) + urls.length) % urls.length
+  return [urls[i]]
+}
+
 /**
  * Normaliza o mapa de adendos por loja: apara textos, corta no teto e
  * DESCARTA entradas vazias — apagar o texto na UI equivale a remover o
@@ -144,7 +184,9 @@ interface BatchRow {
   name: string
   format: ImageStudioFormat
   instruction: string
-  reference_image_url: string | null
+  reference_image_url: string | null // deprecada — fallback de leitura
+  reference_image_urls: string[] | null
+  reference_mode: ImageStudioReferenceMode | null
   adapt_flags: ImageStudioAdaptFlags | null
   text_context: ImageStudioTextContext | null
   store_ids: string[] | null
@@ -186,7 +228,15 @@ function mapBatchRow(row: BatchRow): ImageStudioBatch {
     name: row.name,
     format: row.format,
     instruction: row.instruction,
-    reference_image_url: row.reference_image_url,
+    // Array é a fonte; lote antigo (pré-20260732) cai na coluna singular.
+    reference_image_urls: normalizeReferenceUrls(
+      row.reference_image_urls?.length
+        ? row.reference_image_urls
+        : row.reference_image_url
+          ? [row.reference_image_url]
+          : [],
+    ),
+    reference_mode: row.reference_mode === "per_variation" ? "per_variation" : "all",
     adapt_flags: row.adapt_flags ?? {},
     text_context: row.text_context ?? {},
     store_ids: row.store_ids ?? [],
@@ -357,7 +407,8 @@ export interface BatchInput {
   name?: string
   format?: ImageStudioFormat
   instruction?: string
-  reference_image_url?: string | null
+  reference_image_urls?: string[]
+  reference_mode?: ImageStudioReferenceMode
   adapt_flags?: ImageStudioAdaptFlags
   text_context?: ImageStudioTextContext
   store_ids?: string[]
@@ -378,7 +429,8 @@ export async function createBatch(
       name: input.name?.trim() || "Novo lote",
       format: input.format ?? "hero",
       instruction: input.instruction?.trim() ?? "",
-      reference_image_url: input.reference_image_url ?? null,
+      reference_image_urls: normalizeReferenceUrls(input.reference_image_urls ?? []),
+      reference_mode: input.reference_mode ?? "all",
       adapt_flags: input.adapt_flags ?? {},
       text_context: input.text_context ?? {},
       store_ids: input.store_ids ?? [],
@@ -404,9 +456,10 @@ export async function updateBatch(
   if (input.name !== undefined) patch.name = input.name.trim() || "Novo lote"
   if (input.format !== undefined) patch.format = input.format
   if (input.instruction !== undefined) patch.instruction = input.instruction.trim()
-  if (input.reference_image_url !== undefined) {
-    patch.reference_image_url = input.reference_image_url
+  if (input.reference_image_urls !== undefined) {
+    patch.reference_image_urls = normalizeReferenceUrls(input.reference_image_urls)
   }
+  if (input.reference_mode !== undefined) patch.reference_mode = input.reference_mode
   if (input.adapt_flags !== undefined) patch.adapt_flags = input.adapt_flags
   if (input.text_context !== undefined) patch.text_context = input.text_context
   if (input.store_ids !== undefined) patch.store_ids = input.store_ids
@@ -648,13 +701,32 @@ async function generateOneImage(
 
     const aspect = FORMAT_TO_ASPECT[batch.format] ?? "4:3"
 
+    // Imagens-base do lote conforme o modo: 'all' manda todas,
+    // 'per_variation' manda só a que cabe a esta variação (i mod N).
+    const allRefUrls = normalizeReferenceUrls(
+      batch.reference_image_urls?.length
+        ? batch.reference_image_urls
+        : batch.reference_image_url
+          ? [batch.reference_image_url]
+          : [],
+    )
+    const refUrls = pickReferenceUrls(
+      allRefUrls,
+      batch.reference_mode === "per_variation" ? "per_variation" : "all",
+      variationIndex,
+    )
+
     const candidateRefs: RefImage[] = []
-    if (batch.reference_image_url) {
+    refUrls.forEach((url, i) => {
+      // Com ajuste, a base vira guia solto — senão o modelo copia a
+      // referência e ignora o ajuste pedido.
       const baseLabel = adjustmentNotes?.trim()
         ? "Previous composition — loose guide ONLY; you MUST apply the requested change below, do not copy it:"
-        : "Base reference:"
-      candidateRefs.push({ label: baseLabel, url: batch.reference_image_url })
-    }
+        : refUrls.length > 1
+          ? `Base reference ${i + 1} of ${refUrls.length}:`
+          : "Base reference:"
+      candidateRefs.push({ label: baseLabel, url })
+    })
     if (flags.logo) {
       const picked = pickBrandLogo(ctx.brand, "png", { rasterOnly: true })
       if (picked) candidateRefs.push({ label: "Brand logo — match this exactly:", url: picked.url })
@@ -730,6 +802,8 @@ async function generateOneImage(
         batch_id: batch.id,
         variation_index: variationIndex,
         has_store_spec: !!storeSpec,
+        reference_mode: batch.reference_mode ?? "all",
+        reference_images: refUrls.length,
         mode,
         refs_sent: refs.map((r) => ({ label: r.label, url: r.url })),
       },
