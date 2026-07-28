@@ -25,7 +25,8 @@
 
 import { extractHeroBySentinels } from "./hero-locator"
 import { applyRecolor, isColorLiteral } from "./color-inventory"
-import { resolveSlotRegion } from "./slot-annotate"
+import { resolveSlotRegion, readAnnotatedSlots } from "./slot-annotate"
+import { applySplices, type Splice } from "./dom-locator"
 
 export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
@@ -66,6 +67,10 @@ export interface SkippedOp {
     | "row_not_removable"
     // Matriz de posse (Fase A): op numa tag fora da alçada do estágio.
     | "ownership_rejected"
+    // Fase 3: duas ops disputam a mesma região do documento (ex.: set_text
+    // numa tag + remove_row na linha que a contém). A da direita vence; a
+    // outra é rejeitada em vez de corromper o documento.
+    | "overlapping_edit"
 }
 
 export interface ApplyOpsResult {
@@ -191,9 +196,20 @@ export function applyOps(
     allowedTags?: ReadonlySet<string>
   },
 ): ApplyOpsResult {
-  let doc = html
+  // ── Fase 3 do endereçamento: SNAPSHOT IMUTÁVEL ──────────────────────
+  // Todo endereço é resolvido contra o documento ORIGINAL — o mesmo que o
+  // agente viu quando planejou as ops. Antes o doc era mutado a cada op,
+  // então uma remoção invalidava o endereço das ops seguintes (18
+  // `tag_not_found` em cascata no incidente da Luxe Lift). As edições
+  // viram splices e são aplicadas de trás pra frente no fim, o que mantém
+  // válidos os offsets ainda não aplicados.
+  const doc = html
   let applied = 0
   const skipped: SkippedOp[] = []
+  const splices: Array<Splice & { op: FormatOp }> = []
+  // Recolors são transformação global por VALOR (não por posição) — não
+  // competem por range; aplicam depois dos splices.
+  const recolors: Array<{ op: FormatOp; from: string; to: string }> = []
 
   const heroRange = (): { start: number; end: number } | null => {
     const region = extractHeroBySentinels(doc)
@@ -205,6 +221,8 @@ export function applyOps(
     if (!hero) return false
     return start < hero.end && end > hero.start
   }
+  // Anotações lidas UMA vez do snapshot — mesma fonte para todas as ops.
+  const annotated = readAnnotatedSlots(doc)
 
   for (const op of ops) {
     // Posse por tag (Fase A): vale para toda op ancorada em tag
@@ -222,13 +240,7 @@ export function applyOps(
       // Global e atômico por natureza; a matriz de posse por tag não se
       // aplica (op sem tag) e a hero entra de propósito (allowHero do
       // color_format é true; recolor nunca muda estrutura).
-      const r = applyRecolor(doc, op.from, op.to)
-      if (r.replaced === 0) {
-        skipped.push({ op, reason: "find_not_found" })
-        continue
-      }
-      doc = r.html
-      applied++
+      recolors.push({ op, from: op.from, to: op.to })
     } else if (op.action === "img" || op.action === "set_text") {
       const spots = findAll(doc, tokenRegex(op.tag))
       if (spots.length === 0) {
@@ -239,29 +251,31 @@ export function applyOps(
         skipped.push({ op, reason: "hero_protected" })
         continue
       }
-      if (op.action === "img") {
-        const url = op.url
-        doc = doc.replace(tokenRegex(op.tag), () => url)
-        if (op.alt) {
-          const alt = op.alt
-          doc = doc.replace(tokenRegex(`${op.tag}_ALT`), () => alt)
+      // TODAS as ocorrências viram splices (tags se repetem legitimamente
+      // em branches MSO — a troca de texto/URL vale nos dois lados).
+      const value =
+        op.action === "img"
+          ? op.url
+          : // Texto plano no lugar do token: neutraliza < e > pra copy nunca
+            // injetar markup (entidades existentes ficam como estão).
+            op.value.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      for (const s of spots) {
+        splices.push({ op, start: s.start, end: s.end, replacement: value })
+      }
+      if (op.action === "img" && op.alt) {
+        const alt = op.alt
+        for (const s of findAll(doc, tokenRegex(`${op.tag}_ALT`))) {
+          splices.push({ op, start: s.start, end: s.end, replacement: alt })
         }
-      } else {
-        // Texto plano no lugar do token: neutraliza < e > pra copy nunca
-        // injetar markup (entidades existentes ficam como estão). Função
-        // no replace: valor com "$" (R$ 100) nunca vira grupo de captura.
-        const safe = op.value.replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        doc = doc.replace(tokenRegex(op.tag), () => safe)
       }
       applied++
     } else if (op.action === "remove_slot" || op.action === "remove_row") {
       // Endereço pela MESMA cascata que monta a view do agente (declarado
-      // > árvore): o que o agente julgou é o que é editado. Antes, o
-      // aplicador pegava a primeira ocorrência TEXTUAL — que pode ser a
-      // duplicata do branch MSO — enquanto o agente via a linha real.
-      const region = resolveSlotRegion(doc, op.tag)
+      // > árvore), resolvida no SNAPSHOT: o que o agente julgou é o que é
+      // editado, independente do que outras ops fizeram.
+      const region = resolveSlotRegion(doc, op.tag, annotated)
       if (region.source === "none") {
-        // Sem token e sem endereço declarado: a tag não existe mais no doc.
+        // Sem token e sem endereço declarado: a tag não existe no doc.
         const stillThere = findAll(doc, tokenRegex(op.tag)).length > 0
         skipped.push({
           op,
@@ -283,7 +297,7 @@ export function applyOps(
         skipped.push({ op, reason: "row_not_removable" })
         continue
       }
-      doc = doc.slice(0, row.start) + doc.slice(row.end)
+      splices.push({ op, start: row.start, end: row.end, replacement: "" })
       applied++
     } else {
       const idx = doc.indexOf(op.find)
@@ -299,12 +313,41 @@ export function applyOps(
         skipped.push({ op, reason: "hero_protected" })
         continue
       }
-      doc = doc.slice(0, idx) + op.replace + doc.slice(idx + op.find.length)
+      splices.push({
+        op,
+        start: idx,
+        end: idx + op.find.length,
+        replacement: op.replace,
+      })
       applied++
     }
   }
 
-  return { html: doc, applied, skipped }
+  // Aplica todas as edições de uma vez, de trás pra frente. Edições que se
+  // sobrepõem (ex.: set_text numa tag + remove_row na linha que a contém)
+  // são rejeitadas em vez de corromper o documento.
+  const res = applySplices(doc, splices)
+  const rejectedOps = new Set(
+    res.rejected.map((r) => (r as Splice & { op: FormatOp }).op),
+  )
+  for (const op of rejectedOps) {
+    skipped.push({ op, reason: "overlapping_edit" })
+    applied--
+  }
+
+  // Recolors por último: troca por VALOR, não compete por posição.
+  let out = res.html
+  for (const r of recolors) {
+    const rc = applyRecolor(out, r.from, r.to)
+    if (rc.replaced === 0) {
+      skipped.push({ op: r.op, reason: "find_not_found" })
+      continue
+    }
+    out = rc.html
+    applied++
+  }
+
+  return { html: out, applied, skipped }
 }
 
 // Token de imagem canônico ({{X_IMAGE}}, {{X_THUMB_2}}...) — pra impedir que

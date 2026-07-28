@@ -107,16 +107,68 @@ describe("applyOps", () => {
     expect(res.html).toContain("https://cdn/x.png")
   })
 
-  it("ops em sequência reavaliam o documento atual", () => {
+  // Fase 3 do endereçamento: TODA op é resolvida contra o SNAPSHOT — o
+  // mesmo documento que o agente viu ao planejar. Encadeamento (op 2
+  // mirando o resultado da op 1) deixou de ser suportado DE PROPÓSITO: era
+  // o que fazia uma remoção invalidar o endereço das ops seguintes
+  // (cascata de tag_not_found no incidente da Luxe Lift). O agente de
+  // imagem já emite a URL final com crop params na própria op `img`.
+  it("ops são resolvidas contra o snapshot (sem encadeamento)", () => {
     const res = applyOps(
       doc,
       [
         { action: "img", tag: "BODY_IMAGE", url: "https://cdn/b.png" },
-        { action: "replace", find: 'src="https://cdn/b.png"', replace: 'src="https://cdn/b.png" width="600"' },
+        {
+          action: "replace",
+          find: 'src="https://cdn/b.png"',
+          replace: 'src="https://cdn/b.png" width="600"',
+        },
       ],
       { allowHero: false },
     )
-    expect(res.applied).toBe(2)
-    expect(res.html).toContain('width="600"')
+    expect(res.applied).toBe(1)
+    expect(res.html).toContain("https://cdn/b.png")
+    // A 2ª op mirava um texto que só existiria DEPOIS da 1ª — no snapshot
+    // ele não existe, então é recusada com razão explícita.
+    expect(res.skipped[0].reason).toBe("find_not_found")
+  })
+
+  it("remoção NÃO invalida o endereço das ops seguintes (snapshot)", () => {
+    const html = [
+      "<table>",
+      '  <tr id="a"><td>{{A}}</td></tr>',
+      '  <tr id="b"><td>{{B}}</td></tr>',
+      '  <tr id="c"><td>{{C}}</td></tr>',
+      "</table>",
+    ].join("\n")
+    const res = applyOps(
+      html,
+      [
+        { action: "remove_row", tag: "A" },
+        { action: "set_text", tag: "B", value: "texto B" },
+        { action: "remove_row", tag: "C" },
+      ],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(3)
+    expect(res.skipped).toEqual([])
+    expect(res.html).not.toContain('id="a"')
+    expect(res.html).toContain("texto B")
+    expect(res.html).not.toContain('id="c"')
+  })
+
+  it("ops sobrepostas: a região é preservada e a perdedora é telemetrizada", () => {
+    const html = '<table><tr id="r"><td>{{X}}</td></tr></table>'
+    const res = applyOps(
+      html,
+      [
+        { action: "set_text", tag: "X", value: "valor" },
+        { action: "remove_row", tag: "X" },
+      ],
+      { allowHero: true },
+    )
+    // Uma das duas vence; a outra vira overlapping_edit — nunca as duas.
+    expect(res.applied).toBe(1)
+    expect(res.skipped[0].reason).toBe("overlapping_edit")
   })
 })
