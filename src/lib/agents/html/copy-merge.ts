@@ -31,6 +31,8 @@ export interface MergeField {
 export interface MergeBlock {
   fields: MergeField[]
   content: Record<string, unknown>
+  /** email_blocks.id — a MESMA chave do callback do n8n (rastreabilidade). */
+  block_id?: string | null
 }
 
 export interface CopyMergeReport {
@@ -93,6 +95,7 @@ export function textTagsOutsideHero(html: string): string[] {
 export function mergeBlocksFromContext(
   blocks:
     | Array<{
+        id?: string
         position: number
         block_type: string
         content: Record<string, unknown> | null
@@ -113,8 +116,28 @@ export function mergeBlocksFromContext(
     return {
       fields: Array.isArray(matched?.fields) ? matched.fields : [],
       content: b.content ?? {},
+      block_id: b.id ?? null,
     }
   })
+}
+
+/**
+ * Mapa tag normalizada → block_id, derivado dos fields ancorados dos
+ * blocos. Usado pra amarrar views (exception slots) e ops à mesma chave
+ * que veio do n8n. Primeira ocorrência vence (tags não deviam repetir
+ * entre blocos; se repetirem, a primeira posição é a dona).
+ */
+export function tagToBlockIdMap(blocks: MergeBlock[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const b of blocks) {
+    if (!b.block_id) continue
+    for (const f of b.fields) {
+      if (!f.tag) continue
+      const tag = f.tag.replace(/[{}\s]/g, "")
+      if (tag && !map.has(tag)) map.set(tag, b.block_id)
+    }
+  }
+  return map
 }
 
 /** View por slot do agente de exceção (A3b): tag + linha envolvente. */
@@ -122,20 +145,25 @@ export interface ExceptionSlot {
   tag: string
   /** <tr>…</tr> que envolve o token; fallback: ±200 chars de contexto. */
   row_html: string
+  /** email_blocks.id dono da tag (via blueprint) — null quando não resolvido. */
+  block_id?: string | null
 }
 
 /**
  * Monta a view dos slots NÃO resolvidos pelo merge — é TUDO que o agente
- * de exceção enxerga do documento (nunca o doc inteiro).
+ * de exceção enxerga do documento (nunca o doc inteiro). `tagToBlock`
+ * (opcional) amarra cada slot ao email_blocks.id dono da tag.
  */
 export function buildExceptionSlots(
   html: string,
   tags: string[],
+  tagToBlock?: ReadonlyMap<string, string>,
 ): ExceptionSlot[] {
   return tags.map((tag) => {
+    const block_id = tagToBlock?.get(tag) ?? null
     const re = new RegExp(`\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`)
     const m = re.exec(html)
-    if (!m) return { tag, row_html: "" }
+    if (!m) return { tag, row_html: "", block_id }
     const tokenStart = m.index
     // <tr> envolvente (mesma heurística do Integrador, sem validação de
     // removibilidade — aqui é só VISÃO, não remoção).
@@ -147,10 +175,14 @@ export function buildExceptionSlots(
     }
     const closeIdx = html.indexOf("</tr>", tokenStart)
     if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
-      return { tag, row_html: html.slice(rowStart, closeIdx + 5) }
+      return { tag, row_html: html.slice(rowStart, closeIdx + 5), block_id }
     }
     const start = Math.max(0, tokenStart - 200)
-    return { tag, row_html: html.slice(start, tokenStart + m[0].length + 200) }
+    return {
+      tag,
+      row_html: html.slice(start, tokenStart + m[0].length + 200),
+      block_id,
+    }
   })
 }
 
@@ -184,7 +216,12 @@ export function copyMerge(
       const tag = f.tag.replace(/[{}\s]/g, "")
       if (!isTextTag(tag) || opTags.has(tag)) continue
       opTags.add(tag)
-      ops.push({ action: "set_text", tag, value })
+      ops.push({
+        action: "set_text",
+        tag,
+        value,
+        ...(b.block_id ? { block_id: b.block_id } : {}),
+      })
     }
   }
 

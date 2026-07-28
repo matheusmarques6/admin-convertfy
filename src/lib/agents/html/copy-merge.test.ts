@@ -2,7 +2,13 @@
  * Merge determinístico de copy (Fase A, estágio 0 — sem LLM).
  */
 import { describe, it, expect } from "vitest"
-import { copyMerge, textTagsOutsideHero } from "./copy-merge"
+import {
+  copyMerge,
+  textTagsOutsideHero,
+  mergeBlocksFromContext,
+  tagToBlockIdMap,
+  buildExceptionSlots,
+} from "./copy-merge"
 import {
   HERO_SENTINEL_START,
   HERO_SENTINEL_END,
@@ -89,5 +95,49 @@ describe("copyMerge", () => {
     ])
     expect(report.merged).toBe(0)
     expect(report.skipped[0]?.reason).toBe("hero_protected")
+  })
+})
+
+describe("block_id — amarração com a chave do n8n (views + ops)", () => {
+  it("mergeBlocksFromContext propaga o email_blocks.id como block_id", () => {
+    const blocks = mergeBlocksFromContext(
+      [{ id: "b1-uuid", position: 1, block_type: "hero", content: { x: "1" } }],
+      [{ type: "hero", fields: [field("x", "X")] }],
+    )
+    expect(blocks[0].block_id).toBe("b1-uuid")
+  })
+
+  it("tagToBlockIdMap resolve tag normalizada → block_id (primeira ocorrência vence)", () => {
+    const map = tagToBlockIdMap([
+      {
+        block_id: "b1",
+        fields: [field("titulo", "{{ BODY_TITLE }}")],
+        content: {},
+      },
+      { block_id: "b2", fields: [field("dup", "BODY_TITLE")], content: {} },
+      { block_id: null, fields: [field("solto", "SEM_DONO")], content: {} },
+    ])
+    expect(map.get("BODY_TITLE")).toBe("b1")
+    expect(map.has("SEM_DONO")).toBe(false)
+  })
+
+  it("buildExceptionSlots carrega o block_id da tag (null quando não resolvido)", () => {
+    const map = new Map([["ORFAO_SEM_COPY", "b7-uuid"]])
+    const slots = buildExceptionSlots(DOC, ["ORFAO_SEM_COPY", "INEXISTENTE"], map)
+    expect(slots[0].block_id).toBe("b7-uuid")
+    expect(slots[0].row_html).toContain("{{ORFAO_SEM_COPY}}")
+    expect(slots[1].block_id).toBeNull()
+  })
+
+  it("copyMerge emite ops com block_id do bloco dono", () => {
+    const { report } = copyMerge(DOC, [
+      {
+        block_id: "b1-uuid",
+        fields: [field("hero_headline", "HERO_HEADLINE")],
+        content: { hero_headline: "invasão" },
+      },
+    ])
+    // A op foi pulada (hero_protected), mas carrega o block_id de origem.
+    expect(report.skipped[0]?.op.block_id).toBe("b1-uuid")
   })
 })

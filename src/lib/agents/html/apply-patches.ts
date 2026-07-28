@@ -26,15 +26,19 @@
 import { extractHeroBySentinels } from "./hero-locator"
 
 export type FormatOp =
-  | { action: "img"; tag: string; url: string; alt?: string }
-  | { action: "remove_slot"; tag: string }
-  | { action: "replace"; find: string; replace: string }
+  | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
+  | { action: "remove_slot"; tag: string; block_id?: string }
+  | { action: "replace"; find: string; replace: string; block_id?: string }
   // ── Fase A (arquitetura por slots) ─────────────────────────────────
   // set_text: troca TODAS as ocorrências de {{TAG}} pelo texto (tags se
   // repetem legitimamente em branches MSO). remove_row: remove a <tr> do
   // slot de TEXTO vazio (mesma validação do remove_slot).
-  | { action: "set_text"; tag: string; value: string }
-  | { action: "remove_row"; tag: string }
+  | { action: "set_text"; tag: string; value: string; block_id?: string }
+  | { action: "remove_row"; tag: string; block_id?: string }
+// block_id (opcional em toda op): amarra a op ao email_blocks.id de origem —
+// a MESMA chave do callback do n8n. Não muda a aplicação (que é por tag);
+// existe pra telemetria/auditoria ponta a ponta (n8n → view → op → HTML).
+// Ops sem o campo continuam válidas (retrocompat com prompts/replays antigos).
 
 export class OpsParseError extends Error {
   readonly raw: string
@@ -87,6 +91,8 @@ export function parseOps(raw: string): FormatOp[] {
       throw new OpsParseError("op não é objeto", raw)
     }
     const o = op as Record<string, unknown>
+    const bid: { block_id?: string } =
+      typeof o.block_id === "string" && o.block_id ? { block_id: o.block_id } : {}
     if (o.action === "img") {
       if (typeof o.tag !== "string" || typeof o.url !== "string" || !o.url) {
         throw new OpsParseError("op img sem tag/url", raw)
@@ -96,22 +102,23 @@ export function parseOps(raw: string): FormatOp[] {
         tag: normalizeTag(o.tag),
         url: o.url,
         ...(typeof o.alt === "string" && o.alt ? { alt: o.alt } : {}),
+        ...bid,
       })
     } else if (o.action === "remove_slot") {
       if (typeof o.tag !== "string" || !o.tag) {
         throw new OpsParseError("op remove_slot sem tag", raw)
       }
-      out.push({ action: "remove_slot", tag: normalizeTag(o.tag) })
+      out.push({ action: "remove_slot", tag: normalizeTag(o.tag), ...bid })
     } else if (o.action === "set_text") {
       if (typeof o.tag !== "string" || !o.tag || typeof o.value !== "string") {
         throw new OpsParseError("op set_text sem tag/value", raw)
       }
-      out.push({ action: "set_text", tag: normalizeTag(o.tag), value: o.value })
+      out.push({ action: "set_text", tag: normalizeTag(o.tag), value: o.value, ...bid })
     } else if (o.action === "remove_row") {
       if (typeof o.tag !== "string" || !o.tag) {
         throw new OpsParseError("op remove_row sem tag", raw)
       }
-      out.push({ action: "remove_row", tag: normalizeTag(o.tag) })
+      out.push({ action: "remove_row", tag: normalizeTag(o.tag), ...bid })
     } else if (o.action === "replace") {
       if (
         typeof o.find !== "string" ||
@@ -120,7 +127,7 @@ export function parseOps(raw: string): FormatOp[] {
       ) {
         throw new OpsParseError("op replace sem find/replace", raw)
       }
-      out.push({ action: "replace", find: o.find, replace: o.replace })
+      out.push({ action: "replace", find: o.find, replace: o.replace, ...bid })
     } else {
       throw new OpsParseError(`action desconhecida: ${String(o.action)}`, raw)
     }

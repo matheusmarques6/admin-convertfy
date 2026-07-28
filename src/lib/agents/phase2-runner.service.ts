@@ -88,6 +88,7 @@ import {
   copyMerge,
   mergeBlocksFromContext,
   buildExceptionSlots,
+  tagToBlockIdMap,
   type MergeField,
 } from "./html/copy-merge"
 import {
@@ -1768,6 +1769,9 @@ async function runFormattingChain(p: {
   // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
   // Relatório do merge visível aos ramos seguintes (exceção × legado).
   let lastMergeReport: import("./html/copy-merge").CopyMergeReport | null = null
+  // Blocos do merge (com block_id) — amarram as views do agente de exceção
+  // à mesma chave do n8n.
+  let lastMergeBlocks: import("./html/copy-merge").MergeBlock[] | null = null
   if (stage === "hero") {
     // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
     // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
@@ -1776,19 +1780,19 @@ async function runFormattingChain(p: {
     const mergeInput = currentHtml
     const mergeT0 = Date.now()
     lastMergeReport = null
-    const merge = copyMerge(
-      mergeInput,
-      mergeBlocksFromContext(
-        fmtCtx.blocks as Array<{
-          position: number
-          block_type: string
-          content: Record<string, unknown> | null
-        }>,
-        fmtCtx.blueprint?.blocks as
-          | Array<{ type: string; fields?: MergeField[] | null }>
-          | undefined,
-      ),
+    const mergeBlocks = mergeBlocksFromContext(
+      fmtCtx.blocks as Array<{
+        id?: string
+        position: number
+        block_type: string
+        content: Record<string, unknown> | null
+      }>,
+      fmtCtx.blueprint?.blocks as
+        | Array<{ type: string; fields?: MergeField[] | null }>
+        | undefined,
     )
+    const merge = copyMerge(mergeInput, mergeBlocks)
+    lastMergeBlocks = mergeBlocks
     await logGenerationRun({
       ...ids,
       agent: "copy_merge",
@@ -1808,6 +1812,7 @@ async function runFormattingChain(p: {
         ops_skipped: merge.report.skipped.map((s) => ({
           action: s.op.action,
           tag: "tag" in s.op ? s.op.tag : null,
+          block_id: s.op.block_id ?? null,
           reason: s.reason,
         })),
         output_html_len: merge.html.length,
@@ -1853,7 +1858,11 @@ async function runFormattingChain(p: {
   ) {
     const inputHtml = currentHtml
     const leftTags = lastMergeReport.left_for_llm
-    const slots = buildExceptionSlots(inputHtml, leftTags)
+    const slots = buildExceptionSlots(
+      inputHtml,
+      leftTags,
+      lastMergeBlocks ? tagToBlockIdMap(lastMergeBlocks) : undefined,
+    )
     const config = toChainConfig(ctx.textFormatConfig, "text_format")
 
     const outcome = await executeFormatStep<string>({
@@ -1893,6 +1902,7 @@ async function runFormattingChain(p: {
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
               tag: "tag" in s.op ? s.op.tag : null,
+              block_id: s.op.block_id ?? null,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,

@@ -34,6 +34,36 @@ describe("parseOps — ações novas", () => {
   })
 })
 
+describe("parseOps — block_id opcional (rastreabilidade n8n → op)", () => {
+  it("propaga block_id quando presente; op sem o campo continua válida", () => {
+    const ops = parseOps(
+      '{"ops":[{"action":"set_text","tag":"A","value":"x","block_id":"b1-uuid"},{"action":"remove_row","tag":"B"}]}',
+    )
+    expect(ops).toEqual([
+      { action: "set_text", tag: "A", value: "x", block_id: "b1-uuid" },
+      { action: "remove_row", tag: "B" },
+    ])
+  })
+
+  it("block_id vazio ou não-string é descartado sem erro", () => {
+    const ops = parseOps(
+      '{"ops":[{"action":"img","tag":"HERO_IMAGE","url":"https://x/y.png","block_id":""},{"action":"replace","find":"a","replace":"b","block_id":42}]}',
+    )
+    expect(ops[0]).toEqual({ action: "img", tag: "HERO_IMAGE", url: "https://x/y.png" })
+    expect(ops[1]).toEqual({ action: "replace", find: "a", replace: "b" })
+  })
+
+  it("block_id não interfere na aplicação (que segue por tag)", () => {
+    const res = applyOps(
+      "<td>{{TITULO}}</td>",
+      [{ action: "set_text", tag: "TITULO", value: "Oi", block_id: "b9" }],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(1)
+    expect(res.html).toContain("Oi")
+  })
+})
+
 describe("applyOps — set_text", () => {
   it("troca TODAS as ocorrências (branches MSO) e neutraliza < >", () => {
     const doc = "<td>{{CTA_LABEL}}</td><!--[if mso]><td>{{CTA_LABEL}}</td><![endif]-->"
