@@ -354,7 +354,8 @@ async function handleGet(request: NextRequest) {
           const statusMap: Record<string, string> = {
             pending: "pending",
             in_progress: "progress",
-            in_review: "review",
+            review: "review", // valor real do enum task_status
+            in_review: "review", // legado — nunca existiu no banco, mantido por segurança
             completed: "done",
             cancelled: "done",
           }

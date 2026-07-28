@@ -95,6 +95,9 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(supabase)
 
     const body = await parseAndValidate(request, taskCreateSchema)
+    // Compat: "in_review" não existe no enum task_status (valor real:
+    // "review") — normaliza antes do INSERT pra não estourar 22P02.
+    if (body.status === "in_review") body.status = "review"
 
     const adminClient = createAdminClient()
 

@@ -142,6 +142,10 @@ export async function PUT(
     const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
+    // Compat: clientes antigos mandavam "in_review", que NÃO existe no enum
+    // task_status do banco (o valor real é "review") — o UPDATE estourava
+    // com 22P02 e mover pra "Em revisão" nunca funcionava.
+    if (body?.status === "in_review") body.status = "review"
 
     // Gate de visibilidade/edicao por etapa (apenas tasks de onboarding).
     // Tasks comuns mantem o comportamento original (qualquer membro da org).

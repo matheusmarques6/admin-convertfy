@@ -28,7 +28,7 @@ import { TaskDetailDrawer } from "./task-detail-drawer"
 const STATUS_TO_DB: Record<string, string> = {
   pending: "pending",
   progress: "in_progress",
-  review: "in_review",
+  review: "review", // enum task_status usa "review" (não "in_review" — 22P02)
   done: "completed",
 }
 

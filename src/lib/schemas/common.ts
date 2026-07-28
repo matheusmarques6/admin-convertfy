@@ -90,7 +90,13 @@ export const taskCreateSchema = z.object({
   onboarding_id: uuidSchema.nullable().optional(),
   operational_column_id: uuidSchema.nullable().optional(),
   source_type: z.string().optional(),
-  status: z.enum(["pending", "in_progress", "in_review", "completed", "cancelled"]).optional(),
+  // Valores REAIS do enum task_status do banco (20250125_07_tasks.sql):
+  // pending/in_progress/blocked/review/completed/cancelled. "in_review"
+  // segue aceito por compat com clientes antigos — a rota normaliza pra
+  // "review" antes do UPDATE (o banco rejeitava com 22P02).
+  status: z
+    .enum(["pending", "in_progress", "review", "in_review", "blocked", "completed", "cancelled"])
+    .optional(),
 })
 
 // --- Portal User ---

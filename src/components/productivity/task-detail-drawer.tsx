@@ -1067,12 +1067,12 @@ export function TaskDetailDrawer({
   }, [task.id, isOnboarding])
 
   // Mapeia status do board (pending/progress/review/done) pro status real
-  // do banco (pending/in_progress/in_review/completed). O store usa o
-  // shorthand do board mas a tabela `tasks` usa o nome completo.
+  // do banco (pending/in_progress/review/completed). O store usa o
+  // shorthand do board mas a tabela `tasks` usa o enum task_status.
   const STATUS_TO_DB: Record<string, string> = {
     pending: "pending",
     progress: "in_progress",
-    review: "in_review",
+    review: "review", // enum task_status usa "review" (não "in_review" — 22P02)
     done: "completed",
   }
 
