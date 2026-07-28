@@ -505,6 +505,103 @@ export interface RunPhase2Params {
 }
 
 /**
+ * Reaproveita as imagens da ÚLTIMA geração quando o agente de imagem está
+ * DESLIGADO (email_generation_settings.generate_images = false).
+ *
+ * A copy nova sobrescreve o content dos blocos por inteiro (o callback do
+ * n8n troca o objeto), então a image_url anterior se perde. A fonte de
+ * verdade que sobrevive é a TELEMETRIA: todo run de imagem success grava
+ * parsed_output { blockId, imageUrl } (avatares: + kind/itemIndex). Este
+ * helper recupera a URL mais recente por bloco/avatar e re-grava no
+ * content — o restante da fase 2 (hero/image_map) consome como se a
+ * imagem tivesse sido gerada agora. Blocos sem run anterior (nunca
+ * geraram, ou reseed trocou os ids) seguem sem imagem — a cadeia já trata
+ * slot vazio (remove a linha).
+ */
+export async function reuseImagesFromPreviousRuns(
+  admin: ReturnType<typeof createAdminClient>,
+  emailId: string,
+): Promise<number> {
+  const [{ data: blocks }, { data: runs }] = await Promise.all([
+    admin
+      .from("email_blocks")
+      .select("id, block_type, content")
+      .eq("email_id", emailId)
+      .eq("needs_image", true),
+    admin
+      .from("email_generation_runs")
+      .select("parsed_output, created_at")
+      .eq("email_id", emailId)
+      .eq("agent", "image")
+      .eq("status", "success")
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ])
+  if (!blocks || blocks.length === 0) return 0
+
+  interface ImageRunOutput {
+    blockId?: string
+    imageUrl?: string
+    kind?: string
+    itemIndex?: number
+  }
+  // Runs vêm em ordem desc — o PRIMEIRO por chave é o mais recente.
+  const mainByBlock = new Map<string, string>()
+  const avatarByBlockItem = new Map<string, string>()
+  for (const r of runs ?? []) {
+    const po = (r.parsed_output ?? {}) as ImageRunOutput
+    if (!po.blockId || !po.imageUrl) continue
+    if (po.kind === "testimonial_avatar") {
+      const key = `${po.blockId}:${po.itemIndex ?? 0}`
+      if (!avatarByBlockItem.has(key)) avatarByBlockItem.set(key, po.imageUrl)
+    } else if (!mainByBlock.has(po.blockId)) {
+      mainByBlock.set(po.blockId, po.imageUrl)
+    }
+  }
+
+  let reused = 0
+  for (const blk of blocks) {
+    const content = ((blk.content as Record<string, unknown>) ?? {}) as Record<
+      string,
+      unknown
+    >
+    let changed = false
+
+    if (!content.image_url && mainByBlock.has(blk.id as string)) {
+      content.image_url = mainByBlock.get(blk.id as string)
+      changed = true
+    }
+
+    if (blk.block_type === "testimonials" && Array.isArray(content.items)) {
+      const items = content.items as Array<Record<string, unknown>>
+      items.forEach((item, idx) => {
+        const key = `${blk.id}:${idx}`
+        if (!item.avatar_url && avatarByBlockItem.has(key)) {
+          item.avatar_url = avatarByBlockItem.get(key)
+          changed = true
+        }
+      })
+    }
+
+    if (changed) {
+      const { error } = await admin
+        .from("email_blocks")
+        .update({ content })
+        .eq("id", blk.id as string)
+      if (!error) reused++
+      else {
+        log.warn("phase2.image.reuse_update_failed", {
+          emailId,
+          blockId: blk.id,
+          error: error.message,
+        })
+      }
+    }
+  }
+  return reused
+}
+
+/**
  * Phase 2 — etapa 1 (imagem).
  *
  * Faz claim atomico `copy_ready -> rendering`, gera todas as imagens
@@ -1175,6 +1272,11 @@ export async function runPhase2Image(
       })
     }
   } else {
+    // Agente de imagem DESLIGADO (aba Configurações → "Gerar imagens"):
+    // reaproveita as imagens da última geração via telemetria em vez de
+    // pagar/esperar o modelo de imagem (o step mais instável do pipeline).
+    const reused = await reuseImagesFromPreviousRuns(admin, emailId)
+    log.info("phase2.image.reuse", { storeId, emailId, reused })
     await logGenerationRun({
       storeId,
       flowId,
@@ -1183,6 +1285,11 @@ export async function runPhase2Image(
       batchId,
       agent: "image",
       status: "skipped",
+      model: "reuse",
+      parsedOutput: {
+        skip_reason: "generate_images_off",
+        reused_images: reused,
+      },
     })
   }
 

@@ -259,7 +259,7 @@ export function SettingsTab() {
             </SettingRow>
             <SettingRow
               title="Gerar imagens"
-              sub="Incluir geração de imagens no pipeline"
+              sub="Incluir geração de imagens no pipeline. Desligado: reaproveita as imagens da última geração de cada bloco (blocos sem imagem anterior saem sem imagem)"
             >
               <EGToggle
                 on={merged.generate_images}
