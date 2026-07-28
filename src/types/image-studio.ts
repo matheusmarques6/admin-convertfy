@@ -94,6 +94,8 @@ export interface ImageStudioResult {
   adjustment_notes: string | null
   error_message: string | null
   generated_at: string | null
+  /** NOT NULL = congelada: não é regerada com o lote. */
+  approved_at: string | null
   updated_at: string
 }
 

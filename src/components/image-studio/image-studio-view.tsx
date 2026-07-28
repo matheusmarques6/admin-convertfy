@@ -21,6 +21,7 @@ import {
   Download,
   ImagePlus,
   Loader2,
+  Lock,
   Minus,
   Plus,
   RefreshCw,
@@ -308,15 +309,27 @@ export function ImageStudioView() {
     if (!current) return
     const selectedStores = current.store_ids
     if (selectedStores.length === 0) return
-    const total = selectedStores.length * current.variations.length
+    // Aprovadas são congeladas no servidor — não entram na conta nem no
+    // update otimista (senão o card aprovado piscaria "Gerando…" à toa).
+    const approvedKeys = new Set(
+      current.results
+        .filter((r) => r.approved_at)
+        .map((r) => `${r.store_id}:${r.variation_index}`),
+    )
+    const total =
+      selectedStores.length * current.variations.length - approvedKeys.size
+    if (total <= 0) return
     if (total > CONFIRM_THRESHOLD) {
       const ok = window.confirm(
-        `Isso vai gerar ${total} imagens (${selectedStores.length} lojas × ${current.variations.length} variações). Confirmar?`,
+        `Isso vai gerar ${total} imagens (${selectedStores.length} lojas × ${current.variations.length} variações${
+          approvedKeys.size > 0 ? `, ${approvedKeys.size} aprovadas ficam de fora` : ""
+        }). Confirmar?`,
       )
       if (!ok) return
     }
     setGenerating(true)
-    // Otimista: marca os pares loja×variação como gerando.
+    // Otimista: marca como gerando só o que NÃO está aprovado; as
+    // aprovadas seguem com o resultado atual.
     setBatches((prev) =>
       prev.map((b) =>
         b.id === current.id
@@ -324,6 +337,10 @@ export function ImageStudioView() {
               ...b,
               results: selectedStores.flatMap((storeId) =>
                 current.variations.map<ImageStudioResult>((_, vi) => {
+                  const existing = b.results.find(
+                    (r) => r.store_id === storeId && r.variation_index === vi,
+                  )
+                  if (existing?.approved_at) return existing
                   const meta = stores.find((s) => s.store_id === storeId)
                   return {
                     id: `tmp-${storeId}-${vi}`,
@@ -338,6 +355,7 @@ export function ImageStudioView() {
                     adjustment_notes: null,
                     error_message: null,
                     generated_at: null,
+                    approved_at: null,
                     updated_at: new Date().toISOString(),
                   }
                 }),
@@ -791,7 +809,14 @@ function BatchEditor({
     (r) => r.status === "queued" || r.status === "generating",
   )
   const readyCount = countByStatus(results).ready
-  const totalImages = storeIds.length * variations.length
+  const approvedCount = results.filter(
+    (r) => r.approved_at && storeIds.includes(r.store_id) && r.variation_index < variations.length,
+  ).length
+  // O botão promete o que a geração REALMENTE vai fazer: aprovadas ficam fora.
+  const totalImages = Math.max(
+    0,
+    storeIds.length * variations.length - approvedCount,
+  )
 
   const selectedStores = useMemo(
     () =>
@@ -1348,8 +1373,12 @@ function BatchEditor({
           )}
           Gerar {totalImages} imagem{totalImages === 1 ? "" : "ns"}
           {variations.length > 1 && storeIds.length > 0
-            ? ` (${storeIds.length}×${variations.length})`
-            : ""}
+            ? ` (${storeIds.length}×${variations.length}${
+                approvedCount > 0 ? ` − ${approvedCount} aprovada${approvedCount === 1 ? "" : "s"}` : ""
+              })`
+            : approvedCount > 0
+              ? ` (− ${approvedCount} aprovada${approvedCount === 1 ? "" : "s"})`
+              : ""}
         </button>
       </div>
 
@@ -1486,6 +1515,7 @@ function ResultCard({
   const isPending = hasResult && (status === "queued" || status === "generating")
   const canDownload =
     !!result?.image_url && (status === "ready" || status === "adjustment")
+  const isApproved = !!result?.approved_at
   const isStuck =
     isPending &&
     !!result?.updated_at &&
@@ -1509,6 +1539,34 @@ function ResultCard({
       setDownloading(false)
     }
   }, [result?.image_url, store.store_name, format, variationIndex, toast])
+
+  const setApproval = useCallback(
+    async (approved: boolean) => {
+      if (!result || result.id.startsWith("tmp-")) return
+      setBusy(true)
+      // Otimista: o cadeado aparece/some na hora.
+      onResultChange({
+        ...result,
+        approved_at: approved ? new Date().toISOString() : null,
+      })
+      try {
+        const res = await fetch(`/api/admin/image-studio/results/${result.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approved }),
+        })
+        if (res.ok) {
+          const j = (await res.json()) as { result: ImageStudioResult }
+          onResultChange(j.result)
+        }
+      } catch {
+        /* o polling reconcilia com o estado real */
+      } finally {
+        setBusy(false)
+      }
+    },
+    [result, onResultChange],
+  )
 
   const regenerate = useCallback(
     async (adjustmentNotes: string | null) => {
@@ -1545,7 +1603,11 @@ function ResultCard({
   )
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-[8px] border border-border bg-card">
+    <div
+      className={`group relative flex flex-col overflow-hidden rounded-[8px] border bg-card ${
+        isApproved ? "border-emerald-500/60 ring-1 ring-emerald-500/30" : "border-border"
+      }`}
+    >
       {/* Área da imagem */}
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted/40">
         {result?.image_url ? (
@@ -1585,6 +1647,14 @@ function ResultCard({
         <span className="absolute right-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground shadow-sm">
           {variationLabel}
         </span>
+        {isApproved && (
+          <span
+            title="Aprovada — não é regerada com o lote"
+            className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+          >
+            <Lock size={10} /> Aprovada
+          </span>
+        )}
         {result?.image_url && !isPending && imgReady && (
           <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
             <ZoomIn size={11} /> Ver
@@ -1603,8 +1673,55 @@ function ResultCard({
           </p>
         )}
 
-        {!adjusting && (
+        {!adjusting && isApproved && (
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setApproval(false)}
+              disabled={busy}
+              title="Desaprovar — volta a ser regerada com o lote"
+              className="inline-flex items-center gap-1.5 rounded-[5px] border border-emerald-600/40 bg-emerald-50 px-2 py-1 text-[11.5px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950/30"
+            >
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
+              Aprovada
+            </button>
+            {canDownload && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
+                title="Baixar imagem"
+                className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
+              >
+                {downloading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Download size={12} />
+                )}
+                Baixar
+              </button>
+            )}
+          </div>
+        )}
+
+        {!adjusting && !isApproved && (
+          <div className="flex items-center gap-1.5">
+            {canDownload && (
+              <button
+                type="button"
+                onClick={() => setApproval(true)}
+                disabled={busy}
+                title="Aprovar — congela esta imagem; gerar o lote de novo não a substitui"
+                className="inline-flex items-center gap-1.5 rounded-[5px] border border-border bg-background px-2 py-1 text-[11.5px] font-medium text-foreground/80 hover:bg-muted disabled:opacity-50"
+              >
+                {busy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} />
+                )}
+                Aprovar
+              </button>
+            )}
             {(hasResult && status === "failed") || isStuck ? (
               <button
                 type="button"

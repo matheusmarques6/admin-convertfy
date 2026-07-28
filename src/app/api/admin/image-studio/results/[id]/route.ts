@@ -1,8 +1,10 @@
 /**
- * POST /api/admin/image-studio/results/[id]
+ * /api/admin/image-studio/results/[id]
  *
- * Regera UM resultado (loja × variação), opcionalmente com nota de ajuste
- * ("Regerar com ajuste" / "Tentar de novo").
+ * POST  — regera UM resultado (loja × variação), opcionalmente com nota
+ *         de ajuste ("Regerar com ajuste" / "Tentar de novo").
+ * PATCH — aprova/desaprova. Aprovada = congelada: a geração do lote pula
+ *         o par (loja, variação) e a regeração individual é recusada.
  */
 
 import { NextRequest } from "next/server"
@@ -16,7 +18,10 @@ import {
 import { createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { regenerateResult } from "@/lib/services/image-studio.service"
+import {
+  regenerateResult,
+  setResultApproval,
+} from "@/lib/services/image-studio.service"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -24,6 +29,8 @@ export const maxDuration = 300
 const bodySchema = z
   .object({ adjustment_notes: z.string().max(2000).nullable().optional() })
   .strict()
+
+const approvalSchema = z.object({ approved: z.boolean() }).strict()
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -43,5 +50,22 @@ export async function POST(
     return successResponse(request, { result })
   } catch (error) {
     return errorResponse(request, error, "ImageStudioRegenerate")
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params
+    const sb = await createClient()
+    const user = await requireAuth(sb)
+    const orgId = await resolveOrgId(user.id)
+    const body = await parseAndValidate(request, approvalSchema)
+    const result = await setResultApproval(id, orgId, body.approved)
+    return successResponse(request, { result })
+  } catch (error) {
+    return errorResponse(request, error, "ImageStudioApprove")
   }
 }

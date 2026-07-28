@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  approvedKeySet,
   buildStudioInstruction,
   isImageStudioFormat,
   MAX_REFERENCE_IMAGES,
@@ -9,6 +10,7 @@ import {
   normalizeStoreSpecs,
   normalizeVariations,
   pickReferenceUrls,
+  resultKey,
   variationDirective,
 } from "./image-studio.service"
 
@@ -113,6 +115,25 @@ describe("normalizeStoreSpecs", () => {
   it("valor não-objeto vira mapa vazio", () => {
     expect(normalizeStoreSpecs(undefined)).toEqual({})
     expect(normalizeStoreSpecs([{ instruction: "x" }])).toEqual({})
+  })
+})
+
+describe("resultKey / approvedKeySet", () => {
+  it("chave é loja:variação e o conjunto casa os pares aprovados", () => {
+    expect(resultKey("loja-a", 2)).toBe("loja-a:2")
+    const set = approvedKeySet([
+      { store_id: "loja-a", variation_index: 0 },
+      { store_id: "loja-b", variation_index: 2 },
+    ])
+    expect(set.has(resultKey("loja-a", 0))).toBe(true)
+    expect(set.has(resultKey("loja-b", 2))).toBe(true)
+    // mesma loja, outra variação → NÃO congelada
+    expect(set.has(resultKey("loja-a", 1))).toBe(false)
+    expect(set.has(resultKey("loja-c", 0))).toBe(false)
+  })
+
+  it("sem aprovadas o conjunto é vazio (nada é pulado)", () => {
+    expect(approvedKeySet([]).size).toBe(0)
   })
 })
 

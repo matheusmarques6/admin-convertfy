@@ -176,6 +176,21 @@ export function variationDirective(
   return `VARIAÇÃO ${index + 1} de ${variations.length}: crie uma composição DIFERENTE das demais variações (outro ângulo, enquadramento ou cenário), mantendo o mesmo brief e a mesma identidade da marca.`
 }
 
+/** Chave de um resultado dentro do lote (loja × variação). Pura. */
+export function resultKey(storeId: string, variationIndex: number): string {
+  return `${storeId}:${variationIndex}`
+}
+
+/**
+ * Conjunto de chaves APROVADAS — a geração do lote pula estes pares.
+ * Pura, testável.
+ */
+export function approvedKeySet(
+  rows: Array<{ store_id: string; variation_index: number }>,
+): Set<string> {
+  return new Set(rows.map((r) => resultKey(r.store_id, r.variation_index)))
+}
+
 // ── Tipos internos de linha ──────────────────────────────────────────
 
 interface BatchRow {
@@ -207,6 +222,7 @@ interface ResultRow {
   error_message: string | null
   generated_via: string | null
   generated_at: string | null
+  approved_at: string | null
   updated_at: string
 }
 
@@ -220,7 +236,7 @@ interface StoreMeta {
 }
 
 const RESULT_COLS =
-  "id, batch_id, store_id, variation_index, status, image_url, adjustment_notes, error_message, generated_via, generated_at, updated_at"
+  "id, batch_id, store_id, variation_index, status, image_url, adjustment_notes, error_message, generated_via, generated_at, approved_at, updated_at"
 
 function mapBatchRow(row: BatchRow): ImageStudioBatch {
   return {
@@ -262,6 +278,7 @@ function mapResultRow(row: ResultRow, meta: Map<string, StoreMeta>): ImageStudio
     adjustment_notes: row.adjustment_notes,
     error_message: row.error_message,
     generated_at: row.generated_at,
+    approved_at: row.approved_at,
     updated_at: row.updated_at,
   }
 }
@@ -907,11 +924,28 @@ export async function generateBatch(
   }
 
   const variations = normalizeVariations(batch.variations)
+
+  // Aprovadas ficam CONGELADAS: não entram no seed nem no pool — gerar o
+  // lote de novo preserva o que o operador já validou (e não paga por elas).
+  const { data: approvedRows } = await admin
+    .from("image_studio_results")
+    .select("store_id, variation_index")
+    .eq("batch_id", batchId)
+    .not("approved_at", "is", null)
+  const approved = approvedKeySet(
+    (approvedRows as Array<{ store_id: string; variation_index: number }> | null) ?? [],
+  )
+
   const items: Array<{ storeId: string; variationIndex: number }> = []
   for (const storeId of storeIds) {
     for (let i = 0; i < variations.length; i++) {
+      if (approved.has(resultKey(storeId, i))) continue
       items.push({ storeId, variationIndex: i })
     }
+  }
+  if (items.length === 0) {
+    log.info("generate.all_approved", { batchId, storeIds: storeIds.length })
+    return loadBatchWithResults(admin, batchId, orgId)
   }
 
   // Seed: upsert (batch, store, variation) → generating; zera nota antiga.
@@ -966,6 +1000,7 @@ export async function generateBatch(
     .update({ status: "failed", error_message: "Geração interrompida" })
     .eq("batch_id", batchId)
     .eq("status", "generating")
+    .is("approved_at", null)
     .in("store_id", storeIds)
 
   return loadBatchWithResults(admin, batchId, orgId)
@@ -986,6 +1021,10 @@ export async function regenerateResult(
     .maybeSingle()
   if (!resultData) throw new NotFoundError("Resultado")
   const result = resultData as ResultRow
+
+  if (result.approved_at) {
+    throw new ValidationError("Imagem aprovada — desaprove antes de regerar")
+  }
 
   const { data: batchData } = await admin
     .from("image_studio_batches")
@@ -1032,6 +1071,45 @@ export async function regenerateResult(
       generated_via: res.via,
       generated_at: res.status === "ready" ? new Date().toISOString() : null,
     })
+    .eq("id", resultId)
+    .select(RESULT_COLS)
+    .maybeSingle()
+
+  const meta = await loadStoreMeta(admin, [result.store_id])
+  return mapResultRow(data as ResultRow, meta)
+}
+
+/**
+ * Aprova (congela) ou desaprova UM resultado. Imagem aprovada não é
+ * regerada pela geração do lote nem pela regeração individual.
+ */
+export async function setResultApproval(
+  resultId: string,
+  orgId: string,
+  approved: boolean,
+): Promise<ImageStudioResult> {
+  const admin = createAdminClient()
+
+  const { data: resultData } = await admin
+    .from("image_studio_results")
+    .select(RESULT_COLS)
+    .eq("id", resultId)
+    .maybeSingle()
+  if (!resultData) throw new NotFoundError("Resultado")
+  const result = resultData as ResultRow
+
+  // Valida a org pelo lote dono (results não tem org_id).
+  const { data: batch } = await admin
+    .from("image_studio_batches")
+    .select("id")
+    .eq("id", result.batch_id)
+    .eq("org_id", orgId)
+    .maybeSingle()
+  if (!batch) throw new NotFoundError("Lote")
+
+  const { data } = await admin
+    .from("image_studio_results")
+    .update({ approved_at: approved ? new Date().toISOString() : null })
     .eq("id", resultId)
     .select(RESULT_COLS)
     .maybeSingle()
