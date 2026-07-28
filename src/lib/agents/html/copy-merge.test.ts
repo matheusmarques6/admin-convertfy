@@ -11,6 +11,8 @@ import {
   tagToBlockIdMap,
   buildExceptionSlots,
   buildMergeVerifierInput,
+  isStructuralTag,
+  applyStructuralFills,
 } from "./copy-merge"
 import {
   HERO_SENTINEL_START,
@@ -237,5 +239,71 @@ describe("views do image_format (F3 — arquitetura por views)", () => {
       (_, i) => `<table><tr><td>Marca ${i}</td></tr></table>`,
     ).join("")
     expect(rowsContainingText(many, "Marca", 2)).toHaveLength(2)
+  })
+})
+
+describe("tags estruturais — posse do código, nunca do LLM (fix Luxe Lift 28/07)", () => {
+  const DOC_FOOTER = [
+    "<table>",
+    "<tr><td>{{BODY_TITLE}}</td></tr>",
+    '<tr><td><a href="{{FOOTER_LINK_1_URL}}">{{FOOTER_LINK_1_LABEL}}</a></td></tr>',
+    '<tr><td><a href="{{INSTAGRAM_URL}}"><img src="{{INSTAGRAM_ICON}}"></a></td></tr>',
+    "<tr><td>© {{YEAR}} {{BRAND_NAME}}</td></tr>",
+    '<tr><td><a href="{{UNSUBSCRIBE_URL}}">sair</a></td></tr>',
+    "</table>",
+  ].join("\n")
+
+  it("isStructuralTag reconhece exatas e prefixos (footer/social)", () => {
+    expect(isStructuralTag("YEAR")).toBe(true)
+    expect(isStructuralTag("FOOTER_LINK_3_LABEL")).toBe(true)
+    expect(isStructuralTag("INSTAGRAM_ICON")).toBe(true)
+    expect(isStructuralTag("BODY_TITLE")).toBe(false)
+    expect(isStructuralTag("REVIEW_1_TEXT")).toBe(false)
+  })
+
+  it("left_for_llm NÃO leva estruturais — elas saem em structural_out", () => {
+    const { report } = copyMerge(DOC_FOOTER, [])
+    expect(report.left_for_llm).toEqual(["BODY_TITLE"])
+    expect(report.structural_out).toContain("FOOTER_LINK_1_LABEL")
+    expect(report.structural_out).toContain("INSTAGRAM_ICON")
+    expect(report.structural_out).toContain("YEAR")
+  })
+
+  it("applyStructuralFills preenche o que sabe e PRESERVA o resto (não remove linha)", () => {
+    const r = applyStructuralFills(DOC_FOOTER, {
+      subject: "Seu carrinho",
+      preheader: "Volte",
+      brandName: "Luxe Lift",
+      logoUrl: "https://cdn/logo.png",
+      year: 2026,
+    })
+    expect(r.html).toContain("© 2026 Luxe Lift")
+    expect(r.html).toContain("[unsubscribe_link]")
+    expect(r.filled).toEqual(expect.arrayContaining(["YEAR", "BRAND_NAME", "UNSUBSCRIBE_URL"]))
+    // Footer/social sem valor: token fica, LINHA PRESERVADA (strip limpa depois)
+    expect(r.html).toContain("{{FOOTER_LINK_1_URL}}")
+    expect(r.html).toContain("{{INSTAGRAM_ICON}}")
+    expect(r.left).toEqual(expect.arrayContaining(["FOOTER_LINK_1_URL", "INSTAGRAM_ICON"]))
+    // Estrutura intacta: nenhuma <tr> removida
+    expect((r.html.match(/<tr>/g) ?? []).length).toBe(5)
+  })
+
+  it("valor vazio no contexto não vira op (não apaga nem escreve string vazia)", () => {
+    const r = applyStructuralFills("<td>{{BRAND_NAME}}</td>", {
+      subject: "", preheader: "", brandName: "  ", logoUrl: "", year: 2026,
+    })
+    expect(r.html).toContain("{{BRAND_NAME}}")
+    expect(r.filled).toEqual([])
+  })
+})
+
+describe("applyStructuralFills — contexto parcial nunca derruba o estágio", () => {
+  it("campos ausentes/null são ignorados (sem throw, tokens preservados)", () => {
+    const doc = "<td>{{BRAND_NAME}} {{YEAR}} {{LOGO}}</td>"
+    const r = applyStructuralFills(doc, { year: 2026 })
+    expect(r.html).toContain("2026")
+    expect(r.html).toContain("{{BRAND_NAME}}")
+    expect(r.html).toContain("{{LOGO}}")
+    expect(r.filled).toEqual(["YEAR"])
   })
 })

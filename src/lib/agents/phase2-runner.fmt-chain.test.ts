@@ -281,19 +281,13 @@ function mockHappyChains() {
     ...chainResultBase,
     ops: [],
   })
-  // 7b: triagem padrão — pareia as duas sobras com copy candidata.
+  // 7b: triagem padrão — pareia a sobra de COPY com a copy candidata.
+  // (LOGO é tag ESTRUTURAL: preenchida por código, nunca entra na fila.)
   invokeMergeVerifierChain.mockResolvedValue({
     ...chainResultBase,
     result: {
       aprovado: true,
       excecoes: [
-        {
-          block_id: null,
-          tag: "LOGO",
-          motivo: "slot_vazio",
-          copy_candidata: { key: "logo", valor: "LogoX" },
-          acao_sugerida: "preencher",
-        },
         {
           block_id: null,
           tag: "BODY_TEXT",
@@ -497,8 +491,10 @@ describe("7b — Verificador de merge", () => {
       vars: Record<string, string>
     }
     expect(call.vars.exception_slots_json).toContain("copy_candidata")
-    expect(call.vars.exception_slots_json).toContain("LogoX")
+    expect(call.vars.exception_slots_json).toContain("corpo final da copy")
     expect(call.vars.exception_slots_json).toContain("slot_vazio")
+    // LOGO é estrutural — preenchida por código, fora da fila do LLM.
+    expect(call.vars.exception_slots_json).not.toContain("LOGO")
   })
 
   it("verificador falha → fallback mecânico: exceção roda com a fila crua e o email conclui", async () => {
@@ -512,7 +508,7 @@ describe("7b — Verificador de merge", () => {
     }
     // Sem triagem — view mecânica pura (nada de copy_candidata).
     expect(call.vars.exception_slots_json).not.toContain("copy_candidata")
-    expect(call.vars.exception_slots_json).toContain("LOGO")
+    expect(call.vars.exception_slots_json).toContain("BODY_TEXT")
   })
 
   it("merge_verifier_mode=off → verificador nem roda (comportamento pré-7b)", async () => {

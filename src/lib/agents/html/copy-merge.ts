@@ -38,6 +38,8 @@ export interface MergeBlock {
 export interface CopyMergeReport {
   /** Tags de texto (não-imagem) presentes no doc FORA da hero, antes. */
   slots_total: number
+  /** Tags estruturais deixadas de fora da fila do LLM (posse do código). */
+  structural_out: string[]
   /** Ops montadas (campo com tag + valor no content). */
   ops_built: number
   /** Aplicadas com sucesso pelo Integrador. */
@@ -256,6 +258,91 @@ export function buildExceptionSlots(
   })
 }
 
+// ── Tags ESTRUTURAIS — posse do CÓDIGO, nunca do LLM ──────────────────
+//
+// Tags que nunca têm copy do n8n (título/preheader, marca, ano, logo,
+// unsubscribe, links de footer e redes sociais). No modo exceção o LLM
+// obedecia "slot sem copy → remove_row" e APAGAVA o rodapé inteiro
+// (incidente Luxe Lift 28/07: 57 slots na fila, footer/social comidos).
+// Agora: código preenche o que sabe, o resto fica INTACTO (o strip final
+// limpa o token sem apagar a linha) — e nada disso entra na fila do LLM.
+
+const STRUCTURAL_EXACT = new Set([
+  "EMAIL_TITLE",
+  "PREHEADER",
+  "BRAND_NAME",
+  "YEAR",
+  "LOGO",
+  "UNSUBSCRIBE_URL",
+])
+const STRUCTURAL_PREFIX =
+  /^(FOOTER_LINK_|FACEBOOK|INSTAGRAM|TIKTOK|YOUTUBE|TWITTER|PINTEREST|LINKEDIN|WHATSAPP)/
+
+export function isStructuralTag(tag: string): boolean {
+  return STRUCTURAL_EXACT.has(tag) || STRUCTURAL_PREFIX.test(tag)
+}
+
+// Campos opcionais de propósito: contexto parcial (loja sem logo, email
+// sem preheader) NUNCA pode derrubar o estágio — o que falta simplesmente
+// não vira op e o token fica pro strip final.
+export interface StructuralFillContext {
+  subject?: string | null
+  preheader?: string | null
+  brandName?: string | null
+  /** URL do logo (claro) — vazio → {{LOGO}} fica pro strip. */
+  logoUrl?: string | null
+  year: number
+}
+
+export interface StructuralFillResult {
+  html: string
+  /** Tags preenchidas por código. */
+  filled: string[]
+  /** Tags estruturais que ficaram no doc (strip limpa depois). */
+  left: string[]
+}
+
+/**
+ * Preenche por CÓDIGO as tags estruturais conhecidas (fora da hero) e
+ * devolve o relatório. Nunca remove linha — preservação > limpeza.
+ */
+export function applyStructuralFills(
+  html: string,
+  ctx: StructuralFillContext,
+): StructuralFillResult {
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
+  const values: Record<string, string> = {
+    EMAIL_TITLE: str(ctx.subject),
+    PREHEADER: str(ctx.preheader),
+    BRAND_NAME: str(ctx.brandName),
+    YEAR: String(ctx.year),
+    LOGO: str(ctx.logoUrl),
+    // Merge tag do provedor — substituída no disparo; QA já a trata como
+    // conteúdo dinâmico válido.
+    UNSUBSCRIBE_URL: "[unsubscribe_link]",
+  }
+  const present = new Set(
+    Array.from(html.matchAll(TAG_TOKEN), (m) => m[1]).filter(isStructuralTag),
+  )
+  const ops: FormatOp[] = []
+  for (const tag of present) {
+    const value = values[tag]
+    if (value) ops.push({ action: "set_text", tag, value })
+  }
+  const res = applyOps(html, ops, {
+    allowHero: false, // estrutural dentro da hero é posse do agente de hero
+    allowedTags: new Set(ops.flatMap((o) => ("tag" in o ? [o.tag] : []))),
+  })
+  const filled = ops
+    .flatMap((o) => ("tag" in o ? [o.tag] : []))
+    .filter((t) => !res.skipped.some((s) => "tag" in s.op && s.op.tag === t))
+  return {
+    html: res.html,
+    filled,
+    left: Array.from(present).filter((t) => !filled.includes(t)),
+  }
+}
+
 // ── Views do Verificador de merge (7b) ────────────────────────────────
 
 /** Slot resolvido por código: o que foi aplicado, onde (sem row_html — o
@@ -377,15 +464,23 @@ export function copyMerge(
     .flatMap((o) => ("tag" in o ? [o.tag] : []))
     .filter((t) => !skippedTags.has(t))
 
+  // A fila do LLM leva SÓ tags de copy: estruturais (footer/social/marca/
+  // ano/logo/unsubscribe) são posse do código — mandá-las pro agente de
+  // exceção fazia ele apagar o rodapé inteiro por "slot sem copy".
+  const remaining = textTagsOutsideHero(res.html)
+  const structuralOut = remaining.filter(isStructuralTag)
+  const leftForLlm = remaining.filter((t) => !isStructuralTag(t))
+
   return {
     html: res.html,
     report: {
       slots_total: before.length,
+      structural_out: structuralOut,
       ops_built: ops.length,
       merged: res.applied,
       merged_tags: mergedTags,
       skipped: res.skipped,
-      left_for_llm: textTagsOutsideHero(res.html),
+      left_for_llm: leftForLlm,
       unanchored_keys: Array.from(new Set(unanchored)),
     },
   }

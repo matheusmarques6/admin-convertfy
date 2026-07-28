@@ -89,6 +89,7 @@ import {
   mergeBlocksFromContext,
   buildExceptionSlots,
   buildMergeVerifierInput,
+  applyStructuralFills,
   tagToBlockIdMap,
   type MergeField,
 } from "./html/copy-merge"
@@ -1852,6 +1853,36 @@ async function runFormattingChain(p: {
     )
     const merge = copyMerge(mergeInput, mergeBlocks)
     lastMergeBlocks = mergeBlocks
+
+    // Estruturais por CÓDIGO (título/preheader/marca/ano/logo/unsubscribe).
+    // Links de footer/social ficam intactos — o strip final limpa o token
+    // sem apagar a linha. Nada disso vai pro LLM (incidente Luxe Lift:
+    // o agente de exceção apagava o rodapé inteiro por "slot sem copy").
+    const structural = applyStructuralFills(merge.html, {
+      subject: fmtCtx.emailRow?.subject ?? "",
+      preheader: fmtCtx.emailRow?.preheader ?? "",
+      brandName: fmtCtx.brandName,
+      logoUrl: fmtCtx.logoLight,
+      year: new Date().getFullYear(),
+    })
+    merge.html = structural.html
+
+    // Guard anti-colapso: fila de copy tomando quase todo o documento =
+    // blueprint sem âncoras (fields.tag null — variantes não tagueadas),
+    // não "copy faltando". Antes isso passava silencioso e o LLM comia
+    // seções inteiras.
+    const copySlots = merge.report.slots_total - merge.report.structural_out.length
+    const collapsed =
+      copySlots >= 10 && merge.report.left_for_llm.length / copySlots > 0.6
+    if (collapsed) {
+      log.error("phase2.fmt.merge_anchor_collapse", {
+        emailId,
+        slots_total: merge.report.slots_total,
+        merged: merge.report.merged,
+        left_for_llm: merge.report.left_for_llm.length,
+        hint: "blueprint sem fields.tag — passar as variantes pelo Taguedor",
+      })
+    }
     await logGenerationRun({
       ...ids,
       agent: "copy_merge",
@@ -1868,6 +1899,12 @@ async function runFormattingChain(p: {
         merged: merge.report.merged,
         left_for_llm: merge.report.left_for_llm,
         unanchored_keys: merge.report.unanchored_keys,
+        // Estruturais: posse do código (nunca vão pro LLM).
+        structural_out: merge.report.structural_out,
+        structural_filled: structural.filled,
+        structural_left: structural.left,
+        // Blueprint sem âncoras → fila de copy engole o documento.
+        anchor_collapse: collapsed,
         ops_skipped: merge.report.skipped.map((s) => ({
           action: s.op.action,
           tag: "tag" in s.op ? s.op.tag : null,
