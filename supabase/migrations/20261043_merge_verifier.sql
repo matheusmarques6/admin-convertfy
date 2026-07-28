@@ -68,12 +68,13 @@ BEGIN
 END $$;
 
 -- 3. Seed da config (prompt vazio → o chain usa o DEFAULT in-code; editar
---    na aba Agentes sobrescreve). Haiku direto na Anthropic (sem "/"):
---    julgamento curto sobre views pequenas — barato e rápido.
+--    na aba Agentes sobrescreve). Kimi K3 via OpenRouter — mesma conta do
+--    resto da cadeia (o seed original em Haiku/Anthropic morria por falta
+--    de crédito na conta Anthropic).
 INSERT INTO email_agent_configs (
   agent_type, model, system_prompt, user_template, temperature, max_tokens, is_active, version
 )
-SELECT 'merge_verifier', 'claude-haiku-4-5', '', '', 0.2, 2048, true, 1
+SELECT 'merge_verifier', 'moonshotai/kimi-k3', '', '', 0.2, 2048, true, 1
 WHERE NOT EXISTS (
   SELECT 1 FROM email_agent_configs WHERE agent_type = 'merge_verifier' AND is_active = true
 );

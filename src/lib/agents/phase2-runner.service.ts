@@ -1446,10 +1446,11 @@ function toChainConfig(
 
 // Verificador de merge (7b): não é step da cadeia (sem failStep/budget
 // próprios — falha vira fallback mecânico), então tem defaults próprios.
-// Haiku direto na Anthropic: julgamento curto sobre views pequenas.
+// Kimi K3 via OpenRouter (mesma conta do resto da cadeia) — o seed
+// original em Haiku morria por falta de crédito na Anthropic (28/07).
 function verifierChainConfig(config: EmailAgentConfig | null): FormatChainConfig {
   return {
-    model: config?.model || "claude-haiku-4-5",
+    model: config?.model || FMT_DEFAULT_MODEL,
     temperature: config?.temperature ?? 0.2,
     max_tokens: config?.max_tokens ?? 2048,
     system_prompt: config?.system_prompt ?? "",

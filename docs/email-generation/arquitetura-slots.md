@@ -8,7 +8,7 @@
 >   `email_blocks.id` (a MESMA chave do callback do n8n) — rastreabilidade
 >   n8n → banco → view → op → HTML na telemetria. Aditivo/opcional.
 > - **F2 — Verificador de merge (7b)**: agente LLM barato
->   (`merge_verifier`, Haiku) audita o resultado do copy_merge com views e
+>   (`merge_verifier`, Kimi K3 via OpenRouter) audita o merge com views e
 >   tria a fila do agente de exceção (`{block_id, tag, motivo,
 >   copy_candidata, acao_sugerida}`). Modo via
 >   `email_generation_settings.merge_verifier_mode` ('on_flag' default /

@@ -96,7 +96,7 @@ describe("parseMergeVerifierOutput", () => {
 
 describe("invokeMergeVerifierChain", () => {
   const config = {
-    model: "claude-haiku-4-5",
+    model: "moonshotai/kimi-k3",
     temperature: 0.2,
     max_tokens: 2048,
     system_prompt: "",
@@ -122,7 +122,7 @@ describe("invokeMergeVerifierChain", () => {
     expect(r.result.aprovado).toBe(true)
     expect(invokeFormatModel).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "claude-haiku-4-5",
+        model: "moonshotai/kimi-k3",
         systemPrompt: DEFAULT_MERGE_VERIFIER_SYSTEM_PROMPT,
         // Julgamento curto: reasoning desligado por padrão.
         reasoning: { enabled: false },

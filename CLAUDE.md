@@ -1325,7 +1325,7 @@ nenhum agente de formatação recebe mais o documento inteiro (regra: LLM
 devolve intenção — fragmento ou ops — e só código escreve no HTML).
 (F1) toda op/view carrega `block_id` opcional (= `email_blocks.id`, a
 chave do callback do n8n) — rastreabilidade ponta a ponta na telemetria.
-(F2) **Verificador de merge** (`merge_verifier`, Haiku, chain
+(F2) **Verificador de merge** (`merge_verifier`, Kimi K3 via OpenRouter, chain
 `merge-verifier.chain.ts`): roda entre o copy_merge e o agente de
 exceção, audita o merge com views (`buildMergeVerifierInput`) e tria a
 fila (`{block_id, tag, motivo, copy_candidata, acao_sugerida}`); modo em
