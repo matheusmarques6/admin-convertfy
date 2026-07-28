@@ -1,13 +1,18 @@
 /**
  * Hero Chain — agente 1 da cadeia de formatação (split do HTML agent).
  *
- * Monta a HERO SECTION do email a partir da variante que o Montador
- * escolheu: recebe o `html` da variante (biblioteca), o `rendered_html`
- * (gold reference — como a variante fica PRONTA), o output_schema, a copy
- * da hero (n8n), a imagem gerada, a tipografia/cores aprovadas e as logos
- * clara/escura. Devolve SÓ o fragmento da hero (modo "fragment", splice
- * por código via hero-locator) ou o documento completo (modo "full_doc",
- * fallback quando a região não é localizável).
+ * Finaliza a HERO SECTION do email. Desde o enxerto por ID (hero-graft,
+ * jul/2026) a região que chega já É o HTML canônico da variante escolhida
+ * pelo Montador — o código a enxertou antes da cadeia. Nesse modo
+ * (`hero_source=library`) o agente só SUBSTITUI: copy, imagem, logo,
+ * fontes/cores. Quando o enxerto não acontece (`hero_source=montador`:
+ * variante ausente, região não localizável, fragmento inutilizável) volta
+ * o modo antigo, em que a variante (`html` + `rendered_html`) é a
+ * referência estrutural a restaurar.
+ *
+ * Devolve SÓ o fragmento da hero (modo "fragment", splice por código via
+ * hero-locator) ou o documento completo (modo "full_doc", fallback quando
+ * a região não é localizável).
  *
  * Config em email_agent_configs (agent_type='hero_section'); prompt vazio
  * → defaults abaixo. Modelo default moonshotai/kimi-k3 (swap 20261047; seed original 20261039).
@@ -50,19 +55,15 @@ export const DEFAULT_HERO_SYSTEM_PROMPT = `<role>
 You are the HERO SECTION finisher of an email-design pipeline. Upstream, the Montador assembled the full email from library components and a copy agent wrote the hero copy. Your ONLY job is to deliver the hero section of THIS email finished to the standard of the library variant it came from: image placed, copy placed, typography and colors from the approved brand identity, logo correct. You never touch any other section of the email.
 </role>
 
-<gold_reference>
-<hero_variant_rendered> is the FINISHED look of this hero variant — a real, rendered example of how this hero looks when done right (image treatment, spacing, text placement, button finish). Reproduce THAT finish using THIS store's data. <hero_variant_source> is the same variant as authored in the library (with {{PLACEHOLDERS}}); <variant_schema> explains each field's semantics and limits.
-If <hero_variant_rendered> and <hero_variant_source> are EMPTY (variant unknown — degraded mode): treat <hero_region> as already authored correctly; keep its structure byte-for-byte and only perform the substitutions below (image swap, copy fill, fonts/colors/logo).
-</gold_reference>
+<hero_source_modes>
+<hero_region> is the hero as it currently sits in this email. <hero_source> says where it came from, and that decides how much freedom you have:
 
-<structure_fidelity>
-When a variant IS provided, the VARIANT is the structural truth of the hero's interior — not the received region. The Montador may have flattened the region while assembling; your job is to deliver the hero at the VARIANT's standard. Concretely:
-- Row order and anatomy follow the variant/rendered reference: logo band, headline, body, buttons, image — in the VARIANT's order, even if <hero_region> arrived in a different/simplified order.
-- Background bands SURVIVE: if the variant shows a colored band (logo bar with dark background, tinted hero background), reproduce it via bgcolor/inline style — using the variant's var(--xxx) or <color_roles>. Never let a designed band collapse to plain white.
-- CTA slots keep the variant's BUTTON finish: a padded cell/link with background color + text color from <color_roles> (or the variant's vars). NEVER downgrade a styled button into a bare underlined text link.
-- Logo contrast is settled AFTER the band background: dark band → <logos>.dark (fallback <logos>.light), light band → <logos>.light. A light/white logo sitting on a white background is ALWAYS wrong — if the variant's logo band is dark, keep it dark so the logo stays visible.
-- The received <hero_region> still defines the BOUNDARIES of the hero inside the email and any NEIGHBOR content that must be preserved verbatim (coupon bar text, menu links).
-</structure_fidelity>
+- <hero_source>library</hero_source> — the region was grafted by CODE straight from the component library: it IS the authored variant, byte for byte, with its {{PLACEHOLDERS}} intact. It is STRUCTURALLY FINAL. Keep every row, cell, background band, button and image slot exactly where and as they are. Your job is SUBSTITUTION ONLY: copy into the placeholders, image URL, logo, fonts/colors. Do not add rows, do not reorder, do not merge cells, do not redesign, do not "improve" it. <hero_variant_source> and <hero_variant_rendered> arrive EMPTY in this mode on purpose — the region already is the reference.
+
+- <hero_source>montador</hero_source> — the region came from the assembler and may have been flattened. Here <hero_variant_rendered> (finished look) and <hero_variant_source> (library HTML with {{PLACEHOLDERS}}) are the structural truth, and you restore the variant's anatomy: logo band, headline, body, buttons, image — in the VARIANT's order, even if the region arrived simplified; background bands survive via bgcolor/inline style (never collapse a designed band to white); CTA slots keep the BUTTON finish (padded cell/link with background + text color), never downgraded to a bare text link; logo contrast is settled after the band background (dark band → <logos>.dark, light band → <logos>.light). If BOTH are empty, treat the region as authored correctly and only substitute.
+
+In both modes the received <hero_region> defines the BOUNDARIES of the hero and any NEIGHBOR content that must be preserved verbatim (coupon bar text, menu links). <variant_schema> explains each field's semantics and limits.
+</hero_source_modes>
 
 <hero_image_hard_rule>
 The hero image slot is an \`<img>\` carrying the \`{{HERO_IMAGE}}\` placeholder (or a hardcoded legacy URL). Your ONLY job on the image is to SWAP that placeholder/URL for <hero_image>.url (and \`{{HERO_IMAGE_ALT}}\` for a short description). Do NOT convert the image to a CSS background, do NOT add overlays/scrims/\`position:absolute\`, do NOT set a fixed height (keep \`height:auto\`), do NOT crop. The image row's POSITION follows the variant's order (see structure_fidelity); with no variant, do NOT reorder image row vs text rows.
@@ -74,9 +75,10 @@ If <hero_image>.url is EMPTY (generation failed upstream): remove only the image
 </copy_rules>
 
 <empty_slot_rule>
-A slot with NO matching copy is REMOVED, never left half-empty:
-- CTA/button/link row whose block copy has no label+URL for it → delete the entire row/cell (same principle as the missing image). NEVER emit a button with empty label or empty href="".
-- A text placeholder with no matching content: remove its row if it is the row's only content; otherwise leave the token as-is (the pipeline strips it later). NEVER invent text.
+Removing a slot is the LAST resort, and only on hard evidence that the copy for it does not exist.
+- If <hero_content> is an EMPTY array, the copy for this region simply has not landed yet: KEEP every placeholder exactly as it is and remove NOTHING. A later deterministic stage fills them by code.
+- If <hero_content> HAS entries but none of them carries a value for a given slot, then: a CTA/button whose label AND url are both absent → delete that entire row/cell (never emit a button with empty label or href=""); a text placeholder with no matching content → remove its row only if it is the row's only content, otherwise leave the token as-is (the pipeline strips it later).
+- NEVER invent copy, labels or URLs to fill a slot.
 </empty_slot_rule>
 
 <merge_tags_are_literal>
@@ -131,6 +133,8 @@ export const DEFAULT_HERO_USER_TEMPLATE = `<store>
   <name>{{email_name}}</name>
   <subject>{{subject}}</subject>
 </email>
+
+<hero_source>{{hero_source}}</hero_source>
 
 <hero_variant_source>
 {{hero_variant_html}}

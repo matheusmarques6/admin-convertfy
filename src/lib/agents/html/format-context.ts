@@ -246,6 +246,9 @@ export async function loadFormatChainContext(
 export interface HeroVariantData {
   id: string
   html: string
+  /** Proposta do Taguedor — canônica quando tagging_status='approved'. */
+  html_tagged: string | null
+  tagging_status: string | null
   rendered_html: string | null
   output_schema: unknown
   block_type: string
@@ -323,7 +326,9 @@ export async function resolveHeroVariant(
 
   const { data: variant, error } = await admin
     .from("email_component_variants")
-    .select("id, html, rendered_html, output_schema, block_type")
+    .select(
+      "id, html, html_tagged, tagging_status, rendered_html, output_schema, block_type",
+    )
     .eq("id", variantId)
     .maybeSingle()
   if (error || !variant) {
@@ -421,6 +426,14 @@ export function buildHeroVars(
     mode: HeroChainMode
     regionHtml: string
     variant: HeroVariantData | null
+    /**
+     * A região já É a variante da biblioteca (enxertada por código antes da
+     * cadeia). Nesse caso mandar `hero_variant_html` de novo é duplicar o
+     * mesmo HTML no prompt — e o `rendered_html` das variantes é mockup de
+     * imagem, sem valor estrutural. Ambos saem; o prompt trata a região
+     * recebida como verdade estrutural.
+     */
+    grafted?: boolean
   },
 ): Record<string, string> {
   const heroBlocks = blocksInsideHeroRegion(ctx, params.regionHtml)
@@ -440,8 +453,11 @@ export function buildHeroVars(
     // reasoning do GLM (timeouts de 240s) e menos custo por run.
     montador_html: params.mode === "full_doc" ? ctx.referenceHtml : "",
     hero_region_html: params.regionHtml,
-    hero_variant_html: params.variant?.html ?? "",
-    hero_variant_rendered_html: params.variant?.rendered_html ?? "",
+    hero_variant_html: params.grafted ? "" : (params.variant?.html ?? ""),
+    hero_variant_rendered_html: params.grafted
+      ? ""
+      : (params.variant?.rendered_html ?? ""),
+    hero_source: params.grafted ? "library" : "montador",
     hero_variant_schema_json: params.variant?.output_schema
       ? JSON.stringify(params.variant.output_schema, null, 2)
       : "",

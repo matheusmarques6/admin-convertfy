@@ -215,14 +215,28 @@ const REFERENCE_HTML = [
   "</body></html>",
 ].join("\n")
 
+// Enxerto da hero: por padrão SEM variante (graft='no_variant' → região do
+// Montador, comportamento legado). O teste do enxerto troca o retorno.
+const resolveHeroVariant = vi.fn(async () => ({
+  variant: null as { id: string; html: string } | null,
+  source: null as string | null,
+}))
+const buildHeroVars = vi.fn(
+  (_ctx: unknown, _params: unknown) => ({}) as Record<string, string>,
+)
+
 vi.mock("./html/format-context", () => ({
   loadFormatChainContext: vi.fn(async () => ({
     referenceHtml: REFERENCE_HTML,
     slotMap: null,
     locale: "pt-BR",
+    fontHeading: "Playfair Display",
+    fontBody: "Inter",
   })),
-  resolveHeroVariant: vi.fn(async () => ({ variant: null, source: null })),
-  buildHeroVars: vi.fn(() => ({})),
+  resolveHeroVariant: (...a: unknown[]) =>
+    (resolveHeroVariant as unknown as (...x: unknown[]) => unknown)(...a),
+  buildHeroVars: (...a: unknown[]) =>
+    (buildHeroVars as unknown as (...x: unknown[]) => unknown)(...a),
   // A copy REAL do email — o agente de exceção precisa recebê-la em
   // blocks_with_content_json (regressão: chave errada => sempre "[]").
   buildTextFormatVars: vi.fn(() => ({
@@ -331,6 +345,10 @@ function reset(overrides: Row = {}) {
   invokeImageFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
   invokeMergeVerifierChain.mockReset()
+  buildHeroVars.mockReset()
+  buildHeroVars.mockReturnValue({})
+  resolveHeroVariant.mockReset()
+  resolveHeroVariant.mockResolvedValue({ variant: null, source: null })
 }
 
 const email = () => h.tables.email_flow_emails[0]
@@ -407,6 +425,55 @@ describe("cadeia de formatação — runner", () => {
     expect(email().status).toBe("ready")
     expect((email().html as string)).toContain("https://cdn/body.png")
     expect(runsOf("color_format").filter((r) => r.status === "error")).toHaveLength(2)
+  })
+
+  // ── Enxerto da hero por ID (hero-graft) ──────────────────────────
+  it("enxerto: a região da hero vira o HTML canônico da variante", async () => {
+    mockHappyChains()
+    resolveHeroVariant.mockResolvedValue({
+      variant: {
+        id: "v-hero-8",
+        html: [
+          '<tr><td bgcolor="#111111"><img src="{{LOGO}}"></td></tr>',
+          '<tr><td style="font-family:Courier;font-size:30px">{{HERO_HEADLINE}}</td></tr>',
+          '<tr><td><a href="{{HERO_CTA_URL}}">{{HERO_CTA_LABEL}}</a></td></tr>',
+        ].join("\n"),
+      },
+      source: "slot_map",
+    })
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    const [, params] = buildHeroVars.mock.calls[0] as [
+      unknown,
+      { grafted?: boolean; regionHtml: string },
+    ]
+    expect(params.grafted).toBe(true)
+    // A estrutura rica da variante (banda escura + 2º slot de CTA) chega
+    // ao agente — era exatamente o que o Montador achatava.
+    expect(params.regionHtml).toContain('bgcolor="#111111"')
+    expect(params.regionHtml).toContain("{{HERO_CTA_LABEL}}")
+    // Tipografia da loja aplicada por código na região enxertada.
+    expect(params.regionHtml).toContain("'Playfair Display'")
+    expect(params.regionHtml).not.toContain("Courier")
+
+    const run = runsOf("hero_section")[0].parsed_output as Row
+    expect(run.hero_source).toBe("library")
+    expect(run.graft_status).toBe("grafted")
+    expect(run.variant_id).toBe("v-hero-8")
+  })
+
+  it("enxerto: sem variante mantém a região do Montador (fallback)", async () => {
+    mockHappyChains()
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    const [, params] = buildHeroVars.mock.calls[0] as [
+      unknown,
+      { grafted?: boolean; regionHtml: string },
+    ]
+    expect(params.grafted).toBe(false)
+    expect(params.regionHtml).toContain("{{HERO_HEADLINE}}")
+    const run = runsOf("hero_section")[0].parsed_output as Row
+    expect(run.hero_source).toBe("montador")
+    expect(run.graft_status).toBe("no_variant")
   })
 
   it("out_of_budget: estágio persiste, status continua rendering (skipped)", async () => {

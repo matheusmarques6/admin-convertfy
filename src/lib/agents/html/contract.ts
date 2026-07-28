@@ -75,6 +75,8 @@ export const HeroPromptVarsSchema = z.object({
   hero_variant_html: z.string(),
   hero_variant_rendered_html: z.string(),
   hero_variant_schema_json: z.string(),
+  /** "library" = região enxertada da biblioteca; "montador" = HTML do LLM. */
+  hero_source: z.enum(["library", "montador"]),
   hero_content_json: z.string(),
   hero_image_url: z.string(),
   hero_image_alt: z.string(),

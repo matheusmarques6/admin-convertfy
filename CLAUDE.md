@@ -1345,5 +1345,57 @@ referenciava `{{html}}`).
 
 ---
 
+## Enxerto da hero por ID (migration 20261049, jul/2026)
+
+A hero deixou de ser ESCRITA por LLM. O Montador continua **escolhendo** a
+variante; quem coloca a região no documento é o CÓDIGO
+(`html/hero-graft.ts`), com o HTML **canônico** da biblioteca
+(`effectiveVariantHtml` = `html_tagged` aprovado, senão `html`),
+placeholders intactos.
+
+Motivo (incidente Luxe Lift): o Montador reescrevia o documento inteiro e
+ACHATAVA a variante — banda escura do logo, 2º CTA e subtítulo sumiam
+antes de qualquer agente rodar. O agente de hero recebia essa região
+achatada e não tinha espelho utilizável, porque o `rendered_html` das
+variantes é um mockup-imagem de ~1,7KB (não HTML estrutural) — caía em
+"degraded mode" e só reproduzia o que recebeu.
+
+Fluxo no `runFormattingChain` (só quando `stage === null`; no resume o
+enxerto já está no HTML persistido):
+
+1. `resolveHeroVariant` (cascata slot_map → blueprint → choices).
+2. `graftHeroVariant(referenceHtml, effectiveVariantHtml(variant))` —
+   `locateHeroRegion` + `spliceHero`. Fragmento `<tr>` entra direto,
+   `<table>` é embrulhado em `<tr><td>`; qualquer outra coisa é RECUSADA
+   (nunca "conserta"). Status: `grafted | no_region | no_variant |
+   invalid_variant` — tudo que não é `grafted` mantém a região do Montador
+   (fallback do comportamento antigo, zero regressão).
+3. `normalizeFonts` — tipografia da loja aplicada por código na região
+   enxertada (heading em declarações com `font-size ≥ 20px`/peso alto/
+   `<h1..3>`, body no resto, fallbacks genéricos preservados). Sem isso o
+   email sai com 3 tipografias, porque as variantes vêm de origens
+   diferentes.
+4. Enxerto acontece **antes** de `annotateSlots`, para que os placeholders
+   da variante entrem no endereçamento como os demais.
+
+O agente `hero_section` recebe `hero_source` (`library` | `montador`): em
+`library` a região é estruturalmente FINAL e o trabalho é **substituição
+pura** (copy, imagem, logo, fontes/cores) — `hero_variant_html` e
+`hero_variant_rendered_html` vão VAZIOS de propósito (a região já é a
+referência, mandá-la duas vezes só dobra o prompt). Em `montador` volta o
+modo antigo, com a variante como verdade estrutural a restaurar.
+
+A `empty_slot_rule` deixou de comer CTA: com `hero_content` vazio (copy
+ainda não chegou) o agente é proibido de remover qualquer slot — os
+placeholders seguem para o `copy_merge` determinístico.
+
+Telemetria no run `hero_section`: `hero_source`, `graft_status`,
+`variant_source`, `variant_id`.
+
+**Escopo**: só a hero. Validado, o mesmo desenho (Montador → IDs, montagem
+por código a partir do HTML canônico) se estende às demais seções.
+
+---
+
 *Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

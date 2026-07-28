@@ -4,6 +4,7 @@ import {
   parseHeroFragment,
   HeroOutputInvalidError,
   DEFAULT_HERO_SYSTEM_PROMPT,
+  DEFAULT_HERO_USER_TEMPLATE,
   HERO_OUTPUT_OPEN,
   HERO_OUTPUT_CLOSE,
 } from "./hero.chain"
@@ -88,27 +89,37 @@ describe("textFormatGuard", () => {
 // Paridade dos prompts default com as regras herdadas do monolítico —
 // mesmo espírito do antigo html.chain.lang.test.ts.
 describe("prompts default da cadeia", () => {
-  it("hero herda a regra v6 (swap da tag, sem overlay) + gold reference", () => {
+  it("hero herda a regra v6 (swap da tag, sem overlay) + modos de origem", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("{{HERO_IMAGE}}")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("height:auto")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("NEVER invent a URL")
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("gold_reference")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("hero_source_modes")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("merge_tags_are_literal")
   })
 
-  it("hero: fidelidade estrutural à variante (caso Luxe Lift achatada)", () => {
-    // A variante é a verdade do interior da hero — região achatada pelo
-    // Montador não pode rebaixar o design (botão → link, faixa sumida,
-    // logo branca em fundo branco).
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("structure_fidelity")
+  // Enxerto por ID: quando a região vem da biblioteca (grafted por código)
+  // ela é estruturalmente FINAL — o agente só substitui.
+  it("hero: modo library é substituição pura", () => {
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "<hero_source>library</hero_source>",
+    )
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("STRUCTURALLY FINAL")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("SUBSTITUTION ONLY")
+    expect(DEFAULT_HERO_USER_TEMPLATE).toContain("{{hero_source}}")
+  })
+
+  it("hero: fidelidade estrutural no fallback montador (Luxe Lift achatada)", () => {
+    // Sem enxerto (variante ausente/região não localizável) a variante volta
+    // a ser a verdade do interior: região achatada pelo Montador não pode
+    // rebaixar o design (botão → link, faixa sumida, logo branca no branco).
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "<hero_source>montador</hero_source>",
+    )
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("structural truth")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
-      "NEVER downgrade a styled button",
+      "never downgraded to a bare text link",
     )
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("Background bands SURVIVE")
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
-      "white background is ALWAYS wrong",
-    )
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("background bands survive")
   })
 
   it("texto herda merge tags, preheader e proíbe tocar hero/tags de imagem", () => {
@@ -143,7 +154,10 @@ describe("regras novas (Luxe Lift, jul/2026)", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("is an ARRAY")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("coupon banner")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("empty_slot_rule")
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain('empty label or empty href=""')
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain('never emit a button with empty label or href=""')
+    // Copy ainda não chegou (array vazio) NÃO autoriza remover slot — foi o
+    // que comeu o CTA da Luxe Lift.
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("remove NOTHING")
   })
   it("texto: ignora blocos já colocados + fatiamento de copy corrida + slot vazio", () => {
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("already_placed_blocks")

@@ -83,6 +83,8 @@ import {
   buildImageFormatVars,
   buildColorFormatVars,
   type FormatChainContext,
+  type HeroVariantData,
+  type HeroVariantSource,
 } from "./html/format-context"
 import {
   copyMerge,
@@ -109,7 +111,14 @@ import {
   heroUnchanged,
   respliceHero,
   stripSentinels,
+  extractHeroBySentinels,
 } from "./html/hero-locator"
+import {
+  graftHeroVariant,
+  normalizeFonts,
+  type GraftStatus,
+} from "./html/hero-graft"
+import { effectiveVariantHtml } from "./shared/component-dimensions"
 import { applyOps, parseOps } from "./html/apply-patches"
 import {
   postProcessDocumentPreserveTags,
@@ -1754,6 +1763,59 @@ async function runFormattingChain(p: {
       .eq("id", emailId)
   }
 
+  // ── ENXERTO DA HERO (arquitetura por ID, jul/2026) ─────────────────
+  // O Montador escolhe a variante; quem escreve a hero no documento é o
+  // CÓDIGO, com o HTML canônico da biblioteca (html_tagged aprovado, senão
+  // html). Antes o Montador (LLM) reescrevia o documento inteiro e achatava
+  // a variante — banda escura do logo, 2º CTA e subtítulo sumiam antes de
+  // qualquer agente rodar, e o agente de hero só podia reproduzir o que
+  // recebeu (o `rendered_html` das variantes é mockup de imagem, não serve
+  // de espelho). Enxertado ANTES da anotação de slots para que os
+  // placeholders da variante entrem no endereçamento como os demais.
+  let heroVariant: HeroVariantData | null = null
+  let heroVariantSource: HeroVariantSource = null
+  let heroGraftStatus: GraftStatus | "skipped_resume" = "skipped_resume"
+  if (stage === null) {
+    const resolved = await resolveHeroVariant(admin, {
+      storeId,
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      slotMap: fmtCtx.slotMap,
+      blueprint: ctx.blueprint,
+    })
+    heroVariant = resolved.variant
+    heroVariantSource = resolved.source
+    const graft = graftHeroVariant(
+      fmtCtx.referenceHtml,
+      heroVariant ? effectiveVariantHtml(heroVariant) : null,
+    )
+    heroGraftStatus = graft.status
+    if (graft.status === "grafted") {
+      // Componentes vêm de origens diferentes (Arial, Courier, Trebuchet):
+      // sem isso o email sai com 3 tipografias. A da loja sempre vence.
+      const fonts = normalizeFonts(graft.html, {
+        heading: fmtCtx.fontHeading,
+        body: fmtCtx.fontBody,
+      })
+      fmtCtx.referenceHtml = fonts.html
+      log.info("phase2.fmt.hero_grafted", {
+        emailId,
+        variantId: heroVariant?.id ?? null,
+        variantSource: heroVariantSource,
+        replacedLen: graft.replaced_len,
+        variantLen: graft.variant_len,
+        fontsNormalized: fonts.replaced,
+      })
+    } else {
+      log.warn("phase2.fmt.hero_graft_skipped", {
+        emailId,
+        status: graft.status,
+        variantId: heroVariant?.id ?? null,
+        variantSource: heroVariantSource,
+      })
+    }
+  }
+
   // ── Anotação de slots (Fase 2 do endereçamento) ────────────────────
   // Injeta data-cfy-slot/data-cfy-row por CÓDIGO (offset exato) antes de
   // qualquer agente rodar. Feito aqui — e não no Montador — para valer
@@ -1773,15 +1835,17 @@ async function runFormattingChain(p: {
 
   // ── STEP 1 — HERO SECTION ──────────────────────────────────────────
   if (stage === null) {
-    const region = locateHeroRegion(fmtCtx.referenceHtml)
+    // Enxertada → a região é o trecho entre as sentinelas cfy:hero (os
+    // marcadores cfy:block da hero foram consumidos pelo splice). Sem
+    // enxerto, cascata normal do localizador.
+    const grafted = heroGraftStatus === "grafted"
+    const sentinel = grafted ? extractHeroBySentinels(fmtCtx.referenceHtml) : null
+    const region = sentinel
+      ? { start: sentinel.start, end: sentinel.end, mode: "marker" as const }
+      : locateHeroRegion(fmtCtx.referenceHtml)
     const heroMode: HeroChainMode = region ? "fragment" : "full_doc"
-    const { variant, source: variantSource } = await resolveHeroVariant(admin, {
-      storeId,
-      flowType: ctx.flowType,
-      emailNumber: ctx.emailNumber,
-      slotMap: fmtCtx.slotMap,
-      blueprint: ctx.blueprint,
-    })
+    const variant = heroVariant
+    const variantSource = heroVariantSource
     const regionHtml = region
       ? fmtCtx.referenceHtml.slice(region.start, region.end)
       : ""
@@ -1789,6 +1853,7 @@ async function runFormattingChain(p: {
       mode: heroMode,
       regionHtml,
       variant,
+      grafted,
     })
     const config = toChainConfig(ctx.heroConfig, "hero_section")
 
@@ -1819,6 +1884,8 @@ async function runFormattingChain(p: {
           rawOutput: r.rawOutput,
           parsed: {
             hero_mode: region ? region.mode : "full_doc",
+            hero_source: grafted ? "library" : "montador",
+            graft_status: heroGraftStatus,
             variant_source: variantSource,
             variant_id: variant?.id ?? null,
             output_html_len: next.length,
