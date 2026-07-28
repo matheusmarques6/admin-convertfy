@@ -263,6 +263,11 @@ export async function invokeComponentTagger(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Component Tagger",
+    // Tagueamento é mecânico (troca frases por placeholders) — sem
+    // thinking. FORMAT_OPS_REASONING=on re-liga.
+    ...(process.env.FORMAT_OPS_REASONING === "on"
+      ? {}
+      : { reasoning: { enabled: false } }),
   })
 
   const parsed = parseTaggerOutput(res.text)

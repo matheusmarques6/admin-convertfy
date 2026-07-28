@@ -445,6 +445,11 @@ async function invokeWithTimeout(
       temperature: isOpus ? undefined : temperature,
       timeoutMs: getQaTimeoutMs(),
       title: "Convertfy Admin QA",
+      // Veredito curto em JSON — sem thinking (Kimi K3/GLM são reasoning
+      // always-on). FORMAT_OPS_REASONING=on re-liga.
+      ...(process.env.FORMAT_OPS_REASONING === "on"
+        ? {}
+        : { reasoning: { enabled: false } }),
     })
     return or.text
   }

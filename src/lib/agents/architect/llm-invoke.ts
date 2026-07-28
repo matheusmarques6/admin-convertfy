@@ -218,6 +218,15 @@ async function callOnceArchitect(
     // (~20%), custo ainda bem abaixo do Opus. 'high'/'xhigh' encarecem mais.
     if (isReasoningModel(config.model)) {
       body.reasoning = { effort: "medium" }
+    } else if (
+      /kimi|glm/i.test(config.model) &&
+      process.env.FORMAT_OPS_REASONING !== "on"
+    ) {
+      // Kimi K3 / GLM: reasoning always-on por default do modelo — sem este
+      // corte o Curador queimava ~160s/27k tokens só pensando. O output aqui
+      // é JSON de escolhas / HTML de montagem, não precisa de thinking.
+      // FORMAT_OPS_REASONING=on re-liga sem deploy.
+      body.reasoning = { enabled: false }
     }
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {

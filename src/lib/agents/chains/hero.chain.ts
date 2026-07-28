@@ -265,6 +265,11 @@ export async function invokeHeroChain(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Hero Section",
+    // Kimi K3 tem reasoning always-on — sem o corte a hero volta a
+    // estourar timeout pensando. FORMAT_OPS_REASONING=on re-liga.
+    ...(process.env.FORMAT_OPS_REASONING === "on"
+      ? {}
+      : { reasoning: { enabled: false } }),
   })
 
   const output =

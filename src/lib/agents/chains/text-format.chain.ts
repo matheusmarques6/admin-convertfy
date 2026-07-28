@@ -216,6 +216,11 @@ export async function invokeTextFormatChain(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Text Format",
+    // Kimi K3 tem reasoning always-on — o full-doc já é o step mais longo
+    // da cadeia; sem o corte estoura o timeout. FORMAT_OPS_REASONING=on re-liga.
+    ...(process.env.FORMAT_OPS_REASONING === "on"
+      ? {}
+      : { reasoning: { enabled: false } }),
   })
 
   // PreserveTags: o strip de placeholders + lang rodam SÓ no fim da cadeia
