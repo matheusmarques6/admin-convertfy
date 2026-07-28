@@ -24,7 +24,11 @@ import { reuseImagesFromPreviousRuns } from "./phase2-runner.service"
 
 interface FakeState {
   blocks: Array<{ id: string; block_type: string; content: Record<string, unknown> }>
-  runs: Array<{ parsed_output: Record<string, unknown>; created_at: string }>
+  runs: Array<{
+    parsed_output: Record<string, unknown>
+    input_vars?: Record<string, unknown>
+    created_at: string
+  }>
   updates: Array<{ id: string; content: Record<string, unknown> }>
 }
 
@@ -93,6 +97,26 @@ describe("reuseImagesFromPreviousRuns", () => {
     const reused = await reuseImagesFromPreviousRuns(fakeAdmin(state), "e1")
     expect(reused).toBe(0)
     expect(state.updates).toHaveLength(0)
+  })
+
+  it("fallback por block_type: reconcile trocou os ids dos blocos (delete+insert)", async () => {
+    // O run antigo aponta pro blockId ANTIGO ("morto"); o bloco atual tem id
+    // novo. O match cai no block_type gravado no input_vars do run.
+    const state: FakeState = {
+      blocks: [{ id: "b-NOVO", block_type: "hero", content: {} }],
+      runs: [
+        {
+          parsed_output: { blockId: "b-ANTIGO", imageUrl: URL_NOVA },
+          input_vars: { block_type: "hero" },
+          created_at: "1",
+        },
+      ],
+      updates: [],
+    }
+    const reused = await reuseImagesFromPreviousRuns(fakeAdmin(state), "e1")
+    expect(reused).toBe(1)
+    expect(state.updates[0].id).toBe("b-NOVO")
+    expect(state.updates[0].content.image_url).toBe(URL_NOVA)
   })
 
   it("testimonials: avatar_url reaproveitado por item (kind=testimonial_avatar + itemIndex)", async () => {

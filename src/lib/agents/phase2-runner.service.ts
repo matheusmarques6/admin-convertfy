@@ -530,7 +530,7 @@ export async function reuseImagesFromPreviousRuns(
       .eq("needs_image", true),
     admin
       .from("email_generation_runs")
-      .select("parsed_output, created_at")
+      .select("parsed_output, input_vars, created_at")
       .eq("email_id", emailId)
       .eq("agent", "image")
       .eq("status", "success")
@@ -546,16 +546,31 @@ export async function reuseImagesFromPreviousRuns(
     itemIndex?: number
   }
   // Runs vêm em ordem desc — o PRIMEIRO por chave é o mais recente.
+  // Duas chaves de match, em cascata:
+  //   1. blockId — exato, quando os blocos sobreviveram desde a geração.
+  //   2. block_type (do input_vars do run) — fallback pro caso comum do
+  //      teste completo: o reconcile com estrutura nova faz delete+insert
+  //      dos blocos (ids NOVOS) e o match por id deixaria tudo sem imagem.
   const mainByBlock = new Map<string, string>()
+  const mainByType = new Map<string, string>()
   const avatarByBlockItem = new Map<string, string>()
   for (const r of runs ?? []) {
     const po = (r.parsed_output ?? {}) as ImageRunOutput
-    if (!po.blockId || !po.imageUrl) continue
+    if (!po.imageUrl) continue
     if (po.kind === "testimonial_avatar") {
+      if (!po.blockId) continue
       const key = `${po.blockId}:${po.itemIndex ?? 0}`
       if (!avatarByBlockItem.has(key)) avatarByBlockItem.set(key, po.imageUrl)
-    } else if (!mainByBlock.has(po.blockId)) {
+      continue
+    }
+    if (po.blockId && !mainByBlock.has(po.blockId)) {
       mainByBlock.set(po.blockId, po.imageUrl)
+    }
+    const runBlockType = (
+      (r.input_vars ?? {}) as Record<string, unknown>
+    ).block_type
+    if (typeof runBlockType === "string" && runBlockType && !mainByType.has(runBlockType)) {
+      mainByType.set(runBlockType, po.imageUrl)
     }
   }
 
@@ -567,9 +582,14 @@ export async function reuseImagesFromPreviousRuns(
     >
     let changed = false
 
-    if (!content.image_url && mainByBlock.has(blk.id as string)) {
-      content.image_url = mainByBlock.get(blk.id as string)
-      changed = true
+    if (!content.image_url) {
+      const url =
+        mainByBlock.get(blk.id as string) ??
+        mainByType.get(blk.block_type as string)
+      if (url) {
+        content.image_url = url
+        changed = true
+      }
     }
 
     if (blk.block_type === "testimonials" && Array.isArray(content.items)) {
