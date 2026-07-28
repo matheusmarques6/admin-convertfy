@@ -14,7 +14,7 @@
  * ready (cores são polimento; o email já está completo).
  *
  * Config em email_agent_configs (agent_type='color_format'); prompt vazio
- * → defaults abaixo. Modelo default z-ai/glm-5.2 (seed 20261039).
+ * → defaults abaixo. Modelo default moonshotai/kimi-k3 (swap 20261047; seed original 20261039).
  */
 
 import { logger } from "@/lib/logger"

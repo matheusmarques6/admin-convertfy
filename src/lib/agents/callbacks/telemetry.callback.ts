@@ -57,6 +57,10 @@ const PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
   "gpt-5-4-image-2": { input: 2.5, output: 15.0 },
   "gpt-5-3-chat": { input: 1.25, output: 10.0 },
   "gpt-5-3": { input: 1.25, output: 10.0 },
+  // Kimi K3 (moonshotai/kimi-k3 via OpenRouter, migration 20261047).
+  // Preço público Moonshot: $3/MTok input, $15/MTok output ($0.30 cached).
+  // Fallback por token — o custo real vem de usage.cost do OpenRouter.
+  "kimi-k3": { input: 3.0, output: 15.0 },
 }
 const DEFAULT_PRICING = { input: 3.0, output: 15.0 }
 

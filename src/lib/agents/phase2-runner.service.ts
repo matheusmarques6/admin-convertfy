@@ -1427,7 +1427,8 @@ const FMT_DEFAULTS: Record<
   image_format: { temperature: 0.2, maxTokens: 8192 },
   color_format: { temperature: 0.3, maxTokens: 16384 },
 }
-const FMT_DEFAULT_MODEL = "z-ai/glm-5.2"
+// Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
+const FMT_DEFAULT_MODEL = "moonshotai/kimi-k3"
 
 function toChainConfig(
   config: EmailAgentConfig | null,
