@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   Archive,
+  Check,
   CheckCircle2,
   Download,
   ImagePlus,
@@ -1083,39 +1084,54 @@ function BatchEditor({
             )}
           </div>
 
-          {/* Chips das lojas visíveis */}
-          <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto rounded-[6px] border border-border bg-background/50 p-2">
-            {filteredStores.map((s) => {
-              const on = storeIds.includes(s.store_id)
-              return (
-                <button
-                  key={s.store_id}
-                  type="button"
-                  onClick={() => toggleStore(s.store_id)}
-                  title={[s.store_name, s.country, s.language, s.niche]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11.5px] font-medium ${
-                    on
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border bg-background text-foreground/70 hover:bg-muted"
-                  }`}
-                >
-                  <span
-                    className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white"
-                    style={{ background: s.primary_color || "#1F1F1F" }}
-                  >
-                    {initials(s.store_name)}
-                  </span>
-                  {s.store_name}
-                  {on && <X size={11} />}
-                </button>
-              )
-            })}
-            {filteredStores.length === 0 && (
-              <span className="px-1 py-2 text-[12px] text-muted-foreground">
+          {/* Lista das lojas visíveis (linhas densas, multi-coluna em telas largas) */}
+          <div className="max-h-[19rem] overflow-y-auto rounded-[6px] border border-border bg-background">
+            {filteredStores.length === 0 ? (
+              <p className="px-3 py-6 text-center text-[12px] text-muted-foreground">
                 Nenhuma loja com esses filtros.
-              </span>
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3">
+                {filteredStores.map((s) => {
+                  const on = storeIds.includes(s.store_id)
+                  const meta = [s.country, s.language, s.niche].filter(Boolean).join(" · ")
+                  return (
+                    <button
+                      key={s.store_id}
+                      type="button"
+                      onClick={() => toggleStore(s.store_id)}
+                      title={[s.store_name, meta].filter(Boolean).join(" — ")}
+                      className={`flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5 text-left transition-colors ${
+                        on ? "bg-primary/5" : "hover:bg-muted/60"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${
+                          on
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-background"
+                        }`}
+                      >
+                        {on && <Check size={11} strokeWidth={3} />}
+                      </span>
+                      <span
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[8.5px] font-bold text-white"
+                        style={{ background: s.primary_color || "#1F1F1F" }}
+                      >
+                        {initials(s.store_name)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+                        {s.store_name}
+                      </span>
+                      {meta && (
+                        <span className="max-w-[45%] shrink-0 truncate text-[10.5px] text-muted-foreground">
+                          {meta}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             )}
           </div>
         </div>
