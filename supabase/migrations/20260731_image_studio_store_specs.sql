@@ -12,9 +12,10 @@
 --
 -- O objeto por loja é aberto de propósito: campos futuros (imagem-base
 -- própria, modo substituir) entram sem nova migration.
+--
+-- FORMATO: um comando por LINHA (statement multilinha quebra quando o
+-- SQL editor executa um recorte parcial).
 
-ALTER TABLE image_studio_batches
-  ADD COLUMN IF NOT EXISTS store_specs JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE image_studio_batches ADD COLUMN IF NOT EXISTS store_specs JSONB NOT NULL DEFAULT '{}'::jsonb;
 
-COMMENT ON COLUMN image_studio_batches.store_specs IS
-  'Adendos de geração por loja: {store_id: {instruction}}. Acrescentam ao brief base do lote; chaves de lojas fora de store_ids são ignoradas na geração.';
+COMMENT ON COLUMN image_studio_batches.store_specs IS 'Adendos de geração por loja: {store_id: {instruction}}. Acrescentam ao brief base do lote; chaves de lojas fora de store_ids são ignoradas na geração.';
