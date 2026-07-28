@@ -16,7 +16,6 @@ export type PipelineAgentKey =
   // Cadeia de formatação (split do HTML agent, migration 20261039).
   | "hero_section"
   | "copy_merge"
-  | "merge_verifier"
   | "text_format"
   | "image_format"
   | "color_format"
@@ -104,14 +103,6 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     color: "#0F766E",
     bg: "#F0FDFA",
     border: "#99F6E4",
-    kind: "texto",
-  },
-  merge_verifier: {
-    name: "Verificador de Merge",
-    desc: "Audita o merge (views, nunca o doc) e tria a fila do agente de exceção — nunca escreve HTML",
-    color: "#4338CA",
-    bg: "#EEF2FF",
-    border: "#C7D2FE",
     kind: "texto",
   },
   text_format: {
@@ -206,7 +197,6 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "image",
   "hero_section",
   "copy_merge",
-  "merge_verifier",
   "text_format",
   "image_format",
   "color_format",

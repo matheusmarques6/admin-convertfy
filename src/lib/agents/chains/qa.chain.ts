@@ -95,64 +95,12 @@ quebrado, NAO violam compliance (CAN-SPAM/GDPR — o opt-out funciona depois
 da substituicao no envio), NAO sao claim sem cobertura. Trate como
 conteudo dinamico valido.`
 
-// ── Prompts default (F5 — views por bloco) ────────────────────────────
-// Config com prompt vazio → usa estes (padrão dos chains da cadeia).
-// O LLM NÃO recebe o documento: recebe views por bloco (texto visível,
-// hrefs, nº de imagens) + copy esperada + briefing/brand.
-
-export const DEFAULT_QA_SYSTEM_PROMPT = `<role>
-You are the QA reviewer of an email pipeline. You do NOT see the HTML document — you receive per-block VIEWS (rendered visible text, CTA hrefs, image count, block_id) plus the expected copy per block, the store briefing and brand identity. Deterministic code already checked document structure; you judge CONTENT quality.
-</role>
-
-<what_to_check>
-- tom_inconsistente: visible text clashes with the brand's tone/briefing.
-- claim_nao_coberto: a claim in the visible text that the briefing/brand data does not support.
-- compliance: legally risky copy (health claims, guarantees) — severity high only when clearly illegal.
-- links_quebrados: a CTA href that is empty or "#" on a primary button view.
-- blocos_vazios: a block view whose visible text is empty while its expected copy has values.
-- spam_score_alto: subject/copy patterns that scream spam (ALL CAPS, excessive !!!, misleading urgency).
-</what_to_check>
-
-<rules>
-- Echo the view's block_id in each issue when the issue points at a block.
-- Merge tags ([unsubscribe_link], {{ first_name }}, *|FNAME|*) are valid dynamic content — never an issue.
-- Be conservative: severity high ONLY for defects that make the email unsendable.
-</rules>
-
-<output_contract>
-Respond with ONLY this JSON — no markdown fences, no commentary:
-{"passed": true, "issues": [{"type": "tom_inconsistente", "severity": "low", "message": "...", "block_id": "uuid-or-null"}]}
-Allowed types: spam_score_alto, links_quebrados, blocos_vazios, tom_inconsistente, claim_nao_coberto, html_invalido, alt_text_faltando, compliance. Severities: low, medium, high.
-</output_contract>`
-
-export const DEFAULT_QA_USER_TEMPLATE = `<objective>{{blueprint_objective}}</objective>
-
-<block_views>
-{{block_views_json}}
-</block_views>
-
-<expected_copy>
-{{blocks_json}}
-</expected_copy>
-
-<briefing>
-{{briefing_json}}
-</briefing>
-
-<brand>
-{{brand_json}}
-</brand>
-
-Review the views against the expected copy and brand, and emit the JSON verdict now.`
-
 // ── Zod schema do output do LLM ────────────────────────────────────────
 const QaIssueSchema = z.object({
   type: z.enum(QA_ISSUE_TYPES),
   severity: z.enum(QA_SEVERITIES),
   message: z.string().min(1),
   location: z.string().optional(),
-  // F5 (views por bloco): o LLM ecoa o block_id da view apontada.
-  block_id: z.string().nullable().optional(),
 })
 
 const QaOutputSchema = z.object({
@@ -277,62 +225,6 @@ export function runDeterministicChecks(
   return issues
 }
 
-// ── Checks globais do documento (F5 — arquitetura por views) ──────────
-// O LLM passou a ver só views por bloco; o que exige visão do documento
-// como um todo vira CÓDIGO aqui: placeholder {{TAG}} sobrando (strip
-// falhou), <img> sem src e divergência de contagem blocos×blueprint.
-export function runGlobalDocChecks(
-  html: string,
-  opts: { blocksCount?: number; blueprintBlocksCount?: number } = {},
-): QaIssue[] {
-  const issues: QaIssue[] = []
-
-  // Placeholder interno sobrando no doc final = limpeza falhou. Merge tags
-  // de provedor ({{ first_name }}) são minúsculas — o token interno é
-  // MAIÚSCULO ({{HEADLINE}}), então o falso-positivo não acontece.
-  const leftover = html.match(/\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g) ?? []
-  if (leftover.length > 0) {
-    issues.push({
-      type: "html_invalido",
-      severity: "medium",
-      message: `Placeholders internos sobrando no HTML final: ${[...new Set(leftover)].slice(0, 5).join(", ")}`,
-      location: "html",
-    })
-  }
-
-  // <img> sem src (vazio) — quebra visual certa no client.
-  let emptySrc = 0
-  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
-    const src = /src\s*=\s*["']([^"']*)["']/i.exec(m[0])?.[1]?.trim() ?? ""
-    if (src === "") emptySrc++
-  }
-  if (emptySrc > 0) {
-    issues.push({
-      type: "html_invalido",
-      severity: "medium",
-      message: `${emptySrc} <img> sem src no HTML final.`,
-      location: "html",
-    })
-  }
-
-  // Estrutura divergente do blueprint (bloco sumiu/duplicou no caminho).
-  if (
-    opts.blocksCount != null &&
-    opts.blueprintBlocksCount != null &&
-    opts.blueprintBlocksCount > 0 &&
-    opts.blocksCount !== opts.blueprintBlocksCount
-  ) {
-    issues.push({
-      type: "blocos_vazios",
-      severity: "low",
-      message: `Contagem de blocos (${opts.blocksCount}) difere do blueprint (${opts.blueprintBlocksCount}).`,
-      location: "html",
-    })
-  }
-
-  return issues
-}
-
 // ── Validação determinística contra o output_schema da variante ───────
 // (blueprint híbrido: blueprint.blocks[].fields — snapshot v2 gravado pelo
 // builder). Matching bloco↔blueprint por índice + type (blocks chegam
@@ -445,11 +337,6 @@ async function invokeWithTimeout(
       temperature: isOpus ? undefined : temperature,
       timeoutMs: getQaTimeoutMs(),
       title: "Convertfy Admin QA",
-      // Veredito curto em JSON — sem thinking (Kimi K3/GLM são reasoning
-      // always-on). FORMAT_OPS_REASONING=on re-liga.
-      ...(process.env.FORMAT_OPS_REASONING === "on"
-        ? {}
-        : { reasoning: { enabled: false } }),
     })
     return or.text
   }
@@ -519,9 +406,6 @@ export interface RunQaAgentInput {
   // habilita runSchemaChecks (validação max_len/required contra o
   // output_schema da variante). Ausente/vazio → skip.
   blueprintBlocks?: SchemaCheckBlueprintBlock[]
-  // F5 (arquitetura por views): views por bloco extraídas pelo runner
-  // ANTES do strip dos marcadores — é o que o LLM vê no lugar do html.
-  blockViews?: import("../html/qa-views").QaBlockView[]
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -543,11 +427,6 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   const deterministicIssues = [
     ...runDeterministicChecks(html, blocks),
     ...runSchemaChecks(blocks, input.blueprintBlocks ?? []),
-    // F5: o LLM não vê mais o documento — visão global vira código.
-    ...runGlobalDocChecks(html, {
-      blocksCount: blocks.length,
-      blueprintBlocksCount: input.blueprintBlocks?.length,
-    }),
   ]
 
   // ── 2. Carrega config ativo ──────────────────────────────────────────
@@ -591,18 +470,11 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   const model = config.model || DEFAULT_MODEL
   const temperature = config.temperature ?? DEFAULT_TEMPERATURE
   const maxTokens = config.max_tokens ?? DEFAULT_MAX_TOKENS
-  // F5: prompt vazio na config → defaults in-code (views por bloco),
-  // mesmo padrão dos chains da cadeia de formatação.
-  const systemPrompt =
-    config.system_prompt?.trim() || DEFAULT_QA_SYSTEM_PROMPT
-  const userTemplate = config.user_template?.trim() || DEFAULT_QA_USER_TEMPLATE
+  const systemPrompt = config.system_prompt
+  const userTemplate = config.user_template
 
   const renderVars: Record<string, string> = {
-    // F5: o LLM recebe as views por bloco no lugar do documento. A chave
-    // `html` continua resolvível para prompt customizado LEGADO no DB
-    // (até a migration 20261046 zerar), mas os defaults não a usam.
     html,
-    block_views_json: JSON.stringify(input.blockViews ?? [], null, 2),
     blocks_json: JSON.stringify(blocks, null, 2),
     briefing_json: JSON.stringify(briefing ?? {}, null, 2),
     brand_json: JSON.stringify(brand ?? {}, null, 2),

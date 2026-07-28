@@ -104,8 +104,6 @@ export function SettingsTab() {
         ? form.qa_vision_enabled
         : settings?.qa_vision_enabled ?? null,
     blueprint_mode: form.blueprint_mode ?? settings?.blueprint_mode ?? "auto",
-    merge_verifier_mode:
-      form.merge_verifier_mode ?? settings?.merge_verifier_mode ?? "on_flag",
     refiner_enabled: form.refiner_enabled ?? settings?.refiner_enabled ?? true,
     max_blocks_per_email:
       form.max_blocks_per_email ?? settings?.max_blocks_per_email ?? 9,
@@ -243,27 +241,6 @@ export function SettingsTab() {
                     { value: "auto", label: "Auto (híbrido)" },
                     { value: "llm", label: "Sempre LLM" },
                     { value: "deterministic", label: "Sempre determinístico" },
-                  ]}
-                />
-              </div>
-            </SettingRow>
-            <SettingRow
-              title="Verificador de merge"
-              sub="Audita o merge de copy e tria a fila do agente de exceção. Se acusar = só quando o merge deixa slot sobrando/copy órfã"
-            >
-              <div style={{ width: 170, flexShrink: 0 }}>
-                <EGSelect
-                  value={merged.merge_verifier_mode}
-                  onChange={(v) =>
-                    setForm((f) => ({
-                      ...f,
-                      merge_verifier_mode: v as "always" | "on_flag" | "off",
-                    }))
-                  }
-                  options={[
-                    { value: "on_flag", label: "Se acusar (padrão)" },
-                    { value: "always", label: "Sempre" },
-                    { value: "off", label: "Desligado" },
                   ]}
                 />
               </div>

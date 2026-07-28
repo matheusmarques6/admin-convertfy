@@ -9,7 +9,7 @@
  * do agente image_format.
  *
  * Config em email_agent_configs (agent_type='text_format'); prompt vazio
- * → defaults abaixo. Modelo default moonshotai/kimi-k3 (swap 20261047; seed original 20261039).
+ * → defaults abaixo. Modelo default z-ai/glm-5.2 (seed 20261039).
  */
 
 import { logger } from "@/lib/logger"
@@ -216,11 +216,6 @@ export async function invokeTextFormatChain(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Text Format",
-    // Kimi K3 tem reasoning always-on — o full-doc já é o step mais longo
-    // da cadeia; sem o corte estoura o timeout. FORMAT_OPS_REASONING=on re-liga.
-    ...(process.env.FORMAT_OPS_REASONING === "on"
-      ? {}
-      : { reasoning: { enabled: false } }),
   })
 
   // PreserveTags: o strip de placeholders + lang rodam SÓ no fim da cadeia
@@ -258,7 +253,6 @@ You are the TEXT EXCEPTION agent of an email pipeline. A deterministic merge alr
 - A slot with no defensible copy → remove_row. NEVER leave a slot half-filled, NEVER output an empty value.
 - ESP merge tags ([unsubscribe_link], {{ unsubscribe }}, *|FNAME|*) are NOT slots — ignore them.
 - One op per tag, only for tags in the provided list.
-- Some slots may carry triage hints from a verifier agent: "motivo" (diagnosis), "copy_candidata" (pre-paired copy — prefer its "valor" VERBATIM as the fill value) and "acao_sugerida" ("preencher" or "remove_row" — a strong hint, override only with clear reason). Slots without hints follow the rules above.
 </rules>
 
 <output_contract>

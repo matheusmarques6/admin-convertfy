@@ -1121,10 +1121,10 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 | 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
 | 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
-| 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `moonshotai/kimi-k3` (swap 20261047) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
-| 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `moonshotai/kimi-k3` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
-| 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `moonshotai/kimi-k3` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
-| 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `moonshotai/kimi-k3` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
+| 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `z-ai/glm-5.2` (seed 20261039) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
+| 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `z-ai/glm-5.2` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
+| 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `z-ai/glm-5.2` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
+| 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `z-ai/glm-5.2` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
 | 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
 
 **Split do HTML agent (migration 20261039, jul/2026 — corte seco)**: o agente
@@ -1276,7 +1276,7 @@ editor de variantes avisa incoerência key↔tag
 Paradigma: variante da biblioteca é um **exemplo PRONTO** (HTML com frases/
 URLs reais); o `output_schema.key` É o nome do placeholder (`UPPER(key)`)
 e o `example` referencia a frase que está no HTML. O agente
-`component_tagger` (moonshotai/kimi-k3, roda 1x por variante — cadastro/batch,
+`component_tagger` (z-ai/glm-5.2, roda 1x por variante — cadastro/batch,
 NUNCA por geração) converte exemplo→`{{PLACEHOLDER}}` e salva em
 `email_component_variants.html_tagged` como proposta `tagging_status=
 'pending'` com relatório por campo em `tagging_meta` (âncoras: exact/
@@ -1318,30 +1318,7 @@ tudo → text_format é PULADO (run `skipped`). Métricas por run:
 slots_total/ops_built/merged/left_for_llm/unanchored_keys/ops_skipped +
 len/sha8. Steps de JSON (image_format/color_format) rodam com
 `reasoning: {enabled:false}` no OpenRouter (`FORMAT_OPS_REASONING=on`
-re-liga).
-
-**Fases B–D — arquitetura por views (migrations 20261043-46, jul/2026)**:
-nenhum agente de formatação recebe mais o documento inteiro (regra: LLM
-devolve intenção — fragmento ou ops — e só código escreve no HTML).
-(F1) toda op/view carrega `block_id` opcional (= `email_blocks.id`, a
-chave do callback do n8n) — rastreabilidade ponta a ponta na telemetria.
-(F2) **Verificador de merge** (`merge_verifier`, Kimi K3 via OpenRouter, chain
-`merge-verifier.chain.ts`): roda entre o copy_merge e o agente de
-exceção, audita o merge com views (`buildMergeVerifierInput`) e tria a
-fila (`{block_id, tag, motivo, copy_candidata, acao_sugerida}`); modo em
-`email_generation_settings.merge_verifier_mode` ('on_flag' default /
-'always' / 'off'); erro → fallback mecânico, NUNCA derruba a geração;
-não escreve HTML. (F3) image_format recebe `image_slots_json` ({block_id,
-tag, row_html}) + `logo_candidates_json` — sem `{{html}}`. (F4)
-color_format recebe `color_inventory_json` (extractor
-`html/color-inventory.ts`) e emite op `recolor {from,to}` — troca global
-por VALOR de cor aplicada por código (`applyRecolor`, rgba preserva
-alpha). (F5) QA recebe `block_views_json` (views extraídas ANTES do strip
-dos marcadores; `html/qa-views.ts`) + checks globais em código
-(`runGlobalDocChecks`); `QaIssue.block_id` aditivo; qa.chain ganhou
-prompts DEFAULT in-code. Migrations 20261044-46 zeram os prompts ativos
-de image_format/color_format/qa (corte seco pros defaults — prompt velho
-referenciava `{{html}}`).
+re-liga). Pendente: A3b (view por slot no agente de exceção) e Fases B-D.
 
 ---
 

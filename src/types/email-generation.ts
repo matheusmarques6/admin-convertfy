@@ -171,10 +171,6 @@ export type AgentType =
   // lugar das frases de exemplo do output_schema), 1x por variante, com
   // proposta pendente revisável na aba Componentes.
   | "component_tagger"
-  // merge_verifier: Verificador de merge (7b, migration 20261043) — audita
-  // o resultado do copy_merge (views, nunca o documento) e emite a fila de
-  // exceções triada que alimenta o agente de exceção. Nunca escreve HTML.
-  | "merge_verifier"
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -209,9 +205,6 @@ export interface QaIssue {
   severity: QaIssueSeverity
   message: string
   location?: string
-  /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
-   *  issues antigas seguem válidas sem o campo. */
-  block_id?: string | null
 }
 
 // Resultado do QA agent (story AE-5).
@@ -269,10 +262,6 @@ export interface EmailGenerationSettings {
   // cobertura 100%, senão LLM; 'llm' força o fallback; 'deterministic'
   // força o builder (migration 20261022).
   blueprint_mode: "auto" | "llm" | "deterministic"
-  // Verificador de merge (7b, migration 20261043): 'on_flag' = roda só
-  // quando o relatório do copy_merge acusa algo (default); 'always' = toda
-  // geração; 'off' = fila mecânica decide (kill-switch sem deploy).
-  merge_verifier_mode: "always" | "on_flag" | "off"
   updated_at: string
   updated_by: string | null
 }
@@ -310,9 +299,6 @@ export type GenerationRunAgent =
   // Merge determinístico de copy (Fase A — migration 20261042): estágio de
   // CÓDIGO, sem LLM; run próprio pra metrificação (slots merged/left).
   | "copy_merge"
-  // Verificador de merge (7b — migration 20261043): audita o copy_merge e
-  // tria a fila do agente de exceção.
-  | "merge_verifier"
 
 export interface EmailGenerationRun {
   id: string

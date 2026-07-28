@@ -96,30 +96,22 @@ export const TextFormatPromptVarsSchema = z.object({
 })
 export type TextFormatPromptVars = z.infer<typeof TextFormatPromptVarsSchema>
 
-// Arquitetura por views (F3): o agente NÃO recebe mais o documento —
-// só as views dos slots de imagem (row_html fatiado por código) e as
-// linhas candidatas a logo de texto. O applyOps segue aplicando as ops
-// no documento completo que o agente nunca viu.
 export const ImageFormatPromptVarsSchema = z.object({
   brand_name: z.string(),
-  image_slots_json: z.string(),
+  html: z.string(),
   image_map_json: z.string(),
-  logo_candidates_json: z.string(),
   logo_light: z.string(),
   logo_dark: z.string(),
   top_products_json: z.string(),
 })
 export type ImageFormatPromptVars = z.infer<typeof ImageFormatPromptVarsSchema>
 
-// Arquitetura por views (F4): o agente NÃO recebe o documento — recebe o
-// inventário de cores extraído por código ({valor, ocorrencias, contextos})
-// e emite ops `recolor {from, to}` aplicadas globalmente pelo código.
 export const ColorFormatPromptVarsSchema = z.object({
   brand_name: z.string(),
   niche: z.string(),
   locale: z.string(),
   tones: z.string(),
-  color_inventory_json: z.string(),
+  html: z.string(),
   brand_colors: z.string(),
   font_heading: z.string(),
   font_body: z.string(),

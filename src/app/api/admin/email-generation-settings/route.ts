@@ -25,10 +25,6 @@ const patchSchema = z.object({
   usd_brl_rate: z.number().positive().max(100).nullable().optional(),
   cost_alert_usd: z.number().positive().max(1000).nullable().optional(),
   blueprint_mode: z.enum(["auto", "llm", "deterministic"]).optional(),
-  // Verificador de merge (7b, migration 20261043): on_flag = só quando o
-  // relatório do copy_merge acusa algo; always = toda geração; off = fila
-  // mecânica (kill-switch sem deploy).
-  merge_verifier_mode: z.enum(["always", "on_flag", "off"]).optional(),
 })
 
 export async function GET(request: NextRequest) {

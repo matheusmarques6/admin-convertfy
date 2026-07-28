@@ -32,8 +32,7 @@ import {
 const log = logger.child("ComponentTagger")
 
 const DEFAULT_CONFIG: FormatChainConfig = {
-  // Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
-  model: "moonshotai/kimi-k3",
+  model: "z-ai/glm-5.2",
   temperature: 0.1,
   max_tokens: 32768,
   system_prompt: "",

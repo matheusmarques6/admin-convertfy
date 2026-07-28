@@ -38,14 +38,10 @@ export interface MergeBlock {
 export interface CopyMergeReport {
   /** Tags de texto (não-imagem) presentes no doc FORA da hero, antes. */
   slots_total: number
-  /** Tags estruturais deixadas de fora da fila do LLM (posse do código). */
-  structural_out: string[]
   /** Ops montadas (campo com tag + valor no content). */
   ops_built: number
   /** Aplicadas com sucesso pelo Integrador. */
   merged: number
-  /** Tags efetivamente resolvidas por código (views do verificador). */
-  merged_tags: string[]
   /** Puladas pelo Integrador, com razão (telemetria). */
   skipped: SkippedOp[]
   /** Tags de texto que SOBRARAM fora da hero — a fila do agente de exceção. */
@@ -86,74 +82,6 @@ export function textTagsOutsideHero(html: string): string[] {
     if (!isTextTag(tag) || seen.has(tag)) continue
     seen.add(tag)
     out.push(tag)
-  }
-  return out
-}
-
-/**
- * Tags de IMAGEM presentes no doc FORA da hero (a imagem da hero é posse
- * do agente de hero). O {{TAG_ALT}} companheiro não conta como slot.
- * Base das views do agente image_format (arquitetura por views).
- */
-export function imageTagsOutsideHero(html: string): string[] {
-  const hero = extractHeroBySentinels(html)
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const m of html.matchAll(TAG_TOKEN)) {
-    const start = m.index ?? 0
-    if (hero && start >= hero.start && start < hero.end) continue
-    const tag = m[1]
-    if (isTextTag(tag) || tag.endsWith("_ALT") || seen.has(tag)) continue
-    seen.add(tag)
-    out.push(tag)
-  }
-  return out
-}
-
-/**
- * <tr>s (fora da hero) cujo TEXTO visível contém `needle` (ex.: nome da
- * marca como "logo de texto"). View pro replace de logo do image_format —
- * o row_html é VERBATIM do documento, então o find/replace do Integrador
- * segue validando unicidade. Dedupe por região; máx. `limit` rows.
- */
-export function rowsContainingText(
-  html: string,
-  needle: string,
-  limit = 4,
-): Array<{ row_html: string }> {
-  const clean = needle.trim()
-  if (!clean) return []
-  const hero = extractHeroBySentinels(html)
-  const lower = html.toLowerCase()
-  const needleLower = clean.toLowerCase()
-  const out: Array<{ row_html: string }> = []
-  const taken: Array<{ start: number; end: number }> = []
-
-  let idx = lower.indexOf(needleLower)
-  while (idx !== -1 && out.length < limit) {
-    const inHero = hero && idx >= hero.start && idx < hero.end
-    const inTaken = taken.some((r) => idx >= r.start && idx < r.end)
-    if (!inHero && !inTaken) {
-      let rowStart = -1
-      for (const o of html.matchAll(/<tr\b[^>]*>/gi)) {
-        const s = o.index ?? 0
-        if (s >= idx) break
-        rowStart = s
-      }
-      const closeIdx = html.indexOf("</tr>", idx)
-      if (rowStart !== -1 && closeIdx !== -1 && closeIdx - rowStart < 4000) {
-        const end = closeIdx + 5
-        // Ocorrência dentro de atributo (alt="Marca") não é logo de texto —
-        // exige o nome visível como conteúdo de texto (entre > e <).
-        const row = html.slice(rowStart, end)
-        const textOnly = row.replace(/<[^>]*>/g, " ").toLowerCase()
-        if (textOnly.includes(needleLower)) {
-          out.push({ row_html: row })
-          taken.push({ start: rowStart, end })
-        }
-      }
-    }
-    idx = lower.indexOf(needleLower, idx + clean.length)
   }
   return out
 }
@@ -258,158 +186,6 @@ export function buildExceptionSlots(
   })
 }
 
-// ── Tags ESTRUTURAIS — posse do CÓDIGO, nunca do LLM ──────────────────
-//
-// Tags que nunca têm copy do n8n (título/preheader, marca, ano, logo,
-// unsubscribe, links de footer e redes sociais). No modo exceção o LLM
-// obedecia "slot sem copy → remove_row" e APAGAVA o rodapé inteiro
-// (incidente Luxe Lift 28/07: 57 slots na fila, footer/social comidos).
-// Agora: código preenche o que sabe, o resto fica INTACTO (o strip final
-// limpa o token sem apagar a linha) — e nada disso entra na fila do LLM.
-
-const STRUCTURAL_EXACT = new Set([
-  "EMAIL_TITLE",
-  "PREHEADER",
-  "BRAND_NAME",
-  "YEAR",
-  "LOGO",
-  "UNSUBSCRIBE_URL",
-])
-const STRUCTURAL_PREFIX =
-  /^(FOOTER_LINK_|FACEBOOK|INSTAGRAM|TIKTOK|YOUTUBE|TWITTER|PINTEREST|LINKEDIN|WHATSAPP)/
-
-export function isStructuralTag(tag: string): boolean {
-  return STRUCTURAL_EXACT.has(tag) || STRUCTURAL_PREFIX.test(tag)
-}
-
-// Campos opcionais de propósito: contexto parcial (loja sem logo, email
-// sem preheader) NUNCA pode derrubar o estágio — o que falta simplesmente
-// não vira op e o token fica pro strip final.
-export interface StructuralFillContext {
-  subject?: string | null
-  preheader?: string | null
-  brandName?: string | null
-  /** URL do logo (claro) — vazio → {{LOGO}} fica pro strip. */
-  logoUrl?: string | null
-  year: number
-}
-
-export interface StructuralFillResult {
-  html: string
-  /** Tags preenchidas por código. */
-  filled: string[]
-  /** Tags estruturais que ficaram no doc (strip limpa depois). */
-  left: string[]
-}
-
-/**
- * Preenche por CÓDIGO as tags estruturais conhecidas (fora da hero) e
- * devolve o relatório. Nunca remove linha — preservação > limpeza.
- */
-export function applyStructuralFills(
-  html: string,
-  ctx: StructuralFillContext,
-): StructuralFillResult {
-  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
-  const values: Record<string, string> = {
-    EMAIL_TITLE: str(ctx.subject),
-    PREHEADER: str(ctx.preheader),
-    BRAND_NAME: str(ctx.brandName),
-    YEAR: String(ctx.year),
-    LOGO: str(ctx.logoUrl),
-    // Merge tag do provedor — substituída no disparo; QA já a trata como
-    // conteúdo dinâmico válido.
-    UNSUBSCRIBE_URL: "[unsubscribe_link]",
-  }
-  const present = new Set(
-    Array.from(html.matchAll(TAG_TOKEN), (m) => m[1]).filter(isStructuralTag),
-  )
-  const ops: FormatOp[] = []
-  for (const tag of present) {
-    const value = values[tag]
-    if (value) ops.push({ action: "set_text", tag, value })
-  }
-  const res = applyOps(html, ops, {
-    allowHero: false, // estrutural dentro da hero é posse do agente de hero
-    allowedTags: new Set(ops.flatMap((o) => ("tag" in o ? [o.tag] : []))),
-  })
-  const filled = ops
-    .flatMap((o) => ("tag" in o ? [o.tag] : []))
-    .filter((t) => !res.skipped.some((s) => "tag" in s.op && s.op.tag === t))
-  return {
-    html: res.html,
-    filled,
-    left: Array.from(present).filter((t) => !filled.includes(t)),
-  }
-}
-
-// ── Views do Verificador de merge (7b) ────────────────────────────────
-
-/** Slot resolvido por código: o que foi aplicado, onde (sem row_html — o
- *  token já sumiu do doc; o julgamento é semântico: tag × valor). */
-export interface VerifierFilledSlot {
-  block_id: string | null
-  tag: string
-  valor_aplicado: string
-}
-
-/** Copy que sobrou sem uso: sem âncora, ou com âncora que o merge não
- *  resolveu (candidata natural do slot correspondente). */
-export interface VerifierUnusedCopy {
-  block_id: string | null
-  key: string
-  valor: string
-  /** Tag ancorada quando existe (slot sobrando correspondente). */
-  tag: string | null
-}
-
-export interface MergeVerifierInput {
-  slots_preenchidos: VerifierFilledSlot[]
-  slots_sobrando: ExceptionSlot[]
-  copy_nao_usada: VerifierUnusedCopy[]
-}
-
-/**
- * Monta TUDO que o Verificador de merge (7b) enxerga — views derivadas do
- * relatório + blocos do merge; nunca o documento inteiro. Puro/testável.
- */
-export function buildMergeVerifierInput(
-  htmlAfterMerge: string,
-  blocks: MergeBlock[],
-  report: CopyMergeReport,
-): MergeVerifierInput {
-  const tagMap = tagToBlockIdMap(blocks)
-  const mergedSet = new Set(report.merged_tags)
-  const leftSet = new Set(report.left_for_llm)
-
-  const filled: VerifierFilledSlot[] = []
-  const unused: VerifierUnusedCopy[] = []
-  for (const b of blocks) {
-    for (const f of b.fields) {
-      if (deriveFieldNature(f) !== "copy") continue
-      const value = copyValue(b.content?.[f.key])
-      if (value == null) continue
-      const tag = f.tag ? f.tag.replace(/[{}\s]/g, "") : null
-      if (tag && mergedSet.has(tag)) {
-        filled.push({ block_id: b.block_id ?? null, tag, valor_aplicado: value })
-      } else if (!tag || leftSet.has(tag)) {
-        // Sem âncora, ou âncora que o merge não resolveu → copy sem uso.
-        unused.push({ block_id: b.block_id ?? null, key: f.key, valor: value, tag })
-      }
-    }
-  }
-
-  return {
-    slots_preenchidos: filled,
-    slots_sobrando: buildExceptionSlots(
-      htmlAfterMerge,
-      report.left_for_llm,
-      tagMap,
-    ),
-    copy_nao_usada: unused,
-  }
-}
-
 /**
  * Monta e aplica o merge. As ops seguem o protocolo padrão do Integrador
  * (envelope {"ops":[...]}, ação set_text) — mesmo vocabulário que o
@@ -455,32 +231,14 @@ export function copyMerge(
     allowedTags: opTags,
   })
 
-  // Tags resolvidas de fato: tinha op montada E não foi pulada pelo
-  // Integrador (op aplicada = todas as ocorrências do token trocadas).
-  const skippedTags = new Set(
-    res.skipped.map((s) => ("tag" in s.op ? s.op.tag : "")).filter(Boolean),
-  )
-  const mergedTags = ops
-    .flatMap((o) => ("tag" in o ? [o.tag] : []))
-    .filter((t) => !skippedTags.has(t))
-
-  // A fila do LLM leva SÓ tags de copy: estruturais (footer/social/marca/
-  // ano/logo/unsubscribe) são posse do código — mandá-las pro agente de
-  // exceção fazia ele apagar o rodapé inteiro por "slot sem copy".
-  const remaining = textTagsOutsideHero(res.html)
-  const structuralOut = remaining.filter(isStructuralTag)
-  const leftForLlm = remaining.filter((t) => !isStructuralTag(t))
-
   return {
     html: res.html,
     report: {
       slots_total: before.length,
-      structural_out: structuralOut,
       ops_built: ops.length,
       merged: res.applied,
-      merged_tags: mergedTags,
       skipped: res.skipped,
-      left_for_llm: leftForLlm,
+      left_for_llm: textTagsOutsideHero(res.html),
       unanchored_keys: Array.from(new Set(unanchored)),
     },
   }

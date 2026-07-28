@@ -67,8 +67,6 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "color_format",
   // Taguedor de Variantes (migration 20261040).
   "component_tagger",
-  // Verificador de merge (7b, migration 20261043).
-  "merge_verifier",
 ]
 
 // ── Validação de output_schema ─────────────────────────────
@@ -174,7 +172,6 @@ export async function listPrompts(opts: {
     image_format: { active: null, history: [] },
     color_format: { active: null, history: [] },
     component_tagger: { active: null, history: [] },
-    merge_verifier: { active: null, history: [] },
   }
 
   for (const row of rows) {

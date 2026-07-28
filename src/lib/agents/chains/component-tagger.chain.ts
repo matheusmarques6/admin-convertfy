@@ -15,7 +15,7 @@
  *   not_found      — sem âncora defensável; campo fica de fora.
  *
  * Config em email_agent_configs (agent_type='component_tagger'); prompt
- * vazio → defaults abaixo. Modelo default moonshotai/kimi-k3 (swap 20261047; seed original 20261040).
+ * vazio → defaults abaixo. Modelo default z-ai/glm-5.2 (seed 20261040).
  */
 
 import { logger } from "@/lib/logger"
@@ -263,11 +263,6 @@ export async function invokeComponentTagger(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Component Tagger",
-    // Tagueamento é mecânico (troca frases por placeholders) — sem
-    // thinking. FORMAT_OPS_REASONING=on re-liga.
-    ...(process.env.FORMAT_OPS_REASONING === "on"
-      ? {}
-      : { reasoning: { enabled: false } }),
   })
 
   const parsed = parseTaggerOutput(res.text)

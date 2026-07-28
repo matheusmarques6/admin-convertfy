@@ -88,20 +88,9 @@ import {
   copyMerge,
   mergeBlocksFromContext,
   buildExceptionSlots,
-  buildMergeVerifierInput,
-  applyStructuralFills,
   tagToBlockIdMap,
   type MergeField,
 } from "./html/copy-merge"
-import {
-  invokeMergeVerifierChain,
-  type MergeVerifierExcecao,
-} from "./chains/merge-verifier.chain"
-import {
-  buildQaBlockViews,
-  viewsFromBlocksFallback,
-  type QaBlockView,
-} from "./html/qa-views"
 import {
   locateHeroRegion,
   spliceHero,
@@ -373,7 +362,6 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     textConfigRes,
     imageFmtConfigRes,
     colorConfigRes,
-    mergeVerifierConfigRes,
   ] = await Promise.all([
     admin
       .from("store_brand_identity")
@@ -392,9 +380,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     orgId
       ? admin
           .from("email_generation_settings")
-          .select(
-            "generate_images, qa_vision_enabled, cost_alert_usd, merge_verifier_mode",
-          )
+          .select("generate_images, qa_vision_enabled, cost_alert_usd")
           .eq("org_id", orgId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -416,26 +402,17 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     fmtConfig("text_format"),
     fmtConfig("image_format"),
     fmtConfig("color_format"),
-    fmtConfig("merge_verifier"),
   ])
 
   const settingsRow = settingsRes.data as {
     generate_images?: boolean | null
     qa_vision_enabled?: boolean | null
     cost_alert_usd?: number | null
-    merge_verifier_mode?: string | null
   } | null
   const generateImages = settingsRow?.generate_images ?? true
   // NULL = respeita env (decisão fica no qa.chain); true/false = override da UI.
   const qaVisionEnabled = settingsRow?.qa_vision_enabled ?? null
   const costAlertUsd = settingsRow?.cost_alert_usd ?? null
-  // Verificador de merge (7b): default on_flag; valor fora do domínio
-  // (settings antigas sem a coluna) cai no default.
-  const rawVerifierMode = settingsRow?.merge_verifier_mode
-  const mergeVerifierMode: "always" | "on_flag" | "off" =
-    rawVerifierMode === "always" || rawVerifierMode === "off"
-      ? rawVerifierMode
-      : "on_flag"
 
   // Defesa contra o bug recorrente "store_brand_identities" (plural —
   // tabela nao existe). Supabase JS engole 42P01 em maybeSingle() e
@@ -484,9 +461,6 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       (imageFmtConfigRes.data as EmailAgentConfig | null) ?? null,
     colorFormatConfig:
       (colorConfigRes.data as EmailAgentConfig | null) ?? null,
-    mergeVerifierConfig:
-      (mergeVerifierConfigRes.data as EmailAgentConfig | null) ?? null,
-    mergeVerifierMode,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -1428,8 +1402,7 @@ const FMT_DEFAULTS: Record<
   image_format: { temperature: 0.2, maxTokens: 8192 },
   color_format: { temperature: 0.3, maxTokens: 16384 },
 }
-// Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
-const FMT_DEFAULT_MODEL = "moonshotai/kimi-k3"
+const FMT_DEFAULT_MODEL = "z-ai/glm-5.2"
 
 function toChainConfig(
   config: EmailAgentConfig | null,
@@ -1444,36 +1417,9 @@ function toChainConfig(
   }
 }
 
-// Verificador de merge (7b): não é step da cadeia (sem failStep/budget
-// próprios — falha vira fallback mecânico), então tem defaults próprios.
-// Kimi K3 via OpenRouter (mesma conta do resto da cadeia) — o seed
-// original em Haiku morria por falta de crédito na Anthropic (28/07).
-function verifierChainConfig(config: EmailAgentConfig | null): FormatChainConfig {
-  return {
-    model: config?.model || FMT_DEFAULT_MODEL,
-    temperature: config?.temperature ?? 0.2,
-    max_tokens: config?.max_tokens ?? 2048,
-    system_prompt: config?.system_prompt ?? "",
-    user_template: config?.user_template ?? "",
-  }
-}
-
 /** Hash curto pra auditoria "output do step N = input do step N+1". */
 function sha8(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 8)
-}
-
-/**
- * Snapshot do DOCUMENTO resultante do step pra telemetria
- * (parsed_output.output_html) — é o que permite VER o email como ficou
- * depois de cada agente no drill-down dos logs (os agentes de ops só têm
- * JSON no raw_output). Cap de segurança pra não inflar o JSONB.
- */
-const OUTPUT_HTML_SNAPSHOT_CAP = 200_000
-function htmlSnapshot(s: string): string {
-  return s.length > OUTPUT_HTML_SNAPSHOT_CAP
-    ? `${s.slice(0, OUTPUT_HTML_SNAPSHOT_CAP)}\n<!-- …snapshot truncado -->`
-    : s
 }
 
 /**
@@ -1658,7 +1604,7 @@ async function runFormattingChain(p: {
   routeT0: number
   budgetMs: number
 }): Promise<
-  | { status: "ok"; html: string; qaViews: QaBlockView[] }
+  | { status: "ok"; html: string }
   | { status: "failed" }
   | { status: "out_of_budget" }
 > {
@@ -1805,7 +1751,6 @@ async function runFormattingChain(p: {
             variant_id: variant?.id ?? null,
             output_html_len: next.length,
             output_sha8: sha8(next),
-            output_html: htmlSnapshot(next),
           },
         }
       },
@@ -1827,12 +1772,6 @@ async function runFormattingChain(p: {
   // Blocos do merge (com block_id) — amarram as views do agente de exceção
   // à mesma chave do n8n.
   let lastMergeBlocks: import("./html/copy-merge").MergeBlock[] | null = null
-  // Triagem do Verificador (7b) por tag — null = verificador off/falhou/
-  // não rodou → o agente de exceção segue com a fila mecânica pura.
-  let verifierTriage: Map<string, MergeVerifierExcecao> | null = null
-  // Views por bloco do QA (F5) — extraídas ANTES do strip dos marcadores
-  // cfy:block. Vazio no resume pós-strip (o QA cai no fallback por content).
-  let qaViews: QaBlockView[] = []
   if (stage === "hero") {
     // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
     // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
@@ -1854,36 +1793,6 @@ async function runFormattingChain(p: {
     )
     const merge = copyMerge(mergeInput, mergeBlocks)
     lastMergeBlocks = mergeBlocks
-
-    // Estruturais por CÓDIGO (título/preheader/marca/ano/logo/unsubscribe).
-    // Links de footer/social ficam intactos — o strip final limpa o token
-    // sem apagar a linha. Nada disso vai pro LLM (incidente Luxe Lift:
-    // o agente de exceção apagava o rodapé inteiro por "slot sem copy").
-    const structural = applyStructuralFills(merge.html, {
-      subject: fmtCtx.emailRow?.subject ?? "",
-      preheader: fmtCtx.emailRow?.preheader ?? "",
-      brandName: fmtCtx.brandName,
-      logoUrl: fmtCtx.logoLight,
-      year: new Date().getFullYear(),
-    })
-    merge.html = structural.html
-
-    // Guard anti-colapso: fila de copy tomando quase todo o documento =
-    // blueprint sem âncoras (fields.tag null — variantes não tagueadas),
-    // não "copy faltando". Antes isso passava silencioso e o LLM comia
-    // seções inteiras.
-    const copySlots = merge.report.slots_total - merge.report.structural_out.length
-    const collapsed =
-      copySlots >= 10 && merge.report.left_for_llm.length / copySlots > 0.6
-    if (collapsed) {
-      log.error("phase2.fmt.merge_anchor_collapse", {
-        emailId,
-        slots_total: merge.report.slots_total,
-        merged: merge.report.merged,
-        left_for_llm: merge.report.left_for_llm.length,
-        hint: "blueprint sem fields.tag — passar as variantes pelo Taguedor",
-      })
-    }
     await logGenerationRun({
       ...ids,
       agent: "copy_merge",
@@ -1900,12 +1809,6 @@ async function runFormattingChain(p: {
         merged: merge.report.merged,
         left_for_llm: merge.report.left_for_llm,
         unanchored_keys: merge.report.unanchored_keys,
-        // Estruturais: posse do código (nunca vão pro LLM).
-        structural_out: merge.report.structural_out,
-        structural_filled: structural.filled,
-        structural_left: structural.left,
-        // Blueprint sem âncoras → fila de copy engole o documento.
-        anchor_collapse: collapsed,
         ops_skipped: merge.report.skipped.map((s) => ({
           action: s.op.action,
           tag: "tag" in s.op ? s.op.tag : null,
@@ -1914,136 +1817,12 @@ async function runFormattingChain(p: {
         })),
         output_html_len: merge.html.length,
         output_sha8: sha8(merge.html),
-        output_html: htmlSnapshot(merge.html),
       },
       costCents: 0,
       durationMs: Date.now() - mergeT0,
     }).catch(() => {})
     currentHtml = merge.html
     lastMergeReport = merge.report
-
-    // ── 7b: Verificador de merge (LLM barato; migration 20261043) ────
-    // Audita o resultado do merge com views (nunca o documento) e tria a
-    // fila do agente de exceção. Modo via settings: on_flag (default) só
-    // roda quando o relatório acusa algo; always audita tudo; off = fila
-    // mecânica. FALLBACK OBRIGATÓRIO: erro/timeout aqui NUNCA derruba a
-    // geração — verifierTriage fica null e o fluxo segue como antes.
-    // Doc legado sem slots (slots_total=0) não tem o que triar — pula.
-    const verifierMode = ctx.mergeVerifierMode
-    const reportFlagged =
-      merge.report.left_for_llm.length > 0 ||
-      merge.report.unanchored_keys.length > 0 ||
-      merge.report.skipped.length > 0
-    if (verifierMode !== "off" && merge.report.slots_total > 0) {
-      const shouldRun = verifierMode === "always" || reportFlagged
-      if (!shouldRun) {
-        await logGenerationRun({
-          ...ids,
-          agent: "merge_verifier",
-          status: "skipped",
-          model: "n/a",
-          parsedOutput: { skip_reason: "merge_clean", mode: verifierMode },
-          costCents: 0,
-          durationMs: 0,
-        }).catch(() => {})
-      } else {
-        const vT0 = Date.now()
-        const vConfig = verifierChainConfig(ctx.mergeVerifierConfig)
-        try {
-          const vInput = buildMergeVerifierInput(
-            merge.html,
-            mergeBlocks,
-            merge.report,
-          )
-          const v = await invokeMergeVerifierChain({
-            config: vConfig,
-            vars: {
-              relatorio_merge_json: JSON.stringify(
-                {
-                  slots_total: merge.report.slots_total,
-                  merged: merge.report.merged,
-                  left_for_llm: merge.report.left_for_llm,
-                  unanchored_keys: merge.report.unanchored_keys,
-                },
-                null,
-                2,
-              ),
-              slots_preenchidos_json: JSON.stringify(
-                vInput.slots_preenchidos,
-                null,
-                2,
-              ),
-              slots_sobrando_json: JSON.stringify(
-                vInput.slots_sobrando,
-                null,
-                2,
-              ),
-              copy_nao_usada_json: JSON.stringify(
-                vInput.copy_nao_usada,
-                null,
-                2,
-              ),
-            },
-          })
-          // Só entradas fixáveis pelo 7c (tags que AINDA têm token no doc)
-          // alimentam a fila; flags sobre slots preenchidos são telemetria
-          // (o 7c não tem op pra reescrever valor já aplicado).
-          const leftSet = new Set(merge.report.left_for_llm)
-          const fixable = v.result.excecoes.filter((e) => leftSet.has(e.tag))
-          verifierTriage = new Map(fixable.map((e) => [e.tag, e]))
-          await logGenerationRun({
-            ...ids,
-            agent: "merge_verifier",
-            status: "success",
-            model: vConfig.model,
-            inputVars: {
-              stage: "text",
-              mode: verifierMode,
-              flagged: reportFlagged,
-              slots_preenchidos: vInput.slots_preenchidos.length,
-              slots_sobrando: vInput.slots_sobrando.length,
-              copy_nao_usada: vInput.copy_nao_usada.length,
-            },
-            renderedPrompt: v.renderedPrompt,
-            rawOutput: v.rawOutput.slice(0, 8000),
-            parsedOutput: {
-              aprovado: v.result.aprovado,
-              excecoes: v.result.excecoes,
-              fila_para_excecao: fixable.length,
-              flags_slots_preenchidos: v.result.excecoes.filter(
-                (e) => !leftSet.has(e.tag),
-              ),
-            },
-            tokensInput: v.tokensInput,
-            tokensOutput: v.tokensOutput,
-            costCents: resolveCostCents({
-              model: vConfig.model,
-              tokensInput: v.tokensInput,
-              tokensOutput: v.tokensOutput,
-              costUsd: v.costUsd,
-            }),
-            durationMs: Date.now() - vT0,
-          }).catch(() => {})
-        } catch (err) {
-          verifierTriage = null // fallback: fila mecânica decide
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn("phase2.fmt.merge_verifier_failed_fallback", {
-            emailId,
-            error: msg,
-          })
-          await logGenerationRun({
-            ...ids,
-            agent: "merge_verifier",
-            status: "error",
-            model: vConfig.model,
-            errorMessage: msg.slice(0, 500),
-            parsedOutput: { fallback: "mechanical_queue" },
-            costCents: 0,
-            durationMs: Date.now() - vT0,
-          }).catch(() => {})
-        }
-      }
-    }
 
     // Skip só quando o doc TINHA slots e todos resolveram — documento
     // legado sem {{TAGS}} (slots_total=0) precisa do full-doc pra colocar
@@ -2079,24 +1858,11 @@ async function runFormattingChain(p: {
   ) {
     const inputHtml = currentHtml
     const leftTags = lastMergeReport.left_for_llm
-    // View base por slot; quando o Verificador (7b) rodou, cada slot ganha
-    // a triagem dele (motivo + copy candidata pareada + ação sugerida) —
-    // fila triada. Sem verificador (off/falha) segue a view mecânica pura.
     const slots = buildExceptionSlots(
       inputHtml,
       leftTags,
       lastMergeBlocks ? tagToBlockIdMap(lastMergeBlocks) : undefined,
-    ).map((s) => {
-      const t = verifierTriage?.get(s.tag)
-      return t
-        ? {
-            ...s,
-            motivo: t.motivo,
-            copy_candidata: t.copy_candidata,
-            acao_sugerida: t.acao_sugerida,
-          }
-        : s
-    })
+    )
     const config = toChainConfig(ctx.textFormatConfig, "text_format")
 
     const outcome = await executeFormatStep<string>({
@@ -2141,7 +1907,6 @@ async function runFormattingChain(p: {
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
-            output_html: htmlSnapshot(applied.html),
           },
         }
       },
@@ -2199,7 +1964,6 @@ async function runFormattingChain(p: {
             hero_respliced: heroRespliced,
             output_html_len: out.length,
             output_sha8: sha8(out),
-            output_html: htmlSnapshot(out),
           },
         }
       },
@@ -2232,12 +1996,6 @@ async function runFormattingChain(p: {
       attempt: async () => {
         const r = await invokeImageFormatChain({ config, vars })
         const applied = applyOps(inputHtml, r.ops, { allowHero: false })
-        let slotsSent = 0
-        try {
-          slotsSent = (JSON.parse(vars.image_slots_json) as unknown[]).length
-        } catch {
-          /* view ausente (prompt custom antigo) — segue 0 */
-        }
         return {
           value: applied.html,
           tokensInput: r.tokensInput,
@@ -2246,21 +2004,14 @@ async function runFormattingChain(p: {
           renderedPrompt: r.renderedPrompt,
           rawOutput: r.rawOutput,
           parsed: {
-            slots_sent: slotsSent,
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
-              target:
-                s.op.action === "replace"
-                  ? s.op.find.slice(0, 60)
-                  : s.op.action === "recolor"
-                    ? s.op.from
-                    : s.op.tag,
+              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
-            output_html: htmlSnapshot(applied.html),
           },
         }
       },
@@ -2271,17 +2022,6 @@ async function runFormattingChain(p: {
       await failStep("image_format", outcome.lastError)
       return { status: "failed" }
     }
-
-    // Views do QA (F5): extraídas AQUI, com os marcadores ainda no doc —
-    // depois do strip eles somem e a view por bloco fica irrecuperável.
-    qaViews = buildQaBlockViews(
-      outcome.value,
-      (fmtCtx.blocks ?? []).map((b) => ({
-        id: b.id,
-        position: b.position,
-        block_type: b.block_type,
-      })),
-    )
 
     // Limpeza final do documento (era o fim do postProcessHtml do agente
     // monolítico): sentinelas + marcadores cfy:block fora, indentação
@@ -2353,17 +2093,11 @@ async function runFormattingChain(p: {
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
-              target:
-                s.op.action === "replace"
-                  ? s.op.find.slice(0, 60)
-                  : s.op.action === "recolor"
-                    ? s.op.from
-                    : s.op.tag,
+              target: s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.tag,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
-            output_html: htmlSnapshot(applied.html),
           },
         }
       },
@@ -2396,7 +2130,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews }
+  return { status: "ok", html: currentHtml }
 }
 
 
@@ -2587,26 +2321,13 @@ export async function runPhase2HtmlQa(
   try {
     const { data: qaBlocks } = await admin
       .from("email_blocks")
-      .select("id, position, block_type, content")
+      .select("block_type, content")
       .eq("email_id", emailId)
       .order("position", { ascending: true })
     const blocksForQa = (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
       block_type: (b.block_type as string) ?? "unknown",
       content: ((b.content as Record<string, unknown>) ?? {}),
     }))
-    // F5: views extraídas pela cadeia (com marcadores); resume pós-strip
-    // deixa a lista vazia → fallback por content dos blocos.
-    const blockViews =
-      fmtResult.qaViews.length > 0
-        ? fmtResult.qaViews
-        : viewsFromBlocksFallback(
-            (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
-              id: (b.id as string) ?? "",
-              position: (b.position as number) ?? 0,
-              block_type: (b.block_type as string) ?? "unknown",
-              content: (b.content as Record<string, unknown>) ?? null,
-            })),
-          )
     qaResult = await runQaAgent({
       storeId,
       emailId,
@@ -2615,7 +2336,6 @@ export async function runPhase2HtmlQa(
       triggeredBy,
       html: finalHtml,
       blocks: blocksForQa,
-      blockViews,
       briefing: ctx.briefing,
       brand: ctx.brand,
       blueprintObjective: ctx.blueprintObjective,
