@@ -220,6 +220,7 @@ const REFERENCE_HTML = [
 const resolveHeroVariant = vi.fn(async () => ({
   variant: null as { id: string; html: string } | null,
   source: null as string | null,
+  mismatch: false,
 }))
 const buildHeroVars = vi.fn(
   (_ctx: unknown, _params: unknown) => ({}) as Record<string, string>,
@@ -348,7 +349,11 @@ function reset(overrides: Row = {}) {
   buildHeroVars.mockReset()
   buildHeroVars.mockReturnValue({})
   resolveHeroVariant.mockReset()
-  resolveHeroVariant.mockResolvedValue({ variant: null, source: null })
+  resolveHeroVariant.mockResolvedValue({
+    variant: null,
+    source: null,
+    mismatch: false,
+  })
 }
 
 const email = () => h.tables.email_flow_emails[0]
@@ -439,7 +444,8 @@ describe("cadeia de formatação — runner", () => {
           '<tr><td><a href="{{HERO_CTA_URL}}">{{HERO_CTA_LABEL}}</a></td></tr>',
         ].join("\n"),
       },
-      source: "slot_map",
+      source: "blueprint",
+      mismatch: false,
     })
     await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
 

@@ -95,7 +95,11 @@ vi.mock("./chains/image-format.chain", () => ({ invokeImageFormatChain: vi.fn() 
 vi.mock("./chains/color-format.chain", () => ({ invokeColorFormatChain: vi.fn() }))
 vi.mock("./html/format-context", () => ({
   loadFormatChainContext: vi.fn(async () => ({ referenceHtml: "", slotMap: null })),
-  resolveHeroVariant: vi.fn(async () => ({ variant: null, source: null })),
+  resolveHeroVariant: vi.fn(async () => ({
+    variant: null,
+    source: null,
+    mismatch: false,
+  })),
   buildHeroVars: vi.fn(() => ({})),
   buildTextFormatVars: vi.fn(() => ({})),
   buildImageFormatVars: vi.fn(() => ({})),

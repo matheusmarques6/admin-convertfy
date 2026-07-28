@@ -1363,7 +1363,7 @@ variantes é um mockup-imagem de ~1,7KB (não HTML estrutural) — caía em
 Fluxo no `runFormattingChain` (só quando `stage === null`; no resume o
 enxerto já está no HTML persistido):
 
-1. `resolveHeroVariant` (cascata slot_map → blueprint → choices).
+1. `resolveHeroVariant` (cascata **blueprint → slot_map → choices**).
 2. `graftHeroVariant(referenceHtml, effectiveVariantHtml(variant))` —
    `locateHeroRegion` + `spliceHero`. Fragmento `<tr>` entra direto,
    `<table>` é embrulhado em `<tr><td>`; qualquer outra coisa é RECUSADA
@@ -1389,8 +1389,21 @@ A `empty_slot_rule` deixou de comer CTA: com `hero_content` vazio (copy
 ainda não chegou) o agente é proibido de remover qualquer slot — os
 placeholders seguem para o `copy_merge` determinístico.
 
+**Por que o blueprint vence o slot_map**: o blueprint é o CONTRATO de
+endereçamento da copy — `packageBlueprint` deriva `blocks[].fields[]` do
+`output_schema` da variante casada e resolve cada `fields.tag` contra o
+HTML EFETIVO dessa mesma variante (`fieldsFromSchema(schema, tags,
+effectiveVariantHtml(variant))`). A copy do n8n volta amarrada a esses
+fields e o `copy_merge` ancora por `fields.tag`. Enxertar variante
+diferente da que gerou os fields deixa as tags do snapshot sem endereço no
+documento — merge ancora zero. No fluxo natural as fontes concordam por
+construção (`generateStoreBlueprint` recebe os MESMOS `slots` que viram
+`slot_map`); divergem quando reference e blueprint são regenerados em
+momentos diferentes ou quando o match FIFO deixa o bloco hero sem variante.
+Divergência → warn `fmt.hero_variant_mismatch` + `variant_mismatch` no run.
+
 Telemetria no run `hero_section`: `hero_source`, `graft_status`,
-`variant_source`, `variant_id`.
+`variant_source`, `variant_id`, `variant_mismatch`.
 
 **Escopo**: só a hero. Validado, o mesmo desenho (Montador → IDs, montagem
 por código a partir do HTML canônico) se estende às demais seções.

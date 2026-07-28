@@ -1775,6 +1775,8 @@ async function runFormattingChain(p: {
   let heroVariant: HeroVariantData | null = null
   let heroVariantSource: HeroVariantSource = null
   let heroGraftStatus: GraftStatus | "skipped_resume" = "skipped_resume"
+  /** blueprint × slot_map apontam variantes diferentes (blueprint venceu). */
+  let heroVariantMismatch = false
   if (stage === null) {
     const resolved = await resolveHeroVariant(admin, {
       storeId,
@@ -1785,6 +1787,7 @@ async function runFormattingChain(p: {
     })
     heroVariant = resolved.variant
     heroVariantSource = resolved.source
+    heroVariantMismatch = resolved.mismatch
     const graft = graftHeroVariant(
       fmtCtx.referenceHtml,
       heroVariant ? effectiveVariantHtml(heroVariant) : null,
@@ -1888,6 +1891,7 @@ async function runFormattingChain(p: {
             graft_status: heroGraftStatus,
             variant_source: variantSource,
             variant_id: variant?.id ?? null,
+            variant_mismatch: heroVariantMismatch,
             output_html_len: next.length,
             output_sha8: sha8(next),
             output_html: htmlSnapshot(next),

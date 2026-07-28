@@ -262,6 +262,21 @@ const isHeroSection = (s: string | null | undefined): boolean =>
 /**
  * Cascata determinística da escolha do Montador pra hero. Devolve a
  * variante carregada (html + rendered_html + schema) ou null → degradado.
+ *
+ * ORDEM: blueprint > slot_map > choices. O blueprint vence porque ele é o
+ * CONTRATO de endereçamento da copy: `packageBlueprint` deriva
+ * `blocks[].fields[]` do `output_schema` da variante que casou e resolve
+ * cada `fields.tag` contra o HTML EFETIVO dessa mesma variante
+ * (`fieldsFromSchema(schema, tags, effectiveVariantHtml(variant))`). A copy
+ * do n8n volta amarrada a esses fields e o `copy_merge` ancora por
+ * `fields.tag`. Enxertar uma variante diferente da que gerou os fields
+ * deixa as tags do snapshot sem endereço no documento — merge ancora zero.
+ *
+ * No fluxo natural as duas fontes concordam por construção (o Blueprint
+ * recebe os MESMOS `slots` que viram `slot_map`), mas podem divergir quando
+ * reference e blueprint são regenerados em momentos diferentes, ou quando o
+ * match FIFO deixa o bloco hero sem variante (`variant_id: null` no
+ * blueprint) — daí a telemetria de divergência.
  */
 export async function resolveHeroVariant(
   admin: SupabaseClient,
@@ -272,30 +287,48 @@ export async function resolveHeroVariant(
     slotMap: ReferenceSlotMapEntry[] | null
     blueprint: EmailBlueprint | null
   },
-): Promise<{ variant: HeroVariantData | null; source: HeroVariantSource }> {
+): Promise<{
+  variant: HeroVariantData | null
+  source: HeroVariantSource
+  /** Blueprint e slot_map apontam variantes diferentes (blueprint vence). */
+  mismatch: boolean
+}> {
   const { storeId, flowType, emailNumber, slotMap, blueprint } = params
 
   let variantId: string | null = null
   let source: HeroVariantSource = null
 
-  // 1. slot_map do reference (escolha salva por parte do email).
+  // 1. blueprint.blocks — packageBlueprint persiste variant_id por bloco, e
+  //    é dele que saíram os fields/tags que a copy vai preencher.
+  const fromBlueprint = Array.isArray(blueprint?.blocks)
+    ? blueprint.blocks.find((b) => b.type === "hero" && b.variant_id)
+    : undefined
+  if (fromBlueprint?.variant_id) {
+    variantId = fromBlueprint.variant_id
+    source = "blueprint"
+  }
+
+  // 2. slot_map do reference (escolha do Montador por parte do email).
   const fromSlotMap = slotMap?.find(
     (s) => isHeroSection(s.section) && s.variant_id,
   )
-  if (fromSlotMap?.variant_id) {
+  if (!variantId && fromSlotMap?.variant_id) {
     variantId = fromSlotMap.variant_id
     source = "slot_map"
   }
 
-  // 2. blueprint.blocks — packageBlueprint persiste variant_id por bloco.
-  if (!variantId && Array.isArray(blueprint?.blocks)) {
-    const heroBlock = blueprint.blocks.find(
-      (b) => b.type === "hero" && b.variant_id,
-    )
-    if (heroBlock?.variant_id) {
-      variantId = heroBlock.variant_id
-      source = "blueprint"
-    }
+  const mismatch =
+    !!fromBlueprint?.variant_id &&
+    !!fromSlotMap?.variant_id &&
+    fromBlueprint.variant_id !== fromSlotMap.variant_id
+  if (mismatch) {
+    log.warn("fmt.hero_variant_mismatch", {
+      storeId,
+      flowType,
+      emailNumber,
+      blueprintVariantId: fromBlueprint?.variant_id,
+      slotMapVariantId: fromSlotMap?.variant_id,
+    })
   }
 
   // 3. Memória do Curador (append-only; mais recente vence).
@@ -322,7 +355,7 @@ export async function resolveHeroVariant(
     }
   }
 
-  if (!variantId) return { variant: null, source: null }
+  if (!variantId) return { variant: null, source: null, mismatch }
 
   const { data: variant, error } = await admin
     .from("email_component_variants")
@@ -337,9 +370,9 @@ export async function resolveHeroVariant(
       source,
       error: error?.message ?? "not_found",
     })
-    return { variant: null, source: null }
+    return { variant: null, source: null, mismatch }
   }
-  return { variant: variant as HeroVariantData, source }
+  return { variant: variant as HeroVariantData, source, mismatch }
 }
 
 // ── Builders de vars por agente ────────────────────────────────────

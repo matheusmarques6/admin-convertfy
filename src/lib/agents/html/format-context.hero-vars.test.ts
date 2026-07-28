@@ -65,3 +65,40 @@ describe("buildHeroVars — montador_html por modo", () => {
     expect(vars.montador_html).toBe(ctx.referenceHtml)
   })
 })
+
+// Enxerto por ID: quando a região JÁ é a variante da biblioteca, mandar a
+// variante de novo é duplicar o mesmo HTML no prompt.
+describe("buildHeroVars — modo enxertado", () => {
+  const variant = {
+    id: "v1",
+    html: "<tr><td>{{HERO_HEADLINE}}</td></tr>",
+    html_tagged: null,
+    tagging_status: null,
+    rendered_html: "<table><tr><td><img src='mockup.png'></td></tr></table>",
+    output_schema: [],
+    block_type: "hero",
+  }
+
+  it("grafted: variante e rendered saem do prompt, hero_source=library", () => {
+    const vars = buildHeroVars(minimalCtx(), {
+      mode: "fragment",
+      regionHtml: HERO_REGION,
+      variant,
+      grafted: true,
+    })
+    expect(vars.hero_source).toBe("library")
+    expect(vars.hero_variant_html).toBe("")
+    expect(vars.hero_variant_rendered_html).toBe("")
+  })
+
+  it("sem enxerto: variante e rendered continuam sendo o espelho", () => {
+    const vars = buildHeroVars(minimalCtx(), {
+      mode: "fragment",
+      regionHtml: HERO_REGION,
+      variant,
+    })
+    expect(vars.hero_source).toBe("montador")
+    expect(vars.hero_variant_html).toBe(variant.html)
+    expect(vars.hero_variant_rendered_html).toBe(variant.rendered_html)
+  })
+})
