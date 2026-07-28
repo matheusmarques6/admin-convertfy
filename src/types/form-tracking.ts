@@ -55,6 +55,33 @@ export interface QualifiedLeadConfig {
   rules: QualifiedRule[]
 }
 
+/**
+ * Advanced matching do pixel de browser — o objeto passado em
+ * `fbq('init', pixelId, {...})`.
+ *
+ * Valores em TEXTO PURO, ja normalizados como o Meta espera (email/nome
+ * em lowercase, telefone so digitos com DDI). Quem hasheia (SHA-256) e o
+ * proprio fbevents.js dentro do navegador — por isso nao mandamos hash
+ * daqui. Sao dados que o visitante acabou de digitar no proprio form, e
+ * so trafegam de volta pro browser dele.
+ *
+ * Espelha o `user_data` que a CAPI envia server-side (ver
+ * `buildMetaUserData` em `@/lib/integrations/meta-capi`), pra que os dois
+ * lados do mesmo `event_id` cheguem ao Meta com o mesmo matching.
+ */
+export interface MetaAdvancedMatching {
+  /** Email normalizado (trim + lowercase). */
+  em?: string
+  /** Telefone E.164 sem '+' (so digitos, com codigo de pais). */
+  ph?: string
+  /** Primeiro nome (trim + lowercase). */
+  fn?: string
+  /** Sobrenome (trim + lowercase). */
+  ln?: string
+  /** Id estavel do lead (crm_leads.id). */
+  external_id?: string
+}
+
 export interface FormTrackingConfig {
   meta: { enabled: boolean; browser_pixel: boolean }
   google: { enabled: boolean }
