@@ -97,6 +97,11 @@ import {
   type MergeVerifierExcecao,
 } from "./chains/merge-verifier.chain"
 import {
+  buildQaBlockViews,
+  viewsFromBlocksFallback,
+  type QaBlockView,
+} from "./html/qa-views"
+import {
   locateHeroRegion,
   spliceHero,
   heroUnchanged,
@@ -1637,7 +1642,7 @@ async function runFormattingChain(p: {
   routeT0: number
   budgetMs: number
 }): Promise<
-  | { status: "ok"; html: string }
+  | { status: "ok"; html: string; qaViews: QaBlockView[] }
   | { status: "failed" }
   | { status: "out_of_budget" }
 > {
@@ -1808,6 +1813,9 @@ async function runFormattingChain(p: {
   // Triagem do Verificador (7b) por tag — null = verificador off/falhou/
   // não rodou → o agente de exceção segue com a fila mecânica pura.
   let verifierTriage: Map<string, MergeVerifierExcecao> | null = null
+  // Views por bloco do QA (F5) — extraídas ANTES do strip dos marcadores
+  // cfy:block. Vazio no resume pós-strip (o QA cai no fallback por content).
+  let qaViews: QaBlockView[] = []
   if (stage === "hero") {
     // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
     // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
@@ -2207,6 +2215,17 @@ async function runFormattingChain(p: {
       return { status: "failed" }
     }
 
+    // Views do QA (F5): extraídas AQUI, com os marcadores ainda no doc —
+    // depois do strip eles somem e a view por bloco fica irrecuperável.
+    qaViews = buildQaBlockViews(
+      outcome.value,
+      (fmtCtx.blocks ?? []).map((b) => ({
+        id: b.id,
+        position: b.position,
+        block_type: b.block_type,
+      })),
+    )
+
     // Limpeza final do documento (era o fim do postProcessHtml do agente
     // monolítico): sentinelas + marcadores cfy:block fora, indentação
     // &nbsp; do GLM removida, placeholders órfãos limpos, lang da loja.
@@ -2319,7 +2338,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml }
+  return { status: "ok", html: currentHtml, qaViews }
 }
 
 
@@ -2510,13 +2529,26 @@ export async function runPhase2HtmlQa(
   try {
     const { data: qaBlocks } = await admin
       .from("email_blocks")
-      .select("block_type, content")
+      .select("id, position, block_type, content")
       .eq("email_id", emailId)
       .order("position", { ascending: true })
     const blocksForQa = (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
       block_type: (b.block_type as string) ?? "unknown",
       content: ((b.content as Record<string, unknown>) ?? {}),
     }))
+    // F5: views extraídas pela cadeia (com marcadores); resume pós-strip
+    // deixa a lista vazia → fallback por content dos blocos.
+    const blockViews =
+      fmtResult.qaViews.length > 0
+        ? fmtResult.qaViews
+        : viewsFromBlocksFallback(
+            (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
+              id: (b.id as string) ?? "",
+              position: (b.position as number) ?? 0,
+              block_type: (b.block_type as string) ?? "unknown",
+              content: (b.content as Record<string, unknown>) ?? null,
+            })),
+          )
     qaResult = await runQaAgent({
       storeId,
       emailId,
@@ -2525,6 +2557,7 @@ export async function runPhase2HtmlQa(
       triggeredBy,
       html: finalHtml,
       blocks: blocksForQa,
+      blockViews,
       briefing: ctx.briefing,
       brand: ctx.brand,
       blueprintObjective: ctx.blueprintObjective,

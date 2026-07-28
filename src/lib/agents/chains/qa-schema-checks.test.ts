@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { runSchemaChecks } from "./qa.chain"
+import { runSchemaChecks, runGlobalDocChecks } from "./qa.chain"
 import { validateSchemaTagCoherence } from "@/lib/email-workspace/schema-tag-coherence"
 import type { ComponentOutputField } from "@/types/email-generation"
 
@@ -137,5 +137,35 @@ describe("validateSchemaTagCoherence", () => {
     const r = validateSchemaTagCoherence(html, [schema[0]])
     expect(r.keysWithoutTag).toEqual([])
     expect(r.copyTagsWithoutKey).toEqual([])
+  })
+})
+
+describe("runGlobalDocChecks — visão global vira código (F5)", () => {
+  it("placeholder interno sobrando + <img> sem src são flagados", () => {
+    const html =
+      '<html><body><h1>{{HEADLINE}}</h1><img src=""><img src="https://ok.png"></body></html>'
+    const issues = runGlobalDocChecks(html)
+    expect(issues.some((i) => i.message.includes("{{HEADLINE}}"))).toBe(true)
+    expect(issues.some((i) => i.message.includes("<img> sem src"))).toBe(true)
+  })
+
+  it("merge tags de provedor (minúsculas) NÃO são placeholder interno", () => {
+    const html = "<html><body><a href=\"{{ unsubscribe }}\">sair</a></body></html>"
+    expect(runGlobalDocChecks(html)).toEqual([])
+  })
+
+  it("contagem de blocos divergente do blueprint gera issue informativa", () => {
+    const issues = runGlobalDocChecks("<html></html>", {
+      blocksCount: 7,
+      blueprintBlocksCount: 9,
+    })
+    expect(issues.some((i) => i.message.includes("difere do blueprint"))).toBe(true)
+    // igual → nada
+    expect(
+      runGlobalDocChecks("<html></html>", {
+        blocksCount: 9,
+        blueprintBlocksCount: 9,
+      }),
+    ).toEqual([])
   })
 })

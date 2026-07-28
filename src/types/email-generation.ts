@@ -209,6 +209,9 @@ export interface QaIssue {
   severity: QaIssueSeverity
   message: string
   location?: string
+  /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
+   *  issues antigas seguem válidas sem o campo. */
+  block_id?: string | null
 }
 
 // Resultado do QA agent (story AE-5).
