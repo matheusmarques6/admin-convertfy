@@ -13,9 +13,10 @@
 -- UPDATE in-place da linha ATIVA (padrão das trocas de modelo do projeto,
 -- ex.: 20261038/20261047). Prompts, temperatura e versão ficam intactos.
 
+-- NOTA: email_agent_configs NÃO tem coluna updated_at (só created_at) —
+-- o UPDATE mexe apenas em `model`, igual às trocas 20261038/20261047.
 UPDATE email_agent_configs
-SET model = 'google/gemini-3.1-flash-image',
-    updated_at = NOW()
+SET model = 'google/gemini-3.1-flash-image'
 WHERE agent_type IN ('image', 'campaign_image')
   AND is_active = TRUE
   AND model <> 'google/gemini-3.1-flash-image';
