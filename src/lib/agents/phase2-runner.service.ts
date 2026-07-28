@@ -1462,6 +1462,19 @@ function sha8(s: string): string {
 }
 
 /**
+ * Snapshot do DOCUMENTO resultante do step pra telemetria
+ * (parsed_output.output_html) — é o que permite VER o email como ficou
+ * depois de cada agente no drill-down dos logs (os agentes de ops só têm
+ * JSON no raw_output). Cap de segurança pra não inflar o JSONB.
+ */
+const OUTPUT_HTML_SNAPSHOT_CAP = 200_000
+function htmlSnapshot(s: string): string {
+  return s.length > OUTPUT_HTML_SNAPSHOT_CAP
+    ? `${s.slice(0, OUTPUT_HTML_SNAPSHOT_CAP)}\n<!-- …snapshot truncado -->`
+    : s
+}
+
+/**
  * Nº de runs em erro deste (email, batch, agent) — a fonte de verdade do
  * retry 1x, cobrindo retry in-process E cross-invocação (resume do watchdog).
  */
@@ -1790,6 +1803,7 @@ async function runFormattingChain(p: {
             variant_id: variant?.id ?? null,
             output_html_len: next.length,
             output_sha8: sha8(next),
+            output_html: htmlSnapshot(next),
           },
         }
       },
@@ -1862,6 +1876,7 @@ async function runFormattingChain(p: {
         })),
         output_html_len: merge.html.length,
         output_sha8: sha8(merge.html),
+        output_html: htmlSnapshot(merge.html),
       },
       costCents: 0,
       durationMs: Date.now() - mergeT0,
@@ -2088,6 +2103,7 @@ async function runFormattingChain(p: {
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
+            output_html: htmlSnapshot(applied.html),
           },
         }
       },
@@ -2145,6 +2161,7 @@ async function runFormattingChain(p: {
             hero_respliced: heroRespliced,
             output_html_len: out.length,
             output_sha8: sha8(out),
+            output_html: htmlSnapshot(out),
           },
         }
       },
@@ -2205,6 +2222,7 @@ async function runFormattingChain(p: {
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
+            output_html: htmlSnapshot(applied.html),
           },
         }
       },
@@ -2307,6 +2325,7 @@ async function runFormattingChain(p: {
             })),
             output_html_len: applied.html.length,
             output_sha8: sha8(applied.html),
+            output_html: htmlSnapshot(applied.html),
           },
         }
       },

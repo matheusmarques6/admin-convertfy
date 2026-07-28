@@ -1340,14 +1340,42 @@ function ExpandedDetail({ rowId }: { rowId: string }) {
         code={d.rendered_prompt ?? "(vazio)"}
       />
       <Collapsible label="Output bruto" code={d.raw_output ?? "(vazio)"} />
-      <Collapsible
-        label="Output parseado"
-        code={
-          d.parsed_output
-            ? JSON.stringify(d.parsed_output, null, 2)
-            : "(vazio)"
-        }
-      />
+      {(() => {
+        // Snapshot do DOCUMENTO resultante do step (parsed_output.output_html)
+        // — nos agentes de ops o raw_output é só o JSON de operações; é aqui
+        // que se VÊ o email como ficou depois de cada agente. Sai do JSON do
+        // "Output parseado" pra não afogar as métricas.
+        const parsedObj =
+          d.parsed_output && typeof d.parsed_output === "object"
+            ? (d.parsed_output as Record<string, unknown>)
+            : null
+        const outputHtml =
+          typeof parsedObj?.output_html === "string"
+            ? (parsedObj.output_html as string)
+            : null
+        const parsedForDisplay =
+          parsedObj && outputHtml
+            ? {
+                ...parsedObj,
+                output_html: `(ver seção "Documento após o agente" — ${outputHtml.length} chars)`,
+              }
+            : d.parsed_output
+        return (
+          <>
+            {outputHtml && (
+              <Collapsible label="Documento após o agente" code={outputHtml} />
+            )}
+            <Collapsible
+              label="Output parseado"
+              code={
+                parsedForDisplay
+                  ? JSON.stringify(parsedForDisplay, null, 2)
+                  : "(vazio)"
+              }
+            />
+          </>
+        )
+      })()}
       {d.error_stack && (
         <Collapsible label="Error stack" code={d.error_stack} />
       )}
