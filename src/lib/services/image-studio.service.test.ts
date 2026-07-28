@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   buildStudioInstruction,
   isImageStudioFormat,
+  MAX_STORE_SPEC_CHARS,
   MAX_VARIATIONS,
+  normalizeStoreSpecs,
   normalizeVariations,
   variationDirective,
 } from "./image-studio.service"
@@ -47,6 +49,33 @@ describe("variationDirective", () => {
   })
 })
 
+describe("normalizeStoreSpecs", () => {
+  it("apara o texto e mantém só as lojas com adendo", () => {
+    const out = normalizeStoreSpecs({
+      "loja-a": { instruction: "  caixa de presente aberta  " },
+      "loja-b": { instruction: "   " },
+      "loja-c": {},
+    })
+    expect(out).toEqual({ "loja-a": { instruction: "caixa de presente aberta" } })
+  })
+
+  it("corta no teto e ignora entradas inválidas", () => {
+    const out = normalizeStoreSpecs({
+      "loja-a": { instruction: "x".repeat(5000) },
+      "loja-b": "texto solto",
+      "loja-c": null,
+    })
+    expect(out["loja-a"].instruction).toHaveLength(MAX_STORE_SPEC_CHARS)
+    expect(out["loja-b"]).toBeUndefined()
+    expect(out["loja-c"]).toBeUndefined()
+  })
+
+  it("valor não-objeto vira mapa vazio", () => {
+    expect(normalizeStoreSpecs(undefined)).toEqual({})
+    expect(normalizeStoreSpecs([{ instruction: "x" }])).toEqual({})
+  })
+})
+
 describe("buildStudioInstruction", () => {
   it("compõe instrução + variação + flags; ajuste lidera", () => {
     const out = buildStudioInstruction({
@@ -63,6 +92,33 @@ describe("buildStudioInstruction", () => {
     expect(out).toContain("paleta de cores da marca")
     expect(out).toContain("estilo do logo da marca")
     expect(out).not.toContain("catálogo")
+  })
+
+  it("adendo da loja entra DEPOIS da variação (mais específico por último)", () => {
+    const out = buildStudioInstruction({
+      instruction: "hero lifestyle",
+      variationText: "VARIAÇÃO 1: close",
+      flags: {},
+      storeSpec: "usar a caixa de presente aberta",
+    })
+    const lines = out.split("\n")
+    expect(lines).toEqual([
+      "hero lifestyle",
+      "VARIAÇÃO 1: close",
+      "ESPECÍFICO DESTA LOJA: usar a caixa de presente aberta",
+    ])
+  })
+
+  it("adendo vazio/ausente não emite a linha", () => {
+    for (const storeSpec of [undefined, null, "   "]) {
+      const out = buildStudioInstruction({
+        instruction: "hero",
+        variationText: "",
+        flags: {},
+        storeSpec,
+      })
+      expect(out).toBe("hero")
+    }
   })
 
   it("sem nada ligado → só a instrução", () => {

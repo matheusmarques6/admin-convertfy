@@ -36,6 +36,7 @@ import type {
   ImageStudioResult,
   ImageStudioResultStatus,
   ImageStudioStore,
+  ImageStudioStoreSpec,
   ImageStudioTextContext,
   ImageStudioTextField,
   ImageStudioVariation,
@@ -97,6 +98,28 @@ export function normalizeVariations(raw: unknown): ImageStudioVariation[] {
   return out.length > 0 ? out : [{}]
 }
 
+/** Teto do adendo por loja (o prompt inteiro precisa caber com folga). */
+export const MAX_STORE_SPEC_CHARS = 1000
+
+/**
+ * Normaliza o mapa de adendos por loja: apara textos, corta no teto e
+ * DESCARTA entradas vazias — apagar o texto na UI equivale a remover o
+ * adendo. Chaves de lojas fora do lote são preservadas aqui (inofensivas:
+ * a geração só lê as lojas que está gerando) mas não atrapalham. Pura.
+ */
+export function normalizeStoreSpecs(raw: unknown): Record<string, ImageStudioStoreSpec> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  const out: Record<string, ImageStudioStoreSpec> = {}
+  for (const [storeId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue
+    const instruction = (value as Record<string, unknown>).instruction
+    const text = typeof instruction === "string" ? instruction.trim() : ""
+    if (!text) continue
+    out[storeId] = { instruction: text.slice(0, MAX_STORE_SPEC_CHARS) }
+  }
+  return out
+}
+
 /**
  * Direção efetiva de uma variação para o prompt. Vazia = variação livre:
  * instrui o modelo a variar composição/ângulo/cenário mantendo o brief.
@@ -126,6 +149,7 @@ interface BatchRow {
   text_context: ImageStudioTextContext | null
   store_ids: string[] | null
   variations: ImageStudioVariation[] | null
+  store_specs: Record<string, ImageStudioStoreSpec> | null
   created_at: string
   updated_at: string
 }
@@ -167,6 +191,7 @@ function mapBatchRow(row: BatchRow): ImageStudioBatch {
     text_context: row.text_context ?? {},
     store_ids: row.store_ids ?? [],
     variations: normalizeVariations(row.variations),
+    store_specs: normalizeStoreSpecs(row.store_specs),
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -337,6 +362,7 @@ export interface BatchInput {
   text_context?: ImageStudioTextContext
   store_ids?: string[]
   variations?: ImageStudioVariation[]
+  store_specs?: Record<string, ImageStudioStoreSpec>
 }
 
 export async function createBatch(
@@ -357,6 +383,7 @@ export async function createBatch(
       text_context: input.text_context ?? {},
       store_ids: input.store_ids ?? [],
       variations: normalizeVariations(input.variations ?? [{}]),
+      store_specs: normalizeStoreSpecs(input.store_specs ?? {}),
       created_by: createdBy,
     })
     .select("*")
@@ -385,6 +412,9 @@ export async function updateBatch(
   if (input.store_ids !== undefined) patch.store_ids = input.store_ids
   if (input.variations !== undefined) {
     patch.variations = normalizeVariations(input.variations)
+  }
+  if (input.store_specs !== undefined) {
+    patch.store_specs = normalizeStoreSpecs(input.store_specs)
   }
 
   const { data, error } = await admin
@@ -511,11 +541,18 @@ export function buildStudioInstruction(opts: {
   instruction: string
   variationText: string
   flags: ImageStudioAdaptFlags
+  /** Adendo desta loja (store_specs) — acrescenta ao brief base. */
+  storeSpec?: string | null
   adjustmentNotes?: string | null
 }): string {
   const parts: string[] = []
   if (opts.instruction.trim()) parts.push(opts.instruction.trim())
   if (opts.variationText.trim()) parts.push(opts.variationText.trim())
+  // Depois da variação de propósito: o mais específico é lido por último e
+  // os modelos de imagem dão peso ao fim do prompt.
+  if (opts.storeSpec?.trim()) {
+    parts.push(`ESPECÍFICO DESTA LOJA: ${opts.storeSpec.trim()}`)
+  }
 
   const adapt: string[] = []
   if (opts.flags.idioma) adapt.push("idioma/contexto cultural da loja")
@@ -599,10 +636,13 @@ async function generateOneImage(
     const flags = batch.adapt_flags ?? {}
     const variations = normalizeVariations(batch.variations)
 
+    const storeSpec = normalizeStoreSpecs(batch.store_specs)[storeId]?.instruction ?? null
+
     const instrucaoAdicional = buildStudioInstruction({
       instruction: batch.instruction,
       variationText: variationDirective(variations, variationIndex),
       flags,
+      storeSpec,
       adjustmentNotes,
     })
 
@@ -689,6 +729,7 @@ async function generateOneImage(
         store_id: storeId,
         batch_id: batch.id,
         variation_index: variationIndex,
+        has_store_spec: !!storeSpec,
         mode,
         refs_sent: refs.map((r) => ({ label: r.label, url: r.url })),
       },

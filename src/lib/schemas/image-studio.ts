@@ -4,7 +4,10 @@
  */
 
 import { z } from "zod"
-import { MAX_VARIATIONS } from "@/lib/services/image-studio.service"
+import {
+  MAX_STORE_SPEC_CHARS,
+  MAX_VARIATIONS,
+} from "@/lib/services/image-studio.service"
 
 const textFieldSchema = z
   .object({ include: z.boolean(), value: z.string().max(500).optional() })
@@ -38,6 +41,16 @@ export const imageStudioBatchBodySchema = z
       .strict()
       .optional(),
     store_ids: z.array(z.string().uuid()).max(500).optional(),
+    // Adendos por loja: { <store_id>: { instruction } }. O service
+    // normaliza (apara, corta no teto, descarta vazios).
+    store_specs: z
+      .record(
+        z.string().uuid(),
+        z
+          .object({ instruction: z.string().max(MAX_STORE_SPEC_CHARS).optional() })
+          .strict(),
+      )
+      .optional(),
     variations: z
       .array(
         z

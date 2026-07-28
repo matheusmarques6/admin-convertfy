@@ -49,6 +49,16 @@ export interface ImageStudioVariation {
   direction?: string
 }
 
+/**
+ * Adendo de geração de UMA loja dentro do lote. ACRESCENTA ao brief base
+ * (não substitui) e vale para todas as variações daquela loja.
+ * Aberto de propósito — campos futuros (imagem-base própria, modo
+ * substituir) entram sem migration, porque a coluna é JSONB.
+ */
+export interface ImageStudioStoreSpec {
+  instruction?: string
+}
+
 export interface ImageStudioBatch {
   id: string
   name: string
@@ -59,6 +69,8 @@ export interface ImageStudioBatch {
   text_context: ImageStudioTextContext
   store_ids: string[]
   variations: ImageStudioVariation[]
+  /** Adendos por loja — só as lojas que têm algo entram no mapa. */
+  store_specs: Record<string, ImageStudioStoreSpec>
   created_at: string
   updated_at: string
 }

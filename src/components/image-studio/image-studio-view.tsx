@@ -38,6 +38,7 @@ import type {
   ImageStudioResult,
   ImageStudioResultStatus,
   ImageStudioStore,
+  ImageStudioStoreSpec,
   ImageStudioTextContext,
   ImageStudioVariation,
 } from "@/types/image-studio"
@@ -558,6 +559,10 @@ function BatchEditor({
   const [variations, setVariations] = useState<ImageStudioVariation[]>(
     batch.variations.length > 0 ? batch.variations : [{}],
   )
+  const [storeSpecs, setStoreSpecs] = useState<Record<string, ImageStudioStoreSpec>>(
+    batch.store_specs ?? {},
+  )
+  const [addingSpecFor, setAddingSpecFor] = useState("")
   const [storeQuery, setStoreQuery] = useState("")
   const [countryFilter, setCountryFilter] = useState("")
   const [languageFilter, setLanguageFilter] = useState("")
@@ -701,6 +706,37 @@ function BatchEditor({
     const visible = new Set(visibleIds)
     commitStoreIds(storeIds.filter((id) => !visible.has(id)))
   }
+  // ── Adendos por loja ──
+  // Digitar é local (controlado); persiste no blur, como os demais campos.
+  const setSpecText = (storeId: string, instruction: string) => {
+    setStoreSpecs((cur) => ({ ...cur, [storeId]: { instruction } }))
+  }
+  const commitSpecs = () => {
+    void saveBatch({ store_specs: storeSpecs })
+  }
+  const removeSpec = (storeId: string) => {
+    const next = { ...storeSpecs }
+    delete next[storeId]
+    setStoreSpecs(next)
+    void saveBatch({ store_specs: next })
+  }
+  // Cartões: lojas com adendo (mesmo em branco enquanto edita) na ordem da seleção.
+  const specStoreIds = useMemo(
+    () => storeIds.filter((id) => storeSpecs[id] !== undefined),
+    [storeIds, storeSpecs],
+  )
+  // Candidatas a receber um adendo: selecionadas que ainda não têm.
+  const specCandidates = useMemo(
+    () =>
+      storeIds
+        .filter((id) => storeSpecs[id] === undefined)
+        .map((id) => allStores.find((s) => s.store_id === id))
+        .filter((s): s is ImageStudioStore => !!s),
+    [storeIds, storeSpecs, allStores],
+  )
+  const storeName = (id: string) =>
+    allStores.find((s) => s.store_id === id)?.store_name ?? "Loja"
+
   const hasFilters = !!(storeQuery.trim() || countryFilter || languageFilter || nicheFilter)
   const clearFilters = () => {
     setStoreQuery("")
@@ -1122,6 +1158,12 @@ function BatchEditor({
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
                         {s.store_name}
+                        {storeSpecs[s.store_id]?.instruction?.trim() && (
+                          <span
+                            title="Tem especificação própria de geração"
+                            className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle"
+                          />
+                        )}
                       </span>
                       {meta && (
                         <span className="max-w-[45%] shrink-0 truncate text-[10.5px] text-muted-foreground">
@@ -1134,6 +1176,77 @@ function BatchEditor({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Especificações por loja — adendo ao brief, só das lojas que têm */}
+        <div className="lg:col-span-2 2xl:col-span-3">
+          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Especificações por loja
+            <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground/80">
+              acrescentam ao brief base, valem para todas as variações da loja
+            </span>
+          </label>
+
+          {specStoreIds.length > 0 && (
+            <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-2">
+              {specStoreIds.map((id) => (
+                <div
+                  key={id}
+                  className="rounded-[6px] border border-border bg-background p-2"
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
+                      {storeName(id)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeSpec(id)}
+                      title="Remover especificação"
+                      className="rounded-[4px] p-1 text-muted-foreground hover:bg-muted hover:text-rose-600"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <textarea
+                    value={storeSpecs[id]?.instruction ?? ""}
+                    onChange={(e) => setSpecText(id, e.target.value)}
+                    onBlur={commitSpecs}
+                    rows={2}
+                    maxLength={1000}
+                    autoFocus={!storeSpecs[id]?.instruction}
+                    placeholder="ex.: usar a caixa de presente aberta, fundo escuro"
+                    className="w-full resize-none rounded-[5px] border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {specCandidates.length > 0 ? (
+            <select
+              value={addingSpecFor}
+              onChange={(e) => {
+                const id = e.target.value
+                if (!id) return
+                setSpecText(id, "")
+                setAddingSpecFor("")
+              }}
+              className="w-full rounded-[6px] border border-dashed border-border bg-background px-2.5 py-1.5 text-[12.5px] text-muted-foreground sm:max-w-sm"
+            >
+              <option value="">+ Especificação para uma loja…</option>
+              {specCandidates.map((s) => (
+                <option key={s.store_id} value={s.store_id}>
+                  {s.store_name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            storeIds.length === 0 && (
+              <p className="text-[12px] text-muted-foreground">
+                Selecione lojas acima para poder especificar por loja.
+              </p>
+            )
+          )}
         </div>
       </div>
 
