@@ -4,7 +4,9 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import {
+  Archive,
   ArrowRight,
   Building2,
   Calendar,
@@ -16,6 +18,7 @@ import {
   ExternalLink,
   File as FileIcon,
   Flag,
+  Link as LinkIcon,
   Mail,
   MessageSquare,
   MoreHorizontal,
@@ -29,6 +32,7 @@ import {
 } from "lucide-react"
 import type { DealFile } from "@/types/crm"
 import { InlineEditField } from "./inline-edit-field"
+import { CustomFieldsPanel } from "./custom-fields-panel"
 import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 
 const fetcher = async (url: string) => {
@@ -41,6 +45,27 @@ const fetcher = async (url: string) => {
 }
 
 // ─── Tipos ──────────────────────────────────────────────────────
+
+/** Mesmo shape em clients.address e crm_leads.address (migration 20261051). */
+export interface ContactAddress {
+  street?: string | null
+  number?: string | null
+  complement?: string | null
+  neighborhood?: string | null
+  postal_code?: string | null
+  city?: string | null
+  state?: string | null
+}
+
+const ADDRESS_FIELDS: Array<{ key: keyof ContactAddress; label: string }> = [
+  { key: "postal_code", label: "CEP" },
+  { key: "street", label: "Rua" },
+  { key: "number", label: "Número" },
+  { key: "complement", label: "Complemento" },
+  { key: "neighborhood", label: "Bairro" },
+  { key: "city", label: "Cidade" },
+  { key: "state", label: "Estado" },
+]
 
 interface DealFullResponse {
   success?: boolean
@@ -72,6 +97,8 @@ interface DealFullResponse {
       company?: string | null
       email?: string | null
       phone?: string | null
+      website?: string | null
+      address?: ContactAddress | null
     } | null
     store?: {
       id: string
@@ -85,6 +112,7 @@ interface DealFullResponse {
       email: string | null
       phone?: string | null
       company?: string | null
+      address?: ContactAddress | null
       ai_qualification_score?: number | null
       ai_qualification_reason?: string | null
     } | null
@@ -189,6 +217,9 @@ export function DealDetailView({ dealId }: { dealId: string }) {
     "historico" | "atividades" | "negocios" | "arquivos" | "atendimentos"
   >("historico")
   const [transferOpen, setTransferOpen] = useState(false)
+  const [contactTab, setContactTab] = useState<"perfil" | "endereco" | "campos">(
+    "perfil",
+  )
   const [filterType, setFilterType] = useState<
     "all" | "negocios" | "notes" | "emails" | "reunioes" | "alertas"
   >("all")
@@ -302,6 +333,77 @@ export function DealDetailView({ dealId }: { dealId: string }) {
     await mutate()
   }
 
+  // ── Roteador de escrita do painel de contato ──────────────────
+  // Nome/email/telefone/empresa/endereço NÃO são colunas de `deals`:
+  // moram em `clients` (deal com cliente) ou `crm_leads` (deal vindo de
+  // formulário). O painel resolve o alvo pela entidade que o deal tem —
+  // cliente ganha do lead, que é a mesma precedência da LEITURA logo
+  // acima (`deal.client?.x ?? deal.lead?.x`). Sem espelhar a leitura, o
+  // usuário editaria um registro e continuaria vendo o outro.
+  const contactTarget: { kind: "client" | "lead" | "none"; id?: string } =
+    deal.client?.id
+      ? { kind: "client", id: deal.client.id }
+      : deal.lead?.id
+        ? { kind: "lead", id: deal.lead.id }
+        : { kind: "none" }
+
+  const contactAddress: ContactAddress =
+    (contactTarget.kind === "client" ? deal.client?.address : deal.lead?.address) ??
+    {}
+
+  const patchContact = async (update: Record<string, unknown>) => {
+    if (contactTarget.kind === "none" || !contactTarget.id) {
+      throw new Error(
+        "Este deal não tem cliente nem lead vinculado — não há onde salvar o contato.",
+      )
+    }
+    const url =
+      contactTarget.kind === "client"
+        ? `/api/clients/${contactTarget.id}`
+        : `/api/crm/leads/${contactTarget.id}`
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body?.error?.message || body?.error || "Falha ao salvar")
+    }
+    await mutate()
+  }
+
+  // O nome exibido é `client.name ?? deal.title`. Editar sempre o título
+  // (comportamento antigo) fazia a edição "não pegar" em deal com
+  // cliente: salvava no deal e a tela seguia mostrando o nome do cliente.
+  const saveName = async (v: string) => {
+    if (contactTarget.kind === "client") return patchContact({ name: v })
+    if (contactTarget.kind === "lead") {
+      // Lead-puro: o título do deal é o que aparece no board, então os
+      // dois andam juntos.
+      await patchContact({ name: v })
+      return patchDeal({ title: v })
+    }
+    return patchDeal({ title: v })
+  }
+
+  // DELETE do deal e soft — vira status=archived (rota /api/crm/deals/[id]).
+  const archiveDeal = async () => {
+    if (
+      !window.confirm(
+        `Arquivar o deal "${deal.title}"? Ele sai do board, mas o histórico é preservado.`,
+      )
+    )
+      return
+    const res = await fetch(`/api/crm/deals/${dealId}`, { method: "DELETE" })
+    if (res.ok) {
+      router.push(`/admin/comercial/pipelines/${deal.pipeline_id}`)
+    } else {
+      const body = await res.json().catch(() => ({}))
+      window.alert(body?.error?.message || "Falha ao arquivar o deal.")
+    }
+  }
+
   const handleMoveToNextStage = async () => {
     // Implementacao simples: o user volta pro board pra mover.
     // Futuro: dialog inline pra escolher etapa.
@@ -403,19 +505,62 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <ArrowRight className="h-3.5 w-3.5" />
             Mover etapa
           </button>
-          <button
-            className="cf-focusable flex items-center justify-center rounded-[6px]"
-            style={{
-              width: 32,
-              height: 32,
-              border: "1px solid var(--crm-border)",
-              background: "var(--crm-gray-0)",
-              color: "var(--crm-gray-600)",
-            }}
-            aria-label="Mais opções"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                className="cf-focusable flex items-center justify-center rounded-[6px]"
+                style={{
+                  width: 32,
+                  height: 32,
+                  border: "1px solid var(--crm-border)",
+                  background: "var(--crm-gray-0)",
+                  color: "var(--crm-gray-600)",
+                  cursor: "pointer",
+                }}
+                aria-label="Mais opções"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={4}
+                className="z-50 min-w-[210px] py-1 rounded-[6px]"
+                style={{
+                  background: "var(--crm-gray-0)",
+                  border: "1px solid var(--crm-border)",
+                  boxShadow: "var(--crm-shadow-lg)",
+                }}
+              >
+                <MenuItem
+                  icon={<Shuffle className="h-3.5 w-3.5" />}
+                  label="Transferir de pipeline"
+                  onSelect={() => setTransferOpen(true)}
+                />
+                <MenuItem
+                  icon={<LinkIcon className="h-3.5 w-3.5" />}
+                  label="Copiar link do deal"
+                  onSelect={() => {
+                    navigator.clipboard
+                      ?.writeText(window.location.href)
+                      .catch(() => {})
+                  }}
+                />
+                <DropdownMenu.Separator
+                  className="h-px my-1"
+                  style={{ background: "var(--crm-gray-100)" }}
+                />
+                <MenuItem
+                  icon={<Archive className="h-3.5 w-3.5" />}
+                  label="Arquivar deal"
+                  tone="danger"
+                  onSelect={archiveDeal}
+                />
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </div>
 
@@ -499,9 +644,9 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               }}
             >
               <InlineEditField
-                value={deal.title}
-                placeholder="Título do deal"
-                onSave={(v) => patchDeal({ title: v })}
+                value={leadName}
+                placeholder="Nome do contato"
+                onSave={saveName}
                 displayStyle={{
                   fontSize: 18,
                   fontWeight: 600,
@@ -730,52 +875,114 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               className="flex gap-1 mb-2"
               style={{ borderBottom: "1px solid var(--crm-gray-100)" }}
             >
-              {(["perfil", "endereco", "campos"] as const).map((t) => (
+              {(["perfil", "endereco", "campos"] as const).map((t) => {
+                const active = contactTab === t
+                return (
                 <button
                   key={t}
+                  type="button"
+                  onClick={() => setContactTab(t)}
                   className="cf-focusable"
                   style={{
                     padding: "8px 4px",
                     fontSize: 12,
-                    fontWeight: t === "perfil" ? 600 : 500,
-                    color:
-                      t === "perfil"
-                        ? "var(--crm-gray-900)"
-                        : "var(--crm-gray-500)",
+                    fontWeight: active ? 600 : 500,
+                    color: active
+                      ? "var(--crm-gray-900)"
+                      : "var(--crm-gray-500)",
                     background: "transparent",
                     border: 0,
-                    borderBottom:
-                      t === "perfil"
-                        ? "2px solid var(--crm-brand)"
-                        : "2px solid transparent",
+                    borderBottom: active
+                      ? "2px solid var(--crm-brand)"
+                      : "2px solid transparent",
                     cursor: "pointer",
                   }}
                 >
                   {t === "perfil" ? "Perfil" : t === "endereco" ? "Endereço" : "Campos adicionais"}
                 </button>
-              ))}
+                )
+              })}
             </div>
             <div className="flex flex-col gap-2.5" style={{ paddingTop: 6 }}>
-              <ContactField icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={email} />
-              <ContactField
-                icon={<Phone className="h-3.5 w-3.5" />}
-                label="Telefone"
-                value={phone}
-                mono
-              />
-              {website && (
-                <ContactField
-                  icon={<ExternalLink className="h-3.5 w-3.5" />}
-                  label="Site"
-                  value={website.replace(/^https?:\/\//, "")}
-                  href={website.startsWith("http") ? website : `https://${website}`}
-                />
+              {contactTab === "perfil" && (
+                <>
+                  {contactTarget.kind === "none" && (
+                    <p style={{ fontSize: 11, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
+                      Deal sem cliente ou lead vinculado — não há registro de
+                      contato pra editar.
+                    </p>
+                  )}
+                  <ContactField
+                    icon={<Mail className="h-3.5 w-3.5" />}
+                    label="E-mail"
+                    value={email}
+                    onSave={
+                      contactTarget.kind !== "none"
+                        ? (v) => patchContact({ email: v || null })
+                        : undefined
+                    }
+                  />
+                  <ContactField
+                    icon={<Phone className="h-3.5 w-3.5" />}
+                    label="Telefone"
+                    value={phone}
+                    mono
+                    onSave={
+                      contactTarget.kind !== "none"
+                        ? (v) => patchContact({ phone: v || null })
+                        : undefined
+                    }
+                  />
+                  <ContactField
+                    icon={<Building2 className="h-3.5 w-3.5" />}
+                    label="Empresa"
+                    value={company}
+                    onSave={
+                      contactTarget.kind !== "none"
+                        ? (v) => patchContact({ company: v || null })
+                        : undefined
+                    }
+                  />
+                  {website && (
+                    <ContactField
+                      icon={<ExternalLink className="h-3.5 w-3.5" />}
+                      label="Site"
+                      value={website.replace(/^https?:\/\//, "")}
+                      href={website.startsWith("http") ? website : `https://${website}`}
+                    />
+                  )}
+                </>
               )}
-              {company && (
-                <ContactField
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                  label="Empresa"
-                  value={company}
+
+              {contactTab === "endereco" && (
+                <>
+                  {contactTarget.kind === "none" ? (
+                    <p style={{ fontSize: 11, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
+                      Deal sem cliente ou lead vinculado — não há onde gravar
+                      endereço.
+                    </p>
+                  ) : (
+                    ADDRESS_FIELDS.map((f) => (
+                      <ContactField
+                        key={f.key}
+                        label={f.label}
+                        value={contactAddress[f.key] ?? null}
+                        alwaysShow
+                        onSave={(v) =>
+                          patchContact({ address: { [f.key]: v || null } })
+                        }
+                      />
+                    ))
+                  )}
+                </>
+              )}
+
+              {contactTab === "campos" && (
+                <CustomFieldsPanel
+                  entityType="deal"
+                  entityId={dealId}
+                  values={deal.custom_fields ?? {}}
+                  onSaved={() => mutate()}
                 />
               )}
             </div>
@@ -1754,6 +1961,41 @@ function MetricCard({
   )
 }
 
+/** Item do menu ⋯ da topbar. */
+function MenuItem({
+  icon,
+  label,
+  onSelect,
+  tone,
+}: {
+  icon: React.ReactNode
+  label: string
+  onSelect: () => void
+  tone?: "danger"
+}) {
+  return (
+    <DropdownMenu.Item
+      onSelect={onSelect}
+      className="flex items-center gap-2 cursor-pointer outline-none data-[highlighted]:bg-[color:var(--crm-gray-50)]"
+      style={{
+        padding: "7px 12px",
+        fontSize: 12.5,
+        color: tone === "danger" ? "var(--crm-neg)" : "var(--crm-gray-800)",
+      }}
+    >
+      <span
+        style={{
+          color: tone === "danger" ? "var(--crm-neg)" : "var(--crm-gray-400)",
+          display: "flex",
+        }}
+      >
+        {icon}
+      </span>
+      {label}
+    </DropdownMenu.Item>
+  )
+}
+
 function TrendingIcon() {
   return (
     <svg
@@ -1771,20 +2013,35 @@ function TrendingIcon() {
   )
 }
 
+/**
+ * ContactField — linha do painel de contato.
+ *
+ * Com `onSave` vira edicao inline (mesmo InlineEditField do resto da
+ * ficha); sem, segue read-only como era. `alwaysShow` mantem a linha
+ * visivel mesmo vazia — necessario no Endereco, senao um campo em branco
+ * nao teria como ser preenchido pela primeira vez.
+ *
+ * `href` e `onSave` sao mutuamente exclusivos na pratica: o link so
+ * existe em campo derivado (site da loja), que nao se edita por aqui.
+ */
 function ContactField({
   icon,
   label,
   value,
   href,
   mono,
+  onSave,
+  alwaysShow,
 }: {
-  icon: React.ReactNode
+  icon?: React.ReactNode
   label: string
   value: string | null
   href?: string
   mono?: boolean
+  onSave?: (next: string) => Promise<void> | void
+  alwaysShow?: boolean
 }) {
-  if (!value) return null
+  if (!value && !onSave && !alwaysShow) return null
   const body = (
     <span
       className={mono ? "crm-tnum truncate" : "truncate"}
@@ -1803,10 +2060,20 @@ function ContactField({
           color: "var(--crm-gray-800)",
         }}
       >
-        <span style={{ color: "var(--crm-gray-400)", flexShrink: 0 }}>
-          {icon}
-        </span>
-        {href ? (
+        {icon && (
+          <span style={{ color: "var(--crm-gray-400)", flexShrink: 0 }}>
+            {icon}
+          </span>
+        )}
+        {onSave ? (
+          <InlineEditField
+            value={value}
+            placeholder={`Adicionar ${label.toLowerCase()}`}
+            onSave={onSave}
+            rootStyle={{ flex: 1, minWidth: 0, fontSize: 13 }}
+            displayStyle={{ color: "var(--crm-gray-800)" }}
+          />
+        ) : href ? (
           <a
             href={href}
             target="_blank"

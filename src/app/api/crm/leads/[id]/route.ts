@@ -76,6 +76,18 @@ const patchSchema = z.object({
   ai_qualification_score: z.number().int().min(0).max(100).nullable().optional(),
   ai_qualification_reason: z.string().nullable().optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
+  // Mesmo shape de clients.address (migration 20261051).
+  address: z
+    .object({
+      street: z.string().nullable().optional(),
+      number: z.string().nullable().optional(),
+      complement: z.string().nullable().optional(),
+      neighborhood: z.string().nullable().optional(),
+      postal_code: z.string().nullable().optional(),
+      city: z.string().nullable().optional(),
+      state: z.string().nullable().optional(),
+    })
+    .optional(),
 })
 
 export async function PATCH(
@@ -91,9 +103,24 @@ export async function PATCH(
     const body = await request.json()
     const parsed = patchSchema.parse(body)
 
+    // Merge do endereco: o painel salva um campo por vez, entao
+    // sobrescrever o jsonb inteiro apagaria os irmaos.
+    let updates: Record<string, unknown> = { ...parsed }
+    if (parsed.address) {
+      const { data: current } = await admin
+        .from("crm_leads")
+        .select("address")
+        .eq("id", id)
+        .maybeSingle()
+      updates = {
+        ...updates,
+        address: { ...(current?.address ?? {}), ...parsed.address },
+      }
+    }
+
     const { error } = await admin
       .from("crm_leads")
-      .update(parsed)
+      .update(updates)
       .eq("id", id)
 
     if (error) throw error

@@ -34,12 +34,12 @@ export async function GET(
         owner_id, referrer_partner_id, position, last_stage_changed_at,
         won_at, lost_at, custom_fields, notes, created_at, updated_at,
         owner:profiles!deals_owner_id_fkey (id, name, avatar_url, email),
-        client:clients (id, name, company, email, phone),
+        client:clients (id, name, company, email, phone, website, address),
         store:client_stores (id, store_name, store_url, platform, currency, mrr_cents, health_score),
         pipeline:pipelines (id, name, scope, color, layout),
         stage:pipeline_stages!deals_stage_id_fkey (id, name, color, stage_type),
         lead:crm_leads!deals_lead_id_fkey (
-          id, name, email, phone, company, source, status, utm,
+          id, name, email, phone, company, source, status, utm, address,
           ai_qualification_score, ai_qualification_reason
         )
       `)
