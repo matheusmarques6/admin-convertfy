@@ -323,7 +323,10 @@ export function NewDealDialog({
                 </Field>
               </div>
 
-              <Field label="Loja existente (autopreenche título, cliente e telefone)">
+              <Field
+                label="Loja existente (autopreenche título, cliente e telefone)"
+                as="div"
+              >
                 {storeId ? (
                   <div
                     className="flex items-center justify-between gap-2"
@@ -469,7 +472,7 @@ export function NewDealDialog({
                 )}
               </Field>
 
-              <Field label="Cliente (opcional, sem loja)">
+              <Field label="Cliente (opcional, sem loja)" as="div">
                 <input
                   className="crm-input w-full"
                   placeholder="Buscar cliente existente..."
@@ -534,7 +537,7 @@ export function NewDealDialog({
               </Field>
 
               {/* Tipo de origem (categoria) + Quem indicou/canal especifico */}
-              <Field label="Tipo de origem">
+              <Field label="Tipo de origem" as="div">
                 <div className="grid grid-cols-3 gap-1.5">
                   {SOURCE_TYPES.map((opt) => {
                     const active = sourceType === opt.value
@@ -605,7 +608,7 @@ export function NewDealDialog({
                 />
               </Field>
 
-              <Field label="Tags">
+              <Field label="Tags" as="div">
                 <TagsSelector
                   entity="deal"
                   selected={tags}
@@ -664,9 +667,29 @@ export function NewDealDialog({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Field — caption + controle.
+ *
+ * `as="div"` é OBRIGATÓRIO quando o conteúdo não é um input simples (combobox
+ * de tags, lista de resultados de busca...). Um <label> que envolve o controle
+ * tem "label activation behavior": todo clique em descendente NÃO-interativo é
+ * re-despachado pelo browser no primeiro elemento labelable de dentro. No
+ * TagsSelector isso significa que, com uma tag já selecionada, o clique vai
+ * parar no <button> de remover do chip — a tag some no mesmo batch em que foi
+ * adicionada e o campo parece "não clicável".
+ */
+function Field({
+  label,
+  children,
+  as = "label",
+}: {
+  label: string
+  children: React.ReactNode
+  as?: "label" | "div"
+}) {
+  const Wrapper = as
   return (
-    <label className="block">
+    <Wrapper className="block">
       <span
         style={{
           display: "block",
@@ -681,7 +704,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </span>
       {children}
-    </label>
+    </Wrapper>
   )
 }
 
