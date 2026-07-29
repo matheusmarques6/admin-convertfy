@@ -22,6 +22,7 @@ import {
   Paperclip,
   Phone,
   Plus,
+  Shuffle,
   Sparkles,
   StickyNote,
   Trophy,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react"
 import { CustomFieldsPanel } from "./custom-fields-panel"
 import { LostReasonDialog } from "./lost-reason-dialog"
+import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 import { InlineEditField } from "./inline-edit-field"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import type { DealFile } from "@/types/crm"
@@ -255,6 +257,7 @@ export function DealDrawer({
   const [showComposer, setShowComposer] = useState(false)
   // Quando mover pra terminal-lost stage, exibe o dialog de razao
   const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null)
+  const [transferOpen, setTransferOpen] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -424,6 +427,7 @@ export function DealDrawer({
                 errorIs404={errorIs404}
                 onRetry={() => mutate()}
                 onPatch={patchDeal}
+                onTransferPipeline={() => setTransferOpen(true)}
                 onOpenFullPage={
                   dealId
                     ? () => {
@@ -582,6 +586,23 @@ export function DealDrawer({
         onConfirm={confirmLostMove}
         onCancel={() => setPendingLostStageId(null)}
       />
+
+      {dealId && deal?.pipeline_id && (
+        <MoveDealPipelineDialog
+          open={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          dealId={dealId}
+          dealTitle={deal.title}
+          currentPipelineId={deal.pipeline_id}
+          onMoved={async () => {
+            await mutate()
+            onUpdated?.()
+            // O deal saiu desta pipeline: o board por trás não deve
+            // continuar mostrando o drawer de um card que não é mais dele.
+            onClose()
+          }}
+        />
+      )}
     </DialogPrimitive.Root>
   )
 }
@@ -599,6 +620,7 @@ function DrawerHeader({
   onRetry,
   onOpenFullPage,
   onPatch,
+  onTransferPipeline,
 }: {
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
@@ -610,6 +632,7 @@ function DrawerHeader({
   onRetry: () => void
   onOpenFullPage?: () => void
   onPatch?: (update: Record<string, unknown>) => Promise<void>
+  onTransferPipeline?: () => void
 }) {
   const leadName = deal.client?.name || deal.title
   const avatarColors = avatarColorFromName(leadName)
@@ -729,6 +752,25 @@ function DrawerHeader({
         {/* Score donut + actions */}
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex gap-1">
+            <button
+              onClick={onTransferPipeline}
+              disabled={!onTransferPipeline}
+              className="cf-focusable flex items-center justify-center rounded-[6px]"
+              style={{
+                width: 30,
+                height: 30,
+                border: "1px solid var(--crm-border)",
+                background: "var(--crm-gray-0)",
+                color: onTransferPipeline
+                  ? "var(--crm-gray-500)"
+                  : "var(--crm-gray-300)",
+                cursor: onTransferPipeline ? "pointer" : "default",
+              }}
+              title="Transferir de pipeline"
+              aria-label="Transferir de pipeline"
+            >
+              <Shuffle className="h-3.5 w-3.5" />
+            </button>
             <button
               onClick={onOpenFullPage}
               disabled={!onOpenFullPage}

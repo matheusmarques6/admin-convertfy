@@ -19,6 +19,7 @@ import { OnboardingCard, type OnboardingCardData } from "./onboarding-card"
 import { PipelineFiltersPanel } from "./pipeline-filters-panel"
 import { NewDealDialog } from "./new-deal-dialog"
 import { LostReasonDialog } from "./lost-reason-dialog"
+import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 import { PipelineSettingsDialog } from "./pipeline-settings-dialog"
 import {
   PipelineFiltersBar,
@@ -91,6 +92,7 @@ export function PipelineBoardView({
   const searchParams = useSearchParams()
   const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [newDealStageId, setNewDealStageId] = useState<string | null>(null)
+  const [transferDealId, setTransferDealId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
@@ -803,6 +805,7 @@ export function PipelineBoardView({
                 onWinDeal={wonStage ? handleQuickWin : undefined}
                 onLoseDeal={defaultLostStage ? handleQuickLose : undefined}
                 onMoveDeal={(id) => setActiveDealId(id)}
+                onTransferDeal={(id) => setTransferDealId(id)}
                 onAddActivity={(id) => setActiveDealId(id)}
                 onDeleteDeal={handleDelete}
                 onEditStage={handleEditStage}
@@ -909,6 +912,21 @@ export function PipelineBoardView({
           mutate()
         }}
       />
+
+      {transferDealId && (
+        <MoveDealPipelineDialog
+          open
+          onClose={() => setTransferDealId(null)}
+          dealId={transferDealId}
+          dealTitle={allDeals.find((d) => d.id === transferDealId)?.title}
+          currentPipelineId={pipelineId}
+          onMoved={() => {
+            // O card saiu deste board — revalida pra ele sumir.
+            mutate()
+            setTransferDealId(null)
+          }}
+        />
+      )}
 
       {pipeline && (
         <NewDealDialog

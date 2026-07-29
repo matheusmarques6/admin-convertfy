@@ -32,6 +32,7 @@ interface KanbanBoardProps {
   onWinDeal?: (dealId: string) => void
   onLoseDeal?: (dealId: string) => void
   onMoveDeal?: (dealId: string) => void
+  onTransferDeal?: (dealId: string) => void
   onAddActivity?: (dealId: string) => void
   onDeleteDeal?: (dealId: string) => void
   onEditStage?: (stage: KanbanStage) => void
@@ -56,6 +57,7 @@ interface KanbanBoardProps {
       onWin?: (id: string) => void
       onLose?: (id: string) => void
       onMove?: (id: string) => void
+      onTransfer?: (id: string) => void
       onAddActivity?: (id: string) => void
       onDelete?: (id: string) => void
     },
@@ -103,6 +105,7 @@ export function KanbanBoard({
   onWinDeal,
   onLoseDeal,
   onMoveDeal,
+  onTransferDeal,
   onAddActivity,
   onDeleteDeal,
   onEditStage,
@@ -484,6 +487,7 @@ export function KanbanBoard({
                                 onWin: !isTerminal ? onWinDeal : undefined,
                                 onLose: !isTerminal ? onLoseDeal : undefined,
                                 onMove: onMoveDeal,
+                                onTransfer: onTransferDeal,
                                 onAddActivity,
                                 onDelete: onDeleteDeal,
                               })
@@ -496,6 +500,7 @@ export function KanbanBoard({
                                 onWin={!isTerminal ? onWinDeal : undefined}
                                 onLose={!isTerminal ? onLoseDeal : undefined}
                                 onMove={onMoveDeal}
+                                onTransfer={onTransferDeal}
                                 onAddActivity={onAddActivity}
                                 onDelete={onDeleteDeal}
                                 isDragging={dragSnapshot.isDragging}

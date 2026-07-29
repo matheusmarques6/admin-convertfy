@@ -44,6 +44,13 @@ interface UseRealtimePipelineOptions {
  * um filtro por pipeline descartaria o evento. O refetch resultante é do
  * endpoint da pipeline atual, então o custo é limitado; o debounce agrupa
  * rajadas e o safety refresh cobre qualquer evento perdido.
+ *
+ * O UPDATE de `deals` também é assinado SEM filtro, pelo mesmo motivo em
+ * outra roupagem: numa transferência entre pipelines o payload chega com o
+ * `pipeline_id` NOVO, então um filtro `pipeline_id=eq.{atual}` descartaria
+ * justamente o evento que avisa o board de ORIGEM que o card saiu — o card
+ * ficaria fantasma até o safety refresh. Filtramos no cliente, aceitando o
+ * evento quando a pipeline atual aparece no estado velho OU no novo.
  */
 export function useRealtimePipeline({
   pipelineId,
@@ -109,15 +116,25 @@ export function useRealtimePipeline({
           debouncedUpdate()
         },
       )
+      // UPDATE sem filtro (ver docstring): aceita quando esta pipeline é a
+      // origem OU o destino. Depende de REPLICA IDENTITY FULL em `deals`
+      // (migration 20261050) pra `old.pipeline_id` existir; sem ela o
+      // `old` vem só com a PK e caímos no fallback conservador de aceitar
+      // — refetch a mais é barato, card fantasma não.
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "deals",
-          filter: dealFilter,
+        { event: "UPDATE", schema: "public", table: "deals" },
+        (payload) => {
+          const newPipeline = (payload.new as { pipeline_id?: string } | null)
+            ?.pipeline_id
+          const oldPipeline = (payload.old as { pipeline_id?: string } | null)
+            ?.pipeline_id
+          const isDestination = newPipeline === pipelineId
+          const isOrigin = oldPipeline === pipelineId
+          // Sem replica identity FULL não dá pra saber a origem.
+          const originUnknown = oldPipeline === undefined
+          if (isDestination || isOrigin || originUnknown) debouncedUpdate()
         },
-        () => debouncedUpdate(),
       )
       // DELETE sem filtro (ver docstring): a PK basta pro board sumir o card.
       .on(

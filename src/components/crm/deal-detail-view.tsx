@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
+  Shuffle,
   StickyNote,
   Tag as TagIcon,
   XCircle,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react"
 import type { DealFile } from "@/types/crm"
 import { InlineEditField } from "./inline-edit-field"
+import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -186,6 +188,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const [activeTab, setActiveTab] = useState<
     "historico" | "atividades" | "negocios" | "arquivos" | "atendimentos"
   >("historico")
+  const [transferOpen, setTransferOpen] = useState(false)
   const [filterType, setFilterType] = useState<
     "all" | "negocios" | "notes" | "emails" | "reunioes" | "alertas"
   >("all")
@@ -377,6 +380,11 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             icon={<Calendar className="h-3.5 w-3.5" />}
             label="Agendar"
             disabled
+          />
+          <TopbarBtn
+            icon={<Shuffle className="h-3.5 w-3.5" />}
+            label="Transferir"
+            onClick={() => setTransferOpen(true)}
           />
           <button
             onClick={handleMoveToNextStage}
@@ -877,6 +885,15 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </div>
         </main>
       </div>
+
+      <MoveDealPipelineDialog
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        dealId={dealId}
+        dealTitle={deal.title}
+        currentPipelineId={deal.pipeline_id}
+        onMoved={() => mutate()}
+      />
     </div>
   )
 }
@@ -1607,11 +1624,13 @@ function TopbarBtn({
   label,
   href,
   disabled,
+  onClick,
 }: {
   icon: React.ReactNode
   label: string
   href?: string
   disabled?: boolean
+  onClick?: () => void
 }) {
   const style: React.CSSProperties = {
     height: 32,
@@ -1637,7 +1656,7 @@ function TopbarBtn({
     )
   }
   return (
-    <button disabled={disabled} style={style}>
+    <button type="button" disabled={disabled} onClick={onClick} style={style}>
       {icon}
       {label}
     </button>

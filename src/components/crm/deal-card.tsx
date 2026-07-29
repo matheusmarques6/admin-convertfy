@@ -13,6 +13,7 @@ import {
   Mail,
   MessageSquare,
   MoreHorizontal,
+  Shuffle,
   Trash2,
   Trophy,
   X as XIcon,
@@ -72,6 +73,7 @@ interface DealCardProps {
   onWin?: (id: string) => void
   onLose?: (id: string) => void
   onMove?: (id: string) => void
+  onTransfer?: (id: string) => void
   onAddActivity?: (id: string) => void
   onDelete?: (id: string) => void
   isDragging?: boolean
@@ -141,6 +143,7 @@ export function DealCard({
   onWin,
   onLose,
   onMove,
+  onTransfer,
   onAddActivity,
   onDelete,
   isDragging,
@@ -424,12 +427,13 @@ export function DealCard({
             {subtitle}
           </div>
         </div>
-        {(onAddActivity || onMove || onWin || onLose || onDelete) && (
+        {(onAddActivity || onMove || onTransfer || onWin || onLose || onDelete) && (
           <DealActionsMenu
             dealId={deal.id}
             onWin={onWin}
             onLose={onLose}
             onMove={onMove}
+            onTransfer={onTransfer}
             onAddActivity={onAddActivity}
             onDelete={onDelete}
           />
@@ -709,6 +713,7 @@ function DealActionsMenu({
   onWin,
   onLose,
   onMove,
+  onTransfer,
   onAddActivity,
   onDelete,
 }: {
@@ -716,6 +721,7 @@ function DealActionsMenu({
   onWin?: (id: string) => void
   onLose?: (id: string) => void
   onMove?: (id: string) => void
+  onTransfer?: (id: string) => void
   onAddActivity?: (id: string) => void
   onDelete?: (id: string) => void
 }) {
@@ -768,7 +774,15 @@ function DealActionsMenu({
               onClick={() => onMove(dealId)}
             />
           )}
-          {(onAddActivity || onMove) && (onWin || onLose) && (
+          {onTransfer && (
+            <Item
+              icon={<Shuffle className="h-3.5 w-3.5" />}
+              title="Transferir de pipeline"
+              description="Levar para outra pipeline"
+              onClick={() => onTransfer(dealId)}
+            />
+          )}
+          {(onAddActivity || onMove || onTransfer) && (onWin || onLose) && (
             <DropdownMenu.Separator
               className="h-px my-1"
               style={{ background: "var(--crm-gray-100)" }}
