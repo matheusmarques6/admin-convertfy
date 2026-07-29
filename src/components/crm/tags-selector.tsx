@@ -11,7 +11,7 @@
  * Usado em: import wizard (bulk), new deal, new lead, lead/deal drawer.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { X, Plus, Tag as TagIcon, Trash2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -59,6 +59,8 @@ export function TagsSelector({
   const [createError, setCreateError] = useState<string | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuId = useId()
 
   // Carrega tags da org
   const reload = async () => {
@@ -88,6 +90,14 @@ export function TagsSelector({
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  // O dropdown é absolute dentro de containers com overflow (modais do CRM).
+  // Sem isso, abrir o combobox no fim do modal deixa a lista fora da área
+  // visível — o usuário vê o campo mas não alcança os itens.
+  useEffect(() => {
+    if (!open) return
+    menuRef.current?.scrollIntoView({ block: "nearest" })
   }, [open])
 
   const filtered = useMemo(() => {
@@ -208,6 +218,7 @@ export function TagsSelector({
             >
               {name}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   onChange(selected.filter((n) => n !== name))
@@ -241,12 +252,20 @@ export function TagsSelector({
           }}
           placeholder={selected.length === 0 ? placeholder : ""}
           className="flex-1 min-w-[120px] outline-none border-none bg-transparent text-[12.5px] py-1 placeholder:text-slate-400"
+          role="combobox"
+          aria-controls={menuId}
+          aria-expanded={open}
+          aria-autocomplete="list"
+          aria-label={placeholder}
         />
       </div>
 
       {/* Dropdown */}
       {open && (
         <div
+          ref={menuRef}
+          id={menuId}
+          role="listbox"
           className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-[8px] shadow-xl z-50 max-h-[280px] overflow-auto"
           style={{ borderColor: "rgba(0,0,0,0.08)" }}
         >
@@ -265,17 +284,33 @@ export function TagsSelector({
           {filtered.map((t) => (
             <div
               key={t.id}
-              onClick={() => addTag(t.name)}
-              className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer group"
+              role="presentation"
+              className="flex items-center hover:bg-slate-50 group"
             >
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ background: t.color }}
-              />
-              <span className="flex-1 text-[12.5px] text-slate-800">{t.name}</span>
+              {/* <button> de verdade: é "interactive content", então nenhum
+                  <label> ancestral consegue re-despachar o clique em outro
+                  controle. type="button" evita submit dentro dos forms. */}
               <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => addTag(t.name)}
+                className="flex flex-1 min-w-0 items-center gap-2 px-3 py-1.5 text-left"
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{ background: t.color }}
+                />
+                <span className="flex-1 truncate text-[12.5px] text-slate-800">
+                  {t.name}
+                </span>
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => deleteTagFromOrg(t, e)}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1"
+                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 p-1 mr-2 shrink-0"
                 aria-label={`Excluir ${t.name}`}
                 title="Excluir tag"
               >
@@ -284,9 +319,11 @@ export function TagsSelector({
             </div>
           ))}
           {/* Botão "Criar nova tag…" sempre visivel no fim da lista */}
-          <div
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => openCreateModal(query.trim() || undefined)}
-            className="flex items-center gap-2 px-3 py-2 bg-brand-50/40 hover:bg-brand-50 cursor-pointer border-t"
+            className="flex w-full items-center gap-2 px-3 py-2 bg-brand-50/40 hover:bg-brand-50 border-t text-left"
             style={{ borderColor: "rgba(0,0,0,0.06)" }}
           >
             <Plus className="h-3.5 w-3.5 text-brand-600 shrink-0" />
@@ -295,7 +332,7 @@ export function TagsSelector({
                 ? `Criar tag "${query.trim()}" …`
                 : "Criar nova tag…"}
             </span>
-          </div>
+          </button>
           {query.trim() === "" && tags.length > 0 && (
             <div
               className="px-3 py-1.5 border-t text-[10.5px] text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1"
@@ -403,7 +440,12 @@ function CreateTagModal({
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) onSubmit()
+                if (e.key !== "Enter") return
+                // O modal vive dentro do <form> do dialog de deal — sem isso o
+                // Enter dispara o submit implícito e cria o deal no meio da
+                // criação da tag.
+                e.preventDefault()
+                if (name.trim()) onSubmit()
               }}
               placeholder="Ex: VIP, Black Friday, Frio..."
               className="w-full h-9 px-3 rounded-[6px] border text-[13px] outline-none focus:border-brand-500"
@@ -448,6 +490,7 @@ function CreateTagModal({
           className="px-5 py-3 border-t border-black/[0.06] flex items-center justify-end gap-2 bg-slate-50/40"
         >
           <button
+            type="button"
             onClick={onCancel}
             disabled={submitting}
             className="h-9 px-4 rounded-[6px] text-[12.5px] font-medium text-slate-700 hover:bg-slate-100"
@@ -455,6 +498,7 @@ function CreateTagModal({
             Cancelar
           </button>
           <button
+            type="button"
             onClick={onSubmit}
             disabled={!name.trim() || submitting}
             className="h-9 px-4 rounded-[6px] text-[12.5px] font-semibold text-white inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
