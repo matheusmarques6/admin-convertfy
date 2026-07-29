@@ -100,14 +100,20 @@ export function TagsSelector({
     menuRef.current?.scrollIntoView({ block: "nearest" })
   }, [open])
 
+  // Lista TODAS as tags da org que casam com a busca — inclusive as já
+  // selecionadas, marcadas com check. Esconder a selecionada fazia a tag
+  // recém-criada sumir da lista no instante em que era criada (ela entra
+  // já selecionada), o que lê como "a tag não foi adicionada".
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return tags.filter(
-      (t) =>
-        !selected.includes(t.name) &&
-        (q === "" || t.name.toLowerCase().includes(q)),
-    )
-  }, [tags, selected, query])
+    return tags.filter((t) => q === "" || t.name.toLowerCase().includes(q))
+  }, [tags, query])
+
+  // Primeira sugestão ainda NÃO escolhida — alvo do Enter.
+  const firstUnselected = useMemo(
+    () => filtered.find((t) => !selected.includes(t.name)) ?? null,
+    [filtered, selected],
+  )
 
   const exactMatch = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -242,7 +248,7 @@ export function TagsSelector({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault()
-              if (filtered.length > 0) addTag(filtered[0].name)
+              if (firstUnselected) addTag(firstUnselected.name)
               else if (query.trim() && !exactMatch) openCreateModal()
             }
             if (e.key === "Backspace" && !query && selected.length > 0) {
@@ -274,14 +280,19 @@ export function TagsSelector({
               Carregando…
             </div>
           )}
-          {!loading && filtered.length === 0 && !query.trim() && (
+          {!loading && tags.length === 0 && (
             <div className="px-3 py-3 text-[12px] text-slate-400 italic">
-              {tags.length === 0
-                ? "Nenhuma tag criada ainda. Digite e tecle Enter."
-                : "Todas as tags já estão selecionadas."}
+              Nenhuma tag criada ainda. Digite e tecle Enter.
             </div>
           )}
-          {filtered.map((t) => (
+          {!loading && tags.length > 0 && filtered.length === 0 && (
+            <div className="px-3 py-3 text-[12px] text-slate-400 italic">
+              Nenhuma tag encontrada para &quot;{query.trim()}&quot;.
+            </div>
+          )}
+          {filtered.map((t) => {
+            const isSelected = selected.includes(t.name)
+            return (
             <div
               key={t.id}
               role="presentation"
@@ -293,18 +304,33 @@ export function TagsSelector({
               <button
                 type="button"
                 role="option"
-                aria-selected={false}
+                aria-selected={isSelected}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => addTag(t.name)}
+                onClick={() =>
+                  isSelected
+                    ? onChange(selected.filter((n) => n !== t.name))
+                    : addTag(t.name)
+                }
                 className="flex flex-1 min-w-0 items-center gap-2 px-3 py-1.5 text-left"
               >
                 <span
                   className="h-2.5 w-2.5 rounded-full shrink-0"
                   style={{ background: t.color }}
                 />
-                <span className="flex-1 truncate text-[12.5px] text-slate-800">
+                <span
+                  className={cn(
+                    "flex-1 truncate text-[12.5px]",
+                    isSelected ? "text-slate-900 font-medium" : "text-slate-800",
+                  )}
+                >
                   {t.name}
                 </span>
+                {isSelected && (
+                  <Check
+                    className="h-3.5 w-3.5 shrink-0"
+                    style={{ color: t.color }}
+                  />
+                )}
               </button>
               <button
                 type="button"
@@ -317,7 +343,8 @@ export function TagsSelector({
                 <Trash2 className="h-3 w-3" />
               </button>
             </div>
-          ))}
+            )
+          })}
           {/* Botão "Criar nova tag…" sempre visivel no fim da lista */}
           <button
             type="button"
