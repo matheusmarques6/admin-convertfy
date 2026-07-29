@@ -340,28 +340,18 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   // cliente ganha do lead, que é a mesma precedência da LEITURA logo
   // acima (`deal.client?.x ?? deal.lead?.x`). Sem espelhar a leitura, o
   // usuário editaria um registro e continuaria vendo o outro.
-  const contactTarget: { kind: "client" | "lead" | "none"; id?: string } =
-    deal.client?.id
-      ? { kind: "client", id: deal.client.id }
-      : deal.lead?.id
-        ? { kind: "lead", id: deal.lead.id }
-        : { kind: "none" }
-
+  // Espelha a precedencia do servidor (cliente ganha do lead) — ver
+  // /api/crm/deals/[id]/contact.
   const contactAddress: ContactAddress =
-    (contactTarget.kind === "client" ? deal.client?.address : deal.lead?.address) ??
-    {}
+    (deal.client?.id ? deal.client.address : deal.lead?.address) ?? {}
 
+  // Escrita centralizada em /contact: o servidor resolve o alvo (cliente
+  // ou lead) e, quando o deal nao tem nenhum dos dois — caso do deal
+  // criado a mao pelo "Novo deal" —, CRIA o lead e linka. Resolver no
+  // servidor evita que dois campos salvos em sequencia rapida criem dois
+  // leads, e mantem o title do deal em sincronia com o nome.
   const patchContact = async (update: Record<string, unknown>) => {
-    if (contactTarget.kind === "none" || !contactTarget.id) {
-      throw new Error(
-        "Este deal não tem cliente nem lead vinculado — não há onde salvar o contato.",
-      )
-    }
-    const url =
-      contactTarget.kind === "client"
-        ? `/api/clients/${contactTarget.id}`
-        : `/api/crm/leads/${contactTarget.id}`
-    const res = await fetch(url, {
+    const res = await fetch(`/api/crm/deals/${dealId}/contact`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
@@ -373,19 +363,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
     await mutate()
   }
 
-  // O nome exibido é `client.name ?? deal.title`. Editar sempre o título
-  // (comportamento antigo) fazia a edição "não pegar" em deal com
-  // cliente: salvava no deal e a tela seguia mostrando o nome do cliente.
-  const saveName = async (v: string) => {
-    if (contactTarget.kind === "client") return patchContact({ name: v })
-    if (contactTarget.kind === "lead") {
-      // Lead-puro: o título do deal é o que aparece no board, então os
-      // dois andam juntos.
-      await patchContact({ name: v })
-      return patchDeal({ title: v })
-    }
-    return patchDeal({ title: v })
-  }
+  const saveName = (v: string) => patchContact({ name: v })
 
   // DELETE do deal e soft — vira status=archived (rota /api/crm/deals/[id]).
   const archiveDeal = async () => {
@@ -534,11 +512,6 @@ export function DealDetailView({ dealId }: { dealId: string }) {
                   boxShadow: "var(--crm-shadow-lg)",
                 }}
               >
-                <MenuItem
-                  icon={<Shuffle className="h-3.5 w-3.5" />}
-                  label="Transferir de pipeline"
-                  onSelect={() => setTransferOpen(true)}
-                />
                 <MenuItem
                   icon={<LinkIcon className="h-3.5 w-3.5" />}
                   label="Copiar link do deal"
@@ -906,42 +879,27 @@ export function DealDetailView({ dealId }: { dealId: string }) {
             <div className="flex flex-col gap-2.5" style={{ paddingTop: 6 }}>
               {contactTab === "perfil" && (
                 <>
-                  {contactTarget.kind === "none" && (
-                    <p style={{ fontSize: 11, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
-                      Deal sem cliente ou lead vinculado — não há registro de
-                      contato pra editar.
-                    </p>
-                  )}
                   <ContactField
                     icon={<Mail className="h-3.5 w-3.5" />}
                     label="E-mail"
                     value={email}
-                    onSave={
-                      contactTarget.kind !== "none"
-                        ? (v) => patchContact({ email: v || null })
-                        : undefined
-                    }
+                    alwaysShow
+                    onSave={(v) => patchContact({ email: v || null })}
                   />
                   <ContactField
                     icon={<Phone className="h-3.5 w-3.5" />}
                     label="Telefone"
                     value={phone}
                     mono
-                    onSave={
-                      contactTarget.kind !== "none"
-                        ? (v) => patchContact({ phone: v || null })
-                        : undefined
-                    }
+                    alwaysShow
+                    onSave={(v) => patchContact({ phone: v || null })}
                   />
                   <ContactField
                     icon={<Building2 className="h-3.5 w-3.5" />}
                     label="Empresa"
                     value={company}
-                    onSave={
-                      contactTarget.kind !== "none"
-                        ? (v) => patchContact({ company: v || null })
-                        : undefined
-                    }
+                    alwaysShow
+                    onSave={(v) => patchContact({ company: v || null })}
                   />
                   {website && (
                     <ContactField
@@ -956,24 +914,17 @@ export function DealDetailView({ dealId }: { dealId: string }) {
 
               {contactTab === "endereco" && (
                 <>
-                  {contactTarget.kind === "none" ? (
-                    <p style={{ fontSize: 11, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
-                      Deal sem cliente ou lead vinculado — não há onde gravar
-                      endereço.
-                    </p>
-                  ) : (
-                    ADDRESS_FIELDS.map((f) => (
-                      <ContactField
-                        key={f.key}
-                        label={f.label}
-                        value={contactAddress[f.key] ?? null}
-                        alwaysShow
-                        onSave={(v) =>
-                          patchContact({ address: { [f.key]: v || null } })
-                        }
-                      />
-                    ))
-                  )}
+                  {ADDRESS_FIELDS.map((f) => (
+                    <ContactField
+                      key={f.key}
+                      label={f.label}
+                      value={contactAddress[f.key] ?? null}
+                      alwaysShow
+                      onSave={(v) =>
+                        patchContact({ address: { [f.key]: v || null } })
+                      }
+                    />
+                  ))}
                 </>
               )}
 
