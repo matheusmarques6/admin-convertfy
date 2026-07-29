@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger"
 import { ensureOnboardingBootstrap } from "./onboarding-bootstrap.service"
 import { dispatchBriefingWebhook } from "./briefing-webhook.service"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
+import { secureToken } from "@/lib/utils/secure-token"
 import type {
   BriefingContent,
   OperationalPipelineColumn,
@@ -26,16 +27,6 @@ import type {
 } from "@/types/onboarding-pipeline"
 
 const log = logger.child("OnboardingPipeline")
-
-function randomToken(len = 24): string {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-  let out = ""
-  for (let i = 0; i < len; i++) {
-    out += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return out
-}
 
 interface CreateOptions {
   orgId: string
@@ -82,7 +73,7 @@ export async function createOnboarding(
     return { created: false, onboarding: existing as OnboardingPipelineItem }
   }
 
-  const formToken = randomToken(24)
+  const formToken = secureToken(24)
   const initialColumnId = columnIds["entrada"]
 
   // Se subscription_id foi passado, busca dados pra popular plan/mrr_value.
@@ -1198,7 +1189,7 @@ async function generateTutorialTokenIfMissing(
   if (onb?.tutorial_token) return
   await admin
     .from("onboardings")
-    .update({ tutorial_token: randomToken(24) })
+    .update({ tutorial_token: secureToken(24) })
     .eq("id", onboardingId)
 }
 

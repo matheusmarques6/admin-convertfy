@@ -43,6 +43,7 @@ import {
   Phone,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
+import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
   OnboardingPipelineItem,
   OnboardingPaymentStatus,
@@ -291,8 +292,7 @@ export function OnboardingCard({
   const showPlatform = !!platformLabel && platformLabel !== "Outro"
 
   function copyFormLink() {
-    const origin = typeof window !== "undefined" ? window.location.origin : ""
-    const url = `${origin}/form/${onb.form_token}`
+    const url = buildFormUrl(onb.form_token)
     navigator.clipboard.writeText(url)
     toast.toast({ title: "Link copiado", description: url })
   }

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabsV2 } from "@/components/stores/v2/store-detail-tabs-v2"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
+import { StoreFormLinkCard } from "@/components/stores/store-form-link-card"
 import { StoreForceResyncAction } from "@/components/stores/store-force-resync-action"
 
 export const dynamic = "force-dynamic"
@@ -276,6 +277,9 @@ export default async function StoreDetailPage({
           </div>
         }
       />
+
+      {/* Link do formulário de onboarding — gerar / copiar / renovar. */}
+      <StoreFormLinkCard storeId={store.id} />
 
       {/* Detail Tabs V2 com Hero integrado */}
       <StoreDetailTabsV2

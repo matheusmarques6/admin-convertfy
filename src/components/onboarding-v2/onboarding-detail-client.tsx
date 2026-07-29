@@ -34,6 +34,7 @@ import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
 import { SubItemsList, type SubItem } from "@/components/onboarding-v2/sub-items-list"
 import { pickAnchorTask } from "@/lib/onboarding/anchor-task"
 import { ROUTES } from "@/lib/routes"
+import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
   OnboardingPipelineItem,
   OperationalPipelineColumn,
@@ -1279,7 +1280,7 @@ function BriefingTab({
   const briefingHasContent = b && !briefingError && (b.about_brand || b.audience)
   const origin =
     typeof window !== "undefined" ? window.location.origin : ""
-  const formUrl = `${origin}/form/${onboarding.form_token}`
+  const formUrl = buildFormUrl(onboarding.form_token)
   const tutorialUrl = onboarding.tutorial_token
     ? `${origin}/onboarding-help/${onboarding.tutorial_token}`
     : null
@@ -1930,8 +1931,7 @@ function FormLinkBanner({
   expiresAt: string | null
 }) {
   const toast = useToast()
-  const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const url = `${origin}/form/${token}`
+  const url = buildFormUrl(token)
 
   const statusInfo = {
     nao_enviado: {

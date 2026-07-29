@@ -33,6 +33,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
+import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
   OnboardingPipelineItem,
   OperationalPipelineColumn,
@@ -1073,7 +1074,7 @@ function NewOnboardingDialog({
           description: "Essa loja já tem onboarding em progresso.",
         })
       } else if (formToken) {
-        const url = `${window.location.origin}/form/${formToken}`
+        const url = buildFormUrl(formToken)
         try {
           await navigator.clipboard.writeText(url)
           toast.toast({
