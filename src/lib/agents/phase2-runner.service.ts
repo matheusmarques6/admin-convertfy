@@ -363,13 +363,22 @@ async function loadMinimalContext(storeId: string, emailId: string) {
 
   const orgId = (storeData as Record<string, unknown>)?.org_id as string | undefined
 
-  // Config ativa por agente da cadeia de formatação (hero/text/image/color).
+  // Config por agente da cadeia de formatação (hero/text/image/color).
+  //
+  // SEM o filtro `is_active` de propósito: a linha mais recente vem junto
+  // com o flag, para o runner distinguir três estados (resolveAgentSwitch):
+  //   - nenhuma row       → agente nunca configurado → roda com defaults
+  //   - row ativa         → roda com ela
+  //   - rows só inativas  → DESLIGADO na UI → o step é pulado
+  // Antes, `is_active=false` só apagava a config: o chain caía nos
+  // defaults in-code e rodava igual — o toggle da aba Agentes não
+  // desligava nada.
   const fmtConfig = (agentType: string) =>
     admin
       .from("email_agent_configs")
       .select("*")
       .eq("agent_type", agentType)
-      .eq("is_active", true)
+      .order("is_active", { ascending: false })
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -1442,6 +1451,24 @@ const FMT_DEFAULTS: Record<
 // Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
 const FMT_DEFAULT_MODEL = "moonshotai/kimi-k3"
 
+/**
+ * Estado do toggle da aba Agentes para um step da cadeia.
+ *
+ * `row` é a linha MAIS RECENTE do agent_type (ativa quando existe ativa —
+ * o select ordena por is_active desc). Três estados:
+ *   - row == null            → nunca configurado → roda com defaults
+ *   - row.is_active === true → roda com a config
+ *   - row.is_active !== true → desativado na UI → step PULADO
+ */
+function resolveAgentSwitch(row: EmailAgentConfig | null): {
+  config: EmailAgentConfig | null
+  disabled: boolean
+} {
+  if (!row) return { config: null, disabled: false }
+  const active = (row as unknown as { is_active?: boolean }).is_active === true
+  return { config: active ? row : null, disabled: !active }
+}
+
 function toChainConfig(
   config: EmailAgentConfig | null,
   agent: FormatAgent,
@@ -1748,6 +1775,50 @@ async function runFormattingChain(p: {
   }
   if (stage) log.info("phase2.fmt.resumed_from", { emailId, stage })
 
+  // ── Toggles da aba Agentes ─────────────────────────────────────────
+  // Agente DESATIVADO tem o step pulado (run 'skipped', HTML inalterado) —
+  // o toggle passa a ser kill-switch de verdade, sem migration nem env.
+  const heroSwitch = resolveAgentSwitch(ctx.heroConfig)
+  const textSwitch = resolveAgentSwitch(ctx.textFormatConfig)
+  const imageFmtSwitch = resolveAgentSwitch(ctx.imageFormatConfig)
+  const colorSwitch = resolveAgentSwitch(ctx.colorFormatConfig)
+  const verifierSwitch = resolveAgentSwitch(ctx.mergeVerifierConfig)
+  const disabledAgents = (
+    [
+      ["hero_section", heroSwitch],
+      ["text_format", textSwitch],
+      ["image_format", imageFmtSwitch],
+      ["color_format", colorSwitch],
+      ["merge_verifier", verifierSwitch],
+    ] as const
+  )
+    .filter(([, s]) => s.disabled)
+    .map(([a]) => a)
+  if (disabledAgents.length > 0) {
+    log.info("phase2.fmt.agents_disabled", { emailId, disabledAgents })
+  }
+
+  /** Registra o step pulado por toggle (visível no drill-down dos logs). */
+  const logStepDisabled = async (
+    agent: FormatAgent | "merge_verifier",
+    html: string,
+  ) => {
+    await logGenerationRun({
+      ...ids,
+      agent,
+      status: "skipped",
+      model: "disabled",
+      inputVars: { input_html_len: html.length, input_sha8: sha8(html) },
+      parsedOutput: {
+        reason: "agent_disabled",
+        output_html_len: html.length,
+        output_sha8: sha8(html),
+      },
+      costCents: 0,
+      durationMs: 0,
+    }).catch(() => {})
+  }
+
   const persistStage = async (
     html: string,
     stageVal: "hero" | "text" | "image" | null,
@@ -1838,6 +1909,14 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 1 — HERO SECTION ──────────────────────────────────────────
+  if (stage === null && heroSwitch.disabled) {
+    // Desativado: segue com a reference (enxerto incluso, se houve) sem o
+    // LLM da hero. Os placeholders da região vão intactos pro merge.
+    currentHtml = fmtCtx.referenceHtml
+    await logStepDisabled("hero_section", currentHtml)
+    await persistStage(currentHtml, "hero")
+    stage = "hero"
+  }
   if (stage === null) {
     // Enxertada → a região é o trecho entre as sentinelas cfy:hero (os
     // marcadores cfy:block da hero foram consumidos pelo splice). Sem
@@ -1859,12 +1938,12 @@ async function runFormattingChain(p: {
       variant,
       grafted,
     })
-    const config = toChainConfig(ctx.heroConfig, "hero_section")
+    const config = toChainConfig(heroSwitch.config, "hero_section")
 
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "hero_section",
-      config: ctx.heroConfig,
+      config: heroSwitch.config,
       model: config.model,
       routeT0,
       budgetMs,
@@ -2019,7 +2098,8 @@ async function runFormattingChain(p: {
     // mecânica. FALLBACK OBRIGATÓRIO: erro/timeout aqui NUNCA derruba a
     // geração — verifierTriage fica null e o fluxo segue como antes.
     // Doc legado sem slots (slots_total=0) não tem o que triar — pula.
-    const verifierMode = ctx.mergeVerifierMode
+    // Toggle desativado na aba Agentes equivale a modo 'off'.
+    const verifierMode = verifierSwitch.disabled ? "off" : ctx.mergeVerifierMode
     const reportFlagged =
       merge.report.left_for_llm.length > 0 ||
       merge.report.unanchored_keys.length > 0 ||
@@ -2038,7 +2118,7 @@ async function runFormattingChain(p: {
         }).catch(() => {})
       } else {
         const vT0 = Date.now()
-        const vConfig = verifierChainConfig(ctx.mergeVerifierConfig)
+        const vConfig = verifierChainConfig(verifierSwitch.config)
         try {
           const vInput = buildMergeVerifierInput(
             merge.html,
@@ -2160,6 +2240,14 @@ async function runFormattingChain(p: {
       stage = "text"
     }
   }
+  // text_format desativado na aba Agentes: o que o merge não resolveu
+  // fica como está (o strip final limpa os tokens órfãos) — nenhum LLM
+  // toca o texto.
+  if (stage === "hero" && textSwitch.disabled) {
+    await logStepDisabled("text_format", currentHtml)
+    await persistStage(currentHtml, "text")
+    stage = "text"
+  }
   // ── A3b — agente de EXCEÇÃO por slot: só a fila do merge, output em
   // ops do protocolo do Integrador (posse = tags da fila; hero vetada).
   if (
@@ -2187,12 +2275,12 @@ async function runFormattingChain(p: {
           }
         : s
     })
-    const config = toChainConfig(ctx.textFormatConfig, "text_format")
+    const config = toChainConfig(textSwitch.config, "text_format")
 
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "text_format",
-      config: ctx.textFormatConfig,
+      config: textSwitch.config,
       model: config.model,
       routeT0,
       budgetMs,
@@ -2250,12 +2338,12 @@ async function runFormattingChain(p: {
   if (stage === "hero") {
     const inputHtml = currentHtml
     const vars = buildTextFormatVars(fmtCtx, inputHtml)
-    const config = toChainConfig(ctx.textFormatConfig, "text_format")
+    const config = toChainConfig(textSwitch.config, "text_format")
 
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "text_format",
-      config: ctx.textFormatConfig,
+      config: textSwitch.config,
       model: config.model,
       routeT0,
       budgetMs,
@@ -2306,15 +2394,20 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 3 — FORMATAÇÃO DE IMAGEM ──────────────────────────────────
+  if (stage === "text" && imageFmtSwitch.disabled) {
+    await logStepDisabled("image_format", currentHtml)
+    await persistStage(currentHtml, "image")
+    stage = "image"
+  }
   if (stage === "text") {
     const inputHtml = currentHtml
     const vars = buildImageFormatVars(fmtCtx, inputHtml)
-    const config = toChainConfig(ctx.imageFormatConfig, "image_format")
+    const config = toChainConfig(imageFmtSwitch.config, "image_format")
 
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "image_format",
-      config: ctx.imageFormatConfig,
+      config: imageFmtSwitch.config,
       model: config.model,
       routeT0,
       budgetMs,
@@ -2394,9 +2487,11 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────
-  {
+  if (colorSwitch.disabled) {
+    await logStepDisabled("color_format", currentHtml)
+  } else {
     const inputHtml = currentHtml
-    const config = toChainConfig(ctx.colorFormatConfig, "color_format")
+    const config = toChainConfig(colorSwitch.config, "color_format")
     const storeRaw = ctx.storeRaw as Record<string, unknown>
     const vars = buildColorFormatVars(fmtCtx, inputHtml, {
       brand: ctx.brand,
@@ -2416,7 +2511,7 @@ async function runFormattingChain(p: {
     }>({
       ids,
       agent: "color_format",
-      config: ctx.colorFormatConfig,
+      config: colorSwitch.config,
       model: config.model,
       routeT0,
       budgetMs,

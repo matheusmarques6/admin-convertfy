@@ -362,6 +362,70 @@ const runsOf = (agent: string) =>
 
 beforeEach(() => reset())
 
+/** Row de config do agente na aba Agentes (toggle = is_active). */
+const agentConfig = (agent_type: string, is_active: boolean) => ({
+  id: `cfg-${agent_type}`,
+  agent_type,
+  is_active,
+  version: 1,
+  model: "moonshotai/kimi-k3",
+  temperature: 0.3,
+  max_tokens: 8192,
+  system_prompt: "",
+  user_template: "",
+})
+
+// Toggle da aba Agentes como kill-switch: agente DESATIVADO tem o step
+// pulado. Antes, is_active=false só apagava a config e o chain rodava
+// igual com os defaults in-code — o toggle não desligava nada.
+describe("toggle is_active desliga o step", () => {
+  it("image_format e color_format desativados: chains não são invocados", async () => {
+    mockHappyChains()
+    h.tables.email_agent_configs = [
+      agentConfig("image_format", false),
+      agentConfig("color_format", false),
+    ]
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    expect(invokeImageFormatChain).not.toHaveBeenCalled()
+    expect(invokeColorFormatChain).not.toHaveBeenCalled()
+    // Hero e texto seguem rodando (sem row → defaults).
+    expect(invokeHeroChain).toHaveBeenCalledTimes(1)
+
+    for (const agent of ["image_format", "color_format"]) {
+      const run = runsOf(agent)[0]
+      expect(run.status).toBe("skipped")
+      expect((run.parsed_output as Row).reason).toBe("agent_disabled")
+    }
+    // O HTML atravessa intacto: nada de imagem trocada nem recolor.
+    expect(email().html as string).toContain("{{BODY_IMAGE}}")
+  })
+
+  it("hero_section desativado: cadeia segue da reference, sem LLM na hero", async () => {
+    mockHappyChains()
+    h.tables.email_agent_configs = [agentConfig("hero_section", false)]
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    expect(invokeHeroChain).not.toHaveBeenCalled()
+    const run = runsOf("hero_section")[0]
+    expect(run.status).toBe("skipped")
+    expect((run.parsed_output as Row).reason).toBe("agent_disabled")
+    // Sem o agente, a hero da reference sobrevive (não vira "Hero pronta").
+    expect(email().html as string).not.toContain("Hero pronta")
+  })
+
+  it("row ATIVA continua rodando o agente (regressão do toggle)", async () => {
+    mockHappyChains()
+    h.tables.email_agent_configs = [
+      agentConfig("image_format", true),
+      agentConfig("color_format", true),
+    ]
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(invokeImageFormatChain).toHaveBeenCalledTimes(1)
+    expect(invokeColorFormatChain).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("cadeia de formatação — runner", () => {
   it("caminho feliz: 4 steps, sha8 encadeado, sentinelas removidas, ready", async () => {
     mockHappyChains()
