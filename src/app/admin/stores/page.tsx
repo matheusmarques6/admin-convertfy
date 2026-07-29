@@ -4,6 +4,7 @@ import {
   StoresPageTabs,
   type StoresPageTabsProps,
 } from "@/components/stores/stores-page-tabs"
+import { StoreFormLinksNotice } from "@/components/stores/store-form-links-notice"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 import { invokeRouteJson } from "@/lib/api/invoke-route"
@@ -47,6 +48,9 @@ export default async function StoresControlPage() {
           title="Lojas"
           description="Gerencie lojas, integrações e acompanhe métricas"
         />
+
+        {/* Aviso geral: lojas sem link, com link vencido ou sem resposta. */}
+        <StoreFormLinksNotice />
 
         <StoresPageTabs
           initialStores={initialStores as StoresPageTabsProps["initialStores"]}

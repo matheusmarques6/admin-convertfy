@@ -11,6 +11,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendTextViaChannel } from "@/lib/services/whatsapp-channel-send.service"
 import { logger } from "@/lib/logger"
+import { buildBriefingUrl, buildFormUrl } from "@/lib/utils/form-url"
 
 const log = logger.child("OnboardingWhatsApp")
 
@@ -68,11 +69,11 @@ function buildVars(
     platform_name:
       PLATFORM_LABEL[(store?.platform ?? "other").toLowerCase()] ??
       "sua plataforma",
-    form_url: `${baseUrl}/form/${onb.form_token}`,
+    form_url: buildFormUrl(onb.form_token, baseUrl),
     tutorial_url: onb.tutorial_token
       ? `${baseUrl}/onboarding-help/${onb.tutorial_token}`
       : "",
-    briefing_url: `${baseUrl}/form/${onb.form_token}/briefing`,
+    briefing_url: buildBriefingUrl(onb.form_token, baseUrl),
     figma_link: figmaLink,
     figma_full_link: figmaFullLink,
   }

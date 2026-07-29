@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   LayoutGrid,
+  Link2,
 } from "lucide-react"
 import { Icon, BrandIcon } from "@/components/ui/icon"
 import { AlertBanner } from "@/components/ui/alert-banner"
@@ -251,6 +252,34 @@ export function StoresPageTabs({
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current) }
   }, [])
 
+  // ─── Link do formulário da loja ────────────────────────
+  // Busca sob demanda (não infla a listagem): se a loja ainda não tem
+  // link, o POST cria o onboarding por trás e devolve um enviável.
+  const copyFormLink = async (storeId: string) => {
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/form-link`)
+      const link = await res.json()
+      if (res.ok && link.status === "active" && link.url) {
+        await navigator.clipboard.writeText(link.url)
+        toast({ title: "Link copiado", description: link.url })
+        return
+      }
+
+      const created = await fetch(`/api/admin/stores/${storeId}/form-link`, {
+        method: "POST",
+      })
+      const payload = await created.json()
+      if (!created.ok || !payload.link?.url) {
+        toast({ title: "Não foi possível gerar o link", variant: "destructive" })
+        return
+      }
+      await navigator.clipboard.writeText(payload.link.url)
+      toast({ title: "Link gerado e copiado", description: payload.link.url })
+    } catch {
+      toast({ title: "Erro ao obter o link", variant: "destructive" })
+    }
+  }
+
   // ─── Handle alert actions ──────────────────────────────
   const handleAlertAction = async (alertId: string, action: "resolve" | "acknowledge") => {
     try {
@@ -361,6 +390,11 @@ export function StoresPageTabs({
           <ActionMenu
             items={[
               { label: "Ver loja", icon: Eye, onClick: () => router.push(`/admin/stores/${row.id}`) },
+              {
+                label: "Copiar link do formulário",
+                icon: Link2,
+                onClick: () => void copyFormLink(row.id),
+              },
               { label: "Configurar Klaviyo", icon: Settings, onClick: () => router.push(`/admin/stores/${row.id}?tab=integrations`) },
               { label: "Gerar Report", icon: FileText, onClick: () => router.push(`/admin/stores/${row.id}?tab=reports`) },
             ]}
