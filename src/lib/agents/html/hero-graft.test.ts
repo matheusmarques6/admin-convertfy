@@ -148,3 +148,46 @@ describe("normalizeFonts", () => {
     expect(res.html).toContain("font-family:Inter")
   })
 })
+
+// O caso REAL (Luxe Lift, jul/2026): a biblioteca inteira está cadastrada
+// como documento completo, o modo conservador do fitFragment recusava
+// documento e o enxerto virava `invalid_variant` — SEMPRE. Sem enxerto a
+// hero caía no modo `montador` (legado/degradado), com um mockup por
+// espelho, e saía achatada: botão fora de lugar, logo não trocada, copy
+// duplicada com o texto queimado na imagem.
+describe("variante cadastrada como documento completo", () => {
+  const variantDoc = [
+    '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN">',
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"></head>',
+    "<body>",
+    `<table><tbody>${variantTr}</tbody></table>`,
+    "</body></html>",
+  ].join("\n")
+
+  it("é enxertada (era invalid_variant)", () => {
+    const res = graftHeroVariant(doc, variantDoc)
+    expect(res.status).toBe("grafted")
+  })
+
+  it("a anatomia da variante entra inteira", () => {
+    const { html } = graftHeroVariant(doc, variantDoc)
+    expect(html).toContain('bgcolor="#111111"')
+    expect(html).toContain("{{HERO_SUBHEADLINE}}")
+    expect(html).toContain("{{HERO_CTA_LABEL}}")
+  })
+
+  it("a casca do documento não entra junto", () => {
+    const { html } = graftHeroVariant(doc, variantDoc)
+    const hero = extractHeroBySentinels(html)
+    expect(hero).not.toBeNull()
+    expect(html.slice(hero!.start, hero!.end)).not.toMatch(
+      /<!DOCTYPE|<html[\s>]|<body[\s>]/i,
+    )
+  })
+
+  it("o resto do email continua intacto", () => {
+    const { html } = graftHeroVariant(doc, variantDoc)
+    expect(html).toContain("{{BODY_TEXT}}")
+    expect(html).toContain("<!-- cfy:block:2:body:start -->")
+  })
+})
