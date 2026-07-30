@@ -77,6 +77,13 @@ export interface ImagePromptVarsInput {
   // Copy REAL do bloco (email_blocks.content) — resolvida no phase2. Alimenta
   // a `copy_do_grupo` de cada slot em IMAGE_SLOTS. Ausente → sem copy no slot.
   blockContent?: Record<string, unknown> | null
+  /**
+   * Direção fotográfica por `variant_id` (migration 20261060). O bloco do
+   * blueprint carrega a variante que o Montador casou; daqui sai o
+   * briefing do fotógrafo DESTE bloco. Ausente → var vazia e o prompt
+   * segue como antes.
+   */
+  photoDirectionByVariant?: Record<string, string>
 }
 
 /**
@@ -180,6 +187,13 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // IMAGE_SLOTS é a fonte PRIMÁRIA (schema estruturado + slot_note + copy do
   // grupo). Quando presente, suprime o IMAGE_BRIEF legado (que carrega os
   // mesmos dados espremidos) pra não duplicar direção de arte no prompt.
+  // Briefing do fotógrafo DESTE bloco: sai da variante que o Montador casou
+  // a ele. É input principal do prompt — nicho, posicionamento e paleta
+  // passam a ser contexto de apoio.
+  const photoDirection = (
+    input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
+  ).trim()
+
   const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent)
   const legacyImageBrief =
     bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
@@ -191,6 +205,10 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // ── Ideia do email (F5) — do blueprint (nível email) ────
     EMAIL_OBJETIVO: blueprint?.objective?.trim() ?? "",
     EMAIL_IDEIA: blueprint?.messaging?.trim() ?? "",
+
+    // Direção fotográfica da variante deste bloco (COMO fotografar).
+    // Vazia quando ninguém escreveu — o template omite a seção inteira.
+    PHOTO_DIRECTION: photoDirection,
     EMAIL_ASSUNTO: blueprint?.subject_hint?.trim() ?? "",
 
     // Perfil da marca (enxuto — tom/persona/diferencial/slogan/restrições

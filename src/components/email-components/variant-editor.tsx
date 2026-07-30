@@ -54,6 +54,7 @@ export interface VariantDraft {
   when_not_use: string
   copy_guidance: string
   design_system: string
+  photo_direction: string
   objectives: string[]
   tones: string[]
   density: string // "" | minimal | balanced | rich
@@ -424,6 +425,35 @@ export function VariantEditor({
                 fala do TEXTO — aqui é o desenho: hierarquia, bandas de fundo,
                 acabamento dos botões, comportamento no mobile, o que nunca
                 pode ser removido.
+              </div>
+            </div>
+            <div>
+              <EGLabel>Direção fotográfica</EGLabel>
+              <EGTextarea
+                value={draft.photo_direction}
+                onChange={(v) => set({ photo_direction: v })}
+                rows={6}
+                placeholder={
+                  "Briefing do FOTÓGRAFO para as imagens desta variante.\n" +
+                  "Ex: still do produto em fundo neutro contínuo, luz suave " +
+                  "vinda da esquerda, sombra curta. Enquadramento a três " +
+                  "quartos, produto ocupando 60% do quadro. Sem modelo. " +
+                  "Terço superior limpo, é onde a headline entra."
+                }
+              />
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: C.g400,
+                  fontFamily: F.sans,
+                  marginTop: 6,
+                }}
+              >
+                Input principal do agente de imagem — nicho, posicionamento e
+                paleta viram contexto de apoio. Diz COMO fotografar: luz,
+                enquadramento, distância, modelo, cenário, tratamento de cor,
+                que área deixar limpa para a copy. O que MOSTRAR continua
+                vindo do briefing do bloco.
               </div>
             </div>
             <div

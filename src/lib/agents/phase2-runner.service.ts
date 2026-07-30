@@ -22,6 +22,8 @@
 
 import { createHash } from "crypto"
 
+import type { SupabaseClient } from "@supabase/supabase-js"
+
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
@@ -819,6 +821,17 @@ export async function runPhase2Image(
       })
     }
 
+    // ── Direção fotográfica por variante (migration 20261060) ──────
+    // Uma query por email: as variantes que o Montador casou aos blocos
+    // deste blueprint. A direção acompanha o DESENHO do bloco, então é
+    // resolvida por variant_id — o mesmo par que o design_system usa na
+    // hero. Sem blueprint (fallback global) o mapa fica vazio e o prompt
+    // segue como antes.
+    const photoDirectionByVariant = await loadPhotoDirections(
+      admin,
+      ctx.blueprint?.blocks as Array<{ variant_id?: string | null }> | undefined,
+    )
+
     // ── AE-11: log de qual fonte do template (DB seed vs fallback) ─
     log.info("phase2.image.template_source", {
       source: ctx.imageConfig ? "db" : "fallback_hardcoded",
@@ -1194,6 +1207,7 @@ export async function runPhase2Image(
           imageOverlayReserveBottom: reserveBottom,
           aspect,
           mode,
+          photoDirectionByVariant,
         })
 
         // Se config existe no DB: renderImageTemplate (handlebars-lite,
@@ -2936,4 +2950,53 @@ export async function runPhase2InBackground(
   if (r.status === "image_done") {
     await runPhase2HtmlQa(params)
   }
+}
+
+
+/**
+ * Direção fotográfica das variantes casadas aos blocos do blueprint,
+ * indexada por `variant_id`.
+ *
+ * Uma query por email em vez de uma por bloco: os blocos de um email
+ * costumam repetir variantes (dois blocos de produto da mesma grade), e a
+ * direção é o mesmo texto. Blueprint ausente, legado (sem `variant_id`) ou
+ * nenhuma direção escrita → mapa vazio, e o prompt de imagem fica idêntico
+ * ao de antes.
+ */
+async function loadPhotoDirections(
+  admin: SupabaseClient,
+  blocks: Array<{ variant_id?: string | null }> | undefined,
+): Promise<Record<string, string>> {
+  const ids = [
+    ...new Set(
+      (blocks ?? [])
+        .map((b) => (b.variant_id ?? "").trim())
+        .filter((id): id is string => id.length > 0),
+    ),
+  ]
+  if (ids.length === 0) return {}
+
+  const { data, error } = await admin
+    .from("email_component_variants")
+    .select("id, photo_direction")
+    .in("id", ids)
+  if (error) {
+    // Sem direção o agente compõe como sempre compôs — não é motivo para
+    // derrubar a geração da imagem.
+    log.warn("phase2.image.photo_direction_load_failed", {
+      error: error.message,
+      ids: ids.length,
+    })
+    return {}
+  }
+
+  const out: Record<string, string> = {}
+  for (const row of (data ?? []) as Array<{
+    id: string
+    photo_direction: string | null
+  }>) {
+    const text = (row.photo_direction ?? "").trim()
+    if (text) out[row.id] = text
+  }
+  return out
 }

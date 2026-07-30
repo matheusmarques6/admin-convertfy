@@ -457,6 +457,13 @@ export interface EmailComponentVariant {
    * acabamento de botão, comportamento no mobile, o que nunca sai.
    */
   design_system: string | null
+  /**
+   * Direção FOTOGRÁFICA desta variante, para o agente de imagem: luz,
+   * enquadramento, distância, modelo, cenário, tratamento de cor, o que
+   * deixar limpo para a copy. Diferente de `image_brief`, que diz O QUE
+   * mostrar — aqui é COMO fotografar.
+   */
+  photo_direction: string | null
   // Nº de produtos que o bloco comporta (grade 2x2 = 4; 0 = nenhum).
   product_slots: number
   output_schema: ComponentOutputField[]
