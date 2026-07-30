@@ -12,6 +12,7 @@ import { ROUTES } from "@/lib/routes"
  *   g + d  → Dashboard comercial
  *   g + p  → Pipelines comerciais
  *   g + l  → Leads
+ *   g + f  → Funil
  *   g + r  → Reports comercial
  *
  * Operacional:
@@ -31,6 +32,7 @@ const SHORTCUTS: Record<string, string> = {
   d: ROUTES.ADMIN.COMERCIAL.DASHBOARD,
   p: ROUTES.ADMIN.COMERCIAL.PIPELINES,
   l: ROUTES.ADMIN.COMERCIAL.LEADS,
+  f: ROUTES.ADMIN.COMERCIAL.FUNIL,
   r: ROUTES.ADMIN.COMERCIAL.REPORTS,
   a: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST,
   i: ROUTES.ADMIN.INBOX,

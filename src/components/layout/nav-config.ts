@@ -23,6 +23,7 @@ import {
   Heart,
   Sparkles,
   ListFilter,
+  Filter,
   Briefcase,
   HeartHandshake,
   Inbox,
@@ -103,6 +104,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     key: "analise",
     label: "Analise",
     items: [
+      { id: "comercial.funil", name: "Funil", href: ROUTES.ADMIN.COMERCIAL.FUNIL, icon: Filter },
       { id: "comercial.reports", name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
     ],
   },

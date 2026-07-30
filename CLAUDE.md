@@ -1057,6 +1057,47 @@ Documentacao completa em `docs/crm/`.
 
 ---
 
+## Funil Comercial (jul/2026 — migration 20261052)
+
+Dashboard `/admin/comercial/funil` (nav "Analise", atalho `g+f`): funil
+Leads → MQLs → Agendamentos → Reuniões → Vendas com cards de tráfego dos
+dois lados (investimento, faturamento, ROAS, tx. conversão, ticket médio,
+cash collect | CPL, custo/MQL, custo/agend., custo/reunião, CPA, taxa
+cash collect) e taxas de conversão entre etapas.
+
+**Semântica das etapas**: `pipeline_stages.funnel_step`
+('mql'|'agendamento'|'reuniao'|'venda', NULL = fora do funil) — mapeado
+no dialog de configuração da própria página (PATCH da rota de stages). A
+migration auto-mapeia as etapas seed por nome (`%agendad%`,
+`%reuni%realizad%`, `%qualificad%`) e `stage_type='won'` → venda. Topo
+"Leads" = `crm_leads` criados no período (scope sales, org do user).
+
+**Contagem** (`GET /api/crm/funnel`, agregação em runtime como
+`/api/crm/dashboard/sales`): um deal conta na etapa X se ENTROU em stage
+mapeada pra X dentro da janela — entrada = criação do deal (stage
+inicial via `old_value` do primeiro history da janela) ou mudança de
+stage em `crm_deal_history` (`field='stage_id'`). Contagem cumulativa
+(maxStep ≥ X). "Venda" = `won_at` na janela OU entrada em stage venda.
+Filtros: `days`/`from`+`to`, `pipeline_id`, `utm_source/medium/campaign`
+(deal.utm com fallback pro utm do lead).
+
+**Investimento**: `crm_ad_spend` (org_id, day, platform
+meta|google|tiktok|other, account_name, amount; UNIQUE org+day+platform+
+account). Lançamento MANUAL via dialog (`/api/crm/ad-spend` GET/POST +
+`[id]` PATCH/DELETE) — as APIs Meta/Google Ads existem em
+`src/lib/integrations/` mas nada persiste spend ainda (sync futuro).
+
+**Cash collect**: `deals.cash_collected NUMERIC(12,2)` (aceito no PATCH
+de deals), editável inline no painel "Vendas do período" da página.
+Taxa cash collect = Σcash_collected / Σvalue dos ganhos do período.
+
+UI em `src/components/crm/funnel-dashboard.tsx` (+ `funnel-dialogs.tsx`):
+CrmPageShell + funil de trapézios em clip-path (padrão do
+diagnostic-modal) com cores fixas por etapa, PeriodPicker com range
+custom, cards no DS (`rounded-[8px]`, ícones naked tintados).
+
+---
+
 ## Status canônico Epic AE (Agent Email Generation)
 
 A partir da migration `20260530_agent_email_generation.sql`, `email_flow_emails.status` aceita:

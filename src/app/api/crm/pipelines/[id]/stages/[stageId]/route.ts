@@ -21,6 +21,7 @@ const patchStageSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   color: z.string().optional(),
   stage_type: z.enum(["open", "won", "lost", "archived"]).optional(),
+  funnel_step: z.enum(["mql", "agendamento", "reuniao", "venda"]).nullable().optional(),
   sla_hours: z.number().int().positive().nullable().optional(),
   description: z.string().nullable().optional(),
   exit_criteria: z.string().nullable().optional(),

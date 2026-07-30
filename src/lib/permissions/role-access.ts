@@ -20,6 +20,7 @@ export type NavItemId =
   | "comercial.canais"
   | "comercial.automacoes"
   | "comercial.meetings"
+  | "comercial.funil"
   | "comercial.reports"
   // Operacional
   | "ops.dashboard"
@@ -63,6 +64,7 @@ const ALL_ITEMS: NavItemId[] = [
   "comercial.canais",
   "comercial.automacoes",
   "comercial.meetings",
+  "comercial.funil",
   "comercial.reports",
   "ops.dashboard",
   "ops.clients",
@@ -138,6 +140,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "comercial.canais",
   "comercial.automacoes",
   "comercial.meetings",
+  "comercial.funil",
   "comercial.reports",
   "ops.dashboard",
   "ops.clients",

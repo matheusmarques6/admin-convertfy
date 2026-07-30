@@ -14,6 +14,13 @@ export type PipelineLayout = "kanban" | "state"
 
 export type StageType = "open" | "won" | "lost" | "archived"
 
+/**
+ * Etapa canônica do funil comercial. Mapeada por stage via
+ * pipeline_stages.funnel_step (NULL = etapa fora do funil).
+ * O topo "leads" vem de crm_leads, não é etapa de pipeline.
+ */
+export type FunnelStep = "mql" | "agendamento" | "reuniao" | "venda"
+
 export type DealStatus = "open" | "won" | "lost" | "archived"
 
 export type LeadStatus =
@@ -100,6 +107,7 @@ export interface PipelineStage {
   exit_criteria: string | null
   automation_on_enter: Record<string, unknown> | null
   created_at: string
+  funnel_step?: FunnelStep | null
 }
 
 // ─── Deal ────────────────────────────────────────────────────────
@@ -124,6 +132,7 @@ export interface Deal {
   won_reason: string | null
   won_at: string | null
   lost_at: string | null
+  cash_collected?: number | null
   owner_id: string
   referrer_partner_id: string | null
   position: number
@@ -139,6 +148,23 @@ export interface Deal {
   store?: { id: string; store_name: string }
   lead?: Lead
   owner?: { id: string; name: string; avatar_url: string | null }
+}
+
+// ─── Ad Spend (funil comercial) ──────────────────────────────────
+
+export type AdSpendPlatform = "meta" | "google" | "tiktok" | "other"
+
+export interface CrmAdSpendEntry {
+  id: string
+  org_id: string
+  day: string // YYYY-MM-DD
+  platform: AdSpendPlatform
+  account_name: string
+  amount: number
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ─── Lead ────────────────────────────────────────────────────────

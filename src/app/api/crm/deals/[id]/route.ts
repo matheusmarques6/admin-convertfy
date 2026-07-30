@@ -97,6 +97,7 @@ export async function GET(
 const patchSchema = z.object({
   title: z.string().min(1).max(240).optional(),
   value: z.number().min(0).optional(),
+  cash_collected: z.number().min(0).nullable().optional(),
   currency: z.string().length(3).optional(),
   probability: z.number().int().min(0).max(100).optional(),
   expected_close_date: z.string().nullable().optional(),
