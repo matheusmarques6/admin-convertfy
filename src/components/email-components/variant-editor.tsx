@@ -12,7 +12,7 @@
 
 import { useMemo, useState, type ReactNode } from "react"
 
-import { resolveRenderedReference } from "@/lib/agents/shared/rendered-reference"
+import { classifyRenderedHtml } from "@/lib/agents/shared/rendered-classify"
 import { Check, ChevronDown, ChevronRight, Pencil } from "lucide-react"
 import type {
   ComponentOutputField,
@@ -46,6 +46,8 @@ export interface VariantDraft {
   // Exemplo real do email renderizado, colado manualmente (aba própria).
   rendered_html: string
   rendered_html_source_sha?: string | null
+  /** Estado calculado no servidor (inclui o hash). */
+  rendered_status?: { stale?: boolean | null } | null
   description: string
   long_description: string
   when_use: string
@@ -96,63 +98,84 @@ type PreviewMode = "preview" | "html" | "rendered" | "tagged"
 /**
  * Estado do exemplo renderizado (story CM-6).
  *
- * O campo deveria ser o PADRÃO DE ACABAMENTO da variante, mas o que está
- * cadastrado é, em boa parte, print embrulhado em HTML. O agente de hero só
- * usa o exemplo quando ele é HTML estrutural E o hash bate com o `html`
- * atual — aqui a pessoa vê em qual dos casos a variante está.
+ * O exemplo é usado pelo agente de hero **de qualquer forma** — print ou
+ * não, atualizado ou não (decisão de 30/jul). Este aviso não bloqueia nada:
+ * diz o que o exemplo é hoje e o que melhoraria a referência.
+ *
+ * Só a CLASSIFICAÇÃO roda aqui, ao vivo sobre o que está sendo colado. O
+ * estado do hash vem do servidor (`renderedStatus`), porque compará-lo exige
+ * `node:crypto` — e este é um componente client.
  */
 function RenderedStatusNote({
   html,
   rendered,
-  sourceSha: storedSha,
+  renderedStatus,
 }: {
   html: string
   rendered: string
-  sourceSha?: string | null
+  renderedStatus?: { stale?: boolean | null } | null
 }) {
-  const resolved = resolveRenderedReference({
-    html,
-    rendered_html: rendered,
-    rendered_html_source_sha: storedSha ?? null,
-  })
-  if (resolved.reason === "empty") return null
+  const classified = classifyRenderedHtml(rendered, html)
+  if (classified.kind === "empty") return null
 
-  const tone =
-    resolved.html !== null
+  const isMockup = classified.kind === "mockup"
+  const isStale = renderedStatus?.stale === true
+  if (!isMockup && !isStale) {
+    return (
+      <Note tone="pos">
+        Exemplo utilizável: o agente de hero o recebe como referência de
+        acabamento.
+      </Note>
+    )
+  }
+
+  return (
+    <Note tone="warn">
+      {isMockup && (
+        <>
+          Este exemplo parece um print embrulhado em HTML. Ele <b>é usado
+          assim mesmo</b> — proporção e hierarquia ainda servem de referência
+          —, mas colar o HTML do email renderizado dá um espelho bem melhor.
+        </>
+      )}
+      {isMockup && isStale && <br />}
+      {isStale && (
+        <>
+          O HTML da variante mudou depois que este exemplo foi salvo: ele
+          descreve uma versão anterior. Continua sendo enviado, com ressalva
+          registrada nos logs — recole para revalidar.
+        </>
+      )}
+    </Note>
+  )
+}
+
+function Note({
+  tone,
+  children,
+}: {
+  tone: "pos" | "warn"
+  children: ReactNode
+}) {
+  const t =
+    tone === "pos"
       ? { bg: C.posBg, border: C.posBorder, color: C.pos }
       : { bg: C.warnBg, border: C.warnBorder, color: C.warn }
-
-  const MESSAGES: Record<string, string> = {
-    mockup:
-      "Este exemplo parece um print embrulhado em HTML, não um email renderizado — o agente não o usa como referência de acabamento. Cole o HTML do email de verdade.",
-    stale:
-      "O HTML da variante mudou depois que este exemplo foi salvo: ele descreve uma versão antiga e não é enviado ao agente. Recole o exemplo atualizado.",
-    unknown_sha:
-      "Exemplo cadastrado antes do controle de versão: não dá para saber se ainda corresponde ao HTML. Recole para revalidar.",
-  }
-  const message =
-    resolved.html !== null
-      ? "Exemplo utilizável: o agente de hero o recebe como referência de acabamento."
-      : (MESSAGES[resolved.reason ?? ""] ?? "")
-
   return (
     <div
       style={{
-        display: "flex",
-        gap: 8,
-        alignItems: "flex-start",
         padding: "9px 11px",
         marginBottom: 10,
         borderRadius: 6,
-        background: tone.bg,
-        border: `1px solid ${tone.border}`,
-        color: tone.color,
+        background: t.bg,
+        border: `1px solid ${t.border}`,
+        color: t.color,
         fontFamily: F.sans,
         fontSize: 12,
         lineHeight: 1.5,
       }}
     >
-      <span>{message}</span>
+      {children}
     </div>
   )
 }
@@ -551,7 +574,7 @@ export function VariantEditor({
               <RenderedStatusNote
                 html={draft.html}
                 rendered={draft.rendered_html}
-                sourceSha={draft.rendered_html_source_sha}
+                renderedStatus={draft.rendered_status}
               />
               <div
                 style={{

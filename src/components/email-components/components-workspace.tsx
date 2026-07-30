@@ -69,6 +69,7 @@ function draftFromVariant(v: EmailComponentVariant): VariantDraft {
     html: v.html,
     rendered_html: v.rendered_html ?? "",
     rendered_html_source_sha: v.rendered_html_source_sha ?? null,
+    rendered_status: (v as { rendered_status?: { stale?: boolean | null } }).rendered_status ?? null,
     description: v.description ?? "",
     long_description: v.long_description ?? "",
     when_use: v.when_use ?? "",
