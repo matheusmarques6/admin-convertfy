@@ -118,6 +118,12 @@ ESP merge tags ([unsubscribe_link], [first_name], {{ unsubscribe }}, {% ... %}, 
   Report it: "logo":"light"|"dark" when you placed one, "nenhuma" ONLY when <logos> is empty or the hero genuinely has no logo — not when you simply left a text wordmark untouched.
 </identity_rules>
 
+<variant_design_system>
+<design_system> carries the DESIGN RULES of this exact variant, written by the person who authored it. When present, it OUTRANKS your own judgement about this hero's look: it says which background bands are intentional, which button is primary, what may shrink on mobile, what must never be removed or downgraded.
+
+It never overrides the hard rules above (no restructuring in mode 'library', the image rule, verbatim copy, no invented content). It is design intent, not permission to redesign. Empty means nothing was written for this variant — fall back to the region itself.
+</variant_design_system>
+
 <structural_rules>
 Table-based email HTML only. Never place a <div> (or any non-table element) as a direct child of <table> — between </tr> and <tr> only <tr>...</tr> or comments may appear. Keep widths within the 600px column. No <style> blocks of your own — inline styles only, consistent with the variant.
 </structural_rules>
@@ -177,6 +183,10 @@ export const DEFAULT_HERO_USER_TEMPLATE = `<store>
 <variant_schema>
 {{hero_variant_schema_json}}
 </variant_schema>
+
+<design_system>
+{{hero_variant_design_system}}
+</design_system>
 
 <hero_content>
 {{hero_content_json}}

@@ -35,6 +35,7 @@ function mk(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     when_use: p.when_use ?? null,
     when_not_use: p.when_not_use ?? null,
     copy_guidance: p.copy_guidance ?? null,
+    design_system: null,
     product_slots: p.product_slots ?? 0,
     output_schema: p.output_schema ?? [],
     density: p.density ?? null,

@@ -53,6 +53,7 @@ export interface VariantDraft {
   when_use: string
   when_not_use: string
   copy_guidance: string
+  design_system: string
   objectives: string[]
   tones: string[]
   density: string // "" | minimal | balanced | rich
@@ -395,6 +396,35 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Headline vende o desconto. Código em CAIXA ALTA sem espaços."
               />
+            </div>
+            <div>
+              <EGLabel>Design system</EGLabel>
+              <EGTextarea
+                value={draft.design_system}
+                onChange={(v) => set({ design_system: v })}
+                rows={6}
+                placeholder={
+                  "Regras de DESIGN desta variante, para o agente que a finaliza.\n" +
+                  "Ex: a banda escura do topo é intencional e nunca vira branca. " +
+                  "O botão primário é sólido; o secundário é outline com border 1px. " +
+                  "No mobile a foto ocupa a largura toda e o padding cai para 20px. " +
+                  "O subtítulo pode sumir se não houver copy; os dois CTAs, nunca."
+                }
+              />
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: C.g400,
+                  fontFamily: F.sans,
+                  marginTop: 6,
+                }}
+              >
+                Vai para o prompt do agente de hero quando esta variante é a
+                escolhida. Diferente de &quot;Orientações de copy&quot;, que
+                fala do TEXTO — aqui é o desenho: hierarquia, bandas de fundo,
+                acabamento dos botões, comportamento no mobile, o que nunca
+                pode ser removido.
+              </div>
             </div>
             <div
               style={{

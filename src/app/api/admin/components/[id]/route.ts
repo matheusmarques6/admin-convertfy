@@ -30,6 +30,7 @@ const patchSchema = z.object({
   when_use: z.string().nullable().optional(),
   when_not_use: z.string().nullable().optional(),
   copy_guidance: z.string().nullable().optional(),
+  design_system: z.string().nullable().optional(),
   product_slots: z.number().int().min(0).max(20).optional(),
   output_schema: z.array(outputFieldSchema).optional(),
   density: z.enum(["minimal", "balanced", "rich"]).nullable().optional(),

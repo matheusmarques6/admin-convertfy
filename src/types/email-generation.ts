@@ -450,6 +450,13 @@ export interface EmailComponentVariant {
   when_use: string | null
   when_not_use: string | null
   copy_guidance: string | null
+  /**
+   * Regras de DESIGN/implementação desta variante, para o agente que a
+   * finaliza (hoje só o hero_section). Diferente de `copy_guidance`, que
+   * orienta a ESCRITA: aqui vão hierarquia, bandas de fundo intencionais,
+   * acabamento de botão, comportamento no mobile, o que nunca sai.
+   */
+  design_system: string | null
   // Nº de produtos que o bloco comporta (grade 2x2 = 4; 0 = nenhum).
   product_slots: number
   output_schema: ComponentOutputField[]

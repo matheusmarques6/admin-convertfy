@@ -74,6 +74,12 @@ export const HeroPromptVarsSchema = z.object({
   hero_variant_html: z.string(),
   hero_variant_rendered_html: z.string(),
   hero_variant_schema_json: z.string(),
+  /**
+   * Regras de design da variante, escritas por quem a cadastrou. Vazio
+   * quando não há — o prompt omite a seção inteira nesse caso, para não
+   * abrir um bloco vazio que o modelo tenta preencher sozinho.
+   */
+  hero_variant_design_system: z.string(),
   /** "library" = região enxertada da biblioteca; "montador" = HTML do LLM. */
   hero_source: z.enum(["library", "montador"]),
   hero_content_json: z.string(),

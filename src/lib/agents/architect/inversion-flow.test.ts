@@ -41,6 +41,7 @@ function variant(section: string, name: string): EmailComponentVariant {
     when_use: null,
     when_not_use: null,
     copy_guidance: null,
+    design_system: null,
     product_slots: 0,
     output_schema: [],
     density: null,

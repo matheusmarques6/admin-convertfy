@@ -254,6 +254,8 @@ export interface HeroVariantData {
   rendered_html_source_sha?: string | null
   output_schema: unknown
   block_type: string
+  /** Regras de design da variante, escritas por quem a cadastrou. */
+  design_system?: string | null
 }
 
 export type HeroVariantSource = "slot_map" | "blueprint" | "choices" | null
@@ -362,7 +364,11 @@ export async function resolveHeroVariant(
   const { data: variant, error } = await admin
     .from("email_component_variants")
     .select(
-      "id, html, html_tagged, tagging_status, rendered_html, output_schema, block_type",
+      // `rendered_html_source_sha` faltava aqui desde o CM-6: sem a coluna
+      // no select, `resolveRenderedReference` via undefined e devolvia
+      // `unknown_sha` SEMPRE — o hash de origem nunca chegou a ser
+      // comparado, e todo exemplo aparecia como desatualizado.
+      "id, html, html_tagged, tagging_status, rendered_html, rendered_html_source_sha, output_schema, block_type, design_system",
     )
     .eq("id", variantId)
     .maybeSingle()
@@ -496,6 +502,10 @@ export function buildHeroVars(
     hero_variant_schema_json: params.variant?.output_schema
       ? JSON.stringify(params.variant.output_schema, null, 2)
       : "",
+    // Regras de design da variante (cadastro). Vão SEMPRE que existirem —
+    // diferente do exemplo renderizado, aqui é texto escrito para ser lido
+    // por um modelo, sem ambiguidade de formato.
+    hero_variant_design_system: (params.variant?.design_system ?? "").trim(),
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
       heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
