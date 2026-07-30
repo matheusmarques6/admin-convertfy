@@ -127,6 +127,12 @@ export interface AssembledStats {
    * Não é erro, mas indica variante cadastrada fora do padrão de email.
    */
   wrappedUnknown: string[]
+  /**
+   * Seções cuja variante estava cadastrada como DOCUMENTO completo. A casca
+   * saiu e o miolo entrou no lugar — o email fica correto, mas o cadastro
+   * precisa ser arrumado. Sinal de curadoria, não erro.
+   */
+  unshelled: string[]
   /** Blocos esperados, na ordem — insumo do self-check de marcadores. */
   expected: ExpectedBlock[]
 }
@@ -160,6 +166,7 @@ export function assembleDocument(
   const skipped: SkippedBlock[] = []
   const expected: ExpectedBlock[] = []
   const wrappedUnknown: string[] = []
+  const unshelled: string[] = []
   let variants = 0
 
   slots.forEach((slot, i) => {
@@ -190,6 +197,7 @@ export function assembleDocument(
       return
     }
     if (fit.kind === "wrapped_unknown") wrappedUnknown.push(section)
+    if (fit.unshelled) unshelled.push(section)
     const marker = `${i}:${section}`
     rows.push(
       `        <!-- cfy:block:${marker}:start -->\n${fit.html}\n        <!-- cfy:block:${marker}:end -->`,
@@ -209,6 +217,7 @@ export function assembleDocument(
       fontsNormalized: normalized.replaced,
       chars: normalized.html.length,
       wrappedUnknown,
+      unshelled,
       expected,
     },
   }

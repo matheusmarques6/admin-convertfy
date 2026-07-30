@@ -5,6 +5,7 @@
  * Um bloco da biblioteca precisa ser uma sequência `<tr>`/`<table>` válida
  * no ponto em que entra no documento:
  *   - fragmento que já começa com <tr>     → usa direto
+ *   - documento completo (<!DOCTYPE/<html>)→ tira a casca e reavalia o miolo
  *   - fragmento que começa com <table>     → embrulha em <tr><td>
  *   - qualquer outra coisa (div solto...)  → recusa
  *
@@ -12,8 +13,20 @@
  * `hero-graft` (story CM-2) para que o enxerto da hero e a montagem do
  * documento compartilhem UMA matriz de decisão.
  *
+ * **Por que a casca de documento entrou nessa matriz.** O `wrapUnknown` foi
+ * escrito pensando num `<div>` solto. Uma variante cadastrada como export
+ * inteiro (`<!DOCTYPE html PUBLIC ...><html>…`) também caía nele, e o
+ * resultado era `<td><!DOCTYPE html><html>…</html></td>` — documento dentro
+ * de célula, HTML inválido, que contamina TUDO a jusante. Aconteceu de
+ * verdade: o agente de hero recebeu essa região, devolveu-a como recebeu
+ * (fazendo o certo — a região é a verdade estrutural) e o parser rejeitou o
+ * output com "fragmento contém documento". O agente levou a culpa por um
+ * defeito da montagem.
+ *
  * Puro (zero I/O) — testável.
  */
+
+import { hasDocumentShell, stripDocumentShell } from "../shared/document-shell"
 
 export interface FitOptions {
   /**
@@ -37,6 +50,12 @@ export type FitKind = "row" | "wrapped_table" | "wrapped_unknown"
 export interface FitResult {
   html: string
   kind: FitKind
+  /**
+   * A variante estava cadastrada como documento completo e a casca foi
+   * removida antes do encaixe. Sinal de curadoria: o cadastro está fora do
+   * padrão, ainda que o pipeline tenha conseguido aproveitar o miolo.
+   */
+  unshelled?: boolean
 }
 
 const wrap = (t: string): string =>
@@ -59,6 +78,22 @@ export function fitFragment(
   // Comentário inicial é comum nas variantes — pula e reavalia.
   const afterComment = t.replace(/^(?:<!--[\s\S]*?-->\s*)+/, "")
   if (afterComment !== t) return fitFragment(afterComment, opts)
+
+  // Documento completo: a casca sai e o MIOLO é reavaliado pela mesma
+  // matriz. Normalmente o body abre com <table>, então o miolo encaixa
+  // sozinho. Isto vem ANTES do wrapUnknown de propósito: embrulhar o
+  // documento inteiro numa célula é o defeito que este ramo existe para
+  // impedir, não uma degradação aceitável.
+  // Recusa é a saída quando o miolo não encaixa (ou não sobrou miolo): o
+  // wrapUnknown abaixo NÃO pode receber um documento — é exatamente o
+  // caminho que produzia `<td><!DOCTYPE html>…</td>`.
+  if (hasDocumentShell(t)) {
+    const inner = stripDocumentShell(t)
+    if (!inner.stripped || !inner.html || inner.html === t) return null
+    const fit = fitFragment(inner.html, opts)
+    return fit ? { ...fit, unshelled: true } : null
+  }
+
   if (opts.wrapUnknown && t) return { html: wrap(t), kind: "wrapped_unknown" }
   return null
 }

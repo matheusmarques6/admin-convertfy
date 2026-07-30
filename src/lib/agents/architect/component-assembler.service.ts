@@ -1001,6 +1001,10 @@ export async function assembleStoreReference(
       blocks_assembled: assembled.stats.blocks,
       blocks_skipped: assembled.stats.skipped,
       wrapped_unknown: assembled.stats.wrappedUnknown,
+      // Variantes cadastradas como documento completo: a casca foi removida
+      // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro
+      // numa célula e o defeito só aparecia como erro do agente de hero.
+      variants_unshelled: assembled.stats.unshelled,
       fonts_normalized: assembled.stats.fontsNormalized,
       reference_source: source,
       html_chars: html.length,

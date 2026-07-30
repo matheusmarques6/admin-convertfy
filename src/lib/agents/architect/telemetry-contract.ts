@@ -48,6 +48,7 @@ export const TELEMETRY_CONTRACT: Record<
     degraded: "a composição saiu do fallback e não da decisão do agente",
     blocks_assembled: "quantos blocos entraram no documento",
     blocks_skipped: "posições que ficaram FORA do email — origem do selo de curadoria",
+    variants_unshelled: "variantes cadastradas como documento completo, cuja casca a montagem removeu — sem isto o documento ia inteiro dentro de um <td> e o defeito aparecia como erro do agente de hero",
     marker_selfcheck: "self-check dos marcadores emitidos pelo código; diferente de ok é bug nosso",
     image_tags_dropped: "self-check das tags de imagem; diferente de vazio é bug nosso",
     reference_source: "de onde saiu o reference que o consumidor vai usar",
