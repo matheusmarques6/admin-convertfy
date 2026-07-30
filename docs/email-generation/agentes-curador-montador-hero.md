@@ -306,6 +306,10 @@ dentro de `fieldsFromSchema`, sem passar pelo documento montado. Direção
 de arte segue sendo `image_spec` + `example` + formato + `slot_note` +
 copy do grupo.
 
+O modelo é o que estiver configurado — hoje
+`google/gemini-3.1-flash-image` (Nano Banana 2, commit `92df2b7`), não
+mais `openai/gpt-5.4-image-2`. Nada nesta especificação depende disso.
+
 ---
 
 ## 4. Hero — `hero_section`
@@ -433,6 +437,24 @@ Sai `<montador_html>` e `<hero_region>`. Fica store, `color_roles`,
 | `blocksInsideHeroRegion` | interseção de tags da região | **sai** — passa a ser os fields do bloco hero |
 | timeout | 240s dimensionado com 40KB no prompt | folgado |
 | `rendered_html` | sempre enviado | enviado **só** se o hash de origem casar |
+
+### Interação com o kill-switch da aba Agentes
+
+O toggle `is_active` virou kill-switch de verdade (commit `36aa04a`):
+`hero_section` com todas as rows inativas → o step é **pulado**, com run
+`skipped`, `model='disabled'` e `reason='agent_disabled'`.
+
+No desenho antigo isso funcionava porque a hero vivia dentro do documento
+e o resto da cadeia cuidava dos placeholders dela. Com a hero extraída,
+pular o agente deixaria o bloco sem dono. Regra:
+
+> **A extração da hero só acontece se o agente estiver ligado.** Com
+> `hero_section` desativado, o bloco da hero **permanece no documento** e
+> segue pela cadeia normal — `copy_merge` preenche os placeholders por
+> código, e texto/imagem/cores tratam o bloco como qualquer outro.
+
+Assim o kill-switch continua sendo um kill-switch, sem abrir um caminho em
+que a hero sai crua.
 
 ### Hash de origem do renderizado
 
