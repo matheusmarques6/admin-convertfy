@@ -394,3 +394,78 @@ describe("esqueleto extraído do documento montado", () => {
     expect(hero.needs_image).toBe(true)
   })
 })
+
+// O formato REAL da biblioteca (jul/2026): as 38 variantes ativas estão
+// cadastradas como documento completo, com o CSS no <head>. O `wrapUnknown`
+// embrulhava isso em `<td>` — documento dentro de célula — e o defeito só
+// aparecia lá na frente, como "fragmento contém documento" do agente de hero.
+describe("variantes cadastradas como documento completo", () => {
+  const asDoc = (inner: string, css = "") => `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8">${css ? `<style>${css}</style>` : ""}</head>
+<body style="margin:0">${inner}</body>
+</html>`
+
+  it("nenhum documento sobra dentro do corpo montado", () => {
+    const { html } = assembleDocument({
+      slots: [
+        slot("hero", "v1", asDoc(TABLE("hero"))),
+        slot("products", "v2", asDoc(TABLE("produtos"))),
+      ],
+    })
+    const body = html.slice(html.indexOf("<body"))
+    expect(body).not.toMatch(/<!DOCTYPE|<html[\s>]/i)
+    expect(body).toContain("hero")
+    expect(body).toContain("produtos")
+  })
+
+  it("conta as variantes desembrulhadas", () => {
+    const { stats } = assembleDocument({
+      slots: [
+        slot("hero", "v1", asDoc(TABLE("hero"))),
+        slot("body", "v2", TR("já é fragmento")),
+      ],
+    })
+    expect(stats.unshelled).toEqual(["hero"])
+    expect(stats.blocks).toBe(2)
+  })
+
+  it("o @media da variante sobrevive no head, e não no meio da tabela", () => {
+    const css = "@media (max-width:620px){.card{width:100%!important}}"
+    const { html, stats } = assembleDocument({
+      slots: [slot("hero", "v1", asDoc(TABLE("hero"), css))],
+    })
+    expect(stats.stylesInlined).toBe(1)
+    const head = html.slice(0, html.indexOf("<body"))
+    expect(head).toContain(css)
+    expect(html.slice(html.indexOf("<body"))).not.toContain("<style")
+  })
+
+  it("CSS repetido entre variantes entra uma vez só", () => {
+    const css = ".card{padding:0}"
+    const { stats } = assembleDocument({
+      slots: [
+        slot("hero", "v1", asDoc(TABLE("a"), css)),
+        slot("body", "v2", asDoc(TABLE("b"), css)),
+      ],
+    })
+    expect(stats.stylesInlined).toBe(1)
+  })
+
+  it("o CSS da variante vem depois do base, para poder sobrescrever", () => {
+    const { html } = assembleDocument({
+      slots: [slot("hero", "v1", asDoc(TABLE("a"), ".email-container{width:700px}"))],
+    })
+    expect(html.indexOf(".email-container{width:700px}")).toBeGreaterThan(
+      html.indexOf("mso-table-lspace"),
+    )
+  })
+
+  it("os marcadores continuam envolvendo cada bloco", () => {
+    const { html } = assembleDocument({
+      slots: [slot("hero", "v1", asDoc(TABLE("hero")))],
+    })
+    expect(html).toContain("<!-- cfy:block:0:hero:start -->")
+    expect(html).toContain("<!-- cfy:block:0:hero:end -->")
+  })
+})

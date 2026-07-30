@@ -26,6 +26,13 @@ export interface StripShellResult {
   html: string
   /** Havia moldura de documento e ela foi removida. */
   stripped: boolean
+  /**
+   * Conteúdo dos `<style>` que estavam FORA do body — na prática, o CSS do
+   * `<head>`. Sai do fragmento porque `<style>` dentro de `<td>` não é HTML
+   * válido, mas NÃO pode ser jogado fora: é onde mora o `@media` que faz a
+   * variante responder no mobile. Quem monta o documento reinjeta no head.
+   */
+  styles: string[]
 }
 
 const DOCTYPE = /<!DOCTYPE[^>]*>/gi
@@ -46,14 +53,20 @@ export function stripDocumentShell(
   html: string | null | undefined,
 ): StripShellResult {
   const src = (html ?? "").trim()
-  if (!src) return { html: "", stripped: false }
+  if (!src) return { html: "", stripped: false, styles: [] }
 
   const open = src.match(BODY_OPEN)
   const close = src.match(BODY_CLOSE)
   if (open?.index !== undefined && close?.index !== undefined) {
     const start = open.index + open[0].length
     if (close.index > start) {
-      return { html: src.slice(start, close.index).trim(), stripped: true }
+      const before = src.slice(0, open.index)
+      const after = src.slice(close.index)
+      return {
+        html: src.slice(start, close.index).trim(),
+        stripped: true,
+        styles: stylesIn(before + after),
+      }
     }
   }
 
@@ -64,7 +77,22 @@ export function stripDocumentShell(
     .replace(BODY_TAGS, "")
     .trim()
 
-  return { html: out, stripped: out !== src }
+  const heads = src.match(HEAD_BLOCK) ?? []
+  return {
+    html: out,
+    stripped: out !== src,
+    styles: stylesIn(heads.join("\n")),
+  }
+}
+
+/** CSS de cada `<style>` do trecho, sem as tags e sem os vazios. */
+function stylesIn(html: string): string[] {
+  const out: string[] = []
+  for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) {
+    const css = (m[1] ?? "").trim()
+    if (css) out.push(css)
+  }
+  return out
 }
 
 /** Há casca de documento aqui? Usado por guards e telemetria. */

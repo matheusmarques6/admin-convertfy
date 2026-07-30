@@ -40,8 +40,9 @@ describe("stripDocumentShell", () => {
   })
 
   it("vazio continua vazio", () => {
-    expect(stripDocumentShell(null)).toEqual({ html: "", stripped: false })
-    expect(stripDocumentShell("   ")).toEqual({ html: "", stripped: false })
+    const vazio = { html: "", stripped: false, styles: [] }
+    expect(stripDocumentShell(null)).toEqual(vazio)
+    expect(stripDocumentShell("   ")).toEqual(vazio)
   })
 
   it("não confunde <bodyguard> com <body>", () => {
@@ -57,5 +58,44 @@ describe("hasDocumentShell", () => {
     expect(hasDocumentShell("<html><table></table></html>")).toBe(true)
     expect(hasDocumentShell('<body style="x"><table></table>')).toBe(true)
     expect(hasDocumentShell("<table></table>")).toBe(false)
+  })
+})
+
+// O CSS do <head> da variante não cabe no fragmento (<style> dentro de <td>
+// é inválido) e não pode sumir: é onde vive o @media que faz a variante
+// responder no mobile. Quem monta o documento reinjeta no head.
+describe("stripDocumentShell — CSS do head", () => {
+  const doc = `<!DOCTYPE html><html><head>
+<style>@media (max-width:620px){.card{width:100%!important}}</style>
+<style>  </style>
+</head><body><table><tr><td class="card">x</td></tr></table></body></html>`
+
+  it("resgata o CSS do head, sem as tags", () => {
+    const r = stripDocumentShell(doc)
+    expect(r.styles).toEqual([
+      "@media (max-width:620px){.card{width:100%!important}}",
+    ])
+  })
+
+  it("o CSS não fica no fragmento", () => {
+    expect(stripDocumentShell(doc).html).not.toContain("<style")
+  })
+
+  it("documento sem style devolve lista vazia", () => {
+    expect(
+      stripDocumentShell("<!DOCTYPE html><html><body><table></table></body></html>")
+        .styles,
+    ).toEqual([])
+  })
+
+  it("resgata também quando o documento vem sem </body>", () => {
+    const r = stripDocumentShell(
+      "<!DOCTYPE html><html><head><style>.a{color:red}</style></head><body><table></table>",
+    )
+    expect(r.styles).toEqual([".a{color:red}"])
+  })
+
+  it("fragmento puro não tem CSS a resgatar", () => {
+    expect(stripDocumentShell("<tr><td>x</td></tr>").styles).toEqual([])
   })
 })

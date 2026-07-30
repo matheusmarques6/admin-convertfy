@@ -129,10 +129,12 @@ export interface AssembledStats {
   wrappedUnknown: string[]
   /**
    * Seções cuja variante estava cadastrada como DOCUMENTO completo. A casca
-   * saiu e o miolo entrou no lugar — o email fica correto, mas o cadastro
-   * precisa ser arrumado. Sinal de curadoria, não erro.
+   * saiu e o miolo entrou no lugar. Hoje é o formato dominante da
+   * biblioteca (jul/2026: as 38 ativas), então isto é contagem, não alarme.
    */
   unshelled: string[]
+  /** Blocos de CSS resgatados do `<head>` das variantes e reinjetados. */
+  stylesInlined: number
   /** Blocos esperados, na ordem — insumo do self-check de marcadores. */
   expected: ExpectedBlock[]
 }
@@ -167,6 +169,10 @@ export function assembleDocument(
   const expected: ExpectedBlock[] = []
   const wrappedUnknown: string[] = []
   const unshelled: string[] = []
+  // O CSS do <head> de cada variante precisa sobreviver ao desembrulho: é
+  // onde vive o @media dela. Dedup por conteúdo — variantes da mesma origem
+  // repetem o mesmo bloco, e duplicar CSS só engorda o email.
+  const styles = new Set<string>()
   let variants = 0
 
   slots.forEach((slot, i) => {
@@ -198,6 +204,7 @@ export function assembleDocument(
     }
     if (fit.kind === "wrapped_unknown") wrappedUnknown.push(section)
     if (fit.unshelled) unshelled.push(section)
+    for (const css of fit.styles ?? []) styles.add(css)
     const marker = `${i}:${section}`
     rows.push(
       `        <!-- cfy:block:${marker}:start -->\n${fit.html}\n        <!-- cfy:block:${marker}:end -->`,
@@ -205,7 +212,7 @@ export function assembleDocument(
     expected.push({ block_index: i, section })
   })
 
-  const shell = documentShell(rows.join("\n"), lang)
+  const shell = documentShell(rows.join("\n"), lang, [...styles])
   const normalized = normalizeFonts(shell, fonts ?? {})
 
   return {
@@ -218,6 +225,7 @@ export function assembleDocument(
       chars: normalized.html.length,
       wrappedUnknown,
       unshelled,
+      stylesInlined: styles.size,
       expected,
     },
   }
@@ -227,7 +235,11 @@ export function assembleDocument(
  * Shell de 600px. As CSS variables saem com valores neutros: a paleta da
  * loja é aplicada adiante pelo step de cores, que reescreve o `:root`.
  */
-function documentShell(rows: string, lang: string): string {
+function documentShell(
+  rows: string,
+  lang: string,
+  variantStyles: string[] = [],
+): string {
   return `<!DOCTYPE html>
 <html lang="${lang}" xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -285,7 +297,7 @@ function documentShell(rows: string, lang: string): string {
       }
     }
   </style>
-</head>
+${variantStylesBlock(variantStyles)}</head>
 <body style="margin:0;padding:0;background-color:var(--bg);">
 
   <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:transparent;mso-hide:all;">{{PREHEADER}}</div>
@@ -304,4 +316,25 @@ ${rows}
 
 </body>
 </html>`
+}
+
+/**
+ * CSS resgatado do `<head>` das variantes desembrulhadas.
+ *
+ * Vai DEPOIS do bloco base para poder sobrescrevê-lo — o CSS da variante é
+ * mais específico que o do shell, e essa é a ordem que preserva a intenção
+ * de quem cadastrou. Cada bloco fica separado e identificado para que, na
+ * hora de depurar um email, dê para saber de onde o seletor veio.
+ *
+ * Risco assumido: duas variantes com uma classe de mesmo nome e regras
+ * diferentes colidem. Não dá para prefixar sem reescrever os seletores E o
+ * HTML da variante, e reescrever CSS de terceiro é pior do que a colisão.
+ * A alternativa — descartar — quebra o responsivo, que é certo.
+ */
+function variantStylesBlock(styles: string[]): string {
+  if (styles.length === 0) return ""
+  const blocks = styles
+    .map((css, i) => `  <style>\n    /* variante ${i + 1} */\n${css}\n  </style>`)
+    .join("\n")
+  return `${blocks}\n`
 }

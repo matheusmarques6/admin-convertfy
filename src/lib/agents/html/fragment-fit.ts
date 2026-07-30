@@ -52,10 +52,17 @@ export interface FitResult {
   kind: FitKind
   /**
    * A variante estava cadastrada como documento completo e a casca foi
-   * removida antes do encaixe. Sinal de curadoria: o cadastro está fora do
-   * padrão, ainda que o pipeline tenha conseguido aproveitar o miolo.
+   * removida antes do encaixe. É o formato de cadastro DOMINANTE da
+   * biblioteca hoje (jul/2026: as 38 variantes ativas), então não é
+   * anomalia — é contagem.
    */
   unshelled?: boolean
+  /**
+   * CSS que estava no `<head>` da variante. Não cabe no fragmento
+   * (`<style>` dentro de `<td>` é inválido) e não pode sumir: é onde vive o
+   * `@media` da variante. Quem monta o documento reinjeta no head.
+   */
+  styles?: string[]
 }
 
 const wrap = (t: string): string =>
@@ -91,7 +98,12 @@ export function fitFragment(
     const inner = stripDocumentShell(t)
     if (!inner.stripped || !inner.html || inner.html === t) return null
     const fit = fitFragment(inner.html, opts)
-    return fit ? { ...fit, unshelled: true } : null
+    if (!fit) return null
+    return {
+      ...fit,
+      unshelled: true,
+      ...(inner.styles.length > 0 ? { styles: inner.styles } : {}),
+    }
   }
 
   if (opts.wrapUnknown && t) return { html: wrap(t), kind: "wrapped_unknown" }
