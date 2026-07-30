@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { parseOps, type FormatOp } from "../html/apply-patches"
+import { withUsage } from "./step-usage"
 
 const log = logger.child("ImageFormatChain")
 
@@ -117,8 +118,17 @@ export async function invokeImageFormatChain(input: {
       : { reasoning: { enabled: false } }),
   })
 
-  // parseOps lança OpsParseError (retryable no runner).
-  const ops = parseOps(res.text)
+  // parseOps lança OpsParseError (retryable no runner). O consumo vai
+  // grudado no erro — a chamada já foi paga, o run de erro tem de registrar.
+  const ops = withUsage(
+    {
+      tokensInput: res.tokensInput,
+      tokensOutput: res.tokensOutput,
+      costUsd: res.costUsd,
+      renderedPrompt: userMessage,
+    },
+    () => parseOps(res.text),
+  )
 
   log.info("image_format.invoke.success", {
     model: config.model,

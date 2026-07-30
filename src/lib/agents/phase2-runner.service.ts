@@ -74,6 +74,7 @@ import {
 import { invokeImageFormatChain } from "./chains/image-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
 import type { FormatChainConfig } from "./chains/format-invoke"
+import { usageOf } from "./chains/step-usage"
 import {
   loadFormatChainContext,
   resolveHeroVariant,
@@ -1643,11 +1644,17 @@ async function executeFormatStep<T>(p: {
         err instanceof Error && typeof (err as { raw?: unknown }).raw === "string"
           ? ((err as { raw?: string }).raw ?? "")
           : ""
+      // O modelo respondeu e o parser rejeitou: a chamada foi PAGA. O chain
+      // gruda o consumo no erro (step-usage) justamente para o run de erro
+      // não fechar com 0 token e $0 — e para o prompt rejeitado ficar
+      // disponível, que é o único insumo de debug que importa aqui.
+      const usage = usageOf(err)
       log.error("phase2.fmt.step_error", {
         emailId,
         agent: p.agent,
         attempt: priorErrors,
         error: lastError,
+        tokensOutput: usage?.tokensOutput ?? 0,
       })
       await finishGenerationRun(runId, {
         storeId,
@@ -1663,6 +1670,21 @@ async function executeFormatStep<T>(p: {
         errorMessage: lastError,
         retryCount: priorErrors,
         ...(raw ? { rawOutput: raw } : {}),
+        ...(usage
+          ? {
+              tokensInput: usage.tokensInput,
+              tokensOutput: usage.tokensOutput,
+              costCents: resolveCostCents({
+                model: p.model,
+                tokensInput: usage.tokensInput,
+                tokensOutput: usage.tokensOutput,
+                costUsd: usage.costUsd,
+              }),
+              ...(usage.renderedPrompt
+                ? { renderedPrompt: usage.renderedPrompt }
+                : {}),
+            }
+          : {}),
       }).catch(() => {})
       priorErrors += 1
     }

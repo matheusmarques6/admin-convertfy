@@ -25,6 +25,7 @@
 import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+import { withUsage, type StepUsage } from "./step-usage"
 import {
   HERO_SENTINEL_START,
   HERO_SENTINEL_END,
@@ -80,6 +81,8 @@ In both modes the received <hero_region> defines the BOUNDARIES of the hero and 
 It is NOT your reference for structure. Rows, order and anatomy come from the region you received (mode library) or from <hero_variant_source> (mode montador). If the example shows something the region does not have, you do NOT add it.
 
 The example may be a flattened screenshot wrapped in HTML, or may predate the current version of the variant — that is expected and does not make it useless: proportion and hierarchy still read. Where it disagrees with the region, THE REGION WINS. Empty means no example was ever registered for this variant; work from the region alone.
+
+The example is never a model for the SHAPE of your answer. Whatever it looks like, your output is the hero fragment and nothing else — see the output contract.
 </finish_reference>
 
 <hero_image_hard_rule>
@@ -316,7 +319,15 @@ export async function invokeHeroChain(input: {
       : { reasoning: { enabled: false } }),
   })
 
-  const output = parseHeroFragment(res.text)
+  // O parse pode rejeitar a resposta — e a chamada já foi paga. Sem isto o
+  // run de erro fecha com 0 token, $0 e sem o prompt que o produziu.
+  const usage: StepUsage = {
+    tokensInput: res.tokensInput,
+    tokensOutput: res.tokensOutput,
+    costUsd: res.costUsd,
+    renderedPrompt: userMessage,
+  }
+  const output = withUsage(usage, () => parseHeroFragment(res.text))
   const report = parseHeroReport(res.text)
 
   log.info("hero.invoke.success", {

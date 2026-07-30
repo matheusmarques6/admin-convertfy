@@ -150,6 +150,30 @@ describe("resolveRenderedReference", () => {
     expect(r.stale).toBe(false)
   })
 
+  // O agente de hero tem de devolver um FRAGMENTO. Exemplo colado como
+  // export inteiro põe um documento completo na frente dele como
+  // "referência" — e foi o que ele copiou, duas vezes, no primeiro teste
+  // depois que o envio virou incondicional. A moldura sai; o conteúdo vai.
+  it("documento completo → ENVIA só o miolo, com a ressalva", () => {
+    const doc = `<!DOCTYPE html><html><head><style>.a{}</style></head><body>${MOCKUP}</body></html>`
+    const r = resolveRenderedReference(variant({ rendered_html: doc }))
+    expect(r.html).toBe(MOCKUP)
+    expect(r.caveats).toContain("document_shell")
+    expect(r.html).not.toMatch(/<!DOCTYPE|<html[\s>]|<body[\s>]/i)
+  })
+
+  it("exemplo que era só moldura vira ausência (não string vazia)", () => {
+    const r = resolveRenderedReference(
+      variant({
+        rendered_html:
+          "<!DOCTYPE html><html><head><title>x</title></head><body>   </body></html>",
+      }),
+    )
+    expect(r.html).toBeNull()
+    expect(r.reason).toBe("empty")
+    expect(r.caveats).toContain("document_shell")
+  })
+
   it("`reason` só existe para ausência", () => {
     for (const over of [
       { rendered_html: MOCKUP },

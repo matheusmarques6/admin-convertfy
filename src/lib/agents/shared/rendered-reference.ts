@@ -33,6 +33,7 @@ import { createHash } from "node:crypto"
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 
+import { stripDocumentShell } from "./document-shell"
 import { classifyRenderedHtml, type RenderedKind } from "./rendered-classify"
 
 export { classifyRenderedHtml, type RenderedKind }
@@ -73,6 +74,8 @@ export type RenderedCaveat =
   | "stale"
   /** Cadastrado antes do hash existir: validade desconhecida. */
   | "unknown_sha"
+  /** Vinha como documento completo; a moldura foi removida antes do envio. */
+  | "document_shell"
 
 export interface ResolvedRenderedReference {
   /** HTML a enviar ao agente. Null só quando não há exemplo cadastrado. */
@@ -121,6 +124,22 @@ export function resolveRenderedReference(
   const caveats: RenderedCaveat[] = []
   if (classified.kind === "mockup") caveats.push("mockup")
 
+  // O exemplo vai para dentro de um prompt cujo output tem de ser FRAGMENTO.
+  // Exemplo colado como export inteiro (`<!DOCTYPE><html><body>`) é um molde
+  // do formato ERRADO na frente do modelo — o agente de hero devolveu
+  // documento e o parser rejeitou, duas vezes seguidas, no primeiro teste
+  // depois que o envio passou a ser incondicional. A moldura sai; o conteúdo,
+  // que é onde mora o acabamento, vai inteiro.
+  const shell = stripDocumentShell(variant.rendered_html)
+  if (shell.stripped) caveats.push("document_shell")
+
+  // Exemplo que era SÓ moldura (head/style e nada no body) some no strip.
+  // Mandar string vazia embrulhada em <hero_variant_rendered> é pior que não
+  // mandar: o agente lê como "existe e está vazio".
+  if (!shell.html) {
+    return { html: null, reason: "empty", caveats, stale: false, kind: "empty" }
+  }
+
   const stored = variant.rendered_html_source_sha?.trim()
   if (!stored) {
     // Backfill deixa NULL nas variantes antigas: sem saber de qual versão do
@@ -131,7 +150,7 @@ export function resolveRenderedReference(
   }
 
   return {
-    html: (variant.rendered_html ?? "").trim(),
+    html: shell.html,
     reason: null,
     caveats,
     // `stale` no sentido do selo: o exemplo não corresponde ao html atual.

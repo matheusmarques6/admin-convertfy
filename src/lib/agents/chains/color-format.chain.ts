@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { parseOps, type FormatOp } from "../html/apply-patches"
+import { withUsage } from "./step-usage"
 
 const log = logger.child("ColorFormatChain")
 
@@ -133,7 +134,17 @@ export async function invokeColorFormatChain(input: {
   // parseOps lança OpsParseError (retryable; 2ª falha → fail-open no runner).
   // Arquitetura por views (F4): só ops "recolor" fazem sentido — o agente
   // não vê o documento, então "replace" de trecho não tem como ser válido.
-  const ops = parseOps(res.text).filter((op) => op.action === "recolor")
+  // O consumo vai grudado no erro — a chamada já foi paga, e este step é
+  // fail-open: sem isso o custo de uma falha silenciosa some de vez.
+  const ops = withUsage(
+    {
+      tokensInput: res.tokensInput,
+      tokensOutput: res.tokensOutput,
+      costUsd: res.costUsd,
+      renderedPrompt: userMessage,
+    },
+    () => parseOps(res.text),
+  ).filter((op) => op.action === "recolor")
 
   log.info("color_format.invoke.success", {
     model: config.model,
