@@ -29,8 +29,6 @@ COMMENT ON COLUMN email_generation_settings.hero_vision_model IS
 
 -- Verificação
 SELECT org_id,
-       COALESCE(hero_vision_model, '(NULL — usa o default in-code)') AS hero_vision_model,
-       merge_verifier_mode,
-       blueprint_mode
+       COALESCE(hero_vision_model, '(NULL — usa o default in-code)') AS hero_vision_model
 FROM email_generation_settings
 ORDER BY org_id;
