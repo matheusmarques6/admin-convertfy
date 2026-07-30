@@ -122,8 +122,8 @@ copy não tem label nem URL — comportamento **correto** e previsto no
 - [x] Remover `full_doc` e o guard
 - [x] Contrato de output novo + parser do relatório
 - [x] Migration com o prompt ajustado
-- [x] Ligar `campos_vazios` no QA
-- [x] Exibir o relatório no drawer dos logs
+- [ ] ~~Ligar `campos_vazios` no QA~~ — descartado por redundância (ver AC CM-5.3)
+- [x] Relatório no `parsed_output` (o drawer já mostra o JSON; selo dedicado é CM-7)
 - [x] Testes
 
 ---
@@ -142,8 +142,8 @@ possível.
 
 O agente de hero devolve HTML, não ops — diferente de `image_format` e
 `color_format`. O relatório é **declaração**, não instrução: o código não
-age sobre ele, só registra e alimenta o QA. Se um dia a hero migrar para o
-protocolo de ops, o relatório vira redundante.
+age sobre ele, só registra. Se um dia a hero migrar para o protocolo de
+ops, o relatório vira redundante.
 
 ---
 
@@ -154,9 +154,8 @@ protocolo de ops, o relatório vira redundante.
 - `src/lib/agents/html/contract.ts`
 - `src/lib/agents/html/format-context.ts` — remove `montador_html`
 - `src/lib/agents/phase2-runner.service.ts` — STEP 1
-- `src/lib/agents/chains/qa.chain.ts` — `campos_vazios`
-- `src/components/email-generation-logs/logs-workspace.tsx`
-- `supabase/migrations/2026XXXX_hero_report.sql`
+- `src/lib/agents/html/hero-locator.ts` — guard de proporção
+- `supabase/migrations/20261054_hero_report.sql`
 
 ---
 
