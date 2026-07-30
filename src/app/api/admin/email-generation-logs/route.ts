@@ -60,6 +60,12 @@ interface LogRow {
   flow_id: string | null
   flow_type: string | null
   is_qa_vision: boolean | null
+  // Sinais de curadoria (CM-7) — derivados na view, não é o parsed_output
+  // inteiro: ele carrega snapshots de HTML e pesaria dezenas de KB por linha.
+  curation_skipped_blocks: number | null
+  curation_excluded_untagged: number | null
+  curation_rank_deviations: number | null
+  curation_rendered_stale: boolean | null
 }
 
 interface AgentAggregate {
@@ -171,7 +177,7 @@ export async function GET(request: NextRequest) {
       let query = admin
         .from("v_email_generation_logs")
         .select(
-          "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, store_id, store_name, email_id, email_name, email_position, flow_id, flow_type, is_qa_vision",
+          "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, store_id, store_name, email_id, email_name, email_position, flow_id, flow_type, is_qa_vision, curation_skipped_blocks, curation_excluded_untagged, curation_rank_deviations, curation_rendered_stale",
         )
         .gte("created_at", since)
         // component_test é teste ad-hoc da biblioteca (aba Componentes), não
@@ -382,6 +388,14 @@ export async function GET(request: NextRequest) {
         tokens_output: r.tokens_output,
         retry_count: r.retry_count,
         error_message: r.error_message,
+        // Sinais de curadoria (CM-7): nenhum é erro — o email foi entregue.
+        // Indicam biblioteca incompleta, exemplo velho ou ranking corrigido.
+        curation: {
+          skipped_blocks: r.curation_skipped_blocks ?? 0,
+          excluded_untagged: r.curation_excluded_untagged ?? 0,
+          rank_deviations: r.curation_rank_deviations ?? 0,
+          rendered_stale: r.curation_rendered_stale === true,
+        },
       })),
     })
   } catch (error) {

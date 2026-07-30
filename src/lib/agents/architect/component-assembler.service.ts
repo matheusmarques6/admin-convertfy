@@ -832,6 +832,10 @@ export async function assembleStoreReference(
     })
   }
 
+  // Duração do LLM medida aqui: o run só é fechado depois da montagem (para
+  // carregar as stats dela), e a concatenação é instantânea.
+  const asmDurationMs = Date.now() - t1
+
   // Aqui o fallback é LEGÍTIMO, ao contrário do Curador: o ranking já é uma
   // composição válida, avaliada posição por posição. Erro do Montador degrada
   // para o rank 1, nunca derruba o email.
@@ -844,52 +848,6 @@ export async function assembleStoreReference(
     const variant = id ? byId.get(id) : undefined
     if (!variant) return { kind: "missing", section, label }
     return { kind: "variant", variant, section, label }
-  })
-
-  await finishGenerationRun(asmRunId, {
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: asmRow?.id,
-    // O email é gerado de qualquer forma (fallback para o rank 1); o status
-    // reflete o AGENTE, e `degraded` no parsed_output reflete a COMPOSIÇÃO.
-    status: asmError || decisions.malformed ? "error" : "success",
-    model: asmConfig.model,
-    errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
-    inputVars: { positions: rankingByBlock.size },
-    rawOutput: asmRaw.slice(0, 8000),
-    parsedOutput: {
-      degraded: Boolean(asmError) || decisions.malformed,
-      escolhas: decisions.decisions.map((d) => ({
-        block_index: d.block_index,
-        variant_id: d.variant_id,
-        rank: d.rank,
-      })),
-      // Métrica do épico: com que frequência o Montador corrige o Curador.
-      // Perto de 0 → a segunda passada é barata; acima de ~40% → o critério
-      // do Curador precisa revisão.
-      desvios: decisions.desvios.length,
-      desvios_por_posicao: decisions.desvios.map((d) => ({
-        block_index: d.block_index,
-        variant_id: d.variant_id,
-        rank: d.rank,
-        motivo: d.motivo ?? null,
-      })),
-      forced_rank1: decisions.forcedRank1,
-      missing_motivo: decisions.missingMotivo,
-      extra_motivo: decisions.extraMotivo,
-      rank_mismatch: decisions.rankMismatch,
-    },
-    tokensInput: asmTokensIn,
-    tokensOutput: asmTokensOut,
-    costCents: resolveCostCents({
-      model: asmConfig.model,
-      tokensInput: asmTokensIn,
-      tokensOutput: asmTokensOut,
-      costUsd: asmCostUsd,
-    }),
-    durationMs: Date.now() - t1,
   })
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
@@ -1002,6 +960,65 @@ export async function assembleStoreReference(
       skipped: assembled.stats.skipped,
     })
   }
+
+  await finishGenerationRun(asmRunId, {
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    // O email é gerado de qualquer forma (fallback para o rank 1); o status
+    // reflete o AGENTE, e `degraded` no parsed_output reflete a COMPOSIÇÃO.
+    status: asmError || decisions.malformed ? "error" : "success",
+    model: asmConfig.model,
+    errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
+    inputVars: { positions: rankingByBlock.size },
+    rawOutput: asmRaw.slice(0, 8000),
+    parsedOutput: {
+      degraded: Boolean(asmError) || decisions.malformed,
+      escolhas: decisions.decisions.map((d) => ({
+        block_index: d.block_index,
+        variant_id: d.variant_id,
+        rank: d.rank,
+      })),
+      // Métrica do épico: com que frequência o Montador corrige o Curador.
+      // Perto de 0 → a segunda passada é barata; acima de ~40% → o critério
+      // do Curador precisa revisão.
+      desvios: decisions.desvios.length,
+      desvios_por_posicao: decisions.desvios.map((d) => ({
+        block_index: d.block_index,
+        variant_id: d.variant_id,
+        rank: d.rank,
+        motivo: d.motivo ?? null,
+      })),
+      forced_rank1: decisions.forcedRank1,
+      missing_motivo: decisions.missingMotivo,
+      extra_motivo: decisions.extraMotivo,
+      rank_mismatch: decisions.rankMismatch,
+      // Resultado da MONTAGEM (código). Vive no run do Montador porque é o
+      // desfecho da composição que ele decidiu — e é o que alimenta o selo
+      // "seções puladas" nos logs.
+      blocks_assembled: assembled.stats.blocks,
+      blocks_skipped: assembled.stats.skipped,
+      wrapped_unknown: assembled.stats.wrappedUnknown,
+      fonts_normalized: assembled.stats.fontsNormalized,
+      reference_source: source,
+      html_chars: html.length,
+      // Self-checks da concatenação: os dois têm de ser sempre limpos.
+      marker_selfcheck: markerCheck.status,
+      image_tags_dropped: droppedImageTags,
+    },
+    tokensInput: asmTokensIn,
+    tokensOutput: asmTokensOut,
+    costCents: resolveCostCents({
+      model: asmConfig.model,
+      tokensInput: asmTokensIn,
+      tokensOutput: asmTokensOut,
+      costUsd: asmCostUsd,
+    }),
+    durationMs: asmDurationMs,
+  })
+
 
   return { html, variantIds, source, slots }
 }

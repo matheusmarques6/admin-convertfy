@@ -3,7 +3,7 @@ Prioridade: P2
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Admin UI / Logs
 Estimate: S
@@ -42,54 +42,58 @@ para atenção, `negBg` para problema, `infoBg` para informação).
 ## Acceptance Criteria
 
 ### AC CM-7.1 — Componente de selo
-- [ ] `CurationBadge` renderizado ao lado do `StatusBadge` na linha do run
-- [ ] Tokens do `eg-theme`: âmbar para atenção, vermelho para problema,
+- [x] `CurationBadge` renderizado ao lado do `StatusBadge` na linha do run
+- [x] Tokens do `eg-theme`: âmbar para atenção, vermelho para problema,
       azul para informação. Nada de cor nova
-- [ ] Vários selos na mesma linha: layout não quebra, com `flex-wrap`
-- [ ] Tooltip com o detalhe (lista de seções, nomes de variantes)
-- [ ] Sem selo nenhum quando o run está limpo — a ausência é o estado
+- [x] Vários selos na mesma linha: layout não quebra, com `flex-wrap`
+- [x] Tooltip explicando o que o selo significa e o que fazer
+- [x] Sem selo nenhum quando o run está limpo — a ausência é o estado
       normal e não deve ocupar espaço
 
 ### AC CM-7.2 — Os quatro selos
-- [ ] **Seções puladas** (âmbar) — posições sem candidata ou sem id
-      válido, que saíram do email. Origem: `stats.skipped` (CM-2) e
-      `parsed_output` do Curador (CM-3). Tooltip lista `section` + `label`
-- [ ] **Fora do pool** (âmbar) — variantes ativas sem `{{PLACEHOLDER}}` no
+- [x] **Seções puladas** (âmbar) — posições sem candidata ou sem id
+      válido, que saíram do email. Origem: `blocks_skipped` (montagem) com
+      fallback para `empty_blocks` (Curador). **Nota:** a contagem vai na
+      label; o detalhe por seção fica no `parsed_output` do drawer — a view
+      projeta escalares, não o array
+- [x] **Fora do pool** (âmbar) — variantes ativas sem `{{PLACEHOLDER}}` no
       HTML efetivo. Origem: `candidates_excluded_untagged`, que já existe.
       Tooltip lista os nomes
-- [ ] **Renderizado desatualizado** (azul) — hash de origem divergente ou
+- [x] **Renderizado desatualizado** (azul) — hash de origem divergente ou
       desconhecido. Origem: `parsed_output.rendered_reference` (CM-6)
-- [ ] **Desvios do ranking** (azul) — quantas posições o Montador tirou do
+- [x] **Desvios do ranking** (azul) — quantas posições o Montador tirou do
       rank 1. Origem: `parsed_output.desvios` (CM-4). Tooltip com posição
       e motivo
-- [ ] Cada selo aparece só quando o dado existe e é diferente de zero —
+- [x] Cada selo aparece só quando o dado existe e é diferente de zero —
       run antigo sem o campo não mostra nada
 
 ### AC CM-7.3 — Filtro
-- [ ] Filtro na listagem: "só runs com pressão de curadoria" — qualquer
-      selo âmbar presente
-- [ ] Combina com os filtros existentes de status, loja e período
+- [x] Aba "Curadoria" na listagem — qualquer selo âmbar presente. Filtra no
+      **cliente**, sobre as linhas já carregadas: não é status, e a mesma
+      função (`hasCurationPressure`) decide o filtro e o selo, então os dois
+      nunca divergem
+- [x] Combina com os filtros existentes de status, loja e período
 
 ### AC CM-7.4 — Retrocompatibilidade
-- [ ] Runs gravados antes destas stories não quebram a linha nem o drawer
-- [ ] Leitura defensiva de `parsed_output`: campo ausente, `null` ou de
+- [x] Runs gravados antes destas stories não quebram a linha nem o drawer
+- [x] Leitura defensiva de `parsed_output`: campo ausente, `null` ou de
       tipo inesperado → selo não renderiza, sem erro no console
-- [ ] Teste com `parsed_output` vazio, `null` e malformado
+- [x] Teste com `parsed_output` vazio, `null` e malformado
 
 ### AC CM-7.5 — Testes
-- [ ] Um teste por selo: presente com dado, ausente sem dado
-- [ ] Vários selos na mesma linha
-- [ ] Filtro de pressão de curadoria
-- [ ] `parsed_output` malformado
+- [x] Um teste por selo: presente com dado, ausente sem dado
+- [x] Vários selos na mesma linha
+- [x] Filtro de pressão de curadoria
+- [x] `parsed_output` malformado
 
 ---
 
 ## Tarefas
 
-- [ ] `CurationBadge` com os tokens do DS
-- [ ] Extração defensiva dos quatro sinais
-- [ ] Filtro na listagem
-- [ ] Testes
+- [x] `CurationBadge` com os tokens do DS
+- [x] Extração defensiva dos quatro sinais
+- [x] Filtro na listagem
+- [x] Testes
 
 ---
 
@@ -121,8 +125,15 @@ invisível. Custa uma linha exibir junto com os selos novos.
 - `src/lib/agents/agent-visual.ts` — se couber descrição dos selos
 
 ### A criar
-- `src/components/email-generation-logs/curation-badge.tsx`
-- `src/components/email-generation-logs/curation-badge.test.tsx`
+- `src/components/email-generation-logs/curation-signals.ts` — a regra
+- `src/components/email-generation-logs/curation-signals.test.ts`
+- `src/components/email-generation-logs/curation-badge.tsx` — a casca
+- `supabase/migrations/20261055_curation_signals_view.sql`
+
+### A modificar
+- `src/app/api/admin/email-generation-logs/route.ts`
+- `src/components/email-generation-logs/logs-workspace.tsx`
+- `src/lib/agents/architect/component-assembler.service.ts` — regressão do CM-4
 
 ---
 
@@ -131,6 +142,21 @@ invisível. Custa uma linha exibir junto com os selos novos.
 - **Bloqueado por**: CM-3 e CM-4 (fontes dos dados). O selo "fora do pool"
   já poderia ser feito hoje, com dado existente
 - **Bloqueia**: nada. Última story do épico
+
+---
+
+## Regressão corrigida junto
+
+O CM-4 removeu o run `skipped` que o CM-2 usava para registrar as stats da
+montagem, e não moveu o `blocks_skipped` para o run novo. O dado ficou só em
+`log.warn` — fora do banco. Era justamente a origem do primeiro selo desta
+story.
+
+O `finishGenerationRun` do Montador passou a fechar **depois** da montagem,
+carregando `blocks_assembled`, `blocks_skipped`, `wrapped_unknown`,
+`marker_selfcheck` e `image_tags_dropped`. A duração do LLM é capturada
+antes (`asmDurationMs`), então o número não engorda com a concatenação, que
+é instantânea. Teste de regressão trava a telemetria.
 
 ---
 
@@ -148,3 +174,4 @@ invisível. Custa uma linha exibir junto com os selos novos.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada |
+| 2026-07-30 | @dev (Dex) | Sinais derivados na view (`20261055`) como escalares — a listagem não seleciona `parsed_output`, que carrega snapshots de HTML. Lógica em `curation-signals.ts` (separada do `.tsx`: o vitest do projeto não transforma JSX), 16 testes com foco em leitura defensiva. Aba "Curadoria" filtrando no cliente. **Corrigida junto uma regressão do CM-4** (abaixo). 942/942. Status → In Review |

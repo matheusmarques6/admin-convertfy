@@ -27,6 +27,11 @@ import {
   PIPELINE_AGENT_ORDER,
   type PipelineAgentKey,
 } from "@/lib/agents/agent-visual"
+import { CurationBadges } from "./curation-badge"
+import {
+  hasCurationPressure,
+  type CurationSignals,
+} from "./curation-signals"
 
 // ── Tokens da maquete (replicados pra fidelidade visual) ──────────
 const C = {
@@ -58,6 +63,17 @@ const C = {
   infoBg: "#EEF0FB",
   infoBorder: "#C7CDEF",
 }
+/** Tokens dos selos de curadoria (CM-7) — mesma paleta da maquete. */
+const BADGE_THEME = {
+  warn: C.warn,
+  warnBg: C.warnBg,
+  warnBorder: C.warnBorder,
+  info: C.info,
+  infoBg: C.infoBg,
+  infoBorder: C.infoBorder,
+  sans: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+}
+
 const F = { sans: "Inter, -apple-system, BlinkMacSystemFont, sans-serif" }
 const TNUM = {
   fontVariantNumeric: "tabular-nums lining-nums" as const,
@@ -129,6 +145,8 @@ interface RecentRow {
   tokens_output: number | null
   retry_count: number | null
   error_message: string | null
+  /** Sinais de curadoria (CM-7). Ausente em runs anteriores à story. */
+  curation?: CurationSignals | null
 }
 interface Payload {
   window_days: number
@@ -1475,8 +1493,11 @@ function DetailRow({ row }: { row: RecentRow }) {
         <div>
           <AgentChip k={row.agent} size="sm" />
         </div>
-        <div>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}
+        >
           <StatusBadge status={row.status} />
+          <CurationBadges curation={row.curation} theme={BADGE_THEME} />
         </div>
         <span
           style={{
@@ -1598,13 +1619,15 @@ const WINDOWS = [
 
 export function LogsWorkspace() {
   const [windowDays, setWindowDays] = useState("14")
-  const [tab, setTab] = useState<"todos" | "erros" | "andamento" | "fallbacks">(
-    "todos",
-  )
+  const [tab, setTab] = useState<
+    "todos" | "erros" | "andamento" | "fallbacks" | "curadoria"
+  >("todos")
   const [agentFilter, setAgentFilter] = useState<string>("")
   const [showWindowMenu, setShowWindowMenu] = useState(false)
   const [showAgentMenu, setShowAgentMenu] = useState(false)
 
+  // "curadoria" não é status: filtra no cliente, sobre as linhas que já
+  // vieram com os sinais. Por isso a query sai sem filtro de status.
   const statusParam =
     tab === "erros"
       ? "&status=error"
@@ -1952,6 +1975,15 @@ export function LogsWorkspace() {
                     label: "Fallbacks",
                     count: payload.by_status.skipped ?? 0,
                   },
+                  {
+                    // Pressão de curadoria: o email saiu, mas a biblioteca
+                    // precisa de atenção. Contado sobre as linhas carregadas.
+                    key: "curadoria",
+                    label: "Curadoria",
+                    count: payload.recent.filter((r) =>
+                      hasCurationPressure(r.curation),
+                    ).length,
+                  },
                 ]}
               />
               <div style={{ display: "flex", gap: 8, color: C.g500, fontSize: 12 }}>
@@ -1965,7 +1997,13 @@ export function LogsWorkspace() {
                 )}
               </div>
             </div>
-            <DetailTable rows={payload.recent} />
+            <DetailTable
+              rows={
+                tab === "curadoria"
+                  ? payload.recent.filter((r) => hasCurationPressure(r.curation))
+                  : payload.recent
+              }
+            />
           </Fragment>
         )}
       </div>

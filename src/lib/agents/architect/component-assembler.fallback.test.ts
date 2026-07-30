@@ -592,6 +592,43 @@ describe("Montador — escolha de conjunto", () => {
     ).toBe("not_finalist")
   })
 
+  // Regressão: o CM-4 removeu o run antigo que carregava as stats da
+  // montagem e elas ficaram só em log.warn, fora do banco — justo o dado do
+  // selo "seções puladas". O run do Montador passou a fechar DEPOIS da
+  // montagem para carregá-las.
+  it("o run do Montador carrega as stats da montagem", async () => {
+    h.variants = [variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>")]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference({
+      ...baseInput,
+      structure: [
+        { section: "hero", label: "Hero" },
+        // Sem variante de footer na biblioteca → posição pulada.
+        { section: "footer", label: "Footer" },
+      ],
+    })
+    const parsed = (
+      finishGenerationRun.mock.calls.find(
+        (c) => (c[1] as { agent?: string }).agent === "assembler",
+      )![1] as { parsedOutput: Record<string, unknown> }
+    ).parsedOutput
+
+    expect(parsed.blocks_assembled).toBe(1)
+    expect(parsed.blocks_skipped).toEqual([
+      {
+        block_index: 1,
+        section: "footer",
+        label: "Footer",
+        reason: "missing",
+      },
+    ])
+    expect(parsed.reference_source).toBe("code")
+    // Self-checks da concatenação: sempre limpos.
+    expect(parsed.marker_selfcheck).toBe("ok")
+    expect(parsed.image_tags_dropped).toEqual([])
+    expect(parsed.html_chars).toBeGreaterThan(0)
+  })
+
   // Sem ranking não há o que escolher: pagar um LLM para não decidir nada.
   it("ranking vazio → Montador não é invocado", async () => {
     const bad = {
