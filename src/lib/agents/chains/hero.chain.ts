@@ -108,7 +108,12 @@ ESP merge tags ([unsubscribe_link], [first_name], {{ unsubscribe }}, {% ... %}, 
 <identity_rules>
 - Fonts: headings/display use <fonts>.heading (weight <fonts>.heading_weight); body/paragraph text uses <fonts>.body (weight <fonts>.body_weight).
 - Colors: where the variant uses var(--xxx), KEEP the var reference (the :root values are handled downstream). Explicit hex values you introduce must come ONLY from <color_roles>.
-- Logo (when the hero carries one): on a DARK background use <logos>.dark if non-empty, otherwise <logos>.light; on a light background use <logos>.light. Never both.
+- Logo — the hero almost always carries one, in ONE of two shapes:
+  a) an image slot (a {{LOGO}} placeholder or an <img> of the brand mark) → swap it for the markup in <logos>;
+  b) the brand name rendered as STYLED TEXT (a wordmark drawn with CSS, the name inside a bordered/pill box, letter-spaced type). Replace that text content with the markup from <logos>, keeping the cell, its padding, alignment and background exactly as they are. This is a CONTENT substitution, so it is allowed in mode `library` too — the hero is the ONLY place this happens, because the downstream image agent never touches the hero region.
+  Both empty in <logos> → leave the text as it is: it is the only brand mark the email would have.
+  Contrast: on a DARK background use <logos>.dark if non-empty, otherwise <logos>.light; on a light background use <logos>.light. Never both.
+  Report it: "logo":"light"|"dark" when you placed one, "nenhuma" ONLY when <logos> is empty or the hero genuinely has no logo — not when you simply left a text wordmark untouched.
 </identity_rules>
 
 <structural_rules>
