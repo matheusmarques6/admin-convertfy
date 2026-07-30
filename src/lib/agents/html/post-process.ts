@@ -114,6 +114,27 @@ export function stripCfyBlockMarkers(html: string): string {
 }
 
 /**
+ * Remove os wrappers de PROTOCOLO dos agentes e o que houver dentro deles.
+ *
+ * `<CFY_HERO_OUTPUT>` e `<CFY_HERO_REPORT>` existem para delimitar a
+ * resposta do modelo; nada disso é conteúdo. Um cliente de email trata tag
+ * desconhecida como invisível mas RENDERIZA o texto de dentro — foi assim
+ * que o JSON do relatório da hero (`{"imagem":"aplicada",…}`) apareceu
+ * impresso no rodapé de um email entregue.
+ *
+ * O `parseHeroFragment` já corta o relatório na origem. Isto é a rede de
+ * baixo, na última limpeza antes do email ir para o designer: qualquer
+ * agente que passe a usar um wrapper `CFY_*` fica coberto sem precisar
+ * lembrar deste caminho.
+ */
+const CFY_PROTOCOL_BLOCK = /<CFY_[A-Z0-9_]+>[\s\S]*?<\/CFY_[A-Z0-9_]+>/gi
+const CFY_PROTOCOL_TAG = /<\/?CFY_[A-Z0-9_]+>/gi
+
+export function stripAgentProtocolBlocks(html: string): string {
+  return html.replace(CFY_PROTOCOL_BLOCK, "").replace(CFY_PROTOCOL_TAG, "")
+}
+
+/**
  * Remove indentação com &nbsp;/U+00A0 no INÍCIO de linha. Origem do caso
  * Luxe Lift (jul/2026): o collapseRunawaySpacers regrediu na extração do
  * html.chain (U+00A0 virou ESPAÇO comum na alternação) e passou a colapsar

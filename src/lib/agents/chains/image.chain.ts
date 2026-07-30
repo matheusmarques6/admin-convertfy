@@ -20,7 +20,9 @@ import {
 
 const log = logger.child("ImageChain")
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `ABSOLUTE RULE — NO TEXT, NO LETTERING, NO LOGO, NO WORDMARK, NO BUTTON, NO BADGE, NO PRICE TAG, NO WATERMARK anywhere in the image. Not a headline, not a product name, not a brand name, not a call to action, not a single legible character. Every word of this brief is DIRECTION for the composition, never something to draw. All copy, the logo and the buttons are placed in HTML on top of your image — text baked into the image renders twice and cannot be edited or translated. If the composition seems to call for a headline, leave that area CLEAN and let the layout breathe there instead.
+
+EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
 
 ART DIRECTION — per image slot (schema spec, the designer's slot comment, and the block copy this image accompanies — compose to fit, NEVER render any of this text):
 {IMAGE_SLOTS}
@@ -41,7 +43,7 @@ Email context: {block_purpose}
 Requirements:
 - Clean, modern e-commerce aesthetic aligned with the brand mood
 - Show or evoke the niche/products (visual cues, lifestyle, product hints)
-- No text in the image (text is overlaid in HTML)
+- ZERO text, letters, numbers, logos or buttons rendered in the image (see the absolute rule at the top) — leave clean areas where copy will sit
 - Compose for the block's role in the email ({block_purpose}) — the exact aspect-ratio instruction is appended below
 - Product/lifestyle photography style aligned with brand tone`
 

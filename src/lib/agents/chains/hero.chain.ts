@@ -207,6 +207,26 @@ export interface InvokeHeroResult {
   rawOutput: string
 }
 
+/**
+ * Tira do fragmento qualquer vestígio do relatório.
+ *
+ * Três formas de vazamento, todas vistas ou plausíveis: o bloco completo
+ * dentro do output; a tag de abertura sem fechamento (e o JSON escorrendo
+ * até o fim); tags órfãs. `<CFY_HERO_REPORT>` é tag desconhecida no
+ * navegador — some da renderização e deixa só o JSON à mostra, que foi
+ * exatamente o que apareceu no rodapé do email.
+ */
+export function stripHeroReport(fragment: string): string {
+  let out = fragment.replace(
+    new RegExp(`${HERO_REPORT_OPEN}[\\s\\S]*?${HERO_REPORT_CLOSE}`, "gi"),
+    "",
+  )
+  // Abertura sem fechamento: o resto do texto é relatório, não conteúdo.
+  const orphan = out.indexOf(HERO_REPORT_OPEN)
+  if (orphan !== -1) out = out.slice(0, orphan)
+  return out.replaceAll(HERO_REPORT_CLOSE, "").trim()
+}
+
 /** Extrai o fragmento entre os wrappers; lança HeroOutputInvalidError. */
 export function parseHeroFragment(raw: string): string {
   const cleaned = raw.replace(/```(?:html)?\s*/gi, "").replace(/```/g, "")
@@ -221,6 +241,13 @@ export function parseHeroFragment(raw: string): string {
     .replaceAll(HERO_SENTINEL_START, "")
     .replaceAll(HERO_SENTINEL_END, "")
     .trim()
+  // O relatório é RECIBO, não conteúdo. Quando o modelo o emite DENTRO do
+  // wrapper de output (ou esquece de fechar o output antes dele), o JSON
+  // entra no documento e o cliente de email o mostra como texto no rodapé —
+  // aconteceu, e o email saiu com {"imagem":"aplicada",...} impresso na tela.
+  // O relatório continua sendo lido de `raw` por parseHeroReport; aqui ele só
+  // não pode sobreviver no fragmento.
+  fragment = stripHeroReport(fragment)
   if (!fragment || !/<table\b/i.test(fragment)) {
     throw new HeroOutputInvalidError("fragmento vazio ou sem <table>", raw)
   }

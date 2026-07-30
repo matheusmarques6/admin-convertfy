@@ -124,6 +124,7 @@ import { applyOps, parseOps } from "./html/apply-patches"
 import {
   stripUnresolvedPlaceholders,
   stripCfyBlockMarkers,
+  stripAgentProtocolBlocks,
   stripNbspIndentation,
   enforceLangAttribute,
 } from "./html/post-process"
@@ -2508,7 +2509,9 @@ async function runFormattingChain(p: {
       stripUnresolvedPlaceholders(
         stripNbspIndentation(
           stripSlotAttributes(
-            stripCfyBlockMarkers(stripSentinels(outcome.value)),
+            stripCfyBlockMarkers(
+              stripAgentProtocolBlocks(stripSentinels(outcome.value)),
+            ),
           ),
         ),
       ),

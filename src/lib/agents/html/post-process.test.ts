@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 
 import {
+  stripAgentProtocolBlocks,
   postProcessFullDocument,
   collapseRunawaySpacers,
   stripUnresolvedPlaceholders,
@@ -99,5 +100,30 @@ describe("stripNbspIndentation", () => {
   it("remove também após indentação de espaços", () => {
     const html = "<tr>\n   &nbsp;&nbsp;&nbsp;<table>x</table>\n</tr>"
     expect(stripNbspIndentation(html)).toContain("\n   <table>x</table>")
+  })
+})
+
+describe("stripAgentProtocolBlocks", () => {
+  it("tira o relatório da hero e o JSON de dentro", () => {
+    const html = `<td>oi</td><CFY_HERO_REPORT>{"imagem":"aplicada"}</CFY_HERO_REPORT>`
+    const out = stripAgentProtocolBlocks(html)
+    expect(out).toBe("<td>oi</td>")
+    expect(out).not.toContain("imagem")
+  })
+
+  it("tira tags de protocolo órfãs", () => {
+    expect(stripAgentProtocolBlocks("<CFY_HERO_OUTPUT><td>x</td>")).toBe(
+      "<td>x</td>",
+    )
+  })
+
+  it("não toca em HTML normal nem em merge tags do ESP", () => {
+    const html = '<td>[unsubscribe_link] {{ nome }} <a href="#">ok</a></td>'
+    expect(stripAgentProtocolBlocks(html)).toBe(html)
+  })
+
+  it("não confunde comentário cfy:block com wrapper de protocolo", () => {
+    const html = "<!-- cfy:block:0:hero:start --><tr></tr>"
+    expect(stripAgentProtocolBlocks(html)).toBe(html)
   })
 })
