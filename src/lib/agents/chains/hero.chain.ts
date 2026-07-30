@@ -240,6 +240,32 @@ export function heroFullDocGuard(
   return { ok: true }
 }
 
+/**
+ * Monta o system prompt do hero — story CM-1.
+ *
+ * NÃO passa por `renderImageTemplate`. Aquele renderer substitui QUALQUER
+ * `{{ALGO}}` e resolve var desconhecida para string VAZIA, então ele
+ * apagava as tags canônicas que este prompt usa como exemplo:
+ * `{{HERO_IMAGE}}`, `{{HERO_IMAGE_ALT}}`, `{{COUPON_CODE}}`,
+ * `{{HERO_HEADLINE}}`, `{{HERO_CTA_LABEL}}`, `{{PLACEHOLDERS}}` e
+ * `{{ unsubscribe }}`. O agente cuja única função é preencher esses
+ * placeholders vinha sendo instruído com a lista em branco — e o modo
+ * `library` prometia "os {{PLACEHOLDERS}} intactos" com a palavra apagada.
+ *
+ * O único ponto de interpolação legítimo aqui é o contrato de output, que
+ * é substituído literalmente. Se precisar de mais vars no system, adicione
+ * substituições explícitas — nunca volte a chamar o renderer.
+ */
+export function buildHeroSystemPrompt(
+  systemPrompt: string,
+  outputContract: string,
+): string {
+  return (systemPrompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT).replaceAll(
+    "{{output_contract}}",
+    outputContract,
+  )
+}
+
 export async function invokeHeroChain(input: {
   config: FormatChainConfig
   vars: Record<string, string>
@@ -251,9 +277,9 @@ export async function invokeHeroChain(input: {
     mode === "fragment"
       ? HERO_OUTPUT_CONTRACT_FRAGMENT
       : HERO_OUTPUT_CONTRACT_FULL_DOC
-  const systemPrompt = renderImageTemplate(
-    config.system_prompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT,
-    { output_contract: outputContract },
+  const systemPrompt = buildHeroSystemPrompt(
+    config.system_prompt,
+    outputContract,
   )
   const userMessage = renderImageTemplate(
     config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,

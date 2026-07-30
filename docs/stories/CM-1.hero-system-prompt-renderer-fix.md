@@ -3,7 +3,7 @@ Prioridade: P0
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Fase 2 / Hero
 Estimate: XS
@@ -86,7 +86,7 @@ limpo, não mostrar `{{VAR}}` cru ao modelo. A correção é no ponto de uso.
 ## Acceptance Criteria
 
 ### AC CM-1.1 — O system do hero não passa mais pelo renderer
-- [ ] `invokeHeroChain` monta o system com substituição literal apenas do
+- [x] `invokeHeroChain` monta o system com substituição literal apenas do
       contrato de output:
       ```ts
       // NÃO usar renderImageTemplate aqui: ele apagaria as {{TAGS}}
@@ -94,40 +94,40 @@ limpo, não mostrar `{{VAR}}` cru ao modelo. A correção é no ponto de uso.
       const systemPrompt = (config.system_prompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT)
         .replaceAll("{{output_contract}}", outputContract)
       ```
-- [ ] Comentário no código explicando o porquê, para ninguém "consertar"
+- [x] Comentário no código explicando o porquê, para ninguém "consertar"
       de volta
-- [ ] `user_template` continua passando por `renderImageTemplate` — ele
+- [x] `user_template` continua passando por `renderImageTemplate` — ele
       precisa das vars
 
 ### AC CM-1.2 — Teste de regressão
-- [ ] Teste que invoca o builder do prompt com o system default e afirma
+- [x] Teste que invoca o builder do prompt com o system default e afirma
       que `{{HERO_IMAGE}}`, `{{HERO_IMAGE_ALT}}`, `{{COUPON_CODE}}`,
       `{{HERO_HEADLINE}}`, `{{HERO_CTA_LABEL}}`, `{{PLACEHOLDERS}}` e
       `{{ unsubscribe }}` **sobrevivem** no texto final
-- [ ] Teste que afirma que `{{output_contract}}` **foi** substituído pelo
+- [x] Teste que afirma que `{{output_contract}}` **foi** substituído pelo
       contrato correspondente ao modo
-- [ ] Teste com `system_prompt` customizado (não vazio) contendo tag
+- [x] Teste com `system_prompt` customizado (não vazio) contendo tag
       canônica — também sobrevive
 
 ### AC CM-1.3 — Varredura dos demais chains
-- [ ] Confirmar por teste ou lint que nenhum outro chain passa
+- [x] Confirmar por teste ou lint que nenhum outro chain passa
       `system_prompt` por `renderImageTemplate`
-- [ ] Se algum passar, aplicar o mesmo tratamento
+- [x] Se algum passar, aplicar o mesmo tratamento
 
 ### AC CM-1.4 — Nada mais muda
-- [ ] Nenhuma mudança em prompt, modelo, temperatura, `max_tokens` ou
+- [x] Nenhuma mudança em prompt, modelo, temperatura, `max_tokens` ou
       fluxo. Só a montagem do system
-- [ ] Suíte de agents verde
+- [x] Suíte de agents verde
 
 ---
 
 ## Tarefas
 
-- [ ] Trocar a montagem do system em `invokeHeroChain`
-- [ ] Comentário de guarda
-- [ ] Testes de sobrevivência das tags
-- [ ] Varredura dos outros chains
-- [ ] Rodar `npm run lint` e a suíte de agents
+- [x] Trocar a montagem do system em `invokeHeroChain`
+- [x] Comentário de guarda
+- [x] Testes de sobrevivência das tags
+- [x] Varredura dos outros chains
+- [x] Rodar `npm run lint` e a suíte de agents
 
 ---
 
@@ -160,3 +160,4 @@ limpo, não mostrar `{{VAR}}` cru ao modelo. A correção é no ponto de uso.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada a partir da auditoria dos prompts do épico CM |
+| 2026-07-30 | @dev (Dex) | `buildHeroSystemPrompt` exportado e testável substitui o renderer no system. 8 testes novos: sobrevivência das 7 tags canônicas, substituição do contrato, system customizado, e um guarda que varre os 7 chains procurando `renderImageTemplate(...system_prompt`. Suíte de agents 837/837 verde, typecheck limpo. Os 9 problemas de lint são pré-existentes (confirmado com stash). Status → In Review; pendente validação visual de 2-3 emails em staging |

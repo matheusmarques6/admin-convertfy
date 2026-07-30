@@ -1,13 +1,19 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import { describe, it, expect } from "vitest"
 
 import {
   parseHeroFragment,
+  buildHeroSystemPrompt,
   HeroOutputInvalidError,
   DEFAULT_HERO_SYSTEM_PROMPT,
   DEFAULT_HERO_USER_TEMPLATE,
   HERO_OUTPUT_OPEN,
   HERO_OUTPUT_CLOSE,
+  HERO_OUTPUT_CONTRACT_FRAGMENT,
 } from "./hero.chain"
+import { renderImageTemplate } from "../image/template-renderer"
 import {
   textFormatGuard,
   DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT,
@@ -83,6 +89,81 @@ describe("textFormatGuard", () => {
     const res = textFormatGuard(input, output)
     expect(res.ok).toBe(false)
     expect(res.reason).toBe("hero_sentinels_lost")
+  })
+})
+
+// Story CM-1: os testes abaixo cobrem o prompt que CHEGA AO MODELO, não a
+// constante. Os testes de `prompts default da cadeia` afirmam que a
+// constante contém `{{HERO_IMAGE}}` — e passavam enquanto o renderer
+// apagava a tag no caminho até a API.
+describe("buildHeroSystemPrompt", () => {
+  const CANONICAL_TAGS = [
+    "{{PLACEHOLDERS}}",
+    "{{HERO_IMAGE}}",
+    "{{HERO_IMAGE_ALT}}",
+    "{{COUPON_CODE}}",
+    "{{HERO_HEADLINE}}",
+    "{{HERO_CTA_LABEL}}",
+    "{{ unsubscribe }}",
+  ]
+
+  it("preserva as tags canônicas do prompt default", () => {
+    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT_FRAGMENT)
+    for (const tag of CANONICAL_TAGS) {
+      expect(out).toContain(tag)
+    }
+  })
+
+  it("substitui o contrato de output", () => {
+    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT_FRAGMENT)
+    expect(out).not.toContain("{{output_contract}}")
+    expect(out).toContain(HERO_OUTPUT_CONTRACT_FRAGMENT)
+  })
+
+  it("preserva tag canônica em system_prompt customizado", () => {
+    const custom = "Swap {{HERO_IMAGE}} and keep {{COUPON_CODE}}.\n{{output_contract}}"
+    const out = buildHeroSystemPrompt(custom, "CONTRATO")
+    expect(out).toContain("{{HERO_IMAGE}}")
+    expect(out).toContain("{{COUPON_CODE}}")
+    expect(out).toContain("CONTRATO")
+    expect(out).not.toContain("{{output_contract}}")
+  })
+
+  it("system_prompt vazio ou só espaços cai no default", () => {
+    expect(buildHeroSystemPrompt("   ", "X")).toContain("hero_source_modes")
+  })
+
+  it("prova o bug: renderImageTemplate apagaria as tags", () => {
+    // Guarda documental — se alguém "consertar" o build de volta para o
+    // renderer, este teste mostra exatamente o que se perde.
+    const rendered = renderImageTemplate(DEFAULT_HERO_SYSTEM_PROMPT, {
+      output_contract: "X",
+    })
+    expect(rendered).not.toContain("{{HERO_IMAGE}}")
+    expect(rendered).toContain("carrying the `` placeholder")
+  })
+})
+
+// AC CM-1.3 — nenhum chain pode passar o system_prompt pelo renderer: o
+// system carrega tags canônicas como exemplo, o user_template carrega vars.
+describe("system prompts não passam por renderImageTemplate", () => {
+  const CHAINS = [
+    "hero.chain.ts",
+    "text-format.chain.ts",
+    "image-format.chain.ts",
+    "color-format.chain.ts",
+    "qa.chain.ts",
+    "component-tagger.chain.ts",
+    "copy.chain.ts",
+  ]
+
+  it.each(CHAINS)("%s", (file) => {
+    const src = readFileSync(join(__dirname, file), "utf8")
+    // Casa `renderImageTemplate(` seguido, dentro dos próximos ~120 chars,
+    // de `system_prompt` — o padrão exato do bug do CM-1. `[\s\S]` em vez
+    // da flag /s: o target do tsconfig é anterior a es2018.
+    const offending = /renderImageTemplate\([\s\S]{0,120}?system_prompt/.test(src)
+    expect(offending).toBe(false)
   })
 })
 
