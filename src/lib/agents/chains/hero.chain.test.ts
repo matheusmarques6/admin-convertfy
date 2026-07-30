@@ -6,6 +6,8 @@ import {
   decideHeroVision,
   buildHeroSystemPrompt,
   HERO_VISION_MODEL,
+  DEFAULT_HERO_SYSTEM_PROMPT,
+  DEFAULT_HERO_USER_TEMPLATE,
 } from "./hero.chain"
 
 // O relatório é RECIBO, não conteúdo. Quando o modelo o emite dentro do
@@ -143,5 +145,50 @@ describe("buildHeroSystemPrompt — nota da imagem anexada", () => {
     const p = buildHeroSystemPrompt("", "CONTRATO", true)
     expect(p).toContain("<attached_example>")
     expect(p).toContain("THE REGION WINS")
+  })
+})
+
+// O design system é o BRIEFING do agente, não uma nota de rodapé: é a
+// autoridade sobre a intenção de desenho da variante. Se ele descer para o
+// fim do prompt, ou passar a ser opcional na leitura, o agente volta a
+// adivinhar o que é banda intencional e o que é sobra.
+describe("design system é o input principal da hero", () => {
+  it("a seção abre o system prompt, logo depois do papel", () => {
+    const p = DEFAULT_HERO_SYSTEM_PROMPT
+    expect(p).toContain("<design_system>")
+    expect(p).toContain("THIS IS YOUR PRIMARY BRIEF")
+    // Antes das regras de origem da região e das regras estruturais.
+    expect(p.indexOf("<design_system>")).toBeLessThan(
+      p.indexOf("<hero_source_modes>"),
+    )
+    expect(p.indexOf("<design_system>")).toBeLessThan(
+      p.indexOf("<structural_rules>"),
+    )
+  })
+
+  it("o briefing chega ANTES do restante do contexto na mensagem", () => {
+    const t = DEFAULT_HERO_USER_TEMPLATE
+    expect(t.indexOf("{{hero_variant_design_system}}")).toBeGreaterThanOrEqual(0)
+    expect(t.indexOf("{{hero_variant_design_system}}")).toBeLessThan(
+      t.indexOf("{{hero_region_html}}"),
+    )
+    expect(t.indexOf("{{hero_variant_design_system}}")).toBeLessThan(
+      t.indexOf("{{hero_content_json}}"),
+    )
+  })
+
+  // A hierarquia que impede o briefing de virar licença para redesenhar —
+  // foi assim que a hero da Luxe Lift foi achatada.
+  it("declara o que ele NÃO supera", () => {
+    const p = DEFAULT_HERO_SYSTEM_PROMPT
+    expect(p).toContain("What it never overrides")
+    expect(p).toContain("pipeline invariants")
+    expect(p).toContain("never a licence to rebuild")
+  })
+
+  it("diz o que fazer quando não há briefing escrito", () => {
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "Empty means nothing was written for this variant",
+    )
   })
 })
