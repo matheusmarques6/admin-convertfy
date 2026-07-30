@@ -11,7 +11,10 @@ import {
   DEFAULT_HERO_USER_TEMPLATE,
   HERO_OUTPUT_OPEN,
   HERO_OUTPUT_CLOSE,
-  HERO_OUTPUT_CONTRACT_FRAGMENT,
+  HERO_OUTPUT_CONTRACT,
+  HERO_REPORT_OPEN,
+  HERO_REPORT_CLOSE,
+  parseHeroReport,
 } from "./hero.chain"
 import { renderImageTemplate } from "../image/template-renderer"
 import {
@@ -92,6 +95,79 @@ describe("textFormatGuard", () => {
   })
 })
 
+// CM-5: o relatório é DECLARAÇÃO, não instrução — o código não age sobre
+// ele, só registra e alimenta o QA. Por isso o parser é tolerante: ausência
+// ou JSON quebrado devolvem null e o fragmento vale do mesmo jeito.
+describe("parseHeroReport", () => {
+  const wrap = (json: string) =>
+    `${HERO_OUTPUT_OPEN}<table></table>${HERO_OUTPUT_CLOSE}\n${HERO_REPORT_OPEN}${json}${HERO_REPORT_CLOSE}`
+
+  it("lê o relatório completo", () => {
+    const r = parseHeroReport(
+      wrap(
+        '{"imagem":"aplicada","campos_vazios":["HERO_CTA_LABEL"],"linhas_removidas":["cta"],"logo":"dark"}',
+      ),
+    )
+    expect(r).toEqual({
+      imagem: "aplicada",
+      logo: "dark",
+      campos_vazios: ["HERO_CTA_LABEL"],
+      linhas_removidas: ["cta"],
+    })
+  })
+
+  it("aceita fences dentro do wrapper", () => {
+    const r = parseHeroReport(wrap('```json\n{"imagem":"ausente"}\n```'))
+    expect(r?.imagem).toBe("ausente")
+  })
+
+  it("sem wrapper → null", () => {
+    expect(parseHeroReport(`${HERO_OUTPUT_OPEN}<table></table>${HERO_OUTPUT_CLOSE}`)).toBeNull()
+  })
+
+  it("JSON quebrado → null, sem lançar", () => {
+    expect(parseHeroReport(wrap('{"imagem":'))).toBeNull()
+  })
+
+  it("valores fora do contrato são descartados", () => {
+    const r = parseHeroReport(
+      wrap('{"imagem":"talvez","logo":"roxo","campos_vazios":"nao-array"}'),
+    )
+    expect(r).toBeNull()
+  })
+
+  it("array com lixo é filtrado", () => {
+    const r = parseHeroReport(
+      wrap('{"campos_vazios":["OK", 42, "", null, "  OUTRO  "]}'),
+    )
+    expect(r?.campos_vazios).toEqual(["OK", "OUTRO"])
+  })
+
+  it("relatório vazio → null (nada a registrar)", () => {
+    expect(parseHeroReport(wrap("{}"))).toBeNull()
+  })
+
+  it("o relatório não contamina o fragmento", () => {
+    const raw = wrap('{"imagem":"aplicada"}')
+    expect(parseHeroFragment(raw)).toBe("<table></table>")
+  })
+})
+
+// CM-5: o contrato de output é único — o modo full_doc, em que o agente
+// devolvia o documento inteiro, foi removido.
+describe("contrato de output da hero", () => {
+  it("pede fragmento + relatório", () => {
+    expect(HERO_OUTPUT_CONTRACT).toContain(HERO_OUTPUT_OPEN)
+    expect(HERO_OUTPUT_CONTRACT).toContain(HERO_REPORT_OPEN)
+    expect(HERO_OUTPUT_CONTRACT).toContain("campos_vazios")
+  })
+
+  it("proíbe documento completo", () => {
+    expect(HERO_OUTPUT_CONTRACT).toContain("No <!DOCTYPE>")
+    expect(HERO_OUTPUT_CONTRACT.toLowerCase()).not.toContain("complete email document")
+  })
+})
+
 // Story CM-1: os testes abaixo cobrem o prompt que CHEGA AO MODELO, não a
 // constante. Os testes de `prompts default da cadeia` afirmam que a
 // constante contém `{{HERO_IMAGE}}` — e passavam enquanto o renderer
@@ -108,16 +184,16 @@ describe("buildHeroSystemPrompt", () => {
   ]
 
   it("preserva as tags canônicas do prompt default", () => {
-    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT_FRAGMENT)
+    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT)
     for (const tag of CANONICAL_TAGS) {
       expect(out).toContain(tag)
     }
   })
 
   it("substitui o contrato de output", () => {
-    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT_FRAGMENT)
+    const out = buildHeroSystemPrompt("", HERO_OUTPUT_CONTRACT)
     expect(out).not.toContain("{{output_contract}}")
-    expect(out).toContain(HERO_OUTPUT_CONTRACT_FRAGMENT)
+    expect(out).toContain(HERO_OUTPUT_CONTRACT)
   })
 
   it("preserva tag canônica em system_prompt customizado", () => {

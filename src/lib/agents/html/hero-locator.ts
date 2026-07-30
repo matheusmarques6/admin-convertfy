@@ -12,8 +12,11 @@
  *      entre o bloco anterior e a primeira tag da hero, expande por siblings
  *      balanceados até cobrir todas as tags HERO, e valida (nenhuma tag de
  *      outra seção dentro, tabelas balanceadas, não invade o próximo bloco).
- *   3. null — não localizável: o caller cai no modo full-doc (o agente hero
- *      devolve o documento inteiro com guard estrutural).
+ *   3. null — não localizável: o step FALHA (`hero_region_not_found`). O
+ *      modo full-doc, em que o agente devolvia o documento inteiro, foi
+ *      removido no CM-5: com a montagem por código os marcadores são sempre
+ *      válidos, então região ausente virou sinal de bug — e autorizar a
+ *      reescrita do email todo era a maior superfície de risco da cadeia.
  *
  * No splice o código injeta as sentinelas <!-- cfy:hero:start/end --> — a
  * partir daí os agentes seguintes têm uma região determinística pra
@@ -33,6 +36,18 @@ export const HERO_SENTINEL_END = "<!-- cfy:hero:end -->"
 
 // Mesmo formato de placeholder do reference-structure ({{TAG_MAIUSCULA}}).
 const TAG_PATTERN = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g
+
+/**
+ * Teto da fração do documento que a região da hero pode ocupar no modo
+ * `tag`. Guard contra o candidato mais externo (a tabela container) ser
+ * aceito quando os blocos vizinhos não têm tag canônica para denunciá-lo.
+ *
+ * 0.7 é folgado de propósito: uma hero grande num email curto (hero +
+ * footer) fica em torno de 50-60%; o container só é rejeitado porque leva
+ * junto tudo o que vem depois. Falso positivo aqui custa uma falha do step
+ * — falso negativo apaga o resto do email.
+ */
+const MAX_REGION_RATIO = 0.7
 
 export interface HeroRegion {
   /** Offset inclusivo do início da região. */
@@ -158,6 +173,13 @@ function findHeroByTags(html: string): HeroRegion | null {
     // Todas as tags HERO dentro; nenhuma tag de outra seção dentro.
     if (heroTags.some((t) => t.start < start || t.end > end)) continue
     if (foreign.some((t) => t.start >= start && t.end <= end)) continue
+    // A checagem de `foreign` acima só enxerga blocos que TÊM tag canônica.
+    // Um footer sem tag nenhuma não aparece ali, então o candidato mais
+    // externo — a própria tabela container de 600px — passava por todas as
+    // validações e a região engolia o resto do email; o splice então o
+    // apagava. Proporção é o sinal que resta sem tags: uma hero legítima não
+    // ocupa quase o documento inteiro.
+    if (region.length > html.length * MAX_REGION_RATIO) continue
     // Balanceamento (defensivo — scanBalancedTable já garante por tabela).
     const opens = (region.match(/<table\b/gi) ?? []).length
     const closes = (region.match(/<\/table\s*>/gi) ?? []).length
@@ -169,8 +191,8 @@ function findHeroByTags(html: string): HeroRegion | null {
 }
 
 /**
- * Localiza a região da hero no documento do Montador.
- * Cascata: marcadores cfy:block → tags canônicas → null (full-doc).
+ * Localiza a região da hero no documento.
+ * Cascata: marcadores cfy:block → tags canônicas → null (step falha).
  */
 export function locateHeroRegion(html: string): HeroRegion | null {
   if (!html) return null

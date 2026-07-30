@@ -10,9 +10,13 @@
  * o modo antigo, em que a variante (`html` + `rendered_html`) é a
  * referência estrutural a restaurar.
  *
- * Devolve SÓ o fragmento da hero (modo "fragment", splice por código via
- * hero-locator) ou o documento completo (modo "full_doc", fallback quando
- * a região não é localizável).
+ * Devolve SEMPRE o fragmento da hero — o splice é por código, via
+ * hero-locator — mais um relatório do que descartou (CM-5). O modo
+ * `full_doc`, em que o agente reescrevia o documento inteiro quando a
+ * região não era localizável, foi removido: com a montagem por código
+ * (CM-2) os marcadores são sempre válidos, então a região é sempre
+ * localizável, e autorizar a reescrita do email todo era a maior
+ * superfície de risco da cadeia para um fallback sem causa.
  *
  * Config em email_agent_configs (agent_type='hero_section'); prompt vazio
  * → defaults abaixo. Modelo default moonshotai/kimi-k3 (swap 20261047; seed original 20261039).
@@ -39,6 +43,13 @@ const timeoutMs = () => {
 export const HERO_OUTPUT_OPEN = "<CFY_HERO_OUTPUT>"
 export const HERO_OUTPUT_CLOSE = "</CFY_HERO_OUTPUT>"
 
+// Relatório do que o agente descartou (story CM-5). Hoje, quando ele remove
+// uma linha de CTA por falta de copy — comportamento CORRETO e previsto no
+// <empty_slot_rule> — ninguém fica sabendo. É declaração, não instrução: o
+// código não age sobre ele, só registra e alimenta o QA.
+export const HERO_REPORT_OPEN = "<CFY_HERO_REPORT>"
+export const HERO_REPORT_CLOSE = "</CFY_HERO_REPORT>"
+
 /** Output inválido no modo fragmento (sem wrapper / vazio) — retryable. */
 export class HeroOutputInvalidError extends Error {
   readonly raw: string
@@ -49,8 +60,6 @@ export class HeroOutputInvalidError extends Error {
   }
 }
 
-export type HeroChainMode = "fragment" | "full_doc"
-
 export const DEFAULT_HERO_SYSTEM_PROMPT = `<role>
 You are the HERO SECTION finisher of an email-design pipeline. Upstream, the Montador assembled the full email from library components and a copy agent wrote the hero copy. Your ONLY job is to deliver the hero section of THIS email finished to the standard of the library variant it came from: image placed, copy placed, typography and colors from the approved brand identity, logo correct. You never touch any other section of the email.
 </role>
@@ -60,7 +69,7 @@ You are the HERO SECTION finisher of an email-design pipeline. Upstream, the Mon
 
 - <hero_source>library</hero_source> — the region was grafted by CODE straight from the component library: it IS the authored variant, byte for byte, with its {{PLACEHOLDERS}} intact. It is STRUCTURALLY FINAL. Keep every row, cell, background band, button and image slot exactly where and as they are. Your job is SUBSTITUTION ONLY: copy into the placeholders, image URL, logo, fonts/colors. Do not add rows, do not reorder, do not merge cells, do not redesign, do not "improve" it. <hero_variant_source> and <hero_variant_rendered> arrive EMPTY in this mode on purpose — the region already is the reference.
 
-- <hero_source>montador</hero_source> — the region came from the assembler and may have been flattened. Here <hero_variant_rendered> (finished look) and <hero_variant_source> (library HTML with {{PLACEHOLDERS}}) are the structural truth, and you restore the variant's anatomy: logo band, headline, body, buttons, image — in the VARIANT's order, even if the region arrived simplified; background bands survive via bgcolor/inline style (never collapse a designed band to white); CTA slots keep the BUTTON finish (padded cell/link with background + text color), never downgraded to a bare text link; logo contrast is settled after the band background (dark band → <logos>.dark, light band → <logos>.light). If BOTH are empty, treat the region as authored correctly and only substitute.
+- <hero_source>montador</hero_source> — LEGACY fallback: the region came from a reference assembled by the old LLM Montador (before the code-side assembly) and may have been flattened. Here <hero_variant_rendered> (finished look) and <hero_variant_source> (library HTML with {{PLACEHOLDERS}}) are the structural truth, and you restore the variant's anatomy: logo band, headline, body, buttons, image — in the VARIANT's order, even if the region arrived simplified; background bands survive via bgcolor/inline style (never collapse a designed band to white); CTA slots keep the BUTTON finish (padded cell/link with background + text color), never downgraded to a bare text link; logo contrast is settled after the band background (dark band → <logos>.dark, light band → <logos>.light). If BOTH are empty, treat the region as authored correctly and only substitute.
 
 In both modes the received <hero_region> defines the BOUNDARIES of the hero and any NEIGHBOR content that must be preserved verbatim (coupon bar text, menu links). <variant_schema> explains each field's semantics and limits.
 </hero_source_modes>
@@ -99,9 +108,12 @@ Table-based email HTML only. Never place a <div> (or any non-table element) as a
 {{output_contract}}
 </output_contract>`
 
-export const HERO_OUTPUT_CONTRACT_FRAGMENT = `Emit ONLY the finished hero fragment, wrapped EXACTLY in ${HERO_OUTPUT_OPEN} and ${HERO_OUTPUT_CLOSE}. The fragment must begin and end at the SAME boundary elements as the received <hero_region> (a sequence of complete <table>...</table> blocks). No <!DOCTYPE>, no <html>/<head>/<body>, no markdown fences, no commentary, nothing outside the wrapper.`
+export const HERO_OUTPUT_CONTRACT = `Emit the finished hero fragment wrapped EXACTLY in ${HERO_OUTPUT_OPEN} and ${HERO_OUTPUT_CLOSE}. The fragment must begin and end at the SAME boundary elements as the received <hero_region> (a sequence of complete <table>...</table> blocks). No <!DOCTYPE>, no <html>/<head>/<body>, no markdown fences, no commentary.
 
-export const HERO_OUTPUT_CONTRACT_FULL_DOC = `Emit the COMPLETE email document, from <!DOCTYPE html> to </html>, with ONLY the hero section changed — every other section byte-for-byte identical to <montador_html>. No markdown fences, no commentary.`
+After the fragment, emit a short report wrapped EXACTLY in ${HERO_REPORT_OPEN} and ${HERO_REPORT_CLOSE}, as JSON:
+{"imagem":"aplicada"|"ausente","campos_vazios":["TAG",...],"linhas_removidas":["cta","imagem",...],"logo":"light"|"dark"|"nenhuma"}
+
+The report is what the pipeline knows about what you discarded. Report it honestly: a removed CTA row or an unfilled placeholder MUST appear there.`
 
 export const DEFAULT_HERO_USER_TEMPLATE = `<store>
   <brand_name>{{brand_name}}</brand_name>
@@ -164,10 +176,19 @@ export const DEFAULT_HERO_USER_TEMPLATE = `<store>
 
 Finish the hero section now, following the output contract.`
 
+/** O que o agente declara ter descartado. Opcional: ausência não falha. */
+export interface HeroReport {
+  imagem?: "aplicada" | "ausente"
+  campos_vazios?: string[]
+  linhas_removidas?: string[]
+  logo?: "light" | "dark" | "nenhuma"
+}
+
 export interface InvokeHeroResult {
-  /** Fragmento da hero (modo fragment) OU documento completo (full_doc). */
+  /** Fragmento finalizado da hero. */
   output: string
-  mode: HeroChainMode
+  /** Relatório declarado pelo agente; null quando ausente ou ilegível. */
+  report: HeroReport | null
   tokensInput: number
   tokensOutput: number
   costUsd: number
@@ -202,60 +223,50 @@ export function parseHeroFragment(raw: string): string {
 }
 
 /**
- * Guard estrutural do modo full_doc (puro): o documento devolvido precisa
- * preservar a estrutura do input — só a hero pode ter mudado. Tags de
- * imagem NÃO-hero devem sobreviver (a da hero pode ter sido consumida).
- * Tolerância de ±3 tabelas: o structure_fidelity permite reestruturar o
- * INTERIOR da hero pra espelhar a variante (faixa de logo, botões), o que
- * legitimamente muda algumas tabelas aninhadas — reescrita do documento
- * inteiro continua barrada pelo shrink + tags de imagem.
+ * Extrai o relatório do que o agente descartou. **Opcional por design**:
+ * ausência, JSON ilegível ou campos fora do contrato devolvem `null` e o
+ * caller registra `hero_report_missing`. Observabilidade não derruba
+ * entrega — o fragmento é o produto, o relatório é o recibo.
  */
-export function heroFullDocGuard(
-  inputHtml: string,
-  outputHtml: string,
-): { ok: boolean; reason?: string } {
-  if (!/<\/html>/i.test(outputHtml)) return { ok: false, reason: "no_close_html" }
-  const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
-  const ti = count(inputHtml)
-  const to = count(outputHtml)
-  if (Math.abs(ti - to) > 3) {
-    return { ok: false, reason: `table_count ${to}!=${ti}` }
+export function parseHeroReport(raw: string): HeroReport | null {
+  const open = raw.indexOf(HERO_REPORT_OPEN)
+  const close = raw.lastIndexOf(HERO_REPORT_CLOSE)
+  if (open === -1 || close === -1 || close <= open) return null
+
+  const body = raw
+    .slice(open + HERO_REPORT_OPEN.length, close)
+    .replace(/```(?:json)?/gi, "")
+    .trim()
+  if (!body) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
   }
-  if (outputHtml.length < inputHtml.length * 0.7) {
-    return { ok: false, reason: "shrunk" }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null
+
+  const rec = parsed as Record<string, unknown>
+  const out: HeroReport = {}
+  if (rec.imagem === "aplicada" || rec.imagem === "ausente") {
+    out.imagem = rec.imagem
   }
-  const nonHeroImageTags = (s: string) =>
-    new Set(
-      Array.from(
-        s.matchAll(/\{\{\s*([A-Z][A-Z0-9_]*(?:IMAGE|THUMB)[A-Z0-9_]*)\s*\}\}/g),
-        (m) => m[1],
-      ).filter((t) => !t.startsWith("HERO")),
-    )
-  const inTags = nonHeroImageTags(inputHtml)
-  const outTags = nonHeroImageTags(outputHtml)
-  const dropped = Array.from(inTags).filter((t) => !outTags.has(t))
-  if (dropped.length > 0) {
-    return { ok: false, reason: `image_tags_dropped:${dropped.slice(0, 5).join(",")}` }
+  if (rec.logo === "light" || rec.logo === "dark" || rec.logo === "nenhuma") {
+    out.logo = rec.logo
   }
-  return { ok: true }
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim())
+      : []
+  const campos = strings(rec.campos_vazios)
+  if (campos.length > 0) out.campos_vazios = campos
+  const linhas = strings(rec.linhas_removidas)
+  if (linhas.length > 0) out.linhas_removidas = linhas
+
+  return Object.keys(out).length > 0 ? out : null
 }
 
-/**
- * Monta o system prompt do hero — story CM-1.
- *
- * NÃO passa por `renderImageTemplate`. Aquele renderer substitui QUALQUER
- * `{{ALGO}}` e resolve var desconhecida para string VAZIA, então ele
- * apagava as tags canônicas que este prompt usa como exemplo:
- * `{{HERO_IMAGE}}`, `{{HERO_IMAGE_ALT}}`, `{{COUPON_CODE}}`,
- * `{{HERO_HEADLINE}}`, `{{HERO_CTA_LABEL}}`, `{{PLACEHOLDERS}}` e
- * `{{ unsubscribe }}`. O agente cuja única função é preencher esses
- * placeholders vinha sendo instruído com a lista em branco — e o modo
- * `library` prometia "os {{PLACEHOLDERS}} intactos" com a palavra apagada.
- *
- * O único ponto de interpolação legítimo aqui é o contrato de output, que
- * é substituído literalmente. Se precisar de mais vars no system, adicione
- * substituições explícitas — nunca volte a chamar o renderer.
- */
 export function buildHeroSystemPrompt(
   systemPrompt: string,
   outputContract: string,
@@ -269,21 +280,16 @@ export function buildHeroSystemPrompt(
 export async function invokeHeroChain(input: {
   config: FormatChainConfig
   vars: Record<string, string>
-  mode: HeroChainMode
 }): Promise<InvokeHeroResult> {
-  const { config, vars, mode } = input
+  const { config, vars } = input
 
-  const outputContract =
-    mode === "fragment"
-      ? HERO_OUTPUT_CONTRACT_FRAGMENT
-      : HERO_OUTPUT_CONTRACT_FULL_DOC
   const systemPrompt = buildHeroSystemPrompt(
     config.system_prompt,
-    outputContract,
+    HERO_OUTPUT_CONTRACT,
   )
   const userMessage = renderImageTemplate(
     config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,
-    { ...vars, output_contract: outputContract },
+    { ...vars, output_contract: HERO_OUTPUT_CONTRACT },
   )
 
   const t0 = Date.now()
@@ -302,19 +308,19 @@ export async function invokeHeroChain(input: {
       : { reasoning: { enabled: false } }),
   })
 
-  const output =
-    mode === "fragment" ? parseHeroFragment(res.text) : res.text
+  const output = parseHeroFragment(res.text)
+  const report = parseHeroReport(res.text)
 
   log.info("hero.invoke.success", {
     model: config.model,
-    mode,
     durationMs: Date.now() - t0,
     outputChars: output.length,
+    hasReport: report !== null,
   })
 
   return {
     output,
-    mode,
+    report,
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,

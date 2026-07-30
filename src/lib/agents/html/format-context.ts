@@ -55,7 +55,6 @@ import {
   type MergeField,
 } from "./copy-merge"
 import { extractColorInventory } from "./color-inventory"
-import type { HeroChainMode } from "../chains/hero.chain"
 
 const log = logger.child("FormatContext")
 
@@ -456,7 +455,6 @@ export function blocksInsideHeroRegion(
 export function buildHeroVars(
   ctx: FormatChainContext,
   params: {
-    mode: HeroChainMode
     regionHtml: string
     variant: HeroVariantData | null
     /**
@@ -477,14 +475,10 @@ export function buildHeroVars(
     logo_dark: ctx.logoDark,
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
-    // Fase C (arquitetura por slots): no modo fragment o agente NÃO recebe
-    // o documento inteiro do Montador — o splice é por código e a região da
-    // hero já vai separada em hero_region_html. O doc completo (~40KB) só
-    // entra no fallback full_doc, onde o agente devolve o documento inteiro
-    // com a hero trocada ("byte-for-byte identical to <montador_html>").
-    // Cortá-lo derruba o prompt de ~40KB pra ~8KB — menos tempo de
-    // reasoning do GLM (timeouts de 240s) e menos custo por run.
-    montador_html: params.mode === "full_doc" ? ctx.referenceHtml : "",
+    // O agente NUNCA recebe o documento inteiro: o splice é por código e a
+    // região vai separada em hero_region_html. O `montador_html` existia só
+    // para o fallback full_doc, removido no CM-5 (a região é sempre
+    // localizável desde a montagem por código).
     hero_region_html: params.regionHtml,
     hero_variant_html: params.grafted ? "" : (params.variant?.html ?? ""),
     hero_variant_rendered_html: params.grafted
@@ -499,9 +493,9 @@ export function buildHeroVars(
       heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
-    // Preenchida pelo chain conforme o mode (fragment/full_doc) — presente
-    // aqui só pra satisfazer o contrato/validador.
-    output_contract: params.mode,
+    // Preenchida pelo chain com o contrato de output — presente aqui só
+    // para satisfazer o validador de vars.
+    output_contract: "",
   }
   return validateVars(HeroPromptVarsSchema, vars, "hero_section")
 }

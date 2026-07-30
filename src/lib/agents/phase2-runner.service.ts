@@ -65,8 +65,6 @@ import { runQaAgent } from "./chains/qa.chain"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
-  heroFullDocGuard,
-  type HeroChainMode,
 } from "./chains/hero.chain"
 import {
   invokeTextFormatChain,
@@ -122,7 +120,6 @@ import {
 import { effectiveVariantHtml } from "./shared/component-dimensions"
 import { applyOps, parseOps } from "./html/apply-patches"
 import {
-  postProcessDocumentPreserveTags,
   stripUnresolvedPlaceholders,
   stripCfyBlockMarkers,
   stripNbspIndentation,
@@ -1926,18 +1923,27 @@ async function runFormattingChain(p: {
     const region = sentinel
       ? { start: sentinel.start, end: sentinel.end, mode: "marker" as const }
       : locateHeroRegion(fmtCtx.referenceHtml)
-    const heroMode: HeroChainMode = region ? "fragment" : "full_doc"
     const variant = heroVariant
     const variantSource = heroVariantSource
-    const regionHtml = region
-      ? fmtCtx.referenceHtml.slice(region.start, region.end)
-      : ""
-    const vars = buildHeroVars(fmtCtx, {
-      mode: heroMode,
-      regionHtml,
-      variant,
-      grafted,
-    })
+
+    // CM-5: sem a região não há o que finalizar. O fallback `full_doc` — o
+    // agente devolvendo o documento inteiro com a hero trocada — foi
+    // removido: com a montagem por código os marcadores são sempre válidos,
+    // então região ausente virou sinal de bug (ou reference legada sem
+    // marcador que também escapou do tag-locator), e autorizar a reescrita
+    // do email todo era a maior superfície de risco da cadeia.
+    if (!region) {
+      log.error("phase2.fmt.hero_region_not_found", {
+        emailId,
+        graftStatus: heroGraftStatus,
+        variantId: variant?.id ?? null,
+      })
+      await failStep("hero_section", "hero_region_not_found")
+      return { status: "failed" }
+    }
+
+    const regionHtml = fmtCtx.referenceHtml.slice(region.start, region.end)
+    const vars = buildHeroVars(fmtCtx, { regionHtml, variant, grafted })
     const config = toChainConfig(heroSwitch.config, "hero_section")
 
     const outcome = await executeFormatStep<string>({
@@ -1949,15 +1955,8 @@ async function runFormattingChain(p: {
       budgetMs,
       inputHtml: fmtCtx.referenceHtml,
       attempt: async () => {
-        const r = await invokeHeroChain({ config, vars, mode: heroMode })
-        let next: string
-        if (heroMode === "fragment" && region) {
-          next = spliceHero(fmtCtx.referenceHtml, region, r.output)
-        } else {
-          next = postProcessDocumentPreserveTags(r.output)
-          const guard = heroFullDocGuard(fmtCtx.referenceHtml, next)
-          if (!guard.ok) throw new Error(`guard: ${guard.reason}`)
-        }
+        const r = await invokeHeroChain({ config, vars })
+        const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
           value: next,
           tokensInput: r.tokensInput,
@@ -1966,12 +1965,16 @@ async function runFormattingChain(p: {
           renderedPrompt: r.renderedPrompt,
           rawOutput: r.rawOutput,
           parsed: {
-            hero_mode: region ? region.mode : "full_doc",
+            hero_mode: region.mode,
             hero_source: grafted ? "library" : "montador",
             graft_status: heroGraftStatus,
             variant_source: variantSource,
             variant_id: variant?.id ?? null,
             variant_mismatch: heroVariantMismatch,
+            // Relatório do que o agente descartou (CM-5). Ausente → o
+            // fragmento vale do mesmo jeito; só a observabilidade se perde.
+            hero_report: r.report,
+            hero_report_missing: r.report === null,
             output_html_len: next.length,
             output_sha8: sha8(next),
             output_html: htmlSnapshot(next),

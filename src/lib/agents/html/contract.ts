@@ -70,7 +70,6 @@ export const HeroPromptVarsSchema = z.object({
   logo_dark: z.string(),
   email_name: z.string(),
   subject: z.string(),
-  montador_html: z.string(),
   hero_region_html: z.string(),
   hero_variant_html: z.string(),
   hero_variant_rendered_html: z.string(),

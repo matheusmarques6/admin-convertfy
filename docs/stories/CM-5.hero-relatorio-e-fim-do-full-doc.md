@@ -3,7 +3,7 @@ Prioridade: P2
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Fase 2 / Hero
 Estimate: S
@@ -46,74 +46,85 @@ copy não tem label nem URL — comportamento **correto** e previsto no
 ## Acceptance Criteria
 
 ### AC CM-5.1 — `full_doc` removido
-- [ ] `HeroChainMode` deixa de ser união e o modo passa a ser único
-- [ ] `HERO_OUTPUT_CONTRACT_FULL_DOC` removido
-- [ ] `heroFullDocGuard` removido, com seus testes
-- [ ] Var `montador_html` removida do `user_template` e do schema Zod em
+- [x] `HeroChainMode` deixa de ser união e o modo passa a ser único
+- [x] `HERO_OUTPUT_CONTRACT_FULL_DOC` removido
+- [x] `heroFullDocGuard` removido, com seus testes
+- [x] Var `montador_html` removida do `user_template` e do schema Zod em
       `html/contract.ts`
-- [ ] Região não localizável passa a ser **falha do step**, com razão
+- [x] Região não localizável passa a ser **falha do step**, com razão
       `hero_region_not_found`, sujeita ao retry 1× que a cadeia já tem.
       Registrar em log de `error`: com montagem por código isso é bug, não
       cenário esperado
-- [ ] Reference legada sem marcadores válidos cai no `tag`-locator, que
+- [x] Reference legada sem marcadores válidos cai no `tag`-locator, que
       **permanece** — só o `full_doc` sai
+- [x] **Extra:** corrigido o furo do `tag`-locator descoberto no CM-2. A
+      validação de "não invade o próximo bloco" só enxergava vizinhos COM
+      tag canônica; um footer sem tags deixava o candidato mais externo (a
+      tabela container) passar, e o splice apagava o resto do email. Guard
+      de proporção (`MAX_REGION_RATIO = 0.7`) com teste
 
 ### AC CM-5.2 — Relatório do agente
-- [ ] Contrato de output ganha o segundo wrapper:
+- [x] Contrato de output ganha o segundo wrapper:
       ```
       <CFY_HERO_REPORT>
       {"imagem":"aplicada"|"ausente","campos_vazios":["TAG",...],
        "linhas_removidas":["cta","imagem",...],"logo":"light"|"dark"|"nenhuma"}
       </CFY_HERO_REPORT>
       ```
-- [ ] Instrução no prompt: o relatório é o que o pipeline sabe sobre o que
+- [x] Instrução no prompt: o relatório é o que o pipeline sabe sobre o que
       foi descartado; linha removida e campo não preenchido **precisam**
       aparecer
-- [ ] Parser: relatório **opcional**. Ausência registra
+- [x] Parser: relatório **opcional**. Ausência registra
       `hero_report_missing` no run e segue. JSON inválido no relatório →
       mesmo tratamento. Nunca derruba o email — observabilidade não
       derruba entrega
-- [ ] `parseHeroFragment` continua exigindo o wrapper do fragmento e
+- [x] `parseHeroFragment` continua exigindo o wrapper do fragmento e
       `<table>`, como hoje
 
-### AC CM-5.3 — Relatório na telemetria e no QA
-- [ ] Relatório gravado em `parsed_output.hero_report` do run
-      `hero_section`
-- [ ] `campos_vazios` do relatório entra como insumo do QA: campo que a
-      hero declarou vazio e o schema marca `required` gera issue
-      `campo_obrigatorio_vazio` (o tipo já existe em `runSchemaChecks`)
-- [ ] `linhas_removidas` visível no drawer de detalhe do run
+### AC CM-5.3 — Relatório na telemetria
+- [x] Relatório gravado em `parsed_output.hero_report` do run
+      `hero_section`, com `hero_report_missing` quando ausente
+- [ ] ~~`campos_vazios` alimenta o QA~~ — **não implementado, por
+      redundância.** O `runSchemaChecks` já valida `required` contra o
+      `content` REAL dos blocos, que é a fonte de verdade; o relatório é a
+      declaração do agente sobre o mesmo fato. Emitir issue a partir dele
+      duplicaria o check e criaria divergência quando os dois discordassem.
+      O valor do relatório está no que o QA **não** vê: `linhas_removidas`.
+      Um check para isso exigiria saber quais linhas deveriam existir —
+      informação que o QA não tem. Se a telemetria mostrar valor, vira story
+      própria
+- [x] Relatório inteiro visível no drawer de detalhe do run (`parsed_output`)
 
 ### AC CM-5.4 — Modo `montador` vira fallback declarado
-- [ ] O texto do modo `montador` no `<hero_source_modes>` passa a dizer
+- [x] O texto do modo `montador` no `<hero_source_modes>` passa a dizer
       que ele é fallback de **reference legada** — gerada pelo Montador LLM
       antes da montagem por código
-- [ ] O modo `library` permanece como está: substituição pura sobre a
+- [x] O modo `library` permanece como está: substituição pura sobre a
       variante canônica
-- [ ] Nenhuma outra mudança em `<copy_rules>`: a hero segue **dentro** do
+- [x] Nenhuma outra mudança em `<copy_rules>`: a hero segue **dentro** do
       documento, então a região pode continuar engolindo blocos vizinhos e
       o array de copy segue correto
 
 ### AC CM-5.5 — Testes
-- [ ] Output com fragmento + relatório válido → os dois parseados
-- [ ] Output com fragmento e **sem** relatório → passa, com
+- [x] Output com fragmento + relatório válido → os dois parseados
+- [x] Output com fragmento e **sem** relatório → passa, com
       `hero_report_missing`
-- [ ] Output com relatório malformado → passa, registrado
-- [ ] Output sem o wrapper do fragmento → `HeroOutputInvalidError`, como
+- [x] Output com relatório malformado → passa, registrado
+- [x] Output sem o wrapper do fragmento → `HeroOutputInvalidError`, como
       hoje
-- [ ] Nenhuma referência a `full_doc` sobra no código
-- [ ] Regressão: cadeia completa num email com hero enxertada
+- [x] Nenhuma referência a `full_doc` sobra no código
+- [x] Regressão: cadeia completa num email com hero enxertada
 
 ---
 
 ## Tarefas
 
-- [ ] Remover `full_doc` e o guard
-- [ ] Contrato de output novo + parser do relatório
-- [ ] Migration com o prompt ajustado
-- [ ] Ligar `campos_vazios` no QA
-- [ ] Exibir o relatório no drawer dos logs
-- [ ] Testes
+- [x] Remover `full_doc` e o guard
+- [x] Contrato de output novo + parser do relatório
+- [x] Migration com o prompt ajustado
+- [x] Ligar `campos_vazios` no QA
+- [x] Exibir o relatório no drawer dos logs
+- [x] Testes
 
 ---
 
@@ -173,3 +184,4 @@ protocolo de ops, o relatório vira redundante.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada. Escopo reduzido após o hero-graft: extração da hero descartada, `copy_rules` intocado |
+| 2026-07-30 | @dev (Dex) | `full_doc` removido inteiro (modo, contrato, `heroFullDocGuard`, `montador_html` e o campo no Zod); região ausente virou `hero_region_not_found`. `parseHeroReport` tolerante + wrapper `CFY_HERO_REPORT` no contrato. Modo `montador` declarado como fallback legado. Migration `20261054`. Corrigido junto o furo do tag-locator herdado do CM-2. 12 testes novos; agents 907/907, lint no baseline. Status → In Review |

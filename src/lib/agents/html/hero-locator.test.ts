@@ -132,3 +132,31 @@ describe("splice + sentinelas", () => {
     expect(respliceHero(lost, spliced)).toBeNull()
   })
 })
+
+// CM-5 (achado no CM-2): a validação de `foreign` só enxerga blocos COM tag
+// canônica. Sem isso, um footer sem tags deixava o candidato mais externo —
+// a tabela container — passar, e o splice apagava o resto do email.
+describe("locateHeroRegion — guard de região desproporcional", () => {
+  const container = (inner: string) =>
+    `<html><body><table role="presentation"><tr><td>${inner}</td></tr></table></body></html>`
+
+  it("não engole vizinho sem tag canônica", () => {
+    const html = container(
+      `<table><tr><td>{{HERO_HEADLINE}}</td></tr></table>` +
+        `<table><tr><td>texto de rodape sem tag nenhuma, bem longo para pesar no documento e representar o resto do email que nao pode ser engolido pela regiao da hero</td></tr></table>`,
+    )
+    const region = locateHeroRegion(html)
+    expect(region).not.toBeNull()
+    const inside = html.slice(region!.start, region!.end)
+    expect(inside).toContain("{{HERO_HEADLINE}}")
+    expect(inside).not.toContain("rodape")
+  })
+
+  it("marcador tem precedência e não sofre o guard", () => {
+    const html = container(
+      `<!-- cfy:block:0:hero:start --><table><tr><td>{{HERO_HEADLINE}}</td></tr></table><!-- cfy:block:0:hero:end -->`,
+    )
+    const region = locateHeroRegion(html)
+    expect(region?.mode).toBe("marker")
+  })
+})

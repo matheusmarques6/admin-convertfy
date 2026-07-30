@@ -44,25 +44,25 @@ function minimalCtx(): FormatChainContext {
   }
 }
 
-describe("buildHeroVars — montador_html por modo", () => {
-  it("fragment: montador_html VAZIO (só a região vai no prompt)", () => {
+// CM-5: o `montador_html` foi removido junto com o modo full_doc. O agente
+// NUNCA vê o documento inteiro — recebe a região e devolve o fragmento; o
+// splice é por código.
+describe("buildHeroVars — o agente nunca recebe o documento", () => {
+  it("só a região vai no prompt", () => {
     const vars = buildHeroVars(minimalCtx(), {
-      mode: "fragment",
       regionHtml: HERO_REGION,
       variant: null,
     })
-    expect(vars.montador_html).toBe("")
     expect(vars.hero_region_html).toBe(HERO_REGION)
+    expect(vars).not.toHaveProperty("montador_html")
   })
 
-  it("full_doc: montador_html leva o documento completo (o agente devolve o doc inteiro)", () => {
+  it("nenhuma var carrega o documento completo", () => {
     const ctx = minimalCtx()
-    const vars = buildHeroVars(ctx, {
-      mode: "full_doc",
-      regionHtml: "",
-      variant: null,
-    })
-    expect(vars.montador_html).toBe(ctx.referenceHtml)
+    const vars = buildHeroVars(ctx, { regionHtml: HERO_REGION, variant: null })
+    for (const value of Object.values(vars)) {
+      expect(value).not.toBe(ctx.referenceHtml)
+    }
   })
 })
 
@@ -81,7 +81,6 @@ describe("buildHeroVars — modo enxertado", () => {
 
   it("grafted: variante e rendered saem do prompt, hero_source=library", () => {
     const vars = buildHeroVars(minimalCtx(), {
-      mode: "fragment",
       regionHtml: HERO_REGION,
       variant,
       grafted: true,
@@ -93,7 +92,6 @@ describe("buildHeroVars — modo enxertado", () => {
 
   it("sem enxerto: variante e rendered continuam sendo o espelho", () => {
     const vars = buildHeroVars(minimalCtx(), {
-      mode: "fragment",
       regionHtml: HERO_REGION,
       variant,
     })
