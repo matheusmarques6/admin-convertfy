@@ -1,9 +1,15 @@
 # Curador, Montador e Hero — prompts e contratos de output
 
 > Especificação fechada em 30/jul/2026. Estado: **APROVADA, não
-> implementada**. Redefine os papéis do Curador e do Montador, mata o
-> pré-filtro determinístico, move a montagem do documento para o código e
-> transforma a Hero em bloco isolado. O agente de Imagem não é afetado.
+> implementada** — quebrada nas stories `CM-1`..`CM-7`. Redefine os papéis
+> do Curador e do Montador, mata o pré-filtro determinístico e move a
+> montagem do documento para o código. O agente de Imagem não é afetado.
+>
+> **Revisão de 30/jul após rebase:** o commit `408673b` (hero-graft) já
+> entrega a variante canônica ao agente de hero por enxerto no documento.
+> A ideia de finalizar a hero **fora** do documento foi **descartada** — o
+> ganho que ela buscava já existe. O escopo da hero encolheu para: matar o
+> modo `full_doc`, ajustar o prompt e adicionar o relatório.
 >
 > Escopo deste documento: do briefing até a Hero. Texto, imagem, cores e
 > QA ficam de fora — só o que quebra neles está listado no fim.
@@ -18,7 +24,7 @@
 | Concatenação | — | **código**: HTMLs efetivos na ordem + marcadores `cfy:block` |
 | Blueprint | esqueleto do HTML do LLM | idêntico, sobre HTML confiável |
 | Imagem | `image_spec` + `slot_note` | **idêntico** |
-| Hero (`hero_section`) | região recortada do documento, 3 modos, splice | **bloco isolado**: variante + renderizado; inserção por marcador |
+| Hero (`hero_section`) | variante enxertada por código na região (`hero_source=library`, já em produção) | igual, **sem** modo `full_doc`, com relatório do que descartou |
 
 Decisões que sustentam o desenho:
 
@@ -347,58 +353,46 @@ const systemPrompt = (config.system_prompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT)
 
 Corrigível hoje, independente do resto desta especificação.
 
-### Cirurgias no prompt
+### O que o hero-graft já resolveu
+
+O commit `408673b` reescreveu o prompt e mudou o insumo do agente. Hoje o
+código enxerta o HTML canônico da variante (`html_tagged` aprovado, senão
+`html`) na região da hero **antes** de qualquer agente rodar
+(`html/hero-graft.ts`), normaliza as fontes e marca `<hero_source>`:
+
+| `hero_source` | Significado | Liberdade do agente |
+|---|---|---|
+| `library` | região enxertada por código: **é** a variante, byte a byte, com `{{PLACEHOLDERS}}` intactos | **substituição pura** — não move linha, não reordena, não redesenha |
+| `montador` | região veio do Montador e pode ter sido achatada | restaura a anatomia da variante a partir de `hero_variant_source` |
+
+No modo `library`, `hero_variant_source` e `hero_variant_rendered` chegam
+**vazios de propósito**: a região já é a referência.
+
+Consequências para esta especificação:
+
+- A ideia de finalizar a hero **fora** do documento foi descartada. O
+  problema que ela resolvia — região achatada chegando ao agente — já não
+  existe.
+- Com a concatenação por código (CM-2), o documento passa a nascer dos
+  HTMLs canônicos das variantes, então a região da hero **já é** a
+  variante e o graft vira no-op no caminho principal. Ele continua
+  necessário como rede para references legadas, persistidas pelo Montador
+  LLM antes da mudança.
+- O modo `montador` deixa de ser o caminho comum e passa a ser fallback de
+  reference legada.
+
+### O que ainda muda no prompt
 
 | Bloco | Ação |
 |---|---|
-| `<gold_reference>` | O modo degradado "variante desconhecida" sai — o `slot_map` sempre diz qual é. Entra "renderizado ausente": nunca cadastrado, ou descartado por hash divergente |
-| `<structure_fidelity>` | Sai tudo sobre "o Montador pode ter achatado a região" e sobre `<hero_region>` definir fronteiras e **conteúdo vizinho** (barra de cupom, menu) |
-| `<copy_rules>` | Deixa de ser "array com a copy de todo bloco dentro da região"; passa a ser os campos do **bloco da hero** |
 | `<output_contract>` | Só fragmento, mais o relatório. `HERO_OUTPUT_CONTRACT_FULL_DOC` sai |
+| `<hero_source_modes>` | Mantém os dois modos; o texto do modo `montador` passa a dizer que ele é fallback de reference legada |
+| `<copy_rules>` | **Não muda.** A hero segue no documento, então a região pode continuar engolindo blocos vizinhos e o array de copy segue correto |
+| `<hero_image_hard_rule>`, `<empty_slot_rule>`, `<merge_tags_are_literal>`, `<identity_rules>`, `<structural_rules>` | Seguem como estão |
 
-### Blocos reescritos
-
-```
-<gold_reference>
-<hero_variant_rendered> is the FINISHED look of this hero variant — a real,
-rendered example of how it looks when done right (image treatment, spacing,
-text placement, button finish). Reproduce THAT finish using THIS store's
-data. <hero_variant_source> is the same variant as authored in the library,
-with {{PLACEHOLDERS}}; <variant_schema> explains each field's semantics and
-limits.
-If <hero_variant_rendered> is EMPTY, the variant has no approved rendered
-example (or the existing one no longer matches the source and was
-discarded). In that case <hero_variant_source> is the only truth: keep its
-structure and perform the substitutions below.
-</gold_reference>
-
-<structure_fidelity>
-The VARIANT is the structural truth of this hero. You receive it whole — not
-a fragment cut out of a larger document — and you deliver it finished:
-- Row order and anatomy follow the variant: logo band, headline, body,
-  buttons, image, in the VARIANT's order.
-- Background bands SURVIVE: a colored band in the variant (dark logo bar,
-  tinted hero background) is reproduced via bgcolor/inline style, using the
-  variant's var(--xxx) or <color_roles>. Never let a designed band collapse
-  to plain white.
-- CTA slots keep the variant's BUTTON finish: a padded cell/link with
-  background and text color from <color_roles> or the variant's vars. NEVER
-  downgrade a styled button into a bare underlined text link.
-- Logo contrast is settled AFTER the band background: dark band →
-  <logos>.dark (fallback .light), light band → <logos>.light. A light logo on
-  a white background is ALWAYS wrong.
-</structure_fidelity>
-
-<copy_rules>
-<hero_content> carries the copy of THIS hero block — one entry per field of
-<variant_schema>, with its tag and value. Fill every placeholder in the
-variant with the matching value, VERBATIM: do not rewrite, translate,
-summarize or invent copy. CTA hrefs come from the fields' URLs.
-</copy_rules>
-```
-
-`<hero_image_hard_rule>`, `<empty_slot_rule>`, `<merge_tags_are_literal>`,
-`<identity_rules>` e `<structural_rules>` seguem como estão.
+O risco de "hero composta" que este documento registrava **deixa de
+existir**: como a hero não é extraída, a copy dos blocos vizinhos continua
+chegando pelo array.
 
 ### Novo output contract
 
@@ -420,23 +414,18 @@ O relatório é **opcional no parser**: ausência registra
 `hero_report_missing` no run e segue. Não vira motivo de falha do email —
 observabilidade não derruba entrega.
 
-### User template
-
-Sai `<montador_html>` e `<hero_region>`. Fica store, `color_roles`,
-`fonts`, `logos`, email, `hero_variant_source`, `hero_variant_rendered`,
-`variant_schema`, `hero_content`, `hero_image`.
-
 ### Config e tool
 
 | | Antes | Agora |
 |---|---|---|
-| vars | `montador_html`, `hero_region_html` | **removidas** — mexe no Zod de `html/contract.ts:74-75` |
+| `montador_html` | enviado no modo `full_doc` | **removido** — mexe no Zod de `html/contract.ts` |
+| `hero_region_html` | enviado | **mantido** — a hero segue no documento |
 | `HeroChainMode` | `fragment` \| `full_doc` | um só |
 | `heroFullDocGuard` | guard de documento | **sai inteiro** |
 | `parseHeroFragment` | wrapper `CFY_HERO_OUTPUT` | mantém, mais o parse do relatório |
-| `blocksInsideHeroRegion` | interseção de tags da região | **sai** — passa a ser os fields do bloco hero |
-| timeout | 240s dimensionado com 40KB no prompt | folgado |
-| `rendered_html` | sempre enviado | enviado **só** se o hash de origem casar |
+| `blocksInsideHeroRegion` | interseção de tags da região | **mantido** |
+| modelo | `z-ai/glm-5.2` | `moonshotai/kimi-k3` desde `fb43b87` |
+| `rendered_html` | vazio no modo `library` | enviado só quando for HTML estrutural **e** o hash casar (CM-6) |
 
 ### Interação com o kill-switch da aba Agentes
 
@@ -444,28 +433,35 @@ O toggle `is_active` virou kill-switch de verdade (commit `36aa04a`):
 `hero_section` com todas as rows inativas → o step é **pulado**, com run
 `skipped`, `model='disabled'` e `reason='agent_disabled'`.
 
-No desenho antigo isso funcionava porque a hero vivia dentro do documento
-e o resto da cadeia cuidava dos placeholders dela. Com a hero extraída,
-pular o agente deixaria o bloco sem dono. Regra:
+Com a hero permanecendo no documento, isso já se comporta bem: o enxerto é
+feito por código antes do step, então a região fica com a variante
+canônica e seus `{{PLACEHOLDERS}}`, e o `copy_merge` preenche o que tem
+âncora. O agente desligado custa o acabamento (imagem, logo, tipografia),
+não a estrutura.
 
-> **A extração da hero só acontece se o agente estiver ligado.** Com
-> `hero_section` desativado, o bloco da hero **permanece no documento** e
-> segue pela cadeia normal — `copy_merge` preenche os placeholders por
-> código, e texto/imagem/cores tratam o bloco como qualquer outro.
+Nada a fazer nesta especificação — registrado porque era um risco no
+desenho descartado da hero extraída, onde pular o agente deixaria o bloco
+sem dono.
 
-Assim o kill-switch continua sendo um kill-switch, sem abrir um caminho em
-que a hero sai crua.
+### Hash de origem do renderizado (CM-6)
 
-### Hash de origem do renderizado
+Decisão de 30/jul: o `rendered_html` **deveria** ser HTML estrutural, mas
+o que está cadastrado hoje é, ao menos em parte, mockup-imagem de ~1.7KB
+(constatação em `html/hero-graft.ts:7`). Antes de reintroduzi-lo como
+referência de acabamento, os dados precisam ser auditados.
 
-Coluna nova `rendered_html_source_sha`, gravada com `sha(html)` no momento
-em que o renderizado é salvo. Se `sha(html atual) != rendered_html_source_sha`,
-o renderizado está comprovadamente velho: o código **não envia** o
-renderizado, registra no run e a aba Componentes mostra o aviso na
-variante. A regra vive no código — o prompt só precisa saber lidar com
-renderizado ausente, que já é o caso das variantes sem cadastro.
+Story CM-6, em duas partes:
 
----
+1. **Auditoria**: classificar cada variante entre renderizado estrutural e
+   mockup, por conteúdo (tamanho, densidade de tags, presença de `<table>`
+   estrutural). Relatório visível na aba Componentes.
+2. **Hash de origem**: coluna `rendered_html_source_sha`, gravada com
+   `sha(html)` no momento em que o renderizado é salvo. O agente só recebe
+   o renderizado quando ele é estrutural **e** o hash casa com o `html`
+   atual. Divergência → não envia, registra no run, avisa na variante.
+
+Enquanto a auditoria não rodar, o comportamento fica o de hoje: no modo
+`library` o renderizado não é enviado.
 
 ## Compatibilidade — o que quebra junto
 
@@ -479,9 +475,10 @@ renderizado ausente, que já é o caso das variantes sem cadastro.
   `resolveChoices` (vira o parser do Montador).
   `validateBlockMarkers` **fica**, como self-check da concatenação: custa
   nada e pega bug de código.
-- **`text_format`**: o prompt tem regras explícitas de não tocar na região
-  da hero. Com a hero fora do documento, ficam obsoletas — e regra
-  obsoleta em prompt é ruído que o modelo tenta obedecer.
+- **`text_format`**: nada a fazer. A hero segue no documento, então as
+  regras de não tocar na região dela continuam válidas.
+- **`hero-graft.ts`**: vira no-op no caminho novo (a região já é a
+  variante) e **permanece** como rede para reference legada. Não remover.
 - **Blueprint rota B (LLM)**: intacta, mas passa a quase nunca disparar —
   o esqueleto agora vem de HTML montado por código.
 
@@ -492,12 +489,11 @@ renderizado ausente, que já é o caso das variantes sem cadastro.
    Curador devolvendo ~2,5k tokens e o fallback sendo falhar o email, o
    caminho de mitigação — se incomodar — é `response_format: json_schema`
    no OpenRouter, para onde o Curador já roteia.
-2. **Hero composta.** O prompt novo assume que a copy da hero são os
-   campos do bloco da hero. Variante de hero que engole cupom ou faixa de
-   logo **sem declarar esses campos no `output_schema` dela** deixa essa
-   copy órfã — é o bug `Use code '' for off` voltando por outra porta.
-   Varrer a biblioteca por variantes `hero` cujo HTML tem placeholder fora
-   do schema **antes** de trocar o prompt.
+2. **Reference legada.** Emails cujo `store_email_references.html` foi
+   gravado pelo Montador LLM continuam existindo e não são regerados sem
+   `force`. Para eles o documento segue achatado e o graft da hero segue
+   sendo o que salva a região. A concatenação por código só vale para
+   arquitetura nova — o graft não pode ser removido junto.
 3. **Cache do catálogo tem TTL de 5 minutos**, renovado a cada acerto. Um
    lote de 12 emails em sequência mantém vivo; lojas com intervalo maior
    pagam a escrita de novo. Editar a biblioteca no meio de um lote custa
