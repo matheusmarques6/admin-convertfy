@@ -107,12 +107,31 @@ const rank = (...ids: string[]) => ({
 })
 const CHOICE_V1 = rank("v1")
 
+// CM-4: a 2ª invocação é o Montador escolhendo entre os finalistas. Nos
+// testes do Curador ele confirma o rank 1 — o `mockResolvedValue` do
+// beforeEach cobre qualquer chamada não coberta por `...Once`.
+const pick = (...pairs: Array<[number, string]>) => ({
+  raw: JSON.stringify(
+    pairs.map(([block_index, variant_id]) => ({
+      block_index,
+      variant_id,
+      rank: 1,
+    })),
+  ),
+  tokensInput: 3,
+  tokensOutput: 3,
+})
+const ASSEMBLER_CONFIRMA = pick([0, "v1"])
+
 beforeEach(() => {
   h.upsertSpy.mockClear()
   invokeAgent.mockReset()
   finishGenerationRun.mockClear()
   loadActiveAgentConfig.mockReset()
   loadActiveAgentConfig.mockResolvedValue(null)
+  // Default: o Montador confirma o rank 1. Testes do Curador usam
+  // `mockResolvedValueOnce` para a 1ª chamada e caem aqui na 2ª.
+  invokeAgent.mockResolvedValue(ASSEMBLER_CONFIRMA)
   h.variants = [variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>")]
 })
 
@@ -122,7 +141,8 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
   it("escolhe (passo A) e monta por código → persiste a reference (source=code)", async () => {
     invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     const res = await assembleStoreReference(baseInput)
-    expect(invokeAgent).toHaveBeenCalledTimes(1)
+    // 1ª = Curador (ranking), 2ª = Montador (escolha).
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
     expect(h.upsertSpy).toHaveBeenCalledTimes(1)
     expect(res.html).toContain("</html>")
     expect(res.html).toContain("{{HERO_HEADLINE}}")
@@ -184,9 +204,13 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     await assembleStoreReference(baseInput)
     invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     await assembleStoreReference({ ...baseInput, emailNumber: 2 })
-    const a = (invokeAgent.mock.calls[0][2] as Record<string, string>).catalogo
-    const b = (invokeAgent.mock.calls[1][2] as Record<string, string>).catalogo
-    expect(a).toBe(b)
+    // As chamadas do Curador são a 0 e a 2 — a 1 é o Montador, que não
+    // recebe systemVars.
+    const catalogos = invokeAgent.mock.calls
+      .map((c) => (c[2] as Record<string, string> | undefined)?.catalogo)
+      .filter(Boolean)
+    expect(catalogos).toHaveLength(2)
+    expect(catalogos[0]).toBe(catalogos[1])
   })
 
   it("catálogo leva orientacao_copy/notas; schema fica FORA (é do Montador)", async () => {
@@ -254,10 +278,12 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
   // inventado nas duas tentativas → falha explícita, sem arquitetura gravada.
   it("id inventado nas 2 tentativas → CuratorFailedError, sem persistir", async () => {
     const bad = { raw: '[{"block_index":0,"escolhas":[{"variant_id":"nao-existe"}]}]', tokensInput: 1, tokensOutput: 1 }
-    invokeAgent.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad)
+    invokeAgent.mockReset()
+    invokeAgent.mockResolvedValue(bad)
     await expect(assembleStoreReference(baseInput)).rejects.toThrow(
       CuratorFailedError,
     )
+    // O Montador nem chega a rodar: a exceção sobe antes.
     expect(invokeAgent).toHaveBeenCalledTimes(2)
     expect(h.upsertSpy).not.toHaveBeenCalled()
   })
@@ -290,14 +316,16 @@ describe("Curador — retry e falha", () => {
       .mockResolvedValueOnce({ raw: "não é json", tokensInput: 1, tokensOutput: 1 })
       .mockResolvedValueOnce(CHOICE_V1)
     const res = await assembleStoreReference(baseInput)
-    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    // 2 tentativas do Curador + 1 do Montador.
+    expect(invokeAgent).toHaveBeenCalledTimes(3)
     expect(res.source).toBe("code")
     expect(res.variantIds).toEqual(["v1"])
   })
 
   it("JSON quebrado nas 2 tentativas → CuratorFailedError, sem persistir", async () => {
     const bad = { raw: "prosa sem json", tokensInput: 1, tokensOutput: 1 }
-    invokeAgent.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad)
+    invokeAgent.mockReset()
+    invokeAgent.mockResolvedValue(bad)
     await expect(assembleStoreReference(baseInput)).rejects.toThrow(
       /curador_failed/,
     )
@@ -306,6 +334,7 @@ describe("Curador — retry e falha", () => {
   })
 
   it("invoke lançando erro nas 2 tentativas → CuratorFailedError", async () => {
+    invokeAgent.mockReset()
     invokeAgent.mockRejectedValue(new Error("timeout"))
     await expect(assembleStoreReference(baseInput)).rejects.toThrow(
       CuratorFailedError,
@@ -313,10 +342,11 @@ describe("Curador — retry e falha", () => {
     expect(invokeAgent).toHaveBeenCalledTimes(2)
   })
 
-  it("não retenta quando a 1ª tentativa já é válida", async () => {
+  it("não retenta o Curador quando a 1ª tentativa já é válida", async () => {
     invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     await assembleStoreReference(baseInput)
-    expect(invokeAgent).toHaveBeenCalledTimes(1)
+    // Só as 2 invocações do fluxo normal: Curador + Montador.
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
   })
 
   // O system é editável na aba Agentes: sem o catálogo o Curador escolheria
@@ -430,6 +460,152 @@ describe("Curador — retry e falha", () => {
     expect(parsed.ranking).toEqual({ 0: ["v2", "v1"] })
     expect(parsed.attempts).toBe(1)
     expect(parsed.catalog_variants).toBe(2)
+  })
+})
+
+// ── CM-4: o Montador escolhe entre os finalistas ──────────────────────
+describe("Montador — escolha de conjunto", () => {
+  const doisHeros = () => {
+    h.variants = [
+      variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("v2", "hero", "<tr><td>{{HERO_SUBHEAD}}</td></tr>"),
+    ]
+  }
+
+  const asmRun = () =>
+    finishGenerationRun.mock.calls.find(
+      (c) => (c[1] as { agent?: string }).agent === "assembler",
+    )![1] as { parsedOutput: Record<string, unknown>; status: string }
+
+  it("recebe os finalistas do Curador, com rank e schema compacto", async () => {
+    h.variants = [
+      {
+        ...variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+        copy_guidance: "GUIA",
+        output_schema: [
+          {
+            key: "headline",
+            label: "Headline",
+            type: "text_short",
+            max_len: 40,
+            required: true,
+            example: "EXEMPLO-NAO-VAI",
+            guidance: "GUIDE-NAO-VAI",
+          },
+        ],
+      },
+      variant("v2", "hero", "<tr><td>{{HERO_SUBHEAD}}</td></tr>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(rank("v1", "v2"))
+    await assembleStoreReference(baseInput)
+
+    const vars = invokeAgent.mock.calls[1][1] as Record<string, string>
+    const finalistas = JSON.parse(vars.finalists_json)
+    expect(finalistas[0].block_index).toBe(0)
+    expect(finalistas[0].opcoes.map((o: { rank: number }) => o.rank)).toEqual([1, 2])
+    expect(finalistas[0].opcoes[0].variant_id).toBe("v1")
+    // O schema é o insumo EXCLUSIVO do Montador...
+    expect(finalistas[0].opcoes[0].campos[0].key).toBe("headline")
+    expect(finalistas[0].opcoes[0].campos[0].required).toBe(true)
+    // ...na versão compacta: example/guidance servem à copy, não à escolha.
+    expect(vars.finalists_json).not.toContain("EXEMPLO-NAO-VAI")
+    expect(vars.finalists_json).not.toContain("GUIDE-NAO-VAI")
+    // E nada de HTML: ele não escreve nada.
+    expect(vars.finalists_json).not.toContain("{{HERO_HEADLINE}}")
+  })
+
+  it("recebe a mesma memória do Curador, sem query nova", async () => {
+    doisHeros()
+    invokeAgent.mockResolvedValueOnce(rank("v1", "v2"))
+    await assembleStoreReference(baseInput)
+    const curadorVars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    const montadorVars = invokeAgent.mock.calls[1][1] as Record<string, string>
+    expect(montadorVars.memoria).toBe(curadorVars.memoria)
+  })
+
+  it("escolha do rank 2 vira a variante do documento e conta desvio", async () => {
+    doisHeros()
+    invokeAgent
+      .mockResolvedValueOnce(rank("v1", "v2"))
+      .mockResolvedValueOnce({
+        raw: JSON.stringify([
+          {
+            block_index: 0,
+            variant_id: "v2",
+            rank: 2,
+            motivo: "o 1º repete a faixa da hero anterior",
+          },
+        ]),
+        tokensInput: 3,
+        tokensOutput: 3,
+      })
+    const res = await assembleStoreReference(baseInput)
+    expect(res.variantIds).toEqual(["v2"])
+    expect(res.html).toContain("{{HERO_SUBHEAD}}")
+
+    const parsed = asmRun().parsedOutput
+    expect(parsed.desvios).toBe(1)
+    expect(parsed.degraded).toBe(false)
+    expect(
+      (parsed.desvios_por_posicao as Array<{ motivo: string }>)[0].motivo,
+    ).toContain("repete a faixa")
+  })
+
+  it("confirmação do rank 1 não conta desvio", async () => {
+    doisHeros()
+    invokeAgent.mockResolvedValueOnce(rank("v1", "v2"))
+    await assembleStoreReference(baseInput)
+    expect(asmRun().parsedOutput.desvios).toBe(0)
+  })
+
+  // Aqui o fallback é legítimo: o ranking do Curador já é composição válida.
+  it("Montador falhando → cai no rank 1 e o email sai mesmo assim", async () => {
+    doisHeros()
+    invokeAgent
+      .mockResolvedValueOnce(rank("v1", "v2"))
+      .mockRejectedValueOnce(new Error("timeout"))
+    const res = await assembleStoreReference(baseInput)
+    expect(res.source).toBe("code")
+    expect(res.variantIds).toEqual(["v1"])
+    const run = asmRun()
+    expect(run.status).toBe("error")
+    expect(run.parsedOutput.degraded).toBe(true)
+    expect(
+      (run.parsedOutput.forced_rank1 as Array<{ reason: string }>)[0].reason,
+    ).toBe("malformed")
+  })
+
+  it("id fora dos finalistas → rank 1, registrado, email sai", async () => {
+    doisHeros()
+    invokeAgent.mockResolvedValueOnce(rank("v1", "v2")).mockResolvedValueOnce({
+      raw: JSON.stringify([
+        { block_index: 0, variant_id: "inventado", rank: 1 },
+      ]),
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    const res = await assembleStoreReference(baseInput)
+    expect(res.variantIds).toEqual(["v1"])
+    expect(
+      (asmRun().parsedOutput.forced_rank1 as Array<{ reason: string }>)[0]
+        .reason,
+    ).toBe("not_finalist")
+  })
+
+  // Sem ranking não há o que escolher: pagar um LLM para não decidir nada.
+  it("ranking vazio → Montador não é invocado", async () => {
+    const bad = {
+      raw: '[{"block_index":0,"escolhas":[{"variant_id":"nao-existe"}]}]',
+      tokensInput: 1,
+      tokensOutput: 1,
+    }
+    invokeAgent.mockReset()
+    invokeAgent.mockResolvedValue(bad)
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow(
+      CuratorFailedError,
+    )
+    // 2 tentativas do Curador e nada mais.
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
   })
 })
 

@@ -3,7 +3,7 @@ Prioridade: P1
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Fase 1 / Arquitetura
 Estimate: M
@@ -49,96 +49,99 @@ seção 2.
 ## Acceptance Criteria
 
 ### AC CM-4.1 — Prompt novo
-- [ ] `system_prompt` do `assembler` substituído: sai toda instrução de
+- [x] `system_prompt` do `assembler` substituído: sai toda instrução de
       montagem de HTML (slots de imagem, tags canônicas, marcadores de
       bloco, container 600px, CSS variables, blocos sem variante); entra o
       critério de conjunto
-- [ ] Regra de decisão explícita: **1ª indicação do Curador por padrão**;
+- [x] Regra de decisão explícita: **1ª indicação do Curador por padrão**;
       sair dela exige uma das três razões — conjunto, viabilidade ou
       histórico
-- [ ] Migration faz `UPDATE` in-place da linha ativa, como os demais
+- [x] Migration faz `UPDATE` in-place da linha ativa, como os demais
       prompts do projeto
-- [ ] `max_tokens` de 16384 para **2048**
-- [ ] Modelo permanece `anthropic/claude-opus-4.8`. `temperature` segue
+- [x] `max_tokens` de 16384 para **2048**
+- [x] Modelo permanece `anthropic/claude-opus-4.8`. `temperature` segue
       irrelevante (Opus 4.7/4.8 não a recebe, por `modelSupportsTemperature`)
 
 ### AC CM-4.2 — Input: finalistas de todas as posições
-- [ ] `{{finalists_json}}` por posição: `block_index`, `section`, `label`
+- [x] `{{finalists_json}}` por posição: `block_index`, `section`, `label`
       e as opções com `rank`, `variant_id`, `name`, `description`,
       `quando_usar`, `quando_nao_usar`, `product_slots`,
       `orientacao_copy`, `notas_implementacao`, `motivo_curador` (só no
       rank 1) e `campos`
-- [ ] `campos` é o `output_schema` **compacto**: `key`, `label`, `type`,
+- [x] `campos` é o `output_schema` **compacto**: `key`, `label`, `type`,
       `nature`, `max_len`, `required`. Sem `example` nem `guidance` —
       esses servem à copy e à imagem, não à escolha
-- [ ] `{{memoria}}` presente: o mesmo objeto que o Curador recebe, com o
+- [x] `{{memoria}}` presente: o mesmo objeto que o Curador recebe, com o
       email anterior da loja e o mesmo email em outras lojas.
       `loadCuradorMemory` já é carregado uma vez em
       `assembleStoreReference` — reusar, sem query nova
-- [ ] `{{top_products}}` presente, para cruzar com `product_slots`
-- [ ] Nenhum HTML de variante entra no prompt
+- [x] `{{top_products}}` presente, para cruzar com `product_slots`
+- [x] Nenhum HTML de variante entra no prompt
 
 ### AC CM-4.3 — Output
-- [ ] Contrato:
+- [x] Contrato:
       ```json
       [{"block_index":0,"variant_id":"...","rank":1},{"block_index":1,"variant_id":"...","rank":2,"motivo":"..."}]
       ```
-- [ ] `motivo` **obrigatório** quando `rank != 1` e **proibido** quando
+- [x] `motivo` **obrigatório** quando `rank != 1` e **proibido** quando
       `rank = 1` — mantém o output curto e evita justificativa inventada
       para confirmar o óbvio
-- [ ] Uma entrada por posição que tenha finalistas, na ordem de
+- [x] Uma entrada por posição que tenha finalistas, na ordem de
       `block_index`
 
 ### AC CM-4.4 — Parser e validações
-- [ ] `variant_id` fora dos finalistas daquela posição → cai para o rank 1
+- [x] `variant_id` fora dos finalistas daquela posição → cai para o rank 1
       do Curador, registrado em `parsed_output.forced_rank1`
-- [ ] `rank` autodeclarado divergente do real → **corrigido pelo código**.
+- [x] `rank` autodeclarado divergente do real → **corrigido pelo código**.
       O rank do output é telemetria, não fonte de verdade
-- [ ] Posição ausente no output → cai para o rank 1, registrado
-- [ ] `motivo` ausente com `rank != 1` → aceito e registrado em
+- [x] Posição ausente no output → cai para o rank 1, registrado
+- [x] `motivo` ausente com `rank != 1` → aceito e registrado em
       `parsed_output.missing_motivo`. Observabilidade não derruba email
-- [ ] `motivo` presente com `rank = 1` → descartado, registrado
-- [ ] JSON inválido → retry 1×; segunda falha → **cai para o rank 1 em
-      todas as posições** e o run fica `status='degraded'`. Aqui o
-      fallback é legítimo: o ranking do Curador já é uma composição
-      válida, ao contrário do cenário de CM-3
+- [x] `motivo` presente com `rank = 1` → descartado, registrado
+- [x] Erro de invoke ou JSON inválido → **cai para o rank 1 em todas as
+      posições**, sem retry: o ranking do Curador já é composição válida e
+      uma segunda tentativa só atrasaria o mesmo resultado. **Desvio da
+      spec:** `GenerationRunStatus` não tem `degraded` (é `running | success
+      | error | skipped`), então o run fica `error` — o status reflete o
+      AGENTE — e `parsed_output.degraded: true` reflete a COMPOSIÇÃO, que
+      saiu íntegra
 
 ### AC CM-4.5 — Telemetria
-- [ ] `parsed_output` do run `assembler` passa a carregar: `desvios`
+- [x] `parsed_output` do run `assembler` passa a carregar: `desvios`
       (quantas posições saíram do rank 1), `desvios_por_posicao`,
       `forced_rank1`, `missing_motivo`, `escolhas` (id + rank por posição)
-- [ ] `desvios` é a métrica que mede se o Curador está rankeando bem — se
+- [x] `desvios` é a métrica que mede se o Curador está rankeando bem — se
       ficar perto de 0, a segunda passada é barata; passando de ~40%, o
       critério do Curador precisa revisão
-- [ ] Custo do run reflete o output novo (~500 tokens)
+- [x] Custo do run reflete o output novo (~500 tokens)
 
 ### AC CM-4.6 — Limpeza
-- [ ] `extractHtml`, `looksLikeHtml` e `findDroppedImageTags` deixam de
+- [x] `extractHtml`, `looksLikeHtml` e `findDroppedImageTags` deixam de
       ser usados no caminho do Montador. `findDroppedImageTags` permanece
       como self-check da concatenação (CM-2)
-- [ ] `resolveChoices` substituído pelo parser novo
-- [ ] `DEFAULT_ASSEMBLER_SYSTEM` e `DEFAULT_ASSEMBLER_USER` de montagem
+- [x] `resolveChoices` substituído pelo parser novo
+- [x] `DEFAULT_ASSEMBLER_SYSTEM` e `DEFAULT_ASSEMBLER_USER` de montagem
       removidos, junto com os testes que os cobrem
 
 ### AC CM-4.7 — Testes
-- [ ] Parser: id fora dos finalistas, rank divergente, posição ausente,
+- [x] Parser: id fora dos finalistas, rank divergente, posição ausente,
       motivo ausente/indevido, JSON com fence, JSON truncado
-- [ ] Fallback: segunda falha → rank 1 em todas as posições, run
+- [x] Fallback: segunda falha → rank 1 em todas as posições, run
       `degraded`
-- [ ] Prompt: `finalists_json` sem `example`/`guidance` e sem HTML
-- [ ] Integração: escolha do Montador chega ao `slot_map` e ao documento
+- [x] Prompt: `finalists_json` sem `example`/`guidance` e sem HTML
+- [x] Integração: escolha do Montador chega ao `slot_map` e ao documento
       concatenado na ordem certa
 
 ---
 
 ## Tarefas
 
-- [ ] Builder do `finalists_json`
-- [ ] Parser de escolhas + validações
-- [ ] Migration com o prompt novo e `max_tokens` 2048
-- [ ] Telemetria de desvios
-- [ ] Remover o que era da montagem
-- [ ] Testes
+- [x] Builder do `finalists_json`
+- [x] Parser de escolhas + validações
+- [x] Migration com o prompt novo e `max_tokens` 2048
+- [x] Telemetria de desvios
+- [x] Remover o que era da montagem
+- [x] Testes
 
 ---
 
@@ -196,3 +199,4 @@ o Curador, aí sim vale testar um modelo menor.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada |
+| 2026-07-30 | @dev (Dex) | `assembler-choice.parser.ts` (5 validações, fallback sempre para o rank 1), `buildFinalistsJson` (schema compacto, sem example/guidance nem HTML), prompt reescrito, memória compartilhada com o Curador sem query nova, telemetria de `desvios`. Migration `20261053` (max_tokens 16384 → 2048). Guard: ranking vazio não invoca o Montador. 13 testes no parser + 7 de integração; agents+dispatch 913/913 antes da limpeza, 895/895 depois. Status → In Review |

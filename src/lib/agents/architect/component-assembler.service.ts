@@ -1,17 +1,30 @@
 /**
- * Component Assembler (Epic AE — passo B).
+ * Component Assembler — a arquitetura do email de uma loja (épico CM).
  *
- * GERA a estrutura HTML do email (a arquitetura: layout, ordem dos blocos,
- * seções) com o LLM, usando como input: briefing, nicho, HTMLs de referência
- * (curado), a biblioteca de componentes (`email_component_variants`) como
- * inspiração e a estrutura geral (outline/sections). O HTML produzido é
- * persistido em `store_email_references` e passa a ocupar o papel do
- * reference_html (build-vars.ts) — o agente HTML downstream só repinta com a
- * identidade da loja e despeja a copy, por isso roda em modelo barato.
+ * Três etapas, nesta ordem:
  *
- * Degrade seguro: LLM falha / output não-HTML → fallback determinístico
- * concatena o top-1 das variantes pré-filtradas; pool vazio → nenhum
- * reference é gravado e o consumidor cai no template global.
+ *   1. CURADOR (LLM) — recebe o catálogo INTEIRO da biblioteca no system
+ *      prompt e rankeia até 3 variantes por posição, em ordem de
+ *      preferência. Decide por descrição e metadados; não vê HTML nem
+ *      schema.
+ *   2. MONTADOR (LLM) — recebe os finalistas de TODAS as posições de uma vez,
+ *      mais o `output_schema` de cada um, e escolhe UMA por posição olhando o
+ *      email inteiro (coerência do conjunto e viabilidade de dados). Não
+ *      escreve HTML nem copy.
+ *   3. MONTAGEM (código) — concatena os HTMLs canônicos das escolhidas na
+ *      ordem, dentro do shell de 600px, com os marcadores `cfy:block`. O
+ *      resultado é persistido em `store_email_references` junto do
+ *      `slot_map`, e passa a ocupar o papel do reference_html (build-vars).
+ *
+ * Modos de falha, deliberadamente diferentes:
+ *   - Curador sem ranking utilizável → retry 1× e `CuratorFailedError`, sem
+ *     gravar arquitetura. Não há mais score para servir de fallback, e
+ *     composição arbitrária é pior que falha visível.
+ *   - Montador falhando → cai no rank 1 do Curador e o email sai. Aqui o
+ *     fallback é legítimo: o ranking já é uma composição avaliada posição a
+ *     posição.
+ *   - Nenhum bloco montável → nada é persistido e o consumidor cai no
+ *     template global.
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -33,7 +46,15 @@ import {
   type ParsedRanking,
   type RankedChoice,
 } from "./curator-ranking.parser"
-import { effectiveVariantHtml } from "../shared/component-dimensions"
+import {
+  parseAssemblerChoices,
+  decisionMap,
+  type ParsedAssemblerChoices,
+} from "./assembler-choice.parser"
+import {
+  deriveFieldNature,
+  effectiveVariantHtml,
+} from "../shared/component-dimensions"
 import { assembleDocument, validateBlockMarkers } from "./assemble-document"
 import type { OutlineSection } from "./outline-sections"
 import {
@@ -161,6 +182,62 @@ export const DEFAULT_CHOOSER_USER = `<store>
 </sequencia_do_email>
 
 Para CADA block_index de <sequencia_do_email>, selecione em <biblioteca> as até ${CHOOSER_TOP_N} variantes do tipo daquela posição, em ordem de preferência. Responda APENAS o array JSON.`
+
+// ── PASSO B — Montador: escolhe 1 entre os finalistas, olhando o email
+// INTEIRO (story CM-4). Ele não escreve HTML nem copy: decide a COMPOSIÇÃO.
+const DEFAULT_ASSEMBLER_MODEL = "anthropic/claude-opus-4.8"
+
+/**
+ * Teto de output do Montador. Era 16384 quando ele gerava o documento; agora
+ * o output é um JSON de ~500 tokens.
+ */
+export const ASSEMBLER_MAX_TOKENS = 2048
+
+export const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Composição de email da Convertfy. O Curador já rankeou, para cada posição do email, até ${CHOOSER_TOP_N} variantes da biblioteca. Sua tarefa: escolher UMA por posição, olhando o EMAIL INTEIRO.
+
+Você não escreve HTML e não escreve copy. Você decide a COMPOSIÇÃO.
+
+O que só você vê: o schema de output de cada finalista — os campos que aquele bloco vai exigir da copy e das imagens, com tipo, limite e obrigatoriedade.
+
+Como decidir:
+- PADRÃO: fique com a 1ª indicação do Curador. Ela é o mérito daquela posição avaliada isoladamente. Você só sai dela por uma das razões abaixo.
+- Razão de CONJUNTO: duas posições ficariam com a mesma variante, ou com variantes de linguagem visual idêntica (mesma faixa, mesma anatomia); o email ficaria monótono ou desequilibrado na densidade; abertura e fechamento não conversam.
+- Razão de VIABILIDADE: o schema do 1º exige dado que esta loja não tem (campo obrigatório de cupom sem oferta no contexto, mais slots de produto do que <top_products>) e o 2º ou o 3º resolve.
+- Razão de HISTÓRICO: <memoria> mostra que a 1ª indicação já ocupou posição equivalente no email anterior desta loja, ou vem se repetindo em outras lojas, e existe finalista igualmente adequada.
+- Toda posição que tem finalistas recebe uma escolha. Descartar posição é decisão do sistema, não sua — nunca devolva posição em branco.
+- Nunca escolha um variant_id que não esteja entre os finalistas daquela posição.
+
+Responda APENAS o array JSON, sem markdown e sem texto ao redor. Uma entrada por posição, na ordem de block_index. \`rank\` é a colocação da variante escolhida no ranking do Curador (1, 2 ou 3). \`motivo\` é OBRIGATÓRIO quando rank for diferente de 1 e PROIBIDO quando rank for 1:
+
+[{"block_index":0,"variant_id":"...","rank":1},{"block_index":1,"variant_id":"...","rank":2,"motivo":"..."}]`
+
+export const DEFAULT_ASSEMBLER_USER = `<store>
+- marca: {{brand_name}}
+- nicho: {{nicho}}
+- posicionamento: {{posicionamento}}
+- persona: {{persona}}
+- tom de voz: {{tom_voz}}
+</store>
+
+<outline>
+- objetivo: {{outline_objective}}
+- diretriz: {{outline_guidance}}
+- tom sugerido: {{outline_tone_hint}}
+</outline>
+
+<top_products>
+{{top_products}}
+</top_products>
+
+<memoria>
+{{memoria}}
+</memoria>
+
+<finalistas_por_posicao>
+{{finalists_json}}
+</finalistas_por_posicao>
+
+Escolha AGORA uma variante por posição, olhando o email inteiro. Responda APENAS o array JSON.`
 
 export interface AssemblerChoice {
   block_index: number
@@ -399,6 +476,63 @@ async function loadActiveVariantsByType(): Promise<{
 }
 
 /**
+ * Finalistas por posição para o Montador (story CM-4).
+ *
+ * Cada opção leva os metadados do Curador MAIS o `output_schema` COMPACTO —
+ * `key`, `label`, `type`, `nature`, `max_len`, `required`. É o insumo
+ * exclusivo dele: revela que um bloco vai EXIGIR campo obrigatório de cupom
+ * ou 4 slots de produto numa loja com 2.
+ *
+ * `example` e `guidance` do schema ficam de fora: servem à copy e à imagem,
+ * não à escolha. HTML também não entra — o Montador não escreve nada.
+ */
+export function buildFinalistsJson(params: {
+  ranking: Map<number, RankedChoice[]>
+  byId: Map<string, EmailComponentVariant>
+  sections: string[]
+  labels: string[]
+}): string {
+  const { ranking, byId, sections, labels } = params
+  const positions = Array.from(ranking.keys())
+    .sort((a, b) => a - b)
+    .map((blockIndex) => ({
+      block_index: blockIndex,
+      section: sections[blockIndex] ?? "",
+      label: labels[blockIndex] ?? sections[blockIndex] ?? "",
+      opcoes: (ranking.get(blockIndex) ?? []).flatMap((choice, idx) => {
+        const v = byId.get(choice.variant_id)
+        if (!v) return []
+        return [
+          {
+            rank: idx + 1,
+            variant_id: v.id,
+            name: v.name,
+            description: v.description ?? "",
+            quando_usar: v.when_use ?? "",
+            quando_nao_usar: v.when_not_use ?? "",
+            product_slots: v.product_slots ?? 0,
+            orientacao_copy: v.copy_guidance ?? "",
+            notas_implementacao: v.long_description ?? "",
+            // Só no rank 1: é a tese do Curador para aquela posição.
+            ...(idx === 0 && choice.motivo
+              ? { motivo_curador: choice.motivo }
+              : {}),
+            campos: (v.output_schema ?? []).map((f) => ({
+              key: f.key,
+              label: f.label,
+              type: f.type,
+              nature: deriveFieldNature(f),
+              max_len: f.max_len ?? 0,
+              required: f.required === true,
+            })),
+          },
+        ]
+      }),
+    }))
+  return JSON.stringify(positions)
+}
+
+/**
  * Monta o reference HTML da loja a partir dos blocos do blueprint.
  * Retorna `html: null` quando não há nenhuma variante (consumidor cai no
  * template global).
@@ -569,31 +703,17 @@ export async function assembleStoreReference(
   }
 
   const rankingByBlock = ranking?.byBlock ?? new Map<number, RankedChoice[]>()
-
-  // Slots ordenados: uma posição POR BLOCO da estrutura, na ordem. Enquanto o
-  // Montador não escolhe entre os finalistas (CM-4), o código fica com o
-  // RANK 1 — equivalente ao comportamento anterior, mas escolhido sobre a
-  // biblioteca inteira em vez do top-8 por score.
   const byId = new Map<string, EmailComponentVariant>(
     eligible.map((v) => [v.id, v]),
   )
-  const slots: AssemblySlot[] = sections.map((section, i) => {
-    const label = input.structure[i]?.label ?? section
-    const top = rankingByBlock.get(i)?.[0]
-    const variant = top ? byId.get(top.variant_id) : undefined
-    if (!variant) return { kind: "missing", section, label }
-    return { kind: "variant", variant, section, label }
-  })
-  const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
-  const missingCount = slots.filter((s) => s.kind === "missing").length
 
   const chooserTelemetry = {
     sections: input.structure.length,
     catalog_variants: catalog.total,
     catalog_types: catalog.types.length,
     attempts,
-    chosen: chosen.length,
-    // Ranking completo — insumo do Montador (CM-4) e auditoria da curadoria.
+    positions_ranked: rankingByBlock.size,
+    // Ranking completo — insumo do Montador e auditoria da curadoria.
     ranking: ranking ? rankingIds(ranking) : {},
     motivos: ranking ? topMotivos(ranking) : {},
     // Validações do parser (o catálogo vai inteiro, então o modelo pode
@@ -609,9 +729,11 @@ export async function assembleStoreReference(
     candidates_excluded_untagged: excludedUntagged,
   }
 
-  // Nenhuma posição recebeu variante depois do retry → não há composição.
-  // Falha explícita, sem gravar arquitetura.
-  if (chosen.length === 0) {
+  // Nenhuma posição recebeu finalista depois do retry → não há o que
+  // escolher. Falha explícita, sem gravar arquitetura e sem invocar o
+  // Montador: mandá-lo decidir sobre um ranking vazio seria pagar um LLM
+  // para não decidir nada.
+  if (rankingByBlock.size === 0) {
     await finishGenerationRun(chooserRunId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
@@ -640,6 +762,137 @@ export async function assembleStoreReference(
         : "curador_failed",
     )
   }
+
+
+  // ── PASSO B — Montador: escolhe 1 entre os finalistas de CADA posição,
+  // vendo o email inteiro de uma vez (story CM-4).
+  const asmRow = await loadActiveAgentConfig("assembler")
+  const asmConfig: AgentInvokeConfig = {
+    model: asmRow?.model || input.defaultModel || DEFAULT_ASSEMBLER_MODEL,
+    temperature: asmRow?.temperature ?? 0.3,
+    max_tokens: asmRow?.max_tokens ?? ASSEMBLER_MAX_TOKENS,
+    system_prompt: asmRow?.system_prompt?.trim() || DEFAULT_ASSEMBLER_SYSTEM,
+    user_template: asmRow?.user_template?.trim() || DEFAULT_ASSEMBLER_USER,
+  }
+
+  const finalistsJson = buildFinalistsJson({
+    ranking: rankingByBlock,
+    byId,
+    sections,
+    labels: input.structure.map((st, i) => st.label ?? sections[i]),
+  })
+
+  const t1 = Date.now()
+  const asmRunId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    model: asmConfig.model,
+    inputVars: { positions: rankingByBlock.size },
+  })
+
+  let asmRaw = ""
+  let asmTokensIn = 0
+  let asmTokensOut = 0
+  let asmCostUsd = 0
+  let asmError: string | null = null
+  let decisions: ParsedAssemblerChoices | null = null
+  try {
+    const res = await invokeAgent(asmConfig, {
+      brand_name: input.brandName,
+      nicho: input.nicho,
+      posicionamento: input.posicionamento,
+      persona: input.persona,
+      tom_voz: input.tomVoz,
+      outline_objective: input.outlineObjective,
+      outline_guidance: input.outlineGuidance,
+      outline_tone_hint: input.outlineToneHint,
+      top_products:
+        input.topProductNames.length > 0
+          ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
+          : "(sem produtos cadastrados)",
+      // Mesma memória que o Curador recebeu — carregada uma vez, sem query
+      // nova. É insumo da razão de HISTÓRICO da escolha final.
+      memoria: renderCuradorMemory(memory),
+      finalists_json: finalistsJson,
+    })
+    asmRaw = res.raw
+    asmTokensIn = res.tokensInput
+    asmTokensOut = res.tokensOutput
+    asmCostUsd = res.costUsd
+  } catch (err) {
+    asmError = err instanceof Error ? err.message : String(err)
+    log.warn("assembler.choice_failed", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      error: asmError,
+    })
+  }
+
+  // Aqui o fallback é LEGÍTIMO, ao contrário do Curador: o ranking já é uma
+  // composição válida, avaliada posição por posição. Erro do Montador degrada
+  // para o rank 1, nunca derruba o email.
+  decisions = parseAssemblerChoices({ raw: asmRaw, ranking: rankingByBlock })
+  const chosenById = decisionMap(decisions)
+
+  const slots: AssemblySlot[] = sections.map((section, i) => {
+    const label = input.structure[i]?.label ?? section
+    const id = chosenById.get(i)
+    const variant = id ? byId.get(id) : undefined
+    if (!variant) return { kind: "missing", section, label }
+    return { kind: "variant", variant, section, label }
+  })
+
+  await finishGenerationRun(asmRunId, {
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    // O email é gerado de qualquer forma (fallback para o rank 1); o status
+    // reflete o AGENTE, e `degraded` no parsed_output reflete a COMPOSIÇÃO.
+    status: asmError || decisions.malformed ? "error" : "success",
+    model: asmConfig.model,
+    errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
+    inputVars: { positions: rankingByBlock.size },
+    rawOutput: asmRaw.slice(0, 8000),
+    parsedOutput: {
+      degraded: Boolean(asmError) || decisions.malformed,
+      escolhas: decisions.decisions.map((d) => ({
+        block_index: d.block_index,
+        variant_id: d.variant_id,
+        rank: d.rank,
+      })),
+      // Métrica do épico: com que frequência o Montador corrige o Curador.
+      // Perto de 0 → a segunda passada é barata; acima de ~40% → o critério
+      // do Curador precisa revisão.
+      desvios: decisions.desvios.length,
+      desvios_por_posicao: decisions.desvios.map((d) => ({
+        block_index: d.block_index,
+        variant_id: d.variant_id,
+        rank: d.rank,
+        motivo: d.motivo ?? null,
+      })),
+      forced_rank1: decisions.forcedRank1,
+      missing_motivo: decisions.missingMotivo,
+      extra_motivo: decisions.extraMotivo,
+      rank_mismatch: decisions.rankMismatch,
+    },
+    tokensInput: asmTokensIn,
+    tokensOutput: asmTokensOut,
+    costCents: resolveCostCents({
+      model: asmConfig.model,
+      tokensInput: asmTokensIn,
+      tokensOutput: asmTokensOut,
+      costUsd: asmCostUsd,
+    }),
+    durationMs: Date.now() - t1,
+  })
+
+  const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
 
   // Registra as escolhas desta geração no histórico append-only (memória do
   // Curador). Fire-and-forget: não bloqueia o run nem falha a geração.
@@ -686,7 +939,6 @@ export async function assembleStoreReference(
   // O documento é a concatenação dos HTMLs canônicos das variantes
   // escolhidas. Nenhum LLM participa: não há como achatar a variante,
   // remover tag de imagem ou emitir marcador inválido.
-  const t1 = Date.now()
   const assembled = assembleDocument({
     slots,
     fonts: { heading: input.fontHeading, body: input.fontBody },
@@ -750,51 +1002,6 @@ export async function assembleStoreReference(
       skipped: assembled.stats.skipped,
     })
   }
-
-  // Run do Montador: nesta story ele não escolhe nem monta (CM-4 dá o papel
-  // novo). Registrado como skipped para a linha continuar aparecendo nos
-  // gen-logs com a razão.
-  const asmRow = await loadActiveAgentConfig("assembler")
-  const asmRunId = await startGenerationRun({
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: asmRow?.id,
-    model: "code",
-    inputVars: { sections: input.structure.length, chosen: chosen.length },
-  })
-  await finishGenerationRun(asmRunId, {
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: asmRow?.id,
-    status: "skipped",
-    model: "code",
-    inputVars: {
-      sections: input.structure.length,
-      chosen: chosen.length,
-      missing: missingCount,
-    },
-    parsedOutput: {
-      reason: "montagem_por_codigo",
-      reference_source: source,
-      html_chars: html.length,
-      variant_ids: variantIds.length,
-      blocks: assembled.stats.blocks,
-      // Posições que ficaram FORA do email (selo nos logs — CM-7).
-      blocks_skipped: assembled.stats.skipped,
-      fonts_normalized: assembled.stats.fontsNormalized,
-      // Self-checks: os dois têm de ser sempre limpos.
-      marker_selfcheck: markerCheck.status,
-      image_tags_dropped: droppedImageTags,
-    },
-    tokensInput: 0,
-    tokensOutput: 0,
-    costCents: 0,
-    durationMs: Date.now() - t1,
-  })
 
   return { html, variantIds, source, slots }
 }
