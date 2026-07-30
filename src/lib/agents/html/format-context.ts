@@ -38,6 +38,7 @@ import {
   type ImageMapEntry,
 } from "./build-vars"
 import { precheckBrandReady } from "./brand-guards"
+import { resolveRenderedReference } from "../shared/rendered-reference"
 import { DEFAULT_REFERENCE_SKELETON } from "./default-reference"
 import { deriveColorRoles, type ColorRoles } from "./color-roles"
 import {
@@ -249,6 +250,8 @@ export interface HeroVariantData {
   html_tagged: string | null
   tagging_status: string | null
   rendered_html: string | null
+  /** Hash do `html` que originou o exemplo renderizado (CM-6). */
+  rendered_html_source_sha?: string | null
   output_schema: unknown
   block_type: string
 }
@@ -481,9 +484,15 @@ export function buildHeroVars(
     // localizável desde a montagem por código).
     hero_region_html: params.regionHtml,
     hero_variant_html: params.grafted ? "" : (params.variant?.html ?? ""),
+    // CM-6: o exemplo renderizado só entra quando é HTML estrutural E o hash
+    // bate com o `html` atual. Um padrão de acabamento que descreve uma
+    // versão antiga da variante é pior que exemplo nenhum — e a maior parte
+    // do que está cadastrado hoje é mockup-imagem, não HTML.
     hero_variant_rendered_html: params.grafted
       ? ""
-      : (params.variant?.rendered_html ?? ""),
+      : (params.variant
+          ? resolveRenderedReference(params.variant).html
+          : null) ?? "",
     hero_source: params.grafted ? "library" : "montador",
     hero_variant_schema_json: params.variant?.output_schema
       ? JSON.stringify(params.variant.output_schema, null, 2)

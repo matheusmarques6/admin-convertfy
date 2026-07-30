@@ -11,6 +11,8 @@
  */
 
 import { useMemo, useState, type ReactNode } from "react"
+
+import { resolveRenderedReference } from "@/lib/agents/shared/rendered-reference"
 import { Check, ChevronDown, ChevronRight, Pencil } from "lucide-react"
 import type {
   ComponentOutputField,
@@ -43,6 +45,7 @@ export interface VariantDraft {
   html: string
   // Exemplo real do email renderizado, colado manualmente (aba própria).
   rendered_html: string
+  rendered_html_source_sha?: string | null
   description: string
   long_description: string
   when_use: string
@@ -89,6 +92,70 @@ const DENSITY_OPTIONS = [
 ]
 
 type PreviewMode = "preview" | "html" | "rendered" | "tagged"
+
+/**
+ * Estado do exemplo renderizado (story CM-6).
+ *
+ * O campo deveria ser o PADRÃO DE ACABAMENTO da variante, mas o que está
+ * cadastrado é, em boa parte, print embrulhado em HTML. O agente de hero só
+ * usa o exemplo quando ele é HTML estrutural E o hash bate com o `html`
+ * atual — aqui a pessoa vê em qual dos casos a variante está.
+ */
+function RenderedStatusNote({
+  html,
+  rendered,
+  sourceSha: storedSha,
+}: {
+  html: string
+  rendered: string
+  sourceSha?: string | null
+}) {
+  const resolved = resolveRenderedReference({
+    html,
+    rendered_html: rendered,
+    rendered_html_source_sha: storedSha ?? null,
+  })
+  if (resolved.reason === "empty") return null
+
+  const tone =
+    resolved.html !== null
+      ? { bg: C.posBg, border: C.posBorder, color: C.pos }
+      : { bg: C.warnBg, border: C.warnBorder, color: C.warn }
+
+  const MESSAGES: Record<string, string> = {
+    mockup:
+      "Este exemplo parece um print embrulhado em HTML, não um email renderizado — o agente não o usa como referência de acabamento. Cole o HTML do email de verdade.",
+    stale:
+      "O HTML da variante mudou depois que este exemplo foi salvo: ele descreve uma versão antiga e não é enviado ao agente. Recole o exemplo atualizado.",
+    unknown_sha:
+      "Exemplo cadastrado antes do controle de versão: não dá para saber se ainda corresponde ao HTML. Recole para revalidar.",
+  }
+  const message =
+    resolved.html !== null
+      ? "Exemplo utilizável: o agente de hero o recebe como referência de acabamento."
+      : (MESSAGES[resolved.reason ?? ""] ?? "")
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-start",
+        padding: "9px 11px",
+        marginBottom: 10,
+        borderRadius: 6,
+        background: tone.bg,
+        border: `1px solid ${tone.border}`,
+        color: tone.color,
+        fontFamily: F.sans,
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}
+    >
+      <span>{message}</span>
+    </div>
+  )
+}
 
 export function VariantEditor({
   draft,
@@ -481,6 +548,11 @@ export function VariantEditor({
           )}
           {pv === "rendered" && (
             <>
+              <RenderedStatusNote
+                html={draft.html}
+                rendered={draft.rendered_html}
+                sourceSha={draft.rendered_html_source_sha}
+              />
               <div
                 style={{
                   display: "flex",

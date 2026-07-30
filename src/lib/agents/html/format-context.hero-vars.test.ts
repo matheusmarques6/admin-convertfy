@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest"
 
 import { buildHeroVars, type FormatChainContext } from "./format-context"
+import { sourceSha } from "../shared/rendered-reference"
 
 const HERO_REGION =
   '<table role="presentation"><tr><td><img src="{{HERO_IMAGE}}"></td></tr></table>'
@@ -90,13 +91,53 @@ describe("buildHeroVars — modo enxertado", () => {
     expect(vars.hero_variant_rendered_html).toBe("")
   })
 
-  it("sem enxerto: variante e rendered continuam sendo o espelho", () => {
+  // CM-6: o `html` da variante segue sendo o espelho estrutural; o
+  // renderizado só passa quando é HTML de verdade E o hash bate. Este
+  // fixture é o mockup-imagem que a biblioteca tem hoje — barrado.
+  it("sem enxerto: variante é o espelho; mockup renderizado é barrado", () => {
     const vars = buildHeroVars(minimalCtx(), {
       regionHtml: HERO_REGION,
       variant,
     })
     expect(vars.hero_source).toBe("montador")
     expect(vars.hero_variant_html).toBe(variant.html)
-    expect(vars.hero_variant_rendered_html).toBe(variant.rendered_html)
+    expect(vars.hero_variant_rendered_html).toBe("")
+  })
+
+  it("renderizado estrutural com hash válido chega ao prompt", () => {
+    const html = "<tr><td>{{HERO_HEADLINE}}</td></tr>"
+    const rendered = `<table role="presentation" width="600">${Array.from(
+      { length: 20 },
+      (_, i) =>
+        `<tr><td style="padding:24px 40px;font-family:Inter;font-size:16px;line-height:24px">Bloco ${i} com texto real, do tamanho de um email renderizado de verdade nesta linha.</td></tr>`,
+    ).join("")}</table>`
+    const vars = buildHeroVars(minimalCtx(), {
+      regionHtml: HERO_REGION,
+      variant: {
+        ...variant,
+        html,
+        rendered_html: rendered,
+        rendered_html_source_sha: sourceSha(html),
+      },
+    })
+    expect(vars.hero_variant_rendered_html).toBe(rendered)
+  })
+
+  it("hash divergente (html editado depois) barra o renderizado", () => {
+    const rendered = `<table>${Array.from(
+      { length: 20 },
+      (_, i) =>
+        `<tr><td style="padding:24px 40px;font-family:Inter;font-size:16px">Bloco ${i} com texto real, do tamanho de um email renderizado de verdade nesta linha.</td></tr>`,
+    ).join("")}</table>`
+    const vars = buildHeroVars(minimalCtx(), {
+      regionHtml: HERO_REGION,
+      variant: {
+        ...variant,
+        html: "<tr><td>{{HERO_HEADLINE}} editado depois</td></tr>",
+        rendered_html: rendered,
+        rendered_html_source_sha: sourceSha("<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      },
+    })
+    expect(vars.hero_variant_rendered_html).toBe("")
   })
 })

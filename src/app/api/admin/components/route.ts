@@ -6,6 +6,10 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import {
+  resolveRenderedReference,
+  sourceSha,
+} from "@/lib/agents/shared/rendered-reference"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
@@ -58,7 +62,22 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query
     if (error) throw error
-    return successResponse(request, { variants: data ?? [] })
+    // CM-6: estado do exemplo renderizado por variante — a aba mostra a fila
+    // de curadoria (quantas têm exemplo utilizável, quantas são print).
+    const variants = (data ?? []).map((v) => {
+      const row = v as { html?: string | null; rendered_html?: string | null }
+      const resolved = resolveRenderedReference(row as never)
+      return {
+        ...v,
+        rendered_status: {
+          kind: resolved.kind,
+          usable: resolved.html !== null,
+          reason: resolved.reason,
+          stale: resolved.stale,
+        },
+      }
+    })
+    return successResponse(request, { variants })
   } catch (error) {
     log.error("components.get", error)
     return errorResponse(request, error, "components-get")
@@ -73,9 +92,18 @@ export async function POST(request: NextRequest) {
     await assertCanManagePrompts(admin, user.id)
 
     const parsed = postSchema.parse(await request.json())
+    // CM-6: hash do `html` que originou o exemplo renderizado. Sem ele não
+    // há como saber se o exemplo ainda descreve a variante — o `updated_at`
+    // da linha se move por qualquer edição.
     const { data, error } = await admin
       .from("email_component_variants")
-      .insert({ ...parsed, created_by: user.id })
+      .insert({
+        ...parsed,
+        rendered_html_source_sha: parsed.rendered_html?.trim()
+          ? sourceSha(parsed.html)
+          : null,
+        created_by: user.id,
+      })
       .select("*")
       .single()
     if (error) throw error

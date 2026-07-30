@@ -5,6 +5,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { sourceSha } from "@/lib/agents/shared/rendered-reference"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
@@ -49,9 +50,37 @@ export async function PATCH(
     await assertCanManagePrompts(admin, user.id)
 
     const parsed = patchSchema.parse(await request.json())
+
+    // CM-6 — o hash só é (re)gravado quando o EXEMPLO muda:
+    //
+    //   - `rendered_html` no payload → o exemplo foi salvo agora, então ele
+    //     corresponde ao html vigente (o do payload, se veio junto; senão o
+    //     que já está no banco). Grava o hash.
+    //   - só `html` no payload → a variante mudou e o exemplo NÃO foi
+    //     refeito. O hash fica velho de PROPÓSITO: é exatamente esse
+    //     descasamento que sinaliza "renderizado desatualizado".
+    //   - `rendered_html: null` → exemplo removido, hash vai junto.
+    const patch: Record<string, unknown> = { ...parsed }
+    if (parsed.rendered_html !== undefined) {
+      if (!parsed.rendered_html?.trim()) {
+        patch.rendered_html_source_sha = null
+      } else {
+        let sourceHtml = parsed.html
+        if (sourceHtml === undefined) {
+          const { data: current } = await admin
+            .from("email_component_variants")
+            .select("html")
+            .eq("id", id)
+            .maybeSingle()
+          sourceHtml = (current?.html as string | undefined) ?? ""
+        }
+        patch.rendered_html_source_sha = sourceSha(sourceHtml)
+      }
+    }
+
     const { data, error } = await admin
       .from("email_component_variants")
-      .update(parsed)
+      .update(patch)
       .eq("id", id)
       .select("*")
       .single()

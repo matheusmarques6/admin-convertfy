@@ -424,6 +424,12 @@ export interface EmailComponentVariant {
   // Exemplo real do email renderizado, colado manualmente no editor
   // (aba "HTML renderizado"). Não é usado pelo pipeline.
   rendered_html: string | null
+  /**
+   * sha256 do `html` no momento em que `rendered_html` foi salvo (CM-6).
+   * Diferente do hash do html atual = exemplo desatualizado, não vai ao
+   * agente. NULL = cadastrado antes do controle (validade desconhecida).
+   */
+  rendered_html_source_sha?: string | null
   // Descrição curta (sem HTML) da variante. Usada pelo passo A do Montador
   // (escolha por descrição, barato) para escolher a variante sem mandar o HTML
   // completo de todas. Null quando ainda não preenchida.

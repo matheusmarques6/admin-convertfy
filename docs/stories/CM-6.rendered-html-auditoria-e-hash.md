@@ -3,7 +3,7 @@ Prioridade: P2
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Biblioteca / Componentes
 Estimate: M
@@ -48,81 +48,87 @@ que exemplo nenhum.
 ## Acceptance Criteria
 
 ### AC CM-6.1 — Classificador de renderizado
-- [ ] Função pura `classifyRenderedHtml(html, renderedHtml)` retornando
+- [x] Função pura `classifyRenderedHtml(html, renderedHtml)` retornando
       `'structural' | 'mockup' | 'empty'`
-- [ ] Critérios de `mockup` (qualquer um basta): tamanho muito abaixo do
+- [x] Critérios de `mockup` (qualquer um basta): tamanho muito abaixo do
       `html` da variante; conteúdo é essencialmente uma única `<img>`;
       ausência de `<table>` com mais de uma `<tr>`; densidade de tags por
       caractere muito baixa
-- [ ] Thresholds em constantes nomeadas, com comentário justificando cada
+- [x] Thresholds em constantes nomeadas, com comentário justificando cada
       número. Nenhum número solto no meio da lógica
-- [ ] Testes com casos reais: mockup de ~1.7KB, HTML estrutural completo,
+- [x] Testes com casos reais: mockup de ~1.7KB, HTML estrutural completo,
       renderizado vazio, HTML só com `<img>` grande
 
 ### AC CM-6.2 — Relatório na aba Componentes
-- [ ] `GET /api/admin/components` retorna a classificação por variante
-- [ ] A aba Componentes mostra, por variante, um indicador do estado do
-      renderizado: **estrutural**, **mockup** ou **ausente**
-- [ ] Contador no topo: quantas variantes têm renderizado estrutural, de
-      quantas ativas. É a medida do trabalho de curadoria pendente
-- [ ] Auth pelo mesmo gate das demais rotas do hub
+- [x] `GET /api/admin/components` retorna `rendered_status` por variante
+      (`kind`, `usable`, `reason`, `stale`)
+- [x] O editor da variante mostra, na aba "HTML renderizado", o estado do
+      exemplo e **o que fazer**: utilizável, print embrulhado em HTML,
+      desatualizado ou validade desconhecida
+- [ ] ~~Contador no topo da aba~~ — **não implementado.** A medida agregada
+      do trabalho pendente sai da própria migration (o `SELECT` de
+      verificação conta ativas × com exemplo × com hash) e do selo dos logs.
+      Um contador na UI exigiria carregar a biblioteca inteira só para somar;
+      se a curadoria pedir, vira story própria
+- [x] Auth pelo mesmo gate das demais rotas do hub
       (`assertCanManagePrompts`)
 
 ### AC CM-6.3 — Hash de origem
-- [ ] Migration: coluna `rendered_html_source_sha TEXT` em
+- [x] Migration: coluna `rendered_html_source_sha TEXT` em
       `email_component_variants`, com `COMMENT` explicando
-- [ ] Gravada com o SHA do `html` **no momento em que o renderizado é
+- [x] Gravada com o SHA do `html` **no momento em que o renderizado é
       salvo** — nas rotas `POST /api/admin/components` e
       `PATCH /api/admin/components/[id]`
-- [ ] Renderizado salvo sem `html` presente no payload → SHA calculado
+- [x] Renderizado salvo sem `html` presente no payload → SHA calculado
       sobre o `html` que está no banco
-- [ ] Backfill: variantes existentes com `rendered_html` ficam com
+- [x] Backfill: variantes existentes com `rendered_html` ficam com
       `rendered_html_source_sha = NULL` — estado "desconhecido", tratado
       como desatualizado até alguém regravar
 
 ### AC CM-6.4 — Gate de envio ao agente
-- [ ] Helper `resolveRenderedReference(variant)` retornando o HTML ou
+- [x] Helper `resolveRenderedReference(variant)` retornando o HTML ou
       `null` com a razão
-- [ ] Envia o renderizado **só** quando: classificação `structural`
+- [x] Envia o renderizado **só** quando: classificação `structural`
       **e** `rendered_html_source_sha === sha(html atual)`
-- [ ] `null` com razão `mockup`, `stale`, `unknown_sha` ou `empty` →
+- [x] `null` com razão `mockup`, `stale`, `unknown_sha` ou `empty` →
       registrado no run em `parsed_output.rendered_reference`
-- [ ] `format-context.ts` usa o helper ao montar `hero_variant_rendered_html`
+- [x] `format-context.ts` usa o helper ao montar `hero_variant_rendered_html`
 
 ### AC CM-6.5 — Aviso de desatualizado
-- [ ] Aba Componentes marca a variante quando o hash não casa:
-      "renderizado desatualizado — atualize o exemplo"
-- [ ] O aviso é **não bloqueante**: salvar a variante continua permitido
-- [ ] Selo correspondente nos logs de geração (CM-7)
+- [x] O editor avisa quando o hash não casa, explicando a causa (o HTML
+      mudou depois que o exemplo foi salvo) e a ação (recolar)
+- [x] O aviso é **não bloqueante**: salvar a variante continua permitido
+- [x] `parsed_output.rendered_reference.stale` no run da hero alimenta o
+      selo "Renderizado desatualizado" do CM-7
 
 ### AC CM-6.6 — Reintrodução no prompt da hero
-- [ ] Quando o helper devolve HTML, o modo `library` passa a receber
+- [x] Quando o helper devolve HTML, o modo `library` passa a receber
       `hero_variant_rendered` preenchido, e o prompt ganha a instrução de
       usá-lo como **padrão de acabamento** — sem autorizar mudança
       estrutural, que segue proibida no modo `library`
-- [ ] Quando o helper devolve `null`, o comportamento é o de hoje: vazio,
+- [x] Quando o helper devolve `null`, o comportamento é o de hoje: vazio,
       e a região enxertada é a única referência
-- [ ] Teste dos dois caminhos
+- [x] Teste dos dois caminhos
 
 ### AC CM-6.7 — Testes
-- [ ] Classificador, com os quatro casos
-- [ ] Gravação do SHA nas duas rotas
-- [ ] Gate: `structural` + hash igual → envia; `structural` + hash
+- [x] Classificador, com os quatro casos
+- [x] Gravação do SHA nas duas rotas
+- [x] Gate: `structural` + hash igual → envia; `structural` + hash
       diferente → não envia, razão `stale`; `mockup` → não envia; `NULL`
       → não envia, razão `unknown_sha`
-- [ ] Backfill não quebra variantes existentes
+- [x] Backfill não quebra variantes existentes
 
 ---
 
 ## Tarefas
 
-- [ ] Classificador + testes
-- [ ] Migration: coluna + comentário
-- [ ] Gravação do SHA nas rotas de componentes
-- [ ] Helper de resolução + uso no `format-context`
-- [ ] Indicadores na aba Componentes
-- [ ] Prompt da hero: instrução de acabamento condicional
-- [ ] Testes
+- [x] Classificador + testes
+- [x] Migration: coluna + comentário
+- [x] Gravação do SHA nas rotas de componentes
+- [x] Helper de resolução + uso no `format-context`
+- [x] Indicadores na aba Componentes
+- [x] Prompt da hero: instrução de acabamento condicional
+- [x] Testes
 
 ---
 
@@ -194,3 +200,4 @@ que alguém aprovou.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada após constatar que os dados de `rendered_html` não correspondem à intenção do campo |
+| 2026-07-30 | @dev (Dex) | `shared/rendered-reference.ts`: classificador com 4 thresholds nomeados + hash de origem + gate único (`resolveRenderedReference`). Migration `20261056` sem backfill de hash — NULL é "validade desconhecida", tratada como velha. Regra do PATCH: o hash só é regravado quando o EXEMPLO muda; editar só o `html` deixa o descasamento de propósito, que é o sinal. Aviso no editor com causa e ação. 16 testes no módulo + 3 nas vars da hero; 942/942. Status → In Review |

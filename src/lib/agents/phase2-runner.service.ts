@@ -118,6 +118,7 @@ import {
   type GraftStatus,
 } from "./html/hero-graft"
 import { effectiveVariantHtml } from "./shared/component-dimensions"
+import { resolveRenderedReference } from "./shared/rendered-reference"
 import { applyOps, parseOps } from "./html/apply-patches"
 import {
   stripUnresolvedPlaceholders,
@@ -1975,6 +1976,14 @@ async function runFormattingChain(p: {
             // fragmento vale do mesmo jeito; só a observabilidade se perde.
             hero_report: r.report,
             hero_report_missing: r.report === null,
+            // CM-6: por que o exemplo renderizado da variante entrou (ou
+            // não) no prompt. `stale` alimenta o selo dos logs.
+            rendered_reference: heroVariant
+              ? (() => {
+                  const rr = resolveRenderedReference(heroVariant)
+                  return { used: rr.html !== null, reason: rr.reason, stale: rr.stale, kind: rr.kind }
+                })()
+              : null,
             output_html_len: next.length,
             output_sha8: sha8(next),
             output_html: htmlSnapshot(next),
