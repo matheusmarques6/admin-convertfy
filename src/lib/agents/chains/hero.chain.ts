@@ -149,11 +149,11 @@ After the fragment, emit a short report wrapped EXACTLY in ${HERO_REPORT_OPEN} a
 
 The report is what the pipeline knows about what you discarded. Report it honestly: a removed CTA row or an unfilled placeholder MUST appear there.`
 
-export const DEFAULT_HERO_USER_TEMPLATE = `<design_system>
+export const DEFAULT_HERO_USER_TEMPLATE = `{{#if hero_variant_design_system}}<design_system>
 {{hero_variant_design_system}}
 </design_system>
 
-<store>
+{{/if}}<store>
   <brand_name>{{brand_name}}</brand_name>
   <locale>{{locale}}</locale>
 </store>

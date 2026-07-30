@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 
+import { renderImageTemplate } from "../image/template-renderer"
 import {
   parseHeroFragment,
   parseHeroReport,
@@ -190,5 +191,55 @@ describe("design system é o input principal da hero", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
       "Empty means nothing was written for this variant",
     )
+  })
+})
+
+// Bloco vazio num prompt é convite para o modelo preencher sozinho: o
+// agente leria "<design_system></design_system>" e inventaria uma. Variante
+// sem briefing escrito não pode abrir a seção.
+describe("a seção do design system só existe quando há texto", () => {
+  const vars = (designSystem: string) => ({
+    brand_name: "Loja",
+    locale: "pt-BR",
+    color_bg: "",
+    color_text: "",
+    color_heading: "",
+    color_button_bg: "",
+    color_button_text: "",
+    color_accent: "",
+    font_heading: "",
+    font_heading_weight: "",
+    font_body: "",
+    font_body_weight: "",
+    logo_light: "",
+    logo_dark: "",
+    email_name: "E1",
+    subject: "S",
+    hero_source: "library",
+    hero_variant_html: "",
+    hero_variant_rendered_html: "",
+    hero_variant_schema_json: "",
+    hero_variant_design_system: designSystem,
+    hero_content_json: "[]",
+    hero_image_url: "",
+    hero_image_alt: "",
+    montador_html: "",
+    hero_region_html: "<tr><td>x</td></tr>",
+    output_contract: "CONTRATO",
+  })
+
+  it("com briefing escrito, a seção abre a mensagem", () => {
+    const out = renderImageTemplate(
+      DEFAULT_HERO_USER_TEMPLATE,
+      vars("A banda escura do topo é intencional."),
+    )
+    expect(out.trimStart().startsWith("<design_system>")).toBe(true)
+    expect(out).toContain("A banda escura do topo é intencional.")
+  })
+
+  it("sem briefing, a seção não aparece — nem vazia", () => {
+    const out = renderImageTemplate(DEFAULT_HERO_USER_TEMPLATE, vars(""))
+    expect(out).not.toContain("<design_system>")
+    expect(out.trimStart().startsWith("<store>")).toBe(true)
   })
 })
