@@ -102,13 +102,19 @@ que exemplo nenhum.
       selo "Renderizado desatualizado" do CM-7
 
 ### AC CM-6.6 — Reintrodução no prompt da hero
-- [x] Quando o helper devolve HTML, o modo `library` passa a receber
-      `hero_variant_rendered` preenchido, e o prompt ganha a instrução de
-      usá-lo como **padrão de acabamento** — sem autorizar mudança
-      estrutural, que segue proibida no modo `library`
-- [x] Quando o helper devolve `null`, o comportamento é o de hoje: vazio,
-      e a região enxertada é a única referência
-- [x] Teste dos dois caminhos
+- [x] O gate vale no modo **`montador`**: quando o helper devolve HTML, o
+      exemplo chega ao agente como espelho de acabamento; quando devolve
+      `null`, o `html` da variante é a única referência
+- [ ] ~~Preencher também no modo `library`~~ — **adiado, deliberadamente.**
+      Nesse modo a região JÁ é a variante canônica, enxertada por código, e o
+      prompt manda fazer substituição pura; o `hero_source_modes` diz
+      explicitamente que os dois campos "arrive EMPTY in this mode on
+      purpose". Reintroduzir o exemplo ali muda o que o agente pode fazer com
+      uma região que é estruturalmente final — mudança de comportamento que
+      merece ser validada com dados reais. E hoje não há dados: praticamente
+      nenhuma variante tem renderizado estrutural. Quando a curadoria
+      produzir alguns, vale medir antes de soltar
+- [x] Teste dos dois caminhos (com hash válido → chega; divergente → não)
 
 ### AC CM-6.7 — Testes
 - [x] Classificador, com os quatro casos
@@ -145,10 +151,11 @@ renderizado foi feito a partir deste HTML?"
 
 O classificador não corrige dados — ele mede. A expectativa é que a maior
 parte das variantes apareça como `mockup`, e que a curadoria vá
-substituindo por HTML de verdade ao longo do tempo. O contador da AC
-CM-6.2 é o que torna esse progresso visível. O agente de hero passa a
-melhorar variante por variante, conforme a biblioteca é arrumada — não
-num corte único.
+substituindo por HTML de verdade ao longo do tempo. O progresso é visível
+pelo `SELECT` de verificação da migration (ativas × com exemplo × com hash)
+e, por variante, pelo aviso no editor. O agente de hero passa a melhorar
+variante por variante, conforme a biblioteca é arrumada — não num corte
+único.
 
 ### Por que não gerar o renderizado automaticamente
 
@@ -165,7 +172,7 @@ que alguém aprovou.
 ### A criar
 - `src/lib/agents/shared/rendered-reference.ts`
 - `src/lib/agents/shared/rendered-reference.test.ts`
-- `supabase/migrations/2026XXXX_rendered_html_source_sha.sql`
+- `supabase/migrations/20261056_rendered_html_source_sha.sql`
 
 ### A modificar
 - `src/app/api/admin/components/route.ts`
@@ -173,7 +180,8 @@ que alguém aprovou.
 - `src/lib/agents/html/format-context.ts`
 - `src/components/email-components/components-workspace.tsx`
 - `src/components/email-components/variant-editor.tsx`
-- `src/lib/agents/chains/hero.chain.ts` — prompt condicional
+- `src/lib/agents/phase2-runner.service.ts` — `rendered_reference` no run
+- `src/types/email-generation.ts` — campo novo na variante
 
 ---
 
