@@ -6,7 +6,6 @@ import {
   DEFAULT_BLUEPRINT_USER,
   type GeneratedBlueprint,
 } from "./blueprint-generator.service"
-import { DEFAULT_ASSEMBLER_SYSTEM } from "./component-assembler.service"
 import { extractStructureFromReference } from "./reference-structure"
 
 const REFERENCE = `<html><body>
@@ -130,14 +129,9 @@ describe("paridade dos prompts default com as migrations", () => {
     expect(DEFAULT_BLUEPRINT_USER).toContain("{{estrutura_extraida}}")
   })
 
-  // Espelha a migration 20260926 (assembler).
-  it("DEFAULT_ASSEMBLER_SYSTEM contém a regra das tags canônicas", () => {
-    expect(DEFAULT_ASSEMBLER_SYSTEM).toContain("REGRA DAS TAGS CANÔNICAS")
-  })
-
-  // Espelha a migration 20260928 — o Montador não pode remover slots de
-  // imagem das variantes (causa do email em branco da Luxe Lift w#3).
-  it("DEFAULT_ASSEMBLER_SYSTEM contém a regra dos slots de imagem", () => {
-    expect(DEFAULT_ASSEMBLER_SYSTEM).toContain("REGRA DOS SLOTS DE IMAGEM")
-  })
+  // As regras que o prompt do Montador tentava impor (tags canônicas
+  // preservadas, slots de imagem intactos) deixaram de ser instrução de
+  // prompt na story CM-2: o documento é concatenado por código a partir do
+  // HTML canônico das variantes, e dois self-checks garantem o resultado.
+  // Cobertura em assemble-document.test.ts.
 })

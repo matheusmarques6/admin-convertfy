@@ -23,8 +23,10 @@ import {
 
 const log = logger.child("ArchitectLLM")
 
-// O Montador gera o HTML completo (Opus 4.8, ~9 blocos): 60s era curto e 180s
-// ainda derrubava lojas grandes pro fallback. 240s dá folga e ainda cabe no
+// Teto de invoke dos agentes do architect. Dimensionado quando o Montador
+// gerava o HTML completo (Opus 4.8, ~9 blocos): 60s era curto e 180s ainda
+// derrubava lojas grandes pro fallback. Desde CM-2 a montagem é por código e
+// quem pode demorar aqui é o Curador — o valor foi mantido porque cabe no
 // maxDuration=300s do route — o cron de dispatch limita o tick para que um lote
 // lento (~240s) sempre feche dentro dos 300s (ver TICK_BUDGET_MS em
 // email-dispatch-queue.service.ts). Ajustável sem deploy via env.

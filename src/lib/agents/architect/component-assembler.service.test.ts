@@ -9,10 +9,6 @@ import type { EmailComponentVariant } from "@/types/email-generation"
 import {
   parseAssemblerOutput,
   resolveChoices,
-  assembleReferenceHtml,
-  missingBlockNote,
-  shuffle,
-  validateBlockMarkers,
   slotMapFromSlots,
   variantHasPlaceholders,
   type AssemblySlot,
@@ -77,19 +73,6 @@ describe("parseAssemblerOutput", () => {
   })
 })
 
-describe("shuffle", () => {
-  it("preserva todos os elementos (sem perder nem duplicar)", () => {
-    const out = shuffle([1, 2, 3, 4, 5])
-    expect(out).toHaveLength(5)
-    expect([...out].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
-  })
-  it("não muta a array original", () => {
-    const arr = [1, 2, 3]
-    shuffle(arr)
-    expect(arr).toEqual([1, 2, 3])
-  })
-})
-
 describe("resolveChoices", () => {
   const a = mk({ id: "a" })
   const b = mk({ id: "b" })
@@ -108,83 +91,6 @@ describe("resolveChoices", () => {
   it("pula blocos sem candidato", () => {
     const out = resolveChoices([[a], [], [c]], [])
     expect(out).toEqual([a, c])
-  })
-})
-
-describe("assembleReferenceHtml", () => {
-  it("concatena os snippets na ordem dentro de um shell 600px", () => {
-    const hero = mk({ id: "a", block_type: "hero", name: "H", html: "<div>hero</div>" })
-    const foot = mk({ id: "b", block_type: "footer", name: "F", html: "<div>foot</div>" })
-    const html = assembleReferenceHtml([hero, foot])
-    expect(html).toContain("<!DOCTYPE html>")
-    expect(html).toContain("max-width:600px")
-    expect(html.indexOf("hero")).toBeLessThan(html.indexOf("foot"))
-  })
-})
-
-describe("missingBlockNote", () => {
-  it("a nota tem o texto pedido pelo produto", () => {
-    expect(missingBlockNote("offer")).toContain(
-      "nao foi encontrada referencia para esse bloco",
-    )
-  })
-})
-
-describe("validateBlockMarkers", () => {
-  const hero = mk({ id: "vh", block_type: "hero", name: "Hero A" })
-  const cta = mk({ id: "vc", block_type: "cta", name: "CTA A" })
-  const slots: AssemblySlot[] = [
-    { kind: "variant", variant: hero, section: "hero", label: "Hero" },
-    { kind: "variant", variant: cta, section: "cta", label: "CTA" },
-  ]
-  const ok = [
-    "<!-- cfy:block:0:hero:start -->",
-    "<div>hero</div>",
-    "<!-- cfy:block:0:hero:end -->",
-    "<!-- cfy:block:1:cta:start -->",
-    "<div>cta</div>",
-    "<!-- cfy:block:1:cta:end -->",
-  ].join("\n")
-
-  it("aceita pares corretos na ordem", () => {
-    const res = validateBlockMarkers(ok, slots)
-    expect(res.status).toBe("ok")
-    expect(res.html).toBe(ok)
-  })
-
-  it("sem marcador nenhum → absent (documento intacto)", () => {
-    const res = validateBlockMarkers("<div>x</div>", slots)
-    expect(res.status).toBe("absent")
-    expect(res.html).toBe("<div>x</div>")
-  })
-
-  it("contagem errada de pares → strip", () => {
-    const partial = "<!-- cfy:block:0:hero:start --><div>hero</div><!-- cfy:block:0:hero:end -->"
-    const res = validateBlockMarkers(partial, slots)
-    expect(res.status).toBe("stripped")
-    expect(res.html).not.toContain("cfy:block")
-    expect(res.html).toContain("<div>hero</div>")
-  })
-
-  it("section divergente do slot → strip", () => {
-    const wrong = ok.replace("cfy:block:1:cta:start", "cfy:block:1:body:start")
-    const res = validateBlockMarkers(wrong, slots)
-    expect(res.status).toBe("stripped")
-  })
-
-  it("pares fora de ordem/aninhados → strip", () => {
-    const nested = [
-      "<!-- cfy:block:0:hero:start -->",
-      "<!-- cfy:block:1:cta:start -->",
-      "<!-- cfy:block:0:hero:end -->",
-      "<!-- cfy:block:1:cta:end -->",
-    ].join("\n")
-    expect(validateBlockMarkers(nested, slots).status).toBe("stripped")
-  })
-
-  it("tolera section maiúscula (case-insensitive)", () => {
-    const upper = ok.replaceAll(":hero:", ":HERO:")
-    expect(validateBlockMarkers(upper, slots).status).toBe("ok")
   })
 })
 
@@ -241,34 +147,5 @@ describe("variantHasPlaceholders (guard de elegibilidade)", () => {
         }),
       ),
     ).toBe(false)
-  })
-})
-
-describe("HTML efetivo no assemble (T5 — épico Taguedor)", () => {
-  it("assembleReferenceHtml usa html_tagged aprovado no lugar do exemplo", () => {
-    const v = mk({
-      id: "a",
-      block_type: "hero",
-      name: "H",
-      html: "<div>Frase de exemplo</div>",
-      html_tagged: "<div>{{HERO_HEADLINE_X}}</div>",
-      tagging_status: "approved",
-    })
-    const html = assembleReferenceHtml([v])
-    expect(html).toContain("{{HERO_HEADLINE_X}}")
-    expect(html).not.toContain("Frase de exemplo")
-  })
-  it("proposta pendente NÃO substitui o html original", () => {
-    const v = mk({
-      id: "a",
-      block_type: "hero",
-      name: "H",
-      html: "<div>{{HERO_HEADLINE}}</div>",
-      html_tagged: "<div>{{OUTRA_COISA}}</div>",
-      tagging_status: "pending",
-    })
-    const html = assembleReferenceHtml([v])
-    expect(html).toContain("{{HERO_HEADLINE}}")
-    expect(html).not.toContain("{{OUTRA_COISA}}")
   })
 })

@@ -111,27 +111,46 @@ beforeEach(() => {
   h.variants = [variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>")]
 })
 
-describe("assembleStoreReference — 2 passos (escolha + harmonização)", () => {
-  it("escolhe (passo A) e harmoniza (passo B) → persiste a reference (source=llm)", async () => {
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
+describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => {
+  // CM-2: o passo B saiu do LLM. Uma única invocação (a escolha) e o
+  // documento vem do código.
+  it("escolhe (passo A) e monta por código → persiste a reference (source=code)", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     const res = await assembleStoreReference(baseInput)
-    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(invokeAgent).toHaveBeenCalledTimes(1)
     expect(h.upsertSpy).toHaveBeenCalledTimes(1)
     expect(res.html).toContain("</html>")
+    expect(res.html).toContain("{{HERO_HEADLINE}}")
+    expect(res.html).toContain("<!-- cfy:block:0:hero:start -->")
     expect(res.variantIds).toEqual(["v1"])
-    expect(res.source).toBe("llm")
+    expect(res.source).toBe("code")
   })
 
-  it("o Montador (passo B) NÃO recebe briefing_json nem pesquisa_diagnostico", async () => {
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
-    await assembleStoreReference({ ...baseInput, briefingJson: '{"nicho":"X"}' })
-    // 2ª chamada = passo B (Montador). Estrutura, não conteúdo de marca.
-    const harmVars = invokeAgent.mock.calls[1][1] as Record<string, string>
-    expect(harmVars).not.toHaveProperty("briefing_json")
-    expect(harmVars).not.toHaveProperty("pesquisa_diagnostico")
-    // O Curador (passo A) CONTINUA recebendo o perfil da marca.
-    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
-    expect(chooserVars.briefing_marca).toContain("X")
+  it("o documento montado vai para o upsert com model='code' e slot_map", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const row = h.upsertSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(row.model).toBe("code")
+    expect(row.source).toBe("ai")
+    expect(row.variant_ids).toEqual(["v1"])
+    expect(row.slot_map).toEqual([
+      {
+        block_index: 0,
+        section: "hero",
+        label: "Hero",
+        variant_id: "v1",
+        variant_name: "hero v1",
+      },
+    ])
+  })
+
+  it("nenhum LLM recebe o HTML da variante", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    for (const call of invokeAgent.mock.calls) {
+      const vars = call[1] as Record<string, string>
+      expect(JSON.stringify(vars)).not.toContain("{{HERO_HEADLINE}}")
+    }
   })
 
   it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {
@@ -186,43 +205,39 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
     expect(chooserVars.top_products).toContain("2. Produto B")
   })
 
-  it("passo B falha + há reference global curado → usa o global, NÃO persiste (source=global)", async () => {
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockRejectedValueOnce(new Error("timeout"))
-    const curated = "<!DOCTYPE html><html><body><div>CURADO</div></body></html>"
-    const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
-    expect(h.upsertSpy).not.toHaveBeenCalled() // fallback não persiste
-    expect(res.html).toBe(curated) // cai no HTML reference global
-    expect(res.source).toBe("global")
-  })
-
-  it("passo B falha + SEM global curado → html vazio, NÃO persiste (source=none)", async () => {
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockRejectedValueOnce(new Error("timeout"))
-    const res = await assembleStoreReference(baseInput) // referenceTemplateHtml = ""
-    expect(h.upsertSpy).not.toHaveBeenCalled()
-    expect(res.html).toBe("")
-    expect(res.source).toBe("none")
-  })
-
-  it("passo B com output não-HTML + global curado → usa o global, NÃO persiste (source=global)", async () => {
-    invokeAgent
-      .mockResolvedValueOnce(CHOICE_V1)
-      .mockResolvedValueOnce({ raw: "desculpa, não consegui", tokensInput: 5, tokensOutput: 5 })
-    const curated = "<!DOCTYPE html><html><body><div>CURADO</div></body></html>"
-    const res = await assembleStoreReference({ ...baseInput, referenceTemplateHtml: curated })
-    expect(h.upsertSpy).not.toHaveBeenCalled()
-    expect(res.html).toBe(curated)
-    expect(res.source).toBe("global")
-  })
-
-  it("passo A sem escolha válida → top-1 da biblioteca; passo B OK → persiste (source=llm)", async () => {
-    // passo A devolve lixo (não-JSON) → resolveChoices cai no top-1 da seção.
-    invokeAgent
-      .mockResolvedValueOnce({ raw: "nada de json", tokensInput: 1, tokensOutput: 1 })
-      .mockResolvedValueOnce(HTML_OK)
+  // CM-2: o passo B nao pode mais "falhar" (nao ha LLM). O caminho de
+  // degradacao agora e: nenhum bloco entrou no documento.
+  it("toda variante recusada → source=none, sem persistir", async () => {
+    // Fragmento so com comentario: nao sobra nada para embrulhar.
+    h.variants = [variant("v1", "hero", "<!-- {{HERO_HEADLINE}} -->")]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     const res = await assembleStoreReference(baseInput)
-    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
+    expect(res.source).toBe("none")
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+  })
+
+  it("toda variante recusada + global curado → devolve o global sem persistir", async () => {
+    h.variants = [variant("v1", "hero", "<!-- {{HERO_HEADLINE}} -->")]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    const res = await assembleStoreReference({
+      ...baseInput,
+      referenceTemplateHtml: "<html>curado</html>",
+    })
+    expect(res.source).toBe("none")
+    expect(res.html).toContain("curado")
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+  })
+
+  it("passo A sem escolha válida → top-1 da biblioteca; monta e persiste (source=code)", async () => {
+    invokeAgent.mockResolvedValueOnce({
+      raw: '[{"block_index":0,"variant_id":"nao-existe"}]',
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    const res = await assembleStoreReference(baseInput)
     expect(res.variantIds).toEqual(["v1"])
-    expect(res.source).toBe("llm")
+    expect(res.source).toBe("code")
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
   })
 
   it("biblioteca vazia + global curado → NÃO chama LLM nem persiste; devolve o global (source=global)", async () => {
@@ -246,8 +261,8 @@ describe("assembleStoreReference — 2 passos (escolha + harmonização)", () =>
   })
 })
 
-describe("findDroppedImageTags (guard dos slots de imagem)", () => {
-  it("detecta tags de imagem removidas pelo Montador", async () => {
+describe("findDroppedImageTags (self-check da concatenação)", () => {
+  it("detecta tags de imagem que sumiram do documento", async () => {
     const { findDroppedImageTags } = await import("./component-assembler.service")
     const chosen = JSON.stringify([
       { block_index: 0, html: '<td background="{{HERO_IMAGE}}"><img alt="{{HERO_IMAGE_ALT}}"></td>' },

@@ -121,7 +121,7 @@ export async function generateBlueprintAndReference(
     }
   }
 
-  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml] = await Promise.all([
+  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes] = await Promise.all([
     admin
       .from("client_stores")
       .select("*")
@@ -150,6 +150,17 @@ export async function generateBlueprintAndReference(
     // Referência curada global (mesmo flow×email): input/inspiração do
     // Montador. A MESMA fonte segue como fallback no build-vars (consumidor).
     loadGlobalReferenceTemplate(admin, input.flowType, input.emailNumber),
+    // Fontes aprovadas (última versão da identidade): a montagem por código
+    // normaliza a tipografia do documento — componentes vêm de origens
+    // diferentes e sem isso o email sai com 3 fontes. O phase2 normaliza de
+    // novo a cada geração, então trocar de fonte não invalida a arquitetura.
+    admin
+      .from("store_brand_identity")
+      .select("font_heading, font_body")
+      .eq("store_id", input.storeId)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const store = (storeRes.data ?? {}) as Record<string, unknown>
@@ -158,6 +169,10 @@ export async function generateBlueprintAndReference(
       {}) as BriefingMarca
   const products = (productsRes.data as Array<{ title: string }> | null) ?? []
   const outline = (outlineRes.data as EmailOutlineTemplate | null) ?? null
+  const brand = brandRes.data as {
+    font_heading?: string | null
+    font_body?: string | null
+  } | null
 
   const brandName = (store.store_name as string) || "Loja"
   const nicho = marca.nicho || (store.niche as string) || ""
@@ -232,6 +247,8 @@ export async function generateBlueprintAndReference(
     referenceTemplateHtml: refTemplateHtml ?? "",
     structure,
     defaultModel,
+    fontHeading: brand?.font_heading ?? null,
+    fontBody: brand?.font_body ?? null,
   })
 
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.

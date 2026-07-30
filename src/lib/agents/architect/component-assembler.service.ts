@@ -33,6 +33,7 @@ import {
   seedFrom,
 } from "./component-deriver"
 import { effectiveVariantHtml } from "../shared/component-dimensions"
+import { assembleDocument, validateBlockMarkers } from "./assemble-document"
 import type { OutlineSection } from "./outline-sections"
 import {
   invokeAgent,
@@ -48,8 +49,6 @@ import {
 } from "./curador-memory"
 
 const log = logger.child("ComponentAssembler")
-
-const DEFAULT_MODEL = "claude-sonnet-4-6"
 
 // Quantos candidatos por seção vão pro PASSO A (escolha por descrição). Como o
 // passo A é texto barato (sem HTML), mandamos uma lista generosa.
@@ -114,56 +113,6 @@ const DEFAULT_CHOOSER_USER = `<store>
 
 Para CADA block_index em <estrutura_geral_ordenada>, escolha em <biblioteca_componentes> (mesmo block_index) o variant_id que melhor serve ao objetivo e à loja. Responda APENAS o array JSON [{"block_index":N,"variant_id":"..."}].`
 
-// ── PASSO B — Montador: recebe só o HTML das ESCOLHIDAS e monta ──
-export const DEFAULT_ASSEMBLER_SYSTEM = `Você é o Montador de Componentes. Você recebe os HTMLs REAIS das variantes JÁ ESCOLHIDAS para cada seção do email, na ordem (<componentes_escolhidos>). Sua tarefa: MONTAR um único documento HTML coeso REUSANDO esses HTMLs.
-
-Regras:
-- Preserve a técnica/estrutura de cada variante escolhida — não reescreva do zero; adapte só o necessário para harmonizar (espaçamentos, larguras, tipografia) num documento único.
-- Cada componente escolhido pode trazer \`notas_implementacao\` (quirks de Outlook, VML, hospedagem de assets, restrições técnicas): RESPEITE essas notas ao harmonizar — nunca remova a técnica que elas descrevem e NÃO as copie para o HTML final.
-- Monte os blocos na ordem de block_index (intercalando <componentes_escolhidos> e <blocos_sem_variante> pela posição).
-- BLOCOS SEM VARIANTE: para CADA item de <blocos_sem_variante>, NÃO pule a posição. Extraia a seção correspondente de <htmls_referencia> (o reference PADRÃO) e inclua-a naquela posição, precedida do comentário HTML exatamente: <!-- bloco {section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->. Se o reference padrão não tiver essa seção, crie um bloco mínimo daquele tipo com o MESMO comentário. O bloco SEMPRE aparece.
-- Container único de 600px centralizado.
-- Cores SEMPRE via CSS variables (--bg, --text, --heading, --button-bg, --button-text, --accent) declaradas em :root — unifique as cores das variantes nessas variáveis.
-- NÃO escreva a copy final e NÃO crie placeholders próprios: DEIXE o HTML de cada variante DO JEITO QUE VEM DA BIBLIOTECA, com os placeholders/tags que ele já traz. Nunca troque conteúdo por placeholder novo, nem simplifique — só preserve o que a variante trouxe.
-- NÃO use imagens reais: deixe contêineres/slots de imagem vazios.
-
-Emita APENAS o HTML, de <!DOCTYPE html> a </html>, sem cercas markdown e sem comentários explicativos — EXCETO a nota obrigatória dos blocos sem variante.
-
-REGRA DOS SLOTS DE IMAGEM: TODA tag de imagem presente nas variantes escolhidas ({{HERO_IMAGE}}, {{PRODUCT_N_IMAGE}}, {{BODY_IMAGE}}, {{PRODUCTS_IMAGE}}, {{*_THUMB_*}} etc.) DEVE aparecer no documento final, no bloco correspondente, com o MESMO atributo (src ou background-image) da variante original. NUNCA remova, simplifique ou converta uma seção com imagem em versão só-texto ao harmonizar — o pipeline downstream gera as imagens a partir dessas tags; sem elas o email sai em branco. Bloco mínimo criado do zero para seção hero ou products DEVE incluir o slot de imagem tagueado ({{HERO_IMAGE}} / {{PRODUCT_1_IMAGE}}).
-
-REGRA DAS TAGS CANÔNICAS: os HTMLs das variantes usam placeholders padronizados no formato {{TAG_MAIUSCULA}} (ex.: {{HERO_HEADLINE}}, {{PRODUCT_1_NAME}}, {{COUPON_CODE}}). PRESERVE cada placeholder EXATAMENTE como está no HTML da variante — NUNCA renomeie, traduza, abrevie ou invente tags novas. Se precisar de um placeholder num trecho que não tem (bloco criado do zero), use SOMENTE tags no padrão SECAO_CAMPO já presente nas outras variantes do documento (ex.: {{BODY_TITLE}}, {{BODY_TEXT}}, {{CTA_LABEL}}) — jamais um nome novo fora desse padrão. A correlação downstream (estrutura, copy e orçamento de caracteres) depende desses nomes exatos.
-
-REGRA DOS MARCADORES DE BLOCO: envolva CADA bloco do documento com um par de comentários HTML exatamente neste formato: <!-- cfy:block:{block_index}:{section}:start --> imediatamente ANTES do bloco e <!-- cfy:block:{block_index}:{section}:end --> imediatamente DEPOIS (ex.: <!-- cfy:block:1:hero:start --> ... <!-- cfy:block:1:hero:end -->). Use o block_index e a section EXATOS de <componentes_escolhidos>/<blocos_sem_variante>. Exatamente UM par por bloco, na ordem dos blocos, sem aninhamento. Estes marcadores e a nota obrigatória dos blocos sem variante são os ÚNICOS comentários permitidos além dos que já existem dentro do HTML das variantes.`
-
-const DEFAULT_ASSEMBLER_USER = `<store>
-- marca: {{brand_name}}
-- nicho: {{nicho}}
-- posicionamento: {{posicionamento}}
-- persona: {{persona}}
-- tom de voz: {{tom_voz}}
-- mood: {{mood}}
-</store>
-
-<outline>
-- objetivo: {{outline_objective}}
-- diretriz: {{outline_guidance}}
-- tom sugerido: {{outline_tone_hint}}
-</outline>
-
-<htmls_referencia>
-{{reference_template_html}}
-</htmls_referencia>
-
-<componentes_escolhidos>
-{{chosen_html_json}}
-</componentes_escolhidos>
-
-<blocos_sem_variante>
-{{missing_blocks_json}}
-</blocos_sem_variante>
-
-Monte AGORA o HTML completo na ordem de block_index, REUSANDO os HTMLs de <componentes_escolhidos> e, para cada item de <blocos_sem_variante>, puxando aquela seção de <htmls_referencia> (com a nota obrigatória). Harmonize num documento único com placeholders de copy e CSS variables de cor. Emita só o HTML, de <!DOCTYPE html> a </html>.`
-
 export interface AssemblerChoice {
   block_index: number
   variant_id: string
@@ -225,20 +174,6 @@ export function parseAssemblerOutput(raw: string): AssemblerChoice[] {
 }
 
 /**
- * Fisher-Yates: retorna uma NOVA array embaralhada (não muta a original).
- * Usado para apresentar os candidatos ao LLM sem viés de posição — o
- * fallback determinístico continua usando a ordem por score.
- */
-export function shuffle<T>(arr: readonly T[]): T[] {
-  const out = arr.slice()
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[out[i], out[j]] = [out[j], out[i]]
-  }
-  return out
-}
-
-/**
  * Aplica as escolhas do LLM sobre os finalistas de cada bloco, com
  * fallback determinístico para o top-1. Blocos sem candidato são pulados.
  */
@@ -265,69 +200,6 @@ export type AssemblySlot =
   | { kind: "variant"; variant: EmailComponentVariant; section: string; label: string }
   | { kind: "missing"; section: string; label: string }
 
-/** Nota obrigatória do bloco sem variante (mesma do prompt do Montador). */
-export function missingBlockNote(section: string): string {
-  return `<!-- bloco ${section}: nao foi encontrada referencia para esse bloco — usando reference padrao -->`
-}
-
-// ── Marcadores de bloco (cadeia de formatação, migration 20261039) ──
-// O Montador envolve cada bloco com <!-- cfy:block:{i}:{section}:start/end -->.
-// O hero-locator da fase 2 usa esses marcadores como modo primário pra achar
-// a região da hero. Marcadores inválidos são REMOVIDOS (nunca quebram o run)
-// — a fase 2 cai no modo tag-locator/full-doc.
-
-export const BLOCK_MARKER_PATTERN =
-  /<!--\s*cfy:block:(\d+):([A-Za-z0-9_-]+):(start|end)\s*-->/g
-
-export type BlockMarkerStatus = "ok" | "stripped" | "absent"
-
-/** Remove todos os marcadores cfy:block do documento. Pura. */
-export function stripBlockMarkers(html: string): string {
-  return html.replace(BLOCK_MARKER_PATTERN, "")
-}
-
-/**
- * Valida os marcadores de bloco do output do Montador contra os slots:
- * exatamente 1 par start/end por slot, índices e sections corretos, pares
- * na ordem dos blocos e sem sobreposição/aninhamento. Inválido → strip
- * (documento segue sem marcadores). Pura, testável.
- */
-export function validateBlockMarkers(
-  html: string,
-  slots: AssemblySlot[],
-): { html: string; status: BlockMarkerStatus } {
-  const found = Array.from(html.matchAll(BLOCK_MARKER_PATTERN))
-  if (found.length === 0) return { html, status: "absent" }
-
-  const stripped = () => ({
-    html: stripBlockMarkers(html),
-    status: "stripped" as const,
-  })
-
-  if (found.length !== slots.length * 2) return stripped()
-
-  let cursor = -1
-  for (let i = 0; i < slots.length; i++) {
-    const start = found[i * 2]
-    const end = found[i * 2 + 1]
-    if (!start || !end) return stripped()
-    if (Number(start[1]) !== i || Number(end[1]) !== i) return stripped()
-    if (start[3] !== "start" || end[3] !== "end") return stripped()
-    const section = slots[i].section.toLowerCase()
-    if (
-      start[2].toLowerCase() !== section ||
-      end[2].toLowerCase() !== section
-    ) {
-      return stripped()
-    }
-    const startIdx = start.index ?? -1
-    const endIdx = end.index ?? -1
-    if (startIdx <= cursor || endIdx <= startIdx) return stripped()
-    cursor = endIdx
-  }
-  return { html, status: "ok" }
-}
-
 /**
  * Escolha do Curador/Montador por parte do email — persistida em
  * store_email_references.slot_map. Missing → variant_id null. Pura.
@@ -340,29 +212,6 @@ export function slotMapFromSlots(slots: AssemblySlot[]): ReferenceSlotMapEntry[]
     variant_id: s.kind === "variant" ? s.variant.id : null,
     variant_name: s.kind === "variant" ? s.variant.name : null,
   }))
-}
-
-function referenceShell(body: string): string {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="utf-8" /></head>
-<body style="margin:0">
-<div style="max-width:600px;margin:0 auto">
-${body}
-</div>
-</body>
-</html>`
-}
-
-/** Concatena os snippets escolhidos num shell de referência 600px. */
-export function assembleReferenceHtml(chosen: EmailComponentVariant[]): string {
-  const body = chosen
-    .map(
-      (v) =>
-        `  <!-- ${v.block_type}: ${v.name} -->\n  ${effectiveVariantHtml(v).trim()}`,
-    )
-    .join("\n")
-  return referenceShell(body)
 }
 
 /** Extrai o documento HTML do output do LLM (remove fences + prosa ao redor). */
@@ -419,11 +268,21 @@ export interface AssembleReferenceInput {
   // Modelo default da aba Configurações — usado nos fallbacks quando o
   // agente (Curador/Montador) NÃO tem config ativa em email_agent_configs.
   defaultModel?: string | null
+  // Fontes aprovadas da loja (store_brand_identity). Normalizam a
+  // tipografia do documento montado: componentes vêm de origens diferentes
+  // (Arial, Courier, Trebuchet) e sem isso o email sai com 3 tipografias.
+  // O phase2 normaliza de novo a cada geração — a loja pode trocar de fonte
+  // sem invalidar a arquitetura persistida.
+  fontHeading?: string | null
+  fontBody?: string | null
 }
 
+// "code" = documento concatenado pelo código a partir das variantes
+//   escolhidas (story CM-2 — substituiu o "llm" do Montador).
 // "store" = reference+blueprint já persistidos foram REUSADOS sem regerar
-// (guard de reuso do generate.service; só com force=false).
-export type ReferenceSource = "llm" | "global" | "none" | "store"
+//   (guard de reuso do generate.service; só com force=false).
+// "llm" = legado: reference gravada pelo Montador LLM antes do CM-2.
+export type ReferenceSource = "llm" | "code" | "global" | "none" | "store"
 
 export interface AssembleReferenceResult {
   html: string | null
@@ -735,218 +594,117 @@ export async function assembleStoreReference(
     }
   }
 
-  // ── PASSO B — Montador: recebe SÓ o HTML COMPLETO das escolhidas e monta.
-  const harmRow = await loadActiveAgentConfig("assembler")
-  const harmConfig: AgentInvokeConfig = harmRow
-    ? {
-        model: harmRow.model,
-        temperature: harmRow.temperature,
-        max_tokens: harmRow.max_tokens,
-        system_prompt: harmRow.system_prompt,
-        user_template: harmRow.user_template,
-      }
-    : {
-        model: input.defaultModel ?? DEFAULT_MODEL,
-        temperature: 0.3,
-        max_tokens: 16384,
-        system_prompt: DEFAULT_ASSEMBLER_SYSTEM,
-        user_template: DEFAULT_ASSEMBLER_USER,
-      }
-
-  // chosen + missing carregam block_index (posição na sequência) pra o Montador
-  // intercalar os dois na ordem certa.
-  const chosenHtmlJson = JSON.stringify(
-    slots.flatMap((s, i) =>
-      s.kind === "variant"
-        ? [{
-            block_index: i,
-            section: s.section,
-            label: s.label,
-            name: s.variant.name,
-            // HTML efetivo (épico Taguedor): html_tagged aprovado quando
-            // existe — a arquitetura precisa carregar os {{PLACEHOLDERS}}.
-            html: effectiveVariantHtml(s.variant),
-            // Notas de implementação da variante (quirks de Outlook, VML,
-            // hospedagem de asset...) — o Montador RESPEITA ao harmonizar,
-            // sem copiá-las pro HTML. Vazio quando não curadas.
-            notas_implementacao: s.variant.long_description ?? "",
-          }]
-        : [],
-    ),
-  )
-  const missingBlocksJson = JSON.stringify(
-    slots.flatMap((s, i) =>
-      s.kind === "missing"
-        ? [{ block_index: i, section: s.section, label: s.label }]
-        : [],
-    ),
-  )
-
-  const harmVars: Record<string, string> = {
-    brand_name: input.brandName,
-    nicho: input.nicho,
-    posicionamento: input.posicionamento,
-    persona: input.persona,
-    tom_voz: input.tomVoz,
-    mood: input.mood,
-    outline_objective: input.outlineObjective,
-    outline_guidance: input.outlineGuidance,
-    outline_tone_hint: input.outlineToneHint,
-    reference_template_html: input.referenceTemplateHtml,
-    chosen_html_json: chosenHtmlJson,
-    missing_blocks_json: missingBlocksJson,
-  }
-
+  // ── PASSO B — Montagem por CÓDIGO (story CM-2) ─────────────────────
+  // O documento é a concatenação dos HTMLs canônicos das variantes
+  // escolhidas. Nenhum LLM participa: não há como achatar a variante,
+  // remover tag de imagem ou emitir marcador inválido.
   const t1 = Date.now()
-  const harmRunId = await startGenerationRun({
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: harmRow?.id,
-    model: harmConfig.model,
-    inputVars: {
-      sections: input.structure.length,
-      chosen: chosen.length,
-      missing: missingCount,
-    },
+  const assembled = assembleDocument({
+    slots,
+    fonts: { heading: input.fontHeading, body: input.fontBody },
   })
-  let harmRaw = ""
-  let harmTokensIn = 0
-  let harmTokensOut = 0
-  let harmCostUsd = 0
-  let html = ""
-  let usedLlm = false
-  let harmError: string | null = null
-  try {
-    const res = await invokeAgent(harmConfig, harmVars)
-    harmRaw = res.raw
-    harmTokensIn = res.tokensInput
-    harmTokensOut = res.tokensOutput
-    harmCostUsd = res.costUsd
-    const extracted = extractHtml(res.raw)
-    if (looksLikeHtml(extracted)) {
-      html = extracted
-      usedLlm = true
-    } else {
-      harmError = "llm_output_not_html"
-    }
-  } catch (err) {
-    harmError = err instanceof Error ? err.message : String(err)
-    log.error("assembler.harmonizer_failed", {
-      storeId: input.storeId,
-      model: harmConfig.model,
-      error: harmError,
-    })
-  }
-
+  let html = assembled.html
   const variantIds = chosen.map((v) => v.id)
 
-  // Marcadores de bloco (cadeia de formatação): valida os pares
-  // cfy:block:{i}:{section}:start/end do output; inválidos → strip
-  // (o hero-locator da fase 2 cai no modo tag). Nunca derruba o run.
-  let blockMarkers: BlockMarkerStatus = "absent"
-  if (usedLlm) {
-    const markerCheck = validateBlockMarkers(html, slots)
-    html = markerCheck.html
-    blockMarkers = markerCheck.status
-    if (blockMarkers === "stripped") {
-      log.warn("assembler.block_markers_stripped", {
-        storeId: input.storeId,
-        flowType: input.flowType,
-        emailNumber: input.emailNumber,
-      })
-    }
-  }
-
-  // Guard: o Montador removeu tags de imagem das variantes ao harmonizar?
-  // Warning + telemetria (image_tags_dropped nos Logs de geração) — sem
-  // derrubar o run, mas visível para auditoria imediata.
-  let droppedImageTags: string[] = []
-  if (usedLlm) {
-    droppedImageTags = findDroppedImageTags(chosenHtmlJson, html)
-    if (droppedImageTags.length > 0) {
-      log.warn("assembler.image_tags_dropped", {
-        storeId: input.storeId,
-        flowType: input.flowType,
-        emailNumber: input.emailNumber,
-        model: harmConfig.model,
-        droppedImageTags,
-      })
-    }
-  }
-
-  // Fonte do reference deste run. "llm" = Montador gerou HTML válido. Caso
-  // contrário (timeout/erro/output não-HTML), NÃO geramos HTML degradado nem
-  // persistimos: caímos no HTML reference global curado
-  // (email_reference_templates) do mesmo flow×email, que o consumidor
-  // (build-vars) já resolve via cascata store→global. Não sobrescrever
-  // store_email_references preserva um reference bom de geração anterior e
-  // deixa o global vencer (era a intenção já documentada no dispatch).
-  const source: ReferenceSource = usedLlm
-    ? "llm"
-    : curatedReference
-      ? "global"
-      : "none"
-
-  if (usedLlm) {
-    await upsertStoreReference(input, html, variantIds, harmConfig.model, slots)
-  } else {
-    // html devolvido = o global curado (ou "" se não houver) — usado só pelo
-    // Blueprint do mesmo run pra extrair a estrutura; NÃO é persistido.
-    html = curatedReference
-    const logCtx = {
+  // Self-check: marcadores emitidos pelo próprio código. Status diferente
+  // de "ok" com blocos presentes é BUG de código — loga error e segue sem
+  // marcadores (a fase 2 cai no tag-locator).
+  const markerCheck = validateBlockMarkers(html, assembled.stats.expected)
+  html = markerCheck.html
+  if (assembled.stats.blocks > 0 && markerCheck.status !== "ok") {
+    log.error("assembler.marker_selfcheck_failed", {
       storeId: input.storeId,
       flowType: input.flowType,
       emailNumber: input.emailNumber,
-      error: harmError,
-    }
-    if (source === "global") {
-      log.info("assembler.fallback_global_reference", logCtx)
-    } else {
-      log.warn("assembler.fallback_no_global_reference", logCtx)
-    }
+      status: markerCheck.status,
+      blocks: assembled.stats.blocks,
+    })
   }
 
-  await finishGenerationRun(harmRunId, {
+  // Self-check: nenhuma tag de imagem das variantes pode ter se perdido na
+  // concatenação. Diferente de zero é bug de código.
+  const droppedImageTags = findDroppedImageTags(
+    slots
+      .flatMap((sl) => (sl.kind === "variant" ? [effectiveVariantHtml(sl.variant)] : []))
+      .join("\n"),
+    html,
+  )
+  if (droppedImageTags.length > 0) {
+    log.error("assembler.image_tags_dropped", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      droppedImageTags,
+    })
+  }
+
+  if (assembled.stats.skipped.length > 0) {
+    log.warn("assembler.blocks_skipped", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      skipped: assembled.stats.skipped,
+    })
+  }
+
+  const source: ReferenceSource = assembled.stats.blocks > 0 ? "code" : "none"
+
+  if (source === "code") {
+    await upsertStoreReference(input, html, variantIds, "code", slots)
+  } else {
+    // Nenhum bloco entrou (toda variante recusada/vazia): não persiste, o
+    // consumidor cai no template global.
+    html = curatedReference
+    log.warn("assembler.no_block_assembled", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      skipped: assembled.stats.skipped,
+    })
+  }
+
+  // Run do Montador: nesta story ele não escolhe nem monta (CM-4 dá o papel
+  // novo). Registrado como skipped para a linha continuar aparecendo nos
+  // gen-logs com a razão.
+  const asmRow = await loadActiveAgentConfig("assembler")
+  const asmRunId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     batchId: input.batchId,
     agent: "assembler",
-    agentConfigId: harmRow?.id,
-    status: usedLlm ? "success" : "skipped",
-    model: usedLlm ? harmConfig.model : "fallback",
-    errorMessage: usedLlm ? undefined : (harmError ?? undefined),
+    agentConfigId: asmRow?.id,
+    model: "code",
+    inputVars: { sections: input.structure.length, chosen: chosen.length },
+  })
+  await finishGenerationRun(asmRunId, {
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    status: "skipped",
+    model: "code",
     inputVars: {
       sections: input.structure.length,
       chosen: chosen.length,
       missing: missingCount,
     },
-    rawOutput: harmRaw.slice(0, 40000),
     parsedOutput: {
-      used_llm: usedLlm,
-      // Fonte registrada na página de Logs de geração (detalhe do run).
+      reason: "montagem_por_codigo",
       reference_source: source,
-      global_available: curatedReference.length > 0,
       html_chars: html.length,
       variant_ids: variantIds.length,
-      missing_blocks: missingCount,
-      // Guard dos slots de imagem: tags presentes nas variantes escolhidas
-      // que sumiram do documento montado (deveria ser sempre []).
+      blocks: assembled.stats.blocks,
+      // Posições que ficaram FORA do email (selo nos logs — CM-7).
+      blocks_skipped: assembled.stats.skipped,
+      fonts_normalized: assembled.stats.fontsNormalized,
+      // Self-checks: os dois têm de ser sempre limpos.
+      marker_selfcheck: markerCheck.status,
       image_tags_dropped: droppedImageTags,
-      // Marcadores cfy:block do output (ok = hero-locator usa modo marker).
-      block_markers: blockMarkers,
     },
-    tokensInput: harmTokensIn,
-    tokensOutput: harmTokensOut,
-    costCents: usedLlm
-      ? resolveCostCents({
-          model: harmConfig.model,
-          tokensInput: harmTokensIn,
-          tokensOutput: harmTokensOut,
-          costUsd: harmCostUsd,
-        })
-      : 0,
+    tokensInput: 0,
+    tokensOutput: 0,
+    costCents: 0,
     durationMs: Date.now() - t1,
   })
 

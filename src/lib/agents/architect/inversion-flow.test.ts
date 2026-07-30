@@ -12,10 +12,8 @@ import type {
   EmailOutlineTemplate,
 } from "@/types/email-generation"
 import { resolveSections } from "./outline-sections"
-import {
-  resolveChoices,
-  assembleReferenceHtml,
-} from "./component-assembler.service"
+import { resolveChoices } from "./component-assembler.service"
+import { assembleDocument } from "./assemble-document"
 import { parseBlueprintOutput } from "./blueprint-generator.service"
 
 function outline(blocks: string[]): EmailOutlineTemplate {
@@ -95,7 +93,16 @@ describe("encadeamento Montador → Blueprint (inversão)", () => {
     // 2 candidatos por seção; sem escolha do LLM → cai no top-1 (A).
     const candidates = sections.map((s) => [variant(s, "A"), variant(s, "B")])
     const chosen = resolveChoices(candidates, [])
-    const html = assembleReferenceHtml(chosen)
+    // Variantes deste teste são <div> sintéticos: a montagem embrulha em
+    // <tr><td> em vez de pular (wrapUnknown — ver fragment-fit).
+    const { html } = assembleDocument({
+      slots: chosen.map((v, i) => ({
+        kind: "variant" as const,
+        variant: v,
+        section: sections[i],
+        label: sections[i],
+      })),
+    })
 
     // cada seção aparece no HTML e na ordem do outline
     const positions = sections.map((s) => html.indexOf(`data-sec="${s}"`))

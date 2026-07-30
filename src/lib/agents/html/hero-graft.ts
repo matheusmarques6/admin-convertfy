@@ -16,10 +16,18 @@
  * Puro (zero I/O) — testável.
  */
 
+import { fitFragmentToRow } from "./fragment-fit"
 import { locateHeroRegion, spliceHero } from "./hero-locator"
 
 export type GraftStatus =
   | "grafted"
+  /**
+   * A região JÁ é a variante — nada a trocar. É o caso normal desde a story
+   * CM-2: o documento nasce concatenado dos HTMLs canônicos, então o enxerto
+   * virou no-op no caminho principal. Continua necessário para reference
+   * legada, gravada pelo Montador LLM e não regerada sem `force`.
+   */
+  | "already_canonical"
   /** Documento sem região de hero identificável — nada a enxertar. */
   | "no_region"
   /** Variante ausente/vazia — mantém a região do Montador. */
@@ -34,29 +42,6 @@ export interface GraftResult {
   replaced_len: number
   /** Tamanho do fragmento da variante enxertado. */
   variant_len: number
-}
-
-/**
- * A região da hero no documento do Montador vive DENTRO da tabela
- * container (600px), então o enxerto precisa ser uma sequência de
- * `<tr>`/`<table>` válida naquele ponto:
- *   - fragmento que já começa com <tr>     → usa direto
- *   - fragmento que começa com <table>     → embrulha em <tr><td>
- *   - qualquer outra coisa (div solto...)  → recusa (invalid_variant)
- * Nunca "conserta" o fragmento: ou ele encaixa, ou o enxerto é recusado
- * e a região do Montador é mantida.
- */
-function adaptFragment(variantHtml: string): string | null {
-  const t = variantHtml.trim()
-  if (!t) return null
-  if (/^<tr[\s>]/i.test(t)) return t
-  if (/^<table[\s>]/i.test(t)) {
-    return `<tr>\n<td align="center" style="padding:0;">\n${t}\n</td>\n</tr>`
-  }
-  // Comentário inicial é comum nas variantes — pula e reavalia.
-  const afterComment = t.replace(/^(?:<!--[\s\S]*?-->\s*)+/, "")
-  if (afterComment !== t) return adaptFragment(afterComment)
-  return null
 }
 
 /**
@@ -80,15 +65,38 @@ export function graftHeroVariant(
   const region = locateHeroRegion(documentHtml)
   if (!region) return { ...base, status: "no_region" }
 
-  const fragment = adaptFragment(variantHtml)
+  const fragment = fitFragmentToRow(variantHtml)
   if (!fragment) return { ...base, status: "invalid_variant" }
 
+  const spliced = spliceHero(documentHtml, region, fragment)
+  const current = documentHtml.slice(region.start, region.end)
+  // A região já é a variante (documento montado por código — CM-2): não há
+  // troca a fazer. Distinguido de "grafted" para a telemetria mostrar que o
+  // enxerto deixou de ser necessário, sem virar um no-op silencioso.
+  const alreadyCanonical = normalizeForCompare(current) === normalizeForCompare(fragment)
+
   return {
-    html: spliceHero(documentHtml, region, fragment),
-    status: "grafted",
+    html: spliced,
+    status: alreadyCanonical ? "already_canonical" : "grafted",
     replaced_len: region.end - region.start,
     variant_len: fragment.length,
   }
+}
+
+/**
+ * Compara ignorando os comentários de controle e o espaço entre tags.
+ *
+ * No modo `marker` a região devolvida pelo locator INCLUI os marcadores
+ * `cfy:block`, e o splice os troca pelas sentinelas `cfy:hero` — nenhum dos
+ * dois é conteúdo, então os dois saem antes de comparar.
+ */
+function normalizeForCompare(html: string): string {
+  return html
+    .replace(/<!--\s*cfy:hero:(?:start|end)\s*-->/gi, "")
+    .replace(/<!--\s*cfy:block:\d+:[A-Za-z0-9_-]+:(?:start|end)\s*-->/gi, "")
+    .replace(/>\s+</g, "><")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 // ── Tipografia da loja (decisão do Matheus: fonte SEMPRE a da loja) ────

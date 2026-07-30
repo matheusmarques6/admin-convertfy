@@ -43,9 +43,13 @@ const MAX_ARCHITECT_ATTEMPTS = Number(process.env.DISPATCH_MAX_ARCHITECT_ATTEMPT
 // Emails gerados em paralelo por lote dentro de um tick.
 const ARCHITECT_BATCH = Number(process.env.DISPATCH_ARCHITECT_BATCH ?? 4)
 // Janela para INICIAR um novo lote no tick. Um lote lento dura ≈ INVOKE_TIMEOUT_MS
-// (Montador, 240s em llm-invoke.ts), então para o lote fechar dentro do
-// maxDuration=300 do route precisamos de TICK_BUDGET + 240s ≤ 300s. Por isso 45s
-// (não 240): um lote que começa no limite da janela ainda termina em ~285s.
+// (240s em llm-invoke.ts), então para o lote fechar dentro do maxDuration=300 do
+// route precisamos de TICK_BUDGET + 240s ≤ 300s. Por isso 45s (não 240): um lote
+// que começa no limite da janela ainda termina em ~285s.
+// CM-2: o agente lento do lote deixou de ser o Montador (que gerava 40KB de
+// HTML) e passou a ser o Curador. O teto continua sendo o timeout do invoke,
+// não o modelo, então o valor não muda — baixá-lo depende de medir a latência
+// real do Curador com o catálogo completo (CM-3) em produção.
 // Lotes rápidos (reference já existe) rodam vários dentro dos 45s; o resto
 // continua no próximo tick (cron de minuto em minuto). Ajustável via env.
 const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 45_000)

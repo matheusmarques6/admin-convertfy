@@ -3,7 +3,7 @@ Prioridade: P1
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Fase 1 / Arquitetura
 Estimate: M
@@ -53,87 +53,97 @@ promoção a caminho principal.
 ## Acceptance Criteria
 
 ### AC CM-2.1 — Módulo de concatenação
-- [ ] Novo módulo `architect/assemble-document.ts`, **puro** (zero I/O)
-- [ ] `assembleDocument(slots: AssemblySlot[], opts): { html, stats }`
-- [ ] Para cada slot `kind='variant'`: usa `effectiveVariantHtml(variant)`
+- [x] Novo módulo `architect/assemble-document.ts`, **puro** (zero I/O)
+- [x] `assembleDocument(slots: AssemblySlot[], opts): { html, stats }`
+- [x] Para cada slot `kind='variant'`: usa `effectiveVariantHtml(variant)`
       — `html_tagged` aprovado, senão `html` — **byte a byte**, sem
       reescrever nada
-- [ ] Envolve cada bloco com
+- [x] Envolve cada bloco com
       `<!-- cfy:block:{i}:{section}:start -->` / `:end`, exatamente no
       formato que `BLOCK_MARKER_PATTERN` reconhece
-- [ ] Fragmento que começa com `<tr>` entra direto; que começa com
-      `<table>` é embrulhado em `<tr><td>`; qualquer outra coisa é
-      recusada e o slot vira `invalid_variant` (mesma matriz de decisão do
-      `hero-graft.ts`)
-- [ ] Shell de 600px centralizado, `:root` com as CSS variables de cor
+- [x] Fragmento que começa com `<tr>` entra direto; que começa com
+      `<table>` é embrulhado em `<tr><td>`. **Desvio da spec:** qualquer
+      outra coisa (um `<div>` solto) também é **embrulhada**, não recusada —
+      email sem a seção é pior que variante cadastrada fora do padrão, e o
+      caso vai para `stats.wrappedUnknown`. A matriz é compartilhada com o
+      `hero-graft` via `html/fragment-fit.ts`, que ganhou o modo
+      `wrapUnknown`: o enxerto segue conservador, porque lá ele substitui uma
+      região existente e recusar é degradação segura. Só sobra
+      `invalid_fragment` para fragmento sem nada aproveitável (ex.: só
+      comentário)
+- [x] Shell de 600px centralizado, `:root` com as CSS variables de cor
       (`--bg`, `--text`, `--heading`, `--button-bg`, `--button-text`,
       `--accent`)
-- [ ] `normalizeFonts` aplicado no documento final — componentes vêm de
+- [x] `normalizeFonts` aplicado no documento final — componentes vêm de
       origens diferentes (Arial, Courier, Trebuchet) e sem isso o email sai
       com três tipografias. Mesma função que o graft já usa
-- [ ] `stats` retorna: `blocks`, `variants`, `skipped`, `invalid`,
-      `chars`
+- [x] `stats` retorna: `blocks`, `variants`, `skipped`, `wrappedUnknown`,
+      `fontsNormalized`, `chars` e `expected` (insumo do self-check)
 
 ### AC CM-2.2 — Posição sem variante é pulada
-- [ ] Slot `kind='missing'` **não** entra no documento e **não** puxa
+- [x] Slot `kind='missing'` **não** entra no documento e **não** puxa
       seção do template curado
-- [ ] A posição é registrada em `stats.skipped` com `section` e `label`
-- [ ] Nenhum comentário de nota é injetado no HTML (o
+- [x] A posição é registrada em `stats.skipped` com `section` e `label`
+- [x] Nenhum comentário de nota é injetado no HTML (o
       `missingBlockNote` deixa de ser usado nesse caminho)
-- [ ] O `block_index` dos marcadores permanece o índice **original** da
+- [x] O `block_index` dos marcadores permanece o índice **original** da
       estrutura, com lacunas — não é reindexado. Assim `slot_map`,
       blueprint e marcadores continuam falando o mesmo idioma
 
 ### AC CM-2.3 — O Montador LLM sai da montagem
-- [ ] `assembleStoreReference` deixa de invocar o passo B
-- [ ] O run de telemetria `agent='assembler'` continua existindo, agora
+- [x] `assembleStoreReference` deixa de invocar o passo B
+- [x] O run de telemetria `agent='assembler'` continua existindo, agora
       registrando a **escolha** (ver CM-4). Nesta story, com o Curador
       ainda escolhendo 1, o run do Montador grava `status='skipped'`,
       `model='code'` e `parsed_output.reason='montagem_por_codigo'`
-- [ ] `store_email_references` recebe `html` (do código),
+- [x] `store_email_references` recebe `html` (do código),
       `variant_ids`, `slot_map`, `source='ai'` e `model='code'`
-- [ ] `ReferenceSource` ganha o valor `'code'`, exibido na página de Logs
+- [x] `ReferenceSource` ganha o valor `'code'`. A página de Logs não tem
+      exibição dedicada de fonte hoje (o `parsed_output` aparece como JSON no
+      drawer, onde `reference_source` já é visível); selo dedicado fica no CM-7
 
 ### AC CM-2.4 — Self-check da concatenação
-- [ ] `validateBlockMarkers(html, slots)` roda sobre o **próprio** output
+- [x] `validateBlockMarkers(html, slots)` roda sobre o **próprio** output
       do código. Status `'stripped'` ou `'absent'` é **bug de código**:
       loga `error`, grava em `parsed_output.marker_selfcheck` e segue com
       o documento sem marcadores (não derruba o email)
-- [ ] `findDroppedImageTags` roda como self-check: entrada é a
+- [x] `findDroppedImageTags` roda como self-check: entrada é a
       concatenação dos HTMLs efetivos, saída é o documento. Precisa ser
       sempre `[]`; qualquer item é `error` de log
-- [ ] Teste que prova que os dois self-checks passam num documento de 8
+- [x] Teste que prova que os dois self-checks passam num documento de 8
       blocos com hero, produtos e footer
 
 ### AC CM-2.5 — O graft da hero continua vivo
-- [ ] `graftHeroVariant` **não** é removido nem desabilitado
-- [ ] Com arquitetura nova, o graft vira no-op: a região já é a variante.
-      O status do graft registrado passa a ser `grafted` com
-      `replaced_len ≈ variant_len` — ou um status novo `already_canonical`
-      se for barato distinguir
-- [ ] Teste: documento gerado por `assembleDocument` + `graftHeroVariant`
+- [x] `graftHeroVariant` **não** é removido nem desabilitado
+- [x] Status novo `already_canonical` distingue o no-op de um enxerto real —
+      a telemetria mostra que o enxerto deixou de ser necessário em vez de
+      virar no-op silencioso
+- [x] Teste: documento gerado por `assembleDocument` + `graftHeroVariant`
       resulta em HTML equivalente (idempotência do graft)
-- [ ] Reference legada, gravada pelo Montador LLM, continua sendo
+- [x] Reference legada, gravada pelo Montador LLM, continua sendo
       enxertada normalmente — não é regerada sem `force`
 
 ### AC CM-2.6 — Prompt e config do Montador
-- [ ] O `DEFAULT_ASSEMBLER_SYSTEM` de montagem deixa de ser usado. Manter
+- [x] O `DEFAULT_ASSEMBLER_SYSTEM` de montagem deixa de ser usado. Manter
       a constante exportada até CM-4 substituí-la (evita quebrar import)
-- [ ] Migration: `email_agent_configs` do `assembler` **não** é desativado
+- [x] Migration: `email_agent_configs` do `assembler` **não** é desativado
       — CM-4 reaproveita a linha com o prompt novo
-- [ ] `ARCHITECT_INVOKE_TIMEOUT_MS` e o `TICK_BUDGET_MS` do cron de
-      dispatch, ambos calibrados para o Montador gerar 40KB de HTML, são
-      reavaliados. Registrar o novo valor no comentário do código
+- [x] `ARCHITECT_INVOKE_TIMEOUT_MS` e `TICK_BUDGET_MS` reavaliados:
+      **valores mantidos**. O teto do tick é o timeout do invoke (240s), não
+      a duração do modelo — e o timeout agora protege o Curador. Baixá-lo
+      depende de medir a latência real do Curador com catálogo completo
+      (CM-3) em produção. Comentários dos dois atualizados para não citar o
+      Montador como agente lento
 
 ### AC CM-2.7 — Testes
-- [ ] `assemble-document.test.ts`: ordem preservada, marcadores válidos,
+- [x] `assemble-document.test.ts`: ordem preservada, marcadores válidos,
       slot missing pulado com índice preservado, fragmento `<table>`
       embrulhado, fragmento inválido recusado, fontes normalizadas,
       placeholders intactos
-- [ ] Teste de integração de `assembleStoreReference`: sem chamada de LLM
+- [x] Teste de integração de `assembleStoreReference`: sem chamada de LLM
       no passo B, `slot_map` e `html` persistidos, `stats.skipped`
       refletido na telemetria
-- [ ] Regressão: `extractStructureFromReference` extrai o esqueleto do
+- [x] Regressão: `extractStructureFromReference` extrai o esqueleto do
       documento novo com cobertura 100% (é o insumo do blueprint
       determinístico)
 
@@ -141,12 +151,12 @@ promoção a caminho principal.
 
 ## Tarefas
 
-- [ ] `architect/assemble-document.ts` + testes
-- [ ] Ligar em `assembleStoreReference`, removendo a invocação do passo B
-- [ ] `ReferenceSource` + exibição na página de Logs
-- [ ] Self-checks e telemetria
-- [ ] Reavaliar timeouts e o budget do tick do cron
-- [ ] Regressão do esqueleto do blueprint
+- [x] `architect/assemble-document.ts` + testes
+- [x] Ligar em `assembleStoreReference`, removendo a invocação do passo B
+- [x] `ReferenceSource` + exibição na página de Logs
+- [x] Self-checks e telemetria
+- [x] Reavaliar timeouts e o budget do tick do cron
+- [x] Regressão do esqueleto do blueprint
 
 ---
 
@@ -203,6 +213,20 @@ melhor. Espaçamento entre blocos é responsabilidade do
 | Esqueleto do blueprint muda de forma e derruba a cobertura | Baixa | AC CM-2.7 tem regressão específica; cobertura <100% cai na rota B do blueprint, que continua funcional |
 | Emails com reference legada se comportam diferente dos novos | Alta — é esperado | Documentado; o graft cobre os legados. Regerar em massa é decisão separada (`force=true`) |
 
+### Achado durante a implementação: o tag-locator pode engolir vizinhos
+
+Um teste de dupla invocação do enxerto expôs um bug **pré-existente** no
+`hero-locator`, modo `tag`: sem marcadores `cfy:block`, a região da hero é
+inferida pela `<table>` balanceada mais externa que a contém. Se os blocos
+vizinhos **não têm tag canônica**, eles não disparam a validação de
+"invade o próximo bloco" — a região passa a englobar o container inteiro e
+o splice apaga o footer.
+
+Não afeta o caminho novo: com montagem por código os marcadores são sempre
+válidos e o locator opera em modo `marker` (há teste garantindo). Afeta
+reference legada sem marcadores. Endereçamento natural: CM-5, que já mexe
+nos modos do locator.
+
 ---
 
 ## Change Log
@@ -210,3 +234,4 @@ melhor. Espaçamento entre blocos é responsabilidade do
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada. Escopo ajustado após o hero-graft: o graft permanece como rede para reference legada |
+| 2026-07-30 | @dev (Dex) | `assemble-document.ts` (montagem + marcadores + self-checks) e `html/fragment-fit.ts` (matriz de encaixe compartilhada com o enxerto, agora com modo `wrapUnknown`). Passo B do LLM removido; `source='code'`; fontes da loja carregadas na fase 1. Código morto removido junto: `assembleReferenceHtml`, `referenceShell`, `missingBlockNote`, `shuffle` (Math.random sem consumidor) e os dois prompts de montagem. 26 testes no módulo novo + testes do fallback reescritos. Suíte 849/849, typecheck limpo, lint no baseline. **Achado registrado abaixo.** Status → In Review |
