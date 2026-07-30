@@ -58,12 +58,13 @@ para atenção, `negBg` para problema, `infoBg` para informação).
       projeta escalares, não o array
 - [x] **Fora do pool** (âmbar) — variantes ativas sem `{{PLACEHOLDER}}` no
       HTML efetivo. Origem: `candidates_excluded_untagged`, que já existe.
-      Tooltip lista os nomes
+      Label leva a contagem; os **nomes** ficam no `parsed_output` do drawer
+      (a view projeta escalares, não o objeto)
 - [x] **Renderizado desatualizado** (azul) — hash de origem divergente ou
       desconhecido. Origem: `parsed_output.rendered_reference` (CM-6)
 - [x] **Desvios do ranking** (azul) — quantas posições o Montador tirou do
-      rank 1. Origem: `parsed_output.desvios` (CM-4). Tooltip com posição
-      e motivo
+      rank 1. Origem: `parsed_output.desvios` (CM-4). Posição e motivo de
+      cada desvio ficam em `desvios_por_posicao`, no drawer
 - [x] Cada selo aparece só quando o dado existe e é diferente de zero —
       run antigo sem o campo não mostra nada
 
@@ -72,7 +73,9 @@ para atenção, `negBg` para problema, `infoBg` para informação).
       **cliente**, sobre as linhas já carregadas: não é status, e a mesma
       função (`hasCurationPressure`) decide o filtro e o selo, então os dois
       nunca divergem
-- [x] Combina com os filtros existentes de status, loja e período
+- [x] Combina com os filtros de **período** e **agente**. Não combina com
+      os de status (Erros/Em andamento/Fallbacks) porque ocupa a mesma
+      dimensão de aba — são alternativas, não acumuláveis
 
 ### AC CM-7.4 — Retrocompatibilidade
 - [x] Runs gravados antes destas stories não quebram a linha nem o drawer
@@ -119,10 +122,6 @@ invisível. Custa uma linha exibir junto com os selos novos.
 ---
 
 ## File List
-
-### A modificar
-- `src/components/email-generation-logs/logs-workspace.tsx`
-- `src/lib/agents/agent-visual.ts` — se couber descrição dos selos
 
 ### A criar
 - `src/components/email-generation-logs/curation-signals.ts` — a regra
