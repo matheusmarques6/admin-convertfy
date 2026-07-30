@@ -13,10 +13,15 @@
  * campo VAZIO.
  *
  * Decisão de 30/jul: a intenção do campo está certa, os DADOS estão
- * errados. Este módulo mede o que existe (classificador) e garante que o
- * que for usado não esteja velho (hash de origem), para que o renderizado
- * possa voltar ao prompt variante por variante, conforme a curadoria arruma
- * a biblioteca.
+ * errados — e o exemplo vai ao agente MESMO ASSIM. Um print ainda mostra o
+ * acabamento pretendido (proporções, hierarquia, peso visual), e a
+ * estrutura o agente tira do `html` da variante, não do exemplo.
+ *
+ * Este módulo então não decide se o exemplo é bom o bastante para ir; ele
+ * MEDE (classificador) e detecta desatualização (hash de origem) para
+ * alimentar o selo dos logs e o aviso na aba Componentes. A curadoria usa
+ * isso para saber onde melhorar; o pipeline usa o exemplo do jeito que
+ * estiver.
  *
  * Puro (zero I/O) — testável.
  */
@@ -68,8 +73,8 @@ export interface ClassifyResult {
 /**
  * Classifica o `rendered_html` de uma variante. Os thresholds são
  * explícitos e nomeados de propósito: são heurística sobre dados de
- * cadastro, não uma verdade — e o pior caso de errar para `mockup` é o
- * comportamento de hoje (não enviar).
+ * cadastro, não uma verdade. Errar aqui não muda o que o agente recebe —
+ * a classificação informa, não bloqueia.
  */
 export function classifyRenderedHtml(
   html: string | null | undefined,
@@ -120,21 +125,32 @@ export function sourceSha(html: string | null | undefined): string {
 
 // ── Resolução para o prompt ────────────────────────────────────────────
 
+/**
+ * Por que o exemplo NÃO chegou ao agente. Só uma razão é bloqueante hoje —
+ * `empty`, que é ausência de dado. As demais são ADVERTÊNCIAS: acompanham o
+ * envio em vez de impedi-lo.
+ */
 export type RenderedSkipReason =
-  /** Não cadastrado. */
+  /** Não cadastrado — a única razão que realmente impede o envio. */
   | "empty"
-  /** Print/mockup — não serve de espelho. */
+
+/** Ressalva sobre o exemplo enviado. Informa, não bloqueia. */
+export type RenderedCaveat =
+  /** Parece print embrulhado em HTML, não email estrutural. */
   | "mockup"
-  /** O `html` mudou depois que o renderizado foi salvo. */
+  /** O `html` mudou depois que o exemplo foi salvo. */
   | "stale"
   /** Cadastrado antes do hash existir: validade desconhecida. */
   | "unknown_sha"
 
 export interface ResolvedRenderedReference {
-  /** HTML a enviar ao agente, ou null quando não deve ser enviado. */
+  /** HTML a enviar ao agente. Null só quando não há exemplo cadastrado. */
   html: string | null
+  /** Razão de não enviar (hoje, só ausência). */
   reason: RenderedSkipReason | null
-  /** Para o selo dos logs (CM-7): o renderizado existe mas está velho. */
+  /** Ressalvas sobre o que foi enviado — telemetria e aviso na UI. */
+  caveats: RenderedCaveat[]
+  /** Para o selo dos logs: o exemplo existe mas não corresponde ao html. */
   stale: boolean
   kind: RenderedKind
 }
@@ -144,44 +160,51 @@ type VariantLike = Pick<EmailComponentVariant, "html" | "rendered_html"> & {
 }
 
 /**
- * Decide se o renderizado vai ao prompt. Só passa quando é estrutural E o
- * hash bate com o `html` atual — um exemplo de acabamento que descreve uma
- * versão antiga da variante é pior que exemplo nenhum.
+ * Resolve o exemplo renderizado para o prompt.
+ *
+ * **Decisão de 30/jul (Matheus): o exemplo SEMPRE vai quando existe.**
+ * Classificar como mockup ou detectar hash divergente não impede o envio —
+ * vira ressalva registrada, não bloqueio. A razão é simples: mesmo um print
+ * mostra o acabamento pretendido (proporções, hierarquia, peso visual), e o
+ * agente já tem no prompt que a estrutura vem do `html` da variante, não do
+ * exemplo. Perder o espelho custa mais do que usá-lo com ressalva.
+ *
+ * O que a classificação e o hash continuam fazendo: alimentar o selo dos
+ * logs e o aviso na aba Componentes, para a curadoria saber onde melhorar.
  */
 export function resolveRenderedReference(
   variant: VariantLike,
 ): ResolvedRenderedReference {
-  const classified = classifyRenderedHtml(
-    variant.rendered_html,
-    variant.html,
-  )
+  const classified = classifyRenderedHtml(variant.rendered_html, variant.html)
 
   if (classified.kind === "empty") {
-    return { html: null, reason: "empty", stale: false, kind: "empty" }
+    return {
+      html: null,
+      reason: "empty",
+      caveats: [],
+      stale: false,
+      kind: "empty",
+    }
   }
-  if (classified.kind === "mockup") {
-    return { html: null, reason: "mockup", stale: false, kind: "mockup" }
-  }
+
+  const caveats: RenderedCaveat[] = []
+  if (classified.kind === "mockup") caveats.push("mockup")
 
   const stored = variant.rendered_html_source_sha?.trim()
   if (!stored) {
-    // Backfill deixa NULL nas variantes antigas: "validade desconhecida" é
-    // tratado como desatualizado até alguém regravar o exemplo.
-    return {
-      html: null,
-      reason: "unknown_sha",
-      stale: true,
-      kind: "structural",
-    }
-  }
-  if (stored !== sourceSha(variant.html)) {
-    return { html: null, reason: "stale", stale: true, kind: "structural" }
+    // Backfill deixa NULL nas variantes antigas: sem saber de qual versão do
+    // html o exemplo veio, a validade é desconhecida.
+    caveats.push("unknown_sha")
+  } else if (stored !== sourceSha(variant.html)) {
+    caveats.push("stale")
   }
 
   return {
     html: (variant.rendered_html ?? "").trim(),
     reason: null,
-    stale: false,
-    kind: "structural",
+    caveats,
+    // `stale` no sentido do selo: o exemplo não corresponde ao html atual.
+    stale: caveats.includes("stale") || caveats.includes("unknown_sha"),
+    kind: classified.kind,
   }
 }

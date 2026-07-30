@@ -80,7 +80,10 @@ describe("buildHeroVars — modo enxertado", () => {
     block_type: "hero",
   }
 
-  it("grafted: variante e rendered saem do prompt, hero_source=library", () => {
+  // No modo library a região JÁ é a variante, então mandar o `html` de novo
+  // duplicaria o prompt. O EXEMPLO renderizado continua indo: ele é
+  // referência de acabamento, não de estrutura.
+  it("grafted: o html da variante sai; o exemplo renderizado fica", () => {
     const vars = buildHeroVars(minimalCtx(), {
       regionHtml: HERO_REGION,
       variant,
@@ -88,20 +91,17 @@ describe("buildHeroVars — modo enxertado", () => {
     })
     expect(vars.hero_source).toBe("library")
     expect(vars.hero_variant_html).toBe("")
-    expect(vars.hero_variant_rendered_html).toBe("")
+    expect(vars.hero_variant_rendered_html).toBe(variant.rendered_html)
   })
 
-  // CM-6: o `html` da variante segue sendo o espelho estrutural; o
-  // renderizado só passa quando é HTML de verdade E o hash bate. Este
-  // fixture é o mockup-imagem que a biblioteca tem hoje — barrado.
-  it("sem enxerto: variante é o espelho; mockup renderizado é barrado", () => {
+  it("sem enxerto: variante é o espelho estrutural, exemplo vai junto", () => {
     const vars = buildHeroVars(minimalCtx(), {
       regionHtml: HERO_REGION,
       variant,
     })
     expect(vars.hero_source).toBe("montador")
     expect(vars.hero_variant_html).toBe(variant.html)
-    expect(vars.hero_variant_rendered_html).toBe("")
+    expect(vars.hero_variant_rendered_html).toBe(variant.rendered_html)
   })
 
   it("renderizado estrutural com hash válido chega ao prompt", () => {
@@ -123,7 +123,8 @@ describe("buildHeroVars — modo enxertado", () => {
     expect(vars.hero_variant_rendered_html).toBe(rendered)
   })
 
-  it("hash divergente (html editado depois) barra o renderizado", () => {
+  // Desatualizado NÃO barra: o exemplo vai e a ressalva fica na telemetria.
+  it("hash divergente (html editado depois) não barra o exemplo", () => {
     const rendered = `<table>${Array.from(
       { length: 20 },
       (_, i) =>
@@ -137,6 +138,14 @@ describe("buildHeroVars — modo enxertado", () => {
         rendered_html: rendered,
         rendered_html_source_sha: sourceSha("<tr><td>{{HERO_HEADLINE}}</td></tr>"),
       },
+    })
+    expect(vars.hero_variant_rendered_html).toBe(rendered)
+  })
+
+  it("sem exemplo cadastrado → var vazia", () => {
+    const vars = buildHeroVars(minimalCtx(), {
+      regionHtml: HERO_REGION,
+      variant: { ...variant, rendered_html: null },
     })
     expect(vars.hero_variant_rendered_html).toBe("")
   })

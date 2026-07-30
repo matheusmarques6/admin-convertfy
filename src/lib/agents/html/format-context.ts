@@ -484,15 +484,14 @@ export function buildHeroVars(
     // localizável desde a montagem por código).
     hero_region_html: params.regionHtml,
     hero_variant_html: params.grafted ? "" : (params.variant?.html ?? ""),
-    // CM-6: o exemplo renderizado só entra quando é HTML estrutural E o hash
-    // bate com o `html` atual. Um padrão de acabamento que descreve uma
-    // versão antiga da variante é pior que exemplo nenhum — e a maior parte
-    // do que está cadastrado hoje é mockup-imagem, não HTML.
-    hero_variant_rendered_html: params.grafted
-      ? ""
-      : (params.variant
-          ? resolveRenderedReference(params.variant).html
-          : null) ?? "",
+    // O exemplo renderizado vai SEMPRE que existir, inclusive no modo
+    // `library` e inclusive quando é print ou está desatualizado (decisão de
+    // 30/jul). Ele é o espelho de ACABAMENTO; a estrutura o agente tira do
+    // `html` da variante ou da região enxertada. Classificação e hash viram
+    // ressalva na telemetria, não bloqueio.
+    hero_variant_rendered_html:
+      (params.variant ? resolveRenderedReference(params.variant).html : null) ??
+      "",
     hero_source: params.grafted ? "library" : "montador",
     hero_variant_schema_json: params.variant?.output_schema
       ? JSON.stringify(params.variant.output_schema, null, 2)

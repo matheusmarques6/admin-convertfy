@@ -55,6 +55,10 @@ import {
   assembleStoreReference,
   CuratorFailedError,
 } from "./component-assembler.service"
+import {
+  missingTelemetryKeys,
+  TELEMETRY_CONTRACT,
+} from "./telemetry-contract"
 
 function variant(id: string, blockType: string, html: string) {
   return {
@@ -643,6 +647,60 @@ describe("Montador — escolha de conjunto", () => {
     )
     // 2 tentativas do Curador e nada mais.
     expect(invokeAgent).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ── Contrato de telemetria: inegociável ───────────────────────────────
+// Perder um campo de telemetria não quebra teste, não quebra typecheck e não
+// gera alerta: o email é entregue e o run fica verde. Foi assim que o
+// blocks_skipped sumiu entre o CM-2 e o CM-4. Estes testes fazem a perda
+// virar falha.
+describe("contrato de telemetria", () => {
+  const parsedOf = (agent: string) =>
+    (
+      finishGenerationRun.mock.calls.find(
+        (c) => (c[1] as { agent?: string }).agent === agent,
+      )?.[1] as { parsedOutput?: unknown } | undefined
+    )?.parsedOutput
+
+  it("Curador grava todas as chaves do contrato", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    expect(missingTelemetryKeys("assembler_chooser", parsedOf("assembler_chooser"))).toEqual([])
+  })
+
+  it("Montador grava todas as chaves do contrato", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    expect(missingTelemetryKeys("assembler", parsedOf("assembler"))).toEqual([])
+  })
+
+  // O caminho de falha é justamente onde a telemetria mais importa: é o
+  // único registro do que aconteceu.
+  it("Curador falhando grava o contrato do mesmo jeito", async () => {
+    const bad = { raw: "sem json", tokensInput: 1, tokensOutput: 1 }
+    invokeAgent.mockReset()
+    invokeAgent.mockResolvedValue(bad)
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow()
+    expect(missingTelemetryKeys("assembler_chooser", parsedOf("assembler_chooser"))).toEqual([])
+  })
+
+  it("Montador degradado grava o contrato do mesmo jeito", async () => {
+    invokeAgent
+      .mockResolvedValueOnce(CHOICE_V1)
+      .mockRejectedValueOnce(new Error("timeout"))
+    await assembleStoreReference(baseInput)
+    const parsed = parsedOf("assembler") as Record<string, unknown>
+    expect(missingTelemetryKeys("assembler", parsed)).toEqual([])
+    expect(parsed.degraded).toBe(true)
+  })
+
+  it("cada chave do contrato tem um motivo escrito", () => {
+    for (const [agent, keys] of Object.entries(TELEMETRY_CONTRACT)) {
+      for (const [key, reason] of Object.entries(keys)) {
+        expect(reason.length, `${agent}.${key} sem motivo`).toBeGreaterThan(20)
+      }
+    }
   })
 })
 

@@ -95,53 +95,68 @@ describe("resolveRenderedReference", () => {
     ...over,
   })
 
-  it("estrutural + hash batendo → envia", () => {
+  // Decisão de 30/jul: o exemplo SEMPRE vai quando existe. Classificação e
+  // hash viram ressalva registrada, nunca bloqueio — mesmo um print mostra
+  // proporção e hierarquia, e a estrutura o agente tira do html da variante.
+  it("estrutural + hash batendo → envia, sem ressalva", () => {
     const r = resolveRenderedReference(variant())
     expect(r.html).toBe(STRUCTURAL)
-    expect(r.reason).toBeNull()
+    expect(r.caveats).toEqual([])
     expect(r.stale).toBe(false)
   })
 
-  it("html mudou depois do renderizado → não envia, marca stale", () => {
+  it("mockup → ENVIA, com a ressalva", () => {
+    const r = resolveRenderedReference(variant({ rendered_html: MOCKUP }))
+    expect(r.html).toBe(MOCKUP)
+    expect(r.caveats).toEqual(["mockup"])
+    expect(r.kind).toBe("mockup")
+    // Ser print não é questão de idade.
+    expect(r.stale).toBe(false)
+  })
+
+  it("html mudou depois do exemplo → ENVIA, marcado como stale", () => {
     const r = resolveRenderedReference(
       variant({ html: "<tr><td>{{HERO_HEADLINE}} editado</td></tr>" }),
     )
-    expect(r.html).toBeNull()
-    expect(r.reason).toBe("stale")
+    expect(r.html).toBe(STRUCTURAL)
+    expect(r.caveats).toEqual(["stale"])
     expect(r.stale).toBe(true)
   })
 
-  // Backfill deixa NULL: validade desconhecida é tratada como velha.
-  it("sem hash gravado → não envia, marca stale", () => {
+  it("sem hash gravado → ENVIA, validade desconhecida", () => {
     const r = resolveRenderedReference(
       variant({ rendered_html_source_sha: null }),
     )
-    expect(r.html).toBeNull()
-    expect(r.reason).toBe("unknown_sha")
+    expect(r.html).toBe(STRUCTURAL)
+    expect(r.caveats).toEqual(["unknown_sha"])
     expect(r.stale).toBe(true)
   })
 
-  it("mockup → não envia, e NÃO é stale (não é questão de idade)", () => {
-    const r = resolveRenderedReference(variant({ rendered_html: MOCKUP }))
-    expect(r.html).toBeNull()
-    expect(r.reason).toBe("mockup")
-    expect(r.stale).toBe(false)
-    expect(r.kind).toBe("mockup")
-  })
-
-  it("não cadastrado → não envia, sem alarde", () => {
-    const r = resolveRenderedReference(variant({ rendered_html: null }))
-    expect(r.html).toBeNull()
-    expect(r.reason).toBe("empty")
-    expect(r.stale).toBe(false)
-  })
-
-  it("mockup com hash velho continua sendo mockup", () => {
-    // A classificação vem antes do hash: não adianta regravar o exemplo se
-    // ele é um print.
+  it("mockup E desatualizado → envia com as duas ressalvas", () => {
     const r = resolveRenderedReference(
       variant({ rendered_html: MOCKUP, rendered_html_source_sha: "outro" }),
     )
-    expect(r.reason).toBe("mockup")
+    expect(r.html).toBe(MOCKUP)
+    expect(r.caveats).toEqual(["mockup", "stale"])
+    expect(r.stale).toBe(true)
+  })
+
+  // A única razão que realmente impede o envio: não há o que enviar.
+  it("não cadastrado → não envia", () => {
+    const r = resolveRenderedReference(variant({ rendered_html: null }))
+    expect(r.html).toBeNull()
+    expect(r.reason).toBe("empty")
+    expect(r.caveats).toEqual([])
+    expect(r.stale).toBe(false)
+  })
+
+  it("`reason` só existe para ausência", () => {
+    for (const over of [
+      { rendered_html: MOCKUP },
+      { html: "<tr><td>outro</td></tr>" },
+      { rendered_html_source_sha: null },
+    ]) {
+      expect(resolveRenderedReference(variant(over)).reason).toBeNull()
+    }
   })
 })

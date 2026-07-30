@@ -86,6 +86,13 @@ que exemplo nenhum.
       como desatualizado até alguém regravar
 
 ### AC CM-6.4 — Gate de envio ao agente
+> **REVISADO em 30/jul, por decisão do Matheus:** o exemplo **sempre vai**
+> quando existe. Ser mockup ou estar desatualizado não impede o envio —
+> vira ressalva registrada. Um print ainda mostra o acabamento pretendido
+> (proporções, hierarquia, peso visual), e a estrutura o agente tira do
+> `html` da variante ou da região enxertada. A única razão que bloqueia é
+> não haver exemplo cadastrado. Os ACs abaixo refletem o desenho ANTERIOR;
+> o que vale é esta nota.
 - [x] Helper `resolveRenderedReference(variant)` retornando o HTML ou
       `null` com a razão
 - [x] Envia o renderizado **só** quando: classificação `structural`
@@ -105,15 +112,11 @@ que exemplo nenhum.
 - [x] O gate vale no modo **`montador`**: quando o helper devolve HTML, o
       exemplo chega ao agente como espelho de acabamento; quando devolve
       `null`, o `html` da variante é a única referência
-- [ ] ~~Preencher também no modo `library`~~ — **adiado, deliberadamente.**
-      Nesse modo a região JÁ é a variante canônica, enxertada por código, e o
-      prompt manda fazer substituição pura; o `hero_source_modes` diz
-      explicitamente que os dois campos "arrive EMPTY in this mode on
-      purpose". Reintroduzir o exemplo ali muda o que o agente pode fazer com
-      uma região que é estruturalmente final — mudança de comportamento que
-      merece ser validada com dados reais. E hoje não há dados: praticamente
-      nenhuma variante tem renderizado estrutural. Quando a curadoria
-      produzir alguns, vale medir antes de soltar
+- [x] **Preenchido também no modo `library`** (revisão de 30/jul). O que sai
+      nesse modo é só o `html` da variante — a região já é ele. O EXEMPLO
+      vai, porque é referência de acabamento, não de estrutura. O prompt
+      ganhou a seção `<finish_reference>` separando os dois papéis e dizendo
+      que, na divergência, **a região vence**
 - [x] Teste dos dois caminhos (com hash válido → chega; divergente → não)
 
 ### AC CM-6.7 — Testes
