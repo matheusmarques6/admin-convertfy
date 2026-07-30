@@ -87,17 +87,25 @@ export function fitFragment(
   if (afterComment !== t) return fitFragment(afterComment, opts)
 
   // Documento completo: a casca sai e o MIOLO é reavaliado pela mesma
-  // matriz. Normalmente o body abre com <table>, então o miolo encaixa
-  // sozinho. Isto vem ANTES do wrapUnknown de propósito: embrulhar o
-  // documento inteiro numa célula é o defeito que este ramo existe para
-  // impedir, não uma degradação aceitável.
-  // Recusa é a saída quando o miolo não encaixa (ou não sobrou miolo): o
-  // wrapUnknown abaixo NÃO pode receber um documento — é exatamente o
-  // caminho que produzia `<td><!DOCTYPE html>…</td>`.
+  // matriz. Isto vem ANTES do wrapUnknown de propósito — embrulhar o
+  // DOCUMENTO inteiro numa célula é o defeito que este ramo existe para
+  // impedir.
+  //
+  // O miolo, porém, é avaliado com `wrapUnknown` LIGADO mesmo no modo
+  // conservador, e a distinção é a chave: o conteúdo do `<body>` de um
+  // documento de email é, por definição, conteúdo de corpo — `<td>` aceita
+  // `<div>`, `<center>` e `<table>` sem quebrar nada. Quase todo export
+  // abre com `<center>` ou um `<div>` de fundo, e recusar isso é o que
+  // deixou o enxerto da hero em `invalid_variant` em TODAS as gerações,
+  // com a biblioteca inteira cadastrada como documento.
+  //
+  // Descer os wrappers até achar a primeira `<table>` seria pior: um
+  // `<div style="background:#111">` em volta é banda de fundo intencional,
+  // e jogá-lo fora apaga o desenho da variante.
   if (hasDocumentShell(t)) {
     const inner = stripDocumentShell(t)
     if (!inner.stripped || !inner.html || inner.html === t) return null
-    const fit = fitFragment(inner.html, opts)
+    const fit = fitFragment(inner.html, { ...opts, wrapUnknown: true })
     if (!fit) return null
     return {
       ...fit,

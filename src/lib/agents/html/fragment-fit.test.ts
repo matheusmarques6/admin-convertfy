@@ -82,3 +82,58 @@ describe("fitFragment — variante cadastrada como documento completo", () => {
     expect(fitFragment("<tr><td>oi</td></tr>")?.unshelled).toBeUndefined()
   })
 })
+
+// O caso REAL que manteve `invalid_variant` em todas as gerações depois do
+// primeiro fix: quase todo export de email abre o <body> com <center> ou um
+// <div> de fundo, e o modo conservador recusava esse miolo.
+describe("miolo do body que não começa com tabela", () => {
+  const doc = (inner: string) =>
+    `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN">
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"></head>
+<body style="margin:0">${inner}</body></html>`
+
+  const variante = '<table><tr><td bgcolor="#111111">hero</td></tr></table>'
+
+  it("<center> em volta: enxerta embrulhando", () => {
+    const fit = fitFragmentToRow(doc(`<center>${variante}</center>`))
+    expect(fit).not.toBeNull()
+    expect(fit).toContain("<center>")
+    expect(fit).not.toMatch(/<!DOCTYPE|<html[\s>]|<body[\s>]/i)
+  })
+
+  // Descer até a primeira <table> jogaria a banda fora — o div É o desenho.
+  it("<div> de fundo sobrevive inteiro", () => {
+    const fit = fitFragmentToRow(
+      doc(`<div style="background:#111111">${variante}</div>`),
+    )
+    expect(fit).toContain('style="background:#111111"')
+    expect(fit).toContain('bgcolor="#111111"')
+  })
+
+  it("comentário condicional do Outlook antes do conteúdo", () => {
+    const fit = fitFragmentToRow(
+      doc(`<!--[if mso]><table><tr><td><![endif]--><center>${variante}</center>`),
+    )
+    expect(fit).not.toBeNull()
+    expect(fit).toContain("hero")
+  })
+
+  it("o miolo que já é tabela continua no caminho de antes", () => {
+    const fit = fitFragment(doc(variante))
+    expect(fit?.kind).toBe("wrapped_table")
+    expect(fit?.unshelled).toBe(true)
+  })
+
+  // A proteção que o ramo existe para dar: documento NUNCA entra na célula.
+  it("nenhum caminho deixa a casca de documento entrar", () => {
+    for (const inner of [
+      variante,
+      `<center>${variante}</center>`,
+      `<div>${variante}</div>`,
+    ]) {
+      expect(fitFragmentToRow(doc(inner))).not.toMatch(
+        /<!DOCTYPE|<html[\s>]|<body[\s>]/i,
+      )
+    }
+  })
+})
