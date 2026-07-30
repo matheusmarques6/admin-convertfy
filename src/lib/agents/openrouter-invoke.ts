@@ -368,6 +368,43 @@ export interface OpenRouterInvokeInput {
    * Omitido → default do modelo. Modelos sem suporte ignoram.
    */
   reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
+  /**
+   * Imagens ANEXADAS à mensagem do usuário (story CM-8). Com a lista
+   * não-vazia o `content` vira array multimodal — mesmo formato que o
+   * `qa-vision.chain` já usa em produção. Quem busca a URL é o provider; o
+   * modelo recebe a imagem resolvida, não um link para navegar. Exige
+   * modelo com visão: sem isso o provider erra ou ignora o anexo.
+   *
+   * Vazio/ausente → o corpo da request é byte a byte o de sempre.
+   */
+  images?: string[]
+}
+
+/** Bloco de conteúdo multimodal aceito pelo OpenRouter. */
+type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+
+/**
+ * Conteúdo da mensagem do usuário: string quando não há anexo (formato
+ * histórico, preservado de propósito), array quando há.
+ *
+ * As imagens vêm ANTES do texto porque o texto se refere a elas ("o exemplo
+ * anexado") — a ordem inversa faria a referência apontar para o vazio.
+ */
+export function userContent(
+  userMessage: string,
+  images?: string[],
+): string | ContentPart[] {
+  const urls = (images ?? []).filter((u) => u && u.trim())
+  if (urls.length === 0) return userMessage
+  return [
+    ...urls.map((url) => ({
+      type: "image_url" as const,
+      image_url: { url },
+    })),
+    { type: "text" as const, text: userMessage },
+  ]
 }
 
 export interface OpenRouterInvokeResult {
@@ -413,7 +450,7 @@ async function callOnce(
       max_tokens: input.maxTokens,
       messages: [
         { role: "system", content: input.systemPrompt },
-        { role: "user", content: input.userMessage },
+        { role: "user", content: userContent(input.userMessage, input.images) },
       ],
     }
     if (input.temperature != null) body.temperature = input.temperature

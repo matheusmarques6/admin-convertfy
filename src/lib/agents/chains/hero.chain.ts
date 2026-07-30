@@ -26,6 +26,8 @@ import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { withUsage, type StepUsage } from "./step-usage"
+import type { RenderedKind } from "../shared/rendered-classify"
+import { imageUrlsIn } from "../shared/rendered-image"
 import {
   HERO_SENTINEL_START,
   HERO_SENTINEL_END,
@@ -210,6 +212,89 @@ export interface InvokeHeroResult {
   costUsd: number
   renderedPrompt: string
   rawOutput: string
+  /** O que aconteceu com o espelho visual (CM-8). */
+  vision: VisionDecision
+}
+
+// ── Espelho visual (story CM-8) ────────────────────────────────────────
+
+/**
+ * Modelo do fallback visual. Precisa de VISÃO e de rota pelo OpenRouter (o
+ * caminho Anthropic-direto recusa anexo — ver format-invoke).
+ *
+ * Escolha: o mesmo Sonnet 4.6 que o `qa-vision.chain` já usa em produção
+ * para avaliar imagem de hero. Visão comprovada nesse exato tipo de
+ * conteúdo, e não introduz um provedor novo na cadeia.
+ */
+export const HERO_VISION_MODEL = "anthropic/claude-sonnet-4.6"
+
+/** Por que o espelho visual entrou (ou não) nesta execução. */
+export type VisionReason =
+  /** Exemplo é mockup-imagem e a URL foi anexada: o fallback rodou. */
+  | "mockup_com_imagem"
+  /** Exemplo é HTML estrutural — o CSS ensina mais que um screenshot. */
+  | "exemplo_estrutural"
+  /** Não há exemplo, ou não há URL http(s) aproveitável nele. */
+  | "sem_imagem"
+  /** Desligado no settings (string vazia). */
+  | "desligado"
+
+export interface VisionDecision {
+  used: boolean
+  /** Modelo que REALMENTE rodou — com fallback, difere do configurado. */
+  model: string
+  reason: VisionReason
+  /** URLs anexadas ao prompt. */
+  images: string[]
+}
+
+export interface HeroVisionInput {
+  /** Classificação do exemplo (rendered-classify). */
+  kind: RenderedKind
+  /** HTML do exemplo, de onde a URL é extraída. */
+  renderedHtml: string | null
+  /**
+   * Override do modelo: `undefined`/`null` → HERO_VISION_MODEL; string
+   * vazia → fallback DESLIGADO. Vem de
+   * `email_generation_settings.hero_vision_model`.
+   */
+  modelOverride?: string | null
+}
+
+/**
+ * Decide se esta execução roda com o espelho visual e em qual modelo.
+ *
+ * A regra em uma frase: **anexa a imagem só quando o exemplo É uma
+ * imagem**. Exemplo estrutural segue como texto no modelo configurado —
+ * ali o CSS descreve o acabamento melhor do que um screenshot, e trocar de
+ * modelo custaria mais sem ganho.
+ *
+ * Pura (zero I/O) — testável.
+ */
+export function decideHeroVision(
+  configuredModel: string,
+  input: HeroVisionInput,
+): VisionDecision {
+  const none = (reason: VisionReason): VisionDecision => ({
+    used: false,
+    model: configuredModel,
+    reason,
+    images: [],
+  })
+
+  const override = input.modelOverride
+  if (typeof override === "string" && !override.trim()) return none("desligado")
+  if (input.kind !== "mockup") return none("exemplo_estrutural")
+
+  const images = imageUrlsIn(input.renderedHtml)
+  if (images.length === 0) return none("sem_imagem")
+
+  return {
+    used: true,
+    model: override?.trim() || HERO_VISION_MODEL,
+    reason: "mockup_com_imagem",
+    images,
+  }
 }
 
 /**
@@ -313,31 +398,76 @@ export function parseHeroReport(raw: string): HeroReport | null {
 export function buildHeroSystemPrompt(
   systemPrompt: string,
   outputContract: string,
+  visionAttached = false,
 ): string {
-  return (systemPrompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT).replaceAll(
+  const base = (systemPrompt.trim() || DEFAULT_HERO_SYSTEM_PROMPT).replaceAll(
     "{{output_contract}}",
     outputContract,
   )
+  return visionAttached ? `${base}\n\n${HERO_VISION_NOTE}` : base
 }
+
+/**
+ * Acrescentado ao system SÓ quando a imagem vai anexada. Sem ela, essa
+ * instrução mandaria o agente procurar algo que não existe no prompt.
+ */
+export const HERO_VISION_NOTE = `<attached_example>
+An IMAGE is attached to this message: the rendered example of this variant, i.e. how this hero looks when finished well. LOOK at it and match its FINISH — image treatment and crop, spacing rhythm, text hierarchy and weight, button proportion, how the logo sits on its band.
+
+It is NOT your reference for structure, and <hero_variant_rendered> arrives EMPTY on purpose: the example only exists as the attached image. Rows, order and anatomy come from <hero_region>. If the image shows something the region does not have, you do NOT add it — THE REGION WINS.
+
+The example may show an older version of the variant. Treat it as a photo of the intended finish, never as a spec to restore.
+</attached_example>`
 
 export async function invokeHeroChain(input: {
   config: FormatChainConfig
   vars: Record<string, string>
+  /**
+   * Decisão do espelho visual (CM-8), tomada pelo RUNNER — que é quem abre
+   * o run e precisa gravar nele o modelo que de fato vai rodar. Se a
+   * decisão fosse tomada aqui dentro, a coluna `model` do run registraria o
+   * modelo configurado enquanto outro executava, e o custo por email
+   * apareceria no lugar errado. Ausente → nenhum anexo.
+   */
+  vision?: VisionDecision
 }): Promise<InvokeHeroResult> {
   const { config, vars } = input
+
+  const vision: VisionDecision = input.vision ?? {
+    used: false,
+    model: config.model,
+    reason: "sem_imagem",
+    images: [],
+  }
 
   const systemPrompt = buildHeroSystemPrompt(
     config.system_prompt,
     HERO_OUTPUT_CONTRACT,
+    vision.used,
   )
   const userMessage = renderImageTemplate(
     config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,
-    { ...vars, output_contract: HERO_OUTPUT_CONTRACT },
+    {
+      ...vars,
+      output_contract: HERO_OUTPUT_CONTRACT,
+      // Com a imagem anexada, o HTML do mockup NÃO vai junto: é uma URL
+      // crua que não ensina nada e ainda oferece ao modelo um molde do
+      // formato errado (foi assim que o documento entrou no fragmento).
+      ...(vision.used ? { hero_variant_rendered_html: "" } : {}),
+    },
   )
+
+  if (vision.used) {
+    log.warn("hero.vision_fallback", {
+      configured: config.model,
+      running: vision.model,
+      images: vision.images.length,
+    })
+  }
 
   const t0 = Date.now()
   const res = await invokeFormatModel({
-    model: config.model,
+    model: vision.model,
     systemPrompt,
     userMessage,
     maxTokens: config.max_tokens,
@@ -349,6 +479,7 @@ export async function invokeHeroChain(input: {
     ...(process.env.FORMAT_OPS_REASONING === "on"
       ? {}
       : { reasoning: { enabled: false } }),
+    ...(vision.images.length > 0 ? { images: vision.images } : {}),
   })
 
   // O parse pode rejeitar a resposta — e a chamada já foi paga. Sem isto o
@@ -377,5 +508,6 @@ export async function invokeHeroChain(input: {
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
     rawOutput: res.text,
+    vision,
   }
 }

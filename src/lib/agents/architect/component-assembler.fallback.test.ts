@@ -58,7 +58,7 @@ import {
 import {
   missingTelemetryKeys,
   TELEMETRY_CONTRACT,
-} from "./telemetry-contract"
+} from "../shared/telemetry-contract"
 
 function variant(id: string, blockType: string, html: string) {
   return {

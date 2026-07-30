@@ -1,5 +1,5 @@
 /**
- * Contrato de telemetria dos agentes da arquitetura.
+ * Contrato de telemetria dos agentes de geração.
  *
  * **Telemetria é inegociável.** O episódio que originou este módulo: o CM-2
  * gravava as stats da montagem num run; o CM-4 substituiu aquele run por
@@ -19,15 +19,18 @@
  * Puro (zero I/O) — testável.
  */
 
-/** Agentes da fase 1 cobertos pelo contrato. */
-export type ArchitectTelemetryAgent = "assembler_chooser" | "assembler"
+/** Agentes cobertos pelo contrato. */
+export type TelemetryAgent =
+  | "assembler_chooser"
+  | "assembler"
+  | "hero_section"
 
 /**
  * Chaves obrigatórias por agente, com o motivo de cada uma. O motivo não é
  * decoração: é o que permite decidir, no futuro, se o campo pode sair.
  */
 export const TELEMETRY_CONTRACT: Record<
-  ArchitectTelemetryAgent,
+  TelemetryAgent,
   Record<string, string>
 > = {
   assembler_chooser: {
@@ -53,6 +56,16 @@ export const TELEMETRY_CONTRACT: Record<
     image_tags_dropped: "self-check das tags de imagem; diferente de vazio é bug nosso",
     reference_source: "de onde saiu o reference que o consumidor vai usar",
   },
+  hero_section: {
+    hero_source: "library (região é a variante enxertada) ou montador (fallback legado) — decide quanta liberdade o agente teve",
+    graft_status: "se o enxerto por código aconteceu; diferente de grafted significa que a hero NÃO é a variante escolhida",
+    variant_id: "qual variante a hero usou, para cruzar com a escolha do Montador",
+    variant_mismatch: "blueprint e slot_map discordaram — as tags do snapshot ficam sem endereço no documento",
+    hero_report: "o que o agente declara ter descartado (linha de CTA removida, campo sem copy, logo aplicada)",
+    hero_report_missing: "o relatório não veio ou veio ilegível; observabilidade perdida sem afetar a entrega",
+    rendered_reference: "por que o exemplo de acabamento entrou ou não, com as ressalvas (mockup, stale, document_shell)",
+    vision: "se o exemplo foi ANEXADO como imagem e em qual modelo — sem isto o custo do fallback visual sobe sem explicação",
+  },
 }
 
 /**
@@ -62,7 +75,7 @@ export const TELEMETRY_CONTRACT: Record<
  * o que não pode é a chave sumir.
  */
 export function missingTelemetryKeys(
-  agent: ArchitectTelemetryAgent,
+  agent: TelemetryAgent,
   parsedOutput: unknown,
 ): string[] {
   const required = Object.keys(TELEMETRY_CONTRACT[agent] ?? {})

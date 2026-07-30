@@ -41,9 +41,23 @@ export async function invokeFormatModel(params: {
   title: string
   /** Controle de raciocínio (OpenRouter) — ver openrouter-invoke. */
   reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
+  /**
+   * Imagens anexadas à mensagem (story CM-8). Só o caminho OpenRouter
+   * suporta — ver a recusa explícita abaixo.
+   */
+  images?: string[]
 }): Promise<FormatModelResult> {
-  const { model, systemPrompt, userMessage, maxTokens, temperature, timeoutMs, title, reasoning } =
-    params
+  const {
+    model,
+    systemPrompt,
+    userMessage,
+    maxTokens,
+    temperature,
+    timeoutMs,
+    title,
+    reasoning,
+    images,
+  } = params
 
   if (isOpenRouterModel(model)) {
     const or = await invokeOpenRouter({
@@ -55,6 +69,7 @@ export async function invokeFormatModel(params: {
       timeoutMs,
       title,
       reasoning,
+      images,
     })
     return {
       text: or.text,
@@ -62,6 +77,17 @@ export async function invokeFormatModel(params: {
       tokensOutput: or.tokensOutput,
       costUsd: or.costUsd,
     }
+  }
+
+  // Caminho Anthropic direto: recusa EXPLÍCITA em vez de descartar o anexo
+  // em silêncio. Anexar imagem aqui exigiria baixar e converter para base64
+  // (o SDK só aceita `source.data`), e a URL do exemplo pode ser signed —
+  // download no meio da geração é latência e ponto de falha novos. Quem
+  // precisa de visão declara um modelo do OpenRouter (ver HERO_VISION_MODEL).
+  if (images && images.length > 0) {
+    throw new Error(
+      `modelo '${model}' e Anthropic-direto e nao aceita imagem anexada; declare um modelo do OpenRouter para o fallback visual`,
+    )
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY

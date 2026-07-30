@@ -65,6 +65,7 @@ import { runQaAgent } from "./chains/qa.chain"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
+  decideHeroVision,
 } from "./chains/hero.chain"
 import {
   invokeTextFormatChain,
@@ -413,7 +414,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       ? admin
           .from("email_generation_settings")
           .select(
-            "generate_images, qa_vision_enabled, cost_alert_usd, merge_verifier_mode",
+            "generate_images, qa_vision_enabled, cost_alert_usd, merge_verifier_mode, hero_vision_model",
           )
           .eq("org_id", orgId)
           .maybeSingle()
@@ -444,6 +445,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     qa_vision_enabled?: boolean | null
     cost_alert_usd?: number | null
     merge_verifier_mode?: string | null
+    hero_vision_model?: string | null
   } | null
   const generateImages = settingsRow?.generate_images ?? true
   // NULL = respeita env (decisão fica no qa.chain); true/false = override da UI.
@@ -456,6 +458,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     rawVerifierMode === "always" || rawVerifierMode === "off"
       ? rawVerifierMode
       : "on_flag"
+  // Espelho visual da hero (CM-8): NULL = usa HERO_VISION_MODEL; string
+  // vazia = fallback desligado; qualquer outro valor = esse modelo.
+  const heroVisionModel = settingsRow?.hero_vision_model ?? null
 
   // Defesa contra o bug recorrente "store_brand_identities" (plural —
   // tabela nao existe). Supabase JS engole 42P01 em maybeSingle() e
@@ -507,6 +512,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     mergeVerifierConfig:
       (mergeVerifierConfigRes.data as EmailAgentConfig | null) ?? null,
     mergeVerifierMode,
+    heroVisionModel,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
   }
@@ -1970,16 +1976,29 @@ async function runFormattingChain(p: {
     const vars = buildHeroVars(fmtCtx, { regionHtml, variant, grafted })
     const config = toChainConfig(heroSwitch.config, "hero_section")
 
+    // Espelho visual (CM-8). A decisão é tomada AQUI, e não dentro do
+    // chain, porque o run é aberto com um `model` — e com o fallback ativo
+    // esse campo tem de registrar o modelo que de fato roda, senão o custo
+    // por email aparece atribuído ao modelo errado.
+    const heroRendered = heroVariant
+      ? resolveRenderedReference(heroVariant)
+      : null
+    const visionDecision = decideHeroVision(config.model, {
+      kind: heroRendered?.kind ?? "empty",
+      renderedHtml: heroRendered?.html ?? null,
+      modelOverride: ctx.heroVisionModel,
+    })
+
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "hero_section",
       config: heroSwitch.config,
-      model: config.model,
+      model: visionDecision.model,
       routeT0,
       budgetMs,
       inputHtml: fmtCtx.referenceHtml,
       attempt: async () => {
-        const r = await invokeHeroChain({ config, vars })
+        const r = await invokeHeroChain({ config, vars, vision: visionDecision })
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
           value: next,
@@ -2001,12 +2020,19 @@ async function runFormattingChain(p: {
             hero_report_missing: r.report === null,
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
-            rendered_reference: heroVariant
-              ? (() => {
-                  const rr = resolveRenderedReference(heroVariant)
-                  return { used: rr.html !== null, reason: rr.reason, stale: rr.stale, kind: rr.kind }
-                })()
+            rendered_reference: heroRendered
+              ? {
+                  used: heroRendered.html !== null,
+                  reason: heroRendered.reason,
+                  stale: heroRendered.stale,
+                  kind: heroRendered.kind,
+                  caveats: heroRendered.caveats,
+                }
               : null,
+            // CM-8: o exemplo foi ANEXADO como imagem (e em qual modelo) ou
+            // seguiu como texto. `reason` diz por quê — sem isso, o custo do
+            // fallback subiria sem explicação no relatório de geração.
+            vision: r.vision,
             output_html_len: next.length,
             output_sha8: sha8(next),
             output_html: htmlSnapshot(next),

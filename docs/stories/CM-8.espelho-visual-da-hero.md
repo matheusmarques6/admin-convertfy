@@ -3,7 +3,7 @@ Prioridade: P1
 Sprint: Atual
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Cadeia de formatacao
 Estimate: M
@@ -70,67 +70,67 @@ O provider busca a URL e o modelo vê a imagem. Não é o modelo "navegando" —
 ## Acceptance Criteria
 
 ### AC CM-8.1 — Extrair a imagem do exemplo
-- [ ] `shared/rendered-image.ts`: função pura que devolve as URLs de
+- [x] `shared/rendered-image.ts`: função pura que devolve as URLs de
       imagem de um `rendered_html` (atributo `src` de `<img>`), ignorando
       `data:` (base64 estoura o payload) e tracking pixels (1x1, dimensões
       declaradas ≤ 2px)
-- [ ] Devolve no máximo N URLs (constante nomeada) — um mockup tem uma
+- [x] Devolve no máximo N URLs (constante nomeada) — um mockup tem uma
       imagem; mais que isso é HTML estrutural, que segue como texto
-- [ ] Testes com os quatro casos: mockup de uma imagem, estrutural com
+- [x] Testes com os quatro casos: mockup de uma imagem, estrutural com
       muitas imagens, `data:` URI, vazio
 
 ### AC CM-8.2 — Payload multimodal
-- [ ] `invokeOpenRouter` aceita `images?: string[]`; com a lista não-vazia,
+- [x] `invokeOpenRouter` aceita `images?: string[]`; com a lista não-vazia,
       `content` do usuário vira array (`image_url` de cada uma + o `text`),
       no MESMO formato do `qa-vision.chain`
-- [ ] Sem `images`, o corpo da request é **byte a byte** o de hoje — teste
+- [x] Sem `images`, o corpo da request é **byte a byte** o de hoje — teste
       que trava isso
-- [ ] `invokeFormatModel` repassa `images` (caminho Anthropic direto:
+- [x] `invokeFormatModel` repassa `images` (caminho Anthropic direto:
       converte para blocos de imagem do SDK ou recusa explicitamente)
 
 ### AC CM-8.3 — Fallback declarado
-- [ ] Constante `HERO_VISION_MODEL` in-code, com o modelo e o motivo da
+- [x] Constante `HERO_VISION_MODEL` in-code, com o modelo e o motivo da
       escolha escritos
-- [ ] Override sem deploy: `email_generation_settings.hero_vision_model`
+- [x] Override sem deploy: `email_generation_settings.hero_vision_model`
       (NULL = usa a constante; string vazia = desliga o fallback)
-- [ ] O fallback dispara SÓ quando: o exemplo classificou como `mockup`
+- [x] O fallback dispara SÓ quando: o exemplo classificou como `mockup`
       **e** há URL de imagem extraível. Exemplo estrutural continua no
       modelo configurado, como texto
-- [ ] Desligado (ou sem URL) → comportamento de hoje, e a razão vai para a
+- [x] Desligado (ou sem URL) → comportamento de hoje, e a razão vai para a
       telemetria. Nunca falha o step por causa disso
 
 ### AC CM-8.4 — O prompt sabe que a imagem existe
-- [ ] Com a imagem anexada, o `<finish_reference>` diz que o exemplo está
+- [x] Com a imagem anexada, o `<finish_reference>` diz que o exemplo está
       ANEXADO como imagem e que `<hero_variant_rendered>` vem vazio de
       propósito (não mandar o HTML do mockup junto — a URL crua não ensina
       nada e o texto ainda induz a forma errada)
-- [ ] Sem imagem, o texto do prompt é o de hoje
+- [x] Sem imagem, o texto do prompt é o de hoje
 
 ### AC CM-8.5 — Telemetria
-- [ ] `parsed_output.vision` no run da hero: `{used, model, reason, images}`
+- [x] `parsed_output.vision` no run da hero: `{used, model, reason, images}`
       — `reason` explica por que usou ou não (`exemplo_estrutural`,
       `sem_imagem`, `desligado`, `mockup_com_imagem`)
-- [ ] Entrada no `telemetry-contract.ts`, com o motivo escrito
-- [ ] O modelo que REALMENTE rodou vai na coluna `model` do run — hoje ela
+- [x] Entrada no `telemetry-contract.ts`, com o motivo escrito
+- [x] O modelo que REALMENTE rodou vai na coluna `model` do run — hoje ela
       recebe `config.model`, e com o fallback isso mentiria
 
 ### AC CM-8.6 — Custo
-- [ ] O custo real do OpenRouter (`usage.cost`) continua sendo registrado —
+- [x] O custo real do OpenRouter (`usage.cost`) continua sendo registrado —
       o fallback troca o modelo, não o accounting
-- [ ] Log `warn` quando o fallback dispara, com o modelo, para o custo por
+- [x] Log `warn` quando o fallback dispara, com o modelo, para o custo por
       email não subir sem ninguém perceber
 
 ---
 
 ## Tarefas
 
-- [ ] `shared/rendered-image.ts` + testes
-- [ ] `images` no `invokeOpenRouter` e no `invokeFormatModel` + teste de
+- [x] `shared/rendered-image.ts` + testes
+- [x] `images` no `invokeOpenRouter` e no `invokeFormatModel` + teste de
       não-regressão do corpo da request
-- [ ] Decisão do fallback no `hero.chain` + constante + setting
-- [ ] Prompt condicional
-- [ ] Telemetria + contrato
-- [ ] Migration do setting
+- [x] Decisão do fallback no `hero.chain` + constante + setting
+- [x] Prompt condicional
+- [x] Telemetria + contrato
+- [x] Migration do setting
 
 ---
 
@@ -162,7 +162,7 @@ prompt continua dizendo que, na divergência, a região vence.
 ### A criar
 - `src/lib/agents/shared/rendered-image.ts`
 - `src/lib/agents/shared/rendered-image.test.ts`
-- `supabase/migrations/2026XXXX_hero_vision_model.sql`
+- `supabase/migrations/20261058_hero_vision_model.sql`
 
 ### A modificar
 - `src/lib/agents/openrouter-invoke.ts`
@@ -198,3 +198,4 @@ prompt continua dizendo que, na divergência, a região vence.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada após verificar que o exemplo renderizado chega ao modelo como string de URL — sem multimodal e sem browsing, o espelho não existe para os 26 mockups da biblioteca |
+| 2026-07-30 | @dev (Dex) | Implementada. `shared/rendered-image.ts` (extrai URL, corta data:/relativa/tracking, teto de 2). `userContent` no openrouter-invoke com teste de NÃO-REGRESSÃO (sem anexo → string crua, byte a byte o de antes). Caminho Anthropic-direto RECUSA anexo explicitamente em vez de descartar em silêncio. `decideHeroVision` é pura e a decisão é tomada no RUNNER, não no chain — o run é aberto com um `model` e precisa registrar o que de fato roda. Contrato de telemetria movido de `architect/` para `shared/` e estendido com `hero_section` (8 chaves). Migration 20261058. 14 testes novos; build completo verde. Status → In Review |
