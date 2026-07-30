@@ -1,7 +1,8 @@
 "use client"
 
 /**
- * Dialogs do dashboard de funil comercial:
+ * Dialogs do dashboard de funil comercial (visual dark, coerente com a
+ * página do funil):
  *
  * - AdSpendDialog: lançamentos manuais de investimento em tráfego
  *   (crm_ad_spend — dia × plataforma × conta).
@@ -12,8 +13,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Trash2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,18 @@ export const PLATFORM_LABELS: Record<string, string> = {
   tiktok: "TikTok Ads",
   other: "Outro",
 }
+
+const DIALOG =
+  "rounded-[16px] border border-white/10 bg-[#0F1420] text-white sm:rounded-[16px]"
+
+const FIELD =
+  "h-9 w-full rounded-[10px] border border-white/10 bg-[#0A0E17] px-3 text-[13px] text-white placeholder:text-[#4A5265] focus:border-white/25 focus:outline-none disabled:opacity-40 [color-scheme:dark]"
+
+const BTN_PRIMARY =
+  "inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-[#4666E8] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#3450CE] disabled:pointer-events-none disabled:opacity-50"
+
+const BTN_GHOST =
+  "inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium text-[#7C8598] transition-colors hover:bg-white/[0.06] hover:text-white disabled:pointer-events-none disabled:opacity-50"
 
 const fmtBRL2 = (v: number) =>
   v.toLocaleString("pt-BR", {
@@ -122,10 +135,10 @@ export function AdSpendDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className={cn(DIALOG, "max-w-xl")}>
         <DialogHeader>
-          <DialogTitle>Investimento em tráfego</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-white">Investimento em tráfego</DialogTitle>
+          <DialogDescription className="text-[#7C8598]">
             Lance o valor investido por dia, plataforma e conta de anúncio. Esses valores
             alimentam CPL, CPA e ROAS do funil.
           </DialogDescription>
@@ -134,14 +147,14 @@ export function AdSpendDialog({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-[130px_130px_minmax(0,1fr)_110px]">
           <input
             type="date"
-            className="crm-input w-full"
+            className={FIELD}
             value={day}
             max={format(new Date(), "yyyy-MM-dd")}
             onChange={(e) => setDay(e.target.value)}
             aria-label="Dia"
           />
           <select
-            className="crm-input w-full"
+            className={cn(FIELD, "appearance-none")}
             value={platform}
             onChange={(e) => setPlatform(e.target.value)}
             aria-label="Plataforma"
@@ -152,7 +165,7 @@ export function AdSpendDialog({
           </select>
           <input
             type="text"
-            className="crm-input w-full"
+            className={FIELD}
             placeholder="Conta (opcional)"
             value={accountName}
             maxLength={120}
@@ -162,7 +175,7 @@ export function AdSpendDialog({
           <input
             type="text"
             inputMode="decimal"
-            className="crm-input w-full text-right tabular-nums"
+            className={cn(FIELD, "text-right tabular-nums")}
             placeholder="R$ 0,00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -173,25 +186,23 @@ export function AdSpendDialog({
           />
         </div>
 
-        {error && (
-          <p className="text-[12px]" style={{ color: "var(--crm-neg)" }}>{error}</p>
-        )}
+        {error && <p className="text-[12px] text-[#F87171]">{error}</p>}
 
         <div className="flex justify-end">
-          <Button size="sm" onClick={submit} disabled={!canSubmit}>
+          <button type="button" className={BTN_PRIMARY} onClick={submit} disabled={!canSubmit}>
             {saving ? "Salvando…" : "Adicionar lançamento"}
-          </Button>
+          </button>
         </div>
 
-        <div className="max-h-[280px] overflow-y-auto rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+        <div className="max-h-[280px] overflow-y-auto rounded-[10px] border border-white/[0.08]">
           {entries.length === 0 ? (
-            <p className="p-3 text-[12.5px] text-gray-500 dark:text-[#8B92A5]">
+            <p className="p-3 text-[12.5px] text-[#7C8598]">
               Nenhum lançamento no período selecionado.
             </p>
           ) : (
             <table className="w-full text-[12.5px]">
               <thead>
-                <tr className="border-b border-[rgba(0,0,0,0.06)] text-left text-[10.5px] uppercase tracking-[0.05em] text-gray-400 dark:border-[rgba(255,255,255,0.06)] dark:text-[#5C6378]">
+                <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-[0.07em] text-[#5A6478]">
                   <th className="px-3 py-2 font-semibold">Dia</th>
                   <th className="px-3 py-2 font-semibold">Plataforma</th>
                   <th className="px-3 py-2 font-semibold">Conta</th>
@@ -201,20 +212,17 @@ export function AdSpendDialog({
               </thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr
-                    key={e.id}
-                    className="border-b border-[rgba(0,0,0,0.04)] last:border-0 dark:border-[rgba(255,255,255,0.04)]"
-                  >
-                    <td className="px-3 py-1.5 text-gray-700 tabular-nums dark:text-[#C9CEDA]">
+                  <tr key={e.id} className="border-b border-white/[0.04] last:border-0">
+                    <td className="px-3 py-1.5 text-[#C6CDDB] tabular-nums">
                       {format(new Date(`${e.day}T12:00:00`), "dd/MM/yyyy")}
                     </td>
-                    <td className="px-3 py-1.5 text-gray-700 dark:text-[#C9CEDA]">
+                    <td className="px-3 py-1.5 text-[#C6CDDB]">
                       {PLATFORM_LABELS[e.platform] ?? e.platform}
                     </td>
-                    <td className="max-w-[160px] truncate px-3 py-1.5 text-gray-500 dark:text-[#8B92A5]">
+                    <td className="max-w-[160px] truncate px-3 py-1.5 text-[#7C8598]">
                       {e.account_name || "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-right font-medium text-gray-900 tabular-nums dark:text-[#EAEDF3]">
+                    <td className="px-3 py-1.5 text-right font-semibold text-white tabular-nums">
                       {fmtBRL2(e.amount)}
                     </td>
                     <td className="px-2 py-1.5 text-right">
@@ -222,7 +230,7 @@ export function AdSpendDialog({
                         type="button"
                         onClick={() => remove(e.id)}
                         disabled={deletingId === e.id}
-                        className="text-gray-400 transition-colors hover:text-red-600 disabled:opacity-40"
+                        className="text-[#5A6478] transition-colors hover:text-[#F87171] disabled:opacity-40"
                         aria-label="Remover lançamento"
                       >
                         <Icon icon={Trash2} size={16} />
@@ -312,10 +320,10 @@ export function StageMappingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className={cn(DIALOG, "max-w-xl")}>
         <DialogHeader>
-          <DialogTitle>Etapas do funil</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-white">Etapas do funil</DialogTitle>
+          <DialogDescription className="text-[#7C8598]">
             Diga qual etapa canônica do funil cada coluna do kanban representa. Etapas de
             ganho já contam como Venda automaticamente. O topo (Leads) vem dos leads
             criados no período.
@@ -325,14 +333,14 @@ export function StageMappingDialog({
         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
           {pipelines.map((p) => (
             <div key={p.id}>
-              <div className="mb-1.5 flex items-center gap-2 text-[12px] font-semibold text-gray-900 dark:text-[#EAEDF3]">
+              <div className="mb-2 flex items-center gap-2 text-[12.5px] font-semibold text-white">
                 <span
                   className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: p.color || "var(--crm-gray-400)" }}
+                  style={{ background: p.color || "#4A5265" }}
                 />
                 {p.name}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {p.stages
                   .filter((s) => s.stage_type === "open" || s.stage_type === "won")
                   .map((s) => (
@@ -340,16 +348,16 @@ export function StageMappingDialog({
                       key={s.id}
                       className="grid grid-cols-[minmax(0,1fr)_170px] items-center gap-2"
                     >
-                      <span className="truncate text-[12.5px] text-gray-600 dark:text-[#8B92A5]">
+                      <span className="truncate text-[12.5px] text-[#7C8598]">
                         {s.name}
                         {s.stage_type === "won" && (
-                          <span className="ml-1.5 text-[10.5px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                          <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#34D399]">
                             ganho
                           </span>
                         )}
                       </span>
                       <select
-                        className="crm-input w-full"
+                        className={cn(FIELD, "appearance-none")}
                         value={mapping[s.id] ?? ""}
                         onChange={(e) =>
                           setMapping((prev) => ({ ...prev, [s.id]: e.target.value }))
@@ -366,23 +374,21 @@ export function StageMappingDialog({
             </div>
           ))}
           {pipelines.length === 0 && (
-            <p className="text-[12.5px] text-gray-500 dark:text-[#8B92A5]">
+            <p className="text-[12.5px] text-[#7C8598]">
               Nenhum pipeline de vendas encontrado.
             </p>
           )}
         </div>
 
-        {error && (
-          <p className="text-[12px]" style={{ color: "var(--crm-neg)" }}>{error}</p>
-        )}
+        {error && <p className="text-[12px] text-[#F87171]">{error}</p>}
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          <button type="button" className={BTN_GHOST} onClick={() => onOpenChange(false)}>
             Cancelar
-          </Button>
-          <Button size="sm" onClick={save} disabled={!dirty || saving}>
+          </button>
+          <button type="button" className={BTN_PRIMARY} onClick={save} disabled={!dirty || saving}>
             {saving ? "Salvando…" : "Salvar mapeamento"}
-          </Button>
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

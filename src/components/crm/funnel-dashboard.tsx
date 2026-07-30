@@ -7,6 +7,11 @@
  * métricas de tráfego dos dois lados (investimento, CPL, CPA, ROAS,
  * ticket médio, cash collect) e taxas de conversão entre etapas.
  *
+ * Visual: página ESCURA por design (réplica do dashboard de referência
+ * de mídia paga), independente do tema do admin — mesmo precedente da
+ * sidebar (sempre dark). Cards com tile de ícone em gradiente, funil
+ * central de trapézios com taper fixo e pílulas de conversão na borda.
+ *
  * Dados: GET /api/crm/funnel (agregação em runtime). Investimento é
  * lançado manualmente em crm_ad_spend (dialog "Investimento"); o
  * mapeamento etapa do kanban → etapa do funil vive em
@@ -38,14 +43,12 @@ import {
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { Button } from "@/components/ui/button"
 import { PeriodPicker, type PeriodValue } from "@/components/ui/period-picker"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { AdSpendDialog, StageMappingDialog } from "@/components/crm/funnel-dialogs"
 
 // ─── Tipos do payload da API ─────────────────────────────────────
@@ -139,18 +142,31 @@ const PLATFORM_LABELS: Record<string, string> = {
   other: "Outro",
 }
 
-// ─── Config visual do funil (fiel ao design de referência) ───────
+// ─── Tokens visuais da página (dark, fiel à referência) ──────────
+
+const CARD =
+  "rounded-[14px] border border-white/[0.06] bg-[#0F1420]"
+
+const CONTROL =
+  "h-9 rounded-[10px] border border-white/10 bg-[#10141C] text-[13px] font-medium text-gray-200 transition-colors hover:bg-[#161C2A] hover:text-white focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]"
+
+// Taper fixo (% da largura do container): o formato do funil é sempre
+// elegante e monotônico, independente dos volumes — números degenerados
+// (0 leads, MQL > leads) não deformam a silhueta.
+const TAPER = [100, 84, 68, 54, 40]
+const LAST_BOTTOM = 28
+const SEGMENT_H = 88
 
 const FUNNEL_SEGMENTS: Array<{
   key: keyof FunnelApiData["funnel"]
   label: string
   fill: string
 }> = [
-  { key: "leads", label: "Leads", fill: "linear-gradient(180deg, #232A3A 0%, #171D2B 100%)" },
-  { key: "mql", label: "MQLs", fill: "linear-gradient(180deg, #3B4457 0%, #2C3446 100%)" },
-  { key: "agendamento", label: "Agendamentos", fill: "linear-gradient(180deg, #4E62D8 0%, #3A4EC4 100%)" },
-  { key: "reuniao", label: "Reuniões", fill: "linear-gradient(180deg, #D97706 0%, #B45309 100%)" },
-  { key: "venda", label: "Vendas", fill: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)" },
+  { key: "leads", label: "Leads", fill: "linear-gradient(180deg, #222A3C 0%, #161C2A 100%)" },
+  { key: "mql", label: "MQLs", fill: "linear-gradient(180deg, #3A4460 0%, #2B3348 100%)" },
+  { key: "agendamento", label: "Agendamentos", fill: "linear-gradient(180deg, #4666E8 0%, #3450CE 100%)" },
+  { key: "reuniao", label: "Reuniões", fill: "linear-gradient(180deg, #D0620E 0%, #AC4E08 100%)" },
+  { key: "venda", label: "Vendas", fill: "linear-gradient(180deg, #21A452 0%, #158540 100%)" },
 ]
 
 const RATE_KEYS: Array<keyof FunnelApiData["rates"]> = [
@@ -192,6 +208,7 @@ export function FunnelDashboard() {
 
   const activeUtmCount = [utm.source, utm.medium, utm.campaign].filter(Boolean).length
   const m = data?.metrics
+  const loading = isLoading && !data
 
   const missingSteps = useMemo(() => {
     if (!data) return []
@@ -205,130 +222,145 @@ export function FunnelDashboard() {
   }, [data])
 
   const leftCards: MetricCardDef[] = [
-    { label: "Investimento", icon: BarChart3, tint: "text-teal-600 dark:text-teal-400", value: m ? fmtBRL0(m.investimento) : dash, hint: m && m.investimento === 0 ? "Lance o investimento do período" : undefined },
-    { label: "Faturamento total", icon: Banknote, tint: "text-emerald-600 dark:text-emerald-400", value: m ? fmtBRL0(m.faturamento) : dash },
-    { label: "ROAS", icon: RefreshCcw, tint: "text-violet-600 dark:text-violet-400", value: m?.roas != null ? `${m.roas.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x` : dash },
-    { label: "Tx. conversão", icon: Percent, tint: "text-amber-600 dark:text-amber-400", value: m?.tx_conversao != null ? fmtPct1(m.tx_conversao) : dash, hint: "vendas / leads" },
-    { label: "Ticket médio", icon: CreditCard, tint: "text-pink-600 dark:text-pink-400", value: m?.ticket_medio != null ? fmtBRL0(m.ticket_medio) : dash },
-    { label: "Cash collect", icon: Wallet, tint: "text-teal-600 dark:text-teal-400", value: m ? fmtBRL0(m.cash_collect) : dash },
+    { label: "Investimento", icon: BarChart3, tile: "linear-gradient(135deg, #14B8A6, #0D9488)", value: m ? fmtBRL0(m.investimento) : dash, hint: m && m.investimento === 0 ? "Lance o investimento do período" : undefined },
+    { label: "Faturamento total", icon: Banknote, tile: "linear-gradient(135deg, #22C55E, #16A34A)", value: m ? fmtBRL0(m.faturamento) : dash },
+    { label: "ROAS", icon: RefreshCcw, tile: "linear-gradient(135deg, #8B5CF6, #7C3AED)", value: m?.roas != null ? `${m.roas.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x` : dash },
+    { label: "Tx. conversão", icon: Percent, tile: "linear-gradient(135deg, #F59E0B, #D97706)", value: m?.tx_conversao != null ? fmtPct1(m.tx_conversao) : dash },
+    { label: "Ticket médio", icon: CreditCard, tile: "linear-gradient(135deg, #EC4899, #DB2777)", value: m?.ticket_medio != null ? fmtBRL0(m.ticket_medio) : dash },
+    { label: "Cash collect", icon: Wallet, tile: "linear-gradient(135deg, #06B6D4, #0891B2)", value: m ? fmtBRL0(m.cash_collect) : dash },
   ]
 
   const rightCards: MetricCardDef[] = [
-    { label: "Custo por lead", icon: Users, tint: "text-blue-600 dark:text-blue-400", value: m?.cpl != null ? fmtBRL2(m.cpl) : dash },
-    { label: "Custo por MQL", icon: UserPlus, tint: "text-violet-600 dark:text-violet-400", value: m?.custo_mql != null ? fmtBRL2(m.custo_mql) : dash },
-    { label: "Custo por agend.", icon: CalendarCheck, tint: "text-indigo-600 dark:text-indigo-400", value: m?.custo_agendamento != null ? fmtBRL2(m.custo_agendamento) : dash },
-    { label: "Custo por reunião", icon: Video, tint: "text-emerald-600 dark:text-emerald-400", value: m?.custo_reuniao != null ? fmtBRL2(m.custo_reuniao) : dash },
-    { label: "CPA", icon: DollarSign, tint: "text-amber-600 dark:text-amber-400", value: m?.cpa != null ? fmtBRL2(m.cpa) : dash },
-    { label: "Taxa cash collect", icon: Percent, tint: "text-orange-600 dark:text-orange-400", value: m?.taxa_cash_collect != null ? fmtPct1(m.taxa_cash_collect) : dash },
+    { label: "Custo por lead", icon: Users, tile: "linear-gradient(135deg, #3B82F6, #2563EB)", value: m?.cpl != null ? fmtBRL2(m.cpl) : dash },
+    { label: "Custo por MQL", icon: UserPlus, tile: "linear-gradient(135deg, #A855F7, #9333EA)", value: m?.custo_mql != null ? fmtBRL2(m.custo_mql) : dash },
+    { label: "Custo por agend.", icon: CalendarCheck, tile: "linear-gradient(135deg, #6366F1, #4F46E5)", value: m?.custo_agendamento != null ? fmtBRL2(m.custo_agendamento) : dash },
+    { label: "Custo por reunião", icon: Video, tile: "linear-gradient(135deg, #10B981, #059669)", value: m?.custo_reuniao != null ? fmtBRL2(m.custo_reuniao) : dash },
+    { label: "CPA", icon: DollarSign, tile: "linear-gradient(135deg, #F59E0B, #D97706)", value: m?.cpa != null ? fmtBRL2(m.cpa) : dash },
+    { label: "Taxa cash collect", icon: Percent, tile: "linear-gradient(135deg, #F97316, #EA580C)", value: m?.taxa_cash_collect != null ? fmtPct1(m.taxa_cash_collect) : dash },
   ]
 
   return (
-    <CrmPageShell
-      title="Funil"
-      subtitle="Funil comercial com métricas de tráfego"
-      actions={
-        <>
-          <select
-            className="crm-input"
-            value={pipelineId}
-            onChange={(e) => setPipelineId(e.target.value)}
-            aria-label="Pipeline"
-          >
-            <option value="all">Todos os pipelines</option>
-            {(data?.pipelines ?? []).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+    <div className="-m-4 min-h-[100dvh] bg-[#0A0E17] md:-m-6 lg:-m-8">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-5 md:px-7 md:py-6">
+        {/* Cabeçalho */}
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-bold leading-tight tracking-tight text-white">
+              Funil
+            </h1>
+            <p className="mt-0.5 text-[12.5px] text-[#7C8598]">
+              Funil comercial com métricas de tráfego
+            </p>
+          </div>
 
-          <UtmFilterButton
-            utm={utm}
-            onChange={setUtm}
-            options={data?.utm_options}
-            activeCount={activeUtmCount}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <select
+                className={cn(CONTROL, "appearance-none pl-3 pr-8")}
+                value={pipelineId}
+                onChange={(e) => setPipelineId(e.target.value)}
+                aria-label="Pipeline"
+              >
+                <option value="all">Todos os pipelines</option>
+                {(data?.pipelines ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <Icon
+                icon={ChevronDown}
+                customSize={14}
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7C8598]"
+              />
+            </div>
 
-          <PeriodPicker
-            value={period}
-            onChange={setPeriod}
-            options={[
-              { value: "7d", label: "7 dias" },
-              { value: "15d", label: "15 dias" },
-              { value: "30d", label: "30 dias" },
-              { value: "90d", label: "90 dias" },
-            ]}
-          />
+            <UtmFilterButton
+              utm={utm}
+              onChange={setUtm}
+              options={data?.utm_options}
+              activeCount={activeUtmCount}
+            />
 
-          <Button variant="secondary" size="sm" onClick={() => setSpendOpen(true)}>
-            <Icon icon={Plus} size={16} className="mr-1.5" />
-            Investimento
-          </Button>
+            <PeriodPicker
+              value={period}
+              onChange={setPeriod}
+              className="h-9 rounded-[10px] border border-white/10 bg-[#10141C] text-[13px] text-gray-200 hover:bg-[#161C2A] hover:text-white active:bg-[#161C2A]"
+              options={[
+                { value: "7d", label: "7 dias" },
+                { value: "15d", label: "15 dias" },
+                { value: "30d", label: "30 dias" },
+                { value: "90d", label: "90 dias" },
+              ]}
+            />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setMappingOpen(true)}
-            aria-label="Configurar etapas do funil"
-          >
-            <Icon icon={Settings2} size={16} />
-          </Button>
+            <button
+              type="button"
+              onClick={() => setSpendOpen(true)}
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+            >
+              <Icon icon={Plus} size={16} />
+              Investimento
+            </button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => mutate()}
-            disabled={isLoading}
-            aria-label="Atualizar"
-          >
-            <Icon icon={RefreshCw} size={16} className={cn(isLoading && "animate-spin")} />
-          </Button>
-        </>
-      }
-    >
-      <div className="mx-auto w-full max-w-[1280px] p-4 md:p-6">
+            <button
+              type="button"
+              onClick={() => setMappingOpen(true)}
+              className={cn(CONTROL, "inline-flex w-9 items-center justify-center")}
+              aria-label="Configurar etapas do funil"
+            >
+              <Icon icon={Settings2} size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => mutate()}
+              disabled={isLoading}
+              className={cn(CONTROL, "inline-flex w-9 items-center justify-center disabled:opacity-50")}
+              aria-label="Atualizar"
+            >
+              <Icon icon={RefreshCw} size={16} className={cn(isLoading && "animate-spin")} />
+            </button>
+          </div>
+        </div>
+
+        {/* Aviso de funil sem mapeamento */}
         {missingSteps.length > 0 && (
-          <div
-            className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[6px] border px-3 py-2"
-            style={{
-              background: "var(--crm-warn-bg)",
-              borderColor: "var(--crm-warn-border)",
-              color: "var(--crm-warn)",
-            }}
-          >
-            <div className="text-[12.5px]">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-4 py-2.5">
+            <div className="text-[12.5px] text-[#FBBF24]">
               <span className="font-semibold">Funil incompleto:</span> nenhuma etapa mapeada
               como {missingSteps.map((s) => s.label).join(", ")}. Mapeie as etapas do kanban
               pra essas contagens saírem de zero.
             </div>
-            <Button variant="secondary" size="sm" onClick={() => setMappingOpen(true)}>
-              <Icon icon={SlidersHorizontal} size={16} className="mr-1.5" />
+            <button
+              type="button"
+              onClick={() => setMappingOpen(true)}
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+            >
+              <Icon icon={SlidersHorizontal} size={16} />
               Mapear etapas
-            </Button>
+            </button>
           </div>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-[250px_minmax(0,1fr)_250px]">
+        {/* Cards + funil */}
+        <div className="grid items-center gap-4 lg:grid-cols-[300px_minmax(0,1fr)_300px] lg:gap-6">
           <div className="order-2 grid grid-cols-2 content-start gap-3 sm:grid-cols-3 lg:order-none lg:grid-cols-1">
             {leftCards.map((c) => (
-              <MetricCard key={c.label} def={c} loading={isLoading && !data} />
+              <MetricCard key={c.label} def={c} loading={loading} />
             ))}
           </div>
 
           <div className="order-1 lg:order-none">
-            <FunnelChart data={data} loading={isLoading && !data} />
+            <FunnelChart data={data} loading={loading} />
           </div>
 
           <div className="order-3 grid grid-cols-2 content-start gap-3 sm:grid-cols-3 lg:order-none lg:grid-cols-1">
             {rightCards.map((c) => (
-              <MetricCard key={c.label} def={c} loading={isLoading && !data} />
+              <MetricCard key={c.label} def={c} loading={loading} />
             ))}
           </div>
         </div>
 
-        <SpendByAccountPanel
-          data={data}
-          onManage={() => setSpendOpen(true)}
-        />
-
+        <SpendByAccountPanel data={data} onManage={() => setSpendOpen(true)} />
         <VendasPanel data={data} onChanged={() => mutate()} />
       </div>
 
@@ -344,7 +376,7 @@ export function FunnelDashboard() {
         pipelines={data?.pipelines ?? []}
         onSaved={() => mutate()}
       />
-    </CrmPageShell>
+    </div>
   )
 }
 
@@ -353,66 +385,48 @@ export function FunnelDashboard() {
 interface MetricCardDef {
   label: string
   icon: LucideIcon
-  tint: string
+  tile: string
   value: string
   hint?: string
 }
 
 function MetricCard({ def, loading }: { def: MetricCardDef; loading: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-4 dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]">
-      <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-gray-500 dark:text-[#8B92A5]">
-        <Icon icon={def.icon} size={16} className={def.tint} />
-        {def.label}
+    <div className={cn(CARD, "flex items-center gap-3.5 px-4 py-3.5")}>
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
+        style={{ background: def.tile }}
+      >
+        <Icon icon={def.icon} size={20} className="text-white" />
       </div>
-      {loading ? (
-        <div className="h-7 w-24 animate-pulse rounded bg-gray-100 dark:bg-white/10" />
-      ) : (
-        <div className="text-[22px] font-semibold leading-tight tracking-[-0.02em] text-gray-900 tabular-nums dark:text-[#EAEDF3]">
-          {def.value}
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#7C8598]">
+          {def.label}
         </div>
-      )}
-      {def.hint && !loading && (
-        <div className="text-[11px] text-gray-400 dark:text-[#5C6378]">{def.hint}</div>
-      )}
+        {loading ? (
+          <div className="mt-1.5 h-6 w-20 animate-pulse rounded bg-white/10" />
+        ) : (
+          <div className="mt-0.5 truncate text-[22px] font-bold leading-tight tracking-[-0.01em] text-white tabular-nums">
+            {def.value}
+          </div>
+        )}
+        {def.hint && !loading && (
+          <div className="mt-0.5 text-[10.5px] text-[#5A6478]">{def.hint}</div>
+        )}
+      </div>
     </div>
   )
 }
 
 // ─── Funil de trapézios ──────────────────────────────────────────
 
-const SEGMENT_HEIGHT = 82
-
 function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean }) {
-  const counts = FUNNEL_SEGMENTS.map((s) => data?.funnel[s.key] ?? 0)
-  const maxVolume = Math.max(...counts, 1)
-  // Largura proporcional ao volume: piso 34%, teto 96% (nunca colapsa)
-  const widthFor = (vol: number) => 34 + (vol / maxVolume) * 62
-
-  if (loading) {
-    return (
-      <div className="mx-auto w-full max-w-[520px] animate-pulse py-2">
-        {FUNNEL_SEGMENTS.map((s, i) => {
-          const w = 96 - i * 13
-          return (
-            <div
-              key={s.key}
-              className="mx-auto mb-1 rounded bg-gray-100 dark:bg-white/10"
-              style={{ height: SEGMENT_HEIGHT - 4, width: `${w}%` }}
-            />
-          )
-        })}
-      </div>
-    )
-  }
-
   return (
-    <div className="relative mx-auto w-full max-w-[520px] select-none py-2">
+    <div className="relative mx-auto w-full max-w-[580px] select-none pb-4 pt-1">
       {FUNNEL_SEGMENTS.map((seg, i) => {
-        const vol = counts[i]
-        const nextVol = i < counts.length - 1 ? counts[i + 1] : null
-        const topW = widthFor(vol)
-        const botW = nextVol != null ? widthFor(nextVol) : topW * 0.62
+        const vol = data?.funnel[seg.key] ?? 0
+        const topW = TAPER[i]
+        const botW = i < TAPER.length - 1 ? TAPER[i + 1] : LAST_BOTTOM
 
         const lt = (100 - topW) / 2
         const rt = (100 + topW) / 2
@@ -422,9 +436,10 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
         const rateKey = i < RATE_KEYS.length ? RATE_KEYS[i] : null
         const rate = rateKey ? (data?.rates[rateKey] ?? null) : null
         const showRate = i < FUNNEL_SEGMENTS.length - 1
+        const pillLeft = Math.min(50 + botW / 2, 87)
 
         return (
-          <div key={seg.key} className="relative" style={{ height: SEGMENT_HEIGHT, marginBottom: -1 }}>
+          <div key={seg.key} className="relative" style={{ height: SEGMENT_H, marginBottom: -1 }}>
             <div
               className="absolute inset-0 flex flex-col items-center justify-center"
               style={{
@@ -432,24 +447,23 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
                 clipPath: `polygon(${lt}% 0, ${rt}% 0, ${rb}% 100%, ${lb}% 100%)`,
               }}
             >
-              <div className="text-[30px] font-bold leading-none tracking-[-0.02em] text-white tabular-nums">
-                {fmtInt(vol)}
-              </div>
-              <div className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
+              {loading ? (
+                <div className="h-8 w-16 animate-pulse rounded bg-white/10" />
+              ) : (
+                <div className="text-[32px] font-bold leading-none tracking-[-0.02em] text-white tabular-nums">
+                  {fmtInt(vol)}
+                </div>
+              )}
+              <div className="mt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/70">
                 {seg.label}
               </div>
             </div>
 
-            {/* Taxa de conversão pra próxima etapa (borda inferior, à direita) */}
-            {showRate && (
+            {/* Taxa de conversão pra próxima etapa, na borda inferior */}
+            {showRate && !loading && (
               <div
-                className="absolute z-10 rounded-full border border-white/10 bg-[#10141F] px-2.5 py-1 text-[11px] font-semibold text-white tabular-nums shadow-sm"
-                style={{
-                  top: SEGMENT_HEIGHT,
-                  left: `${Math.min(50 + botW / 2, 84)}%`,
-                  marginLeft: 10,
-                  transform: "translateY(-50%)",
-                }}
+                className="absolute z-10 -translate-y-1/2 rounded-full border border-white/15 bg-[#0B0F1A] px-2.5 py-1 text-[11.5px] font-semibold text-white tabular-nums"
+                style={{ top: SEGMENT_H, left: `${pillLeft}%` }}
               >
                 {rate != null ? fmtPct1(rate) : dash}
               </div>
@@ -477,17 +491,15 @@ function SpendByAccountPanel({
     a.account_name || PLATFORM_LABELS[a.platform] || a.platform
 
   return (
-    <div className="mt-4 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]">
+    <div className={cn(CARD, "mt-5")}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
       >
         <div>
-          <div className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3]">
-            Investimento por conta
-          </div>
-          <div className="text-[11.5px] text-gray-500 dark:text-[#8B92A5]">
+          <div className="text-[13.5px] font-semibold text-white">Investimento por conta</div>
+          <div className="mt-0.5 text-[11.5px] text-[#7C8598]">
             {byAccount.length > 0
               ? `${byAccount.length} conta${byAccount.length > 1 ? "s" : ""} combinada${byAccount.length > 1 ? "s" : ""} — total ${fmtBRL2(total)}`
               : "Nenhum lançamento no período"}
@@ -496,18 +508,18 @@ function SpendByAccountPanel({
         <Icon
           icon={ChevronDown}
           size={16}
-          className={cn("text-gray-400 transition-transform", open && "rotate-180")}
+          className={cn("text-[#7C8598] transition-transform", open && "rotate-180")}
         />
       </button>
 
       {open && (
-        <div className="border-t border-[rgba(0,0,0,0.06)] px-4 py-3 dark:border-[rgba(255,255,255,0.06)]">
+        <div className="border-t border-white/[0.06] px-5 py-4">
           {byAccount.length === 0 ? (
-            <p className="text-[12.5px] text-gray-500 dark:text-[#8B92A5]">
+            <p className="text-[12.5px] text-[#7C8598]">
               Lance o investimento das suas contas de anúncio pra calcular CPL, CPA e ROAS.
             </p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {byAccount.map((a) => (
                 <div
                   key={`${a.platform}-${a.account_name}`}
@@ -519,33 +531,35 @@ function SpendByAccountPanel({
                       style={{
                         background:
                           a.platform === "meta"
-                            ? "#4E62D8"
+                            ? "#4666E8"
                             : a.platform === "google"
-                              ? "#D97706"
+                              ? "#F59E0B"
                               : a.platform === "tiktok"
-                                ? "#111827"
+                                ? "#E5E7EB"
                                 : "#6B7280",
                       }}
                     />
-                    <span className="truncate text-gray-700 dark:text-[#C9CEDA]">
-                      {accountLabel(a)}
-                    </span>
-                    <span className="shrink-0 text-[10.5px] uppercase tracking-wide text-gray-400 dark:text-[#5C6378]">
+                    <span className="truncate text-[#C6CDDB]">{accountLabel(a)}</span>
+                    <span className="shrink-0 text-[10.5px] uppercase tracking-wide text-[#5A6478]">
                       {PLATFORM_LABELS[a.platform] ?? a.platform}
                     </span>
                   </div>
-                  <span className="font-medium text-gray-900 tabular-nums dark:text-[#EAEDF3]">
+                  <span className="font-semibold text-white tabular-nums">
                     {fmtBRL2(a.amount)}
                   </span>
                 </div>
               ))}
             </div>
           )}
-          <div className="mt-3">
-            <Button variant="secondary" size="sm" onClick={onManage}>
-              <Icon icon={Plus} size={16} className="mr-1.5" />
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={onManage}
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+            >
+              <Icon icon={Plus} size={16} />
               Gerenciar lançamentos
-            </Button>
+            </button>
           </div>
         </div>
       )}
@@ -585,17 +599,17 @@ function VendasPanel({
   }
 
   return (
-    <div className="mt-3 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]">
+    <div className={cn(CARD, "mt-3")}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
       >
         <div>
-          <div className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          <div className="text-[13.5px] font-semibold text-white">
             Vendas do período · cash collect
           </div>
-          <div className="text-[11.5px] text-gray-500 dark:text-[#8B92A5]">
+          <div className="mt-0.5 text-[11.5px] text-[#7C8598]">
             {vendas.length > 0
               ? `${vendas.length} venda${vendas.length > 1 ? "s" : ""} — informe o valor recebido de cada uma`
               : "Nenhuma venda no período"}
@@ -604,29 +618,29 @@ function VendasPanel({
         <Icon
           icon={ChevronDown}
           size={16}
-          className={cn("text-gray-400 transition-transform", open && "rotate-180")}
+          className={cn("text-[#7C8598] transition-transform", open && "rotate-180")}
         />
       </button>
 
       {open && vendas.length > 0 && (
-        <div className="border-t border-[rgba(0,0,0,0.06)] px-4 py-3 dark:border-[rgba(255,255,255,0.06)]">
-          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_100px_84px_110px] gap-3 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-gray-400 dark:text-[#5C6378]">
+        <div className="border-t border-white/[0.06] px-5 py-4">
+          <div className="mb-2.5 grid grid-cols-[minmax(0,1fr)_100px_90px_120px] gap-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5A6478]">
             <span>Deal</span>
             <span>Ganho em</span>
             <span className="text-right">Valor</span>
             <span className="text-right">Recebido</span>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {vendas.map((v) => (
               <div
                 key={v.id}
-                className="grid grid-cols-[minmax(0,1fr)_100px_84px_110px] items-center gap-3 text-[12.5px]"
+                className="grid grid-cols-[minmax(0,1fr)_100px_90px_120px] items-center gap-3 text-[12.5px]"
               >
-                <span className="truncate text-gray-700 dark:text-[#C9CEDA]">{v.title}</span>
-                <span className="text-gray-500 tabular-nums dark:text-[#8B92A5]">
+                <span className="truncate text-[#C6CDDB]">{v.title}</span>
+                <span className="text-[#7C8598] tabular-nums">
                   {v.won_at ? format(new Date(v.won_at), "dd/MM/yyyy") : dash}
                 </span>
-                <span className="text-right font-medium text-gray-900 tabular-nums dark:text-[#EAEDF3]">
+                <span className="text-right font-semibold text-white tabular-nums">
                   {fmtBRL0(v.value)}
                 </span>
                 <input
@@ -639,7 +653,7 @@ function VendasPanel({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur()
                   }}
-                  className="crm-input w-full text-right tabular-nums"
+                  className="h-8 w-full rounded-[8px] border border-white/10 bg-[#0A0E17] px-2 text-right text-[12.5px] text-white tabular-nums placeholder:text-[#4A5265] focus:border-white/25 focus:outline-none disabled:opacity-40"
                   aria-label={`Cash collect de ${v.title}`}
                 />
               </div>
@@ -673,43 +687,54 @@ function UtmFilterButton({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm">
-          <Icon icon={Filter} size={16} className="mr-1.5" />
+        <button type="button" className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}>
+          <Icon icon={Filter} size={16} />
           Filtros UTM
           {activeCount > 0 && (
-            <span className="ml-1.5 rounded-full bg-gray-900 px-1.5 text-[10.5px] font-semibold text-white dark:bg-white dark:text-gray-900">
+            <span className="rounded-full bg-white px-1.5 text-[10.5px] font-bold text-[#0A0E17]">
               {activeCount}
             </span>
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[280px] space-y-3 p-3">
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="w-[280px] space-y-3 rounded-[12px] border-white/10 bg-[#0F1420] p-3 text-white"
+      >
         {fields.map((field) => (
           <div key={field.key} className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-[#8B92A5]">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
               {field.label}
             </div>
-            <select
-              className="crm-input w-full"
-              value={utm[field.key]}
-              onChange={(e) => onChange({ ...utm, [field.key]: e.target.value })}
-            >
-              <option value="">Todas</option>
-              {field.opts.map((o) => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                className={cn(CONTROL, "w-full appearance-none pl-3 pr-8")}
+                value={utm[field.key]}
+                onChange={(e) => onChange({ ...utm, [field.key]: e.target.value })}
+              >
+                <option value="">Todas</option>
+                {field.opts.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+              <Icon
+                icon={ChevronDown}
+                customSize={14}
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7C8598]"
+              />
+            </div>
           </div>
         ))}
         <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
+            type="button"
             disabled={activeCount === 0}
             onClick={() => onChange({ source: "", medium: "", campaign: "" })}
+            className="text-[12px] font-medium text-[#7C8598] transition-colors hover:text-white disabled:opacity-40"
           >
             Limpar filtros
-          </Button>
+          </button>
         </div>
       </PopoverContent>
     </Popover>

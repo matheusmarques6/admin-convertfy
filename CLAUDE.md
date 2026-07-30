@@ -1092,9 +1092,14 @@ de deals), editável inline no painel "Vendas do período" da página.
 Taxa cash collect = Σcash_collected / Σvalue dos ganhos do período.
 
 UI em `src/components/crm/funnel-dashboard.tsx` (+ `funnel-dialogs.tsx`):
-CrmPageShell + funil de trapézios em clip-path (padrão do
-diagnostic-modal) com cores fixas por etapa, PeriodPicker com range
-custom, cards no DS (`rounded-[8px]`, ícones naked tintados).
+página DARK por design (réplica do dashboard de referência de mídia
+paga, independente do tema — precedente da sidebar), fora do
+CrmPageShell (`-m-4 md:-m-6 lg:-m-8` pra sangrar o padding do admin).
+Funil de trapézios em clip-path com **taper fixo** ([100,84,68,54,40]%
+— volumes degenerados não deformam a silhueta), pílulas de conversão na
+borda direita, cards com tile de ícone em gradiente (exceção
+consciente à regra "ícone naked" do DS — pedido do design de
+referência), PeriodPicker com range custom e dialogs dark.
 
 ---
 
