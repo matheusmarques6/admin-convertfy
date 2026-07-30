@@ -3,7 +3,7 @@ Prioridade: P1
 Sprint: Backlog
 Assignee: "@dev (Dex)"
 Revisao: "@architect"
-Status: Draft
+Status: In Review
 Epic: CM - Curador, Montador e Hero
 Fase: Fase 1 / Arquitetura
 Estimate: L
@@ -54,117 +54,137 @@ seção 1.
 ## Acceptance Criteria
 
 ### AC CM-3.1 — Catálogo no system prompt, cacheável
-- [ ] O catálogo vai no `system_prompt`, na var `{{catalogo}}`
-- [ ] Ordem **estável**: `ORDER BY block_type, name`. Sem embaralhamento
-- [ ] Catálogo **completo** — todas as seções, não só as do email. Igual
+- [x] O catálogo vai no `system_prompt`, na var `{{catalogo}}`
+- [x] Ordem **estável**: `ORDER BY block_type, name`. Sem embaralhamento
+- [x] Catálogo **completo** — todas as seções, não só as do email. Igual
       para todo email de toda loja, que é o que deixa o cache quente
-- [ ] Uma entrada por variante ativa e elegível, agrupada por
+- [x] Uma entrada por variante ativa e elegível, agrupada por
       `block_type`, com: `variant_id`, `name`, `description`,
       `quando_usar`, `quando_nao_usar`, `objectives`, `tones`, `density`,
       `product_slots`, `orientacao_copy`, `notas_implementacao`
-- [ ] **Sem `campos_copy`** — o `output_schema` sai do Curador e passa a
+- [x] **Sem `campos_copy`** — o `output_schema` sai do Curador e passa a
       ser exclusividade do Montador
-- [ ] Elegibilidade mantida: variante sem `{{PLACEHOLDER}}` no HTML
+- [x] Elegibilidade mantida: variante sem `{{PLACEHOLDER}}` no HTML
       efetivo fica fora, com o nome em
       `parsed_output.candidates_excluded_untagged`
 
-### AC CM-3.2 — `invokeAgent` renderiza o system
-- [ ] `invokeAgent` passa a renderizar `config.system_prompt` com as vars,
-      como já faz com o `user_template`
-- [ ] **Auditoria obrigatória antes**: varrer os `system_prompt` de todos
-      os `agent_type` que usam `invokeAgent` procurando `{{ALGO}}` que não
-      seja var conhecida. O `DEFAULT_ASSEMBLER_SYSTEM` atual cita
-      `{{HERO_IMAGE}}`, `{{PRODUCT_N_IMAGE}}`, `{{HERO_HEADLINE}}`,
-      `{{COUPON_CODE}}` e outras como exemplo — renderizar apagaria todas.
-      Ver CM-1, que é o mesmo bug em outro agente
-- [ ] Prompt que precise citar tag canônica passa a usar um formato que o
-      renderer não consome (ex.: `[[HERO_IMAGE]]` no texto explicativo) ou
-      o agente é excluído da renderização de system
-- [ ] Teste que prova que nenhum system prompt em uso perde conteúdo ao
-      passar pelo renderer
+### AC CM-3.2 — Interpolação do system, sem renderer
+
+**Desvio da spec, decidido pela auditoria.** A auditoria exigida encontrou
+`{{TAG}}` no `DEFAULT_BLUEPRINT_SYSTEM`, usado como **notação genérica**
+("as tags {{TAG}} do HTML"), duas vezes. Renderizar o system genericamente
+repetiria o bug do CM-1 em outro agente. Em vez de adaptar prompts para
+fugir do renderer, a interpolação passou a ser **literal por chave**:
+
+- [x] `interpolateSystem(prompt, vars)`: substitui só as chaves passadas,
+      via replacement por **função** (com string, `$&`/`$1` no valor seriam
+      lidos como referências ao match e corromperiam o catálogo — pego por
+      teste)
+- [x] `invokeAgent` ganha 3º parâmetro `systemVars`, opcional. Sem ele o
+      system vai byte a byte como está: nada muda para blueprint e subject
+- [x] Auditoria registrada em teste: o `{{TAG}}` do blueprint sobrevive, e
+      no prompt do Curador só o `{{catalogo}}` é substituído
+- [x] Nenhum prompt precisou mudar de notação
+
+### AC CM-3.2b — Cache no caminho certo
+
+**Achado durante a implementação.** O Curador roda
+`anthropic/claude-sonnet-4.6` — id com `/`, logo **OpenRouter**. O
+`cache_control` só existia no caminho Anthropic-direto, então o catálogo no
+system não cachearia nada e o ganho prometido não existiria.
+
+- [x] `systemContent()` manda o system como array com
+      `cache_control: {type:'ephemeral'}` quando o modelo é `anthropic/*`
+- [x] Outros provedores seguem recebendo string (alguns rejeitam array)
 
 ### AC CM-3.3 — Guard de catálogo ausente
-- [ ] Se o system renderizado **não** contém o catálogo (edição
+- [x] Se o system renderizado **não** contém o catálogo (edição
       descuidada na aba Agentes apagou a var), o run **falha explicitamente**
       com razão `catalogo_ausente`
-- [ ] Nunca invocar o modelo sem biblioteca: escolher no vazio é pior que
+- [x] Nunca invocar o modelo sem biblioteca: escolher no vazio é pior que
       falhar
-- [ ] Teste com system customizado sem `{{catalogo}}`
+- [x] Teste com system customizado sem `{{catalogo}}`
 
 ### AC CM-3.4 — Output: ranking de até 3
-- [ ] Contrato:
+- [x] Contrato:
       ```json
       [{"block_index":0,"escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"..."},{"variant_id":"..."}]}]
       ```
-- [ ] A **ordem do array** é a preferência. Sem campo de rank redundante
-- [ ] Só a 1ª de cada posição leva `motivo`, com teto de 20 palavras
-- [ ] Menos de 3 adequadas na seção → devolve quantas houver
-- [ ] `max_tokens` de 2048 para **8192**
+- [x] A **ordem do array** é a preferência. Sem campo de rank redundante
+- [x] Só a 1ª de cada posição leva `motivo`, com teto de 20 palavras
+- [x] Menos de 3 adequadas na seção → devolve quantas houver
+- [x] `max_tokens` de 2048 para **8192**
 
 ### AC CM-3.5 — Parser e validações
-- [ ] `parseCuratorRanking(raw, catalogo, sections)` substitui
+- [x] `parseCuratorRanking(raw, catalogo, sections)` substitui
       `parseAssemblerOutput`
-- [ ] `variant_id` inexistente no catálogo → descartado do ranking,
+- [x] `variant_id` inexistente no catálogo → descartado do ranking,
       registrado em `parsed_output.invalid_ids`
-- [ ] `variant_id` cujo `block_type` **não** é a seção daquela posição →
+- [x] `variant_id` cujo `block_type` **não** é a seção daquela posição →
       descartado, registrado em `parsed_output.wrong_type_ids`.
       Necessário porque o catálogo agora vai inteiro, sem pré-separação
-- [ ] `block_index` fora da estrutura → ignorado, registrado
-- [ ] Duplicata do mesmo `variant_id` na mesma posição → mantém a primeira
-- [ ] Posição que sobra sem nenhum id válido → conta como **pulada**,
+- [x] `block_index` fora da estrutura → ignorado, registrado
+- [x] Duplicata do mesmo `variant_id` na mesma posição → mantém a primeira
+- [x] Posição que sobra sem nenhum id válido → conta como **pulada**,
       alimentando `stats.skipped` (CM-2) e o selo (CM-7)
 
 ### AC CM-3.6 — Falha do Curador
-- [ ] Timeout, erro de rede ou JSON inválido → **retry 1×**
-- [ ] Segunda falha → email vai a `failed`, razão `curador_failed`, sem
-      gravar arquitetura
-- [ ] Todas as posições sem id válido → `failed`, razão
+- [x] Timeout, erro de rede ou JSON inválido → **retry 1×**
+- [x] Segunda falha → `CuratorFailedError` com razão, **sem gravar
+      arquitetura**. O run fica `status='error'` com a telemetria completa.
+      **Nuance honesta:** o que o dispatch faz com a exceção é
+      pré-existente — conta tentativa e, esgotadas as
+      `MAX_ARCHITECT_ATTEMPTS`, settla como `failed` na fila, o que hoje
+      significa cair no template global. Mudar isso para o email morrer de
+      verdade afetaria todos os modos de falha do Architect, não só o
+      Curador — fora do escopo desta story
+- [x] Todas as posições sem id válido → `failed`, razão
       `curador_sem_escolhas`
-- [ ] **Não** existe mais fallback por score ou por ordem estável.
+- [x] **Não** existe mais fallback por score ou por ordem estável.
       Composição arbitrária é pior que falha visível
 
 ### AC CM-3.7 — Pré-filtro removido
-- [ ] `prefilterCandidates`, `scoreVariant`, `buildMatchContext`,
+- [x] `prefilterCandidates`, `scoreVariant`, `buildMatchContext`,
       `seededShuffle`, `seedFrom` e `DEFAULT_TOP_K` removidos junto com
       seus testes
-- [ ] `flowTypeToObjective` e `deriveToneKeys` (em
+- [x] `flowTypeToObjective` e `deriveToneKeys` (em
       `shared/component-dimensions.ts`) **permanecem** — `objectives` e
       `tones` continuam indo ao catálogo como informação para o Curador
       ler, e o derivador de componentes usa os mesmos helpers
-- [ ] `CHOOSER_TOP_K` removido
-- [ ] Nenhum import órfão; `npm run typecheck` limpo
+- [x] `CHOOSER_TOP_K` removido
+- [x] Nenhum import órfão; `npm run typecheck` limpo
 
 ### AC CM-3.8 — Consumo do rank 1
-- [ ] Enquanto CM-4 não existir, o código monta os `slots` com o **1º** de
+- [x] Enquanto CM-4 não existir, o código monta os `slots` com o **1º** de
       cada posição
-- [ ] `parsed_output.ranking` guarda o ranking completo, para CM-4 e para
+- [x] `parsed_output.ranking` guarda o ranking completo, para CM-4 e para
       auditoria
-- [ ] Comportamento resultante é equivalente ao de hoje — a diferença é o
+- [x] Comportamento resultante é equivalente ao de hoje — a diferença é o
       pool de onde a escolha saiu
 
 ### AC CM-3.9 — Testes
-- [ ] Catálogo: ordem estável entre chamadas, agrupamento por
+- [x] Catálogo: ordem estável entre chamadas, agrupamento por
       `block_type`, ausência de `campos_copy`, exclusão de variante sem
       placeholder
-- [ ] Parser: id inexistente, tipo errado, `block_index` inválido,
+- [x] Parser: id inexistente, tipo errado, `block_index` inválido,
       duplicata, posição vazia, JSON com fence, JSON com prosa em volta,
       JSON truncado
-- [ ] Falha: retry 1× e `failed` na segunda
-- [ ] Guard de catálogo ausente
-- [ ] Sem chamadas a `prefilterCandidates` em nenhum caminho
+- [x] Falha: retry 1× e `failed` na segunda
+- [x] Guard de catálogo ausente
+- [x] Sem chamadas a `prefilterCandidates` em nenhum caminho
 
 ---
 
 ## Tarefas
 
-- [ ] Builder do catálogo (puro, testável)
-- [ ] Auditoria dos system prompts antes de ligar a renderização
-- [ ] `invokeAgent` renderiza system + guard de catálogo
-- [ ] `parseCuratorRanking` + validações
-- [ ] Retry e caminhos de falha
-- [ ] Migration: prompt novo do `assembler_chooser` + `max_tokens` 8192
-- [ ] Remover pré-filtro e shuffle, com os testes
-- [ ] Testes novos
+- [x] Builder do catálogo (puro, testável)
+- [x] Auditoria dos system prompts antes de ligar a renderização
+- [x] `invokeAgent` renderiza system + guard de catálogo
+- [x] `parseCuratorRanking` + validações
+- [x] Retry e caminhos de falha
+- [x] Migration: prompt novo do `assembler_chooser` + `max_tokens` 8192
+- [x] Remover pré-filtro e shuffle, com os testes
+- [x] Testes novos
 
 ---
 
@@ -221,6 +241,30 @@ do segundo email.
 
 ---
 
+## Achados durante a implementação
+
+### 1. O CM-2 havia quebrado o settle da fila
+
+`runArchitectForEmail` settla o email quando `referenceSource` está numa
+lista fixa — que continha `llm`, `global` e `store`, mas **não** o `code`
+introduzido no CM-2. Efeito: toda geração bem-sucedida contaria tentativa,
+repagaria o Curador na segunda e terminaria como `failed`.
+
+Corrigido, e a lista virou `SETTLED_REFERENCE_SOURCES` exportada, com teste
+de **exaustividade** por `Record<ReferenceSource, boolean>`: adicionar um
+valor novo à união quebra o typecheck até alguém decidir explicitamente se
+settla ou re-tenta. Verificado injetando um valor novo — o typecheck acusa.
+
+### 2. `replaceAll` com string interpreta `$&`
+
+A primeira versão do `interpolateSystem` usava
+`replaceAll('{{k}}', valor)`. Com string de substituição, `$&`, `$1` e `$'`
+no **valor** são lidos como referências ao match. O catálogo carrega texto
+livre de cadastro (nome com "R$", descrição com "$&"), então não era
+hipotético. Trocado por replacement via função, com teste.
+
+---
+
 ## Riscos
 
 | Risco | Probabilidade | Mitigacao |
@@ -238,3 +282,4 @@ do segundo email.
 | Data | Autor | Descricao |
 |------|-------|-----------|
 | 2026-07-30 | @architect | Story criada |
+| 2026-07-30 | @dev (Dex) | `catalog-builder.ts` (catálogo estável, sem schema/html), `curator-ranking.parser.ts` (ranking + 6 validações), `interpolateSystem` + `systemVars` no `invokeAgent`, `cache_control` no caminho OpenRouter, guard de `{{catalogo}}`, retry 1× com `CuratorFailedError`. Pré-filtro removido inteiro (`component-deriver.ts` deletado — ficou sem consumidor). Migration `20261052`. 31 testes novos; agents+dispatch 893/893. **Dois achados abaixo.** Status → In Review |

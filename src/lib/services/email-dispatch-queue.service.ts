@@ -352,6 +352,18 @@ async function heartbeat(admin: SupabaseClient, job: JobRow): Promise<void> {
 }
 
 /** Roda o Architect de um email e devolve o novo status settled/pending. */
+/**
+ * Fontes de reference que SETTLAM o email na fila (não contam tentativa).
+ *
+ * Exportada e coberta por teste de exaustividade: quando `ReferenceSource`
+ * ganhar um valor novo, o teste falha e obriga a decisão explícita de settlar
+ * ou re-tentar. Foi assim que o `"code"` do CM-2 quase passou de fora — o que
+ * faria TODA geração bem-sucedida repagar o Curador e terminar como `failed`.
+ */
+export const SETTLED_REFERENCE_SOURCES: ReadonlySet<ReferenceSource> = new Set<
+  ReferenceSource
+>(["code", "llm", "global", "store"])
+
 async function runArchitectForEmail(
   job: JobRow,
   e: JobEmail,
@@ -376,17 +388,18 @@ async function runArchitectForEmail(
       error: err instanceof Error ? err.message : String(err),
     })
   }
-  // Settled quando o reference efetivo já existe: "llm" (Montador gerou e
-  // persistiu em store_email_references) ou "global" (caiu no template curado
-  // de email_reference_templates — intencional, não re-tenta). "none" (sem LLM
-  // e sem global curado) ou exceção → conta tentativa; esgotou → 'failed'.
-  // "store" = guard de reuso do Architect encontrou reference+blueprint já
-  // persistidos — settla como done sem repagar Curador/Montador/Blueprint.
-  if (
-    referenceSource === "llm" ||
-    referenceSource === "global" ||
-    referenceSource === "store"
-  )
+  // Settled quando o reference efetivo já existe:
+  //   "code"   — documento montado pelo código e persistido (caminho normal
+  //              desde CM-2; sem isso na lista, TODA geração bem-sucedida
+  //              contaria tentativa e repagaria o Curador);
+  //   "llm"    — legado: Montador gerou e persistiu antes do CM-2;
+  //   "global" — caiu no template curado de email_reference_templates
+  //              (intencional, não re-tenta);
+  //   "store"  — guard de reuso achou reference+blueprint já persistidos,
+  //              settla sem repagar Curador/Blueprint.
+  // "none" (nenhum bloco montado e sem global curado) ou exceção → conta
+  // tentativa; esgotou → 'failed'.
+  if (referenceSource && SETTLED_REFERENCE_SOURCES.has(referenceSource))
     return "done"
   return e.attempts + 1 >= MAX_ARCHITECT_ATTEMPTS ? "failed" : "pending"
 }

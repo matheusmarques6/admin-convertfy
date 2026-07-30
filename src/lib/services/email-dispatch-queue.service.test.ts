@@ -84,7 +84,12 @@ vi.mock("@/lib/services/email-copy-webhook.service", () => ({
   dispatchEmailCopyWebhook: (...a: unknown[]) => dispatchEmailCopyWebhook(...a),
 }))
 
-import { enqueueDispatchJob, processDispatchJobs } from "./email-dispatch-queue.service"
+import {
+  enqueueDispatchJob,
+  processDispatchJobs,
+  SETTLED_REFERENCE_SOURCES,
+} from "./email-dispatch-queue.service"
+import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
 
 function reset() {
   for (const k of Object.keys(h.tables)) delete h.tables[k]
@@ -331,5 +336,31 @@ describe("processDispatchJobs", () => {
     const job = h.tables.email_dispatch_jobs[0]
     expect(job.status).toBe("done")
     expect(String(job.error)).toContain("no_draft_emails")
+  })
+})
+
+// CM-2/CM-3: o settle da fila decide se um email conta tentativa. Um valor
+// novo de ReferenceSource que fique de fora da lista faz TODA geração
+// bem-sucedida repagar o Curador e terminar como `failed` — foi o que quase
+// aconteceu com o "code".
+describe("SETTLED_REFERENCE_SOURCES", () => {
+  it("cobre explicitamente cada valor de ReferenceSource", () => {
+    // Exaustividade checada em tempo de compilação: o Record obriga uma
+    // entrada por variante da união, e o valor diz se settla.
+    const decisao: Record<ReferenceSource, boolean> = {
+      code: true,
+      llm: true,
+      global: true,
+      store: true,
+      none: false,
+    }
+    for (const [source, settla] of Object.entries(decisao)) {
+      expect(SETTLED_REFERENCE_SOURCES.has(source as ReferenceSource)).toBe(
+        settla,
+      )
+    }
+    expect(SETTLED_REFERENCE_SOURCES.size).toBe(
+      Object.values(decisao).filter(Boolean).length,
+    )
   })
 })

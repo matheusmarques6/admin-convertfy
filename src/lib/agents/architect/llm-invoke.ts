@@ -26,9 +26,9 @@ const log = logger.child("ArchitectLLM")
 // Teto de invoke dos agentes do architect. Dimensionado quando o Montador
 // gerava o HTML completo (Opus 4.8, ~9 blocos): 60s era curto e 180s ainda
 // derrubava lojas grandes pro fallback. Desde CM-2 a montagem é por código e
-// quem pode demorar aqui é o Curador — o valor foi mantido porque cabe no
-// maxDuration=300s do route — o cron de dispatch limita o tick para que um lote
-// lento (~240s) sempre feche dentro dos 300s (ver TICK_BUDGET_MS em
+// quem pode demorar aqui é o Curador; o valor foi MANTIDO porque o cron de
+// dispatch limita o tick assumindo este teto — um lote lento (~240s) sempre
+// fecha dentro do maxDuration=300s do route (ver TICK_BUDGET_MS em
 // email-dispatch-queue.service.ts). Ajustável sem deploy via env.
 const INVOKE_TIMEOUT_MS = Number(process.env.ARCHITECT_INVOKE_TIMEOUT_MS ?? 240_000)
 
@@ -38,6 +38,34 @@ export interface AgentInvokeConfig {
   max_tokens: number
   system_prompt: string
   user_template: string
+}
+
+/**
+ * Interpola vars no SYSTEM prompt por substituição LITERAL (story CM-3).
+ *
+ * Não usa `renderImageTemplate` de propósito: aquele renderer substitui
+ * qualquer `{{ALGO}}` e resolve var desconhecida para string vazia, o que
+ * apagaria notação legítima dos prompts. Auditoria de 30/jul: o
+ * `DEFAULT_BLUEPRINT_SYSTEM` cita "as tags {{TAG}} do HTML" duas vezes, e o
+ * prompt do hero citava `{{HERO_IMAGE}}` — foi exatamente esse o bug
+ * corrigido na story CM-1.
+ *
+ * Aqui só as chaves passadas são trocadas; todo o resto fica byte a byte.
+ */
+export function interpolateSystem(
+  systemPrompt: string,
+  vars?: Record<string, string>,
+): string {
+  if (!vars) return systemPrompt
+  let out = systemPrompt
+  for (const [key, value] of Object.entries(vars)) {
+    // Replacement por FUNÇÃO: com string, `$&`/`$1`/`$'` no valor seriam
+    // interpretados como referências ao match e corromperiam o conteúdo. O
+    // catálogo carrega texto livre de cadastro (nome de variante com "R$",
+    // descrição com "$&"), então isso não é hipotético.
+    out = out.replaceAll(`{{${key}}}`, () => value)
+  }
+  return out
 }
 
 /** Carrega a config ativa de um agent_type (ou null se ausente). */
@@ -82,11 +110,20 @@ export interface InvokeResult {
 export async function invokeAgent(
   config: AgentInvokeConfig,
   vars: Record<string, string>,
+  /**
+   * Vars do SYSTEM prompt, substituídas LITERALMENTE (ver
+   * `interpolateSystem`). Usado pelo Curador para embutir o catálogo da
+   * biblioteca no prefixo cacheável.
+   */
+  systemVars?: Record<string, string>,
 ): Promise<InvokeResult> {
   const userMessage = renderImageTemplate(config.user_template, vars)
-  return config.model.includes("/")
-    ? invokeViaOpenRouter(config, userMessage)
-    : invokeViaAnthropic(config, userMessage)
+  const resolved: AgentInvokeConfig = systemVars
+    ? { ...config, system_prompt: interpolateSystem(config.system_prompt, systemVars) }
+    : config
+  return resolved.model.includes("/")
+    ? invokeViaOpenRouter(resolved, userMessage)
+    : invokeViaAnthropic(resolved, userMessage)
 }
 
 /**
@@ -171,6 +208,30 @@ async function invokeViaAnthropic(
   }
 }
 
+/**
+ * Content do system para o OpenRouter.
+ *
+ * Modelos Anthropic suportam prompt caching, mas só quando o `cache_control`
+ * viaja no content — e para isso o content precisa ser ARRAY, não string. É o
+ * que torna o catálogo da biblioteca no system do Curador realmente cacheável
+ * (story CM-3): ele é idêntico entre lojas, então da segunda invocação em
+ * diante o prefixo vem do cache.
+ *
+ * Só para `anthropic/*`: os demais provedores ignoram o campo, e alguns
+ * rejeitam content em array. Prefixo abaixo do mínimo do modelo (2048 tokens
+ * no Sonnet 4.x) é ignorado silenciosamente pela API — marcar é sempre seguro.
+ */
+function systemContent(config: AgentInvokeConfig): unknown {
+  if (!/^anthropic\//i.test(config.model)) return config.system_prompt
+  return [
+    {
+      type: "text",
+      text: config.system_prompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ]
+}
+
 /** Invoca via OpenRouter (OpenAI-compatible chat/completions). */
 async function invokeViaOpenRouter(
   config: AgentInvokeConfig,
@@ -208,7 +269,7 @@ async function callOnceArchitect(
       model: config.model,
       max_tokens: config.max_tokens,
       messages: [
-        { role: "system", content: config.system_prompt },
+        { role: "system", content: systemContent(config) },
         { role: "user", content: userMessage },
       ],
     }

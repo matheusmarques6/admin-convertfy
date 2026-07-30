@@ -31,31 +31,30 @@ vi.mock("@/lib/supabase/server", () => ({
 }))
 
 const invokeAgent = vi.fn()
+// null → o serviço usa a config DEFAULT in-code (com {{catalogo}} no system).
+const loadActiveAgentConfig = vi.fn().mockResolvedValue(null)
 vi.mock("./llm-invoke", async (importActual) => {
   const actual = await importActual<typeof import("./llm-invoke")>()
   return {
     ...actual,
     invokeAgent: (...a: unknown[]) => invokeAgent(...a),
-    loadActiveAgentConfig: vi.fn().mockResolvedValue(null), // usa DEFAULT config
+    loadActiveAgentConfig: (...a: unknown[]) => loadActiveAgentConfig(...a),
   }
 })
 
+const finishGenerationRun = vi.fn().mockResolvedValue("run-1")
 vi.mock("../callbacks/telemetry.callback", () => ({
   logGenerationRun: vi.fn().mockResolvedValue(""),
   startGenerationRun: vi.fn().mockResolvedValue("run-1"),
-  finishGenerationRun: vi.fn().mockResolvedValue("run-1"),
+  finishGenerationRun: (...a: unknown[]) => finishGenerationRun(...a),
   computeCostCents: () => 0,
   resolveCostCents: () => 0,
 }))
 
-vi.mock("./component-deriver", () => ({
-  buildMatchContext: () => ({}),
-  prefilterCandidates: (pool: unknown[]) => pool, // sem ranqueamento no teste
-  seededShuffle: (arr: unknown[]) => arr, // sem embaralhar no teste (ordem estável)
-  seedFrom: () => 0,
-}))
-
-import { assembleStoreReference } from "./component-assembler.service"
+import {
+  assembleStoreReference,
+  CuratorFailedError,
+} from "./component-assembler.service"
 
 function variant(id: string, blockType: string, html: string) {
   return {
@@ -98,16 +97,22 @@ const baseInput = {
   structure: [{ section: "hero", label: "Hero" }],
 }
 
-const CHOICE_V1 = { raw: '[{"block_index":0,"variant_id":"v1"}]', tokensInput: 5, tokensOutput: 5 }
-const HTML_OK = {
-  raw: "<!DOCTYPE html><html><body><div>ok</div></body></html>",
-  tokensInput: 10,
-  tokensOutput: 20,
-}
+// CM-3: o Curador devolve RANKING (até 3 por posição), não uma escolha.
+const rank = (...ids: string[]) => ({
+  raw: JSON.stringify([
+    { block_index: 0, escolhas: ids.map((id) => ({ variant_id: id })) },
+  ]),
+  tokensInput: 5,
+  tokensOutput: 5,
+})
+const CHOICE_V1 = rank("v1")
 
 beforeEach(() => {
   h.upsertSpy.mockClear()
   invokeAgent.mockReset()
+  finishGenerationRun.mockClear()
+  loadActiveAgentConfig.mockReset()
+  loadActiveAgentConfig.mockResolvedValue(null)
   h.variants = [variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>")]
 })
 
@@ -153,22 +158,38 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     }
   })
 
-  it("o HTML das variantes NÃO entra no passo A (só descrição/metadados)", async () => {
+  // CM-3: o catálogo vai no SYSTEM (3º argumento do invokeAgent), para ser
+  // cacheável — não mais nos vars do user.
+  it("o catálogo vai no system e NÃO leva o html das variantes", async () => {
     h.variants = [
       variant("v1", "hero", "<div>UNIQUE_HTML_A {{HERO_HEADLINE}}</div>"),
       variant("v2", "hero", "<div>UNIQUE_HTML_B {{HERO_SUBHEAD}}</div>"),
     ]
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     await assembleStoreReference(baseInput)
-    // 1ª chamada = passo A (chooser). Os vars NÃO podem conter o html das variantes.
-    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
-    expect(chooserVars.candidates_json).toContain("v1")
-    expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_A")
-    expect(chooserVars.candidates_json).not.toContain("UNIQUE_HTML_B")
-    expect(chooserVars.candidates_json).not.toContain("<div>")
+    const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
+    expect(systemVars.catalogo).toContain("v1")
+    expect(systemVars.catalogo).toContain("v2")
+    expect(systemVars.catalogo).not.toContain("UNIQUE_HTML_A")
+    expect(systemVars.catalogo).not.toContain("UNIQUE_HTML_B")
+    expect(systemVars.catalogo).not.toContain("<div>")
+    // O user template não carrega mais candidatos.
+    const vars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    expect(vars.candidates_json).toBeUndefined()
   })
 
-  it("passo A recebe orientacao_copy/campos_copy/notas + perfil da marca + top products", async () => {
+  it("o catálogo é o mesmo entre emails (prefixo cacheável)", async () => {
+    h.variants = [variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>")]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference({ ...baseInput, emailNumber: 2 })
+    const a = (invokeAgent.mock.calls[0][2] as Record<string, string>).catalogo
+    const b = (invokeAgent.mock.calls[1][2] as Record<string, string>).catalogo
+    expect(a).toBe(b)
+  })
+
+  it("catálogo leva orientacao_copy/notas; schema fica FORA (é do Montador)", async () => {
     h.variants = [
       {
         ...variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
@@ -187,19 +208,20 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
         ],
       },
     ]
-    invokeAgent.mockResolvedValueOnce(CHOICE_V1).mockResolvedValueOnce(HTML_OK)
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     await assembleStoreReference({
       ...baseInput,
       briefingJson: '{"nicho":"PERFIL-MARCA"}',
       topProductNames: ["Produto A", "Produto B"],
     })
+    const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
+    expect(systemVars.catalogo).toContain("GUIDANCE-COPY")
+    expect(systemVars.catalogo).toContain("NOTAS-LAYOUT")
+    // CM-3: o output_schema saiu do Curador — é insumo exclusivo do Montador.
+    expect(systemVars.catalogo).not.toContain('"headline"')
+    expect(systemVars.catalogo).not.toContain("EXEMPLO-NAO-VAI")
+    expect(systemVars.catalogo).not.toContain("GUIDE-CAMPO-NAO-VAI")
     const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
-    expect(chooserVars.candidates_json).toContain("GUIDANCE-COPY")
-    expect(chooserVars.candidates_json).toContain("NOTAS-LAYOUT")
-    expect(chooserVars.candidates_json).toContain('"headline"')
-    // campos_copy é o schema COMPACTO: example/guidance por campo ficam fora.
-    expect(chooserVars.candidates_json).not.toContain("EXEMPLO-NAO-VAI")
-    expect(chooserVars.candidates_json).not.toContain("GUIDE-CAMPO-NAO-VAI")
     expect(chooserVars.briefing_marca).toContain("PERFIL-MARCA")
     expect(chooserVars.top_products).toContain("1. Produto A")
     expect(chooserVars.top_products).toContain("2. Produto B")
@@ -228,16 +250,16 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     expect(h.upsertSpy).not.toHaveBeenCalled()
   })
 
-  it("passo A sem escolha válida → top-1 da biblioteca; monta e persiste (source=code)", async () => {
-    invokeAgent.mockResolvedValueOnce({
-      raw: '[{"block_index":0,"variant_id":"nao-existe"}]',
-      tokensInput: 1,
-      tokensOutput: 1,
-    })
-    const res = await assembleStoreReference(baseInput)
-    expect(res.variantIds).toEqual(["v1"])
-    expect(res.source).toBe("code")
-    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
+  // CM-3: sem o score do pré-filtro NÃO existe mais fallback top-1. Id
+  // inventado nas duas tentativas → falha explícita, sem arquitetura gravada.
+  it("id inventado nas 2 tentativas → CuratorFailedError, sem persistir", async () => {
+    const bad = { raw: '[{"block_index":0,"escolhas":[{"variant_id":"nao-existe"}]}]', tokensInput: 1, tokensOutput: 1 }
+    invokeAgent.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad)
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow(
+      CuratorFailedError,
+    )
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(h.upsertSpy).not.toHaveBeenCalled()
   })
 
   it("biblioteca vazia + global curado → NÃO chama LLM nem persiste; devolve o global (source=global)", async () => {
@@ -258,6 +280,156 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     expect(h.upsertSpy).not.toHaveBeenCalled()
     expect(res.html).toBe("")
     expect(res.source).toBe("none")
+  })
+})
+
+// ── CM-3: retry, guard de catálogo e caminhos de falha ────────────────
+describe("Curador — retry e falha", () => {
+  it("1ª tentativa com JSON quebrado, 2ª boa → segue e conta 2 tentativas", async () => {
+    invokeAgent
+      .mockResolvedValueOnce({ raw: "não é json", tokensInput: 1, tokensOutput: 1 })
+      .mockResolvedValueOnce(CHOICE_V1)
+    const res = await assembleStoreReference(baseInput)
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(res.source).toBe("code")
+    expect(res.variantIds).toEqual(["v1"])
+  })
+
+  it("JSON quebrado nas 2 tentativas → CuratorFailedError, sem persistir", async () => {
+    const bad = { raw: "prosa sem json", tokensInput: 1, tokensOutput: 1 }
+    invokeAgent.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad)
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow(
+      /curador_failed/,
+    )
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(h.upsertSpy).not.toHaveBeenCalled()
+  })
+
+  it("invoke lançando erro nas 2 tentativas → CuratorFailedError", async () => {
+    invokeAgent.mockRejectedValue(new Error("timeout"))
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow(
+      CuratorFailedError,
+    )
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+  })
+
+  it("não retenta quando a 1ª tentativa já é válida", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    expect(invokeAgent).toHaveBeenCalledTimes(1)
+  })
+
+  // O system é editável na aba Agentes: sem o catálogo o Curador escolheria
+  // no vazio. Falha explícita, e o LLM nem é chamado.
+  it("system sem {{catalogo}} → falha antes de invocar o modelo", async () => {
+    loadActiveAgentConfig.mockResolvedValueOnce({
+      id: "cfg-1",
+      model: "anthropic/claude-sonnet-4.6",
+      temperature: 0.2,
+      max_tokens: 8192,
+      system_prompt: "Escolha a melhor variante. (alguém apagou o catálogo)",
+      user_template: "{{blocks_json}}",
+    })
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow(
+      /catalogo_ausente/,
+    )
+    expect(invokeAgent).not.toHaveBeenCalled()
+  })
+
+  // A migration do CM-3 grava system_prompt = '' (corte seco). Sem o
+  // fallback para o DEFAULT, o guard de {{catalogo}} dispararia em falso e
+  // TODA geração falharia.
+  it("config do banco com prompt vazio → usa o DEFAULT in-code", async () => {
+    loadActiveAgentConfig.mockResolvedValueOnce({
+      id: "cfg-1",
+      model: "anthropic/claude-sonnet-4.6",
+      temperature: 0.2,
+      max_tokens: 8192,
+      system_prompt: "",
+      user_template: "",
+    })
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    const res = await assembleStoreReference(baseInput)
+    expect(res.source).toBe("code")
+    const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
+    expect(systemVars.catalogo).toContain("v1")
+  })
+
+  it("config do banco custom com {{catalogo}} é respeitada", async () => {
+    loadActiveAgentConfig.mockResolvedValueOnce({
+      id: "cfg-1",
+      model: "anthropic/claude-sonnet-4.6",
+      temperature: 0.5,
+      max_tokens: 4096,
+      system_prompt: "PROMPT CUSTOM\n{{catalogo}}",
+      user_template: "{{blocks_json}}",
+    })
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const config = invokeAgent.mock.calls[0][0] as Record<string, unknown>
+    expect(config.system_prompt).toContain("PROMPT CUSTOM")
+    expect(config.max_tokens).toBe(4096)
+    expect(config.temperature).toBe(0.5)
+  })
+
+  it("posição sem finalista válido é pulada, o resto segue", async () => {
+    h.variants = [
+      variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("f1", "footer", "<tr><td>{{FOOTER_TAGLINE}}</td></tr>"),
+    ]
+    invokeAgent.mockResolvedValueOnce({
+      // Só a hero foi rankeada; o footer ficou de fora.
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "v1" }] },
+      ]),
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    const res = await assembleStoreReference({
+      ...baseInput,
+      structure: [
+        { section: "hero", label: "Hero" },
+        { section: "footer", label: "Footer" },
+      ],
+    })
+    expect(res.source).toBe("code")
+    expect(res.variantIds).toEqual(["v1"])
+    expect(res.slots[1].kind).toBe("missing")
+    expect(res.html).not.toContain("{{FOOTER_TAGLINE}}")
+  })
+
+  it("indicação de outra seção é descartada (catálogo vai inteiro)", async () => {
+    h.variants = [
+      variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("f1", "footer", "<tr><td>{{FOOTER_TAGLINE}}</td></tr>"),
+    ]
+    invokeAgent.mockResolvedValueOnce({
+      // f1 é footer, indicado para a posição de hero.
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "f1" }, { variant_id: "v1" }] },
+      ]),
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    const res = await assembleStoreReference(baseInput)
+    expect(res.variantIds).toEqual(["v1"])
+  })
+
+  it("o ranking completo vai para a telemetria", async () => {
+    h.variants = [
+      variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("v2", "hero", "<tr><td>{{HERO_SUBHEAD}}</td></tr>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(rank("v2", "v1"))
+    await assembleStoreReference(baseInput)
+    const call = finishGenerationRun.mock.calls.find(
+      (c) => (c[1] as { agent?: string }).agent === "assembler_chooser",
+    )
+    const parsed = (call![1] as { parsedOutput: Record<string, unknown> })
+      .parsedOutput
+    expect(parsed.ranking).toEqual({ 0: ["v2", "v1"] })
+    expect(parsed.attempts).toBe(1)
+    expect(parsed.catalog_variants).toBe(2)
   })
 })
 
