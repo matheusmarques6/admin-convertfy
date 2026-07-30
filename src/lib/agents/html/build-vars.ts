@@ -166,6 +166,14 @@ const LOGO_BUCKET = "onboarding-visual-assets"
 const LOGO_SIGNED_URL_TTL = 365 * 24 * 60 * 60
 
 /**
+ * Largura de render da logo no email. O que está cadastrado é o asset de
+ * ORIGEM (arquivo grande), não uma versão para email — sem limite explícito
+ * o `<img>` ocupa a largura da célula, que na coluna de 600px significa uma
+ * logo de 600px. 180px é a faixa usual de logo em cabeçalho de email.
+ */
+const LOGO_EMAIL_WIDTH_PX = 180
+
+/**
  * Extrai o path interno do Storage de uma signed URL do Supabase.
  * Formato: .../object/sign/{bucket}/{path}?token=... → retorna {path}.
  * null se a URL nao for uma signed URL do nosso bucket.
@@ -212,7 +220,13 @@ async function pngImgTagFromUrl(
       })
     }
   }
-  return `<img src="${src}" alt="" style="display:block;max-width:100%;height:auto;" />`
+  // Largura MÁXIMA obrigatória. Sem ela o `<img>` herda a largura da célula
+  // e a logo sai com 600px — foi o que aconteceu no email da Luxe Lift, com
+  // o wordmark ocupando a coluna inteira. O arquivo cadastrado costuma ser
+  // grande (é o asset de origem, não uma versão para email), então a única
+  // defesa é limitar aqui. 180px é a faixa usual de logo em cabeçalho de
+  // email; `width` em atributo cobre o Outlook, que ignora `max-width`.
+  return `<img src="${src}" alt="" width="${LOGO_EMAIL_WIDTH_PX}" style="display:block;width:100%;max-width:${LOGO_EMAIL_WIDTH_PX}px;height:auto;" />`
 }
 
 /**
