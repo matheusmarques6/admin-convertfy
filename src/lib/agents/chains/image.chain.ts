@@ -25,8 +25,11 @@ export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `ABSOLUTE RULE — NO TEXT, NO LETT
 PHOTOGRAPHIC DIRECTION — THIS IS YOUR PRIMARY BRIEF. It was written for this exact component by the person who designed it, and it governs HOW the photograph is made: light, framing, distance, lens feel, presence and pose of a model, setting, depth, colour treatment, which area stays clean for copy. Shoot to satisfy it. Everything below — niche, positioning, palette, products — is SUPPORTING CONTEXT that fills in what the direction leaves open, never a reason to contradict it. Empty means no direction was written: then compose from the context alone.
 {PHOTO_DIRECTION}
 
-EMAIL BACKGROUND COLOUR: {BG_COLOR}
-This is the exact colour of the section this image sits in. When the direction calls for a continuous, seamless or studio-neutral backdrop — or whenever the photo is meant to blend into the layout — the background of the photograph MUST be this hex, not an approximation. A backdrop half a tone off reads as a seam across the email. When the direction calls for a real setting (a room, outdoors), ignore this and shoot the setting.
+BACKDROP COLOUR — NOT NEGOTIABLE. The section this image sits in is painted {BG_COLOR}. When the composition calls for a plain, continuous or studio backdrop, the photograph's background MUST be that exact hex, so photo and section read as ONE CONTINUOUS SURFACE with no visible seam. That continuity is the point of the layout, not a detail.
+If the direction asks for a different backdrop, it still has to be one of the STORE's OWN colours — {primary_colors} {secondary_colors}. Never a neutral you chose yourself: no generic studio grey, no off-white, no colour from outside the brand palette.
+The only thing that overrides this is a direction explicitly asking for a real setting (a room, a street, outdoors) — then shoot the setting.
+
+FRAMING PEOPLE. When a person appears, the frame NEVER cuts the top of the head or crops the face out. Either the head is fully inside the frame, or the crop is a deliberate, recognisable one that starts BELOW the shoulders (a torso/detail shot). A head sliced by the top edge reads as a mistake and ruins the section.
 
 EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
 
