@@ -276,6 +276,10 @@ export async function POST(
           source: leadData.source,
           status: "new",
           created_by: effectiveCreatedBy,
+          // Sem org_id o lead some de toda listagem e contagem que
+          // filtra por org (lista de Leads, funil, snapshots): ele
+          // existe no banco mas é invisível no admin.
+          org_id: form.org_id,
           utm: utmData,
           custom_fields:
             Object.keys(customFieldsData).length > 0 ? customFieldsData : {},

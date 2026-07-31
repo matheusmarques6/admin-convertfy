@@ -37,6 +37,7 @@ import {
   resolveCashCollect,
   type PaidInvoice,
 } from "@/lib/services/crm-cash-collect"
+import { countFunnelEntries } from "@/lib/services/crm-funnel-entries"
 import type { FunnelStep } from "@/types/crm"
 
 const log = logger.child("CrmFunnel")
@@ -291,18 +292,32 @@ async function handleGet(request: NextRequest) {
       dealIds.has(h.deal_id),
     )
 
-    // ── Leads criados na janela (topo do funil) ──────────────────
+    // ── Leads criados na janela (parte do topo do funil) ─────────
+    // O topo NÃO é só isto: negócio criado direto no pipeline também é
+    // uma entrada. A soma sem dupla contagem está em countFunnelEntries.
     let leadsQ = admin
       .from("crm_leads")
-      .select("id, utm, source, created_at")
+      .select("id, utm, source, created_at, converted_to_deal_id")
       .eq("scope", "sales")
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .limit(10000)
-    if (userOrg?.org_id) leadsQ = leadsQ.eq("org_id", userOrg.org_id)
+    // Lead de formulário público ficou anos sem org_id (corrigido no
+    // submit em jul/2026). Excluir org_id nulo sumiria com todo o
+    // histórico de leads inbound da contagem.
+    if (userOrg?.org_id) {
+      leadsQ = leadsQ.or(`org_id.eq.${userOrg.org_id},org_id.is.null`)
+    }
     const { data: leadRows, error: leadErr } = await leadsQ
     if (leadErr) throw leadErr
-    const leads = (leadRows as Array<{ id: string; utm: unknown; source: string | null }> | null) ?? []
+    const leads =
+      (leadRows as Array<{
+        id: string
+        utm: unknown
+        source: string | null
+        created_at: string
+        converted_to_deal_id: string | null
+      }> | null) ?? []
 
     // ── UTM dos leads dos deals (fallback deal.utm → lead.utm) ───
     const leadUtmMap = new Map<string, Record<string, unknown>>()
@@ -459,7 +474,14 @@ async function handleGet(request: NextRequest) {
       return n
     }
 
-    const leadsCount = scopedLeads.length
+    // Topo do funil = ENTRADAS no período: todo negócio criado (inclusive
+    // o que nasceu direto no pipeline) + leads que ainda não viraram
+    // negócio. Regras e dedup em crm-funnel-entries.ts (11 testes).
+    const entries = countFunnelEntries(scopedDeals, scopedLeads, {
+      from: fromIso,
+      to: toIso,
+    })
+    const leadsCount = entries.total
     const mqlCount = countAtLeast(STEP_ORDER.mql)
     const agendamentoCount = countAtLeast(STEP_ORDER.agendamento)
     const reuniaoCount = countAtLeast(STEP_ORDER.reuniao)
@@ -803,6 +825,12 @@ async function handleGet(request: NextRequest) {
     return successResponse(request, {
       window: { days: windowDays, from: fromDay, to: toDay },
       funnel,
+      /** De onde vem o topo do funil — a UI mostra como legenda. */
+      leads_breakdown: {
+        from_deals: entries.fromDeals,
+        from_leads: entries.fromLeads,
+        deduped: entries.dedupedLeads,
+      },
       rates,
       metrics,
       ad_spend: {
@@ -834,6 +862,7 @@ function emptyPayload(days: number, from: string, to: string) {
   return {
     window: { days, from, to },
     funnel: { leads: 0, mql: 0, agendamento: 0, reuniao: 0, venda: 0 },
+    leads_breakdown: { from_deals: 0, from_leads: 0, deduped: 0 },
     rates: {
       leads_mql: null,
       mql_agendamento: null,

@@ -95,6 +95,8 @@ export interface FunnelSale {
 export interface FunnelApiData {
   window: { days: number; from: string; to: string }
   funnel: { leads: number; mql: number; agendamento: number; reuniao: number; venda: number }
+  /** Composição do topo do funil (negócios criados + leads sem negócio). */
+  leads_breakdown?: { from_deals: number; from_leads: number; deduped: number }
   rates: {
     leads_mql: number | null
     mql_agendamento: number | null
@@ -190,6 +192,7 @@ export function normalizeFunnelData(
   return {
     window: raw.window ?? { days: 30, from: "", to: "" },
     funnel: { ...EMPTY_FUNNEL, ...(raw.funnel ?? {}) },
+    leads_breakdown: raw.leads_breakdown ?? { from_deals: 0, from_leads: 0, deduped: 0 },
     rates: { ...EMPTY_RATES, ...(raw.rates ?? {}) },
     metrics: { ...EMPTY_METRICS, ...(raw.metrics ?? {}) },
     ad_spend: {

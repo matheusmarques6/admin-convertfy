@@ -455,6 +455,7 @@ function MetricCard({ def, loading }: { def: MetricCardDef; loading: boolean }) 
 // ─── Funil de trapézios ──────────────────────────────────────────
 
 function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean }) {
+  const breakdown = data?.leads_breakdown
   return (
     <div className="relative mx-auto w-full max-w-[580px] select-none pb-4 pt-1">
       {FUNNEL_SEGMENTS.map((seg, i) => {
@@ -491,6 +492,15 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
               <div className="mt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/70">
                 {seg.label}
               </div>
+              {/* O topo soma duas origens; sem dizer isso o número não
+                  bate com a lista de Leads e parece errado. */}
+              {seg.key === "leads" && !loading && breakdown && vol > 0 && (
+                <div className="mt-0.5 text-[9.5px] tracking-wide text-white/45">
+                  {breakdown.from_deals > 0 && `${fmtInt(breakdown.from_deals)} no pipeline`}
+                  {breakdown.from_deals > 0 && breakdown.from_leads > 0 && " · "}
+                  {breakdown.from_leads > 0 && `${fmtInt(breakdown.from_leads)} sem negócio`}
+                </div>
+              )}
             </div>
 
             {/* Taxa de conversão pra próxima etapa, na borda inferior */}
