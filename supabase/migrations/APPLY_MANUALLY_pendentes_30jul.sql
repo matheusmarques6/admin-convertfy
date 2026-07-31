@@ -8,6 +8,7 @@
 --   20261058  coluna hero_vision_model  opcional (sem ela o default in-code assume)
 --   20261057  regra "nenhum texto na imagem" no prompt do BANCO
 --   20261061  direção fotográfica no prompt do BANCO
+--   20261062  cor de fundo do email no prompt do BANCO
 --
 -- Por que duas são obrigatórias: o select da variante da hero passou a
 -- pedir `design_system`, e o carregamento da direção fotográfica pede
@@ -95,6 +96,25 @@ WHERE agent_type = 'image'
   AND user_template NOT LIKE '%CFY_PHOTO_DIRECTION%';
 
 
+-- ── 20261062 — Cor de fundo do email no prompt do banco ─────────────
+-- O agente conhecia a paleta da marca, mas não a cor da SEÇÃO onde a
+-- imagem entra: com a direção pedindo fundo contínuo, escolhia um neutro
+-- qualquer e aparecia uma emenda entre o bloco e a foto. `BG_COLOR` vem do
+-- mesmo deriveColorRoles que pinta o documento — o hex do prompt e o do
+-- email são o mesmo valor por construção.
+UPDATE email_agent_configs
+SET user_template =
+  '{{#if BG_COLOR}}
+CFY_BG_COLOR — EMAIL BACKGROUND COLOUR: {{BG_COLOR}}
+This is the exact colour of the section this image sits in. When the direction calls for a continuous, seamless or studio-neutral backdrop — or whenever the photo is meant to blend into the layout — the background of the photograph MUST be this hex, not an approximation. A backdrop half a tone off reads as a seam across the email.
+When the direction calls for a real setting (a room, a street, outdoors), ignore this and shoot the setting.
+
+{{/if}}' || user_template
+WHERE agent_type = 'image'
+  AND is_active = true
+  AND user_template NOT LIKE '%CFY_BG_COLOR%';
+
+
 -- ── Relatório ────────────────────────────────────────────────────────
 SELECT 10 AS ordem,
        '20261059 · coluna design_system' AS item,
@@ -127,6 +147,15 @@ SELECT 50, '20261061 · direcao fotografica no prompt de imagem',
                    $q$SELECT COUNT(*) AS r FROM public.email_agent_configs
                         WHERE agent_type='image' AND is_active = true
                           AND user_template LIKE '%CFY_PHOTO_DIRECTION%'$q$,
+                   false, true, '')))[1]::text::int, 0) > 0 THEN 'ok'
+            ELSE 'AUSENTE' END
+UNION ALL
+SELECT 60, '20261062 · cor de fundo no prompt de imagem',
+       CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
+            WHEN COALESCE((xpath('//r/text()', query_to_xml(
+                   $q$SELECT COUNT(*) AS r FROM public.email_agent_configs
+                        WHERE agent_type='image' AND is_active = true
+                          AND user_template LIKE '%CFY_BG_COLOR%'$q$,
                    false, true, '')))[1]::text::int, 0) > 0 THEN 'ok'
             ELSE 'AUSENTE' END
 ORDER BY ordem;
