@@ -31,11 +31,7 @@ import type {
   StoreBriefing,
 } from "@/types/email-workspace"
 import type { BlueprintBlock } from "@/types/email-generation"
-import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
-import {
-  fieldsFromCopySpec,
-  fieldsFromTags,
-} from "@/lib/agents/architect/deterministic-blueprint.builder"
+import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import {
   deriveFieldNature,
   deriveToneKeys,
@@ -85,6 +81,110 @@ export function digestPayload(payload: unknown): unknown {
       })),
     })),
   }
+}
+
+/** Contrato de copy resolvido de um bloco (o que vai no payload). */
+interface BlockSchema {
+  fields: BlueprintFieldV2[]
+  variantId: string | null
+  variantName: string | null
+  purpose: string | null
+}
+
+/**
+ * Resolve o contrato de copy de cada bloco — o BLOCO É O SCHEMA (20261065).
+ *
+ * Caminho normal: lê `fields`/`variant_id` da própria linha, gravados no
+ * seed a partir do blueprint. Zero adivinhação.
+ *
+ * Auto-cura: bloco criado antes da migration tem `fields` vazio. Aí sim
+ * resolve do blueprint pelo índice (a regra antiga), GRAVA na linha e
+ * registra o uso. Não é fallback permanente — o caminho morre quando o
+ * último bloco legado for tocado, e enquanto viver aparece em log.
+ *
+ * `variant_name` e `purpose` continuam vindo do blueprint (são rótulo e
+ * diretriz, não contrato) — mas indexados pelo `variant_id` da LINHA, não
+ * por posição.
+ */
+async function resolveBlockSchemas(
+  admin: SupabaseClient,
+  blocks: BlockRow[],
+  emails: EmailRow[],
+  flows: EmailFlowRow[],
+  blueprintBlocksByKey: Map<string, BlueprintBlock[]>,
+): Promise<Map<string, BlockSchema>> {
+  const flowTypeById = new Map(flows.map((f) => [f.id, f.flow_type]))
+  const emailById = new Map(emails.map((e) => [e.id, e]))
+  const out = new Map<string, BlockSchema>()
+  const backfill: Array<{ id: string; variant_id: string | null; fields: BlueprintFieldV2[] }> = []
+
+  for (const b of blocks) {
+    const email = emailById.get(b.email_id)
+    const flowType = email ? flowTypeById.get(email.flow_id) : undefined
+    const bpBlocks =
+      email && flowType
+        ? (blueprintBlocksByKey.get(`${flowType}:${email.number}`) ?? [])
+        : []
+    // Bloco do blueprint com o MESMO variant_id da linha — sem isso o
+    // rótulo/purpose voltariam a depender de posição.
+    const rowVariantId = b.variant_id ?? null
+    const byVariant = rowVariantId
+      ? bpBlocks.find((x) => (x as { variant_id?: string | null }).variant_id === rowVariantId)
+      : undefined
+
+    const rowFields = Array.isArray(b.fields) ? b.fields : []
+    if (rowFields.length > 0) {
+      out.set(b.id, {
+        fields: rowFields,
+        variantId: rowVariantId,
+        variantName:
+          (byVariant as { variant_name?: string | null } | undefined)?.variant_name ?? null,
+        purpose: (byVariant as { purpose?: string | null } | undefined)?.purpose ?? null,
+      })
+      continue
+    }
+
+    // ── Bloco legado: resolve UMA vez pelo índice e grava.
+    const byIndex = (i: number) => {
+      const cand = bpBlocks[i]
+      return cand && cand.type === b.block_type ? cand : null
+    }
+    const matched = byIndex(b.position - 1) ?? byIndex(b.position)
+    const fields = (Array.isArray(matched?.fields) ? matched.fields : []) as BlueprintFieldV2[]
+    const variantId =
+      (matched as { variant_id?: string | null } | null)?.variant_id ?? null
+    out.set(b.id, {
+      fields,
+      variantId,
+      variantName: (matched as { variant_name?: string | null } | null)?.variant_name ?? null,
+      purpose: (matched as { purpose?: string | null } | null)?.purpose ?? null,
+    })
+    if (fields.length > 0 || variantId) {
+      backfill.push({ id: b.id, variant_id: variantId, fields })
+    }
+    log.warn("email_copy.block_schema_backfill", {
+      blockId: b.id,
+      position: b.position,
+      type: b.block_type,
+      resolved_fields: fields.length,
+      hint: "bloco anterior à 20261065 — schema resolvido do blueprint e gravado",
+    })
+  }
+
+  for (const row of backfill) {
+    const { error } = await admin
+      .from("email_blocks")
+      .update({ variant_id: row.variant_id, fields: row.fields })
+      .eq("id", row.id)
+    if (error) {
+      log.warn("email_copy.block_schema_backfill_failed", {
+        blockId: row.id,
+        error: error.message,
+      })
+    }
+  }
+
+  return out
 }
 
 export interface DispatchEmailCopyOptions {
@@ -141,6 +241,11 @@ interface BlockRow {
   block_type: string
   label: string | null
   content: Record<string, unknown> | null
+  // O BLOCO É O SCHEMA (20261065). A linha carrega qual variante instancia e
+  // qual contrato de copy tem — dispatch e callback leem daqui, e ninguém
+  // mais casa bloco↔variante por índice.
+  variant_id: string | null
+  fields: BlueprintFieldV2[] | null
 }
 
 // Status finalizados — não reconciliar estrutura (preserva trabalho pronto).
@@ -567,7 +672,7 @@ export async function dispatchEmailCopyWebhook(
   const emailIds = emails.map((e) => e.id)
   const blocksRes = await admin
     .from("email_blocks")
-    .select("id, email_id, position, block_type, label, content")
+    .select("id, email_id, position, block_type, label, content, variant_id, fields")
     .in("email_id", emailIds)
     .order("position", { ascending: true })
 
@@ -693,56 +798,12 @@ export async function dispatchEmailCopyWebhook(
   const topProductsTable = (topProductsRes.data as TopProductRow[] | null) ?? []
   const competitors = (competitorsRes.data as CompetitorRow[] | null) ?? []
 
-  // Variantes da biblioteca escolhidas pelo Curador (store_email_references.
-  // variant_ids) por flow×email — anexadas ADITIVAMENTE por email no payload
-  // (copy_guidance + output_schema enriquecem a copy; o n8n ignora a chave
-  // até o flow ser atualizado). Falha aqui nunca derruba o dispatch.
-  const variantIdsByKey = new Map<string, string[]>()
-  const variantById = new Map<
-    string,
-    {
-      id: string
-      name: string
-      copy_guidance: string | null
-      output_schema: unknown[]
-    }
-  >()
-  try {
-    const { data: storeRefs } = await admin
-      .from("store_email_references")
-      .select("flow_type, email_number, variant_ids")
-      .eq("store_id", storeId)
-      .in("flow_type", flowTypes)
-    const allIds = new Set<string>()
-    for (const r of (storeRefs ?? []) as Array<{
-      flow_type: string
-      email_number: number
-      variant_ids: string[] | null
-    }>) {
-      const ids = (r.variant_ids ?? []).filter(Boolean)
-      variantIdsByKey.set(`${r.flow_type}:${r.email_number}`, ids)
-      ids.forEach((id) => allIds.add(id))
-    }
-    if (allIds.size > 0) {
-      const { data: variantRows } = await admin
-        .from("email_component_variants")
-        .select("id, name, copy_guidance, output_schema")
-        .in("id", Array.from(allIds))
-      for (const v of (variantRows ?? []) as Array<{
-        id: string
-        name: string
-        copy_guidance: string | null
-        output_schema: unknown[] | null
-      }>) {
-        variantById.set(v.id, { ...v, output_schema: v.output_schema ?? [] })
-      }
-    }
-  } catch (err) {
-    log.warn("email_copy.webhook.component_variants_failed", {
-      storeId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  // O lookup de `component_variants` (store_email_references.variant_ids +
+  // email_component_variants.output_schema) foi REMOVIDO junto com a chave
+  // que ele alimentava (20261065): eram duas queries por dispatch para
+  // montar uma lista no nível do email que o n8n nunca cruzava com o bloco.
+  // O schema agora vem em blocks[].fields, lido da própria linha.
+
   const onboardingRow = onboardingRes.data as {
     form_responses?: Record<string, unknown> | null
   } | null
@@ -866,6 +927,29 @@ export async function dispatchEmailCopyWebhook(
     sem_tag: number
     total: number
   }> = []
+
+  // Blocos que chegaram na hora do envio SEM contrato de copy. Erro de
+  // CURADORIA: sem variante casada não há schema, e sem schema o n8n volta
+  // a gerar a partir do tipo/label — que é como o `hero_cta_2_label` sumiu.
+  const blocosSemSchema: Array<{
+    flow_type: string
+    email_number: number
+    position: number
+    type: string
+    variant_id: string | null
+  }> = []
+
+  // ── O bloco é o schema: resolve o contrato de cada bloco ANTES do envio.
+  // Lê da linha; se estiver vazia (bloco anterior à migration 20261065),
+  // resolve do blueprint UMA vez e grava. Auto-cura, não fallback
+  // permanente: cada uso do caminho antigo sai em log.
+  const blockSchemas = await resolveBlockSchemas(
+    admin,
+    blocks,
+    emails,
+    flows,
+    blueprintBlocksByKey,
+  )
 
   const payload = {
     event: "email_copy.requested" as const,
@@ -1020,17 +1104,11 @@ export async function dispatchEmailCopyWebhook(
           objective:
             bp?.objective ?? outline?.objective ?? bpDefault?.objective ?? null,
           tones: storeTones,
-          // Chave ADITIVA: variantes escolhidas pelo Curador para este email
-          // (contexto de copy por bloco). Vazio quando o Montador não rodou.
-          component_variants: (variantIdsByKey.get(key) ?? [])
-            .map((id) => variantById.get(id))
-            .filter((v) => v != null)
-            .map((v) => ({
-              variant_id: v.id,
-              name: v.name,
-              copy_guidance: v.copy_guidance,
-              output_schema: v.output_schema,
-            })),
+          // `component_variants` SAIU daqui (20261065). Era a lista de
+          // output_schemas das variantes, no nível do email — e o n8n nunca
+          // a cruzava com o bloco que estava gerando. O schema agora vive
+          // em blocks[].fields, onde é usado. Uma fonte só.
+          //
           // Código literal do cupom já resolvido pelo idioma da loja (null se
           // este email não tem cupom no idioma vigente). Já gravado no bloco
           // `coupon`; repetido aqui pra o n8n ter o valor à mão na copy.
@@ -1056,53 +1134,47 @@ export async function dispatchEmailCopyWebhook(
             : selectBlocksForCopy(blocksByEmail.get(e.id) ?? [])
           ).map(
             (b) => {
-              // Bloco correspondente no blueprint (mesma position, semeado
-              // na mesma ordem). Se a estrutura divergiu (reseed antigo,
-              // edicao manual), o type não casa → default canônico do tipo.
-              const bpBlocks = blueprintBlocksByKey.get(key)
-              // position 1-based → índice position-1. Fallback: rows legadas
-              // com position 0-based tentam o próprio índice. Ambos guardados
-              // pela igualdade de type.
-              const byIndex = (i: number) => {
-                const cand = bpBlocks?.[i]
-                return cand && cand.type === b.block_type ? cand : null
-              }
-              const matched = byIndex(b.position - 1) ?? byIndex(b.position)
-              const tags = Array.isArray(matched?.tags) ? matched.tags : []
-              // fields v2 — ÚNICA fonte de orçamento/diretriz por campo no
-              // payload (docs/email-copy-payload-v2.md). Cascata:
-              //   1. snapshot persistido no blueprint (builder/packageBlueprint
-              //      — origem "schema"/"tag_registry"/"llm" já resolvida);
-              //   2. blueprint sem snapshot mas com tags canônicas → derivação
-              //      do tag-registry;
-              //   3. sem nada (blueprint legado/fallback global) → conversão
-              //      do copy_spec normalizado (default canônico do tipo).
-              const allFields =
-                Array.isArray(matched?.fields) && matched.fields.length > 0
-                  ? matched.fields
-                  : tags.length > 0
-                    ? fieldsFromTags(tags)
-                    : fieldsFromCopySpec(
-                        normalizeCopySpec(matched?.copy_spec, b.block_type),
-                      )
+              // ── O BLOCO É O SCHEMA (20261065) ────────────────────────
+              // O contrato de copy sai da PRÓPRIA LINHA. Antes ele era
+              // reconstruído aqui casando bloco↔blueprint por índice
+              // (`bpBlocks[position-1]`, guardado por type) e, quando o
+              // guard falhava, TODOS os campos do bloco viravam default
+              // genérico do copy_spec — sem um único log. O mesmo
+              // casamento era refeito, de forma independente, no callback.
+              //
+              // `blockSchemas` já resolveu (e persistiu) o schema de blocos
+              // que nasceram antes da migration. Aqui só se lê.
+              const resolved = blockSchemas.get(b.id)
+              const allFields = resolved?.fields ?? []
               // T8 (naturezas): o n8n escreve COPY — campos de imagem gerada
               // são do agente de imagem e asset_fixo fica intacto; ambos fora
               // do payload. Snapshots sem nature derivam do tipo (image →
-              // imagem_gerada; resto → copy) — comportamento antigo: só some
-              // o que já não era copy.
+              // imagem_gerada; resto → copy).
               const fields = allFields.filter(
                 (fld) => deriveFieldNature(fld) === "copy",
               )
               const semTag = fields.filter(
                 (fld) => !(fld as { tag?: string | null }).tag,
               ).length
+              // Bloco SEM schema é erro de curadoria, não modo de operação:
+              // sem variante casada não há contrato, e o n8n volta a
+              // inventar o vocabulário. Vai inteiro para a telemetria.
+              if (allFields.length === 0) {
+                blocosSemSchema.push({
+                  flow_type: f.flow_type,
+                  email_number: e.number,
+                  position: b.position,
+                  type: b.block_type,
+                  variant_id: resolved?.variantId ?? null,
+                })
+              }
               if (fields.length > 0 && semTag / fields.length > 0.5) {
                 fieldsSemTag.push({
                   flow_type: f.flow_type,
                   email_number: e.number,
                   position: b.position,
                   type: b.block_type,
-                  variant_name: matched?.variant_name ?? null,
+                  variant_name: resolved?.variantName ?? null,
                   sem_tag: semTag,
                   total: fields.length,
                 })
@@ -1114,16 +1186,13 @@ export async function dispatchEmailCopyWebhook(
                 label: b.label,
                 // Diretiva de conteúdo da seção — copy_guidance da variante
                 // casada (rota determinística) ou purpose do Blueprint LLM.
-                purpose: matched?.purpose?.trim() || null,
-                // Variante da biblioteca que originou este bloco (quando o
-                // Curador casou uma) — permite ao n8n cruzar com a lista
-                // component_variants do email (copy_guidance/output_schema).
-                variant_id: matched?.variant_id ?? null,
-                variant_name: matched?.variant_name ?? null,
-                // Tags canônicas {{TAG}} do template que este bloco preenche
-                // (contrato 1:1 campo↔template — docs/email-reference-tags.md).
-                // Vazio em blueprints legados/fallback sem esqueleto de tags.
-                tags,
+                purpose: resolved?.purpose?.trim() || null,
+                variant_id: resolved?.variantId ?? null,
+                variant_name: resolved?.variantName ?? null,
+                // `fields` É o contrato, e o ÚNICO. `tags` saiu do bloco
+                // (redundante com fields[].tag) junto com o array
+                // component_variants do email: eram a segunda fonte que
+                // permitia ao n8n gerar por fora do schema.
                 fields,
               }
             },
@@ -1166,6 +1235,18 @@ export async function dispatchEmailCopyWebhook(
         storeId,
         blocks: fieldsSemTag.length,
         sample: fieldsSemTag.slice(0, 10),
+      })
+    }
+
+    // Erro de CURADORIA, não do dispatch: o bloco foi enviado sem contrato
+    // de copy. É `error` e não `warn` porque o email que sai daqui já sai
+    // errado — o n8n vai gerar por conta própria naquele bloco.
+    if (blocosSemSchema.length > 0) {
+      log.error("email_copy.blocos_sem_schema", {
+        storeId,
+        blocks: blocosSemSchema.length,
+        sample: blocosSemSchema.slice(0, 10),
+        hint: "bloco sem variante casada — o Curador não escolheu, ou o blueprint não foi regerado",
       })
     }
 
@@ -1252,6 +1333,11 @@ export async function dispatchEmailCopyWebhook(
       // incoerência schema↔HTML na variante, visível no drawer de logs.
       ...(fieldsSemTag.length > 0
         ? { fields_sem_tag: fieldsSemTag.slice(0, 30) }
+        : {}),
+      // Blocos que saíram SEM contrato de copy. O bloco é o schema: sem
+      // fields o n8n não tem o que preencher e volta a inventar as chaves.
+      ...(blocosSemSchema.length > 0
+        ? { blocos_sem_schema: blocosSemSchema.slice(0, 30) }
         : {}),
     },
     error_message: dispatchError,

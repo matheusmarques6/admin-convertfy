@@ -12,6 +12,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { DEFAULT_BLUEPRINTS, type BlueprintBlockDef } from "./email-blueprint"
+import type { BlueprintBlockField } from "@/types/email-generation"
 import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 
 const log = logger.child("SeedBlocks")
@@ -63,6 +64,11 @@ export async function seedBlocksFromBlueprint(
     // Persiste o flag do blueprint. `?? type==='hero'` preserva o
     // comportamento default para blueprints antigos sem o campo.
     needs_image: def.needs_image ?? def.type === "hero",
+    // O BLOCO É O SCHEMA (20261065): a linha guarda qual variante instancia
+    // e qual contrato de copy carrega. Sem isso, dispatch e callback tinham
+    // de casar bloco↔variante por índice, cada um por conta.
+    variant_id: def.variant_id ?? null,
+    fields: def.fields ?? [],
   }))
 
   const { data: inserted, error: insertErr } = await admin
@@ -151,6 +157,9 @@ export async function ensureBlocksSeeded(
     content: {},
     applied: false,
     needs_image: def.needs_image ?? def.type === "hero",
+    // O bloco é o schema (20261065) — ver seedBlocksFromBlueprint.
+    variant_id: def.variant_id ?? null,
+    fields: def.fields ?? [],
   }))
 
   const { error: insertErr } = await admin
@@ -235,6 +244,21 @@ interface ExistingBlockRow {
   applied: boolean
   applied_at: string | null
   needs_image: boolean
+  variant_id: string | null
+  fields: unknown
+}
+
+/**
+ * Os dois contratos de copy são o mesmo? Compara por (key, tag, max_len,
+ * required, nature) — o que o n8n precisa saber. Ordem importa: `fields` é
+ * a lista que o payload envia, e reordenar muda o que o modelo lê primeiro.
+ */
+function sameFields(a: unknown, b: BlueprintBlockField[]): boolean {
+  const cur = Array.isArray(a) ? (a as BlueprintBlockField[]) : []
+  if (cur.length !== b.length) return false
+  const sig = (f: BlueprintBlockField) =>
+    [f.key, f.tag ?? "", f.max_len ?? 0, f.required ? 1 : 0, f.nature ?? ""].join("|")
+  return cur.every((f, i) => sig(f) === sig(b[i]))
 }
 
 /** Flag de imagem desejado pra um def da blueprint (default: hero precisa). */
@@ -267,7 +291,7 @@ export async function reconcileBlocksAdditive(
 
   const { data: existingData, error: readErr } = await admin
     .from("email_blocks")
-    .select("id, block_type, position, label, content, applied, applied_at, needs_image")
+    .select("id, block_type, position, label, content, applied, applied_at, needs_image, variant_id, fields")
     .eq("email_id", emailId)
     .order("position", { ascending: true })
   if (readErr) {
@@ -287,24 +311,38 @@ export async function reconcileBlocksAdditive(
   if (sameSequence) {
     let fixed = 0
     for (let i = 0; i < existing.length; i++) {
-      const want = desiredNeedsImage(blockDefs[i])
-      if (existing[i].needs_image === want) continue
+      const def = blockDefs[i]
+      const row = existing[i]
+      const patch: Record<string, unknown> = {}
+      const wantNeedsImage = desiredNeedsImage(def)
+      if (row.needs_image !== wantNeedsImage) patch.needs_image = wantNeedsImage
+      // O bloco é o schema (20261065): estrutura igual não significa contrato
+      // igual. Blueprint regerado com outra variante precisa reescrever
+      // variant_id/fields aqui também — senão o dispatch pede campos que a
+      // variante enxertada não tem onde receber.
+      const wantVariant = def.variant_id ?? null
+      if ((row.variant_id ?? null) !== wantVariant) patch.variant_id = wantVariant
+      const wantFields = def.fields ?? []
+      if (!sameFields(row.fields, wantFields)) patch.fields = wantFields
+      if (Object.keys(patch).length === 0) continue
+
       const { error: updErr } = await admin
         .from("email_blocks")
-        .update({ needs_image: want })
-        .eq("id", existing[i].id)
+        .update(patch)
+        .eq("id", row.id)
       if (updErr) {
-        log.error("reconcile.needs_image_update_failed", {
+        log.error("reconcile.block_update_failed", {
           emailId,
-          blockId: existing[i].id,
+          blockId: row.id,
+          keys: Object.keys(patch),
           error: updErr.message,
         })
-        throw new Error(`Falha ao corrigir needs_image: ${updErr.message}`)
+        throw new Error(`Falha ao atualizar bloco: ${updErr.message}`)
       }
       fixed++
     }
     if (fixed > 0) {
-      log.info("reconcile.needs_image_backfilled", { emailId, fixed })
+      log.info("reconcile.blocks_backfilled", { emailId, fixed })
     }
     return { reconciled: fixed > 0, added: 0, total: existing.length }
   }
@@ -330,6 +368,12 @@ export async function reconcileBlocksAdditive(
       applied: match?.applied ?? false,
       applied_at: match?.applied_at ?? null,
       needs_image: desiredNeedsImage(def),
+      // Vem do BLUEPRINT, não do bloco existente: a copy é preservada, o
+      // contrato é atualizado. Blueprint regerado com outra variante tem de
+      // reescrever o schema do bloco, senão o payload iria pedir campos que
+      // a variante enxertada não tem onde receber.
+      variant_id: def.variant_id ?? null,
+      fields: def.fields ?? [],
     }
   })
 

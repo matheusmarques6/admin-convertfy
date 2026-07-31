@@ -29,12 +29,8 @@ import {
   NotFoundError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import {
-  findCopyDeviations,
-  findFieldDeviations,
-  normalizeCopySpec,
-} from "@/lib/email-workspace/copy-spec"
-import type { BlueprintBlock } from "@/types/email-generation"
+import { findFieldDeviations } from "@/lib/email-workspace/copy-spec"
+import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 import {
@@ -273,7 +269,7 @@ export async function POST(request: NextRequest) {
     // leitura.
     const { data: emailBlocksOrdered } = await admin
       .from("email_blocks")
-      .select("id, content, block_type")
+      .select("id, content, block_type, fields")
       .eq("email_id", body.email_id)
       .order("position", { ascending: true })
     const orderedIds = (
@@ -282,6 +278,13 @@ export async function POST(request: NextRequest) {
     const orderedTypes = (
       (emailBlocksOrdered ?? []) as Array<{ block_type: string | null }>
     ).map((r) => r.block_type ?? "")
+    // O BLOCO É O SCHEMA (20261065): o contrato de copy vem da LINHA, a
+    // mesma que o dispatch enviou. Antes o callback refazia, por conta,
+    // o casamento bloco↔blueprint por índice — a mesma heurística escrita
+    // duas vezes, em dois arquivos, podendo divergir entre ida e volta.
+    const orderedFields = (
+      (emailBlocksOrdered ?? []) as Array<{ fields?: unknown }>
+    ).map((r) => (Array.isArray(r.fields) ? (r.fields as BlueprintBlockField[]) : []))
 
     // 2.5) Limpa artefatos pre-GATE 2: chaves de imagem persistidas em
     // email_blocks.content por uma renderizacao ANTERIOR a confirmacao da
@@ -382,26 +385,14 @@ export async function POST(request: NextRequest) {
     }
     blocksWritten += blocksByPosition
 
-    // 3.5) Auditoria da copy contra o contrato v2 (payload de dispatch —
-    // docs/email-copy-payload-v2.md): se o blueprint da loja tem snapshot de
-    // `fields` no bloco casado, valida required/max_len por campo
-    // (source:'schema'). Senão mede contra o copy_spec REAL do bloco casado
-    // — antes o spec era ignorado (normalizeCopySpec(null, ...) caía sempre
-    // no default do tipo). Observabilidade apenas: NÃO rejeita nem trunca;
-    // endurecer só depois de medir a taxa de desvio em produção.
-    const { data: bpRow } = await admin
-      .from("store_email_blueprints")
-      .select("blocks")
-      .eq("store_id", body.store_id)
-      .eq("flow_type", flowType)
-      .eq("email_number", emailNumber)
-      .maybeSingle()
-    const bpBlocks: BlueprintBlock[] = Array.isArray(
-      (bpRow as { blocks?: unknown } | null)?.blocks,
-    )
-      ? ((bpRow as { blocks: BlueprintBlock[] }).blocks)
-      : []
-
+    // 3.5) Auditoria da copy contra o contrato do BLOCO (20261065): o mesmo
+    // `fields` que o dispatch enviou, lido da própria linha. Observabilidade
+    // apenas: NÃO rejeita nem trunca.
+    //
+    // Bloco sem `fields` na linha significa que o dispatch o enviou sem
+    // contrato — erro de curadoria já registrado lá. Aqui não há o que
+    // auditar, e inventar um copy_spec por tipo (o que se fazia antes) só
+    // produzia desvio contra um contrato que ninguém pediu.
     const copyDeviations: Array<Record<string, unknown>> = []
     for (let i = 0; i < body.blocks.length; i++) {
       // Resolve o bloco real pelo block_id (o array do callback pode ser um
@@ -411,23 +402,34 @@ export async function POST(request: NextRequest) {
       const idx = idxById >= 0 ? idxById : i
       const blockType = orderedTypes[idx]
       if (!blockType) continue
-      // Blueprint na mesma ordem dos email_blocks (0-based ↔ rows ordenadas
-      // por position) — guardado pela igualdade de type, como no dispatch.
-      const cand = bpBlocks[idx]
-      const matched = cand && cand.type === blockType ? cand : null
+      const fields = orderedFields[idx] ?? []
       const content = body.blocks[i].content as Record<string, unknown>
-      if (Array.isArray(matched?.fields) && matched.fields.length > 0) {
-        for (const d of findFieldDeviations(content, matched.fields)) {
-          copyDeviations.push({ position: idx, type: blockType, source: "schema", ...d })
-        }
-      } else {
-        const deviations = findCopyDeviations(
-          content,
-          normalizeCopySpec(matched?.copy_spec, blockType),
-        )
-        for (const d of deviations) {
-          copyDeviations.push({ position: idx, type: blockType, source: "copy_spec", ...d })
-        }
+      if (fields.length === 0) {
+        copyDeviations.push({
+          position: idx,
+          type: blockType,
+          source: "schema",
+          kind: "sem_contrato",
+          key: "",
+        })
+        continue
+      }
+      for (const d of findFieldDeviations(content, fields)) {
+        copyDeviations.push({ position: idx, type: blockType, source: "schema", ...d })
+      }
+      // Chave que o n8n mandou e o contrato não previa: ou o flow está no
+      // vocabulário antigo, ou inventou campo. É o contador que diz quando
+      // o n8n terminou de migrar.
+      const known = new Set(fields.map((f) => f.key))
+      for (const k of Object.keys(content)) {
+        if (known.has(k)) continue
+        copyDeviations.push({
+          position: idx,
+          type: blockType,
+          source: "schema",
+          kind: "unknown_key",
+          key: k,
+        })
       }
     }
     if (copyDeviations.length > 0) {

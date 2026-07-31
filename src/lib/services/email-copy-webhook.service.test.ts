@@ -394,45 +394,48 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
   })
 })
 
-describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off-by-one)", () => {
-  it("bloco na position P recebe purpose/copy_spec de blueprint.blocks[P-1]", async () => {
+describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
+  it("lê fields/variant_id da LINHA; não casa por índice", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
     ])
-    // email_blocks semeados 1-BASED (seed-blocks: idx+1), mesma ordem do blueprint.
+    // A linha carrega o contrato. Repare que a ORDEM do blueprint está
+    // invertida em relação às positions: antes isso deslocava o match e
+    // zerava os fields do bloco inteiro; agora é irrelevante.
     h.tables.email_blocks = [
-      { id: "b1", email_id: "e1", position: 1, block_type: "header", label: "Header", content: {} },
-      { id: "b2", email_id: "e1", position: 2, block_type: "hero", label: "Hero", content: {} },
-      { id: "b3", email_id: "e1", position: 3, block_type: "coupon", label: "Cupom", content: {} },
+      {
+        id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-hero",
+        fields: [
+          { key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+            nature: "copy", max_len: 40, required: true, source: "schema" },
+          { key: "hero_cta_2_label", tag: "HERO_CTA_2_LABEL", type: "text_short",
+            nature: "copy", max_len: 20, required: false, source: "schema" },
+          { key: "hero_image", tag: "HERO_IMAGE", type: "image",
+            nature: "imagem_gerada", max_len: 0, required: true, source: "schema" },
+        ],
+      },
+      {
+        id: "b2", email_id: "e1", position: 2, block_type: "coupon", label: "Cupom",
+        content: {}, variant_id: "v-coupon",
+        fields: [
+          { key: "coupon_code", tag: "COUPON_CODE", type: "text_short",
+            nature: "copy", max_len: 15, required: true, source: "schema" },
+        ],
+      },
     ]
     loadEffectiveBlueprintsBatch.mockResolvedValue(
       new Map([
-        [
-          "welcome__1",
-          {
-            flow_type: "welcome",
-            email_number: 1,
-            objective: "OBJ",
-            messaging: "MSG",
-            subject_hint: null,
-            blocks: [
-              { type: "header", label: "Header", purpose: "PURPOSE-HEADER", copy_spec: [] },
-              {
-                type: "hero",
-                label: "Hero",
-                purpose: "PURPOSE-HERO",
-                copy_spec: [{ key: "eyebrow", min_chars: 8, max_chars: 24 }],
-                tags: ["HERO_EYEBROW", "HERO_IMAGE"],
-              },
-              {
-                type: "coupon",
-                label: "Cupom",
-                purpose: "PURPOSE-COUPON",
-                copy_spec: [{ key: "code", min_chars: 4, max_chars: 15 }],
-              },
-            ],
-          },
-        ],
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null,
+          blocks: [
+            { type: "coupon", label: "Cupom", purpose: "P-COUPON",
+              variant_id: "v-coupon", variant_name: "cupom 2", copy_spec: [] },
+            { type: "hero", label: "Hero", purpose: "P-HERO",
+              variant_id: "v-hero", variant_name: "welcome - hero section 9", copy_spec: [] },
+          ],
+        }],
       ]),
     )
 
@@ -444,78 +447,57 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     expect(res.ok).toBe(true)
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
-      flows: Array<{
-        emails: Array<{
-          blocks: Array<{
-            position: number
-            type: string
-            purpose: string | null
-            tags: string[]
-            fields: Array<Record<string, unknown>>
-          }>
-        }>
-      }>
+      flows: Array<{ emails: Array<{
+        blocks: Array<Record<string, unknown>>
+      }> }>
     }
     const blocks = body.flows[0].emails[0].blocks
-    expect(blocks.map((b) => b.type)).toEqual(["header", "hero", "coupon"])
-    // Tags canônicas do bloco repassadas ao n8n; sem tags no blueprint → []
-    expect(blocks[1].tags).toEqual(["HERO_EYEBROW", "HERO_IMAGE"])
-    expect(blocks[0].tags).toEqual([])
-    // v2: copy_spec NÃO existe mais no payload — fields é a única fonte.
-    expect(blocks[1]).not.toHaveProperty("copy_spec")
-    // Bloco com tags mas sem snapshot → derivação tag_registry (só copy —
-    // HERO_IMAGE fica de fora).
-    expect(blocks[1].fields).toEqual([
-      expect.objectContaining({
-        key: "eyebrow",
-        tag: "HERO_EYEBROW",
-        max_len: 24,
-        min_len: 8,
-        source: "tag_registry",
-      }),
+    expect(blocks.map((b) => b.type)).toEqual(["hero", "coupon"])
+
+    // O contrato veio da LINHA, não do índice do blueprint.
+    expect((blocks[0].fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+      "hero_headline",
+      "hero_cta_2_label", // o campo que sumia
     ])
-    // Bloco sem tags nem snapshot → conversão do copy_spec (origem "llm").
-    expect(blocks[2].fields).toEqual([
-      expect.objectContaining({
-        key: "code",
-        max_len: 15,
-        min_len: 4,
-        tag: null,
-        source: "llm",
-      }),
+    expect((blocks[1].fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+      "coupon_code",
     ])
 
-    // ANTES do fix: blocks[position] deslocava 1 → type nunca casava →
-    // purpose null e fields default em TODOS (provado na Luxe Lift w#3).
-    expect(blocks[0].purpose).toBe("PURPOSE-HEADER")
-    expect(blocks[1].purpose).toBe("PURPOSE-HERO")
-    expect(blocks[2].purpose).toBe("PURPOSE-COUPON")
+    // Rótulo/purpose vêm do blueprint casado por variant_id — não por posição.
+    expect(blocks[0].variant_name).toBe("welcome - hero section 9")
+    expect(blocks[0].purpose).toBe("P-HERO")
+    expect(blocks[1].variant_name).toBe("cupom 2")
+    expect(blocks[1].purpose).toBe("P-COUPON")
+
+    // Segunda fonte de schema morreu: nem `tags` no bloco, nem
+    // `component_variants` no email.
+    expect(blocks[0]).not.toHaveProperty("tags")
+    expect(blocks[0]).not.toHaveProperty("copy_spec")
+    expect(body.flows[0].emails[0]).not.toHaveProperty("component_variants")
   })
 
-  it("rows legadas 0-based ainda casam (fallback pro próprio índice)", async () => {
+  it("bloco legado (fields vazio) resolve do blueprint UMA vez e grava na linha", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
     ])
     h.tables.email_blocks = [
-      { id: "b1", email_id: "e1", position: 0, block_type: "hero", label: "Hero", content: {} },
-      { id: "b2", email_id: "e1", position: 1, block_type: "coupon", label: "Cupom", content: {} },
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: null, fields: [] },
     ]
     loadEffectiveBlueprintsBatch.mockResolvedValue(
       new Map([
-        [
-          "welcome__1",
-          {
-            flow_type: "welcome",
-            email_number: 1,
-            objective: "OBJ",
-            messaging: "MSG",
-            subject_hint: null,
-            blocks: [
-              { type: "hero", label: "Hero", purpose: "P-HERO", copy_spec: [] },
-              { type: "coupon", label: "Cupom", purpose: "P-COUPON", copy_spec: [] },
-            ],
-          },
-        ],
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null,
+          blocks: [
+            { type: "hero", label: "Hero", purpose: "P-HERO",
+              variant_id: "v-hero", variant_name: "hero 9", copy_spec: [],
+              fields: [
+                { key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+                  nature: "copy", max_len: 40, required: true, source: "schema" },
+              ] },
+          ],
+        }],
       ]),
     )
 
@@ -527,11 +509,57 @@ describe("dispatchEmailCopyWebhook — purpose/copy_spec casam por position (off
     expect(res.ok).toBe(true)
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
-      flows: Array<{ emails: Array<{ blocks: Array<{ purpose: string | null }> }> }>
+      flows: Array<{ emails: Array<{ blocks: Array<Record<string, unknown>> }> }>
     }
-    const blocks = body.flows[0].emails[0].blocks
-    expect(blocks[0].purpose).toBe("P-HERO")
-    expect(blocks[1].purpose).toBe("P-COUPON")
+    const bloco = body.flows[0].emails[0].blocks[0]
+    expect((bloco.fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+      "hero_headline",
+    ])
+    // Auto-cura: a linha foi atualizada para não voltar por este caminho.
+    const row = h.tables.email_blocks.find((b: Row) => b.id === "b1")!
+    expect(row.variant_id).toBe("v-hero")
+    expect((row.fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+      "hero_headline",
+    ])
+  })
+
+  it("bloco SEM schema vai pro payload vazio e é registrado como erro de curadoria", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: null, fields: [] },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null,
+          blocks: [{ type: "hero", label: "Hero", purpose: "P", copy_spec: [] }],
+        }],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blocks: Array<{ fields: unknown[] }> }> }>
+    }
+    // Sem schema NÃO vira default do copy_spec — o bloco vai vazio, e o
+    // problema aparece na telemetria em vez de virar copy inventada.
+    expect(body.flows[0].emails[0].blocks[0].fields).toEqual([])
+    const run = h.tables.email_generation_runs.find(
+      (r: Row) => r.agent === "copy_dispatch",
+    )
+    expect(
+      (run?.parsed_output as { blocos_sem_schema?: unknown[] })?.blocos_sem_schema,
+    ).toHaveLength(1)
   })
 })
 

@@ -6,6 +6,8 @@
  * e hint de subject. O agente Copy usa esses dados pra gerar copy contextual.
  */
 
+import type { BlueprintBlockField } from "@/types/email-generation"
+
 export interface BlueprintBlockDef {
   type: string
   label: string
@@ -15,6 +17,15 @@ export interface BlueprintBlockDef {
   // Editável no popup do editor de blueprints; usado como direção de arte
   // autoritativa na geração da imagem (var IMAGE_BRIEF).
   image_brief?: string | null
+  // ── O bloco É o schema (migration 20261065) ─────────────────────────
+  // Presentes quando o blueprint vem de `store_email_blueprints` (saída do
+  // packageBlueprint). Persistidos em email_blocks.variant_id/fields no
+  // seed, para que dispatch e callback leiam da LINHA e ninguém precise
+  // casar bloco↔variante por índice. Ausentes nos DEFAULT_BLUEPRINTS
+  // in-code, que não têm variante.
+  variant_id?: string | null
+  variant_name?: string | null
+  fields?: BlueprintBlockField[]
 }
 
 export interface BlueprintDef {

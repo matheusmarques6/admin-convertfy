@@ -43,6 +43,61 @@ Lift 27/07). Flows que ainda não ecoam o campo mantêm o comportamento
 anterior (copy aceita fora dos status idempotentes). Mudança aditiva: sem
 janela de deploy obrigatória.
 
+## v3 (jul/2026) — O BLOCO É O SCHEMA
+
+Corte que muda o contrato: **`blocks[].fields` é o ÚNICO lugar onde o schema
+existe, e é dele que a copy tem de sair.**
+
+### Por que
+
+Até a v2 o schema chegava por dois caminhos: `blocks[].fields` e
+`emails[].component_variants` (a lista de `output_schema` das variantes, no
+nível do email). O flow do n8n gerava a copy a partir do **bloco** (tipo,
+label, purpose) e nunca cruzava com o array — então devolvia o vocabulário
+do tag-registry (`headline`, `subhead`, `cta`) em vez das keys do schema.
+
+Como só existe **um** `cta`, um bloco com dois botões perdia o segundo:
+`hero_cta_2_label` voltava vazio, o agente de hero via o slot sem valor e
+removia a linha. O email da Luxe Lift saiu sem o segundo botão, com cada
+etapa funcionando como projetada.
+
+### O que muda no payload
+
+| Campo | v2 | v3 |
+|---|---|---|
+| `blocks[].fields` | uma das fontes | **a única** — vem de `email_blocks.fields`, gravado no seed a partir do blueprint |
+| `blocks[].tags` | array de tags canônicas | **REMOVIDO** — redundante com `fields[].tag` |
+| `emails[].component_variants` | lista de `output_schema` por email | **REMOVIDO** — era a segunda fonte que o n8n não cruzava |
+| `blocks[].variant_id` / `variant_name` | casados por índice no dispatch | resolvidos pelo `variant_id` da linha do bloco |
+
+### O que o flow do n8n tem de fazer
+
+Iterar `blocks[]` e, para cada bloco, gerar **exatamente** as keys de
+`fields[]` — nada além, nada aquém —, respeitando `max_len` e usando
+`label`, `purpose`, `guidance` e `example` como direção. Devolver:
+
+```jsonc
+{ "block_id": "uuid", "content": { "hero_headline": "…", "hero_cta_2_label": "…" } }
+```
+
+Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em `fields[]`.
+
+**Entra na mesma janela do deploy.** Rollback = reverter o admin.
+
+### O que passa a ser medido
+
+- Chave devolvida fora de `fields[]` → desvio `unknown_key` no callback. É o
+  contador que diz quando o n8n terminou de migrar.
+- Campo de `fields[]` que volta vazio → desvio `missing` (opcional) ou
+  `required_empty` (obrigatório). Antes só o obrigatório gerava sinal, e
+  como a biblioteca tem quase tudo opcional, campo sumido era silêncio.
+- Bloco enviado sem contrato → `blocos_sem_schema` no run `copy_dispatch` e
+  desvio `sem_contrato` no callback. **Bloco sem variante casada é erro de
+  curadoria**, não modo de operação: sem schema o n8n volta a inventar o
+  vocabulário.
+- O payload inteiro fica em `email_generation_runs.input_vars.payload` do run
+  `copy_dispatch` (esqueleto acima de 1 MB).
+
 ## O shape de `fields` (v2)
 
 ```jsonc

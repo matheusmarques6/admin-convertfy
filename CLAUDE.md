@@ -1555,5 +1555,43 @@ Taguedor + revisão humana), não o schema.
 
 ---
 
+## O bloco É o schema (migration 20261065, jul/2026)
+
+`email_blocks` ganhou `variant_id` e `fields`: a linha passou a ser a
+INSTÂNCIA da variante naquele email, carregando o contrato de copy.
+
+**Por quê**: o vínculo bloco↔variante existia só em runtime, por casamento de
+índice (`bpBlocks[position-1]` guardado por `type`), refeito de forma
+independente no dispatch e no callback — e quando o guard falhava, TODOS os
+campos do bloco viravam default genérico do `copy_spec`, sem um log. Pior: o
+schema viajava por fora, em `emails[].component_variants`, que o n8n nunca
+cruzava com o bloco. Ele gerava a copy a partir do bloco (tipo/label/purpose)
+e devolvia o vocabulário do tag-registry (`headline`, `cta`). Como só existe
+UM `cta`, o segundo botão nunca teve fonte: `hero_cta_2_label` voltava vazio,
+o agente de hero via slot sem valor e removia a linha (Luxe Lift, jul/2026).
+
+- **Seed** (`seed-blocks.ts`) grava `variant_id`/`fields` do blueprint nos três
+  caminhos (seed, ensure, reconcile). O reconcile de estrutura igual também
+  backfilla contrato divergente — blueprint regerado com outra variante tem de
+  reescrever o schema do bloco.
+- **Dispatch** lê da linha (`resolveBlockSchemas`). Bloco anterior à migration
+  resolve do blueprint UMA vez, GRAVA e loga (`email_copy.block_schema_backfill`)
+  — auto-cura, não fallback permanente. `tags` saiu do bloco e
+  `component_variants` saiu do email: **uma fonte só**.
+- **Bloco sem schema é erro de CURADORIA**, não modo de operação — não existe
+  mais derivação por tag-registry/copy_spec. Vai para `blocos_sem_schema` no
+  run `copy_dispatch` (`log.error`) e vira desvio `sem_contrato` no callback.
+- **Callback** audita pelo `fields` da linha, pelo `block_id` — a heurística de
+  índice sumiu dos dois lados. Chave fora do contrato → desvio `unknown_key`
+  (o contador que diz quando o n8n terminou de migrar).
+- **Payload gravado**: `input_vars.payload` do run `copy_dispatch` guarda o
+  envio na íntegra (esqueleto via `digestPayload` acima de 1 MB).
+
+Contrato do n8n em `docs/email-copy-payload-v2.md` (seção v3): iterar
+`blocks[]` e gerar EXATAMENTE as keys de `fields[]`. Entra na mesma janela do
+deploy; rollback = reverter o admin.
+
+---
+
 *Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
