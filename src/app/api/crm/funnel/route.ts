@@ -32,6 +32,11 @@ import {
   normalizeAdName,
   type AttributionKeys,
 } from "@/lib/services/crm-ads-attribution"
+import {
+  groupPaidInvoices,
+  resolveCashCollect,
+  type PaidInvoice,
+} from "@/lib/services/crm-cash-collect"
 import type { FunnelStep } from "@/types/crm"
 
 const log = logger.child("CrmFunnel")
@@ -70,6 +75,8 @@ interface DealRow {
   source: string | null
   utm: Record<string, unknown> | null
   lead_id: string | null
+  client_id: string | null
+  store_id: string | null
 }
 
 interface HistRow {
@@ -77,6 +84,15 @@ interface HistRow {
   new_value: unknown
   old_value: unknown
   changed_at: string
+}
+
+interface OnboardingRow {
+  id: string
+  client_id: string
+  source_deal_id: string | null
+  status: string
+  payment_status: string | null
+  current_column_id: string | null
 }
 
 interface InsightRow {
@@ -232,7 +248,7 @@ async function handleGet(request: NextRequest) {
     // ── Deals do escopo (todos, não só os criados na janela: um deal
     //    antigo que ENTRA em "Reunião" hoje conta no funil de hoje) ──
     const DEAL_COLS =
-      "id, pipeline_id, stage_id, title, status, value, created_at, won_at, source, utm, lead_id"
+      "id, pipeline_id, stage_id, title, status, value, created_at, won_at, source, utm, lead_id, client_id, store_id"
 
     let dealRows: DealRow[] | null = null
     {
@@ -453,12 +469,93 @@ async function handleGet(request: NextRequest) {
     )
     const vendaCount = vendaDeals.length
 
+    // ── Cash collect: pagamentos reais + onboarding da venda ─────
+    // O valor recebido NÃO é digitado: vem de unified_invoices (VIEW
+    // que une invoices do Asaas + client_charges lançadas à mão em
+    // Cliente > Financeiro). Só contam pagamentos confirmados a partir
+    // do fechamento da venda — antes disso é dinheiro de outro ciclo.
+    // deals.cash_collected continua existindo como OVERRIDE manual,
+    // pra venda sem cliente vinculado ou correção pontual.
+    const vendaClientIds = Array.from(
+      new Set(vendaDeals.map((d) => d.client_id).filter((id): id is string => !!id)),
+    )
+
+    let paidInvoices: PaidInvoice[] = []
+    let onboardings: OnboardingRow[] = []
+    const columnNames = new Map<string, string>()
+
+    if (vendaClientIds.length > 0) {
+      const [invoicesRes, onboardingsRes] = await Promise.all([
+        admin
+          .from("unified_invoices")
+          .select("client_id, amount, payment_date, status, source")
+          .in("client_id", vendaClientIds)
+          .eq("status", "paid"),
+        admin
+          .from("onboardings")
+          .select("id, client_id, source_deal_id, status, payment_status, current_column_id")
+          .in("client_id", vendaClientIds),
+      ])
+
+      // Ausência dessas fontes não pode derrubar o funil — degrada pro
+      // override manual (mesmo princípio das tabelas de ads).
+      if (invoicesRes.error) {
+        if (!isMissingSchema(invoicesRes.error)) throw invoicesRes.error
+        schemaMissing.push("unified_invoices")
+      } else {
+        paidInvoices = (invoicesRes.data as PaidInvoice[] | null) ?? []
+      }
+
+      if (onboardingsRes.error) {
+        if (!isMissingSchema(onboardingsRes.error)) throw onboardingsRes.error
+        schemaMissing.push("onboardings")
+      } else {
+        onboardings = (onboardingsRes.data as OnboardingRow[] | null) ?? []
+      }
+
+      const columnIds = Array.from(
+        new Set(
+          onboardings
+            .map((o) => o.current_column_id)
+            .filter((id): id is string => !!id),
+        ),
+      )
+      if (columnIds.length > 0) {
+        const { data: cols } = await admin
+          .from("operational_pipeline_columns")
+          .select("id, name")
+          .in("id", columnIds)
+        for (const c of cols ?? []) columnNames.set(c.id, c.name)
+      }
+    }
+
+    const invoicesByClient = groupPaidInvoices(paidInvoices)
+
+    /** Regras em crm-cash-collect.ts (13 testes). */
+    const cashFor = (d: DealRow) => resolveCashCollect(d, invoicesByClient)
+
+    const onboardingByDeal = new Map<string, OnboardingRow>()
+    for (const o of onboardings) {
+      if (o.source_deal_id) onboardingByDeal.set(o.source_deal_id, o)
+    }
+    const onboardingByClient = new Map<string, OnboardingRow>()
+    for (const o of onboardings) {
+      // Prioriza o onboarding em andamento do cliente
+      const cur = onboardingByClient.get(o.client_id)
+      if (!cur || (cur.status !== "in_progress" && o.status === "in_progress")) {
+        onboardingByClient.set(o.client_id, o)
+      }
+    }
+    const onboardingFor = (d: DealRow): OnboardingRow | null =>
+      onboardingByDeal.get(d.id) ??
+      (d.client_id ? (onboardingByClient.get(d.client_id) ?? null) : null)
+
     // ── Métricas ─────────────────────────────────────────────────
     const manualSpend = spendEntries.reduce((s, e) => s + (e.amount || 0), 0)
     const syncedSpend = campaignInsights.reduce((s, r) => s + (r.spend || 0), 0)
     const investimento = manualSpend + syncedSpend
     const faturamento = vendaDeals.reduce((s, d) => s + (d.value || 0), 0)
-    const cashCollect = vendaDeals.reduce((s, d) => s + (d.cash_collected || 0), 0)
+    const cashCollect = vendaDeals.reduce((s, d) => s + cashFor(d).effective, 0)
 
     const div = (a: number, b: number): number | null => (b > 0 ? a / b : null)
     const pct = (a: number, b: number): number | null =>
@@ -632,18 +729,54 @@ async function handleGet(request: NextRequest) {
     for (const d of deals) collectUtm(utmOfDeal(d))
 
     // ── Vendas do período (edição de cash collect) ───────────────
-    const vendas = vendaDeals
+    const topVendas = vendaDeals
       .slice()
       .sort((a, b) => (b.won_at || "").localeCompare(a.won_at || ""))
       .slice(0, 100)
-      .map((d) => ({
+
+    const clientNames = new Map<string, string>()
+    const topClientIds = Array.from(
+      new Set(topVendas.map((d) => d.client_id).filter((id): id is string => !!id)),
+    )
+    if (topClientIds.length > 0) {
+      const { data: clientRows } = await admin
+        .from("clients")
+        .select("id, name")
+        .in("id", topClientIds)
+      for (const c of clientRows ?? []) clientNames.set(c.id, c.name)
+    }
+
+    const vendas = topVendas.map((d) => {
+      const cash = cashFor(d)
+      const onboarding = onboardingFor(d)
+      return {
         id: d.id,
         title: d.title,
         value: d.value || 0,
-        cash_collected: d.cash_collected,
+        /** Valor usado nas métricas: override manual, senão o derivado. */
+        cash_collected: cash.effective,
+        /** Override manual (null = não informado). */
+        cash_collected_manual: cash.manual,
+        /** Derivado dos pagamentos confirmados desde o fechamento. */
+        cash_collected_auto: cash.auto,
+        /** asaas | local | mixed | null — de onde veio o valor automático. */
+        payment_source: cash.source,
         won_at: d.won_at,
         pipeline_id: d.pipeline_id,
-      }))
+        client_id: d.client_id,
+        client_name: d.client_id ? (clientNames.get(d.client_id) ?? null) : null,
+        onboarding: onboarding
+          ? {
+              id: onboarding.id,
+              status: onboarding.status,
+              payment_status: onboarding.payment_status,
+              column_name: onboarding.current_column_id
+                ? (columnNames.get(onboarding.current_column_id) ?? null)
+                : null,
+            }
+          : null,
+      }
+    })
 
     // ── Payload de mapeamento (dialog de configuração) ───────────
     const pipelinesPayload = (allPipelines || []).map((p) => ({

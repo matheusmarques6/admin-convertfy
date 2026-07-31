@@ -1110,9 +1110,24 @@ espaços; `utm_content` é partido no ÚLTIMO " - " (nome do anúncio pode
 conter hífen). Payload `creatives[]` do funil: spend/leads_crm/vendas/
 receita/CPL/CPA/ROAS por anúncio — é o que liga gasto a venda real.
 
-**Cash collect**: `deals.cash_collected NUMERIC(12,2)` (aceito no PATCH
-de deals), editável inline no painel "Vendas do período" da página.
-Taxa cash collect = Σcash_collected / Σvalue dos ganhos do período.
+**Cash collect ligado ao financeiro/onboarding** (jul/2026): o valor
+recebido NÃO é digitado — sai de `unified_invoices` (VIEW que une
+`invoices` do Asaas + `client_charges` manuais), a MESMA fonte que o
+onboarding usa pra dizer se o cliente pagou, então funil e onboarding
+nunca discordam. Regras em `crm-cash-collect.ts` (13 testes):
+`resolveCashCollect` soma faturas pagas do `deals.client_id` com
+`payment_date >= won_at` (pagamento de ciclo anterior não infla a venda
+nova) e `deals.cash_collected` vira OVERRIDE manual que VENCE quando
+preenchido — inclusive `0` (venda sem cliente não tem como derivar).
+Origem exposta por venda (`payment_source`: asaas|local|mixed|null) e
+mostrada como legenda embaixo do valor.
+
+**Ponte venda → onboarding**: `onboardings.source_deal_id` já existia
+(trigger `deal.won` → cron `process-deal-won`) mas não era usada na UI.
+Agora cada venda do painel mostra a etapa do onboarding + link, ou o
+botão "Criar onboarding" (`POST /api/crm/deals/[id]/onboarding`,
+idempotente via `createFromDeal`; 422 pedindo pra vincular cliente
+quando `client_id` é null), ou "Vincular cliente" quando nem isso existe.
 
 UI: 3 dialogs no topo da página — **Meta Ads** (conectar/sincronizar/
 desconectar conta + template de UTM copiável), **Investimento**

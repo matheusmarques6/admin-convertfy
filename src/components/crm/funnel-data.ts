@@ -64,6 +64,34 @@ export interface CreativePerformance {
   roas: number | null
 }
 
+/** Origem do valor recebido — o que a UI mostra como procedência. */
+export type PaymentSource = "asaas" | "local" | "mixed" | null
+
+export interface FunnelSaleOnboarding {
+  id: string
+  status: string
+  payment_status: string | null
+  column_name: string | null
+}
+
+export interface FunnelSale {
+  id: string
+  title: string
+  value: number
+  /** Valor usado nas métricas: override manual, senão o derivado. */
+  cash_collected: number
+  /** Override manual (null = não informado). */
+  cash_collected_manual: number | null
+  /** Derivado dos pagamentos confirmados desde o fechamento. */
+  cash_collected_auto: number
+  payment_source: PaymentSource
+  won_at: string | null
+  pipeline_id: string
+  client_id: string | null
+  client_name: string | null
+  onboarding: FunnelSaleOnboarding | null
+}
+
 export interface FunnelApiData {
   window: { days: number; from: string; to: string }
   funnel: { leads: number; mql: number; agendamento: number; reuniao: number; venda: number }
@@ -96,14 +124,7 @@ export interface FunnelApiData {
   }
   ad_accounts: ConnectedAdAccount[]
   creatives: CreativePerformance[]
-  vendas: Array<{
-    id: string
-    title: string
-    value: number
-    cash_collected: number | null
-    won_at: string | null
-    pipeline_id: string
-  }>
+  vendas: FunnelSale[]
   pipelines: FunnelPipeline[]
   mapped_steps: string[]
   /** Tabelas/colunas do funil ausentes no banco (migration pendente). */

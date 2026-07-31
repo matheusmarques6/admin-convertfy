@@ -28,12 +28,14 @@ import {
   ChevronDown,
   CreditCard,
   DollarSign,
+  ExternalLink,
   Filter,
   Megaphone,
   Percent,
   Plus,
   RefreshCcw,
   RefreshCw,
+  Rocket,
   Settings2,
   SlidersHorizontal,
   UserPlus,
@@ -64,6 +66,7 @@ import {
   fetchFunnel,
   normalizeFunnelData,
   type FunnelApiData,
+  type FunnelSale,
 } from "@/components/crm/funnel-data"
 
 export type {
@@ -185,13 +188,32 @@ export function FunnelDashboard() {
 
   const schemaMissing = data?.schema_missing ?? []
 
+  // Quantas vendas já têm pagamento confirmado no financeiro — sem isso
+  // o número do card não se explica sozinho.
+  const cashHint = useMemo(() => {
+    const vendas = data?.vendas ?? []
+    if (vendas.length === 0) return undefined
+    const comPagamento = vendas.filter(
+      (v) => v.payment_source != null || v.cash_collected_manual != null,
+    ).length
+    return comPagamento === 0
+      ? "Nenhum pagamento confirmado"
+      : `${comPagamento} de ${vendas.length} venda${vendas.length > 1 ? "s" : ""} paga${comPagamento > 1 ? "s" : ""}`
+  }, [data])
+
   const leftCards: MetricCardDef[] = [
     { label: "Investimento", icon: BarChart3, tile: "linear-gradient(135deg, #14B8A6, #0D9488)", value: m ? fmtBRL0(m.investimento) : dash, hint: m && m.investimento === 0 ? "Lance o investimento do período" : undefined },
     { label: "Faturamento total", icon: Banknote, tile: "linear-gradient(135deg, #22C55E, #16A34A)", value: m ? fmtBRL0(m.faturamento) : dash },
     { label: "ROAS", icon: RefreshCcw, tile: "linear-gradient(135deg, #8B5CF6, #7C3AED)", value: m?.roas != null ? `${m.roas.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x` : dash },
     { label: "Tx. conversão", icon: Percent, tile: "linear-gradient(135deg, #F59E0B, #D97706)", value: m?.tx_conversao != null ? fmtPct1(m.tx_conversao) : dash },
     { label: "Ticket médio", icon: CreditCard, tile: "linear-gradient(135deg, #EC4899, #DB2777)", value: m?.ticket_medio != null ? fmtBRL0(m.ticket_medio) : dash },
-    { label: "Cash collect", icon: Wallet, tile: "linear-gradient(135deg, #06B6D4, #0891B2)", value: m ? fmtBRL0(m.cash_collect) : dash },
+    {
+      label: "Cash collect",
+      icon: Wallet,
+      tile: "linear-gradient(135deg, #06B6D4, #0891B2)",
+      value: m ? fmtBRL0(m.cash_collect) : dash,
+      hint: cashHint,
+    },
   ]
 
   const rightCards: MetricCardDef[] = [
@@ -732,23 +754,65 @@ function VendasPanel({
 }) {
   const [open, setOpen] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const vendas = data?.vendas ?? []
 
-  const saveCash = async (id: string, raw: string, current: number | null) => {
-    const trimmed = raw.trim().replace(",", ".")
+  const autoCount = vendas.filter((v) => v.payment_source != null).length
+  const semOnboarding = vendas.filter((v) => !v.onboarding).length
+
+  const saveCash = async (v: FunnelSale, raw: string) => {
+    const trimmed = raw.trim().replace(/\./g, "").replace(",", ".")
     const next = trimmed === "" ? null : Number(trimmed)
     if (next != null && (!Number.isFinite(next) || next < 0)) return
-    if (next === current) return
-    setSavingId(id)
+    if (next === v.cash_collected_manual) {
+      setEditingId(null)
+      return
+    }
+    setSavingId(v.id)
+    setError(null)
     try {
-      await fetch(`/api/crm/deals/${id}`, {
+      const res = await fetch(`/api/crm/deals/${v.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cash_collected: next }),
       })
+      if (!res.ok) {
+        setError("Não foi possível salvar o valor recebido.")
+        return
+      }
+      setEditingId(null)
       onChanged()
     } finally {
       setSavingId(null)
+    }
+  }
+
+  const criarOnboarding = async (v: FunnelSale) => {
+    setBusyId(v.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/crm/deals/${v.id}/onboarding`, { method: "POST" })
+      const json = (await res.json().catch(() => null)) as
+        | { onboarding?: { id: string }; error?: unknown }
+        | null
+      if (!res.ok) {
+        const raw = json?.error
+        setError(
+          (typeof raw === "string"
+            ? raw
+            : (raw as { message?: string } | undefined)?.message) ??
+            "Não foi possível criar o onboarding.",
+        )
+        return
+      }
+      onChanged()
+      if (json?.onboarding?.id) {
+        window.open(`/admin/onboarding/${json.onboarding.id}`, "_blank", "noopener")
+      }
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -764,9 +828,13 @@ function VendasPanel({
             Vendas do período · cash collect
           </div>
           <div className="mt-0.5 text-[11.5px] text-[#7C8598]">
-            {vendas.length > 0
-              ? `${vendas.length} venda${vendas.length > 1 ? "s" : ""} — informe o valor recebido de cada uma`
-              : "Nenhuma venda no período"}
+            {vendas.length === 0
+              ? "Nenhuma venda no período"
+              : `${vendas.length} venda${vendas.length > 1 ? "s" : ""}` +
+                (autoCount > 0
+                  ? ` · ${autoCount} com pagamento confirmado no financeiro`
+                  : " · nenhum pagamento confirmado ainda") +
+                (semOnboarding > 0 ? ` · ${semOnboarding} sem onboarding` : "")}
           </div>
         </div>
         <Icon
@@ -778,44 +846,197 @@ function VendasPanel({
 
       {open && vendas.length > 0 && (
         <div className="border-t border-white/[0.06] px-5 py-4">
-          <div className="mb-2.5 grid grid-cols-[minmax(0,1fr)_100px_90px_120px] gap-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5A6478]">
-            <span>Deal</span>
-            <span>Ganho em</span>
-            <span className="text-right">Valor</span>
-            <span className="text-right">Recebido</span>
+          {error && <p className="mb-2 text-[12px] text-[#F87171]">{error}</p>}
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-[12.5px]">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#5A6478]">
+                  <th className="pb-2 pr-3 font-semibold">Venda</th>
+                  <th className="pb-2 pr-3 font-semibold">Ganho em</th>
+                  <th className="pb-2 pr-3 text-right font-semibold">Valor</th>
+                  <th className="pb-2 pr-3 text-right font-semibold">Recebido</th>
+                  <th className="pb-2 font-semibold">Onboarding</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendas.map((v) => (
+                  <tr key={v.id} className="border-t border-white/[0.05]">
+                    <td className="max-w-[240px] py-2 pr-3">
+                      <div className="truncate text-[#E4E8F0]">{v.title}</div>
+                      {v.client_name && (
+                        <div className="truncate text-[10.5px] text-[#5A6478]">
+                          {v.client_name}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-[#7C8598] tabular-nums">
+                      {v.won_at ? format(new Date(v.won_at), "dd/MM/yyyy") : dash}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-semibold text-white tabular-nums">
+                      {fmtBRL0(v.value)}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {editingId === v.id ? (
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          autoFocus
+                          defaultValue={
+                            v.cash_collected_manual != null
+                              ? String(v.cash_collected_manual)
+                              : ""
+                          }
+                          placeholder="0,00"
+                          disabled={savingId === v.id}
+                          onBlur={(e) => saveCash(v, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                            if (e.key === "Escape") setEditingId(null)
+                          }}
+                          className="h-8 w-[110px] rounded-[8px] border border-white/25 bg-[#0A0E17] px-2 text-right text-[12.5px] text-white tabular-nums placeholder:text-[#4A5265] focus:outline-none disabled:opacity-40"
+                          aria-label={`Valor recebido de ${v.title}`}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(v.id)}
+                          className="group inline-flex flex-col items-end gap-0.5"
+                          title="Clique para informar um valor manualmente"
+                        >
+                          <span
+                            className={cn(
+                              "font-semibold tabular-nums group-hover:underline",
+                              v.cash_collected > 0 ? "text-[#34D399]" : "text-[#5A6478]",
+                            )}
+                          >
+                            {v.cash_collected > 0 ? fmtBRL0(v.cash_collected) : "informar"}
+                          </span>
+                          <PaymentSourceTag sale={v} />
+                        </button>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      <OnboardingCell
+                        sale={v}
+                        busy={busyId === v.id}
+                        onCreate={() => criarOnboarding(v)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="space-y-2">
-            {vendas.map((v) => (
-              <div
-                key={v.id}
-                className="grid grid-cols-[minmax(0,1fr)_100px_90px_120px] items-center gap-3 text-[12.5px]"
-              >
-                <span className="truncate text-[#C6CDDB]">{v.title}</span>
-                <span className="text-[#7C8598] tabular-nums">
-                  {v.won_at ? format(new Date(v.won_at), "dd/MM/yyyy") : dash}
-                </span>
-                <span className="text-right font-semibold text-white tabular-nums">
-                  {fmtBRL0(v.value)}
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  defaultValue={v.cash_collected != null ? String(v.cash_collected) : ""}
-                  placeholder="0,00"
-                  disabled={savingId === v.id}
-                  onBlur={(e) => saveCash(v.id, e.target.value, v.cash_collected)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-                  }}
-                  className="h-8 w-full rounded-[8px] border border-white/10 bg-[#0A0E17] px-2 text-right text-[12.5px] text-white tabular-nums placeholder:text-[#4A5265] focus:border-white/25 focus:outline-none disabled:opacity-40"
-                  aria-label={`Cash collect de ${v.title}`}
-                />
-              </div>
-            ))}
-          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-[#5A6478]">
+            O valor recebido vem do financeiro do cliente (Asaas ou lançamento manual),
+            contando pagamentos confirmados a partir da data do ganho. Clique no valor
+            para sobrescrever à mão quando precisar.
+          </p>
         </div>
       )}
     </div>
+  )
+}
+
+/** Procedência do valor recebido — evita número sem explicação. */
+function PaymentSourceTag({ sale }: { sale: FunnelSale }) {
+  if (sale.cash_collected_manual != null) {
+    return (
+      <span className="text-[10px] uppercase tracking-wide text-[#7C8598]">
+        informado à mão
+      </span>
+    )
+  }
+  if (sale.payment_source === "asaas") {
+    return (
+      <span className="text-[10px] uppercase tracking-wide text-[#5A6478]">Asaas</span>
+    )
+  }
+  if (sale.payment_source === "local") {
+    return (
+      <span className="text-[10px] uppercase tracking-wide text-[#5A6478]">
+        financeiro
+      </span>
+    )
+  }
+  if (sale.payment_source === "mixed") {
+    return (
+      <span className="text-[10px] uppercase tracking-wide text-[#5A6478]">
+        Asaas + financeiro
+      </span>
+    )
+  }
+  if (!sale.client_id) {
+    return (
+      <span className="text-[10px] uppercase tracking-wide text-[#5A6478]">
+        sem cliente
+      </span>
+    )
+  }
+  return (
+    <span className="text-[10px] uppercase tracking-wide text-[#5A6478]">
+      sem pagamento
+    </span>
+  )
+}
+
+/** Estado da entrega: link pro onboarding ou o caminho pra criar um. */
+function OnboardingCell({
+  sale,
+  busy,
+  onCreate,
+}: {
+  sale: FunnelSale
+  busy: boolean
+  onCreate: () => void
+}) {
+  if (sale.onboarding) {
+    const paid = sale.onboarding.payment_status === "paid"
+    return (
+      <a
+        href={`/admin/onboarding/${sale.onboarding.id}`}
+        target="_blank"
+        rel="noopener"
+        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11.5px] text-[#C6CDDB] transition-colors hover:border-white/25 hover:text-white"
+      >
+        <span
+          className={cn(
+            "inline-block h-1.5 w-1.5 rounded-full",
+            paid ? "bg-[#34D399]" : "bg-[#F59E0B]",
+          )}
+        />
+        {sale.onboarding.column_name ?? "Onboarding"}
+        <Icon icon={ExternalLink} customSize={12} className="opacity-60" />
+      </a>
+    )
+  }
+
+  if (!sale.client_id) {
+    return (
+      <a
+        href={`/admin/comercial/deals/${sale.id}`}
+        target="_blank"
+        rel="noopener"
+        className="inline-flex items-center gap-1.5 text-[11.5px] text-[#7C8598] transition-colors hover:text-white"
+      >
+        Vincular cliente
+        <Icon icon={ExternalLink} customSize={12} className="opacity-60" />
+      </a>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onCreate}
+      disabled={busy}
+      className={cn(CONTROL, "inline-flex items-center gap-1.5 px-2.5 disabled:opacity-50")}
+    >
+      <Icon icon={Rocket} size={16} />
+      {busy ? "Criando…" : "Criar onboarding"}
+    </button>
   )
 }
 
