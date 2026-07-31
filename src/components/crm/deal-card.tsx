@@ -275,8 +275,18 @@ export function DealCard({
         tone: "info" as const,
       }
     }
+    // Negócio aberto sem nenhuma ação agendada é o que morre no funil
+    // em silêncio: não estourou SLA, não tem tarefa, ninguém lembra.
+    // Marcar isso é o ponto central da venda por atividade.
+    if (deal.status === "open") {
+      return {
+        label: "Sem próxima ação",
+        when: "",
+        tone: "neut" as const,
+      }
+    }
     return null
-  }, [deal.next_step, deal.activities_pending, days, isCritical, isWarn])
+  }, [deal.next_step, deal.activities_pending, deal.status, days, isCritical, isWarn])
 
   // WhatsApp: abre o WhatsApp Web/app (wa.me) com o número do lead.
   const hasWhatsApp = useMemo(() => {

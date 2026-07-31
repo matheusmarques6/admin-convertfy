@@ -10,7 +10,11 @@ import {
   Search,
   X,
   Settings,
+  LayoutGrid,
+  List,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
 import { CrmEmptyState } from "./crm-empty-state"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
@@ -29,6 +33,15 @@ import {
   EMPTY_FILTERS,
   applyFiltersAndSort,
 } from "./pipeline-filters-bar"
+import { DealsTable } from "./deals-table"
+import { DealsBulkBar } from "./deals-bulk-bar"
+import { SavedViewsMenu, type SavedView } from "./saved-views-menu"
+import {
+  pruneSelection,
+  resolveSelection,
+  toggleSelectAll,
+  type TableSort,
+} from "./deals-table-utils"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -122,6 +135,45 @@ export function PipelineBoardView({
     position: number
   } | null>(null)
 
+  // ── Visão de tabela, seleção múltipla e visões salvas ───────────
+  const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban")
+  const [tableSort, setTableSort] = useState<TableSort>({
+    column: "next_step",
+    direction: "asc",
+  })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  const [viewsBusy, setViewsBusy] = useState(false)
+
+  // A escolha kanban/tabela é preferência de quem usa, por pipeline —
+  // gestor vive na tabela, vendedor no kanban.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const saved = window.localStorage.getItem(`crm:view-mode:${pipelineId}`)
+    setViewMode(saved === "table" ? "table" : "kanban")
+    setSelected(new Set())
+    setActiveViewId(null)
+  }, [pipelineId])
+
+  const changeViewMode = useCallback(
+    (next: "kanban" | "table") => {
+      setViewMode(next)
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(`crm:view-mode:${pipelineId}`, next)
+      }
+    },
+    [pipelineId],
+  )
+
+  const { data: viewsData, mutate: mutateViews } = useSWR<{
+    views: SavedView[]
+  }>(`/api/crm/saved-views?pipeline_id=${pipelineId}&scope=sales`, fetcher, {
+    revalidateOnFocus: false,
+  })
+  const savedViews = useMemo(() => viewsData?.views ?? [], [viewsData])
+
   useEffect(() => {
     const dealParam = searchParams.get("deal")
     if (dealParam) setActiveDealId(dealParam)
@@ -187,6 +239,208 @@ export function PipelineBoardView({
     // Aplica filtros avancados + ordenacao
     return applyFiltersAndSort(list, advancedFilters, sortOrder)
   }, [allDeals, ownerFilter, periodFilter, search, advancedFilters, sortOrder])
+
+  // ── Seleção múltipla ────────────────────────────────────────────
+  const visibleIds = useMemo(() => filteredDeals.map((d) => d.id), [filteredDeals])
+
+  // Filtrar depois de selecionar não pode deixar deal fora da tela na
+  // seleção — a ação em massa acertaria quem o usuário não vê.
+  useEffect(() => {
+    setSelected((cur) => pruneSelection(cur, visibleIds))
+  }, [visibleIds])
+
+  const handleToggleRow = useCallback(
+    (id: string, shiftKey: boolean) => {
+      setSelected((cur) => {
+        const r = resolveSelection({
+          selected: cur,
+          visibleIds,
+          clickedId: id,
+          shiftKey,
+          anchorId: selectionAnchor,
+        })
+        setSelectionAnchor(r.anchorId)
+        return r.selected
+      })
+    },
+    [visibleIds, selectionAnchor],
+  )
+
+  const handleToggleAll = useCallback(() => {
+    setSelected((cur) => toggleSelectAll(cur, visibleIds))
+  }, [visibleIds])
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set())
+    setSelectionAnchor(null)
+  }, [])
+
+  const runBulk = useCallback(
+    async (body: Record<string, unknown>, successMsg: (n: number) => string) => {
+      if (selected.size === 0) return
+      setBulkBusy(true)
+      try {
+        const res = await fetch("/api/crm/deals/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, ids: Array.from(selected) }),
+        })
+        const json = (await res.json().catch(() => null)) as
+          | { updated?: number; error?: unknown }
+          | null
+        if (!res.ok) {
+          const raw = json?.error
+          setToast({
+            kind: "error",
+            msg:
+              (typeof raw === "string"
+                ? raw
+                : (raw as { message?: string } | undefined)?.message) ??
+              "Não foi possível aplicar a ação.",
+          })
+          return
+        }
+        setToast({ kind: "success", msg: successMsg(json?.updated ?? selected.size) })
+        clearSelection()
+        mutate()
+      } finally {
+        setBulkBusy(false)
+      }
+    },
+    [selected, clearSelection, mutate],
+  )
+
+  // ── Visões salvas ───────────────────────────────────────────────
+  const currentSort = viewMode === "table" ? `table:${tableSort.column}:${tableSort.direction}` : sortOrder
+
+  const hasActiveFilter = useMemo(
+    () =>
+      JSON.stringify(advancedFilters) !== JSON.stringify(EMPTY_FILTERS) ||
+      sortOrder !== "moved_desc" ||
+      !!ownerFilter ||
+      periodFilter !== "all",
+    [advancedFilters, sortOrder, ownerFilter, periodFilter],
+  )
+
+  const activeView = useMemo(
+    () => savedViews.find((v) => v.id === activeViewId) ?? null,
+    [savedViews, activeViewId],
+  )
+
+  const viewIsDirty = useMemo(() => {
+    if (!activeView) return false
+    return (
+      JSON.stringify(activeView.filters ?? {}) !== JSON.stringify(advancedFilters) ||
+      activeView.sort !== currentSort ||
+      activeView.view_mode !== viewMode
+    )
+  }, [activeView, advancedFilters, currentSort, viewMode])
+
+  const applyView = useCallback(
+    (view: SavedView) => {
+      const f = view.filters as Partial<PipelineFilters> | null
+      setAdvancedFilters({ ...EMPTY_FILTERS, ...(f ?? {}) })
+      if (view.sort?.startsWith("table:")) {
+        const [, column, direction] = view.sort.split(":")
+        setTableSort({
+          column: (column || "next_step") as TableSort["column"],
+          direction: direction === "desc" ? "desc" : "asc",
+        })
+      } else if (view.sort) {
+        setSortOrder(view.sort as SortOrder)
+      }
+      changeViewMode(view.view_mode)
+      setActiveViewId(view.id)
+      clearSelection()
+    },
+    [changeViewMode, clearSelection],
+  )
+
+  const saveView = useCallback(
+    async (name: string, isShared: boolean) => {
+      setViewsBusy(true)
+      try {
+        const res = await fetch("/api/crm/saved-views", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            pipeline_id: pipelineId,
+            scope: "sales",
+            filters: advancedFilters,
+            sort: currentSort,
+            view_mode: viewMode,
+            is_shared: isShared,
+          }),
+        })
+        const json = (await res.json().catch(() => null)) as
+          | { view?: SavedView; error?: unknown }
+          | null
+        if (!res.ok) {
+          const raw = json?.error
+          setToast({
+            kind: "error",
+            msg:
+              (typeof raw === "string"
+                ? raw
+                : (raw as { message?: string } | undefined)?.message) ??
+              "Não foi possível salvar a visão.",
+          })
+          return
+        }
+        if (json?.view) setActiveViewId(json.view.id)
+        setToast({ kind: "success", msg: `Visão "${name}" salva` })
+        mutateViews()
+      } finally {
+        setViewsBusy(false)
+      }
+    },
+    [advancedFilters, currentSort, viewMode, pipelineId, mutateViews],
+  )
+
+  const updateView = useCallback(
+    async (view: SavedView) => {
+      setViewsBusy(true)
+      try {
+        const res = await fetch(`/api/crm/saved-views/${view.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filters: advancedFilters,
+            sort: currentSort,
+            view_mode: viewMode,
+          }),
+        })
+        if (!res.ok) {
+          setToast({ kind: "error", msg: "Não foi possível atualizar a visão." })
+          return
+        }
+        setToast({ kind: "success", msg: `Visão "${view.name}" atualizada` })
+        mutateViews()
+      } finally {
+        setViewsBusy(false)
+      }
+    },
+    [advancedFilters, currentSort, viewMode, mutateViews],
+  )
+
+  const deleteView = useCallback(
+    async (view: SavedView) => {
+      setViewsBusy(true)
+      try {
+        const res = await fetch(`/api/crm/saved-views/${view.id}`, { method: "DELETE" })
+        if (!res.ok) {
+          setToast({ kind: "error", msg: "Não foi possível excluir a visão." })
+          return
+        }
+        if (activeViewId === view.id) setActiveViewId(null)
+        mutateViews()
+      } finally {
+        setViewsBusy(false)
+      }
+    },
+    [activeViewId, mutateViews],
+  )
 
   // Opcoes disponiveis pros filtros (computadas do conjunto de deals)
   const filterOptions = useMemo(() => {
@@ -728,17 +982,64 @@ export function PipelineBoardView({
               )}
 
               {pipeline.layout !== "state" && (
-                <PipelineFiltersBar
-                  filters={advancedFilters}
-                  onFiltersChange={setAdvancedFilters}
-                  sort={sortOrder}
-                  onSortChange={setSortOrder}
-                  availableTags={filterOptions.tags}
-                  availableSources={filterOptions.sources}
-                  availableOwners={filterOptions.owners}
-                  availableLostReasons={filterOptions.lostReasons}
-                  onOpenFiltersPanel={() => setFiltersPanelOpen(true)}
-                />
+                <>
+                  <PipelineFiltersBar
+                    filters={advancedFilters}
+                    onFiltersChange={setAdvancedFilters}
+                    sort={sortOrder}
+                    onSortChange={setSortOrder}
+                    availableTags={filterOptions.tags}
+                    availableSources={filterOptions.sources}
+                    availableOwners={filterOptions.owners}
+                    availableLostReasons={filterOptions.lostReasons}
+                    onOpenFiltersPanel={() => setFiltersPanelOpen(true)}
+                  />
+
+                  <SavedViewsMenu
+                    views={savedViews}
+                    activeViewId={activeViewId}
+                    isDirty={viewIsDirty}
+                    canSave={hasActiveFilter || viewMode === "table"}
+                    busy={viewsBusy}
+                    onApply={applyView}
+                    onCreate={saveView}
+                    onUpdate={updateView}
+                    onDelete={deleteView}
+                    onClearActive={() => setActiveViewId(null)}
+                  />
+
+                  {/* Kanban responde "como está o funil"; tabela responde
+                      "quais negócios, ordenados por quê". */}
+                  <div
+                    className="inline-flex shrink-0 items-center rounded-[6px] border border-black/10 bg-white p-0.5 dark:border-white/10 dark:bg-[#1A1D27]"
+                    role="group"
+                    aria-label="Modo de visualização"
+                  >
+                    {(
+                      [
+                        { mode: "kanban" as const, icon: LayoutGrid, label: "Kanban" },
+                        { mode: "table" as const, icon: List, label: "Tabela" },
+                      ]
+                    ).map(({ mode, icon, label }) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => changeViewMode(mode)}
+                        aria-pressed={viewMode === mode}
+                        title={label}
+                        className={cn(
+                          "inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[12px] font-medium transition-colors",
+                          viewMode === mode
+                            ? "bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white"
+                            : "text-slate-500 hover:text-slate-800 dark:text-white/50 dark:hover:text-white/80",
+                        )}
+                      >
+                        <Icon icon={icon} size={16} />
+                        <span className="hidden lg:inline">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -794,6 +1095,17 @@ export function PipelineBoardView({
                   await handleMove(dealId, toStageId, 10)
                 }}
                 onCardClick={(id) => setActiveDealId(id)}
+              />
+            ) : viewMode === "table" ? (
+              <DealsTable
+                deals={filteredDeals}
+                stages={pipeline.stages}
+                sort={tableSort}
+                onSortChange={setTableSort}
+                selected={selected}
+                onToggleRow={handleToggleRow}
+                onToggleAll={handleToggleAll}
+                onRowClick={(id) => setActiveDealId(id)}
               />
             ) : (
               <KanbanBoard
@@ -996,6 +1308,47 @@ export function PipelineBoardView({
           onSubmit={(name, color) => submitEditStage(name, color)}
         />
       )}
+
+      {/* Ações em massa — flutua sobre o board enquanto há seleção */}
+      <DealsBulkBar
+        count={selected.size}
+        owners={owners}
+        stages={(pipeline?.stages ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          stage_type: s.stage_type ?? undefined,
+        }))}
+        availableTags={filterOptions.tags}
+        busy={bulkBusy}
+        onClear={clearSelection}
+        onAssignOwner={(ownerId) =>
+          runBulk(
+            { action: "assign_owner", owner_id: ownerId },
+            (n) => `${n} ${n === 1 ? "negócio atribuído" : "negócios atribuídos"}`,
+          )
+        }
+        onMoveStage={(stageId) =>
+          runBulk(
+            { action: "move_stage", stage_id: stageId },
+            (n) => `${n} ${n === 1 ? "negócio movido" : "negócios movidos"}`,
+          )
+        }
+        onAddTags={(tags) =>
+          runBulk(
+            { action: "add_tags", tags },
+            (n) => `Tag aplicada a ${n} ${n === 1 ? "negócio" : "negócios"}`,
+          )
+        }
+        onArchive={() =>
+          runBulk(
+            { action: "archive" },
+            (n) => `${n} ${n === 1 ? "negócio arquivado" : "negócios arquivados"}`,
+          )
+        }
+      />
+
+      {/* Atalho global: Esc limpa a seleção */}
+      <SelectionEscapeHandler active={selected.size > 0} onEscape={clearSelection} />
 
       {/* Toast feedback de acoes */}
       {toast && (
@@ -1205,4 +1558,26 @@ function PipelineSkeleton() {
       </div>
     </div>
   )
+}
+
+/**
+ * Esc limpa a seleção — saída óbvia sem precisar mirar no "x" da barra.
+ * Componente separado para não adicionar listener quando não há seleção.
+ */
+function SelectionEscapeHandler({
+  active,
+  onEscape,
+}: {
+  active: boolean
+  onEscape: () => void
+}) {
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onEscape()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [active, onEscape])
+  return null
 }

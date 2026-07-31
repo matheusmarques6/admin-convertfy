@@ -1057,6 +1057,48 @@ Documentacao completa em `docs/crm/`.
 
 ---
 
+## Operação do pipeline — P0 do gap vs Pipedrive (jul/2026, migration 20261054)
+
+Quatro lacunas de uso diário, atacadas juntas porque compartilham estado.
+
+**1. Visão de tabela** (`deals-table.tsx`): toggle Kanban|Tabela na barra
+de filtros, preferência por pipeline em `localStorage`
+(`crm:view-mode:{id}`). Lê a MESMA `filteredDeals` do board — alternar
+visão nunca muda o conjunto. Colunas: negócio+cliente, etapa (pílula da
+cor da stage), valor, responsável, próxima ação, dias parado. Colunas
+somem progressivamente no mobile (`hidden sm/md/lg:table-cell`); header
+sticky; `aria-sort` por coluna.
+
+**2. Ordenação e seleção** (`deals-table-utils.ts`, 24 testes — lógica
+pura, fora da UI): `toggleSort` (coluna nova começa na direção natural —
+valor/data/parado em desc, texto em asc), `sortDeals` (nulos SEMPRE no
+fim independente da direção; empate desempata por id pra ordem ser
+estável entre renders; etapa ordena por posição no funil, não por nome),
+`resolveSelection` (shift+click seleciona intervalo e só ADICIONA),
+`pruneSelection` (**descarta da seleção o que saiu do filtro** — sem
+isso a ação em massa acertaria deal fora da tela).
+
+**3. Ações em massa** (`POST /api/crm/deals/bulk` + `deals-bulk-bar.tsx`):
+assign_owner, add_tags/remove_tags, move_stage, archive. Máx 200 ids.
+Barra FLUTUA (não empurra o board), Esc limpa a seleção, etapa terminal
+e arquivar pedem confirmação. Cada ação grava atividade `system` na
+timeline de cada deal (auditoria). **Exclusão definitiva ficou de fora**
+de propósito e **automações de stage_change NÃO disparam em lote** —
+mover 50 deals mandaria 50 mensagens ao cliente.
+
+**4. Visões salvas** (`crm_saved_views` + `saved-views-menu.tsx`):
+guarda filtros + ordenação + modo como recorte nomeado; privada por
+padrão, `is_shared` publica pra org (só o dono edita/apaga). Bolinha no
+botão = recorte alterado e não salvo. UNIQUE por (dono, pipeline, nome
+normalizado). Rota degrada com `schema_missing` se a migration não rodou.
+
+**Deal sem próxima ação** (`deal-card.tsx`): negócio aberto sem atividade
+agendada agora aparece marcado ("Sem próxima ação", tone neut) em vez de
+célula vazia — é o que morre no funil em silêncio. `next_step` já vinha
+calculado de `/api/crm/pipelines/[id]`; faltava expor o caso vazio.
+
+---
+
 ## Funil Comercial (jul/2026 — migration 20261052)
 
 Dashboard `/admin/comercial/funil` (nav "Analise", atalho `g+f`): funil
