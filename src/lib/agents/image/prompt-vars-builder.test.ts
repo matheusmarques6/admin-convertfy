@@ -54,3 +54,44 @@ describe("PHOTO_DIRECTION", () => {
     ).toBe("")
   })
 })
+
+// A foto precisa FUNDIR com a seção onde entra. Sem a cor do fundo o modelo
+// escolhia um cinza qualquer e aparecia uma emenda no meio do email — foi o
+// que aconteceu na Luxe Lift, bloco bege e foto cinza-azulada.
+describe("BG_COLOR", () => {
+  const base = {
+    briefing: null,
+    topProducts: [],
+    storeRaw: {},
+    blockPurpose: "hero",
+  }
+
+  it("usa o mesmo bg que a cadeia de formatação aplica no documento", () => {
+    const vars = buildImagePromptVars({
+      ...base,
+      brand: {
+        colors_primary: [{ hex: "#FAF5F3", name: "Areia", role: "Fundo" }],
+        colors_secondary: [],
+      } as never,
+    })
+    expect(vars.BG_COLOR).toBe("#FAF5F3")
+  })
+
+  it("marca sem cores cai no default, nunca em vazio", () => {
+    const vars = buildImagePromptVars({ ...base, brand: null })
+    expect(vars.BG_COLOR).toMatch(/^#[0-9A-F]{6}$/i)
+  })
+
+  // O guard de luminância do deriveColorRoles: fundo escuro viraria faixa
+  // preta no email, então a paleta escura resolve para claro.
+  it("paleta escura não vira fundo escuro", () => {
+    const vars = buildImagePromptVars({
+      ...base,
+      brand: {
+        colors_primary: [{ hex: "#111111", name: "Preto", role: "Fundo" }],
+        colors_secondary: [],
+      } as never,
+    })
+    expect(vars.BG_COLOR).not.toBe("#111111")
+  })
+})

@@ -36,6 +36,7 @@ import { deriveCenario } from "./cenario-derivation"
 import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
+import { deriveColorRoles } from "@/lib/agents/html/color-roles"
 import { deriveShotArchetype } from "./shot-archetype"
 import { buildImageSlots } from "./build-image-slots"
 import type { AspectKey } from "./aspect-ratio"
@@ -95,6 +96,15 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const products = (input.topProducts ?? []).slice(0, 5)
 
   const primaryColors = (brand?.colors_primary ?? []).map((c) => c.hex).join(", ") || "#000000"
+  // Cor de FUNDO do email — o mesmo `bg` que a cadeia de formatação aplica
+  // no documento (deriveColorRoles). Sem ela o modelo escolhia um fundo
+  // qualquer e a foto não fundia com a seção: no email da Luxe Lift o bloco
+  // saiu bege e a foto cinza-azulada, quebrando a fusão que o design system
+  // chama de truque central do layout.
+  const bgColor = deriveColorRoles(
+    brand?.colors_primary ?? [],
+    brand?.colors_secondary ?? [],
+  ).bg
   const secondaryColors = (brand?.colors_secondary ?? []).map((c) => c.hex).join(", ") || ""
   const colorNames = (brand?.colors_primary ?? []).map((c) => c.name).join(", ")
 
@@ -217,6 +227,8 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     posicionamento,
 
     // Identidade visual
+    // Fundo do email: quando a composição pede fundo contínuo, é ESTE hex.
+    BG_COLOR: bgColor,
     primary_colors: primaryColors,
     secondary_colors: secondaryColors,
     color_names: colorNames,

@@ -25,6 +25,9 @@ export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `ABSOLUTE RULE — NO TEXT, NO LETT
 PHOTOGRAPHIC DIRECTION — THIS IS YOUR PRIMARY BRIEF. It was written for this exact component by the person who designed it, and it governs HOW the photograph is made: light, framing, distance, lens feel, presence and pose of a model, setting, depth, colour treatment, which area stays clean for copy. Shoot to satisfy it. Everything below — niche, positioning, palette, products — is SUPPORTING CONTEXT that fills in what the direction leaves open, never a reason to contradict it. Empty means no direction was written: then compose from the context alone.
 {PHOTO_DIRECTION}
 
+EMAIL BACKGROUND COLOUR: {BG_COLOR}
+This is the exact colour of the section this image sits in. When the direction calls for a continuous, seamless or studio-neutral backdrop — or whenever the photo is meant to blend into the layout — the background of the photograph MUST be this hex, not an approximation. A backdrop half a tone off reads as a seam across the email. When the direction calls for a real setting (a room, outdoors), ignore this and shoot the setting.
+
 EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
 
 ART DIRECTION — per image slot (schema spec, the designer's slot comment, and the block copy this image accompanies — compose to fit, NEVER render any of this text):
