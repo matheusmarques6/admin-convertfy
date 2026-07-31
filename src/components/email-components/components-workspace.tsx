@@ -16,7 +16,10 @@ import type {
 } from "@/types/email-generation"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
-import { validateSchemaTagCoherence } from "@/lib/email-workspace/schema-tag-coherence"
+import {
+  renameTagInHtml,
+  validateSchemaTagCoherence,
+} from "@/lib/email-workspace/schema-tag-coherence"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -664,6 +667,19 @@ export function ComponentsWorkspace() {
                 key={selected.id}
                 variant={selected}
                 onChanged={reloadSilent}
+                // Schema VIVO do rascunho: o relatório do Taguedor e o editor
+                // olham o mesmo dado, então renomear um campo no relatório já
+                // aparece embaixo (e vice-versa) antes de salvar.
+                schema={draft.output_schema}
+                onChangeSchema={(output_schema) =>
+                  setDraft((d) => ({ ...d, output_schema }))
+                }
+                onRenameInOriginHtml={(from, to) =>
+                  setDraft((d) => ({
+                    ...d,
+                    html: renameTagInHtml(d.html, from, to),
+                  }))
+                }
               />
             </div>
           )}

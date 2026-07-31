@@ -24,14 +24,21 @@ import {
   X,
 } from "lucide-react"
 import type {
+  ComponentOutputField,
   EmailComponentVariant,
   TaggingFieldReport,
 } from "@/types/email-generation"
 import {
   deriveFieldNature,
+  FIELD_NATURES,
   FIELD_NATURE_LABELS_PT,
   placeholderForKey,
+  sanitizeOutputKeyInput,
 } from "@/lib/agents/shared/component-dimensions"
+import {
+  auditSchemaTags,
+  renameTagInHtml,
+} from "@/lib/email-workspace/schema-tag-coherence"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -94,10 +101,22 @@ type View = "report" | "review" | "preview"
 export function VariantTaggerCard({
   variant,
   onChanged,
+  schema: schemaProp,
+  onChangeSchema,
+  onRenameInOriginHtml,
 }: {
   variant: EmailComponentVariant
   /** Recarrega a lista de variantes após rodar/aprovar/rejeitar. */
   onChanged: () => Promise<void> | void
+  /**
+   * Schema VIVO do rascunho do editor — não o salvo em `variant`. As duas
+   * telas precisam olhar o mesmo dado: senão renomear um campo aqui deixaria
+   * o relatório cobrando a key antiga até alguém salvar.
+   */
+  schema: ComponentOutputField[]
+  onChangeSchema: (schema: ComponentOutputField[]) => void
+  /** Mantém o HTML de origem no mesmo endereço quando a key é renomeada. */
+  onRenameInOriginHtml: (from: string, to: string) => void
 }) {
   const [running, setRunning] = useState(false)
   const [acting, setActing] = useState(false)
@@ -108,10 +127,7 @@ export function VariantTaggerCard({
   // original, insere os {{PLACEHOLDERS}} na mão e aprova direto.
   const [manualMode, setManualMode] = useState(false)
 
-  const schema = useMemo(
-    () => (Array.isArray(variant.output_schema) ? variant.output_schema : []),
-    [variant.output_schema],
-  )
+  const schema = schemaProp
   const status = variant.tagging_status
   const meta = variant.tagging_meta
   const taggedBase = variant.html_tagged ?? ""
@@ -486,11 +502,29 @@ export function VariantTaggerCard({
           </div>
 
           {view === "report" && (
-            <TaggingReportTable
-              schema={schema}
-              report={meta?.fields ?? []}
-              tagged={tagged}
-            />
+            <>
+              <TaggingReportTable
+                schema={schema}
+                report={meta?.fields ?? []}
+                tagged={tagged}
+                onChangeSchema={onChangeSchema}
+                onChangeTagged={setEditedHtml}
+                onRenameInOriginHtml={onRenameInOriginHtml}
+              />
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 11.5,
+                  color: C.g500,
+                  lineHeight: 1.6,
+                }}
+              >
+                Editar aqui muda o <strong>rascunho</strong>: key e natureza vão
+                no schema (grave em “Salvar variante”, no editor abaixo) e o
+                endereço no HTML tagueado só passa a valer quando você{" "}
+                <strong>Aprovar</strong>.
+              </div>
+            </>
           )}
 
           {view === "review" && (
@@ -629,17 +663,41 @@ const reviewPre: React.CSSProperties = {
   whiteSpace: "pre",
 }
 
+/**
+ * Relatório do Taguedor — editável nas quatro colunas de dado.
+ *
+ * Campo e Placeholder são O MESMO valor visto de dois jeitos (o endereço é
+ * `{{UPPER(key)}}`), então editar qualquer um dos dois faz a mesma coisa:
+ * renomeia a key no schema e o placeholder nos dois HTMLs. Natureza escreve
+ * `field.nature`. Âncora é onde mora o conserto: campo sem endereço ganha um
+ * seletor com as tags livres do HTML tagueado, e escolher uma renomeia essa
+ * tag para o endereço do campo.
+ *
+ * Onde cada edição é gravada:
+ *   schema + HTML de origem → rascunho da variante (botão "Salvar variante")
+ *   HTML tagueado           → estado local, gravado no botão "Aprovar"
+ */
 function TaggingReportTable({
   schema,
   report,
   tagged,
+  onChangeSchema,
+  onChangeTagged,
+  onRenameInOriginHtml,
 }: {
   schema: EmailComponentVariant["output_schema"]
   report: TaggingFieldReport[]
   tagged: string
+  onChangeSchema: (schema: ComponentOutputField[]) => void
+  onChangeTagged: (html: string) => void
+  /** Mantém o HTML de origem no mesmo endereço quando a key é renomeada. */
+  onRenameInOriginHtml: (from: string, to: string) => void
 }) {
+  const [draftKeys, setDraftKeys] = useState<Record<number, string>>({})
+
+  const fields = useMemo(() => schema ?? [], [schema])
   const reportByKey = new Map(report.map((r) => [r.key, r] as const))
-  const rows = (schema ?? []).map((f) => {
+  const rows = fields.map((f, idx) => {
     const rep = reportByKey.get(f.key) ?? null
     const nature = deriveFieldNature(f)
     // O endereço é derivado da key, sempre — o relatório não tem voz aqui.
@@ -647,8 +705,60 @@ function TaggingReportTable({
     // divergente se declarar ancorada no próprio nome que inventou.
     const placeholder = placeholderForKey(f.key)
     const present = tagged.includes(`{{${placeholder}}}`)
-    return { field: f, rep, nature, placeholder, present }
+    return { field: f, idx, rep, nature, placeholder, present }
   })
+
+  // Tags do HTML tagueado que nenhum campo reivindica — as candidatas a
+  // âncora de um campo órfão.
+  const freeTags = useMemo(
+    () => auditSchemaTags(tagged, fields).orphans.map((o) => o.tag),
+    [tagged, fields],
+  )
+
+  /** Renomeia a key: schema + HTML tagueado + HTML de origem, de uma vez. */
+  function commitKey(idx: number, raw: string) {
+    setDraftKeys((d) => {
+      const n = { ...d }
+      delete n[idx]
+      return n
+    })
+    const nextKey = sanitizeOutputKeyInput(raw).trim()
+    const prevKey = fields[idx]?.key?.trim() ?? ""
+    if (!nextKey || nextKey === prevKey) return
+    if (fields.some((f, i) => i !== idx && f.key.trim() === nextKey)) {
+      toast({
+        variant: "destructive",
+        title: "Já existe um campo com essa key",
+        description: "Dois campos no mesmo endereço fariam a copy de um sobrescrever a do outro.",
+      })
+      return
+    }
+    onChangeSchema(
+      fields.map((f, i) => (i === idx ? { ...f, key: nextKey } : f)),
+    )
+    const from = placeholderForKey(prevKey)
+    const to = placeholderForKey(nextKey)
+    if (!from || !to) return
+    onChangeTagged(renameTagInHtml(tagged, from, to))
+    onRenameInOriginHtml(from, to)
+  }
+
+  /** Ancora o campo numa tag existente do tagueado (renomeia a tag). */
+  function bindTag(idx: number, from: string) {
+    const to = placeholderForKey(fields[idx]?.key ?? "")
+    if (!from || !to) return
+    onChangeTagged(renameTagInHtml(tagged, from, to))
+  }
+
+  function setNature(idx: number, nature: string) {
+    onChangeSchema(
+      fields.map((f, i) =>
+        i === idx
+          ? { ...f, nature: nature as ComponentOutputField["nature"] }
+          : f,
+      ),
+    )
+  }
 
   const th: React.CSSProperties = {
     textAlign: "left",
@@ -682,44 +792,175 @@ function TaggingReportTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ field, rep, nature, placeholder, present }) => (
-            <tr key={field.key}>
-              <td style={{ ...td, fontFamily: F.mono, fontSize: 11.5 }}>
-                {field.key}
-              </td>
-              <td style={{ ...td, fontFamily: F.mono, fontSize: 11.5 }}>
-                <span
-                  style={{
-                    color:
-                      nature === "asset_fixo"
-                        ? C.g400
-                        : present
-                          ? C.pos
-                          : C.neg,
-                  }}
-                >
-                  {`{{${placeholder}}}`}
-                </span>
-              </td>
-              <td style={td}>{FIELD_NATURE_LABELS_PT[nature]}</td>
-              <td style={td}>
-                {nature === "asset_fixo" ? (
-                  <span style={{ color: C.g400 }}>fora do sync</span>
-                ) : (
-                  (() => {
-                    const a = anchorBadge(present, rep?.anchored_by)
-                    return <EGBadge tone={a.tone}>{a.label}</EGBadge>
-                  })()
-                )}
-              </td>
-              <td style={{ ...td, color: C.g500, maxWidth: 380 }}>
-                {rep?.note ??
-                  (rep == null && nature !== "asset_fixo"
-                    ? "Campo sem entrada no último run — adicionado depois? Re-rode o taguedor."
-                    : "")}
-              </td>
-            </tr>
-          ))}
+          {rows.map(({ field, idx, rep, nature, placeholder, present }) => {
+            // Campo e Placeholder editam O MESMO valor: quem estiver em
+            // edição manda, e o outro mostra a projeção do que será aplicado.
+            const editing = draftKeys[idx]
+            const pendingKey = sanitizeOutputKeyInput(editing ?? field.key)
+            return (
+              <tr key={`${field.key}:${idx}`}>
+                {/* 1. Campo (key) */}
+                <td style={{ ...td, minWidth: 180 }}>
+                  <input
+                    value={editing ?? field.key}
+                    onChange={(e) =>
+                      setDraftKeys((d) => ({ ...d, [idx]: e.target.value }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitKey(idx, editing ?? field.key)
+                      if (e.key === "Escape")
+                        setDraftKeys((d) => {
+                          const n = { ...d }
+                          delete n[idx]
+                          return n
+                        })
+                    }}
+                    title="Renomear troca a key no schema e o placeholder nos dois HTMLs"
+                    style={{
+                      ...egInputStyle,
+                      height: 30,
+                      fontFamily: F.mono,
+                      fontSize: 11.5,
+                    }}
+                  />
+                </td>
+
+                {/* 2. Placeholder — mesma edição, vista pelo endereço */}
+                <td style={{ ...td, minWidth: 200 }}>
+                  <input
+                    value={
+                      editing != null
+                        ? placeholderForKey(pendingKey)
+                        : placeholder
+                    }
+                    onChange={(e) =>
+                      setDraftKeys((d) => ({
+                        ...d,
+                        [idx]: e.target.value.toLowerCase(),
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitKey(idx, editing ?? field.key)
+                      if (e.key === "Escape")
+                        setDraftKeys((d) => {
+                          const n = { ...d }
+                          delete n[idx]
+                          return n
+                        })
+                    }}
+                    title="É o endereço no HTML — editar aqui renomeia a key junto"
+                    style={{
+                      ...egInputStyle,
+                      height: 30,
+                      fontFamily: F.mono,
+                      fontSize: 11.5,
+                      color:
+                        nature === "asset_fixo"
+                          ? C.g400
+                          : present
+                            ? C.pos
+                            : C.neg,
+                    }}
+                  />
+                </td>
+
+                {/* 3. Natureza */}
+                <td style={{ ...td, minWidth: 150 }}>
+                  <select
+                    value={nature}
+                    onChange={(e) => setNature(idx, e.target.value)}
+                    style={{ ...egInputStyle, height: 30, fontSize: 11.5 }}
+                  >
+                    {FIELD_NATURES.map((n) => (
+                      <option key={n} value={n}>
+                        {FIELD_NATURE_LABELS_PT[n]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+
+                {/* 4. Âncora — selo quando ok, conserto quando falta */}
+                <td style={{ ...td, minWidth: 210 }}>
+                  {nature === "asset_fixo" ? (
+                    <span style={{ color: C.g400 }}>fora do sync</span>
+                  ) : present ? (
+                    (() => {
+                      const a = anchorBadge(true, rep?.anchored_by)
+                      return <EGBadge tone={a.tone}>{a.label}</EGBadge>
+                    })()
+                  ) : (
+                    <div
+                      style={{ display: "flex", flexDirection: "column", gap: 5 }}
+                    >
+                      {(() => {
+                        const a = anchorBadge(false, rep?.anchored_by)
+                        return <EGBadge tone={a.tone}>{a.label}</EGBadge>
+                      })()}
+                      {freeTags.length > 0 ? (
+                        <select
+                          value=""
+                          onChange={(e) =>
+                            e.target.value && bindTag(idx, e.target.value)
+                          }
+                          title={`Renomeia a tag escolhida para {{${placeholder}}}`}
+                          style={{
+                            ...egInputStyle,
+                            height: 28,
+                            fontSize: 11,
+                            fontFamily: F.mono,
+                          }}
+                        >
+                          <option value="">ancorar em…</option>
+                          {freeTags.map((t) => (
+                            <option key={t} value={t}>
+                              {`{{${t}}} → {{${placeholder}}}`}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: 10.5, color: C.g400 }}>
+                          sem tag livre no tagueado
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </td>
+
+                <td style={{ ...td, color: C.g500, maxWidth: 340 }}>
+                  {editing != null ? (
+                    <div
+                      style={{ display: "flex", gap: 6, alignItems: "center" }}
+                    >
+                      <EGBtn
+                        variant="dark"
+                        onClick={() => commitKey(idx, editing)}
+                        style={{ height: 26, fontSize: 11 }}
+                      >
+                        Aplicar
+                      </EGBtn>
+                      <EGBtn
+                        onClick={() =>
+                          setDraftKeys((d) => {
+                            const n = { ...d }
+                            delete n[idx]
+                            return n
+                          })
+                        }
+                        style={{ height: 26, fontSize: 11 }}
+                      >
+                        Cancelar
+                      </EGBtn>
+                    </div>
+                  ) : (
+                    (rep?.note ??
+                      (rep == null && nature !== "asset_fixo"
+                        ? "Campo sem entrada no último run — adicionado depois? Re-rode o taguedor."
+                        : ""))
+                  )}
+                </td>
+              </tr>
+            )
+          })}
           {rows.length === 0 && (
             <tr>
               <td style={{ ...td, color: C.g400 }} colSpan={5}>
