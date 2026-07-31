@@ -97,7 +97,10 @@ vi.mock("@/lib/agents/architect/blueprint-loader", () => ({
   loadTextOnlyBlueprints: (...a: unknown[]) => loadTextOnlyBlueprints(...a),
 }))
 
-import { dispatchEmailCopyWebhook } from "./email-copy-webhook.service"
+import {
+  dispatchEmailCopyWebhook,
+  digestPayload,
+} from "./email-copy-webhook.service"
 import { reconcileBlocksAdditive } from "@/lib/agents/seed-blocks"
 
 const fetchMock = vi.fn()
@@ -904,5 +907,58 @@ describe("dispatchEmailCopyWebhook — regenerateAll", () => {
       regenerateAll: true,
     })
     expect(sentBlocks().map((b) => b.position)).toEqual([1, 2, 3])
+  })
+})
+
+// ── Snapshot do payload no run copy_dispatch ────────────────────────
+describe("digestPayload", () => {
+  const payload = {
+    flows: [
+      {
+        flow_type: "welcome",
+        emails: [
+          {
+            email_number: 1,
+            blocks: [
+              {
+                position: 0,
+                type: "hero",
+                variant_name: "welcome - hero section 9",
+                fields: [
+                  { key: "hero_headline", tag: "HERO_HEADLINE" },
+                  { key: "hero_cta_2_label", tag: "HERO_CTA_2_LABEL" },
+                  { key: "orfao", tag: null },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  it("guarda as keys pedidas por bloco e as que foram sem tag", () => {
+    const d = digestPayload(payload) as {
+      flows: Array<{
+        emails: Array<{
+          blocks: Array<{ field_keys: string[]; fields_sem_tag: string[] }>
+        }>
+      }>
+    }
+    const bloco = d.flows[0].emails[0].blocks[0]
+    expect(bloco.field_keys).toEqual([
+      "hero_headline",
+      "hero_cta_2_label",
+      "orfao",
+    ])
+    expect(bloco.fields_sem_tag).toEqual(["orfao"])
+  })
+
+  it("não quebra com payload vazio ou malformado", () => {
+    expect(digestPayload({})).toEqual({ flows: [] })
+    expect(digestPayload(null)).toEqual({ flows: [] })
+    expect(digestPayload({ flows: [{ flow_type: "x" }] })).toEqual({
+      flows: [{ flow_type: "x", emails: [] }],
+    })
   })
 })

@@ -44,6 +44,49 @@ import {
 const log = logger.child("EmailCopyWebhook")
 const TIMEOUT_MS = 15_000
 
+/** Acima disto o run guarda só o esqueleto do payload, não o payload. */
+const PAYLOAD_SNAPSHOT_MAX_CHARS = 1_000_000
+
+/**
+ * Esqueleto do payload: por bloco, as KEYS pedidas ao n8n. É o suficiente
+ * para responder "este campo foi pedido?" sem carregar a copy_guidance e a
+ * pesquisa inteiras. Usado só quando o payload passa do teto.
+ */
+export function digestPayload(payload: unknown): unknown {
+  const p = payload as {
+    flows?: Array<{
+      flow_type?: string
+      emails?: Array<{
+        email_number?: number
+        blocks?: Array<{
+          position?: number
+          type?: string
+          variant_name?: string | null
+          fields?: Array<{ key?: string; tag?: string | null }>
+        }>
+      }>
+    }>
+  }
+  return {
+    flows: (p?.flows ?? []).map((f) => ({
+      flow_type: f.flow_type,
+      emails: (f.emails ?? []).map((e) => ({
+        email_number: e.email_number,
+        blocks: (e.blocks ?? []).map((b) => ({
+          position: b.position,
+          type: b.type,
+          variant_name: b.variant_name ?? null,
+          field_keys: (b.fields ?? []).map((fl) => fl.key).filter(Boolean),
+          fields_sem_tag: (b.fields ?? [])
+            .filter((fl) => !fl.tag)
+            .map((fl) => fl.key)
+            .filter(Boolean),
+        })),
+      })),
+    })),
+  }
+}
+
 export interface DispatchEmailCopyOptions {
   triggerSource:
     | "briefing_confirmed"
@@ -1172,6 +1215,26 @@ export async function dispatchEmailCopyWebhook(
   // Telemetria é fire-and-forget, mas a falha PRECISA aparecer no log:
   // este insert ficou meses falhando silenciosamente porque 'copy_dispatch'
   // não estava no CHECK do agent (fix: migration 20260728).
+  // O PAYLOAD ENVIADO, na íntegra. Não estava sendo gravado em lugar nenhum:
+  // quando um campo do schema não voltava com copy, não havia como saber se
+  // ele tinha sido pedido ao n8n ou se o dispatch o havia perdido no caminho
+  // (match bloco↔blueprint por índice, filtro de natureza, blueprint legado
+  // caindo em copy_spec). Reconstruir "o que foi enviado" a partir do banco
+  // depois do fato é aproximação — o blueprint pode ter sido regerado desde
+  // então. Aqui fica o registro exato.
+  //
+  // Guarda de tamanho: uma loja grande (muitos flows × emails × blocos) pode
+  // passar de 1 MB, e a linha de telemetria não pode virar o maior objeto da
+  // tabela. Acima do teto grava só o esqueleto por bloco — que ainda responde
+  // "este campo foi pedido?", que é a pergunta que importa.
+  const payloadJson = JSON.stringify(payload)
+  const payloadTooBig = payloadJson.length > PAYLOAD_SNAPSHOT_MAX_CHARS
+  const inputVars = payloadTooBig
+    ? { payload_truncated: true, payload_chars: payloadJson.length,
+        payload_digest: digestPayload(payload) }
+    : { payload_truncated: false, payload_chars: payloadJson.length,
+        payload }
+
   const { error: telemetryErr } = await admin.from("email_generation_runs").insert({
     store_id: storeId,
     triggered_by: options.triggeredBy ?? null,
@@ -1179,6 +1242,7 @@ export async function dispatchEmailCopyWebhook(
     status: dispatchStatus,
     model: "n8n",
     duration_ms: Date.now() - t0,
+    input_vars: inputVars,
     parsed_output: {
       trigger_source: options.triggerSource,
       flow_count: flows.length,
