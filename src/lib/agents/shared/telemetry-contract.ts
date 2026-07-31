@@ -24,6 +24,7 @@ export type TelemetryAgent =
   | "assembler_chooser"
   | "assembler"
   | "hero_section"
+  | "copy_merge"
 
 /**
  * Chaves obrigatórias por agente, com o motivo de cada uma. O motivo não é
@@ -65,6 +66,14 @@ export const TELEMETRY_CONTRACT: Record<
     hero_report_missing: "o relatório não veio ou veio ilegível; observabilidade perdida sem afetar a entrega",
     rendered_reference: "por que o exemplo de acabamento entrou ou não, com as ressalvas (mockup, stale, document_shell)",
     vision: "se o exemplo foi ANEXADO como imagem e em qual modelo — sem isto o custo do fallback visual sobe sem explicação",
+  },
+  copy_merge: {
+    slots_total: "tags de texto fora da hero antes do merge — o denominador de tudo aqui",
+    ops_built: "campos com tag E valor: o que o código tentou resolver",
+    merged: "ops que o Integrador aplicou de fato",
+    left_for_llm: "o que sobrou para o agente de exceção; alto = copy chegando fora do contrato",
+    unanchored_keys: "copy com valor e sem tag — texto que não tem onde entrar no template",
+    keys_via_canonical: "campos que só casaram pelo copyKey do tag-registry; mede a dependência da ponte entre o vocabulário do schema e o do n8n, e zero significa schemas alinhados",
   },
 }
 
