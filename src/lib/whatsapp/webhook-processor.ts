@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
+import { dispatchThreadMessage } from "@/lib/services/crm-thread-trigger.service"
 import { decrypt } from "@/lib/crypto"
 import { createWhatsAppCloudClient, type WebhookMessage, type WhatsAppCloudAPI } from "./cloud-api"
 import { buildMessageContent, shouldApplyStatus } from "./message-content"
@@ -317,6 +318,29 @@ async function handleInboundMessage(
       messageId: insertedRows![0].id as string,
       contentType: content.contentType,
       body: content.body,
+    })
+
+    // Mesma ponte do Instagram: o gatilho "Mensagem recebida" nunca era
+    // emitido, então automações com ele ficavam paradas. Awaited de
+    // propósito — promise solta some no runtime serverless.
+    const { count: previousInbound } = await admin
+      .from("crm_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("thread_id", threadId)
+      .eq("direction", "inbound")
+      .neq("external_id", message.id)
+
+    await dispatchThreadMessage({
+      org_id: orgId,
+      thread_id: threadId,
+      channel_id: channelId,
+      channel_type: "whatsapp",
+      event_kind: "message",
+      contact_external_id: args.message.from,
+      contact_name: contactName,
+      message_text: content.body,
+      is_first_message: (previousInbound ?? 0) === 0,
+      external_message_id: message.id,
     })
 
     log.info("inbound message", { thread_id: threadId, external_id: message.id, type: content.contentType })

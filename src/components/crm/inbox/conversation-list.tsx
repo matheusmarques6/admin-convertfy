@@ -254,14 +254,38 @@ export function ConversationList({
                       </div>
                     )}
                     <div className="flex items-center justify-between mt-1">
-                      <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
-                        {t.channel?.display_name || "—"}
-                        {t.channel?.type === "whatsapp"
-                          ? t.channel?.provider === "evolution"
-                            ? " · QR"
-                            : " · Oficial"
-                          : ""}
-                        {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
+                      <span
+                        className="flex min-w-0 items-center gap-1"
+                        style={{ fontSize: 10, color: "var(--crm-gray-400)" }}
+                      >
+                        {/* Ponto do canal: com WhatsApp e Instagram na
+                            mesma lista, saber a origem antes de abrir
+                            muda o tom da resposta. */}
+                        <span
+                          aria-hidden
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            background:
+                              t.channel?.type === "instagram"
+                                ? "#E1306C"
+                                : t.channel?.type === "whatsapp"
+                                  ? "#25D366"
+                                  : "var(--crm-gray-400)",
+                          }}
+                        />
+                        <span className="truncate">
+                          {t.channel?.type === "instagram"
+                            ? isCommentThread(t)
+                              ? "Instagram · comentário"
+                              : "Instagram · direct"
+                            : t.channel?.display_name || "—"}
+                          {t.channel?.type === "whatsapp"
+                            ? t.channel?.provider === "evolution"
+                              ? " · QR"
+                              : " · Oficial"
+                            : ""}
+                          {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
+                        </span>
                       </span>
                       <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
                         {formatRelativeTime(t.last_message_at)}
@@ -276,6 +300,14 @@ export function ConversationList({
       </div>
     </aside>
   )
+}
+
+/**
+ * Comentário de post vem com contact_external_id "comment:{media_id}"
+ * (o webhook agrupa por publicação) — é o que distingue de um direct.
+ */
+function isCommentThread(t: { contact_external_id?: string | null }): boolean {
+  return typeof t.contact_external_id === "string" && t.contact_external_id.startsWith("comment:")
 }
 
 export function formatRelativeTime(iso: string): string {

@@ -51,6 +51,25 @@ export async function dispatchTrigger(params: DispatchParams): Promise<void> {
       if (t.pipeline_id && t.pipeline_id !== ctx?.pipeline_id) return false
       if (t.to_stage_id && t.to_stage_id !== ctx?.stage_id) return false
     }
+
+    // Mensagem recebida: canal, tipo de evento e "só a primeira".
+    // Sem o filtro de primeira mensagem, um fluxo que cria negócio
+    // criaria um a cada resposta do contato.
+    if (params.trigger_type === "thread_message_received") {
+      const f = t as {
+        channel_type?: string
+        event_kind?: string
+        first_message?: boolean
+      }
+      const d = params.trigger_data as {
+        channel_type?: string
+        event_kind?: string
+        is_first_message?: boolean
+      }
+      if (f.channel_type && f.channel_type !== d.channel_type) return false
+      if (f.event_kind && f.event_kind !== d.event_kind) return false
+      if (f.first_message === true && !d.is_first_message) return false
+    }
     return true
   })
 

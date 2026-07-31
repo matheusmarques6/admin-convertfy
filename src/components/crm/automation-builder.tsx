@@ -24,6 +24,7 @@ import {
   Sparkles,
   FileText,
   UserCheck,
+  Briefcase,
   Plus,
   X,
   type LucideIcon,
@@ -42,6 +43,7 @@ const NODE_TYPES_PALETTE: Array<{ type: CrmNodeType; label: string; icon: Lucide
   { type: "action_send_whatsapp", label: "Enviar WhatsApp", icon: MessageSquare, color: "var(--crm-success-fg)" },
   { type: "action_create_activity", label: "Criar atividade", icon: FileText, color: "var(--crm-gray-700)" },
   { type: "action_assign_owner", label: "Atribuir owner", icon: UserCheck, color: "var(--crm-gray-700)" },
+  { type: "action_create_deal", label: "Criar negocio", icon: Briefcase, color: "var(--crm-success-fg)" },
   { type: "ai_action", label: "AI Action", icon: Sparkles, color: "var(--crm-brand)" },
 ]
 
@@ -425,6 +427,103 @@ function NodeInspector({
             />
           </Field>
         )}
+
+        {/* Sem estes filtros, "mensagem recebida" dispararia em todo
+            canal e a cada resposta do contato. */}
+        {config.trigger_type === "thread_message_received" && (
+          <>
+            <Field label="Canal">
+              <select
+                className="crm-input w-full"
+                value={(config.channel_type as string) || ""}
+                onChange={(e) =>
+                  onChange({ channel_type: e.target.value || undefined })
+                }
+              >
+                <option value="">Qualquer canal</option>
+                <option value="instagram">Instagram</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </Field>
+
+            {config.channel_type === "instagram" && (
+              <Field label="Tipo de interacao">
+                <select
+                  className="crm-input w-full"
+                  value={(config.event_kind as string) || ""}
+                  onChange={(e) =>
+                    onChange({ event_kind: e.target.value || undefined })
+                  }
+                >
+                  <option value="">Direct e comentario</option>
+                  <option value="message">So direct (DM)</option>
+                  <option value="comment">So comentario no post</option>
+                </select>
+              </Field>
+            )}
+
+            <label className="flex cursor-pointer items-start gap-2 text-[12px] text-slate-600 dark:text-white/60">
+              <input
+                type="checkbox"
+                checked={config.first_message === true}
+                onChange={(e) =>
+                  onChange({ first_message: e.target.checked || undefined })
+                }
+                className="mt-0.5 h-3.5 w-3.5 accent-[#4E62D8]"
+              />
+              <span>
+                Só na primeira mensagem do contato
+                <span className="mt-0.5 block text-[11px] text-slate-400 dark:text-white/35">
+                  Recomendado quando o fluxo cria negócio — sem isso ele roda a
+                  cada resposta.
+                </span>
+              </span>
+            </label>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  if (type === "action_create_deal") {
+    return (
+      <div className="space-y-3">
+        <Field label="Pipeline (UUID)">
+          <input
+            className="crm-input w-full"
+            placeholder="UUID do pipeline"
+            value={(config.pipeline_id as string) || ""}
+            onChange={(e) => onChange({ pipeline_id: e.target.value })}
+          />
+        </Field>
+        <Field label="Etapa de entrada (UUID)">
+          <input
+            className="crm-input w-full"
+            placeholder="UUID da etapa"
+            value={(config.stage_id as string) || ""}
+            onChange={(e) => onChange({ stage_id: e.target.value })}
+          />
+        </Field>
+        <Field label="Titulo (opcional)">
+          <input
+            className="crm-input w-full"
+            placeholder="Vazio = nome do contato + canal"
+            value={(config.title_template as string) || ""}
+            onChange={(e) => onChange({ title_template: e.target.value })}
+          />
+        </Field>
+        <Field label="Responsavel (opcional)">
+          <input
+            className="crm-input w-full"
+            placeholder="Vazio = quem atende a conversa"
+            value={(config.owner_id as string) || ""}
+            onChange={(e) => onChange({ owner_id: e.target.value })}
+          />
+        </Field>
+        <p className="text-[11px] leading-relaxed text-slate-500 dark:text-white/45">
+          Conversa que já gerou negócio não gera outro — a ação reusa o
+          existente.
+        </p>
       </div>
     )
   }
@@ -631,6 +730,8 @@ function nodeLabel(type: CrmNodeType, config?: Record<string, unknown>): string 
       return `Criar ${(config?.type as string) || "nota"}`
     case "action_assign_owner":
       return "Atribuir owner"
+    case "action_create_deal":
+      return "Criar negocio"
     case "ai_action":
       return "AI Action"
     default:

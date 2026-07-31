@@ -449,6 +449,142 @@ async function executeNode(
         break
       }
 
+      /**
+       * Cria negócio a partir do contexto — o que fecha o caso
+       * "quem responde o direct entra nesta pipeline".
+       *
+       * Estava declarado no tipo desde a fase 5 mas nunca implementado:
+       * escolher a ação no builder não fazia nada.
+       *
+       * Idempotente por thread: se a conversa já gerou negócio, reusa em
+       * vez de criar outro a cada disparo.
+       */
+      case "action_create_deal": {
+        const cfg = node.config as {
+          pipeline_id: string
+          stage_id: string
+          owner_id?: string | null
+          title_template?: string | null
+          value?: number | null
+          tags?: string[] | null
+        }
+        if (!cfg.pipeline_id || !cfg.stage_id) {
+          throw new Error("action_create_deal requer pipeline_id e stage_id")
+        }
+
+        const thread = ctx.thread as
+          | {
+              id?: string
+              deal_id?: string | null
+              lead_id?: string | null
+              client_id?: string | null
+              contact_name?: string | null
+              contact_external_id?: string | null
+              channel_type?: string
+            }
+          | null
+
+        if (thread?.deal_id) {
+          output = { deal_id: thread.deal_id, created: false, reason: "thread ja tem deal" }
+          break
+        }
+
+        const contactName =
+          thread?.contact_name?.trim() ||
+          thread?.contact_external_id ||
+          "Contato sem nome"
+        const channelLabel =
+          thread?.channel_type === "instagram"
+            ? "Instagram"
+            : thread?.channel_type === "whatsapp"
+              ? "WhatsApp"
+              : "Mensagem"
+
+        const title =
+          cfg.title_template?.trim() || `${contactName} — ${channelLabel}`
+
+        // Dono: o configurado → quem já atende a conversa → responsável
+        // padrão do pipeline → primeiro membro ativo da org.
+        // `deals.owner_id` é NOT NULL: sem um dono real o insert falha e
+        // a mensagem do cliente não vira negócio nenhum.
+        let ownerId =
+          cfg.owner_id ||
+          (thread as { assigned_to?: string | null } | null)?.assigned_to ||
+          null
+
+        if (!ownerId) {
+          const { data: pipe } = await admin
+            .from("pipelines")
+            .select("default_assignee_id")
+            .eq("id", cfg.pipeline_id)
+            .maybeSingle()
+          ownerId = pipe?.default_assignee_id ?? null
+        }
+        if (!ownerId) {
+          const { data: member } = await admin
+            .from("org_members")
+            .select("profile_id")
+            .eq("org_id", orgId)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle()
+          ownerId = member?.profile_id ?? null
+        }
+        if (!ownerId) {
+          throw new Error(
+            "action_create_deal: nenhum responsável disponível (configure o dono na ação ou o responsável padrão do pipeline)",
+          )
+        }
+
+        const { data: maxPos } = await admin
+          .from("deals")
+          .select("position")
+          .eq("stage_id", cfg.stage_id)
+          .order("position", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const { data: created, error: createErr } = await admin
+          .from("deals")
+          .insert({
+            pipeline_id: cfg.pipeline_id,
+            stage_id: cfg.stage_id,
+            title,
+            value: cfg.value ?? 0,
+            status: "open",
+            owner_id: ownerId,
+            position: (maxPos?.position ?? 0) + 10,
+            source: thread?.channel_type ? `inbox:${thread.channel_type}` : "inbox",
+            tags: cfg.tags ?? [],
+            lead_id: thread?.lead_id ?? null,
+            client_id: thread?.client_id ?? null,
+          })
+          .select("id")
+          .single()
+
+        if (createErr) throw createErr
+
+        // Amarra a conversa ao negócio: o inbox passa a mostrar o
+        // vínculo e a automação não cria outro na próxima mensagem.
+        if (thread?.id) {
+          await admin
+            .from("crm_threads")
+            .update({ deal_id: created.id })
+            .eq("id", thread.id)
+        }
+
+        await admin.from("crm_deal_activities").insert({
+          deal_id: created.id,
+          type: "system",
+          content: `Negócio criado automaticamente a partir de ${channelLabel}`,
+          created_by: ownerId,
+          is_internal: true,
+        })
+
+        output = { deal_id: created.id, created: true, title }
+        break
+      }
+
       case "ai_action": {
         const cfg = node.config as {
           ai_action_id: string

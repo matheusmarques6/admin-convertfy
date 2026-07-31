@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { dispatchThreadMessage } from "@/lib/services/crm-thread-trigger.service"
 
 const log = logger.child("InstagramWebhook")
 
@@ -263,6 +264,39 @@ async function handleInboundDm(
   }
 
   log.info("[Instagram] inbound DM", { thread_id: threadId, mid: event.message.mid })
+
+  // "Respondeu o direct → entra nesta pipeline" mora aqui: sem este
+  // disparo o gatilho "Mensagem recebida" nunca acontecia.
+  await dispatchThreadMessage({
+    org_id: orgId,
+    thread_id: threadId,
+    channel_id: channelId,
+    channel_type: "instagram",
+    event_kind: "message",
+    contact_external_id: contactExternalId,
+    message_text: body,
+    is_first_message: await isFirstInboundMessage(admin, threadId, event.message.mid),
+    external_message_id: event.message.mid,
+  })
+}
+
+/**
+ * Primeira mensagem do contato nesta conversa? Conta as inbound já
+ * gravadas ignorando a atual — automação de "novo contato" não pode
+ * disparar a cada resposta.
+ */
+async function isFirstInboundMessage(
+  admin: ReturnType<typeof createAdminClient>,
+  threadId: string,
+  currentExternalId: string,
+): Promise<boolean> {
+  const { count } = await admin
+    .from("crm_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("thread_id", threadId)
+    .eq("direction", "inbound")
+    .neq("external_id", currentExternalId)
+  return (count ?? 0) === 0
 }
 
 async function handleInboundComment(
@@ -319,6 +353,21 @@ async function handleInboundComment(
   }
 
   log.info("[Instagram] inbound comment", { thread_id: threadId, comment_id: v.id })
+
+  // Comentário é o "interagiu" do pedido: pode cair numa pipeline
+  // diferente da de quem manda direct.
+  await dispatchThreadMessage({
+    org_id: orgId,
+    thread_id: threadId,
+    channel_id: channelId,
+    channel_type: "instagram",
+    event_kind: "comment",
+    contact_external_id: contactExternalId,
+    contact_name: senderName,
+    message_text: v.text || null,
+    is_first_message: await isFirstInboundMessage(admin, threadId, v.id),
+    external_message_id: v.id,
+  })
 }
 
 async function upsertThread(
