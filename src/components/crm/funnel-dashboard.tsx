@@ -56,103 +56,23 @@ import {
   StageMappingDialog,
 } from "@/components/crm/funnel-dialogs"
 
-// ─── Tipos do payload da API ─────────────────────────────────────
+// ─── Dados ───────────────────────────────────────────────────────
+// Tipos, fetcher e normalizador vivem em funnel-data.ts (lógica pura,
+// testada) — ver o comentário de lá sobre o crash de payload parcial.
 
-export interface FunnelPipelineStage {
-  id: string
-  name: string
-  order: number
-  stage_type: string
-  funnel_step: string | null
-}
+import {
+  fetchFunnel,
+  normalizeFunnelData,
+  type FunnelApiData,
+} from "@/components/crm/funnel-data"
 
-export interface FunnelPipeline {
-  id: string
-  name: string
-  color: string | null
-  stages: FunnelPipelineStage[]
-}
-
-export interface AdSpendEntry {
-  id: string
-  day: string
-  platform: string
-  account_name: string
-  amount: number
-  notes: string | null
-}
-
-export interface ConnectedAdAccount {
-  id: string
-  account_id: string
-  account_name: string
-  last_synced_at: string | null
-  last_sync_status: string | null
-  last_sync_error: string | null
-}
-
-export interface CreativePerformance {
-  ad_name: string
-  campaign_name: string
-  adset_name: string
-  spend: number
-  impressions: number
-  clicks: number
-  leads_meta: number
-  leads_crm: number
-  vendas: number
-  receita: number
-  cpl: number | null
-  cpa: number | null
-  roas: number | null
-}
-
-interface FunnelApiData {
-  window: { days: number; from: string; to: string }
-  funnel: { leads: number; mql: number; agendamento: number; reuniao: number; venda: number }
-  rates: {
-    leads_mql: number | null
-    mql_agendamento: number | null
-    agendamento_reuniao: number | null
-    reuniao_venda: number | null
-  }
-  metrics: {
-    investimento: number
-    faturamento: number
-    cash_collect: number
-    roas: number | null
-    tx_conversao: number | null
-    ticket_medio: number | null
-    taxa_cash_collect: number | null
-    cpl: number | null
-    custo_mql: number | null
-    custo_agendamento: number | null
-    custo_reuniao: number | null
-    cpa: number | null
-  }
-  ad_spend: {
-    total: number
-    manual: number
-    synced: number
-    by_account: Array<{ platform: string; account_name: string; amount: number }>
-    entries: AdSpendEntry[]
-  }
-  ad_accounts: ConnectedAdAccount[]
-  creatives: CreativePerformance[]
-  vendas: Array<{
-    id: string
-    title: string
-    value: number
-    cash_collected: number | null
-    won_at: string | null
-    pipeline_id: string
-  }>
-  pipelines: FunnelPipeline[]
-  mapped_steps: string[]
-  utm_options: { sources: string[]; mediums: string[]; campaigns: string[] }
-}
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+export type {
+  AdSpendEntry,
+  ConnectedAdAccount,
+  CreativePerformance,
+  FunnelPipeline,
+  FunnelPipelineStage,
+} from "@/components/crm/funnel-data"
 
 // ─── Formatação ──────────────────────────────────────────────────
 
@@ -235,11 +155,18 @@ export function FunnelDashboard() {
     return params.toString()
   }, [period, pipelineId, utm])
 
-  const { data, isLoading, mutate } = useSWR<FunnelApiData>(
-    `/api/crm/funnel?${query}`,
-    fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 30_000 },
-  )
+  const {
+    data: rawData,
+    error,
+    isLoading,
+    mutate,
+  } = useSWR<FunnelApiData>(`/api/crm/funnel?${query}`, fetchFunnel, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    shouldRetryOnError: false,
+  })
+
+  const data = useMemo(() => normalizeFunnelData(rawData), [rawData])
 
   const activeUtmCount = [utm.source, utm.medium, utm.campaign].filter(Boolean).length
   const m = data?.metrics
@@ -255,6 +182,8 @@ export function FunnelDashboard() {
     ]
     return wanted.filter((w) => !data.mapped_steps.includes(w.step))
   }, [data])
+
+  const schemaMissing = data?.schema_missing ?? []
 
   const leftCards: MetricCardDef[] = [
     { label: "Investimento", icon: BarChart3, tile: "linear-gradient(135deg, #14B8A6, #0D9488)", value: m ? fmtBRL0(m.investimento) : dash, hint: m && m.investimento === 0 ? "Lance o investimento do período" : undefined },
@@ -369,6 +298,35 @@ export function FunnelDashboard() {
           </div>
         </div>
 
+        {/* Falha de carregamento — some sozinho quando a próxima
+            revalidação dá certo, então não precisa de dispensar */}
+        {error && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[#F87171]/25 bg-[#F87171]/10 px-4 py-2.5">
+            <div className="text-[12.5px] text-[#FCA5A5]">
+              <span className="font-semibold">Não foi possível carregar o funil.</span>{" "}
+              {error instanceof Error ? error.message : "Erro inesperado."}
+            </div>
+            <button
+              type="button"
+              onClick={() => mutate()}
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+            >
+              <Icon icon={RefreshCw} size={16} />
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {/* Migration pendente: a página funciona, mas sem parte dos dados */}
+        {schemaMissing.length > 0 && (
+          <div className="mb-5 rounded-[12px] border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-4 py-2.5 text-[12.5px] text-[#FBBF24]">
+            <span className="font-semibold">Banco desatualizado:</span> falta{" "}
+            {schemaMissing.join(", ")}. O funil está contando o que dá; aplique as
+            migrations do funil pra habilitar mapeamento de etapas, investimento e
+            cash collect.
+          </div>
+        )}
+
         {/* Aviso de funil sem mapeamento */}
         {missingSteps.length > 0 && (
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-4 py-2.5">
@@ -421,7 +379,7 @@ export function FunnelDashboard() {
       <AdSpendDialog
         open={spendOpen}
         onOpenChange={setSpendOpen}
-        entries={data?.ad_spend.entries ?? []}
+        entries={data?.ad_spend?.entries ?? []}
         onChanged={() => mutate()}
       />
       <StageMappingDialog
@@ -478,7 +436,7 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
   return (
     <div className="relative mx-auto w-full max-w-[580px] select-none pb-4 pt-1">
       {FUNNEL_SEGMENTS.map((seg, i) => {
-        const vol = data?.funnel[seg.key] ?? 0
+        const vol = data?.funnel?.[seg.key] ?? 0
         const topW = TAPER[i]
         const botW = i < TAPER.length - 1 ? TAPER[i + 1] : LAST_BOTTOM
 
@@ -488,7 +446,7 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
         const rb = (100 + botW) / 2
 
         const rateKey = i < RATE_KEYS.length ? RATE_KEYS[i] : null
-        const rate = rateKey ? (data?.rates[rateKey] ?? null) : null
+        const rate = rateKey ? (data?.rates?.[rateKey] ?? null) : null
         const showRate = i < FUNNEL_SEGMENTS.length - 1
         const pillLeft = Math.min(50 + botW / 2, 87)
 
@@ -673,10 +631,10 @@ function SpendByAccountPanel({
   onManage: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const byAccount = data?.ad_spend.by_account ?? []
-  const total = data?.ad_spend.total ?? 0
-  const synced = data?.ad_spend.synced ?? 0
-  const manual = data?.ad_spend.manual ?? 0
+  const byAccount = data?.ad_spend?.by_account ?? []
+  const total = data?.ad_spend?.total ?? 0
+  const synced = data?.ad_spend?.synced ?? 0
+  const manual = data?.ad_spend?.manual ?? 0
   const accountLabel = (a: { platform: string; account_name: string }) =>
     a.account_name || PLATFORM_LABELS[a.platform] || a.platform
 

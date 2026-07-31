@@ -92,6 +92,20 @@ interface InsightRow {
   leads: number | null
 }
 
+/**
+ * True quando o erro é "coluna/tabela não existe" — ou seja, a migration
+ * do funil ainda não rodou neste banco. Nesses casos a rota degrada em
+ * vez de derrubar a página inteira: o funil continua contando o que dá,
+ * e o payload informa o que falta em `schema_missing`.
+ */
+function isMissingSchema(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null
+  if (!e) return false
+  if (e.code === "42P01" || e.code === "42703" || e.code === "PGRST204") return true
+  const msg = (e.message || "").toLowerCase()
+  return msg.includes("does not exist") || msg.includes("could not find")
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
@@ -173,14 +187,35 @@ async function handleGet(request: NextRequest) {
       return successResponse(request, emptyPayload(windowDays, fromDay, toDay))
     }
 
-    const { data: stageRows, error: stageErr } = await admin
-      .from("pipeline_stages")
-      .select('id, pipeline_id, name, color, "order", stage_type, funnel_step')
-      .in("pipeline_id", allIds)
-      .limit(2000)
-    if (stageErr) throw stageErr
+    const schemaMissing: string[] = []
 
-    const stages = ((stageRows as StageRow[] | null) ?? [])
+    let stageRows: StageRow[] | null = null
+    {
+      const withStep = await admin
+        .from("pipeline_stages")
+        .select('id, pipeline_id, name, color, "order", stage_type, funnel_step')
+        .in("pipeline_id", allIds)
+        .limit(2000)
+
+      if (withStep.error && isMissingSchema(withStep.error)) {
+        // Migration do funil ainda não rodou: segue sem o mapeamento
+        // semântico (etapas de ganho ainda contam como venda).
+        schemaMissing.push("pipeline_stages.funnel_step")
+        log.warn("[Funnel] funnel_step ausente — rode a migration 20261052")
+        const fallback = await admin
+          .from("pipeline_stages")
+          .select('id, pipeline_id, name, color, "order", stage_type')
+          .in("pipeline_id", allIds)
+          .limit(2000)
+        if (fallback.error) throw fallback.error
+        stageRows = (fallback.data as StageRow[] | null) ?? []
+      } else {
+        if (withStep.error) throw withStep.error
+        stageRows = (withStep.data as StageRow[] | null) ?? []
+      }
+    }
+
+    const stages = (stageRows ?? [])
       .slice()
       .sort((a, b) => a.order - b.order)
     const stageById = new Map(stages.map((s) => [s.id, s]))
@@ -196,16 +231,34 @@ async function handleGet(request: NextRequest) {
 
     // ── Deals do escopo (todos, não só os criados na janela: um deal
     //    antigo que ENTRA em "Reunião" hoje conta no funil de hoje) ──
-    const { data: dealRows, error: dealErr } = await admin
-      .from("deals")
-      .select(
-        "id, pipeline_id, stage_id, title, status, value, cash_collected, created_at, won_at, source, utm, lead_id",
-      )
-      .in("pipeline_id", activeIds)
-      .neq("status", "archived")
-      .limit(10000)
-    if (dealErr) throw dealErr
-    const deals = (dealRows as DealRow[] | null) ?? []
+    const DEAL_COLS =
+      "id, pipeline_id, stage_id, title, status, value, created_at, won_at, source, utm, lead_id"
+
+    let dealRows: DealRow[] | null = null
+    {
+      const withCash = await admin
+        .from("deals")
+        .select(`${DEAL_COLS}, cash_collected`)
+        .in("pipeline_id", activeIds)
+        .neq("status", "archived")
+        .limit(10000)
+
+      if (withCash.error && isMissingSchema(withCash.error)) {
+        schemaMissing.push("deals.cash_collected")
+        const fallback = await admin
+          .from("deals")
+          .select(DEAL_COLS)
+          .in("pipeline_id", activeIds)
+          .neq("status", "archived")
+          .limit(10000)
+        if (fallback.error) throw fallback.error
+        dealRows = (fallback.data as DealRow[] | null) ?? []
+      } else {
+        if (withCash.error) throw withCash.error
+        dealRows = (withCash.data as DealRow[] | null) ?? []
+      }
+    }
+    const deals = dealRows ?? []
     const dealIds = new Set(deals.map((d) => d.id))
 
     // ── Histórico de mudança de etapa dentro da janela ───────────
@@ -283,8 +336,12 @@ async function handleGet(request: NextRequest) {
         .lte("day", toDay)
         .order("day", { ascending: false })
         .limit(2000)
-      if (spendErr) throw spendErr
-      spendEntries = spendRows ?? []
+      if (spendErr) {
+        if (!isMissingSchema(spendErr)) throw spendErr
+        schemaMissing.push("crm_ad_spend")
+      } else {
+        spendEntries = spendRows ?? []
+      }
     }
 
     // Insights da Meta: nível campaign é a fonte do gasto (somar os 3
@@ -302,29 +359,39 @@ async function handleGet(request: NextRequest) {
     }> = []
 
     if (userOrg?.org_id) {
-      const [{ data: accountRows }, { data: insightRows, error: insightErr }] =
-        await Promise.all([
-          admin
-            .from("crm_ad_accounts")
-            .select("id, account_id, account_name, last_synced_at, last_sync_status, last_sync_error")
-            .eq("org_id", userOrg.org_id)
-            .eq("is_active", true),
-          admin
-            .from("crm_ad_insights")
-            .select(
-              "day, level, entity_id, campaign_name, adset_name, ad_name, spend, impressions, clicks, leads",
-            )
-            .eq("org_id", userOrg.org_id)
-            .in("level", ["campaign", "ad"])
-            .gte("day", fromDay)
-            .lte("day", toDay)
-            .limit(20000),
-        ])
-      if (insightErr) throw insightErr
-      connectedAccounts = accountRows ?? []
-      const rows = (insightRows as InsightRow[] | null) ?? []
-      campaignInsights = rows.filter((r) => r.level === "campaign")
-      adInsights = rows.filter((r) => r.level === "ad")
+      const [accountsRes, insightsRes] = await Promise.all([
+        admin
+          .from("crm_ad_accounts")
+          .select("id, account_id, account_name, last_synced_at, last_sync_status, last_sync_error")
+          .eq("org_id", userOrg.org_id)
+          .eq("is_active", true),
+        admin
+          .from("crm_ad_insights")
+          .select(
+            "day, level, entity_id, campaign_name, adset_name, ad_name, spend, impressions, clicks, leads",
+          )
+          .eq("org_id", userOrg.org_id)
+          .in("level", ["campaign", "ad"])
+          .gte("day", fromDay)
+          .lte("day", toDay)
+          .limit(20000),
+      ])
+
+      if (accountsRes.error) {
+        if (!isMissingSchema(accountsRes.error)) throw accountsRes.error
+        schemaMissing.push("crm_ad_accounts")
+      } else {
+        connectedAccounts = accountsRes.data ?? []
+      }
+
+      if (insightsRes.error) {
+        if (!isMissingSchema(insightsRes.error)) throw insightsRes.error
+        schemaMissing.push("crm_ad_insights")
+      } else {
+        const rows = (insightsRes.data as InsightRow[] | null) ?? []
+        campaignInsights = rows.filter((r) => r.level === "campaign")
+        adInsights = rows.filter((r) => r.level === "ad")
+      }
     }
 
     // ── Eventos de entrada em etapa por deal ─────────────────────
@@ -614,6 +681,7 @@ async function handleGet(request: NextRequest) {
       },
       ad_accounts: connectedAccounts,
       creatives,
+      schema_missing: schemaMissing,
       vendas,
       pipelines: pipelinesPayload,
       mapped_steps: Array.from(mappedSteps),
@@ -656,6 +724,7 @@ function emptyPayload(days: number, from: string, to: string) {
     ad_spend: { total: 0, manual: 0, synced: 0, by_account: [], entries: [] },
     ad_accounts: [],
     creatives: [],
+    schema_missing: [],
     vendas: [],
     pipelines: [],
     mapped_steps: [],

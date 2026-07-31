@@ -1120,6 +1120,15 @@ desconectar conta + template de UTM copiável), **Investimento**
 agrupado por pipeline). Painel "Criativos que mais performaram" lista
 gasto × leads × vendas × ROAS por anúncio.
 
+**Resiliência (incidente jul/2026 — "Algo deu errado")**: a rota degrada
+quando a migration não rodou — `isMissingSchema()` (códigos 42P01/42703/
+PGRST204) faz fallback do select sem `funnel_step`/`cash_collected` e
+pula as tabelas de ads, devolvendo `schema_missing[]` que a UI mostra
+como aviso. No client, `funnel-data.ts` (puro, 8 testes) tem o
+`fetchFunnel` que LANÇA em não-2xx (antes `r=>r.json()` devolvia o corpo
+de erro como dado válido → `data.ad_spend.entries` explodia no
+ErrorBoundary) e o `normalizeFunnelData` que preenche payload parcial.
+
 UI em `src/components/crm/funnel-dashboard.tsx` (+ `funnel-dialogs.tsx`):
 página DARK por design (réplica do dashboard de referência de mídia
 paga, independente do tema — precedente da sidebar), fora do
