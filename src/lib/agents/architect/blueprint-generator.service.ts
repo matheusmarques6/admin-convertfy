@@ -32,6 +32,7 @@ import {
 import { loadEffectiveBlueprint } from "./blueprint-loader"
 import {
   buildDeterministicBlueprint,
+  collectSchemaAnchorIssues,
   matchVariantsToSkeleton,
   packageBlueprint,
   schemaTagsFromSlots,
@@ -538,6 +539,18 @@ async function generateDeterministicBlueprint(
     outline: input.outline,
   })
 
+  // O schema é a base: todo campo endereça `{{UPPER(key)}}`. O que o HTML da
+  // variante não endereça é erro de cadastro e sai na telemetria — é o que
+  // faz a biblioteca ser consertada em vez de o defeito voltar todo run.
+  const anchorIssues = collectSchemaAnchorIssues(match)
+  if (anchorIssues.length > 0) {
+    log.warn("blueprint.schema_anchor_issues", {
+      storeId: input.storeId,
+      count: anchorIssues.length,
+      issues: anchorIssues.slice(0, 20),
+    })
+  }
+
   // Única contribuição criativa restante: subject + messaging adaptados à
   // loja. Falha → mantém os fallbacks determinísticos (guidance do outline).
   const subj = await generateSubjectHint({
@@ -581,6 +594,10 @@ async function generateDeterministicBlueprint(
       skeleton_used: true,
       skeleton_blocks: skeleton.blocks.length,
       skeleton_unknown_tags: skeleton.unknownTags,
+      // Campos de schema sem {{UPPER(key)}} no HTML da variante — erro de
+      // CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
+      schema_anchor_issues: anchorIssues,
+      schema_anchor_issue_count: anchorIssues.length,
     },
     costCents: 0,
     durationMs: Date.now() - t0,
@@ -744,6 +761,16 @@ async function generateLlmBlueprint(
   // fallbacks/sem-skeleton → fields caem em tags/copy_spec (sem variante).
   blueprint = packageBlueprint(blueprint, skeletonApplied ? match : null)
 
+  // Mesma auditoria da rota A — o empacotador é o mesmo, o contrato também.
+  const anchorIssues = collectSchemaAnchorIssues(skeletonApplied ? match : null)
+  if (anchorIssues.length > 0) {
+    log.warn("blueprint.schema_anchor_issues", {
+      storeId: input.storeId,
+      count: anchorIssues.length,
+      issues: anchorIssues.slice(0, 20),
+    })
+  }
+
   // Só persiste o blueprint quando o LLM gerou de verdade (source='ai'). No
   // fallback (DEFAULT_BLUEPRINTS in-code ou mínimo) NÃO grava: preserva um
   // blueprint store bom anterior e deixa loadEffectiveBlueprint cair no
@@ -780,6 +807,9 @@ async function generateLlmBlueprint(
       skeleton_used: skeleton !== null,
       skeleton_blocks: skeleton?.blocks.length ?? null,
       skeleton_unknown_tags: skeleton?.unknownTags ?? null,
+      // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
+      schema_anchor_issues: anchorIssues,
+      schema_anchor_issue_count: anchorIssues.length,
     },
     tokensInput,
     tokensOutput,

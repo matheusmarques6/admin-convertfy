@@ -10,6 +10,7 @@ import type { GeneratedBlueprint } from "./blueprint-generator.service"
 import {
   matchVariantsToSkeleton,
   fieldsFromSchema,
+  schemaAnchorIssues,
   fieldsFromTags,
   fieldsFromCopySpec,
   imageBriefFromSchema,
@@ -195,49 +196,29 @@ describe("matchVariantsToSkeleton", () => {
 
 // ── fields v2 (3 origens) ───────────────────────────────────────────
 
-describe("fieldsFromSchema", () => {
-  it("resolve tag por copyKey e marca source=schema", () => {
-    const fields = fieldsFromSchema(SCHEMA_HERO, ["HERO_HEADLINE", "HERO_IMAGE"])
+describe("fieldsFromSchema — o schema é a base", () => {
+  it("a tag é SEMPRE {{UPPER(key)}}", () => {
+    const fields = fieldsFromSchema(SCHEMA_HERO)
     const headline = fields.find((f) => f.key === "headline")!
-    expect(headline.tag).toBe("HERO_HEADLINE")
+    expect(headline.tag).toBe("HEADLINE")
     expect(headline.source).toBe("schema")
     expect(headline.max_len).toBe(40)
     expect(headline.guidance).toBe("CAIXA ALTA")
+    expect(fields.find((f) => f.key === "hero_image")!.tag).toBe("HERO_IMAGE")
   })
 
-  it("resolve tag pelo nome normalizado quando não há copyKey igual", () => {
-    const schema: ComponentOutputField[] = [
-      {
-        key: "coupon_code",
-        label: "Código",
-        type: "text_short",
-        max_len: 15,
-        required: true,
-        example: "BEMVINDO15",
-        guidance: "",
-      },
-    ]
-    const fields = fieldsFromSchema(schema, ["COUPON_CODE"])
-    // copyKey de COUPON_CODE é "code" ≠ "coupon_code" → cai no match por nome
-    expect(fields[0].tag).toBe("COUPON_CODE")
+  it("não traduz por copyKey do registry: key 'headline' NUNCA vira HERO_HEADLINE", () => {
+    // Era o alias que escondia o desalinhamento: o HTML tinha
+    // {{HERO_HEADLINE}}, o schema pedia `headline`, e o resolvedor "casava".
+    // Agora o endereço é HEADLINE — e o HTML é que precisa segui-lo.
+    const fields = fieldsFromSchema(
+      [SCHEMA_HERO[0]],
+      "<div>{{HERO_HEADLINE}}</div>",
+    )
+    expect(fields[0].tag).toBe("HEADLINE")
   })
 
-  it("campo sem tag correspondente → tag null", () => {
-    const schema: ComponentOutputField[] = [
-      {
-        key: "campo_inexistente",
-        label: "X",
-        type: "text_short",
-        max_len: 10,
-        required: false,
-        example: "",
-        guidance: "",
-      },
-    ]
-    expect(fieldsFromSchema(schema, ["HERO_HEADLINE"])[0].tag).toBeNull()
-  })
-
-  it("fallback literal (Taguedor): {{UPPER(key)}} no HTML da variante vira tag", () => {
+  it("key fora do registry também endereça por {{UPPER(key)}}", () => {
     const schema: ComponentOutputField[] = [
       {
         key: "testimonial_1_quote_body",
@@ -249,17 +230,67 @@ describe("fieldsFromSchema", () => {
         guidance: "",
       },
     ]
-    const html = "<table><tr><td>{{TESTIMONIAL_1_QUOTE_BODY}}</td></tr></table>"
-    // Fora do registry e fora das blockTags — só o HTML tagueado ancora.
-    const fields = fieldsFromSchema(schema, ["BODY_TEXT"], html)
-    expect(fields[0].tag).toBe("TESTIMONIAL_1_QUOTE_BODY")
-    // Sem o HTML (rota B sem variante casada) segue null.
-    expect(fieldsFromSchema(schema, ["BODY_TEXT"])[0].tag).toBeNull()
-    // Placeholder ausente do HTML → null (não inventa âncora).
+    expect(fieldsFromSchema(schema)[0].tag).toBe("TESTIMONIAL_1_QUOTE_BODY")
+  })
+})
+
+describe("schemaAnchorIssues — erro de cadastro, não silêncio", () => {
+  const schema: ComponentOutputField[] = [
+    {
+      key: "hero_headline",
+      label: "Headline",
+      type: "text_short",
+      max_len: 40,
+      required: true,
+      example: "",
+      guidance: "",
+    },
+    {
+      key: "hero_subhead",
+      label: "Sub",
+      type: "text_short",
+      max_len: 90,
+      required: false,
+      example: "",
+      guidance: "",
+    },
+  ]
+
+  it("campo cujo placeholder não está no HTML vira issue", () => {
+    // Caso real: o HTML carrega {{HERO_EYEBROW}} e o schema pede
+    // hero_headline/hero_subhead. Antes: dois campos sem âncora, em silêncio.
+    const issues = schemaAnchorIssues(
+      schema,
+      "<div>{{HERO_EYEBROW}}{{HERO_HEADLINE}}</div>",
+    )
+    expect(issues.map((i) => i.key)).toEqual(["hero_subhead"])
+    expect(issues[0].tag).toBe("HERO_SUBHEAD")
+  })
+
+  it("HTML alinhado → nenhuma issue", () => {
     expect(
-      fieldsFromSchema(schema, ["BODY_TEXT"], "<div>{{OUTRA_TAG}}</div>")[0]
-        .tag,
-    ).toBeNull()
+      schemaAnchorIssues(schema, "<div>{{HERO_HEADLINE}}{{HERO_SUBHEAD}}</div>"),
+    ).toEqual([])
+  })
+
+  it("sem HTML da variante não há o que auditar (rota B)", () => {
+    expect(schemaAnchorIssues(schema)).toEqual([])
+  })
+
+  it("asset_fixo fica de fora — a arte não vira placeholder", () => {
+    const art: ComponentOutputField[] = [
+      {
+        key: "selo_frete",
+        label: "Selo",
+        type: "image",
+        max_len: 0,
+        required: false,
+        example: "",
+        guidance: "",
+        nature: "asset_fixo",
+      },
+    ]
+    expect(schemaAnchorIssues(art, "<div>nada</div>")).toEqual([])
   })
 })
 

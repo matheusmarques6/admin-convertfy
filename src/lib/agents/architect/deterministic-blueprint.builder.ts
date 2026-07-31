@@ -24,7 +24,7 @@ import type {
   CopySpecField,
   EmailOutlineTemplate,
 } from "@/types/email-generation"
-import { lookupTag, normalizeTagName } from "@/lib/email-workspace/tag-registry"
+import { lookupTag } from "@/lib/email-workspace/tag-registry"
 import { blockTypeToCategory } from "../shared/component-categories"
 import {
   deriveFieldNature,
@@ -153,49 +153,76 @@ export function schemaTagsFromSlots(
 
 /**
  * Origem "schema": os campos definidos na variante (aba Componentes).
- * Resolve a tag do template por copyKey OU pelo nome normalizado da tag
- * (schema.key "coupon_code" ↔ tag {{COUPON_CODE}}).
+ *
+ * O SCHEMA É A BASE. O endereço de um campo no template é `{{UPPER(key)}}`,
+ * e só isso: `hero_headline` → `{{HERO_HEADLINE}}`. Os três caminhos antigos
+ * (copyKey do tag-registry, nome normalizado da tag, placeholder literal)
+ * FORAM REMOVIDOS. Eles davam a ilusão de que a variante estava correta:
+ * quando o HTML carregava `{{HERO_EYEBROW}}` e o schema pedia
+ * `hero_headline`, algum dos aliases casava por acaso — ou nenhum casava, e
+ * o campo virava `tag: null` em silêncio, sem copy e sem aviso.
+ *
+ * Campo sem `{{UPPER(key)}}` no HTML da variante continua saindo com a tag
+ * PREENCHIDA (o contrato é o schema, não o HTML) e é REGISTRADO como erro de
+ * cadastro por `schemaAnchorIssues` — quem conserta é o retagueamento da
+ * variante, não o resolvedor em tempo de geração.
  */
-/** Resolve a {{TAG}} do template para um key de schema (copyKey ou nome). */
-function resolveTagForKey(key: string, blockTags: string[]): string | null {
-  return (
-    blockTags.find((t) => lookupTag(t)?.copyKey === key) ??
-    blockTags.find(
-      (t) => normalizeTagName(t).toLowerCase() === key.toLowerCase(),
-    ) ??
-    null
+/** Endereço canônico de um key de schema. Regra única, sem alias. */
+function resolveTagForKey(key: string): string | null {
+  return placeholderForKey(key) || null
+}
+
+/** O `{{PLACEHOLDER}}` existe de fato no HTML da variante? */
+function tagAnchoredInHtml(tag: string, variantHtml?: string): boolean {
+  if (!variantHtml) return false
+  const re = new RegExp(
+    `\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`,
   )
+  return re.test(variantHtml)
+}
+
+/** Campo do schema cujo `{{UPPER(key)}}` não existe no HTML da variante. */
+export interface SchemaAnchorIssue {
+  key: string
+  tag: string
+  nature: string
 }
 
 /**
- * Fallback literal do épico Taguedor: o placeholder {{UPPER(key)}} está no
- * HTML da variante (tagueado/manual)? Então ELE é a âncora — mesmo fora do
- * tag-registry e mesmo quando o skeleton não capturou a tag no bloco.
+ * Erros de cadastro do bloco: campos que o schema declara e o HTML da
+ * variante não endereça. Sem `variantHtml` não há o que auditar (rota B).
+ * Vai para a telemetria do blueprint — é o sinal que faz a biblioteca ser
+ * consertada em vez do defeito reaparecer a cada geração.
  */
-function literalTagInHtml(key: string, variantHtml?: string): string | null {
-  if (!variantHtml) return null
-  const ph = placeholderForKey(key)
-  if (!ph) return null
-  const re = new RegExp(`\\{\\{\\s*${ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`)
-  return re.test(variantHtml) ? ph : null
+export function schemaAnchorIssues(
+  schema: ComponentOutputField[],
+  variantHtml?: string,
+): SchemaAnchorIssue[] {
+  if (!variantHtml) return []
+  const out: SchemaAnchorIssue[] = []
+  for (const f of schema) {
+    const key = f.key?.trim()
+    if (!key) continue
+    const nature = deriveFieldNature(f)
+    // asset_fixo é arte da biblioteca — não vira placeholder por desenho.
+    if (nature === "asset_fixo") continue
+    const tag = resolveTagForKey(key)
+    if (!tag || tagAnchoredInHtml(tag, variantHtml)) continue
+    out.push({ key, tag, nature })
+  }
+  return out
 }
 
 export function fieldsFromSchema(
   schema: ComponentOutputField[],
-  blockTags: string[],
   // HTML da variante — quando presente, extrai o comentário do <td>/<tr> de
   // cada slot de imagem (slot_note). Ausente (ex.: rota B) → sem slot_note.
   variantHtml?: string,
 ): BlueprintFieldV2[] {
-  // Tags de imagem do bloco (uma por campo type=image que casou tag) → extrai
-  // os comentários UMA vez.
+  // Slots de imagem do bloco → extrai os comentários UMA vez.
   const imageTags = schema
     .filter((f) => f.type === "image")
-    .map(
-      (f) =>
-        resolveTagForKey(f.key.trim(), blockTags) ??
-        literalTagInHtml(f.key.trim(), variantHtml),
-    )
+    .map((f) => resolveTagForKey(f.key.trim()))
     .filter((t): t is string => !!t)
   const slotNotes =
     variantHtml && imageTags.length > 0
@@ -204,8 +231,7 @@ export function fieldsFromSchema(
 
   return schema.map((f) => {
     const key = f.key.trim()
-    const tag =
-      resolveTagForKey(key, blockTags) ?? literalTagInHtml(key, variantHtml)
+    const tag = resolveTagForKey(key)
     const base: BlueprintFieldV2 = {
       key,
       label: f.label || key,
@@ -348,7 +374,6 @@ export function buildDeterministicBlueprint(input: {
         schema.length > 0
           ? fieldsFromSchema(
               schema,
-              tags,
               m ? effectiveVariantHtml(m.variant) : undefined,
             )
           : fieldsFromTags(tags),
@@ -394,7 +419,6 @@ export function packageBlueprint(
     if (schema.length > 0) {
       fields = fieldsFromSchema(
         schema,
-        tags,
         m ? effectiveVariantHtml(m.variant) : undefined,
       )
     } else if (tags.length > 0) {
@@ -414,6 +438,40 @@ export function packageBlueprint(
     }
   })
   return { ...blueprint, blocks }
+}
+
+export interface BlockAnchorIssue extends SchemaAnchorIssue {
+  block_index: number
+  variant_id: string
+  variant_name: string
+}
+
+/**
+ * Varre as variantes casadas e junta todo campo de schema sem `{{UPPER(key)}}`
+ * no HTML. Roda nas DUAS rotas (o `match` é o mesmo) e vai inteiro para a
+ * telemetria do blueprint: lista vazia = biblioteca alinhada com o schema.
+ */
+export function collectSchemaAnchorIssues(
+  match: MatchResult | null,
+): BlockAnchorIssue[] {
+  if (!match) return []
+  const out: BlockAnchorIssue[] = []
+  for (const [blockIndex, m] of match.matches) {
+    const schema = m.variant.output_schema ?? []
+    if (schema.length === 0) continue
+    for (const issue of schemaAnchorIssues(
+      schema,
+      effectiveVariantHtml(m.variant),
+    )) {
+      out.push({
+        ...issue,
+        block_index: blockIndex,
+        variant_id: m.variant.id,
+        variant_name: m.variant.name,
+      })
+    }
+  }
+  return out.sort((a, b) => a.block_index - b.block_index)
 }
 
 function dedupePreservingOrder(items: string[]): string[] {

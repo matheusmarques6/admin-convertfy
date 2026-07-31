@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { runSchemaChecks, runGlobalDocChecks } from "./qa.chain"
-import { validateSchemaTagCoherence } from "@/lib/email-workspace/schema-tag-coherence"
+import {
+  auditSchemaTags,
+  validateSchemaTagCoherence,
+} from "@/lib/email-workspace/schema-tag-coherence"
 import type { ComponentOutputField } from "@/types/email-generation"
 
 const FIELDS = [
@@ -122,21 +125,59 @@ describe("validateSchemaTagCoherence", () => {
     },
   ]
 
-  it("aponta campos sem tag e tags de copy sem campo", () => {
-    // HTML tem HERO_HEADLINE (casa com headline via copyKey) e HERO_BODY
-    // (tag de copy sem campo). campo_orfao não tem tag. hero_image é imagem
-    // (fora da checagem de keysWithoutTag).
+  it("o endereço é {{UPPER(key)}}: HERO_HEADLINE NÃO serve o campo headline", () => {
+    // Este é o desalinhamento que passava batido. O HTML fala o vocabulário
+    // do tag-registry, o schema fala o do Taguedor — e o alias por copyKey
+    // fazia parecer que estava tudo certo. Agora os dois lados aparecem.
     const html = "<div>{{HERO_HEADLINE}} {{HERO_BODY}} {{HERO_IMAGE}}</div>"
     const r = validateSchemaTagCoherence(html, schema)
-    expect(r.keysWithoutTag).toEqual(["campo_orfao"])
-    expect(r.copyTagsWithoutKey).toEqual(["HERO_BODY"])
+    expect(r.keysWithoutTag).toEqual(["headline", "campo_orfao"])
+    expect(r.copyTagsWithoutKey).toEqual(["HERO_HEADLINE", "HERO_BODY"])
   })
 
-  it("coerência total → listas vazias", () => {
-    const html = "<div>{{HERO_HEADLINE}}</div>"
+  it("HTML alinhado ao schema → listas vazias", () => {
+    const html = "<div>{{HEADLINE}}</div>"
     const r = validateSchemaTagCoherence(html, [schema[0]])
     expect(r.keysWithoutTag).toEqual([])
     expect(r.copyTagsWithoutKey).toEqual([])
+  })
+
+  it("tag de sistema (logo, preheader, href) nunca é órfã", () => {
+    const html = "<div>{{HEADLINE}} {{LOGO}} {{PREHEADER}} {{HERO_CTA_URL}}</div>"
+    const r = validateSchemaTagCoherence(html, [schema[0]])
+    expect(r.copyTagsWithoutKey).toEqual([])
+    expect(r.unknownTagsWithoutKey).toEqual([])
+  })
+
+  it("tag fora do registry e fora do schema é reportada à parte", () => {
+    const html = "<div>{{HEADLINE}} {{SELO_MISTERIOSO}}</div>"
+    const r = validateSchemaTagCoherence(html, [schema[0]])
+    expect(r.unknownTagsWithoutKey).toEqual(["SELO_MISTERIOSO"])
+  })
+})
+
+describe("auditSchemaTags — propõe o retagueamento", () => {
+  it("legacyTag aponta a tag que o HTML usa no papel do campo", () => {
+    const schema: ComponentOutputField[] = [
+      {
+        key: "coupon_code",
+        label: "Cupom",
+        type: "text_short",
+        max_len: 15,
+        required: true,
+        example: "",
+        guidance: "",
+      },
+    ]
+    // Aqui o HTML já está certo — {{COUPON_CODE}} É o UPPER(key).
+    expect(auditSchemaTags("<i>{{COUPON_CODE}}</i>", schema).ok).toBe(true)
+
+    // Aqui não: o schema pede `body` e o HTML fala {{HERO_BODY}}.
+    const a = auditSchemaTags("<i>{{HERO_BODY}}</i>", [
+      { ...schema[0], key: "body", max_len: 200 },
+    ])
+    expect(a.missing[0].placeholder).toBe("BODY")
+    expect(a.missing[0].legacyTag).toBe("HERO_BODY")
   })
 })
 

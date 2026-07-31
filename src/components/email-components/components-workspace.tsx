@@ -311,33 +311,38 @@ export function ComponentsWorkspace() {
         data?: { variant?: EmailComponentVariant }
       }
       const saved = json.variant ?? json.data?.variant
-      toast({ title: "Variante salva" })
-      // Warning NÃO-BLOQUEANTE de coerência schema↔tags do HTML: campo sem
-      // {{TAG}} gera copy sem slot no template; tag de copy sem campo fica
-      // no fallback tag-registry. Não impede o save (variantes legadas).
+      // O schema é a base: cada campo endereça {{UPPER(key)}} no HTML. O que
+      // não bate NÃO impede o save (a biblioteca tem variantes legadas e
+      // travar aqui travaria o conserto delas) — mas o toast grita e o painel
+      // "Schema × HTML" do editor mantém os dois lados à vista.
       const coherence = validateSchemaTagCoherence(
         payload.html,
         payload.output_schema,
       )
-      if (
-        coherence.keysWithoutTag.length > 0 ||
-        coherence.copyTagsWithoutKey.length > 0
-      ) {
-        const parts: string[] = []
-        if (coherence.keysWithoutTag.length > 0) {
-          parts.push(
-            `Campos sem {{TAG}} no HTML: ${coherence.keysWithoutTag.join(", ")}`,
-          )
-        }
-        if (coherence.copyTagsWithoutKey.length > 0) {
-          parts.push(
-            `Tags de copy sem campo no schema: ${coherence.copyTagsWithoutKey.join(", ")}`,
-          )
-        }
+      const parts: string[] = []
+      if (coherence.keysWithoutTag.length > 0) {
+        parts.push(
+          `${coherence.keysWithoutTag.length} campo(s) sem {{UPPER(key)}} no HTML: ${coherence.keysWithoutTag.join(", ")}`,
+        )
+      }
+      if (coherence.copyTagsWithoutKey.length > 0) {
+        parts.push(
+          `tags de copy sem campo: ${coherence.copyTagsWithoutKey.join(", ")}`,
+        )
+      }
+      if (coherence.unknownTagsWithoutKey.length > 0) {
+        parts.push(
+          `tags que ninguém preenche: ${coherence.unknownTagsWithoutKey.join(", ")}`,
+        )
+      }
+      if (parts.length > 0) {
         toast({
-          title: "Atenção: schema e HTML não estão 100% alinhados",
-          description: parts.join(" · "),
+          variant: "destructive",
+          title: "Salva, mas o HTML não segue o schema",
+          description: `${parts.join(" · ")}. Veja o painel Schema × HTML.`,
         })
+      } else {
+        toast({ title: "Variante salva" })
       }
       await load()
       if (saved?.id) setSelectedId(saved.id)

@@ -37,6 +37,7 @@ import {
   EGToggle,
 } from "@/components/email-generation/ui/eg-atoms"
 import { OutputSchemaEditor } from "./output-schema-editor"
+import { SchemaTagAuditPanel } from "./schema-tag-audit-panel"
 
 /** Rascunho editável de variante (strings vazias no lugar de null). */
 export interface VariantDraft {
@@ -515,6 +516,18 @@ export function VariantEditor({
         <OutputSchemaEditor
           schema={draft.output_schema}
           onChange={(s) => set({ output_schema: s })}
+        />
+
+        {/* Alinhamento schema ↔ HTML. Audita o HTML EFETIVO (o tagueado
+            aprovado quando existe, senão o original) — é o que o pipeline
+            consome. Não bloqueia salvar; fica visível até ser consertado. */}
+        <SchemaTagAuditPanel
+          html={
+            taggingStatus === "approved" && taggedHtml
+              ? taggedHtml
+              : draft.html
+          }
+          schema={draft.output_schema}
         />
       </div>
 
