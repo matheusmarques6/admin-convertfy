@@ -157,7 +157,7 @@ describe("design system é o input principal da hero", () => {
   it("a seção abre o system prompt, logo depois do papel", () => {
     const p = DEFAULT_HERO_SYSTEM_PROMPT
     expect(p).toContain("<design_system>")
-    expect(p).toContain("THIS IS YOUR PRIMARY BRIEF")
+    expect(p).toContain("THIS IS THE SPECIFICATION OF THE HERO")
     // Antes das regras de origem da região e das regras estruturais.
     expect(p.indexOf("<design_system>")).toBeLessThan(
       p.indexOf("<hero_source_modes>"),
@@ -178,18 +178,38 @@ describe("design system é o input principal da hero", () => {
     )
   })
 
-  // A hierarquia que impede o briefing de virar licença para redesenhar —
-  // foi assim que a hero da Luxe Lift foi achatada.
-  it("declara o que ele NÃO supera", () => {
+  // O design system é a ESPECIFICAÇÃO: manda inclusive na estrutura, e a
+  // região é só o material. Sem isso ele vira decoração — foi o que
+  // aconteceu na Luxe Lift, com o briefing descrevendo um layout e o
+  // prompt proibindo o agente de chegar nele.
+  it("a especificação vence a região, inclusive em estrutura", () => {
     const p = DEFAULT_HERO_SYSTEM_PROMPT
-    expect(p).toContain("What it never overrides")
-    expect(p).toContain("pipeline invariants")
-    expect(p).toContain("never a licence to rebuild")
+    expect(p).toContain("THE SPECIFICATION WINS — including on structure")
+    expect(p).toContain("The region carries no authority of its own")
+    expect(p).toContain("STARTING POINT")
+  })
+
+  // O que nem a especificação autoriza: são invariantes do pipeline, e
+  // afrouxá-los faz o agente inventar copy para preencher o layout novo.
+  it("declara o que a especificação NÃO autoriza", () => {
+    const p = DEFAULT_HERO_SYSTEM_PROMPT
+    expect(p).toContain("What you may NOT do, even to satisfy the spec")
+    expect(p).toContain("invent copy")
+    expect(p).toContain("verbatim")
+  })
+
+  // Sem briefing escrito, nada muda: a região volta a ser intocável.
+  it("sem design system, a região é estruturalmente final", () => {
+    const p = DEFAULT_HERO_SYSTEM_PROMPT
+    expect(p).toContain(
+      "THEN, and only then, the region is structurally final",
+    )
+    expect(p).toContain("WITHOUT one, the region is structurally final")
   })
 
   it("diz o que fazer quando não há briefing escrito", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
-      "Empty means nothing was written for this variant",
+      "Empty <design_system> means nothing was written for this variant",
     )
   })
 })

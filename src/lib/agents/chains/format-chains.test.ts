@@ -256,13 +256,28 @@ describe("prompts default da cadeia", () => {
 
   // Enxerto por ID: quando a região vem da biblioteca (grafted por código)
   // ela é estruturalmente FINAL — o agente só substitui.
-  it("hero: modo library é substituição pura", () => {
+  // O modo library deixou de ser incondicionalmente "substituição pura":
+  // com design system escrito, a especificação decide a estrutura final e a
+  // região é o material. SEM design system, nada muda — a região volta a ser
+  // intocável, que é o comportamento de origem.
+  it("hero: modo library é substituição pura SEM design system", () => {
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
       "<hero_source>library</hero_source>",
     )
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("STRUCTURALLY FINAL")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "WITHOUT one, the region is structurally final",
+    )
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("SUBSTITUTION ONLY")
     expect(DEFAULT_HERO_USER_TEMPLATE).toContain("{{hero_source}}")
+  })
+
+  it("hero: COM design system, a especificação decide a estrutura", () => {
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "WITH a <design_system>, the region is the starting point",
+    )
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain(
+      "THE SPECIFICATION WINS — including on structure",
+    )
   })
 
   it("hero: fidelidade estrutural no fallback montador (Luxe Lift achatada)", () => {
