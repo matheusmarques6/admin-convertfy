@@ -263,3 +263,37 @@ describe("a seção do design system só existe quando há texto", () => {
     expect(out.trimStart().startsWith("<store>")).toBe(true)
   })
 })
+
+// O relatório emitido SEM as tags: o modelo escreve só o objeto e nada no
+// caminho o reconhece. Um email entregue saiu com `…"],"logo":"light"}`
+// impresso no rodapé.
+describe("relatório solto, sem as tags", () => {
+  const frag = "<table><tr><td>hero</td></tr></table>"
+  const report = '{"imagem":"aplicada","linhas_removidas":["cta2"],"logo":"light"}'
+
+  it("JSON depois do HTML é cortado", () => {
+    expect(
+      parseHeroFragment(`<CFY_HERO_OUTPUT>${frag}\n${report}</CFY_HERO_OUTPUT>`),
+    ).toBe(frag)
+  })
+
+  it("JSON parcial (o modelo cortou no meio) também sai", () => {
+    expect(
+      parseHeroFragment(`<CFY_HERO_OUTPUT>${frag}\n{"logo":"light"</CFY_HERO_OUTPUT>`),
+    ).toBe(frag)
+  })
+
+  // Não pode comer conteúdo: chave sem as chaves do relatório fica.
+  it("não corta um { legítimo no fim do HTML", () => {
+    const comChave = '<table><tr><td>use o código {PROMO}</td></tr></table>'
+    expect(
+      parseHeroFragment(`<CFY_HERO_OUTPUT>${comChave}</CFY_HERO_OUTPUT>`),
+    ).toBe(comChave)
+  })
+
+  it("não mexe em fragmento sem nada depois da última tag", () => {
+    expect(parseHeroFragment(`<CFY_HERO_OUTPUT>${frag}</CFY_HERO_OUTPUT>`)).toBe(
+      frag,
+    )
+  })
+})

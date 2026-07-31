@@ -343,7 +343,32 @@ export function stripHeroReport(fragment: string): string {
   // Abertura sem fechamento: o resto do texto é relatório, não conteúdo.
   const orphan = out.indexOf(HERO_REPORT_OPEN)
   if (orphan !== -1) out = out.slice(0, orphan)
-  return out.replaceAll(HERO_REPORT_CLOSE, "").trim()
+  out = out.replaceAll(HERO_REPORT_CLOSE, "").trim()
+  return stripBareReportJson(out)
+}
+
+/**
+ * Corta o relatório emitido SEM as tags — JSON solto depois do HTML.
+ *
+ * As tags são o contrato, mas o modelo às vezes escreve só o objeto. Aí
+ * nada no caminho o reconhece e ele chega ao email como texto: o rodapé
+ * saiu com `…"],"logo":"light"}` à mostra, num email entregue.
+ *
+ * O corte exige DUAS coisas para não comer conteúdo legítimo: o trecho
+ * final precisa começar em `{` depois da última tag HTML fechada, e conter
+ * pelo menos uma chave do relatório. Um `{` solto no meio de copy não
+ * satisfaz as duas.
+ */
+const REPORT_KEYS = /"(?:imagem|campos_vazios|linhas_removidas|logo)"\s*:/
+
+export function stripBareReportJson(fragment: string): string {
+  const lastClose = fragment.lastIndexOf(">")
+  if (lastClose === -1) return fragment
+  const tail = fragment.slice(lastClose + 1)
+  const open = tail.indexOf("{")
+  if (open === -1) return fragment
+  if (!REPORT_KEYS.test(tail.slice(open))) return fragment
+  return (fragment.slice(0, lastClose + 1) + tail.slice(0, open)).trimEnd()
 }
 
 /** Extrai o fragmento entre os wrappers; lança HeroOutputInvalidError. */
