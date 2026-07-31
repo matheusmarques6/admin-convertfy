@@ -198,7 +198,16 @@ export interface CopyDeviation {
  */
 export interface FieldDeviation {
   key: string
-  kind: "max_len" | "required_empty"
+  /**
+   * `missing` = o campo foi PEDIDO no payload e voltou sem valor. Não é
+   * erro fatal (o campo pode ser opcional por desenho), mas é sempre um
+   * fato a registrar: ou a copy falhou, ou o campo não devia estar no
+   * schema. Antes só `required` gerava sinal — e como a biblioteca tem
+   * praticamente tudo com `required:false`, campo faltando era silêncio
+   * absoluto: o `hero_cta_2_label` sumiu do email da Luxe Lift sem uma
+   * linha de log em lugar nenhum.
+   */
+  kind: "max_len" | "required_empty" | "missing"
   length: number
   max_len: number
 }
@@ -225,9 +234,12 @@ export function findFieldDeviations(
           ? String(raw)
           : ""
     if (!text) {
-      if (f.required) {
-        out.push({ key: f.key, kind: "required_empty", length: 0, max_len: f.max_len })
-      }
+      out.push({
+        key: f.key,
+        kind: f.required ? "required_empty" : "missing",
+        length: 0,
+        max_len: f.max_len,
+      })
       continue
     }
     if (f.max_len > 0 && text.length > f.max_len) {

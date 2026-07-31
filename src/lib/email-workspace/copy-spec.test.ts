@@ -134,14 +134,27 @@ describe("copy-spec", () => {
       ).toEqual([])
     })
 
-    it("required vazio → required_empty; opcional vazio → nada", () => {
+    // Campo PEDIDO que volta vazio é sempre um fato — `missing` quando
+    // opcional, `required_empty` quando obrigatório. Antes o opcional era
+    // silêncio, e como a biblioteca tem quase tudo com required:false, um
+    // campo sumir do email não deixava rastro nenhum.
+    it("vazio vira desvio nos dois casos, com severidade diferente", () => {
       const fields = [
         field({}),
         field({ key: "hint", required: false, max_len: 90 }),
       ]
       expect(findFieldDeviations({}, fields)).toEqual([
         { key: "headline", kind: "required_empty", length: 0, max_len: 40 },
+        { key: "hint", kind: "missing", length: 0, max_len: 90 },
       ])
+    })
+
+    it("campo de imagem/asset vazio NÃO é desvio de copy", () => {
+      const fields = [
+        field({ key: "hero_image", type: "image", required: false, max_len: 0 }),
+        field({ key: "selo", nature: "asset_fixo", required: false, max_len: 0 }),
+      ]
+      expect(findFieldDeviations({}, fields)).toEqual([])
     })
 
     it("max_len estourado → max_len (com o tamanho real)", () => {
