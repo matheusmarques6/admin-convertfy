@@ -518,16 +518,18 @@ export function VariantEditor({
           onChange={(s) => set({ output_schema: s })}
         />
 
-        {/* Alinhamento schema ↔ HTML. Audita o HTML EFETIVO (o tagueado
-            aprovado quando existe, senão o original) — é o que o pipeline
-            consome. Não bloqueia salvar; fica visível até ser consertado. */}
+        {/* Relação campo ↔ tag, editável dos dois lados. Opera no HTML de
+            ORIGEM (draft.html) — é o que o designer autora e o que o Taguedor
+            recebe. Quando existe tagueado aprovado, o painel avisa que é ele
+            que roda em produção. Não bloqueia salvar. */}
         <SchemaTagAuditPanel
-          html={
-            taggingStatus === "approved" && taggedHtml
-              ? taggedHtml
-              : draft.html
-          }
+          html={draft.html}
           schema={draft.output_schema}
+          onChangeHtml={(html) => set({ html })}
+          onChangeSchema={(output_schema) => set({ output_schema })}
+          approvedTaggedHtml={
+            taggingStatus === "approved" ? taggedHtml : null
+          }
         />
       </div>
 

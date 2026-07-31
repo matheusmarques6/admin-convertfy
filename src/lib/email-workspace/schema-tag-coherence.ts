@@ -72,6 +72,22 @@ export interface SchemaTagAudit {
   ok: boolean
 }
 
+/**
+ * Renomeia `{{FROM}}` para `{{TO}}` no HTML — todas as ocorrências, tolerando
+ * espaços internos (`{{ HERO_BODY }}`) e sem pegar tag de nome parecido
+ * (`{{CTA}}` não casa dentro de `{{CTA_LABEL}}`, porque o `}}` faz parte do
+ * padrão). É a operação por trás de todo conserto do painel Schema × HTML.
+ */
+export function renameTagInHtml(
+  html: string,
+  from: string,
+  to: string,
+): string {
+  if (!from || !to || from === to) return html
+  const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return html.replace(new RegExp(`\\{\\{\\s*${esc}\\s*\\}\\}`, "g"), `{{${to}}}`)
+}
+
 /** Tags distintas do HTML, na ordem de aparição. */
 export function extractTags(html: string): string[] {
   const out: string[] = []
