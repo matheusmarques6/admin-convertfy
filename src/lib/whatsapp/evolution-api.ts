@@ -235,13 +235,22 @@ export class EvolutionAPI {
 
   // ── Instância ──────────────────────────────────────────────────
 
-  async createInstance(): Promise<CreateInstanceResult> {
+  /**
+   * `syncFullHistory` amplia o histórico que o WhatsApp entrega NO
+   * PAREAMENTO — é o único momento em que ele manda conversas antigas,
+   * e não se repete. Default false: só liga quando o operador pede a
+   * importação, porque um sync pesado logo após conectar é justamente
+   * o padrão de tráfego que a detecção do WhatsApp observa.
+   * Ver docs/crm/whatsapp-history-sync-riscos.md.
+   */
+  async createInstance(opts?: { syncFullHistory?: boolean }): Promise<CreateInstanceResult> {
     const json = await this.request("/instance/create", {
       method: "POST",
       json: {
         instanceName: this.config.instanceName,
         integration: "WHATSAPP-BAILEYS",
         qrcode: true,
+        syncFullHistory: opts?.syncFullHistory === true,
       },
     })
     return parseCreateInstanceResponse(json, this.config.instanceName)
@@ -401,6 +410,92 @@ export class EvolutionAPI {
       return null
     }
   }
+
+  // ── Histórico (leitura do banco da Evolution) ──────────────────
+  // Exige DATABASE_SAVE_DATA_HISTORIC/CHATS na Evolution. Nada aqui
+  // fala com o WhatsApp: é HTTP entre nossos servidores, então pode
+  // ser paginado no ritmo que quisermos.
+  //
+  // O envelope de resposta mudou entre versões (array cru, {records},
+  // {chats|messages:{records}}) — os dois métodos aceitam as três
+  // formas em vez de assumir a da versão instalada.
+
+  /** JIDs das conversas conhecidas pela instância. */
+  async findChats(): Promise<string[]> {
+    const json = await this.request<unknown>(`/chat/findChats/${this.config.instanceName}`, {
+      method: "POST",
+      json: {},
+    })
+
+    const rows = unwrapRecords(json, "chats")
+    const jids: string[] = []
+    for (const row of rows) {
+      const r = (row ?? {}) as Record<string, unknown>
+      // v2 usa `remoteJid`; builds antigas expõem o jid direto em `id`.
+      const jid =
+        (typeof r.remoteJid === "string" && r.remoteJid) ||
+        (typeof r.id === "string" && r.id.includes("@") ? r.id : null)
+      if (jid) jids.push(jid)
+    }
+    return Array.from(new Set(jids))
+  }
+
+  /**
+   * Página de mensagens de uma conversa. `page` é 1-based e `pageSize`
+   * vai no campo `offset` — que na Evolution v2 é o TAMANHO da página,
+   * não o deslocamento.
+   */
+  async findMessages(args: {
+    remoteJid: string
+    page?: number
+    pageSize?: number
+  }): Promise<{ records: Record<string, unknown>[]; total: number | null; pages: number | null }> {
+    const json = await this.request<unknown>(`/chat/findMessages/${this.config.instanceName}`, {
+      method: "POST",
+      json: {
+        where: { key: { remoteJid: args.remoteJid } },
+        page: args.page ?? 1,
+        offset: args.pageSize ?? 100,
+      },
+    })
+
+    const envelope = pickEnvelope(json, "messages")
+    return {
+      records: unwrapRecords(json, "messages"),
+      total: numOrNull(envelope?.total),
+      pages: numOrNull(envelope?.pages),
+    }
+  }
+}
+
+function numOrNull(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/** `{key: {...}}` quando a resposta é envelopada; null caso contrário. */
+export function pickEnvelope(json: unknown, key: string): Record<string, unknown> | null {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null
+  const inner = (json as Record<string, unknown>)[key]
+  if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+    return inner as Record<string, unknown>
+  }
+  return null
+}
+
+/** Aceita array cru, `{records}` ou `{<key>: {records}}`. */
+export function unwrapRecords(json: unknown, key: string): Record<string, unknown>[] {
+  if (Array.isArray(json)) return json as Record<string, unknown>[]
+  if (!json || typeof json !== "object") return []
+
+  const root = json as Record<string, unknown>
+  const envelope = pickEnvelope(json, key)
+  const candidates = [envelope?.records, root.records, root[key]]
+
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c as Record<string, unknown>[]
+  }
+  return []
 }
 
 export function createEvolutionClient(config: EvolutionConfig): EvolutionAPI {

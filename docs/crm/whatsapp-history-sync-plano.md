@@ -1,4 +1,4 @@
-# Importar histórico do WhatsApp — plano de implementação
+# Importar histórico do WhatsApp — plano e implementação
 
 Decisão tomada: **o histórico é necessário.** Este documento mapeia o que
 precisa mudar e por que este desenho é o mais seguro entre os possíveis.
@@ -6,6 +6,11 @@ precisa mudar e por que este desenho é o mais seguro entre os possíveis.
 Riscos e a decisão que os aceitou estão em
 [`whatsapp-history-sync-riscos.md`](./whatsapp-history-sync-riscos.md).
 Aqui o foco é execução.
+
+> **Status: implementado** (migration `20261065_whatsapp_history_import.sql`).
+> Ambiente confirmado: Evolution **2.3.7** com `DATABASE_SAVE_DATA_HISTORIC=true`
+> e `DATABASE_SAVE_DATA_CHATS=true` — os dois pré-requisitos do modelo pull.
+> Falta apenas rodar a migration, dar deploy e executar o teste da seção 8.
 
 ---
 
@@ -184,21 +189,60 @@ WHERE is_historical = true
 
 ---
 
-## 7. Antes de escrever código — verificações bloqueantes
+## 7. O que foi implementado
 
-Nenhuma delas eu consigo fazer daqui (exigem acesso ao servidor da
-Evolution):
+| Área | Arquivo |
+|---|---|
+| Migration (coluna, trigger, jobs, RPC) | `supabase/migrations/20261065_whatsapp_history_import.sql` |
+| Client (`findChats`, `findMessages`, `syncFullHistory`) | `src/lib/whatsapp/evolution-api.ts` |
+| Modo importação na persistência | `src/lib/whatsapp/evolution-processor.ts` |
+| Data real na criação da thread | `src/lib/whatsapp/webhook-processor.ts` |
+| Executor do job (cursor + budget + claim) | `src/lib/services/crm-history-import.service.ts` |
+| Rotas do job (criar/consultar/pausar) | `src/app/api/crm/channels/[id]/import-history/route.ts` |
+| Cron | `src/app/api/cron/crm-history-import/route.ts` + `vercel.json` |
+| UI (medir → importar, progresso) | `src/components/crm/channels/history-import-dialog.tsx` |
+| Testes do envelope da API | `src/lib/whatsapp/evolution-history-envelope.test.ts` |
 
-1. **Versão da Evolution instalada** — define se `findChats`/`findMessages`
-   existem e com que assinatura.
-2. **Persistência ligada** (`DATABASE_SAVE_DATA_*`) — sem isso o desenho
-   pull não funciona, e o plano muda.
-3. **Número descartável disponível** para o primeiro pareamento.
-4. **Volume esperado** — quantos contatos e quanto tempo de histórico
-   (é o que o dry-run confirma).
+Duas decisões que mudaram durante a implementação:
 
-Com 1 e 2 respondidos, a implementação segue direto pela ordem da seção 4.
+- **Claim atômico no job.** O cron dispara a cada minuto e uma execução
+  dura até 4 min: sem `UPDATE ... WHERE status = 'pending'` condicional,
+  várias execuções pegariam o mesmo job e avançariam o cursor uma por
+  cima da outra. Quem perde a corrida recebe zero linhas. Job em
+  `running` sem heartbeat há 6 min é tratado como órfão de worker morto
+  e pode ser retomado.
+- **Envelope tolerante.** O formato de resposta do `findChats`/
+  `findMessages` mudou entre versões (array cru → `{records}` →
+  `{messages:{records}}`). O parser aceita as três em vez de assumir a
+  da versão instalada — travado por teste.
+
+Uma limitação conhecida: com janela de data (`since_days`), a rotina
+ainda percorre a conversa inteira, pulando o que está fora da janela. A
+ordem de retorno do `findMessages` não é garantida entre versões, então
+parar cedo poderia truncar histórico válido. Custa tempo, não corretude.
 
 ---
 
-*Levantado em julho de 2026.*
+## 8. Teste antes de usar em número de produção
+
+1. Rodar a migration.
+2. Parear um **número descartável** — a conexão precisa acontecer com
+   `syncFullHistory` ligado para o histórico chegar na Evolution.
+3. No card do canal: **Importar histórico → Medir (não grava)**. Isso
+   percorre tudo contando. O resultado diz o volume real.
+4. Se o volume for razoável, importar com janela de 90 dias e sem mídia.
+5. Conferir no inbox: conversas com data original, sem badge de não-lida
+   e sem notificação no sino.
+6. Só então repetir no número de produção.
+
+Rollback a qualquer momento:
+
+```sql
+DELETE FROM crm_messages
+WHERE is_historical = true
+  AND thread_id IN (SELECT id FROM crm_threads WHERE channel_id = :channel_id);
+```
+
+---
+
+*Levantado e implementado em julho de 2026.*

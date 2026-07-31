@@ -16,10 +16,12 @@ import {
   FolderInput,
   Archive,
   Eraser,
+  History,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { EvolutionQrModal } from "@/components/crm/channels/evolution-qr-modal"
+import { HistoryImportDialog } from "@/components/crm/channels/history-import-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -55,6 +57,10 @@ export default function ChannelsPage() {
   const channels = data?.channels || []
   const [creating, setCreating] = useState<ChannelKind | null>(null)
   const [qrTarget, setQrTarget] = useState<QrTarget | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<{
+    channelId: string
+    channelName: string
+  } | null>(null)
 
   return (
     <CrmPageShell
@@ -110,6 +116,9 @@ export default function ChannelsPage() {
                 onReconnect={() =>
                   setQrTarget({ channelId: c.id, channelName: c.display_name })
                 }
+                onImportHistory={() =>
+                  setHistoryTarget({ channelId: c.id, channelName: c.display_name })
+                }
                 onChanged={() => mutate()}
               />
             ))}
@@ -147,6 +156,17 @@ export default function ChannelsPage() {
           />
         )}
 
+        {historyTarget && (
+          <HistoryImportDialog
+            channelId={historyTarget.channelId}
+            channelName={historyTarget.channelName}
+            onClose={() => {
+              setHistoryTarget(null)
+              mutate()
+            }}
+          />
+        )}
+
         {qrTarget && (
           <EvolutionQrModal
             channelId={qrTarget.channelId}
@@ -166,14 +186,25 @@ export default function ChannelsPage() {
 function ChannelCard({
   channel,
   onReconnect,
+  onImportHistory,
   onChanged,
 }: {
   channel: Channel
   onReconnect: () => void
+  onImportHistory: () => void
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState<
-    "check" | "logout" | "remove" | "restart" | "migrate" | "archive" | "purge" | "delete" | null
+    | "check"
+    | "logout"
+    | "remove"
+    | "restart"
+    | "migrate"
+    | "archive"
+    | "purge"
+    | "delete"
+    | "history"
+    | null
   >(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionOk, setActionOk] = useState<string | null>(null)
@@ -496,6 +527,21 @@ function ChannelCard({
           >
             <FolderInput className="h-3 w-3" />
             {busy === "migrate" ? "Importando..." : "Importar conversas antigas"}
+          </button>
+        )}
+        {/* Só canal ativo: o histórico é lido da instância na Evolution,
+            que deixa de existir quando o canal é removido. */}
+        {isEvolution && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Importa as conversas antigas que o WhatsApp entregou no pareamento deste número"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={onImportHistory}
+          >
+            <History className="h-3 w-3" />
+            Importar histórico
           </button>
         )}
         {/* Canal em uso: limpa o histórico sem perder o canal. No canal

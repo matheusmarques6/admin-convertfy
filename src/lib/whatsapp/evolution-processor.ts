@@ -101,18 +101,48 @@ export async function processEvolutionEvent(
   return result
 }
 
-async function handleEvolutionMessage(
+/**
+ * Modo importação de histórico. O caminho de persistência é o MESMO do
+ * fluxo ao vivo — dedup, thread, upsert idempotente — mas quatro
+ * comportamentos que estão certos para mensagem nova são errados para
+ * mensagem de meses atrás:
+ *
+ *  - notificar o sino (seriam centenas de notificações);
+ *  - reabrir thread já resolvida;
+ *  - baixar mídia (é o que pesa em tempo e storage — opt-in);
+ *  - carimbar created_at com now() em vez da data real da mensagem.
+ *
+ * Sem `opts`, o comportamento é idêntico ao de antes.
+ */
+export interface EvolutionPersistOptions {
+  historical?: boolean
+  /** Só vale com historical: baixa e persiste a mídia mesmo assim. */
+  includeMedia?: boolean
+}
+
+export async function handleEvolutionMessage(
   admin: SupabaseClient,
   channel: EvolutionChannelRow,
   instanceName: string,
   data: Record<string, unknown>,
+  opts: EvolutionPersistOptions = {},
 ): Promise<boolean> {
+  const historical = opts.historical === true
   const content = buildEvolutionMessageContent(data)
   if (!content) return false
   if (shouldSkipRemoteJid(content.remoteJid)) return false
 
   const contactPhone = jidToPhone(content.remoteJid)
   if (!contactPhone) return false
+
+  // Data real da mensagem (epoch em segundos). Sem timestamp utilizável
+  // a linha entraria com now() e fingiria ser de hoje — na importação
+  // isso é pior que pular.
+  const occurredAt =
+    content.timestamp && content.timestamp > 0
+      ? new Date(content.timestamp * 1000).toISOString()
+      : null
+  if (historical && !occurredAt) return false
 
   // Dedup barato ANTES de mídia — é também o que impede a mensagem
   // enviada pela nossa API de duplicar quando ecoa com fromMe=true.
@@ -130,6 +160,9 @@ async function handleEvolutionMessage(
     contactExternalId: contactPhone,
     // pushName só é o nome do contato no inbound; fromMe traz o nosso.
     contactName: content.fromMe ? null : content.pushName,
+    // Thread criada pela importação nasce com a data da mensagem, não
+    // com now() — senão conversa de meses atrás sobe ao topo do inbox.
+    lastMessageAt: historical ? occurredAt : null,
   })
   if (!threadId) return false
 
@@ -139,7 +172,7 @@ async function handleEvolutionMessage(
   let mediaSize: number | null = null
   let mediaMime = content.mediaMime
   const isMediaType = ["image", "video", "audio", "document", "sticker"].includes(content.contentType)
-  if (isMediaType) {
+  if (isMediaType && (!historical || opts.includeMedia === true)) {
     let base64 = content.mediaBase64
     if (!base64) {
       const client = await getClientForChannel(admin, instanceName)
@@ -192,6 +225,7 @@ async function handleEvolutionMessage(
         metadata: { raw: rawForMetadata, evolution_key: { id: content.externalId, remoteJid: content.remoteJid } },
         sent_by_kind: content.fromMe ? "system" : "contact",
         status: content.fromMe ? "sent" : "received",
+        ...(historical ? { is_historical: true, created_at: occurredAt } : {}),
       },
       { onConflict: "thread_id,external_id", ignoreDuplicates: true },
     )
@@ -203,6 +237,11 @@ async function handleEvolutionMessage(
   }
 
   const inserted = (insertedRows?.length ?? 0) > 0
+
+  // Importação para aqui: mensagem antiga não notifica, não reabre
+  // conversa e não limpa notificação pendente.
+  if (historical) return inserted
+
   if (inserted && !content.fromMe) {
     // Sem janela de 24h no Baileys — inbound só reabre thread resolvida.
     await admin.from("crm_threads").update({ status: "open" }).eq("id", threadId).eq("status", "resolved")

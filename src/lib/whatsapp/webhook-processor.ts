@@ -355,7 +355,14 @@ async function handleInboundMessage(
  */
 export async function getOrCreateThread(
   admin: SupabaseClient,
-  args: { orgId: string; channelId: string; contactExternalId: string; contactName: string | null },
+  args: {
+    orgId: string
+    channelId: string
+    contactExternalId: string
+    contactName: string | null
+    /** Importação de histórico: data real da mensagem em vez de now(). */
+    lastMessageAt?: string | null
+  },
 ): Promise<string | null> {
   const { orgId, channelId, contactName } = args
   const phoneE164 = args.contactExternalId
@@ -388,7 +395,7 @@ export async function getOrCreateThread(
       contact_external_id: phoneE164,
       contact_name: contactName,
       status: "open",
-      last_message_at: new Date().toISOString(),
+      last_message_at: args.lastMessageAt ?? new Date().toISOString(),
     })
     .select("id")
     .single()

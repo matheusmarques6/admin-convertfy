@@ -1031,6 +1031,32 @@ APIs em `/api/crm/*` seguem o padrao do projeto: `createAdminClient` + Zod
 `/api/webhooks/whatsapp` com HMAC SHA-256, send via channel config,
 inbox unificado em `/admin/crm/inbox`.
 
+**Gestão de canais** (`/admin/comercial/canais`, jul/2026): o inbox lista
+threads por org — NUNCA por canal — então trocar de número deixa as
+conversas antigas na caixa para sempre, e "Remover" só desativa
+(`is_active=false`). Ações no card: `purge-threads` (GET = prévia
+contada, POST `mode: archive|delete`) limpa as conversas de um canal
+ativo; `DELETE /api/crm/channels/[id]` exclui o canal desativado de vez
+(CASCADE leva threads, mensagens e templates). Os dois limpam as
+notificações in-app das threads — elas se ligam por
+`metadata->>thread_id`, sem FK, e sobreviveriam ao CASCADE.
+
+**Importação de histórico do WhatsApp** (migration 20261065): o WhatsApp
+só entrega conversas antigas NO PAREAMENTO (`syncFullHistory`), e o
+risco de banimento está concentrado nesse momento — depois, ler o banco
+da Evolution é HTTP entre servidores nossos. Daí o modelo PULL: o
+webhook NÃO assina `MESSAGES_SET` (um POST único de milhares de
+mensagens estoura o limite de 4,5 MB do Vercel e toma 413 antes do nosso
+código, sem log nem retry); em vez disso, job em `crm_history_import_jobs`
+com cursor (conversa + página), processado pelo cron
+`/api/cron/crm-history-import` (a cada minuto, budget 240s, claim
+atômico contra execuções concorrentes). Modo `dry_run` mede sem gravar.
+`crm_messages.is_historical` marca o importado: não conta como não-lida
+e permite rollback seletivo. O trigger da thread passou a usar
+`GREATEST` no `last_message_at` — antes sobrescrevia sem comparar e
+qualquer mensagem fora de ordem afundava a conversa no inbox.
+Riscos e plano em `docs/crm/whatsapp-history-sync-{riscos,plano}.md`.
+
 **Automacao**: DAG em JSON versionado em `automations.dag`. Executor em
 `crm-automation-executor.service.ts` com 9 node types (trigger, condition,
 wait, send_whatsapp, create_activity, assign_owner, move_stage,

@@ -56,6 +56,10 @@
       "schedule": "40 6 * * *"
     },
     {
+      "path": "/api/cron/crm-history-import",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/weekly-feedback",
       "schedule": "40 7 * * 1"
     },
