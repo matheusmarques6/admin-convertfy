@@ -14,6 +14,8 @@ import {
   Trash2,
   Power,
   FolderInput,
+  Archive,
+  Eraser,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -170,7 +172,9 @@ function ChannelCard({
   onReconnect: () => void
   onChanged: () => void
 }) {
-  const [busy, setBusy] = useState<"check" | "logout" | "remove" | "restart" | "migrate" | null>(null)
+  const [busy, setBusy] = useState<
+    "check" | "logout" | "remove" | "restart" | "migrate" | "archive" | "purge" | null
+  >(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionOk, setActionOk] = useState<string | null>(null)
 
@@ -221,6 +225,57 @@ function ChannelCard({
       onChanged()
     } catch {
       setActionError("Falha ao importar conversas")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Tira do inbox as conversas DESTE canal — o inverso do importar.
+  // Caso de uso: trocou de número, o canal antigo continua listando
+  // centenas de conversas velhas na caixa. 'archive' é reversível (some
+  // dos filtros, fica em "Todos"); 'delete' apaga conversas e mensagens.
+  const purgeThreads = async (mode: "archive" | "delete") => {
+    setBusy(mode === "archive" ? "archive" : "purge")
+    setActionError(null)
+    setActionOk(null)
+    try {
+      const previewRes = await fetch(`/api/crm/channels/${channel.id}/purge-threads`)
+      const previewJson = await previewRes.json()
+      const preview = previewJson.data ?? previewJson
+      if (!previewRes.ok || previewJson.error) {
+        setActionError(previewJson.error?.message || "Falha ao contar as conversas")
+        return
+      }
+      if (!preview.threads) {
+        setActionOk("Este canal não tem conversas no inbox.")
+        return
+      }
+
+      const confirmMsg =
+        mode === "archive"
+          ? `Arquivar ${preview.threads} conversa(s) de "${channel.display_name}"? Elas somem dos filtros Abertos/Pendentes/Resolvidos e continuam acessíveis em "Todos".`
+          : `Apagar ${preview.threads} conversa(s) e ${preview.messages} mensagem(ns) de "${channel.display_name}"? Isso é permanente — não dá para desfazer.`
+      if (!window.confirm(confirmMsg)) return
+
+      const res = await fetch(`/api/crm/channels/${channel.id}/purge-threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      })
+      const json = await res.json()
+      const data = json.data ?? json
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao limpar as conversas")
+        return
+      }
+      setActionOk(
+        mode === "archive"
+          ? `${data.threads} conversas arquivadas.`
+          : `${data.threads} conversas e ${data.messages} mensagens apagadas.`,
+      )
+      onChanged()
+    } catch {
+      setActionError("Falha ao limpar as conversas")
     } finally {
       setBusy(null)
     }
@@ -403,6 +458,34 @@ function ChannelCard({
             {busy === "migrate" ? "Importando..." : "Importar conversas antigas"}
           </button>
         )}
+        <button
+          type="button"
+          className="crm-button-ghost"
+          title="Arquiva as conversas deste canal — somem dos filtros do inbox e continuam acessíveis em Todos"
+          style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+          disabled={busy !== null}
+          onClick={() => purgeThreads("archive")}
+        >
+          <Archive className="h-3 w-3" />
+          {busy === "archive" ? "Arquivando..." : "Arquivar conversas"}
+        </button>
+        <button
+          type="button"
+          className="crm-button-ghost"
+          title="Apaga permanentemente as conversas e mensagens deste canal"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--crm-space-2)",
+            color: "var(--crm-danger-fg)",
+            opacity: busy ? 0.5 : 1,
+          }}
+          disabled={busy !== null}
+          onClick={() => purgeThreads("delete")}
+        >
+          <Eraser className="h-3 w-3" />
+          {busy === "purge" ? "Apagando..." : "Apagar conversas"}
+        </button>
         {isEvolution && channel.is_active && (
           <button
             type="button"
