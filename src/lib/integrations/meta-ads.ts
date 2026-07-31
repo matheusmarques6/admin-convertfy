@@ -9,6 +9,27 @@ export interface MetaAdsConfig {
   businessId?: string
 }
 
+/** Linha de insight por dia + entidade (campanha/adset/anúncio). */
+export interface MetaDailyInsight {
+  day: string
+  level: "campaign" | "adset" | "ad"
+  entity_id: string
+  campaign_id: string | null
+  campaign_name: string | null
+  adset_id: string | null
+  adset_name: string | null
+  ad_id: string | null
+  ad_name: string | null
+  spend: number
+  impressions: number
+  reach: number
+  clicks: number
+  ctr: number | null
+  cpc: number | null
+  cpm: number | null
+  leads: number
+}
+
 export class MetaAdsService {
   private accessToken: string
   private adAccountId: string
@@ -155,6 +176,121 @@ export class MetaAdsService {
 
     return {
       data: response.data.map((item: unknown) => this.parseInsights(item as Record<string, unknown>)),
+    }
+  }
+
+  /**
+   * Insights quebrados POR DIA e por nível (campanha/adset/anúncio),
+   * com os nomes das entidades — que são a chave de atribuição contra
+   * as UTMs do CRM ({{campaign.name}}, {{adset.name}}, {{ad.name}}).
+   *
+   * Pagina o `paging.next` até o fim (contas grandes trazem centenas de
+   * linhas por dia). `time_increment: 1` é o que garante uma linha por dia.
+   */
+  async getDailyInsights(params: {
+    level: "campaign" | "adset" | "ad"
+    timeRange: { since: string; until: string }
+    maxPages?: number
+  }): Promise<MetaDailyInsight[]> {
+    const fields = [
+      "date_start",
+      "date_stop",
+      "campaign_id",
+      "campaign_name",
+      "adset_id",
+      "adset_name",
+      "ad_id",
+      "ad_name",
+      "spend",
+      "impressions",
+      "reach",
+      "clicks",
+      "ctr",
+      "cpc",
+      "cpm",
+      "actions",
+    ].join(",")
+
+    const url = new URL(`${GRAPH_API_URL}/${this.adAccountId}/insights`)
+    url.searchParams.set("access_token", this.accessToken)
+    url.searchParams.set("fields", fields)
+    url.searchParams.set("level", params.level)
+    url.searchParams.set("time_increment", "1")
+    url.searchParams.set("time_range", JSON.stringify(params.timeRange))
+    url.searchParams.set("limit", "500")
+
+    const out: MetaDailyInsight[] = []
+    let next: string | null = url.toString()
+    const maxPages = params.maxPages ?? 20
+
+    for (let page = 0; page < maxPages && next; page++) {
+      const response = await fetchWithRetry(next)
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(
+          error.error?.message || `Meta API error: ${response.status}`,
+        )
+      }
+      const json = (await response.json()) as {
+        data?: Array<Record<string, unknown>>
+        paging?: { next?: string }
+      }
+      for (const row of json.data ?? []) {
+        out.push(this.parseDailyInsight(row, params.level))
+      }
+      next = json.paging?.next ?? null
+    }
+
+    return out
+  }
+
+  private parseDailyInsight(
+    raw: Record<string, unknown>,
+    level: "campaign" | "adset" | "ad",
+  ): MetaDailyInsight {
+    const actions =
+      (raw.actions as Array<{ action_type: string; value: string }>) || []
+    // A Meta reporta lead em chaves diferentes conforme a origem
+    // (formulário nativo, site com pixel, mensagem). Soma as variantes
+    // sem dupla contagem do agregado "lead".
+    const leadKeys = [
+      "lead",
+      "onsite_conversion.lead_grouped",
+      "offsite_conversion.fb_pixel_lead",
+    ]
+    const leadCounts = leadKeys.map(
+      (k) => parseInt(actions.find((a) => a.action_type === k)?.value ?? "0", 10) || 0,
+    )
+    const leads = Math.max(...leadCounts, 0)
+
+    const num = (v: unknown) => parseFloat(v as string) || 0
+    const int = (v: unknown) => parseInt(v as string, 10) || 0
+
+    const entityId =
+      level === "campaign"
+        ? (raw.campaign_id as string)
+        : level === "adset"
+          ? (raw.adset_id as string)
+          : (raw.ad_id as string)
+
+    return {
+      day: raw.date_start as string,
+      level,
+      entity_id: entityId ?? "",
+      campaign_id: (raw.campaign_id as string) ?? null,
+      campaign_name: (raw.campaign_name as string) ?? null,
+      adset_id: (raw.adset_id as string) ?? null,
+      adset_name: (raw.adset_name as string) ?? null,
+      ad_id: (raw.ad_id as string) ?? null,
+      ad_name: (raw.ad_name as string) ?? null,
+      spend: num(raw.spend),
+      impressions: int(raw.impressions),
+      reach: int(raw.reach),
+      clicks: int(raw.clicks),
+      ctr: raw.ctr != null ? num(raw.ctr) : null,
+      cpc: raw.cpc != null ? num(raw.cpc) : null,
+      cpm: raw.cpm != null ? num(raw.cpm) : null,
+      leads,
     }
   }
 

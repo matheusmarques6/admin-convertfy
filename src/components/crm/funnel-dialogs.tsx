@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
-import { Trash2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, RefreshCw, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import {
@@ -23,7 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import type { AdSpendEntry, FunnelPipeline } from "@/components/crm/funnel-dashboard"
+import type {
+  AdSpendEntry,
+  ConnectedAdAccount,
+  FunnelPipeline,
+} from "@/components/crm/funnel-dashboard"
 
 export const PLATFORM_LABELS: Record<string, string> = {
   meta: "Meta Ads",
@@ -241,6 +245,255 @@ export function AdSpendDialog({
               </tbody>
             </table>
           )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Conexão Meta Ads ────────────────────────────────────────────
+
+const UTM_TEMPLATE =
+  "utm_source=meta-ads&utm_medium={{adset.name}}&utm_campaign={{campaign.name}}&utm_content={{ad.name}}+-+{{placement}}"
+
+export function MetaAdsDialog({
+  open,
+  onOpenChange,
+  accounts,
+  onChanged,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  accounts: ConnectedAdAccount[]
+  onChanged: () => void
+}) {
+  const [accountId, setAccountId] = useState("")
+  const [businessId, setBusinessId] = useState("")
+  const [token, setToken] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const canConnect = !saving && accountId.trim() !== "" && token.trim().length >= 20
+
+  const connect = async () => {
+    if (!canConnect) return
+    setSaving(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch("/api/crm/ad-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: accountId.trim(),
+          business_id: businessId.trim() || null,
+          access_token: token.trim(),
+        }),
+      })
+      if (!res.ok) {
+        setError(await readApiError(res, "Não foi possível conectar a conta."))
+        return
+      }
+      setToken("")
+      setAccountId("")
+      setBusinessId("")
+      setNotice("Conta conectada. Rode a primeira sincronização abaixo.")
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sync = async (id: string) => {
+    setSyncingId(id)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/crm/ad-accounts/${id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 30 }),
+      })
+      if (!res.ok) {
+        setError(await readApiError(res, "Falha ao sincronizar."))
+        return
+      }
+      const json = (await res.json()) as { result?: { rows?: number } }
+      setNotice(`Sincronizado: ${json.result?.rows ?? 0} linhas de insights (30 dias).`)
+      onChanged()
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const disconnect = async (id: string) => {
+    setError(null)
+    setNotice(null)
+    const res = await fetch(`/api/crm/ad-accounts/${id}`, { method: "DELETE" })
+    if (!res.ok) {
+      setError(await readApiError(res, "Não foi possível desconectar."))
+      return
+    }
+    onChanged()
+  }
+
+  const copyTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(UTM_TEMPLATE)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("O navegador bloqueou a cópia. Selecione o texto manualmente.")
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={cn(DIALOG, "max-w-2xl")}>
+        <DialogHeader>
+          <DialogTitle className="text-white">Conectar Meta Ads</DialogTitle>
+          <DialogDescription className="text-[#7C8598]">
+            Traz gasto, entrega e criativos direto da sua conta de anúncios. A atribuição
+            aos leads e vendas usa os nomes de campanha, conjunto e anúncio que já vão nas
+            UTMs dos seus links.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Contas conectadas */}
+        {accounts.length > 0 && (
+          <div className="space-y-2 rounded-[10px] border border-white/[0.08] p-3">
+            {accounts.map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-white">
+                    <Icon
+                      icon={a.last_sync_status === "error" ? AlertCircle : CheckCircle2}
+                      size={16}
+                      className={
+                        a.last_sync_status === "error" ? "text-[#F87171]" : "text-[#34D399]"
+                      }
+                    />
+                    <span className="truncate">{a.account_name || a.account_id}</span>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-[#7C8598]">
+                    {a.account_id}
+                    {a.last_synced_at
+                      ? ` · sincronizado ${format(new Date(a.last_synced_at), "dd/MM 'às' HH:mm")}`
+                      : " · nunca sincronizado"}
+                  </div>
+                  {a.last_sync_error && (
+                    <div className="mt-0.5 text-[11px] text-[#F87171]">{a.last_sync_error}</div>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => sync(a.id)}
+                    disabled={syncingId === a.id}
+                    className={cn(BTN_GHOST, "px-2")}
+                    aria-label="Sincronizar agora"
+                  >
+                    <Icon
+                      icon={RefreshCw}
+                      size={16}
+                      className={cn(syncingId === a.id && "animate-spin")}
+                    />
+                    {syncingId === a.id ? "Sincronizando…" : "Sincronizar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => disconnect(a.id)}
+                    className={cn(BTN_GHOST, "px-2 hover:text-[#F87171]")}
+                    aria-label="Desconectar conta"
+                  >
+                    <Icon icon={Trash2} size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Nova conexão */}
+        <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
+                ID da conta de anúncio
+              </div>
+              <input
+                type="text"
+                className={FIELD}
+                placeholder="act_123456789"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
+                Business ID (opcional)
+              </div>
+              <input
+                type="text"
+                className={FIELD}
+                placeholder="123456789"
+                value={businessId}
+                onChange={(e) => setBusinessId(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
+              Token de acesso
+            </div>
+            <input
+              type="password"
+              className={FIELD}
+              placeholder="Token de System User com permissão ads_read"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-[#5A6478]">
+              Use um token de System User do Business Manager: ele não expira junto com o
+              login de uma pessoa. O token é criptografado antes de ser gravado.
+            </p>
+          </div>
+        </div>
+
+        {error && <p className="text-[12px] text-[#F87171]">{error}</p>}
+        {notice && <p className="text-[12px] text-[#34D399]">{notice}</p>}
+
+        <div className="flex justify-end">
+          <button type="button" className={BTN_PRIMARY} onClick={connect} disabled={!canConnect}>
+            {saving ? "Validando…" : "Conectar conta"}
+          </button>
+        </div>
+
+        {/* Padrão de UTM */}
+        <div className="rounded-[10px] border border-white/[0.08] bg-[#0A0E17] p-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="text-[11.5px] font-semibold text-white">
+              Padrão de UTM dos anúncios
+            </div>
+            <button
+              type="button"
+              onClick={copyTemplate}
+              className="text-[11.5px] font-medium text-[#7C8598] transition-colors hover:text-white"
+            >
+              {copied ? "Copiado" : "Copiar"}
+            </button>
+          </div>
+          <code className="block break-all font-mono text-[11px] leading-relaxed text-[#8FA0C8]">
+            {UTM_TEMPLATE}
+          </code>
+          <p className="mt-2 text-[11px] text-[#5A6478]">
+            Cole isso no campo de parâmetros de URL dos seus anúncios. É por esses nomes que
+            o gasto de cada criativo encontra os leads e as vendas no CRM.
+          </p>
         </div>
       </DialogContent>
     </Dialog>

@@ -1081,15 +1081,44 @@ stage em `crm_deal_history` (`field='stage_id'`). Contagem cumulativa
 Filtros: `days`/`from`+`to`, `pipeline_id`, `utm_source/medium/campaign`
 (deal.utm com fallback pro utm do lead).
 
-**Investimento**: `crm_ad_spend` (org_id, day, platform
-meta|google|tiktok|other, account_name, amount; UNIQUE org+day+platform+
-account). Lançamento MANUAL via dialog (`/api/crm/ad-spend` GET/POST +
-`[id]` PATCH/DELETE) — as APIs Meta/Google Ads existem em
-`src/lib/integrations/` mas nada persiste spend ainda (sync futuro).
+**Investimento**: duas fontes somadas. (a) `crm_ad_spend` MANUAL
+(org_id, day, platform, account_name, amount; UNIQUE org+day+platform+
+account; coluna `source` manual|meta_sync|google_sync — o funil só soma
+`manual` daqui) via `/api/crm/ad-spend` GET/POST + `[id]` PATCH/DELETE.
+(b) `crm_ad_insights` SINCRONIZADO da Meta (ver abaixo).
+
+**Conexão Meta Ads (migration 20261053)**: `crm_ad_accounts` (org_id,
+platform, account_id `act_*`, access_token CRIPTOGRAFADO via `encrypt()`,
+business_id, last_synced_at/status/error) + `crm_ad_insights` (day,
+level campaign|adset|ad, entity_id, *_name, spend, impressions, reach,
+clicks, ctr/cpc/cpm, leads; UNIQUE ad_account_id+day+level+entity_id).
+Token recomendado: System User do Business Manager (não expira). Conexão
+valida na Graph API ANTES de gravar (`getAdAccount()`).
+APIs: `/api/crm/ad-accounts` GET/POST, `[id]` PATCH/DELETE, `[id]/sync`
+POST (maxDuration 300). Cron `/api/cron/crm-ads-sync` (40 6 * * *) roda
+janela de 30d SEMPRE — a Meta reprocessa atribuição ~7d retroativos.
+Service: `crm-meta-ads-sync.service.ts`; `MetaAdsService.getDailyInsights`
+(`time_increment=1`, pagina `paging.next`).
+**Gasto total = só nível `campaign`** (somar os 3 níveis triplicaria).
+
+**Atribuição criativo ↔ CRM por NOME** (`crm-ads-attribution.ts`, 15
+testes): o padrão de UTM da casa carrega os nomes das entidades —
+`utm_source=meta-ads&utm_medium={{adset.name}}&utm_campaign=
+{{campaign.name}}&utm_content={{ad.name}}+-+{{placement}}`. O
+normalizador baixa caixa, tira acento, converte `+`→espaço e colapsa
+espaços; `utm_content` é partido no ÚLTIMO " - " (nome do anúncio pode
+conter hífen). Payload `creatives[]` do funil: spend/leads_crm/vendas/
+receita/CPL/CPA/ROAS por anúncio — é o que liga gasto a venda real.
 
 **Cash collect**: `deals.cash_collected NUMERIC(12,2)` (aceito no PATCH
 de deals), editável inline no painel "Vendas do período" da página.
 Taxa cash collect = Σcash_collected / Σvalue dos ganhos do período.
+
+UI: 3 dialogs no topo da página — **Meta Ads** (conectar/sincronizar/
+desconectar conta + template de UTM copiável), **Investimento**
+(lançamento manual) e **Etapas** (mapeia `funnel_step` de cada stage,
+agrupado por pipeline). Painel "Criativos que mais performaram" lista
+gasto × leads × vendas × ROAS por anúncio.
 
 UI em `src/components/crm/funnel-dashboard.tsx` (+ `funnel-dialogs.tsx`):
 página DARK por design (réplica do dashboard de referência de mídia

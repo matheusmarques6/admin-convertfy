@@ -27,6 +27,11 @@ import { withTiming } from "@/lib/api/with-timing"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import {
+  attributionKeysFromUtm,
+  normalizeAdName,
+  type AttributionKeys,
+} from "@/lib/services/crm-ads-attribution"
 import type { FunnelStep } from "@/types/crm"
 
 const log = logger.child("CrmFunnel")
@@ -72,6 +77,19 @@ interface HistRow {
   new_value: unknown
   old_value: unknown
   changed_at: string
+}
+
+interface InsightRow {
+  day: string
+  level: string
+  entity_id: string
+  campaign_name: string | null
+  adset_name: string | null
+  ad_name: string | null
+  spend: number | null
+  impressions: number | null
+  clicks: number | null
+  leads: number | null
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -246,7 +264,7 @@ async function handleGet(request: NextRequest) {
       return true
     }
 
-    // ── Investimento (crm_ad_spend) ──────────────────────────────
+    // ── Investimento: lançamentos manuais + insights sincronizados ─
     let spendEntries: Array<{
       id: string
       day: string
@@ -260,12 +278,53 @@ async function handleGet(request: NextRequest) {
         .from("crm_ad_spend")
         .select("id, day, platform, account_name, amount, notes")
         .eq("org_id", userOrg.org_id)
+        .eq("source", "manual")
         .gte("day", fromDay)
         .lte("day", toDay)
         .order("day", { ascending: false })
         .limit(2000)
       if (spendErr) throw spendErr
       spendEntries = spendRows ?? []
+    }
+
+    // Insights da Meta: nível campaign é a fonte do gasto (somar os 3
+    // níveis contaria o mesmo investimento três vezes); nível ad é o
+    // que alimenta o ranking de criativos.
+    let campaignInsights: InsightRow[] = []
+    let adInsights: InsightRow[] = []
+    let connectedAccounts: Array<{
+      id: string
+      account_id: string
+      account_name: string
+      last_synced_at: string | null
+      last_sync_status: string | null
+      last_sync_error: string | null
+    }> = []
+
+    if (userOrg?.org_id) {
+      const [{ data: accountRows }, { data: insightRows, error: insightErr }] =
+        await Promise.all([
+          admin
+            .from("crm_ad_accounts")
+            .select("id, account_id, account_name, last_synced_at, last_sync_status, last_sync_error")
+            .eq("org_id", userOrg.org_id)
+            .eq("is_active", true),
+          admin
+            .from("crm_ad_insights")
+            .select(
+              "day, level, entity_id, campaign_name, adset_name, ad_name, spend, impressions, clicks, leads",
+            )
+            .eq("org_id", userOrg.org_id)
+            .in("level", ["campaign", "ad"])
+            .gte("day", fromDay)
+            .lte("day", toDay)
+            .limit(20000),
+        ])
+      if (insightErr) throw insightErr
+      connectedAccounts = accountRows ?? []
+      const rows = (insightRows as InsightRow[] | null) ?? []
+      campaignInsights = rows.filter((r) => r.level === "campaign")
+      adInsights = rows.filter((r) => r.level === "ad")
     }
 
     // ── Eventos de entrada em etapa por deal ─────────────────────
@@ -328,7 +387,9 @@ async function handleGet(request: NextRequest) {
     const vendaCount = vendaDeals.length
 
     // ── Métricas ─────────────────────────────────────────────────
-    const investimento = spendEntries.reduce((s, e) => s + (e.amount || 0), 0)
+    const manualSpend = spendEntries.reduce((s, e) => s + (e.amount || 0), 0)
+    const syncedSpend = campaignInsights.reduce((s, r) => s + (r.spend || 0), 0)
+    const investimento = manualSpend + syncedSpend
     const faturamento = vendaDeals.reduce((s, d) => s + (d.value || 0), 0)
     const cashCollect = vendaDeals.reduce((s, d) => s + (d.cash_collected || 0), 0)
 
@@ -378,7 +439,120 @@ async function handleGet(request: NextRequest) {
       item.amount += e.amount || 0
       accountMap.set(key, item)
     }
+    for (const acc of connectedAccounts) {
+      const spent = campaignInsights.reduce((s, r) => s + (r.spend || 0), 0)
+      if (spent <= 0) continue
+      const key = `meta::${acc.account_name || acc.account_id}`
+      const item = accountMap.get(key) || {
+        platform: "meta",
+        account_name: acc.account_name || acc.account_id,
+        amount: 0,
+      }
+      item.amount += spent
+      accountMap.set(key, item)
+      break // insights não guardam a conta por linha no payload atual
+    }
     const byAccount = Array.from(accountMap.values()).sort((a, b) => b.amount - a.amount)
+
+    // ── Performance por criativo (Meta × CRM, casado por UTM) ────
+    // A ligação é por NOME: utm_campaign={{campaign.name}},
+    // utm_medium={{adset.name}}, utm_content={{ad.name}} - {{placement}}.
+    interface CreativeAgg {
+      ad_name: string
+      campaign_name: string
+      adset_name: string
+      spend: number
+      impressions: number
+      clicks: number
+      leads_meta: number
+      leads_crm: number
+      vendas: number
+      receita: number
+    }
+    const creativeMap = new Map<string, CreativeAgg>()
+    const creativeOf = (
+      adName: string,
+      campaign: string,
+      adset: string,
+    ): CreativeAgg => {
+      const key = adName || `${campaign}::${adset}`
+      let item = creativeMap.get(key)
+      if (!item) {
+        item = {
+          ad_name: adName,
+          campaign_name: campaign,
+          adset_name: adset,
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          leads_meta: 0,
+          leads_crm: 0,
+          vendas: 0,
+          receita: 0,
+        }
+        creativeMap.set(key, item)
+      }
+      return item
+    }
+
+    // Lado Meta: gasto e entrega por anúncio
+    for (const r of adInsights) {
+      const adName = normalizeAdName(r.ad_name)
+      const item = creativeOf(
+        adName,
+        normalizeAdName(r.campaign_name),
+        normalizeAdName(r.adset_name),
+      )
+      // Preserva o nome original pra exibição (o normalizado é só chave)
+      if (r.ad_name && item.ad_name === adName) item.ad_name = r.ad_name
+      if (r.campaign_name) item.campaign_name = r.campaign_name
+      if (r.adset_name) item.adset_name = r.adset_name
+      item.spend += r.spend || 0
+      item.impressions += r.impressions || 0
+      item.clicks += r.clicks || 0
+      item.leads_meta += r.leads || 0
+    }
+
+    // Lado CRM: leads e vendas que carregam a UTM daquele anúncio.
+    // Só cria bucket novo se o anúncio já veio da Meta OU se o filtro de
+    // criativo é o único dado — assim tráfego sem gasto ainda aparece.
+    const creativeKeyIndex = new Map<string, string>()
+    for (const [key, agg] of creativeMap) {
+      creativeKeyIndex.set(normalizeAdName(agg.ad_name) || key, key)
+    }
+    const bucketFor = (keys: AttributionKeys): CreativeAgg | null => {
+      if (!keys.ad && !keys.campaign && !keys.adset) return null
+      const byAd = keys.ad ? creativeKeyIndex.get(keys.ad) : undefined
+      if (byAd) return creativeMap.get(byAd) ?? null
+      return creativeOf(keys.ad, keys.campaign, keys.adset)
+    }
+
+    for (const l of scopedLeads) {
+      const keys = attributionKeysFromUtm(
+        isNonEmptyUtm(l.utm) ? (l.utm as Record<string, unknown>) : {},
+      )
+      const bucket = bucketFor(keys)
+      if (bucket) bucket.leads_crm += 1
+    }
+    for (const d of vendaDeals) {
+      const keys = attributionKeysFromUtm(utmOfDeal(d))
+      const bucket = bucketFor(keys)
+      if (bucket) {
+        bucket.vendas += 1
+        bucket.receita += d.value || 0
+      }
+    }
+
+    const creatives = Array.from(creativeMap.values())
+      .filter((c) => c.spend > 0 || c.leads_crm > 0 || c.vendas > 0)
+      .map((c) => ({
+        ...c,
+        cpl: c.leads_crm > 0 && c.spend > 0 ? c.spend / c.leads_crm : null,
+        cpa: c.vendas > 0 && c.spend > 0 ? c.spend / c.vendas : null,
+        roas: c.spend > 0 ? c.receita / c.spend : null,
+      }))
+      .sort((a, b) => b.receita - a.receita || b.spend - a.spend)
+      .slice(0, 50)
 
     // ── Opções de UTM (janela, sem filtro aplicado) ──────────────
     const utmOptions = { sources: new Set<string>(), mediums: new Set<string>(), campaigns: new Set<string>() }
@@ -433,9 +607,13 @@ async function handleGet(request: NextRequest) {
       metrics,
       ad_spend: {
         total: investimento,
+        manual: manualSpend,
+        synced: syncedSpend,
         by_account: byAccount,
         entries: spendEntries,
       },
+      ad_accounts: connectedAccounts,
+      creatives,
       vendas,
       pipelines: pipelinesPayload,
       mapped_steps: Array.from(mappedSteps),
@@ -475,7 +653,9 @@ function emptyPayload(days: number, from: string, to: string) {
       custo_reuniao: null,
       cpa: null,
     },
-    ad_spend: { total: 0, by_account: [], entries: [] },
+    ad_spend: { total: 0, manual: 0, synced: 0, by_account: [], entries: [] },
+    ad_accounts: [],
+    creatives: [],
     vendas: [],
     pipelines: [],
     mapped_steps: [],

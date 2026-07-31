@@ -29,6 +29,7 @@ import {
   CreditCard,
   DollarSign,
   Filter,
+  Megaphone,
   Percent,
   Plus,
   RefreshCcw,
@@ -49,7 +50,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { AdSpendDialog, StageMappingDialog } from "@/components/crm/funnel-dialogs"
+import {
+  AdSpendDialog,
+  MetaAdsDialog,
+  StageMappingDialog,
+} from "@/components/crm/funnel-dialogs"
 
 // ─── Tipos do payload da API ─────────────────────────────────────
 
@@ -77,6 +82,31 @@ export interface AdSpendEntry {
   notes: string | null
 }
 
+export interface ConnectedAdAccount {
+  id: string
+  account_id: string
+  account_name: string
+  last_synced_at: string | null
+  last_sync_status: string | null
+  last_sync_error: string | null
+}
+
+export interface CreativePerformance {
+  ad_name: string
+  campaign_name: string
+  adset_name: string
+  spend: number
+  impressions: number
+  clicks: number
+  leads_meta: number
+  leads_crm: number
+  vendas: number
+  receita: number
+  cpl: number | null
+  cpa: number | null
+  roas: number | null
+}
+
 interface FunnelApiData {
   window: { days: number; from: string; to: string }
   funnel: { leads: number; mql: number; agendamento: number; reuniao: number; venda: number }
@@ -102,9 +132,13 @@ interface FunnelApiData {
   }
   ad_spend: {
     total: number
+    manual: number
+    synced: number
     by_account: Array<{ platform: string; account_name: string; amount: number }>
     entries: AdSpendEntry[]
   }
+  ad_accounts: ConnectedAdAccount[]
+  creatives: CreativePerformance[]
   vendas: Array<{
     id: string
     title: string
@@ -184,6 +218,7 @@ export function FunnelDashboard() {
   const [utm, setUtm] = useState({ source: "", medium: "", campaign: "" })
   const [spendOpen, setSpendOpen] = useState(false)
   const [mappingOpen, setMappingOpen] = useState(false)
+  const [metaOpen, setMetaOpen] = useState(false)
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -294,6 +329,18 @@ export function FunnelDashboard() {
 
             <button
               type="button"
+              onClick={() => setMetaOpen(true)}
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+            >
+              <Icon icon={Megaphone} size={16} />
+              Meta Ads
+              {(data?.ad_accounts?.length ?? 0) > 0 && (
+                <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[#34D399]" />
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setSpendOpen(true)}
               className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
             >
@@ -304,10 +351,10 @@ export function FunnelDashboard() {
             <button
               type="button"
               onClick={() => setMappingOpen(true)}
-              className={cn(CONTROL, "inline-flex w-9 items-center justify-center")}
-              aria-label="Configurar etapas do funil"
+              className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
             >
               <Icon icon={Settings2} size={16} />
+              Etapas
             </button>
 
             <button
@@ -360,10 +407,17 @@ export function FunnelDashboard() {
           </div>
         </div>
 
+        <CreativesPanel data={data} onConnect={() => setMetaOpen(true)} />
         <SpendByAccountPanel data={data} onManage={() => setSpendOpen(true)} />
         <VendasPanel data={data} onChanged={() => mutate()} />
       </div>
 
+      <MetaAdsDialog
+        open={metaOpen}
+        onOpenChange={setMetaOpen}
+        accounts={data?.ad_accounts ?? []}
+        onChanged={() => mutate()}
+      />
       <AdSpendDialog
         open={spendOpen}
         onOpenChange={setSpendOpen}
@@ -475,6 +529,140 @@ function FunnelChart({ data, loading }: { data?: FunnelApiData; loading: boolean
   )
 }
 
+// ─── Criativos (Meta × CRM) ──────────────────────────────────────
+
+function CreativesPanel({
+  data,
+  onConnect,
+}: {
+  data?: FunnelApiData
+  onConnect: () => void
+}) {
+  const [open, setOpen] = useState(true)
+  const creatives = data?.creatives ?? []
+  const connected = (data?.ad_accounts?.length ?? 0) > 0
+
+  return (
+    <div className={cn(CARD, "mt-5")}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+      >
+        <div>
+          <div className="text-[13.5px] font-semibold text-white">
+            Criativos que mais performaram
+          </div>
+          <div className="mt-0.5 text-[11.5px] text-[#7C8598]">
+            {connected
+              ? creatives.length > 0
+                ? `${creatives.length} criativo${creatives.length > 1 ? "s" : ""} no período — ordenado por receita gerada`
+                : "Sem dados no período. Sincronize a conta ou amplie o intervalo."
+              : "Conecte o Meta Ads pra ver gasto, leads e vendas por criativo"}
+          </div>
+        </div>
+        <Icon
+          icon={ChevronDown}
+          size={16}
+          className={cn("text-[#7C8598] transition-transform", open && "rotate-180")}
+        />
+      </button>
+
+      {open && (
+        <div className="border-t border-white/[0.06] px-5 py-4">
+          {!connected ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="max-w-[560px] text-[12.5px] leading-relaxed text-[#7C8598]">
+                Com a conta conectada, o gasto de cada anúncio encontra os leads e as vendas
+                do CRM pelos nomes que já vão nas suas UTMs — e você vê CPL, CPA e ROAS por
+                criativo, não só no total.
+              </p>
+              <button
+                type="button"
+                onClick={onConnect}
+                className={cn(CONTROL, "inline-flex items-center gap-1.5 px-3")}
+              >
+                <Icon icon={Megaphone} size={16} />
+                Conectar Meta Ads
+              </button>
+            </div>
+          ) : creatives.length === 0 ? (
+            <p className="text-[12.5px] text-[#7C8598]">
+              Nenhum criativo com gasto ou conversão no período selecionado.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-[12.5px]">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#5A6478]">
+                    <th className="pb-2 pr-3 font-semibold">Criativo</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Gasto</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Leads</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">CPL</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Vendas</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">CPA</th>
+                    <th className="pb-2 pr-3 text-right font-semibold">Receita</th>
+                    <th className="pb-2 text-right font-semibold">ROAS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creatives.map((c, i) => (
+                    <tr
+                      key={`${c.ad_name}-${i}`}
+                      className="border-t border-white/[0.05]"
+                    >
+                      <td className="max-w-[280px] py-2 pr-3">
+                        <div className="truncate font-medium text-[#E4E8F0]">
+                          {c.ad_name || "Sem anúncio identificado"}
+                        </div>
+                        <div className="truncate text-[10.5px] text-[#5A6478]">
+                          {[c.campaign_name, c.adset_name].filter(Boolean).join(" · ") || "—"}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3 text-right text-[#C6CDDB] tabular-nums">
+                        {c.spend > 0 ? fmtBRL0(c.spend) : dash}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-[#C6CDDB] tabular-nums">
+                        {fmtInt(c.leads_crm)}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-[#C6CDDB] tabular-nums">
+                        {c.cpl != null ? fmtBRL2(c.cpl) : dash}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-[#C6CDDB] tabular-nums">
+                        {fmtInt(c.vendas)}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-[#C6CDDB] tabular-nums">
+                        {c.cpa != null ? fmtBRL2(c.cpa) : dash}
+                      </td>
+                      <td className="py-2 pr-3 text-right font-semibold text-white tabular-nums">
+                        {c.receita > 0 ? fmtBRL0(c.receita) : dash}
+                      </td>
+                      <td
+                        className={cn(
+                          "py-2 text-right font-semibold tabular-nums",
+                          c.roas == null
+                            ? "text-[#5A6478]"
+                            : c.roas >= 1
+                              ? "text-[#34D399]"
+                              : "text-[#F87171]",
+                        )}
+                      >
+                        {c.roas != null
+                          ? `${c.roas.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x`
+                          : dash}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Investimento por conta ──────────────────────────────────────
 
 function SpendByAccountPanel({
@@ -487,6 +675,8 @@ function SpendByAccountPanel({
   const [open, setOpen] = useState(false)
   const byAccount = data?.ad_spend.by_account ?? []
   const total = data?.ad_spend.total ?? 0
+  const synced = data?.ad_spend.synced ?? 0
+  const manual = data?.ad_spend.manual ?? 0
   const accountLabel = (a: { platform: string; account_name: string }) =>
     a.account_name || PLATFORM_LABELS[a.platform] || a.platform
 
@@ -503,6 +693,12 @@ function SpendByAccountPanel({
             {byAccount.length > 0
               ? `${byAccount.length} conta${byAccount.length > 1 ? "s" : ""} combinada${byAccount.length > 1 ? "s" : ""} — total ${fmtBRL2(total)}`
               : "Nenhum lançamento no período"}
+            {synced > 0 && (
+              <span className="ml-1.5 text-[#5A6478]">
+                · {fmtBRL2(synced)} sincronizado da Meta
+                {manual > 0 ? ` + ${fmtBRL2(manual)} manual` : ""}
+              </span>
+            )}
           </div>
         </div>
         <Icon
