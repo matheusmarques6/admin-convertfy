@@ -173,7 +173,7 @@ function ChannelCard({
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState<
-    "check" | "logout" | "remove" | "restart" | "migrate" | "archive" | "purge" | null
+    "check" | "logout" | "remove" | "restart" | "migrate" | "archive" | "purge" | "delete" | null
   >(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionOk, setActionOk] = useState<string | null>(null)
@@ -276,6 +276,46 @@ function ChannelCard({
       onChanged()
     } catch {
       setActionError("Falha ao limpar as conversas")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Exclui o canal de vez — o card sai da lista. "Remover" só desativa,
+  // e o canal desativado ficava aqui para sempre sem nenhuma ação
+  // possível. Leva junto as conversas e mensagens dele (CASCADE), então
+  // a confirmação mostra quanto será perdido.
+  const deleteChannel = async () => {
+    setBusy("delete")
+    setActionError(null)
+    setActionOk(null)
+    try {
+      const previewRes = await fetch(`/api/crm/channels/${channel.id}/purge-threads`)
+      const previewJson = await previewRes.json()
+      const preview = previewRes.ok && !previewJson.error ? (previewJson.data ?? previewJson) : null
+
+      const escopo = preview
+        ? preview.threads
+          ? ` As ${preview.threads} conversa(s) e ${preview.messages} mensagem(ns) dele serão apagadas junto.`
+          : " Ele não tem conversas no inbox."
+        : ""
+      if (!window.confirm(`Excluir o canal "${channel.display_name}"?${escopo} Isso é permanente.`)) return
+
+      const res = await fetch(`/api/crm/channels/${channel.id}`, { method: "DELETE" })
+      const json = await res.json()
+      const data = json.data ?? json
+      if (!res.ok || json.error) {
+        setActionError(json.error?.message || "Falha ao excluir o canal")
+        return
+      }
+      if (data.evolution_ok === false) {
+        setActionError(
+          `Canal excluído aqui, mas a Evolution não confirmou a remoção da instância: ${data.evolution_error ?? "erro desconhecido"}`,
+        )
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha ao excluir o canal")
     } finally {
       setBusy(null)
     }
@@ -458,34 +498,41 @@ function ChannelCard({
             {busy === "migrate" ? "Importando..." : "Importar conversas antigas"}
           </button>
         )}
-        <button
-          type="button"
-          className="crm-button-ghost"
-          title="Arquiva as conversas deste canal — somem dos filtros do inbox e continuam acessíveis em Todos"
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
-          disabled={busy !== null}
-          onClick={() => purgeThreads("archive")}
-        >
-          <Archive className="h-3 w-3" />
-          {busy === "archive" ? "Arquivando..." : "Arquivar conversas"}
-        </button>
-        <button
-          type="button"
-          className="crm-button-ghost"
-          title="Apaga permanentemente as conversas e mensagens deste canal"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--crm-space-2)",
-            color: "var(--crm-danger-fg)",
-            opacity: busy ? 0.5 : 1,
-          }}
-          disabled={busy !== null}
-          onClick={() => purgeThreads("delete")}
-        >
-          <Eraser className="h-3 w-3" />
-          {busy === "purge" ? "Apagando..." : "Apagar conversas"}
-        </button>
+        {/* Canal em uso: limpa o histórico sem perder o canal. No canal
+            desativado a ação coerente é "Excluir canal", que já leva as
+            conversas junto — dois botões a mais só confundiriam. */}
+        {channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Arquiva as conversas deste canal — somem dos filtros do inbox e continuam acessíveis em Todos"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={() => purgeThreads("archive")}
+          >
+            <Archive className="h-3 w-3" />
+            {busy === "archive" ? "Arquivando..." : "Arquivar conversas"}
+          </button>
+        )}
+        {channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Apaga permanentemente as conversas e mensagens deste canal"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              color: "var(--crm-danger-fg)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={() => purgeThreads("delete")}
+          >
+            <Eraser className="h-3 w-3" />
+            {busy === "purge" ? "Apagando..." : "Apagar conversas"}
+          </button>
+        )}
         {isEvolution && channel.is_active && (
           <button
             type="button"
@@ -560,6 +607,25 @@ function ChannelCard({
           >
             <Trash2 className="h-3 w-3" />
             {busy === "remove" ? "Removendo..." : "Remover"}
+          </button>
+        )}
+        {!channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Exclui o canal e todo o histórico dele — o card sai desta lista"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              color: "var(--crm-danger-fg)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={deleteChannel}
+          >
+            <Trash2 className="h-3 w-3" />
+            {busy === "delete" ? "Excluindo..." : "Excluir canal"}
           </button>
         )}
         {channel.is_active && !isEvolution && (
