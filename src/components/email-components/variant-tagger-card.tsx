@@ -48,7 +48,9 @@ const ANCHOR_TONES: Record<TaggingFieldReport["anchored_by"], EGBadgeTone> = {
   exact: "pos",
   fuzzy: "warn",
   inference: "warn",
-  existing_tag: "info",
+  renamed: "pos",
+  // Legado: manteve tag divergente do schema — hoje isso é defeito.
+  existing_tag: "neg",
   not_found: "neg",
 }
 
@@ -56,7 +58,8 @@ const ANCHOR_LABELS: Record<TaggingFieldReport["anchored_by"], string> = {
   exact: "exata",
   fuzzy: "aproximada",
   inference: "inferida",
-  existing_tag: "tag existente",
+  renamed: "renomeada",
+  existing_tag: "tag divergente",
   not_found: "não achada",
 }
 
@@ -105,35 +108,21 @@ export function VariantTaggerCard({
     setView("report")
   }
 
-  // Placeholders esperados (naturezas copy/imagem_gerada; asset_fixo fica
-  // fora — a arte não vira slot). existing_tag/not_found do relatório não
-  // são cobrados. Campo do schema SEM placeholder no tagueado = divergência
-  // (schema mudou depois do taguedor, edição manual removeu, etc).
+  // Placeholders esperados = {{UPPER(key)}} de cada campo (asset_fixo fica
+  // fora — a arte não vira slot). NÃO há isenção: o relatório dizer
+  // "existing_tag"/"not_found" explica POR QUE faltou, não autoriza faltar.
+  // O placeholder cobrado é sempre o canônico, nunca o nome que o relatório
+  // devolveu — senão uma tag divergente se auto-aprovaria.
   const { expected, missing } = useMemo(() => {
-    const reportByKey = new Map(
-      (meta?.fields ?? []).map((r) => [r.key, r] as const),
-    )
     const exp = schema
       .filter((f) => deriveFieldNature(f) !== "asset_fixo")
-      .map((f) => {
-        const rep = reportByKey.get(f.key)
-        return {
-          key: f.key,
-          placeholder: rep?.placeholder ?? placeholderForKey(f.key),
-          exemptFromCheck:
-            rep?.anchored_by === "existing_tag" ||
-            rep?.anchored_by === "not_found",
-        }
-      })
+      .map((f) => ({ key: f.key, placeholder: placeholderForKey(f.key) }))
     const miss =
       status == null
         ? []
-        : exp.filter(
-            (e) =>
-              !e.exemptFromCheck && !tagged.includes(`{{${e.placeholder}}}`),
-          )
+        : exp.filter((e) => !tagged.includes(`{{${e.placeholder}}}`))
     return { expected: exp, missing: miss }
-  }, [schema, meta, tagged, status])
+  }, [schema, tagged, status])
 
   const divergent = status != null && missing.length > 0
 
@@ -531,17 +520,14 @@ export function VariantTaggerCard({
               >
                 <Tags size={13} color={C.g400} />
                 {expected.map((e) => {
-                  const present =
-                    e.exemptFromCheck || tagged.includes(`{{${e.placeholder}}}`)
+                  const present = tagged.includes(`{{${e.placeholder}}}`)
                   return (
                     <span
                       key={e.key}
                       title={
-                        e.exemptFromCheck
-                          ? "Campo coberto por tag existente ou sem âncora (não cobrado)"
-                          : present
-                            ? "Placeholder presente no HTML tagueado"
-                            : "Placeholder AUSENTE do HTML tagueado"
+                        present
+                          ? "Placeholder presente no HTML tagueado"
+                          : "Placeholder AUSENTE do HTML tagueado"
                       }
                       style={{
                         fontFamily: F.mono,
@@ -551,7 +537,6 @@ export function VariantTaggerCard({
                         border: `1px solid ${present ? C.posBorder : C.negBorder}`,
                         background: present ? C.posBg : C.negBg,
                         color: present ? C.pos : C.neg,
-                        opacity: e.exemptFromCheck ? 0.6 : 1,
                       }}
                     >
                       {`{{${e.placeholder}}}`}

@@ -486,7 +486,19 @@ export interface EmailComponentVariant {
 export interface TaggingFieldReport {
   key: string
   placeholder: string
-  anchored_by: "exact" | "fuzzy" | "inference" | "existing_tag" | "not_found"
+  /**
+   * `renamed` = o slot já tinha uma {{TAG}}, mas com nome divergente do
+   * schema, e ela foi renomeada para {{UPPER(key)}}.
+   * `existing_tag` é LEGADO: valia quando manter a tag divergente era aceito.
+   * Não use em proposta nova — hoje toda tag segue o schema.
+   */
+  anchored_by:
+    | "exact"
+    | "fuzzy"
+    | "inference"
+    | "renamed"
+    | "existing_tag"
+    | "not_found"
   note?: string
 }
 

@@ -148,6 +148,49 @@ describe("validateTaggedHtml", () => {
     expect(res.issues).toEqual([])
   })
 
+  it("tag divergente mantida (existing_tag) NÃO passa mais", () => {
+    // O HTML tem {{HERO_HEADLINE}}, o schema pede `headline`. Antes o
+    // relatório dizer "existing_tag" isentava o campo da cobrança e a
+    // variante entrava na biblioteca com a copy sem endereço.
+    const res = validateTaggedHtml(
+      original,
+      "<table><tr><td>{{HERO_HEADLINE}}</td></tr></table>",
+      [field({ key: "headline" })],
+      [{ key: "headline", placeholder: "HERO_HEADLINE", anchored_by: "existing_tag" }],
+    )
+    expect(res.ok).toBe(true)
+    expect(res.issues.some((i) => i.includes("{{HEADLINE}}"))).toBe(true)
+  })
+
+  it("rename para {{UPPER(key)}} passa limpo", () => {
+    const res = validateTaggedHtml(
+      original,
+      "<table><tr><td>{{HEADLINE}}</td></tr></table>",
+      [field({ key: "headline" })],
+      [
+        {
+          key: "headline",
+          placeholder: "HEADLINE",
+          anchored_by: "renamed",
+          note: "era HERO_HEADLINE",
+        },
+      ],
+    )
+    expect(res.ok).toBe(true)
+    expect(res.issues).toEqual([])
+  })
+
+  it("tag sem campo no schema vira issue; tag de sistema não", () => {
+    const res = validateTaggedHtml(
+      original,
+      "<table><tr><td>{{HEADLINE}}{{LOGO}}{{HERO_EYEBROW}}</td></tr></table>",
+      [field({ key: "headline" })],
+      [{ key: "headline", placeholder: "HEADLINE", anchored_by: "exact" }],
+    )
+    expect(res.issues.some((i) => i.includes("HERO_EYEBROW"))).toBe(true)
+    expect(res.issues.some((i) => i.includes("LOGO"))).toBe(false)
+  })
+
   it("not_found vira issue informativa", () => {
     const res = validateTaggedHtml(
       original,
