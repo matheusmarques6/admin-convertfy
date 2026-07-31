@@ -9,6 +9,8 @@
 --   20261057  regra "nenhum texto na imagem" no prompt do BANCO
 --   20261061  direção fotográfica no prompt do BANCO
 --   20261062  cor de fundo do email no prompt do BANCO
+--   20261063  fundo pela PALETA + regra de enquadramento (substitui a 62)
+--   20261064  prompt do Taguedor zerado (schema-first roda no default in-code)
 --
 -- Por que duas são obrigatórias: o select da variante da hero passou a
 -- pedir `design_system`, e o carregamento da direção fotográfica pede
@@ -115,6 +117,44 @@ WHERE agent_type = 'image'
   AND user_template NOT LIKE '%CFY_BG_COLOR%';
 
 
+-- ── 20261063 — Fundo pela PALETA + enquadramento (v2 do bloco acima) ─
+-- A 20261062 mandava o hex do fundo e ainda saiu errado: com a direção
+-- pedindo estúdio, o modelo escolheu um cinza-azulado que não é da marca, e
+-- a continuidade entre foto e seção — que é o ponto do layout — não
+-- aconteceu. Faltava dizer que o fundo TEM de sair da paleta. Junto vai a
+-- regra de enquadramento: a foto cortou a cabeça da modelo no topo do quadro.
+-- SUBSTITUI o bloco da 20261062 (remove o antigo por regexp e prepende o novo).
+UPDATE email_agent_configs
+SET user_template =
+  '{{#if BG_COLOR}}
+CFY_BACKDROP_V2 — BACKDROP COLOUR, NOT NEGOTIABLE.
+The section this image sits in is painted {{BG_COLOR}}. When the composition calls for a plain, continuous or studio backdrop, the photograph''s background MUST be that exact hex, so photo and section read as ONE CONTINUOUS SURFACE with no visible seam. That continuity is the point of the layout, not a detail.
+If the direction asks for a different backdrop, it still has to be one of the STORE''s OWN colours — {{primary_colors}} {{secondary_colors}}. Never a neutral you chose yourself: no generic studio grey, no off-white, no colour from outside the brand palette.
+The only thing that overrides this is a direction explicitly asking for a real setting (a room, a street, outdoors) — then shoot the setting.
+
+FRAMING PEOPLE. When a person appears, the frame NEVER cuts the top of the head or crops the face out. Either the head is fully inside the frame, or the crop is a deliberate, recognisable one that starts BELOW the shoulders (a torso or detail shot). A head sliced by the top edge reads as a mistake and ruins the section.
+
+{{/if}}' ||
+  regexp_replace(user_template, '\{\{#if BG_COLOR\}\}[\s\S]*?\{\{/if\}\}\s*', '', 'g')
+WHERE agent_type = 'image'
+  AND is_active = true
+  AND user_template NOT LIKE '%CFY_BACKDROP_V2%';
+
+
+-- ── 20261064 — Prompt do Taguedor zerado (schema-first) ──────────────
+-- O prompt do Taguedor ganhou a regra que faltava: tag divergente do schema
+-- é RENOMEADA para {{MAIÚSCULA_DA_KEY}}. Antes a regra dizia o oposto
+-- ("mantenha a tag existente, não renomeie") — era ela que produzia a
+-- biblioteca desalinhada. Enquanto houver texto no banco, o default in-code
+-- NUNCA é usado; zerar é o corte seco (mesmo padrão das 20261044-46).
+UPDATE email_agent_configs
+SET system_prompt = '',
+    user_template = ''
+WHERE agent_type = 'component_tagger'
+  AND is_active = true
+  AND (length(system_prompt) > 0 OR length(user_template) > 0);
+
+
 -- ── Relatório ────────────────────────────────────────────────────────
 SELECT 10 AS ordem,
        '20261059 · coluna design_system' AS item,
@@ -150,12 +190,23 @@ SELECT 50, '20261061 · direcao fotografica no prompt de imagem',
                    false, true, '')))[1]::text::int, 0) > 0 THEN 'ok'
             ELSE 'AUSENTE' END
 UNION ALL
-SELECT 60, '20261062 · cor de fundo no prompt de imagem',
+SELECT 60, '20261063 · fundo pela paleta + enquadramento',
        CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
             WHEN COALESCE((xpath('//r/text()', query_to_xml(
                    $q$SELECT COUNT(*) AS r FROM public.email_agent_configs
                         WHERE agent_type='image' AND is_active = true
-                          AND user_template LIKE '%CFY_BG_COLOR%'$q$,
+                          AND user_template LIKE '%CFY_BACKDROP_V2%'$q$,
                    false, true, '')))[1]::text::int, 0) > 0 THEN 'ok'
             ELSE 'AUSENTE' END
+UNION ALL
+SELECT 70, '20261064 · prompt do Taguedor zerado (0/0 = default in-code)',
+       CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
+            WHEN COALESCE((xpath('//r/text()', query_to_xml(
+                   $q$SELECT COALESCE(SUM(length(system_prompt)
+                                        + length(user_template)), 0) AS r
+                        FROM public.email_agent_configs
+                       WHERE agent_type='component_tagger'
+                         AND is_active = true$q$,
+                   false, true, '')))[1]::text::int, 0) = 0 THEN 'ok'
+            ELSE 'PENDENTE' END
 ORDER BY ordem;

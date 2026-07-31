@@ -2128,6 +2128,17 @@ async function runFormattingChain(p: {
         hint: "blueprint sem fields.tag — passar as variantes pelo Taguedor",
       })
     }
+    // O schema é a base: a key do campo deveria ser a mesma chave que o n8n
+    // devolve. Todo campo que só casou pelo copyKey canônico é uma variante
+    // ainda no vocabulário velho — e é o que segura a ponte de
+    // copy-key-resolve viva.
+    if (merge.report.keys_via_canonical.length > 0) {
+      log.warn("phase2.fmt.merge_via_canonical_key", {
+        emailId,
+        keys: merge.report.keys_via_canonical,
+        hint: "schema da variante fora do vocabulário do n8n — alinhar as keys",
+      })
+    }
     await logGenerationRun({
       ...ids,
       agent: "copy_merge",
@@ -2144,6 +2155,11 @@ async function runFormattingChain(p: {
         merged: merge.report.merged,
         left_for_llm: merge.report.left_for_llm,
         unanchored_keys: merge.report.unanchored_keys,
+        // Ponte do vocabulário antigo: campos que só casaram pelo copyKey
+        // canônico do tag-registry, e não pela key do schema. Enquanto isso
+        // não zerar, o n8n ainda devolve copy no vocabulário velho e
+        // copy-key-resolve não pode ser removido. Zerou = pode cair fora.
+        keys_via_canonical: merge.report.keys_via_canonical,
         // Estruturais: posse do código (nunca vão pro LLM).
         structural_out: merge.report.structural_out,
         structural_filled: structural.filled,

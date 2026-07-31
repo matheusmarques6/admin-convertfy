@@ -1456,5 +1456,51 @@ por código a partir do HTML canônico) se estende às demais seções.
 
 ---
 
+## O schema é a base (migration 20261064, jul/2026)
+
+Regra única, sem exceção: **o endereço de um campo no HTML é
+`{{MAIÚSCULA_DA_KEY}}`**. `hero_headline` mora em `{{HERO_HEADLINE}}` e em
+mais lugar nenhum — não existe apelido, tradução por `copyKey` do
+tag-registry, nem "a tag que parece servir esse campo".
+
+**Por quê**: `resolveTagForKey` aceitava três caminhos (copyKey do registry,
+nome normalizado da tag, placeholder literal no HTML). Numa variante com
+`hero_headline`/`hero_subhead` no schema e `{{HERO_EYEBROW}}`/`{{COUPON_CODE}}`
+no HTML, ou um alias casava por acaso ou o campo virava `tag: null` em
+silêncio — copy sem endereço e placeholder cru chegando ao email. Nada
+gritava em lugar nenhum.
+
+- **Auditor canônico**: `auditSchemaTags` em
+  `src/lib/email-workspace/schema-tag-coherence.ts` (puro, client-safe).
+  Devolve `anchored`/`missing`/`orphans`. Distingue **tag de sistema**
+  (`kind` data/url do registry — LOGO, PREHEADER, `*_URL`, `*_ALT`; nunca
+  órfã, a plataforma preenche), **tag de copy órfã** e **tag desconhecida**.
+  `missing[].legacyTag` NÃO é fallback: é a proposta de retagueamento.
+- **Blueprint**: `fieldsFromSchema` perdeu o parâmetro `blockTags` — a tag é
+  `placeholderForKey(key)` e ponto. Campo sem âncora sai com a tag
+  PREENCHIDA (o contrato é o schema) e vira erro de CADASTRO em
+  `schemaAnchorIssues`/`collectSchemaAnchorIssues` → telemetria das duas
+  rotas (`schema_anchor_issues`, `schema_anchor_issue_count`) + `log.warn`.
+- **Taguedor**: regra 3 virou RENAME (`anchored_by: 'renamed'`, nome antigo
+  na note). `existing_tag` é LEGADO e hoje reprova. `validateTaggedHtml`
+  mede a proposta contra o schema via `auditSchemaTags`, sem isenção.
+- **UI**: painel "Schema × HTML" no editor de variantes — permanente, os dois
+  lados à vista, com o de/para do rename. **Não bloqueia salvar** (a
+  biblioteca tem variantes legadas e travar o save travaria o conserto);
+  o toast do save vira destrutivo quando há desalinhamento.
+- **Ponte de vocabulário**: `copy-key-resolve.ts` continua viva porque o n8n
+  ainda devolve copy no vocabulário do registry. Cada uso aparece em
+  `keys_via_canonical` no run `copy_merge` + `log.warn`
+  `phase2.fmt.merge_via_canonical_key`. **Quando esse número zerar, o módulo
+  pode ser removido e o merge volta a `content[key]` puro.**
+- **Worklist**: `supabase/migrations/DIAGNOSTICO_schema_x_tags.sql` lista as
+  variantes ativas desalinhadas (campos sem tag, tags sem campo, proposta de
+  rename). Prontidão agregada no `VERIFICAR_pronto_para_gerar.sql` (item 43).
+
+Quando schema e HTML divergem, **quem se ajusta é o HTML** (retagueamento via
+Taguedor + revisão humana), não o schema.
+
+---
+
 *Última atualização: Julho 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

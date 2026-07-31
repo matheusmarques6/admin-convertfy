@@ -80,14 +80,25 @@ SELECT 22, 'direção fotográfica no prompt de imagem (20261061)',
                    false, true, '')))[1]::text::int, 0) > 0 THEN 'ok' ELSE 'AUSENTE' END,
        'sem ela o campo photo_direction não tem efeito nenhum'
 UNION ALL
-SELECT 23, 'cor de fundo no prompt de imagem (20261062)',
+SELECT 23, 'fundo pela paleta + enquadramento (20261063)',
        CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
             WHEN COALESCE((xpath('//r/text()', query_to_xml(
                    $q$SELECT COUNT(*) AS r FROM public.email_agent_configs
                         WHERE agent_type='image' AND is_active = true
-                          AND user_template LIKE '%CFY_BG_COLOR%'$q$,
+                          AND user_template LIKE '%CFY_BACKDROP_V2%'$q$,
                    false, true, '')))[1]::text::int, 0) > 0 THEN 'ok' ELSE 'AUSENTE' END,
-       'sem ela a foto não funde com o fundo da seção'
+       'sem ela a foto escolhe um neutro fora da marca e corta a cabeça do modelo'
+UNION ALL
+SELECT 24, 'prompt do Taguedor zerado (20261064)',
+       CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
+            WHEN COALESCE((xpath('//r/text()', query_to_xml(
+                   $q$SELECT COALESCE(SUM(length(system_prompt)
+                                        + length(user_template)), 0) AS r
+                        FROM public.email_agent_configs
+                       WHERE agent_type='component_tagger' AND is_active = true$q$,
+                   false, true, '')))[1]::text::int, 0) = 0
+              THEN 'ok' ELSE 'PENDENTE' END,
+       'qualquer coisa > 0 = prompt velho mandando; o Taguedor volta a manter tag divergente'
 
 -- ── 3. Agentes ativos ────────────────────────────────────────────────
 UNION ALL
@@ -158,6 +169,53 @@ SELECT 42, 'cobertura da direção fotográfica',
          $q$SELECT COUNT(*) FILTER (WHERE COALESCE(photo_direction,'') <> '') || ' de ' ||
                    COUNT(*) || ' variantes ativas' AS r
               FROM public.email_component_variants WHERE is_active = true$q$,
+         false, true, '')))[1]::text, 'sem dados') END
+
+UNION ALL
+-- O schema é a base: cada campo endereça {{MAIÚSCULA_DA_KEY}}. Variante em
+-- que isso não bate gera copy sem onde entrar. Detalhe por variante (com a
+-- proposta de rename) está em DIAGNOSTICO_schema_x_tags.sql.
+SELECT 43, 'variantes com schema desalinhado do HTML',
+       CASE WHEN to_regclass('public.email_component_variants') IS NULL THEN 'AUSENTE'
+            WHEN COALESCE((xpath('//r/text()', query_to_xml(
+                   $q$WITH v AS (
+                        SELECT id,
+                               CASE WHEN tagging_status='approved'
+                                     AND COALESCE(html_tagged,'') <> ''
+                                    THEN html_tagged ELSE COALESCE(html,'') END AS h,
+                               COALESCE(output_schema,'[]'::jsonb) AS s
+                          FROM public.email_component_variants WHERE is_active = true)
+                      SELECT COUNT(*) AS r FROM v
+                       WHERE EXISTS (
+                         SELECT 1 FROM jsonb_array_elements(v.s) f
+                          WHERE COALESCE(btrim(f->>'key'),'') <> ''
+                            AND COALESCE(f->>'nature',
+                                  CASE WHEN f->>'type'='image'
+                                       THEN 'imagem_gerada' ELSE 'copy' END) <> 'asset_fixo'
+                            AND position('{{' || regexp_replace(upper(btrim(f->>'key')),
+                                  '[^A-Z0-9_]+','_','g') || '}}' in v.h) = 0)$q$,
+                   false, true, '')))[1]::text::int, 0) = 0
+              THEN 'ok' ELSE 'PENDENTE' END,
+       CASE WHEN to_regclass('public.email_component_variants') IS NULL
+              THEN 'tabela email_component_variants não existe'
+       ELSE COALESCE((xpath('//r/text()', query_to_xml(
+         $q$WITH v AS (
+              SELECT id,
+                     CASE WHEN tagging_status='approved'
+                           AND COALESCE(html_tagged,'') <> ''
+                          THEN html_tagged ELSE COALESCE(html,'') END AS h,
+                     COALESCE(output_schema,'[]'::jsonb) AS s
+                FROM public.email_component_variants WHERE is_active = true)
+            SELECT COUNT(*) FILTER (WHERE EXISTS (
+                     SELECT 1 FROM jsonb_array_elements(v.s) f
+                      WHERE COALESCE(btrim(f->>'key'),'') <> ''
+                        AND COALESCE(f->>'nature',
+                              CASE WHEN f->>'type'='image'
+                                   THEN 'imagem_gerada' ELSE 'copy' END) <> 'asset_fixo'
+                        AND position('{{' || regexp_replace(upper(btrim(f->>'key')),
+                              '[^A-Z0-9_]+','_','g') || '}}' in v.h) = 0))
+                   || ' de ' || COUNT(*) || ' variantes ativas' AS r
+              FROM v$q$,
          false, true, '')))[1]::text, 'sem dados') END
 
 ORDER BY ordem;
