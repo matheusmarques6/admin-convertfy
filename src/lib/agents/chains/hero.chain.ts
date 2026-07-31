@@ -151,7 +151,7 @@ Table-based email HTML only. Never place a <div> (or any non-table element) as a
 {{output_contract}}
 </output_contract>`
 
-export const HERO_OUTPUT_CONTRACT = `Emit the finished hero fragment wrapped EXACTLY in ${HERO_OUTPUT_OPEN} and ${HERO_OUTPUT_CLOSE}. The fragment must begin and end at the SAME boundary elements as the received <hero_region> (a sequence of complete <table>...</table> blocks). No <!DOCTYPE>, no <html>/<head>/<body>, no markdown fences, no commentary.
+export const HERO_OUTPUT_CONTRACT = `Emit the finished hero fragment wrapped EXACTLY in ${HERO_OUTPUT_OPEN} and ${HERO_OUTPUT_CLOSE}. MIRROR THE BOUNDARY OF THE REGION YOU RECEIVED: if <hero_region> starts with <tr>, return <tr>...</tr> rows; if it starts with <table>, return complete <table>...</table> blocks. Never swap one for the other — the fragment is spliced back at that exact position, and the wrong boundary produces invalid HTML. No <!DOCTYPE>, no <html>/<head>/<body>, no markdown fences, no commentary.
 
 After the fragment, emit a short report wrapped EXACTLY in ${HERO_REPORT_OPEN} and ${HERO_REPORT_CLOSE}, as JSON:
 {"imagem":"aplicada"|"ausente","campos_vazios":["TAG",...],"linhas_removidas":["cta","imagem",...],"logo":"light"|"dark"|"nenhuma"}
@@ -371,8 +371,43 @@ export function stripBareReportJson(fragment: string): string {
   return (fragment.slice(0, lastClose + 1) + tail.slice(0, open)).trimEnd()
 }
 
-/** Extrai o fragmento entre os wrappers; lança HeroOutputInvalidError. */
-export function parseHeroFragment(raw: string): string {
+/**
+ * Forma de um fragmento de hero: uma sequência de linhas (`<tr>`) ou de
+ * tabelas (`<table>`). Comentários e espaço à frente são ignorados — o
+ * fragmento legítimo começa em `<!-- cfy:block:0:hero:start -->`.
+ */
+export type HeroShape = "row" | "table"
+
+const LEADING_NOISE = /^(?:\s|<!--[\s\S]*?-->)+/
+
+/** Forma do primeiro elemento real. null = não é `<tr>` nem `<table>`. */
+export function heroShapeOf(html: string): HeroShape | null {
+  const body = html.replace(LEADING_NOISE, "")
+  if (/^<tr\b/i.test(body)) return "row"
+  if (/^<table\b/i.test(body)) return "table"
+  return null
+}
+
+/**
+ * Extrai o fragmento entre os wrappers; lança HeroOutputInvalidError.
+ *
+ * `expect` é a forma da região que o agente RECEBEU, e o fragmento tem de
+ * devolver a mesma: o splice troca a região por ele no lugar exato, então
+ * uma `<table>` no lugar de uma `<tr>` (ou o contrário) produz HTML inválido
+ * — `<table>` solta entre `</tr>` e `<tr>`, ou `<tr>` fora de tabela.
+ *
+ * Sem `expect`, aceita as duas formas. O guard antigo exigia a substring
+ * `<table>` e mais nada, o que reprovava por definição toda hero em modo
+ * MARKER: ali a região é o conteúdo entre `cfy:block:N:hero:start/end`, que
+ * é uma `<tr>` sem tabela nenhuma. O modelo espelhava a fronteira recebida —
+ * corretamente — e levava "fragmento vazio ou sem <table>" nas duas
+ * tentativas, derrubando o email. Só o modo TAG (legado, região achada por
+ * `scanBalancedTable`) passava.
+ */
+export function parseHeroFragment(
+  raw: string,
+  opts?: { expect?: HeroShape },
+): string {
   const cleaned = raw.replace(/```(?:html)?\s*/gi, "").replace(/```/g, "")
   const open = cleaned.indexOf(HERO_OUTPUT_OPEN)
   const close = cleaned.lastIndexOf(HERO_OUTPUT_CLOSE)
@@ -392,12 +427,30 @@ export function parseHeroFragment(raw: string): string {
   // O relatório continua sendo lido de `raw` por parseHeroReport; aqui ele só
   // não pode sobreviver no fragmento.
   fragment = stripHeroReport(fragment)
-  if (!fragment || !/<table\b/i.test(fragment)) {
-    throw new HeroOutputInvalidError("fragmento vazio ou sem <table>", raw)
+  if (!fragment) {
+    throw new HeroOutputInvalidError("fragmento vazio", raw)
   }
+  // O documento inteiro é checado ANTES da forma: um `<!DOCTYPE>` seguido de
+  // `<html>` não tem forma de hero, e "não é <tr> nem <table>" seria um
+  // diagnóstico pior do que dizer que veio um documento.
   if (/<!DOCTYPE|<html[\s>]|<body[\s>]/i.test(fragment)) {
     throw new HeroOutputInvalidError(
       "fragmento contém documento (esperava só a hero)",
+      raw,
+    )
+  }
+  const shape = heroShapeOf(fragment)
+  if (!shape) {
+    throw new HeroOutputInvalidError(
+      "fragmento não começa em <tr> nem <table>",
+      raw,
+    )
+  }
+  if (opts?.expect && shape !== opts.expect) {
+    throw new HeroOutputInvalidError(
+      `fragmento é <${shape === "row" ? "tr" : "table"}> mas a região é <${
+        opts.expect === "row" ? "tr" : "table"
+      }>`,
       raw,
     )
   }
@@ -484,6 +537,12 @@ export async function invokeHeroChain(input: {
    * apareceria no lugar errado. Ausente → nenhum anexo.
    */
   vision?: VisionDecision
+  /**
+   * Forma da região que o runner vai substituir (`heroShapeOf` do HTML entre
+   * os marcadores). O parser cobra a mesma forma de volta. Ausente → aceita
+   * `<tr>` ou `<table>`.
+   */
+  expectShape?: HeroShape
 }): Promise<InvokeHeroResult> {
   const { config, vars } = input
 
@@ -544,7 +603,9 @@ export async function invokeHeroChain(input: {
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
   }
-  const output = withUsage(usage, () => parseHeroFragment(res.text))
+  const output = withUsage(usage, () =>
+    parseHeroFragment(res.text, { expect: input.expectShape }),
+  )
   const report = parseHeroReport(res.text)
 
   log.info("hero.invoke.success", {

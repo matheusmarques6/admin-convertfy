@@ -68,6 +68,7 @@ import { runQaAgent } from "./chains/qa.chain"
 import {
   invokeHeroChain,
   decideHeroVision,
+  heroShapeOf,
 } from "./chains/hero.chain"
 import {
   invokeTextFormatChain,
@@ -2012,7 +2013,18 @@ async function runFormattingChain(p: {
       budgetMs,
       inputHtml: fmtCtx.referenceHtml,
       attempt: async () => {
-        const r = await invokeHeroChain({ config, vars, vision: visionDecision })
+        const r = await invokeHeroChain({
+          config,
+          vars,
+          vision: visionDecision,
+          // A região é trocada pelo fragmento NO MESMO lugar: ele tem de
+          // voltar com a mesma fronteira. Em modo marker a região é uma
+          // <tr>; em modo tag, uma <table>.
+          expectShape:
+            heroShapeOf(
+              fmtCtx.referenceHtml.slice(region.start, region.end),
+            ) ?? undefined,
+        })
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
           value: next,

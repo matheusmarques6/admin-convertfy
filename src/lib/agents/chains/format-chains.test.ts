@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest"
 
 import {
   parseHeroFragment,
+  heroShapeOf,
   buildHeroSystemPrompt,
   HeroOutputInvalidError,
   DEFAULT_HERO_SYSTEM_PROMPT,
@@ -54,10 +55,88 @@ describe("parseHeroFragment", () => {
     expect(() => parseHeroFragment(raw)).toThrow(HeroOutputInvalidError)
   })
 
-  it("fragmento vazio/sem table → erro", () => {
+  it("fragmento vazio/sem tr nem table → erro", () => {
     expect(() =>
       parseHeroFragment(`${HERO_OUTPUT_OPEN}<div>x</div>${HERO_OUTPUT_CLOSE}`),
     ).toThrow(HeroOutputInvalidError)
+    expect(() =>
+      parseHeroFragment(`${HERO_OUTPUT_OPEN}   ${HERO_OUTPUT_CLOSE}`),
+    ).toThrow(HeroOutputInvalidError)
+    expect(() =>
+      parseHeroFragment(`${HERO_OUTPUT_OPEN}Claro! Segue a hero.${HERO_OUTPUT_CLOSE}`),
+    ).toThrow(HeroOutputInvalidError)
+  })
+
+  // Regressão: o guard exigia a substring `<table>`, o que reprovava POR
+  // DEFINIÇÃO toda hero em modo marker — ali a região é o conteúdo entre
+  // `cfy:block:N:hero:start/end`, uma <tr> sem tabela. Falhou em produção nas
+  // duas tentativas, com dois modelos, derrubando o email (Luxe Lift, 27-31/jul).
+  describe("modo marker: a região é <tr>, não <table>", () => {
+    const linhaReal = [
+      "<!-- cfy:block:0:hero:start -->",
+      '<tr data-cfy-row="HERO_IMAGE HERO_IMAGE_ALT">',
+      '<td align="center" style="padding:0;" data-cfy-slot="HERO_IMAGE HERO_IMAGE_ALT">',
+      '<div class="image-container"><img src="{{HERO_IMAGE}}" alt="{{HERO_IMAGE_ALT}}"></div>',
+      "</td>",
+      "</tr>",
+      "<!-- cfy:block:0:hero:end -->",
+    ].join("\n")
+
+    it("aceita <tr> com <div> dentro do <td> (o caso que quebrava)", () => {
+      const out = parseHeroFragment(
+        `${HERO_OUTPUT_OPEN}${linhaReal}${HERO_OUTPUT_CLOSE}`,
+      )
+      expect(out).toContain("<tr data-cfy-row=")
+      expect(out).not.toContain("<table")
+    })
+
+    it("cobra a MESMA forma da região recebida", () => {
+      const tabela = "<table><tr><td>hero</td></tr></table>"
+      // Região <tr> → devolver <tr> passa; devolver <table> reprova.
+      expect(
+        parseHeroFragment(`${HERO_OUTPUT_OPEN}${linhaReal}${HERO_OUTPUT_CLOSE}`, {
+          expect: "row",
+        }),
+      ).toContain("<tr")
+      expect(() =>
+        parseHeroFragment(`${HERO_OUTPUT_OPEN}${tabela}${HERO_OUTPUT_CLOSE}`, {
+          expect: "row",
+        }),
+      ).toThrow(HeroOutputInvalidError)
+
+      // Região <table> (modo tag, legado) → o inverso.
+      expect(
+        parseHeroFragment(`${HERO_OUTPUT_OPEN}${tabela}${HERO_OUTPUT_CLOSE}`, {
+          expect: "table",
+        }),
+      ).toContain("<table")
+      expect(() =>
+        parseHeroFragment(`${HERO_OUTPUT_OPEN}${linhaReal}${HERO_OUTPUT_CLOSE}`, {
+          expect: "table",
+        }),
+      ).toThrow(HeroOutputInvalidError)
+    })
+
+    it("documento inteiro reprova antes da checagem de forma", () => {
+      const doc = `${HERO_OUTPUT_OPEN}<!DOCTYPE html><html><body><tr><td>x</td></tr></body></html>${HERO_OUTPUT_CLOSE}`
+      expect(() => parseHeroFragment(doc, { expect: "row" })).toThrow(
+        /documento/,
+      )
+    })
+  })
+
+  describe("heroShapeOf", () => {
+    it("ignora comentários e espaço à frente", () => {
+      expect(heroShapeOf("<!-- cfy:block:0:hero:start -->\n <tr><td>x</td></tr>")).toBe("row")
+      expect(heroShapeOf("\n\n<table><tr><td>x</td></tr></table>")).toBe("table")
+    })
+    it("qualquer outra coisa é null", () => {
+      expect(heroShapeOf("<div>x</div>")).toBeNull()
+      expect(heroShapeOf("texto solto")).toBeNull()
+      expect(heroShapeOf("")).toBeNull()
+      // <td> solto não é fronteira válida — o splice quebraria a tabela.
+      expect(heroShapeOf("<td>x</td>")).toBeNull()
+    })
   })
 })
 
