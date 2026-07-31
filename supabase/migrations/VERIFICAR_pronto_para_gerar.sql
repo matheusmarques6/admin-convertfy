@@ -91,17 +91,22 @@ SELECT 23, 'cor de fundo no prompt de imagem (20261062)',
 
 -- ── 3. Agentes ativos ────────────────────────────────────────────────
 UNION ALL
-SELECT 30, 'configs ativas dos agentes da cadeia',
+-- Config AUSENTE não desativa o step: `resolveAgentSwitch(null)` devolve
+-- `disabled: false` e o step roda com os defaults in-code e o
+-- FMT_DEFAULT_MODEL. Para image_format/color_format/qa isso é o estado
+-- DESEJADO — as migrations 20261044-46 zeraram esses prompts justamente
+-- para os defaults assumirem. Só `assembler_chooser`, `assembler` e
+-- `hero_section` precisam da linha, porque as 20261052-54 gravam nelas.
+SELECT 30, 'configs dos agentes (ausente = roda com default in-code)',
        CASE WHEN to_regclass('public.email_agent_configs') IS NULL THEN 'AUSENTE'
             WHEN COALESCE((xpath('//r/text()', query_to_xml(
                    $q$SELECT COUNT(DISTINCT agent_type) AS r
                         FROM public.email_agent_configs
                        WHERE is_active = true
-                         AND agent_type IN ('assembler_chooser','assembler','blueprint',
-                                            'hero_section','image','image_format',
-                                            'color_format','qa')$q$,
-                   false, true, '')))[1]::text::int, 0) = 8
-              THEN 'ok' ELSE 'INCOMPLETO' END,
+                         AND agent_type IN ('assembler_chooser','assembler',
+                                            'hero_section')$q$,
+                   false, true, '')))[1]::text::int, 0) = 3
+              THEN 'ok' ELSE 'PENDENTE' END,
        CASE WHEN to_regclass('public.email_agent_configs') IS NULL
               THEN 'tabela email_agent_configs não existe'
        ELSE COALESCE((xpath('//r/text()', query_to_xml(
