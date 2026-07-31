@@ -44,23 +44,49 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { mergeExamplesIntoHtml } from "./variant-editor"
 
-const ANCHOR_TONES: Record<TaggingFieldReport["anchored_by"], EGBadgeTone> = {
-  exact: "pos",
-  fuzzy: "warn",
-  inference: "warn",
-  renamed: "pos",
-  // Legado: manteve tag divergente do schema — hoje isso é defeito.
-  existing_tag: "neg",
-  not_found: "neg",
-}
-
-const ANCHOR_LABELS: Record<TaggingFieldReport["anchored_by"], string> = {
-  exact: "exata",
-  fuzzy: "aproximada",
-  inference: "inferida",
-  renamed: "renomeada",
-  existing_tag: "tag divergente",
-  not_found: "não achada",
+/**
+ * Selo da coluna Âncora.
+ *
+ * A VERDADE é o HTML tagueado: `{{UPPER(key)}}` está lá ou não está. O
+ * `anchored_by` do relatório é só a explicação de COMO o agente chegou (ou
+ * não) até ali — e num relatório antigo ele mente por construção, porque
+ * `existing_tag` significava duas coisas incompatíveis: "o slot já tinha a
+ * tag CERTA" (nada a fazer) e "o slot tem OUTRA tag" (o defeito). Julgar o
+ * campo pela palavra do relatório pintava de vermelho campos perfeitamente
+ * ancorados.
+ */
+function anchorBadge(
+  present: boolean,
+  anchoredBy?: TaggingFieldReport["anchored_by"],
+): { tone: EGBadgeTone; label: string } {
+  if (present) {
+    switch (anchoredBy) {
+      case "exact":
+        return { tone: "pos", label: "exata" }
+      case "fuzzy":
+        return { tone: "pos", label: "aproximada" }
+      case "renamed":
+        return { tone: "pos", label: "renomeada" }
+      case "inference":
+        // Ancorou, mas por palpite do agente — vale um olhar humano.
+        return { tone: "warn", label: "inferida" }
+      default:
+        // existing_tag / not_found / sem relatório: seja qual for a
+        // explicação, o placeholder ESTÁ no HTML. Ancorado.
+        return { tone: "pos", label: "ancorada" }
+    }
+  }
+  switch (anchoredBy) {
+    case "existing_tag":
+      return { tone: "neg", label: "tag divergente" }
+    case "not_found":
+      return { tone: "neg", label: "não achada" }
+    case undefined:
+      return { tone: "warn", label: "sem relatório" }
+    default:
+      // O relatório afirma ter ancorado e o placeholder não está lá.
+      return { tone: "neg", label: "prometida, ausente" }
+  }
 }
 
 type View = "report" | "review" | "preview"
@@ -616,7 +642,10 @@ function TaggingReportTable({
   const rows = (schema ?? []).map((f) => {
     const rep = reportByKey.get(f.key) ?? null
     const nature = deriveFieldNature(f)
-    const placeholder = rep?.placeholder ?? placeholderForKey(f.key)
+    // O endereço é derivado da key, sempre — o relatório não tem voz aqui.
+    // Deixar `rep.placeholder` mandar permitia uma proposta com tag
+    // divergente se declarar ancorada no próprio nome que inventou.
+    const placeholder = placeholderForKey(f.key)
     const present = tagged.includes(`{{${placeholder}}}`)
     return { field: f, rep, nature, placeholder, present }
   })
@@ -666,9 +695,7 @@ function TaggingReportTable({
                         ? C.g400
                         : present
                           ? C.pos
-                          : rep?.anchored_by === "existing_tag"
-                            ? C.info
-                            : C.neg,
+                          : C.neg,
                   }}
                 >
                   {`{{${placeholder}}}`}
@@ -678,12 +705,11 @@ function TaggingReportTable({
               <td style={td}>
                 {nature === "asset_fixo" ? (
                   <span style={{ color: C.g400 }}>fora do sync</span>
-                ) : rep ? (
-                  <EGBadge tone={ANCHOR_TONES[rep.anchored_by]}>
-                    {ANCHOR_LABELS[rep.anchored_by]}
-                  </EGBadge>
                 ) : (
-                  <EGBadge tone="warn">sem relatório</EGBadge>
+                  (() => {
+                    const a = anchorBadge(present, rep?.anchored_by)
+                    return <EGBadge tone={a.tone}>{a.label}</EGBadge>
+                  })()
                 )}
               </td>
               <td style={{ ...td, color: C.g500, maxWidth: 380 }}>
