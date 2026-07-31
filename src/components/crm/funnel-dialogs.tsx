@@ -12,7 +12,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
-import { AlertCircle, CheckCircle2, RefreshCw, Trash2 } from "lucide-react"
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ExternalLink,
+  RefreshCw,
+  Trash2,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import {
@@ -275,7 +282,13 @@ export function MetaAdsDialog({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [showUtm, setShowUtm] = useState(false)
 
+  const connected = accounts.length > 0
+  // Conta conectada é o caso comum depois do primeiro uso: o passo a
+  // passo some e o diálogo fica curto. Sem conta, ele aparece inteiro.
+  const formVisible = !connected || showForm
   const canConnect = !saving && accountId.trim() !== "" && token.trim().length >= 20
 
   const connect = async () => {
@@ -300,7 +313,8 @@ export function MetaAdsDialog({
       setToken("")
       setAccountId("")
       setBusinessId("")
-      setNotice("Conta conectada. Rode a primeira sincronização abaixo.")
+      setShowForm(false)
+      setNotice("Conta conectada. Sincronize para trazer os dados.")
       onChanged()
     } finally {
       setSaving(false)
@@ -322,7 +336,7 @@ export function MetaAdsDialog({
         return
       }
       const json = (await res.json()) as { result?: { rows?: number } }
-      setNotice(`Sincronizado: ${json.result?.rows ?? 0} linhas de insights (30 dias).`)
+      setNotice(`Pronto: ${json.result?.rows ?? 0} registros dos últimos 30 dias.`)
       onChanged()
     } finally {
       setSyncingId(null)
@@ -352,21 +366,26 @@ export function MetaAdsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(DIALOG, "max-w-2xl")}>
+      <DialogContent className={cn(DIALOG, "max-w-lg")}>
         <DialogHeader>
-          <DialogTitle className="text-white">Conectar Meta Ads</DialogTitle>
+          <DialogTitle className="text-white">
+            {connected ? "Meta Ads" : "Conectar Meta Ads"}
+          </DialogTitle>
           <DialogDescription className="text-[#7C8598]">
-            Traz gasto, entrega e criativos direto da sua conta de anúncios. A atribuição
-            aos leads e vendas usa os nomes de campanha, conjunto e anúncio que já vão nas
-            UTMs dos seus links.
+            {connected
+              ? "Gasto e criativos vêm desta conta. A sincronização roda sozinha todo dia."
+              : "Traz gasto, entrega e criativos da sua conta de anúncios para o funil."}
           </DialogDescription>
         </DialogHeader>
 
         {/* Contas conectadas */}
-        {accounts.length > 0 && (
-          <div className="space-y-2 rounded-[10px] border border-white/[0.08] p-3">
+        {connected && (
+          <div className="space-y-1.5">
             {accounts.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-3">
+              <div
+                key={a.id}
+                className="flex items-center justify-between gap-3 rounded-[10px] border border-white/[0.08] bg-[#0A0E17] px-3 py-2.5"
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-[13px] font-semibold text-white">
                     <Icon
@@ -379,35 +398,33 @@ export function MetaAdsDialog({
                     <span className="truncate">{a.account_name || a.account_id}</span>
                   </div>
                   <div className="mt-0.5 text-[11px] text-[#7C8598]">
-                    {a.account_id}
                     {a.last_synced_at
-                      ? ` · sincronizado ${format(new Date(a.last_synced_at), "dd/MM 'às' HH:mm")}`
-                      : " · nunca sincronizado"}
+                      ? `Última sincronização ${format(new Date(a.last_synced_at), "dd/MM 'às' HH:mm")}`
+                      : "Ainda não sincronizado"}
                   </div>
                   {a.last_sync_error && (
                     <div className="mt-0.5 text-[11px] text-[#F87171]">{a.last_sync_error}</div>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => sync(a.id)}
                     disabled={syncingId === a.id}
                     className={cn(BTN_GHOST, "px-2")}
-                    aria-label="Sincronizar agora"
                   >
                     <Icon
                       icon={RefreshCw}
                       size={16}
                       className={cn(syncingId === a.id && "animate-spin")}
                     />
-                    {syncingId === a.id ? "Sincronizando…" : "Sincronizar"}
+                    {syncingId === a.id ? "Sincronizando" : "Sincronizar"}
                   </button>
                   <button
                     type="button"
                     onClick={() => disconnect(a.id)}
                     className={cn(BTN_GHOST, "px-2 hover:text-[#F87171]")}
-                    aria-label="Desconectar conta"
+                    aria-label={`Desconectar ${a.account_name || a.account_id}`}
                   >
                     <Icon icon={Trash2} size={16} />
                   </button>
@@ -417,86 +434,190 @@ export function MetaAdsDialog({
           </div>
         )}
 
-        {/* Nova conexão */}
-        <div className="space-y-2">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="space-y-1">
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
-                ID da conta de anúncio
-              </div>
+        {/* Passo a passo — só enquanto não há conta conectada */}
+        {!connected && (
+          <ol className="space-y-2">
+            <SetupStep
+              n={1}
+              title="Gere um token no Business Manager"
+              href="https://business.facebook.com/settings/system-users"
+              linkLabel="Usuários do sistema"
+            >
+              Crie um usuário do sistema, clique em <B>Gerar novo token</B>, escolha seu
+              app e marque a permissão <B>ads_read</B>.
+            </SetupStep>
+
+            <SetupStep
+              n={2}
+              title="Dê acesso à conta de anúncio"
+              href="https://business.facebook.com/settings/system-users"
+              linkLabel="Atribuir ativos"
+            >
+              No mesmo usuário, em <B>Ativos → Contas de anúncios</B>, adicione a conta que
+              você quer acompanhar. Sem isso o token não enxerga os dados.
+            </SetupStep>
+
+            <SetupStep
+              n={3}
+              title="Copie o ID da conta"
+              href="https://adsmanager.facebook.com/adsmanager"
+              linkLabel="Gerenciador de Anúncios"
+            >
+              O ID aparece no seletor de contas e começa com <B>act_</B>.
+            </SetupStep>
+          </ol>
+        )}
+
+        {/* Formulário */}
+        {formVisible ? (
+          <div className="space-y-2 rounded-[10px] border border-white/[0.08] bg-[#0A0E17] p-3">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">
               <input
                 type="text"
                 className={FIELD}
                 placeholder="act_123456789"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
+                aria-label="ID da conta de anúncio"
               />
-            </div>
-            <div className="space-y-1">
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
-                Business ID (opcional)
-              </div>
               <input
                 type="text"
                 className={FIELD}
-                placeholder="123456789"
+                placeholder="Business ID (opcional)"
                 value={businessId}
                 onChange={(e) => setBusinessId(e.target.value)}
+                aria-label="Business ID"
               />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[#7C8598]">
-              Token de acesso
             </div>
             <input
               type="password"
               className={FIELD}
-              placeholder="Token de System User com permissão ads_read"
+              placeholder="Cole o token aqui"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
+              aria-label="Token de acesso"
             />
-            <p className="text-[11px] text-[#5A6478]">
-              Use um token de System User do Business Manager: ele não expira junto com o
-              login de uma pessoa. O token é criptografado antes de ser gravado.
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10.5px] text-[#5A6478]">
+                O token é criptografado antes de ser gravado.
+              </p>
+              <div className="flex items-center gap-1">
+                {connected && (
+                  <button
+                    type="button"
+                    className={BTN_GHOST}
+                    onClick={() => setShowForm(false)}
+                  >
+                    Cancelar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  onClick={connect}
+                  disabled={!canConnect}
+                >
+                  {saving ? "Validando…" : "Conectar"}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="self-start text-[12px] font-medium text-[#7C8598] transition-colors hover:text-white"
+          >
+            + Conectar outra conta
+          </button>
+        )}
 
         {error && <p className="text-[12px] text-[#F87171]">{error}</p>}
         {notice && <p className="text-[12px] text-[#34D399]">{notice}</p>}
 
-        <div className="flex justify-end">
-          <button type="button" className={BTN_PRIMARY} onClick={connect} disabled={!canConnect}>
-            {saving ? "Validando…" : "Conectar conta"}
-          </button>
-        </div>
-
-        {/* Padrão de UTM */}
-        <div className="rounded-[10px] border border-white/[0.08] bg-[#0A0E17] p-3">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <div className="text-[11.5px] font-semibold text-white">
+        {/* Padrão de UTM — recolhido, é referência e não passo */}
+        <div className="rounded-[10px] border border-white/[0.08]">
+          <button
+            type="button"
+            onClick={() => setShowUtm((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+          >
+            <span className="text-[11.5px] font-semibold text-white">
               Padrão de UTM dos anúncios
+            </span>
+            <Icon
+              icon={ChevronDown}
+              size={16}
+              className={cn("text-[#7C8598] transition-transform", showUtm && "rotate-180")}
+            />
+          </button>
+          {showUtm && (
+            <div className="border-t border-white/[0.06] px-3 py-2.5">
+              <p className="mb-2 text-[11px] leading-relaxed text-[#7C8598]">
+                Cole no campo <B>Parâmetros de URL</B> dos seus anúncios. É por esses nomes
+                que o gasto de cada criativo encontra os leads e as vendas.
+              </p>
+              <div className="flex items-start gap-2">
+                <code className="min-w-0 flex-1 break-all font-mono text-[10.5px] leading-relaxed text-[#8FA0C8]">
+                  {UTM_TEMPLATE}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyTemplate}
+                  className="shrink-0 text-[11px] font-medium text-[#7C8598] transition-colors hover:text-white"
+                >
+                  {copied ? "Copiado" : "Copiar"}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={copyTemplate}
-              className="text-[11.5px] font-medium text-[#7C8598] transition-colors hover:text-white"
-            >
-              {copied ? "Copiado" : "Copiar"}
-            </button>
-          </div>
-          <code className="block break-all font-mono text-[11px] leading-relaxed text-[#8FA0C8]">
-            {UTM_TEMPLATE}
-          </code>
-          <p className="mt-2 text-[11px] text-[#5A6478]">
-            Cole isso no campo de parâmetros de URL dos seus anúncios. É por esses nomes que
-            o gasto de cada criativo encontra os leads e as vendas no CRM.
-          </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Destaque de termo dentro das instruções. */
+function B({ children }: { children: React.ReactNode }) {
+  return <span className="font-semibold text-[#C6CDDB]">{children}</span>
+}
+
+/** Passo do setup: número, o que fazer e para onde ir. */
+function SetupStep({
+  n,
+  title,
+  href,
+  linkLabel,
+  children,
+}: {
+  n: number
+  title: string
+  href: string
+  linkLabel: string
+  children: React.ReactNode
+}) {
+  return (
+    <li className="flex gap-2.5">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/15 text-[10.5px] font-bold text-[#8FA0C8] tabular-nums">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-[12.5px] font-semibold text-white">{title}</span>
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] text-[#8FA0C8] underline-offset-2 hover:text-white hover:underline"
+          >
+            {linkLabel}
+            <Icon icon={ExternalLink} customSize={11} />
+          </a>
+        </div>
+        <p className="mt-0.5 text-[11.5px] leading-relaxed text-[#7C8598]">{children}</p>
+      </div>
+    </li>
   )
 }
 
