@@ -30,7 +30,12 @@ When the direction calls for a real setting (a room, a street, outdoors), ignore
 {{/if}}' || user_template
 WHERE agent_type = 'image'
   AND is_active = true
-  AND user_template NOT LIKE '%CFY_BG_COLOR%';
+  AND user_template NOT LIKE '%CFY_BG_COLOR%'
+  -- A 20261063 substitui este bloco e APAGA a marca CFY_BG_COLOR. Sem esta
+  -- linha, rodar as duas de novo (ou o consolidado duas vezes) faria a v1 se
+  -- achar nunca-aplicada e voltar ACIMA da v2 — o prompt ficaria com duas
+  -- instruções de fundo contraditórias.
+  AND user_template NOT LIKE '%CFY_BACKDROP_V2%';
 
 -- Verificação: as três marcas do prompt de imagem.
 SELECT agent_type,

@@ -114,6 +114,16 @@ function isSystemTag(tag: string): boolean {
  * Tag que servia este campo no vocabulário antigo — só para propor o retag.
  * `claimed` são os placeholders canônicos já reivindicados por outros campos,
  * para não propor mover uma tag que já é a âncora legítima de alguém.
+ *
+ * Três tentativas, da mais forte para a mais fraca:
+ *   1. copyKey do tag-registry  (HERO_BODY → "body" ↔ key `body`)
+ *   2. nome normalizado da tag  (COUPON_CODE ↔ key `coupon_code`)
+ *   3. sufixo                   (BODY_TEXT ↔ key `text`; HEADLINE ↔
+ *                                `hero_headline`) — a mesma regra do
+ *                                DIAGNOSTICO_schema_x_tags.sql. Sem ela a
+ *                                planilha do diagnóstico propunha um de/para
+ *                                que a UI não oferecia, e quem seguisse o SQL
+ *                                não achava o botão.
  */
 function findLegacyTag(
   key: string,
@@ -121,13 +131,18 @@ function findLegacyTag(
   claimed: Set<string>,
 ): string | null {
   const lower = key.toLowerCase()
-  const candidate =
-    tags.find((t) => !claimed.has(t) && lookupTag(t)?.copyKey === lower) ??
-    tags.find(
-      (t) => !claimed.has(t) && normalizeTagName(t).toLowerCase() === lower,
-    ) ??
+  const ph = placeholderForKey(key)
+  const free = tags.filter((t) => !claimed.has(t))
+  return (
+    free.find((t) => lookupTag(t)?.copyKey === lower) ??
+    free.find((t) => normalizeTagName(t).toLowerCase() === lower) ??
+    // Sufixo: a tag termina no endereço do campo, ou o endereço termina na
+    // tag. Empate → a tag mais curta, que é a mais específica.
+    free
+      .filter((t) => t.endsWith(`_${ph}`) || ph.endsWith(`_${t}`))
+      .sort((a, b) => a.length - b.length)[0] ??
     null
-  return candidate
+  )
 }
 
 /**

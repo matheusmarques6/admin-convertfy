@@ -37,6 +37,26 @@ describe("renameTagInHtml", () => {
   })
 })
 
+describe("legacyTag — a proposta de retag bate com o DIAGNOSTICO_schema_x_tags.sql", () => {
+  // As duas implementações da mesma regra têm de dar o mesmo veredito: quem
+  // roda o SQL e vai consertar na UI precisa achar lá o de/para que leu aqui.
+  const casos: Array<[string, string, string, string | null]> = [
+    // [descrição, key do schema, tag do HTML, proposta esperada]
+    ["copyKey do registry", "body", "HERO_BODY", "HERO_BODY"],
+    ["nome normalizado", "coupon_code", "COUPON_CODE", null], // já ancorado
+    ["sufixo: tag termina no endereço", "text", "BODY_TEXT", "BODY_TEXT"],
+    ["sufixo: endereço termina na tag", "hero_headline", "HEADLINE", "HEADLINE"],
+    ["sem parentesco nenhum", "hero_headline", "COUPON_CODE", null],
+  ]
+
+  for (const [nome, key, tag, esperado] of casos) {
+    it(nome, () => {
+      const a = auditSchemaTags(`<td>{{${tag}}}</td>`, [field({ key })])
+      expect(a.missing[0]?.legacyTag ?? null).toBe(esperado)
+    })
+  }
+})
+
 describe("consertos do painel levam a variante a alinhada", () => {
   const schema = [
     field({ key: "hero_headline" }),

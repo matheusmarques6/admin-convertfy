@@ -8,8 +8,9 @@
 --   20261058  coluna hero_vision_model  opcional (sem ela o default in-code assume)
 --   20261057  regra "nenhum texto na imagem" no prompt do BANCO
 --   20261061  direção fotográfica no prompt do BANCO
---   20261062  cor de fundo do email no prompt do BANCO
---   20261063  fundo pela PALETA + regra de enquadramento (substitui a 62)
+--   20261063  fundo pela PALETA + regra de enquadramento
+--             (a 20261062 é a v1 deste bloco e NÃO entra aqui — ver a nota
+--              na seção; a 63 sozinha já cobre e ainda limpa a 62 avulsa)
 --   20261064  prompt do Taguedor zerado (schema-first roda no default in-code)
 --
 -- Por que duas são obrigatórias: o select da variante da hero passou a
@@ -21,7 +22,14 @@
 -- user_template com 10k+/6k+ chars no banco, então o default in-code nunca
 -- é usado — mexer só no código não teria efeito nenhum.
 --
--- O SELECT do fim é o único statement que devolve linhas: é o relatório.
+-- "Success. No rows returned" AQUI É O ESPERADO. O SQL Editor do Supabase
+-- reporta só o desfecho do script quando ele tem vários statements — o
+-- SELECT do fim existe para quem roda por psql/outro cliente. Para VER o
+-- relatório, rode depois o VERIFICAR_pronto_para_gerar.sql, que é um
+-- statement só (mesmo motivo do DIAGNOSTICO_schema_x_tags.sql).
+--
+-- Rodar mais de uma vez é seguro: verificado em Postgres 16 local, três
+-- passadas seguidas deixam o prompt de imagem byte a byte igual.
 -- ============================================================
 
 -- ── 20261059 — Design system por variante ────────────────────────────
@@ -98,32 +106,18 @@ WHERE agent_type = 'image'
   AND user_template NOT LIKE '%CFY_PHOTO_DIRECTION%';
 
 
--- ── 20261062 — Cor de fundo do email no prompt do banco ─────────────
--- O agente conhecia a paleta da marca, mas não a cor da SEÇÃO onde a
--- imagem entra: com a direção pedindo fundo contínuo, escolhia um neutro
--- qualquer e aparecia uma emenda entre o bloco e a foto. `BG_COLOR` vem do
--- mesmo deriveColorRoles que pinta o documento — o hex do prompt e o do
--- email são o mesmo valor por construção.
-UPDATE email_agent_configs
-SET user_template =
-  '{{#if BG_COLOR}}
-CFY_BG_COLOR — EMAIL BACKGROUND COLOUR: {{BG_COLOR}}
-This is the exact colour of the section this image sits in. When the direction calls for a continuous, seamless or studio-neutral backdrop — or whenever the photo is meant to blend into the layout — the background of the photograph MUST be this hex, not an approximation. A backdrop half a tone off reads as a seam across the email.
-When the direction calls for a real setting (a room, a street, outdoors), ignore this and shoot the setting.
-
-{{/if}}' || user_template
-WHERE agent_type = 'image'
-  AND is_active = true
-  AND user_template NOT LIKE '%CFY_BG_COLOR%';
-
-
--- ── 20261063 — Fundo pela PALETA + enquadramento (v2 do bloco acima) ─
--- A 20261062 mandava o hex do fundo e ainda saiu errado: com a direção
--- pedindo estúdio, o modelo escolheu um cinza-azulado que não é da marca, e
--- a continuidade entre foto e seção — que é o ponto do layout — não
--- aconteceu. Faltava dizer que o fundo TEM de sair da paleta. Junto vai a
--- regra de enquadramento: a foto cortou a cabeça da modelo no topo do quadro.
--- SUBSTITUI o bloco da 20261062 (remove o antigo por regexp e prepende o novo).
+-- ── 20261063 — Fundo pela PALETA + enquadramento ─────────────────────
+-- A 20261062 (versão 1 deste bloco) mandava só o hex do fundo e ainda saiu
+-- errado: com a direção pedindo estúdio, o modelo escolheu um cinza-azulado
+-- que não é da marca, e a continuidade entre foto e seção — que é o ponto do
+-- layout — não aconteceu. Faltava dizer que o fundo TEM de sair da paleta.
+-- Junto vai a regra de enquadramento: a foto cortou a cabeça da modelo.
+--
+-- A v1 NÃO está neste consolidado de propósito. Aplicar as duas em sequência
+-- só funciona uma vez: a v2 apaga a marca `CFY_BG_COLOR`, e numa segunda
+-- passada a v1 acha que nunca rodou e se re-insere ACIMA da v2 — duas
+-- instruções de fundo contraditórias no mesmo prompt. O `regexp_replace`
+-- abaixo continua removendo a v1 de quem já rodou a 20261062 avulsa.
 UPDATE email_agent_configs
 SET user_template =
   '{{#if BG_COLOR}}
