@@ -7,6 +7,7 @@ import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { TrendingUp, Trophy, Target, Clock, BarChart3 } from "lucide-react"
+import { PerformancePanel } from "@/components/crm/performance-panel"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -89,6 +90,10 @@ export function SalesDashboardClient({
           />
         ) : (
           <div className="space-y-6">
+            {/* Meta, previsão, time e gargalo — o que o gestor pergunta
+                antes de olhar qualquer número solto. */}
+            <PerformancePanel />
+
             {/* KPIs */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Kpi

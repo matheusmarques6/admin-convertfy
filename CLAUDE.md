@@ -1057,6 +1057,47 @@ Documentacao completa em `docs/crm/`.
 
 ---
 
+## Metas, previsão e performance — P1 (jul/2026, migration 20261055)
+
+Painel do gestor no topo do dashboard comercial (`performance-panel.tsx`),
+alimentado por `GET /api/crm/performance` — uma rota só porque os quatro
+blocos leem os MESMOS deals. Cálculos em `crm-performance.ts` (26 testes,
+puro): é aritmética com armadilha (divisão por zero no dia 1, histórico
+fora de ordem, meta contada duas vezes).
+
+**Meta** (`crm_sales_goals`): `revenue_won` (R$) ou `deals_won` (nº), por
+month|quarter|year. `owner_id` NULL = meta do time, `pipeline_id` NULL =
+todos os pipelines de vendas (o schema suporta meta individual/por
+pipeline; a UI hoje só edita a do time — abrir depois não quebra nada).
+UNIQUE com COALESCE porque UNIQUE ignora NULL. POST é upsert por período
+(o índice usa COALESCE, fora do alcance do `onConflict` do PostgREST —
+por isso a rota busca-e-decide). `computeGoalProgress` devolve percent
+SEM TETO (bater 120% precisa aparecer), `paceNeeded` null quando o
+período acabou e projeção linear que não divide por zero no dia 1.
+Barra do card: preenchimento = realizado, marca vertical = onde o
+período está — marca à frente da barra é o sinal visual de atraso.
+
+**Forecast** (`buildForecast`): negócios ABERTOS agrupados por mês de
+`expected_close_date`, com valor bruto e ponderado por `probability`
+(ausente = 50%, fora da faixa é clampeada). Sem data prevista fica FORA
+da conta (entrar num mês arbitrário inflaria a previsão) e a UI diz
+quantos ficaram de fora. Barra clara = bruto, escura = ponderado; a
+diferença é o risco.
+
+**Por responsável** (`computeOwnerStats`): ganho/perdido/aberto, win
+rate, ticket e ciclo. `winRate` é NULL sem nada fechado — 0% seria
+mentira. Abertos entram inteiros (pipeline atual), fechados só os do
+período.
+
+**Tempo por etapa** (`computeStageDurations`): reconstrói as passagens a
+partir de `crm_deal_history` (janela 180d). A permanência na etapa ATUAL
+NÃO entra — ela não terminou, e incluí-la faria a etapa onde tudo está
+parado parecer a mais rápida. Ordena eventos por data (o histórico chega
+fora de ordem) e expõe mediana além da média (um deal parado há 2 anos
+distorce a média).
+
+---
+
 ## Operação do pipeline — P0 do gap vs Pipedrive (jul/2026, migration 20261054)
 
 Quatro lacunas de uso diário, atacadas juntas porque compartilham estado.
