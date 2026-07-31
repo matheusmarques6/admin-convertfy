@@ -23,6 +23,7 @@ import {
   enclosingRow as domEnclosingRow,
 } from "./dom-locator"
 import { readAnnotatedSlots } from "./slot-annotate"
+import { resolveCopyValue } from "./copy-key-resolve"
 
 /** Campo mínimo do snapshot fields v2 que o merge precisa. */
 export interface MergeField {
@@ -57,6 +58,13 @@ export interface CopyMergeReport {
   left_for_llm: string[]
   /** Keys de content com valor mas sem tag resolvida (copy sem âncora). */
   unanchored_keys: string[]
+  /**
+   * Campos que só casaram pelo copyKey CANÔNICO do tag-registry — ou seja,
+   * cujo `output_schema.key` está fora do vocabulário que o n8n devolve.
+   * Enquanto isso não for zero, o merge depende da ponte de
+   * copy-key-resolve; zerou = os schemas foram alinhados.
+   */
+  keys_via_canonical: string[]
 }
 
 export interface CopyMergeResult {
@@ -70,13 +78,6 @@ const TAG_TOKEN = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g
 
 function isTextTag(tag: string): boolean {
   return !IMAGE_TAG.test(tag)
-}
-
-/** Valor de copy utilizável (string não-vazia ou número). */
-function copyValue(v: unknown): string | null {
-  if (typeof v === "string") return v.trim() || null
-  if (typeof v === "number" && Number.isFinite(v)) return String(v)
-  return null
 }
 
 /** Tags de texto presentes no doc FORA da região sentinelada da hero. */
@@ -389,7 +390,7 @@ export function buildMergeVerifierInput(
   for (const b of blocks) {
     for (const f of b.fields) {
       if (deriveFieldNature(f) !== "copy") continue
-      const value = copyValue(b.content?.[f.key])
+      const value = resolveCopyValue(b.content, f).value
       if (value == null) continue
       const tag = f.tag ? f.tag.replace(/[{}\s]/g, "") : null
       if (tag && mergedSet.has(tag)) {
@@ -426,6 +427,11 @@ export function copyMerge(
   const ops: FormatOp[] = []
   const opTags = new Set<string>()
   const unanchored: string[] = []
+  // Campos que só casaram pelo copyKey canônico. Enquanto os schemas da
+  // biblioteca não usarem o vocabulário do registry, isto conta quanto do
+  // merge depende da ponte — e cair para zero significa que o alinhamento
+  // aconteceu.
+  const viaCanonical: string[] = []
 
   for (const b of blocks) {
     for (const f of b.fields) {
@@ -433,8 +439,14 @@ export function copyMerge(
       // Copy e URL são trocas de texto; imagem é do agente de imagem e
       // asset_fixo é intocável — fora do merge.
       if (nature !== "copy") continue
-      const value = copyValue(b.content?.[f.key])
+      // Dois vocabulários legítimos convivem: a key do schema (Taguedor) e
+      // o copyKey do tag-registry, que é o que o n8n devolve. Ler só o
+      // primeiro deixava TODOS os placeholders crus num bloco cujo schema
+      // segue o Taguedor — ver copy-key-resolve.
+      const resolved = resolveCopyValue(b.content, f)
+      const value = resolved.value
       if (value == null) continue
+      if (resolved.source === "canonical_copy_key") viaCanonical.push(f.key)
       if (!f.tag) {
         unanchored.push(f.key)
         continue
@@ -484,6 +496,7 @@ export function copyMerge(
       skipped: res.skipped,
       left_for_llm: leftForLlm,
       unanchored_keys: Array.from(new Set(unanchored)),
+      keys_via_canonical: Array.from(new Set(viaCanonical)),
     },
   }
 }
