@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { sortThreadsAsQueue } from "@/lib/services/crm-inbox-sla"
 import useSWR from "swr"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -70,7 +71,15 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
 
   useEffect(() => setRealtimeConnected(rtConnected), [rtConnected])
 
-  const threads = useMemo(() => threadsData?.threads || [], [threadsData])
+  // "recent" preserva o comportamento de sempre; "queue" ordena como
+  // fila de atendimento — quem espera resposta ha mais tempo primeiro.
+  const [orderMode, setOrderMode] = useState<"recent" | "queue">("recent")
+
+  const threads = useMemo(() => {
+    const list = threadsData?.threads || []
+    if (orderMode === "queue") return sortThreadsAsQueue(list, Date.now())
+    return list
+  }, [threadsData, orderMode])
   const detail = detailData
 
   // Marca como lida ao abrir (zera unread + read receipt na Meta)
@@ -113,6 +122,8 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     >
       <ConversationList
         threads={threads}
+        orderMode={orderMode}
+        onOrderModeChange={setOrderMode}
         activeThreadId={activeThreadId}
         onSelect={setActiveThreadId}
         totalUnread={totalUnread}

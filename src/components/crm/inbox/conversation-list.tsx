@@ -5,7 +5,8 @@
  * status, "apenas meus" e badge de janela de 24h aberta (dot verde).
  */
 
-import { Filter, MessageSquare, Search } from "lucide-react"
+import { Clock, Filter, MessageSquare, Search } from "lucide-react"
+import { formatWait, waitingInfo } from "@/lib/services/crm-inbox-sla"
 import { cn } from "@/lib/utils"
 import type { ThreadSummary } from "@/types/crm-inbox"
 import { ThreadTagChips, useTagRegistry } from "./thread-tags"
@@ -26,6 +27,8 @@ interface ConversationListProps {
   tagFilter: string
   onTagFilterChange: (v: string) => void
   hasActiveFilters: boolean
+  orderMode: "recent" | "queue"
+  onOrderModeChange: (m: "recent" | "queue") => void
 }
 
 export function ConversationList({
@@ -42,6 +45,8 @@ export function ConversationList({
   tagFilter,
   onTagFilterChange,
   hasActiveFilters,
+  orderMode,
+  onOrderModeChange,
 }: ConversationListProps) {
   const tagRegistry = useTagRegistry()
   return (
@@ -136,6 +141,37 @@ export function ConversationList({
           </button>
         </div>
 
+        {/* Recentes = ordem de chegada; Fila = quem espera resposta há
+            mais tempo primeiro (SLA), pra ninguém esfriar esquecido. */}
+        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Ordenação">
+          {([
+            { mode: "recent" as const, label: "Recentes" },
+            { mode: "queue" as const, label: "Fila" },
+          ]).map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => onOrderModeChange(mode)}
+              aria-pressed={orderMode === mode}
+              style={{
+                fontSize: "var(--crm-text-xs)",
+                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
+                padding: "3px 8px",
+                borderRadius: "var(--crm-radius-sm)",
+                background: orderMode === mode ? "var(--crm-blue-50)" : "transparent",
+                color: orderMode === mode ? "var(--crm-brand)" : "var(--crm-gray-500)",
+                border: orderMode === mode ? "1px solid var(--crm-blue-100)" : "1px solid transparent",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              {mode === "queue" && <Clock className="h-3 w-3" />}
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Filtro por tag — só aparece quando a org tem tags */}
         {tagRegistry.length > 0 && (
           <select
@@ -170,7 +206,7 @@ export function ConversationList({
             <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>
               {hasActiveFilters
                 ? "Ajuste os filtros para ver mais resultados."
-                : "Conversas chegam aqui via WhatsApp Cloud API."}
+                : "Conversas do WhatsApp e do Instagram chegam aqui."}
             </p>
           </div>
         ) : (
@@ -287,9 +323,7 @@ export function ConversationList({
                           {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
                         </span>
                       </span>
-                      <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
-                        {formatRelativeTime(t.last_message_at)}
-                      </span>
+                      <ThreadTimeCell thread={t} />
                     </div>
                   </div>
                 </div>
@@ -299,6 +333,47 @@ export function ConversationList({
         )}
       </div>
     </aside>
+  )
+}
+
+/**
+ * Horário relativo + badge de espera. O badge só existe quando a bola
+ * está com o time (última mensagem do contato, conversa não resolvida):
+ * âmbar aos 15min, vermelho a 1h — lead de rede social esfria em minutos.
+ */
+function ThreadTimeCell({
+  thread,
+}: {
+  thread: { status: string; last_message_at: string; last_message_direction: string | null }
+}) {
+  const w = waitingInfo(thread, Date.now())
+  if (!w.waiting || w.level === "ok") {
+    return (
+      <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
+        {formatRelativeTime(thread.last_message_at)}
+      </span>
+    )
+  }
+  const isCritical = w.level === "critical"
+  return (
+    <span
+      title={`Aguardando resposta há ${formatWait(w.minutes)}`}
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "1px 6px",
+        borderRadius: "var(--crm-radius-full)",
+        background: isCritical ? "var(--crm-neg-bg)" : "var(--crm-warn-bg)",
+        color: isCritical ? "var(--crm-neg)" : "var(--crm-warn)",
+        border: `1px solid ${isCritical ? "var(--crm-neg-border)" : "var(--crm-warn-border)"}`,
+      }}
+    >
+      <Clock style={{ width: 10, height: 10 }} />
+      {formatWait(w.minutes)}
+    </span>
   )
 }
 

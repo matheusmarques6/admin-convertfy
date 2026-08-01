@@ -1313,11 +1313,15 @@ export function PipelineBoardView({
       <DealsBulkBar
         count={selected.size}
         owners={owners}
-        stages={(pipeline?.stages ?? []).map((s) => ({
-          id: s.id,
-          name: s.name,
-          stage_type: s.stage_type ?? undefined,
-        }))}
+        stages={(pipeline?.stages ?? [])
+          // Etapa "archived" fora do menu: mover pra ela arquivaria em
+          // silêncio — arquivar já é uma ação própria, com confirmação.
+          .filter((s) => s.stage_type !== "archived")
+          .map((s) => ({
+            id: s.id,
+            name: s.name,
+            stage_type: s.stage_type ?? undefined,
+          }))}
         availableTags={filterOptions.tags}
         busy={bulkBusy}
         onClear={clearSelection}

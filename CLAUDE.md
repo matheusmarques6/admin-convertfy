@@ -1083,6 +1083,47 @@ Documentacao completa em `docs/crm/`.
 
 ---
 
+## Inbox e leads: automação por mensagem, duplicados, fila SLA (ago/2026)
+
+**Gatilho `thread_message_received` agora DISPARA** (era fantasma desde a
+fase 5 — estava no builder mas nenhum webhook o emitia). Ponte em
+`crm-thread-trigger.service.ts`, chamada pelos webhooks de Instagram
+(DM + comentário) e WhatsApp após persistir a mensagem. Filtros do
+gatilho: `channel_type`, `event_kind` (message|comment) e
+`first_message` (só a 1ª do contato — sem isso, fluxo que cria negócio
+criaria um por resposta). Fire-and-forget: falha de automação nunca
+derruba a ingestão. Idempotência por `external_message_id` (a Meta
+reenvia webhooks; o executor já deduplicava por `idempotency_key`).
+
+**Ação `action_create_deal` implementada** (também era fantasma: tinha
+tipo mas não tinha case no executor nem entrada na palette). Config:
+pipeline/etapa/dono/título. Idempotente por conversa (thread com
+`deal_id` reusa); vincula `crm_threads.deal_id`; dono em cascata
+(config → quem atende → default do pipeline → 1º membro ativo, porque
+`deals.owner_id` é NOT NULL). É o "respondeu direct → entra na pipeline".
+
+**Duplicados + merge** (`crm-lead-merge.ts`, 18 testes): duplicado =
+mesmo email OU mesmo telefone (variantes BR do 9º dígito via
+`phoneKeys`); nome igual NÃO é chave. Merge preenche-vazio (sobrevivente
+nunca perde dado), tags união, notas concatenam, herda status mais
+avançado. Rota `GET/POST /api/crm/leads/duplicates` re-aponta FKs
+(deals, threads, activities, submissions, automation_runs,
+conversion_events) ANTES de apagar — as FKs são SET NULL e apagar
+primeiro desligaria o histórico. UI: botão "Duplicados" na página de
+Leads → dialog com radio de sobrevivente (sugestão: mais dados;
+convertido é âncora).
+
+**Fila com SLA no inbox** (`crm-inbox-sla.ts`, 11 testes): conversa
+"aguardando" = última mensagem do contato + status open/pending. Faixas
+15min/60min (warn/critical). Toggle Recentes|Fila na lista (fila =
+quem espera há mais tempo primeiro); badge de espera colorido no lugar
+do horário quando warn+. `last_message_at` é proxy (SUBestima a espera
+quando o contato manda várias seguidas — documentado no módulo).
+
+**SMS**: nada implementado — bloqueado na escolha de provedor.
+
+---
+
 ## Metas, previsão e performance — P1 (jul/2026, migration 20261055)
 
 Painel do gestor no topo do dashboard comercial (`performance-panel.tsx`),

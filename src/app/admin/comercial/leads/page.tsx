@@ -3,12 +3,13 @@
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
-import { Plus, Search, UserPlus, Upload } from "lucide-react"
+import { Copy, Plus, Search, UserPlus, Upload } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { LeadDrawer } from "@/components/crm/lead-drawer"
 import { NewLeadDialog } from "@/components/crm/new-lead-dialog"
 import { LeadsImportWizard } from "@/components/crm/leads-import-wizard"
+import { LeadsDuplicatesDialog } from "@/components/crm/leads-duplicates-dialog"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { useDebounce } from "@/hooks/use-debounce"
 
@@ -52,6 +53,7 @@ function SalesLeadsPageInner() {
   const [drawerAction, setDrawerAction] = useState<"convert" | "edit" | null>(null)
   const [newLeadOpen, setNewLeadOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false)
 
   // Open drawer if ?lead=<id> in URL; action=convert/edit aciona modo
   useEffect(() => {
@@ -84,6 +86,27 @@ function SalesLeadsPageInner() {
       subtitle={`${total} ${total === 1 ? "lead" : "leads"} no total`}
       actions={
         <div style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}>
+          <button
+            onClick={() => setDuplicatesOpen(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              background: "#fff",
+              border: "1px solid rgba(0,0,0,0.10)",
+              color: "var(--crm-gray-700)",
+              cursor: "pointer",
+            }}
+            title="Encontrar e mesclar leads duplicados"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Duplicados
+          </button>
           <button
             onClick={() => setImportOpen(true)}
             style={{
@@ -304,6 +327,12 @@ function SalesLeadsPageInner() {
         onImported={() => {
           mutate()
         }}
+      />
+
+      <LeadsDuplicatesDialog
+        open={duplicatesOpen}
+        onOpenChange={setDuplicatesOpen}
+        onMerged={() => mutate()}
       />
     </CrmPageShell>
   )
