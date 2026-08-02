@@ -939,6 +939,19 @@ export async function dispatchEmailCopyWebhook(
     variant_id: string | null
   }> = []
 
+  // Blocos que NÃO foram enviados por não terem campo de copy nenhum.
+  // Superconjunto de `blocosSemSchema`: um bloco pode ter schema só de
+  // imagem (nada a escrever) e ser omitido sem ser erro. Registrado sempre —
+  // omissão silenciosa é como um bloco deixa de ser gerado sem ninguém ver.
+  const blocosOmitidos: Array<{
+    flow_type: string
+    email_number: number
+    position: number
+    type: string
+    label: string | null
+    variant_name: string | null
+  }> = []
+
   // ── O bloco é o schema: resolve o contrato de cada bloco ANTES do envio.
   // Lê da linha; se estiver vazia (bloco anterior à migration 20261065),
   // resolve do blueprint UMA vez e grava. Auto-cura, não fallback
@@ -1196,7 +1209,26 @@ export async function dispatchEmailCopyWebhook(
                 fields,
               }
             },
-          ),
+          )
+            // Bloco sem NENHUM campo de copy sai do payload. Não é economia
+            // de bytes: mandar um bloco vazio junto de um `purpose` de 400
+            // caracteres explicando o que fazer é um convite para o modelo
+            // improvisar — foi assim que a faixa de cupom saiu com texto de
+            // preheader. Header e footer são preenchidos por código
+            // (fillStructural: LOGO, PREHEADER, YEAR, UNSUBSCRIBE_URL,
+            // FOOTER_LINK_*, redes), então nunca tiveram o que pedir aqui.
+            .filter((b) => {
+              if (b.fields.length > 0) return true
+              blocosOmitidos.push({
+                flow_type: f.flow_type,
+                email_number: e.number,
+                position: b.position,
+                type: b.type,
+                label: b.label,
+                variant_name: b.variant_name,
+              })
+              return false
+            }),
         }
       })
 
@@ -1338,6 +1370,12 @@ export async function dispatchEmailCopyWebhook(
       // fields o n8n não tem o que preencher e volta a inventar as chaves.
       ...(blocosSemSchema.length > 0
         ? { blocos_sem_schema: blocosSemSchema.slice(0, 30) }
+        : {}),
+      // Blocos que ficaram FORA do payload por não terem copy a pedir
+      // (header/footer são preenchidos por código). Sem este registro, um
+      // bloco deixaria de ser gerado sem deixar rastro.
+      ...(blocosOmitidos.length > 0
+        ? { blocos_omitidos: blocosOmitidos.slice(0, 30) }
         : {}),
     },
     error_message: dispatchError,

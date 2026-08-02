@@ -523,7 +523,63 @@ describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
     ])
   })
 
-  it("bloco SEM schema vai pro payload vazio e é registrado como erro de curadoria", async () => {
+  it("bloco sem campo de COPY nao vai pro payload (header/footer)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      // header estrutural: preenchido por codigo (LOGO/PREHEADER), nada a pedir.
+      { id: "b1", email_id: "e1", position: 1, block_type: "header", label: "Logo da marca",
+        content: {}, variant_id: null, fields: [] },
+      { id: "b2", email_id: "e1", position: 2, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-hero",
+        fields: [
+          { key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+            nature: "copy", max_len: 40, required: true, source: "schema" },
+        ] },
+      // bloco com schema SO de imagem: tem contrato, mas nada de copy.
+      { id: "b3", email_id: "e1", position: 3, block_type: "image", label: "Arte",
+        content: {}, variant_id: "v-img",
+        fields: [
+          { key: "banner", tag: "BANNER", type: "image",
+            nature: "imagem_gerada", max_len: 0, required: true, source: "schema" },
+        ] },
+      { id: "b4", email_id: "e1", position: 4, block_type: "footer", label: "Rodape",
+        content: {}, variant_id: "v-footer", fields: [] },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null, blocks: [],
+        }],
+      ]),
+    )
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blocks: Array<{ type: string }> }> }>
+    }
+    // So o hero sobra: header/footer sem campo, image so com imagem_gerada.
+    expect(body.flows[0].emails[0].blocks.map((b) => b.type)).toEqual(["hero"])
+
+    const run = h.tables.email_generation_runs.find(
+      (r: Row) => r.agent === "copy_dispatch",
+    )
+    const omitidos = (run?.parsed_output as {
+      blocos_omitidos?: Array<{ type: string }>
+    })?.blocos_omitidos
+    // Omissao NUNCA e silenciosa.
+    expect(omitidos?.map((b) => b.type).sort()).toEqual(["footer", "header", "image"])
+  })
+
+  it("bloco SEM schema é omitido e registrado como erro de curadoria", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
     ])
@@ -551,15 +607,19 @@ describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
       flows: Array<{ emails: Array<{ blocks: Array<{ fields: unknown[] }> }> }>
     }
-    // Sem schema NÃO vira default do copy_spec — o bloco vai vazio, e o
-    // problema aparece na telemetria em vez de virar copy inventada.
-    expect(body.flows[0].emails[0].blocks[0].fields).toEqual([])
+    // Sem schema NÃO vira default do copy_spec, e o bloco nem chega a ser
+    // enviado: mandá-lo vazio junto do `purpose` era convite pro modelo
+    // improvisar. O problema aparece na telemetria, nas duas listas.
+    expect(body.flows[0].emails[0].blocks).toEqual([])
     const run = h.tables.email_generation_runs.find(
       (r: Row) => r.agent === "copy_dispatch",
     )
-    expect(
-      (run?.parsed_output as { blocos_sem_schema?: unknown[] })?.blocos_sem_schema,
-    ).toHaveLength(1)
+    const parsed = run?.parsed_output as {
+      blocos_sem_schema?: unknown[]
+      blocos_omitidos?: unknown[]
+    }
+    expect(parsed?.blocos_sem_schema).toHaveLength(1)
+    expect(parsed?.blocos_omitidos).toHaveLength(1)
   })
 })
 
@@ -811,11 +871,19 @@ describe("dispatchEmailCopyWebhook — fallback DEFAULT_BLUEPRINTS no payload", 
     })
     // Sem outline: o objective por email também cai no default in-code.
     expect(email.objective).toBe("Agradecer pela compra e reforçar confiança")
-    expect(email.blocks.map((b) => b.purpose)).toEqual([
-      "Agradecimento e dicas do produto",
-      "Suporte ou FAQ",
-      "Rodapé padrão",
-    ])
+    // O contexto do email (blueprint/objective) continua indo. Os BLOCOS,
+    // não: sem blueprint de loja não há variante casada, logo não há schema,
+    // e bloco sem contrato de copy não vai mais ao n8n (20261065). Antes
+    // eles iam com `fields` derivado do copy_spec — que era justamente a
+    // porta pelo qual o n8n inventava o vocabulário.
+    expect(email.blocks).toEqual([])
+    const run = h.tables.email_generation_runs.find(
+      (r: Row) => r.agent === "copy_dispatch",
+    )
+    expect(
+      (run?.parsed_output as { blocos_omitidos?: Array<{ type: string }> })
+        ?.blocos_omitidos?.map((b) => b.type),
+    ).toEqual(["text", "cta", "footer"])
   })
 
   it("row do banco vence: fallback NÃO sobrescreve blueprint vindo da cascata", async () => {
@@ -892,13 +960,20 @@ describe("dispatchEmailCopyWebhook — fallback DEFAULT_BLUEPRINTS no payload", 
 })
 
 describe("dispatchEmailCopyWebhook — regenerateAll", () => {
+  // Cada bloco carrega contrato: estes testes são sobre QUAIS blocos são
+  // selecionados (misto vs regenerateAll), não sobre o filtro de blocos sem
+  // copy — sem `fields` o filtro novo os removeria e o teste viraria vácuo.
+  const campo = (key: string) => ({
+    key, tag: key.toUpperCase(), type: "text_short",
+    nature: "copy", max_len: 40, required: false, source: "schema",
+  })
   const mixedBlocks = () => [
     { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
-      content: { headline: "copy antiga" } },
+      content: { headline: "copy antiga" }, variant_id: "v1", fields: [campo("headline")] },
     { id: "b2", email_id: "e1", position: 2, block_type: "coupon", label: "Cupom",
-      content: {} },
+      content: {}, variant_id: "v2", fields: [campo("code")] },
     { id: "b3", email_id: "e1", position: 3, block_type: "footer", label: "Rodapé",
-      content: { text: "copy antiga" } },
+      content: { text: "copy antiga" }, variant_id: "v3", fields: [campo("text")] },
   ]
 
   function sentBlocks(): Array<{ position: number; type: string }> {
