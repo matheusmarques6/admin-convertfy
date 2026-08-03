@@ -1205,6 +1205,20 @@ agendada agora aparece marcado ("Sem próxima ação", tone neut) em vez de
 célula vazia — é o que morre no funil em silêncio. `next_step` já vinha
 calculado de `/api/crm/pipelines/[id]`; faltava expor o caso vazio.
 
+**Incidente "card volta pra etapa anterior" (ago/2026, migration
+20261066)**: arrastar deal pra coluna de ganho revertia o card. Causa: o
+trigger `ensure_onboarding_on_deal_won` (ponte venda→onboarding, publica
+`deal.won` em `events`) referenciava `NEW.created_by`/`NEW.org_id` —
+colunas que `deals` NÃO tem — e PL/pgSQL só avalia o INSERT quando o
+gate de ganho passa (nome 'Ganho'/'Fechado'/etc OU stage_type='won'):
+erro só nessas colunas → UPDATE abortado → 500 → kanban reverte. Fix:
+trigger FAIL-OPEN (campos incertos via `to_jsonb(NEW)`, org_id em
+cascata coluna→org_members do owner, INSERT em bloco EXCEPTION — evento
+nunca bloqueia o move). Regra derivada: trigger de ponte/telemetria em
+tabela de ação do usuário SEMPRE fail-open. No client, `onDragEnd` não
+muta mais o objeto do prop (revert de verdade) e falha de move mostra
+toast com a mensagem da API — reverter em silêncio vira "bug de drag".
+
 ---
 
 ## Funil Comercial (jul/2026 — migration 20261052)
