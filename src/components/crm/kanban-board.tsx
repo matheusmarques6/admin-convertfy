@@ -168,30 +168,25 @@ export function KanbanBoard({
     )
       return
 
-    const fromList = (dealsByStage.get(source.droppableId) || []).slice()
-    const toList =
-      source.droppableId === destination.droppableId
-        ? fromList
-        : (dealsByStage.get(destination.droppableId) || []).slice()
+    const current = optimisticDeals.find((d) => d.id === draggableId)
+    if (!current) return
 
-    const [moved] = fromList.splice(source.index, 1)
-    if (!moved) return
-    moved.stage_id = destination.droppableId
-    if (source.droppableId === destination.droppableId) {
-      fromList.splice(destination.index, 0, moved)
-    } else {
-      toList.splice(destination.index, 0, moved)
-    }
-
-    const newOptimistic = optimisticDeals.map((d) => {
-      if (d.id === moved.id) return { ...moved }
-      return d
-    })
-    setOptimisticDeals(newOptimistic)
+    // Copia — nunca mutar o objeto vindo do prop `deals`. Se mutar, o
+    // revert em caso de falha da API (setOptimisticDeals(deals)) devolve
+    // o MESMO objeto já alterado e o card fica preso na coluna errada
+    // até o próximo refetch.
+    const newPos = (destination.index + 1) * 10
+    const movedCopy = {
+      ...current,
+      stage_id: destination.droppableId,
+      position: newPos,
+    } as typeof current
+    setOptimisticDeals(
+      optimisticDeals.map((d) => (d.id === draggableId ? movedCopy : d)),
+    )
 
     setIsMoving(true)
     try {
-      const newPos = (destination.index + 1) * 10
       await onMove(draggableId, destination.droppableId, newPos)
     } catch {
       setOptimisticDeals(deals)

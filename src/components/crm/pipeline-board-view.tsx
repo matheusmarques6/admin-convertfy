@@ -45,6 +45,16 @@ import {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+/** Extrai a mensagem do shape de erro da API ({ error: string | { message } }). */
+async function readApiError(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { error?: unknown } | null
+  const raw = body?.error
+  return (
+    (typeof raw === "string" ? raw : (raw as { message?: string } | null)?.message) ??
+    res.statusText
+  )
+}
+
 interface PipelineDetailResponse {
   pipeline: {
     id: string
@@ -509,7 +519,13 @@ export function PipelineBoardView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stage_id: toStageId, position: toPosition }),
     })
-    if (!res.ok) throw new Error("Falha ao mover deal")
+    if (!res.ok) {
+      // O board reverte o card no throw — sem o toast a reversão é
+      // silenciosa e parece bug de drag em vez de erro do servidor.
+      const msg = await readApiError(res)
+      setToast({ kind: "error", msg: `Falha ao mover: ${msg}` })
+      throw new Error(`Falha ao mover deal: ${msg}`)
+    }
     await mutate()
   }
 
@@ -526,17 +542,32 @@ export function PipelineBoardView({
         lost_reason: comment ? `${reason} — ${comment}` : reason,
       }),
     })
-    if (res.ok) await mutate()
+    if (!res.ok) {
+      setToast({
+        kind: "error",
+        msg: `Falha ao marcar como perdido: ${await readApiError(res)}`,
+      })
+      return
+    }
+    await mutate()
   }
 
   // Quick actions do card
   const handleQuickWin = async (dealId: string) => {
     if (!wonStage) return
-    await fetch(`/api/crm/deals/${dealId}/move`, {
+    const res = await fetch(`/api/crm/deals/${dealId}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stage_id: wonStage.id, position: 10 }),
     })
+    if (!res.ok) {
+      setToast({
+        kind: "error",
+        msg: `Falha ao marcar como ganho: ${await readApiError(res)}`,
+      })
+      return
+    }
+    setToast({ kind: "success", msg: "Negócio marcado como ganho." })
     await mutate()
   }
 
