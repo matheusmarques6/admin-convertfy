@@ -918,7 +918,84 @@ function WhatsAppForm({
   )
 }
 
-// ─── Instagram form ──────────────────────────────────────────────
+// ─── Instagram form (tutorial passo a passo) ─────────────────────
+
+function IgStep({
+  n,
+  title,
+  linkLabel,
+  linkHref,
+  defaultOpen,
+  children,
+}: {
+  n: number
+  title: string
+  linkLabel?: string
+  linkHref?: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      style={{
+        border: "1px solid var(--crm-gray-200)",
+        borderRadius: 8,
+        background: "var(--crm-gray-0)",
+      }}
+    >
+      <summary
+        className="flex cursor-pointer select-none items-center gap-2.5"
+        style={{ padding: "9px 12px", listStyle: "none" }}
+      >
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+          style={{
+            background: "var(--crm-gray-900)",
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
+          {n}
+        </span>
+        <span
+          className="flex-1"
+          style={{ fontSize: 13, fontWeight: 600, color: "var(--crm-gray-900)" }}
+        >
+          {title}
+        </span>
+        {linkHref && (
+          <a
+            href={linkHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: "var(--crm-brand)",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {linkLabel ?? "Abrir"} ↗
+          </a>
+        )}
+      </summary>
+      <div
+        style={{
+          padding: "0 12px 11px 34px",
+          fontSize: 12.5,
+          color: "var(--crm-gray-600)",
+          lineHeight: 1.65,
+        }}
+      >
+        {children}
+      </div>
+    </details>
+  )
+}
 
 function InstagramForm({
   onCancel,
@@ -933,6 +1010,11 @@ function InstagramForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const webhookUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/webhooks/instagram`
+      : "/api/webhooks/instagram"
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -945,14 +1027,14 @@ function InstagramForm({
           type: "instagram",
           display_name: name,
           instagram: {
-            instagram_business_account_id: igAccountId,
-            access_token: accessToken,
+            instagram_business_account_id: igAccountId.trim(),
+            access_token: accessToken.trim(),
           },
         }),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
-        setError(json.error?.message || "Erro ao criar channel")
+        setError(json.error?.message || json.error || "Erro ao criar channel")
         return
       }
       onCreated()
@@ -964,17 +1046,115 @@ function InstagramForm({
   }
 
   return (
-    <form onSubmit={submit} className="mt-6 crm-card" style={{ maxWidth: 560 }}>
+    <form onSubmit={submit} className="mt-6 crm-card" style={{ maxWidth: 640 }}>
       <h3
         style={{
           fontSize: "var(--crm-text-md)",
           fontWeight: "var(--crm-weight-medium)",
           color: "var(--crm-gray-900)",
-          marginBottom: "var(--crm-space-3)",
+          marginBottom: 4,
         }}
       >
-        Conectar Instagram (DM + Comments)
+        Conectar Instagram (Directs + Comentários)
       </h3>
+      <p style={{ fontSize: 12.5, color: "var(--crm-gray-500)", marginBottom: 12 }}>
+        Configuração única por conta. Siga os passos na ordem — os passos 3 e 4
+        geram os dois valores pedidos no final.
+      </p>
+
+      <div className="space-y-2" style={{ marginBottom: 14 }}>
+        <IgStep
+          n={1}
+          title="Vincule o Instagram a uma Página do Facebook"
+          linkLabel="Business Suite"
+          linkHref="https://business.facebook.com/settings/instagram-account-v2s"
+          defaultOpen
+        >
+          A conta precisa ser <strong>profissional</strong> (Business). Em Meta
+          Business Suite → Configurações → Contas → <em>Contas do Instagram</em>,
+          conecte a conta e vincule-a a uma Página do Facebook do seu negócio. Sem
+          esse vínculo a API de mensagens não funciona.
+        </IgStep>
+
+        <IgStep
+          n={2}
+          title="Tenha um app na Meta for Developers"
+          linkLabel="Meus apps"
+          linkHref="https://developers.facebook.com/apps/"
+        >
+          Crie um app do tipo <strong>Negócios</strong> (ou use o mesmo app que já
+          usa para o WhatsApp). Dentro do app, adicione o produto{" "}
+          <strong>Messenger</strong> e ative a seção{" "}
+          <em>Instagram — configurações da API</em>. Para funcionar com qualquer
+          pessoa (não só administradores), o app precisa estar em modo{" "}
+          <strong>Ativo</strong> (Live) com acesso avançado às permissões do passo 4.
+        </IgStep>
+
+        <IgStep
+          n={3}
+          title="Copie o Instagram Business Account ID"
+          linkLabel="Graph Explorer"
+          linkHref="https://developers.facebook.com/tools/explorer/"
+        >
+          No Graph API Explorer, selecione o seu app, clique em{" "}
+          <em>Generate Access Token</em> (autorize com a conta que administra a
+          Página) e rode a consulta:{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>
+            me/accounts?fields=name,instagram_business_account
+          </code>
+          . Na resposta, copie o número de{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>
+            instagram_business_account.id
+          </code>{" "}
+          da Página vinculada (ex.: 17841405822304914). É esse o ID pedido abaixo.
+        </IgStep>
+
+        <IgStep
+          n={4}
+          title="Gere um token que não expira (System User)"
+          linkLabel="System Users"
+          linkHref="https://business.facebook.com/settings/system-users"
+        >
+          Em Business Settings → Usuários → <em>Usuários do sistema</em>: crie um
+          usuário Admin, clique em <em>Adicionar ativos</em> e atribua a Página do
+          passo 1. Depois <em>Gerar token</em>, selecione o app e marque as
+          permissões:{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11 }}>
+            instagram_basic, instagram_manage_messages, instagram_manage_comments,
+            pages_show_list, pages_read_engagement, pages_manage_metadata
+          </code>
+          . Copie o token gerado — ele não expira. (Token do Graph Explorer também
+          funciona para testar, mas expira em ~1 hora.)
+        </IgStep>
+
+        <IgStep
+          n={5}
+          title="Configure o webhook no app (uma vez só)"
+          linkLabel="Webhooks do app"
+          linkHref="https://developers.facebook.com/apps/"
+        >
+          No painel do app → <strong>Webhooks</strong> → objeto{" "}
+          <strong>Instagram</strong>:
+          <br />• Callback URL:{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>
+            {webhookUrl}
+          </code>
+          <br />• Verify token: o valor da variável{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>
+            META_WEBHOOK_VERIFY_TOKEN
+          </code>{" "}
+          do servidor
+          <br />• Assine os campos: <code>messages</code>,{" "}
+          <code>messaging_postbacks</code> e <code>comments</code>
+          <br />• Em Configurações → Básico, copie o <em>App Secret</em> para a
+          variável{" "}
+          <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>
+            META_APP_SECRET
+          </code>
+          . Este passo vale para TODAS as contas — não precisa repetir.
+        </IgStep>
+      </div>
+
       <div className="space-y-3">
         <Field label="Nome do canal *">
           <input
@@ -985,7 +1165,7 @@ function InstagramForm({
             required
           />
         </Field>
-        <Field label="Instagram Business Account ID *">
+        <Field label="Instagram Business Account ID * (passo 3)">
           <input
             className="crm-input w-full"
             style={{ fontFamily: "var(--crm-font-mono)" }}
@@ -995,7 +1175,7 @@ function InstagramForm({
             required
           />
         </Field>
-        <Field label="Page Access Token *">
+        <Field label="Access Token * (passo 4)">
           <input
             className="crm-input w-full"
             type="password"
@@ -1011,41 +1191,25 @@ function InstagramForm({
             {error}
           </p>
         )}
-        <div
+
+        <p
           style={{
-            fontSize: "var(--crm-text-xs)",
+            fontSize: 12,
             color: "var(--crm-gray-500)",
             lineHeight: 1.6,
+            padding: "8px 10px",
+            background: "var(--crm-gray-50)",
+            border: "1px solid var(--crm-gray-200)",
+            borderRadius: 8,
           }}
         >
-          <strong>Pre-requisitos no Meta Business Suite:</strong>
-          <ul style={{ marginTop: 4, paddingLeft: 16, listStyle: "disc" }}>
-            <li>
-              Token gerado com escopos:{" "}
-              <code>instagram_basic</code>, <code>instagram_manage_messages</code>,{" "}
-              <code>instagram_manage_comments</code>, <code>pages_show_list</code>,{" "}
-              <code>pages_read_engagement</code>
-            </li>
-            <li>
-              Webhook URL:{" "}
-              <code style={{ fontFamily: "var(--crm-font-mono)" }}>
-                /api/webhooks/instagram
-              </code>
-            </li>
-            <li>
-              Verify token:{" "}
-              <code style={{ fontFamily: "var(--crm-font-mono)" }}>
-                META_WEBHOOK_VERIFY_TOKEN
-              </code>{" "}
-              (cai no <code>WHATSAPP_WEBHOOK_VERIFY_TOKEN</code> se nao definida)
-            </li>
-            <li>
-              Subscribe nos campos: <code>messages</code>, <code>messaging_postbacks</code>,{" "}
-              <code>comments</code>
-            </li>
-            <li>App secret em <code>META_APP_SECRET</code> pra validar HMAC</li>
-          </ul>
-        </div>
+          <strong>Segunda conta de Instagram?</strong> Repita os passos 1, 3 e 4
+          para a outra conta (mesmo app, mesmo webhook — o passo 5 não se repete;
+          no System User, atribua também a Página da segunda conta) e clique em
+          &quot;Conectar Instagram&quot; de novo com o ID e o token dela. Cada
+          conta vira um canal e as mensagens caem automaticamente no canal certo.
+        </p>
+
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="crm-button-ghost" onClick={onCancel}>
             Cancelar

@@ -185,6 +185,29 @@ export async function POST(request: NextRequest) {
       throw new AppError("Config instagram obrigatoria", 400, "validation")
     }
 
+    // A MESMA conta duas vezes quebraria o roteamento do webhook (dois
+    // canais ativos com o mesmo external_id → lookup falha → mensagens
+    // da conta param de entrar). Contas DIFERENTES podem à vontade —
+    // multi-conta é suportado nativamente.
+    if (parsed.type === "instagram") {
+      const { data: existing } = await admin
+        .from("crm_channels")
+        .select("id, display_name")
+        .eq("org_id", orgId)
+        .eq("type", "instagram")
+        .eq("external_id", parsed.instagram!.instagram_business_account_id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle()
+      if (existing) {
+        throw new AppError(
+          `Esta conta de Instagram já está conectada como "${existing.display_name}". Para reconectar com outro token, remova o canal antigo primeiro. Para adicionar uma SEGUNDA conta, use o ID da outra conta.`,
+          409,
+          "conflict",
+        )
+      }
+    }
+
     const insertPayload =
       parsed.type === "whatsapp"
         ? {
