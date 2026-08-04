@@ -46,6 +46,7 @@ import {
 } from "./deals-table-utils"
 import { csvDate, csvNumber, downloadCsv, toCsv } from "@/lib/services/crm-csv"
 import { DealsDuplicatesDialog } from "./deals-duplicates-dialog"
+import { WonDealDialog } from "./won-deal-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -132,6 +133,8 @@ export function PipelineBoardView({
   } | null>(null)
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null)
   const [dealDupsOpen, setDealDupsOpen] = useState(false)
+  // Venda ganha → dialog de fechamento (dados do cliente + assinatura/cobrança)
+  const [wonDealId, setWonDealId] = useState<string | null>(null)
 
   // Auto-dismiss toast em 3s
   useEffect(() => {
@@ -532,6 +535,8 @@ export function PipelineBoardView({
       throw new Error(`Falha ao mover deal: ${msg}`)
     }
     await mutate()
+    // Ganhou → abre o fechamento (cliente + assinatura/cobrança).
+    if (targetStage?.stage_type === "won") setWonDealId(dealId)
   }
 
   const confirmLostMove = async (reason: string, comment: string) => {
@@ -574,6 +579,7 @@ export function PipelineBoardView({
     }
     setToast({ kind: "success", msg: "Negócio marcado como ganho." })
     await mutate()
+    setWonDealId(dealId)
   }
 
   const handleQuickLose = (dealId: string) => {
@@ -1356,6 +1362,15 @@ export function PipelineBoardView({
         onOpenChange={setDealDupsOpen}
         pipelineId={pipelineId}
         onMerged={() => mutate()}
+      />
+
+      <WonDealDialog
+        dealId={wonDealId}
+        onClose={() => setWonDealId(null)}
+        onDone={(msg) => {
+          setToast({ kind: "success", msg })
+          mutate()
+        }}
       />
 
       <LostReasonDialog

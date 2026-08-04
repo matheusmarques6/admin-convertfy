@@ -34,6 +34,8 @@ export interface DealProductItem {
   billing_type: string
   note?: string | null
   position: number
+  /** Preço de tabela atual do catálogo (join) — marca "negociado" quando difere. */
+  product?: { unit_price: number } | null
 }
 
 export interface DealProductsMeta {
@@ -469,6 +471,9 @@ export function DealProductsSection({
                       item.quantity * item.unit_price * (1 - item.discount_pct / 100) * 100,
                     ) / 100
                   const noteOpen = noteEditId === item.id
+                  const listPrice =
+                    item.product?.unit_price != null ? Number(item.product.unit_price) : null
+                  const negotiated = listPrice != null && listPrice !== Number(item.unit_price)
                   return (
                     <Fragment key={item.id}>
                     <tr
@@ -531,6 +536,19 @@ export function DealProductsSection({
                           />
                         ) : (
                           fmtBRL(item.unit_price)
+                        )}
+                        {negotiated && (
+                          <div
+                            title={`Preço de tabela: ${fmtBRL(listPrice!)} — este item foi negociado`}
+                            style={{
+                              fontSize: 10,
+                              color: "var(--crm-warn, #B45309)",
+                              fontWeight: 600,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            negociado
+                          </div>
                         )}
                       </td>
                       <td className="text-right crm-tnum" style={{ padding: "6px 8px" }}>
@@ -746,6 +764,8 @@ function AddProductRow({
     id: string | null
     name: string
     billing_type: string
+    /** Preço de tabela do catálogo — base do aviso "negociado". */
+    list_price: number
   } | null>(null)
   // O que foi digitado no picker sem selecionar — vira item avulso no
   // Adicionar (antes o botão ficava morto sem explicação).
@@ -845,13 +865,19 @@ function AddProductRow({
               createPrice={centsToNumber(priceCents)}
               onQueryChange={setPickerQuery}
               onSelect={(p) => {
-                setSelected({ id: p.id, name: p.name, billing_type: p.billing_type })
+                setSelected({
+                  id: p.id,
+                  name: p.name,
+                  billing_type: p.billing_type,
+                  list_price: p.unit_price,
+                })
                 setPickerQuery("")
                 if (!priceCents && p.unit_price > 0) setPriceCents(numberToCents(p.unit_price))
               }}
             />
             <p style={{ marginTop: 4, fontSize: 11, color: "var(--crm-gray-500)" }}>
-              Escolha do catálogo, crie na hora — ou só digite um nome para item avulso.
+              Escolha do catálogo, crie na hora — ou só digite um nome para item
+              avulso. O preço vem da tabela e é livre para negociar nesta venda.
             </p>
           </>
         )}
@@ -880,6 +906,21 @@ function AddProductRow({
             onChange={(e) => setPriceCents(e.target.value.replace(/\D/g, ""))}
             aria-label="Preço unitário em reais"
           />
+          {selected != null &&
+            selected.list_price > 0 &&
+            centsToNumber(priceCents) !== selected.list_price && (
+              <p
+                style={{
+                  marginTop: 3,
+                  fontSize: 10.5,
+                  color: "var(--crm-warn, #B45309)",
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Tabela: {fmtBRL(selected.list_price)} · negociado
+              </p>
+            )}
         </div>
         <div>
           <AddFieldLabel>Desc. %</AddFieldLabel>

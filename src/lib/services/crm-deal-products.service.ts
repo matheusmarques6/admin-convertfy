@@ -28,10 +28,12 @@ export interface DealProductRow {
   note?: string | null
   position: number
   created_at: string
+  /** Preço de tabela ATUAL do catálogo — a UI marca "negociado" quando difere. */
+  product?: { unit_price: number } | null
 }
 
 export const DEAL_PRODUCT_FIELDS =
-  "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, note, position, created_at"
+  "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, note, position, created_at, product:crm_products (unit_price)"
 
 /** Select sem a coluna note — fallback pra quem aplicou só a migration 20261067. */
 const DEAL_PRODUCT_FIELDS_LEGACY =
