@@ -27,6 +27,7 @@ import {
   Briefcase,
   Plus,
   X,
+  Webhook,
   type LucideIcon,
 } from "lucide-react"
 import type { CrmAutomationDAG, CrmNodeType } from "@/types/crm-automation"
@@ -44,6 +45,7 @@ const NODE_TYPES_PALETTE: Array<{ type: CrmNodeType; label: string; icon: Lucide
   { type: "action_create_activity", label: "Criar atividade", icon: FileText, color: "var(--crm-gray-700)" },
   { type: "action_assign_owner", label: "Atribuir owner", icon: UserCheck, color: "var(--crm-gray-700)" },
   { type: "action_create_deal", label: "Criar negocio", icon: Briefcase, color: "var(--crm-success-fg)" },
+  { type: "action_webhook", label: "Webhook (HTTP)", icon: Webhook, color: "var(--crm-info-fg)" },
   { type: "ai_action", label: "AI Action", icon: Sparkles, color: "var(--crm-brand)" },
 ]
 
@@ -593,6 +595,38 @@ function NodeInspector({
     )
   }
 
+  if (type === "action_webhook") {
+    return (
+      <div className="space-y-3">
+        <Field label="URL do endpoint *">
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="https://hooks.exemplo.com/convertfy"
+            value={(config.url as string) || ""}
+            onChange={(e) => onChange({ url: e.target.value })}
+          />
+        </Field>
+        <Field label="Segredo (opcional)">
+          <input
+            className="crm-input w-full"
+            type="password"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="Assina o payload em X-Convertfy-Signature"
+            value={(config.secret as string) || ""}
+            onChange={(e) => onChange({ secret: e.target.value })}
+          />
+        </Field>
+        <p style={{ fontSize: 11.5, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
+          Envia POST JSON com o contexto (negócio, lead, conversa) para o seu
+          sistema — n8n, Zapier, ERP. Com segredo, o header{" "}
+          <code>X-Convertfy-Signature</code> leva HMAC-SHA256 do corpo.
+          Timeout de 10s; resposta não-2xx marca o passo como falho.
+        </p>
+      </div>
+    )
+  }
+
   if (type === "action_send_whatsapp") {
     return (
       <div className="space-y-3">
@@ -760,6 +794,14 @@ function nodeLabel(type: CrmNodeType, config?: Record<string, unknown>): string 
       if (s % 3600 === 0 && s >= 3600) return `Esperar ${s / 3600}h`
       if (s % 60 === 0 && s >= 60) return `Esperar ${s / 60}min`
       return `Esperar ${s}s`
+    }
+    case "action_webhook": {
+      const u = (config?.url as string) || ""
+      try {
+        return `Webhook → ${new URL(u).hostname}`
+      } catch {
+        return "Webhook (configurar URL)"
+      }
     }
     case "action_send_whatsapp":
       return "Enviar WhatsApp"

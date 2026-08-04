@@ -40,6 +40,7 @@ import {
   ListChecks,
   Activity,
   Package,
+  CalendarDays,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { NavItemId } from "@/lib/permissions/role-access"
@@ -100,6 +101,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
       { id: "comercial.canais", name: "Canais", href: ROUTES.ADMIN.COMERCIAL.CANAIS, icon: Phone },
       { id: "comercial.automacoes", name: "Automacoes", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
       { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
+      { id: "comercial.agenda", name: "Agenda", href: ROUTES.ADMIN.COMERCIAL.AGENDA, icon: CalendarDays },
     ],
   },
   {

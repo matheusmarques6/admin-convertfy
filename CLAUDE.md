@@ -1241,6 +1241,86 @@ rápido inline ("Criar «q»") e item avulso sem catálogo.
 
 ---
 
+## Pacote P0/P1/P2 do comercial (ago/2026 — migration 20261068)
+
+Uma migration consolidada cobre tudo: `note` em crm_deal_products,
+`crm_lost_reasons`, `pipeline_stages.required_fields`,
+`pipelines.assignment_mode/visibility` e as colunas de retomada de
+automação (`resume_at/resume_node_id/context_snapshot` + status
+'waiting' no CHECK).
+
+**Preço BR nos produtos**: inputs de preço usam máscara por CENTAVOS
+(padrão do NewDealDialog) e entrada livre passa por `parseBRNumber`
+("10.000" = dez mil — ponto+3 dígitos sem vírgula é MILHAR; o
+parseFloat entregava 10 e o negócio nascia 1000x menor). Item de
+produto tem `note` (observação livre, edição pela linha).
+
+**Wait real nas automações**: espera >= 30s NÃO roda inline — o run
+vira `waiting` com resume_at + snapshot do contexto e o cron
+`/api/cron/crm-automation-resume` (a cada minuto, claim atômico
+waiting→running) retoma PELAS EDGES do nó wait (não o re-executa).
+Wait aninhado re-enfileira. DAG editado no meio (nó sumiu) → failed com
+mensagem clara. Sem a migration, degrada pro comportamento antigo
+(espera pulada, run completed). Builder configura em min/h/dias
+(sempre grava `seconds`).
+
+**Campos obrigatórios por etapa** (`required_fields` JSONB, chaves:
+value|expected_close_date|client|phone|products): validados na rota de
+MOVE ao entrar na etapa → 422 com lista legível (o board mostra no
+toast); editor por etapa no pipeline-settings-dialog (botão ListChecks).
+Lógica pura em `crm-required-fields.ts` (8 testes). O bulk move NÃO
+valida (mover 50 travaria no primeiro incompleto) — documentado.
+
+**Rodízio** (`assignment_mode='round_robin'`): aplica em criação SEM
+ator humano (form público + action_create_deal); criação manual fica
+com o criador. `resolveLeastLoadedMember` em crm-assignment.service
+(compartilhado com action_assign_owner). **Visibilidade**
+(`visibility='owner_only'`): GET da pipeline filtra deals por owner
+quando o user não é admin/dev/coo (roles via org_member_roles com
+fallback legado).
+
+**Motivos de perda configuráveis** (`crm_lost_reasons`): GET/PUT
+(replace da lista, dedupe case-insensitive); gestão inline no próprio
+LostReasonDialog (lápis → um motivo por linha); fallback pros padrões
+do código. `deals.lost_reason` segue TEXT — histórico nunca corrompe.
+
+**Export CSV** (`crm-csv.ts`, 6 testes): separador ";", BOM UTF-8,
+anti fórmula-injection (=+-@ → prefixo '). Board exporta os FILTRADOS
+(client-side); leads refaz a busca com limit 5000 (não exporta só a
+página).
+
+**Meta individual**: goal-dialog com seletor Time|vendedor (owners vêm
+do by_owner do painel — zero rota nova; pré-preenche meta vigente do
+escopo); performance devolve `individual_goals`; ranking mostra "% da
+meta" com barra (verde >= 100%).
+
+**Duplicar negócio**: POST `/deals/[id]/duplicate` — mesma etapa,
+sufixo "(cópia)", copia produtos, nasce open com owner=quem clicou;
+menu do card. **Merge de negócios**: `/api/crm/deals/duplicates`
+(GET grupos = mesmo client/lead com 2+ ABERTOS na pipeline; POST
+re-aponta atividades/produtos/threads/history/files ANTES do delete e
+recalcula o valor) + dialog no board (botão Duplicados).
+
+**Webhook de saída**: nó `action_webhook` no executor (POST JSON com
+contexto, HMAC opcional em X-Convertfy-Signature, timeout 10s, guarda
+anti-SSRF de host interno, non-2xx = nó failed) + palette/config no
+builder.
+
+**Proposta imprimível**: `/admin/comercial/deals/[id]/proposta` —
+documento A4 com itens (nome+observação, qtd × preço − desc.),
+subtotais único/mensal, validade 15d; Ctrl+P → PDF. Botões no footer
+do drawer e topbar da ficha.
+
+**Agenda**: `/admin/comercial/agenda` (nav Atendimento, id
+`comercial.agenda`) — calendário mensal de `crm_deal_activities` com
+due_at via `/api/crm/activities/agenda`; chip vermelho = vencida não
+concluída, riscado = concluída; clique abre a ficha; toggle "Só minhas".
+
+**Click-to-call**: links `tel:` ao lado do WhatsApp (drawer contato +
+footer, topbar da ficha).
+
+---
+
 ## Funil Comercial (jul/2026 — migration 20261052)
 
 Dashboard `/admin/comercial/funil` (nav "Analise", atalho `g+f`): funil

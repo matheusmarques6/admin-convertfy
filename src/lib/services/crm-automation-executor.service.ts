@@ -599,6 +599,76 @@ async function executeNode(
         break
       }
 
+      case "action_webhook": {
+        // Notifica sistema externo (n8n, Zapier, ERP...) com o contexto
+        // do run. HMAC opcional em X-Convertfy-Signature pro destino
+        // validar a origem. Timeout de 10s — automação não pode ficar
+        // pendurada em endpoint lento.
+        const cfg = node.config as {
+          url: string
+          secret?: string | null
+        }
+        const url = (cfg.url || "").trim()
+        let parsedUrl: URL
+        try {
+          parsedUrl = new URL(url)
+        } catch {
+          throw new Error("Webhook: URL inválida")
+        }
+        if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+          throw new Error("Webhook: só http(s)")
+        }
+        // Guarda-chuva anti-SSRF básico: nada de rede interna.
+        const host = parsedUrl.hostname.toLowerCase()
+        if (
+          host === "localhost" ||
+          host === "0.0.0.0" ||
+          /^127\.|^10\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)
+        ) {
+          throw new Error("Webhook: host interno não permitido")
+        }
+
+        const payload = JSON.stringify({
+          event: "crm.automation",
+          org_id: orgId,
+          run_id: runId,
+          node_id: node.id,
+          sent_at: new Date().toISOString(),
+          deal: ctx.deal ?? null,
+          lead: ctx.lead ?? null,
+          thread: ctx.thread ?? null,
+          trigger: ctx.trigger_data ?? null,
+        })
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "Convertfy-CRM-Automation/1.0",
+        }
+        if (cfg.secret) {
+          const { createHmac } = await import("crypto")
+          headers["X-Convertfy-Signature"] =
+            "sha256=" + createHmac("sha256", cfg.secret).update(payload).digest("hex")
+        }
+
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 10_000)
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers,
+            body: payload,
+            signal: controller.signal,
+          })
+          if (!res.ok) {
+            throw new Error(`Webhook respondeu ${res.status}`)
+          }
+          output = { url, status: res.status }
+        } finally {
+          clearTimeout(timer)
+        }
+        break
+      }
+
       case "action_move_stage": {
         const cfg = node.config as { to_stage_id: string }
         const dealId = (ctx.deal as { id?: string } | null)?.id

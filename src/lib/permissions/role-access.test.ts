@@ -29,6 +29,7 @@ const MATRIX: Matrix = {
   "comercial.canais":       { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.automacoes":   { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.meetings":     { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
+  "comercial.agenda":       { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.funil":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.reports":      { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   // Operacional

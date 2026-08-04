@@ -30,6 +30,7 @@ export type CrmNodeType =
   | "action_create_activity"
   | "action_assign_owner"
   | "action_move_stage"
+  | "action_webhook"
   | "ai_action"
 
 export interface CrmAutomationNode {

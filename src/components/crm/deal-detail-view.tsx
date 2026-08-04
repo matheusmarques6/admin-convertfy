@@ -23,6 +23,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Phone,
+  FileText,
   Plus,
   Shuffle,
   StickyNote,
@@ -443,6 +444,18 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <TopbarBtn
+            icon={<FileText className="h-3.5 w-3.5" />}
+            label="Proposta"
+            href={`/admin/comercial/deals/${dealId}/proposta`}
+          />
+          {phone && (
+            <TopbarBtn
+              icon={<Phone className="h-3.5 w-3.5" />}
+              label="Ligar"
+              href={`tel:+${phone.replace(/\D/g, "")}`}
+            />
+          )}
           {waLink && (
             <TopbarBtn
               icon={<MessageSquare className="h-3.5 w-3.5" />}

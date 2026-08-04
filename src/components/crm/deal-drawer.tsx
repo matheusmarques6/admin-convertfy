@@ -16,6 +16,7 @@ import {
   Download,
   ExternalLink,
   File as FileIcon,
+  FileText as FileTextIcon,
   Flag,
   Mail,
   MessageSquare,
@@ -1879,6 +1880,13 @@ function ContactAndFields({
               mono
             />
           )}
+          {phone && (
+            <ContactRow
+              icon={<Phone className="h-3.5 w-3.5" />}
+              label="Ligar agora"
+              href={`tel:+${phone.replace(/\D/g, "")}`}
+            />
+          )}
           {company && (
             <ContactRow
               icon={<Building2 className="h-3.5 w-3.5" />}
@@ -2598,6 +2606,18 @@ function DrawerFooter({
       }}
     >
       <div className="flex gap-1.5">
+        <FooterBtn
+          href={`/admin/comercial/deals/${deal.id}/proposta`}
+          icon={<FileTextIcon className="h-3.5 w-3.5" />}
+          label="Proposta"
+        />
+        {phone && (
+          <FooterBtn
+            href={`tel:+${phone.replace(/\D/g, "")}`}
+            icon={<Phone className="h-3.5 w-3.5" />}
+            label="Ligar"
+          />
+        )}
         {waLink && (
           <FooterBtn href={waLink} icon={<MessageSquare className="h-3.5 w-3.5" />} label="WhatsApp" />
         )}

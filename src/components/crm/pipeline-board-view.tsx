@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   List,
   Download,
+  Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
@@ -44,6 +45,7 @@ import {
   type TableSort,
 } from "./deals-table-utils"
 import { csvDate, csvNumber, downloadCsv, toCsv } from "@/lib/services/crm-csv"
+import { DealsDuplicatesDialog } from "./deals-duplicates-dialog"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -129,6 +131,7 @@ export function PipelineBoardView({
     color: string | null
   } | null>(null)
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null)
+  const [dealDupsOpen, setDealDupsOpen] = useState(false)
 
   // Auto-dismiss toast em 3s
   useEffect(() => {
@@ -1088,6 +1091,16 @@ export function PipelineBoardView({
                     Exportar
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setDealDupsOpen(true)}
+                    title="Encontrar e mesclar negócios duplicados (mesmo contato com 2+ abertos)"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-black/10 bg-white px-2.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-[#1A1D27] dark:text-[#C9CEDA] dark:hover:bg-white/[0.06]"
+                  >
+                    <Icon icon={Layers} customSize={13} />
+                    Duplicados
+                  </button>
+
                   {/* Kanban responde "como está o funil"; tabela responde
                       "quais negócios, ordenados por quê". */}
                   <div
@@ -1337,6 +1350,13 @@ export function PipelineBoardView({
           }}
         />
       )}
+
+      <DealsDuplicatesDialog
+        open={dealDupsOpen}
+        onOpenChange={setDealDupsOpen}
+        pipelineId={pipelineId}
+        onMerged={() => mutate()}
+      />
 
       <LostReasonDialog
         open={pendingLostMove !== null}
