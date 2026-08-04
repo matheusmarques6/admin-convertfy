@@ -1319,6 +1319,26 @@ concluída, riscado = concluída; clique abre a ficha; toggle "Só minhas".
 **Click-to-call**: links `tel:` ao lado do WhatsApp (drawer contato +
 footer, topbar da ficha).
 
+**Venda ganha → cliente automático** (`crm-client-link.service.ts`):
+`ensureClientForDeal` converte o LEAD do deal em `clients` (match por
+email reusa existente — nunca duplica; status 'active'), vincula
+`deals.client_id`, marca o lead converted e registra atividade. Roda
+FAIL-OPEN quando o deal vira won (rota move + bulk) e sob demanda em
+`POST /deals/[id]/link-client`. No funil, "Vincular cliente" é ação de
+1 clique que emenda a criação do onboarding (que cria loja fallback via
+`createFromDeal`). Distinção reforçada na UI: cadastrar produto no
+CATÁLOGO não lança no negócio — empty state da seção Produtos explica e
+tem botão "Lançar produto da venda".
+
+**Instagram multi-conta**: o roteamento é nativo (webhook resolve canal
+por `entry.id` = external_id; envio usa o token do canal da thread).
+Uma conta por canal; MESMO app Meta e MESMO webhook para todas (o HMAC
+usa `META_APP_SECRET` único — contas em apps diferentes NÃO funcionam).
+O POST de canais bloqueia reconectar a MESMA conta (2 canais ativos com
+o mesmo external_id quebrariam o lookup do webhook → 409). Form de
+conexão é tutorial em 5 passos com links (ID via Graph Explorer
+`me/accounts?fields=instagram_business_account`, token de System User).
+
 ---
 
 ## Funil Comercial (jul/2026 — migration 20261052)

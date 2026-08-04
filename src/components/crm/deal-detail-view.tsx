@@ -88,6 +88,8 @@ interface DealFullResponse {
     updated_at: string
     last_stage_changed_at?: string | null
     expected_close_date?: string | null
+    won_at?: string | null
+    lost_at?: string | null
     pipeline_id: string
     stage_id: string
     pipeline?: { id: string; name: string }
@@ -807,17 +809,33 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               <MetricCard
                 icon={<DollarSign className="h-3 w-3" />}
                 label="Total comprado"
-                value="R$ 0"
+                value={
+                  deal.status === "won" && deal.value && deal.value > 0
+                    ? fmtBRL(deal.value)
+                    : "R$ 0"
+                }
               />
               <MetricCard
                 icon={<Calendar className="h-3 w-3" />}
                 label="Ciclo de compra"
-                value={`${daysSince(deal.created_at)}d`}
+                value={
+                  deal.won_at
+                    ? `${Math.max(0, Math.floor((new Date(deal.won_at).getTime() - new Date(deal.created_at).getTime()) / 86400000))}d`
+                    : `${daysSince(deal.created_at)}d`
+                }
               />
               <MetricCard
                 icon={<Calendar className="h-3 w-3" />}
                 label="Última compra"
-                value="—"
+                value={
+                  deal.won_at
+                    ? new Date(deal.won_at).toLocaleDateString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                      })
+                    : "—"
+                }
               />
             </div>
           </Section>
