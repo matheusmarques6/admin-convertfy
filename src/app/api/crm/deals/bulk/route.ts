@@ -26,6 +26,7 @@ import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { ensureClientForDeal } from "@/lib/services/crm-client-link.service"
 
 const log = logger.child("CrmDealsBulk")
 
@@ -189,6 +190,15 @@ export async function POST(request: NextRequest) {
           if (error) throw error
           updated++
         }
+
+        // Ganho em massa também fecha o ciclo: lead → cliente vinculado
+        // por deal (fail-open — falha em um não afeta os outros).
+        if (status === "won") {
+          await Promise.allSettled(
+            deals.map((d) => ensureClientForDeal(admin, d.id)),
+          )
+        }
+
         activityText = `Movido para "${stage.name}" (ação em massa)`
         break
       }

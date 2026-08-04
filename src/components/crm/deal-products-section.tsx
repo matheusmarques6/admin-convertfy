@@ -404,15 +404,29 @@ export function DealProductsSection({
             <code style={{ fontFamily: "var(--crm-font-mono)" }}>20261067_crm_products.sql</code>.
           </p>
         ) : items.length === 0 && !adding ? (
-          <div
-            className="flex items-center gap-2.5"
-            style={{ padding: "12px 14px", fontSize: 12.5, color: "var(--crm-gray-500)" }}
-          >
-            <Package className="h-4 w-4 shrink-0" style={{ color: "var(--crm-gray-400)" }} />
-            <span>
-              Nenhum produto lançado.
-              {canEdit && " Adicione o que foi vendido — o valor do negócio vira a soma."}
-            </span>
+          <div style={{ padding: "12px 14px" }}>
+            <div
+              className="flex items-center gap-2.5"
+              style={{ fontSize: 12.5, color: "var(--crm-gray-500)" }}
+            >
+              <Package className="h-4 w-4 shrink-0" style={{ color: "var(--crm-gray-400)" }} />
+              <span>
+                Nenhum produto lançado <strong>neste negócio</strong>.
+                {canEdit &&
+                  " Cadastrar no catálogo não lança aqui — clique abaixo e escolha o que ESTE cliente comprou; o valor do negócio vira a soma."}
+              </span>
+            </div>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="crm-button-primary mt-2.5 inline-flex items-center gap-1.5"
+                style={{ height: 30 }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Lançar produto da venda
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>

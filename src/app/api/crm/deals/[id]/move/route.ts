@@ -33,6 +33,7 @@ import {
   parseRequiredFields,
   requiredFieldsMessage,
 } from "@/lib/services/crm-required-fields"
+import { ensureClientForDeal } from "@/lib/services/crm-client-link.service"
 
 const log = logger.child("CrmDealMove")
 
@@ -233,6 +234,17 @@ export async function POST(
         ? `${currentDeal.pipeline_id} -> ${targetStage.pipeline_id}`
         : undefined,
     })
+
+    // Venda ganha fecha o ciclo sozinha: lead vira cliente vinculado
+    // (base do cash collect e do onboarding). Fail-open — vincular
+    // cliente nunca impede o ganho.
+    if (deal?.status === "won") {
+      try {
+        await ensureClientForDeal(admin, id)
+      } catch (err) {
+        log.error("[Deals] auto link-client falhou (move segue)", { id, err })
+      }
+    }
 
     // Dispara trigger de automation (fire-and-forget). Pulado em
     // transferencia de pipeline — ver docstring.

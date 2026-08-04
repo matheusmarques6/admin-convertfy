@@ -826,6 +826,31 @@ function VendasPanel({
     }
   }
 
+  // 1 clique fecha o ciclo da venda antiga: lead vira cliente vinculado
+  // e o onboarding nasce em seguida (com loja fallback automática).
+  const vincularCliente = async (v: FunnelSale) => {
+    setBusyId(v.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/crm/deals/${v.id}/link-client`, { method: "POST" })
+      const json = (await res.json().catch(() => null)) as { error?: unknown } | null
+      if (!res.ok) {
+        const raw = json?.error
+        setError(
+          (typeof raw === "string"
+            ? raw
+            : (raw as { message?: string } | undefined)?.message) ??
+            "Não foi possível vincular o cliente.",
+        )
+        return
+      }
+      // Cliente vinculado — emenda a criação do onboarding no mesmo gesto.
+      await criarOnboarding(v)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className={cn(CARD, "mt-3")}>
       <button
@@ -931,6 +956,7 @@ function VendasPanel({
                         sale={v}
                         busy={busyId === v.id}
                         onCreate={() => criarOnboarding(v)}
+                        onLink={() => vincularCliente(v)}
                       />
                     </td>
                   </tr>
@@ -997,10 +1023,12 @@ function OnboardingCell({
   sale,
   busy,
   onCreate,
+  onLink,
 }: {
   sale: FunnelSale
   busy: boolean
   onCreate: () => void
+  onLink: () => void
 }) {
   if (sale.onboarding) {
     const paid = sale.onboarding.payment_status === "paid"
@@ -1024,16 +1052,31 @@ function OnboardingCell({
   }
 
   if (!sale.client_id) {
+    // Ação direta: converte o lead em cliente E cria o onboarding (com
+    // loja fallback) num clique só — sem sair do funil. A ficha fica
+    // como caminho alternativo pro caso raro de venda sem lead.
     return (
-      <a
-        href={`/admin/comercial/deals/${sale.id}`}
-        target="_blank"
-        rel="noopener"
-        className="inline-flex items-center gap-1.5 text-[11.5px] text-[#7C8598] transition-colors hover:text-white"
-      >
-        Vincular cliente
-        <Icon icon={ExternalLink} customSize={12} className="opacity-60" />
-      </a>
+      <span className="inline-flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onLink}
+          disabled={busy}
+          title="Converte o lead em cliente, vincula à venda e já cria o onboarding"
+          className={cn(CONTROL, "inline-flex items-center gap-1.5 px-2.5 disabled:opacity-50")}
+        >
+          <Icon icon={Rocket} size={16} />
+          {busy ? "Vinculando…" : "Vincular cliente"}
+        </button>
+        <a
+          href={`/admin/comercial/deals/${sale.id}`}
+          target="_blank"
+          rel="noopener"
+          title="Abrir a ficha do negócio"
+          className="text-[#7C8598] transition-colors hover:text-white"
+        >
+          <Icon icon={ExternalLink} customSize={12} className="opacity-60" />
+        </a>
+      </span>
     )
   }
 
