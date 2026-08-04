@@ -40,6 +40,25 @@ SELECT 13, 'coluna hero_vision_model (20261058)',
                 AND column_name='hero_vision_model') THEN 'ok' ELSE 'AUSENTE' END,
        'opcional — sem ela o default in-code assume'
 UNION ALL
+SELECT 15, 'colunas variant_id + fields em email_blocks (20261065)',
+       CASE WHEN (SELECT count(*) FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='email_blocks'
+                AND column_name IN ('variant_id','fields')) = 2
+            THEN 'ok' ELSE 'AUSENTE' END,
+       'sem elas o dispatch quebra — o bloco é o schema'
+UNION ALL
+SELECT 16, 'blocos já com contrato de copy gravado',
+       'informativo',
+       CASE WHEN (SELECT count(*) FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='email_blocks'
+                AND column_name='fields') = 0 THEN 'coluna ainda não existe'
+       ELSE COALESCE((xpath('//r/text()', query_to_xml(
+         $q$SELECT COUNT(*) FILTER (
+                     WHERE jsonb_array_length(COALESCE(fields,'[]'::jsonb)) > 0)
+                   || ' de ' || COUNT(*) || ' blocos' AS r
+              FROM public.email_blocks$q$,
+         false, true, '')))[1]::text, 'sem dados') END
+UNION ALL
 SELECT 14, 'view v_email_generation_logs com sinais de curadoria (20261055)',
        CASE WHEN (SELECT count(*) FROM information_schema.columns
               WHERE table_schema='public' AND table_name='v_email_generation_logs'
