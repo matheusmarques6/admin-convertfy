@@ -69,6 +69,7 @@ const addItemSchema = z.object({
   unit_price: z.number().min(0).max(999_999_999).optional(),
   discount_pct: z.number().min(0).max(100).optional().default(0),
   billing_type: z.enum(["one_time", "recurring"]).optional(),
+  note: z.string().max(600).nullable().optional(),
 })
 
 export async function POST(
@@ -124,20 +125,37 @@ export async function POST(
       .limit(1)
       .maybeSingle()
 
-    const { data: item, error } = await admin
+    const insertPayload: Record<string, unknown> = {
+      deal_id: id,
+      product_id: parsed.product_id ?? null,
+      name,
+      quantity: normalizeQuantity(parsed.quantity),
+      unit_price: unitPrice ?? 0,
+      discount_pct: normalizeDiscount(parsed.discount_pct),
+      billing_type: billing ?? "one_time",
+      position: (maxPos?.position ?? 0) + 10,
+    }
+    if (parsed.note !== undefined) insertPayload.note = parsed.note?.trim() || null
+
+    let { data: item, error } = await admin
       .from("crm_deal_products")
-      .insert({
-        deal_id: id,
-        product_id: parsed.product_id ?? null,
-        name,
-        quantity: normalizeQuantity(parsed.quantity),
-        unit_price: unitPrice ?? 0,
-        discount_pct: normalizeDiscount(parsed.discount_pct),
-        billing_type: billing ?? "one_time",
-        position: (maxPos?.position ?? 0) + 10,
-      })
+      .insert(insertPayload)
       .select(DEAL_PRODUCT_FIELDS)
       .single()
+
+    // Coluna note ausente (migration 20261068 pendente): não perde a
+    // adição por causa da observação — regrava sem ela e avisa no log.
+    if (error && "note" in insertPayload && /column .*note.* does not exist|42703/i.test(`${error.code} ${error.message}`)) {
+      log.warn("[DealProducts] coluna note ausente — item salvo sem observação (migration 20261068)")
+      delete insertPayload.note
+      const retry = await admin
+        .from("crm_deal_products")
+        .insert(insertPayload)
+        .select("id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, position, created_at")
+        .single()
+      item = retry.data as typeof item
+      error = retry.error
+    }
 
     if (error) {
       if (isMissingSchema(error)) {

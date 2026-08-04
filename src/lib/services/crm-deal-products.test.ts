@@ -6,7 +6,62 @@ import {
   lineTotal,
   dealTotals,
   resolveDealValue,
+  parseBRNumber,
+  formatCentsBRL,
+  numberToCents,
+  centsToNumber,
 } from "./crm-deal-products"
+
+describe("parseBRNumber", () => {
+  it("ponto com grupo de 3 digitos e milhar BR — o bug do 10.000 virar 10", () => {
+    expect(parseBRNumber("10.000")).toBe(10000)
+    expect(parseBRNumber("1.234.567")).toBe(1234567)
+    expect(parseBRNumber("1.000")).toBe(1000)
+  })
+
+  it("virgula e decimal, pontos viram milhar", () => {
+    expect(parseBRNumber("10.000,50")).toBe(10000.5)
+    expect(parseBRNumber("10,5")).toBe(10.5)
+    expect(parseBRNumber("1.000.000,00")).toBe(1000000)
+  })
+
+  it("decimal tecnico continua funcionando", () => {
+    expect(parseBRNumber("10.5")).toBe(10.5)
+    expect(parseBRNumber("10000.50")).toBe(10000.5)
+    expect(parseBRNumber("997")).toBe(997)
+  })
+
+  it("ignora R$, espacos e lixo", () => {
+    expect(parseBRNumber("R$ 1.500,00")).toBe(1500)
+    expect(parseBRNumber(" 2500 ")).toBe(2500)
+  })
+
+  it("vazio/invalido vira 0; numero passa direto", () => {
+    expect(parseBRNumber("")).toBe(0)
+    expect(parseBRNumber(null)).toBe(0)
+    expect(parseBRNumber("abc")).toBe(0)
+    expect(parseBRNumber(42.5)).toBe(42.5)
+  })
+
+  it("negativo preservado", () => {
+    expect(parseBRNumber("-1.000")).toBe(-1000)
+  })
+})
+
+describe("centavos <-> reais (mascara de preco)", () => {
+  it("formata string de centavos em BRL", () => {
+    expect(formatCentsBRL("1000000")).toBe("10.000,00")
+    expect(formatCentsBRL("99750")).toBe("997,50")
+    expect(formatCentsBRL("")).toBe("")
+  })
+
+  it("converte numero para centavos e volta", () => {
+    expect(numberToCents(997.5)).toBe("99750")
+    expect(numberToCents(0)).toBe("")
+    expect(centsToNumber("99750")).toBe(997.5)
+    expect(centsToNumber("")).toBe(0)
+  })
+})
 
 describe("round2", () => {
   it("arredonda meio centavo pra cima", () => {

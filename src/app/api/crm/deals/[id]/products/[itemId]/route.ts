@@ -29,6 +29,7 @@ const patchSchema = z.object({
   discount_pct: z.number().min(0).max(100).optional(),
   billing_type: z.enum(["one_time", "recurring"]).optional(),
   name: z.string().min(1).max(160).optional(),
+  note: z.string().max(600).nullable().optional(),
 })
 
 export async function PATCH(
@@ -53,6 +54,7 @@ export async function PATCH(
       updates.discount_pct = normalizeDiscount(parsed.discount_pct)
     if (parsed.billing_type !== undefined) updates.billing_type = parsed.billing_type
     if (parsed.name !== undefined) updates.name = parsed.name.trim()
+    if (parsed.note !== undefined) updates.note = parsed.note?.trim() || null
 
     if (Object.keys(updates).length === 0) {
       throw new AppError("Nada para atualizar", 422, "validation-error")

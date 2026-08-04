@@ -10,11 +10,17 @@
  * linhas, e a UI trava a edição manual do valor enquanto houver itens.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
-import { Package, Plus, Trash2, X } from "lucide-react"
+import { Package, Plus, StickyNote, Trash2, X } from "lucide-react"
 import { InlineEditField } from "./inline-edit-field"
-import { dealTotals } from "@/lib/services/crm-deal-products"
+import {
+  centsToNumber,
+  dealTotals,
+  formatCentsBRL,
+  numberToCents,
+  parseBRNumber,
+} from "@/lib/services/crm-deal-products"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -26,6 +32,7 @@ export interface DealProductItem {
   unit_price: number
   discount_pct: number
   billing_type: string
+  note?: string | null
   position: number
 }
 
@@ -61,6 +68,7 @@ async function readApiError(res: Response): Promise<string> {
 
 export function ProductPicker({
   onSelect,
+  onQueryChange,
   createPrice,
   autoFocus,
   placeholder = "Buscar produto...",
@@ -71,6 +79,8 @@ export function ProductPicker({
     unit_price: number
     billing_type: string
   }) => void
+  /** Deixa o pai saber o que foi digitado (pra tratar como item avulso). */
+  onQueryChange?: (q: string) => void
   /** Preço usado no cadastro rápido "Criar «q»" (vem do campo preço da linha). */
   createPrice?: number
   autoFocus?: boolean
@@ -144,6 +154,7 @@ export function ProductPicker({
         onFocus={() => setOpen(true)}
         onChange={(e) => {
           setQ(e.target.value)
+          onQueryChange?.(e.target.value)
           setOpen(true)
         }}
       />
@@ -280,6 +291,8 @@ export function DealProductsSection({
   const totals = useMemo(() => dealTotals(items), [items])
 
   const [adding, setAdding] = useState(false)
+  const [noteEditId, setNoteEditId] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   // Informa o pai sempre que o conjunto muda (inclusive no load) — é o
@@ -441,10 +454,11 @@ export function DealProductsSection({
                     Math.round(
                       item.quantity * item.unit_price * (1 - item.discount_pct / 100) * 100,
                     ) / 100
+                  const noteOpen = noteEditId === item.id
                   return (
+                    <Fragment key={item.id}>
                     <tr
-                      key={item.id}
-                      style={{ borderBottom: "1px solid var(--crm-gray-100)" }}
+                      style={{ borderBottom: noteOpen || item.note ? "none" : "1px solid var(--crm-gray-100)" }}
                     >
                       <td
                         style={{
@@ -453,19 +467,39 @@ export function DealProductsSection({
                           color: "var(--crm-gray-900)",
                           maxWidth: 180,
                         }}
-                        className="truncate"
-                        title={item.name}
                       >
-                        {item.name}
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate" title={item.name}>
+                            {item.name}
+                          </span>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              title={item.note ? "Editar observação" : "Adicionar observação"}
+                              aria-label={item.note ? "Editar observação" : "Adicionar observação"}
+                              onClick={() => {
+                                setNoteEditId(noteOpen ? null : item.id)
+                                setNoteDraft(item.note ?? "")
+                              }}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px]"
+                              style={{
+                                background: "transparent",
+                                border: 0,
+                                cursor: "pointer",
+                                color: item.note ? "var(--crm-brand)" : "var(--crm-gray-300)",
+                              }}
+                            >
+                              <StickyNote className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
                       </td>
                       <td className="text-right crm-tnum" style={{ padding: "6px 8px" }}>
                         {canEdit ? (
                           <InlineEditField
-                            type="number"
+                            type="text"
                             value={item.quantity}
-                            min={0.01}
-                            step={1}
-                            onSave={(v) => patchItem(item.id, { quantity: parseFloat(v) || 1 })}
+                            onSave={(v) => patchItem(item.id, { quantity: parseBRNumber(v) || 1 })}
                             displayStyle={{ fontSize: 12.5 }}
                           />
                         ) : (
@@ -475,12 +509,10 @@ export function DealProductsSection({
                       <td className="text-right crm-tnum" style={{ padding: "6px 8px" }}>
                         {canEdit ? (
                           <InlineEditField
-                            type="number"
+                            type="text"
                             value={item.unit_price}
-                            min={0}
-                            step={50}
-                            prefix="R$ "
-                            onSave={(v) => patchItem(item.id, { unit_price: parseFloat(v) || 0 })}
+                            display={fmtBRL(item.unit_price)}
+                            onSave={(v) => patchItem(item.id, { unit_price: parseBRNumber(v) })}
                             displayStyle={{ fontSize: 12.5 }}
                           />
                         ) : (
@@ -490,13 +522,10 @@ export function DealProductsSection({
                       <td className="text-right crm-tnum" style={{ padding: "6px 8px" }}>
                         {canEdit ? (
                           <InlineEditField
-                            type="number"
+                            type="text"
                             value={item.discount_pct}
-                            min={0}
-                            max={100}
-                            step={5}
-                            suffix="%"
-                            onSave={(v) => patchItem(item.id, { discount_pct: parseFloat(v) || 0 })}
+                            display={`${item.discount_pct}%`}
+                            onSave={(v) => patchItem(item.id, { discount_pct: parseBRNumber(v) })}
                             displayStyle={{ fontSize: 12.5 }}
                           />
                         ) : (
@@ -554,6 +583,64 @@ export function DealProductsSection({
                         </td>
                       )}
                     </tr>
+                    {/* Observação do item: leitura sob a linha; edição em textarea */}
+                    {(noteOpen || item.note) && (
+                      <tr style={{ borderBottom: "1px solid var(--crm-gray-100)" }}>
+                        <td colSpan={canEdit ? 7 : 6} style={{ padding: "0 12px 8px" }}>
+                          {noteOpen ? (
+                            <div>
+                              <textarea
+                                className="crm-input w-full"
+                                rows={2}
+                                autoFocus
+                                style={{ fontSize: 12.5, resize: "vertical" }}
+                                placeholder="Detalhes do que foi combinado — escopo, condições, prazo..."
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                              />
+                              <div className="mt-1.5 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className="crm-button-ghost"
+                                  style={{ height: 26, fontSize: 12 }}
+                                  onClick={() => setNoteEditId(null)}
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="crm-button-primary"
+                                  style={{ height: 26, fontSize: 12 }}
+                                  onClick={async () => {
+                                    try {
+                                      await patchItem(item.id, { note: noteDraft.trim() || null })
+                                      setNoteEditId(null)
+                                    } catch {
+                                      /* erro já exibido pela seção */
+                                    }
+                                  }}
+                                >
+                                  Salvar observação
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 12,
+                                color: "var(--crm-gray-600)",
+                                whiteSpace: "pre-wrap",
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              {item.note}
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -614,6 +701,24 @@ export function DealProductsSection({
 
 // ─── Linha de adição ────────────────────────────────────────────────
 
+function AddFieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        fontSize: 10,
+        fontWeight: 600,
+        color: "var(--crm-gray-500)",
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+        marginBottom: 3,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 function AddProductRow({
   dealId,
   onDone,
@@ -628,14 +733,23 @@ function AddProductRow({
     name: string
     billing_type: string
   } | null>(null)
+  // O que foi digitado no picker sem selecionar — vira item avulso no
+  // Adicionar (antes o botão ficava morto sem explicação).
+  const [pickerQuery, setPickerQuery] = useState("")
   const [qty, setQty] = useState("1")
-  const [price, setPrice] = useState("")
+  // Preço em CENTAVOS (string de dígitos) com máscara BRL — digitar
+  // "10.000" nunca mais vira R$ 10.
+  const [priceCents, setPriceCents] = useState("")
   const [discount, setDiscount] = useState("")
+  const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const effectiveName = selected?.name ?? pickerQuery.trim()
+  const canSubmit = !saving && effectiveName.length > 0
+
   const submit = async () => {
-    if (!selected || saving) return
+    if (!canSubmit) return
     setSaving(true)
     setError(null)
     try {
@@ -643,12 +757,13 @@ function AddProductRow({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          product_id: selected.id,
-          name: selected.name,
-          quantity: parseFloat(qty) || 1,
-          unit_price: parseFloat(price) || 0,
-          discount_pct: parseFloat(discount) || 0,
-          billing_type: selected.billing_type === "recurring" ? "recurring" : "one_time",
+          product_id: selected?.id ?? null,
+          name: effectiveName,
+          quantity: parseBRNumber(qty) || 1,
+          unit_price: centsToNumber(priceCents),
+          discount_pct: parseBRNumber(discount) || 0,
+          billing_type: selected?.billing_type === "recurring" ? "recurring" : "one_time",
+          note: note.trim() || null,
         }),
       })
       if (!res.ok) {
@@ -664,81 +779,106 @@ function AddProductRow({
   return (
     <div
       style={{
-        padding: "10px 12px",
+        padding: "12px",
         borderTop: "1px solid var(--crm-gray-100)",
         background: "var(--crm-gray-25)",
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement)) {
+          e.preventDefault()
+          submit()
+        }
+        if (e.key === "Escape") onCancel()
+      }}
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div style={{ marginBottom: 8 }}>
+        <AddFieldLabel>Produto</AddFieldLabel>
         {selected ? (
           <span
-            className="inline-flex items-center gap-1.5 truncate"
+            className="inline-flex max-w-full items-center gap-1.5"
             style={{
               fontSize: 12.5,
               fontWeight: 600,
               color: "var(--crm-gray-900)",
               background: "var(--crm-gray-100)",
               borderRadius: 6,
-              padding: "4px 8px",
-              maxWidth: 220,
+              padding: "5px 9px",
             }}
           >
             <span className="truncate">{selected.name}</span>
+            {selected.billing_type === "recurring" && (
+              <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>/mês</span>
+            )}
             <button
               type="button"
               onClick={() => setSelected(null)}
-              style={{ border: 0, background: "transparent", cursor: "pointer", color: "var(--crm-gray-500)", display: "flex" }}
+              style={{
+                border: 0,
+                background: "transparent",
+                cursor: "pointer",
+                color: "var(--crm-gray-500)",
+                display: "flex",
+              }}
               aria-label="Trocar produto"
             >
               <X className="h-3 w-3" />
             </button>
           </span>
         ) : (
-          <ProductPicker
-            autoFocus
-            createPrice={parseFloat(price) || 0}
-            onSelect={(p) => {
-              setSelected({ id: p.id, name: p.name, billing_type: p.billing_type })
-              if (!price && p.unit_price > 0) setPrice(String(p.unit_price))
-            }}
-          />
+          <>
+            <ProductPicker
+              autoFocus
+              createPrice={centsToNumber(priceCents)}
+              onQueryChange={setPickerQuery}
+              onSelect={(p) => {
+                setSelected({ id: p.id, name: p.name, billing_type: p.billing_type })
+                setPickerQuery("")
+                if (!priceCents && p.unit_price > 0) setPriceCents(numberToCents(p.unit_price))
+              }}
+            />
+            <p style={{ marginTop: 4, fontSize: 11, color: "var(--crm-gray-500)" }}>
+              Escolha do catálogo, crie na hora — ou só digite um nome para item avulso.
+            </p>
+          </>
         )}
-        <input
-          className="crm-input crm-tnum"
-          style={{ height: 30, width: 58, fontSize: 12.5, textAlign: "right" }}
-          type="number"
-          min={0.01}
-          step="any"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          title="Quantidade"
-          aria-label="Quantidade"
-        />
-        <input
-          className="crm-input crm-tnum"
-          style={{ height: 30, width: 100, fontSize: 12.5, textAlign: "right" }}
-          type="number"
-          min={0}
-          step="any"
-          placeholder="Preço R$"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          title="Preço unitário"
-          aria-label="Preço unitário"
-        />
-        <input
-          className="crm-input crm-tnum"
-          style={{ height: 30, width: 72, fontSize: 12.5, textAlign: "right" }}
-          type="number"
-          min={0}
-          max={100}
-          step="any"
-          placeholder="Desc %"
-          value={discount}
-          onChange={(e) => setDiscount(e.target.value)}
-          title="Desconto (%)"
-          aria-label="Desconto em porcento"
-        />
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2.5">
+        <div>
+          <AddFieldLabel>Qtd</AddFieldLabel>
+          <input
+            className="crm-input crm-tnum"
+            style={{ height: 30, width: 60, fontSize: 12.5, textAlign: "right" }}
+            inputMode="decimal"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            aria-label="Quantidade"
+          />
+        </div>
+        <div>
+          <AddFieldLabel>Preço unit. (R$)</AddFieldLabel>
+          <input
+            className="crm-input crm-tnum"
+            style={{ height: 30, width: 118, fontSize: 12.5, textAlign: "right" }}
+            inputMode="numeric"
+            placeholder="0,00"
+            value={formatCentsBRL(priceCents)}
+            onChange={(e) => setPriceCents(e.target.value.replace(/\D/g, ""))}
+            aria-label="Preço unitário em reais"
+          />
+        </div>
+        <div>
+          <AddFieldLabel>Desc. %</AddFieldLabel>
+          <input
+            className="crm-input crm-tnum"
+            style={{ height: 30, width: 64, fontSize: 12.5, textAlign: "right" }}
+            inputMode="decimal"
+            placeholder="0"
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+            aria-label="Desconto em porcento"
+          />
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
@@ -751,14 +891,28 @@ function AddProductRow({
           <button
             type="button"
             className="crm-button-primary"
-            style={{ height: 30, opacity: !selected || saving ? 0.5 : 1 }}
-            disabled={!selected || saving}
+            style={{ height: 30, opacity: canSubmit ? 1 : 0.5 }}
+            disabled={!canSubmit}
+            title={canSubmit ? undefined : "Escolha ou digite um produto primeiro"}
             onClick={submit}
           >
             {saving ? "Adicionando..." : "Adicionar"}
           </button>
         </div>
       </div>
+
+      <div style={{ marginTop: 8 }}>
+        <AddFieldLabel>Observação (opcional)</AddFieldLabel>
+        <textarea
+          className="crm-input w-full"
+          rows={2}
+          style={{ fontSize: 12.5, resize: "vertical" }}
+          placeholder="Detalhes do que foi combinado — escopo, condições, prazo..."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+
       {error && (
         <p style={{ marginTop: 6, fontSize: 12, color: "var(--crm-danger-fg)" }}>{error}</p>
       )}

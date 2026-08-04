@@ -25,24 +25,46 @@ export interface DealProductRow {
   unit_price: number
   discount_pct: number
   billing_type: string
+  note?: string | null
   position: number
   created_at: string
 }
 
 export const DEAL_PRODUCT_FIELDS =
+  "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, note, position, created_at"
+
+/** Select sem a coluna note — fallback pra quem aplicou só a migration 20261067. */
+const DEAL_PRODUCT_FIELDS_LEGACY =
   "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, position, created_at"
 
-/** Lê os itens do deal (ordenados). */
+function isMissingColumn(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null
+  return e?.code === "42703" || /column .* does not exist/i.test(e?.message ?? "")
+}
+
+/** Lê os itens do deal (ordenados). Tolera a coluna note ausente. */
 export async function fetchDealProducts(
   admin: Admin,
   dealId: string,
 ): Promise<{ items: DealProductRow[]; error: unknown }> {
-  const { data, error } = await admin
-    .from("crm_deal_products")
-    .select(DEAL_PRODUCT_FIELDS)
-    .eq("deal_id", dealId)
-    .order("position", { ascending: true })
-    .order("created_at", { ascending: true })
+  const base = () =>
+    admin
+      .from("crm_deal_products")
+      .select(DEAL_PRODUCT_FIELDS)
+      .eq("deal_id", dealId)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true })
+
+  const { data, error } = await base()
+  if (error && isMissingColumn(error)) {
+    const retry = await admin
+      .from("crm_deal_products")
+      .select(DEAL_PRODUCT_FIELDS_LEGACY)
+      .eq("deal_id", dealId)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true })
+    return { items: (retry.data as DealProductRow[] | null) ?? [], error: retry.error }
+  }
   return { items: (data as DealProductRow[] | null) ?? [], error }
 }
 

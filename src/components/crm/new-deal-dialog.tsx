@@ -7,14 +7,21 @@ import useSWR from "swr"
 import { useAuthStore } from "@/lib/store"
 import { TagsSelector } from "./tags-selector"
 import { ProductPicker } from "./deal-products-section"
-import { dealTotals } from "@/lib/services/crm-deal-products"
+import {
+  centsToNumber,
+  dealTotals,
+  formatCentsBRL,
+  numberToCents,
+  parseBRNumber,
+} from "@/lib/services/crm-deal-products"
 
 interface ProductRow {
   key: number
   product_id: string | null
   name: string
   quantity: string
-  unit_price: string
+  /** Preço em centavos (string de dígitos) — máscara BRL no input. */
+  unit_price_cents: string
   discount_pct: string
   billing_type: string
 }
@@ -103,9 +110,9 @@ export function NewDealDialog({
   // mostra a soma (mesma regra do drawer: produtos vencem valor manual).
   const productsTotal = dealTotals(
     productRows.map((r) => ({
-      quantity: parseFloat(r.quantity) || 1,
-      unit_price: parseFloat(r.unit_price) || 0,
-      discount_pct: parseFloat(r.discount_pct) || 0,
+      quantity: parseBRNumber(r.quantity) || 1,
+      unit_price: centsToNumber(r.unit_price_cents),
+      discount_pct: parseBRNumber(r.discount_pct) || 0,
       billing_type: r.billing_type,
     })),
   )
@@ -218,9 +225,9 @@ export function NewDealDialog({
           .map((r) => ({
             product_id: r.product_id,
             name: r.name,
-            quantity: parseFloat(r.quantity) || 1,
-            unit_price: parseFloat(r.unit_price) || 0,
-            discount_pct: parseFloat(r.discount_pct) || 0,
+            quantity: parseBRNumber(r.quantity) || 1,
+            unit_price: centsToNumber(r.unit_price_cents),
+            discount_pct: parseBRNumber(r.discount_pct) || 0,
             billing_type: r.billing_type === "recurring" ? "recurring" : "one_time",
           }))
       }
@@ -380,9 +387,9 @@ export function NewDealDialog({
                   {productRows.map((row) => {
                     const rowTotal =
                       Math.round(
-                        (parseFloat(row.quantity) || 1) *
-                          (parseFloat(row.unit_price) || 0) *
-                          (1 - (parseFloat(row.discount_pct) || 0) / 100) *
+                        (parseBRNumber(row.quantity) || 1) *
+                          centsToNumber(row.unit_price_cents) *
+                          (1 - (parseBRNumber(row.discount_pct) || 0) / 100) *
                           100,
                       ) / 100
                     return (
@@ -408,9 +415,7 @@ export function NewDealDialog({
                         <input
                           className="crm-input crm-tnum"
                           style={{ height: 28, width: 52, fontSize: 12, textAlign: "right" }}
-                          type="number"
-                          min={0.01}
-                          step="any"
+                          inputMode="decimal"
                           value={row.quantity}
                           onChange={(e) =>
                             setProductRows((rows) =>
@@ -424,29 +429,26 @@ export function NewDealDialog({
                         />
                         <input
                           className="crm-input crm-tnum"
-                          style={{ height: 28, width: 92, fontSize: 12, textAlign: "right" }}
-                          type="number"
-                          min={0}
-                          step="any"
-                          placeholder="Preço"
-                          value={row.unit_price}
+                          style={{ height: 28, width: 100, fontSize: 12, textAlign: "right" }}
+                          inputMode="numeric"
+                          placeholder="0,00"
+                          value={formatCentsBRL(row.unit_price_cents)}
                           onChange={(e) =>
                             setProductRows((rows) =>
                               rows.map((r) =>
-                                r.key === row.key ? { ...r, unit_price: e.target.value } : r,
+                                r.key === row.key
+                                  ? { ...r, unit_price_cents: e.target.value.replace(/\D/g, "") }
+                                  : r,
                               ),
                             )
                           }
-                          title="Preço unitário"
-                          aria-label="Preço unitário"
+                          title="Preço unitário (R$)"
+                          aria-label="Preço unitário em reais"
                         />
                         <input
                           className="crm-input crm-tnum"
                           style={{ height: 28, width: 64, fontSize: 12, textAlign: "right" }}
-                          type="number"
-                          min={0}
-                          max={100}
-                          step="any"
+                          inputMode="decimal"
                           placeholder="% desc"
                           value={row.discount_pct}
                           onChange={(e) =>
@@ -507,7 +509,7 @@ export function NewDealDialog({
                           product_id: p.id,
                           name: p.name,
                           quantity: "1",
-                          unit_price: p.unit_price > 0 ? String(p.unit_price) : "",
+                          unit_price_cents: numberToCents(p.unit_price),
                           discount_pct: "",
                           billing_type: p.billing_type,
                         },

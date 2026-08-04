@@ -24,6 +24,70 @@ export function round2(v: number): number {
   return Math.round((v + Number.EPSILON) * 100) / 100
 }
 
+/**
+ * Interpreta número digitado em formato brasileiro OU técnico.
+ *
+ * O incidente que motivou isto: vendedor digitou "10.000" querendo dez
+ * mil e o `parseFloat` entregou 10 — o negócio ficou 1000x menor sem
+ * ninguém perceber. Regras:
+ *   - vírgula presente → vírgula é o decimal, pontos são milhar ("10.000,50")
+ *   - só pontos, e o último grupo tem 3 dígitos → milhar BR ("10.000" → 10000)
+ *   - só pontos, último grupo com 1-2 dígitos → decimal técnico ("10.5", "10000.50")
+ *   - "R$", espaços e símbolos são ignorados
+ */
+export function parseBRNumber(raw: string | number | null | undefined): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0
+  if (!raw) return 0
+  let s = String(raw).replace(/[^\d.,-]/g, "")
+  if (!s) return 0
+  const negative = s.startsWith("-")
+  s = s.replace(/-/g, "")
+
+  let normalized: string
+  if (s.includes(",")) {
+    // vírgula é decimal; pontos são separador de milhar
+    normalized = s.replace(/\./g, "").replace(",", ".")
+  } else {
+    const parts = s.split(".")
+    if (parts.length === 1) {
+      normalized = s
+    } else {
+      const last = parts[parts.length - 1]
+      if (last.length === 3) {
+        // "10.000" / "1.234.567" → milhar BR
+        normalized = parts.join("")
+      } else {
+        // "10.5" / "10000.50" → decimal técnico (junta grupos anteriores)
+        normalized = parts.slice(0, -1).join("") + "." + last
+      }
+    }
+  }
+  const n = parseFloat(normalized)
+  if (!Number.isFinite(n)) return 0
+  return negative ? -n : n
+}
+
+/** "1234567" (string de centavos) → "12.345,67". Vazio → "". */
+export function formatCentsBRL(centsStr: string): string {
+  if (!centsStr) return ""
+  const cents = parseInt(centsStr, 10) || 0
+  const reais = Math.floor(cents / 100)
+  const cen = cents % 100
+  return `${reais.toLocaleString("pt-BR")},${cen.toString().padStart(2, "0")}`
+}
+
+/** Número em reais → string de centavos ("997.5" → "99750"). */
+export function numberToCents(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return ""
+  return String(Math.round(n * 100))
+}
+
+/** String de centavos → número em reais ("99750" → 997.5). */
+export function centsToNumber(centsStr: string): number {
+  if (!centsStr) return 0
+  return (parseInt(centsStr, 10) || 0) / 100
+}
+
 /** Clamp de quantidade: mínimo 1 (0 ou negativo não é linha, é remoção). */
 export function normalizeQuantity(raw: number | null | undefined): number {
   const n = Number(raw)
