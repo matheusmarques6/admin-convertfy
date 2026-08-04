@@ -12,6 +12,7 @@ import {
   Settings,
   LayoutGrid,
   List,
+  Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
@@ -42,6 +43,7 @@ import {
   toggleSelectAll,
   type TableSort,
 } from "./deals-table-utils"
+import { csvDate, csvNumber, downloadCsv, toCsv } from "@/lib/services/crm-csv"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -581,6 +583,43 @@ export function PipelineBoardView({
     })
   }
 
+  // Exporta os negócios FILTRADOS (o que está na tela) — client-side,
+  // os dados já estão aqui. Separador ; + BOM = abre certo no Excel BR.
+  const exportDealsCsv = () => {
+    const stageName = new Map((pipeline?.stages ?? []).map((s) => [s.id, s.name]))
+    const rows = filteredDeals.map((d) => [
+      d.title,
+      stageName.get(d.stage_id) ?? "",
+      csvNumber(d.value),
+      d.status,
+      d.owner?.name ?? "",
+      d.client?.name ?? "",
+      (d.tags ?? []).join(", "),
+      d.source ?? "",
+      csvDate(d.created_at ?? null),
+      csvDate(d.last_stage_changed_at),
+    ])
+    const csv = toCsv(
+      ["Negócio", "Etapa", "Valor", "Status", "Responsável", "Cliente", "Tags", "Origem", "Criado em", "Última mudança de etapa"],
+      rows,
+    )
+    downloadCsv(
+      `negocios-${(pipeline?.name ?? "pipeline").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv,
+    )
+    setToast({ kind: "success", msg: `${rows.length} negócios exportados.` })
+  }
+
+  const handleDuplicate = async (dealId: string) => {
+    const res = await fetch(`/api/crm/deals/${dealId}/duplicate`, { method: "POST" })
+    if (!res.ok) {
+      setToast({ kind: "error", msg: `Falha ao duplicar: ${await readApiError(res)}` })
+      return
+    }
+    setToast({ kind: "success", msg: "Negócio duplicado na mesma etapa." })
+    await mutate()
+  }
+
   const handleDelete = async (dealId: string) => {
     const ok = window.confirm(
       "Excluir este deal? Esta acao nao pode ser desfeita.",
@@ -1039,6 +1078,16 @@ export function PipelineBoardView({
                     onClearActive={() => setActiveViewId(null)}
                   />
 
+                  <button
+                    type="button"
+                    onClick={exportDealsCsv}
+                    title="Exportar os negócios filtrados para planilha (CSV)"
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-black/10 bg-white px-2.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-[#1A1D27] dark:text-[#C9CEDA] dark:hover:bg-white/[0.06]"
+                  >
+                    <Icon icon={Download} customSize={13} />
+                    Exportar
+                  </button>
+
                   {/* Kanban responde "como está o funil"; tabela responde
                       "quais negócios, ordenados por quê". */}
                   <div
@@ -1150,6 +1199,7 @@ export function PipelineBoardView({
                 onMoveDeal={(id) => setActiveDealId(id)}
                 onTransferDeal={(id) => setTransferDealId(id)}
                 onAddActivity={(id) => setActiveDealId(id)}
+                onDuplicateDeal={handleDuplicate}
                 onDeleteDeal={handleDelete}
                 onEditStage={handleEditStage}
                 onDeleteStage={handleDeleteStage}

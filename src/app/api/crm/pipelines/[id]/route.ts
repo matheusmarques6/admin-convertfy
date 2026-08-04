@@ -10,6 +10,7 @@ import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { resolveMemberRoles } from "@/lib/permissions/role-access"
 
 const log = logger.child("CrmPipelineDetail")
 
@@ -22,21 +23,37 @@ export async function GET(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     // Select com * pra ser resiliente caso a migration de category/is_favorite
-    // ainda nao tenha rodado.
-    const { data: pipeline, error: pErr } = await admin
+    // ainda nao tenha rodado. required_fields (migration 20261068) entra com
+    // retry sem a coluna.
+    let { data: pipeline, error: pErr } = await admin
       .from("pipelines")
       .select(`
         *,
         pipeline_stages (
-          id, name, color, "order", stage_type, sla_hours, description, exit_criteria
+          id, name, color, "order", stage_type, sla_hours, description, exit_criteria, required_fields
         )
       `)
       .eq("id", id)
       .single()
+
+    if (pErr && /required_fields|42703/i.test(`${pErr.code} ${pErr.message}`)) {
+      const retry = await admin
+        .from("pipelines")
+        .select(`
+          *,
+          pipeline_stages (
+            id, name, color, "order", stage_type, sla_hours, description, exit_criteria
+          )
+        `)
+        .eq("id", id)
+        .single()
+      pipeline = retry.data
+      pErr = retry.error
+    }
 
     if (pErr || !pipeline) {
       log.error("Pipeline GET — query falhou", {
@@ -52,10 +69,33 @@ export async function GET(
       (a: { order: number }, b: { order: number }) => a.order - b.order,
     )
 
+    // Visibilidade restrita (pipelines.visibility='owner_only'):
+    // vendedor vê só os próprios negócios; admin/dev/coo veem tudo.
+    let restrictToOwner = false
+    if ((pipeline as { visibility?: string | null }).visibility === "owner_only") {
+      const { data: member } = await admin
+        .from("org_members")
+        .select("id, role")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle()
+      let junctionRoles: string[] = []
+      if (member?.id) {
+        const { data: jr } = await admin
+          .from("org_member_roles")
+          .select("role")
+          .eq("member_id", member.id)
+        junctionRoles = (jr ?? []).map((r) => r.role as string)
+      }
+      const roles = resolveMemberRoles(junctionRoles, member?.role)
+      restrictToOwner = !roles.some((r) => r === "admin" || r === "dev" || r === "coo")
+    }
+
     // Query principal SEM join com crm_leads (pra evitar issues de FK
      // em ambientes onde a migration nao rodou completa). Buscamos os
      // leads em query separada via lead_id.
-    const { data: deals, error: dErr } = await admin
+    let dealsQuery = admin
       .from("deals")
       .select(`
         id, pipeline_id, stage_id, client_id, store_id, lead_id,
@@ -68,6 +108,10 @@ export async function GET(
       `)
       .eq("pipeline_id", id)
       .neq("status", "archived")
+
+    if (restrictToOwner) dealsQuery = dealsQuery.eq("owner_id", user.id)
+
+    const { data: deals, error: dErr } = await dealsQuery
       .order("position", { ascending: true })
       .order("created_at", { ascending: false })
 
@@ -202,6 +246,9 @@ const patchSchema = z.object({
   is_favorite: z.boolean().optional(),
   category: z.string().max(64).nullable().optional(),
   layout: z.enum(["kanban", "state"]).optional(),
+  // migration 20261068
+  assignment_mode: z.enum(["manual", "round_robin"]).optional(),
+  visibility: z.enum(["all", "owner_only"]).optional(),
 })
 
 export async function PATCH(
@@ -242,9 +289,11 @@ export async function PATCH(
       .eq("id", id)
 
     if (error && /column .* does not exist/i.test(error.message)) {
-      log.warn("[Pipelines] PATCH retrying without category/is_favorite (migration pending)")
+      log.warn("[Pipelines] PATCH retrying without colunas novas (migration pending)")
       delete updatePayload.category
       delete updatePayload.is_favorite
+      delete updatePayload.assignment_mode
+      delete updatePayload.visibility
       const retry = await admin
         .from("pipelines")
         .update(updatePayload)

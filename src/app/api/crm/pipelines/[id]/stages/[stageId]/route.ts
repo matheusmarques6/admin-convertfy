@@ -26,6 +26,11 @@ const patchStageSchema = z.object({
   description: z.string().nullable().optional(),
   exit_criteria: z.string().nullable().optional(),
   order: z.number().int().nonnegative().optional(),
+  // Campos exigidos ao mover um negócio PARA esta etapa (migration 20261068)
+  required_fields: z
+    .array(z.enum(["value", "expected_close_date", "client", "phone", "products"]))
+    .max(5)
+    .optional(),
 })
 
 export async function PATCH(

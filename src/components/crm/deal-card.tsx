@@ -12,6 +12,7 @@ import {
   Flag,
   Mail,
   MessageSquare,
+  CopyPlus,
   MoreHorizontal,
   Shuffle,
   Trash2,
@@ -75,6 +76,7 @@ interface DealCardProps {
   onMove?: (id: string) => void
   onTransfer?: (id: string) => void
   onAddActivity?: (id: string) => void
+  onDuplicate?: (id: string) => void
   onDelete?: (id: string) => void
   isDragging?: boolean
 }
@@ -145,6 +147,7 @@ export function DealCard({
   onMove,
   onTransfer,
   onAddActivity,
+  onDuplicate,
   onDelete,
   isDragging,
 }: DealCardProps) {
@@ -437,7 +440,7 @@ export function DealCard({
             {subtitle}
           </div>
         </div>
-        {(onAddActivity || onMove || onTransfer || onWin || onLose || onDelete) && (
+        {(onAddActivity || onMove || onTransfer || onWin || onLose || onDuplicate || onDelete) && (
           <DealActionsMenu
             dealId={deal.id}
             onWin={onWin}
@@ -445,6 +448,7 @@ export function DealCard({
             onMove={onMove}
             onTransfer={onTransfer}
             onAddActivity={onAddActivity}
+            onDuplicate={onDuplicate}
             onDelete={onDelete}
           />
         )}
@@ -725,6 +729,7 @@ function DealActionsMenu({
   onMove,
   onTransfer,
   onAddActivity,
+  onDuplicate,
   onDelete,
 }: {
   dealId: string
@@ -733,6 +738,7 @@ function DealActionsMenu({
   onMove?: (id: string) => void
   onTransfer?: (id: string) => void
   onAddActivity?: (id: string) => void
+  onDuplicate?: (id: string) => void
   onDelete?: (id: string) => void
 }) {
   return (
@@ -790,6 +796,14 @@ function DealActionsMenu({
               title="Transferir de pipeline"
               description="Levar para outra pipeline"
               onClick={() => onTransfer(dealId)}
+            />
+          )}
+          {onDuplicate && (
+            <Item
+              icon={<CopyPlus className="h-3.5 w-3.5" />}
+              title="Duplicar negócio"
+              description="Cópia na mesma etapa, com produtos"
+              onClick={() => onDuplicate(dealId)}
             />
           )}
           {(onAddActivity || onMove || onTransfer) && (onWin || onLose) && (

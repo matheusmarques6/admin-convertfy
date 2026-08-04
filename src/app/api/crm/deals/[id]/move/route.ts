@@ -28,6 +28,11 @@ import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 import { syncCadenceMove } from "@/lib/services/cs-pipelines-sync.service"
+import {
+  missingRequiredFields,
+  parseRequiredFields,
+  requiredFieldsMessage,
+} from "@/lib/services/crm-required-fields"
 
 const log = logger.child("CrmDealMove")
 
@@ -53,15 +58,79 @@ export async function POST(
     const body = await request.json()
     const parsed = moveSchema.parse(body)
 
-    // Le a etapa destino pra saber se e terminal
-    const { data: targetStage } = await admin
-      .from("pipeline_stages")
-      .select("id, name, stage_type, pipeline_id")
-      .eq("id", parsed.stage_id)
-      .single()
+    // Le a etapa destino pra saber se e terminal. required_fields pode
+    // nao existir (migration 20261068 pendente) — retry sem a coluna.
+    let targetStage: {
+      id: string
+      name: string
+      stage_type: string | null
+      pipeline_id: string
+      required_fields?: unknown
+    } | null = null
+    {
+      const first = await admin
+        .from("pipeline_stages")
+        .select("id, name, stage_type, pipeline_id, required_fields")
+        .eq("id", parsed.stage_id)
+        .maybeSingle()
+      if (first.error && /required_fields|42703/i.test(`${first.error.code} ${first.error.message}`)) {
+        const retry = await admin
+          .from("pipeline_stages")
+          .select("id, name, stage_type, pipeline_id")
+          .eq("id", parsed.stage_id)
+          .maybeSingle()
+        targetStage = retry.data
+      } else {
+        targetStage = first.data
+      }
+    }
 
     if (!targetStage) {
       throw new AppError("Etapa nao encontrada", 404, "not-found")
+    }
+
+    // Campos obrigatorios da etapa destino: valida ANTES do update e
+    // devolve 422 com a lista do que falta (o board mostra no toast).
+    const required = parseRequiredFields(targetStage.required_fields)
+    if (required.length > 0) {
+      const { data: snap } = await admin
+        .from("deals")
+        .select(`
+          id, value, expected_close_date, client_id, custom_fields,
+          client:clients (phone),
+          lead:crm_leads!deals_lead_id_fkey (phone)
+        `)
+        .eq("id", id)
+        .maybeSingle()
+
+      let productsCount = 0
+      if (required.includes("products")) {
+        const { count } = await admin
+          .from("crm_deal_products")
+          .select("id", { count: "exact", head: true })
+          .eq("deal_id", id)
+        productsCount = count ?? 0
+      }
+
+      if (snap) {
+        const client = Array.isArray(snap.client) ? snap.client[0] : snap.client
+        const lead = Array.isArray(snap.lead) ? snap.lead[0] : snap.lead
+        const custom = (snap.custom_fields ?? {}) as { contact_phone?: string }
+        const missing = missingRequiredFields(required, {
+          value: snap.value == null ? null : Number(snap.value),
+          expected_close_date: snap.expected_close_date,
+          client_id: snap.client_id,
+          phone: client?.phone ?? lead?.phone ?? custom.contact_phone ?? null,
+          products_count: productsCount,
+        })
+        if (missing.length > 0) {
+          throw new AppError(
+            requiredFieldsMessage(targetStage.name, missing),
+            422,
+            "required-fields",
+          )
+        }
+      }
     }
 
     // Estado atual do deal — precisa vir ANTES do update pra saber se

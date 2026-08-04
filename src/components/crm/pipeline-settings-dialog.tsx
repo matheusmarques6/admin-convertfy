@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Loader2,
   Sparkles,
+  ListChecks,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
@@ -49,7 +50,17 @@ interface Stage {
   stage_type: StageType | null
   sla_hours: number | null
   description: string | null
+  /** Campos exigidos ao mover um negócio PARA esta etapa. */
+  required_fields?: string[] | null
 }
+
+const REQUIRED_FIELD_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: "value", label: "Valor do negócio" },
+  { key: "expected_close_date", label: "Data prevista" },
+  { key: "client", label: "Cliente vinculado" },
+  { key: "phone", label: "Telefone de contato" },
+  { key: "products", label: "Ao menos um produto" },
+]
 
 interface PipelineSummary {
   id: string
@@ -60,6 +71,10 @@ interface PipelineSummary {
   category?: string | null
   is_favorite?: boolean
   is_default?: boolean
+  /** Rodízio de novos negócios sem dono explícito (migration 20261068). */
+  assignment_mode?: string | null
+  /** 'owner_only': vendedor (não-admin) vê só os próprios negócios. */
+  visibility?: string | null
   stages: Stage[]
 }
 
@@ -141,6 +156,8 @@ export function PipelineSettingsDialog({
   const [isDefault, setIsDefault] = useState(pipeline.is_default ?? false)
   const [category, setCategory] = useState(pipeline.category ?? "")
   const [isFavorite, setIsFavorite] = useState(pipeline.is_favorite ?? false)
+  const [assignmentMode, setAssignmentMode] = useState(pipeline.assignment_mode ?? "manual")
+  const [visibility, setVisibility] = useState(pipeline.visibility ?? "all")
 
   // Stages: estado local pra reorder otimista (depois sincroniza).
   const [stages, setStages] = useState<Stage[]>(pipeline.stages)
@@ -183,6 +200,8 @@ export function PipelineSettingsDialog({
     setIsDefault(pipeline.is_default ?? false)
     setCategory(pipeline.category ?? "")
     setIsFavorite(pipeline.is_favorite ?? false)
+    setAssignmentMode(pipeline.assignment_mode ?? "manual")
+    setVisibility(pipeline.visibility ?? "all")
   }, [open, pipeline])
 
   // Sincroniza stages SO quando o dialog abre. Apos isso, fica
@@ -202,9 +221,11 @@ export function PipelineSettingsDialog({
       color !== (pipeline.color ?? "#4E62D8") ||
       isDefault !== (pipeline.is_default ?? false) ||
       (category.trim() || "") !== (pipeline.category || "") ||
-      isFavorite !== (pipeline.is_favorite ?? false)
+      isFavorite !== (pipeline.is_favorite ?? false) ||
+      assignmentMode !== (pipeline.assignment_mode ?? "manual") ||
+      visibility !== (pipeline.visibility ?? "all")
     )
-  }, [name, description, color, isDefault, category, isFavorite, pipeline])
+  }, [name, description, color, isDefault, category, isFavorite, assignmentMode, visibility, pipeline])
 
   // ── Save metadata ──
   const handleSaveMeta = async () => {
@@ -227,6 +248,8 @@ export function PipelineSettingsDialog({
           is_default: isDefault,
           category: category.trim() || null,
           is_favorite: isFavorite,
+          assignment_mode: assignmentMode,
+          visibility,
         }),
       })
       toast.toast({ title: "Pipeline atualizado" })
@@ -491,6 +514,34 @@ export function PipelineSettingsDialog({
                   placeholder="Ex: Comerciais, Inbound, Outbound..."
                   className="w-full h-9 px-3 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 placeholder:text-slate-400 dark:placeholder:text-white/30 focus:outline-none focus:border-slate-400 dark:focus:border-white/30"
                 />
+              </Field>
+
+              <Field
+                label="Distribuição de novos negócios"
+                hint="Vale para negócios criados por formulário público e automação (sem dono explícito). Criação manual continua com quem criou."
+              >
+                <select
+                  value={assignmentMode}
+                  onChange={(e) => setAssignmentMode(e.target.value)}
+                  className="w-full h-9 px-3 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 cursor-pointer"
+                >
+                  <option value="manual">Manual (responsável padrão / criador)</option>
+                  <option value="round_robin">Rodízio automático (menos carregado)</option>
+                </select>
+              </Field>
+
+              <Field
+                label="Visibilidade dos negócios"
+                hint="Restrito: cada vendedor vê apenas os próprios negócios neste board. Admin/Dev sempre veem tudo."
+              >
+                <select
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value)}
+                  className="w-full h-9 px-3 text-[13px] rounded-[6px] bg-white dark:bg-[#1A1D27] border border-black/[0.08] dark:border-white/[0.08] text-slate-900 dark:text-white/90 focus:outline-none focus:border-slate-400 dark:focus:border-white/30 cursor-pointer"
+                >
+                  <option value="all">Todos veem todos os negócios</option>
+                  <option value="owner_only">Restrito ao responsável</option>
+                </select>
               </Field>
 
               <label className="flex items-start gap-2.5 cursor-pointer select-none">
@@ -877,6 +928,90 @@ function Divider() {
   return <div className="h-px bg-black/[0.06] dark:bg-white/[0.06]" />
 }
 
+/**
+ * Botão + painel de campos obrigatórios da etapa. Marca acesa quando a
+ * etapa exige algo — mover um negócio pra ela sem os campos devolve o
+ * card com a lista do que falta no toast.
+ */
+function RequiredFieldsButton({
+  value,
+  onChange,
+  stageName,
+}: {
+  value: string[]
+  onChange: (keys: string[]) => void
+  stageName: string
+}) {
+  const [open, setOpen] = useState(false)
+  const count = value.length
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={`Campos obrigatórios de ${stageName}`}
+        title={
+          count > 0
+            ? `Exige: ${value
+                .map((k) => REQUIRED_FIELD_OPTIONS.find((o) => o.key === k)?.label ?? k)
+                .join(", ")}`
+            : "Campos obrigatórios pra entrar nesta etapa"
+        }
+        className={cn(
+          "flex h-8 items-center gap-1 rounded-[4px] border px-2 text-[11px] font-medium",
+          count > 0
+            ? "border-[#4E62D8]/40 bg-[#EEF0FB] text-[#2137B6] dark:border-[#7B8CEA]/40 dark:bg-[#4E62D8]/15 dark:text-[#A8B2EE]"
+            : "border-black/[0.08] bg-white text-slate-500 dark:border-white/[0.08] dark:bg-[#1A1D27] dark:text-white/50",
+        )}
+      >
+        <ListChecks className="h-3.5 w-3.5" />
+        {count > 0 ? count : ""}
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop pra fechar clicando fora */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            className="absolute right-0 z-50 mt-1 w-60 rounded-[6px] border border-black/[0.08] bg-white p-2 shadow-lg dark:border-white/[0.1] dark:bg-[#1A1D27]"
+          >
+            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/50">
+              Exigir para entrar aqui
+            </p>
+            {REQUIRED_FIELD_OPTIONS.map((opt) => {
+              const checked = value.includes(opt.key)
+              return (
+                <label
+                  key={opt.key}
+                  className="flex cursor-pointer items-center gap-2 rounded-[4px] px-1.5 py-1.5 text-[12.5px] text-slate-800 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/[0.05]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() =>
+                      onChange(
+                        checked
+                          ? value.filter((k) => k !== opt.key)
+                          : [...value, opt.key],
+                      )
+                    }
+                    className="h-3.5 w-3.5 accent-[#4E62D8]"
+                  />
+                  {opt.label}
+                </label>
+              )
+            })}
+            <p className="mt-1.5 border-t border-black/[0.05] px-1 pt-1.5 text-[11px] leading-snug text-slate-400 dark:border-white/[0.06] dark:text-white/40">
+              Mover um negócio pra cá sem esses campos é bloqueado com aviso.
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 interface StageRowProps {
   stage: Stage
   dragHandleProps: React.HTMLAttributes<HTMLDivElement> | null | undefined
@@ -998,6 +1133,13 @@ function StageRow({
           h
         </span>
       </div>
+
+      {/* Campos obrigatórios pra ENTRAR nesta etapa */}
+      <RequiredFieldsButton
+        value={stage.required_fields ?? []}
+        onChange={(keys) => onChange({ required_fields: keys })}
+        stageName={stage.name}
+      />
 
       {/* Delete */}
       <button

@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
-import { Copy, Plus, Search, UserPlus, Upload } from "lucide-react"
+import { Copy, Download, Plus, Search, UserPlus, Upload } from "lucide-react"
+import { csvDate, downloadCsv, toCsv } from "@/lib/services/crm-csv"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
 import { LeadDrawer } from "@/components/crm/lead-drawer"
@@ -79,6 +80,36 @@ function SalesLeadsPageInner() {
 
   const leads = data?.leads || []
   const total = data?.total || 0
+  const [exporting, setExporting] = useState(false)
+
+  // Exporta TODOS os leads do filtro atual (a lista pagina em 100 — o
+  // export refaz a busca com limite alto pra não exportar só a página).
+  const exportLeadsCsv = async () => {
+    setExporting(true)
+    try {
+      const exportParams = new URLSearchParams(params)
+      exportParams.set("limit", "5000")
+      const res = await fetch(`/api/crm/leads?${exportParams.toString()}`)
+      const json = (await res.json().catch(() => null)) as { leads?: LeadRow[] } | null
+      const all = json?.leads ?? []
+      const csv = toCsv(
+        ["Nome", "Email", "Telefone", "Empresa", "Status", "Origem", "Responsável", "Criado em"],
+        all.map((l) => [
+          l.name,
+          l.email ?? "",
+          l.phone ?? "",
+          l.company ?? "",
+          STATUS_LABELS[l.status]?.label ?? l.status,
+          l.source ?? "",
+          l.assignee?.name ?? "",
+          csvDate(l.created_at),
+        ]),
+      )
+      downloadCsv(`leads-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <CrmPageShell
@@ -86,6 +117,21 @@ function SalesLeadsPageInner() {
       subtitle={`${total} ${total === 1 ? "lead" : "leads"} no total`}
       actions={
         <div style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}>
+          <button
+            onClick={exportLeadsCsv}
+            disabled={exporting}
+            className="crm-button-ghost"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              opacity: exporting ? 0.5 : 1,
+            }}
+            title="Exportar os leads do filtro atual para planilha (CSV)"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {exporting ? "Exportando..." : "Exportar"}
+          </button>
           <button
             onClick={() => setDuplicatesOpen(true)}
             style={{

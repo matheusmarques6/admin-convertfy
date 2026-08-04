@@ -34,6 +34,7 @@ interface KanbanBoardProps {
   onMoveDeal?: (dealId: string) => void
   onTransferDeal?: (dealId: string) => void
   onAddActivity?: (dealId: string) => void
+  onDuplicateDeal?: (dealId: string) => void
   onDeleteDeal?: (dealId: string) => void
   onEditStage?: (stage: KanbanStage) => void
   onDeleteStage?: (stage: KanbanStage) => void
@@ -107,6 +108,7 @@ export function KanbanBoard({
   onMoveDeal,
   onTransferDeal,
   onAddActivity,
+  onDuplicateDeal,
   onDeleteDeal,
   onEditStage,
   onDeleteStage,
@@ -497,6 +499,7 @@ export function KanbanBoard({
                                 onMove={onMoveDeal}
                                 onTransfer={onTransferDeal}
                                 onAddActivity={onAddActivity}
+                                onDuplicate={onDuplicateDeal}
                                 onDelete={onDeleteDeal}
                                 isDragging={dragSnapshot.isDragging}
                               />

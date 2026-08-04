@@ -20,6 +20,7 @@ import type {
 } from "@/types/crm-automation"
 import { sendTextViaChannel } from "./whatsapp-channel-send.service"
 import { runAiAction } from "./crm-ai-action.service"
+import { resolveAutoOwner, resolveLeastLoadedMember } from "./crm-assignment.service"
 
 const log = logger.child("CrmAutomationExecutor")
 
@@ -33,10 +34,13 @@ interface ExecuteParams {
 
 interface ExecuteResult {
   run_id: string
-  status: "completed" | "failed" | "skipped"
+  status: "completed" | "failed" | "skipped" | "waiting"
   node_results: CrmNodeRunResult[]
   error?: string
 }
+
+/** Espera >= este limiar é adiada pra fila (cron de retomada). */
+const WAIT_INLINE_MAX_SECONDS = 30
 
 /**
  * Resolve JSONPath simplificado: $.lead.name, $.deal.value etc.
@@ -216,14 +220,79 @@ export async function executeAutomation(params: ExecuteParams): Promise<ExecuteR
   }
 
   let runError: string | undefined
+  let waitingNodeId: string | null = null
   try {
-    await traverseDAG(dag, startNode, params.context, run.id, automation.org_id, nodeResults)
+    waitingNodeId = await traverseDAG(
+      dag,
+      startNode,
+      params.context,
+      run.id,
+      automation.org_id,
+      nodeResults,
+    )
   } catch (err) {
     runError = err instanceof Error ? err.message : "Erro desconhecido"
     log.error("[Executor] traverse error", err)
   }
 
+  const status = await finalizeRun(
+    run.id,
+    nodeResults,
+    runError,
+    waitingNodeId,
+    params.context,
+  )
+
+  return {
+    run_id: run.id,
+    status,
+    node_results: nodeResults,
+    error: runError,
+  }
+}
+
+/**
+ * Grava o desfecho do run. Com nó em espera: status 'waiting' +
+ * resume_at/resume_node_id/context_snapshot para o cron retomar. Se o
+ * banco não aceitar 'waiting' (migration 20261068 pendente), degrada
+ * para o comportamento antigo: marca completed com aviso — a espera
+ * longa é pulada, nunca derruba o run.
+ */
+async function finalizeRun(
+  runId: string,
+  nodeResults: CrmNodeRunResult[],
+  runError: string | undefined,
+  waitingNodeId: string | null,
+  ctx: CrmAutomationContext,
+): Promise<ExecuteResult["status"]> {
+  const admin = createAdminClient()
   const failed = nodeResults.some((r) => r.status === "failed") || !!runError
+
+  if (!failed && waitingNodeId) {
+    const waitingResult = nodeResults.find((r) => r.node_id === waitingNodeId)
+    const seconds = Number((waitingResult?.output as { seconds?: number } | null)?.seconds) || 60
+    const resumeAt = new Date(Date.now() + seconds * 1000).toISOString()
+    const { error } = await admin
+      .from("crm_automation_runs")
+      .update({
+        status: "waiting",
+        resume_at: resumeAt,
+        resume_node_id: waitingNodeId,
+        context_snapshot: ctx as unknown as Record<string, unknown>,
+        node_results: nodeResults as unknown as Record<string, unknown>[],
+        error_message: null,
+      })
+      .eq("id", runId)
+    if (!error) {
+      log.info("[Executor] run em espera", { runId, resumeAt, node: waitingNodeId })
+      return "waiting"
+    }
+    log.warn(
+      "[Executor] espera longa indisponível (migration 20261068?) — run segue como completed",
+      { runId, error: error.message },
+    )
+  }
+
   await admin
     .from("crm_automation_runs")
     .update({
@@ -232,16 +301,14 @@ export async function executeAutomation(params: ExecuteParams): Promise<ExecuteR
       node_results: nodeResults as unknown as Record<string, unknown>[],
       completed_at: new Date().toISOString(),
     })
-    .eq("id", run.id)
-
-  return {
-    run_id: run.id,
-    status: failed ? "failed" : "completed",
-    node_results: nodeResults,
-    error: runError,
-  }
+    .eq("id", runId)
+  return failed ? "failed" : "completed"
 }
 
+/**
+ * Executa o nó e segue o DAG. Retorna o id do nó em ESPERA (wait longo
+ * adiado pra fila) ou null quando o ramo terminou.
+ */
 async function traverseDAG(
   dag: CrmAutomationDAG,
   current: CrmAutomationNode,
@@ -249,23 +316,129 @@ async function traverseDAG(
   runId: string,
   orgId: string,
   results: CrmNodeRunResult[],
-): Promise<void> {
+): Promise<string | null> {
   const result = await executeNode(current, ctx, runId, orgId)
   results.push(result)
 
-  if (result.status === "failed") return
+  if (result.status === "failed") return null
+  if (result.status === "waiting") return current.id
 
-  // Find outgoing edges
-  const outgoing = dag.edges.filter((e) => e.from === current.id)
+  return followEdges(dag, current, ctx, runId, orgId, results)
+}
+
+/** Segue as edges de um nó (usado no fluxo normal e na RETOMADA pós-wait). */
+async function followEdges(
+  dag: CrmAutomationDAG,
+  node: CrmAutomationNode,
+  ctx: CrmAutomationContext,
+  runId: string,
+  orgId: string,
+  results: CrmNodeRunResult[],
+): Promise<string | null> {
+  const outgoing = dag.edges.filter((e) => e.from === node.id)
   for (const edge of outgoing) {
     if (edge.condition && !evaluateCondition(edge.condition, ctx)) {
       continue // skip this branch
     }
     const next = dag.nodes.find((n) => n.id === edge.to)
     if (next) {
-      await traverseDAG(dag, next, ctx, runId, orgId, results)
+      const waiting = await traverseDAG(dag, next, ctx, runId, orgId, results)
+      if (waiting) return waiting
     }
   }
+  return null
+}
+
+/**
+ * Retoma runs em 'waiting' cujo resume_at venceu. Claim atômico por
+ * update condicional — duas execuções do cron não pegam o mesmo run.
+ * A execução continua PELAS EDGES do nó wait (não o re-executa); outro
+ * wait adiante devolve o run à fila com novo resume_at.
+ */
+export async function resumeDueAutomationRuns(limit = 20): Promise<{
+  resumed: number
+  requeued: number
+  errors: number
+}> {
+  const admin = createAdminClient()
+  const { data: due } = await admin
+    .from("crm_automation_runs")
+    .select("id, automation_id, org_id, resume_node_id, context_snapshot, node_results")
+    .eq("status", "waiting")
+    .lte("resume_at", new Date().toISOString())
+    .order("resume_at", { ascending: true })
+    .limit(limit)
+
+  let resumed = 0
+  let requeued = 0
+  let errors = 0
+
+  for (const run of due ?? []) {
+    // Claim: só continua quem conseguir mover waiting -> running.
+    const { data: claimed } = await admin
+      .from("crm_automation_runs")
+      .update({ status: "running" })
+      .eq("id", run.id)
+      .eq("status", "waiting")
+      .select("id")
+      .maybeSingle()
+    if (!claimed) continue
+
+    try {
+      const { data: automation } = await admin
+        .from("automations")
+        .select("id, dag, is_active")
+        .eq("id", run.automation_id)
+        .single()
+
+      const dag = automation?.dag as unknown as CrmAutomationDAG | null
+      const waitNode = dag?.nodes?.find((n) => n.id === run.resume_node_id)
+
+      if (!automation?.is_active || !dag || !waitNode) {
+        await admin
+          .from("crm_automation_runs")
+          .update({
+            status: "failed",
+            error_message: !automation?.is_active
+              ? "Automação desativada durante a espera"
+              : "Nó de espera não existe mais no DAG (automação editada)",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", run.id)
+        errors++
+        continue
+      }
+
+      const ctx = (run.context_snapshot ?? {}) as CrmAutomationContext
+      const results = (run.node_results ?? []) as unknown as CrmNodeRunResult[]
+
+      let runError: string | undefined
+      let waitingNodeId: string | null = null
+      try {
+        waitingNodeId = await followEdges(dag, waitNode, ctx, run.id, run.org_id, results)
+      } catch (err) {
+        runError = err instanceof Error ? err.message : "Erro desconhecido"
+      }
+
+      const status = await finalizeRun(run.id, results, runError, waitingNodeId, ctx)
+      if (status === "waiting") requeued++
+      else if (status === "failed") errors++
+      else resumed++
+    } catch (err) {
+      errors++
+      log.error("[Executor] resume error", { runId: run.id, error: err })
+      await admin
+        .from("crm_automation_runs")
+        .update({
+          status: "failed",
+          error_message: err instanceof Error ? err.message : "Erro na retomada",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+    }
+  }
+
+  return { resumed, requeued, errors }
 }
 
 async function executeNode(
@@ -306,11 +479,24 @@ async function executeNode(
 
       case "wait": {
         const cfg = node.config as { seconds: number }
-        // Em producao real seria deferido pra fila. Aqui caso curto, executa.
-        if (cfg.seconds > 0 && cfg.seconds < 30) {
-          await new Promise((r) => setTimeout(r, cfg.seconds * 1000))
+        const seconds = Number(cfg.seconds) || 0
+        if (seconds >= WAIT_INLINE_MAX_SECONDS) {
+          // Espera longa: adia pra fila — o run vira 'waiting' e o cron
+          // /api/cron/crm-automation-resume continua a partir daqui.
+          return {
+            node_id: node.id,
+            node_type: node.type,
+            status: "waiting",
+            output: { deferred: true, seconds },
+            started_at: startedAt,
+            completed_at: new Date().toISOString(),
+            duration_ms: Date.now() - t0,
+          }
         }
-        output = { waited: cfg.seconds }
+        if (seconds > 0) {
+          await new Promise((r) => setTimeout(r, seconds * 1000))
+        }
+        output = { waited: seconds }
         break
       }
 
@@ -401,27 +587,9 @@ async function executeNode(
         if (cfg.strategy === "specific" && cfg.user_id) {
           assignTo = cfg.user_id
         } else if (cfg.strategy === "round_robin") {
-          // Pega o owner com menos deals abertos no scope da org
-          const { data: members } = await admin
-            .from("org_members")
-            .select("profile_id")
-            .eq("org_id", orgId)
-            .eq("is_active", true)
-            .limit(50)
-          if (members && members.length > 0) {
-            const counts = await Promise.all(
-              members.map(async (m) => {
-                const { count } = await admin
-                  .from("deals")
-                  .select("id", { count: "exact", head: true })
-                  .eq("owner_id", m.profile_id)
-                  .eq("status", "open")
-                return { profile_id: m.profile_id, count: count || 0 }
-              }),
-            )
-            counts.sort((a, b) => a.count - b.count)
-            assignTo = counts[0]?.profile_id || null
-          }
+          // Membro ativo com menos deals abertos (service compartilhado
+          // com o rodízio nativo da pipeline)
+          assignTo = await resolveLeastLoadedMember(admin, orgId)
         }
         if (!assignTo) throw new Error("Nao foi possivel resolver owner")
 
@@ -503,8 +671,9 @@ async function executeNode(
         const title =
           cfg.title_template?.trim() || `${contactName} — ${channelLabel}`
 
-        // Dono: o configurado → quem já atende a conversa → responsável
-        // padrão do pipeline → primeiro membro ativo da org.
+        // Dono: o configurado → quem já atende a conversa → rodízio da
+        // pipeline (assignment_mode='round_robin') → responsável padrão
+        // do pipeline → primeiro membro ativo da org.
         // `deals.owner_id` é NOT NULL: sem um dono real o insert falha e
         // a mensagem do cliente não vira negócio nenhum.
         let ownerId =
@@ -512,6 +681,9 @@ async function executeNode(
           (thread as { assigned_to?: string | null } | null)?.assigned_to ||
           null
 
+        if (!ownerId) {
+          ownerId = await resolveAutoOwner(admin, cfg.pipeline_id, orgId)
+        }
         if (!ownerId) {
           const { data: pipe } = await admin
             .from("pipelines")

@@ -60,6 +60,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/crm-automation-resume",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/weekly-feedback",
       "schedule": "40 7 * * 1"
     },

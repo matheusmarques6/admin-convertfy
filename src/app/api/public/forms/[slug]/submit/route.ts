@@ -23,6 +23,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
+import { resolveAutoOwner } from "@/lib/services/crm-assignment.service"
 import { normalizeTrackingConfig, type MetaAdvancedMatching } from "@/types/form-tracking"
 import { normalizePhoneDigits } from "@/lib/tracking/hash-pii"
 import {
@@ -375,6 +376,10 @@ export async function POST(
           .maybeSingle()
         const nextPos = (maxPos?.position ?? 0) + 10
 
+        // Rodízio da pipeline (assignment_mode='round_robin'): lead
+        // inbound cai no vendedor menos carregado em vez do dono do form.
+        const autoOwner = await resolveAutoOwner(admin, form.pipeline_id, form.org_id)
+
         const { data: deal, error: dErr } = await admin
           .from("deals")
           .insert({
@@ -389,7 +394,7 @@ export async function POST(
             utm: utmData,
             tags: [],
             lead_id: leadId,
-            owner_id: effectiveCreatedBy, // fallback assignee
+            owner_id: autoOwner ?? effectiveCreatedBy, // rodízio → fallback assignee
             position: nextPos,
             custom_fields:
               Object.keys(dealCustomFieldsData).length > 0

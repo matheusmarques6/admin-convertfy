@@ -32,6 +32,10 @@ interface GoalDialogProps {
   periodType: "month" | "quarter" | "year"
   currentTarget: number | null
   currentType: GoalType
+  /** Vendedores com atividade no período — habilita meta individual. */
+  owners?: Array<{ id: string; name: string }>
+  /** Metas individuais já definidas no período (pré-preenche ao trocar). */
+  individualGoals?: Array<{ owner_id: string; goal_type: string; target_value: number }>
   onSaved: () => void
 }
 
@@ -48,10 +52,14 @@ export function GoalDialog({
   periodType,
   currentTarget,
   currentType,
+  owners = [],
+  individualGoals = [],
   onSaved,
 }: GoalDialogProps) {
   const [goalType, setGoalType] = useState<GoalType>(currentType)
   const [value, setValue] = useState("")
+  // "" = meta do time inteiro; uuid = meta individual do vendedor.
+  const [ownerId, setOwnerId] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,10 +67,24 @@ export function GoalDialog({
   useEffect(() => {
     if (open) {
       setGoalType(currentType)
+      setOwnerId("")
       setValue(currentTarget != null ? String(currentTarget) : "")
       setError(null)
     }
   }, [open, currentTarget, currentType])
+
+  // Trocar o alvo (time <-> vendedor) pré-preenche com a meta vigente
+  // daquele escopo — editar meta existente sem redigitar.
+  const pickOwner = (id: string) => {
+    setOwnerId(id)
+    if (!id) {
+      setValue(currentTarget != null ? String(currentTarget) : "")
+      return
+    }
+    const existing = individualGoals.find((g) => g.owner_id === id)
+    setValue(existing ? String(existing.target_value) : "")
+    if (existing) setGoalType(existing.goal_type === "deals_won" ? "deals_won" : "revenue_won")
+  }
 
   const parsed = Number(value.trim().replace(/\./g, "").replace(",", "."))
   const canSave = !saving && value.trim() !== "" && Number.isFinite(parsed) && parsed > 0
@@ -80,6 +102,7 @@ export function GoalDialog({
           period_type: periodType,
           period_start: periodStart,
           target_value: parsed,
+          owner_id: ownerId || null,
         }),
       })
       if (!res.ok) {
@@ -111,12 +134,36 @@ export function GoalDialog({
             Meta {periodLabel}
           </DialogTitle>
           <DialogDescription>
-            Define o alvo do time no período. O painel passa a mostrar atingimento,
-            ritmo necessário e projeção de fechamento.
+            Define o alvo do período — do time inteiro ou de um vendedor. O painel
+            mostra atingimento, ritmo necessário e projeção de fechamento.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          {owners.length > 0 && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="goal-owner"
+                className="text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-[#8B92A5]"
+              >
+                Meta de
+              </label>
+              <select
+                id="goal-owner"
+                value={ownerId}
+                onChange={(e) => pickOwner(e.target.value)}
+                className="h-9 w-full cursor-pointer rounded-[8px] border border-black/10 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-[#4E62D8] dark:border-white/10 dark:bg-[#0F1117] dark:text-white"
+              >
+                <option value="">Time inteiro</option>
+                {owners.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-[#8B92A5]">
               Medir por

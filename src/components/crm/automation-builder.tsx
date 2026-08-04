@@ -548,16 +548,48 @@ function NodeInspector({
   }
 
   if (type === "wait") {
+    // O DAG guarda SEMPRE `seconds`; a UI só apresenta em valor+unidade.
+    const totalSeconds = (config.seconds as number) || 60
+    const unit =
+      totalSeconds % 86400 === 0 && totalSeconds >= 86400
+        ? 86400
+        : totalSeconds % 3600 === 0 && totalSeconds >= 3600
+          ? 3600
+          : totalSeconds % 60 === 0 && totalSeconds >= 60
+            ? 60
+            : 1
+    const amount = Math.max(1, Math.round(totalSeconds / unit))
     return (
-      <Field label="Aguardar (segundos)">
-        <input
-          type="number"
-          className="crm-input w-full"
-          min={1}
-          value={(config.seconds as number) || 60}
-          onChange={(e) => onChange({ seconds: parseInt(e.target.value, 10) })}
-        />
-      </Field>
+      <div className="space-y-2">
+        <Field label="Aguardar">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              className="crm-input"
+              style={{ width: 90 }}
+              min={1}
+              value={amount}
+              onChange={(e) =>
+                onChange({ seconds: Math.max(1, parseInt(e.target.value, 10) || 1) * unit })
+              }
+            />
+            <select
+              className="crm-input flex-1"
+              value={unit}
+              onChange={(e) => onChange({ seconds: amount * parseInt(e.target.value, 10) })}
+            >
+              <option value={1}>segundos</option>
+              <option value={60}>minutos</option>
+              <option value={3600}>horas</option>
+              <option value={86400}>dias</option>
+            </select>
+          </div>
+        </Field>
+        <p style={{ fontSize: 11.5, color: "var(--crm-gray-500)", lineHeight: 1.5 }}>
+          Esperas de 30s ou mais são adiadas com segurança: o fluxo pausa e o
+          sistema retoma sozinho na hora certa (cadência D+1, D+3... funciona).
+        </p>
+      </div>
     )
   }
 
@@ -722,8 +754,13 @@ function nodeLabel(type: CrmNodeType, config?: Record<string, unknown>): string 
       return (config?.trigger_type as string) || "Trigger"
     case "condition":
       return ((config?.expression as string) || "Sem condicao").slice(0, 40)
-    case "wait":
-      return `Esperar ${config?.seconds || 60}s`
+    case "wait": {
+      const s = (config?.seconds as number) || 60
+      if (s % 86400 === 0 && s >= 86400) return `Esperar ${s / 86400}d`
+      if (s % 3600 === 0 && s >= 3600) return `Esperar ${s / 3600}h`
+      if (s % 60 === 0 && s >= 60) return `Esperar ${s / 60}min`
+      return `Esperar ${s}s`
+    }
     case "action_send_whatsapp":
       return "Enviar WhatsApp"
     case "action_create_activity":

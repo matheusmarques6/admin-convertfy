@@ -65,7 +65,8 @@ export interface CrmAutomationContext {
 export interface CrmNodeRunResult {
   node_id: string
   node_type: CrmNodeType
-  status: "completed" | "failed" | "skipped"
+  /** "waiting" = nó wait adiado — o run pausa e o cron de retomada continua. */
+  status: "completed" | "failed" | "skipped" | "waiting"
   output?: unknown
   error?: string
   started_at: string

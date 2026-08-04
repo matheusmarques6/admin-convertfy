@@ -164,6 +164,28 @@ async function handleGet(request: NextRequest) {
       }
     }
 
+    // Metas INDIVIDUAIS do período (owner_id preenchido) — alimentam o
+    // atingimento por vendedor no ranking.
+    let individualGoals: Array<{
+      owner_id: string
+      goal_type: string
+      target_value: number
+    }> = []
+    if (orgId) {
+      const { data: rows } = await admin
+        .from("crm_sales_goals")
+        .select("owner_id, goal_type, target_value")
+        .eq("org_id", orgId)
+        .eq("period_type", periodType)
+        .eq("period_start", ymd(period.start))
+        .not("owner_id", "is", null)
+        .is("pipeline_id", null)
+      individualGoals = (rows ?? []).filter(
+        (r): r is { owner_id: string; goal_type: string; target_value: number } =>
+          !!r.owner_id,
+      )
+    }
+
     const goalProgress = goal
       ? computeGoalProgress({
           target: Number(goal.target_value),
@@ -262,6 +284,7 @@ async function handleGet(request: NextRequest) {
       goal_progress: goalProgress,
       achieved: { revenue: achievedRevenue, count: achievedCount },
       forecast,
+      individual_goals: individualGoals,
       by_owner: byOwner,
       stage_durations: stageDurations,
       pipelines: pipelines ?? [],

@@ -51,6 +51,11 @@ export interface PerformanceData {
     withoutDate: number
     withoutDateValue: number
   }
+  individual_goals?: Array<{
+    owner_id: string
+    goal_type: string
+    target_value: number
+  }>
   by_owner: Array<{
     owner_id: string
     name: string
@@ -134,6 +139,8 @@ export function PerformancePanel({ periodType = "month" }: { periodType?: "month
         periodType={data?.period.type ?? "month"}
         currentTarget={data?.goal?.target_value ?? null}
         currentType={(data?.goal?.goal_type as "revenue_won" | "deals_won") ?? "revenue_won"}
+        owners={(data?.by_owner ?? []).map((o) => ({ id: o.owner_id, name: o.name }))}
+        individualGoals={data?.individual_goals ?? []}
         onSaved={() => mutate()}
       />
     </div>
@@ -389,6 +396,10 @@ function ForecastCard({ data }: { data?: PerformanceData }) {
 function OwnerRanking({ data }: { data?: PerformanceData }) {
   const rows = data?.by_owner ?? []
   const max = Math.max(...rows.map((r) => r.wonValue), 1)
+  // Meta individual do período por vendedor (quando definida no dialog)
+  const goalByOwner = new Map(
+    (data?.individual_goals ?? []).map((g) => [g.owner_id, g]),
+  )
 
   if (rows.length === 0) {
     return (
@@ -415,17 +426,53 @@ function OwnerRanking({ data }: { data?: PerformanceData }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const goal = goalByOwner.get(r.owner_id)
+              const goalAchieved = goal
+                ? goal.goal_type === "deals_won"
+                  ? r.wonCount
+                  : r.wonValue
+                : null
+              const goalPct =
+                goal && goalAchieved != null && goal.target_value > 0
+                  ? (goalAchieved / goal.target_value) * 100
+                  : null
+              return (
               <tr key={r.owner_id} className="border-t border-black/[0.04] dark:border-white/[0.04]">
                 <td className="max-w-[160px] py-1.5 pr-3">
-                  <div className="truncate font-medium text-gray-900 dark:text-white">
-                    {r.name}
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="truncate font-medium text-gray-900 dark:text-white">
+                      {r.name}
+                    </span>
+                    {goalPct != null && (
+                      <span
+                        className={cn(
+                          "shrink-0 text-[10px] font-semibold tabular-nums",
+                          goalPct >= 100
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : goalPct >= 70
+                              ? "text-gray-500 dark:text-[#8B92A5]"
+                              : "text-amber-600 dark:text-amber-400",
+                        )}
+                        title={`Meta individual: ${goal!.goal_type === "deals_won" ? `${fmtInt(goal!.target_value)} vendas` : fmtBRL0(goal!.target_value)}`}
+                      >
+                        {goalPct.toFixed(0)}% da meta
+                      </span>
+                    )}
                   </div>
-                  {/* Barra sob o nome: comparação visual sem coluna extra */}
+                  {/* Barra sob o nome: meta individual quando existe, senão
+                      comparação com o melhor vendedor */}
                   <div className="mt-1 h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
                     <div
-                      className="h-full rounded-full bg-[#4E62D8] dark:bg-[#7B8CEA]"
-                      style={{ width: `${(r.wonValue / max) * 100}%` }}
+                      className={cn(
+                        "h-full rounded-full",
+                        goalPct != null && goalPct >= 100
+                          ? "bg-emerald-500"
+                          : "bg-[#4E62D8] dark:bg-[#7B8CEA]",
+                      )}
+                      style={{
+                        width: `${Math.min(100, goalPct ?? (r.wonValue / max) * 100)}%`,
+                      }}
                     />
                   </div>
                 </td>
@@ -442,7 +489,8 @@ function OwnerRanking({ data }: { data?: PerformanceData }) {
                   {r.avgCycleDays != null ? `${r.avgCycleDays.toFixed(0)}d` : "—"}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
