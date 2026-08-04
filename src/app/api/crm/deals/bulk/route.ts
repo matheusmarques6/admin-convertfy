@@ -194,8 +194,16 @@ export async function POST(request: NextRequest) {
         // Ganho em massa também fecha o ciclo: lead → cliente vinculado
         // por deal (fail-open — falha em um não afeta os outros).
         if (status === "won") {
+          const { data: opMember } = await admin
+            .from("org_members")
+            .select("org_id")
+            .eq("profile_id", user.id)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle()
+          const fallbackOrgId = opMember?.org_id ?? null
           await Promise.allSettled(
-            deals.map((d) => ensureClientForDeal(admin, d.id)),
+            deals.map((d) => ensureClientForDeal(admin, d.id, { fallbackOrgId })),
           )
         }
 

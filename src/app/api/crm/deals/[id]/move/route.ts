@@ -240,7 +240,14 @@ export async function POST(
     // cliente nunca impede o ganho.
     if (deal?.status === "won") {
       try {
-        await ensureClientForDeal(admin, id)
+        const { data: opMember } = await admin
+          .from("org_members")
+          .select("org_id")
+          .eq("profile_id", user.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle()
+        await ensureClientForDeal(admin, id, { fallbackOrgId: opMember?.org_id ?? null })
       } catch (err) {
         log.error("[Deals] auto link-client falhou (move segue)", { id, err })
       }

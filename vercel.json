@@ -126,6 +126,10 @@
     {
       "path": "/api/cron/whatsapp-connection-health",
       "schedule": "4-59/5 * * * *"
+    },
+    {
+      "path": "/api/cron/instagram-snapshot",
+      "schedule": "15 8 * * *"
     }
   ]
 }

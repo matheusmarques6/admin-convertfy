@@ -19,6 +19,7 @@ export type NavItemId =
   | "comercial.forms"
   | "comercial.inbox"
   | "comercial.canais"
+  | "comercial.instagram"
   | "comercial.automacoes"
   | "comercial.meetings"
   | "comercial.agenda"
@@ -65,6 +66,7 @@ const ALL_ITEMS: NavItemId[] = [
   "comercial.forms",
   "comercial.inbox",
   "comercial.canais",
+  "comercial.instagram",
   "comercial.automacoes",
   "comercial.meetings",
   "comercial.agenda",
@@ -108,6 +110,7 @@ const BYPASS_ROLES: OrgRole[] = ["admin", "dev"]
 const COO_ITEMS = new Set<NavItemId>([
   "comercial.inbox",
   "comercial.canais",
+  "comercial.instagram",
   "comercial.automacoes",
   "ops.dashboard",
   "ops.clients",
@@ -143,6 +146,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "comercial.forms",
   "comercial.inbox",
   "comercial.canais",
+  "comercial.instagram",
   "comercial.automacoes",
   "comercial.meetings",
   "comercial.agenda",

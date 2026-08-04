@@ -1341,6 +1341,56 @@ conexão é tutorial em 5 passos com links (ID via Graph Explorer
 
 ---
 
+## Fechamento → operacional em um gesto + painel Instagram (ago/2026)
+
+**Cadeia won → pós-venda**: mover pra Ganho (drag, quick-win, tabela E
+seletor de etapas do drawer via `onWon`) abre o `WonDealDialog`:
+dados do cliente (sobrescrevem — o operador REVISOU) + assinatura/
+cobrança (`unified_invoices`, mesma fonte do funil/onboarding) + seção
+"Iniciar o pós-venda" (nome/URL/plataforma da loja; nome obrigatório
+quando marcado — sem ele nasceria a loja fallback genérica). Tudo via
+`POST /deals/[id]/billing`. Sucesso com onboarding mostra painel com
+LINK (window.open pós-await é bloqueado); `onboarding_error` no payload
+quando pedido e não criado — 200 silencioso viraria "card sumiu".
+
+**`createFromDeal` é idempotente PELO DEAL** (`source_deal_id` +
+in_progress, checado ANTES de resolver loja): o cron `process-deal-won`
+(a cada minuto, loja fallback "Nome - <deal8>") e o dialog correm em
+paralelo — sem isso nasciam DOIS onboardings da mesma venda (a checagem
+antiga por client+store não os enxergava como iguais). Se o cron chegou
+primeiro, o billing atualiza a loja fallback IN-PLACE com os dados
+digitados (nada de loja fantasma desativada) e corrige o
+`source_metadata.store_name` denormalizado nas onboarding_tasks.
+
+**`ensureClientForDeal`** (org obrigatória — clients.org_id NOT NULL):
+cascata owner do deal → assigned_to/created_by do lead → org do
+OPERADOR (`fallbackOrgId`, passado por move/bulk/link-client/billing).
+Match por email é SÓ na mesma org (cliente de outra org nunca é
+sequestrado); 23505 no insert (UNIQUE org+lower(email)) re-seleciona e
+reusa; sem org → `reason: 'no_org'` e as rotas explicam em 422. Org do
+passo operacional (loja/onboarding) = org do CLIENTE, fallback operador.
+
+**Painel Instagram** (`/admin/comercial/instagram`, id
+`comercial.instagram`, nav Atendimento; deep-link `?channel=<id>` pelo
+botão Atividade do card em Canais): perfil + seguidores com deltas
+1d/7d/30d + sparkline, posts recentes com últimos comentários
+(permalink), importação de conversas. **A API oficial NÃO expõe quem
+seguiu/deixou de seguir** — só followers_count; o painel guarda
+snapshot diário em `crm_channels.config.follower_history` (JSONB, sem
+migration; `instagram-followers.ts`, puro, 11 testes) via GET da
+activity route + cron `/api/cron/instagram-snapshot` (15 8 * * *).
+Importação (`POST .../instagram/import-history`): Conversations API
+(janela recente da Meta, ~20 conversas) → mesmo formato do webhook
+(thread por channel+contact, msg idempotente por thread+external_id),
+`is_historical` + created_at retroativo (padrão Evolution), threads
+novas nascem `resolved` (importar não é atendimento pendente). O
+webhook de DM/comment agora REABRE thread resolved no inbound (gap que
+a importação expôs — Evolution já fazia). Fetcher da página LANÇA em
+não-2xx e extrai `error` string do errorResponse (a mensagem amigável
+de token expirado chega ao usuário).
+
+---
+
 ## Funil Comercial (jul/2026 — migration 20261052)
 
 Dashboard `/admin/comercial/funil` (nav "Analise", atalho `g+f`): funil

@@ -263,6 +263,16 @@ async function handleInboundDm(
     return
   }
 
+  // Inbound reabre conversa resolvida (mesma semântica do WhatsApp) —
+  // sem isso, contato que volta a escrever depois do "resolver" (ou de
+  // uma importação de histórico, que cria threads resolved) ficava
+  // fora da fila de atendimento.
+  await admin
+    .from("crm_threads")
+    .update({ status: "open" })
+    .eq("id", threadId)
+    .eq("status", "resolved")
+
   log.info("[Instagram] inbound DM", { thread_id: threadId, mid: event.message.mid })
 
   // "Respondeu o direct → entra nesta pipeline" mora aqui: sem este
@@ -351,6 +361,12 @@ async function handleInboundComment(
     log.error("[Instagram] erro ao persistir comment", error)
     return
   }
+
+  await admin
+    .from("crm_threads")
+    .update({ status: "open" })
+    .eq("id", threadId)
+    .eq("status", "resolved")
 
   log.info("[Instagram] inbound comment", { thread_id: threadId, comment_id: v.id })
 

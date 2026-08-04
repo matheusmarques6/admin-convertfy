@@ -99,15 +99,25 @@ export function WonDealDialog({
   const [chargeDue, setChargeDue] = useState(plusDays(3))
   const [method, setMethod] = useState("pix_direto")
 
+  // Passo operacional: loja + onboarding (o pós-venda começa aqui)
+  const [wantOnboarding, setWantOnboarding] = useState(true)
+  const [storeName, setStoreName] = useState("")
+  const [storeUrl, setStoreUrl] = useState("")
+  const [platform, setPlatform] = useState("shopify")
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [seeded, setSeeded] = useState(false)
+  // Sucesso com onboarding: painel com LINK clicável — window.open
+  // depois do await longo é bloqueado pelo navegador (sem gesto).
+  const [done, setDone] = useState<{ onboardingId: string; warn: string | null } | null>(null)
 
   // Pré-preenche UMA vez quando os dados chegam (não sobrescreve o que
   // o usuário já digitou em re-render).
   useEffect(() => {
     if (!open) {
       setSeeded(false)
+      setDone(null)
       return
     }
     if (seeded || !deal) return
@@ -133,13 +143,23 @@ export function WonDealDialog({
       setWantCharge(true)
       setChargeCents(numberToCents(oneTime))
     }
+    setWantOnboarding(true)
+    setStoreName(src?.company ?? src?.name ?? "")
+    setStoreUrl("")
+    setPlatform("shopify")
     setSeeded(true)
   }, [open, seeded, deal, totals])
 
+  // Onboarding marcado exige o nome da loja (o campo tem asterisco):
+  // sem ele a API criaria a loja FALLBACK genérica — exatamente o que
+  // este dialog existe pra evitar.
+  const onboardingValid = !wantOnboarding || storeName.trim().length > 0
   const canSubmit =
     !saving &&
     name.trim().length > 0 &&
-    ((wantSub && centsToNumber(subCents) > 0) ||
+    onboardingValid &&
+    (wantOnboarding ||
+      (wantSub && centsToNumber(subCents) > 0) ||
       (wantCharge && centsToNumber(chargeCents) > 0))
 
   const submit = async () => {
@@ -170,27 +190,48 @@ export function WonDealDialog({
           description: deal ? `Entrada/Setup — ${deal.title}` : undefined,
         }
       }
+      if (wantOnboarding) {
+        body.onboarding = {
+          store_name: storeName.trim() || undefined,
+          store_url: storeUrl.trim() || null,
+          platform,
+        }
+      }
       const res = await fetch(`/api/crm/deals/${dealId}/billing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+      const json = (await res.json().catch(() => null)) as
+        | { error?: unknown; onboarding_id?: string | null; onboarding_error?: string | null }
+        | null
       if (!res.ok) {
-        const json = (await res.json().catch(() => null)) as { error?: unknown } | null
         const raw = json?.error
         setError(
           (typeof raw === "string"
             ? raw
             : (raw as { message?: string } | undefined)?.message) ??
-            "Não foi possível gerar a cobrança.",
+            "Não foi possível concluir o fechamento.",
         )
         return
       }
-      const parts: string[] = []
+      const parts: string[] = ["cliente atualizado"]
       if (body.subscription) parts.push("assinatura mensal")
       if (body.charge) parts.push("cobrança única")
-      onDone(`Venda fechada: cliente atualizado e ${parts.join(" + ")} no financeiro.`)
-      onClose()
+      if (json?.onboarding_id) parts.push("onboarding criado")
+      // Onboarding pedido e NÃO criado: avisar é obrigatório — sucesso
+      // silencioso viraria "o card nunca apareceu no operacional".
+      const warn = json?.onboarding_error
+        ? `Atenção: o onboarding não foi criado (${json.onboarding_error}) — crie pelo funil.`
+        : null
+      onDone(`Venda fechada: ${parts.join(" + ")}.${warn ? ` ${warn}` : ""}`)
+      if (json?.onboarding_id) {
+        setDone({ onboardingId: json.onboarding_id, warn })
+      } else {
+        onClose()
+      }
+    } catch {
+      setError("Falha de rede ao concluir o fechamento — tente de novo.")
     } finally {
       setSaving(false)
     }
@@ -241,6 +282,32 @@ export function WonDealDialog({
             </button>
           </div>
 
+          {done ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+              <PartyPopper className="h-8 w-8" style={{ color: "var(--crm-success-fg)" }} />
+              <p style={{ fontSize: "var(--crm-text-md)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
+                Fechamento concluído
+              </p>
+              <p style={{ fontSize: 12.5, color: "var(--crm-gray-500)", maxWidth: 380, lineHeight: 1.55 }}>
+                O onboarding nasceu no quadro do operacional com a loja vinculada — a
+                cobrança e o cash collect do funil já leem da mesma fonte.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <a
+                  href={`/admin/onboarding/${done.onboardingId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="crm-button-primary"
+                >
+                  Abrir onboarding
+                </a>
+                <button type="button" className="crm-button-ghost" onClick={onClose}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="space-y-4 px-5 py-4">
             {/* Cliente */}
             <section>
@@ -424,6 +491,58 @@ export function WonDealDialog({
               </p>
             </section>
 
+            {/* Operacional: loja + onboarding */}
+            <section>
+              <h4 style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--crm-gray-500)", marginBottom: 8 }}>
+                Iniciar o pós-venda
+              </h4>
+              <label className="flex cursor-pointer items-center gap-2.5" style={{ marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={wantOnboarding}
+                  onChange={(e) => setWantOnboarding(e.target.checked)}
+                  className="h-4 w-4 accent-[#4E62D8]"
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--crm-gray-900)" }}>
+                  Criar loja + onboarding
+                </span>
+                <span style={{ fontSize: 11.5, color: "var(--crm-gray-500)" }}>
+                  o card nasce no quadro do operacional
+                </span>
+              </label>
+              {wantOnboarding && (
+                <div className="space-y-2 pl-6">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_150px]">
+                    <input
+                      className="crm-input w-full"
+                      placeholder="Nome da loja *"
+                      value={storeName}
+                      onChange={(e) => setStoreName(e.target.value)}
+                      aria-label="Nome da loja"
+                    />
+                    <select
+                      className="crm-input w-full"
+                      value={platform}
+                      onChange={(e) => setPlatform(e.target.value)}
+                      aria-label="Plataforma da loja"
+                    >
+                      <option value="shopify">Shopify</option>
+                      <option value="nuvemshop">Nuvemshop</option>
+                      <option value="woocommerce">WooCommerce</option>
+                      <option value="other">Outra</option>
+                    </select>
+                  </div>
+                  <input
+                    className="crm-input w-full"
+                    placeholder="URL da loja (opcional) — ex: minhaloja.com.br"
+                    value={storeUrl}
+                    onChange={(e) => setStoreUrl(e.target.value)}
+                    aria-label="URL da loja"
+                  />
+                </div>
+              )}
+            </section>
+
             {error && (
               <p style={{ fontSize: 12.5, color: "var(--crm-danger-fg)" }}>{error}</p>
             )}
@@ -445,12 +564,16 @@ export function WonDealDialog({
               title={
                 canSubmit
                   ? undefined
-                  : "Informe o nome do cliente e ao menos uma cobrança com valor"
+                  : !onboardingValid
+                    ? "Informe o nome da loja (ou desmarque o onboarding)"
+                    : "Informe o nome do cliente e ao menos uma cobrança com valor"
               }
             >
               {saving ? "Gerando…" : "Concluir fechamento"}
             </button>
           </div>
+            </>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

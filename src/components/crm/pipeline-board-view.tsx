@@ -1292,6 +1292,7 @@ export function PipelineBoardView({
         dealId={activeDealId}
         onClose={() => setActiveDealId(null)}
         onUpdated={() => mutate()}
+        onWon={(id) => setWonDealId(id)}
         pipelineStages={pipeline?.stages.map((s) => ({
           id: s.id,
           name: s.name,

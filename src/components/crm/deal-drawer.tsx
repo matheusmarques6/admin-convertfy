@@ -74,6 +74,9 @@ interface DealDrawerProps {
   dealId: string | null
   onClose: () => void
   onUpdated?: () => void
+  /** Chamado quando o deal é movido pra etapa de ganho POR AQUI — o
+   *  caller abre o dialog de fechamento (mesmo fluxo do drag no board). */
+  onWon?: (dealId: string) => void
   pipelineStages?: Array<{
     id: string
     name: string
@@ -224,6 +227,7 @@ export function DealDrawer({
   dealId,
   onClose,
   onUpdated,
+  onWon,
   pipelineStages,
   fallbackDeal,
   onMissing,
@@ -376,6 +380,9 @@ export function DealDrawer({
       setMoveError(null)
       await mutate()
       onUpdated?.()
+      // Ganhou pelo seletor de etapas do drawer → mesmo fechamento do
+      // drag no board (cliente + cobrança + onboarding).
+      if (target?.stage_type === "won") onWon?.(dealId)
       return
     }
     // 422 de campos obrigatórios (e afins) precisa aparecer — falha

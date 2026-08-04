@@ -26,14 +26,30 @@ export async function POST(
     const { id } = await context.params
     uuid().parse(id)
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
-    const result = await ensureClientForDeal(admin, id)
+    const { data: opMember } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+    const result = await ensureClientForDeal(admin, id, {
+      fallbackOrgId: opMember?.org_id ?? null,
+    })
 
     if (result.reason === "no_lead") {
       throw new AppError(
         "Este negócio não tem lead para converter — vincule um cliente manualmente pela ficha.",
+        422,
+        "validation-error",
+      )
+    }
+    if (result.reason === "no_org") {
+      throw new AppError(
+        "Não foi possível determinar a organização do negócio — verifique o responsável pela venda.",
         422,
         "validation-error",
       )

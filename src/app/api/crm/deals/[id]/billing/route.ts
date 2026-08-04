@@ -20,6 +20,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { ensureClientForDeal } from "@/lib/services/crm-client-link.service"
+import { createFromDeal } from "@/lib/services/onboarding-pipeline.service"
 
 const log = logger.child("CrmDealBilling")
 
@@ -52,6 +53,14 @@ const bodySchema = z.object({
       description: z.string().max(240).optional(),
     })
     .optional(),
+  /** Passo operacional: cria a loja (dados reais, não fallback) e o onboarding. */
+  onboarding: z
+    .object({
+      store_name: z.string().max(160).optional(),
+      store_url: z.string().max(300).nullable().optional(),
+      platform: z.enum(["shopify", "nuvemshop", "woocommerce", "other"]).optional(),
+    })
+    .optional(),
 })
 
 export async function POST(
@@ -70,15 +79,33 @@ export async function POST(
 
     const { data: deal } = await admin
       .from("deals")
-      .select("id, title, client_id, lead_id")
+      .select("id, title, value, client_id, lead_id, owner_id")
       .eq("id", id)
       .maybeSingle()
     if (!deal) throw new AppError("Negócio não encontrado", 404, "not-found")
 
+    // Org do operador — fallback pra resolução de org do cliente e do
+    // passo operacional.
+    const { data: opMember } = await admin
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+    const operatorOrgId = opMember?.org_id ?? null
+
     // Garante o cliente (converte o lead se ainda não converteu).
     let clientId = deal.client_id as string | null
     if (!clientId) {
-      const linked = await ensureClientForDeal(admin, id)
+      const linked = await ensureClientForDeal(admin, id, { fallbackOrgId: operatorOrgId })
+      if (linked.reason === "no_org") {
+        throw new AppError(
+          "Não foi possível determinar a organização do negócio — verifique o responsável pela venda.",
+          422,
+          "validation-error",
+        )
+      }
       clientId = linked.client_id
     }
     if (!clientId) {
@@ -173,21 +200,166 @@ export async function POST(
       summary.push(`cobrança única de R$ ${c.value}`)
     }
 
+    // Passo operacional: loja com os dados informados + onboarding.
+    // Org do passo = org do CLIENTE (é onde as telas do operacional vão
+    // procurar), com fallback pra org do operador.
+    let onboardingId: string | null = null
+    let onboardingError: string | null = null
+    if (parsed.onboarding) {
+      const { data: clientRow } = await admin
+        .from("clients")
+        .select("org_id")
+        .eq("id", clientId)
+        .maybeSingle()
+      const orgId = (clientRow?.org_id as string | null) ?? operatorOrgId
+      if (!orgId) {
+        onboardingError = "operador sem organização ativa"
+        log.warn("[Billing] onboarding pulado — org não resolvida", { dealId: id })
+      } else {
+        try {
+          const storeName = parsed.onboarding.store_name?.trim()
+          const storeUrl = parsed.onboarding.store_url?.trim() || null
+          const platform = parsed.onboarding.platform ?? "shopify"
+          const fallbackSuffix = ` - ${id.slice(0, 8)}`
+
+          // O cron process-deal-won (a cada minuto) pode ter criado o
+          // onboarding com a loja FALLBACK enquanto o vendedor preenchia
+          // o dialog. Checar ANTES evita loja duplicada: se a loja do
+          // onboarding é a fallback deste deal, ela vira a loja real
+          // (update in-place — sem fantasma pra desativar).
+          const { data: existingOnb } = await admin
+            .from("onboardings")
+            .select("id, store_id")
+            .eq("source_deal_id", id)
+            .eq("status", "in_progress")
+            .limit(1)
+            .maybeSingle()
+
+          if (existingOnb) {
+            onboardingId = existingOnb.id
+            if (storeName && existingOnb.store_id) {
+              const { data: currentStore } = await admin
+                .from("client_stores")
+                .select("id, store_name")
+                .eq("id", existingOnb.store_id)
+                .maybeSingle()
+              if (currentStore?.store_name?.endsWith(fallbackSuffix)) {
+                const { error: upErr } = await admin
+                  .from("client_stores")
+                  .update({ store_name: storeName, store_url: storeUrl, platform })
+                  .eq("id", currentStore.id)
+                if (!upErr) {
+                  // A task da coluna Entrada guarda o nome denormalizado
+                  // — corrige pra o card do quadro não exibir a loja
+                  // fantasma pra sempre.
+                  const { data: tasks } = await admin
+                    .from("onboarding_tasks")
+                    .select("id, source_metadata")
+                    .eq("onboarding_id", existingOnb.id)
+                  for (const t of tasks ?? []) {
+                    const meta = (t.source_metadata ?? {}) as Record<string, unknown>
+                    if (meta.store_name === currentStore.store_name) {
+                      await admin
+                        .from("onboarding_tasks")
+                        .update({ source_metadata: { ...meta, store_name: storeName } })
+                        .eq("id", t.id)
+                    }
+                  }
+                  log.info("[Billing] loja fallback atualizada com os dados reais", {
+                    onboardingId,
+                    storeId: currentStore.id,
+                  })
+                }
+              }
+            }
+            summary.push("onboarding vinculado")
+          } else {
+            let storeId: string | null = null
+            if (storeName) {
+              // Reusa loja do cliente com o mesmo nome; senão cria com
+              // os dados informados (a UNIQUE por org+nome tornaria o
+              // retry barulhento — buscar antes é mais limpo).
+              const { data: existingStore } = await admin
+                .from("client_stores")
+                .select("id")
+                .eq("client_id", clientId)
+                .ilike("store_name", storeName)
+                .limit(1)
+                .maybeSingle()
+              if (existingStore) {
+                storeId = existingStore.id
+              } else {
+                const { data: store, error: sErr } = await admin
+                  .from("client_stores")
+                  .insert({
+                    org_id: orgId,
+                    client_id: clientId,
+                    store_name: storeName,
+                    store_url: storeUrl,
+                    platform,
+                    is_active: true,
+                  })
+                  .select("id")
+                  .single()
+                if (sErr) {
+                  log.warn("[Billing] loja não criada — onboarding usa fallback", {
+                    error: sErr.message,
+                  })
+                } else {
+                  storeId = store.id
+                }
+              }
+            }
+
+            const result = await createFromDeal({
+              id,
+              org_id: orgId,
+              client_id: clientId,
+              store_id: storeId,
+              title: deal.title,
+              value: deal.value,
+              owner_id: deal.owner_id ?? user.id,
+              created_by: user.id,
+            })
+            onboardingId = result.onboarding?.id ?? null
+            if (onboardingId) {
+              summary.push(result.created ? "onboarding criado" : "onboarding vinculado")
+            } else {
+              onboardingError = "criação do onboarding não concluída"
+            }
+          }
+        } catch (err) {
+          onboardingError = err instanceof Error ? err.message : "erro inesperado"
+          log.error("[Billing] passo operacional falhou", { dealId: id, err })
+        }
+      }
+    }
+
     if (summary.length > 0) {
       await admin.from("crm_deal_activities").insert({
         deal_id: id,
         type: "system",
-        content: `Fechamento: ${summary.join(" + ")} gerada no financeiro do cliente`,
+        content: `Fechamento: ${summary.join(" + ")}`,
         created_by: user.id,
         is_internal: true,
       })
     }
 
-    log.info("[Billing] fechamento", { dealId: id, clientId, subscriptionId, charges: chargeIds.length })
+    log.info("[Billing] fechamento", {
+      dealId: id,
+      clientId,
+      subscriptionId,
+      charges: chargeIds.length,
+      onboardingId,
+    })
     return successResponse(request, {
       client_id: clientId,
       subscription_id: subscriptionId,
       charge_ids: chargeIds,
+      onboarding_id: onboardingId,
+      // Onboarding pedido mas não criado: o dialog PRECISA avisar — 200
+      // silencioso aqui viraria "card sumiu do operacional".
+      onboarding_error: parsed.onboarding && !onboardingId ? onboardingError ?? "não criado" : null,
     })
   } catch (error) {
     log.error("Deal billing error:", error)

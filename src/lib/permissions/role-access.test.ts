@@ -27,6 +27,7 @@ const MATRIX: Matrix = {
   "comercial.forms":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.inbox":        { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.canais":       { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
+  "comercial.instagram":    { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.automacoes":   { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.meetings":     { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.agenda":       { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },

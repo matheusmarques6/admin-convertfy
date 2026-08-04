@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
+import Link from "next/link"
 import {
   Plus,
   Phone,
@@ -17,6 +18,7 @@ import {
   Archive,
   Eraser,
   History,
+  Activity,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -515,6 +517,17 @@ function ChannelCard({
           <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-success-fg)" }}>
             {actionOk}
           </span>
+        )}
+        {isInstagram && channel.is_active && (
+          <Link
+            href={`/admin/comercial/instagram?channel=${channel.id}`}
+            className="crm-button-ghost"
+            title="Seguidores, posts, comentários e importação de conversas desta conta"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+          >
+            <Activity className="h-3 w-3" />
+            Atividade
+          </Link>
         )}
         {isEvolution && channel.is_active && (
           <button

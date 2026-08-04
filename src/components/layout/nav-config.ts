@@ -41,6 +41,7 @@ import {
   Activity,
   Package,
   CalendarDays,
+  Instagram,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { NavItemId } from "@/lib/permissions/role-access"
@@ -99,6 +100,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     items: [
       { id: "comercial.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
       { id: "comercial.canais", name: "Canais", href: ROUTES.ADMIN.COMERCIAL.CANAIS, icon: Phone },
+      { id: "comercial.instagram", name: "Instagram", href: ROUTES.ADMIN.COMERCIAL.INSTAGRAM, icon: Instagram },
       { id: "comercial.automacoes", name: "Automacoes", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
       { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
       { id: "comercial.agenda", name: "Agenda", href: ROUTES.ADMIN.COMERCIAL.AGENDA, icon: CalendarDays },

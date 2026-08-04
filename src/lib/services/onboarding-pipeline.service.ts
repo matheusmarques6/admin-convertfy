@@ -299,6 +299,23 @@ export async function createFromDeal(deal: {
 }): Promise<{ created: boolean; onboarding: OnboardingPipelineItem | null }> {
   const admin = createAdminClient()
 
+  // Idempotência PELO NEGÓCIO, antes de resolver loja: o cron
+  // process-deal-won (loja fallback) e o dialog de fechamento (loja
+  // real) correm em paralelo — a checagem client+store do
+  // createOnboarding não os enxerga como o mesmo onboarding e criaria
+  // dois para a mesma venda. Um deal ganho = um onboarding.
+  const { data: existingForDeal } = await admin
+    .from("onboardings")
+    .select("*")
+    .eq("source_deal_id", deal.id)
+    .eq("status", "in_progress")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (existingForDeal) {
+    return { created: false, onboarding: existingForDeal as OnboardingPipelineItem }
+  }
+
   // Resolve store: se deal nao tem store_id, usa primeira ativa do cliente
   let storeId = deal.store_id ?? null
   if (!storeId) {
