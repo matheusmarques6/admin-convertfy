@@ -266,6 +266,22 @@ export function DealDrawer({
   // Itens de produto do deal — com itens, o valor manual trava (a soma vence)
   const [productsMeta, setProductsMeta] = useState<DealProductsMeta | null>(null)
 
+  // Trocar de deal com o drawer aberto NÃO pode herdar a meta do
+  // anterior — sem o reset, o valor do novo deal aparecia travado até o
+  // fetch de produtos dele responder.
+  useEffect(() => {
+    setProductsMeta(null)
+  }, [dealId])
+
+  // Erro de movimentação (ex.: campos obrigatórios da etapa) — banner
+  // com auto-dismiss.
+  const [moveError, setMoveError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!moveError) return
+    const t = setTimeout(() => setMoveError(null), 5000)
+    return () => clearTimeout(t)
+  }, [moveError])
+
   useEffect(() => {
     if (!open) {
       setComposerContent("")
@@ -357,9 +373,19 @@ export function DealDrawer({
       body: JSON.stringify(body),
     })
     if (res.ok) {
+      setMoveError(null)
       await mutate()
       onUpdated?.()
+      return
     }
+    // 422 de campos obrigatórios (e afins) precisa aparecer — falha
+    // silenciosa aqui vira "o botão de etapa não funciona".
+    const errBody = (await res.json().catch(() => null)) as { error?: unknown } | null
+    const raw = errBody?.error
+    setMoveError(
+      (typeof raw === "string" ? raw : (raw as { message?: string } | null)?.message) ??
+        "Falha ao mover o negócio.",
+    )
   }
 
   const confirmLostMove = async (reason: string, comment: string) => {
@@ -455,6 +481,24 @@ export function DealDrawer({
                     : undefined
                 }
               />
+
+              {moveError && (
+                <div
+                  role="alert"
+                  style={{
+                    margin: "10px 22px 0",
+                    padding: "8px 12px",
+                    background: "#FEF2F2",
+                    border: "1px solid rgba(220,38,38,0.25)",
+                    borderRadius: 8,
+                    color: "var(--crm-danger-fg, #B91C1C)",
+                    fontSize: 12.5,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {moveError}
+                </div>
+              )}
 
               <div
                 className="flex-1 overflow-y-auto"

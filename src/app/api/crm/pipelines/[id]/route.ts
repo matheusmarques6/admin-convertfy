@@ -85,7 +85,7 @@ export async function GET(
         const { data: jr } = await admin
           .from("org_member_roles")
           .select("role")
-          .eq("member_id", member.id)
+          .eq("org_member_id", member.id)
         junctionRoles = (jr ?? []).map((r) => r.role as string)
       }
       const roles = resolveMemberRoles(junctionRoles, member?.role)

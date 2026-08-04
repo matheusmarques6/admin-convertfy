@@ -326,7 +326,14 @@ async function traverseDAG(
   return followEdges(dag, current, ctx, runId, orgId, results)
 }
 
-/** Segue as edges de um nó (usado no fluxo normal e na RETOMADA pós-wait). */
+/**
+ * Segue as edges de um nó (fluxo normal e RETOMADA pós-wait).
+ *
+ * Um wait num ramo NÃO aborta os ramos irmãos: todos executam antes de
+ * o run pausar — senão "esperar 1d" num ramo engoliria as ações
+ * imediatas do outro. Limitação conhecida: com DOIS waits longos em
+ * ramos paralelos, só o primeiro é retomado (resume_node é único).
+ */
 async function followEdges(
   dag: CrmAutomationDAG,
   node: CrmAutomationNode,
@@ -336,6 +343,7 @@ async function followEdges(
   results: CrmNodeRunResult[],
 ): Promise<string | null> {
   const outgoing = dag.edges.filter((e) => e.from === node.id)
+  let waitingNode: string | null = null
   for (const edge of outgoing) {
     if (edge.condition && !evaluateCondition(edge.condition, ctx)) {
       continue // skip this branch
@@ -343,10 +351,10 @@ async function followEdges(
     const next = dag.nodes.find((n) => n.id === edge.to)
     if (next) {
       const waiting = await traverseDAG(dag, next, ctx, runId, orgId, results)
-      if (waiting) return waiting
+      if (waiting && !waitingNode) waitingNode = waiting
     }
   }
-  return null
+  return waitingNode
 }
 
 /**

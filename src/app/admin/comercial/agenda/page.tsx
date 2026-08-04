@@ -66,8 +66,11 @@ export default function AgendaPage() {
     return days
   }, [gridStart])
 
-  const from = ymd(gridDays[0])
-  const to = ymd(gridDays[gridDays.length - 1])
+  // Folga de ±1 dia na busca: o filtro da API é em UTC e o agrupamento
+  // aqui é no fuso local — sem a folga, atividade das 21h+ (UTC-3) do
+  // último dia da grade cai fora da janela e some do calendário.
+  const from = ymd(new Date(gridDays[0].getTime() - 86_400_000))
+  const to = ymd(new Date(gridDays[gridDays.length - 1].getTime() + 86_400_000))
 
   const { data, isLoading } = useSWR<{ items: AgendaItem[] }>(
     `/api/crm/activities/agenda?from=${from}&to=${to}${mine ? "&mine=true" : ""}`,

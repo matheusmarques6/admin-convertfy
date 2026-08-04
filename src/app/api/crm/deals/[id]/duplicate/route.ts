@@ -30,7 +30,10 @@ export async function POST(
     const user = await requireAuth(sb)
     const admin = createAdminClient()
 
-    const { data: source } = await admin
+    // source_type/source_referrer não existem em todo ambiente — o
+    // SELECT precisa do retry, senão o erro de coluna vira um falso
+    // "Negócio não encontrado" e duplicar nunca funciona.
+    let { data: source, error: srcErr } = await admin
       .from("deals")
       .select(
         `pipeline_id, stage_id, client_id, store_id, lead_id, title, value,
@@ -40,6 +43,20 @@ export async function POST(
       .eq("id", id)
       .maybeSingle()
 
+    if (srcErr && /column .* does not exist|42703/i.test(`${srcErr.code} ${srcErr.message}`)) {
+      const retry = await admin
+        .from("deals")
+        .select(
+          `pipeline_id, stage_id, client_id, store_id, lead_id, title, value,
+           currency, probability, expected_close_date, source, utm, tags,
+           notes, custom_fields, referrer_partner_id`,
+        )
+        .eq("id", id)
+        .maybeSingle()
+      source = retry.data as typeof source
+      srcErr = retry.error
+    }
+    if (srcErr) throw srcErr
     if (!source) throw new AppError("Negócio não encontrado", 404, "not-found")
 
     const { data: maxPos } = await admin

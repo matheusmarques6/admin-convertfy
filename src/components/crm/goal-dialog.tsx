@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from "react"
 import { Target } from "lucide-react"
+import { parseBRNumber } from "@/lib/services/crm-deal-products"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import {
@@ -63,12 +64,17 @@ export function GoalDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Pré-preenche no formato BR (vírgula decimal) — o parse abaixo trata
+  // ponto sem vírgula como MILHAR, então "150000.5" cru viraria 1500005.
+  const toInputValue = (v: number | null | undefined) =>
+    v == null ? "" : String(v).replace(".", ",")
+
   // Reabrir sempre reflete a meta vigente, não o que foi digitado antes.
   useEffect(() => {
     if (open) {
       setGoalType(currentType)
       setOwnerId("")
-      setValue(currentTarget != null ? String(currentTarget) : "")
+      setValue(currentTarget != null ? toInputValue(currentTarget) : "")
       setError(null)
     }
   }, [open, currentTarget, currentType])
@@ -78,15 +84,15 @@ export function GoalDialog({
   const pickOwner = (id: string) => {
     setOwnerId(id)
     if (!id) {
-      setValue(currentTarget != null ? String(currentTarget) : "")
+      setValue(currentTarget != null ? toInputValue(currentTarget) : "")
       return
     }
     const existing = individualGoals.find((g) => g.owner_id === id)
-    setValue(existing ? String(existing.target_value) : "")
+    setValue(existing ? toInputValue(existing.target_value) : "")
     if (existing) setGoalType(existing.goal_type === "deals_won" ? "deals_won" : "revenue_won")
   }
 
-  const parsed = Number(value.trim().replace(/\./g, "").replace(",", "."))
+  const parsed = parseBRNumber(value)
   const canSave = !saving && value.trim() !== "" && Number.isFinite(parsed) && parsed > 0
 
   const submit = async () => {
