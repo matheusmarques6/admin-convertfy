@@ -93,6 +93,7 @@ export const ROUTES = {
         DETAIL: (id: string) => `/admin/comercial/automacoes/${id}` as const,
       },
       CANAIS: "/admin/comercial/canais",
+      PRODUTOS: "/admin/comercial/produtos",
       FUNIL: "/admin/comercial/funil",
       REPORTS: "/admin/comercial/reports",
     },

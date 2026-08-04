@@ -23,6 +23,7 @@ const MATRIX: Matrix = {
   "comercial.dashboard":    { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.pipelines":    { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.leads":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
+  "comercial.produtos":     { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.forms":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.inbox":        { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "comercial.canais":       { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },

@@ -33,6 +33,7 @@ import {
 import type { DealFile } from "@/types/crm"
 import { InlineEditField } from "./inline-edit-field"
 import { CustomFieldsPanel } from "./custom-fields-panel"
+import { DealProductsSection } from "./deal-products-section"
 import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 
 const fetcher = async (url: string) => {
@@ -807,6 +808,9 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               />
             </div>
           </Section>
+
+          {/* Produtos vendidos — a soma recalcula o valor do negócio */}
+          <DealProductsSection dealId={dealId} canEdit onChanged={() => mutate()} />
 
           {/* Notas (editavel inline) */}
           <Section title="Notas">

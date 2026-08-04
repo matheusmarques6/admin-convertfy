@@ -6,6 +6,18 @@ import { X } from "lucide-react"
 import useSWR from "swr"
 import { useAuthStore } from "@/lib/store"
 import { TagsSelector } from "./tags-selector"
+import { ProductPicker } from "./deal-products-section"
+import { dealTotals } from "@/lib/services/crm-deal-products"
+
+interface ProductRow {
+  key: number
+  product_id: string | null
+  name: string
+  quantity: string
+  unit_price: string
+  discount_pct: string
+  billing_type: string
+}
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -83,8 +95,20 @@ export function NewDealDialog({
   const [sourceReferrer, setSourceReferrer] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [notes, setNotes] = useState("")
+  const [productRows, setProductRows] = useState<ProductRow[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Total das linhas de produto — quando existem, o campo Valor trava e
+  // mostra a soma (mesma regra do drawer: produtos vencem valor manual).
+  const productsTotal = dealTotals(
+    productRows.map((r) => ({
+      quantity: parseFloat(r.quantity) || 1,
+      unit_price: parseFloat(r.unit_price) || 0,
+      discount_pct: parseFloat(r.discount_pct) || 0,
+      billing_type: r.billing_type,
+    })),
+  )
 
   // Search clients
   const { data: clientsData } = useSWR<{ clients: ClientLite[] }>(
@@ -120,6 +144,7 @@ export function NewDealDialog({
     setTitle("")
     setStageId(defaultStageId || stages[0]?.id || "")
     setValue("")
+    setProductRows([])
     setClientId("")
     setClientSearch("")
     setStoreId("")
@@ -185,6 +210,19 @@ export function NewDealDialog({
         source_referrer: sourceReferrer.trim() || null,
         tags: tagList,
         notes: notes || null,
+      }
+      // Itens de produto — o backend recalcula o value pela soma.
+      if (productRows.length > 0) {
+        body.products = productRows
+          .filter((r) => r.name.trim())
+          .map((r) => ({
+            product_id: r.product_id,
+            name: r.name,
+            quantity: parseFloat(r.quantity) || 1,
+            unit_price: parseFloat(r.unit_price) || 0,
+            discount_pct: parseFloat(r.discount_pct) || 0,
+            billing_type: r.billing_type === "recurring" ? "recurring" : "one_time",
+          }))
       }
       // Phone vai em custom_fields.contact_phone (deals nao tem coluna
       // dedicada pra phone — eh atributo de contato/lead, nao de deal).
@@ -312,16 +350,172 @@ export function NewDealDialog({
                     ))}
                   </select>
                 </Field>
-                <Field label="Valor (BRL)">
+                <Field
+                  label={
+                    productRows.length > 0 ? "Valor (soma dos produtos)" : "Valor (BRL)"
+                  }
+                >
                   <input
                     className="crm-input w-full"
                     inputMode="numeric"
                     placeholder="0,00"
-                    value={value ? formatBRL(value) : ""}
+                    disabled={productRows.length > 0}
+                    value={
+                      productRows.length > 0
+                        ? formatBRL(String(Math.round(productsTotal.total * 100)))
+                        : value
+                          ? formatBRL(value)
+                          : ""
+                    }
                     onChange={(e) => setValue(e.target.value.replace(/\D/g, ""))}
+                    style={productRows.length > 0 ? { opacity: 0.7 } : undefined}
                   />
                 </Field>
               </div>
+
+              {/* Produtos vendidos (opcional) — escolha do catálogo com
+                  cadastro rápido; a soma vira o valor do negócio. */}
+              <Field label="Produtos" as="div">
+                <div className="space-y-1.5">
+                  {productRows.map((row) => {
+                    const rowTotal =
+                      Math.round(
+                        (parseFloat(row.quantity) || 1) *
+                          (parseFloat(row.unit_price) || 0) *
+                          (1 - (parseFloat(row.discount_pct) || 0) / 100) *
+                          100,
+                      ) / 100
+                    return (
+                      <div key={row.key} className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="truncate"
+                          style={{
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            color: "var(--crm-gray-900)",
+                            flex: 1,
+                            minWidth: 100,
+                          }}
+                          title={row.name}
+                        >
+                          {row.name}
+                          {row.billing_type === "recurring" && (
+                            <span style={{ color: "var(--crm-gray-400)", fontWeight: 400 }}>
+                              {" "}/mês
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          className="crm-input crm-tnum"
+                          style={{ height: 28, width: 52, fontSize: 12, textAlign: "right" }}
+                          type="number"
+                          min={0.01}
+                          step="any"
+                          value={row.quantity}
+                          onChange={(e) =>
+                            setProductRows((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, quantity: e.target.value } : r,
+                              ),
+                            )
+                          }
+                          title="Quantidade"
+                          aria-label="Quantidade"
+                        />
+                        <input
+                          className="crm-input crm-tnum"
+                          style={{ height: 28, width: 92, fontSize: 12, textAlign: "right" }}
+                          type="number"
+                          min={0}
+                          step="any"
+                          placeholder="Preço"
+                          value={row.unit_price}
+                          onChange={(e) =>
+                            setProductRows((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, unit_price: e.target.value } : r,
+                              ),
+                            )
+                          }
+                          title="Preço unitário"
+                          aria-label="Preço unitário"
+                        />
+                        <input
+                          className="crm-input crm-tnum"
+                          style={{ height: 28, width: 64, fontSize: 12, textAlign: "right" }}
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="any"
+                          placeholder="% desc"
+                          value={row.discount_pct}
+                          onChange={(e) =>
+                            setProductRows((rows) =>
+                              rows.map((r) =>
+                                r.key === row.key ? { ...r, discount_pct: e.target.value } : r,
+                              ),
+                            )
+                          }
+                          title="Desconto (%)"
+                          aria-label="Desconto em porcento"
+                        />
+                        <span
+                          className="crm-tnum"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "var(--crm-gray-700)",
+                            minWidth: 76,
+                            textAlign: "right",
+                          }}
+                        >
+                          R${" "}
+                          {rowTotal.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProductRows((rows) => rows.filter((r) => r.key !== row.key))
+                          }
+                          aria-label={`Remover ${row.name}`}
+                          className="flex h-6 w-6 items-center justify-center rounded-[4px]"
+                          style={{
+                            background: "transparent",
+                            border: 0,
+                            color: "var(--crm-gray-400)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <ProductPicker
+                    placeholder={
+                      productRows.length > 0
+                        ? "Adicionar outro produto..."
+                        : "Buscar no catálogo (opcional)..."
+                    }
+                    onSelect={(p) =>
+                      setProductRows((rows) => [
+                        ...rows,
+                        {
+                          key: Date.now() + rows.length,
+                          product_id: p.id,
+                          name: p.name,
+                          quantity: "1",
+                          unit_price: p.unit_price > 0 ? String(p.unit_price) : "",
+                          discount_pct: "",
+                          billing_type: p.billing_type,
+                        },
+                      ])
+                    }
+                  />
+                </div>
+              </Field>
 
               <Field
                 label="Loja existente (autopreenche título, cliente e telefone)"

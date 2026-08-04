@@ -1221,6 +1221,26 @@ toast com a mensagem da API — reverter em silêncio vira "bug de drag".
 
 ---
 
+## Produtos no negócio (ago/2026 — migration 20261067)
+
+Estilo Datacrazy/Pipedrive: `crm_products` (catálogo da org — nome único
+por org via lower(name), preço padrão, billing one_time|recurring +
+intervalo) e `crm_deal_products` (itens do deal com SNAPSHOT de
+nome/preço + qtd + desconto%; product_id SET NULL). **Com itens,
+`deals.value` = soma das linhas** (recalculado pelas rotas via
+`recalcDealValue` — app-level, não trigger, regra do incidente 20261066;
+remover o último item NÃO zera o valor, volta ao modo manual). Cálculo
+puro em `crm-deal-products.ts` (16 testes — arredonda 2 casas POR LINHA).
+Excluir produto usado em negócio só DESATIVA. UI: seção Produtos no
+DealDrawer (valor manual TRAVA quando há itens; "Em 12m" = único +
+mensal×12) e no deal-detail-view; bloco opcional no NewDealDialog (POST
+/api/crm/deals aceita `products[]`, fail-open se migration não rodou);
+catálogo em `/admin/comercial/produtos` (nav Vendas, id
+`comercial.produtos` na matriz de roles). `ProductPicker` tem cadastro
+rápido inline ("Criar «q»") e item avulso sem catálogo.
+
+---
+
 ## Funil Comercial (jul/2026 — migration 20261052)
 
 Dashboard `/admin/comercial/funil` (nav "Analise", atalho `g+f`): funil

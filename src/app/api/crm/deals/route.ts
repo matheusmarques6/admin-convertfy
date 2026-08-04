@@ -10,6 +10,11 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { uuid } from "@/lib/validations/uuid"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
+import {
+  dealTotals,
+  normalizeDiscount,
+  normalizeQuantity,
+} from "@/lib/services/crm-deal-products"
 
 const log = logger.child("CrmDeals")
 
@@ -89,6 +94,23 @@ const createDealSchema = z.object({
   referrer_partner_id: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Itens de produto lançados junto com o negócio (estilo Datacrazy).
+   * Com itens, o value enviado é IGNORADO — vale a soma das linhas.
+   */
+  products: z
+    .array(
+      z.object({
+        product_id: uuid().nullable().optional(),
+        name: z.string().min(1).max(160).optional(),
+        quantity: z.number().positive().max(999_999).optional().default(1),
+        unit_price: z.number().min(0).max(999_999_999).optional(),
+        discount_pct: z.number().min(0).max(100).optional().default(0),
+        billing_type: z.enum(["one_time", "recurring"]).optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -98,10 +120,63 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient()
 
     const body = await request.json()
-    const parsed = createDealSchema.parse(body)
+    const { products, ...parsed } = createDealSchema.parse(body)
 
     // owner_id default = current user (frontend pode sobrescrever)
     const ownerId = parsed.owner_id ?? user.id
+
+    // Resolve itens de produto ANTES do insert: com itens, o value do
+    // deal nasce como a soma das linhas (snapshot de nome/preço vem do
+    // catálogo quando product_id foi informado).
+    let resolvedItems: Array<{
+      product_id: string | null
+      name: string
+      quantity: number
+      unit_price: number
+      discount_pct: number
+      billing_type: string
+    }> = []
+    if (products && products.length > 0) {
+      const catalogIds = products
+        .map((p) => p.product_id)
+        .filter((v): v is string => !!v)
+      const catalog = new Map<
+        string,
+        { name: string; unit_price: number; billing_type: string }
+      >()
+      if (catalogIds.length > 0) {
+        const { data: rows } = await admin
+          .from("crm_products")
+          .select("id, name, unit_price, billing_type")
+          .in("id", catalogIds)
+        for (const r of rows ?? []) {
+          catalog.set(r.id, {
+            name: r.name,
+            unit_price: Number(r.unit_price) || 0,
+            billing_type: r.billing_type,
+          })
+        }
+      }
+      resolvedItems = products.flatMap((p) => {
+        const fromCatalog = p.product_id ? catalog.get(p.product_id) : undefined
+        const name = p.name?.trim() || fromCatalog?.name || ""
+        if (!name) return [] // linha sem produto nem nome: ignora
+        return [
+          {
+            product_id: p.product_id ?? null,
+            name,
+            quantity: normalizeQuantity(p.quantity),
+            unit_price: p.unit_price ?? fromCatalog?.unit_price ?? 0,
+            discount_pct: normalizeDiscount(p.discount_pct),
+            billing_type:
+              p.billing_type ??
+              (fromCatalog?.billing_type === "recurring" ? "recurring" : "one_time"),
+          },
+        ]
+      })
+    }
+    const effectiveValue =
+      resolvedItems.length > 0 ? dealTotals(resolvedItems).total : parsed.value
 
     // Posicao no fim da etapa (maior position + 1)
     const { data: maxPos } = await admin
@@ -118,6 +193,7 @@ export async function POST(request: NextRequest) {
       .from("deals")
       .insert({
         ...parsed,
+        value: effectiveValue,
         owner_id: ownerId,
         position: nextPos,
         status: "open",
@@ -126,6 +202,24 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) throw error
+
+    // Itens de produto — fail-open: se a migration 20261067 não rodou,
+    // o deal já existe e a seção de produtos avisa; não desfaz a criação.
+    if (resolvedItems.length > 0) {
+      const { error: itemsErr } = await admin.from("crm_deal_products").insert(
+        resolvedItems.map((item, i) => ({
+          ...item,
+          deal_id: deal.id,
+          position: (i + 1) * 10,
+        })),
+      )
+      if (itemsErr) {
+        log.warn("[Deals] itens de produto não gravados (migration 20261067?)", {
+          dealId: deal.id,
+          error: itemsErr.message,
+        })
+      }
+    }
 
     // Activity de criacao
     await admin.from("crm_deal_activities").insert({

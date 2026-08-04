@@ -39,6 +39,7 @@ import {
   Cpu,
   ListChecks,
   Activity,
+  Package,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import type { NavItemId } from "@/lib/permissions/role-access"
@@ -87,6 +88,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     items: [
       { id: "comercial.pipelines", name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
       { id: "comercial.leads", name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
+      { id: "comercial.produtos", name: "Produtos", href: ROUTES.ADMIN.COMERCIAL.PRODUTOS, icon: Package },
       { id: "comercial.forms", name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },

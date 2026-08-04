@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
@@ -31,6 +31,10 @@ import {
   Zap,
 } from "lucide-react"
 import { CustomFieldsPanel } from "./custom-fields-panel"
+import {
+  DealProductsSection,
+  type DealProductsMeta,
+} from "./deal-products-section"
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 import { InlineEditField } from "./inline-edit-field"
@@ -258,6 +262,8 @@ export function DealDrawer({
   // Quando mover pra terminal-lost stage, exibe o dialog de razao
   const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  // Itens de produto do deal — com itens, o valor manual trava (a soma vence)
+  const [productsMeta, setProductsMeta] = useState<DealProductsMeta | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -305,6 +311,17 @@ export function DealDrawer({
       setPosting(false)
     }
   }
+
+  // Mudança nos produtos: guarda meta (trava o valor manual) e refetch
+  // do deal — o value foi recalculado no servidor.
+  const handleProductsChanged = useCallback(
+    (meta: DealProductsMeta) => {
+      setProductsMeta(meta)
+      mutate()
+      onUpdated?.()
+    },
+    [mutate, onUpdated],
+  )
 
   // Helper genérico pra editar campos do deal inline (usado por
   // InlineEditField em varios lugares do drawer).
@@ -443,7 +460,16 @@ export function DealDrawer({
                 style={{ padding: "22px 22px 100px", minHeight: 0 }}
               >
                 {/* Hero numbers row */}
-                <HeroNumbers deal={deal} onPatch={patchDeal} />
+                <HeroNumbers deal={deal} onPatch={patchDeal} productsMeta={productsMeta} />
+
+                {/* Produtos vendidos (estilo Datacrazy) — a soma vira o valor */}
+                {dealId && (
+                  <DealProductsSection
+                    dealId={dealId}
+                    canEdit={!!apiDeal}
+                    onChanged={handleProductsChanged}
+                  />
+                )}
 
                 {/* Últimas interações */}
                 <LastInteractions activities={activities} loading={isLoading && !data} />
@@ -1006,12 +1032,23 @@ function ScoreDonut({
 function HeroNumbers({
   deal,
   onPatch,
+  productsMeta,
 }: {
   deal: DealDetailResponse["deal"]
   onPatch?: (update: Record<string, unknown>) => Promise<void>
+  productsMeta?: DealProductsMeta | null
 }) {
   const value = deal.value || 0
-  const annual = value * 12
+  // Com produtos lançados, o valor é a SOMA das linhas (edição manual
+  // trava) e a projeção 12m respeita o que é único vs recorrente. Sem
+  // produtos, mantém o comportamento histórico (valor tratado como MRR).
+  const hasProducts = (productsMeta?.count ?? 0) > 0
+  const recurringOnly =
+    hasProducts && (productsMeta?.oneTime ?? 0) === 0 && (productsMeta?.recurring ?? 0) > 0
+  const showPerMonth = !hasProducts || recurringOnly
+  const annual = hasProducts
+    ? (productsMeta?.oneTime ?? 0) + (productsMeta?.recurring ?? 0) * 12
+    : value * 12
   const owner = deal.owner
 
   // Plano: tenta extrair de tags (ex: "Pro · 12m", "Performance · 6m", "Starter").
@@ -1041,7 +1078,7 @@ function HeroNumbers({
             letterSpacing: "0.04em",
           }}
         >
-          Valor recorrente
+          {hasProducts && !recurringOnly ? "Valor do negócio" : "Valor recorrente"}
         </div>
         <div
           className="crm-tnum"
@@ -1054,7 +1091,7 @@ function HeroNumbers({
             marginTop: 2,
           }}
         >
-          {onPatch ? (
+          {onPatch && !hasProducts ? (
             <InlineEditField
               type="number"
               value={value}
@@ -1068,16 +1105,24 @@ function HeroNumbers({
           ) : (
             fmtBRL(value)
           )}
-          <span
-            style={{
-              fontSize: 13,
-              color: "var(--crm-gray-500)",
-              fontWeight: 500,
-            }}
-          >
-            /mês
-          </span>
+          {showPerMonth && (
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--crm-gray-500)",
+                fontWeight: 500,
+              }}
+            >
+              /mês
+            </span>
+          )}
         </div>
+        {hasProducts && (
+          <div style={{ fontSize: 10.5, color: "var(--crm-gray-500)", marginTop: 3 }}>
+            soma de {productsMeta?.count}{" "}
+            {productsMeta?.count === 1 ? "produto" : "produtos"}
+          </div>
+        )}
       </div>
       <div className="w-px h-9" style={{ background: "var(--crm-gray-200)" }} />
       <HeroStat
