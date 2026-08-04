@@ -12,6 +12,19 @@ import type { ThreadSummary } from "@/types/crm-inbox"
 import { ThreadTagChips, useTagRegistry } from "./thread-tags"
 
 export type StatusFilter = "open" | "pending" | "resolved" | "all"
+export type ChannelTypeFilter = "all" | "whatsapp" | "instagram"
+
+export interface InboxChannelOption {
+  id: string
+  type: string
+  display_name: string
+}
+
+const CHANNEL_PILLS: Array<{ key: ChannelTypeFilter; label: string; dot: string | null }> = [
+  { key: "all", label: "Todos", dot: null },
+  { key: "whatsapp", label: "WhatsApp", dot: "#25D366" },
+  { key: "instagram", label: "Instagram", dot: "#E1306C" },
+]
 
 interface ConversationListProps {
   threads: ThreadSummary[]
@@ -29,6 +42,12 @@ interface ConversationListProps {
   hasActiveFilters: boolean
   orderMode: "recent" | "queue"
   onOrderModeChange: (m: "recent" | "queue") => void
+  channelType: ChannelTypeFilter
+  onChannelTypeChange: (t: ChannelTypeFilter) => void
+  /** Conta específica ("" = todas do tipo). Só aparece com 2+ contas do tipo. */
+  channelId: string
+  onChannelIdChange: (id: string) => void
+  channels: InboxChannelOption[]
 }
 
 export function ConversationList({
@@ -47,8 +66,17 @@ export function ConversationList({
   hasActiveFilters,
   orderMode,
   onOrderModeChange,
+  channelType,
+  onChannelTypeChange,
+  channelId,
+  onChannelIdChange,
+  channels,
 }: ConversationListProps) {
   const tagRegistry = useTagRegistry()
+  // Contas do tipo selecionado — o sub-filtro por conta só faz sentido
+  // quando há mais de uma (ex.: 2 Instagrams conectados).
+  const accountsOfType =
+    channelType === "all" ? [] : channels.filter((c) => c.type === channelType)
   return (
     <aside
       className={cn(
@@ -140,6 +168,64 @@ export function ConversationList({
             <Filter className="h-3 w-3" />
           </button>
         </div>
+
+        {/* Separação por canal: só WhatsApp, só Instagram — e por conta
+            quando houver mais de uma do mesmo tipo. */}
+        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Filtrar por canal">
+          {CHANNEL_PILLS.map(({ key, label, dot }) => (
+            <button
+              key={key}
+              onClick={() => onChannelTypeChange(key)}
+              aria-pressed={channelType === key}
+              style={{
+                fontSize: "var(--crm-text-xs)",
+                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
+                padding: "4px 8px",
+                borderRadius: "var(--crm-radius-sm)",
+                background: channelType === key ? "var(--crm-gray-900)" : "var(--crm-gray-100)",
+                color: channelType === key ? "var(--crm-gray-0)" : "var(--crm-gray-700)",
+                cursor: "pointer",
+                border: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              {dot && (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: channelType === key ? "#fff" : dot,
+                    opacity: channelType === key ? 0.7 : 1,
+                  }}
+                />
+              )}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {accountsOfType.length >= 2 && (
+          <select
+            className="crm-input mt-1.5 w-full"
+            style={{ height: 28, fontSize: 12 }}
+            value={channelId}
+            onChange={(e) => onChannelIdChange(e.target.value)}
+            aria-label="Filtrar por conta do canal"
+          >
+            <option value="">
+              Todas as contas ({accountsOfType.length})
+            </option>
+            {accountsOfType.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name}
+              </option>
+            ))}
+          </select>
+        )}
 
         {/* Recentes = ordem de chegada; Fila = quem espera resposta há
             mais tempo primeiro (SLA), pra ninguém esfriar esquecido. */}

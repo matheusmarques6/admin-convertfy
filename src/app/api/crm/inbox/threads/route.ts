@@ -35,7 +35,25 @@ async function handleGet(request: NextRequest) {
     const mine = sp.get("mine") === "1"
     const search = sp.get("search")
     const tag = sp.get("tag")
+    const channelType = sp.get("channel_type") // whatsapp | instagram
+    const channelId = sp.get("channel_id") // conta específica
     const limit = Math.min(parseInt(sp.get("limit") || "50", 10), 200)
+
+    // Filtro por TIPO de canal: channel_type vive em crm_channels, não
+    // na thread — resolve os ids dos canais do tipo (1 query pequena) e
+    // filtra por channel_id, que é coluna direta da thread.
+    let channelIdsOfType: string[] | null = null
+    if (channelType === "whatsapp" || channelType === "instagram") {
+      const { data: chs } = await admin
+        .from("crm_channels")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("type", channelType)
+      channelIdsOfType = (chs ?? []).map((c) => c.id)
+      if (channelIdsOfType.length === 0) {
+        return successResponse(request, { threads: [] })
+      }
+    }
 
     let q = admin
       .from("crm_threads")
@@ -56,6 +74,9 @@ async function handleGet(request: NextRequest) {
     if (mine) q = q.eq("assigned_to", user.id)
     else if (assignedTo) q = q.eq("assigned_to", assignedTo)
     if (tag) q = q.contains("tags", [tag])
+    // Conta específica vence o filtro por tipo (é mais restrita).
+    if (channelId) q = q.eq("channel_id", channelId)
+    else if (channelIdsOfType) q = q.in("channel_id", channelIdsOfType)
 
     if (search) {
       q = q.or(`contact_name.ilike.%${search}%,contact_external_id.ilike.%${search}%`)

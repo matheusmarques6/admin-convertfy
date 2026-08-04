@@ -20,7 +20,12 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import type { ThreadDetail, ThreadSummary } from "@/types/crm-inbox"
 import { CrmEmptyState } from "./crm-empty-state"
 import { ChatPanel } from "./inbox/chat-panel"
-import { ConversationList, type StatusFilter } from "./inbox/conversation-list"
+import {
+  ConversationList,
+  type ChannelTypeFilter,
+  type InboxChannelOption,
+  type StatusFilter,
+} from "./inbox/conversation-list"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -29,7 +34,24 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
   const [tagFilter, setTagFilter] = useState("")
+  // Separação por canal: só WhatsApp / só Instagram, e conta específica
+  // quando a org tem mais de uma do mesmo tipo.
+  const [channelType, setChannelType] = useState<ChannelTypeFilter>("all")
+  const [channelId, setChannelId] = useState("")
   const debouncedSearch = useDebounce(search, 250)
+
+  const pickChannelType = (t: ChannelTypeFilter) => {
+    setChannelType(t)
+    setChannelId("") // trocar de tipo zera a conta selecionada
+  }
+
+  const { data: channelsData } = useSWR<{
+    channels: Array<InboxChannelOption & { is_active?: boolean }>
+  }>("/api/crm/channels", fetcher, { revalidateOnFocus: false })
+  const channels = useMemo(
+    () => (channelsData?.channels ?? []).filter((c) => c.is_active !== false),
+    [channelsData],
+  )
   // initialThreadId = deep-link ?thread=<id> vindo das notificações do
   // sino; o SWR de detail busca por id direto, então funciona mesmo se
   // a thread não estiver na lista filtrada atual.
@@ -41,6 +63,8 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   if (mineOnly) params.set("mine", "1")
   if (debouncedSearch) params.set("search", debouncedSearch)
   if (tagFilter) params.set("tag", tagFilter)
+  if (channelType !== "all") params.set("channel_type", channelType)
+  if (channelId) params.set("channel_id", channelId)
 
   // Com realtime conectado o polling vira fallback lento; sem realtime
   // mantém a cadência antiga.
@@ -113,7 +137,12 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   )
 
   const hasActiveFilters =
-    Boolean(debouncedSearch) || statusFilter !== "open" || mineOnly || Boolean(tagFilter)
+    Boolean(debouncedSearch) ||
+    statusFilter !== "open" ||
+    mineOnly ||
+    Boolean(tagFilter) ||
+    channelType !== "all" ||
+    Boolean(channelId)
 
   return (
     <div
@@ -136,6 +165,11 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         tagFilter={tagFilter}
         onTagFilterChange={setTagFilter}
         hasActiveFilters={hasActiveFilters}
+        channelType={channelType}
+        onChannelTypeChange={pickChannelType}
+        channelId={channelId}
+        onChannelIdChange={setChannelId}
+        channels={channels}
       />
 
       {/* Painel da conversa — em mobile só aparece quando há thread ativa.
