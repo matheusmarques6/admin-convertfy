@@ -447,8 +447,8 @@ export function KanbanBoard({
                     {...provided.droppableProps}
                     className="flex-1 flex flex-col overflow-y-auto"
                     style={{
-                      gap: 12,
-                      padding: "14px 12px 16px",
+                      gap: compact ? 8 : 12,
+                      padding: compact ? "10px 7px 12px" : "14px 12px 16px",
                       background: snapshot.isDraggingOver
                         ? hexAlpha(color, 0.06)
                         : "transparent",

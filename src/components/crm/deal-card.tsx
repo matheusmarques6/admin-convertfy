@@ -436,17 +436,20 @@ export function DealCard({
               </span>
             )}
           </div>
-          {/* Subtitle: empresa · segmento (sempre presente) */}
-          <div
-            className="truncate"
-            style={{
-              fontSize: compact ? 10.5 : 11.5,
-              color: "var(--crm-gray-500)",
-              marginTop: compact ? 0 : 1,
-            }}
-          >
-            {subtitle}
-          </div>
+          {/* Subtitle: empresa · segmento — sem dado a linha some (um
+              "—" solto só suja o card) */}
+          {subtitle !== "—" && (
+            <div
+              className="truncate"
+              style={{
+                fontSize: compact ? 10.5 : 11.5,
+                color: "var(--crm-gray-500)",
+                marginTop: compact ? 0 : 1,
+              }}
+            >
+              {subtitle}
+            </div>
+          )}
         </div>
         {(onAddActivity || onMove || onTransfer || onWin || onLose || onDuplicate || onDelete) && (
           <DealActionsMenu
@@ -502,13 +505,18 @@ export function DealCard({
               fontWeight: deal.value && deal.value > 0 ? 600 : 400,
             }}
           >
-            {deal.value && deal.value > 0 ? fmtBRL(deal.value) : "—"}
-            <span
-              style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}
-            >
-              /mês
-              {!compact && plan ? ` · ${plan}` : ""}
-            </span>
+            {/* "R$ —/mês" era ruído — sem valor, diz "Sem valor" e pronto */}
+            {deal.value && deal.value > 0 ? (
+              <>
+                {fmtBRL(deal.value)}
+                <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>
+                  /mês
+                  {!compact && plan ? ` · ${plan}` : ""}
+                </span>
+              </>
+            ) : (
+              "Sem valor"
+            )}
             {compact && (
               <span style={{ color: "var(--crm-gray-400)", fontWeight: 400 }}>
                 {" "}· {days > 0 ? `${days}d` : "hoje"}
@@ -533,12 +541,29 @@ export function DealCard({
             </span>
           </div>
         )}
-        {/* Next step (activity row) */}
-        {nextStep && NextStepIcon && (
+        {/* Next step (activity row). No compacto — e no estado neutro
+            "Sem próxima ação" — vira linha fina, sem caixa: caixa cinza
+            pra dizer "nada agendado" pesava o card inteiro. */}
+        {nextStep && NextStepIcon && (compact || nextStep.tone === "neut" ? (
+          <div
+            className="flex items-center gap-1"
+            style={{ color: toneStyles[nextStep.tone].fg, fontWeight: 500 }}
+          >
+            <NextStepIcon className="h-3 w-3 shrink-0" />
+            <span className="flex-1 truncate" style={{ fontSize: compact ? 10.5 : 11.5 }}>
+              {nextStep.label}
+            </span>
+            {nextStep.when && (
+              <span className="crm-tnum shrink-0" style={{ fontSize: 10, opacity: 0.85 }}>
+                {nextStep.when}
+              </span>
+            )}
+          </div>
+        ) : (
           <div
             className="flex items-center gap-1.5"
             style={{
-              padding: compact ? "3px 6px" : "5px 8px",
+              padding: "5px 8px",
               borderRadius: 6,
               background: toneStyles[nextStep.tone].bg,
               border: `1px solid ${toneStyles[nextStep.tone].border}`,
@@ -549,10 +574,7 @@ export function DealCard({
             }}
           >
             <NextStepIcon className="h-3 w-3 shrink-0" />
-            <span
-              className="flex-1 truncate"
-              style={{ fontSize: compact ? 11 : 11.5 }}
-            >
+            <span className="flex-1 truncate" style={{ fontSize: 11.5 }}>
               {nextStep.label}
             </span>
             {nextStep.when && (
@@ -564,11 +586,13 @@ export function DealCard({
               </span>
             )}
           </div>
-        )}
+        ))}
       </div>
 
       {/* ── Footer: source + critico + buttons (no compacto os botões
-          de WhatsApp/email saem — ficam no drawer) ── */}
+          de WhatsApp/email saem — e sem badge nenhum o footer inteiro
+          some, economizando uma linha por card) ── */}
+      {(!compact || prettySource || isCritical || isWon || isLost) && (
       <div
         className="flex items-center justify-between gap-1.5"
         style={{
@@ -638,6 +662,7 @@ export function DealCard({
           )}
         </div>
       </div>
+      )}
 
       {/* Stage color visual hint REMOVIDO — nao existe no prototipo V2 */}
     </div>
