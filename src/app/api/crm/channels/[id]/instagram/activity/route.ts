@@ -81,9 +81,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const config = healed.config
     const rawConfig = healed.rawConfig
 
-    const [profileRes, mediaRes] = await Promise.all([
+    // Directs recentes vêm do NOSSO banco (threads do canal) — é o que
+    // o webhook/importação já materializou, sem custo de Graph API.
+    const recentThreadsQ = admin
+      .from("crm_threads")
+      .select(
+        "id, contact_name, contact_external_id, status, unread_count, last_message_at, last_message_preview, last_message_direction, deal_id",
+      )
+      .eq("channel_id", channelId)
+      .order("last_message_at", { ascending: false })
+      .limit(12)
+
+    const [profileRes, mediaRes, threadsRes] = await Promise.all([
       fetchInstagramProfile(config),
       fetchInstagramRecentMedia(config, 12),
+      recentThreadsQ,
     ])
 
     // Snapshot diário no config (best-effort — falha não derruba o GET).
@@ -117,6 +129,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         : healed.resolution.error?.message ?? profileRes.error.message,
       media: mediaRes.ok ? mediaRes.data : [],
       media_error: mediaRes.ok ? null : mediaRes.error.message,
+      recent_threads: threadsRes.data ?? [],
       follower_history: history,
       deltas: {
         d1: followerDelta(history, 1),

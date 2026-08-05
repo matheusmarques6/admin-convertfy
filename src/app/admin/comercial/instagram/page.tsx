@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import {
+  Bell,
   Download,
   ExternalLink,
   Heart,
@@ -23,9 +24,15 @@ import {
   Instagram,
   MessageCircle,
   RefreshCw,
+  UserPlus,
   Users,
+  Workflow,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
+import {
+  InstagramAutomationDialog,
+  type IgAutomationResult,
+} from "@/components/crm/instagram-automation-dialog"
 import { ROUTES } from "@/lib/routes"
 import type {
   InstagramMediaInfo,
@@ -62,11 +69,24 @@ interface ChannelOption {
   is_active?: boolean
 }
 
+interface RecentThread {
+  id: string
+  contact_name: string | null
+  contact_external_id: string
+  status: string
+  unread_count: number | null
+  last_message_at: string | null
+  last_message_preview: string | null
+  last_message_direction: string | null
+  deal_id: string | null
+}
+
 interface ActivityPayload {
   profile: InstagramProfileInfo | null
   profile_error: string | null
   media: InstagramMediaInfo[]
   media_error: string | null
+  recent_threads?: RecentThread[]
   follower_history: FollowerSnapshot[]
   deltas: { d1: FollowerDelta | null; d7: FollowerDelta | null; d30: FollowerDelta | null }
   /** Preenchido quando o ID salvo era o da Página e foi corrigido. */
@@ -193,6 +213,48 @@ function WarnBanner({ text }: { text: string }) {
       {text}
     </div>
   )
+}
+
+/** "2026-08-04" → "04/08" sem passar por Date (evita shift de fuso). */
+function dayLabel(day: string): string {
+  const [, m, d] = day.split("-")
+  return m && d ? `${d}/${m}` : day
+}
+
+/** Casca dos painéis do feed de notificações. */
+function FeedPanel({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className="flex min-w-0 flex-col gap-2 rounded-md border p-3"
+      style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
+    >
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <span style={{ fontSize: "var(--crm-text-xs)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
+          {title}
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+function FeedEmpty({ text }: { text: string }) {
+  return <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-400)" }}>{text}</p>
+}
+
+const THREAD_STATUS: Record<string, { label: string; bg: string; fg: string }> = {
+  open: { label: "Aberta", bg: "#E7F6EC", fg: "#177245" },
+  pending: { label: "Pendente", bg: "#FEF7E6", fg: "#8A6116" },
+  resolved: { label: "Resolvida", bg: "var(--crm-gray-100)", fg: "var(--crm-gray-500)" },
 }
 
 const MEDIA_TYPE_LABEL: Record<string, string> = {
@@ -337,9 +399,37 @@ export default function InstagramActivityPage() {
   )
   // Payload defensivo: erro de rede/permissão deixa `activity` undefined
   // e campos individuais podem faltar — a página nunca pode quebrar.
-  const media = activity?.media ?? []
+  const media = useMemo(() => activity?.media ?? [], [activity])
   const deltas = activity?.deltas ?? { d1: null, d7: null, d30: null }
-  const history = activity?.follower_history ?? []
+  const history = useMemo(() => activity?.follower_history ?? [], [activity])
+  const recentThreads = activity?.recent_threads ?? []
+
+  // Feed: comentários agregados dos posts (a Graph API entrega os
+  // últimos por mídia — o flatten ordenado é a "caixa de notificações").
+  const recentComments = useMemo(
+    () =>
+      media
+        .flatMap((m) =>
+          m.comments.map((c) => ({ ...c, permalink: m.permalink, mediaCaption: m.caption })),
+        )
+        .sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""))
+        .slice(0, 8),
+    [media],
+  )
+
+  // Seguidores por dia: diferença entre snapshots consecutivos. A API
+  // não expõe QUEM seguiu — este é o proxy honesto.
+  const followerDays = useMemo(() => {
+    const asc = [...history].sort((a, b) => a.day.localeCompare(b.day))
+    const days: Array<{ day: string; delta: number; total: number }> = []
+    for (let i = 1; i < asc.length; i++) {
+      days.push({ day: asc[i].day, delta: asc[i].followers - asc[i - 1].followers, total: asc[i].followers })
+    }
+    return days.reverse().slice(0, 8)
+  }, [history])
+
+  const [autoDialogOpen, setAutoDialogOpen] = useState(false)
+  const [autoResult, setAutoResult] = useState<IgAutomationResult | null>(null)
 
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
@@ -385,6 +475,7 @@ export default function InstagramActivityPage() {
                 setSelectedId(e.target.value)
                 setImportResult(null)
                 setImportError(null)
+                setAutoResult(null)
               }}
               className="rounded border px-2 py-1"
               style={{
@@ -549,6 +640,187 @@ export default function InstagramActivityPage() {
               acompanhamos a evolução do total com um snapshot diário a partir da conexão do canal.
             </p>
 
+            {/* Notificações — comentários, directs e seguidores por dia */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4" style={{ color: "var(--crm-gray-500)" }} />
+                <h2 style={{ fontSize: "var(--crm-text-sm)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
+                  Notificações
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <FeedPanel
+                  icon={<MessageCircle className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />}
+                  title="Comentários recentes"
+                >
+                  {recentComments.length === 0 && (
+                    <FeedEmpty text="Nenhum comentário nos posts recentes." />
+                  )}
+                  {recentComments.map((c) => (
+                    <div key={c.id} className="min-w-0" style={{ fontSize: "var(--crm-text-xs)" }}>
+                      <span style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}>
+                        {c.username ? `@${c.username}` : "usuário"}
+                      </span>{" "}
+                      <span style={{ color: "var(--crm-gray-700)" }}>{c.text ?? ""}</span>
+                      <span className="ml-1 whitespace-nowrap" style={{ color: "var(--crm-gray-400)" }}>
+                        {relTime(c.timestamp)}
+                        {c.permalink && (
+                          <>
+                            {" · "}
+                            <a
+                              href={c.permalink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                              style={{ color: "var(--crm-gray-500)" }}
+                            >
+                              ver post
+                            </a>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </FeedPanel>
+
+                <FeedPanel
+                  icon={<Inbox className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />}
+                  title="Directs recentes"
+                >
+                  {recentThreads.length === 0 && (
+                    <FeedEmpty text="Nenhuma conversa deste canal ainda — importe as recentes abaixo." />
+                  )}
+                  {recentThreads.slice(0, 8).map((t) => {
+                    const st = THREAD_STATUS[t.status] ?? THREAD_STATUS.resolved
+                    return (
+                      <Link
+                        key={t.id}
+                        href={ROUTES.ADMIN.INBOX_THREAD(t.id)}
+                        className="group flex min-w-0 items-center gap-2"
+                        style={{ fontSize: "var(--crm-text-xs)" }}
+                      >
+                        <span
+                          className="min-w-0 truncate group-hover:underline"
+                          style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}
+                        >
+                          {t.contact_name || t.contact_external_id}
+                        </span>
+                        {(t.unread_count ?? 0) > 0 && (
+                          <span
+                            className="shrink-0 rounded-full px-1.5"
+                            style={{ background: "var(--crm-gray-900)", color: "#fff", fontSize: "10px", fontWeight: 600 }}
+                          >
+                            {t.unread_count}
+                          </span>
+                        )}
+                        <span
+                          className="shrink-0 rounded px-1 py-0.5"
+                          style={{ background: st.bg, color: st.fg, fontSize: "10px", fontWeight: 600 }}
+                        >
+                          {st.label}
+                        </span>
+                        <span className="ml-auto shrink-0" style={{ color: "var(--crm-gray-400)" }}>
+                          {relTime(t.last_message_at)}
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </FeedPanel>
+
+                <FeedPanel
+                  icon={<UserPlus className="h-3.5 w-3.5" style={{ color: "var(--crm-gray-500)" }} />}
+                  title="Seguidores por dia"
+                >
+                  {followerDays.length === 0 && (
+                    <FeedEmpty text="Coletando histórico — o snapshot é diário; volte amanhã para ver o primeiro saldo." />
+                  )}
+                  {followerDays.map((d) => (
+                    <div
+                      key={d.day}
+                      className="flex items-center justify-between gap-2"
+                      style={{ fontSize: "var(--crm-text-xs)" }}
+                    >
+                      <span style={{ color: "var(--crm-gray-700)" }}>{dayLabel(d.day)}</span>
+                      <span className="ml-auto" style={{ color: "var(--crm-gray-400)" }}>
+                        {nf.format(d.total)} no total
+                      </span>
+                      <span
+                        className="w-12 text-right"
+                        style={{
+                          fontWeight: 600,
+                          color: d.delta > 0 ? "#177245" : d.delta < 0 ? "#B3261E" : "var(--crm-gray-500)",
+                        }}
+                      >
+                        {d.delta > 0 ? `+${nf.format(d.delta)}` : nf.format(d.delta)}
+                      </span>
+                    </div>
+                  ))}
+                  {followerDays.length > 0 && (
+                    <p className="mt-1" style={{ fontSize: "10px", color: "var(--crm-gray-400)" }}>
+                      Saldo diário do total de seguidores — a API não revela quem seguiu.
+                    </p>
+                  )}
+                </FeedPanel>
+              </div>
+            </div>
+
+            {/* Automação: interação → pipeline (estilo Datacrazy) */}
+            <div
+              className="flex flex-col gap-3 rounded-md border p-4"
+              style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
+                    Automação: interação vira negócio
+                  </p>
+                  <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
+                    Quem manda direct ou comenta entra automaticamente numa pipeline — como o
+                    &quot;seguidor novo → cadastro&quot; do Datacrazy, usando o que a API oficial permite
+                    identificar (a interação, não o follow).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAutoDialogOpen(true)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1"
+                  style={{
+                    background: "var(--crm-gray-900)",
+                    color: "var(--crm-gray-0)",
+                    fontSize: "var(--crm-text-sm)",
+                    fontWeight: 500,
+                  }}
+                >
+                  <Workflow className="h-3.5 w-3.5" />
+                  Criar automação
+                </button>
+              </div>
+
+              {autoResult && (
+                <div
+                  className="rounded border px-3 py-2"
+                  style={{
+                    borderColor: "#BFE3CC",
+                    background: "#EFF9F2",
+                    color: "#1D5B36",
+                    fontSize: "var(--crm-text-sm)",
+                  }}
+                >
+                  {autoResult.already_exists
+                    ? "Uma automação idêntica já existia — reaproveitamos ela."
+                    : "Automação criada."}{" "}
+                  <strong>{autoResult.name}</strong> ·{" "}
+                  {autoResult.is_active ? "ativa" : "rascunho (ative no construtor)"} ·{" "}
+                  <Link
+                    href={ROUTES.ADMIN.COMERCIAL.AUTOMACOES.DETAIL(autoResult.id)}
+                    className="underline"
+                  >
+                    revisar no construtor
+                  </Link>
+                </div>
+              )}
+            </div>
+
             {/* Conversas */}
             <div
               className="flex flex-col gap-3 rounded-md border p-4"
@@ -640,6 +912,16 @@ export default function InstagramActivityPage() {
                 ))}
               </div>
             </div>
+
+            <InstagramAutomationDialog
+              open={autoDialogOpen}
+              onOpenChange={setAutoDialogOpen}
+              channelId={channelId}
+              channelName={
+                igChannels.find((c) => c.id === channelId)?.display_name ?? "esta conta"
+              }
+              onCreated={setAutoResult}
+            />
           </>
         )}
       </div>

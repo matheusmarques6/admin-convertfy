@@ -1089,11 +1089,32 @@ Documentacao completa em `docs/crm/`.
 fase 5 — estava no builder mas nenhum webhook o emitia). Ponte em
 `crm-thread-trigger.service.ts`, chamada pelos webhooks de Instagram
 (DM + comentário) e WhatsApp após persistir a mensagem. Filtros do
-gatilho: `channel_type`, `event_kind` (message|comment) e
-`first_message` (só a 1ª do contato — sem isso, fluxo que cria negócio
-criaria um por resposta). Fire-and-forget: falha de automação nunca
-derruba a ingestão. Idempotência por `external_message_id` (a Meta
-reenvia webhooks; o executor já deduplicava por `idempotency_key`).
+gatilho: `channel_type`, `channel_id` (conta específica — org com duas
+contas de IG não quer o direct da B na automação da A), `event_kind`
+(message|comment) e `first_message` (só a 1ª do contato — sem isso,
+fluxo que cria negócio criaria um por resposta). Fire-and-forget: falha
+de automação nunca derruba a ingestão. Idempotência por
+`external_message_id` (a Meta reenvia webhooks; o executor já
+deduplicava por `idempotency_key`).
+
+**Automação 1-clique do painel Instagram** (ago/2026): feed de
+"Notificações" na página (comentários agregados das mídias, directs
+recentes via `recent_threads` no GET activity — vem do NOSSO banco, sem
+custo de Graph API —, e saldo de seguidores POR DIA derivado dos
+snapshots) + `POST /api/crm/channels/[id]/instagram/setup-automation`
+que cria a automação "interação → negócio na pipeline" pré-montada.
+Montagem em `instagram-automation.ts` (puro, 11 testes): trigger da
+COLUNA e config do NÓ nascem espelhados (o save do builder envia só
+`{name, dag}`, então a coluna sobrevive a edições; `updateNodeConfig`
+faz merge, então `channel_id` sem UI própria sobrevive também). Sem
+`title_template` — o default do executor ("{contato} — Instagram") é
+dinâmico e melhor. Idempotente por CONTEÚDO (`isSameInstagramAutomation`:
+mesmo gatilho + mesmo destino devolve a existente — double-click não
+duplica). Dialog na página: gatilho DM/comentário/ambos, first_message
+default ON, pipeline scope sales + etapa (default = 1ª etapa não
+won/lost), "Ativar imediatamente" default ON. Honestidade mantida: a
+Meta NÃO expõe "quem seguiu" nem por webhook — o equivalente do
+"seguidor novo → pipeline" do Datacrazy aqui é interação identificável.
 
 **Ação `action_create_deal` implementada** (também era fantasma: tinha
 tipo mas não tinha case no executor nem entrada na palette). Config:

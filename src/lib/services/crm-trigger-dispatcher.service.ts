@@ -54,19 +54,24 @@ export async function dispatchTrigger(params: DispatchParams): Promise<void> {
 
     // Mensagem recebida: canal, tipo de evento e "só a primeira".
     // Sem o filtro de primeira mensagem, um fluxo que cria negócio
-    // criaria um a cada resposta do contato.
+    // criaria um a cada resposta do contato. `channel_id` restringe a
+    // UMA conta específica — org com duas contas de Instagram não quer
+    // o direct da conta B caindo na automação da conta A.
     if (params.trigger_type === "thread_message_received") {
       const f = t as {
         channel_type?: string
+        channel_id?: string
         event_kind?: string
         first_message?: boolean
       }
       const d = params.trigger_data as {
         channel_type?: string
+        channel_id?: string
         event_kind?: string
         is_first_message?: boolean
       }
       if (f.channel_type && f.channel_type !== d.channel_type) return false
+      if (f.channel_id && f.channel_id !== d.channel_id) return false
       if (f.event_kind && f.event_kind !== d.event_kind) return false
       if (f.first_message === true && !d.is_first_message) return false
     }
