@@ -130,8 +130,8 @@ function DeltaChip({ label, delta }: { label: string; delta: FollowerDelta | nul
   const tone = !delta
     ? { bg: "var(--crm-gray-100)", fg: "var(--crm-gray-500)" }
     : delta.delta >= 0
-      ? { bg: "#E7F6EC", fg: "#177245" }
-      : { bg: "#FDEBEC", fg: "#B3261E" }
+      ? { bg: "var(--crm-pos-bg)", fg: "var(--crm-pos)" }
+      : { bg: "var(--crm-neg-bg)", fg: "var(--crm-neg)" }
   const text = !delta ? "—" : `${delta.delta >= 0 ? "+" : ""}${nf.format(delta.delta)}`
   return (
     <span
@@ -204,9 +204,9 @@ function WarnBanner({ text }: { text: string }) {
     <div
       className="rounded border px-3 py-2"
       style={{
-        borderColor: "#F4D08A",
-        background: "#FEF7E6",
-        color: "#8A6116",
+        borderColor: "var(--crm-warn-border)",
+        background: "var(--crm-warn-bg)",
+        color: "var(--crm-warn)",
         fontSize: "var(--crm-text-sm)",
       }}
     >
@@ -252,8 +252,8 @@ function FeedEmpty({ text }: { text: string }) {
 }
 
 const THREAD_STATUS: Record<string, { label: string; bg: string; fg: string }> = {
-  open: { label: "Aberta", bg: "#E7F6EC", fg: "#177245" },
-  pending: { label: "Pendente", bg: "#FEF7E6", fg: "#8A6116" },
+  open: { label: "Aberta", bg: "var(--crm-pos-bg)", fg: "var(--crm-pos)" },
+  pending: { label: "Pendente", bg: "var(--crm-warn-bg)", fg: "var(--crm-warn)" },
   resolved: { label: "Resolvida", bg: "var(--crm-gray-100)", fg: "var(--crm-gray-500)" },
 }
 
@@ -262,9 +262,9 @@ function OkBanner({ children }: { children: React.ReactNode }) {
     <div
       className="rounded border px-3 py-2"
       style={{
-        borderColor: "#BFE3CC",
-        background: "#EFF9F2",
-        color: "#1D5B36",
+        borderColor: "var(--crm-pos-border)",
+        background: "var(--crm-pos-bg)",
+        color: "var(--crm-pos)",
         fontSize: "var(--crm-text-sm)",
       }}
     >
@@ -609,9 +609,9 @@ export default function InstagramActivityPage() {
               <div
                 className="rounded border px-3 py-2"
                 style={{
-                  borderColor: "#BFE3CC",
-                  background: "#EFF9F2",
-                  color: "#1D5B36",
+                  borderColor: "var(--crm-pos-border)",
+                  background: "var(--crm-pos-bg)",
+                  color: "var(--crm-pos)",
                   fontSize: "var(--crm-text-sm)",
                 }}
               >
@@ -795,7 +795,7 @@ export default function InstagramActivityPage() {
                         className="w-12 text-right"
                         style={{
                           fontWeight: 600,
-                          color: d.delta > 0 ? "#177245" : d.delta < 0 ? "#B3261E" : "var(--crm-gray-500)",
+                          color: d.delta > 0 ? "var(--crm-pos)" : d.delta < 0 ? "var(--crm-neg)" : "var(--crm-gray-500)",
                         }}
                       >
                         {d.delta > 0 ? `+${nf.format(d.delta)}` : nf.format(d.delta)}
