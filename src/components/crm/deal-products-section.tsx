@@ -15,11 +15,15 @@ import useSWR from "swr"
 import { Package, Plus, StickyNote, Trash2, X } from "lucide-react"
 import { InlineEditField } from "./inline-edit-field"
 import {
+  annualizedTotal,
   centsToNumber,
   dealTotals,
   formatCentsBRL,
+  intervalLabel,
+  intervalSuffix,
   numberToCents,
   parseBRNumber,
+  recurringByInterval,
 } from "@/lib/services/crm-deal-products"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -32,10 +36,12 @@ export interface DealProductItem {
   unit_price: number
   discount_pct: number
   billing_type: string
+  /** Snapshot do intervalo da recorrência (NULL = mensal). */
+  recurring_interval?: string | null
   note?: string | null
   position: number
   /** Preço de tabela atual do catálogo (join) — marca "negociado" quando difere. */
-  product?: { unit_price: number } | null
+  product?: { unit_price: number; recurring_interval?: string | null } | null
 }
 
 export interface DealProductsMeta {
@@ -43,6 +49,8 @@ export interface DealProductsMeta {
   total: number
   oneTime: number
   recurring: number
+  /** Projeção 12m: únicos + recorrência × ciclos/ano (tri ×4, sem ×2...). */
+  annualized: number
 }
 
 interface CatalogProduct {
@@ -80,6 +88,7 @@ export function ProductPicker({
     name: string
     unit_price: number
     billing_type: string
+    recurring_interval: string | null
   }) => void
   /** Deixa o pai saber o que foi digitado (pra tratar como item avulso). */
   onQueryChange?: (q: string) => void
@@ -118,6 +127,7 @@ export function ProductPicker({
       name: p.name,
       unit_price: Number(p.unit_price) || 0,
       billing_type: p.billing_type === "recurring" ? "recurring" : "one_time",
+      recurring_interval: p.billing_type === "recurring" ? (p.recurring_interval ?? "monthly") : null,
     })
     setQ("")
     setOpen(false)
@@ -205,7 +215,9 @@ export function ProductPicker({
                 >
                   {fmtBRL(Number(p.unit_price) || 0)}
                   {p.billing_type === "recurring" && (
-                    <span style={{ color: "var(--crm-gray-400)" }}>/mês</span>
+                    <span style={{ color: "var(--crm-gray-400)" }}>
+                      {intervalSuffix(p.recurring_interval)}
+                    </span>
                   )}
                 </span>
               </button>
@@ -242,6 +254,7 @@ export function ProductPicker({
                     name: trimmed,
                     unit_price: createPrice ?? 0,
                     billing_type: "one_time",
+                    recurring_interval: null,
                   })
                   setQ("")
                   setOpen(false)
@@ -299,10 +312,11 @@ export function DealProductsSection({
 
   // Informa o pai sempre que o conjunto muda (inclusive no load) — é o
   // que trava a edição manual do valor no HeroNumbers.
+  const annualized = useMemo(() => annualizedTotal(items), [items])
   const lastMeta = useRef<string>("")
   useEffect(() => {
     if (!data) return
-    const key = `${items.length}:${totals.oneTime}:${totals.recurring}`
+    const key = `${items.length}:${totals.oneTime}:${totals.recurring}:${annualized}`
     if (key === lastMeta.current) return
     lastMeta.current = key
     onChanged?.({
@@ -310,8 +324,9 @@ export function DealProductsSection({
       total: totals.total,
       oneTime: totals.oneTime,
       recurring: totals.recurring,
+      annualized,
     })
-  }, [data, items.length, totals, onChanged])
+  }, [data, items.length, totals, annualized, onChanged])
 
   const patchItem = async (itemId: string, update: Record<string, unknown>) => {
     setError(null)
@@ -568,18 +583,38 @@ export function DealProductsSection({
                         {canEdit ? (
                           <InlineEditField
                             type="select"
-                            value={item.billing_type}
-                            display={item.billing_type === "recurring" ? "Mensal" : "Único"}
+                            value={
+                              item.billing_type === "recurring"
+                                ? (item.recurring_interval ?? "monthly")
+                                : "one_time"
+                            }
+                            display={
+                              item.billing_type === "recurring"
+                                ? intervalLabel(item.recurring_interval)
+                                : "Único"
+                            }
                             options={[
                               { value: "one_time", label: "Único" },
-                              { value: "recurring", label: "Mensal" },
+                              { value: "monthly", label: "Mensal" },
+                              { value: "quarterly", label: "Trimestral" },
+                              { value: "semiannual", label: "Semestral" },
+                              { value: "yearly", label: "Anual" },
                             ]}
-                            onSave={(v) => patchItem(item.id, { billing_type: v })}
+                            onSave={(v) =>
+                              patchItem(
+                                item.id,
+                                v === "one_time"
+                                  ? { billing_type: "one_time", recurring_interval: null }
+                                  : { billing_type: "recurring", recurring_interval: v },
+                              )
+                            }
                             displayStyle={{ fontSize: 12, color: "var(--crm-gray-600)" }}
                           />
                         ) : (
                           <span style={{ fontSize: 12, color: "var(--crm-gray-600)" }}>
-                            {item.billing_type === "recurring" ? "Mensal" : "Único"}
+                            {item.billing_type === "recurring"
+                              ? intervalLabel(item.recurring_interval)
+                              : "Único"}
                           </span>
                         )}
                       </td>
@@ -590,7 +625,7 @@ export function DealProductsSection({
                         {fmtBRL(total)}
                         {item.billing_type === "recurring" && (
                           <span style={{ fontSize: 11, color: "var(--crm-gray-500)", fontWeight: 400 }}>
-                            /mês
+                            {intervalSuffix(item.recurring_interval)}
                           </span>
                         )}
                       </td>
@@ -701,16 +736,34 @@ export function DealProductsSection({
               fontSize: 12,
             }}
           >
-            {totals.oneTime > 0 && totals.recurring > 0 && (
-              <>
-                <span style={{ color: "var(--crm-gray-500)" }}>
-                  Único: <span className="crm-tnum" style={{ fontWeight: 600, color: "var(--crm-gray-700)" }}>{fmtBRL(totals.oneTime)}</span>
-                </span>
-                <span style={{ color: "var(--crm-gray-500)" }}>
-                  Mensal: <span className="crm-tnum" style={{ fontWeight: 600, color: "var(--crm-gray-700)" }}>{fmtBRL(totals.recurring)}/mês</span>
-                </span>
-              </>
-            )}
+            {(() => {
+              // Breakdown por intervalo: somar trimestre com mês num
+              // "/mês" único era o bug — cada recorrência tem seu chip.
+              const parts = recurringByInterval(items)
+              const showBreakdown = totals.oneTime > 0 ? parts.length > 0 : parts.length > 1
+              if (!showBreakdown) return null
+              return (
+                <>
+                  {totals.oneTime > 0 && (
+                    <span style={{ color: "var(--crm-gray-500)" }}>
+                      Único:{" "}
+                      <span className="crm-tnum" style={{ fontWeight: 600, color: "var(--crm-gray-700)" }}>
+                        {fmtBRL(totals.oneTime)}
+                      </span>
+                    </span>
+                  )}
+                  {parts.map((p) => (
+                    <span key={p.interval} style={{ color: "var(--crm-gray-500)" }}>
+                      {intervalLabel(p.interval)}:{" "}
+                      <span className="crm-tnum" style={{ fontWeight: 600, color: "var(--crm-gray-700)" }}>
+                        {fmtBRL(p.amount)}
+                        {intervalSuffix(p.interval)}
+                      </span>
+                    </span>
+                  ))}
+                </>
+              )
+            })()}
             <span style={{ color: "var(--crm-gray-600)" }}>
               Total do negócio:{" "}
               <span
@@ -764,6 +817,7 @@ function AddProductRow({
     id: string | null
     name: string
     billing_type: string
+    recurring_interval: string | null
     /** Preço de tabela do catálogo — base do aviso "negociado". */
     list_price: number
   } | null>(null)
@@ -797,6 +851,10 @@ function AddProductRow({
           unit_price: centsToNumber(priceCents),
           discount_pct: parseBRNumber(discount) || 0,
           billing_type: selected?.billing_type === "recurring" ? "recurring" : "one_time",
+          recurring_interval:
+            selected?.billing_type === "recurring"
+              ? (selected.recurring_interval ?? "monthly")
+              : null,
           note: note.trim() || null,
         }),
       })
@@ -841,7 +899,9 @@ function AddProductRow({
           >
             <span className="truncate">{selected.name}</span>
             {selected.billing_type === "recurring" && (
-              <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>/mês</span>
+              <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>
+                {intervalSuffix(selected.recurring_interval)}
+              </span>
             )}
             <button
               type="button"
@@ -869,6 +929,7 @@ function AddProductRow({
                   id: p.id,
                   name: p.name,
                   billing_type: p.billing_type,
+                  recurring_interval: p.recurring_interval,
                   list_price: p.unit_price,
                 })
                 setPickerQuery("")

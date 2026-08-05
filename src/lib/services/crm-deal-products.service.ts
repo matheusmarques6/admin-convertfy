@@ -25,17 +25,20 @@ export interface DealProductRow {
   unit_price: number
   discount_pct: number
   billing_type: string
+  /** Snapshot do intervalo da recorrência (NULL = mensal). */
+  recurring_interval?: string | null
   note?: string | null
   position: number
   created_at: string
   /** Preço de tabela ATUAL do catálogo — a UI marca "negociado" quando difere. */
-  product?: { unit_price: number } | null
+  product?: { unit_price: number; recurring_interval?: string | null } | null
 }
 
 export const DEAL_PRODUCT_FIELDS =
-  "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, note, position, created_at, product:crm_products (unit_price)"
+  "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, recurring_interval, note, position, created_at, product:crm_products (unit_price, recurring_interval)"
 
-/** Select sem a coluna note — fallback pra quem aplicou só a migration 20261067. */
+/** Select sem as colunas note/recurring_interval — fallback pra quem
+ *  aplicou só a migration 20261067 (sem a 68/69). */
 const DEAL_PRODUCT_FIELDS_LEGACY =
   "id, deal_id, product_id, name, quantity, unit_price, discount_pct, billing_type, position, created_at"
 

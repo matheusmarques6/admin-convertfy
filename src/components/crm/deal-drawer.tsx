@@ -1097,10 +1097,15 @@ function HeroNumbers({
   const hasProducts = (productsMeta?.count ?? 0) > 0
   const recurringOnly =
     hasProducts && (productsMeta?.oneTime ?? 0) === 0 && (productsMeta?.recurring ?? 0) > 0
-  const showPerMonth = !hasProducts || recurringOnly
-  const annual = hasProducts
-    ? (productsMeta?.oneTime ?? 0) + (productsMeta?.recurring ?? 0) * 12
-    : value * 12
+  // Projeção 12m por CICLO real (mensal ×12, tri ×4, sem ×2, anual ×1)
+  // vem calculada da seção de produtos; ×12 só sem produtos (MRR).
+  const annual = hasProducts ? (productsMeta?.annualized ?? value) : value * 12
+  // "/mês" só quando é verdade: sem produtos (valor tratado como MRR)
+  // ou recorrência 100% mensal — anualizado = recorrente×12 é o teste
+  // (um plano trimestral/semestral no meio quebra a igualdade).
+  const allMonthly =
+    recurringOnly && Math.abs(annual - (productsMeta?.recurring ?? 0) * 12) < 0.01
+  const showPerMonth = !hasProducts || allMonthly
   const owner = deal.owner
 
   // Plano: tenta extrair de tags (ex: "Pro · 12m", "Performance · 6m", "Starter").

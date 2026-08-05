@@ -18,6 +18,9 @@ import {
   centsToNumber,
   dealTotals,
   formatCentsBRL,
+  intervalSuffix,
+  lineTotal,
+  normalizeInterval,
   numberToCents,
 } from "@/lib/services/crm-deal-products"
 
@@ -57,6 +60,7 @@ interface ItemsPayload {
     unit_price: number
     discount_pct: number
     billing_type: string
+    recurring_interval?: string | null
   }>
 }
 
@@ -127,13 +131,21 @@ export function WonDealDialog({
     setPhone(src?.phone ?? "")
     setCompany(src?.company ?? "")
 
-    const recurring = totals.recurring
+    // Assinatura MENSAL só nasce pré-marcada com os itens MENSAIS —
+    // semear o valor de um plano trimestral/semestral como mensalidade
+    // cobraria o cliente a mais todo mês. Itens de outros ciclos ficam
+    // pro operador decidir (o campo continua editável).
+    const monthlyRecurring = items
+      .filter(
+        (i) => i.billing_type === "recurring" && normalizeInterval(i.recurring_interval) === "monthly",
+      )
+      .reduce((sum, i) => sum + lineTotal(i), 0)
     const oneTime = totals.oneTime
     const dealValue = Number(deal.value) || 0
-    if (recurring > 0) {
+    if (monthlyRecurring > 0) {
       setWantSub(true)
-      setSubCents(numberToCents(recurring))
-    } else if (oneTime === 0 && dealValue > 0) {
+      setSubCents(numberToCents(monthlyRecurring))
+    } else if (totals.recurring === 0 && oneTime === 0 && dealValue > 0) {
       // Sem produtos: oferece assinatura com o valor do negócio (modelo
       // recorrente é o padrão da casa) — o usuário desliga se for único.
       setWantSub(true)
@@ -148,7 +160,7 @@ export function WonDealDialog({
     setStoreUrl("")
     setPlatform("shopify")
     setSeeded(true)
-  }, [open, seeded, deal, totals])
+  }, [open, seeded, deal, totals, items])
 
   // Onboarding marcado exige o nome da loja (o campo tem asterisco):
   // sem ele a API criaria a loja FALLBACK genérica — exatamente o que
@@ -376,7 +388,9 @@ export function WonDealDialog({
                         <span className="crm-tnum shrink-0" style={{ fontWeight: 600, color: "var(--crm-gray-900)" }}>
                           {fmtBRL(total)}
                           {item.billing_type === "recurring" && (
-                            <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>/mês</span>
+                            <span style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}>
+                              {intervalSuffix(item.recurring_interval)}
+                            </span>
                           )}
                         </span>
                       </div>

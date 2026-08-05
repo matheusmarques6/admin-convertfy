@@ -34,7 +34,7 @@ import {
 import type { DealFile } from "@/types/crm"
 import { InlineEditField } from "./inline-edit-field"
 import { CustomFieldsPanel } from "./custom-fields-panel"
-import { DealProductsSection } from "./deal-products-section"
+import { DealProductsSection, type DealProductsMeta } from "./deal-products-section"
 import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 
 const fetcher = async (url: string) => {
@@ -227,6 +227,9 @@ export function DealDetailView({ dealId }: { dealId: string }) {
   const [filterType, setFilterType] = useState<
     "all" | "negocios" | "notes" | "emails" | "reunioes" | "alertas"
   >("all")
+  // Meta dos produtos (soma, ciclos) — trava o valor manual e corrige a
+  // projeção 12m no painel Negócio.
+  const [productsMeta, setProductsMeta] = useState<DealProductsMeta | null>(null)
 
   const deal = data?.deal
   const activities = useMemo(() => data?.activities ?? [], [data?.activities])
@@ -841,7 +844,14 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </Section>
 
           {/* Produtos vendidos — a soma recalcula o valor do negócio */}
-          <DealProductsSection dealId={dealId} canEdit onChanged={() => mutate()} />
+          <DealProductsSection
+            dealId={dealId}
+            canEdit
+            onChanged={(meta) => {
+              setProductsMeta(meta)
+              mutate()
+            }}
+          />
 
           {/* Notas (editavel inline) */}
           <Section title="Notas">
@@ -1051,7 +1061,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
               <AtividadesTab activities={activities} />
             )}
             {activeTab === "negocios" && (
-              <NegociosTab deal={deal} onPatch={patchDeal} />
+              <NegociosTab deal={deal} onPatch={patchDeal} productsMeta={productsMeta} />
             )}
             {activeTab === "arquivos" && (
               <ArquivosTab
@@ -1560,10 +1570,22 @@ function AtividadesTab({
 function NegociosTab({
   deal,
   onPatch,
+  productsMeta,
 }: {
   deal: DealFullResponse["deal"]
   onPatch: (update: Record<string, unknown>) => Promise<void>
+  productsMeta?: DealProductsMeta | null
 }) {
+  // Mesma regra do drawer: com produtos, o valor é a soma das linhas
+  // (edição manual seria sobrescrita no próximo recálculo) e a projeção
+  // 12m respeita o CICLO de cada item; "/mês" só quando é verdade.
+  const hasProducts = (productsMeta?.count ?? 0) > 0
+  const recurringOnly =
+    hasProducts && (productsMeta?.oneTime ?? 0) === 0 && (productsMeta?.recurring ?? 0) > 0
+  const annual = hasProducts ? (productsMeta?.annualized ?? deal.value ?? 0) : (deal.value || 0) * 12
+  const allMonthly =
+    recurringOnly && Math.abs(annual - (productsMeta?.recurring ?? 0) * 12) < 0.01
+  const showPerMonth = !hasProducts || allMonthly
   return (
     <div
       style={{
@@ -1623,7 +1645,7 @@ function NegociosTab({
               letterSpacing: "0.04em",
             }}
           >
-            Valor recorrente
+            {hasProducts && !allMonthly ? "Valor do negócio" : "Valor recorrente"}
           </div>
           <div
             className="crm-tnum"
@@ -1634,21 +1656,32 @@ function NegociosTab({
               marginTop: 4,
             }}
           >
-            <InlineEditField
-              type="number"
-              value={deal.value || 0}
-              prefix="R$ "
-              suffix="/mês"
-              min={0}
-              step={100}
-              onSave={(v) => onPatch({ value: parseFloat(v) || 0 })}
-              displayStyle={{ fontSize: 16, fontWeight: 600 }}
-            />
+            {hasProducts ? (
+              <span title="Com produtos lançados, o valor é a soma das linhas — edite pelos itens">
+                {fmtBRL(deal.value || 0)}
+                {showPerMonth && (
+                  <span style={{ fontSize: 12, color: "var(--crm-gray-500)", fontWeight: 500 }}>
+                    /mês
+                  </span>
+                )}
+              </span>
+            ) : (
+              <InlineEditField
+                type="number"
+                value={deal.value || 0}
+                prefix="R$ "
+                suffix="/mês"
+                min={0}
+                step={100}
+                onSave={(v) => onPatch({ value: parseFloat(v) || 0 })}
+                displayStyle={{ fontSize: 16, fontWeight: 600 }}
+              />
+            )}
           </div>
         </div>
         <Stat
           label="Em 12 meses"
-          value={fmtBRL((deal.value || 0) * 12)}
+          value={fmtBRL(annual)}
           color="var(--crm-brand)"
         />
         <Stat label="Pipeline" value={deal.pipeline?.name ?? "—"} />

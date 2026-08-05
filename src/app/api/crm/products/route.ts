@@ -80,7 +80,7 @@ const createSchema = z.object({
   unit_price: z.number().min(0).max(999_999_999),
   currency: z.string().length(3).optional().default("BRL"),
   billing_type: z.enum(["one_time", "recurring"]).optional().default("one_time"),
-  recurring_interval: z.enum(["monthly", "quarterly", "yearly"]).nullable().optional(),
+  recurring_interval: z.enum(["monthly", "quarterly", "semiannual", "yearly"]).nullable().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -124,6 +124,17 @@ export async function POST(request: NextRequest) {
       }
       if ((error as { code?: string }).code === "23505") {
         throw new AppError("Já existe um produto com esse nome.", 409, "conflict")
+      }
+      // CHECK antigo sem 'semiannual' — banco ainda na versão anterior.
+      if (
+        (error as { code?: string }).code === "23514" &&
+        parsed.recurring_interval === "semiannual"
+      ) {
+        throw new AppError(
+          "O intervalo Semestral precisa da migration 20261069 no banco — rode-a no Supabase e tente de novo.",
+          422,
+          "validation-error",
+        )
       }
       throw error
     }

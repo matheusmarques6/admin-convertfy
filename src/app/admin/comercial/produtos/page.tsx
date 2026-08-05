@@ -14,6 +14,13 @@ import useSWR from "swr"
 import { Package, Pencil, Plus, Power, Trash2 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
+import {
+  centsToNumber,
+  formatCentsBRL,
+  intervalLabel,
+  intervalSuffix,
+  numberToCents,
+} from "@/lib/services/crm-deal-products"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -36,16 +43,9 @@ const fmtBRL = (v: number) =>
     maximumFractionDigits: 2,
   })
 
-const BILLING_LABEL: Record<string, string> = {
-  one_time: "Único",
-  monthly: "Mensal",
-  quarterly: "Trimestral",
-  yearly: "Anual",
-}
-
 function billingLabel(p: Product): string {
   if (p.billing_type !== "recurring") return "Único"
-  return BILLING_LABEL[p.recurring_interval ?? "monthly"] ?? "Recorrente"
+  return intervalLabel(p.recurring_interval)
 }
 
 async function readApiError(res: Response): Promise<string> {
@@ -232,7 +232,7 @@ export default function ProductsCatalogPage() {
                           {fmtBRL(Number(p.unit_price) || 0)}
                           {p.billing_type === "recurring" && (
                             <span style={{ color: "var(--crm-gray-400)", fontWeight: 400 }}>
-                              /{p.recurring_interval === "yearly" ? "ano" : p.recurring_interval === "quarterly" ? "tri" : "mês"}
+                              {intervalSuffix(p.recurring_interval)}
                             </span>
                           )}
                         </td>
@@ -336,8 +336,11 @@ function ProductForm({
   const [name, setName] = useState(product?.name ?? "")
   const [code, setCode] = useState(product?.code ?? "")
   const [description, setDescription] = useState(product?.description ?? "")
-  const [price, setPrice] = useState(
-    product ? String(product.unit_price) : "",
+  // Máscara por CENTAVOS (mesma dos itens do negócio): digitar "4000"
+  // exibe "40,00" e "400000" exibe "4.000,00". O input type=number com
+  // parseFloat lia "4.000" como 4 — o produto nascia 1000x mais barato.
+  const [priceCents, setPriceCents] = useState(
+    product ? numberToCents(Number(product.unit_price) || 0) : "",
   )
   const [billing, setBilling] = useState(
     product?.billing_type === "recurring"
@@ -356,7 +359,7 @@ function ProductForm({
         name,
         code: code.trim() || null,
         description: description.trim() || null,
-        unit_price: parseFloat(price) || 0,
+        unit_price: centsToNumber(priceCents),
         billing_type: billing === "one_time" ? "one_time" : "recurring",
         recurring_interval: billing === "one_time" ? null : billing,
       }
@@ -406,13 +409,12 @@ function ProductForm({
           <Field label="Preço (R$) *">
             <input
               className="crm-input w-full crm-tnum"
-              type="number"
-              min={0}
-              step="any"
+              inputMode="numeric"
               placeholder="0,00"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              value={formatCentsBRL(priceCents)}
+              onChange={(e) => setPriceCents(e.target.value.replace(/\D/g, ""))}
               required
+              aria-label="Preço em reais"
             />
           </Field>
           <Field label="Cobrança">
@@ -424,6 +426,7 @@ function ProductForm({
               <option value="one_time">Único (setup, projeto)</option>
               <option value="monthly">Mensal (assinatura)</option>
               <option value="quarterly">Trimestral</option>
+              <option value="semiannual">Semestral</option>
               <option value="yearly">Anual</option>
             </select>
           </Field>

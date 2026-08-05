@@ -17,6 +17,48 @@ export interface DealProductLine {
   unit_price: number
   discount_pct: number
   billing_type?: string | null
+  /** Intervalo da recorrência (snapshot). NULL/ausente = mensal. */
+  recurring_interval?: string | null
+}
+
+// ─── Intervalos de recorrência ───────────────────────────────────
+// O incidente: a UI assumia "/mês" pra QUALQUER recorrência e o
+// "Em 12m" multiplicava tudo por 12 — um plano semestral de R$ 18
+// aparecia como "R$ 18/mês" e anualizava como R$ 216.
+
+export type RecurringInterval = "monthly" | "quarterly" | "semiannual" | "yearly"
+
+export const RECURRING_INTERVALS: RecurringInterval[] = [
+  "monthly",
+  "quarterly",
+  "semiannual",
+  "yearly",
+]
+
+const INTERVAL_META: Record<RecurringInterval, { label: string; suffix: string; cycles: number }> = {
+  monthly: { label: "Mensal", suffix: "/mês", cycles: 12 },
+  quarterly: { label: "Trimestral", suffix: "/tri", cycles: 4 },
+  semiannual: { label: "Semestral", suffix: "/sem", cycles: 2 },
+  yearly: { label: "Anual", suffix: "/ano", cycles: 1 },
+}
+
+/** Normaliza qualquer valor vindo do banco pro domínio (default mensal). */
+export function normalizeInterval(raw: string | null | undefined): RecurringInterval {
+  return (RECURRING_INTERVALS as string[]).includes(raw ?? "") ? (raw as RecurringInterval) : "monthly"
+}
+
+export function intervalLabel(raw: string | null | undefined): string {
+  return INTERVAL_META[normalizeInterval(raw)].label
+}
+
+/** Sufixo de exibição: "/mês", "/tri", "/sem", "/ano". */
+export function intervalSuffix(raw: string | null | undefined): string {
+  return INTERVAL_META[normalizeInterval(raw)].suffix
+}
+
+/** Quantos ciclos cabem em 12 meses (mensal 12, trimestral 4...). */
+export function cyclesPerYear(raw: string | null | undefined): number {
+  return INTERVAL_META[normalizeInterval(raw)].cycles
 }
 
 /** Arredonda a 2 casas com EPSILON — 1.005 vira 1.01, não 1.00. */
@@ -135,6 +177,40 @@ export function dealTotals(items: DealProductLine[]): DealTotals {
     total: round2(oneTime + recurring),
     count: items.length,
   }
+}
+
+/**
+ * Recorrência agrupada por intervalo, na ordem canônica — a UI mostra
+ * "R$ X/mês · R$ Y/sem" em vez de somar ciclos diferentes num "/mês".
+ */
+export function recurringByInterval(
+  items: DealProductLine[],
+): Array<{ interval: RecurringInterval; amount: number }> {
+  const sums = new Map<RecurringInterval, number>()
+  for (const item of items) {
+    if (item.billing_type !== "recurring") continue
+    const interval = normalizeInterval(item.recurring_interval)
+    sums.set(interval, round2((sums.get(interval) ?? 0) + lineTotal(item)))
+  }
+  return RECURRING_INTERVALS.filter((i) => sums.has(i)).map((interval) => ({
+    interval,
+    amount: sums.get(interval)!,
+  }))
+}
+
+/**
+ * Projeção de 12 meses: únicos + cada recorrência × ciclos no ano
+ * (mensal ×12, trimestral ×4, semestral ×2, anual ×1).
+ */
+export function annualizedTotal(items: DealProductLine[]): number {
+  let total = 0
+  for (const item of items) {
+    const t = lineTotal(item)
+    total = round2(
+      total + (item.billing_type === "recurring" ? t * cyclesPerYear(item.recurring_interval) : t),
+    )
+  }
+  return total
 }
 
 /**

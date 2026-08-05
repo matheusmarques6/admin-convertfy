@@ -10,6 +10,12 @@ import {
   formatCentsBRL,
   numberToCents,
   centsToNumber,
+  normalizeInterval,
+  intervalLabel,
+  intervalSuffix,
+  cyclesPerYear,
+  recurringByInterval,
+  annualizedTotal,
 } from "./crm-deal-products"
 
 describe("parseBRNumber", () => {
@@ -155,5 +161,79 @@ describe("resolveDealValue", () => {
   it("sem itens, o manual continua valendo", () => {
     expect(resolveDealValue([], 5000)).toBe(5000)
     expect(resolveDealValue([], null)).toBe(0)
+  })
+})
+
+describe("intervalos de recorrência", () => {
+  it("normaliza valores do banco (NULL/lixo → mensal)", () => {
+    expect(normalizeInterval(null)).toBe("monthly")
+    expect(normalizeInterval(undefined)).toBe("monthly")
+    expect(normalizeInterval("weekly")).toBe("monthly")
+    expect(normalizeInterval("semiannual")).toBe("semiannual")
+  })
+
+  it("labels e sufixos por intervalo (o bug era '/mês' em tudo)", () => {
+    expect(intervalLabel("semiannual")).toBe("Semestral")
+    expect(intervalSuffix("monthly")).toBe("/mês")
+    expect(intervalSuffix("quarterly")).toBe("/tri")
+    expect(intervalSuffix("semiannual")).toBe("/sem")
+    expect(intervalSuffix("yearly")).toBe("/ano")
+    expect(intervalSuffix(null)).toBe("/mês")
+  })
+
+  it("ciclos por ano: mensal 12, tri 4, sem 2, anual 1", () => {
+    expect(cyclesPerYear("monthly")).toBe(12)
+    expect(cyclesPerYear("quarterly")).toBe(4)
+    expect(cyclesPerYear("semiannual")).toBe(2)
+    expect(cyclesPerYear("yearly")).toBe(1)
+  })
+})
+
+describe("recurringByInterval", () => {
+  it("agrupa recorrência por ciclo na ordem canônica, ignorando únicos", () => {
+    const parts = recurringByInterval([
+      { quantity: 1, unit_price: 500, discount_pct: 0, billing_type: "one_time" },
+      { quantity: 1, unit_price: 18, discount_pct: 0, billing_type: "recurring", recurring_interval: "semiannual" },
+      { quantity: 2, unit_price: 4, discount_pct: 0, billing_type: "recurring", recurring_interval: "monthly" },
+      { quantity: 1, unit_price: 6, discount_pct: 0, billing_type: "recurring", recurring_interval: "monthly" },
+    ])
+    expect(parts).toEqual([
+      { interval: "monthly", amount: 14 },
+      { interval: "semiannual", amount: 18 },
+    ])
+  })
+
+  it("sem intervalo definido cai em mensal", () => {
+    const parts = recurringByInterval([
+      { quantity: 1, unit_price: 100, discount_pct: 0, billing_type: "recurring" },
+    ])
+    expect(parts).toEqual([{ interval: "monthly", amount: 100 }])
+  })
+})
+
+describe("annualizedTotal", () => {
+  it("projeta 12m por ciclo real — o cenário do bug (semestral ×2, não ×12)", () => {
+    const items = [
+      { quantity: 1, unit_price: 1000, discount_pct: 0, billing_type: "one_time" },
+      { quantity: 1, unit_price: 18, discount_pct: 0, billing_type: "recurring", recurring_interval: "semiannual" },
+      { quantity: 1, unit_price: 10, discount_pct: 0, billing_type: "recurring", recurring_interval: "quarterly" },
+      { quantity: 1, unit_price: 4, discount_pct: 0, billing_type: "recurring", recurring_interval: "monthly" },
+    ]
+    // 1000 + 18×2 + 10×4 + 4×12 = 1124
+    expect(annualizedTotal(items)).toBe(1124)
+  })
+
+  it("recorrência sem intervalo = mensal ×12 (compatibilidade)", () => {
+    expect(
+      annualizedTotal([{ quantity: 1, unit_price: 50, discount_pct: 0, billing_type: "recurring" }]),
+    ).toBe(600)
+  })
+
+  it("desconto entra antes da anualização", () => {
+    expect(
+      annualizedTotal([
+        { quantity: 1, unit_price: 100, discount_pct: 50, billing_type: "recurring", recurring_interval: "yearly" },
+      ]),
+    ).toBe(50)
   })
 })

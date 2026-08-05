@@ -69,6 +69,7 @@ const addItemSchema = z.object({
   unit_price: z.number().min(0).max(999_999_999).optional(),
   discount_pct: z.number().min(0).max(100).optional().default(0),
   billing_type: z.enum(["one_time", "recurring"]).optional(),
+  recurring_interval: z.enum(["monthly", "quarterly", "semiannual", "yearly"]).nullable().optional(),
   note: z.string().max(600).nullable().optional(),
 })
 
@@ -98,11 +99,14 @@ export async function POST(
     let name = parsed.name?.trim() || ""
     let unitPrice = parsed.unit_price
     let billing = parsed.billing_type
+    // Intervalo é SNAPSHOT como nome/preço: a linha congela o combinado
+    // na venda (mudar o produto no catálogo depois não mexe aqui).
+    let interval: string | null = parsed.recurring_interval ?? null
 
     if (parsed.product_id) {
       const { data: product, error: pErr } = await admin
         .from("crm_products")
-        .select("id, name, unit_price, billing_type")
+        .select("id, name, unit_price, billing_type, recurring_interval")
         .eq("id", parsed.product_id)
         .maybeSingle()
       if (pErr && !isMissingSchema(pErr)) throw pErr
@@ -110,7 +114,9 @@ export async function POST(
       if (!name) name = product.name
       if (unitPrice === undefined) unitPrice = Number(product.unit_price) || 0
       if (!billing) billing = product.billing_type === "recurring" ? "recurring" : "one_time"
+      if (!interval) interval = (product.recurring_interval as string | null) ?? null
     }
+    if (billing !== "recurring") interval = null
 
     if (!name) {
       throw new AppError("Informe o produto (ou um nome para item avulso).", 422, "validation-error")
@@ -133,6 +139,7 @@ export async function POST(
       unit_price: unitPrice ?? 0,
       discount_pct: normalizeDiscount(parsed.discount_pct),
       billing_type: billing ?? "one_time",
+      recurring_interval: interval,
       position: (maxPos?.position ?? 0) + 10,
     }
     if (parsed.note !== undefined) insertPayload.note = parsed.note?.trim() || null
@@ -143,11 +150,12 @@ export async function POST(
       .select(DEAL_PRODUCT_FIELDS)
       .single()
 
-    // Coluna note ausente (migration 20261068 pendente): não perde a
-    // adição por causa da observação — regrava sem ela e avisa no log.
-    if (error && "note" in insertPayload && /column .*note.* does not exist|42703/i.test(`${error.code} ${error.message}`)) {
-      log.warn("[DealProducts] coluna note ausente — item salvo sem observação (migration 20261068)")
+    // Colunas note/recurring_interval ausentes (migrations 20261068/69
+    // pendentes): não perde a adição — regrava sem elas e avisa no log.
+    if (error && /column .* does not exist|42703/i.test(`${error.code} ${error.message}`)) {
+      log.warn("[DealProducts] colunas extras ausentes — item salvo sem note/intervalo (migrations 20261068/69)")
       delete insertPayload.note
+      delete insertPayload.recurring_interval
       const retry = await admin
         .from("crm_deal_products")
         .insert(insertPayload)

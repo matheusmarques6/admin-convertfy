@@ -107,6 +107,10 @@ const createDealSchema = z.object({
         unit_price: z.number().min(0).max(999_999_999).optional(),
         discount_pct: z.number().min(0).max(100).optional().default(0),
         billing_type: z.enum(["one_time", "recurring"]).optional(),
+        recurring_interval: z
+          .enum(["monthly", "quarterly", "semiannual", "yearly"])
+          .nullable()
+          .optional(),
       }),
     )
     .max(50)
@@ -135,6 +139,7 @@ export async function POST(request: NextRequest) {
       unit_price: number
       discount_pct: number
       billing_type: string
+      recurring_interval: string | null
     }> = []
     if (products && products.length > 0) {
       const catalogIds = products
@@ -142,18 +147,19 @@ export async function POST(request: NextRequest) {
         .filter((v): v is string => !!v)
       const catalog = new Map<
         string,
-        { name: string; unit_price: number; billing_type: string }
+        { name: string; unit_price: number; billing_type: string; recurring_interval: string | null }
       >()
       if (catalogIds.length > 0) {
         const { data: rows } = await admin
           .from("crm_products")
-          .select("id, name, unit_price, billing_type")
+          .select("id, name, unit_price, billing_type, recurring_interval")
           .in("id", catalogIds)
         for (const r of rows ?? []) {
           catalog.set(r.id, {
             name: r.name,
             unit_price: Number(r.unit_price) || 0,
             billing_type: r.billing_type,
+            recurring_interval: (r.recurring_interval as string | null) ?? null,
           })
         }
       }
@@ -161,6 +167,9 @@ export async function POST(request: NextRequest) {
         const fromCatalog = p.product_id ? catalog.get(p.product_id) : undefined
         const name = p.name?.trim() || fromCatalog?.name || ""
         if (!name) return [] // linha sem produto nem nome: ignora
+        const billing =
+          p.billing_type ??
+          (fromCatalog?.billing_type === "recurring" ? "recurring" : "one_time")
         return [
           {
             product_id: p.product_id ?? null,
@@ -168,9 +177,12 @@ export async function POST(request: NextRequest) {
             quantity: normalizeQuantity(p.quantity),
             unit_price: p.unit_price ?? fromCatalog?.unit_price ?? 0,
             discount_pct: normalizeDiscount(p.discount_pct),
-            billing_type:
-              p.billing_type ??
-              (fromCatalog?.billing_type === "recurring" ? "recurring" : "one_time"),
+            billing_type: billing,
+            // Snapshot do intervalo (como nome/preço) — só recorrente tem.
+            recurring_interval:
+              billing === "recurring"
+                ? (p.recurring_interval ?? fromCatalog?.recurring_interval ?? null)
+                : null,
           },
         ]
       })
@@ -206,13 +218,19 @@ export async function POST(request: NextRequest) {
     // Itens de produto — fail-open: se a migration 20261067 não rodou,
     // o deal já existe e a seção de produtos avisa; não desfaz a criação.
     if (resolvedItems.length > 0) {
-      const { error: itemsErr } = await admin.from("crm_deal_products").insert(
-        resolvedItems.map((item, i) => ({
-          ...item,
-          deal_id: deal.id,
-          position: (i + 1) * 10,
-        })),
-      )
+      const rows = resolvedItems.map((item, i) => ({
+        ...item,
+        deal_id: deal.id,
+        position: (i + 1) * 10,
+      }))
+      let { error: itemsErr } = await admin.from("crm_deal_products").insert(rows)
+      // Coluna recurring_interval ausente (migration 20261069 pendente):
+      // regrava sem ela — perder os itens por causa do intervalo seria pior.
+      if (itemsErr && /column .* does not exist|42703/i.test(`${itemsErr.code} ${itemsErr.message}`)) {
+        const stripped = rows.map(({ recurring_interval: _omit, ...rest }) => rest)
+        const retry = await admin.from("crm_deal_products").insert(stripped)
+        itemsErr = retry.error
+      }
       if (itemsErr) {
         log.warn("[Deals] itens de produto não gravados (migration 20261067?)", {
           dealId: deal.id,

@@ -13,7 +13,12 @@ import { use, useMemo } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
-import { dealTotals } from "@/lib/services/crm-deal-products"
+import {
+  dealTotals,
+  intervalLabel,
+  intervalSuffix,
+  recurringByInterval,
+} from "@/lib/services/crm-deal-products"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -38,6 +43,7 @@ interface ItemsPayload {
     unit_price: number
     discount_pct: number
     billing_type: string
+    recurring_interval?: string | null
     note?: string | null
   }>
 }
@@ -248,7 +254,9 @@ export default function DealProposalPage({
                       <div style={{ fontWeight: 600 }}>
                         {item.name}
                         {item.billing_type === "recurring" && (
-                          <span style={{ color: "#64748B", fontWeight: 400 }}> — mensal</span>
+                          <span style={{ color: "#64748B", fontWeight: 400 }}>
+                            {" "}— {intervalLabel(item.recurring_interval).toLowerCase()}
+                          </span>
                         )}
                       </div>
                       {item.note && (
@@ -269,7 +277,9 @@ export default function DealProposalPage({
                     <td style={{ padding: "10px 0", textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
                       {fmtBRL(total)}
                       {item.billing_type === "recurring" && (
-                        <span style={{ fontSize: 11, color: "#64748B", fontWeight: 400 }}>/mês</span>
+                        <span style={{ fontSize: 11, color: "#64748B", fontWeight: 400 }}>
+                          {intervalSuffix(item.recurring_interval)}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -289,12 +299,18 @@ export default function DealProposalPage({
                   <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtBRL(totals.oneTime)}</span>
                 </div>
               )}
-              {totals.recurring > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#475569" }}>
-                  <span>Assinatura mensal</span>
-                  <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtBRL(totals.recurring)}/mês</span>
+              {recurringByInterval(items).map((p) => (
+                <div
+                  key={p.interval}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#475569" }}
+                >
+                  <span>Assinatura {intervalLabel(p.interval).toLowerCase()}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {fmtBRL(p.amount)}
+                    {intervalSuffix(p.interval)}
+                  </span>
                 </div>
-              )}
+              ))}
               <div
                 style={{
                   display: "flex",
@@ -315,7 +331,7 @@ export default function DealProposalPage({
 
         <footer style={{ marginTop: 40, paddingTop: 16, borderTop: "1px solid #E2E8F0", fontSize: 11.5, color: "#94A3B8", lineHeight: 1.6 }}>
           Proposta válida até {validUntil}. Valores em reais (BRL). Itens
-          recorrentes são cobrados mensalmente a partir da contratação.
+          recorrentes são cobrados no ciclo indicado a partir da contratação.
         </footer>
       </div>
     </div>

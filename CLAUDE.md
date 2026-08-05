@@ -1230,7 +1230,26 @@ nome/preço + qtd + desconto%; product_id SET NULL). **Com itens,
 `deals.value` = soma das linhas** (recalculado pelas rotas via
 `recalcDealValue` — app-level, não trigger, regra do incidente 20261066;
 remover o último item NÃO zera o valor, volta ao modo manual). Cálculo
-puro em `crm-deal-products.ts` (16 testes — arredonda 2 casas POR LINHA).
+puro em `crm-deal-products.ts` (30 testes — arredonda 2 casas POR LINHA).
+
+**Intervalos de recorrência (migration 20261069)**: domínio canônico
+monthly|quarterly|semiannual|yearly (Semestral faltava — o CHECK antigo
+não aceitava). A LINHA do negócio carrega `recurring_interval` como
+SNAPSHOT (backfill do catálogo na migration); NULL = mensal. Helpers no
+módulo puro: `intervalLabel/intervalSuffix` ("/mês", "/tri", "/sem",
+"/ano" — o bug era "/mês" em tudo), `cyclesPerYear`, `recurringByInterval`
+(breakdown por ciclo pros rodapés) e `annualizedTotal` (12m = únicos +
+recorrência × ciclos/ano — semestral ×2, NÃO ×12; usado no "Em 12m" do
+drawer e da ficha via `DealProductsMeta.annualized`). "/mês" no hero só
+quando é verdade (sem produtos = MRR histórico, ou recorrência 100%
+mensal — teste: anualizado == recorrente×12). O WonDealDialog só semeia
+a "assinatura mensal" com itens MENSAIS (semear um semestral como
+mensalidade cobraria a mais). `deals.value` segue = 1 ciclo de cada item
++ únicos (KPIs intocados). **Preço do catálogo usa a máscara de
+CENTAVOS** (o form tinha type=number + parseFloat — "4.000" virava R$ 4,
+mesmo incidente da linha do negócio). Sem a migration: retry sem a
+coluna nos writes; salvar Semestral no catálogo → 422 apontando a
+migration (23514 mapeado).
 Excluir produto usado em negócio só DESATIVA. UI: seção Produtos no
 DealDrawer (valor manual TRAVA quando há itens; "Em 12m" = único +
 mensal×12) e no deal-detail-view; bloco opcional no NewDealDialog (POST

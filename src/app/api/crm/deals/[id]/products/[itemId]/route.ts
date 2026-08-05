@@ -28,6 +28,7 @@ const patchSchema = z.object({
   unit_price: z.number().min(0).max(999_999_999).optional(),
   discount_pct: z.number().min(0).max(100).optional(),
   billing_type: z.enum(["one_time", "recurring"]).optional(),
+  recurring_interval: z.enum(["monthly", "quarterly", "semiannual", "yearly"]).nullable().optional(),
   name: z.string().min(1).max(160).optional(),
   note: z.string().max(600).nullable().optional(),
 })
@@ -53,6 +54,10 @@ export async function PATCH(
     if (parsed.discount_pct !== undefined)
       updates.discount_pct = normalizeDiscount(parsed.discount_pct)
     if (parsed.billing_type !== undefined) updates.billing_type = parsed.billing_type
+    if (parsed.recurring_interval !== undefined)
+      updates.recurring_interval = parsed.recurring_interval
+    // Item que vira único não carrega intervalo junto.
+    if (parsed.billing_type === "one_time") updates.recurring_interval = null
     if (parsed.name !== undefined) updates.name = parsed.name.trim()
     if (parsed.note !== undefined) updates.note = parsed.note?.trim() || null
 
@@ -60,13 +65,34 @@ export async function PATCH(
       throw new AppError("Nada para atualizar", 422, "validation-error")
     }
 
-    const { data: item, error } = await admin
+    let { data: item, error } = await admin
       .from("crm_deal_products")
       .update(updates)
       .eq("id", itemId)
       .eq("deal_id", id)
       .select(DEAL_PRODUCT_FIELDS)
       .single()
+
+    // Coluna recurring_interval ausente (migration 20261069 pendente):
+    // aplica o resto da edição sem ela.
+    if (
+      error &&
+      "recurring_interval" in updates &&
+      /column .* does not exist|42703/i.test(`${error.code} ${error.message}`)
+    ) {
+      delete updates.recurring_interval
+      if (Object.keys(updates).length > 0) {
+        const retry = await admin
+          .from("crm_deal_products")
+          .update(updates)
+          .eq("id", itemId)
+          .eq("deal_id", id)
+          .select(DEAL_PRODUCT_FIELDS)
+          .single()
+        item = retry.data
+        error = retry.error
+      }
+    }
 
     if (error) throw error
     if (!item) throw new AppError("Item não encontrado", 404, "not-found")
