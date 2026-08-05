@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { X } from "lucide-react"
 import useSWR from "swr"
@@ -115,19 +115,55 @@ export function NewDealDialog({
   )
   const clientOptions = clientsData?.clients || []
 
-  // Search stores — quando aberto e nao tem store selecionada, traz lista
-  // (com ou sem query, ate 20 resultados). Selecao auto-preenche
-  // title + client_id + phone.
-  const { data: storesData } = useSWR<{
-    stores: StoreLite[]
-    data?: { stores: StoreLite[] }
+  // Search stores — paginada com acúmulo: a lista mostrava só as
+  // primeiras 20 lojas em ordem alfabética e PARAVA sem aviso ("tem
+  // muita loja ainda"). Agora rola infinito (ou botão Carregar mais) e
+  // o rodapé diz quantas existem no total.
+  const STORE_PAGE = 60
+  const [storePage, setStorePage] = useState(0)
+  const [storeAccum, setStoreAccum] = useState<StoreLite[]>([])
+  const storePageReqRef = useRef(0)
+  const {
+    data: storesData,
+    isLoading: storesLoading,
+  } = useSWR<{
+    stores?: StoreLite[]
+    total?: number
+    has_more?: boolean
+    data?: { stores?: StoreLite[]; total?: number; has_more?: boolean }
   }>(
     open && !storeId
-      ? `/api/client-stores/search?q=${encodeURIComponent(storeSearch)}&limit=20`
+      ? `/api/client-stores/search?q=${encodeURIComponent(storeSearch)}&limit=${STORE_PAGE}&offset=${storePage * STORE_PAGE}`
       : null,
     fetcher,
+    { keepPreviousData: true },
   )
-  const storeOptions = storesData?.data?.stores ?? storesData?.stores ?? []
+  // Digitou → busca recomeça da primeira página.
+  useEffect(() => {
+    setStorePage(0)
+    storePageReqRef.current = 0
+  }, [storeSearch])
+  // Acumula as páginas (dedupe por id — count pode mudar entre chamadas).
+  useEffect(() => {
+    if (!storesData) return
+    const page = storesData.data?.stores ?? storesData.stores ?? []
+    setStoreAccum((prev) => {
+      if (storePage === 0) return page
+      const seen = new Set(prev.map((s) => s.id))
+      return [...prev, ...page.filter((s) => !seen.has(s.id))]
+    })
+  }, [storesData, storePage])
+  const storeOptions = storeAccum
+  const storeTotal = storesData?.data?.total ?? storesData?.total ?? null
+  const storeHasMore = Boolean(storesData?.data?.has_more ?? storesData?.has_more)
+  const loadMoreStores = () => {
+    if (!storeHasMore || storesLoading) return
+    const next = storePage + 1
+    // onScroll dispara em rajada — só pede cada página uma vez.
+    if (storePageReqRef.current >= next) return
+    storePageReqRef.current = next
+    setStorePage(next)
+  }
 
   // Reset SO quando o dialog abre. Antes incluia [defaultStageId, stages]
   // como deps, mas como o parent recriava 'stages' a cada render, o effect
@@ -146,6 +182,9 @@ export function NewDealDialog({
     setStoreId("")
     setStoreSearch("")
     setStoreLabel("")
+    setStorePage(0)
+    setStoreAccum([])
+    storePageReqRef.current = 0
     setPhone("")
     setSource("")
     setSourceType("")
@@ -574,9 +613,16 @@ export function NewDealDialog({
                         style={{
                           border: "1px solid var(--crm-gray-200)",
                           borderRadius: "var(--crm-radius-md)",
-                          maxHeight: 200,
+                          maxHeight: 240,
                           overflowY: "auto",
                           background: "var(--crm-gray-0)",
+                        }}
+                        onScroll={(e) => {
+                          const el = e.currentTarget
+                          // Perto do fim → carrega a próxima página sozinho.
+                          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+                            loadMoreStores()
+                          }
                         }}
                       >
                         {storeOptions.map((s) => (
@@ -642,6 +688,41 @@ export function NewDealDialog({
                             )}
                           </button>
                         ))}
+                        {/* Rodapé da paginação: rolar até aqui carrega
+                            mais; o botão cobre quem prefere clicar. */}
+                        {storeHasMore ? (
+                          <button
+                            type="button"
+                            className="block w-full text-center hover:bg-[color:var(--crm-gray-50)]"
+                            style={{
+                              padding: "8px 10px",
+                              fontSize: "var(--crm-text-xs)",
+                              fontWeight: 600,
+                              color: "var(--crm-brand)",
+                            }}
+                            disabled={storesLoading}
+                            onClick={loadMoreStores}
+                          >
+                            {storesLoading
+                              ? "Carregando…"
+                              : `Carregar mais — mostrando ${storeOptions.length}${storeTotal ? ` de ${storeTotal}` : ""}`}
+                          </button>
+                        ) : (
+                          storeTotal !== null &&
+                          storeTotal > STORE_PAGE && (
+                            <p
+                              style={{
+                                padding: "6px 10px",
+                                margin: 0,
+                                fontSize: 10.5,
+                                color: "var(--crm-gray-400)",
+                                textAlign: "center",
+                              }}
+                            >
+                              Todas as {storeTotal} lojas carregadas.
+                            </p>
+                          )
+                        )}
                       </div>
                     )}
                     {storeSearch.length >= 2 && storeOptions.length === 0 && (
