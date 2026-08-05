@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { sortThreadsAsQueue } from "@/lib/services/crm-inbox-sla"
 import useSWR from "swr"
-import { MessageSquare } from "lucide-react"
+import { AlertTriangle, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDebounce } from "@/hooks/use-debounce"
 import { useRealtimeInbox } from "@/hooks/use-realtime-inbox"
@@ -27,7 +27,22 @@ import {
   type StatusFilter,
 } from "./inbox/conversation-list"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+/**
+ * Lança em não-2xx: com `r.json()` puro, um 500 virava `undefined` e a
+ * lista mostrava "Inbox vazia" — falha de servidor era indistinguível
+ * de zero conversas.
+ */
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const e = (body as { error?: unknown })?.error
+    throw new Error(typeof e === "string" && e ? e : `Erro ${res.status}`)
+  }
+  return body
+}
+
+const PAGE_SIZE = 50
 
 export function InboxView({ initialThreadId }: { initialThreadId?: string | null }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open")
@@ -68,16 +83,34 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
 
   // Com realtime conectado o polling vira fallback lento; sem realtime
   // mantém a cadência antiga.
-  const { data: threadsData, mutate: mutateThreads } = useSWR<{ threads: ThreadSummary[] }>(
-    `/api/crm/inbox/threads?${params.toString()}`,
-    fetcher,
-    { refreshInterval: realtimeConnected ? 30000 : 10000 },
-  )
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
+  params.set("limit", String(pageSize))
 
-  const { data: detailData, mutate: mutateDetail } = useSWR<ThreadDetail>(
+  const {
+    data: threadsData,
+    error: threadsError,
+    isLoading: threadsLoading,
+    mutate: mutateThreads,
+  } = useSWR<{
+    org_id?: string
+    threads: ThreadSummary[]
+    total?: number
+    has_more?: boolean
+    total_unread?: number
+    no_channel_of_type?: string
+  }>(`/api/crm/inbox/threads?${params.toString()}`, fetcher, {
+    refreshInterval: realtimeConnected ? 30000 : 10000,
+    keepPreviousData: true,
+  })
+
+  const {
+    data: detailData,
+    error: detailError,
+    mutate: mutateDetail,
+  } = useSWR<ThreadDetail>(
     activeThreadId ? `/api/crm/inbox/threads/${activeThreadId}` : null,
     fetcher,
-    { refreshInterval: realtimeConnected ? 30000 : 5000 },
+    { refreshInterval: realtimeConnected ? 30000 : 5000, keepPreviousData: true },
   )
 
   const onThreadsUpdate = useCallback(() => {
@@ -91,6 +124,9 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     onThreadsUpdate,
     onDetailUpdate,
     activeThreadId,
+    // Sem o filtro por org, o canal acorda com evento de QUALQUER
+    // organização (e entrega ao browser a atividade alheia).
+    orgId: threadsData?.org_id ?? null,
   })
 
   useEffect(() => setRealtimeConnected(rtConnected), [rtConnected])
@@ -104,15 +140,25 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     if (orderMode === "queue") return sortThreadsAsQueue(list, Date.now())
     return list
   }, [threadsData, orderMode])
-  const detail = detailData
+  // Detalhe de OUTRA conversa (keepPreviousData) não pode ser exibido
+  // como se fosse a atual.
+  const detail = detailData?.thread?.id === activeThreadId ? detailData : undefined
 
-  // Marca como lida ao abrir (zera unread + read receipt na Meta)
+  const threadsRef = useRef<ThreadSummary[]>([])
   useEffect(() => {
-    if (activeThreadId) {
-      fetch(`/api/crm/inbox/threads/${activeThreadId}/read`, { method: "POST" })
-        .then(() => mutateThreads())
-        .catch(() => {})
-    }
+    threadsRef.current = threads
+  }, [threads])
+
+  // Marca como lida ao abrir (zera unread + read receipt na Meta).
+  // Só quando há não-lidas: abrir conversa já lida não precisa de POST
+  // nem de read receipt na Meta.
+  useEffect(() => {
+    if (!activeThreadId) return
+    const known = threadsRef.current.find((t) => t.id === activeThreadId)
+    if (known && (known.unread_count || 0) === 0) return
+    fetch(`/api/crm/inbox/threads/${activeThreadId}/read`, { method: "POST" })
+      .then(() => mutateThreads())
+      .catch(() => {})
   }, [activeThreadId, mutateThreads])
 
   // Mensagem inbound que chega com a conversa JÁ aberta não passa pelo
@@ -131,10 +177,11 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
       .catch(() => {})
   }, [activeThreadId, detailData, mutateThreads])
 
-  const totalUnread = useMemo(
-    () => threads.reduce((sum, t) => sum + (t.unread_count || 0), 0),
-    [threads],
-  )
+  // Não-lidas de toda a org (vem da API) — o badge tem de bater com o
+  // do sino, e não mudar conforme o filtro da lista.
+  const totalUnread = threadsData?.total_unread ?? 0
+  const totalThreads = threadsData?.total ?? threads.length
+  const hasMore = Boolean(threadsData?.has_more)
 
   const hasActiveFilters =
     Boolean(debouncedSearch) ||
@@ -170,6 +217,13 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         channelId={channelId}
         onChannelIdChange={setChannelId}
         channels={channels}
+        loading={threadsLoading && !threadsData}
+        error={threadsError instanceof Error ? threadsError.message : null}
+        onRetry={() => mutateThreads()}
+        total={totalThreads}
+        hasMore={hasMore}
+        onLoadMore={() => setPageSize((n) => n + PAGE_SIZE)}
+        noChannelOfType={threadsData?.no_channel_of_type ?? null}
       />
 
       {/* Painel da conversa — em mobile só aparece quando há thread ativa.
@@ -182,6 +236,28 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
               icon={<MessageSquare className="h-5 w-5" />}
               title="Selecione uma conversa"
               description="Clique em qualquer thread a esquerda para abrir."
+            />
+          </div>
+        ) : detailError ? (
+          /* Sem isto, um deep-link para conversa inexistente ou de outra
+             org deixava o skeleton girando para sempre. */
+          <div className="flex flex-1 items-center justify-center p-6">
+            <CrmEmptyState
+              icon={<AlertTriangle className="h-5 w-5" />}
+              title="Não foi possível abrir a conversa"
+              description={
+                detailError instanceof Error ? detailError.message : "Tente novamente em instantes."
+              }
+              action={
+                <div className="flex items-center gap-2">
+                  <button onClick={() => mutateDetail()} className="crm-button-secondary">
+                    Tentar de novo
+                  </button>
+                  <button onClick={() => setActiveThreadId(null)} className="crm-button-ghost">
+                    Voltar para a lista
+                  </button>
+                </div>
+              }
             />
           </div>
         ) : !detail ? (

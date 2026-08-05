@@ -5,9 +5,11 @@
  * status, "apenas meus" e badge de janela de 24h aberta (dot verde).
  */
 
-import { Clock, Filter, MessageSquare, Search } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { AlertTriangle, Clock, Filter, MessageSquare, Search } from "lucide-react"
 import { formatWait, waitingInfo } from "@/lib/services/crm-inbox-sla"
 import { cn } from "@/lib/utils"
+import { SkeletonShimmer } from "@/components/ui/skeleton"
 import type { ThreadSummary } from "@/types/crm-inbox"
 import { ThreadTagChips, useTagRegistry } from "./thread-tags"
 
@@ -48,6 +50,17 @@ interface ConversationListProps {
   channelId: string
   onChannelIdChange: (id: string) => void
   channels: InboxChannelOption[]
+  /** Primeiro carregamento (sem dados ainda). */
+  loading?: boolean
+  /** Falha ao buscar — distinta de "não há conversas". */
+  error?: string | null
+  onRetry?: () => void
+  /** Total no servidor (com os filtros atuais). */
+  total?: number
+  hasMore?: boolean
+  onLoadMore?: () => void
+  /** Filtro por canal sem nenhuma conta conectada desse tipo. */
+  noChannelOfType?: string | null
 }
 
 export function ConversationList({
@@ -71,8 +84,38 @@ export function ConversationList({
   channelId,
   onChannelIdChange,
   channels,
+  loading = false,
+  error = null,
+  onRetry,
+  total,
+  hasMore = false,
+  onLoadMore,
+  noChannelOfType = null,
 }: ConversationListProps) {
   const tagRegistry = useTagRegistry()
+
+  // Relógio da lista: sem isto os "há 14m" e os badges de SLA ficavam
+  // congelados até a próxima revalidação do SWR.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Resumo da fila: quantas conversas estão esperando resposta e
+  // quantas já passaram do limite. O sinal existia por conversa e
+  // nunca era somado em lugar nenhum.
+  const slaSummary = useMemo(() => {
+    let waiting = 0
+    let critical = 0
+    for (const t of threads) {
+      const w = waitingInfo(t, now)
+      if (!w.waiting) continue
+      waiting++
+      if (w.level === "critical") critical++
+    }
+    return { waiting, critical }
+  }, [threads, now])
   // Contas do tipo selecionado — o sub-filtro por conta só faz sentido
   // quando há mais de uma (ex.: 2 Instagrams conectados).
   const accountsOfType =
@@ -111,7 +154,40 @@ export function ConversationList({
               </span>
             )}
           </h2>
+          {typeof total === "number" && total > 0 && (
+            <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
+              {threads.length === total ? `${total}` : `${threads.length} de ${total}`}
+            </span>
+          )}
         </div>
+
+        {/* Fila: quantas esperam resposta agora e quantas estouraram */}
+        {slaSummary.waiting > 0 && (
+          <button
+            type="button"
+            onClick={() => onOrderModeChange("queue")}
+            className="mb-2 flex w-full items-center gap-1.5"
+            title="Ver primeiro quem espera há mais tempo"
+            style={{
+              fontSize: "var(--crm-text-xs)",
+              padding: "4px 8px",
+              borderRadius: "var(--crm-radius-sm)",
+              border: `1px solid ${slaSummary.critical > 0 ? "var(--crm-neg-border)" : "var(--crm-warn-border)"}`,
+              background: slaSummary.critical > 0 ? "var(--crm-neg-bg)" : "var(--crm-warn-bg)",
+              color: slaSummary.critical > 0 ? "var(--crm-neg)" : "var(--crm-warn)",
+              cursor: "pointer",
+            }}
+          >
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>
+              <strong>{slaSummary.waiting}</strong> aguardando resposta
+              {slaSummary.critical > 0 && ` · ${slaSummary.critical} há mais de 1h`}
+            </span>
+            {orderMode !== "queue" && (
+              <span className="ml-auto shrink-0 underline">ver fila</span>
+            )}
+          </button>
+        )}
 
         <div className="relative mb-2">
           <Search
@@ -278,7 +354,38 @@ export function ConversationList({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto pb-safe">
-        {threads.length === 0 ? (
+        {/* Falha de carregamento NÃO pode se passar por "inbox vazia" */}
+        {error ? (
+          <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+            <div
+              className="mb-2 flex h-9 w-9 items-center justify-center rounded-[4px]"
+              style={{ background: "var(--crm-neg-bg)", color: "var(--crm-neg)" }}
+            >
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 530, color: "var(--crm-gray-700)" }}>
+              Não foi possível carregar as conversas
+            </p>
+            <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>{error}</p>
+            {onRetry && (
+              <button onClick={onRetry} className="crm-button-secondary" style={{ marginTop: 10 }}>
+                Tentar de novo
+              </button>
+            )}
+          </div>
+        ) : loading ? (
+          <div className="flex flex-col gap-3 p-3" aria-label="Carregando conversas">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <SkeletonShimmer className="h-8 w-8 shrink-0 rounded-full" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <SkeletonShimmer className="h-3 w-1/2 rounded-[4px]" />
+                  <SkeletonShimmer className="h-2.5 w-4/5 rounded-[4px]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : threads.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <div
               className="flex h-9 w-9 items-center justify-center rounded-[4px] mb-2"
@@ -287,20 +394,33 @@ export function ConversationList({
               <MessageSquare className="h-4 w-4" />
             </div>
             <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 530, color: "var(--crm-gray-700)" }}>
-              {hasActiveFilters ? "Nenhuma conversa encontrada" : "Inbox vazia"}
+              {noChannelOfType
+                ? `Nenhuma conta de ${noChannelOfType === "instagram" ? "Instagram" : "WhatsApp"} conectada`
+                : hasActiveFilters
+                  ? "Nenhuma conversa encontrada"
+                  : "Inbox vazia"}
             </p>
             <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>
-              {hasActiveFilters
-                ? "Ajuste os filtros para ver mais resultados."
-                : "Conversas do WhatsApp e do Instagram chegam aqui."}
+              {noChannelOfType
+                ? "Conecte a conta em Comercial → Canais para receber as conversas aqui."
+                : hasActiveFilters
+                  ? "Ajuste os filtros para ver mais resultados."
+                  : "Conversas do WhatsApp e do Instagram chegam aqui."}
             </p>
           </div>
         ) : (
           threads.map((t) => {
+            // Janela de 24h só existe no WhatsApp OFICIAL e no
+            // Instagram — no Evolution (QR) o envio é livre, e o ponto
+            // verde ali dizia algo que o chat não confirmava.
+            const channelHasWindow =
+              t.channel?.type === "instagram" ||
+              (t.channel?.type === "whatsapp" && t.channel?.provider !== "evolution")
             const windowOpen =
+              channelHasWindow &&
               Boolean(t.is_window_open) &&
               Boolean(t.window_expires_at) &&
-              new Date(t.window_expires_at as string).getTime() > Date.now()
+              new Date(t.window_expires_at as string).getTime() > now
             return (
               <button
                 key={t.id}
@@ -316,16 +436,28 @@ export function ConversationList({
               >
                 <div className="flex items-start gap-2">
                   <div className="relative shrink-0">
-                    <div
-                      className="flex h-8 w-8 items-center justify-center text-xs font-medium"
-                      style={{
-                        background: "var(--crm-gray-200)",
-                        color: "var(--crm-gray-700)",
-                        borderRadius: "var(--crm-radius-full)",
-                      }}
-                    >
-                      {(t.contact_name || t.contact_external_id).slice(0, 2).toUpperCase()}
-                    </div>
+                    {/* Foto do contato: a API já devolvia e a lista
+                        mostrava só as iniciais. */}
+                    {t.contact_avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={t.contact_avatar_url}
+                        alt=""
+                        className="h-8 w-8 rounded-full object-cover"
+                        style={{ border: "1px solid var(--crm-gray-200)" }}
+                      />
+                    ) : (
+                      <div
+                        className="flex h-8 w-8 items-center justify-center text-xs font-medium"
+                        style={{
+                          background: "var(--crm-gray-200)",
+                          color: "var(--crm-gray-700)",
+                          borderRadius: "var(--crm-radius-full)",
+                        }}
+                      >
+                        {(t.contact_name || t.contact_external_id).slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     {windowOpen && (
                       <span
                         className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full"
@@ -409,13 +541,26 @@ export function ConversationList({
                           {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
                         </span>
                       </span>
-                      <ThreadTimeCell thread={t} />
+                      <ThreadTimeCell thread={t} now={now} />
                     </div>
                   </div>
                 </div>
               </button>
             )
           })
+        )}
+
+        {/* Paginação: a lista era limitada a 50 e não havia como ver o
+            resto — org com 200 conversas perdia 150 sem aviso. */}
+        {hasMore && onLoadMore && (
+          <button
+            onClick={onLoadMore}
+            className="w-full py-3 text-center hover:bg-black/[0.03]"
+            style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-600)" }}
+          >
+            Carregar mais conversas
+            {typeof total === "number" && ` (${threads.length} de ${total})`}
+          </button>
         )}
       </div>
     </aside>
@@ -429,10 +574,12 @@ export function ConversationList({
  */
 function ThreadTimeCell({
   thread,
+  now,
 }: {
   thread: { status: string; last_message_at: string; last_message_direction: string | null }
+  now: number
 }) {
-  const w = waitingInfo(thread, Date.now())
+  const w = waitingInfo(thread, now)
   if (!w.waiting || w.level === "ok") {
     return (
       <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>

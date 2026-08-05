@@ -1134,6 +1134,47 @@ primeiro desligaria o histórico. UI: botão "Duplicados" na página de
 Leads → dialog com radio de sobrevivente (sugestão: mais dados;
 convertido é âncora).
 
+**Redesign do inbox (ago/2026)** — três frentes.
+
+*Funcional.* O envio que FALHAVA respondia **200** com `sent:false` e
+nenhum cliente lia o campo: o composer limpava a caixa e o atendente só
+via a rejeição quando a bolha vermelha aparecia no refresh — se
+estivesse olhando. Agora a rota lança 502 com a mensagem do provedor (a
+mensagem local já fica gravada `failed`, o histórico não muda). As rotas
+`threads/[id]/*` usam `createAdminClient` (sem RLS) e **não checavam
+org**: qualquer autenticado com um UUID lia e respondia conversa de
+outra organização — `assertThreadInOrg` (`lib/crm/inbox-thread-guard`)
+fecha em GET/PATCH/messages/media/read, devolvendo 404. A busca entrava
+crua no `or()` do PostgREST (vírgula é sintaxe: "Silva, João" quebrava a
+query) → `sanitizeSearchTerm`. `/admin/inbox/[id]` era gerada por
+`ROUTES.INBOX_THREAD` e usada em produção sem existir (404) → redireciona
+pra `?thread=`. Erro de API virava "Inbox vazia" e detalhe com erro
+virava skeleton eterno → fetcher que lança + estados próprios. Filtro por
+tag falhava em silêncio por diferença de caixa → `overlaps` com
+variantes. Mídia não limpava o sino; `loadMore` não tinha `catch` nem
+preservava scroll; status/atribuição não checavam resposta; "Reenviar"
+em mídia não fazia nada — todos corrigidos.
+
+*Clareza.* `crm-inbox-format.ts` (puro, 20 testes): `groupMessagesByDay`
+(separador Hoje/Ontem/dia da semana/data — antes era uma parede de
+bolhas com só HH:MM) e `messageAuthor`/`shouldShowAuthor` (atendente ×
+**Automação** × **Pelo celular**, mostrado só quando o autor MUDA). Novo
+`ContactContext`: negócio com valor e status, cliente e lead vinham na
+API e nunca eram exibidos. Avatar real do contato na lista e no header.
+Resumo de fila no topo ("N aguardando · M há mais de 1h", clica e ordena
+por espera). Ponto verde de janela só em canal que TEM janela.
+
+*Usabilidade.* **Enter envia** (Shift+Enter quebra linha), textarea que
+cresce até 8 linhas, rascunho preservado por conversa, contador perto do
+limite de 4000, Escape do "/" não apaga mais a mensagem e a resposta
+rápida substitui só o atalho. Paginação real na lista (era 50 fixo, sem
+aviso) e contagem de não-lidas da ORG (o badge divergia do sino). Janela
+de 24h do **Instagram** passou a ter barra (a Meta recusava e ninguém
+sabia por quê). Realtime filtrado por `org_id` — sem isso o canal
+acordava com evento de qualquer organização — e o safety refresh só roda
+com o realtime caído (eram 4 requisições/30s por aba), tudo pausado em
+aba oculta.
+
 **Fila com SLA no inbox** (`crm-inbox-sla.ts`, 11 testes): conversa
 "aguardando" = última mensagem do contato + status open/pending. Faixas
 15min/60min (warn/critical). Toggle Recentes|Fila na lista (fila =

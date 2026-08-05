@@ -11,9 +11,15 @@
  *    que aparecer rápido)
  *
  * Requer as tabelas na publication supabase_realtime (migration
- * 20260812_whatsapp_core_messaging.sql). RLS permissiva entrega
- * eventos de todas as orgs — o payload só dispara revalidação SWR,
- * que filtra server-side por org.
+ * 20260812_whatsapp_core_messaging.sql). O canal de threads é
+ * FILTRADO por org_id: sem isso, cada mensagem de qualquer cliente de
+ * qualquer organização acordava todos os inboxes abertos (revalidação
+ * inútil) e entregava ao browser o padrão de atividade alheio. O dado
+ * em si sempre veio filtrado pela API — o que vazava era o evento.
+ *
+ * O safety refresh só roda quando o realtime NÃO está conectado: com
+ * ele ativo eram quatro requisições a cada 30s por aba, redundantes
+ * entre si. E tudo pausa em aba oculta.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -32,6 +38,8 @@ interface UseRealtimeInboxOptions {
   onDetailUpdate: () => void
   /** Thread aberta — null desliga o canal de mensagens. */
   activeThreadId: string | null
+  /** Org do usuário: filtra os eventos de thread. */
+  orgId?: string | null
   enabled?: boolean
 }
 
@@ -39,6 +47,7 @@ export function useRealtimeInbox({
   onThreadsUpdate,
   onDetailUpdate,
   activeThreadId,
+  orgId,
   enabled = true,
 }: UseRealtimeInboxOptions) {
   const [realtimeConnected, setRealtimeConnected] = useState(false)
@@ -62,6 +71,9 @@ export function useRealtimeInbox({
   }, [onDetailUpdate])
 
   const refreshAll = useCallback(() => {
+    // Aba em segundo plano não precisa de dado fresco — ela revalida
+    // ao voltar ao foco.
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return
     onThreadsUpdate()
     onDetailUpdate()
   }, [onThreadsUpdate, onDetailUpdate])
@@ -82,31 +94,38 @@ export function useRealtimeInbox({
   useEffect(() => {
     if (!enabled) return
 
+    const orgFilter = orgId ? { filter: `org_id=eq.${orgId}` } : {}
     const channel = supabase
-      .channel("inbox-threads-realtime")
+      .channel(orgId ? `inbox-threads-realtime-${orgId}` : "inbox-threads-realtime")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "crm_threads" },
+        { event: "INSERT", schema: "public", table: "crm_threads", ...orgFilter },
         () => debouncedThreads(),
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "crm_threads" },
+        { event: "UPDATE", schema: "public", table: "crm_threads", ...orgFilter },
         () => debouncedThreads(),
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setRealtimeConnected(true)
           stopPolling()
+          // Realtime saudável dispensa a rede de segurança.
+          if (safetyRef.current) {
+            clearInterval(safetyRef.current)
+            safetyRef.current = null
+          }
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           setRealtimeConnected(false)
           startPolling()
+          if (!safetyRef.current) safetyRef.current = setInterval(refreshAll, SAFETY_REFRESH_MS)
         }
       })
 
     threadsChannelRef.current = channel
 
-    // Safety refresh sempre ativo (defesa contra eventos perdidos)
+    // Rede de segurança até o canal confirmar a inscrição.
     safetyRef.current = setInterval(refreshAll, SAFETY_REFRESH_MS)
 
     return () => {
@@ -119,7 +138,7 @@ export function useRealtimeInbox({
       }
       if (listDebounceRef.current) clearTimeout(listDebounceRef.current)
     }
-  }, [enabled, supabase, debouncedThreads, refreshAll, startPolling, stopPolling])
+  }, [enabled, orgId, supabase, debouncedThreads, refreshAll, startPolling, stopPolling])
 
   // Canal 2: mensagens da thread aberta (re-cria ao trocar de thread)
   useEffect(() => {

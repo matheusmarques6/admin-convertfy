@@ -1,12 +1,15 @@
 "use client"
 
 /**
- * Barra da janela de atendimento de 24h (WhatsApp).
+ * Barra da janela de atendimento de 24h (WhatsApp Cloud e Instagram).
  *
  * Verde >4h · amarela <4h · vermelha expirada · cinza sem conversa.
- * Diferente do worder (que só mostrava banner), aqui a expiração
- * também DESABILITA o composer de texto — o CTA de template vem do
- * composer via onSendTemplate.
+ * Além do banner, a expiração DESABILITA o composer de texto.
+ *
+ * O Instagram também tem janela de 24h e ficava sem nenhum aviso: o
+ * envio ia, a Meta recusava e ninguém entendia. Lá não existe template,
+ * então o CTA some (`onOpenTemplates` opcional) e o texto explica que
+ * só dá para responder quando o contato escrever de novo.
  */
 
 import { useEffect, useState } from "react"
@@ -15,7 +18,9 @@ import { AlertCircle, CheckCircle, Clock } from "lucide-react"
 interface ServiceWindowBarProps {
   isWindowOpen: boolean | null | undefined
   windowExpiresAt: string | null | undefined
-  onOpenTemplates: () => void
+  /** Ausente = canal sem templates (Instagram): a barra não oferece CTA. */
+  onOpenTemplates?: () => void
+  channelLabel?: string
 }
 
 export function windowIsOpen(
@@ -26,7 +31,12 @@ export function windowIsOpen(
   return new Date(windowExpiresAt).getTime() > Date.now()
 }
 
-export function ServiceWindowBar({ isWindowOpen, windowExpiresAt, onOpenTemplates }: ServiceWindowBarProps) {
+export function ServiceWindowBar({
+  isWindowOpen,
+  windowExpiresAt,
+  onOpenTemplates,
+  channelLabel = "WhatsApp",
+}: ServiceWindowBarProps) {
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -43,7 +53,7 @@ export function ServiceWindowBar({ isWindowOpen, windowExpiresAt, onOpenTemplate
     borderBottom: "1px solid var(--crm-gray-200)",
   }
 
-  const templateButton = (
+  const templateButton = onOpenTemplates ? (
     <button
       onClick={onOpenTemplates}
       style={{
@@ -60,13 +70,17 @@ export function ServiceWindowBar({ isWindowOpen, windowExpiresAt, onOpenTemplate
     >
       Enviar template
     </button>
-  )
+  ) : null
 
   if (!windowExpiresAt) {
     return (
       <div style={{ ...baseStyle, background: "var(--crm-gray-100)", color: "var(--crm-gray-600)" }}>
         <Clock className="h-3.5 w-3.5 shrink-0" />
-        <span>Sem conversa ativa — somente templates aprovados.</span>
+        <span>
+          {onOpenTemplates
+            ? "Sem conversa ativa — somente templates aprovados."
+            : `Sem conversa ativa no ${channelLabel} — aguarde o contato escrever para poder responder.`}
+        </span>
         {templateButton}
       </div>
     )
@@ -76,10 +90,13 @@ export function ServiceWindowBar({ isWindowOpen, windowExpiresAt, onOpenTemplate
 
   if (!isWindowOpen || diff <= 0) {
     return (
-      <div style={{ ...baseStyle, background: "#FEF2F2", color: "#991B1B", borderBottomColor: "#FECACA" }}>
+      <div style={{ ...baseStyle, background: "var(--crm-neg-bg)", color: "var(--crm-neg)", borderBottomColor: "var(--crm-neg-border)" }}>
         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
         <span>
-          <strong>Janela de 24h expirada</strong> — somente templates aprovados.
+          <strong>Janela de 24h expirada</strong>
+          {onOpenTemplates
+            ? " — somente templates aprovados."
+            : ` — o ${channelLabel} só aceita resposta até 24h após a última mensagem do contato.`}
         </span>
         {templateButton}
       </div>
@@ -94,15 +111,19 @@ export function ServiceWindowBar({ isWindowOpen, windowExpiresAt, onOpenTemplate
     <div
       style={{
         ...baseStyle,
-        background: isLow ? "#FFFBEB" : "#F0FDF4",
-        color: isLow ? "#92400E" : "#065F46",
-        borderBottomColor: isLow ? "#FDE68A" : "#A7F3D0",
+        background: isLow ? "var(--crm-warn-bg)" : "var(--crm-pos-bg)",
+        color: isLow ? "var(--crm-warn)" : "var(--crm-pos)",
+        borderBottomColor: isLow ? "var(--crm-warn-border)" : "var(--crm-pos-border)",
       }}
     >
       <CheckCircle className="h-3.5 w-3.5 shrink-0" />
       <span>
         <strong>Janela ativa</strong> — expira em {hoursLeft > 0 && `${hoursLeft}h `}
-        {minutesLeft}min
+        {minutesLeft}min{" "}
+        <span style={{ opacity: 0.75 }}>
+          (às{" "}
+          {new Date(windowExpiresAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })})
+        </span>
       </span>
     </div>
   )

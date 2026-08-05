@@ -11,17 +11,21 @@
  */
 
 import { useCallback, useState } from "react"
-import { Check, CheckCheck, Download, FileText, ImageOff, MapPin, RefreshCw, X } from "lucide-react"
+import { Bot, Check, CheckCheck, Download, FileText, ImageOff, MapPin, RefreshCw, Smartphone, X } from "lucide-react"
+import { messageAuthor } from "@/lib/services/crm-inbox-format"
 import type { InboxMessage } from "@/types/crm-inbox"
 
 interface MessageBubbleProps {
   message: InboxMessage
   threadId: string
   onRetry?: (message: InboxMessage) => void
+  /** Rótulo de quem enviou — só na primeira de uma sequência do mesmo autor. */
+  showAuthor?: boolean
 }
 
-export function MessageBubble({ message: m, threadId, onRetry }: MessageBubbleProps) {
+export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: MessageBubbleProps) {
   const isOut = m.direction === "outbound"
+  const author = messageAuthor(m)
   const [mediaUrl, setMediaUrl] = useState(m.media_url)
   const [mediaState, setMediaState] = useState<"ok" | "refreshing" | "gone">("ok")
   const [lightbox, setLightbox] = useState(false)
@@ -71,7 +75,20 @@ export function MessageBubble({ message: m, threadId, onRetry }: MessageBubblePr
   }
 
   return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
+      {/* Quem enviou: atendente, automação ou o celular pareado. Sem
+          isso, num time com vários atendentes ninguém sabe quem falou
+          com o cliente — nem se foi uma pessoa. */}
+      {showAuthor && author.label && (
+        <span
+          className="mb-0.5 flex items-center gap-1 px-1"
+          style={{ fontSize: 10, color: "var(--crm-gray-500)" }}
+        >
+          {author.kind === "automation" && <Bot className="h-2.5 w-2.5" />}
+          {author.kind === "device" && <Smartphone className="h-2.5 w-2.5" />}
+          {author.label}
+        </span>
+      )}
       <div
         className="max-w-[85%] md:max-w-[70%]"
         style={{
@@ -139,7 +156,7 @@ export function MessageBubble({ message: m, threadId, onRetry }: MessageBubblePr
           >
             <X className="h-3 w-3 shrink-0" />
             <span className="min-w-0 truncate">{m.error_message || "Falha no envio"}</span>
-            {onRetry && (
+            {onRetry && m.content_type === "text" && (
               <button
                 onClick={() => onRetry(m)}
                 className="shrink-0 underline"

@@ -8,7 +8,9 @@
 
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
+import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
 import { logger } from "@/lib/logger"
 import { loadChannelClient } from "@/lib/whatsapp/channel-client"
 import { phoneToJid } from "@/lib/whatsapp/evolution-content"
@@ -25,20 +27,25 @@ export async function POST(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    const orgId = await resolveOrgId(user.id)
 
     type ThreadRow = {
       id: string
+      org_id: string
       channel_id: string
       contact_external_id: string
       channel: { type: string } | Array<{ type: string }> | null
     }
     const { data: thread } = await admin
       .from("crm_threads")
-      .select("id, channel_id, contact_external_id, channel:crm_channels (type)")
+      .select("id, org_id, channel_id, contact_external_id, channel:crm_channels (type)")
       .eq("id", id)
       .maybeSingle<ThreadRow>()
+
+    if (!thread) throw new AppError("Conversa não encontrada", 404, "not-found")
+    assertThreadInOrg(thread.org_id, orgId)
 
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", id)
 

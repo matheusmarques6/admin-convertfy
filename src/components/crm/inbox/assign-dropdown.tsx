@@ -27,6 +27,7 @@ interface AssignDropdownProps {
 export function AssignDropdown({ threadId, assignedTo, onAssigned }: AssignDropdownProps) {
   const { data } = useSWR<{ members: MemberRow[] }>("/api/admin/org-members?is_active=true", fetcher)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const members = useMemo<OrgMemberOption[]>(() => {
     const rows = data?.members ?? []
@@ -41,15 +42,25 @@ export function AssignDropdown({ threadId, assignedTo, onAssigned }: AssignDropd
     return options.sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
 
+  // PATCH sem checagem trocava o responsável na tela e deixava o
+  // refresh seguinte devolver o antigo, sem dizer nada.
   const handleChange = async (profileId: string) => {
     setSaving(true)
+    setError(null)
     try {
-      await fetch(`/api/crm/inbox/threads/${threadId}`, {
+      const res = await fetch(`/api/crm/inbox/threads/${threadId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assigned_to: profileId || null }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string })?.error || "Não foi possível atribuir")
+      }
       onAssigned()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atribuir")
+      onAssigned() // volta ao valor real do servidor
     } finally {
       setSaving(false)
     }
@@ -61,8 +72,12 @@ export function AssignDropdown({ threadId, assignedTo, onAssigned }: AssignDropd
       onChange={(e) => handleChange(e.target.value)}
       disabled={saving}
       className="crm-input"
-      style={{ height: "var(--crm-button-height-sm)", maxWidth: 160 }}
-      title="Atribuir a um agente"
+      style={{
+        height: "var(--crm-button-height-sm)",
+        maxWidth: 160,
+        borderColor: error ? "var(--crm-neg)" : undefined,
+      }}
+      title={error ?? "Atribuir a um agente"}
       aria-label="Atribuir conversa a um agente"
     >
       <option value="">Sem responsável</option>

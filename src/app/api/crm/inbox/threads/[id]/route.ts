@@ -9,6 +9,8 @@ import { z } from "zod"
 import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
+import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
 import { normalizeThreadTags, THREAD_TAG_MAX_LENGTH, THREAD_TAGS_MAX_COUNT } from "@/lib/crm/thread-tags"
 import { logger } from "@/lib/logger"
 
@@ -23,8 +25,9 @@ export async function GET(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    const orgId = await resolveOrgId(user.id)
 
     const sp = request.nextUrl.searchParams
     const limit = Math.min(parseInt(sp.get("limit") || "100", 10), 500)
@@ -33,23 +36,24 @@ export async function GET(
     const { data: thread, error } = await admin
       .from("crm_threads")
       .select(`
-        id, status, contact_name, contact_external_id, contact_avatar_url,
-        last_message_at, last_message_preview, unread_count, tags,
+        id, org_id, status, contact_name, contact_external_id, contact_avatar_url,
+        last_message_at, last_message_preview, last_message_direction, unread_count, tags,
         assigned_to, lead_id, deal_id, client_id, contact_id, channel_id,
         is_window_open, window_expires_at,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url, email),
         channel:crm_channels (id, type, provider, display_name, external_id),
         lead:crm_leads (id, name, status),
-        deal:deals (id, title, status, pipeline_id, stage_id),
+        deal:deals (id, title, status, value, pipeline_id, stage_id),
         client:clients (id, name, email, phone)
       `)
       .eq("id", id)
-      .single()
+      .single<{ org_id: string } & Record<string, unknown>>()
 
     if (error || !thread) {
-      throw new AppError("Thread nao encontrada", 404, "not-found")
+      throw new AppError("Conversa não encontrada", 404, "not-found")
     }
+    assertThreadInOrg(thread.org_id, orgId)
 
     let mq = admin
       .from("crm_messages")
@@ -97,20 +101,40 @@ export async function PATCH(
   try {
     const { id } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
     const parsed = patchSchema.parse(body)
 
+    const { data: current } = await admin
+      .from("crm_threads")
+      .select("org_id")
+      .eq("id", id)
+      .maybeSingle<{ org_id: string }>()
+    if (!current) throw new AppError("Conversa não encontrada", 404, "not-found")
+    assertThreadInOrg(current.org_id, orgId)
+
     const update: Record<string, unknown> = { ...parsed }
-    if (parsed.assigned_to) update.assigned_at = new Date().toISOString()
+    // Desatribuir também limpa a marca de quando foi atribuída — senão
+    // fica uma data pendurada de um dono que não existe mais.
+    if (parsed.assigned_to !== undefined) {
+      update.assigned_at = parsed.assigned_to ? new Date().toISOString() : null
+    }
     if (parsed.tags) update.tags = normalizeThreadTags(parsed.tags)
 
-    const { error } = await admin.from("crm_threads").update(update).eq("id", id)
+    // Devolve a linha atualizada: o cliente confirma o efeito sem
+    // precisar de um GET extra (e consegue reverter update otimista).
+    const { data: updated, error } = await admin
+      .from("crm_threads")
+      .update(update)
+      .eq("id", id)
+      .select("id, status, assigned_to, assigned_at, tags, lead_id, deal_id, client_id")
+      .single()
     if (error) throw error
 
-    return successResponse(request, { ok: true })
+    return successResponse(request, { ok: true, thread: updated })
   } catch (error) {
     log.error("Inbox thread patch error:", error)
     return errorResponse(request, error, "crm-inbox-thread-patch")

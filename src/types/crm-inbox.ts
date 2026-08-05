@@ -46,17 +46,32 @@ export interface ThreadDetail {
     id: string
     contact_name: string | null
     contact_external_id: string
+    contact_avatar_url?: string | null
     status: string
     assigned_to: string | null
     lead_id: string | null
     deal_id: string | null
     client_id: string | null
     channel_id: string
+    last_message_at?: string | null
+    last_message_direction?: string | null
     is_window_open?: boolean | null
     window_expires_at?: string | null
     tags?: string[]
     channel?: { id: string; type: string; provider?: string | null; display_name: string }
     assignee?: { id: string; name: string; avatar_url: string | null } | null
+    // Vínculos com o resto do CRM: a API sempre devolveu e a tela nunca
+    // mostrou — é o contexto que evita atender às cegas.
+    lead?: { id: string; name: string | null; status: string | null } | null
+    deal?: {
+      id: string
+      title: string | null
+      status: string | null
+      value?: number | null
+      pipeline_id: string | null
+      stage_id: string | null
+    } | null
+    client?: { id: string; name: string | null; email: string | null; phone: string | null } | null
   }
   messages: InboxMessage[]
 }

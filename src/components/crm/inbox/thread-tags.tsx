@@ -158,7 +158,7 @@ export function ThreadTags({ threadId, tags, onChanged }: ThreadTagsProps) {
   }
 
   return (
-    <div ref={wrapperRef} className="relative hidden sm:flex items-center gap-1.5 min-w-0">
+    <div ref={wrapperRef} className="relative flex items-center gap-1.5 min-w-0">
       <ThreadTagChips tags={current} registry={registry} max={3} />
       <button
         type="button"

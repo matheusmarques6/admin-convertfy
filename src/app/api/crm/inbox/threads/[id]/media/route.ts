@@ -14,6 +14,9 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
+import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
+import { clearCrmThreadNotifications } from "@/lib/services/crm-inbox-notification.service"
 import { logger } from "@/lib/logger"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { loadWhatsAppChannel } from "@/lib/whatsapp/channel-config"
@@ -85,6 +88,7 @@ export async function POST(
     const admin = createAdminClient()
 
     const thread = await getWhatsAppThread(admin, threadId)
+    assertThreadInOrg(thread.org_id, await resolveOrgId(user.id))
     const isEvolution = threadChannelProvider(thread) === "evolution"
 
     // Mídia é sempre free-form → precisa de janela aberta.
@@ -217,6 +221,7 @@ export async function POST(
       if (insertError) throw insertError
 
       await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
+      await clearCrmThreadNotifications(admin, threadId)
 
       return successResponse(request, {
         message_id: localMsg?.id,
@@ -315,6 +320,7 @@ export async function POST(
     if (insertError) throw insertError
 
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
+    await clearCrmThreadNotifications(admin, threadId)
 
     return successResponse(request, {
       message_id: localMsg?.id,
@@ -336,8 +342,9 @@ export async function GET(
   try {
     const { id: threadId } = await context.params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    const orgId = await resolveOrgId(user.id)
 
     const messageId = request.nextUrl.searchParams.get("message_id")
     if (!messageId) throw new AppError("message_id obrigatório", 400, "validation")
@@ -349,7 +356,8 @@ export async function GET(
       .eq("thread_id", threadId)
       .maybeSingle()
 
-    if (!message) throw new AppError("Mensagem nao encontrada", 404, "not-found")
+    if (!message) throw new AppError("Mensagem não encontrada", 404, "not-found")
+    assertThreadInOrg(message.org_id, orgId)
 
     // Caminho feliz: já tem storage_path → só renova a signed URL
     if (message.media_storage_path) {

@@ -18,6 +18,8 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
+import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
 import { logger } from "@/lib/logger"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { loadWhatsAppChannel, markChannelAuthError } from "@/lib/whatsapp/channel-config"
@@ -98,8 +100,9 @@ export async function POST(
       .single<ThreadRow>()
 
     if (!thread) {
-      throw new AppError("Thread nao encontrada", 404, "not-found")
+      throw new AppError("Conversa não encontrada", 404, "not-found")
     }
+    assertThreadInOrg(thread.org_id, await resolveOrgId(user.id))
 
     const channel: ChannelRow | null = Array.isArray(thread.channel)
       ? (thread.channel[0] ?? null)
@@ -355,10 +358,25 @@ export async function POST(
     await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", threadId)
     await clearCrmThreadNotifications(admin, threadId)
 
+    // Falha do provedor tem de sair como ERRO HTTP. Enquanto isso saía
+    // como 200 com `sent: false`, nenhum cliente lia o campo: o
+    // composer limpava a caixa e o atendente só descobria a rejeição
+    // (token expirado, número inválido, instância caída, janela do
+    // Instagram) quando a bolha vermelha aparecia no refresh seguinte —
+    // se estivesse olhando. A mensagem local já ficou gravada como
+    // `failed` acima, então o histórico continua íntegro e o botão
+    // Reenviar aparece normalmente.
+    if (!result.success) {
+      throw new AppError(
+        result.error?.message || "O provedor recusou o envio da mensagem.",
+        502,
+        result.error?.code || "send-failed",
+      )
+    }
+
     return successResponse(request, {
       message_id: localMsgId,
-      sent: result.success,
-      error: result.error,
+      sent: true,
     })
   } catch (error) {
     log.error("Inbox send error:", error)
