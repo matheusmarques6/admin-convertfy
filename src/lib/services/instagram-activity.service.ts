@@ -55,6 +55,15 @@ function friendlyError(status: number, body: GraphErrorBody): IgApiError {
         "A Meta não reconheceu a consulta (#100). Normalmente o ID salvo é o da Página do Facebook (o correto é o instagram_business_account.id) ou o token está sem as permissões instagram_basic / instagram_manage_messages. Confira o ID e gere o token de System User com a Página + o Instagram nos ativos.",
     }
   }
+  // "(#3) Application does not have the capability": o APP Meta não tem
+  // acesso à API de mensagens neste caminho/token.
+  if (body.error?.code === 3) {
+    return {
+      code,
+      message:
+        "O app da Meta não tem a capability de mensagens (#3). No painel do app, adicione o produto Messenger e ative 'Instagram — configurações da API'; gere o token de System User marcando as permissões instagram_manage_messages, pages_messaging e pages_manage_metadata (com a Página e o Instagram nos ativos).",
+    }
+  }
   return { code, message: body.error?.message || `Erro HTTP ${status} na Graph API` }
 }
 
@@ -144,6 +153,26 @@ export async function resolveInstagramAccount(
 type AdminLike = ReturnType<typeof createAdminClient>
 
 /**
+ * Descobre a Página do Facebook vinculada a um IG Business Account a
+ * partir do próprio token (`/me/accounts` lista as Páginas concedidas
+ * ao System User). A Conversations API com login via Facebook é servida
+ * pela PÁGINA — sem o page_id, a importação de conversas não tem o
+ * caminho canônico.
+ */
+export async function discoverPageForIgUser(
+  config: InstagramChannelConfig,
+): Promise<string | null> {
+  const res = await graphGet<{
+    data?: Array<{ id?: string; instagram_business_account?: { id?: string } }>
+  }>(config, `/me/accounts?fields=id,name,instagram_business_account&limit=100`)
+  if (!res.ok) return null
+  const match = (res.data.data ?? []).find(
+    (p) => p.instagram_business_account?.id === config.instagram_business_account_id,
+  )
+  return match?.id ?? null
+}
+
+/**
  * Resolve o ID e CURA o canal quando o salvo era o da Página: atualiza
  * config (instagram_business_account_id + facebook_page_id) e o
  * external_id — que é a chave de roteamento do webhook; com o ID errado
@@ -166,6 +195,31 @@ export async function resolveAndHealInstagramChannel(
     (typeof rawConfig.facebook_page_id === "string" ? rawConfig.facebook_page_id : null)
 
   if (!resolution.ok || !resolution.corrected) {
+    // Canal conectado direto com o IG ID certo nunca passou pela cura —
+    // e ficou SEM a Página salva, que é o caminho canônico da
+    // Conversations API. Descobre uma vez pelo token e persiste.
+    if (resolution.ok && !knownPageId) {
+      const discovered = await discoverPageForIgUser(config)
+      if (discovered) {
+        const raw = { ...rawConfig, facebook_page_id: discovered }
+        const { error } = await admin
+          .from("crm_channels")
+          .update({ config: raw })
+          .eq("id", channel.id)
+        if (error) {
+          log.warn("[IgActivity] page_id descoberto mas não persistido", {
+            channelId: channel.id,
+            error: error.message,
+          })
+        } else {
+          log.info("[IgActivity] facebook_page_id descoberto e salvo", {
+            channelId: channel.id,
+            pageId: discovered,
+          })
+        }
+        return { config, rawConfig: raw, pageId: discovered, resolution }
+      }
+    }
     return { config, rawConfig, pageId: knownPageId, resolution }
   }
 
@@ -380,13 +434,18 @@ export async function fetchInstagramConversations(
   const fields = `id,updated_time,participants,messages.limit(${perConv}){id,created_time,message,from}`
   const query = `conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`
 
-  let res = await graphGet<{ data?: RawConversation[] }>(
-    config,
-    `/${config.instagram_business_account_id}/${query}`,
-  )
-  if (!res.ok && res.error.code === "100" && opts.pageId) {
-    const viaPage = await graphGet<{ data?: RawConversation[] }>(config, `/${opts.pageId}/${query}`)
-    if (viaPage.ok) res = viaPage
+  // Com login via Facebook, a Conversations API é servida pela PÁGINA —
+  // chamar no IG User devolve "(#3) does not have the capability".
+  // Página primeiro quando conhecida; o outro caminho fica de fallback
+  // pra QUALQUER erro (o #3/#100 variam por configuração de app).
+  const paths = opts.pageId
+    ? [`/${opts.pageId}/${query}`, `/${config.instagram_business_account_id}/${query}`]
+    : [`/${config.instagram_business_account_id}/${query}`]
+
+  let res = await graphGet<{ data?: RawConversation[] }>(config, paths[0])
+  if (!res.ok && paths[1]) {
+    const fallback = await graphGet<{ data?: RawConversation[] }>(config, paths[1])
+    if (fallback.ok) res = fallback
   }
   if (!res.ok) return res
   const conversations = (res.data.data ?? []).map((c): InstagramConversationInfo => ({

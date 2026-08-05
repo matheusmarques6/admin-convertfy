@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  discoverPageForIgUser,
   fetchInstagramConversations,
   fetchInstagramProfile,
   fetchInstagramRecentMedia,
@@ -253,7 +254,7 @@ describe("fetchInstagramConversations", () => {
     ],
   }
 
-  it("parseia conversas no IG User node", async () => {
+  it("parseia conversas no IG User node (sem Página conhecida)", async () => {
     mockGraph([
       {
         match: (u) => u.includes("/17841400000000001/conversations"),
@@ -268,15 +269,29 @@ describe("fetchInstagramConversations", () => {
     expect(res.data[0].messages[0].from_id).toBe("660000000000001")
   })
 
-  it("edge negada no IG User (#100) cai pro fallback via Página", async () => {
+  it("com Página conhecida, ela é o PRIMEIRO caminho (login via Facebook)", async () => {
     mockGraph([
       {
-        match: (u) => u.includes("/17841400000000001/conversations"),
-        status: 400,
-        body: graphError(100, "(#100) Tried accessing nonexisting field (conversations)"),
+        match: (u) => u.includes("/17841400000000009/conversations"),
+        status: 200,
+        body: conversationsBody,
       },
+    ])
+    const res = await fetchInstagramConversations(config, { pageId: "17841400000000009" })
+    expect(res.ok).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain("/17841400000000009/conversations")
+  })
+
+  it("Página nega (#3, o erro do incidente) → fallback pro IG User", async () => {
+    mockGraph([
       {
         match: (u) => u.includes("/17841400000000009/conversations"),
+        status: 400,
+        body: graphError(3, "(#3) Application does not have the capability to make this API call."),
+      },
+      {
+        match: (u) => u.includes("/17841400000000001/conversations"),
         status: 200,
         body: conversationsBody,
       },
@@ -288,16 +303,60 @@ describe("fetchInstagramConversations", () => {
     expect(calls).toHaveLength(2)
   })
 
-  it("sem pageId, o erro #100 é repassado (sem fallback cego)", async () => {
+  it("sem pageId e erro #3 → mensagem acionável (capability do app)", async () => {
     mockGraph([
       {
         match: () => true,
         status: 400,
-        body: graphError(100, "(#100) Tried accessing nonexisting field (conversations)"),
+        body: graphError(3, "(#3) Application does not have the capability to make this API call."),
       },
     ])
     const res = await fetchInstagramConversations(config)
     expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error.code).toBe("3")
+    expect(res.error.message).toContain("Messenger")
+    expect(res.error.message).toContain("instagram_manage_messages")
     expect(calls).toHaveLength(1)
+  })
+})
+
+describe("discoverPageForIgUser", () => {
+  it("acha a Página cujo instagram_business_account casa com o canal", async () => {
+    mockGraph([
+      {
+        match: (u) => u.includes("/me/accounts"),
+        status: 200,
+        body: {
+          data: [
+            { id: "111", name: "Outra Página" },
+            {
+              id: "17841400000000009",
+              name: "Convertfy",
+              instagram_business_account: { id: "17841400000000001" },
+            },
+          ],
+        },
+      },
+    ])
+    expect(await discoverPageForIgUser(config)).toBe("17841400000000009")
+  })
+
+  it("sem Página correspondente devolve null", async () => {
+    mockGraph([
+      {
+        match: (u) => u.includes("/me/accounts"),
+        status: 200,
+        body: { data: [{ id: "111", instagram_business_account: { id: "999" } }] },
+      },
+    ])
+    expect(await discoverPageForIgUser(config)).toBeNull()
+  })
+
+  it("token sem pages_show_list (erro) devolve null sem lançar", async () => {
+    mockGraph([
+      { match: () => true, status: 403, body: graphError(200, "Permissions error") },
+    ])
+    expect(await discoverPageForIgUser(config)).toBeNull()
   })
 })
