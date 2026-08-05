@@ -183,6 +183,18 @@
   }
 }
 
+/* ── Modo compacto do kanban ─────────────────────────────────────
+ * "Tirar o zoom" de verdade: colunas mais estreitas + cards enxutos
+ * via CSS vars — NUNCA transform:scale (borra texto e quebra o drag).
+ * Só no desktop: no mobile as vars responsivas acima continuam valendo.
+ */
+@media (min-width: 769px) {
+  .crm-board-compact {
+    --crm-column-kanban-width: 224px;
+    --crm-card-kanban-width: 208px;
+  }
+}
+
 /* ── Dark mode — auto via [data-theme="dark"] ──────────────────── */
 [data-theme="dark"],
 .dark {

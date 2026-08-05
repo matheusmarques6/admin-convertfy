@@ -38,6 +38,8 @@ interface KanbanBoardProps {
   onDeleteDeal?: (dealId: string) => void
   onEditStage?: (stage: KanbanStage) => void
   onDeleteStage?: (stage: KanbanStage) => void
+  /** Modo compacto: cards enxutos (as larguras vêm das CSS vars do wrapper). */
+  compact?: boolean
   /**
    * Renderer customizado de card. Permite trocar `DealCard` por
    * `OnboardingCard` (CS) ou outros sem refactorar o board.
@@ -112,6 +114,7 @@ export function KanbanBoard({
   onDeleteDeal,
   onEditStage,
   onDeleteStage,
+  compact = false,
   renderCard,
 }: KanbanBoardProps) {
   const [optimisticDeals, setOptimisticDeals] = useState(deals)
@@ -502,6 +505,7 @@ export function KanbanBoard({
                                 onDuplicate={onDuplicateDeal}
                                 onDelete={onDeleteDeal}
                                 isDragging={dragSnapshot.isDragging}
+                                compact={compact}
                               />
                             )}
                           </div>

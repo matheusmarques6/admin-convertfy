@@ -14,6 +14,8 @@ import {
   List,
   Download,
   Layers,
+  Minimize2,
+  StretchHorizontal,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
@@ -180,6 +182,25 @@ export function PipelineBoardView({
       setViewMode(next)
       if (typeof window !== "undefined") {
         window.localStorage.setItem(`crm:view-mode:${pipelineId}`, next)
+      }
+    },
+    [pipelineId],
+  )
+
+  // Densidade do kanban: "tirar o zoom" de verdade — colunas mais
+  // estreitas + cards enxutos via CSS vars/prop, nunca transform:scale
+  // (borra o texto e desalinha o drag). Preferência por pipeline.
+  const [boardDensity, setBoardDensity] = useState<"comfortable" | "compact">("comfortable")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const saved = window.localStorage.getItem(`crm:board-density:${pipelineId}`)
+    setBoardDensity(saved === "compact" ? "compact" : "comfortable")
+  }, [pipelineId])
+  const changeBoardDensity = useCallback(
+    (next: "comfortable" | "compact") => {
+      setBoardDensity(next)
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(`crm:board-density:${pipelineId}`, next)
       }
     },
     [pipelineId],
@@ -1138,6 +1159,51 @@ export function PipelineBoardView({
                       </button>
                     ))}
                   </div>
+
+                  {/* Densidade do kanban: compacto = mais colunas na tela
+                      (cards enxutos), sem zoom/scale. Só no desktop e no
+                      escopo de vendas (o card de CS não tem versão enxuta). */}
+                  {viewMode === "kanban" && pipeline.scope !== "cs" && (
+                    <div
+                      className="hidden shrink-0 items-center rounded-[6px] border border-black/10 bg-white p-0.5 md:inline-flex dark:border-white/10 dark:bg-[#1A1D27]"
+                      role="group"
+                      aria-label="Densidade do quadro"
+                    >
+                      {(
+                        [
+                          {
+                            density: "comfortable" as const,
+                            icon: StretchHorizontal,
+                            label: "Confortável",
+                            hint: "Cards completos (avatar, responsável, origem)",
+                          },
+                          {
+                            density: "compact" as const,
+                            icon: Minimize2,
+                            label: "Compacto",
+                            hint: "Cards enxutos — mais colunas visíveis de uma vez",
+                          },
+                        ]
+                      ).map(({ density, icon, label, hint }) => (
+                        <button
+                          key={density}
+                          type="button"
+                          onClick={() => changeBoardDensity(density)}
+                          aria-pressed={boardDensity === density}
+                          title={hint}
+                          className={cn(
+                            "inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[12px] font-medium transition-colors",
+                            boardDensity === density
+                              ? "bg-slate-100 text-slate-900 dark:bg-white/10 dark:text-white"
+                              : "text-slate-500 hover:text-slate-800 dark:text-white/50 dark:hover:text-white/80",
+                          )}
+                        >
+                          <Icon icon={icon} size={16} />
+                          <span className="hidden xl:inline">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1207,6 +1273,17 @@ export function PipelineBoardView({
                 onRowClick={(id) => setActiveDealId(id)}
               />
             ) : (
+              // display:contents — o wrapper só carrega a classe que
+              // troca as CSS vars de largura no modo compacto, sem
+              // entrar no layout.
+              <div
+                style={{ display: "contents" }}
+                className={
+                  boardDensity === "compact" && pipeline.scope !== "cs"
+                    ? "crm-board-compact"
+                    : undefined
+                }
+              >
               <KanbanBoard
                 stages={pipeline.stages}
                 deals={filteredDeals}
@@ -1222,6 +1299,7 @@ export function PipelineBoardView({
                 onDeleteDeal={handleDelete}
                 onEditStage={handleEditStage}
                 onDeleteStage={handleDeleteStage}
+                compact={boardDensity === "compact" && pipeline.scope !== "cs"}
                 renderCard={
                   pipeline.scope === "cs"
                     ? (deal, ctx) => {
@@ -1268,6 +1346,7 @@ export function PipelineBoardView({
                     : undefined
                 }
               />
+              </div>
             )}
           </div>
         </>

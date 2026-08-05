@@ -79,6 +79,9 @@ interface DealCardProps {
   onDuplicate?: (id: string) => void
   onDelete?: (id: string) => void
   isDragging?: boolean
+  /** Modo compacto do board: card enxuto (nome, valor, dias, próxima
+   *  ação, menu) pra caberem mais colunas na tela — sem scale/zoom. */
+  compact?: boolean
 }
 
 // ─── Formatters ─────────────────────────────────────────────────
@@ -150,6 +153,7 @@ export function DealCard({
   onDuplicate,
   onDelete,
   isDragging,
+  compact = false,
 }: DealCardProps) {
   const days = daysSince(deal.last_stage_changed_at)
   const slaDays = slaHours ? Math.ceil(slaHours / 24) : null
@@ -360,10 +364,10 @@ export function DealCard({
         background: "var(--crm-gray-0)",
         border: "1px solid var(--crm-border)",
         borderRadius: "var(--crm-radius-xl)",
-        padding: "14px 14px 12px",
+        padding: compact ? "9px 11px 8px" : "14px 14px 12px",
         display: "flex",
         flexDirection: "column",
-        gap: 12,
+        gap: compact ? 6 : 12,
         fontFamily: "var(--crm-font-sans)",
         boxShadow: isDragging
           ? "var(--crm-shadow-lg)"
@@ -389,26 +393,29 @@ export function DealCard({
 
       {/* ── Header: avatar + nome + #id + menu ── */}
       <div className="flex items-start gap-2.5">
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-          style={{
-            background: avatarColors.bg,
-            color: avatarColors.fg,
-            fontSize: 13,
-            fontWeight: 600,
-            letterSpacing: "-0.01em",
-            fontFamily: "var(--crm-font-sans)",
-          }}
-          aria-hidden
-        >
-          {avatarInitials || "?"}
-        </div>
+        {!compact && (
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+            style={{
+              background: avatarColors.bg,
+              color: avatarColors.fg,
+              fontSize: 13,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              fontFamily: "var(--crm-font-sans)",
+            }}
+            aria-hidden
+          >
+            {avatarInitials || "?"}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-1.5">
             <span
               className="truncate"
+              title={compact ? `${leadName} — ${subtitle}` : undefined}
               style={{
-                fontSize: 13.5,
+                fontSize: compact ? 12.5 : 13.5,
                 fontWeight: 600,
                 color: "var(--crm-gray-900)",
                 lineHeight: 1.3,
@@ -416,29 +423,47 @@ export function DealCard({
             >
               {leadName}
             </span>
-            {deal.card_number != null && (
-              <span
-                className="crm-tnum shrink-0"
-                style={{
-                  fontSize: 11,
-                  color: "var(--crm-gray-400)",
-                }}
-              >
-                #{deal.card_number}
-              </span>
-            )}
+            <span className="flex shrink-0 items-center gap-1">
+              {/* No compacto o footer some — o estado vira um dot. */}
+              {compact && (isCritical || isWon || isLost) && (
+                <span
+                  aria-hidden
+                  title={isCritical ? "Crítico" : isWon ? "Ganho" : "Perdido"}
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 9999,
+                    background: isWon ? "var(--crm-pos)" : "var(--crm-neg)",
+                    display: "inline-block",
+                  }}
+                />
+              )}
+              {deal.card_number != null && (
+                <span
+                  className="crm-tnum"
+                  style={{
+                    fontSize: 11,
+                    color: "var(--crm-gray-400)",
+                  }}
+                >
+                  #{deal.card_number}
+                </span>
+              )}
+            </span>
           </div>
-          {/* Subtitle: empresa · segmento (sempre presente) */}
-          <div
-            className="truncate"
-            style={{
-              fontSize: 11.5,
-              color: "var(--crm-gray-500)",
-              marginTop: 1,
-            }}
-          >
-            {subtitle}
-          </div>
+          {/* Subtitle: empresa · segmento (no compacto vira title do nome) */}
+          {!compact && (
+            <div
+              className="truncate"
+              style={{
+                fontSize: 11.5,
+                color: "var(--crm-gray-500)",
+                marginTop: 1,
+              }}
+            >
+              {subtitle}
+            </div>
+          )}
         </div>
         {(onAddActivity || onMove || onTransfer || onWin || onLose || onDuplicate || onDelete) && (
           <DealActionsMenu
@@ -462,8 +487,8 @@ export function DealCard({
           fontFamily: "var(--crm-font-sans)",
         }}
       >
-        {/* Owner */}
-        {deal.owner && (
+        {/* Owner (fora do compacto — o nome do lead domina o card) */}
+        {!compact && deal.owner && (
           <div className="flex items-center gap-2">
             <OwnerAvatar name={deal.owner.name} size={18} />
             <span
@@ -474,14 +499,17 @@ export function DealCard({
             </span>
           </div>
         )}
-        {/* Value (sempre presente — usa "—" se vazio) */}
+        {/* Value (sempre presente — usa "—" se vazio). No compacto a
+            linha absorve o "há Xd" e dispensa o ícone. */}
         <div className="flex items-center gap-2">
-          <span
-            className="flex w-[18px] justify-center shrink-0"
-            style={{ color: "var(--crm-gray-400)" }}
-          >
-            <CircleDollarSign className="h-3.5 w-3.5" />
-          </span>
+          {!compact && (
+            <span
+              className="flex w-[18px] justify-center shrink-0"
+              style={{ color: "var(--crm-gray-400)" }}
+            >
+              <CircleDollarSign className="h-3.5 w-3.5" />
+            </span>
+          )}
           <span
             className="crm-tnum truncate"
             style={{
@@ -496,31 +524,38 @@ export function DealCard({
               style={{ color: "var(--crm-gray-500)", fontWeight: 400 }}
             >
               /mês
-              {plan ? ` · ${plan}` : ""}
+              {!compact && plan ? ` · ${plan}` : ""}
             </span>
+            {compact && (
+              <span style={{ color: "var(--crm-gray-400)", fontWeight: 400 }}>
+                {" "}· {days > 0 ? `${days}d` : "hoje"}
+              </span>
+            )}
           </span>
         </div>
-        {/* Created (sempre presente) */}
-        <div className="flex items-center gap-2">
-          <span
-            className="flex w-[18px] justify-center shrink-0"
-            style={{ color: "var(--crm-gray-400)" }}
-          >
-            <Calendar className="h-3.5 w-3.5" />
-          </span>
-          <span className="crm-tnum truncate" style={{ color: "var(--crm-gray-600)" }}>
-            {formatDateBR(deal.created_at) ?? "—"}
-            <span style={{ color: "var(--crm-gray-400)" }}>
-              {" "}· {days > 0 ? `há ${days}d na etapa` : "hoje"}
+        {/* Created (fora do compacto — o "há Xd" já foi pra linha do valor) */}
+        {!compact && (
+          <div className="flex items-center gap-2">
+            <span
+              className="flex w-[18px] justify-center shrink-0"
+              style={{ color: "var(--crm-gray-400)" }}
+            >
+              <Calendar className="h-3.5 w-3.5" />
             </span>
-          </span>
-        </div>
+            <span className="crm-tnum truncate" style={{ color: "var(--crm-gray-600)" }}>
+              {formatDateBR(deal.created_at) ?? "—"}
+              <span style={{ color: "var(--crm-gray-400)" }}>
+                {" "}· {days > 0 ? `há ${days}d na etapa` : "hoje"}
+              </span>
+            </span>
+          </div>
+        )}
         {/* Next step (activity row) */}
         {nextStep && NextStepIcon && (
           <div
             className="flex items-center gap-1.5"
             style={{
-              padding: "5px 8px",
+              padding: compact ? "3px 6px" : "5px 8px",
               borderRadius: 6,
               background: toneStyles[nextStep.tone].bg,
               border: `1px solid ${toneStyles[nextStep.tone].border}`,
@@ -533,7 +568,7 @@ export function DealCard({
             <NextStepIcon className="h-3 w-3 shrink-0" />
             <span
               className="flex-1 truncate"
-              style={{ fontSize: 11.5 }}
+              style={{ fontSize: compact ? 11 : 11.5 }}
             >
               {nextStep.label}
             </span>
@@ -549,7 +584,9 @@ export function DealCard({
         )}
       </div>
 
-      {/* ── Footer: source + critico + buttons ── */}
+      {/* ── Footer: source + critico + buttons (fora do compacto — o
+          estado vira dot no header; WhatsApp/email ficam no drawer) ── */}
+      {!compact && (
       <div
         className="flex items-center justify-between gap-1.5"
         style={{
@@ -619,6 +656,7 @@ export function DealCard({
           )}
         </div>
       </div>
+      )}
 
       {/* Stage color visual hint REMOVIDO — nao existe no prototipo V2 */}
     </div>
