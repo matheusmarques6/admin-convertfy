@@ -511,7 +511,7 @@ export function DealDrawer({
               )}
 
               <div
-                className="flex-1 overflow-y-auto"
+                className="flex-1 overflow-y-auto overflow-x-hidden"
                 style={{ padding: "22px 22px 100px", minHeight: 0 }}
               >
                 {/* Hero numbers row */}
@@ -1675,6 +1675,8 @@ function InteractionRow({
             color: "var(--crm-gray-600)",
             marginTop: 2,
             lineHeight: 1.45,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
         >
           {activity.content}
@@ -1899,7 +1901,10 @@ function ContactAndFields({
   return (
     <div
       className="grid gap-3.5"
-      style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 18 }}
+      // minmax(0,1fr): grid item tem min-width:auto por padrão — uma URL
+      // sem espaços no contato estourava a coluna e deslocava o drawer
+      // inteiro (scroll-x fantasma).
+      style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", marginBottom: 18 }}
     >
       {/* Contato */}
       <div
@@ -1908,6 +1913,7 @@ function ContactAndFields({
           border: "1px solid var(--crm-border)",
           borderRadius: 10,
           padding: "16px 18px",
+          minWidth: 0,
         }}
       >
         <h3
@@ -1974,6 +1980,7 @@ function ContactAndFields({
           border: "1px solid var(--crm-border)",
           borderRadius: 10,
           padding: "16px 18px",
+          minWidth: 0,
         }}
       >
         <h3
@@ -2102,7 +2109,7 @@ function OriginBox({
         className="grid gap-x-6 gap-y-2"
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", marginBottom: rows.length > 0 ? 12 : 0 }}
       >
-        <div className="flex flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-0.5">
           <span
             style={{
               fontSize: 10,
@@ -2130,7 +2137,7 @@ function OriginBox({
           )}
         </div>
         {(onPatch || deal.source_referrer) && (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex min-w-0 flex-col gap-0.5">
             <span
               style={{
                 fontSize: 10,
@@ -2169,7 +2176,7 @@ function OriginBox({
           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
         >
           {rows.map((r) => (
-            <div key={r.label} className="flex flex-col gap-0.5" title={r.title}>
+            <div key={r.label} className="flex min-w-0 flex-col gap-0.5" title={r.title}>
               <span
                 style={{
                   fontSize: 10,
@@ -2186,6 +2193,7 @@ function OriginBox({
                   fontSize: 12.5,
                   color: "var(--crm-gray-800)",
                   overflowWrap: "anywhere",
+                  wordBreak: "break-word",
                 }}
               >
                 {r.value}
@@ -2233,7 +2241,8 @@ function ContactRow({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2"
+        className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden"
+        title={label}
         style={{ fontSize: 12, color: "var(--crm-gray-700)" }}
       >
         {inner}
@@ -2242,7 +2251,8 @@ function ContactRow({
   }
   return (
     <div
-      className="flex items-center gap-2"
+      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden"
+      title={label}
       style={{ fontSize: 12, color: "var(--crm-gray-700)" }}
     >
       {inner}

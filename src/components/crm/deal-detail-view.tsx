@@ -560,7 +560,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
       <div className="flex flex-col md:flex-row md:flex-1 md:min-h-0 md:overflow-hidden">
         {/* ─── RAIL ESQUERDO ─────────────────────────────────── */}
         <aside
-          className="flex flex-col gap-4 w-full md:w-[320px] md:shrink-0 md:overflow-y-auto border-b md:border-b-0 md:border-r"
+          className="flex flex-col gap-4 w-full md:w-[320px] md:shrink-0 md:overflow-y-auto overflow-x-hidden border-b md:border-b-0 md:border-r"
           style={{
             padding: "20px 20px 32px",
             background: "var(--crm-gray-0)",
@@ -1045,7 +1045,7 @@ export function DealDetailView({ dealId }: { dealId: string }) {
           </div>
 
           {/* Content */}
-          <div className="md:flex-1 md:overflow-y-auto" style={{ padding: "20px 24px" }}>
+          <div className="md:flex-1 md:overflow-y-auto overflow-x-hidden" style={{ padding: "20px 24px" }}>
             {activeTab === "historico" && (
               <HistoricoTab
                 activities={filteredActivities}

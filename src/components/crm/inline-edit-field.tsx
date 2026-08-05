@@ -196,6 +196,11 @@ export function InlineEditField(props: InlineEditFieldProps) {
           style={{
             color: isEmpty ? "var(--crm-gray-400)" : undefined,
             fontStyle: isEmpty ? "italic" : undefined,
+            // Valores sem espaço (URLs, tokens de UTM) precisam quebrar —
+            // sem isto o display estoura o container e desloca o drawer.
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+            minWidth: 0,
             ...displayStyle,
           }}
           className="truncate"
