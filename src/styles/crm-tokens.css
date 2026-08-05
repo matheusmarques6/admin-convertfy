@@ -191,10 +191,10 @@
  */
 @media (min-width: 769px) {
   .crm-board-compact {
-    --crm-column-kanban-width: 224px;
-    --crm-card-kanban-width: 210px;
-    --crm-kanban-gap: 10px;
-    --crm-kanban-pad-x: 16px;
+    --crm-column-kanban-width: 216px;
+    --crm-card-kanban-width: 202px;
+    --crm-kanban-gap: 8px;
+    --crm-kanban-pad-x: 12px;
   }
 }
 

@@ -201,6 +201,14 @@ export function PipelineBoardView({
       setBoardDensity(next)
       if (typeof window !== "undefined") {
         window.localStorage.setItem(`crm:board-density:${pipelineId}`, next)
+        // Compacto = máximo de colunas: colapsa a sidebar de pipelines
+        // junto (~236px = mais uma coluna). Voltar pro Confortável NÃO
+        // reexpande — reabrir é escolha de quem usa (botão da sidebar).
+        if (next === "compact") {
+          window.dispatchEvent(
+            new CustomEvent("crm:pipelines-sidebar-set", { detail: { collapsed: true } }),
+          )
+        }
       }
     },
     [pipelineId],

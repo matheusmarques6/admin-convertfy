@@ -80,6 +80,22 @@ export function PipelinesNavSidebar({ scope }: PipelinesNavSidebarProps) {
     }
   }, [])
 
+  // O board pode pedir o colapso (modo Compacto → "tela cheia" de
+  // colunas). Evento com detail.collapsed; persiste igual ao toggle.
+  useEffect(() => {
+    const onSet = (e: Event) => {
+      const want = Boolean((e as CustomEvent<{ collapsed?: boolean }>).detail?.collapsed)
+      setCollapsed(want)
+      try {
+        localStorage.setItem(COLLAPSED_KEY, want ? "1" : "0")
+      } catch {
+        /* noop */
+      }
+    }
+    window.addEventListener("crm:pipelines-sidebar-set", onSet)
+    return () => window.removeEventListener("crm:pipelines-sidebar-set", onSet)
+  }, [])
+
   const { data, isLoading, mutate } = useSWR<{ data?: { pipelines: PipelineSummary[] }; pipelines?: PipelineSummary[] }>(
     `/api/crm/pipelines?scope=${scope}`,
     fetcher,
