@@ -6,7 +6,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { uuid } from "@/lib/validations/uuid"
 import { logger } from "@/lib/logger"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
@@ -201,19 +201,31 @@ export async function POST(request: NextRequest) {
 
     const nextPos = (maxPos?.position ?? 0) + 10
 
-    const { data: deal, error } = await admin
+    const dealPayload: Record<string, unknown> = {
+      ...parsed,
+      value: effectiveValue,
+      owner_id: ownerId,
+      position: nextPos,
+      status: "open",
+    }
+    let { data: deal, error } = await admin
       .from("deals")
-      .insert({
-        ...parsed,
-        value: effectiveValue,
-        owner_id: ownerId,
-        position: nextPos,
-        status: "open",
-      })
+      .insert(dealPayload)
       .select("id")
       .single()
 
+    // source_type/source_referrer vêm da migration 20261070 — sem ela o
+    // insert inteiro morreria em 42703 e criar negócio quebraria.
+    if (error && /source_type|source_referrer/i.test(error.message ?? "")) {
+      delete dealPayload.source_type
+      delete dealPayload.source_referrer
+      const retry = await admin.from("deals").insert(dealPayload).select("id").single()
+      deal = retry.data
+      error = retry.error
+    }
+
     if (error) throw error
+    if (!deal) throw new AppError("Falha ao criar o negócio", 500)
 
     // Itens de produto — fail-open: se a migration 20261067 não rodou,
     // o deal já existe e a seção de produtos avisa; não desfaz a criação.

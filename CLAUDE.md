@@ -1313,6 +1313,18 @@ do by_owner do painel — zero rota nova; pré-preenche meta vigente do
 escopo); performance devolve `individual_goals`; ranking mostra "% da
 meta" com barra (verde >= 100%).
 
+**Origem editável (migration 20261070)**: `deals.source_type` e
+`deals.source_referrer` materializados (o NewDealDialog já enviava e o
+dado se PERDIA — não havia coluna nem exibição; era o "veio do Luan e
+não do Carlos, não consigo editar"). Vocabulário único em
+`crm-sources.ts` (`DEAL_SOURCE_TYPES`, `sourceLabel`,
+`sourceSelectOptions` — o dialog importa de lá). OriginBox do drawer
+edita a FONTE (select canônico + valor legado preservado no topo da
+lista) e o "Indicado por" (texto livre) via PATCH; UTMs seguem
+read-only. GET do deal seleciona as colunas com retry sem elas; PATCH e
+POST degradam com 422 acionável/strip quando a migration não rodou (o
+POST com `...parsed` MORRIA em 42703 e criar negócio quebrava).
+
 **Duplicar negócio**: POST `/deals/[id]/duplicate` — mesma etapa,
 sufixo "(cópia)", copia produtos, nasce open com owner=quem clicou;
 menu do card. **Merge de negócios**: `/api/crm/deals/duplicates`

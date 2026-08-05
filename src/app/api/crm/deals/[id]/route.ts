@@ -25,12 +25,13 @@ export async function GET(
     await requireAuth(sb)
     const admin = createAdminClient()
 
-    const { data: deal, error } = await admin
-      .from("deals")
-      .select(`
+    // String com tipo largo (não literal): o parser de tipos do
+    // supabase-js explode com select dinâmico deste tamanho.
+    const dealCols = (withSourceCols: boolean): string => `
         id, pipeline_id, stage_id, client_id, store_id, lead_id,
         title, value, currency, probability, expected_close_date,
         status, source, utm, tags, lost_reason, won_reason,
+        ${withSourceCols ? "source_type, source_referrer," : ""}
         owner_id, referrer_partner_id, position, last_stage_changed_at,
         won_at, lost_at, custom_fields, notes, created_at, updated_at,
         owner:profiles!deals_owner_id_fkey (id, name, avatar_url, email),
@@ -42,9 +43,20 @@ export async function GET(
           id, name, email, phone, company, source, status, utm, address,
           ai_qualification_score, ai_qualification_reason
         )
-      `)
+      `
+
+    // source_type/source_referrer vêm da migration 20261070 — sem ela,
+    // refaz o select sem as colunas (o drawer degrada pra só `source`).
+    let { data: deal, error } = await admin
+      .from("deals")
+      .select(dealCols(true))
       .eq("id", id)
       .single()
+    if (error && /source_type|source_referrer|42703/i.test(`${error.code} ${error.message}`)) {
+      const retry = await admin.from("deals").select(dealCols(false)).eq("id", id).single()
+      deal = retry.data
+      error = retry.error
+    }
 
     if (error || !deal) {
       // Log detalhado pra distinguir 3 cenarios:
@@ -106,6 +118,8 @@ const patchSchema = z.object({
   lost_reason: z.string().nullable().optional(),
   won_reason: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
+  source_type: z.string().max(60).nullable().optional(),
+  source_referrer: z.string().max(160).nullable().optional(),
   tags: z.array(z.string()).optional(),
   owner_id: uuid().optional(),
   client_id: uuid().nullable().optional(),
@@ -137,7 +151,21 @@ export async function PATCH(
       .select("id, status")
       .single()
 
-    if (error) throw error
+    if (error) {
+      // Editar origem detalhada sem a migration 20261070: descartar a
+      // edição em silêncio seria pior — erro acionável no campo.
+      if (
+        /source_type|source_referrer/i.test(error.message ?? "") &&
+        ("source_type" in parsed || "source_referrer" in parsed)
+      ) {
+        throw new AppError(
+          "A origem detalhada precisa da migration 20261070 no banco — rode-a no Supabase e tente de novo.",
+          422,
+          "validation-error",
+        )
+      }
+      throw error
+    }
 
     return successResponse(request, { deal: data })
   } catch (error) {

@@ -7,6 +7,7 @@ import useSWR from "swr"
 import { useAuthStore } from "@/lib/store"
 import { TagsSelector } from "./tags-selector"
 import { ProductPicker } from "./deal-products-section"
+import { DEAL_SOURCE_TYPES } from "@/lib/services/crm-sources"
 import {
   centsToNumber,
   dealTotals,
@@ -24,27 +25,15 @@ interface ProductRow {
   unit_price_cents: string
   discount_pct: string
   billing_type: string
+  /** Snapshot do ciclo da recorrência (vem do catálogo; null = mensal). */
+  recurring_interval: string | null
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-// Tipos de origem padronizados pra metrificacao. 'indicacao' destrava o
-// campo 'Quem indicou' pra rastrear quem trouxe o lead — base de relatorio
-// 'Top indicadores'.
-const SOURCE_TYPES: Array<{ value: string; label: string; icon: string }> = [
-  { value: "indicacao", label: "Indicação", icon: "🤝" },
-  { value: "meta_ads", label: "Meta Ads", icon: "📘" },
-  { value: "google_ads", label: "Google Ads", icon: "🔎" },
-  { value: "instagram", label: "Instagram", icon: "📸" },
-  { value: "tiktok", label: "TikTok", icon: "🎵" },
-  { value: "youtube", label: "YouTube", icon: "▶️" },
-  { value: "linkedin", label: "LinkedIn", icon: "💼" },
-  { value: "site", label: "Site / Inbound", icon: "🌐" },
-  { value: "evento", label: "Evento", icon: "🎤" },
-  { value: "outbound", label: "Outbound", icon: "📞" },
-  { value: "parceiro", label: "Parceiro", icon: "🤝" },
-  { value: "outro", label: "Outro", icon: "✨" },
-]
+// Tipos de origem padronizados pra metrificacao — fonte única em
+// crm-sources.ts (o drawer edita a origem com o MESMO vocabulário).
+const SOURCE_TYPES = DEAL_SOURCE_TYPES
 
 interface NewDealDialogProps {
   open: boolean
@@ -229,6 +218,7 @@ export function NewDealDialog({
             unit_price: centsToNumber(r.unit_price_cents),
             discount_pct: parseBRNumber(r.discount_pct) || 0,
             billing_type: r.billing_type === "recurring" ? "recurring" : "one_time",
+            recurring_interval: r.billing_type === "recurring" ? r.recurring_interval : null,
           }))
       }
       // Phone vai em custom_fields.contact_phone (deals nao tem coluna
@@ -512,6 +502,7 @@ export function NewDealDialog({
                           unit_price_cents: numberToCents(p.unit_price),
                           discount_pct: "",
                           billing_type: p.billing_type,
+                          recurring_interval: p.recurring_interval,
                         },
                       ])
                     }

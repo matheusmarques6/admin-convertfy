@@ -39,6 +39,7 @@ import {
 import { LostReasonDialog } from "./lost-reason-dialog"
 import { MoveDealPipelineDialog } from "./move-deal-pipeline-dialog"
 import { InlineEditField } from "./inline-edit-field"
+import { sourceLabel, sourceSelectOptions } from "@/lib/services/crm-sources"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import type { DealFile } from "@/types/crm"
 
@@ -111,6 +112,8 @@ interface DealDetailResponse {
     probability: number | null
     status: string
     source: string | null
+    source_type?: string | null
+    source_referrer?: string | null
     utm?: UtmData | null
     tags: string[] | null
     notes: string | null
@@ -804,7 +807,7 @@ function DrawerHeader({
                 marginTop: 1,
               }}
             >
-              {deal.source}
+              {sourceLabel(deal.source)}
             </div>
           )}
           {isCritical && deal.status === "open" && (
@@ -1871,11 +1874,11 @@ function ContactAndFields({
   deal,
   apiDeal,
   onSaved,
+  onPatch,
 }: {
   deal: DealDetailResponse["deal"]
   apiDeal?: DealDetailResponse["deal"]
   onSaved: () => void
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onPatch?: (update: Record<string, unknown>) => Promise<void>
 }) {
   const email = deal.client?.email ?? deal.lead?.email ?? null
@@ -2000,8 +2003,8 @@ function ContactAndFields({
         )}
       </div>
 
-      {/* Origem (UTM) */}
-      <OriginBox deal={deal} />
+      {/* Origem (fonte editável + quem indicou + UTMs) */}
+      <OriginBox deal={deal} onPatch={onPatch} />
     </div>
   )
 }
@@ -2029,18 +2032,18 @@ function resolveUtm(deal: DealDetailResponse["deal"]): UtmData | null {
   return null
 }
 
-function formatDealSource(source: string): string {
-  if (source.startsWith("form:")) {
-    return `Formulário · ${source.slice("form:".length)}`
-  }
-  return source
-}
-
 function truncateMiddle(v: string, max: number): string {
   return v.length > max ? `${v.slice(0, max)}…` : v
 }
 
-function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
+function OriginBox({
+  deal,
+  onPatch,
+}: {
+  deal: DealDetailResponse["deal"]
+  /** Presente = origem EDITÁVEL ("o lead veio do Luan, não do Carlos"). */
+  onPatch?: (update: Record<string, unknown>) => Promise<void>
+}) {
   const utm = resolveUtm(deal)
 
   const rows: Array<{ label: string; value: string; title?: string }> = []
@@ -2092,6 +2095,74 @@ function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
       >
         Origem
       </h3>
+
+      {/* Fonte + quem indicou — editáveis (a origem errada não pode
+          ficar gravada pra sempre: "veio do Luan, não do Carlos"). */}
+      <div
+        className="grid gap-x-6 gap-y-2"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", marginBottom: rows.length > 0 ? 12 : 0 }}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "var(--crm-gray-500)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Origem do negócio
+          </span>
+          {onPatch ? (
+            <InlineEditField
+              type="select"
+              value={deal.source ?? ""}
+              display={sourceLabel(deal.source)}
+              options={sourceSelectOptions(deal.source)}
+              onSave={(v) => onPatch({ source: v || null })}
+              displayStyle={{ fontSize: 12.5, color: "var(--crm-gray-800)" }}
+            />
+          ) : (
+            <span style={{ fontSize: 12.5, color: "var(--crm-gray-800)" }}>
+              {sourceLabel(deal.source)}
+            </span>
+          )}
+        </div>
+        {(onPatch || deal.source_referrer) && (
+          <div className="flex flex-col gap-0.5">
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "var(--crm-gray-500)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Indicado por
+            </span>
+            {onPatch ? (
+              <InlineEditField
+                type="text"
+                value={deal.source_referrer ?? ""}
+                display={deal.source_referrer || "—"}
+                placeholder="ex.: Luan"
+                onSave={(v) => onPatch({ source_referrer: v || null })}
+                displayStyle={{
+                  fontSize: 12.5,
+                  color: deal.source_referrer ? "var(--crm-gray-800)" : "var(--crm-gray-400)",
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 12.5, color: "var(--crm-gray-800)" }}>
+                {deal.source_referrer}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {rows.length > 0 ? (
         <div
           className="grid gap-x-6 gap-y-2"
@@ -2123,17 +2194,10 @@ function OriginBox({ deal }: { deal: DealDetailResponse["deal"] }) {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-1">
-          {deal.source && (
-            <span style={{ fontSize: 12.5, color: "var(--crm-gray-800)" }}>
-              {formatDealSource(deal.source)}
-            </span>
-          )}
-          <span style={{ fontSize: 12, color: "var(--crm-gray-400)" }}>
-            Sem UTMs registradas
-            {referrerOnly ? ` · navegou de ${truncateMiddle(referrerOnly, 40)}` : ""}
-          </span>
-        </div>
+        <span style={{ fontSize: 12, color: "var(--crm-gray-400)", display: "block", marginTop: 8 }}>
+          Sem UTMs registradas
+          {referrerOnly ? ` · navegou de ${truncateMiddle(referrerOnly, 40)}` : ""}
+        </span>
       )}
     </div>
   )
