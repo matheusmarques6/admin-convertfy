@@ -24,6 +24,7 @@ type Route = { match: (url: string) => boolean; status: number; body: unknown }
 
 let routes: Route[] = []
 let calls: string[] = []
+let authHeaders: string[] = []
 
 function mockGraph(list: Route[]) {
   routes = list
@@ -31,10 +32,12 @@ function mockGraph(list: Route[]) {
 
 beforeEach(() => {
   calls = []
+  authHeaders = []
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
       calls.push(url)
+      authHeaders.push(init?.headers?.Authorization ?? "")
       const route = routes.find((r) => r.match(url))
       if (!route) throw new Error(`rota não mockada: ${url}`)
       return {
@@ -283,6 +286,37 @@ describe("fetchInstagramConversations", () => {
     expect(calls[0]).toContain("/17841400000000009/conversations")
   })
 
+  it("caminho da Página usa o TOKEN DE PÁGINA (o do canal levava 190)", async () => {
+    mockGraph([
+      {
+        match: (u) => u.includes("/17841400000000009/conversations"),
+        status: 200,
+        body: conversationsBody,
+      },
+    ])
+    const res = await fetchInstagramConversations(config, {
+      pageId: "17841400000000009",
+      pageToken: "PAGE-token-abc",
+    })
+    expect(res.ok).toBe(true)
+    expect(authHeaders[0]).toBe("Bearer PAGE-token-abc")
+  })
+
+  it("190 'must be called with a Page Access Token' NÃO vira 'expirado'", async () => {
+    mockGraph([
+      {
+        match: () => true,
+        status: 400,
+        body: graphError(190, "(#190) This method must be called with a Page Access Token"),
+      },
+    ])
+    const res = await fetchInstagramConversations(config)
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error.message).not.toContain("expirado")
+    expect(res.error.message).toContain("token de PÁGINA")
+  })
+
   it("Página nega (#3, o erro do incidente) → fallback pro IG User", async () => {
     mockGraph([
       {
@@ -322,7 +356,7 @@ describe("fetchInstagramConversations", () => {
 })
 
 describe("discoverPageForIgUser", () => {
-  it("acha a Página cujo instagram_business_account casa com o canal", async () => {
+  it("acha a Página do canal e traz o TOKEN de Página junto", async () => {
     mockGraph([
       {
         match: (u) => u.includes("/me/accounts"),
@@ -333,13 +367,19 @@ describe("discoverPageForIgUser", () => {
             {
               id: "17841400000000009",
               name: "Convertfy",
+              access_token: "PAGE-token-abc",
               instagram_business_account: { id: "17841400000000001" },
             },
           ],
         },
       },
     ])
-    expect(await discoverPageForIgUser(config)).toBe("17841400000000009")
+    expect(await discoverPageForIgUser(config)).toEqual({
+      id: "17841400000000009",
+      access_token: "PAGE-token-abc",
+    })
+    // O request pede o access_token da Página explicitamente.
+    expect(calls[0]).toContain("access_token")
   })
 
   it("sem Página correspondente devolve null", async () => {

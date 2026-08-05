@@ -139,6 +139,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       limit: body.limit,
       messagesPerConversation: body.messages_per_conversation,
       pageId: healed.pageId,
+      pageToken: healed.pageToken,
     })
     if (!convRes.ok) {
       // A mensagem do diagnóstico (ID de Página sem IG, token sem

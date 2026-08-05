@@ -116,12 +116,16 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
       nextExternalId = resolution.resolved_id
       update.external_id = nextExternalId
-      update.config = {
+      const nextConfig: Record<string, unknown> = {
         ...rawConfig,
         instagram_business_account_id: nextExternalId,
         access_token: candidateToken,
         ...(resolution.page_id ? { facebook_page_id: resolution.page_id } : {}),
       }
+      // Token novo invalida o token de Página derivado do antigo — sai
+      // do config e a próxima visita ao painel redescobre.
+      if (body.instagram.access_token) delete nextConfig.facebook_page_token
+      update.config = nextConfig
     }
 
     // Guard de roteamento do webhook: nunca deixar DOIS canais ativos

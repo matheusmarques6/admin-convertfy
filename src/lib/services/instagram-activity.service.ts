@@ -37,11 +37,22 @@ interface GraphErrorBody {
 
 function friendlyError(status: number, body: GraphErrorBody): IgApiError {
   const code = body.error?.code?.toString() || status.toString()
+  const rawMsg = body.error?.message || ""
   if (body.error?.code === 190) {
+    // 190 NÃO é sempre "expirou": a Meta usa o mesmo código pra
+    // "esta chamada exige um Page Access Token" (aconteceu com token de
+    // System User válido — perfil/posts funcionavam e a mensagem
+    // "expirado" era mentira). Distinguir e SEMPRE anexar o texto cru.
+    if (/page access token/i.test(rawMsg)) {
+      return {
+        code,
+        message:
+          "Esta chamada exige um token de PÁGINA (o token do canal é de usuário/System User — válido, mas do tipo errado pra cá). O sistema obtém o token da Página sozinho via /me/accounts; garanta que o token tem a permissão pages_show_list e a Página nos ativos do System User.",
+      }
+    }
     return {
       code,
-      message:
-        "Token de acesso expirado ou inválido — reconecte o canal em Canais com um token novo (System User não expira).",
+      message: `A Meta recusou o token nesta chamada (190${body.error?.error_subcode ? `/${body.error.error_subcode}` : ""}): "${rawMsg}". Se o resto do painel funciona, o token está válido — o problema é específico desta chamada; caso nada funcione, reconecte o canal com um token novo de System User.`,
     }
   }
   // "(#100) Tried accessing nonexisting field": ou o ID salvo não é o
@@ -152,24 +163,37 @@ export async function resolveInstagramAccount(
 
 type AdminLike = ReturnType<typeof createAdminClient>
 
+export interface DiscoveredPage {
+  id: string
+  /** Page Access Token — a Conversations API EXIGE token de Página
+   *  (token de System User válido devolve 190 "must be called with a
+   *  Page Access Token" nessa edge). Derivado de token longo, não expira. */
+  access_token: string | null
+}
+
 /**
  * Descobre a Página do Facebook vinculada a um IG Business Account a
  * partir do próprio token (`/me/accounts` lista as Páginas concedidas
- * ao System User). A Conversations API com login via Facebook é servida
- * pela PÁGINA — sem o page_id, a importação de conversas não tem o
- * caminho canônico.
+ * ao System User, COM o token de cada Página). A Conversations API com
+ * login via Facebook é servida pela PÁGINA com token de Página — sem
+ * isso a importação de conversas não tem o caminho canônico.
  */
 export async function discoverPageForIgUser(
   config: InstagramChannelConfig,
-): Promise<string | null> {
+): Promise<DiscoveredPage | null> {
   const res = await graphGet<{
-    data?: Array<{ id?: string; instagram_business_account?: { id?: string } }>
-  }>(config, `/me/accounts?fields=id,name,instagram_business_account&limit=100`)
+    data?: Array<{
+      id?: string
+      access_token?: string
+      instagram_business_account?: { id?: string }
+    }>
+  }>(config, `/me/accounts?fields=id,name,access_token,instagram_business_account&limit=100`)
   if (!res.ok) return null
   const match = (res.data.data ?? []).find(
     (p) => p.instagram_business_account?.id === config.instagram_business_account_id,
   )
-  return match?.id ?? null
+  if (!match?.id) return null
+  return { id: match.id, access_token: match.access_token ?? null }
 }
 
 /**
@@ -187,40 +211,56 @@ export async function resolveAndHealInstagramChannel(
   config: InstagramChannelConfig
   rawConfig: Record<string, unknown>
   pageId: string | null
+  /** Page Access Token (a Conversations API exige token de PÁGINA). */
+  pageToken: string | null
   resolution: InstagramAccountResolution
 }> {
   const resolution = await resolveInstagramAccount(config)
   const knownPageId =
     resolution.page_id ??
     (typeof rawConfig.facebook_page_id === "string" ? rawConfig.facebook_page_id : null)
+  const knownPageToken =
+    typeof rawConfig.facebook_page_token === "string" ? rawConfig.facebook_page_token : null
 
   if (!resolution.ok || !resolution.corrected) {
     // Canal conectado direto com o IG ID certo nunca passou pela cura —
-    // e ficou SEM a Página salva, que é o caminho canônico da
-    // Conversations API. Descobre uma vez pelo token e persiste.
-    if (resolution.ok && !knownPageId) {
+    // e ficou SEM a Página (id + token de Página) salva, que é o
+    // caminho canônico da Conversations API. Descobre pelo token do
+    // canal e persiste. Re-roda também quando só falta o page TOKEN.
+    if (resolution.ok && (!knownPageId || !knownPageToken)) {
       const discovered = await discoverPageForIgUser(config)
       if (discovered) {
-        const raw = { ...rawConfig, facebook_page_id: discovered }
+        const raw: Record<string, unknown> = {
+          ...rawConfig,
+          facebook_page_id: discovered.id,
+          ...(discovered.access_token ? { facebook_page_token: discovered.access_token } : {}),
+        }
         const { error } = await admin
           .from("crm_channels")
           .update({ config: raw })
           .eq("id", channel.id)
         if (error) {
-          log.warn("[IgActivity] page_id descoberto mas não persistido", {
+          log.warn("[IgActivity] página descoberta mas não persistida", {
             channelId: channel.id,
             error: error.message,
           })
         } else {
-          log.info("[IgActivity] facebook_page_id descoberto e salvo", {
+          log.info("[IgActivity] Página vinculada descoberta e salva", {
             channelId: channel.id,
-            pageId: discovered,
+            pageId: discovered.id,
+            pageToken: Boolean(discovered.access_token),
           })
         }
-        return { config, rawConfig: raw, pageId: discovered, resolution }
+        return {
+          config,
+          rawConfig: raw,
+          pageId: discovered.id,
+          pageToken: discovered.access_token ?? knownPageToken,
+          resolution,
+        }
       }
     }
-    return { config, rawConfig, pageId: knownPageId, resolution }
+    return { config, rawConfig, pageId: knownPageId, pageToken: knownPageToken, resolution }
   }
 
   const healedRaw: Record<string, unknown> = {
@@ -263,7 +303,15 @@ export async function resolveAndHealInstagramChannel(
     })
   }
 
-  return { config: healedConfig, rawConfig: healedRaw, pageId: resolution.page_id, resolution }
+  return {
+    config: healedConfig,
+    rawConfig: healedRaw,
+    pageId: resolution.page_id,
+    // O token de Página é descoberto na próxima visita (o canal recém-
+    // curado cai no caminho normal, que roda o discover).
+    pageToken: knownPageToken,
+    resolution,
+  }
 }
 
 // ─── Perfil ──────────────────────────────────────────────────────
@@ -427,24 +475,41 @@ interface RawConversation {
  */
 export async function fetchInstagramConversations(
   config: InstagramChannelConfig,
-  opts: { limit?: number; messagesPerConversation?: number; pageId?: string | null } = {},
+  opts: {
+    limit?: number
+    messagesPerConversation?: number
+    pageId?: string | null
+    /** Page Access Token — a edge da Página EXIGE token de Página
+     *  (token de System User válido leva 190 "must be called with a
+     *  Page Access Token", que soava como "expirado" e não era). */
+    pageToken?: string | null
+  } = {},
 ): Promise<IgResult<InstagramConversationInfo[]>> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50)
   const perConv = Math.min(Math.max(opts.messagesPerConversation ?? 25, 1), 100)
   const fields = `id,updated_time,participants,messages.limit(${perConv}){id,created_time,message,from}`
   const query = `conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`
 
-  // Com login via Facebook, a Conversations API é servida pela PÁGINA —
-  // chamar no IG User devolve "(#3) does not have the capability".
-  // Página primeiro quando conhecida; o outro caminho fica de fallback
-  // pra QUALQUER erro (o #3/#100 variam por configuração de app).
-  const paths = opts.pageId
-    ? [`/${opts.pageId}/${query}`, `/${config.instagram_business_account_id}/${query}`]
-    : [`/${config.instagram_business_account_id}/${query}`]
+  // Com login via Facebook, a Conversations API é servida pela PÁGINA,
+  // com token de Página. Página primeiro quando conhecida; o IG User
+  // fica de fallback pra QUALQUER erro (o #3/#100/190 variam por
+  // configuração de app).
+  const attempts: Array<{ path: string; cfg: InstagramChannelConfig }> = opts.pageId
+    ? [
+        {
+          path: `/${opts.pageId}/${query}`,
+          cfg: opts.pageToken ? { ...config, access_token: opts.pageToken } : config,
+        },
+        { path: `/${config.instagram_business_account_id}/${query}`, cfg: config },
+      ]
+    : [{ path: `/${config.instagram_business_account_id}/${query}`, cfg: config }]
 
-  let res = await graphGet<{ data?: RawConversation[] }>(config, paths[0])
-  if (!res.ok && paths[1]) {
-    const fallback = await graphGet<{ data?: RawConversation[] }>(config, paths[1])
+  let res = await graphGet<{ data?: RawConversation[] }>(attempts[0].cfg, attempts[0].path)
+  if (!res.ok && attempts[1]) {
+    const fallback = await graphGet<{ data?: RawConversation[] }>(
+      attempts[1].cfg,
+      attempts[1].path,
+    )
     if (fallback.ok) res = fallback
   }
   if (!res.ok) return res
