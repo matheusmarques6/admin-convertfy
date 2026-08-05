@@ -463,15 +463,35 @@ interface RawConversation {
   }
 }
 
+/** "Please reduce the amount of data" — a Meta recusa payload grande
+ *  (code 1, às vezes localizado em PT). A resposta certa é pedir MENOS
+ *  por request, nunca desistir de primeira. */
+function isTooMuchData(error: IgApiError): boolean {
+  return error.code === "1" || /reduce the amount of data|reduza a quantidade/i.test(error.message)
+}
+
+interface RawConvMessage {
+  id: string
+  created_time?: string
+  message?: string
+  from?: { id?: string; username?: string }
+}
+
 /**
  * Conversas recentes da conta com as últimas mensagens de cada uma.
  * A Conversations API só entrega o histórico RECENTE (janela da Meta) —
  * conversas antigas/arquivadas podem não vir. `from.id` é o mesmo IGSID
  * dos webhooks, então a importação casa com as threads existentes.
  *
- * Tenta primeiro no IG User; se a Meta negar a edge (#100) e a Página
- * for conhecida, refaz via `/{page-id}/conversations?platform=instagram`
- * — mesma resposta, exigência de permissão ligeiramente diferente.
+ * DUAS FASES, requests pequenos: (1) lista LEVE de conversas (sem
+ * mensagens aninhadas); (2) mensagens POR conversa, em lotes de 4.
+ * Pedir tudo aninhado num request só estourava o "(#1) reduce the
+ * amount of data" em contas com movimento. Cada fase reduz o próprio
+ * limit pela metade quando a Meta reclamar do volume.
+ *
+ * Caminho: com login via Facebook a edge é servida pela PÁGINA com
+ * token DE PÁGINA; Página primeiro quando conhecida, IG User de
+ * fallback pra qualquer erro (#3/#100/190 variam por app).
  */
 export async function fetchInstagramConversations(
   config: InstagramChannelConfig,
@@ -487,46 +507,95 @@ export async function fetchInstagramConversations(
 ): Promise<IgResult<InstagramConversationInfo[]>> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50)
   const perConv = Math.min(Math.max(opts.messagesPerConversation ?? 25, 1), 100)
-  const fields = `id,updated_time,participants,messages.limit(${perConv}){id,created_time,message,from}`
-  const query = `conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`
+  const listFields = encodeURIComponent("id,updated_time,participants")
+  const listQuery = (n: number) =>
+    `conversations?platform=instagram&fields=${listFields}&limit=${n}`
 
-  // Com login via Facebook, a Conversations API é servida pela PÁGINA,
-  // com token de Página. Página primeiro quando conhecida; o IG User
-  // fica de fallback pra QUALQUER erro (o #3/#100/190 variam por
-  // configuração de app).
-  const attempts: Array<{ path: string; cfg: InstagramChannelConfig }> = opts.pageId
+  const attempts: Array<{ base: string; cfg: InstagramChannelConfig }> = opts.pageId
     ? [
         {
-          path: `/${opts.pageId}/${query}`,
+          base: `/${opts.pageId}/`,
           cfg: opts.pageToken ? { ...config, access_token: opts.pageToken } : config,
         },
-        { path: `/${config.instagram_business_account_id}/${query}`, cfg: config },
+        { base: `/${config.instagram_business_account_id}/`, cfg: config },
       ]
-    : [{ path: `/${config.instagram_business_account_id}/${query}`, cfg: config }]
+    : [{ base: `/${config.instagram_business_account_id}/`, cfg: config }]
 
-  let res = await graphGet<{ data?: RawConversation[] }>(attempts[0].cfg, attempts[0].path)
-  if (!res.ok && attempts[1]) {
-    const fallback = await graphGet<{ data?: RawConversation[] }>(
-      attempts[1].cfg,
-      attempts[1].path,
+  // Fase 1 — lista leve, com retry reduzido no "(#1) too much data".
+  let winner: { cfg: InstagramChannelConfig; convs: RawConversation[] } | null = null
+  let firstError: IgApiError | null = null
+  for (const attempt of attempts) {
+    let res = await graphGet<{ data?: RawConversation[] }>(
+      attempt.cfg,
+      `${attempt.base}${listQuery(limit)}`,
     )
-    if (fallback.ok) res = fallback
+    if (!res.ok && isTooMuchData(res.error)) {
+      res = await graphGet<{ data?: RawConversation[] }>(
+        attempt.cfg,
+        `${attempt.base}${listQuery(Math.max(5, Math.floor(limit / 2)))}`,
+      )
+    }
+    if (res.ok) {
+      winner = { cfg: attempt.cfg, convs: res.data.data ?? [] }
+      break
+    }
+    if (!firstError) firstError = res.error
   }
-  if (!res.ok) return res
-  const conversations = (res.data.data ?? []).map((c): InstagramConversationInfo => ({
-    id: c.id,
-    updated_time: c.updated_time ?? null,
-    participants: (c.participants?.data ?? []).map((p) => ({
-      id: p.id,
-      username: p.username ?? p.name ?? null,
-    })),
-    messages: (c.messages?.data ?? []).map((m) => ({
-      id: m.id,
-      created_time: m.created_time ?? null,
-      message: m.message ?? null,
-      from_id: m.from?.id ?? null,
-      from_username: m.from?.username ?? null,
-    })),
-  }))
-  return { ok: true, data: conversations }
+  if (!winner) {
+    return {
+      ok: false,
+      error:
+        firstError ?? { code: "unknown", message: "Falha ao listar conversas na Graph API" },
+    }
+  }
+
+  // Fase 2 — mensagens por conversa (lotes de 4; conversa que falhar de
+  // vez entra sem mensagens em vez de derrubar a importação inteira).
+  const msgFields = encodeURIComponent("id,created_time,message,from")
+  const msgQuery = (convId: string, n: number) =>
+    `/${convId}/messages?fields=${msgFields}&limit=${n}`
+  const withIds = winner.convs.filter((c) => c.id)
+  const out: InstagramConversationInfo[] = []
+  for (let i = 0; i < withIds.length; i += 4) {
+    const batch = withIds.slice(i, i + 4)
+    const results = await Promise.all(
+      batch.map(async (conv) => {
+        let m = await graphGet<{ data?: RawConvMessage[] }>(
+          winner!.cfg,
+          msgQuery(conv.id, perConv),
+        )
+        if (!m.ok && isTooMuchData(m.error)) {
+          m = await graphGet<{ data?: RawConvMessage[] }>(
+            winner!.cfg,
+            msgQuery(conv.id, Math.max(5, Math.floor(perConv / 2))),
+          )
+        }
+        if (!m.ok) {
+          log.warn("[IgActivity] mensagens da conversa falharam (seguindo)", {
+            conversationId: conv.id,
+            error: m.error.message,
+          })
+        }
+        return { conv, msgs: m.ok ? (m.data.data ?? []) : [] }
+      }),
+    )
+    for (const { conv, msgs } of results) {
+      out.push({
+        id: conv.id,
+        updated_time: conv.updated_time ?? null,
+        participants: (conv.participants?.data ?? []).map((p) => ({
+          id: p.id,
+          username: p.username ?? p.name ?? null,
+        })),
+        messages: msgs.map((m) => ({
+          id: m.id,
+          created_time: m.created_time ?? null,
+          message: m.message ?? null,
+          from_id: m.from?.id ?? null,
+          from_username: m.from?.username ?? null,
+        })),
+      })
+    }
+  }
+  return { ok: true, data: out }
 }

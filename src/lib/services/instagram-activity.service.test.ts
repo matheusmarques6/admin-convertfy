@@ -225,8 +225,10 @@ describe("fetchInstagramRecentMedia", () => {
   })
 })
 
-describe("fetchInstagramConversations", () => {
-  const conversationsBody = {
+describe("fetchInstagramConversations (duas fases)", () => {
+  // Fase 1: lista LEVE (sem mensagens aninhadas). Fase 2: mensagens por
+  // conversa. Formatos reais da Meta.
+  const listBody = {
     data: [
       {
         id: "t_100",
@@ -237,69 +239,119 @@ describe("fetchInstagramConversations", () => {
             { id: "660000000000001", username: "lead_maria" },
           ],
         },
-        messages: {
-          data: [
-            {
-              id: "mid.123",
-              created_time: "2026-08-04T10:00:00+0000",
-              message: "Oi, quero saber do plano",
-              from: { id: "660000000000001", username: "lead_maria" },
-            },
-            {
-              id: "mid.124",
-              created_time: "2026-08-04T10:05:00+0000",
-              message: "Claro! Te explico",
-              from: { id: "17841400000000001", username: "convertfy" },
-            },
-          ],
-        },
+      },
+    ],
+  }
+  const messagesBody = {
+    data: [
+      {
+        id: "mid.123",
+        created_time: "2026-08-04T10:00:00+0000",
+        message: "Oi, quero saber do plano",
+        from: { id: "660000000000001", username: "lead_maria" },
+      },
+      {
+        id: "mid.124",
+        created_time: "2026-08-04T10:05:00+0000",
+        message: "Claro! Te explico",
+        from: { id: "17841400000000001", username: "convertfy" },
       },
     ],
   }
 
-  it("parseia conversas no IG User node (sem Página conhecida)", async () => {
+  it("lista leve + mensagens por conversa (sem Página conhecida)", async () => {
     mockGraph([
       {
         match: (u) => u.includes("/17841400000000001/conversations"),
         status: 200,
-        body: conversationsBody,
+        body: listBody,
       },
+      { match: (u) => u.includes("/t_100/messages"), status: 200, body: messagesBody },
     ])
     const res = await fetchInstagramConversations(config)
     expect(res.ok).toBe(true)
     if (!res.ok) return
     expect(res.data[0].participants).toHaveLength(2)
+    expect(res.data[0].messages).toHaveLength(2)
     expect(res.data[0].messages[0].from_id).toBe("660000000000001")
+    // A lista NÃO pede mensagens aninhadas (era o que estourava o #1).
+    expect(calls[0]).not.toContain("messages.limit")
+    expect(calls).toHaveLength(2)
   })
 
-  it("com Página conhecida, ela é o PRIMEIRO caminho (login via Facebook)", async () => {
+  it("com Página conhecida, ela é o PRIMEIRO caminho e usa o TOKEN DE PÁGINA", async () => {
     mockGraph([
       {
         match: (u) => u.includes("/17841400000000009/conversations"),
         status: 200,
-        body: conversationsBody,
+        body: listBody,
       },
-    ])
-    const res = await fetchInstagramConversations(config, { pageId: "17841400000000009" })
-    expect(res.ok).toBe(true)
-    expect(calls).toHaveLength(1)
-    expect(calls[0]).toContain("/17841400000000009/conversations")
-  })
-
-  it("caminho da Página usa o TOKEN DE PÁGINA (o do canal levava 190)", async () => {
-    mockGraph([
-      {
-        match: (u) => u.includes("/17841400000000009/conversations"),
-        status: 200,
-        body: conversationsBody,
-      },
+      { match: (u) => u.includes("/t_100/messages"), status: 200, body: messagesBody },
     ])
     const res = await fetchInstagramConversations(config, {
       pageId: "17841400000000009",
       pageToken: "PAGE-token-abc",
     })
     expect(res.ok).toBe(true)
+    expect(calls[0]).toContain("/17841400000000009/conversations")
+    // Bearer da PÁGINA nas duas fases (o do canal levava 190).
     expect(authHeaders[0]).toBe("Bearer PAGE-token-abc")
+    expect(authHeaders[1]).toBe("Bearer PAGE-token-abc")
+  })
+
+  it("'(#1) reduce the amount of data' na LISTA → retry com metade do limit", async () => {
+    mockGraph([
+      {
+        match: (u) => u.includes("/conversations") && u.includes("limit=20"),
+        status: 400,
+        body: graphError(1, "Please reduce the amount of data you're asking for, then retry your request"),
+      },
+      {
+        match: (u) => u.includes("/conversations") && u.includes("limit=10"),
+        status: 200,
+        body: listBody,
+      },
+      { match: (u) => u.includes("/t_100/messages"), status: 200, body: messagesBody },
+    ])
+    const res = await fetchInstagramConversations(config)
+    expect(res.ok).toBe(true)
+    expect(calls[1]).toContain("limit=10")
+  })
+
+  it("'(#1)' nas MENSAGENS → retry menor; falha persistente não derruba o todo", async () => {
+    mockGraph([
+      {
+        match: (u) => u.includes("/conversations"),
+        status: 200,
+        body: {
+          data: [
+            ...listBody.data,
+            { id: "t_200", participants: { data: [{ id: "77" }] } },
+          ],
+        },
+      },
+      {
+        match: (u) => u.includes("/t_100/messages") && u.includes("limit=25"),
+        status: 400,
+        body: graphError(1, "Please reduce the amount of data you're asking for"),
+      },
+      {
+        match: (u) => u.includes("/t_100/messages") && u.includes("limit=12"),
+        status: 200,
+        body: messagesBody,
+      },
+      // t_200 falha de vez (erro não-#1) → entra sem mensagens.
+      {
+        match: (u) => u.includes("/t_200/messages"),
+        status: 400,
+        body: graphError(100, "(#100) whatever"),
+      },
+    ])
+    const res = await fetchInstagramConversations(config)
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.data.find((c) => c.id === "t_100")?.messages).toHaveLength(2)
+    expect(res.data.find((c) => c.id === "t_200")?.messages).toHaveLength(0)
   })
 
   it("190 'must be called with a Page Access Token' NÃO vira 'expirado'", async () => {
@@ -317,7 +369,7 @@ describe("fetchInstagramConversations", () => {
     expect(res.error.message).toContain("token de PÁGINA")
   })
 
-  it("Página nega (#3, o erro do incidente) → fallback pro IG User", async () => {
+  it("Página nega (#3) → fallback pro IG User", async () => {
     mockGraph([
       {
         match: (u) => u.includes("/17841400000000009/conversations"),
@@ -327,14 +379,14 @@ describe("fetchInstagramConversations", () => {
       {
         match: (u) => u.includes("/17841400000000001/conversations"),
         status: 200,
-        body: conversationsBody,
+        body: listBody,
       },
+      { match: (u) => u.includes("/t_100/messages"), status: 200, body: messagesBody },
     ])
     const res = await fetchInstagramConversations(config, { pageId: "17841400000000009" })
     expect(res.ok).toBe(true)
     if (!res.ok) return
     expect(res.data).toHaveLength(1)
-    expect(calls).toHaveLength(2)
   })
 
   it("sem pageId e erro #3 → mensagem acionável (capability do app)", async () => {
