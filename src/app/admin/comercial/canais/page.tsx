@@ -19,6 +19,7 @@ import {
   Eraser,
   History,
   Activity,
+  Pencil,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -40,6 +41,9 @@ interface Channel {
   connection_state?: string
   owner_jid?: string | null
   needs_reconnect?: boolean
+  /** Só canais instagram (derivados seguros — token nunca vem inteiro). */
+  facebook_page_id?: string | null
+  token_preview?: string | null
 }
 
 type ChannelKind = "whatsapp" | "instagram" | "evolution"
@@ -206,13 +210,53 @@ function ChannelCard({
     | "purge"
     | "delete"
     | "history"
+    | "toggle"
     | null
   >(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionOk, setActionOk] = useState<string | null>(null)
+  // Painel de edição do Instagram (ver dados salvos + trocar token/ID).
+  const [editing, setEditing] = useState(false)
 
   const isInstagram = channel.type === "instagram"
   const isEvolution = channel.provider === "evolution"
+
+  // Desativar/reativar o canal (Instagram) — desativar é o caminho pro
+  // "Excluir canal"; reativar revalida o conflito de conta no servidor.
+  const toggleActive = async (nextActive: boolean) => {
+    if (
+      !nextActive &&
+      !window.confirm(
+        `Desativar "${channel.display_name}"? As conversas continuam no inbox, mas DMs e comentários param de entrar até reativar. Depois de desativado dá pra excluir o canal.`,
+      )
+    )
+      return
+    setBusy("toggle")
+    setActionError(null)
+    setActionOk(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: nextActive }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const raw = json?.error
+        setActionError(
+          (typeof raw === "string" ? raw : raw?.message) ??
+            (nextActive ? "Falha ao reativar" : "Falha ao desativar"),
+        )
+      } else {
+        setActionOk(nextActive ? "Canal reativado." : "Canal desativado.")
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha de rede")
+    } finally {
+      setBusy(null)
+    }
+  }
 
   // Consulta o estado LIVE na Evolution (pega instância zumbi em que o
   // config diz "open" mas a API está quebrada) e revalida a lista.
@@ -436,7 +480,8 @@ function ChannelCard({
   const evoDisconnected = isEvolution && evoState !== "open"
 
   return (
-    <div className="crm-card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="crm-card flex flex-col gap-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div className="flex items-center gap-3">
         <div
           className="flex h-9 w-9 items-center justify-center"
@@ -517,6 +562,19 @@ function ChannelCard({
           <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-success-fg)" }}>
             {actionOk}
           </span>
+        )}
+        {isInstagram && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Ver os dados salvos da integração e trocar nome, ID ou token"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
+            disabled={busy !== null}
+            onClick={() => setEditing((v) => !v)}
+          >
+            <Pencil className="h-3 w-3" />
+            {editing ? "Fechar edição" : "Editar"}
+          </button>
         )}
         {isInstagram && channel.is_active && (
           <Link
@@ -668,6 +726,38 @@ function ChannelCard({
             {busy === "remove" ? "Removendo..." : "Remover"}
           </button>
         )}
+        {isInstagram && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Desativa o canal: DMs/comentários param de entrar, conversas ficam no inbox. É o caminho pra excluir."
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              color: "var(--crm-danger-fg)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={() => toggleActive(false)}
+          >
+            <Power className="h-3 w-3" />
+            {busy === "toggle" ? "Desativando..." : "Desativar"}
+          </button>
+        )}
+        {isInstagram && !channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Reativa o canal — DMs e comentários voltam a rotear pra cá (conta não pode estar ativa em outro canal)"
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)", opacity: busy ? 0.5 : 1 }}
+            disabled={busy !== null}
+            onClick={() => toggleActive(true)}
+          >
+            <Power className="h-3 w-3" />
+            {busy === "toggle" ? "Reativando..." : "Reativar"}
+          </button>
+        )}
         {!channel.is_active && (
           <button
             type="button"
@@ -703,7 +793,183 @@ function ChannelCard({
           </span>
         )}
       </div>
+      </div>
+
+      {editing && isInstagram && (
+        <InstagramEditPanel
+          channel={channel}
+          onClose={() => setEditing(false)}
+          onSaved={(msg) => {
+            setActionOk(msg)
+            setEditing(false)
+            onChanged()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── Painel de edição do canal Instagram ─────────────────────────
+//
+// Mostra o que está SALVO (conta, página vinculada, token mascarado,
+// webhook) e edita nome/ID/token — token novo é revalidado na Graph
+// API pelo PATCH antes de gravar; vazio mantém o atual.
+
+function InstagramEditPanel({
+  channel,
+  onClose,
+  onSaved,
+}: {
+  channel: Channel
+  onClose: () => void
+  onSaved: (msg: string) => void
+}) {
+  const [name, setName] = useState(channel.display_name)
+  const [igId, setIgId] = useState(channel.external_id)
+  const [token, setToken] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const webhookUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/webhooks/instagram`
+      : "/api/webhooks/instagram"
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const body: Record<string, unknown> = {}
+      if (name.trim() && name.trim() !== channel.display_name) body.display_name = name.trim()
+      const igChanges: Record<string, string> = {}
+      if (token.trim()) igChanges.access_token = token.trim()
+      if (igId.trim() && igId.trim() !== channel.external_id)
+        igChanges.instagram_business_account_id = igId.trim()
+      if (Object.keys(igChanges).length > 0) body.instagram = igChanges
+      if (Object.keys(body).length === 0) {
+        onClose()
+        return
+      }
+      const res = await fetch(`/api/crm/channels/${channel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const raw = json?.error
+        setError((typeof raw === "string" ? raw : raw?.message) ?? "Falha ao salvar")
+        return
+      }
+      onSaved(
+        body.instagram
+          ? "Credenciais validadas na Meta e salvas."
+          : "Canal atualizado.",
+      )
+    } catch {
+      setError("Falha de rede ao salvar")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const InfoRow = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => (
+    <div className="flex flex-col gap-0.5">
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: "var(--crm-gray-500)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: 12.5,
+          color: "var(--crm-gray-800)",
+          fontFamily: mono ? "var(--crm-font-mono)" : undefined,
+          overflowWrap: "anywhere",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  )
+
+  return (
+    <form
+      onSubmit={submit}
+      style={{
+        borderTop: "1px solid var(--crm-gray-150, var(--crm-gray-200))",
+        paddingTop: 12,
+      }}
+    >
+      {/* O que está salvo hoje */}
+      <div
+        className="grid gap-x-6 gap-y-2"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", marginBottom: 12 }}
+      >
+        <InfoRow label="Conta (IG Business ID)" value={channel.external_id} mono />
+        <InfoRow label="Página do Facebook" value={channel.facebook_page_id ?? "—"} mono />
+        <InfoRow label="Token salvo" value={channel.token_preview ?? "—"} mono />
+        <InfoRow label="Webhook (Meta App)" value={webhookUrl} mono />
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--crm-gray-600)" }}>
+            Nome de exibição
+          </span>
+          <input
+            className="crm-input w-full"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--crm-gray-600)" }}>
+            Instagram Business Account ID
+          </span>
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            value={igId}
+            onChange={(e) => setIgId(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1 sm:col-span-2">
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--crm-gray-600)" }}>
+            Novo token de acesso — deixe vazio para manter o atual
+          </span>
+          <input
+            className="crm-input w-full"
+            style={{ fontFamily: "var(--crm-font-mono)" }}
+            placeholder="EAAG… (System User não expira)"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+      </div>
+
+      {error && (
+        <p style={{ marginTop: 8, fontSize: 12, color: "var(--crm-danger-fg)" }}>{error}</p>
+      )}
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button type="button" className="crm-button-ghost" onClick={onClose} disabled={saving}>
+          Cancelar
+        </button>
+        <button type="submit" className="crm-button-primary" disabled={saving}>
+          {saving ? "Validando na Meta…" : "Salvar alterações"}
+        </button>
+      </div>
+    </form>
   )
 }
 

@@ -19,12 +19,14 @@
  */
 
 import { NextRequest } from "next/server"
+import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { createEvolutionClient } from "@/lib/whatsapp/evolution-api"
 import { getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
+import { resolveInstagramAccount } from "@/lib/services/instagram-activity.service"
 
 const log = logger.child("CrmChannelDelete")
 
@@ -38,6 +40,135 @@ type ChannelRow = {
   display_name: string
   external_id: string
   is_active: boolean
+}
+
+// ─── PATCH: editar canal (nome, ativo/inativo, credenciais do IG) ──
+//
+// O card de Canais precisava de um caminho de EDIÇÃO: trocar o token
+// quando expira, corrigir o ID, renomear, desativar (pré-requisito do
+// Excluir) e reativar. Token/ID novos são REVALIDADOS na Graph API
+// antes de gravar — mesma régua da conexão.
+
+const patchSchema = z.object({
+  display_name: z.string().min(1).max(120).optional(),
+  is_active: z.boolean().optional(),
+  instagram: z
+    .object({
+      /** Vazio/ausente mantém o token atual. */
+      access_token: z.string().min(10).optional(),
+      instagram_business_account_id: z.string().min(3).optional(),
+    })
+    .optional(),
+})
+
+export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: channelId } = await context.params
+    const sb = await createClient()
+    const user = await requireAuth(sb)
+    const admin = createAdminClient()
+    const orgId = await resolveOrgId(user.id)
+
+    const raw = await request.json().catch(() => ({}))
+    const body = patchSchema.parse(raw)
+
+    const { data: channel } = await admin
+      .from("crm_channels")
+      .select("id, org_id, type, provider, display_name, external_id, is_active, config")
+      .eq("id", channelId)
+      .maybeSingle<ChannelRow & { type: string; config: Record<string, unknown> | null }>()
+
+    if (!channel || channel.org_id !== orgId) {
+      throw new AppError("Canal não encontrado", 404, "not-found")
+    }
+    if (body.instagram && channel.type !== "instagram") {
+      throw new AppError("Credenciais de Instagram só se aplicam a canais Instagram", 422, "validation-error")
+    }
+
+    const update: Record<string, unknown> = {}
+    if (body.display_name !== undefined) update.display_name = body.display_name.trim()
+    if (body.is_active !== undefined) update.is_active = body.is_active
+
+    let nextExternalId = channel.external_id
+    if (body.instagram) {
+      const rawConfig = channel.config ?? {}
+      const candidateToken =
+        body.instagram.access_token ??
+        (typeof rawConfig.access_token === "string" ? rawConfig.access_token : "")
+      const candidateId =
+        body.instagram.instagram_business_account_id ??
+        ((typeof rawConfig.instagram_business_account_id === "string"
+          ? rawConfig.instagram_business_account_id
+          : null) ||
+          channel.external_id)
+
+      // Revalida na Meta (e corrige ID de Página → IG ID sozinho).
+      const resolution = await resolveInstagramAccount({
+        instagram_business_account_id: candidateId,
+        access_token: candidateToken,
+      })
+      if (!resolution.ok) {
+        throw new AppError(
+          resolution.error?.message ?? "Não foi possível validar as credenciais na Graph API.",
+          422,
+          "instagram-validation",
+        )
+      }
+      nextExternalId = resolution.resolved_id
+      update.external_id = nextExternalId
+      update.config = {
+        ...rawConfig,
+        instagram_business_account_id: nextExternalId,
+        access_token: candidateToken,
+        ...(resolution.page_id ? { facebook_page_id: resolution.page_id } : {}),
+      }
+    }
+
+    // Guard de roteamento do webhook: nunca deixar DOIS canais ativos
+    // com o mesmo external_id (na troca de conta E na reativação).
+    const willBeActive = body.is_active ?? channel.is_active
+    const idChanged = nextExternalId !== channel.external_id
+    if (channel.type === "instagram" && willBeActive && (idChanged || body.is_active === true)) {
+      const { data: clash } = await admin
+        .from("crm_channels")
+        .select("id, display_name")
+        .eq("org_id", orgId)
+        .eq("type", "instagram")
+        .eq("external_id", nextExternalId)
+        .eq("is_active", true)
+        .neq("id", channelId)
+        .limit(1)
+        .maybeSingle()
+      if (clash) {
+        throw new AppError(
+          `Esta conta de Instagram já está ativa no canal "${clash.display_name}" — desative-o primeiro.`,
+          409,
+          "conflict",
+        )
+      }
+    }
+
+    if (Object.keys(update).length === 0) {
+      throw new AppError("Nada para atualizar", 422, "validation-error")
+    }
+
+    const { error } = await admin.from("crm_channels").update(update).eq("id", channelId)
+    if (error) throw error
+
+    log.info("canal editado", {
+      channelId,
+      fields: Object.keys(update).filter((k) => k !== "config"),
+      credenciais: Boolean(body.instagram),
+    })
+    return successResponse(request, {
+      id: channelId,
+      external_id: nextExternalId,
+      is_active: willBeActive,
+    })
+  } catch (error) {
+    log.error("channel patch error:", error)
+    return errorResponse(request, error, "crm-channel-patch")
+  }
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {

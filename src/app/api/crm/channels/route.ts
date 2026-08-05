@@ -59,8 +59,9 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    // Nao retorna config (contem access_token) — só derivados seguros
-    // pro estado da conexão dos canais evolution.
+    // Nao retorna config (contem access_token) — só derivados seguros:
+    // estado da conexão (evolution) e, pro card de edição do Instagram,
+    // a Página vinculada + o token MASCARADO (4 primeiros/últimos).
     const channels = (data || []).map((row) => {
       const { config, ...safe } = row as { config: Record<string, unknown> | null } & Record<string, unknown>
       if (safe.provider === "evolution") {
@@ -70,6 +71,16 @@ export async function GET(request: NextRequest) {
             typeof config?.connection_state === "string" ? config.connection_state : "unknown",
           owner_jid: typeof config?.owner_jid === "string" ? config.owner_jid : null,
           needs_reconnect: Boolean(config?.needs_reconnect_at),
+        }
+      }
+      if (safe.type === "instagram") {
+        const token = typeof config?.access_token === "string" ? config.access_token : ""
+        return {
+          ...safe,
+          facebook_page_id:
+            typeof config?.facebook_page_id === "string" ? config.facebook_page_id : null,
+          token_preview:
+            token.length > 12 ? `${token.slice(0, 4)}…${token.slice(-4)}` : token ? "•••" : null,
         }
       }
       return safe

@@ -1370,6 +1370,16 @@ o mesmo external_id quebrariam o lookup do webhook → 409). Form de
 conexão é tutorial em 5 passos com links (ID via Graph Explorer
 `me/accounts?fields=instagram_business_account`, token de System User).
 
+**Edição do canal (ago/2026)**: `PATCH /api/crm/channels/[id]` edita
+nome, `is_active` (desativar é o pré-requisito do Excluir; reativar
+re-checa o conflito de conta → 409) e credenciais do IG — token/ID
+novos passam por `resolveInstagramAccount` ANTES de gravar (mesma régua
+da conexão; ID de Página é corrigido sozinho). O GET da lista expõe
+derivados SEGUROS pro card (`facebook_page_id`, `token_preview`
+mascarado 4+4 — o token nunca sai inteiro). Card do Instagram:
+Editar (painel inline com dados salvos + webhook URL), Desativar/
+Reativar e, desativado, o Excluir genérico.
+
 ---
 
 ## Fechamento → operacional em um gesto + painel Instagram (ago/2026)
