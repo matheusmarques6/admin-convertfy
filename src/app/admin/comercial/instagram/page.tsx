@@ -257,6 +257,22 @@ const THREAD_STATUS: Record<string, { label: string; bg: string; fg: string }> =
   resolved: { label: "Resolvida", bg: "var(--crm-gray-100)", fg: "var(--crm-gray-500)" },
 }
 
+function OkBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded border px-3 py-2"
+      style={{
+        borderColor: "#BFE3CC",
+        background: "#EFF9F2",
+        color: "#1D5B36",
+        fontSize: "var(--crm-text-sm)",
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 const MEDIA_TYPE_LABEL: Record<string, string> = {
   IMAGE: "Foto",
   VIDEO: "Vídeo",
@@ -492,19 +508,50 @@ export default function InstagramActivityPage() {
             </select>
           )}
           {channelId && (
-            <button
-              type="button"
-              onClick={() => mutate()}
-              className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 hover:bg-black/5"
-              style={{
-                borderColor: "var(--crm-gray-300)",
-                fontSize: "var(--crm-text-sm)",
-                color: "var(--crm-gray-700)",
-              }}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isValidating ? "animate-spin" : ""}`} />
-              Atualizar
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={runImport}
+                disabled={importing}
+                title="Puxa as conversas recentes do direct pro inbox"
+                className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 hover:bg-black/5 disabled:opacity-60"
+                style={{
+                  borderColor: "var(--crm-gray-300)",
+                  fontSize: "var(--crm-text-sm)",
+                  color: "var(--crm-gray-700)",
+                }}
+              >
+                <Download className={`h-3.5 w-3.5 ${importing ? "animate-pulse" : ""}`} />
+                {importing ? "Importando…" : "Importar conversas"}
+              </button>
+              <button
+                type="button"
+                onClick={() => mutate()}
+                className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 hover:bg-black/5"
+                style={{
+                  borderColor: "var(--crm-gray-300)",
+                  fontSize: "var(--crm-text-sm)",
+                  color: "var(--crm-gray-700)",
+                }}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isValidating ? "animate-spin" : ""}`} />
+                Atualizar
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoDialogOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded px-2.5 py-1"
+                style={{
+                  background: "var(--crm-gray-900)",
+                  color: "var(--crm-gray-0)",
+                  fontSize: "var(--crm-text-sm)",
+                  fontWeight: 500,
+                }}
+              >
+                <Workflow className="h-3.5 w-3.5" />
+                Automatizar
+              </button>
+            </>
           )}
         </div>
       }
@@ -764,130 +811,30 @@ export default function InstagramActivityPage() {
               </div>
             </div>
 
-            {/* Automação: interação → pipeline (estilo Datacrazy) */}
-            <div
-              className="flex flex-col gap-3 rounded-md border p-4"
-              style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
-                    Automação: interação vira negócio
-                  </p>
-                  <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-                    Quem manda direct ou comenta entra automaticamente numa pipeline — como o
-                    &quot;seguidor novo → cadastro&quot; do Datacrazy, usando o que a API oficial permite
-                    identificar (a interação, não o follow).
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAutoDialogOpen(true)}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1"
-                  style={{
-                    background: "var(--crm-gray-900)",
-                    color: "var(--crm-gray-0)",
-                    fontSize: "var(--crm-text-sm)",
-                    fontWeight: 500,
-                  }}
-                >
-                  <Workflow className="h-3.5 w-3.5" />
-                  Criar automação
-                </button>
-              </div>
-
-              {autoResult && (
-                <div
-                  className="rounded border px-3 py-2"
-                  style={{
-                    borderColor: "#BFE3CC",
-                    background: "#EFF9F2",
-                    color: "#1D5B36",
-                    fontSize: "var(--crm-text-sm)",
-                  }}
-                >
-                  {autoResult.already_exists
-                    ? "Uma automação idêntica já existia — reaproveitamos ela."
-                    : "Automação criada."}{" "}
-                  <strong>{autoResult.name}</strong> ·{" "}
-                  {autoResult.is_active ? "ativa" : "rascunho (ative no construtor)"} ·{" "}
-                  <Link
-                    href={ROUTES.ADMIN.COMERCIAL.AUTOMACOES.DETAIL(autoResult.id)}
-                    className="underline"
-                  >
-                    revisar no construtor
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Conversas */}
-            <div
-              className="flex flex-col gap-3 rounded-md border p-4"
-              style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
-                    Conversas do direct
-                  </p>
-                  <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-                    Puxa as conversas recentes da conta pro inbox — quem já existe só ganha as mensagens
-                    que faltam.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={ROUTES.ADMIN.INBOX}
-                    className="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 hover:bg-black/5"
-                    style={{
-                      borderColor: "var(--crm-gray-300)",
-                      fontSize: "var(--crm-text-sm)",
-                      color: "var(--crm-gray-700)",
-                    }}
-                  >
-                    <Inbox className="h-3.5 w-3.5" /> Abrir inbox
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={runImport}
-                    disabled={importing}
-                    className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 disabled:opacity-60"
-                    style={{
-                      background: "var(--crm-gray-900)",
-                      color: "var(--crm-gray-0)",
-                      fontSize: "var(--crm-text-sm)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    <Download className={`h-3.5 w-3.5 ${importing ? "animate-pulse" : ""}`} />
-                    {importing ? "Importando…" : "Importar conversas recentes"}
-                  </button>
-                </div>
-              </div>
-
-              {importError && <WarnBanner text={importError} />}
-              {importResult && (
-                <div
-                  className="rounded border px-3 py-2"
-                  style={{
-                    borderColor: "#BFE3CC",
-                    background: "#EFF9F2",
-                    color: "#1D5B36",
-                    fontSize: "var(--crm-text-sm)",
-                  }}
-                >
-                  {importResult.conversations} conversa(s) lida(s) · {importResult.threads_created} nova(s) no
-                  inbox · {importResult.messages_imported} mensagem(ns) importada(s)
-                  {importResult.messages_skipped > 0 && ` · ${importResult.messages_skipped} já existiam`}
-                  {importResult.note && (
-                    <span className="mt-0.5 block" style={{ fontSize: "var(--crm-text-xs)", opacity: 0.85 }}>
-                      {importResult.note}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Resultados das ações do topo — aparecem só depois de agir */}
+            {importError && <WarnBanner text={importError} />}
+            {importResult && (
+              <OkBanner>
+                {importResult.conversations} conversa(s) lida(s) · {importResult.threads_created} nova(s) no
+                inbox · {importResult.messages_imported} mensagem(ns) importada(s)
+                {importResult.messages_skipped > 0 && ` · ${importResult.messages_skipped} já existiam`} ·{" "}
+                <Link href={ROUTES.ADMIN.INBOX} className="underline">
+                  abrir inbox
+                </Link>
+              </OkBanner>
+            )}
+            {autoResult && (
+              <OkBanner>
+                {autoResult.already_exists
+                  ? "Automação idêntica já existia — reaproveitamos ela."
+                  : "Automação criada."}{" "}
+                <strong>{autoResult.name}</strong> ·{" "}
+                {autoResult.is_active ? "ativa" : "rascunho (ative no construtor)"} ·{" "}
+                <Link href={ROUTES.ADMIN.COMERCIAL.AUTOMACOES.DETAIL(autoResult.id)} className="underline">
+                  revisar
+                </Link>
+              </OkBanner>
+            )}
 
             {/* Posts recentes */}
             <div className="flex flex-col gap-2">
