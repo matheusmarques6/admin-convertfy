@@ -287,7 +287,7 @@ export function KanbanBoard({
         )}
 
         <div
-          className="flex flex-1 overflow-x-auto items-stretch gap-3 md:gap-[18px] px-4 md:px-7 py-5 md:py-[22px] pb-7"
+          className="flex flex-1 overflow-x-auto items-stretch gap-3 md:gap-[var(--crm-kanban-gap,18px)] px-4 md:px-[var(--crm-kanban-pad-x,28px)] py-5 md:py-[22px] pb-7"
           style={{
             scrollSnapType: isMobile ? "x mandatory" : undefined,
           }}
