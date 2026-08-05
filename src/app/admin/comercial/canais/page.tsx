@@ -1120,6 +1120,12 @@ function InstagramForm({
             instagram_business_account.id
           </code>{" "}
           da Página vinculada (ex.: 17841405822304914). É esse o ID pedido abaixo.
+          <span style={{ display: "block", marginTop: 6, color: "#8A6116" }}>
+            Atenção: o primeiro <code style={{ fontFamily: "var(--crm-font-mono)", fontSize: 11.5 }}>id</code>{" "}
+            da resposta é o da PÁGINA do Facebook — não é esse. Colar o ID errado faz
+            todas as consultas falharem com &quot;(#100) nonexisting field&quot; (a conexão
+            valida e corrige isso automaticamente quando possível).
+          </span>
         </IgStep>
 
         <IgStep

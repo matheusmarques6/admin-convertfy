@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger"
 import {
   fetchInstagramProfile,
   fetchInstagramRecentMedia,
+  resolveAndHealInstagramChannel,
 } from "@/lib/services/instagram-activity.service"
 import type { InstagramChannelConfig } from "@/lib/services/instagram-graph.service"
 import {
@@ -63,14 +64,22 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       throw new AppError("Este painel só existe para canais Instagram", 422, "unsupported-channel")
     }
 
-    const rawConfig = channel.config ?? {}
-    const config: InstagramChannelConfig = {
+    const storedConfig = channel.config ?? {}
+    const storedIg: InstagramChannelConfig = {
       instagram_business_account_id:
-        (typeof rawConfig.instagram_business_account_id === "string"
-          ? rawConfig.instagram_business_account_id
+        (typeof storedConfig.instagram_business_account_id === "string"
+          ? storedConfig.instagram_business_account_id
           : null) || channel.external_id,
-      access_token: typeof rawConfig.access_token === "string" ? rawConfig.access_token : "",
+      access_token: typeof storedConfig.access_token === "string" ? storedConfig.access_token : "",
     }
+
+    // Diagnóstico + auto-cura ANTES das chamadas: se o ID salvo era o
+    // da Página do Facebook (erro clássico de conexão — tudo cai em
+    // "#100 nonexisting field"), resolve o IG ID vinculado, corrige o
+    // canal e segue com o ID certo.
+    const healed = await resolveAndHealInstagramChannel(admin, channel, storedConfig, storedIg)
+    const config = healed.config
+    const rawConfig = healed.rawConfig
 
     const [profileRes, mediaRes] = await Promise.all([
       fetchInstagramProfile(config),
@@ -103,7 +112,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         is_active: channel.is_active,
       },
       profile: profileRes.ok ? profileRes.data : null,
-      profile_error: profileRes.ok ? null : profileRes.error.message,
+      profile_error: profileRes.ok
+        ? null
+        : healed.resolution.error?.message ?? profileRes.error.message,
       media: mediaRes.ok ? mediaRes.data : [],
       media_error: mediaRes.ok ? null : mediaRes.error.message,
       follower_history: history,
@@ -112,6 +123,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         d7: followerDelta(history, 7),
         d30: followerDelta(history, 30),
       },
+      // Diagnóstico da conexão — a página avisa quando corrigimos o ID
+      // salvo (era o da Página do Facebook) automaticamente.
+      account_fix: healed.resolution.corrected
+        ? { from: channel.external_id, to: healed.resolution.resolved_id }
+        : null,
     })
   } catch (error) {
     log.error("instagram activity error:", error)

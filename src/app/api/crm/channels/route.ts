@@ -24,6 +24,7 @@ import { appUrl } from "@/lib/whatsapp/queue"
 import { createEvolutionClient } from "@/lib/whatsapp/evolution-api"
 import { getEvolutionConfigGaps, getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { buildInstanceName } from "@/lib/whatsapp/evolution-content"
+import { resolveInstagramAccount } from "@/lib/services/instagram-activity.service"
 
 const log = logger.child("CrmChannels")
 
@@ -185,17 +186,39 @@ export async function POST(request: NextRequest) {
       throw new AppError("Config instagram obrigatoria", 400, "validation")
     }
 
-    // A MESMA conta duas vezes quebraria o roteamento do webhook (dois
-    // canais ativos com o mesmo external_id → lookup falha → mensagens
-    // da conta param de entrar). Contas DIFERENTES podem à vontade —
-    // multi-conta é suportado nativamente.
+    // Valida o ID + token na Graph API ANTES de gravar (mesmo padrão da
+    // conexão Meta Ads). O erro clássico é colar o ID da PÁGINA do
+    // me/accounts no lugar do instagram_business_account.id — aí todas
+    // as chamadas caem em "#100 nonexisting field". Aqui a gente segue
+    // o vínculo e corrige sozinho; token inválido/sem permissão vira
+    // 422 com instrução, em vez de um canal quebrado.
+    let igAccountId: string | null = null
+    let igPageId: string | null = null
     if (parsed.type === "instagram") {
+      const resolution = await resolveInstagramAccount({
+        instagram_business_account_id: parsed.instagram!.instagram_business_account_id,
+        access_token: parsed.instagram!.access_token,
+      })
+      if (!resolution.ok) {
+        throw new AppError(
+          resolution.error?.message ?? "Não foi possível validar a conta na Graph API.",
+          422,
+          "instagram-validation",
+        )
+      }
+      igAccountId = resolution.resolved_id
+      igPageId = resolution.page_id
+
+      // A MESMA conta duas vezes quebraria o roteamento do webhook
+      // (dois canais ativos com o mesmo external_id → lookup falha →
+      // mensagens da conta param de entrar). Contas DIFERENTES podem à
+      // vontade — multi-conta é suportado nativamente.
       const { data: existing } = await admin
         .from("crm_channels")
         .select("id, display_name")
         .eq("org_id", orgId)
         .eq("type", "instagram")
-        .eq("external_id", parsed.instagram!.instagram_business_account_id)
+        .eq("external_id", igAccountId)
         .eq("is_active", true)
         .limit(1)
         .maybeSingle()
@@ -229,10 +252,13 @@ export async function POST(request: NextRequest) {
             type: "instagram" as const,
             provider: "instagram_basic" as const,
             display_name: parsed.display_name,
-            external_id: parsed.instagram!.instagram_business_account_id,
+            // ID RESOLVIDO (não o digitado): é a chave de roteamento do
+            // webhook — com o ID da Página nada chegaria.
+            external_id: igAccountId ?? parsed.instagram!.instagram_business_account_id,
             config: {
               instagram_business_account_id:
-                parsed.instagram!.instagram_business_account_id,
+                igAccountId ?? parsed.instagram!.instagram_business_account_id,
+              facebook_page_id: igPageId,
               access_token: parsed.instagram!.access_token,
             },
           }

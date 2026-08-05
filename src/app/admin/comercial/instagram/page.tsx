@@ -69,6 +69,8 @@ interface ActivityPayload {
   media_error: string | null
   follower_history: FollowerSnapshot[]
   deltas: { d1: FollowerDelta | null; d7: FollowerDelta | null; d30: FollowerDelta | null }
+  /** Preenchido quando o ID salvo era o da Página e foi corrigido. */
+  account_fix?: { from: string; to: string } | null
 }
 
 interface ImportResult {
@@ -464,6 +466,21 @@ export default function InstagramActivityPage() {
               <WarnBanner
                 text={`Não foi possível carregar a atividade: ${activityError instanceof Error ? activityError.message : "erro desconhecido"}`}
               />
+            )}
+            {activity?.account_fix && (
+              <div
+                className="rounded border px-3 py-2"
+                style={{
+                  borderColor: "#BFE3CC",
+                  background: "#EFF9F2",
+                  color: "#1D5B36",
+                  fontSize: "var(--crm-text-sm)",
+                }}
+              >
+                Corrigimos a conexão automaticamente: o ID salvo era o da Página do Facebook —
+                o canal agora usa o ID do Instagram vinculado e o webhook volta a rotear as
+                mensagens desta conta.
+              </div>
             )}
             {activity?.profile_error && <WarnBanner text={activity.profile_error} />}
 

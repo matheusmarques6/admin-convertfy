@@ -1389,6 +1389,22 @@ a importação expôs — Evolution já fazia). Fetcher da página LANÇA em
 não-2xx e extrai `error` string do errorResponse (a mensagem amigável
 de token expirado chega ao usuário).
 
+**Incidente "(#100) nonexisting field" em TODAS as chamadas (ago/2026)**:
+assinatura clássica de ID errado — o operador cola o `id` da PÁGINA do
+`me/accounts` no lugar do `instagram_business_account.id` (é o primeiro
+da resposta). `resolveInstagramAccount` (instagram-activity.service, 21
+testes com fetch mockado nos formatos reais da Meta) sonda o node com
+`?metadata=1`: type=page → segue `instagram_business_account` e devolve
+o IG ID; `resolveAndHealInstagramChannel` CURA o canal (config +
+`facebook_page_id` + `external_id`, que é a chave de roteamento do
+webhook — só se não colidir com outro canal ativo). A cura roda nas
+rotas activity/import-history/cron; o POST de canais valida na CONEXÃO
+(422 acionável ou correção silenciosa — canal quebrado não nasce).
+Conversations tem fallback `/{page-id}/conversations?platform=instagram`
+quando a edge do IG User nega com #100. friendlyError mapeia 190
+(token) e 100 (ID/permissões) pra instrução concreta; a página mostra
+banner verde `account_fix` quando corrigiu sozinha.
+
 ---
 
 ## Funil Comercial (jul/2026 — migration 20261052)

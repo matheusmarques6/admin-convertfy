@@ -23,7 +23,10 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
-import { fetchInstagramConversations } from "@/lib/services/instagram-activity.service"
+import {
+  fetchInstagramConversations,
+  resolveAndHealInstagramChannel,
+} from "@/lib/services/instagram-activity.service"
 import type { InstagramChannelConfig } from "@/lib/services/instagram-graph.service"
 
 const log = logger.child("IgImportHistory")
@@ -118,21 +121,33 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const rawConfig = channel.config ?? {}
-    const accountId =
-      (typeof rawConfig.instagram_business_account_id === "string"
-        ? rawConfig.instagram_business_account_id
-        : null) || channel.external_id
-    const config: InstagramChannelConfig = {
-      instagram_business_account_id: accountId,
+    const storedIg: InstagramChannelConfig = {
+      instagram_business_account_id:
+        (typeof rawConfig.instagram_business_account_id === "string"
+          ? rawConfig.instagram_business_account_id
+          : null) || channel.external_id,
       access_token: typeof rawConfig.access_token === "string" ? rawConfig.access_token : "",
     }
+
+    // Mesmo diagnóstico/auto-cura do painel: ID de Página vira o IG ID
+    // vinculado antes de qualquer chamada (senão tudo cai em #100).
+    const healed = await resolveAndHealInstagramChannel(admin, channel, rawConfig, storedIg)
+    const config = healed.config
+    const accountId = config.instagram_business_account_id
 
     const convRes = await fetchInstagramConversations(config, {
       limit: body.limit,
       messagesPerConversation: body.messages_per_conversation,
+      pageId: healed.pageId,
     })
     if (!convRes.ok) {
-      throw new AppError(convRes.error.message, 502, "graph-api-error")
+      // A mensagem do diagnóstico (ID de Página sem IG, token sem
+      // permissão) é mais acionável que o erro cru da edge.
+      throw new AppError(
+        healed.resolution.error?.message ?? convRes.error.message,
+        502,
+        "graph-api-error",
+      )
     }
 
     let threadsCreated = 0

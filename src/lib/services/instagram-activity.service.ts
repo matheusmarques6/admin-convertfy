@@ -16,6 +16,7 @@
  */
 
 import { logger } from "@/lib/logger"
+import type { createAdminClient } from "@/lib/supabase/server"
 import type { InstagramChannelConfig } from "./instagram-graph.service"
 
 const log = logger.child("InstagramActivity")
@@ -41,6 +42,17 @@ function friendlyError(status: number, body: GraphErrorBody): IgApiError {
       code,
       message:
         "Token de acesso expirado ou inválido — reconecte o canal em Canais com um token novo (System User não expira).",
+    }
+  }
+  // "(#100) Tried accessing nonexisting field": ou o ID salvo não é o
+  // Instagram Business Account ID (colar o ID da PÁGINA do me/accounts
+  // é o erro clássico), ou o token não carrega as permissões
+  // instagram_basic / instagram_manage_messages.
+  if (body.error?.code === 100) {
+    return {
+      code,
+      message:
+        "A Meta não reconheceu a consulta (#100). Normalmente o ID salvo é o da Página do Facebook (o correto é o instagram_business_account.id) ou o token está sem as permissões instagram_basic / instagram_manage_messages. Confira o ID e gere o token de System User com a Página + o Instagram nos ativos.",
     }
   }
   return { code, message: body.error?.message || `Erro HTTP ${status} na Graph API` }
@@ -69,6 +81,135 @@ async function graphGet<T>(config: InstagramChannelConfig, path: string): Promis
       error: { code: "network_error", message: err instanceof Error ? err.message : "Erro de rede" },
     }
   }
+}
+
+// ─── Resolução do ID da conta (diagnóstico + auto-cura) ──────────
+
+export interface InstagramAccountResolution {
+  ok: boolean
+  /** ID efetivo do IG User (corrigido quando o salvo era uma Página). */
+  resolved_id: string
+  /** true quando o ID salvo era o da Página e achamos o IG vinculado. */
+  corrected: boolean
+  /** Page ID conhecido (útil pro fallback de conversations). */
+  page_id: string | null
+  node_type: string | null
+  error: IgApiError | null
+}
+
+/**
+ * Descobre o que o ID salvo realmente É na Graph API. O erro clássico
+ * de conexão é colar o ID da PÁGINA (primeiro `id` do me/accounts) no
+ * lugar do instagram_business_account.id — aí TODAS as chamadas caem
+ * em "(#100) nonexisting field". `?metadata=1` devolve o tipo do node;
+ * quando é "page", seguimos o vínculo e devolvemos o IG ID correto.
+ */
+export async function resolveInstagramAccount(
+  config: InstagramChannelConfig,
+): Promise<InstagramAccountResolution> {
+  const id = config.instagram_business_account_id
+  const probe = await graphGet<{ id?: string; metadata?: { type?: string } }>(
+    config,
+    `/${id}?metadata=1&fields=id`,
+  )
+  if (!probe.ok) {
+    return { ok: false, resolved_id: id, corrected: false, page_id: null, node_type: null, error: probe.error }
+  }
+  const nodeType = probe.data.metadata?.type?.toLowerCase() ?? null
+  if (nodeType === "page") {
+    const page = await graphGet<{ instagram_business_account?: { id?: string } }>(
+      config,
+      `/${id}?fields=instagram_business_account`,
+    )
+    const igId = page.ok ? page.data.instagram_business_account?.id : undefined
+    if (igId) {
+      return { ok: true, resolved_id: igId, corrected: true, page_id: id, node_type: nodeType, error: null }
+    }
+    return {
+      ok: false,
+      resolved_id: id,
+      corrected: false,
+      page_id: id,
+      node_type: nodeType,
+      error: {
+        code: "page_without_ig",
+        message:
+          "O ID salvo é de uma Página do Facebook e o token não alcançou a conta de Instagram vinculada — confira se a Página tem um Instagram profissional vinculado e se o token de System User tem a Página + as permissões instagram_basic e instagram_manage_messages.",
+      },
+    }
+  }
+  return { ok: true, resolved_id: id, corrected: false, page_id: null, node_type: nodeType, error: null }
+}
+
+type AdminLike = ReturnType<typeof createAdminClient>
+
+/**
+ * Resolve o ID e CURA o canal quando o salvo era o da Página: atualiza
+ * config (instagram_business_account_id + facebook_page_id) e o
+ * external_id — que é a chave de roteamento do webhook; com o ID errado
+ * nenhum evento chegava. Devolve o config efetivo pras chamadas.
+ */
+export async function resolveAndHealInstagramChannel(
+  admin: AdminLike,
+  channel: { id: string; external_id: string },
+  rawConfig: Record<string, unknown>,
+  config: InstagramChannelConfig,
+): Promise<{
+  config: InstagramChannelConfig
+  rawConfig: Record<string, unknown>
+  pageId: string | null
+  resolution: InstagramAccountResolution
+}> {
+  const resolution = await resolveInstagramAccount(config)
+  const knownPageId =
+    resolution.page_id ??
+    (typeof rawConfig.facebook_page_id === "string" ? rawConfig.facebook_page_id : null)
+
+  if (!resolution.ok || !resolution.corrected) {
+    return { config, rawConfig, pageId: knownPageId, resolution }
+  }
+
+  const healedRaw: Record<string, unknown> = {
+    ...rawConfig,
+    instagram_business_account_id: resolution.resolved_id,
+    facebook_page_id: resolution.page_id,
+  }
+  const healedConfig: InstagramChannelConfig = {
+    ...config,
+    instagram_business_account_id: resolution.resolved_id,
+  }
+
+  // external_id só muda se não colidir com outro canal ativo (o lookup
+  // do webhook é por external_id — dois iguais quebrariam o roteamento).
+  const { data: clash } = await admin
+    .from("crm_channels")
+    .select("id")
+    .eq("type", "instagram")
+    .eq("external_id", resolution.resolved_id)
+    .eq("is_active", true)
+    .neq("id", channel.id)
+    .limit(1)
+    .maybeSingle()
+
+  const update: Record<string, unknown> = { config: healedRaw }
+  if (!clash) update.external_id = resolution.resolved_id
+
+  const { error } = await admin.from("crm_channels").update(update).eq("id", channel.id)
+  if (error) {
+    log.warn("[IgActivity] auto-cura do canal falhou (seguindo com o ID resolvido)", {
+      channelId: channel.id,
+      error: error.message,
+    })
+  } else {
+    log.info("[IgActivity] canal curado: ID da Página → IG Business Account", {
+      channelId: channel.id,
+      from: channel.external_id,
+      to: resolution.resolved_id,
+      external_id_updated: !clash,
+    })
+  }
+
+  return { config: healedConfig, rawConfig: healedRaw, pageId: resolution.page_id, resolution }
 }
 
 // ─── Perfil ──────────────────────────────────────────────────────
@@ -225,18 +366,28 @@ interface RawConversation {
  * A Conversations API só entrega o histórico RECENTE (janela da Meta) —
  * conversas antigas/arquivadas podem não vir. `from.id` é o mesmo IGSID
  * dos webhooks, então a importação casa com as threads existentes.
+ *
+ * Tenta primeiro no IG User; se a Meta negar a edge (#100) e a Página
+ * for conhecida, refaz via `/{page-id}/conversations?platform=instagram`
+ * — mesma resposta, exigência de permissão ligeiramente diferente.
  */
 export async function fetchInstagramConversations(
   config: InstagramChannelConfig,
-  opts: { limit?: number; messagesPerConversation?: number } = {},
+  opts: { limit?: number; messagesPerConversation?: number; pageId?: string | null } = {},
 ): Promise<IgResult<InstagramConversationInfo[]>> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50)
   const perConv = Math.min(Math.max(opts.messagesPerConversation ?? 25, 1), 100)
   const fields = `id,updated_time,participants,messages.limit(${perConv}){id,created_time,message,from}`
-  const res = await graphGet<{ data?: RawConversation[] }>(
+  const query = `conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`
+
+  let res = await graphGet<{ data?: RawConversation[] }>(
     config,
-    `/${config.instagram_business_account_id}/conversations?platform=instagram&fields=${encodeURIComponent(fields)}&limit=${limit}`,
+    `/${config.instagram_business_account_id}/${query}`,
   )
+  if (!res.ok && res.error.code === "100" && opts.pageId) {
+    const viaPage = await graphGet<{ data?: RawConversation[] }>(config, `/${opts.pageId}/${query}`)
+    if (viaPage.ok) res = viaPage
+  }
   if (!res.ok) return res
   const conversations = (res.data.data ?? []).map((c): InstagramConversationInfo => ({
     id: c.id,

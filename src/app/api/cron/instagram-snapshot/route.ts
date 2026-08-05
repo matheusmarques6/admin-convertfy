@@ -14,7 +14,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { fetchInstagramProfile } from "@/lib/services/instagram-activity.service"
+import {
+  fetchInstagramProfile,
+  resolveAndHealInstagramChannel,
+} from "@/lib/services/instagram-activity.service"
 import type { InstagramChannelConfig } from "@/lib/services/instagram-graph.service"
 import {
   appendFollowerSnapshot,
@@ -50,14 +53,19 @@ export async function GET(request: NextRequest) {
     const results: Array<{ channel: string; ok: boolean; followers?: number; error?: string }> = []
 
     for (const channel of channels ?? []) {
-      const rawConfig = channel.config ?? {}
-      const config: InstagramChannelConfig = {
+      const storedConfig = channel.config ?? {}
+      const storedIg: InstagramChannelConfig = {
         instagram_business_account_id:
-          (typeof rawConfig.instagram_business_account_id === "string"
-            ? rawConfig.instagram_business_account_id
+          (typeof storedConfig.instagram_business_account_id === "string"
+            ? storedConfig.instagram_business_account_id
             : null) || channel.external_id,
-        access_token: typeof rawConfig.access_token === "string" ? rawConfig.access_token : "",
+        access_token: typeof storedConfig.access_token === "string" ? storedConfig.access_token : "",
       }
+
+      // Mesma auto-cura do painel (ID de Página → IG ID vinculado).
+      const healed = await resolveAndHealInstagramChannel(admin, channel, storedConfig, storedIg)
+      const config = healed.config
+      const rawConfig = healed.rawConfig
 
       const profile = await fetchInstagramProfile(config)
       if (!profile.ok || typeof profile.data.followers_count !== "number") {
