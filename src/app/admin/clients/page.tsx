@@ -3,6 +3,7 @@ import { Plus, Users } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { ImportAsaasButton } from "@/components/clients/import-asaas-button"
+import { ExportClientsButton } from "@/components/clients/export-clients-button"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientsContent } from "@/components/clients/clients-content"
@@ -169,6 +170,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
           actions={
             <>
               <ImportAsaasButton />
+              <ExportClientsButton />
               <Button asChild>
                 <Link href="/admin/clients/new">
                   <Plus className="mr-2 h-4 w-4" />

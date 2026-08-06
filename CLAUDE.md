@@ -1134,6 +1134,32 @@ primeiro desligaria o histórico. UI: botão "Duplicados" na página de
 Leads → dialog com radio de sobrevivente (sugestão: mais dados;
 convertido é âncora).
 
+## Exportar clientes → público da Meta (ago/2026)
+
+Botão "Exportar clientes" em `/admin/clients` (`export-clients-button`)
++ `GET /api/clients/export?format=meta|full`. Regras em
+`meta-audience-csv.ts` (puro, 29 testes).
+
+**Exporta a base INTEIRA**, não a página: o PostgREST corta em 1.000
+linhas, então a rota percorre em blocos até acabar (teto 100k). Usa o
+cliente COM RLS — a exportação enxerga o mesmo que a tela.
+
+**Formato `meta`** (público personalizado): cabeçalhos que a Meta casa
+sozinha (`email,phone,fn,ln,ct,st,zip,country,extern_id`), separador
+VÍRGULA e **sem BOM** — o marcador UTF-8 gruda no 1º cabeçalho
+("﻿email" ≠ "email") e a coluna de maior correspondência deixa de ser
+reconhecida. Normalização importa porque o hash é feito sobre o TEXTO:
+email minúsculo; telefone só dígitos e sempre com DDI (10-11 dígitos =
+BR, prefixa 55); `ct`/`st` seguem a regra "somente a-z" da Meta (sem
+acento nem espaço: "São Paulo" → "saopaulo"), enquanto `fn`/`ln` mantêm
+UTF-8. Cliente sem email E sem telefone fica FORA (a Meta não acha
+ninguém e a linha só derruba a taxa) — o dialog informa quantos foram
+excluídos. Razão social (ltda/me/eireli/sa…) devolve fn/ln vazios:
+comparar nome de empresa com nome de pessoa enfraquece o casamento.
+
+**Formato `full`**: planilha pt-BR com CPF/CNPJ, endereço e status —
+separador ";" + BOM (padrão `crm-csv.ts`), anti fórmula-injection.
+
 ## Eventos de conversão da Meta — perda silenciosa (ago/2026)
 
 Sintoma relatado: **"Lead qualificado" nunca chega** na Meta e os de
