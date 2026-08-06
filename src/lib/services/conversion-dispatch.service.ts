@@ -34,6 +34,12 @@ const log = logger.child("ConversionDispatch")
 /** Tentativas maximas antes de desistir de uma linha. */
 const MAX_ATTEMPTS = Number(process.env.CONVERSION_MAX_ATTEMPTS ?? 5)
 
+/**
+ * Tempo depois do qual uma linha em `processing` é considerada órfã
+ * (o worker que a reivindicou morreu) e volta para a fila.
+ */
+const STUCK_MS = Number(process.env.CONVERSION_STUCK_MS ?? 5 * 60_000)
+
 /** id do evento qualificado derivado do id base (browser espelha isto). */
 export function qualifiedEventId(baseEventId: string): string {
   return `${baseEventId}-q`
@@ -54,6 +60,27 @@ function ruleValues(value: QualifiedRule["value"]): string[] {
   const s = String(value)
   return s === "" ? [] : [s]
 }
+
+/**
+ * Normaliza para comparar: sem espaços nas pontas, minúsculas e sem
+ * acento.
+ *
+ * A comparação era literal (`===`), então a regra `= "Sim"` NÃO batia a
+ * resposta "sim", e `= "São Paulo"` não batia "Sao Paulo". Quem monta a
+ * regra digita à mão, quem responde escolhe no formulário — exigir que
+ * as duas grafias coincidam byte a byte fazia o evento simplesmente
+ * nunca disparar, sem erro em lugar nenhum. Comparação numérica (gt/lt)
+ * não passa por aqui.
+ */
+export function normalizeForCompare(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // marcas de acento separadas pelo NFD
+}
+
+const eq = (a: string, b: string): boolean => normalizeForCompare(a) === normalizeForCompare(b)
 
 /** Campo mínimo p/ resolver a regra por label quando o id não bate. */
 export interface QualifiedField {
@@ -92,19 +119,19 @@ function evaluateRule(
 
   switch (rule.operator) {
     case "is_set":
-      return rawStrings.length > 0
+      return rawStrings.some((s) => s.trim() !== "")
     case "equals":
-      return rawStrings.length > 0 && rawStrings.every((s) => s === first)
+      return rawStrings.length > 0 && first !== undefined && rawStrings.every((s) => eq(s, first))
     case "not_equals":
-      return !(rawStrings.length > 0 && rawStrings.every((s) => s === first))
+      return !(rawStrings.length > 0 && first !== undefined && rawStrings.every((s) => eq(s, first)))
     case "in":
-      return rawStrings.some((s) => vals.includes(s))
+      return rawStrings.some((s) => vals.some((v) => eq(s, v)))
     case "not_in":
-      return !rawStrings.some((s) => vals.includes(s))
+      return !rawStrings.some((s) => vals.some((v) => eq(s, v)))
     case "contains":
       return (
         first !== undefined &&
-        rawStrings.some((s) => s.toLowerCase().includes(first.toLowerCase()))
+        rawStrings.some((s) => normalizeForCompare(s).includes(normalizeForCompare(first)))
       )
     case "gt":
       return Number(rawStrings[0]) > Number(first)
@@ -134,6 +161,98 @@ export function evaluateQualified(
   if (rules.length === 0) return false
   const results = rules.map((r) => evaluateRule(r, answers, fields))
   return config.logic === "or" ? results.some(Boolean) : results.every(Boolean)
+}
+
+// ── Diagnóstico das regras (por que não qualificou) ──────────────
+
+export interface RuleDiagnosis {
+  field_id: string
+  field_label: string | null
+  operator: string
+  expected: string
+  /** O que a pessoa respondeu; null quando o campo não foi encontrado. */
+  answered: string | null
+  /** A regra aponta para um campo que não existe mais no formulário. */
+  field_missing: boolean
+  passed: boolean
+}
+
+export interface QualifiedDiagnosis {
+  qualified: boolean
+  /** Motivo de não ter qualificado, pronto para exibir. */
+  reason: string | null
+  rules: RuleDiagnosis[]
+}
+
+/**
+ * Mesma avaliação de `evaluateQualified`, mas explicando cada regra.
+ * Existe porque o modo de falha real é silencioso: a regra aponta para
+ * um campo que foi editado, ou o valor esperado não corresponde ao que
+ * o formulário oferece, e o evento simplesmente nunca dispara — sem
+ * erro, sem log, sem nada na tela.
+ */
+export function diagnoseQualified(
+  config: QualifiedLeadConfig | undefined,
+  answers: Record<string, unknown>,
+  fields?: QualifiedField[],
+): QualifiedDiagnosis {
+  if (!config?.enabled) {
+    return { qualified: false, reason: "O evento de lead qualificado está desligado.", rules: [] }
+  }
+  const rules = config.rules ?? []
+  if (rules.length === 0) {
+    return {
+      qualified: false,
+      reason: "Nenhuma condição configurada — sem condição, nenhum lead é marcado como qualificado.",
+      rules: [],
+    }
+  }
+
+  const diags: RuleDiagnosis[] = rules.map((rule) => {
+    const byId = rule.field_id && Object.prototype.hasOwnProperty.call(answers, rule.field_id)
+    const byLabel =
+      !byId && rule.field_label && fields
+        ? fields.find((f) => (f.label ?? "") === rule.field_label)
+        : undefined
+    const known = Boolean(byId || byLabel)
+    const raw = resolveAnswer(rule, answers, fields)
+    const answered = rawToStrings(raw).join(", ")
+    const label =
+      fields?.find((f) => f.id === rule.field_id)?.label ?? rule.field_label ?? null
+
+    return {
+      field_id: rule.field_id,
+      field_label: label,
+      operator: rule.operator,
+      expected: ruleValues(rule.value).join(", "),
+      answered: answered || null,
+      field_missing: !known && !fields?.some((f) => f.id === rule.field_id),
+      passed: evaluateRule(rule, answers, fields),
+    }
+  })
+
+  const qualified =
+    config.logic === "or" ? diags.some((d) => d.passed) : diags.every((d) => d.passed)
+
+  let reason: string | null = null
+  if (!qualified) {
+    const missing = diags.filter((d) => d.field_missing)
+    if (missing.length > 0) {
+      reason = `A condição aponta para um campo que não existe mais no formulário (${missing
+        .map((m) => m.field_label ?? m.field_id)
+        .join(", ")}). Refaça a condição escolhendo o campo atual.`
+    } else {
+      const failed = diags.filter((d) => !d.passed)
+      reason =
+        config.logic === "and"
+          ? `Não passou em: ${failed
+              .map((f) => `${f.field_label ?? "campo"} (esperado "${f.expected}", respondido "${f.answered ?? "vazio"}")`)
+              .join("; ")}`
+          : "Nenhuma das condições foi atendida."
+    }
+  }
+
+  return { qualified, reason, rules: diags }
 }
 
 // ── Enqueue + envio ──────────────────────────────────────────────
@@ -254,14 +373,25 @@ export async function enqueueConversionEvents(
       attempts: 0,
     }))
 
+    // `upsert` com ignoreDuplicates: o INSERT em lote é UMA statement, e
+    // um único conflito de UNIQUE (reenvio do mesmo submit) derrubava as
+    // DUAS linhas — o "Lead" era perdido junto com o qualificado, com um
+    // log.warn e nada mais. Agora o que já existe é ignorado e o que é
+    // novo entra.
     const { data: inserted, error } = await admin
       .from("crm_conversion_events")
-      .insert(rows)
+      .upsert(rows, {
+        onConflict: "submission_id,platform,event_name",
+        ignoreDuplicates: true,
+      })
       .select("id, form_id, updated_at, attempts, payload")
 
     if (error) {
-      // Conflito de UNIQUE (reenvio do submit) nao e erro fatal.
-      log.warn("enqueue.insert_failed", { formId: params.formId, error: error.message })
+      log.error("enqueue.insert_failed", { formId: params.formId, error: error.message })
+      return
+    }
+    if (!inserted || inserted.length === 0) {
+      // Tudo já estava na fila (reenvio) — o cron cuida do resto.
       return
     }
 
@@ -312,11 +442,19 @@ async function sendConversionRow(
   row: ConversionRow,
   cfg: FormMetaConfig,
 ): Promise<boolean> {
-  // Claim: bumpa attempts com lease em updated_at. Se outro worker ja
-  // tocou a linha, o WHERE nao casa e desistimos (evita envio duplo).
+  // Claim: marca `processing` e bumpa attempts, com lease em updated_at.
+  // Se outro worker já tocou a linha, o WHERE não casa e desistimos
+  // (evita envio duplo).
+  //
+  // O status `processing` é o que permite recuperar a linha depois: o
+  // envio inline roda destacado da resposta e o serverless pode congelar
+  // o processo antes do HTTP do Meta completar. Antes, cada congelamento
+  // queimava uma tentativa sem ter enviado nada — cinco vezes e o evento
+  // sumia da fila em silêncio, para sempre. Agora quem fica preso em
+  // `processing` é resgatado pelo cron (ver STUCK_MS).
   const { data: claimed } = await admin
     .from("crm_conversion_events")
-    .update({ attempts: (row.attempts ?? 0) + 1 })
+    .update({ attempts: (row.attempts ?? 0) + 1, status: "processing" })
     .eq("id", row.id)
     .eq("updated_at", row.updated_at)
     .select("id")
@@ -364,6 +502,22 @@ export async function processPendingConversionEvents(
   limit = 100,
 ): Promise<ProcessResult> {
   const admin = createAdminClient()
+
+  // Linhas presas em `processing`: o worker que as reivindicou morreu
+  // antes de registrar o resultado (congelamento do serverless após a
+  // resposta). Passado o lease, voltam para a fila — sem isto elas
+  // ficavam paradas para sempre e o evento nunca chegava ao Meta.
+  const stuckBefore = new Date(Date.now() - STUCK_MS).toISOString()
+  const { data: revived } = await admin
+    .from("crm_conversion_events")
+    .update({ status: "pending" })
+    .eq("platform", "meta")
+    .eq("status", "processing")
+    .lt("updated_at", stuckBefore)
+    .select("id")
+  if (revived && revived.length > 0) {
+    log.warn("cron.revived_stuck", { count: revived.length })
+  }
 
   const { data: candidates, error } = await admin
     .from("crm_conversion_events")

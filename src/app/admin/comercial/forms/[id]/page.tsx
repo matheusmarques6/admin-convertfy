@@ -28,6 +28,7 @@ import {
 import { ROUTES } from "@/lib/routes"
 import { PublicFormView } from "@/components/forms/public-form-view"
 import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
+import { ConversionDiagnostics } from "@/components/forms/conversion-diagnostics"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -821,6 +822,7 @@ export default function FormEditorPage({
               tracking={tracking}
               setTracking={setTracking}
               fields={fields}
+              formId={id}
             />
           )}
           {activeTab === "install" && (
@@ -1755,10 +1757,12 @@ function TrackingTab({
   tracking,
   setTracking,
   fields,
+  formId,
 }: {
   tracking: TrackingState
   setTracking: React.Dispatch<React.SetStateAction<TrackingState>>
   fields: FormField[]
+  formId: string
 }) {
   const patch = (p: Partial<TrackingState>) => setTracking((t) => ({ ...t, ...p }))
 
@@ -1961,6 +1965,19 @@ function TrackingTab({
           )}
         </>
       )}
+
+      {/* ── Diagnóstico do envio ──
+          Quando o evento não aparece no Gerenciador da Meta, é aqui que
+          se descobre o motivo — sem precisar abrir a Meta nem o banco. */}
+      <div className="pt-2">
+        <SectionTitle
+          title="Está chegando na Meta?"
+          hint="Conferência do que saiu daqui: quantos eventos foram enviados, quais falharam e se as condições do lead qualificado batem com quem se cadastrou."
+        />
+        <div className="mt-3">
+          <ConversionDiagnostics formId={formId} />
+        </div>
+      </div>
     </Stack>
   )
 }

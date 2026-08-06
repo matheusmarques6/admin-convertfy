@@ -1134,6 +1134,43 @@ primeiro desligaria o histórico. UI: botão "Duplicados" na página de
 Leads → dialog com radio de sobrevivente (sugestão: mais dados;
 convertido é âncora).
 
+## Eventos de conversão da Meta — perda silenciosa (ago/2026)
+
+Sintoma relatado: **"Lead qualificado" nunca chega** na Meta e os de
+**"Lead" faltam alguns**. Três causas independentes, todas invisíveis.
+
+**1. O lote de eventos morria junto.** `enqueueConversionEvents` fazia
+`insert([Lead, qualificado])` — uma statement só. Um conflito do UNIQUE
+`(submission_id, platform, event_name)` (reenvio do mesmo submit)
+derrubava as DUAS linhas, e o código só fazia `log.warn` + `return`: o
+"Lead" era perdido junto. Agora é `upsert` com `ignoreDuplicates`.
+
+**2. Tentativa queimada sem envio.** O claim incrementava `attempts`
+ANTES do envio, e o envio inline roda destacado da resposta
+(`void Promise.allSettled` — o serverless congela o processo depois do
+`return`). Cada congelamento gastava uma tentativa sem mandar nada;
+esgotadas as 5, o cron ignorava a linha para sempre. Agora o claim marca
+`status='processing'` (já existia no CHECK) e o cron RESSUSCITA o que
+está preso nele há mais de `CONVERSION_STUCK_MS` (5 min).
+
+**3. A condição do qualificado comparava texto literal.** `equals`/`in`/
+`contains` usavam `===` cru: a regra `= "Sim"` não batia a resposta
+"sim", nem `"São Paulo"` batia "Sao Paulo". Quem monta a regra digita à
+mão e quem responde escolhe no formulário — o evento simplesmente nunca
+disparava. `normalizeForCompare` (trim + minúsculas + sem acento) resolve;
+`gt/gte/lt/lte` seguem numéricos e `is_set` deixou de aceitar espaços.
+
+**Diagnóstico na tela** (`conversion-diagnostics.tsx` + `GET/POST
+/api/crm/forms/[id]/conversion-events`): pendências de configuração,
+contagem enviados/fila/falha por evento, últimos envios com o erro real
+da Meta, botão de reprocessar, e o **teste das condições contra os
+cadastros recentes** — `diagnoseQualified` roda a MESMA avaliação do
+envio e diz, cadastro a cadastro, qual condição reprovou (esperado ×
+respondido) ou se a regra aponta para campo que não existe mais. Fecha
+com um guia de onde o evento aparece na Meta (evento **personalizado**
+só surge após o 1º disparo; código de teste desvia dos relatórios;
+browser+servidor com mesmo id contam UMA conversão).
+
 **Redesign do inbox (ago/2026)** — três frentes.
 
 *Funcional.* O envio que FALHAVA respondia **200** com `sent:false` e
