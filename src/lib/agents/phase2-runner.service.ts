@@ -925,6 +925,11 @@ export async function runPhase2Image(
             overlayReserveBottom: false,
             mode: "text2img",
             systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
+            // Modelo da config do banco (email_agent_configs.model). O
+            // valor era carregado e nunca chegava aqui: trocar o modelo
+            // por SQL não surtia efeito nenhum nos emails, só nas
+            // campanhas — que já passavam o parâmetro.
+            model: ctx.imageConfig?.model || undefined,
             onMeta: (m) => {
               imgMeta = m
             },
@@ -938,7 +943,7 @@ export async function runPhase2Image(
             batchId,
             agent: "image",
             status: "success",
-            model: OPENROUTER_IMAGE_MODEL,
+            model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             tokensInput: imgMeta.tokensInput,
@@ -968,7 +973,7 @@ export async function runPhase2Image(
             batchId,
             agent: "image",
             status: "error",
-            model: OPENROUTER_IMAGE_MODEL,
+            model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             errorMessage: msg,
@@ -1253,7 +1258,7 @@ export async function runPhase2Image(
           triggeredBy,
           batchId,
           agent: "image",
-          model: OPENROUTER_IMAGE_MODEL,
+          model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
         })
@@ -1275,6 +1280,9 @@ export async function runPhase2Image(
             // Quando ausente (config v1 ainda ativa), generateEmailImage
             // não envia role:"system" e mantém comportamento legacy.
             systemPrompt: ctx.imageConfig?.system_prompt ?? undefined,
+            // Ver comentário na outra chamada: o model da config do
+            // banco precisa chegar na chain.
+            model: ctx.imageConfig?.model || undefined,
             onMeta: (m) => {
               imgMeta = m
             },
@@ -1307,7 +1315,7 @@ export async function runPhase2Image(
           batchId,
           agent: "image",
           status: "success",
-          model: OPENROUTER_IMAGE_MODEL,
+          model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
@@ -1328,7 +1336,7 @@ export async function runPhase2Image(
           batchId,
           agent: "image",
           status: "error",
-          model: OPENROUTER_IMAGE_MODEL,
+          model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,

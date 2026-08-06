@@ -267,10 +267,15 @@ async function callOpenRouterImage(
           messages: buildMessages(prompt, refs, systemPrompt),
           response_format: "b64_json",
           // Saída de IMAGEM precisa ser declarada no OpenRouter para os
-          // modelos Gemini (sem isto o Nano Banana responde só texto e a
-          // extração cai no fallback). Guardado pelos modelos de imagem —
-          // um modelo de texto rejeitaria o campo.
-          ...(/image/i.test(model) ? { modalities: ["image", "text"] } : {}),
+          // modelos GEMINI (sem isto o Nano Banana responde só texto e a
+          // extração cai no fallback).
+          //
+          // O guard é por `gemini` e não por `image` no nome: o
+          // openai/gpt-5.4-image-2 também casa "image", e ele rodou por
+          // meses SEM este campo. Mandá-lo para um modelo que não o
+          // espera é uma variável nova num caminho que já era testado —
+          // e a falha apareceria só na hora de gerar.
+          ...(/gemini/i.test(model) ? { modalities: ["image", "text"] } : {}),
         }),
       },
       OPENROUTER_IMAGE_TIMEOUT_MS,
