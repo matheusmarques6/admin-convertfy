@@ -19,7 +19,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock, RefreshCw, Send, XCircle } from "lucide-react"
 import type { RuleDiagnosis } from "@/lib/services/conversion-dispatch.service"
 
 const fetcher = async (url: string) => {
@@ -48,6 +48,19 @@ interface SubmissionTest {
   qualified: boolean
   reason: string | null
   rules: RuleDiagnosis[]
+}
+
+interface TestResult {
+  ok: boolean
+  event_name: string
+  event_id?: string
+  events_received?: number
+  fbtrace_id?: string | null
+  http_status?: number
+  used_test_code?: boolean
+  test_event_code?: string | null
+  error?: { message: string; type?: string | null; code?: number | null } | null
+  where_to_look?: string
 }
 
 interface Payload {
@@ -157,6 +170,42 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
   const [retrying, setRetrying] = useState(false)
   const [retryMsg, setRetryMsg] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+
+  /** Dispara um evento real, com dados fictícios, e mostra a resposta da Meta. */
+  const sendTest = async (which: "qualified" | "lead") => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch(`/api/crm/forms/${formId}/conversion-events/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: which }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const e = (body as { error?: unknown })?.error
+        setTestResult({
+          ok: false,
+          event_name: which === "lead" ? "Lead" : "Lead qualificado",
+          error: {
+            message: typeof e === "string" && e ? e : "Falha ao enviar o evento de teste",
+          },
+        } as TestResult)
+        return
+      }
+      setTestResult(body as TestResult)
+    } catch {
+      setTestResult({
+        ok: false,
+        event_name: which === "lead" ? "Lead" : "Lead qualificado",
+        error: { message: "Falha de rede ao enviar o evento de teste" },
+      } as TestResult)
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const retry = async () => {
     setRetrying(true)
@@ -228,6 +277,109 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
           </ul>
         </div>
       )}
+
+      {/* Teste ponta a ponta — responde "chega ou não chega" na hora */}
+      <div
+        className="flex flex-col gap-2 rounded border p-3"
+        style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 600, color: "var(--crm-gray-900)" }}>
+              Enviar evento de teste
+            </p>
+            <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
+              Manda um evento agora, com contato fictício, e mostra o que a Meta respondeu.
+              {data.setup.test_event_code ? (
+                <>
+                  {" "}
+                  Vai para a aba <strong>Testar eventos</strong> (código{" "}
+                  {data.setup.test_event_code}) e não entra nos relatórios.
+                </>
+              ) : (
+                <>
+                  {" "}
+                  <strong>Sem código de teste configurado</strong> — este evento conta nos
+                  relatórios da conta.
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => sendTest("qualified")}
+              disabled={testing || !data.setup.has_pixel || !data.setup.has_token}
+              className="crm-button-primary"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              title={
+                !data.setup.has_pixel || !data.setup.has_token
+                  ? "Preencha o pixel e o token e salve o formulário antes de testar"
+                  : `Enviar "${qualifiedName}" de teste`
+              }
+            >
+              <Send className="h-3.5 w-3.5" />
+              {testing ? "Enviando…" : `Testar "${qualifiedName}"`}
+            </button>
+            <button
+              type="button"
+              onClick={() => sendTest("lead")}
+              disabled={testing || !data.setup.has_pixel || !data.setup.has_token}
+              className="crm-button-ghost"
+            >
+              Testar &quot;Lead&quot;
+            </button>
+          </div>
+        </div>
+
+        {testResult && (
+          <div
+            className="flex flex-col gap-1 rounded border px-3 py-2"
+            style={{
+              borderColor: testResult.ok ? "var(--crm-pos-border)" : "var(--crm-neg-border)",
+              background: testResult.ok ? "var(--crm-pos-bg)" : "var(--crm-neg-bg)",
+              color: testResult.ok ? "var(--crm-pos)" : "var(--crm-neg)",
+              fontSize: "var(--crm-text-xs)",
+            }}
+            role="status"
+          >
+            <span className="flex items-center gap-1.5" style={{ fontWeight: 600 }}>
+              {testResult.ok ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  A Meta recebeu o evento &quot;{testResult.event_name}&quot;
+                  {typeof testResult.events_received === "number" &&
+                    ` (${testResult.events_received} evento confirmado)`}
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-3.5 w-3.5" />A Meta recusou o evento &quot;
+                  {testResult.event_name}&quot;
+                </>
+              )}
+            </span>
+
+            {testResult.error && (
+              <span>
+                {testResult.error.message}
+                {testResult.error.code ? ` (código ${testResult.error.code})` : ""}
+              </span>
+            )}
+
+            {testResult.ok && testResult.where_to_look && (
+              <span style={{ opacity: 0.9 }}>{testResult.where_to_look}</span>
+            )}
+
+            {/* O fbtrace_id é o que o suporte da Meta pede quando o
+                evento chega mas não aparece onde deveria. */}
+            {testResult.fbtrace_id && (
+              <span style={{ opacity: 0.75, fontFamily: "var(--crm-font-mono)" }}>
+                fbtrace_id: {testResult.fbtrace_id}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Números */}
       <div className="flex flex-wrap gap-2">

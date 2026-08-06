@@ -1186,6 +1186,16 @@ mão e quem responde escolhe no formulário — o evento simplesmente nunca
 disparava. `normalizeForCompare` (trim + minúsculas + sem acento) resolve;
 `gt/gte/lt/lte` seguem numéricos e `is_set` deixou de aceitar espaços.
 
+**Evento de teste** (`POST .../conversion-events/test`): dispara um
+evento REAL com contato fictício (`teste-integracao@convertfy.me`) e
+devolve a resposta crua da Meta — `events_received`, `fbtrace_id`, erro
+com código. NÃO grava em `crm_conversion_events` (a fila é o registro
+dos cadastros reais; teste ali sujaria os contadores do diagnóstico
+logo acima). Usa o `meta_test_event_code` do form quando existe (vai
+pra aba "Testar eventos", fora dos relatórios) e AVISA na tela quando
+não existe — nesse caso o evento conta na conta. Botões no painel:
+testar o qualificado (nome vem da config) ou o "Lead".
+
 **Diagnóstico na tela** (`conversion-diagnostics.tsx` + `GET/POST
 /api/crm/forms/[id]/conversion-events`): pendências de configuração,
 contagem enviados/fila/falha por evento, últimos envios com o erro real
