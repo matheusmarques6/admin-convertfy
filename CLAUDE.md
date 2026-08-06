@@ -1186,6 +1186,19 @@ mão e quem responde escolhe no formulário — o evento simplesmente nunca
 disparava. `normalizeForCompare` (trim + minúsculas + sem acento) resolve;
 `gt/gte/lt/lte` seguem numéricos e `is_set` deixou de aceitar espaços.
 
+**Nome do evento personalizado** (`lib/tracking/meta-event-name.ts`, 12
+testes): o pixel do BROWSER manda o nome na URL, então "Lead
+qualificado" chegava como **`Lead%20qualificado`** e a Meta registrava
+DOIS eventos — o do navegador e o `Lead qualificado` da CAPI. Nomes
+diferentes = sem dedup por `event_id` (conversão contada em dobro) e
+nenhum dos dois utilizável para otimizar campanha. `metaEventName`
+normaliza para PascalCase sem espaço/acento ("LeadQualificado") e é
+aplicado no submit ANTES de enviar pela CAPI **e** antes de devolver o
+nome ao browser — os dois lados usam a mesma string por construção. A
+função é idempotente; nome já sem espaço passa intacto. O editor mostra
+"Chega na Meta como <nome>". `crm_forms.tracking_config` não muda: a
+sanitização é no ENVIO, então renomear na UI continua livre.
+
 **Evento de teste** (`POST .../conversion-events/test`): dispara um
 evento REAL com contato fictício (`teste-integracao@convertfy.me`) e
 devolve a resposta crua da Meta — `events_received`, `fbtrace_id`, erro

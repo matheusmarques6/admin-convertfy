@@ -31,6 +31,7 @@ import {
   evaluateQualified,
   qualifiedEventId,
 } from "@/lib/services/conversion-dispatch.service"
+import { metaEventName } from "@/lib/tracking/meta-event-name"
 
 const log = logger.child("PublicFormsSubmit")
 
@@ -570,7 +571,12 @@ export async function POST(
         leadId,
         eventId,
         qualified,
-        qualifiedEventName: trackingCfg.qualified_lead.event_name,
+        // Mesmo nome nos DOIS lados (ver `meta-event-name`): o pixel do
+        // browser manda o nome na URL, e com espaço a Meta registra
+        // "Lead%20qualificado" como um evento à parte do que a CAPI
+        // envia — dois eventos distintos, sem deduplicação, nenhum
+        // utilizável para otimizar campanha.
+        qualifiedEventName: metaEventName(trackingCfg.qualified_lead.event_name),
         eventSourceUrl: parsed.event_source_url ?? parsed.referrer ?? null,
         meta: {
           pixelId: form.facebook_pixel_id as string,
@@ -607,7 +613,9 @@ export async function POST(
         event_id: eventId,
         qualified,
         qualified_event_id: eventId && qualified ? qualifiedEventId(eventId) : null,
-        qualified_event_name: qualified ? trackingCfg.qualified_lead.event_name : null,
+        qualified_event_name: qualified
+          ? metaEventName(trackingCfg.qualified_lead.event_name)
+          : null,
         // Advanced matching + params do evento qualificado (null quando
         // nao qualifica). Ver comentario na montagem, acima.
         qualified_user_data: qualifiedUserData,
