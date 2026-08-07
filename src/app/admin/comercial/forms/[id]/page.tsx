@@ -28,7 +28,6 @@ import {
 import { ROUTES } from "@/lib/routes"
 import { PublicFormView } from "@/components/forms/public-form-view"
 import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
-import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
 import { ConversionDiagnostics } from "@/components/forms/conversion-diagnostics"
 
 // ────────────────────────────────────────────────────────────────────
@@ -1922,20 +1921,18 @@ function TrackingTab({
               value={tracking.qualified_event_name}
               onChange={(e) => patch({ qualified_event_name: e.target.value })}
             />
-            {/* O pixel do navegador manda o nome na URL: com espaço, a
-                Meta registra "Lead%20qualificado" separado do que a API
-                envia. O nome é ajustado no envio, e a tela mostra o
-                resultado para não haver surpresa no Gerenciador. */}
+            {/* O nome vai INTACTO para a Meta — é ele que aparece no
+                Gerenciador e que a conversão personalizada usa. Quem não
+                envia este evento é o pixel do navegador (o nome viajaria
+                na URL e um espaço viraria %20, criando um segundo
+                evento); a API de Conversões dá conta sozinha. */}
             <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
-              Chega na Meta como{" "}
+              Chega na Meta exatamente assim:{" "}
               <strong className="font-mono">
-                {metaEventName(tracking.qualified_event_name)}
+                {tracking.qualified_event_name || "Lead qualificado"}
               </strong>
-              {willRenameEvent(tracking.qualified_event_name) && (
-                <> — espaços e acentos são removidos para que o navegador e a
-                  API enviem o mesmo evento (com espaço, viram dois eventos
-                  diferentes e a conversão conta em dobro).</>
-              )}
+              . Enviado só pela API de Conversões (servidor) — é o que garante
+              um nome só no Gerenciador de Eventos.
             </p>
           </Field>
           <Field label="Combinação das condições">

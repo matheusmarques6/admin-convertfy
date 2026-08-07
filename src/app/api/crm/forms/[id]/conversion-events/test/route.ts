@@ -30,7 +30,6 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { decrypt } from "@/lib/crypto"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
-import { metaEventName } from "@/lib/tracking/meta-event-name"
 import {
   buildMetaServerEvent,
   buildMetaUserData,
@@ -110,10 +109,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const cfg = normalizeTrackingConfig(form.tracking_config)
-    // Mesma sanitização do envio real — testar com um nome e produzir
-    // outro esconderia justamente o problema que o teste deve pegar.
-    const eventName =
-      body.event === "lead" ? "Lead" : metaEventName(cfg.qualified_lead.event_name)
+    // Mesmo nome do envio real — testar com um nome e produzir outro
+    // esconderia justamente o problema que o teste deve pegar.
+    const eventName = body.event === "lead" ? "Lead" : cfg.qualified_lead.event_name
     const eventId = `test-${randomUUID()}`
 
     const userData = buildMetaUserData({
