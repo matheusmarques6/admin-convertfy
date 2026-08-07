@@ -143,8 +143,8 @@ export function pickReferenceUrls(
 
 /**
  * Normaliza o mapa de adendos por loja: apara textos, corta no teto e
- * DESCARTA entradas vazias — apagar o texto na UI equivale a remover o
- * adendo. Chaves de lojas fora do lote são preservadas aqui (inofensivas:
+ * DESCARTA entradas SEM texto E SEM imagem — esvaziar os dois na UI
+ * equivale a remover o adendo. Chaves de lojas fora do lote são preservadas aqui (inofensivas:
  * a geração só lê as lojas que está gerando) mas não atrapalham. Pura.
  */
 export function normalizeStoreSpecs(raw: unknown): Record<string, ImageStudioStoreSpec> {
@@ -152,10 +152,15 @@ export function normalizeStoreSpecs(raw: unknown): Record<string, ImageStudioSto
   const out: Record<string, ImageStudioStoreSpec> = {}
   for (const [storeId, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== "object") continue
-    const instruction = (value as Record<string, unknown>).instruction
-    const text = typeof instruction === "string" ? instruction.trim() : ""
-    if (!text) continue
-    out[storeId] = { instruction: text.slice(0, MAX_STORE_SPEC_CHARS) }
+    const v = value as Record<string, unknown>
+    const text = typeof v.instruction === "string" ? v.instruction.trim() : ""
+    const url = typeof v.reference_image_url === "string" ? v.reference_image_url.trim() : ""
+    // Sobrevive com texto OU imagem — a loja pode ter só a imagem-exemplo.
+    if (!text && !url) continue
+    const spec: ImageStudioStoreSpec = {}
+    if (text) spec.instruction = text.slice(0, MAX_STORE_SPEC_CHARS)
+    if (url) spec.reference_image_url = url
+    out[storeId] = spec
   }
   return out
 }
@@ -706,7 +711,8 @@ async function generateOneImage(
     const flags = batch.adapt_flags ?? {}
     const variations = normalizeVariations(batch.variations)
 
-    const storeSpec = normalizeStoreSpecs(batch.store_specs)[storeId]?.instruction ?? null
+    const spec = normalizeStoreSpecs(batch.store_specs)[storeId]
+    const storeSpec = spec?.instruction ?? null
 
     const instrucaoAdicional = buildStudioInstruction({
       instruction: batch.instruction,
@@ -727,11 +733,15 @@ async function generateOneImage(
           ? [batch.reference_image_url]
           : [],
     )
-    const refUrls = pickReferenceUrls(
-      allRefUrls,
-      batch.reference_mode === "per_variation" ? "per_variation" : "all",
-      variationIndex,
-    )
+    // Imagem-exemplo DA LOJA vence a do lote: somar as duas colocaria
+    // referências de composição concorrendo e o modelo mistura as duas.
+    const refUrls = spec?.reference_image_url
+      ? [spec.reference_image_url]
+      : pickReferenceUrls(
+          allRefUrls,
+          batch.reference_mode === "per_variation" ? "per_variation" : "all",
+          variationIndex,
+        )
 
     const candidateRefs: RefImage[] = []
     refUrls.forEach((url, i) => {
@@ -739,9 +749,11 @@ async function generateOneImage(
       // referência e ignora o ajuste pedido.
       const baseLabel = adjustmentNotes?.trim()
         ? "Previous composition — loose guide ONLY; you MUST apply the requested change below, do not copy it:"
-        : refUrls.length > 1
-          ? `Base reference ${i + 1} of ${refUrls.length}:`
-          : "Base reference:"
+        : spec?.reference_image_url
+          ? "Base reference for THIS store — follow it closely:"
+          : refUrls.length > 1
+            ? `Base reference ${i + 1} of ${refUrls.length}:`
+            : "Base reference:"
       candidateRefs.push({ label: baseLabel, url })
     })
     if (flags.logo) {
@@ -819,6 +831,7 @@ async function generateOneImage(
         batch_id: batch.id,
         variation_index: variationIndex,
         has_store_spec: !!storeSpec,
+        store_reference_image: !!spec?.reference_image_url,
         reference_mode: batch.reference_mode ?? "all",
         reference_images: refUrls.length,
         mode,

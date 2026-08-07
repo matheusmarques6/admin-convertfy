@@ -49,7 +49,10 @@ export const imageStudioBatchBodySchema = z
       .record(
         z.string().uuid(),
         z
-          .object({ instruction: z.string().max(MAX_STORE_SPEC_CHARS).optional() })
+          .object({
+            instruction: z.string().max(MAX_STORE_SPEC_CHARS).optional(),
+            reference_image_url: z.string().url().optional(),
+          })
           .strict(),
       )
       .optional(),

@@ -116,6 +116,21 @@ describe("normalizeStoreSpecs", () => {
     expect(normalizeStoreSpecs(undefined)).toEqual({})
     expect(normalizeStoreSpecs([{ instruction: "x" }])).toEqual({})
   })
+
+  it("loja só com imagem-exemplo sobrevive (texto não é obrigatório)", () => {
+    const out = normalizeStoreSpecs({
+      "loja-a": { reference_image_url: " https://cdn/ex.png " },
+      "loja-b": { instruction: "texto", reference_image_url: "https://cdn/b.png" },
+      "loja-c": { instruction: "  ", reference_image_url: "  " },
+    })
+    expect(out["loja-a"]).toEqual({ reference_image_url: "https://cdn/ex.png" })
+    expect(out["loja-b"]).toEqual({
+      instruction: "texto",
+      reference_image_url: "https://cdn/b.png",
+    })
+    // sem texto E sem imagem → removida
+    expect(out["loja-c"]).toBeUndefined()
+  })
 })
 
 describe("resultKey / approvedKeySet", () => {

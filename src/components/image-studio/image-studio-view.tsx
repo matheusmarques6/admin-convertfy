@@ -589,6 +589,8 @@ function BatchEditor({
     batch.store_specs ?? {},
   )
   const [addingSpecFor, setAddingSpecFor] = useState("")
+  const [specUploadingFor, setSpecUploadingFor] = useState<string | null>(null)
+  const specFileRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [storeQuery, setStoreQuery] = useState("")
   const [countryFilter, setCountryFilter] = useState("")
   const [languageFilter, setLanguageFilter] = useState("")
@@ -752,7 +754,42 @@ function BatchEditor({
   // ── Adendos por loja ──
   // Digitar é local (controlado); persiste no blur, como os demais campos.
   const setSpecText = (storeId: string, instruction: string) => {
-    setStoreSpecs((cur) => ({ ...cur, [storeId]: { instruction } }))
+    setStoreSpecs((cur) => ({ ...cur, [storeId]: { ...cur[storeId], instruction } }))
+  }
+
+  // Imagem-exemplo da loja: sobe e persiste na hora (não tem blur).
+  const uploadSpecImage = async (storeId: string, file: File) => {
+    setSpecUploadingFor(storeId)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("batch_id", batch.id)
+      const res = await fetch("/api/admin/image-studio/upload", {
+        method: "POST",
+        body: fd,
+      })
+      if (!res.ok) throw new Error(await parseError(res))
+      const j = (await res.json()) as { url: string }
+      const next = {
+        ...storeSpecs,
+        [storeId]: { ...storeSpecs[storeId], reference_image_url: j.url },
+      }
+      setStoreSpecs(next)
+      await saveBatch({ store_specs: next })
+    } catch {
+      /* erro de upload — silencioso por ora */
+    } finally {
+      setSpecUploadingFor(null)
+    }
+  }
+
+  const removeSpecImage = (storeId: string) => {
+    const next = {
+      ...storeSpecs,
+      [storeId]: { ...storeSpecs[storeId], reference_image_url: undefined },
+    }
+    setStoreSpecs(next)
+    void saveBatch({ store_specs: next })
   }
   const commitSpecs = () => {
     void saveBatch({ store_specs: storeSpecs })
@@ -1250,7 +1287,8 @@ function BatchEditor({
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
                         {s.store_name}
-                        {storeSpecs[s.store_id]?.instruction?.trim() && (
+                        {(storeSpecs[s.store_id]?.instruction?.trim() ||
+                          storeSpecs[s.store_id]?.reference_image_url) && (
                           <span
                             title="Tem especificação própria de geração"
                             className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle"
@@ -1299,16 +1337,68 @@ function BatchEditor({
                       <X size={12} />
                     </button>
                   </div>
-                  <textarea
-                    value={storeSpecs[id]?.instruction ?? ""}
-                    onChange={(e) => setSpecText(id, e.target.value)}
-                    onBlur={commitSpecs}
-                    rows={2}
-                    maxLength={1000}
-                    autoFocus={!storeSpecs[id]?.instruction}
-                    placeholder="ex.: usar a caixa de presente aberta, fundo escuro"
-                    className="w-full resize-none rounded-[5px] border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
-                  />
+                  <div className="flex gap-2">
+                    <textarea
+                      value={storeSpecs[id]?.instruction ?? ""}
+                      onChange={(e) => setSpecText(id, e.target.value)}
+                      onBlur={commitSpecs}
+                      rows={2}
+                      maxLength={1000}
+                      autoFocus={!storeSpecs[id]?.instruction}
+                      placeholder="ex.: usar a caixa de presente aberta, fundo escuro"
+                      className="min-w-0 flex-1 resize-none rounded-[5px] border border-border bg-background px-2 py-1.5 text-[12px] text-foreground"
+                    />
+                    {/* Imagem-exemplo desta loja — substitui as imagens-base do lote */}
+                    {storeSpecs[id]?.reference_image_url ? (
+                      <span className="group/img relative shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={storeSpecs[id]!.reference_image_url}
+                          alt={`Exemplo de ${storeName(id)}`}
+                          title="Imagem-exemplo desta loja (substitui a do lote)"
+                          className="h-[52px] w-[52px] rounded-[5px] border border-border object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeSpecImage(id)}
+                          title="Remover imagem"
+                          className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white group-hover/img:flex"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => specFileRefs.current[id]?.click()}
+                        disabled={specUploadingFor === id}
+                        title="Enviar imagem-exemplo só para esta loja"
+                        className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-[5px] border border-dashed border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+                      >
+                        {specUploadingFor === id ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <>
+                            <ImagePlus size={14} />
+                            <span className="text-[9px] font-medium">exemplo</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <input
+                      ref={(el) => {
+                        specFileRefs.current[id] = el
+                      }}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) void uploadSpecImage(id, f)
+                        e.target.value = ""
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
