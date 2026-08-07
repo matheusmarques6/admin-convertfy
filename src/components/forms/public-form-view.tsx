@@ -233,29 +233,22 @@ function fireConversionPixels(
   if (!tracking) return
   // Meta: evento Lead (deduplicado por event_id) + qualificado se aplicavel.
   if (tracking.meta_browser_pixel && tracking.meta_pixel_id) {
-    // Advanced matching antes do evento: o fbevents hasheia no browser e
-    // chega ao mesmo SHA-256 que a CAPI manda, então os dois lados do
-    // mesmo event_id casam e a Meta conta UMA conversao.
-    if (submit?.qualified && submit.qualified_user_data) {
-      setMetaUserData(tracking.meta_pixel_id, submit.qualified_user_data)
-    }
-
-    // "Lead" — evento PADRAO, nome de uma palavra: viaja pelo pixel sem
-    // problema e deduplica com o servidor pelo event_id.
+    // "Lead" comum sai antes do advanced matching — permanece anonimo do
+    // lado do browser, como sempre foi.
     fireMetaEvent("Lead", { eventId: submit?.event_id ?? undefined })
-
-    // O evento QUALIFICADO nao sai daqui, de proposito.
-    //
-    // O pixel do browser manda o nome do evento na URL da requisicao.
-    // Um nome com espaco ("Lead qualificado") chegava a Meta como
-    // "Lead%20qualificado" e virava um evento SEPARADO do que a API de
-    // Conversoes envia: dois eventos com nomes diferentes nao deduplicam
-    // pelo event_id (a conversao contava duas vezes) e a conversao
-    // personalizada da campanha so enxerga um dos dois.
-    //
-    // A CAPI manda o nome intacto, e leva fbc/fbp/IP/User-Agent do mesmo
-    // visitante — o matching nao piora por sair so do servidor. Alem
-    // disso ela atravessa bloqueador de anuncio, que derruba o pixel.
+    if (submit?.qualified && submit.qualified_event_name) {
+      // So o evento qualificado carrega os dados do lead: re-init do pixel
+      // com o advanced matching (o fbevents hasheia no browser) e params
+      // de contexto (origem, empresa, UTMs) no proprio evento.
+      if (submit.qualified_user_data) {
+        setMetaUserData(tracking.meta_pixel_id, submit.qualified_user_data)
+      }
+      fireMetaEvent(submit.qualified_event_name, {
+        eventId: submit.qualified_event_id ?? undefined,
+        custom: true,
+        params: submit.qualified_custom_data ?? undefined,
+      })
+    }
   }
   // Google Ads: conversao via gtag ("AW-XXXX/label").
   if (
