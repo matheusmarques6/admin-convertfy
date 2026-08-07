@@ -60,7 +60,7 @@ export interface ImageStudioVariation {
  */
 export interface ImageStudioStoreSpec {
   instruction?: string
-  /** Imagem-exemplo desta loja — SUBSTITUI as imagens-base do lote. */
+  /** Imagem-exemplo desta loja — SOMA às imagens-base do lote. */
   reference_image_url?: string
 }
 

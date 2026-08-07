@@ -1355,7 +1355,7 @@ function BatchEditor({
                         <img
                           src={storeSpecs[id]!.reference_image_url}
                           alt={`Exemplo de ${storeName(id)}`}
-                          title="Imagem-exemplo desta loja (substitui a do lote)"
+                          title="Imagem-exemplo desta loja (vai junto com as do lote)"
                           className="h-[52px] w-[52px] rounded-[5px] border border-border object-cover"
                         />
                         <button
@@ -1372,7 +1372,7 @@ function BatchEditor({
                         type="button"
                         onClick={() => specFileRefs.current[id]?.click()}
                         disabled={specUploadingFor === id}
-                        title="Enviar imagem-exemplo só para esta loja"
+                        title="Enviar imagem-exemplo desta loja — vai junto com as imagens-base do lote"
                         className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-[5px] border border-dashed border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
                       >
                         {specUploadingFor === id ? (

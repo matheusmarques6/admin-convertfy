@@ -733,15 +733,19 @@ async function generateOneImage(
           ? [batch.reference_image_url]
           : [],
     )
-    // Imagem-exemplo DA LOJA vence a do lote: somar as duas colocaria
-    // referências de composição concorrendo e o modelo mistura as duas.
-    const refUrls = spec?.reference_image_url
-      ? [spec.reference_image_url]
-      : pickReferenceUrls(
-          allRefUrls,
-          batch.reference_mode === "per_variation" ? "per_variation" : "all",
-          variationIndex,
-        )
+    // Imagem-exemplo DA LOJA vai JUNTO com as do lote (não substitui).
+    // Ela entra por ÚLTIMO — a ref mais próxima do texto do prompt é a
+    // que o modelo pondera mais — e tem vaga garantida no teto.
+    const storeRefUrl = spec?.reference_image_url ?? null
+    const batchRefs = pickReferenceUrls(
+      allRefUrls,
+      batch.reference_mode === "per_variation" ? "per_variation" : "all",
+      variationIndex,
+    )
+    const refUrls = normalizeReferenceUrls([
+      ...batchRefs.slice(0, MAX_REFERENCE_IMAGES - (storeRefUrl ? 1 : 0)),
+      ...(storeRefUrl ? [storeRefUrl] : []),
+    ])
 
     const candidateRefs: RefImage[] = []
     refUrls.forEach((url, i) => {
@@ -749,7 +753,7 @@ async function generateOneImage(
       // referência e ignora o ajuste pedido.
       const baseLabel = adjustmentNotes?.trim()
         ? "Previous composition — loose guide ONLY; you MUST apply the requested change below, do not copy it:"
-        : spec?.reference_image_url
+        : url === storeRefUrl
           ? "Base reference for THIS store — follow it closely:"
           : refUrls.length > 1
             ? `Base reference ${i + 1} of ${refUrls.length}:`
