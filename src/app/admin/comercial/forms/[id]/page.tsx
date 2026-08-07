@@ -1932,9 +1932,28 @@ function TrackingTab({
                 {metaEventName(tracking.qualified_event_name)}
               </strong>
               {willRenameEvent(tracking.qualified_event_name) && (
-                <> — espaços e acentos são removidos para que o navegador e a
-                  API enviem o mesmo evento (com espaço, viram dois eventos
-                  diferentes e a conversão conta em dobro).</>
+                <>
+                  {" "}
+                  — espaços e acentos são removidos porque o pixel do navegador
+                  manda o nome na URL: com espaço ele chega como{" "}
+                  <span className="font-mono">
+                    {tracking.qualified_event_name.replace(/ /g, "%20")}
+                  </span>{" "}
+                  e vira um evento separado do que a API envia. Com o mesmo
+                  nome, os dois canais se complementam (se um falhar, o outro
+                  registra) e a Meta conta uma conversão só.
+                  <br />
+                  <strong>
+                    Se você já tem uma conversão personalizada apontando para o
+                    nome antigo, edite-a para usar{" "}
+                    <span className="font-mono">
+                      {metaEventName(tracking.qualified_event_name)}
+                    </span>
+                    :
+                  </strong>{" "}
+                  Gerenciador de Eventos → Conversões personalizadas → sua
+                  conversão → Editar → troque o evento na regra.
+                </>
               )}
             </p>
           </Field>

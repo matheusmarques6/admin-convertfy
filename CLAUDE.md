@@ -1199,6 +1199,16 @@ função é idempotente; nome já sem espaço passa intacto. O editor mostra
 "Chega na Meta como <nome>". `crm_forms.tracking_config` não muda: a
 sanitização é no ENVIO, então renomear na UI continua livre.
 
+**Os DOIS canais continuam disparando** — tentou-se desligar o pixel do
+browser para o qualificado (commit 0a206f73, revertido em 21d5ee7d): é
+justamente a redundância que salva a conversão quando um lado falha
+(caso real: o navegador registrou um lead que a CAPI não registrou).
+Pixel e CAPI mandam o mesmo nome e o mesmo `event_id`; a Meta deduplica
+e conta uma conversão. Conversão personalizada apontando para o nome
+antigo precisa ser editada uma vez (Gerenciador de Eventos → Conversões
+personalizadas → Editar → trocar o evento da regra); a UI mostra essa
+instrução quando o nome vai mudar.
+
 **Evento de teste** (`POST .../conversion-events/test`): dispara um
 evento REAL com contato fictício (`teste-integracao@convertfy.me`) e
 devolve a resposta crua da Meta — `events_received`, `fbtrace_id`, erro
