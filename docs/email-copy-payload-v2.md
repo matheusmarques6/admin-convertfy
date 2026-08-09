@@ -65,22 +65,65 @@ etapa funcionando como projetada.
 
 | Campo | v2 | v3 |
 |---|---|---|
-| `blocks[].fields` | uma das fontes | **a única** — vem de `email_blocks.fields`, gravado no seed a partir do blueprint |
-| `blocks[].tags` | array de tags canônicas | **REMOVIDO** — redundante com `fields[].tag` |
+| `blocks[].schema` | não existia | **a única fonte** — o schema da variante casada, organizado; vem de `email_blocks.fields` |
+| `blocks[].fields` | uma das fontes | **REMOVIDO** — virou `schema.campos`, indexado por key |
+| `blocks[].tags` | array de tags canônicas | **REMOVIDO** — redundante com o placeholder de cada campo |
+| `blocks[].purpose` / `variant_name` | no nível do bloco | movidos para `schema.diretriz` / `schema.variante` |
 | `emails[].component_variants` | lista de `output_schema` por email | **REMOVIDO** — era a segunda fonte que o n8n não cruzava |
-| `blocks[].variant_id` / `variant_name` | casados por índice no dispatch | resolvidos pelo `variant_id` da linha do bloco |
+| `blocks[].variant_id` | casado por índice no dispatch | resolvido pelo `variant_id` da linha do bloco |
+
+### O shape de `blocks[]` (v3)
+
+```jsonc
+{
+  "block_id": "71666143-5d53-457e-8b3e-988dfca91783",
+  "position": 5,
+  "type": "testimonials",
+  "label": "Prova social + fechamento emocional",
+  "variant_id": "cff6c8d8-a0da-4c80-90fa-1875174a75a1",
+  "schema": {
+    "variante": "review 3",
+    "diretriz": "Headline de pertencimento em 2ª pessoa (~40 caracteres)…",
+    "total_campos": 9,
+    "obrigatorios": ["review_headline", "review_1_text"],
+    "campos": {
+      "review_headline": {
+        "label": "Headline da prova social",
+        "tipo": "text_short",
+        "obrigatorio": true,
+        "max_caracteres": 40,
+        "min_caracteres": null,
+        "exemplo": "Quem já usa, não larga",
+        "orientacao": "Tom de pertencimento, 2ª pessoa",
+        "placeholder_no_html": "{{REVIEW_HEADLINE}}"
+      }
+      // … uma entrada por campo, na ordem do schema da variante
+    }
+  }
+}
+```
+
+**As chaves de `schema.campos` são o contrato de resposta.** Não existe mais
+um `key` dentro do item — a key é a posição dele no objeto. `nature`,
+`source` e os campos de imagem ficaram de fora: já foram filtrados/usados
+antes, e o copywriter não escreve nada com eles.
+
+`placeholder_no_html` é onde o valor cai no template. É informativo — **não**
+é a chave de resposta (vem com `{{}}` justamente para não ser confundido).
 
 ### O que o flow do n8n tem de fazer
 
 Iterar `blocks[]` e, para cada bloco, gerar **exatamente** as keys de
-`fields[]` — nada além, nada aquém —, respeitando `max_len` e usando
-`label`, `purpose`, `guidance` e `example` como direção. Devolver:
+`schema.campos` — nada além, nada aquém —, respeitando `max_caracteres` e
+usando `label`, `schema.diretriz`, `orientacao` e `exemplo` como direção.
+Devolver:
 
 ```jsonc
 { "block_id": "uuid", "content": { "hero_headline": "…", "hero_cta_2_label": "…" } }
 ```
 
-Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em `fields[]`.
+Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em
+`schema.campos`.
 
 **Entra na mesma janela do deploy.** Rollback = reverter o admin.
 
@@ -98,7 +141,12 @@ Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em `fields[]`.
 - O payload inteiro fica em `email_generation_runs.input_vars.payload` do run
   `copy_dispatch` (esqueleto acima de 1 MB).
 
-## O shape de `fields` (v2)
+## O shape de `fields` (v2 — histórico)
+
+> Substituído por `blocks[].schema` na v3. Continua sendo o shape gravado em
+> `email_blocks.fields` (a fonte de onde o `schema` é montado); o que mudou é
+> o que viaja no payload.
+
 
 ```jsonc
 {

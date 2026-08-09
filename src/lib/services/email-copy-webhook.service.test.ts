@@ -455,23 +455,26 @@ describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
     expect(blocks.map((b) => b.type)).toEqual(["hero", "coupon"])
 
     // O contrato veio da LINHA, não do índice do blueprint.
-    expect((blocks[0].fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+    expect(Object.keys((blocks[0].schema as { campos: object }).campos)).toEqual([
       "hero_headline",
       "hero_cta_2_label", // o campo que sumia
     ])
-    expect((blocks[1].fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+    expect(Object.keys((blocks[1].schema as { campos: object }).campos)).toEqual([
       "coupon_code",
     ])
 
-    // Rótulo/purpose vêm do blueprint casado por variant_id — não por posição.
-    expect(blocks[0].variant_name).toBe("welcome - hero section 9")
-    expect(blocks[0].purpose).toBe("P-HERO")
-    expect(blocks[1].variant_name).toBe("cupom 2")
-    expect(blocks[1].purpose).toBe("P-COUPON")
+    // Rótulo/diretriz vêm do blueprint casado por variant_id — não por posição.
+    expect((blocks[0].schema as { variante: string }).variante).toBe(
+      "welcome - hero section 9",
+    )
+    expect((blocks[0].schema as { diretriz: string }).diretriz).toBe("P-HERO")
+    expect((blocks[1].schema as { variante: string }).variante).toBe("cupom 2")
+    expect((blocks[1].schema as { diretriz: string }).diretriz).toBe("P-COUPON")
 
-    // Segunda fonte de schema morreu: nem `tags` no bloco, nem
-    // `component_variants` no email.
+    // Segunda fonte de schema morreu: nem `tags` nem `fields` cru no bloco,
+    // nem `component_variants` no email.
     expect(blocks[0]).not.toHaveProperty("tags")
+    expect(blocks[0]).not.toHaveProperty("fields")
     expect(blocks[0]).not.toHaveProperty("copy_spec")
     expect(body.flows[0].emails[0]).not.toHaveProperty("component_variants")
   })
@@ -512,10 +515,12 @@ describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
       flows: Array<{ emails: Array<{ blocks: Array<Record<string, unknown>> }> }>
     }
     const bloco = body.flows[0].emails[0].blocks[0]
-    expect((bloco.fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
+    expect(Object.keys((bloco.schema as { campos: object }).campos)).toEqual([
       "hero_headline",
     ])
     // Auto-cura: a linha foi atualizada para não voltar por este caminho.
+    // (na LINHA o snapshot segue sendo o array `fields` — o objeto `schema`
+    // é só a forma de viagem até o n8n)
     const row = h.tables.email_blocks.find((b: Row) => b.id === "b1")!
     expect(row.variant_id).toBe("v-hero")
     expect((row.fields as Array<{ key: string }>).map((f) => f.key)).toEqual([
@@ -697,10 +702,28 @@ describe("dispatchEmailCopyWebhook — payload v2 (fields/variant/tones)", () =>
     expect(res.ok).toBe(true)
 
     const block = firstEmail().blocks[0]
+    const schema = block.schema as {
+      variante: string
+      diretriz: string
+      obrigatorios: string[]
+      campos: Record<string, Record<string, unknown>>
+    }
     // Snapshot vence a derivação por tags (senão viria source tag_registry).
-    expect(block.fields).toEqual(snapshot)
+    expect(Object.keys(schema.campos)).toEqual(["headline"])
+    expect(schema.campos.headline).toEqual({
+      label: "Headline",
+      tipo: "text_short",
+      obrigatorio: true,
+      max_caracteres: 40,
+      min_caracteres: null,
+      exemplo: "Bem-vindo!",
+      orientacao: "Tom acolhedor",
+      placeholder_no_html: "{{HERO_HEADLINE}}",
+    })
+    expect(schema.obrigatorios).toEqual(["headline"])
     expect(block.variant_id).toBe("var-1")
-    expect(block.variant_name).toBe("Hero Editorial")
+    expect(schema.variante).toBe("Hero Editorial")
+    expect(schema.diretriz).toBe("P-HERO")
     expect(block).not.toHaveProperty("copy_spec")
   })
 
@@ -764,7 +787,7 @@ describe("dispatchEmailCopyWebhook — payload v2 (fields/variant/tones)", () =>
     expect(res.ok).toBe(true)
 
     const block = firstEmail().blocks[0]
-    const keys = (block.fields as Array<{ key: string }>).map((f) => f.key)
+    const keys = Object.keys((block.schema as { campos: object }).campos)
     expect(keys).toEqual(["headline"])
   })
 
@@ -1026,12 +1049,16 @@ describe("digestPayload", () => {
               {
                 position: 0,
                 type: "hero",
-                variant_name: "welcome - hero section 9",
-                fields: [
-                  { key: "hero_headline", tag: "HERO_HEADLINE" },
-                  { key: "hero_cta_2_label", tag: "HERO_CTA_2_LABEL" },
-                  { key: "orfao", tag: null },
-                ],
+                schema: {
+                  variante: "welcome - hero section 9",
+                  campos: {
+                    hero_headline: { placeholder_no_html: "{{HERO_HEADLINE}}" },
+                    hero_cta_2_label: {
+                      placeholder_no_html: "{{HERO_CTA_2_LABEL}}",
+                    },
+                    orfao: { placeholder_no_html: null },
+                  },
+                },
               },
             ],
           },

@@ -32,6 +32,7 @@ import type {
 } from "@/types/email-workspace"
 import type { BlueprintBlock } from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
+import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
 import {
   deriveFieldNature,
   deriveToneKeys,
@@ -57,8 +58,10 @@ export function digestPayload(payload: unknown): unknown {
         blocks?: Array<{
           position?: number
           type?: string
-          variant_name?: string | null
-          fields?: Array<{ key?: string; tag?: string | null }>
+          schema?: {
+            variante?: string | null
+            campos?: Record<string, { placeholder_no_html?: string | null }>
+          }
         }>
       }>
     }>
@@ -68,16 +71,18 @@ export function digestPayload(payload: unknown): unknown {
       flow_type: f.flow_type,
       emails: (f.emails ?? []).map((e) => ({
         email_number: e.email_number,
-        blocks: (e.blocks ?? []).map((b) => ({
-          position: b.position,
-          type: b.type,
-          variant_name: b.variant_name ?? null,
-          field_keys: (b.fields ?? []).map((fl) => fl.key).filter(Boolean),
-          fields_sem_tag: (b.fields ?? [])
-            .filter((fl) => !fl.tag)
-            .map((fl) => fl.key)
-            .filter(Boolean),
-        })),
+        blocks: (e.blocks ?? []).map((b) => {
+          const campos = Object.entries(b.schema?.campos ?? {})
+          return {
+            position: b.position,
+            type: b.type,
+            variant_name: b.schema?.variante ?? null,
+            field_keys: campos.map(([k]) => k),
+            fields_sem_tag: campos
+              .filter(([, v]) => !v?.placeholder_no_html)
+              .map(([k]) => k),
+          }
+        }),
       })),
     })),
   }
@@ -1197,16 +1202,21 @@ export async function dispatchEmailCopyWebhook(
                 position: b.position,
                 type: b.block_type,
                 label: b.label,
-                // Diretiva de conteúdo da seção — copy_guidance da variante
-                // casada (rota determinística) ou purpose do Blueprint LLM.
-                purpose: resolved?.purpose?.trim() || null,
                 variant_id: resolved?.variantId ?? null,
-                variant_name: resolved?.variantName ?? null,
-                // `fields` É o contrato, e o ÚNICO. `tags` saiu do bloco
-                // (redundante com fields[].tag) junto com o array
-                // component_variants do email: eram a segunda fonte que
-                // permitia ao n8n gerar por fora do schema.
-                fields,
+                // `schema` É o contrato, e o ÚNICO. `tags` saiu do bloco
+                // (redundante com o placeholder de cada campo) junto com o
+                // array component_variants do email: eram a segunda fonte
+                // que permitia ao n8n gerar por fora do schema.
+                //
+                // O array `fields` cru virou objeto endereçável: as chaves
+                // de `schema.campos` SÃO as chaves que o n8n devolve em
+                // `content`. `variant_name` e `purpose` mudaram de lugar
+                // (viraram `variante`/`diretriz` lá dentro) em vez de serem
+                // repetidos aqui fora.
+                schema: buildBlockCopySchema(fields, {
+                  variantName: resolved?.variantName ?? null,
+                  purpose: resolved?.purpose ?? null,
+                }),
               }
             },
           )
@@ -1218,14 +1228,14 @@ export async function dispatchEmailCopyWebhook(
             // (fillStructural: LOGO, PREHEADER, YEAR, UNSUBSCRIBE_URL,
             // FOOTER_LINK_*, redes), então nunca tiveram o que pedir aqui.
             .filter((b) => {
-              if (b.fields.length > 0) return true
+              if (b.schema.total_campos > 0) return true
               blocosOmitidos.push({
                 flow_type: f.flow_type,
                 email_number: e.number,
                 position: b.position,
                 type: b.type,
                 label: b.label,
-                variant_name: b.variant_name,
+                variant_name: b.schema.variante,
               })
               return false
             }),
