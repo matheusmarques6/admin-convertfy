@@ -712,7 +712,8 @@ describe("enxerto da hero × reference montada", () => {
       },
       source: "slot_map",
       mismatch: false,
-    })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
 
     await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
 
