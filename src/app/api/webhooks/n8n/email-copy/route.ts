@@ -394,6 +394,15 @@ export async function POST(request: NextRequest) {
     // auditar, e inventar um copy_spec por tipo (o que se fazia antes) só
     // produzia desvio contra um contrato que ninguém pediu.
     const copyDeviations: Array<Record<string, unknown>> = []
+    // Adesão ao contrato, em número. O desvio já era logado, mas só em log —
+    // uma copy que volta INTEIRA fora do schema (o flow no vocabulário antigo:
+    // `headline`/`cta` em vez de `hero_headline`/`hero_cta_2_label`) seguia
+    // adiante sem deixar rastro consultável, e o email saía com as linhas
+    // sem valor removidas. Aqui não muda nada na entrega: só passa a existir
+    // o número que diz se o n8n já migrou.
+    let keysRecebidas = 0
+    let keysNoContrato = 0
+    const contratoPorBloco: Array<Record<string, unknown>> = []
     for (let i = 0; i < body.blocks.length; i++) {
       // Resolve o bloco real pelo block_id (o array do callback pode ser um
       // SUBCONJUNTO dos blocos do email — mixed mode envia só os vazios);
@@ -405,6 +414,14 @@ export async function POST(request: NextRequest) {
       const fields = orderedFields[idx] ?? []
       const content = body.blocks[i].content as Record<string, unknown>
       if (fields.length === 0) {
+        keysRecebidas += Object.keys(content).length
+        contratoPorBloco.push({
+          position: idx,
+          type: blockType,
+          esperados: 0,
+          recebidos: Object.keys(content).length,
+          no_contrato: 0,
+        })
         copyDeviations.push({
           position: idx,
           type: blockType,
@@ -421,7 +438,18 @@ export async function POST(request: NextRequest) {
       // vocabulário antigo, ou inventou campo. É o contador que diz quando
       // o n8n terminou de migrar.
       const known = new Set(fields.map((f) => f.key))
-      for (const k of Object.keys(content)) {
+      const recebidas = Object.keys(content)
+      const noContrato = recebidas.filter((k) => known.has(k)).length
+      keysRecebidas += recebidas.length
+      keysNoContrato += noContrato
+      contratoPorBloco.push({
+        position: idx,
+        type: blockType,
+        esperados: fields.length,
+        recebidos: recebidas.length,
+        no_contrato: noContrato,
+      })
+      for (const k of recebidas) {
         if (known.has(k)) continue
         copyDeviations.push({
           position: idx,
@@ -432,10 +460,24 @@ export async function POST(request: NextRequest) {
         })
       }
     }
+    const taxaContrato =
+      keysRecebidas > 0
+        ? Math.round((keysNoContrato / keysRecebidas) * 100)
+        : null
     if (copyDeviations.length > 0) {
       log.warn("email_copy.copy_out_of_spec", {
         email_id: body.email_id,
         deviations: copyDeviations,
+      })
+    }
+    // Nenhuma chave dentro do contrato = o flow ignorou o schema por inteiro.
+    // Não é copy "parcial": é o vocabulário errado, e cada campo sem par vira
+    // uma linha removida no HTML mais adiante.
+    if (taxaContrato === 0) {
+      log.error("email_copy.contract_ignored", {
+        email_id: body.email_id,
+        keys_recebidas: keysRecebidas,
+        por_bloco: contratoPorBloco,
       })
     }
 
@@ -455,6 +497,15 @@ export async function POST(request: NextRequest) {
         preheader: body.preheader ?? null,
         blocks_written: blocksWritten,
         blocks_total: body.blocks.length,
+        contrato: {
+          keys_recebidas: keysRecebidas,
+          keys_no_contrato: keysNoContrato,
+          taxa_pct: taxaContrato,
+          por_bloco: contratoPorBloco,
+        },
+        ...(copyDeviations.length > 0
+          ? { desvios: copyDeviations.slice(0, 60) }
+          : {}),
       },
     })
 

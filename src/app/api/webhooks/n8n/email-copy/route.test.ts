@@ -40,6 +40,8 @@ let mockEmail: MockEmail | null = {
 
 const updateCalls: Array<{ table: string; data: Record<string, unknown> }> = []
 const insertCalls: Array<{ table: string; data: Record<string, unknown> }> = []
+/** Linhas de email_blocks vistas pelo callback (contrato de copy da linha). */
+let mockBlocks: Array<Record<string, unknown>> = []
 
 function resetState() {
   mockEmail = {
@@ -52,6 +54,7 @@ function resetState() {
   }
   updateCalls.length = 0
   insertCalls.length = 0
+  mockBlocks = []
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -68,7 +71,7 @@ function buildQuery(table: string): any {
   }
   self.single = self.maybeSingle
   self.then = (resolve: (v: { data: unknown; error: null }) => void) => {
-    resolve({ data: [], error: null })
+    resolve({ data: table === "email_blocks" ? mockBlocks : [], error: null })
   }
   self.update = (data: Record<string, unknown>) => {
     updateCalls.push({ table, data })
@@ -418,3 +421,133 @@ describe("POST /api/webhooks/n8n/email-copy — errors", () => {
     expect(res.status).toBe(401)
   })
 })
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// ── Adesão ao contrato do schema (o número que diz se o n8n migrou) ──
+describe("POST /api/webhooks/n8n/email-copy — contrato de copy", () => {
+  const campo = (key: string) => ({
+    key,
+    label: key,
+    type: "text_short",
+    max_len: 40,
+    min_len: null,
+    required: false,
+    example: "",
+    guidance: "",
+    tag: key.toUpperCase(),
+    source: "schema",
+  })
+
+  function contratoDoRun() {
+    const run = insertCalls.find(
+      (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
+    )
+    return (run?.data.parsed_output as Record<string, unknown>)
+      ?.contrato as Record<string, unknown>
+  }
+
+  it("copy no vocabulário ERRADO: taxa 0 e cada chave vira unknown_key", async () => {
+    // Caso real (Luxe Lift, 09/08): o schema pediu hero_headline/hero_subhead/
+    // hero_cta_label/hero_cta_2_label e o n8n devolveu headline/body/cta/text.
+    // O `text` era o segundo botão; sem par, a linha foi removida do HTML.
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: {},
+        block_type: "hero",
+        fields: [
+          campo("hero_headline"),
+          campo("hero_subhead"),
+          campo("hero_cta_label"),
+          campo("hero_cta_2_label"),
+        ],
+      },
+    ]
+    const res = await POST(
+      makeRequest(
+        validBody({
+          blocks: [
+            {
+              block_id: MOCK_BLOCK_ID,
+              content: {
+                headline: "Still there?",
+                body: "You left something behind…",
+                cta: "COMPLETE MY ORDER",
+                text: "SEE WHAT'S WAITING",
+              },
+            },
+          ],
+        }),
+      ) as any,
+    )
+    expect(res.status).toBe(200)
+
+    const c = contratoDoRun()
+    expect(c.keys_recebidas).toBe(4)
+    expect(c.keys_no_contrato).toBe(0)
+    expect(c.taxa_pct).toBe(0)
+
+    const desvios = (
+      insertCalls.find(
+        (x) => x.table === "email_generation_runs" && x.data.agent === "copy",
+      )!.data.parsed_output as Record<string, unknown>
+    ).desvios as Array<Record<string, unknown>>
+    expect(
+      desvios.filter((d) => d.kind === "unknown_key").map((d) => d.key).sort(),
+    ).toEqual(["body", "cta", "headline", "text"])
+  })
+
+  it("copy no contrato: taxa 100 e nenhum desvio de chave", async () => {
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: {},
+        block_type: "hero",
+        fields: [campo("hero_headline"), campo("hero_cta_2_label")],
+      },
+    ]
+    const res = await POST(
+      makeRequest(
+        validBody({
+          blocks: [
+            {
+              block_id: MOCK_BLOCK_ID,
+              content: {
+                hero_headline: "Still there?",
+                hero_cta_2_label: "SEE WHAT'S WAITING",
+              },
+            },
+          ],
+        }),
+      ) as any,
+    )
+    expect(res.status).toBe(200)
+
+    const c = contratoDoRun()
+    expect(c.taxa_pct).toBe(100)
+    expect(c.por_bloco).toEqual([
+      { position: 0, type: "hero", esperados: 2, recebidos: 2, no_contrato: 2 },
+    ])
+  })
+
+  it("bloco sem contrato entra no relatório com esperados=0", async () => {
+    mockBlocks = [
+      { id: MOCK_BLOCK_ID, content: {}, block_type: "coupon", fields: [] },
+    ]
+    const res = await POST(
+      makeRequest(
+        validBody({
+          blocks: [{ block_id: MOCK_BLOCK_ID, content: { text: "FRETE GRÁTIS" } }],
+        }),
+      ) as any,
+    )
+    expect(res.status).toBe(200)
+
+    const c = contratoDoRun()
+    expect(c.por_bloco).toEqual([
+      { position: 0, type: "coupon", esperados: 0, recebidos: 1, no_contrato: 0 },
+    ])
+    expect(c.taxa_pct).toBe(0)
+  })
+})
+/* eslint-enable @typescript-eslint/no-explicit-any */
