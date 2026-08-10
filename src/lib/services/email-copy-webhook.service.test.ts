@@ -1095,3 +1095,141 @@ describe("digestPayload", () => {
     })
   })
 })
+
+// ── MC-1: só se pede copy para seção que ENTROU no documento ─────────
+describe("dispatchEmailCopyWebhook — seção fora do documento não pede copy", () => {
+  const campo = (key: string) => ({
+    key,
+    tag: key.toUpperCase(),
+    type: "text_short",
+    nature: "copy",
+    max_len: 40,
+    required: false,
+    source: "schema",
+  })
+
+  function doisBlocos() {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      {
+        id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-hero", fields: [campo("hero_headline")],
+      },
+      {
+        id: "b2", email_id: "e1", position: 2, block_type: "coupon", label: "Cupom",
+        content: {}, variant_id: "v-coupon", fields: [campo("coupon_code")],
+      },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null,
+          blocks: [
+            { type: "hero", label: "Hero", purpose: "P-HERO",
+              variant_id: "v-hero", variant_name: "hero 9", copy_spec: [] },
+            { type: "coupon", label: "Cupom", purpose: "P-COUPON",
+              variant_id: "v-coupon", variant_name: "cupom 2", copy_spec: [] },
+          ],
+        }],
+      ]),
+    )
+  }
+
+  async function dispatch() {
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ blocks: Array<Record<string, unknown>> }> }>
+    }
+    return body.flows[0].emails[0].blocks
+  }
+
+  function omitidos() {
+    const run = h.tables.email_generation_runs.find(
+      (r: Row) => r.agent === "copy_dispatch",
+    )
+    return ((run?.parsed_output as Record<string, unknown>)?.blocos_omitidos ??
+      []) as Array<Record<string, unknown>>
+  }
+
+  it("variante que a montagem descartou sai do payload, com motivo", async () => {
+    // O cupom tem contrato (o blueprint casou variante), mas o
+    // assembleDocument recusou o HTML dela — a seção não existe no email.
+    // Pedir a copy seria pagar por texto que ninguém usa; foi o que
+    // aconteceu com a faixa de cupom da Luxe Lift.
+    doisBlocos()
+    h.tables.store_email_references = [
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 1,
+        slot_map: [
+          { block_index: 0, section: "hero", label: "Hero",
+            variant_id: "v-hero", variant_name: "hero 9", assembled: true },
+          { block_index: 1, section: "coupon", label: "Cupom",
+            variant_id: "v-coupon", variant_name: "cupom 2", assembled: false },
+        ],
+      },
+    ]
+
+    const blocks = await dispatch()
+    expect(blocks.map((b) => b.type)).toEqual(["hero"])
+    expect(omitidos()).toEqual([
+      expect.objectContaining({
+        type: "coupon",
+        motivo: "descartado_na_montagem",
+        variant_name: "cupom 2",
+      }),
+    ])
+  })
+
+  it("bloco sem variante nenhuma sai com motivo sem_variante", async () => {
+    doisBlocos()
+    h.tables.email_blocks[1].variant_id = null
+    h.tables.store_email_references = [
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 1,
+        slot_map: [
+          { block_index: 0, section: "hero", label: "Hero",
+            variant_id: "v-hero", variant_name: "hero 9", assembled: true },
+        ],
+      },
+    ]
+
+    const blocks = await dispatch()
+    expect(blocks.map((b) => b.type)).toEqual(["hero"])
+    expect(omitidos()).toEqual([
+      expect.objectContaining({ type: "coupon", motivo: "sem_variante" }),
+    ])
+  })
+
+  it("slot_map antigo (sem `assembled`) NÃO filtra nada", async () => {
+    // Descartar tudo por falta de dado trocaria copy desperdiçada por email
+    // sem copy nenhuma. Referência anterior a ago/2026 fica fora do filtro.
+    doisBlocos()
+    h.tables.store_email_references = [
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 1,
+        slot_map: [
+          { block_index: 0, section: "hero", label: "Hero",
+            variant_id: "v-hero", variant_name: "hero 9" },
+        ],
+      },
+    ]
+
+    const blocks = await dispatch()
+    expect(blocks.map((b) => b.type)).toEqual(["hero", "coupon"])
+    expect(omitidos()).toEqual([])
+  })
+
+  it("sem reference nenhuma: comportamento antigo preservado", async () => {
+    doisBlocos()
+    const blocks = await dispatch()
+    expect(blocks.map((b) => b.type)).toEqual(["hero", "coupon"])
+  })
+})

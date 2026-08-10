@@ -561,6 +561,16 @@ export interface ReferenceSlotMapEntry {
   label: string
   variant_id: string | null
   variant_name: string | null
+  /**
+   * A seção entrou de fato no documento montado.
+   *
+   * `variant_id` não basta como proxy: a montagem também descarta variante
+   * com HTML vazio ou fragmento irrecuperável (`empty_html`,
+   * `invalid_fragment`), e nesses casos o slot tem variante e mesmo assim
+   * a seção não existe no email. Ausente (slot_map anterior a ago/2026) →
+   * o consumidor não filtra, para não descartar tudo por falta de dado.
+   */
+  assembled?: boolean
 }
 
 // Reference HTML GERADO por (loja × email). Ocupa o papel do reference_html

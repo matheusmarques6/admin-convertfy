@@ -104,9 +104,32 @@ describe("slotMapFromSlots", () => {
       { kind: "missing", section: "offer", label: "Oferta" },
     ]
     expect(slotMapFromSlots(slots)).toEqual([
-      { block_index: 0, section: "hero", label: "Hero", variant_id: "vh", variant_name: "Hero A" },
-      { block_index: 1, section: "offer", label: "Oferta", variant_id: null, variant_name: null },
+      {
+        block_index: 0, section: "hero", label: "Hero",
+        variant_id: "vh", variant_name: "Hero A", assembled: true,
+      },
+      {
+        block_index: 1, section: "offer", label: "Oferta",
+        variant_id: null, variant_name: null, assembled: false,
+      },
     ])
+  })
+
+  it("variante que a montagem descartou fica assembled:false (MC-1)", () => {
+    // Ter variante nao basta: HTML vazio ou fragmento irrecuperavel tambem
+    // deixa a secao fora do documento. Sem este sinal o dispatch pediria
+    // copy para uma secao que nao existe no email.
+    const hero = mk({ id: "vh", block_type: "hero", name: "Hero A" })
+    const body = mk({ id: "vb", block_type: "body", name: "Body A" })
+    const slots: AssemblySlot[] = [
+      { kind: "variant", variant: hero, section: "hero", label: "Hero" },
+      { kind: "variant", variant: body, section: "body", label: "Corpo" },
+    ]
+    const map = slotMapFromSlots(slots, [{ block_index: 1 }])
+    expect(map.map((s) => s.assembled)).toEqual([true, false])
+    // o variant_id continua registrado — quem foi descartado tambem precisa
+    // aparecer no diagnostico
+    expect(map[1].variant_id).toBe("vb")
   })
 })
 

@@ -30,7 +30,10 @@ import type {
   StoreBrandIdentity,
   StoreBriefing,
 } from "@/types/email-workspace"
-import type { BlueprintBlock } from "@/types/email-generation"
+import type {
+  BlueprintBlock,
+  ReferenceSlotMapEntry,
+} from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
 import {
@@ -689,6 +692,50 @@ export async function dispatchEmailCopyWebhook(
   const blocks = (blocksRes.data ?? []) as BlockRow[]
   const references = (referencesRes.data ?? []) as ReferenceRow[]
 
+  // ── O que ENTROU no documento montado (MC-1) ─────────────────────────
+  // O dispatch filtrava bloco por "não tem campo de copy"; a montagem
+  // (assembleDocument) descarta por "o Montador não escolheu variante" —
+  // e também por HTML vazio ou fragmento irrecuperável. Critérios
+  // diferentes: bloco cujo blueprint casou variante (logo tem `fields`)
+  // mas que a montagem descartou recebia copy paga e não aparecia no
+  // email. Foi o caso do `coupon` da Luxe Lift: variante null no payload
+  // e `code`/`value` pedidos assim mesmo.
+  //
+  // O `slot_map` da reference é a fonte: cada slot diz qual variante e se
+  // ela foi montada. Sem `assembled` (slot_map anterior a ago/2026) o
+  // email fica FORA do filtro — descartar tudo por falta de dado seria
+  // trocar copy desperdiçada por email sem copy nenhuma.
+  const montadasPorEmail = new Map<string, Set<string>>()
+  {
+    const { data: storeRefs, error: refErr } = await admin
+      .from("store_email_references")
+      .select("flow_type, email_number, slot_map")
+      .eq("store_id", storeId)
+      .in("flow_type", flowTypes)
+    if (refErr) {
+      log.warn("email_copy.webhook.slot_map.error", {
+        storeId,
+        error: refErr.message,
+      })
+    }
+    for (const r of (storeRefs ?? []) as Array<{
+      flow_type: string
+      email_number: number
+      slot_map: ReferenceSlotMapEntry[] | null
+    }>) {
+      const slots = Array.isArray(r.slot_map) ? r.slot_map : []
+      if (!slots.some((s) => typeof s?.assembled === "boolean")) continue
+      montadasPorEmail.set(
+        `${r.flow_type}:${r.email_number}`,
+        new Set(
+          slots
+            .filter((s) => s.assembled && s.variant_id)
+            .map((s) => s.variant_id as string),
+        ),
+      )
+    }
+  }
+
   // ── Indexar para o payload
   const blocksByEmail = new Map<string, BlockRow[]>()
   for (const b of blocks) {
@@ -944,10 +991,13 @@ export async function dispatchEmailCopyWebhook(
     variant_id: string | null
   }> = []
 
-  // Blocos que NÃO foram enviados por não terem campo de copy nenhum.
-  // Superconjunto de `blocosSemSchema`: um bloco pode ter schema só de
-  // imagem (nada a escrever) e ser omitido sem ser erro. Registrado sempre —
+  // Blocos que NÃO foram enviados, com o motivo. Registrado sempre —
   // omissão silenciosa é como um bloco deixa de ser gerado sem ninguém ver.
+  //   sem_campo_de_copy      — schema só de imagem/asset: nada a escrever.
+  //   sem_variante           — a montagem não tem seção para este bloco.
+  //   descartado_na_montagem — tinha variante, mas o HTML dela foi recusado.
+  // Os dois últimos são MC-1: pedir copy para seção que não entra no email
+  // é gasto puro, e o bloco sumia do documento sem deixar rastro no dispatch.
   const blocosOmitidos: Array<{
     flow_type: string
     email_number: number
@@ -955,6 +1005,7 @@ export async function dispatchEmailCopyWebhook(
     type: string
     label: string | null
     variant_name: string | null
+    motivo: "sem_campo_de_copy" | "sem_variante" | "descartado_na_montagem"
   }> = []
 
   // ── O bloco é o schema: resolve o contrato de cada bloco ANTES do envio.
@@ -1150,7 +1201,7 @@ export async function dispatchEmailCopyWebhook(
           blocks: (options.regenerateAll
             ? (blocksByEmail.get(e.id) ?? [])
             : selectBlocksForCopy(blocksByEmail.get(e.id) ?? [])
-          ).map(
+          ).flatMap(
             (b) => {
               // ── O BLOCO É O SCHEMA (20261065) ────────────────────────
               // O contrato de copy sai da PRÓPRIA LINHA. Antes ele era
@@ -1197,12 +1248,31 @@ export async function dispatchEmailCopyWebhook(
                   total: fields.length,
                 })
               }
-              return {
+              // MC-1: a seção não entrou no documento → não se pede a copy
+              // dela. Vale tanto para bloco sem variante quanto para
+              // variante que a montagem descartou (HTML vazio, fragmento
+              // irrecuperável). Sem `slot_map` utilizável o email inteiro
+              // fica fora do filtro.
+              const montadas = montadasPorEmail.get(`${f.flow_type}:${e.number}`)
+              const variantId = resolved?.variantId ?? null
+              if (montadas && (!variantId || !montadas.has(variantId))) {
+                blocosOmitidos.push({
+                  flow_type: f.flow_type,
+                  email_number: e.number,
+                  position: b.position,
+                  type: b.block_type,
+                  label: b.label,
+                  variant_name: resolved?.variantName ?? null,
+                  motivo: variantId ? "descartado_na_montagem" : "sem_variante",
+                })
+                return []
+              }
+              const bloco = {
                 block_id: b.id,
                 position: b.position,
                 type: b.block_type,
                 label: b.label,
-                variant_id: resolved?.variantId ?? null,
+                variant_id: variantId,
                 // PONTE DE TRANSIÇÃO — remover quando `contrato.taxa_pct`
                 // do run `copy` estabilizar em 100.
                 //
@@ -1229,27 +1299,29 @@ export async function dispatchEmailCopyWebhook(
                   purpose: resolved?.purpose ?? null,
                 }),
               }
+              // Bloco sem NENHUM campo de copy sai do payload. Não é
+              // economia de bytes: mandar um bloco vazio junto de um
+              // `purpose` de 400 caracteres explicando o que fazer é um
+              // convite para o modelo improvisar — foi assim que a faixa de
+              // cupom saiu com texto de preheader. Header e footer são
+              // preenchidos por código (fillStructural: LOGO, PREHEADER,
+              // YEAR, UNSUBSCRIBE_URL, FOOTER_LINK_*, redes), então nunca
+              // tiveram o que pedir aqui.
+              if (bloco.schema.total_campos === 0) {
+                blocosOmitidos.push({
+                  flow_type: f.flow_type,
+                  email_number: e.number,
+                  position: b.position,
+                  type: b.block_type,
+                  label: b.label,
+                  variant_name: bloco.schema.variante,
+                  motivo: "sem_campo_de_copy",
+                })
+                return []
+              }
+              return [bloco]
             },
-          )
-            // Bloco sem NENHUM campo de copy sai do payload. Não é economia
-            // de bytes: mandar um bloco vazio junto de um `purpose` de 400
-            // caracteres explicando o que fazer é um convite para o modelo
-            // improvisar — foi assim que a faixa de cupom saiu com texto de
-            // preheader. Header e footer são preenchidos por código
-            // (fillStructural: LOGO, PREHEADER, YEAR, UNSUBSCRIBE_URL,
-            // FOOTER_LINK_*, redes), então nunca tiveram o que pedir aqui.
-            .filter((b) => {
-              if (b.schema.total_campos > 0) return true
-              blocosOmitidos.push({
-                flow_type: f.flow_type,
-                email_number: e.number,
-                position: b.position,
-                type: b.type,
-                label: b.label,
-                variant_name: b.schema.variante,
-              })
-              return false
-            }),
+          ),
         }
       })
 

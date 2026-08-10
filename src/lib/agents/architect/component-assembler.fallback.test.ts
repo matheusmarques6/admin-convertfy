@@ -169,6 +169,9 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
         label: "Hero",
         variant_id: "v1",
         variant_name: "hero v1",
+        // MC-1: o slot_map registra o que ENTROU no documento — é dele que
+        // o dispatch decide se pede copy para a seção.
+        assembled: true,
       },
     ])
   })

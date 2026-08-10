@@ -329,14 +329,24 @@ export type AssemblySlot =
 /**
  * Escolha do Curador/Montador por parte do email — persistida em
  * store_email_references.slot_map. Missing → variant_id null. Pura.
+ *
+ * `skipped` (stats da montagem) marca quais slots NÃO entraram no
+ * documento. Ter variante não basta: a montagem também descarta HTML vazio
+ * e fragmento irrecuperável. Sem esse dado o dispatch pediria copy para
+ * seção que não existe no email.
  */
-export function slotMapFromSlots(slots: AssemblySlot[]): ReferenceSlotMapEntry[] {
+export function slotMapFromSlots(
+  slots: AssemblySlot[],
+  skipped: ReadonlyArray<{ block_index: number }> = [],
+): ReferenceSlotMapEntry[] {
+  const fora = new Set(skipped.map((s) => s.block_index))
   return slots.map((s, i) => ({
     block_index: i,
     section: s.section,
     label: s.label,
     variant_id: s.kind === "variant" ? s.variant.id : null,
     variant_name: s.kind === "variant" ? s.variant.name : null,
+    assembled: s.kind === "variant" && !fora.has(i),
   }))
 }
 
@@ -948,7 +958,14 @@ export async function assembleStoreReference(
   const source: ReferenceSource = assembled.stats.blocks > 0 ? "code" : "none"
 
   if (source === "code") {
-    await upsertStoreReference(input, html, variantIds, "code", slots)
+    await upsertStoreReference(
+      input,
+      html,
+      variantIds,
+      "code",
+      slots,
+      assembled.stats.skipped,
+    )
   } else {
     // Nenhum bloco entrou (toda variante recusada/vazia): não persiste, o
     // consumidor cai no template global.
@@ -1033,6 +1050,7 @@ async function upsertStoreReference(
   variantIds: string[],
   model: string | null,
   slots: AssemblySlot[],
+  skipped: ReadonlyArray<{ block_index: number }>,
 ): Promise<void> {
   const admin = createAdminClient()
   const { error } = await admin.from("store_email_references").upsert(
@@ -1044,7 +1062,7 @@ async function upsertStoreReference(
       variant_ids: variantIds,
       // Escolha por parte do email (migration 20261039) — fonte primária do
       // agente hero_section pra resolver a variante da hero na fase 2.
-      slot_map: slotMapFromSlots(slots),
+      slot_map: slotMapFromSlots(slots, skipped),
       source: "ai",
       model,
       updated_at: new Date().toISOString(),
