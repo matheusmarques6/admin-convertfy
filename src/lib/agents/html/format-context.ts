@@ -163,7 +163,7 @@ export async function loadFormatChainContext(
       .maybeSingle(),
     admin
       .from("email_blocks")
-      .select("id, position, block_type, label, content")
+      .select("id, position, block_type, label, content, fields")
       .eq("email_id", emailId)
       .order("position", { ascending: true }),
     storeId && flowType && emailNumber != null

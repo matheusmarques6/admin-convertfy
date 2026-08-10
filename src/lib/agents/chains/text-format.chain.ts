@@ -274,6 +274,12 @@ export const DEFAULT_TEXT_EXCEPTION_USER_TEMPLATE = `<slots_pendentes>
 {{blocks_with_content_json}}
 </copy_disponivel>
 
+<contrato_dos_blocos>
+Os campos que cada bloco DEVE conter, com natureza e limite. Slot pendente
+cujo campo está aqui é campo esperando valor — não é sujeira a remover.
+{{block_contracts_json}}
+</contrato_dos_blocos>
+
 Emit the ops JSON now, one decision per pending slot.`
 
 export interface InvokeTextExceptionResult {

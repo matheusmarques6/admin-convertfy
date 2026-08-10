@@ -110,6 +110,11 @@ import {
 } from "./html/qa-views"
 import { annotateSlots, stripSlotAttributes } from "./html/slot-annotate"
 import {
+  buildBlockContracts,
+  contractTags,
+  measureOpsAgainstContract,
+} from "./html/block-contract"
+import {
   locateHeroRegion,
   spliceHero,
   heroUnchanged,
@@ -1941,6 +1946,15 @@ async function runFormattingChain(p: {
     }
   }
 
+  // ── Contrato dos blocos (MC-3) ─────────────────────────────────────
+  // O que cada bloco DEVE conter — campos, natureza, limite — extraído do
+  // snapshot gravado na linha. Vai para os formatadores como INPUT (slot
+  // vazio cujo campo está no contrato é campo esperando valor, não sujeira
+  // a remover) e serve de régua para MEDIR as ops que eles emitem.
+  const blockContracts = buildBlockContracts(fmtCtx.blocks)
+  const blockContractsJson = JSON.stringify(blockContracts, null, 2)
+  const contractTagSet = contractTags(fmtCtx.blocks)
+
   // ── Anotação de slots (Fase 2 do endereçamento) ────────────────────
   // Injeta data-cfy-slot/data-cfy-row por CÓDIGO (offset exato) antes de
   // qualquer agente rodar. Feito aqui — e não no Montador — para valer
@@ -2404,6 +2418,7 @@ async function runFormattingChain(p: {
             exception_slots_json: JSON.stringify(slots, null, 2),
             blocks_with_content_json:
               textVars.blocks_with_content_json ?? "[]",
+            block_contracts_json: blockContractsJson,
           },
         })
         const ops = parseOps(r.rawOps)
@@ -2421,6 +2436,7 @@ async function runFormattingChain(p: {
           parsed: {
             mode: "exception_slots",
             slots_sent: slots.length,
+            contrato: measureOpsAgainstContract(ops, contractTagSet),
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
@@ -2512,7 +2528,10 @@ async function runFormattingChain(p: {
   }
   if (stage === "text") {
     const inputHtml = currentHtml
-    const vars = buildImageFormatVars(fmtCtx, inputHtml)
+    const vars: Record<string, string> = {
+      ...buildImageFormatVars(fmtCtx, inputHtml),
+      block_contracts_json: blockContractsJson,
+    }
     const config = toChainConfig(imageFmtSwitch.config, "image_format")
 
     const outcome = await executeFormatStep<string>({
@@ -2541,6 +2560,7 @@ async function runFormattingChain(p: {
           rawOutput: r.rawOutput,
           parsed: {
             slots_sent: slotsSent,
+            contrato: measureOpsAgainstContract(r.ops, contractTagSet),
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
@@ -2650,6 +2670,7 @@ async function runFormattingChain(p: {
           renderedPrompt: r.renderedPrompt,
           rawOutput: r.rawOutput,
           parsed: {
+            contrato: measureOpsAgainstContract(r.ops, contractTagSet),
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
@@ -2887,13 +2908,26 @@ export async function runPhase2HtmlQa(
   try {
     const { data: qaBlocks } = await admin
       .from("email_blocks")
-      .select("id, position, block_type, content")
+      .select("id, position, block_type, label, content, fields")
       .eq("email_id", emailId)
       .order("position", { ascending: true })
     const blocksForQa = (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
       block_type: (b.block_type as string) ?? "unknown",
       content: ((b.content as Record<string, unknown>) ?? {}),
     }))
+    // MC-3: o QA passa a ver o CONTRATO, não só o documento. Campo do
+    // contrato ausente no HTML é achado de QA — antes ele só podia julgar
+    // o que estava escrito, e um bloco que perdeu um slot parecia apenas
+    // um bloco menor.
+    const qaContracts = buildBlockContracts(
+      (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
+        id: (b.id as string) ?? "",
+        position: (b.position as number) ?? 0,
+        block_type: (b.block_type as string) ?? "unknown",
+        label: (b.label as string | null) ?? null,
+        fields: b.fields,
+      })),
+    )
     // F5: views extraídas pela cadeia (com marcadores); resume pós-strip
     // deixa a lista vazia → fallback por content dos blocos.
     const blockViews =
@@ -2922,6 +2956,7 @@ export async function runPhase2HtmlQa(
       qaVisionEnabled: ctx.qaVisionEnabled,
       // fields v2 do blueprint híbrido → validação max_len/required no QA.
       blueprintBlocks: ctx.blueprint?.blocks ?? [],
+      blockContracts: qaContracts,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"

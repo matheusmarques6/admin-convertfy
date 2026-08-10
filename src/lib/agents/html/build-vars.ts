@@ -80,6 +80,12 @@ export interface EmailBlockRow {
   block_type: string
   label: string
   content: Record<string, unknown> | null
+  /**
+   * Snapshot do contrato de copy do bloco (`email_blocks.fields`, migration
+   * 20261065). Opcional porque nem todo consumidor precisa carregá-lo —
+   * quem monta o contrato para os formatadores (MC-3) precisa.
+   */
+  fields?: unknown
 }
 
 export interface ImageMapEntry {

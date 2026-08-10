@@ -70,6 +70,12 @@ export const DEFAULT_IMAGE_FORMAT_USER_TEMPLATE = `<store brand_name="{{brand_na
 {{image_slots_json}}
 </image_slots>
 
+<contrato_dos_blocos>
+Os campos que cada bloco DEVE conter, com natureza e limite. Slot vazio
+cujo campo está aqui é campo esperando valor — não é sujeira a remover.
+{{block_contracts_json}}
+</contrato_dos_blocos>
+
 <logo_candidates>
 {{logo_candidates_json}}
 </logo_candidates>

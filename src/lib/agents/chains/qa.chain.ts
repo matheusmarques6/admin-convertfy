@@ -131,6 +131,12 @@ export const DEFAULT_QA_USER_TEMPLATE = `<objective>{{blueprint_objective}}</obj
 {{block_views_json}}
 </block_views>
 
+<contrato_dos_blocos>
+Os campos que cada bloco DEVE conter, com natureza e limite. Campo do
+contrato ausente no documento é achado de QA, não um bloco menor.
+{{block_contracts_json}}
+</contrato_dos_blocos>
+
 <expected_copy>
 {{blocks_json}}
 </expected_copy>
@@ -522,6 +528,10 @@ export interface RunQaAgentInput {
   // F5 (arquitetura por views): views por bloco extraídas pelo runner
   // ANTES do strip dos marcadores — é o que o LLM vê no lugar do html.
   blockViews?: import("../html/qa-views").QaBlockView[]
+  // MC-3: o que cada bloco DEVIA conter (campos, natureza, limite). Sem
+  // isto o QA só podia julgar o que estava escrito — um bloco que perdeu
+  // um slot parecia apenas um bloco menor, não um campo faltando.
+  blockContracts?: import("../html/block-contract").BlockContract[]
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -603,6 +613,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     // (até a migration 20261046 zerar), mas os defaults não a usam.
     html,
     block_views_json: JSON.stringify(input.blockViews ?? [], null, 2),
+    block_contracts_json: JSON.stringify(input.blockContracts ?? [], null, 2),
     blocks_json: JSON.stringify(blocks, null, 2),
     briefing_json: JSON.stringify(briefing ?? {}, null, 2),
     brand_json: JSON.stringify(brand ?? {}, null, 2),
