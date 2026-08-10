@@ -468,6 +468,9 @@ describe("dispatchEmailCopyWebhook — o BLOCO é o schema (20261065)", () => {
       "welcome - hero section 9",
     )
     expect((blocks[0].schema as { diretriz: string }).diretriz).toBe("P-HERO")
+    // Ponte de transição: o flow atual lê `purpose` do BLOCO. Some quando a
+    // taxa de contrato chegar a 100.
+    expect(blocks[0].purpose).toBe("P-HERO")
     expect((blocks[1].schema as { variante: string }).variante).toBe("cupom 2")
     expect((blocks[1].schema as { diretriz: string }).diretriz).toBe("P-COUPON")
 

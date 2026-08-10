@@ -1203,6 +1203,17 @@ export async function dispatchEmailCopyWebhook(
                 type: b.block_type,
                 label: b.label,
                 variant_id: resolved?.variantId ?? null,
+                // PONTE DE TRANSIÇÃO — remover quando `contrato.taxa_pct`
+                // do run `copy` estabilizar em 100.
+                //
+                // O `purpose` também vive em `schema.diretriz`, e essa
+                // duplicação é deliberada: o flow do n8n de hoje gera a
+                // copy a partir do BLOCO (type/label/purpose) e ignora o
+                // schema. Tirá-lo daqui junto com o `fields` deixaria o
+                // flow atual sem a única diretriz que ele de fato lê — o
+                // email sairia PIOR por causa de uma mudança que só devia
+                // preparar o terreno.
+                purpose: resolved?.purpose?.trim() || null,
                 // `schema` É o contrato, e o ÚNICO. `tags` saiu do bloco
                 // (redundante com o placeholder de cada campo) junto com o
                 // array component_variants do email: eram a segunda fonte

@@ -68,7 +68,8 @@ etapa funcionando como projetada.
 | `blocks[].schema` | não existia | **a única fonte** — o schema da variante casada, organizado; vem de `email_blocks.fields` |
 | `blocks[].fields` | uma das fontes | **REMOVIDO** — virou `schema.campos`, indexado por key |
 | `blocks[].tags` | array de tags canônicas | **REMOVIDO** — redundante com o placeholder de cada campo |
-| `blocks[].purpose` / `variant_name` | no nível do bloco | movidos para `schema.diretriz` / `schema.variante` |
+| `blocks[].variant_name` | no nível do bloco | movido para `schema.variante` |
+| `blocks[].purpose` | no nível do bloco | **mantido** (ponte) e também em `schema.diretriz` |
 | `emails[].component_variants` | lista de `output_schema` por email | **REMOVIDO** — era a segunda fonte que o n8n não cruzava |
 | `blocks[].variant_id` | casado por índice no dispatch | resolvido pelo `variant_id` da linha do bloco |
 
@@ -102,6 +103,12 @@ etapa funcionando como projetada.
   }
 }
 ```
+
+> **Ponte de transição.** `purpose` continua no nível do bloco, duplicando
+> `schema.diretriz`, porque o flow atual gera a copy a partir do BLOCO
+> (type/label/purpose) e ignora o schema — removê-lo agora deixaria o flow
+> sem a única diretriz que ele lê. Some quando `contrato.taxa_pct` do run
+> `copy` estabilizar em 100.
 
 **As chaves de `schema.campos` são o contrato de resposta.** Não existe mais
 um `key` dentro do item — a key é a posição dele no objeto. `nature`,
