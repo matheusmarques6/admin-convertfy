@@ -71,6 +71,12 @@ export interface SkippedOp {
     // numa tag + remove_row na linha que a contém). A da direita vence; a
     // outra é rejeitada em vez de corromper o documento.
     | "overlapping_edit"
+    // set_text cujo valor é MARCAÇÃO, não texto. O set_text neutraliza
+    // `<>` por contrato, então aplicar isso escreve a tag ESCAPADA e
+    // visível na tela — foi como o logo do rodapé virou o literal
+    // `&lt;img src="..."&gt;` num email da Luxe Lift (10/08). Trocar
+    // imagem é a op `img`; recusar aqui é melhor que renderizar lixo.
+    | "value_is_html"
 }
 
 export interface ApplyOpsResult {
@@ -183,6 +189,15 @@ function findAll(html: string, re: RegExp): Array<{ start: number; end: number }
  * posições mudam a cada aplicação); a região da hero é recalculada pelas
  * sentinelas a cada passo.
  */
+/**
+ * Valor de `set_text` que é MARCAÇÃO em vez de texto. Conservador de
+ * propósito: só pega tag HTML de verdade (`<img ...>`, `<a ...>`), não
+ * texto com sinal de menor ("preço < 100") nem comparação solta.
+ */
+export function looksLikeMarkup(value: string): boolean {
+  return /<\s*\/?\s*[a-z][a-z0-9-]*(\s[^<>]*)?\/?\s*>/i.test(value)
+}
+
 export function applyOps(
   html: string,
   ops: FormatOp[],
@@ -242,6 +257,10 @@ export function applyOps(
       // color_format é true; recolor nunca muda estrutura).
       recolors.push({ op, from: op.from, to: op.to })
     } else if (op.action === "img" || op.action === "set_text") {
+      if (op.action === "set_text" && looksLikeMarkup(op.value)) {
+        skipped.push({ op, reason: "value_is_html" })
+        continue
+      }
       const spots = findAll(doc, tokenRegex(op.tag))
       if (spots.length === 0) {
         skipped.push({ op, reason: "tag_not_found" })

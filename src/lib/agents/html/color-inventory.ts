@@ -98,11 +98,18 @@ export function applyRecolor(
 ): { html: string; replaced: number } {
   const canonical = canonicalHex(from)
   const full = canonical.slice(1) // AABBCC
+  // `(?<!&)` — o `#` NÃO pode vir logo depois de um `&`: aí ele não é
+  // cor, é entidade HTML numérica. O preheader usa `&#847;` (combining
+  // grapheme joiner) como espaçador invisível, e um recolor de #884477
+  // monta a forma curta `#847`, que casava DENTRO da entidade — o `\b`
+  // vale entre o `7` e o `;`. Na Luxe Lift (10/08) uma única op de cor
+  // transformou `&#847;` em `&#3D2820;` e quebrou o preheader de todos
+  // os emails que usam esse espaçador (ou seja, o padrão da biblioteca).
   const forms: RegExp[] = []
-  forms.push(new RegExp(`#${full}\\b`, "gi"))
+  forms.push(new RegExp(`(?<!&)#${full}\\b`, "gi"))
   // Forma curta só existe quando os pares se repetem (AABBCC → ABC).
   if (full[0] === full[1] && full[2] === full[3] && full[4] === full[5]) {
-    forms.push(new RegExp(`#${full[0]}${full[2]}${full[4]}\\b`, "gi"))
+    forms.push(new RegExp(`(?<!&)#${full[0]}${full[2]}${full[4]}\\b`, "gi"))
   }
   const r = parseInt(full.slice(0, 2), 16)
   const g = parseInt(full.slice(2, 4), 16)

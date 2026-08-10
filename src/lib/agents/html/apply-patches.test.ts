@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest"
 
-import { parseOps, applyOps, OpsParseError } from "./apply-patches"
+import {
+  parseOps,
+  applyOps,
+  OpsParseError,
+  looksLikeMarkup,
+} from "./apply-patches"
 import { HERO_SENTINEL_START, HERO_SENTINEL_END } from "./hero-locator"
 
 describe("parseOps", () => {
@@ -170,5 +175,47 @@ describe("applyOps", () => {
     // Uma das duas vence; a outra vira overlapping_edit — nunca as duas.
     expect(res.applied).toBe(1)
     expect(res.skipped[0].reason).toBe("overlapping_edit")
+  })
+})
+
+describe("set_text com MARCAÇÃO é recusado (incidente Luxe Lift, 10/08)", () => {
+  // O set_text neutraliza `<>` por contrato. Aplicar uma tag HTML como
+  // valor escreve a marcação ESCAPADA e VISÍVEL na tela — foi assim que o
+  // logo do rodapé virou o literal `&lt;img src="..."&gt;` dentro de um
+  // <span>. Trocar imagem é a op `img`; recusar é melhor que renderizar
+  // lixo com cara de bug de template.
+  const doc = '<tr><td data-cfy-slot="LOGO">{{LOGO}}</td></tr>'
+
+  it("valor com tag <img> não é aplicado", () => {
+    const r = applyOps(doc, [
+      { action: "set_text", tag: "LOGO", value: '<img src="https://x/l.png" width="180" />' },
+    ], { allowHero: true })
+    expect(r.applied).toBe(0)
+    expect(r.skipped).toEqual([
+      expect.objectContaining({ reason: "value_is_html" }),
+    ])
+    expect(r.html).toBe(doc)
+  })
+
+  it("texto com sinal de menor CONTINUA passando", () => {
+    // O guard tem de ser conservador: copy legítima usa "<" o tempo todo.
+    const r = applyOps(doc, [
+      { action: "set_text", tag: "LOGO", value: "frete < R$ 100 e 5 > 3" },
+    ], { allowHero: true })
+    expect(r.applied).toBe(1)
+    expect(r.skipped).toEqual([])
+  })
+})
+
+describe("looksLikeMarkup", () => {
+  it("pega tag de verdade", () => {
+    expect(looksLikeMarkup('<img src="x">')).toBe(true)
+    expect(looksLikeMarkup("<a href='y'>link</a>")).toBe(true)
+    expect(looksLikeMarkup("<br/>")).toBe(true)
+  })
+  it("não pega comparação nem texto solto", () => {
+    expect(looksLikeMarkup("de < 100 para > 200")).toBe(false)
+    expect(looksLikeMarkup("Bem-vinda!")).toBe(false)
+    expect(looksLikeMarkup("5 < 10")).toBe(false)
   })
 })

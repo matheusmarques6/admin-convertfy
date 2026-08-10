@@ -85,3 +85,29 @@ describe("applyRecolor", () => {
     expect(html).toContain("CTA")
   })
 })
+
+describe("recolor NÃO come entidade HTML (incidente Luxe Lift, 10/08)", () => {
+  // O preheader usa `&#847;` (combining grapheme joiner) como espaçador
+  // invisível — é o padrão da biblioteca inteira. Um recolor de #884477
+  // monta a forma curta `#847`, que casava DENTRO da entidade porque o
+  // `\b` vale entre o `7` e o `;`. Uma única op de cor transformou
+  // `&#847;` em `&#3D2820;` e quebrou o preheader do email.
+  it("não troca dentro de `&#847;`", () => {
+    const html = '<div>&#847;&zwnj;&nbsp;&#847;</div>'
+    const r = applyRecolor(html, "#884477", "#3D2820")
+    expect(r.html).toBe(html)
+    expect(r.replaced).toBe(0)
+  })
+
+  it("continua trocando a cor de verdade no mesmo documento", () => {
+    const html = '<td style="color:#847">x</td><span>&#847;</span>'
+    const r = applyRecolor(html, "#884477", "#3D2820")
+    expect(r.html).toBe('<td style="color:#3D2820">x</td><span>&#847;</span>')
+    expect(r.replaced).toBe(1)
+  })
+
+  it("hex completo colado num & também é preservado", () => {
+    const r = applyRecolor("&#884477;", "#884477", "#000000")
+    expect(r.replaced).toBe(0)
+  })
+})
