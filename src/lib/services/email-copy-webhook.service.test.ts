@@ -1233,3 +1233,132 @@ describe("dispatchEmailCopyWebhook — seção fora do documento não pede copy"
     expect(blocks.map((b) => b.type)).toEqual(["hero", "coupon"])
   })
 })
+
+// ── MC-2: piso — email sem seção nenhuma não é gerável ───────────────
+describe("dispatchEmailCopyWebhook — piso de seções", () => {
+  function emailComBlocoOmitido() {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+      { id: "e2", flow_id: "flow1", number: 2, name: "Welcome 2", status: "draft" },
+    ])
+    // e1 fica sem seção (a variante não foi montada); e2 tem uma.
+    h.tables.email_blocks = [
+      {
+        id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-morta",
+        fields: [{ key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+          nature: "copy", max_len: 40, required: false, source: "schema" }],
+      },
+      {
+        id: "b2", email_id: "e2", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-viva",
+        fields: [{ key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+          nature: "copy", max_len: 40, required: false, source: "schema" }],
+      },
+    ]
+    h.tables.store_email_references = [
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 1,
+        slot_map: [{ block_index: 0, section: "hero", label: "Hero",
+          variant_id: "v-morta", variant_name: "hero morta", assembled: false }],
+      },
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 2,
+        slot_map: [{ block_index: 0, section: "hero", label: "Hero",
+          variant_id: "v-viva", variant_name: "hero viva", assembled: true }],
+      },
+    ]
+  }
+
+  it("email sem seção sai do payload, vira failed com motivo, e os demais seguem", async () => {
+    emailComBlocoOmitido()
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ email_number: number }> }>
+    }
+    expect(body.flows[0].emails.map((e) => e.email_number)).toEqual([2])
+
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.status).toBe("failed")
+    expect(e1?.failure_reason).toBe("sem_secao_montada")
+    // O que foi despachado NÃO pode ser revertido pelo update final...
+    const e2 = h.tables.email_flow_emails.find((e) => e.id === "e2")
+    expect(e2?.status).toBe("in_progress")
+  })
+
+  it("o email marcado failed NÃO volta para in_progress no update final", async () => {
+    // `failed` está na lista de status que o UPDATE de sucesso aceita —
+    // sem separar os ids, o piso seria desfeito na linha seguinte.
+    emailComBlocoOmitido()
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.status).toBe("failed")
+  })
+
+  it("nenhum email gerável: não dispara o n8n e devolve o motivo", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    h.tables.email_blocks = [
+      {
+        id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v-morta",
+        fields: [{ key: "hero_headline", tag: "HERO_HEADLINE", type: "text_short",
+          nature: "copy", max_len: 40, required: false, source: "schema" }],
+      },
+    ]
+    h.tables.store_email_references = [
+      {
+        store_id: "store1", flow_type: "welcome", email_number: 1,
+        slot_map: [{ block_index: 0, section: "hero", label: "Hero",
+          variant_id: "v-morta", variant_name: "hero morta", assembled: false }],
+      },
+    ]
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.reason).toBe("no_assembled_sections")
+    expect(fetchMock).not.toHaveBeenCalled()
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.failure_reason).toBe("sem_secao_montada")
+  })
+
+  it("email somente-texto sem blocos NÃO é reprovado pelo piso", async () => {
+    // A copy do text_only vem da estrutura geral; `blocks: []` é o normal.
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+    ])
+    loadTextOnlyBlueprints.mockResolvedValue(new Map([["welcome:1", true]]))
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    expect(res.ok).toBe(true)
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      flows: Array<{ emails: Array<{ text_only: boolean; blocks: unknown[] }> }>
+    }
+    expect(body.flows[0].emails[0].text_only).toBe(true)
+    expect(body.flows[0].emails[0].blocks).toEqual([])
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
+    expect(e1?.status).toBe("in_progress")
+  })
+})

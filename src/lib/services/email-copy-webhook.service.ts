@@ -1342,6 +1342,96 @@ export async function dispatchEmailCopyWebhook(
     }),
   }
 
+  // ── Piso: email sem NENHUMA seção de conteúdo não é gerável (MC-2) ───
+  // Um documento sem seção alguma não é um email incompleto — é um email
+  // que não existe. Sem o piso ele seguia o pipeline inteiro e chegava ao
+  // workspace do designer vazio, sem nada indicando por quê. Erro de
+  // curadoria tem de parecer erro de curadoria.
+  //
+  // O critério é a MONTAGEM (`slot_map` sem nenhum slot `assembled`), NÃO
+  // o `blocks` do payload: em modo incremental o `selectBlocksForCopy`
+  // manda só os blocos ainda vazios, então um email já gerado sai com
+  // `blocks: []` — reprová-lo aqui derrubaria justamente quem está pronto.
+  //
+  // `text_only` fica fora: a copy desses emails vem da estrutura geral, e
+  // eles não têm seção montada por construção. Reference sem `assembled`
+  // (anterior a ago/2026) também fica fora — mesma razão do filtro de
+  // blocos: não se reprova por falta de dado.
+  const emailsSemSecao: Array<{
+    email_id: string
+    flow_type: string
+    email_number: number
+    name: string | null
+  }> = []
+  for (const f of payload.flows) {
+    f.emails = f.emails.filter((e) => {
+      if (e.text_only) return true
+      const montadas = montadasPorEmail.get(`${f.flow_type}:${e.email_number}`)
+      if (!montadas || montadas.size > 0) return true
+      emailsSemSecao.push({
+        email_id: e.email_id,
+        flow_type: f.flow_type,
+        email_number: e.email_number,
+        name: e.name,
+      })
+      return false
+    })
+  }
+  payload.flows = payload.flows.filter((f) => f.emails.length > 0)
+
+  if (emailsSemSecao.length > 0) {
+    const semSecaoIds = emailsSemSecao.map((e) => e.email_id)
+    log.error("email_copy.emails_sem_secao", {
+      storeId,
+      count: emailsSemSecao.length,
+      sample: emailsSemSecao.slice(0, 10),
+      hint: "nenhum bloco com variante montada — regerar as references (generate-blueprints) ou curar as variantes das seções",
+    })
+    // O motivo fica NA LINHA do email: quem abre o workspace precisa ver
+    // por que ele não foi gerado, sem passar pela telemetria.
+    const { error: failErr } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "failed",
+        failure_reason: "sem_secao_montada",
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", semSecaoIds)
+      // Nunca rebaixa email publicado nem já pronto por uma geração nova.
+      .in("status", [
+        "draft",
+        "pending",
+        "in_progress",
+        "copy_generating",
+        "copy_generating_recovery",
+        "failed",
+      ])
+    if (failErr) {
+      log.warn("email_copy.emails_sem_secao.update_failed", {
+        storeId,
+        error: failErr.message,
+      })
+    }
+  }
+
+  // Sobrou nada para gerar: não se dispara o n8n só para ele não ter o que
+  // fazer. Os emails já foram marcados acima com o motivo.
+  if (payload.flows.length === 0) {
+    log.warn("email_copy.webhook.skip", { storeId, reason: "no_assembled_sections" })
+    return {
+      ok: false,
+      flow_count: 0,
+      email_count: 0,
+      reason: "no_assembled_sections",
+    }
+  }
+
+  // Ids efetivamente despachados. Sem esta separação o UPDATE final
+  // reverteria para `in_progress` justamente os emails que acabaram de ser
+  // marcados `failed` — `failed` está na lista de status que ele aceita.
+  const semSecaoIdSet = new Set(emailsSemSecao.map((e) => e.email_id))
+  const dispatchedEmailIds = emailIds.filter((id) => !semSecaoIdSet.has(id))
+
   // ── Disparar webhook
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
@@ -1470,6 +1560,11 @@ export async function dispatchEmailCopyWebhook(
       ...(blocosOmitidos.length > 0
         ? { blocos_omitidos: blocosOmitidos.slice(0, 30) }
         : {}),
+      // Emails que não foram gerados por não sobrar seção nenhuma (MC-2).
+      // Ficam marcados `failed` com `failure_reason='sem_secao_montada'`.
+      ...(emailsSemSecao.length > 0
+        ? { emails_sem_secao: emailsSemSecao.slice(0, 30) }
+        : {}),
     },
     error_message: dispatchError,
   })
@@ -1511,7 +1606,7 @@ export async function dispatchEmailCopyWebhook(
         // fase 2 nunca iniciou, sem erro e sem log).
         copy_ready_dispatch_attempts: 0,
       })
-      .in("id", emailIds)
+      .in("id", dispatchedEmailIds)
       .in("status", [
         "draft",
         "pending",
