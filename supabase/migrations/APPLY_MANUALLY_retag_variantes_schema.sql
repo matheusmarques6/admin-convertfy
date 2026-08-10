@@ -180,7 +180,9 @@ base AS (
 
 -- Aplica os renames em cascata, um por passo.
 fold AS (
-  SELECT id, 0 AS ord, html, tagged FROM base
+  -- 0::bigint: `row_number()` devolve bigint e o Postgres exige que o
+  -- termo não-recursivo tenha o MESMO tipo do recursivo.
+  SELECT id, 0::bigint AS ord, html, tagged FROM base
   UNION ALL
   SELECT
     f.id,
