@@ -160,7 +160,9 @@ pares AS (
     m.para,
     row_number() OVER (PARTITION BY v.id ORDER BY m.de) AS ord
   FROM email_component_variants v
-  JOIN mapa m ON m.variante = v.name
+  -- btrim nos dois lados: `produtos 8 - 9 produtos  ` está cadastrada com
+  -- dois espaços no fim e o casamento exato a deixou de fora do lote.
+  JOIN mapa m ON btrim(m.variante) = btrim(v.name)
   WHERE v.is_active = true
     AND EXISTS (SELECT 1 FROM campos c WHERE c.id = v.id AND c.ph = m.para)
     AND (
@@ -246,7 +248,8 @@ WITH v AS (
     COALESCE(output_schema, '[]'::jsonb) AS schema
   FROM email_component_variants
   WHERE is_active = true
-    AND name IN (
+    -- btrim: há variante cadastrada com espaço no fim do nome.
+    AND btrim(name) IN (
       'produtos 9 - 4 produtos','produto 8 - 4 produtos','produtos 6',
       'produtos 4 - um produto','produtos 7 - dois produtos',
       'produtos 3 - grid 4 produtos','produtos 8 - 9 produtos',
