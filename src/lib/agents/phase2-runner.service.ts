@@ -2006,6 +2006,15 @@ async function runFormattingChain(p: {
     // marcadores cfy:block da hero foram consumidos pelo splice). Sem
     // enxerto, cascata normal do localizador.
     const grafted = heroGraftStatus === "grafted"
+    // A REGIÃO é canônica em dois casos: quando o enxerto a colocou, e
+    // quando ela já veio canônica da montagem por código (MC-5). Nos dois
+    // o agente faz substituição PURA — `hero_source: library`, variante
+    // enviada vazia (a região já é a referência). Sem esta distinção o
+    // pulo do enxerto reintroduziria o modo `montador`, em que o agente
+    // trata a variante como verdade estrutural a RESTAURAR — justamente o
+    // comportamento que a montagem por código tornou desnecessário.
+    const regionIsCanonical =
+      grafted || heroGraftStatus === "skipped_assembled"
     const sentinel = grafted ? extractHeroBySentinels(fmtCtx.referenceHtml) : null
     const region = sentinel
       ? { start: sentinel.start, end: sentinel.end, mode: "marker" as const }
@@ -2030,7 +2039,11 @@ async function runFormattingChain(p: {
     }
 
     const regionHtml = fmtCtx.referenceHtml.slice(region.start, region.end)
-    const vars = buildHeroVars(fmtCtx, { regionHtml, variant, grafted })
+    const vars = buildHeroVars(fmtCtx, {
+      regionHtml,
+      variant,
+      grafted: regionIsCanonical,
+    })
     const config = toChainConfig(heroSwitch.config, "hero_section")
 
     // Espelho visual (CM-8). A decisão é tomada AQUI, e não dentro do
@@ -2077,7 +2090,7 @@ async function runFormattingChain(p: {
           rawOutput: r.rawOutput,
           parsed: {
             hero_mode: region.mode,
-            hero_source: grafted ? "library" : "montador",
+            hero_source: regionIsCanonical ? "library" : "montador",
             graft_status: heroGraftStatus,
             variant_source: variantSource,
             variant_id: variant?.id ?? null,

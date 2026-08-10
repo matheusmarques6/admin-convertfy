@@ -685,6 +685,12 @@ describe("enxerto da hero × reference montada", () => {
     expect(
       (run?.parsed_output as Record<string, unknown>)?.graft_status,
     ).toBe("skipped_assembled")
+    // A região JÁ é canônica: o agente faz substituição pura, não
+    // restauração estrutural. Sem isto, pular o enxerto reintroduziria o
+    // modo `montador` — o oposto do que a montagem por código conquistou.
+    expect(
+      (run?.parsed_output as Record<string, unknown>)?.hero_source,
+    ).toBe("library")
   })
 
   it("fallback global: continua enxertando", async () => {
