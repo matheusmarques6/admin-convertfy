@@ -1454,11 +1454,35 @@ type FormatAgent =
 
 // Espelham os defaults/envs dos chains — o runner precisa deles pro guard
 // de budget ANTES de invocar (o chain só conhece o próprio timeout).
-const FMT_STEP_TIMEOUT: Record<FormatAgent, { envVar: string; def: number }> = {
-  hero_section: { envVar: "HERO_CHAIN_TIMEOUT_MS", def: 240_000 },
-  text_format: { envVar: "TEXT_FORMAT_TIMEOUT_MS", def: 540_000 },
+// TETO POR STEP — e, por tabela, o que cada um EXIGE de folga: o guard de
+// orçamento sai como `out_of_budget` quando `remaining < timeout + 30s`.
+//
+// Isso amarra o teto ao menor orçamento em que o step precisa caber, que é
+// o do watchdog (240s, cron com maxDuration=300) e NÃO o da rota principal
+// (760s). Um step com teto acima de 210s nunca é sequer TENTADO num tick do
+// watchdog — e como o resume reentra pelo mesmo estágio, o email fica num
+// laço: cada tick refaz copy_merge + merge_verifier e sai no mesmo ponto,
+// sem registrar run do step travado (Luxe Lift, 10/08).
+//
+// O `text_format` estava em 540s, herança do modo full-doc em que ele
+// reescrevia o documento inteiro. Hoje ele roda em modo EXCEÇÃO: recebe os
+// slots pendentes e devolve um JSON de ops pequeno — o merge_verifier, mesmo
+// modelo e mesmo tipo de saída, leva ~38s.
+export const WATCHDOG_BUDGET_MS = 240_000
+/** Folga exigida pelo guard: `remaining < timeout + BUDGET_HEADROOM_MS`. */
+export const BUDGET_HEADROOM_MS = 30_000
+
+export const FMT_STEP_TIMEOUT: Record<
+  FormatAgent,
+  { envVar: string; def: number }
+> = {
+  // 141s observado no caso bom (Luxe Lift, 10/08); 180 dá folga sem
+  // estourar o tick.
+  hero_section: { envVar: "HERO_CHAIN_TIMEOUT_MS", def: 180_000 },
+  text_format: { envVar: "TEXT_FORMAT_TIMEOUT_MS", def: 120_000 },
   image_format: { envVar: "IMAGE_FORMAT_TIMEOUT_MS", def: 180_000 },
-  color_format: { envVar: "COLOR_FORMAT_TIMEOUT_MS", def: 240_000 },
+  // JSON de ops pequeno e fail-open — 240s era teto de sobra.
+  color_format: { envVar: "COLOR_FORMAT_TIMEOUT_MS", def: 120_000 },
 }
 function stepTimeoutMs(agent: FormatAgent): number {
   const env = Number(process.env[FMT_STEP_TIMEOUT[agent].envVar])
