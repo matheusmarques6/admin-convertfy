@@ -1941,14 +1941,16 @@ async function runFormattingChain(p: {
   // template global, onde a hero é a do template, não a da biblioteca.
   const heroGraftApplies =
     stage === null && fmtCtx.referenceSource !== "assembler"
-  if (stage === null && !heroGraftApplies) {
-    heroGraftStatus = "skipped_assembled"
-    log.info("phase2.fmt.hero_graft_skipped_assembled", {
-      emailId,
-      hint: "reference montada por código já traz a hero canônica",
-    })
-  }
-  if (heroGraftApplies) {
+
+  // RESOLVER a variante e ENXERTÁ-LA são coisas diferentes, e juntá-las foi
+  // um erro. A resolução também é de onde sai o `design_system` — a
+  // especificação escrita à mão de como aquela hero DEVE ficar, que é o
+  // insumo mais importante do agente. Com a MC-5 pulando o bloco inteiro
+  // para reference montada, `variant` virava null e o `<design_system>`
+  // sumia do prompt; o próprio contrato do agente lê ausência de spec como
+  // "a região é final, faça só substituição" — e a hero saiu achatada
+  // (Luxe Lift, 10/08). Resolver SEMPRE; enxertar só quando faz falta.
+  if (stage === null) {
     const resolved = await resolveHeroVariant(admin, {
       storeId,
       flowType: ctx.flowType,
@@ -1959,6 +1961,18 @@ async function runFormattingChain(p: {
     heroVariant = resolved.variant
     heroVariantSource = resolved.source
     heroVariantMismatch = resolved.mismatch
+  }
+
+  if (stage === null && !heroGraftApplies) {
+    heroGraftStatus = "skipped_assembled"
+    log.info("phase2.fmt.hero_graft_skipped_assembled", {
+      emailId,
+      variantId: heroVariant?.id ?? null,
+      hasDesignSystem: Boolean(heroVariant?.design_system?.trim()),
+      hint: "reference montada por código já traz a hero canônica",
+    })
+  }
+  if (heroGraftApplies) {
     const graft = graftHeroVariant(
       fmtCtx.referenceHtml,
       heroVariant ? effectiveVariantHtml(heroVariant) : null,

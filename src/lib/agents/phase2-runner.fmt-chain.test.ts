@@ -680,7 +680,11 @@ describe("enxerto da hero × reference montada", () => {
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
 
     expect(res.status).toBe("ready")
-    expect(resolveHeroVariant).not.toHaveBeenCalled()
+    // A variante CONTINUA sendo resolvida — é dela que sai o design_system,
+    // a especificação escrita a mao de como a hero deve ficar. Pular a
+    // resolucao junto com o enxerto tirava o <design_system> do prompt, e o
+    // contrato do agente le ausencia de spec como "faca so substituicao".
+    expect(resolveHeroVariant).toHaveBeenCalled()
     const run = runsOf("hero_section")[0]
     expect(
       (run?.parsed_output as Record<string, unknown>)?.graft_status,
@@ -691,6 +695,32 @@ describe("enxerto da hero × reference montada", () => {
     expect(
       (run?.parsed_output as Record<string, unknown>)?.hero_source,
     ).toBe("library")
+  })
+
+  it("reference do assembler: o design_system da variante CHEGA no agente", async () => {
+    // Regressao de 10/08: pular a resolucao junto com o enxerto deixava
+    // `variant` null, e `hero_variant_design_system` (8k chars de spec
+    // escrita a mao) sumia do prompt. O agente entrava em substituicao
+    // pura e a hero saia achatada.
+    refSource.value = "assembler"
+    mockHappyChains()
+    resolveHeroVariant.mockResolvedValue({
+      variant: {
+        id: "v-hero-9",
+        html: "<tr><td>{{HERO_HEADLINE}}</td></tr>",
+        design_system: "ANATOMIA: banda escura no topo, 2 botoes empilhados",
+      },
+      source: "slot_map",
+      mismatch: false,
+    })
+
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    const [, params] = buildHeroVars.mock.calls[0] as [
+      unknown,
+      { variant?: { design_system?: string } | null },
+    ]
+    expect(params.variant?.design_system).toContain("ANATOMIA")
   })
 
   it("fallback global: continua enxertando", async () => {
