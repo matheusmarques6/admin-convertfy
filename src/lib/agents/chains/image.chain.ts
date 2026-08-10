@@ -105,8 +105,16 @@ async function fetchWithTimeout(
  *
  * Cortar o stream no timeout importa: sem o `cancel()` a leitura continua
  * em segundo plano segurando a conexão depois de a promise ter rejeitado.
+ *
+ * O TETO NÃO PODE SER O DO FETCH (90s). Numa geração de imagem o corpo é
+ * onde o tempo passa: o provedor devolve os headers em segundos e o modelo
+ * segue gerando com a conexão aberta. Runs BEM-SUCEDIDOS da Luxe Lift
+ * levaram 116s, 122s, 126s, 127s, 133s, 138s e 239s — um teto de 90s
+ * abortaria a maioria das gerações boas. 300s fica acima do máximo
+ * observado com folga: é rede de segurança contra corpo que NÃO TERMINA,
+ * não filtro de lentidão.
  */
-const OPENROUTER_IMAGE_BODY_TIMEOUT_MS = 90_000
+const OPENROUTER_IMAGE_BODY_TIMEOUT_MS = 300_000
 
 async function readTextWithTimeout(
   res: Response,

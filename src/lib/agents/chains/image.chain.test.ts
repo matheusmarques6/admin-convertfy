@@ -659,7 +659,7 @@ describe("generateEmailImage — retry em falha transitória", () => {
     expect(url).toBe("https://signed.example/img.png")
   })
 
-  it("corpo que não termina → corta em 90s, cancela o stream e faz retry", async () => {
+  it("corpo que não termina → corta no teto, cancela o stream e faz retry", async () => {
     // Caso real (Luxe Lift, 10/08): 200 OK chega rápido, o provedor pinga
     // whitespace por ~4 min e o `fetch` já tinha desarmado o relógio ao
     // receber os headers. As duas tentativas somaram 455s do orçamento da
@@ -684,8 +684,8 @@ describe("generateEmailImage — retry em falha transitória", () => {
     global.fetch = fetchMock as unknown as typeof fetch
 
     const p = generateEmailImage("prompt", "store-1")
-    // teto da leitura (90s) + backoff do retry (1s)
-    await vi.advanceTimersByTimeAsync(92_000)
+    // teto da leitura (300s) + backoff do retry (1s)
+    await vi.advanceTimersByTimeAsync(302_000)
     const url = await p
 
     expect(cancel).toHaveBeenCalledTimes(1)
@@ -706,7 +706,7 @@ describe("generateEmailImage — retry em falha transitória", () => {
     global.fetch = fetchMock as unknown as typeof fetch
 
     const p = generateEmailImage("prompt", "store-1").catch((e: unknown) => e)
-    await vi.advanceTimersByTimeAsync(200_000)
+    await vi.advanceTimersByTimeAsync(700_000)
     const err = await p
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
