@@ -226,6 +226,11 @@ const buildHeroVars = vi.fn(
   (_ctx: unknown, _params: unknown) => ({}) as Record<string, string>,
 )
 
+// MC-5: a origem da reference decide se o enxerto da hero roda. Default
+// "global" = comportamento anterior (enxerta), para não mexer nos demais
+// testes; o caso "assembler" tem teste próprio.
+const refSource = vi.hoisted(() => ({ value: "global" as string }))
+
 vi.mock("./html/format-context", () => ({
   loadFormatChainContext: vi.fn(async () => ({
     referenceHtml: REFERENCE_HTML,
@@ -233,6 +238,7 @@ vi.mock("./html/format-context", () => ({
     locale: "pt-BR",
     fontHeading: "Playfair Display",
     fontBody: "Inter",
+    referenceSource: refSource.value,
   })),
   resolveHeroVariant: (...a: unknown[]) =>
     (resolveHeroVariant as unknown as (...x: unknown[]) => unknown)(...a),
@@ -354,6 +360,7 @@ function reset(overrides: Row = {}) {
     source: null,
     mismatch: false,
   })
+  refSource.value = "global"
 }
 
 const email = () => h.tables.email_flow_emails[0]
@@ -658,5 +665,36 @@ describe("7b — Verificador de merge", () => {
     expect(res.status).toBe("ready")
     expect(invokeMergeVerifierChain).not.toHaveBeenCalled()
     expect(runsOf("merge_verifier")).toHaveLength(0)
+  })
+})
+
+// ── MC-5: o enxerto da hero não roda sobre documento montado por código ──
+describe("enxerto da hero × reference montada", () => {
+  it("reference do assembler: NÃO reenxerta (a hero canônica já está lá)", async () => {
+    // Desde a CM-2 o assembleDocument concatena o HTML canônico das
+    // variantes escolhidas — a hero do documento JÁ é a da biblioteca.
+    // Reenxertar refazia o mesmo trabalho e normalizava fontes duas vezes.
+    refSource.value = "assembler"
+    mockHappyChains()
+
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    expect(res.status).toBe("ready")
+    expect(resolveHeroVariant).not.toHaveBeenCalled()
+    const run = runsOf("hero_section")[0]
+    expect(
+      (run?.parsed_output as Record<string, unknown>)?.graft_status,
+    ).toBe("skipped_assembled")
+  })
+
+  it("fallback global: continua enxertando", async () => {
+    // Aqui a hero do documento é a do template global, não a da variante
+    // escolhida — é o caso em que o enxerto tem função.
+    refSource.value = "global"
+    mockHappyChains()
+
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    expect(resolveHeroVariant).toHaveBeenCalled()
   })
 })

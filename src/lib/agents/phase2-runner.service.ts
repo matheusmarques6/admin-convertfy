@@ -1901,10 +1901,30 @@ async function runFormattingChain(p: {
   // placeholders da variante entrem no endereçamento como os demais.
   let heroVariant: HeroVariantData | null = null
   let heroVariantSource: HeroVariantSource = null
-  let heroGraftStatus: GraftStatus | "skipped_resume" = "skipped_resume"
+  let heroGraftStatus:
+    | GraftStatus
+    // resume: o enxerto já está no HTML persistido.
+    | "skipped_resume"
+    // MC-5: a reference veio do assembleDocument — a hero canônica já está lá.
+    | "skipped_assembled" = "skipped_resume"
   /** blueprint × slot_map apontam variantes diferentes (blueprint venceu). */
   let heroVariantMismatch = false
-  if (stage === null) {
+  // MC-5: o enxerto só vale para reference que NÃO veio da montagem por
+  // código. Desde a CM-2 o `assembleDocument` já coloca a hero canônica no
+  // documento — reenxertá-la era refazer o mesmo trabalho e aplicar
+  // `normalizeFonts` duas vezes no mesmo HTML. Sobra o caso legítimo:
+  // reference antiga (persistida antes da CM-2) e o fallback para o
+  // template global, onde a hero é a do template, não a da biblioteca.
+  const heroGraftApplies =
+    stage === null && fmtCtx.referenceSource !== "assembler"
+  if (stage === null && !heroGraftApplies) {
+    heroGraftStatus = "skipped_assembled"
+    log.info("phase2.fmt.hero_graft_skipped_assembled", {
+      emailId,
+      hint: "reference montada por código já traz a hero canônica",
+    })
+  }
+  if (heroGraftApplies) {
     const resolved = await resolveHeroVariant(admin, {
       storeId,
       flowType: ctx.flowType,
