@@ -659,6 +659,61 @@ describe("generateEmailImage — retry em falha transitória", () => {
     expect(url).toBe("https://signed.example/img.png")
   })
 
+  it("corpo que não termina → corta em 90s, cancela o stream e faz retry", async () => {
+    // Caso real (Luxe Lift, 10/08): 200 OK chega rápido, o provedor pinga
+    // whitespace por ~4 min e o `fetch` já tinha desarmado o relógio ao
+    // receber os headers. As duas tentativas somaram 455s do orçamento da
+    // fase 2 e a hero saiu sem imagem. Agora a LEITURA tem teto próprio.
+    vi.useFakeTimers()
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        // Nunca resolve — o corpo fica pendurado.
+        text: () => new Promise<string>(() => {}),
+        body: { cancel },
+        headers: { get: () => "application/json" },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => okImageBody(),
+      } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const p = generateEmailImage("prompt", "store-1")
+    // teto da leitura (90s) + backoff do retry (1s)
+    await vi.advanceTimersByTimeAsync(92_000)
+    const url = await p
+
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(url).toBe("https://signed.example/img.png")
+    vi.useRealTimers()
+  })
+
+  it("corpo pendurado nas 2 tentativas → erro nomeado body_read_timeout", async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => new Promise<string>(() => {}),
+      body: { cancel: vi.fn().mockResolvedValue(undefined) },
+      headers: { get: () => "application/json" },
+    } as unknown as Response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const p = generateEmailImage("prompt", "store-1").catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(200_000)
+    const err = await p
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(err)).toContain("body_read_timeout")
+    vi.useRealTimers()
+  })
+
   it("200 OK + SSE com error-frame → retryable, sucesso na 2a tentativa", async () => {
     const sseError =
       ': OPENROUTER PROCESSING\n\ndata: {"error":{"message":"provider disconnected","metadata":{"error_type":"provider_error"}}}\n\n'

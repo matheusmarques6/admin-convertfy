@@ -92,6 +92,52 @@ async function fetchWithTimeout(
 }
 
 /**
+ * Teto de tempo para LER o corpo — que o `fetchWithTimeout` não cobre.
+ *
+ * `fetch()` resolve quando chegam os HEADERS, e o `clearTimeout` do finally
+ * desarma o abort exatamente aí: a leitura do corpo segue sem relógio
+ * nenhum. Foi assim que uma chamada com "timeout de 90s" levou 235s — o
+ * 200 OK chegou rápido e o `gpt-5.4-image-2` ficou pingando whitespace por
+ * quase 4 minutos. Com o retry, as duas tentativas queimaram 455s do
+ * orçamento da fase 2 e o email saiu sem a imagem da hero (Luxe Lift,
+ * 10/08). É o MESMO defeito que o `whitespace_body` já detecta; a diferença
+ * é que sem teto ele só era detectado depois de cobrar o tempo inteiro.
+ *
+ * Cortar o stream no timeout importa: sem o `cancel()` a leitura continua
+ * em segundo plano segurando a conexão depois de a promise ter rejeitado.
+ */
+const OPENROUTER_IMAGE_BODY_TIMEOUT_MS = 90_000
+
+async function readTextWithTimeout(
+  res: Response,
+  ms: number,
+  startedAt: number,
+): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      res.text(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          void res.body?.cancel().catch(() => {})
+          reject(
+            new OpenRouterMidStreamError({
+              errorType: "body_read_timeout",
+              status: res.status,
+              ms: Date.now() - startedAt,
+              snippet: `corpo não terminou em ${ms / 1000}s`,
+              retryable: true,
+            }),
+          )
+        }, ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/**
  * Heuristica pra detectar erro "modelo nao suporta multimodal" no body
  * de uma resposta 4xx do OpenRouter. Conservadora: so dispara retry
  * em casos claros pra evitar loop com erros nao relacionados.
@@ -513,8 +559,13 @@ export async function generateEmailImage(
     }
 
     // A resposta contém base64 gigante (~5MB+) que pode truncar com res.json().
-    // Ler como text e extrair via regex é mais seguro.
-    const rawText = await res.text()
+    // Ler como text e extrair via regex é mais seguro. Sob relógio próprio:
+    // o do fetch morreu quando chegaram os headers.
+    const rawText = await readTextWithTimeout(
+      res,
+      OPENROUTER_IMAGE_BODY_TIMEOUT_MS,
+      attemptT0,
+    )
     const ms = Date.now() - attemptT0
 
     // ── Falhas transitórias do OpenRouter (200 OK enganoso) ──────────────
