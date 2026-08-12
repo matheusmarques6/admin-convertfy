@@ -15,9 +15,10 @@
  * `merged: 0`, os 20 slots caíam no `text_format`, que improvisava: copy
  * repetida em três seções e os depoimentos removidos por "slot vazio".
  *
- * Desembrulhar aqui, e não no n8n, é deliberado: o flow lá é editado por
- * fora e já mudou de formato duas vezes. Aceitar as duas formas faz a
- * próxima mudança não derrubar a geração.
+ * Desembrulhar aqui, e não no n8n, é deliberado e DEFINITIVO — não é ponte
+ * para uma migração futura. O flow é editado por fora, já mudou de formato
+ * duas vezes, e quem tem de se adaptar é quem recebe. As duas formas são
+ * suportadas em pé de igualdade; nenhuma é "a errada".
  *
  * Puro — sem I/O, testável.
  */

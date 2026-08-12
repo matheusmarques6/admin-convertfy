@@ -523,8 +523,8 @@ export async function POST(request: NextRequest) {
           taxa_pct: taxaContrato,
           por_bloco: contratoPorBloco,
         },
-        // Enquanto este contador for > 0, o flow do n8n ainda devolve a copy
-        // embrulhada. Quando zerar, a normalização vira rede de segurança.
+        // Qual formato de envelope chegou. É registro, não alarme: as duas
+        // formas são válidas e o callback aceita as duas.
         ...(blocksUnwrapped.length > 0
           ? { blocos_desembrulhados: blocksUnwrapped }
           : {}),
@@ -541,11 +541,13 @@ export async function POST(request: NextRequest) {
       blocks_sanitized: blocksSanitized,
     })
     if (blocksUnwrapped.length > 0) {
-      log.warn("email_copy.envelope_unwrapped", {
+      // INFO, não warn: `campos[]` é formato SUPORTADO, não desvio. Quem se
+      // adapta é o callback — o flow do n8n é editado por fora e não deve ter
+      // de mudar por causa da forma do nosso envelope.
+      log.info("email_copy.envelope_unwrapped", {
         email_id: body.email_id,
         blocks: blocksUnwrapped.length,
         sample: blocksUnwrapped.slice(0, 5),
-        hint: "o n8n está devolvendo a copy embrulhada; o contrato é content[key] no primeiro nível",
       })
     }
     if (blocksSanitized > 0) {
