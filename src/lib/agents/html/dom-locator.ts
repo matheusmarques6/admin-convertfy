@@ -234,6 +234,80 @@ export function visibleTextOf(html: string, range: Range): string {
     .trim()
 }
 
+/**
+ * Elementos de "casca" que ficaram SEM CONTEÚDO — `<a>` e `<span>`.
+ *
+ * Existe por causa do rodapé da Luxe Lift (12/08): o
+ * `stripUnresolvedPlaceholders` troca `{{TAG}}` por string vazia e mantém a
+ * marcação em volta. Num parágrafo isso é invisível; num botão, não. Cada
+ * `<a href="{{FOOTER_LINK_1_URL}}" style="border:1.5px solid #000">
+ * {{FOOTER_LINK_1_LABEL}}</a>` virou um retângulo com borda, altura e
+ * padding — e nenhum texto. Seis deles, mais a pílula do logo, saíram no
+ * email do cliente como caixas ocas.
+ *
+ * Conta como CONTEÚDO: texto, entidade (`&nbsp;` inclusive — spacer
+ * deliberado não é lixo) e elemento que desenha por si (`img`, `table`, VML).
+ * Só a casca de fato vazia é devolvida.
+ *
+ * Devolve a casca MAIS EXTERNA: achou vazia, não desce nos filhos. Sem isso
+ * `<a><span></span></a>` emitiria dois ranges aninhados, e o `applySplices`
+ * — que rejeita sobreposição — removeria só o `<span>`, deixando um `<a>`
+ * vazio no lugar do problema que a gente veio resolver.
+ *
+ * `<tr>` NÃO é podada aqui, de propósito: linha só com `<td>` vazio é
+ * espaçamento invisível, enquanto `<td height="20"></td>` é spacer legítimo
+ * — e os dois são indistinguíveis pela árvore. Tirar a casca resolve o que
+ * aparece; mexer na linha arriscaria o que funciona.
+ */
+export function locateEmptyShells(html: string): Range[] {
+  const doc = parse(html, { sourceCodeLocationInfo: true })
+  const mso = msoCommentRanges(html)
+  const out: Range[] = []
+
+  const walk = (node: Node) => {
+    if (isElement(node) && SHELL_TAGS.has(node.tagName.toLowerCase())) {
+      const loc = node.sourceCodeLocation
+      // Sem posição de fechamento não dá pra saber onde o conteúdo termina —
+      // e casca sem `</a>` no source é correção do parser, não do documento.
+      if (
+        loc?.startTag &&
+        loc.endTag &&
+        loc.startOffset != null &&
+        loc.endOffset != null &&
+        !inAnyRange(loc.startOffset, mso)
+      ) {
+        const inner = html.slice(loc.startTag.endOffset, loc.endTag.startOffset)
+        if (!hasRenderedContent(inner)) {
+          out.push({ start: loc.startOffset, end: loc.endOffset })
+          return
+        }
+      }
+    }
+    for (const child of childrenOf(node)) walk(child)
+  }
+
+  walk(doc)
+  return out
+}
+
+const SHELL_TAGS = new Set(["a", "span"])
+
+/** Elementos que desenham sozinhos, mesmo sem texto. */
+const SELF_RENDERING = /<(?:img|table|hr|input|v:[a-z]+)\b/i
+
+/** Há algo que o cliente de email veria dentro deste trecho? */
+function hasRenderedContent(inner: string): boolean {
+  if (SELF_RENDERING.test(inner)) return true
+  // Entidade sobrevive ao strip de tags como texto literal ("&nbsp;"), então
+  // conta como conteúdo — é exatamente o que distingue spacer de casca oca.
+  return (
+    inner
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<[^>]*>/g, "")
+      .trim().length > 0
+  )
+}
+
 export interface Splice {
   start: number
   end: number

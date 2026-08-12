@@ -60,6 +60,59 @@ describe("stripUnresolvedPlaceholders", () => {
   it("remove tokens de conteúdo, mantém texto ao redor", () => {
     expect(stripUnresolvedPlaceholders("a {{X_TITLE}} b")).toBe("a  b")
   })
+
+  // Caso REAL (Luxe Lift, 12/08): o rodapé saiu com seis retângulos com
+  // borda e nada dentro, mais a pílula vazia do logo. O token sumia e a
+  // casca ficava. Fixture copiada da reference que gerou o email.
+  it("rodapé sem links configurados não deixa botão oco", () => {
+    const html =
+      '<tr><td width="50%" style="padding:0 7px 14px 0;">' +
+      '<a href="{{FOOTER_LINK_1_URL}}" style="display:block; border:1.5px solid #000000; padding:16px 10px;">{{FOOTER_LINK_1_LABEL}}</a>' +
+      "</td></tr>"
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).not.toContain("<a")
+    expect(out).not.toContain("border:1.5px")
+    // A célula fica — só o botão sai. Mexer na linha é outro risco.
+    expect(out).toContain('<td width="50%"')
+  })
+
+  it("pílula do logo vazia sai; a que virou <img> fica", () => {
+    const pill = '<span style="border:1px solid #000; border-radius:8px;">'
+    expect(stripUnresolvedPlaceholders(`${pill}{{LOGO}}</span>`)).toBe("")
+    const withImg = `${pill}<img src="https://cdn/logo.png" alt="">{{LOGO}}</span>`
+    expect(stripUnresolvedPlaceholders(withImg)).toContain("<img")
+  })
+
+  it("token no meio de frase não leva o elemento junto", () => {
+    const html = "<span>Use o código {{COUPON_CODE}} na compra</span>"
+    expect(stripUnresolvedPlaceholders(html)).toBe(
+      "<span>Use o código  na compra</span>",
+    )
+  })
+
+  // `&nbsp;` é spacer deliberado, não casca oca — se contasse como vazio, a
+  // poda comeria espaçamento que o template pede de propósito.
+  it("spacer com &nbsp; sobrevive à poda", () => {
+    const html = '<td>{{X_TITLE}}</td><span style="border:1px solid">&nbsp;</span>'
+    expect(stripUnresolvedPlaceholders(html)).toContain("&nbsp;")
+  })
+
+  it("merge tag do provedor não é tocada", () => {
+    const html = '<a href="[unsubscribe_link]">Unsubscribe</a> {{X_TITLE}}'
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).toContain("[unsubscribe_link]")
+    expect(out).toContain("Unsubscribe")
+  })
+
+  it("casca aninhada sai inteira, não só a de dentro", () => {
+    const html = '<a href="#" style="border:1px solid"><span>{{CTA_LABEL}}</span></a>'
+    expect(stripUnresolvedPlaceholders(html)).toBe("")
+  })
+
+  it("sem placeholder pendente, documento passa intacto", () => {
+    const html = '<a href="#" style="border:1px solid"></a><p>ok</p>'
+    expect(stripUnresolvedPlaceholders(html)).toBe(html)
+  })
 })
 
 describe("collapseRunawaySpacers — regressão do U+00A0", () => {

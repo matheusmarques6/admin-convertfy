@@ -13,6 +13,7 @@
 
 import { logger } from "@/lib/logger"
 import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "./orphan-spacer"
+import { locateEmptyShells, applySplices } from "./dom-locator"
 
 const log = logger.child("HtmlPostProcess")
 
@@ -53,10 +54,38 @@ export function collapseRunawaySpacers(html: string): string {
 const UNRESOLVED_CONTENT_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g
 
 /**
+ * Remove as CASCAS que sobraram vazias depois do strip de placeholders.
+ *
+ * "Melhor um campo vazio do que `{{HEADLINE}}` visível" vale para texto
+ * corrido — o `<td>` some sozinho. Não vale para botão: apagar o token de
+ * `<a style="border:1.5px solid #000">{{FOOTER_LINK_1_LABEL}}</a>` deixa a
+ * borda, o padding e a altura no lugar, sem nada dentro. Foi assim que o
+ * rodapé da Luxe Lift (12/08) saiu com seis retângulos ocos em 2×3 e a
+ * pílula vazia do logo acima deles.
+ *
+ * A casca é resolvida pela ÁRVORE (dom-locator) e removida por splice no
+ * source — os conditional comments do Outlook seguem intactos.
+ */
+export function pruneEmptyShells(html: string): string {
+  const shells = locateEmptyShells(html)
+  if (shells.length === 0) return html
+  const { html: pruned } = applySplices(
+    html,
+    shells.map((s) => ({ ...s, replacement: "" })),
+  )
+  log.warn("html.empty_shells_pruned", { count: shells.length })
+  return pruned
+}
+
+/**
  * Limpa placeholders de conteudo nao-substituidos pela cadeia. Se o Montador
  * usou `{{HEADLINE}}` mas nenhum agente casou com a copy, o token chegaria
  * LITERAL ao cliente. Aqui logamos (observabilidade) e removemos — melhor um
  * campo vazio do que `{{HEADLINE}}` visivel no email.
+ *
+ * E, logo em seguida, poda a casca que o token deixou para trás quando ela
+ * fica sem conteúdo nenhum (ver `pruneEmptyShells`): apagar o texto do botão
+ * sem apagar o botão troca um defeito visível por outro.
  */
 export function stripUnresolvedPlaceholders(html: string): string {
   const matches = html.match(UNRESOLVED_CONTENT_TOKEN)
@@ -78,7 +107,7 @@ export function stripUnresolvedPlaceholders(html: string): string {
       count: matches.length,
       sample: unique.slice(0, 10),
     })
-    return html.replace(UNRESOLVED_CONTENT_TOKEN, "")
+    return pruneEmptyShells(html.replace(UNRESOLVED_CONTENT_TOKEN, ""))
   }
   return html
 }
