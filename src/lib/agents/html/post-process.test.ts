@@ -5,6 +5,7 @@ import {
   postProcessFullDocument,
   collapseRunawaySpacers,
   stripUnresolvedPlaceholders,
+  neutralizeDeadLinks,
   stripCfyBlockMarkers,
   stripNbspIndentation,
   HtmlTruncatedError,
@@ -112,6 +113,53 @@ describe("stripUnresolvedPlaceholders", () => {
   it("sem placeholder pendente, documento passa intacto", () => {
     const html = '<a href="#" style="border:1px solid"></a><p>ok</p>'
     expect(stripUnresolvedPlaceholders(html)).toBe(html)
+  })
+
+  // Rótulo veio, URL não: `href=""` resolve para o documento atual, então
+  // clicar num webmail navega para a URL do próprio cliente de email.
+  it("rótulo sem URL vira botão sem link, não link morto", () => {
+    const html =
+      '<a href="{{SECTION_CTA_URL}}" style="background:#000; padding:16px;">Finalizar pedido</a>'
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).not.toContain("href")
+    expect(out).toContain("Finalizar pedido")
+    expect(out).toContain("background:#000")
+  })
+
+  it("neutraliza o href do branch MSO, que não existe na árvore", () => {
+    const html =
+      '<!--[if mso]><v:roundrect href="{{HERO_CTA_URL}}" fillcolor="#000"><center>Comprar</center></v:roundrect><![endif]-->'
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).not.toContain("href")
+    expect(out).toContain("v:roundrect")
+    expect(out).toContain("Comprar")
+  })
+
+  it("href real e href=\"#\" não são tocados", () => {
+    const html =
+      '<a href="https://loja.com">a</a><a href="#">b</a> {{X_TITLE}}'
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).toContain('href="https://loja.com"')
+    expect(out).toContain('href="#"')
+  })
+})
+
+describe("neutralizeDeadLinks", () => {
+  it("no-op quando não há href vazio", () => {
+    const html = '<a href="https://x.com">t</a>'
+    expect(neutralizeDeadLinks(html)).toBe(html)
+  })
+
+  it("cobre aspas simples e espaçamento solto na declaração", () => {
+    expect(neutralizeDeadLinks("<a href = ''>t</a>")).toBe("<a>t</a>")
+  })
+
+  // O atributo seguinte NÃO pode encostar no anterior: engolir o espaço à
+  // direita produziria `<astyle="...">` e mataria a tag.
+  it("não cola o atributo seguinte", () => {
+    expect(neutralizeDeadLinks('<a href="" style="color:#000">t</a>')).toBe(
+      '<a style="color:#000">t</a>',
+    )
   })
 })
 

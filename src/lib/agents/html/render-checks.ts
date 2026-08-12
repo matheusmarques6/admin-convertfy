@@ -60,6 +60,23 @@ export function computeRenderChecks(
     })
   }
 
+  // 2b. Botão que perdeu o destino: <a> SEM href nenhum. É a assinatura que
+  //     o `neutralizeDeadLinks` deixa quando `href="{{CTA_URL}}"` não foi
+  //     preenchido — o rótulo veio, a URL não. Sem este aviso o designer vê
+  //     um botão com cara de pronto e nada indica que ele não clica.
+  //     Severidade acima do href="#": aquele é placeholder assumido de
+  //     template, este é copy entregue com destino perdido.
+  const hrefless = (html.match(/<a\b[^>]*>/gi) ?? []).filter(
+    (tag) => !/\shref\s*=/i.test(tag),
+  ).length
+  if (hrefless > 0) {
+    issues.push({
+      type: "links_quebrados",
+      severity: "medium",
+      message: `${hrefless} botão(ões)/link(s) sem destino — a URL não foi preenchida na geração.`,
+    })
+  }
+
   // 3. <img> sem alt — acessibilidade + render quebrado quando a imagem
   //    não carrega (comum em clients de email com imagens bloqueadas).
   const imgTags = html.match(/<img\b[^>]*>/gi) ?? []

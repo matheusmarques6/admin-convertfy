@@ -77,15 +77,45 @@ export function pruneEmptyShells(html: string): string {
   return pruned
 }
 
+/** `href=""` / `href=''` — o que sobra de `href="{{CTA_URL}}"` após o strip. */
+const DEAD_HREF = /\shref\s*=\s*(?:""|'')/gi
+
+/**
+ * Tira o `href` que ficou VAZIO — o botão continua, o link morto não.
+ *
+ * Caso irmão do `pruneEmptyShells`: quando o rótulo resolve mas a URL não,
+ * sobra `<a href="">Finalizar pedido</a>`. Não é cosmético: `href=""`
+ * resolve para o documento ATUAL, então clicar num webmail navega para a
+ * própria URL do cliente de email. Sem o atributo, o elemento deixa de ser
+ * link — o texto e o estilo inline (fundo, padding, borda) ficam de pé.
+ *
+ * Remoção de ATRIBUTO é edição local: não desbalanceia o documento, então
+ * aqui regex é seguro e cobre também o `<v:roundrect href="">` do branch
+ * MSO, que vive dentro de conditional comment e não existe na árvore.
+ *
+ * `href="#"` NÃO é tocado: é placeholder deliberado de template e o
+ * render-checks já o reporta ao designer.
+ */
+export function neutralizeDeadLinks(html: string): string {
+  const dead = html.match(DEAD_HREF)?.length ?? 0
+  if (dead === 0) return html
+  log.warn("html.dead_href_removed", { count: dead })
+  return html.replace(DEAD_HREF, "")
+}
+
 /**
  * Limpa placeholders de conteudo nao-substituidos pela cadeia. Se o Montador
  * usou `{{HEADLINE}}` mas nenhum agente casou com a copy, o token chegaria
  * LITERAL ao cliente. Aqui logamos (observabilidade) e removemos — melhor um
  * campo vazio do que `{{HEADLINE}}` visivel no email.
  *
- * E, logo em seguida, poda a casca que o token deixou para trás quando ela
- * fica sem conteúdo nenhum (ver `pruneEmptyShells`): apagar o texto do botão
- * sem apagar o botão troca um defeito visível por outro.
+ * E, logo em seguida, arruma o que o token deixou para trás: a casca que
+ * ficou sem conteúdo nenhum (`pruneEmptyShells`) e o `href` que ficou vazio
+ * (`neutralizeDeadLinks`). Apagar o texto do botão sem apagar o botão, ou o
+ * destino sem apagar o link, troca um defeito visível por outro.
+ *
+ * Nesta ordem: a poda primeiro, porque quando rótulo E URL somem o botão
+ * inteiro sai — e aí não há href morto que sobre para neutralizar.
  */
 export function stripUnresolvedPlaceholders(html: string): string {
   const matches = html.match(UNRESOLVED_CONTENT_TOKEN)
@@ -107,7 +137,9 @@ export function stripUnresolvedPlaceholders(html: string): string {
       count: matches.length,
       sample: unique.slice(0, 10),
     })
-    return pruneEmptyShells(html.replace(UNRESOLVED_CONTENT_TOKEN, ""))
+    return neutralizeDeadLinks(
+      pruneEmptyShells(html.replace(UNRESOLVED_CONTENT_TOKEN, "")),
+    )
   }
   return html
 }
