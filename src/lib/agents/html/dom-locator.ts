@@ -235,29 +235,33 @@ export function visibleTextOf(html: string, range: Range): string {
 }
 
 /**
- * Elementos de "casca" que ficaram SEM CONTEÚDO — `<a>` e `<span>`.
+ * Elementos de "casca" que ficaram SEM CONTEÚDO — `<a>`, `<span>`, `<table>`
+ * e `<tr>`.
  *
- * Existe por causa do rodapé da Luxe Lift (12/08): o
+ * Existe por causa do email da Luxe Lift (12/08). O
  * `stripUnresolvedPlaceholders` troca `{{TAG}}` por string vazia e mantém a
- * marcação em volta. Num parágrafo isso é invisível; num botão, não. Cada
- * `<a href="{{FOOTER_LINK_1_URL}}" style="border:1.5px solid #000">
- * {{FOOTER_LINK_1_LABEL}}</a>` virou um retângulo com borda, altura e
- * padding — e nenhum texto. Seis deles, mais a pílula do logo, saíram no
- * email do cliente como caixas ocas.
+ * marcação em volta; o `remove_row` dos formatadores tira a linha e mantém a
+ * tabela. Num parágrafo isso é invisível; num botão ou numa seção, não:
+ *
+ *   - `<a style="border:1.5px solid #000">{{FOOTER_LINK_1_LABEL}}</a>`
+ *     virou retângulo com borda, altura e padding e nenhum texto — seis
+ *     deles no rodapé, mais a pílula vazia do logo;
+ *   - a seção de depoimentos virou duas `<table>` vazias com o padding
+ *     original, ocupando espaço no meio do email.
  *
  * Conta como CONTEÚDO: texto, entidade (`&nbsp;` inclusive — spacer
- * deliberado não é lixo) e elemento que desenha por si (`img`, `table`, VML).
- * Só a casca de fato vazia é devolvida.
+ * deliberado não é lixo), imagem COM `src` e elemento que desenha por si
+ * (`hr`, `input`, VML). Imagem sem endereço não conta: `<img src="">` é
+ * ícone quebrado, e foi o que sobrou nas redes sociais do rodapé.
+ *
+ * `<table>`/`<tr>` têm uma guarda a mais: altura declarada (`height="20"`,
+ * `height:20px`) marca espaçamento deliberado e a linha fica. Sem isso a
+ * poda comeria os spacers que o template pede de propósito.
  *
  * Devolve a casca MAIS EXTERNA: achou vazia, não desce nos filhos. Sem isso
  * `<a><span></span></a>` emitiria dois ranges aninhados, e o `applySplices`
  * — que rejeita sobreposição — removeria só o `<span>`, deixando um `<a>`
  * vazio no lugar do problema que a gente veio resolver.
- *
- * `<tr>` NÃO é podada aqui, de propósito: linha só com `<td>` vazio é
- * espaçamento invisível, enquanto `<td height="20"></td>` é spacer legítimo
- * — e os dois são indistinguíveis pela árvore. Tirar a casca resolve o que
- * aparece; mexer na linha arriscaria o que funciona.
  */
 export function locateEmptyShells(html: string): Range[] {
   const doc = parse(html, { sourceCodeLocationInfo: true })
@@ -277,7 +281,12 @@ export function locateEmptyShells(html: string): Range[] {
         !inAnyRange(loc.startOffset, mso)
       ) {
         const inner = html.slice(loc.startTag.endOffset, loc.endTag.startOffset)
-        if (!hasRenderedContent(inner)) {
+        const tag = node.tagName.toLowerCase()
+        // Linha/tabela que declara altura é spacer deliberado: `<td height="20">`
+        // vazio existe para ocupar espaço, e podá-lo muda o layout de propósito.
+        const isSpacer =
+          STRUCTURAL_TAGS.has(tag) && DECLARES_HEIGHT.test(inner)
+        if (!hasRenderedContent(inner) && !isSpacer) {
           out.push({ start: loc.startOffset, end: loc.endOffset })
           return
         }
@@ -290,14 +299,28 @@ export function locateEmptyShells(html: string): Range[] {
   return out
 }
 
-const SHELL_TAGS = new Set(["a", "span"])
+/**
+ * Cascas podáveis. `a`/`span` carregam a moldura de um botão; `table`/`tr`
+ * carregam o espaçamento de uma seção. As quatro ficam ocupando espaço
+ * quando o conteúdo que justificava sua existência não chegou.
+ */
+const SHELL_TAGS = new Set(["a", "span", "table", "tr"])
 
-/** Elementos que desenham sozinhos, mesmo sem texto. */
-const SELF_RENDERING = /<(?:img|table|hr|input|v:[a-z]+)\b/i
+/** Estruturais: podados só quando também não declaram altura (spacer). */
+const STRUCTURAL_TAGS = new Set(["table", "tr"])
+
+/** Imagem só desenha com endereço: `src=""` é ícone quebrado, não conteúdo. */
+const IMG_WITH_SRC = /<img\b[^>]*\ssrc\s*=\s*["'][^"']+["']/i
+
+/** Elementos que desenham sozinhos mesmo sem texto nem imagem. */
+const SELF_RENDERING = /<(?:hr|input|v:[a-z]+)\b/i
+
+/** Altura declarada = espaçamento deliberado, não sobra. */
+const DECLARES_HEIGHT = /\sheight\s*=\s*["']?\d|height\s*:\s*\d+(?:px|%)/i
 
 /** Há algo que o cliente de email veria dentro deste trecho? */
 function hasRenderedContent(inner: string): boolean {
-  if (SELF_RENDERING.test(inner)) return true
+  if (IMG_WITH_SRC.test(inner) || SELF_RENDERING.test(inner)) return true
   // Entidade sobrevive ao strip de tags como texto literal ("&nbsp;"), então
   // conta como conteúdo — é exatamente o que distingue spacer de casca oca.
   return (

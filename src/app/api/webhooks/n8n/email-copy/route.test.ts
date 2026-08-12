@@ -497,6 +497,59 @@ describe("POST /api/webhooks/n8n/email-copy — contrato de copy", () => {
     ).toEqual(["body", "cta", "headline", "text"])
   })
 
+  it("copy embrulhada em `campos`: desembrulha, grava plano e taxa 100", async () => {
+    // Caso real (Luxe Lift, 12/08): o flow espelhou a estrutura `schema.campos`
+    // do payload de ida. A copy estava PERFEITA, com as chaves exatas do
+    // contrato — só um nível fundo demais. O callback via uma chave só
+    // (`campos`), registrava taxa 0 e o merge não ancorava nada.
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: {},
+        block_type: "hero",
+        fields: [campo("hero_headline"), campo("hero_cta_label")],
+      },
+    ]
+    const res = await POST(
+      makeRequest(
+        validBody({
+          blocks: [
+            {
+              block_id: MOCK_BLOCK_ID,
+              content: {
+                campos: [
+                  { key: "hero_headline", valor: "We saved it for you" },
+                  { key: "hero_cta_label", valor: "BACK TO MY CART" },
+                ],
+              },
+            },
+          ],
+        }),
+      ) as any,
+    )
+    expect(res.status).toBe(200)
+
+    // Gravou no formato do contrato, não o embrulho.
+    const upd = updateCalls.find((u) => u.table === "email_blocks")
+    expect(upd!.data.content).toEqual({
+      hero_headline: "We saved it for you",
+      hero_cta_label: "BACK TO MY CART",
+    })
+
+    const c = contratoDoRun()
+    expect(c.keys_recebidas).toBe(2)
+    expect(c.keys_no_contrato).toBe(2)
+    expect(c.taxa_pct).toBe(100)
+
+    // Contador que diz que o n8n ainda não migrou.
+    const run = insertCalls.find(
+      (x) => x.table === "email_generation_runs" && x.data.agent === "copy",
+    )!.data.parsed_output as Record<string, unknown>
+    expect(run.blocos_desembrulhados).toEqual([
+      { position: 0, wrapper: "campos", keys: 2 },
+    ])
+  })
+
   it("copy no contrato: taxa 100 e nenhum desvio de chave", async () => {
     mockBlocks = [
       {

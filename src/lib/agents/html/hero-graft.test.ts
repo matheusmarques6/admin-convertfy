@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { graftHeroVariant, normalizeFonts } from "./hero-graft"
+import { graftHeroVariant, normalizeFonts, fallbackChainFor } from "./hero-graft"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 
 // Documento no formato que o Montador entrega: tabela container 600px com
@@ -107,25 +107,52 @@ describe("normalizeFonts", () => {
     const html = '<td style="font-family:Georgia,serif;font-size:32px;">Oi</td>'
     const res = normalizeFonts(html, fonts)
     expect(res.replaced).toBe(1)
-    expect(res.html).toContain("font-family:'Playfair Display',Georgia,serif")
+    // Playfair é serifada, então a cadeia é a serifada — derivada da fonte
+    // pedida, não herdada do componente.
+    expect(res.html).toContain(
+      "font-family:'Playfair Display',Georgia,'Times New Roman',serif",
+    )
   })
 
   it("peso alto também conta como heading", () => {
     const html = '<td style="font-family:Arial;font-weight:700;">Oi</td>'
-    expect(normalizeFonts(html, fonts).html).toContain("'Playfair Display',Arial")
+    expect(normalizeFonts(html, fonts).html).toContain("'Playfair Display',Georgia")
   })
 
-  it("texto pequeno recebe a fonte de corpo", () => {
+  // C03: o plano B passou a ser derivado da fonte da LOJA. Antes preservava
+  // as genéricas do componente e produzia `Inter,monospace` — marca sans-serif
+  // com monoespaçada de reserva. Como o webfont é ignorado por parte dos
+  // clientes, o plano B é o que muita gente vê.
+  it("texto pequeno recebe a fonte de corpo, com cadeia coerente", () => {
     const html = '<p style="font-family:Courier,monospace;font-size:14px;">Oi</p>'
     const res = normalizeFonts(html, fonts)
-    expect(res.html).toContain("font-family:Inter,monospace")
+    expect(res.html).toContain("font-family:Inter,Arial,Helvetica,sans-serif")
+    expect(res.html).not.toContain("monospace")
     expect(res.html).not.toContain("Playfair")
   })
 
-  it("preserva só os fallbacks genéricos e não duplica", () => {
+  it("descarta a cadeia do componente, incluindo nome não-genérico", () => {
     const html = '<td style="font-family:Inter,Helvetica,Trebuchet MS,sans-serif;">x</td>'
     const res = normalizeFonts(html, fonts)
-    expect(res.html).toContain("font-family:Inter,Helvetica,sans-serif")
+    expect(res.html).toContain("font-family:Inter,Arial,Helvetica,sans-serif")
+    expect(res.html).not.toContain("Trebuchet")
+  })
+
+  // C02: o `[^;"']+` anterior parava nas aspas, então valor que COMEÇA com
+  // aspas nunca casava. Eram as duas fontes erradas do email da Luxe Lift.
+  it("normaliza valor entre aspas — a regressão do Courier", () => {
+    const html =
+      '<td style="font-family:\'Courier New\',Courier,monospace; font-size:15px;">x</td>'
+    const res = normalizeFonts(html, fonts)
+    expect(res.replaced).toBe(1)
+    expect(res.html).toContain("font-family:Inter,Arial,Helvetica,sans-serif")
+    expect(res.html).not.toContain("Courier")
+  })
+
+  it("normaliza valor com aspas duplas dentro de style com aspas simples", () => {
+    const html = `<td style='font-family:"Trebuchet MS",Arial,sans-serif; font-size:15px;'>x</td>`
+    const res = normalizeFonts(html, fonts)
+    expect(res.replaced).toBe(1)
     expect(res.html).not.toContain("Trebuchet")
   })
 
@@ -146,6 +173,22 @@ describe("normalizeFonts", () => {
     expect(res.replaced).toBe(2)
     expect(res.html).toContain("'Playfair Display',Georgia")
     expect(res.html).toContain("font-family:Inter")
+  })
+})
+
+describe("fallbackChainFor", () => {
+  it("sans por padrão — o seguro em email", () => {
+    expect(fallbackChainFor("Montserrat")).toBe("Arial,Helvetica,sans-serif")
+    expect(fallbackChainFor("Inter")).toBe("Arial,Helvetica,sans-serif")
+  })
+
+  it("reconhece serifada pelo nome", () => {
+    expect(fallbackChainFor("Playfair Display")).toContain("serif")
+    expect(fallbackChainFor("PT Serif")).toContain("Georgia")
+  })
+
+  it("reconhece monoespaçada pelo nome", () => {
+    expect(fallbackChainFor("JetBrains Mono")).toContain("monospace")
   })
 })
 

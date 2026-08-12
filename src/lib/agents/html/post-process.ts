@@ -67,14 +67,24 @@ const UNRESOLVED_CONTENT_TOKEN = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g
  * source — os conditional comments do Outlook seguem intactos.
  */
 export function pruneEmptyShells(html: string): string {
-  const shells = locateEmptyShells(html)
-  if (shells.length === 0) return html
-  const { html: pruned } = applySplices(
-    html,
-    shells.map((s) => ({ ...s, replacement: "" })),
-  )
-  log.warn("html.empty_shells_pruned", { count: shells.length })
-  return pruned
+  let current = html
+  let total = 0
+  // Itera: remover a `<table>` vazia esvazia a `<td>` que a continha, que
+  // esvazia a `<tr>`. Uma passada só pararia na tabela e deixaria a linha
+  // com o padding original. O teto existe porque isto roda em documento de
+  // origem desconhecida — convergir é o caso normal, travar não pode.
+  for (let pass = 0; pass < 4; pass++) {
+    const shells = locateEmptyShells(current)
+    if (shells.length === 0) break
+    current = applySplices(
+      current,
+      shells.map((s) => ({ ...s, replacement: "" })),
+    ).html
+    total += shells.length
+  }
+  if (total === 0) return html
+  log.warn("html.empty_shells_pruned", { count: total })
+  return current
 }
 
 /** `href=""` / `href=''` — o que sobra de `href="{{CTA_URL}}"` após o strip. */

@@ -101,7 +101,21 @@ function normalizeForCompare(html: string): string {
 
 // ── Tipografia da loja (decisão do Matheus: fonte SEMPRE a da loja) ────
 
-const FONT_FAMILY_RE = /font-family\s*:\s*([^;"']+)/gi
+/**
+ * Valor de `font-family` até o `;` ou o fim da declaração.
+ *
+ * O `[^;"']+` anterior parava nas ASPAS — e como o `+` exige ao menos um
+ * caractere, toda declaração cujo valor COMEÇA com aspas simplesmente não
+ * casava, em silêncio e sem entrar no contador. Quem tem nome composto
+ * precisa de aspas, então `'Courier New',Courier,monospace` e
+ * `'Trebuchet MS',Arial,sans-serif` atravessavam a normalização intactos —
+ * eram exatamente as duas fontes erradas do email da Luxe Lift (12/08).
+ *
+ * Agora o valor pode conter aspas; o corte é no `;`, no `}` ou na aspa que
+ * FECHA o atributo `style`. Como o conteúdo é lido dentro de um `style="..."`,
+ * a aspa dupla externa é o delimitador natural.
+ */
+const FONT_FAMILY_RE = /font-family\s*:\s*((?:'[^']*'|"[^"]*"|[^;}"'])+)/gi
 const FONT_SIZE_RE = /font-size\s*:\s*(\d+(?:\.\d+)?)px/i
 const BOLD_RE = /font-weight\s*:\s*(?:[6-9]00|bold)/i
 const HEADING_TAG_RE = /<h[1-3][\s>]/i
@@ -155,17 +169,41 @@ export function normalizeFonts(
     const ctx = declarationContext(html, offset)
     const wanted = looksLikeHeading(ctx) ? heading || body : body || heading
     if (!wanted) return match
-    // Mantém os fallbacks genéricos que já existiam na declaração.
-    const fallbacks = stack
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => /^(?:Arial|Helvetica|Georgia|Verdana|Tahoma|sans-serif|serif|monospace)$/i.test(s))
-    const chain = [quoteIfNeeded(wanted), ...fallbacks]
-    const uniq = Array.from(new Set(chain))
+    void stack // a cadeia antiga não é reaproveitada — ver fallbackChainFor
     replaced++
-    return `font-family:${uniq.join(",")}`
+    return `font-family:${quoteIfNeeded(wanted)},${fallbackChainFor(wanted)}`
   })
   return { html: out, replaced }
+}
+
+/** Nomes que denunciam uma serifada / monoespaçada de marca. */
+const SERIF_HINT =
+  /serif|georgia|garamond|times|playfair|merriweather|lora|baskerville|didot|bodoni|caslon/i
+const MONO_HINT = /mono|courier|consol|code|typewriter/i
+
+/**
+ * Cadeia de fallback derivada da fonte da LOJA, não herdada do componente.
+ *
+ * A versão anterior preservava as famílias genéricas que já estavam na
+ * declaração, com uma lista branca que incluía `monospace` e `serif`. O
+ * resultado media assim:
+ *
+ *     Courier New,Courier,monospace  →  Montserrat,monospace
+ *     Georgia,serif                  →  Montserrat,Georgia,serif
+ *
+ * Ou seja: marca sans-serif com monoespaçada como plano B. E como o webfont
+ * é ignorado por parte dos clientes, o plano B é o que muita gente vê — o
+ * email da Luxe Lift saiu monoespaçado por causa disto.
+ *
+ * A cadeia agora combina com a fonte pedida. A classificação é pelo NOME
+ * porque é o que temos: a identidade visual guarda o nome da família, não a
+ * classificação tipográfica. Errar aqui degrada para uma sans — o padrão
+ * seguro em email — em vez de contradizer a marca.
+ */
+export function fallbackChainFor(name: string): string {
+  if (MONO_HINT.test(name)) return "'Courier New',Courier,monospace"
+  if (SERIF_HINT.test(name)) return "Georgia,'Times New Roman',serif"
+  return "Arial,Helvetica,sans-serif"
 }
 
 function quoteIfNeeded(name: string): string {

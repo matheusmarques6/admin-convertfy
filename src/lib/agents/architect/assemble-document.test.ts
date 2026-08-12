@@ -80,6 +80,48 @@ describe("assembleDocument", () => {
     expect(validateBlockMarkers(html, stats.expected).status).toBe("ok")
   })
 
+  // C04: sem isto o normalizeFonts escrevia o nome de uma fonte que o cliente
+  // não tinha como carregar, e o que renderizava era SEMPRE o fallback.
+  it("declara a webfont da loja, fora do branch do Outlook", () => {
+    const { html } = assembleDocument({
+      slots: [slot("hero", "a", TR("x"))],
+      fonts: { heading: "Playfair Display", body: "Inter" },
+    })
+    expect(html).toContain("fonts.googleapis.com/css2?")
+    expect(html).toContain("family=Playfair+Display")
+    expect(html).toContain("family=Inter")
+    // Outlook desktop não carrega webfont e tropeça no <link>.
+    expect(html).toContain("<!--[if !mso]><!-->")
+  })
+
+  it("uma família só quando heading e body coincidem", () => {
+    const { html } = assembleDocument({
+      slots: [slot("hero", "a", TR("x"))],
+      fonts: { heading: "Montserrat", body: "Montserrat" },
+    })
+    expect(html.match(/family=Montserrat/g)).toHaveLength(1)
+  })
+
+  it("sem fonte configurada, nenhum <link> é emitido", () => {
+    const { html } = assembleDocument({ slots: [slot("hero", "a", TR("x"))] })
+    expect(html).not.toContain("fonts.googleapis.com")
+  })
+
+  // Nome com caractere fora de [\w\s-] não vira URL — evita injeção no href.
+  it("nome de fonte suspeito é ignorado em vez de virar URL", () => {
+    const { html } = assembleDocument({
+      slots: [slot("hero", "a", TR("x"))],
+      fonts: { heading: 'Evil"><script>', body: null },
+    })
+    expect(html).not.toContain("fonts.googleapis.com")
+  })
+
+  it("o título usa a tag que o código realmente preenche", () => {
+    const { html } = assembleDocument({ slots: [slot("hero", "a", TR("x"))] })
+    expect(html).toContain("<title>{{EMAIL_TITLE}}</title>")
+    expect(html).not.toContain("<title>{{HEADLINE}}</title>")
+  })
+
   it("preserva os placeholders byte a byte", () => {
     const { html } = assembleDocument({
       slots: [slot("hero", "a", TR("{{HERO_IMAGE}} {{HERO_HEADLINE}}"))],

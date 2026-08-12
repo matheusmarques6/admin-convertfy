@@ -26,7 +26,16 @@ export interface ColorInventoryEntry {
 }
 
 // Hex completo/curto e rgb()/rgba() — as formas que emails usam na prática.
-const HEX_RE = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi
+//
+// O `(?<!&)` não é detalhe: referência numérica de caractere tem a forma
+// `&#847;`, e o `#847` de dentro dela casa como hex de três dígitos. O
+// spacer do preheader é `&#847;&zwnj;&nbsp;` repetido cinco vezes, então o
+// inventário do email da Luxe Lift (12/08) listava `#884477` — expansão de
+// `#847` — com exatamente 5 ocorrências. Cor que não existe em lugar nenhum
+// do documento. O agente de cor, fazendo o certo pela informação errada,
+// gastou sua ÚNICA op tentando corrigi-la; a op foi rejeitada por
+// `find_not_found` e o email saiu sem nenhuma cor de marca.
+const HEX_RE = /(?<!&)#([0-9a-f]{6}|[0-9a-f]{3})\b/gi
 const RGB_RE = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)/gi
 
 /** #abc → #AABBCC; #aabbcc → #AABBCC. */

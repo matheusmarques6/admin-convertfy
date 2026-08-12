@@ -144,6 +144,48 @@ describe("stripUnresolvedPlaceholders", () => {
   })
 })
 
+describe("poda estrutural (C08/C09)", () => {
+  // Caso REAL: os depoimentos foram removidos e sobraram as tabelas que os
+  // continham, com o padding original ocupando espaço no meio do email.
+  it("tabela que ficou vazia sai, e leva a célula e a linha junto", () => {
+    const html =
+      '<table><tr><td class="stack-pad" style="padding:0 30px 24px 30px;">' +
+      '<table role="presentation" width="100%">\n   \n</table>' +
+      "</td></tr></table>{{X_TITLE}}"
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).not.toContain("stack-pad")
+    expect(out).not.toContain("role=\"presentation\"")
+  })
+
+  // Caso REAL: as redes sociais do rodapé nunca foram configuradas.
+  it("imagem sem src não segura a casca em pé", () => {
+    const html = '<a><img src="" width="36" alt="Facebook"></a>{{X_TITLE}}'
+    expect(stripUnresolvedPlaceholders(html)).toBe("")
+  })
+
+  it("imagem COM src continua sendo conteúdo", () => {
+    const html = '<a href="#"><img src="https://cdn/i.png" width="36"></a> {{X_TITLE}}'
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).toContain("<img")
+    expect(out).toContain("cdn/i.png")
+  })
+
+  // Spacer é intenção de layout, não sobra. As duas formas de declarar altura.
+  it("spacer com altura declarada sobrevive", () => {
+    const attr = '<table><tr><td height="20"></td></tr></table>{{X_TITLE}}'
+    expect(stripUnresolvedPlaceholders(attr)).toContain('height="20"')
+    const css = '<tr><td style="height:20px;"></td></tr>{{X_TITLE}}'
+    expect(stripUnresolvedPlaceholders(css)).toContain("height:20px")
+  })
+
+  it("tabela com conteúdo real não é tocada", () => {
+    const html = "<table><tr><td>Finalizar pedido</td></tr></table>{{X_TITLE}}"
+    const out = stripUnresolvedPlaceholders(html)
+    expect(out).toContain("Finalizar pedido")
+    expect(out).toContain("<table>")
+  })
+})
+
 describe("neutralizeDeadLinks", () => {
   it("no-op quando não há href vazio", () => {
     const html = '<a href="https://x.com">t</a>'

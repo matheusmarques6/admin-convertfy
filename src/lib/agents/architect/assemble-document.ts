@@ -212,7 +212,7 @@ export function assembleDocument(
     expected.push({ block_index: i, section })
   })
 
-  const shell = documentShell(rows.join("\n"), lang, [...styles])
+  const shell = documentShell(rows.join("\n"), lang, [...styles], fonts ?? {})
   const normalized = normalizeFonts(shell, fonts ?? {})
 
   return {
@@ -232,13 +232,60 @@ export function assembleDocument(
 }
 
 /**
- * Shell de 600px. As CSS variables saem com valores neutros: a paleta da
- * loja é aplicada adiante pelo step de cores, que reescreve o `:root`.
+ * Declaração da webfont da loja.
+ *
+ * Sem isto o `normalizeFonts` escrevia o nome de uma fonte que o cliente de
+ * email não tinha como carregar — escolher a fonte sem entregá-la é meio
+ * trabalho, e o que renderizava era SEMPRE o fallback (email da Luxe Lift,
+ * 12/08: Montserrat escrito em 20 declarações, zero `@font-face`).
+ *
+ * `<link>` dentro do bloco `!mso`: Outlook desktop não carrega webfont e
+ * ainda tropeça no `<link>`, então ele fica de fora e cai na cadeia de
+ * fallback — que agora combina com a marca (`fallbackChainFor`). Gmail no
+ * app, Apple Mail e a maioria dos webmails honram.
+ *
+ * Só famílias do Google Fonts resolvem. Nome fora do catálogo devolve 404
+ * silencioso e o email segue no fallback — mesma situação de hoje, nunca pior.
+ */
+function webfontLink(fonts: {
+  heading?: string | null
+  body?: string | null
+}): string {
+  const familias = Array.from(
+    new Set(
+      [fonts.heading, fonts.body]
+        .map((f) => (f ?? "").trim())
+        .filter((f) => f.length > 0 && /^[\w\s-]+$/.test(f)),
+    ),
+  )
+  if (familias.length === 0) return ""
+  const query = familias
+    .map((f) => `family=${f.replace(/\s+/g, "+")}:wght@400;600;700;900`)
+    .join("&")
+  return `
+  <!--[if !mso]><!-->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?${query}&display=swap">
+  <!--<![endif]-->`
+}
+
+/**
+ * Shell de 600px.
+ *
+ * As CSS variables saem com valores neutros e a paleta da loja chega pelo
+ * step de cores — não por uma reescrita dedicada do `:root` (o comentário
+ * anterior prometia isso e nada no pipeline fazia), mas pelo `recolor`, que
+ * troca o VALOR em todo o documento. Os valores daqui entram no inventário
+ * com contexto `css-var`, então são alvo como qualquer outro.
+ *
+ * Vale lembrar o limite: as variantes da biblioteca trazem cor fixa no
+ * `style`, e a única linha que consome token é o `background` do `body`.
+ * Quem pinta o email é o `recolor` sobre hex literal, não a variável.
  */
 function documentShell(
   rows: string,
   lang: string,
   variantStyles: string[] = [],
+  fonts: { heading?: string | null; body?: string | null } = {},
 ): string {
   return `<!DOCTYPE html>
 <html lang="${lang}" xmlns="http://www.w3.org/1999/xhtml">
@@ -247,7 +294,10 @@ function documentShell(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="x-apple-disable-message-reformatting">
-  <title>{{HEADLINE}}</title>
+  <!-- EMAIL_TITLE (não HEADLINE): é a tag que o applyStructuralFills preenche,
+       com o subject. Com {{HEADLINE}} os dois lados nunca casavam, o strip
+       limpava o placeholder e TODO email saía com <title> vazio. -->
+  <title>{{EMAIL_TITLE}}</title>${webfontLink(fonts)}
   <style>
     :root {
       --bg: #F4F4F4;

@@ -128,6 +128,17 @@ export const ColorFormatPromptVarsSchema = z.object({
   tones: z.string(),
   color_inventory_json: z.string(),
   brand_colors: z.string(),
+  // Papéis JÁ RESOLVIDOS (fundo, texto, título, botão, destaque) — os mesmos
+  // que a hero recebe. Sem eles o agente só tinha a lista de cores da marca e
+  // nenhuma indicação de qual vai onde, então auditava em vez de aplicar: o
+  // email da Luxe Lift (12/08) saiu com a marca só na hero, que é a única
+  // região cujo agente recebe os papéis.
+  color_bg: z.string(),
+  color_text: z.string(),
+  color_heading: z.string(),
+  color_button_bg: z.string(),
+  color_button_text: z.string(),
+  color_accent: z.string(),
   font_heading: z.string(),
   font_body: z.string(),
   pesquisa_full_text: z.string(),

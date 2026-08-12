@@ -30,6 +30,7 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { findFieldDeviations } from "@/lib/email-workspace/copy-spec"
+import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
@@ -334,10 +335,26 @@ export async function POST(request: NextRequest) {
     let blocksByPosition = 0
     let blocksUnmatched = 0
     let blocksSanitized = 0
+    // Blocos cuja copy veio embrulhada em `campos`/`fields` — o n8n espelhando
+    // a estrutura do payload de ida. Contamos para saber quando o flow migrou.
+    const blocksUnwrapped: Array<{ position: number; wrapper: string; keys: number }> = []
     for (let i = 0; i < body.blocks.length; i++) {
       const b = body.blocks[i]
-      const cleaned = resolveBrandTokens(b.content, brandName) as Record<string, unknown>
-      if (JSON.stringify(cleaned) !== JSON.stringify(b.content)) blocksSanitized++
+      // O contrato é `content[key]`. Achata o embrulho ANTES de tudo: a
+      // sanitização, a auditoria e a gravação precisam ver as chaves reais.
+      const { content: flattened, report: envelope } = normalizeCopyEnvelope(
+        b.content,
+      )
+      if (envelope.wrapper) {
+        blocksUnwrapped.push({
+          position: i,
+          wrapper: envelope.wrapper,
+          keys: envelope.unwrapped.length,
+        })
+      }
+      const cleaned = resolveBrandTokens(flattened, brandName) as Record<string, unknown>
+      // Compara com o achatado, não com o cru: desembrulhar não é sanitizar.
+      if (JSON.stringify(cleaned) !== JSON.stringify(flattened)) blocksSanitized++
 
       // (a) tenta pelo block_id que o n8n mandou
       const { data: byId, error: blkErr } = await admin
@@ -412,7 +429,10 @@ export async function POST(request: NextRequest) {
       const blockType = orderedTypes[idx]
       if (!blockType) continue
       const fields = orderedFields[idx] ?? []
-      const content = body.blocks[i].content as Record<string, unknown>
+      // Mesma normalização da gravação: auditar o cru contaria `campos` como
+      // a única chave recebida e reportaria 0% de adesão para uma copy que,
+      // desembrulhada, cumpre o contrato inteiro.
+      const { content } = normalizeCopyEnvelope(body.blocks[i].content)
       if (fields.length === 0) {
         keysRecebidas += Object.keys(content).length
         contratoPorBloco.push({
@@ -503,6 +523,11 @@ export async function POST(request: NextRequest) {
           taxa_pct: taxaContrato,
           por_bloco: contratoPorBloco,
         },
+        // Enquanto este contador for > 0, o flow do n8n ainda devolve a copy
+        // embrulhada. Quando zerar, a normalização vira rede de segurança.
+        ...(blocksUnwrapped.length > 0
+          ? { blocos_desembrulhados: blocksUnwrapped }
+          : {}),
         ...(copyDeviations.length > 0
           ? { desvios: copyDeviations.slice(0, 60) }
           : {}),
@@ -515,6 +540,14 @@ export async function POST(request: NextRequest) {
       blocks_total: body.blocks.length,
       blocks_sanitized: blocksSanitized,
     })
+    if (blocksUnwrapped.length > 0) {
+      log.warn("email_copy.envelope_unwrapped", {
+        email_id: body.email_id,
+        blocks: blocksUnwrapped.length,
+        sample: blocksUnwrapped.slice(0, 5),
+        hint: "o n8n está devolvendo a copy embrulhada; o contrato é content[key] no primeiro nível",
+      })
+    }
     if (blocksSanitized > 0) {
       log.warn("email_copy.brand_tokens_resolved", {
         email_id: body.email_id,

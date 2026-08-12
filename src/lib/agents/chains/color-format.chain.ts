@@ -45,12 +45,36 @@ Respond with ONLY this JSON (no fences, no commentary):
 </ops_vocabulary>
 
 <identity_conformance>
-The approved palette arrives in <brand_identity_colors> (hex + role) — your job is to GUARD it:
-- Compare the inventory's colors against the palette using the contexts: background contexts → role Fundo; button/highlight colors → role Principal/Destaque; text colors must contrast with their backgrounds.
-- A color CLEARLY outside the palette (e.g. a blue button on a black/gold brand) → recolor it to the palette hex of the equivalent role, keeping readable contrast (light text on dark bg and vice versa).
-- Functional derivatives of the palette (pure white/black, neutral text grays, scrims/shadows) are LEGITIMATE — do not touch them.
-- NEVER introduce a color that is not in the palette (white/black excepted). Empty <brand_identity_colors> → emit no ops at all.
-- When in doubt whether a color belongs to the identity, DO NOT touch it (fail-open — a small divergence beats a contrast break).
+You APPLY the identity — you are not only its guard. The sections below the hero come
+from library components authored for other stores, so they arrive in the ORIGINAL
+author's colors (generic grays, plain black). Leaving them is not "conforming": it
+ships an email that does not look like this brand.
+
+<color_roles> gives you the palette already resolved into roles. Use it as the target:
+- background contexts (background / bgcolor / css-var --bg) → <bg>
+- button and CTA backgrounds → <button_bg>, with <button_text> on top
+- headings → <heading>; body copy → <text>; highlights → <accent>
+
+Rules:
+- A generic color carrying a brand role IS a target. Plain black (#000000) or an
+  off-the-shelf gray used as a button background or section background must become
+  the palette hex for that role — a color being "neutral" does not exempt it.
+- Judge by CONTEXT, not by how many occurrences it has. The most frequent color in
+  the document is usually the one most worth correcting.
+- Keep readable contrast: light text on dark ground and vice versa. When a recolor
+  would break contrast, recolor the pair (background AND its text) or skip both.
+- Functional neutrals stay: pure white/black used as TEXT for contrast, hairline
+  borders, scrims and shadows.
+- NEVER introduce a color outside <color_roles>. Empty roles and empty
+  <brand_identity_colors> → emit no ops at all.
+- The conflict rule still wins: a value used as BOTH a button background and body
+  text cannot be recolored globally — skip it and say nothing.
+
+Where the doubt goes (this changed): being unsure whether a generic color CARRIES a
+brand role is not a reason to skip — a black button on a brand with its own primary is
+a target, not a neutral. Stay fail-open only about CONTRAST and CONFLICT: when you
+cannot tell what sits on top of a background, or the same value serves two roles, skip
+it. A small divergence beats an unreadable email.
 </identity_conformance>
 
 <button_rules>
@@ -76,6 +100,15 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{brand_colors}}
 </brand_identity_colors>
 
+<color_roles>
+  <bg>{{color_bg}}</bg>
+  <text>{{color_text}}</text>
+  <heading>{{color_heading}}</heading>
+  <button_bg>{{color_button_bg}}</button_bg>
+  <button_text>{{color_button_text}}</button_text>
+  <accent>{{color_accent}}</accent>
+</color_roles>
+
 <tones>{{tones}}</tones>
 
 <email>
@@ -91,7 +124,10 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{color_inventory_json}}
 </color_inventory>
 
-Audit the inventory against the approved identity and emit the ops JSON now ({"ops":[]} if it already conforms).`
+Apply the identity to the inventory and emit the ops JSON now. Every color carrying a
+brand role (page background, section backgrounds, button backgrounds, headings) should
+end on a <color_roles> value. Emit {"ops":[]} only when the document already uses the
+palette in those roles.`
 
 export interface InvokeColorFormatResult {
   ops: FormatOp[]

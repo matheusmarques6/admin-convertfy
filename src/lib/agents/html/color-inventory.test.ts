@@ -54,6 +54,26 @@ describe("extractColorInventory", () => {
     // ordenação por ocorrências desc
     expect(inv[0].ocorrencias).toBeGreaterThanOrEqual(inv[inv.length - 1].ocorrencias)
   })
+
+  // Caso REAL (Luxe Lift, 12/08): o spacer do preheader é `&#847;&zwnj;&nbsp;`
+  // repetido 5 vezes. O `#847` de dentro da entidade casava como hex curto e
+  // era expandido para #884477 — uma cor que não existe no documento. O
+  // agente de cor gastou sua única op tentando corrigi-la e o email saiu sem
+  // nenhuma cor de marca.
+  it("entidade numérica não vira cor", () => {
+    const html =
+      '<div style="color:#3D2820">' +
+      "&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;" +
+      "</div>"
+    const inv = extractColorInventory(html)
+    expect(inv.map((e) => e.valor)).toEqual(["#3D2820"])
+    expect(inv.some((e) => e.valor === "#884477")).toBe(false)
+  })
+
+  it("hex curto legítimo continua sendo expandido", () => {
+    const inv = extractColorInventory('<td bgcolor="#847">x</td>')
+    expect(inv[0].valor).toBe("#884477")
+  })
 })
 
 describe("applyRecolor", () => {

@@ -622,6 +622,14 @@ export function buildColorFormatVars(
     tones: extras.tones,
     color_inventory_json: JSON.stringify(inventory, null, 2),
     brand_colors: serializeBrandColors(extras.brand),
+    // Papéis resolvidos — o agente precisa saber qual cor vai ONDE, não só
+    // quais cores a marca tem. É o que a hero sempre recebeu.
+    color_bg: ctx.roles.bg,
+    color_text: ctx.roles.text,
+    color_heading: ctx.roles.heading,
+    color_button_bg: ctx.roles.button_bg,
+    color_button_text: ctx.roles.button_text,
+    color_accent: ctx.roles.accent,
     font_heading: ctx.fontHeading,
     font_body: ctx.fontBody,
     pesquisa_full_text: extras.pesquisaFullText,
