@@ -126,6 +126,62 @@ RETURNING ecv.name AS variante,
 -- RETURNING ecv.name, jsonb_array_length(ecv.output_schema) AS campos_restantes;
 
 
+-- ── Parte 5 · CASO A-2 — o mesmo, para imagem e preço ───────
+-- Rodada depois da Parte 4: dos 51 campos que sobraram, 12 são a MESMA
+-- situação da Parte 2 — o schema declara o que a plataforma preenche, só
+-- que em imagem e preço em vez de URL.
+--
+--   testimonial_N_image  →  {{REVIEW_N_IMAGE}}          kind `data`
+--   product_1_price_new  →  {{PRODUCT_1_PRICE}}         kind `data`
+--   product_1_price_old  →  {{PRODUCT_1_COMPARE_PRICE}} kind `data`
+--
+-- Foto e nota de avaliação vêm da plataforma de reviews; preço vem do
+-- catálogo. Retaguear não resolveria: trocaria o nome de um slot que o
+-- agente de copy nunca preenche, e o campo continuaria vazio no email.
+--
+-- Mesma proteção da Parte 2: só remove quando o campo NÃO tem âncora. Se
+-- alguém retaguear antes, a condição deixa de casar e o campo fica.
+
+WITH v AS (
+  SELECT id,
+    CASE WHEN tagging_status='approved' AND COALESCE(html_tagged,'')<>''
+         THEN html_tagged ELSE COALESCE(html,'') END AS eff,
+    COALESCE(output_schema,'[]'::jsonb) AS sch
+  FROM email_component_variants WHERE is_active = true
+),
+tags AS (
+  SELECT DISTINCT v.id, m[1] AS tag
+  FROM v, regexp_matches(v.eff,'\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}','g') m
+),
+alvo AS (
+  SELECT v.id, f->>'key' AS key
+  FROM v, jsonb_array_elements(v.sch) f
+  WHERE (
+      (f->>'key') ~ '^testimonial_\d+_image$'
+      OR (f->>'key') IN ('product_1_price_new','product_1_price_old')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM tags t WHERE t.id = v.id
+        AND t.tag = regexp_replace(upper(btrim(f->>'key')),'[^A-Z0-9_]+','_','g')
+    )
+),
+novo AS (
+  SELECT v.id,
+         COALESCE(jsonb_agg(f ORDER BY ord) FILTER (
+           WHERE (f->>'key') NOT IN (SELECT key FROM alvo a WHERE a.id = v.id)
+         ), '[]'::jsonb) AS sch_novo
+  FROM v, jsonb_array_elements(v.sch) WITH ORDINALITY AS x(f, ord)
+  WHERE v.id IN (SELECT id FROM alvo)
+  GROUP BY v.id
+)
+UPDATE email_component_variants ecv
+SET output_schema = novo.sch_novo, updated_at = now()
+FROM novo
+WHERE ecv.id = novo.id
+RETURNING ecv.name AS variante,
+          jsonb_array_length(ecv.output_schema) AS campos_restantes;
+
+
 -- ── Parte 4 · Reauditoria ───────────────────────────────────
 -- Quantos campos sem âncora sobraram por variante. Os de URL devem ter
 -- sumido da conta; o que restar é retagueamento de verdade (item 04).
