@@ -24,7 +24,11 @@ import { appUrl } from "@/lib/whatsapp/queue"
 import { createEvolutionClient } from "@/lib/whatsapp/evolution-api"
 import { getEvolutionConfigGaps, getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { buildInstanceName } from "@/lib/whatsapp/evolution-content"
-import { resolveInstagramAccount } from "@/lib/services/instagram-activity.service"
+import {
+  resolveAndHealInstagramChannel,
+  resolveInstagramAccount,
+} from "@/lib/services/instagram-activity.service"
+import { subscribePageToWebhooks } from "@/lib/services/instagram-graph.service"
 
 const log = logger.child("CrmChannels")
 
@@ -283,7 +287,48 @@ export async function POST(request: NextRequest) {
     if (error) throw error
 
     log.info("[Channels] created", { id: data.id, type: parsed.type })
-    return successResponse(request, { id: data.id })
+
+    // Assinar a Página é o que faz a Meta ENTREGAR os eventos. Sem esse
+    // passo o canal nasce "conectado" (perfil e posts funcionam) e o
+    // inbox nunca recebe nada — foi assim que o Instagram ficou mudo.
+    // Fail-open: o canal já existe e a tela tem o botão "Ativar
+    // recebimento" pra repetir; derrubar a conexão aqui seria pior.
+    let webhookSubscribed = false
+    let webhookProblema: string | null = null
+    if (parsed.type === "instagram") {
+      try {
+        const healed = await resolveAndHealInstagramChannel(
+          admin,
+          { id: data.id, external_id: igAccountId ?? "" },
+          (insertPayload.config ?? {}) as Record<string, unknown>,
+          {
+            instagram_business_account_id: igAccountId ?? "",
+            access_token: parsed.instagram!.access_token,
+          },
+        )
+        if (healed.pageId && healed.pageToken) {
+          const sub = await subscribePageToWebhooks(healed.pageId, healed.pageToken)
+          webhookSubscribed = sub.success
+          webhookProblema = sub.error?.message ?? null
+        } else {
+          webhookProblema =
+            "Não achamos a Página vinculada (ou o token dela) para assinar os eventos — o painel funciona, mas mensagens novas não vão chegar até resolver isso."
+        }
+      } catch (err) {
+        webhookProblema = err instanceof Error ? err.message : "Falha ao assinar os eventos da Página"
+        log.warn("[Channels] assinatura do webhook falhou na criação", {
+          id: data.id,
+          error: webhookProblema,
+        })
+      }
+    }
+
+    return successResponse(request, {
+      id: data.id,
+      ...(parsed.type === "instagram"
+        ? { webhook_subscribed: webhookSubscribed, webhook_problema: webhookProblema }
+        : {}),
+    })
   } catch (error) {
     log.error("Channels POST error:", error)
     return errorResponse(request, error, "crm-channels-post")

@@ -30,7 +30,9 @@ import { validateTemplateVariables, buildTemplateBodyComponents, type TemplateFo
 import {
   sendInstagramMessage,
   replyToInstagramComment,
+  type InstagramChannelConfig,
 } from "@/lib/services/instagram-graph.service"
+import { resolveAndHealInstagramChannel } from "@/lib/services/instagram-activity.service"
 import { clearCrmThreadNotifications } from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("CrmInboxSend")
@@ -264,15 +266,16 @@ export async function POST(
           .eq("id", templateRow.id)
       }
     } else {
-      // ── Instagram: ramo INTOCADO ─────────────────────────────────
+      // ── Instagram ────────────────────────────────────────────────
+      // Quem serve mensagem no login por Facebook é a PÁGINA, com token
+      // DE PÁGINA. A leitura (importação de conversas) já tinha migrado
+      // pra esse caminho; o envio ficou no IG User + token do canal e
+      // por isso a Meta recusava — 190 "must be called with a Page
+      // Access Token" ou #3. Aqui o config carrega os dois caminhos e o
+      // cliente tenta Página primeiro, IG User de fallback.
       localMsgId = await createLocalMessage(admin, { threadId, thread, parsed, userId: user.id })
 
-      const config = (channel.config as Record<string, string | undefined>) || {}
-      const igConfig = {
-        instagram_business_account_id:
-          channel.external_id || config.instagram_business_account_id || "",
-        access_token: config.access_token || "",
-      }
+      const igConfig = await resolveInstagramSendConfig(admin, channel)
       const isCommentThread = thread.contact_external_id.startsWith("comment:")
       if (isCommentThread) {
         // Reply de comment: precisa do comment_id do parent. Buscamos
@@ -385,6 +388,57 @@ export async function POST(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Config de envio do Instagram, com auto-cura do vínculo da Página.
+ *
+ * Canal conectado antes da migração para o caminho da Página não tem
+ * `facebook_page_token` no config. Em vez de falhar (e mandar o operador
+ * reconectar a conta), descobrimos a Página pelo próprio token e
+ * persistimos — a mesma rotina que a importação de conversas usa. Roda
+ * só quando o token de Página falta: envio é caminho quente e não pode
+ * pagar duas chamadas à Graph API por mensagem.
+ */
+async function resolveInstagramSendConfig(
+  admin: ReturnType<typeof createAdminClient>,
+  channel: { id: string; external_id: string | null; config: Record<string, unknown> | null },
+): Promise<InstagramChannelConfig> {
+  const raw = (channel.config ?? {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+
+  const base: InstagramChannelConfig = {
+    instagram_business_account_id:
+      channel.external_id || str(raw.instagram_business_account_id) || "",
+    access_token: str(raw.access_token) || "",
+    facebook_page_id: str(raw.facebook_page_id),
+    facebook_page_token: str(raw.facebook_page_token),
+  }
+
+  if (base.facebook_page_token || !base.access_token) return base
+
+  try {
+    const healed = await resolveAndHealInstagramChannel(
+      admin,
+      { id: channel.id, external_id: channel.external_id ?? "" },
+      raw,
+      { instagram_business_account_id: base.instagram_business_account_id, access_token: base.access_token },
+    )
+    return {
+      ...base,
+      instagram_business_account_id: healed.config.instagram_business_account_id,
+      facebook_page_id: healed.pageId,
+      facebook_page_token: healed.pageToken,
+    }
+  } catch (err) {
+    // Cura é oportunista: se a Graph API estiver fora do ar, ainda vale
+    // tentar o caminho do IG User com o token do canal.
+    log.warn("[Inbox] auto-cura do canal Instagram falhou no envio", {
+      channelId: channel.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return base
+  }
+}
 
 function isWindowOpen(thread: { is_window_open: boolean | null; window_expires_at: string | null }): boolean {
   if (!thread.is_window_open) return false

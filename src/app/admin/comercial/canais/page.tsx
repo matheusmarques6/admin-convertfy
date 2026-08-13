@@ -20,6 +20,7 @@ import {
   History,
   Activity,
   Pencil,
+  BellRing,
 } from "lucide-react"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { CrmEmptyState } from "@/components/crm/crm-empty-state"
@@ -211,6 +212,7 @@ function ChannelCard({
     | "delete"
     | "history"
     | "toggle"
+    | "subscribe"
     | null
   >(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -249,6 +251,38 @@ function ChannelCard({
         )
       } else {
         setActionOk(nextActive ? "Canal reativado." : "Canal desativado.")
+      }
+      onChanged()
+    } catch {
+      setActionError("Falha de rede")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Assina a Página nos eventos de mensagem da Meta. É ISSO que faz o
+  // direct chegar no inbox: configurar o webhook no painel do app só
+  // escolhe os campos; a entrega por conta exige assinar a Página. As
+  // contas conectadas antes desta correção nunca passaram por aqui.
+  const subscribeWebhook = async () => {
+    setBusy("subscribe")
+    setActionError(null)
+    setActionOk(null)
+    try {
+      const res = await fetch(`/api/crm/channels/${channel.id}/instagram/subscribe`, {
+        method: "POST",
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const raw = json?.error
+        setActionError(
+          (typeof raw === "string" ? raw : raw?.message) ?? "Falha ao ativar o recebimento",
+        )
+      } else {
+        const campos: string[] = json?.data?.fields ?? json?.fields ?? []
+        setActionOk(
+          `Recebimento ativo${campos.length ? ` (${campos.join(", ")})` : ""}. Mande um direct de teste para conferir.`,
+        )
       }
       onChanged()
     } catch {
@@ -574,6 +608,24 @@ function ChannelCard({
           >
             <Pencil className="h-3 w-3" />
             {editing ? "Fechar edição" : "Editar"}
+          </button>
+        )}
+        {isInstagram && channel.is_active && (
+          <button
+            type="button"
+            className="crm-button-ghost"
+            title="Assina esta conta nos eventos da Meta — é o passo que faz o direct e os comentários chegarem no inbox"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--crm-space-2)",
+              opacity: busy ? 0.5 : 1,
+            }}
+            disabled={busy !== null}
+            onClick={subscribeWebhook}
+          >
+            <BellRing className="h-3 w-3" />
+            {busy === "subscribe" ? "Ativando..." : "Ativar recebimento"}
           </button>
         )}
         {isInstagram && channel.is_active && (
@@ -1437,6 +1489,13 @@ function InstagramForm({
             META_APP_SECRET
           </code>
           . Este passo vale para TODAS as contas — não precisa repetir.
+          <span style={{ display: "block", marginTop: 6, color: "#8A6116" }}>
+            Atenção: assinar os campos aqui só diz QUAIS eventos o app quer. A
+            entrega de cada conta exige assinar a Página — isso é feito
+            automaticamente ao conectar, e o botão{" "}
+            <strong>Ativar recebimento</strong> no card repete o passo se algo
+            falhar. Sem ele o painel funciona e o inbox nunca recebe nada.
+          </span>
         </IgStep>
       </div>
 

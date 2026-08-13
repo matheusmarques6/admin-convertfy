@@ -57,17 +57,29 @@ export async function GET(request: NextRequest) {
 
 // ─── POST: ingest events ─────────────────────────────────────────
 
-function verifySignature(rawBody: string, signature: string | null): boolean {
+type SignatureVerdict = "ok" | "no_secret" | "no_signature" | "mismatch"
+
+/**
+ * Verifica o HMAC e DIZ POR QUÊ quando recusa.
+ *
+ * Antes devolvia só `false`: secret ausente no servidor e assinatura
+ * errada produziam o mesmo 403 mudo, e o sintoma na tela era idêntico a
+ * "a Meta nunca chamou". São causas opostas — uma é variável de ambiente
+ * faltando, a outra é app secret trocado — e sem distinguir as duas o
+ * diagnóstico virava adivinhação.
+ */
+function checkSignature(rawBody: string, signature: string | null): SignatureVerdict {
   // META_APP_SECRET serve pro app inteiro (WhatsApp + Instagram + Pages).
   const secret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET
-  if (!secret || !signature) return false
+  if (!secret) return "no_secret"
+  if (!signature) return "no_signature"
   const expected =
     "sha256=" +
     crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")
   const a = Buffer.from(expected)
   const b = Buffer.from(signature)
-  if (a.byteLength !== b.byteLength) return false
-  return crypto.timingSafeEqual(a, b)
+  if (a.byteLength !== b.byteLength) return "mismatch"
+  return crypto.timingSafeEqual(a, b) ? "ok" : "mismatch"
 }
 
 // ─── Tipos do payload ───────────────────────────────────────────
@@ -117,11 +129,19 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text()
   const signature = request.headers.get("x-hub-signature-256")
 
-  if (
-    process.env.NODE_ENV === "production" &&
-    !verifySignature(rawBody, signature)
-  ) {
-    log.error("[Instagram] invalid signature")
+  const verdict = checkSignature(rawBody, signature)
+  if (process.env.NODE_ENV === "production" && verdict !== "ok") {
+    // Cada motivo pede uma ação diferente — o log tem de dizer qual.
+    log.error("[Instagram] webhook recusado na assinatura", {
+      motivo: verdict,
+      acao:
+        verdict === "no_secret"
+          ? "defina META_APP_SECRET no servidor (Configurações → Básico do app da Meta)"
+          : verdict === "no_signature"
+            ? "chamada sem X-Hub-Signature-256 — confira se veio mesmo da Meta"
+            : "assinatura não confere — o META_APP_SECRET do servidor é de OUTRO app",
+      body_bytes: rawBody.length,
+    })
     return new NextResponse("Forbidden", { status: 403 })
   }
 
@@ -132,53 +152,123 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Invalid JSON", { status: 400 })
   }
 
-  if (payload.object !== "instagram") {
+  // `instagram` é o objeto documentado; `page` aparece quando o app
+  // entrega o direct do IG pelo produto Messenger. Recusar o segundo
+  // descartava evento legítimo com um log.warn e nada mais. Quem decide
+  // se o evento nos interessa é o lookup do canal, logo abaixo.
+  if (payload.object !== "instagram" && payload.object !== "page") {
     log.warn("[Instagram] unknown payload object", { object: payload.object })
     return NextResponse.json({ ignored: true })
   }
 
   const admin = createAdminClient()
 
-  for (const entry of payload.entry || []) {
-    const igAccountId = entry.id
+  const outcome = { canais: 0, sem_canal: [] as string[], dms: 0, comments: 0, ecos: 0 }
 
-    // Busca o channel correspondente (1 channel por IG business account).
-    const { data: channel } = await admin
-      .from("crm_channels")
-      .select("id, org_id, store_id, config")
-      .eq("type", "instagram")
-      .eq("external_id", igAccountId)
-      .eq("is_active", true)
-      .maybeSingle()
+  for (const entry of payload.entry || []) {
+    const channel = await resolveChannel(admin, entry.id)
 
     if (!channel) {
-      log.warn("[Instagram] channel nao encontrado", { igAccountId })
+      // Não é erro: pode ser conta de outro produto no mesmo app da Meta.
+      // Mas é a pista nº 1 quando "não chega mensagem", então registra o
+      // ID exato pra comparar com o external_id salvo.
+      log.warn("[Instagram] channel nao encontrado para o entry", { entryId: entry.id })
+      outcome.sem_canal.push(entry.id)
       continue
     }
+    outcome.canais++
 
     // ── DMs ──
     for (const ev of entry.messaging || []) {
-      if (ev.message?.is_echo) continue // ignora eco da nossa propria msg
-      await handleInboundDm(admin, {
+      if (ev.message?.is_deleted) continue
+      if (ev.message?.is_echo) {
+        // Eco = mensagem que NÓS mandamos, inclusive pelo app do celular.
+        // Descartar deixava o atendente cego: o histórico do inbox
+        // divergia da conversa real sempre que alguém respondia fora
+        // daqui. É idempotente pelo mid, então o eco do nosso próprio
+        // envio pela API não duplica a bolha.
+        const saved = await handleEchoDm(admin, {
+          orgId: channel.org_id,
+          channelId: channel.id,
+          event: ev,
+        })
+        if (saved) outcome.ecos++
+        continue
+      }
+      const saved = await handleInboundDm(admin, {
         orgId: channel.org_id,
         channelId: channel.id,
-        igAccountId,
+        igAccountId: channel.external_id,
         event: ev,
       })
+      if (saved) outcome.dms++
     }
 
     // ── Comments ──
     for (const change of entry.changes || []) {
       if (change.field !== "comments") continue
-      await handleInboundComment(admin, {
+      const saved = await handleInboundComment(admin, {
         orgId: channel.org_id,
         channelId: channel.id,
         change,
       })
+      if (saved) outcome.comments++
     }
   }
 
+  // Log forense do payload cru. Entra como 'done': a fila durável é
+  // compartilhada e `processClaimedEvent` roteia tudo que não é
+  // 'evolution' pro processador do WhatsApp — um evento do Instagram
+  // em 'pending' seria repescado pelo cron e processado com o parser
+  // errado. Aqui o objetivo é poder responder "a Meta chamou?", que é
+  // exatamente o que faltava para diagnosticar.
+  await admin
+    .from("crm_webhook_events")
+    .insert({
+      source: "instagram",
+      external_channel_id: payload.entry?.[0]?.id ?? null,
+      raw_payload: payload,
+      signature,
+      status: "done",
+      processed_at: new Date().toISOString(),
+      last_error: outcome.sem_canal.length
+        ? `sem canal ativo para: ${outcome.sem_canal.join(", ")}`
+        : null,
+    })
+    .then(({ error }) => {
+      if (error) log.warn("[Instagram] evento cru não persistido", { error: error.message })
+    })
+
+  log.info("[Instagram] webhook processado", outcome)
   return NextResponse.json({ received: true })
+}
+
+/**
+ * Acha o canal do evento. `entry.id` é o IG Business Account ID no
+ * objeto `instagram` e o ID da PÁGINA no objeto `page` — os dois chegam
+ * dependendo de como o app está montado, e só o primeiro era procurado.
+ */
+async function resolveChannel(
+  admin: ReturnType<typeof createAdminClient>,
+  entryId: string,
+): Promise<{ id: string; org_id: string; external_id: string } | null> {
+  const { data: byAccount } = await admin
+    .from("crm_channels")
+    .select("id, org_id, external_id")
+    .eq("type", "instagram")
+    .eq("external_id", entryId)
+    .eq("is_active", true)
+    .maybeSingle()
+  if (byAccount) return byAccount
+
+  const { data: byPage } = await admin
+    .from("crm_channels")
+    .select("id, org_id, external_id")
+    .eq("type", "instagram")
+    .eq("config->>facebook_page_id", entryId)
+    .eq("is_active", true)
+    .maybeSingle()
+  return byPage ?? null
 }
 
 // ─── Handlers ────────────────────────────────────────────────────
@@ -191,14 +281,14 @@ async function handleInboundDm(
     igAccountId: string
     event: IgMessagingEvent
   },
-) {
+): Promise<boolean> {
   const { orgId, channelId, igAccountId, event } = args
-  if (!event.message?.mid) return
+  if (!event.message?.mid) return false
 
   // Sender pode ser o usuario ou nossa propria conta. Quando sender ==
   // igAccountId, e mensagem que NOS mandamos via outra fonte (raro
   // porque is_echo deveria pegar). Skip pra ser seguro.
-  if (event.sender.id === igAccountId) return
+  if (event.sender.id === igAccountId) return false
 
   const contactExternalId = event.sender.id
 
@@ -210,7 +300,7 @@ async function handleInboundDm(
     contactName: null,
     metadata: { kind: "dm" },
   })
-  if (!threadId) return
+  if (!threadId) return false
 
   // Mapeia tipo
   let contentType = "text"
@@ -260,18 +350,26 @@ async function handleInboundDm(
 
   if (error) {
     log.error("[Instagram] erro ao persistir DM", error)
-    return
+    return false
   }
 
-  // Inbound reabre conversa resolvida (mesma semântica do WhatsApp) —
-  // sem isso, contato que volta a escrever depois do "resolver" (ou de
-  // uma importação de histórico, que cria threads resolved) ficava
-  // fora da fila de atendimento.
-  await admin
-    .from("crm_threads")
-    .update({ status: "open" })
-    .eq("id", threadId)
-    .eq("status", "resolved")
+  // Inbound reabre conversa resolvida (mesma semântica do WhatsApp) e
+  // ABRE A JANELA DE 24H. A barra de janela do inbox já era exibida pro
+  // Instagram, mas nada no sistema abria a janela — ficava eternamente
+  // "fechada" e o atendente não tinha como saber quanto tempo lhe resta
+  // pra responder. O RPC é genérico (não é específico do WhatsApp).
+  const { error: windowError } = await admin.rpc("open_crm_thread_window", {
+    p_thread_id: threadId,
+  })
+  if (windowError) {
+    // Fail-open: janela é indicador, nunca motivo pra perder a mensagem.
+    log.warn("[Instagram] não abriu a janela de 24h", { threadId, error: windowError.message })
+    await admin
+      .from("crm_threads")
+      .update({ status: "open" })
+      .eq("id", threadId)
+      .eq("status", "resolved")
+  }
 
   log.info("[Instagram] inbound DM", { thread_id: threadId, mid: event.message.mid })
 
@@ -288,6 +386,59 @@ async function handleInboundDm(
     is_first_message: await isFirstInboundMessage(admin, threadId, event.message.mid),
     external_message_id: event.message.mid,
   })
+  return true
+}
+
+/**
+ * Eco: mensagem enviada pela NOSSA conta fora deste admin (app do
+ * celular, outra ferramenta). Grava como outbound `system`, que o inbox
+ * já sabe rotular como "Pelo celular" (`crm-inbox-format`).
+ *
+ * No eco o contato é o RECIPIENT — o oposto do inbound. Não dispara
+ * automação (nós mandamos, não há o que reagir), não mexe em unread e
+ * não abre janela de 24h: quem abre a janela é o contato, não nós.
+ */
+async function handleEchoDm(
+  admin: ReturnType<typeof createAdminClient>,
+  args: { orgId: string; channelId: string; event: IgMessagingEvent },
+): Promise<boolean> {
+  const { orgId, channelId, event } = args
+  if (!event.message?.mid) return false
+
+  const contactExternalId = event.recipient?.id
+  if (!contactExternalId) return false
+
+  const threadId = await upsertThread(admin, {
+    orgId,
+    channelId,
+    contactExternalId,
+    contactName: null,
+    metadata: { kind: "dm" },
+  })
+  if (!threadId) return false
+
+  const att = event.message.attachments?.[0]
+  const { error } = await admin.from("crm_messages").upsert(
+    {
+      thread_id: threadId,
+      org_id: orgId,
+      external_id: event.message.mid,
+      direction: "outbound",
+      content_type: att?.type === "image" ? "image" : "text",
+      body: event.message.text || (att ? `[${att.type}]` : null),
+      media_url: att?.payload?.url ?? null,
+      metadata: { raw: event, source: "ig_dm_echo" },
+      sent_by_kind: "system",
+      status: "sent",
+    },
+    { onConflict: "thread_id,external_id", ignoreDuplicates: true },
+  )
+
+  if (error) {
+    log.error("[Instagram] erro ao persistir eco", error)
+    return false
+  }
+  return true
 }
 
 /**
@@ -316,7 +467,7 @@ async function handleInboundComment(
     channelId: string
     change: IgCommentChange
   },
-) {
+): Promise<boolean> {
   const { orgId, channelId, change } = args
   const v = change.value
 
@@ -332,7 +483,7 @@ async function handleInboundComment(
     contactName: senderName,
     metadata: { kind: "comments", media_id: v.media.id },
   })
-  if (!threadId) return
+  if (!threadId) return false
 
   const { error } = await admin.from("crm_messages").upsert(
     {
@@ -359,7 +510,7 @@ async function handleInboundComment(
 
   if (error) {
     log.error("[Instagram] erro ao persistir comment", error)
-    return
+    return false
   }
 
   await admin
@@ -384,6 +535,7 @@ async function handleInboundComment(
     is_first_message: await isFirstInboundMessage(admin, threadId, v.id),
     external_message_id: v.id,
   })
+  return true
 }
 
 async function upsertThread(
