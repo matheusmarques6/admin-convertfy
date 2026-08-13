@@ -219,3 +219,46 @@ describe("looksLikeMarkup", () => {
     expect(looksLikeMarkup("5 < 10")).toBe(false)
   })
 })
+
+describe("remove_row não destrói copy já preenchida (incidente Luxe Lift, 12/08)", () => {
+  // `REVIEW_VERIFIED_LABEL` ("Verified Buyer") é rótulo fixo que schema
+  // nenhum declara. Ficou sem valor, o verificador o marcou como slot vazio
+  // e o text_format pediu a remoção da linha — que carregava o depoimento
+  // INTEIRO, já preenchido pelo copy_merge. Os dois reviews sumiram do email.
+  const linhaDoDepoimento = [
+    '<table><tr data-cfy-row="TESTIMONIAL_1_TITLE REVIEW_VERIFIED_LABEL">',
+    "<td>",
+    "<p>Finally, real support all day</p>",
+    "<p>I&#39;ve tried so many bras that promised comfort.</p>",
+    "<p>&#9733;&#9733;&#9733;&#9733;&#9733;</p>",
+    "<p><strong>Sarah M.</strong><br>{{REVIEW_VERIFIED_LABEL}}</p>",
+    "</td></tr></table>",
+  ].join("")
+
+  it("recusa a remoção e mantém o depoimento", () => {
+    const res = applyOps(linhaDoDepoimento, [
+      { action: "remove_row", tag: "REVIEW_VERIFIED_LABEL" },
+    ], { allowHero: true })
+    expect(res.applied).toBe(0)
+    expect(res.skipped[0].reason).toBe("row_not_removable")
+    expect(res.html).toContain("Finally, real support all day")
+    expect(res.html).toContain("Sarah M.")
+  })
+
+  it("linha REALMENTE vazia continua removível", () => {
+    const vazia =
+      '<table><tr data-cfy-row="CAMPAIGN_TAPE"><td>{{CAMPAIGN_TAPE}} &#183; {{CAMPAIGN_TAPE}}</td></tr></table>'
+    const res = applyOps(vazia, [{ action: "remove_row", tag: "CAMPAIGN_TAPE" }], { allowHero: true })
+    expect(res.applied).toBe(1)
+    expect(res.html).not.toContain("CAMPAIGN_TAPE")
+  })
+
+  it("moldura decorativa não conta como copy", () => {
+    // Só estrelas, aspas e pontuação em volta do slot vazio: a linha não
+    // carrega nada que o cliente leria, então sai.
+    const so_moldura =
+      '<table><tr><td><p>&#8221;</p><p>&#9733;&#9733;&#9733;</p><p>{{X_LABEL}}</p></td></tr></table>'
+    const res = applyOps(so_moldura, [{ action: "remove_row", tag: "X_LABEL" }], { allowHero: true })
+    expect(res.applied).toBe(1)
+  })
+})

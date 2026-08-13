@@ -116,7 +116,7 @@ describe("slot fora de tabela", () => {
 })
 
 describe("Fase 2 — endereço declarado sobrevive à copy aplicada", () => {
-  it("remove a linha certa DEPOIS do token virar texto (sem token, sem chute)", () => {
+  it("acha a linha certa DEPOIS do token virar texto — e o guard a protege", () => {
     const annotated = annotateSlots(DOC).html
     // Merge aplica a copy: os tokens somem do documento.
     const filled = annotated
@@ -128,8 +128,29 @@ describe("Fase 2 — endereço declarado sobrevive à copy aplicada", () => {
     const res = applyOps(filled, [{ action: "remove_row", tag: "REVIEW_1_TEXT" }], {
       allowHero: true,
     })
+    // O endereço FOI resolvido — a prova é o motivo da recusa: quem perdeu o
+    // endereço sai como `tag_not_found`. Aqui a linha foi achada e recusada
+    // porque carrega copy que o merge já escreveu (incidente Luxe Lift,
+    // 12/08: uma tag órfã na <tr> do depoimento levava o depoimento junto).
+    expect(res.applied).toBe(0)
+    expect(res.skipped[0].reason).toBe("row_not_removable")
+    expect(res.html).toContain("Ótimo produto")
+    expect(res.html).toContain("Recomendo")
+  })
+
+  it("remove pelo endereço declarado quando a copy veio VAZIA", () => {
+    // Caso real do remove_row depois do merge: o campo não tinha valor, o
+    // merge escreveu string vazia e o token sumiu. Sem `data-cfy-row` não
+    // sobraria nada a buscar na linha — e ela ficaria oca no email.
+    const filled = annotateSlots(DOC)
+      .html.replace("{{REVIEW_1_TEXT}}", "")
+      .replace("{{REVIEW_2_TEXT}}", "Recomendo")
+
+    const res = applyOps(filled, [{ action: "remove_row", tag: "REVIEW_1_TEXT" }], {
+      allowHero: true,
+    })
     expect(res.applied).toBe(1)
-    expect(res.html).not.toContain("Ótimo produto")
+    expect(res.html).not.toContain('id="card-1"')
     expect(res.html).toContain("Recomendo") // irmão intacto
     expect(res.html).toContain('id="section-reviews"') // seção intacta
   })

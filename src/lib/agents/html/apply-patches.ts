@@ -395,5 +395,30 @@ function rowRemovable(
   // (e seu {{TAG_ALT}} companheiro).
   const allowed = new Set([tag, `${tag}_ALT`])
   const tokens = region.match(IMAGE_TOKEN) ?? []
-  return tokens.every((t) => allowed.has(t.replace(/[{}\s]/g, "")))
+  if (!tokens.every((t) => allowed.has(t.replace(/[{}\s]/g, "")))) return false
+  // ...nem TEXTO já preenchido. O guard anterior olhava só imagem, e foi
+  // assim que os dois depoimentos da Luxe Lift (12/08) sumiram do email:
+  // `REVIEW_VERIFIED_LABEL` ("Verified Buyer") é rótulo fixo que schema
+  // nenhum declara, ficou sem valor, e mora na MESMA <tr> que o título, o
+  // texto e o autor do depoimento — que o copy_merge já tinha preenchido.
+  // Uma tag órfã levou a seção inteira.
+  return !rowHasFilledCopy(region)
+}
+
+/**
+ * A linha ainda tem texto de verdade depois de tirar os placeholders?
+ *
+ * Roda DEPOIS do copy_merge, então slot preenchido já é texto no documento e
+ * slot vazio ainda é `{{TAG}}`. Tirados os tokens, o que sobrar de
+ * alfanumérico é conteúdo que o cliente leria — e remover a linha o
+ * destruiria. Pontuação, estrelas (`&#9733;`) e aspas decorativas não contam:
+ * são moldura da variante, não copy.
+ */
+function rowHasFilledCopy(region: string): boolean {
+  const text = region
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[#a-z0-9]+;/gi, " ")
+  return /[\p{L}\p{N}]/u.test(text)
 }
