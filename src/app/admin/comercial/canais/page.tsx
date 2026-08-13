@@ -45,6 +45,11 @@ interface Channel {
   /** Só canais instagram (derivados seguros — token nunca vem inteiro). */
   facebook_page_id?: string | null
   token_preview?: string | null
+  /** Quando a Página foi assinada nos eventos da Meta (persistente). */
+  webhook_subscribed_at?: string | null
+  webhook_fields?: string[]
+  /** Última vez que a Meta chamou o nosso webhook para esta conta. */
+  last_webhook_at?: string | null
 }
 
 type ChannelKind = "whatsapp" | "instagram" | "evolution"
@@ -186,6 +191,66 @@ export default function ChannelsPage() {
       </div>
     </CrmPageShell>
   )
+}
+
+/**
+ * Estado do recebimento, lido do servidor — sobrevive ao refresh.
+ *
+ * Duas informações DIFERENTES, e é a distância entre elas que
+ * diagnostica: "assinado" é o que NÓS pedimos à Meta; "última chamada"
+ * é o que a Meta de fato entregou. Assinado sem nenhuma chamada é o
+ * sintoma clássico de webhook do APP mal configurado (URL de callback
+ * errada ou campos não assinados no painel) — nada que este admin possa
+ * consertar sozinho, e por isso o aviso diz onde ir.
+ */
+function InstagramWebhookStatus({ channel }: { channel: Channel }) {
+  const assinado = Boolean(channel.webhook_subscribed_at)
+  const ultima = channel.last_webhook_at
+
+  const cor = !assinado
+    ? "var(--crm-danger-fg)"
+    : ultima
+      ? "var(--crm-success-fg)"
+      : "var(--crm-warning-fg, #B45309)"
+
+  const texto = !assinado
+    ? "Recebimento não ativado — clique em \"Ativar recebimento\""
+    : ultima
+      ? `Recebendo · última chamada da Meta ${formatarQuando(ultima)}`
+      : "Assinado, mas a Meta NUNCA chamou este servidor"
+
+  return (
+    <div style={{ fontSize: "var(--crm-text-xs)", color: cor, marginTop: 3 }}>
+      {texto}
+      {assinado && !ultima && (
+        <span style={{ display: "block", color: "var(--crm-gray-500)", marginTop: 2 }}>
+          Falta o webhook do APP: painel da Meta → Webhooks → objeto Instagram →
+          Callback URL apontando para este domínio + campos messages e comments.
+        </span>
+      )}
+      {assinado && (channel.webhook_fields?.length ?? 0) > 0 && (
+        <span
+          style={{
+            display: "block",
+            color: "var(--crm-gray-500)",
+            fontFamily: "var(--crm-font-mono)",
+            marginTop: 2,
+          }}
+        >
+          {channel.webhook_fields!.join(", ")}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function formatarQuando(iso: string): string {
+  const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (minutos < 1) return "agora"
+  if (minutos < 60) return `há ${minutos} min`
+  const horas = Math.floor(minutos / 60)
+  if (horas < 24) return `há ${horas}h`
+  return `há ${Math.floor(horas / 24)}d`
 }
 
 // ─── Channel card (lista) ────────────────────────────────────────
@@ -546,6 +611,7 @@ function ChannelCard({
           >
             {tagLabel} · {isEvolution && channel.owner_jid ? `+${channel.owner_jid}` : channel.external_id}
           </div>
+          {isInstagram && channel.is_active && <InstagramWebhookStatus channel={channel} />}
         </div>
       </div>
       <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-3">

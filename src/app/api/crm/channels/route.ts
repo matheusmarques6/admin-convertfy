@@ -63,6 +63,28 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
+    // Última vez que a Meta chamou o nosso webhook, por conta. É o dado
+    // que separa "o app não está entregando" de "chegou e a gente
+    // errou" — sem ele, "não recebo mensagem" não tem como ser
+    // diagnosticado da tela. `external_channel_id` é o `entry.id` do
+    // payload, que pode ser o ID do IG ou o da Página.
+    const igRows = (data || []).filter((r) => r.type === "instagram")
+    const lastWebhookByKey = new Map<string, string>()
+    if (igRows.length > 0) {
+      const { data: events } = await admin
+        .from("crm_webhook_events")
+        .select("external_channel_id, received_at")
+        .eq("source", "instagram")
+        .order("received_at", { ascending: false })
+        .limit(200)
+      for (const ev of events ?? []) {
+        const key = ev.external_channel_id as string | null
+        if (key && !lastWebhookByKey.has(key)) {
+          lastWebhookByKey.set(key, ev.received_at as string)
+        }
+      }
+    }
+
     // Nao retorna config (contem access_token) — só derivados seguros:
     // estado da conexão (evolution) e, pro card de edição do Instagram,
     // a Página vinculada + o token MASCARADO (4 primeiros/últimos).
@@ -79,12 +101,22 @@ export async function GET(request: NextRequest) {
       }
       if (safe.type === "instagram") {
         const token = typeof config?.access_token === "string" ? config.access_token : ""
+        const pageId = typeof config?.facebook_page_id === "string" ? config.facebook_page_id : null
+        const lastWebhookAt =
+          lastWebhookByKey.get(String(safe.external_id)) ??
+          (pageId ? lastWebhookByKey.get(pageId) : undefined) ??
+          null
         return {
           ...safe,
-          facebook_page_id:
-            typeof config?.facebook_page_id === "string" ? config.facebook_page_id : null,
+          facebook_page_id: pageId,
           token_preview:
             token.length > 12 ? `${token.slice(0, 4)}…${token.slice(-4)}` : token ? "•••" : null,
+          webhook_subscribed_at:
+            typeof config?.webhook_subscribed_at === "string" ? config.webhook_subscribed_at : null,
+          webhook_fields: Array.isArray(config?.webhook_fields)
+            ? (config.webhook_fields as string[])
+            : [],
+          last_webhook_at: lastWebhookAt,
         }
       }
       return safe

@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const { id } = await context.params
     const sb = await createClient()
     const user = await requireAuth(sb)
-    const { channel, healed } = await loadChannel(id, user.id)
+    const { admin, channel, healed } = await loadChannel(id, user.id)
 
     if (!healed.pageId || !healed.pageToken) {
       throw new AppError(pageMissingMessage(healed.pageId), 422, "page-missing")
@@ -134,18 +134,41 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     // Estado real depois de assinar — não confiamos no 200 da chamada
     // anterior para dizer ao operador que está tudo certo.
     const status = await getPageWebhookSubscription(healed.pageId, healed.pageToken)
+    const fields = status.fields.length > 0 ? status.fields : result.fields
+
+    // PERSISTE no canal. Sem isso o "ativado" era só um toast: o
+    // operador atualizava a página e o card voltava a não dizer nada,
+    // sem como saber se já tinha clicado. O card lê daqui.
+    const { error: saveError } = await admin
+      .from("crm_channels")
+      .update({
+        config: {
+          ...healed.rawConfig,
+          webhook_subscribed_at: new Date().toISOString(),
+          webhook_fields: fields,
+        },
+      })
+      .eq("id", channel.id)
+    if (saveError) {
+      // A assinatura na Meta VALEU — só não conseguimos anotar. Melhor
+      // um card sem selo do que um erro que sugere refazer tudo.
+      log.warn("[IgSubscribe] assinatura feita mas não anotada no canal", {
+        channelId: channel.id,
+        error: saveError.message,
+      })
+    }
 
     log.info("[IgSubscribe] Página assinada", {
       channelId: channel.id,
       pageId: healed.pageId,
-      fields: result.fields,
+      fields,
     })
 
     return successResponse(request, {
       channel_id: channel.id,
       page_id: healed.pageId,
-      subscribed: status.subscribed || true,
-      fields: status.fields.length > 0 ? status.fields : result.fields,
+      subscribed: true,
+      fields,
       account_fix: healed.resolution.corrected,
     })
   } catch (error) {
