@@ -23,9 +23,10 @@
  */
 
 import { useMemo, useState } from "react"
-import { AlertTriangle, Check, Link2, Plus, Trash2 } from "lucide-react"
+import { AlertTriangle, Check, Link2, Plus, Quote, Trash2 } from "lucide-react"
 
 import {
+  anchorByExample,
   auditSchemaTags,
   renameTagInHtml,
 } from "@/lib/email-workspace/schema-tag-coherence"
@@ -94,6 +95,8 @@ interface Row {
   /** Placeholder canônico do campo, ou a tag órfã. */
   tag: string
   legacyTag?: string | null
+  /** Frase do exemplo achada no HTML — o caminho de âncora sem tag. */
+  examplePhrase?: string | null
   orphanKind?: "copy" | "desconhecida"
 }
 
@@ -126,6 +129,7 @@ export function SchemaTagAuditPanel({
       field: byKey.get(m.key)?.f,
       tag: m.placeholder,
       legacyTag: m.legacyTag,
+      examplePhrase: m.examplePhrase,
     }))
     const orphans: Row[] = audit.orphans.map((o) => ({
       kind: "orphan" as const,
@@ -175,6 +179,19 @@ export function SchemaTagAuditPanel({
     const to = placeholderForKey(key ?? "")
     if (!tagFrom || !to) return
     onChangeHtml(renameTagInHtml(html, tagFrom, to))
+  }
+
+  /**
+   * Ancora pelo EXEMPLO: troca a frase real do HTML pelo `{{PLACEHOLDER}}`
+   * do campo. É a saída para o campo que não tem nenhuma tag para renomear —
+   * e é o caminho normal numa variante recém-colada, onde o HTML ainda é o
+   * exemplo pronto e não existe placeholder nenhum.
+   */
+  function anchorFieldByExample(fieldIdx: number, phrase: string) {
+    const key = schema[fieldIdx]?.key?.trim()
+    const to = placeholderForKey(key ?? "")
+    if (!phrase || !to) return
+    onChangeHtml(anchorByExample(html, phrase, to))
   }
 
   /** Cria no schema o campo que a tag órfã estava pedindo. */
@@ -504,12 +521,33 @@ export function SchemaTagAuditPanel({
                               />
                             </div>
                           )}
-                          {!r.legacyTag && orphanOptions.length === 0 && (
-                            <span style={{ color: C.neg }}>
-                              O HTML não tem nenhuma tag livre. Rode o Taguedor
-                              ou insira {`{{${r.tag}}}`} no HTML à mão.
-                            </span>
+                          {/* O outro caminho: sem tag para renomear, a frase
+                              real do exemplo ainda pode estar no HTML — a
+                              variante É um exemplo pronto. Trocar a frase
+                              pelo placeholder é o mesmo trabalho das regras
+                              1 e 2 do Taguedor, feito por código. */}
+                          {r.examplePhrase && (
+                            <EGBtn
+                              variant="dark"
+                              onClick={() =>
+                                anchorFieldByExample(r.idx!, r.examplePhrase!)
+                              }
+                              title={`Troca “${r.examplePhrase}” por {{${r.tag}}} no HTML`}
+                              style={{ height: 28, fontSize: 11.5 }}
+                            >
+                              <Quote size={12} /> ancorar pelo exemplo
+                            </EGBtn>
                           )}
+                          {!r.legacyTag &&
+                            !r.examplePhrase &&
+                            orphanOptions.length === 0 && (
+                              <span style={{ color: C.neg }}>
+                                Nem tag livre, nem a frase do exemplo no HTML —
+                                a arte não tem onde receber este campo. Rode o
+                                Taguedor, insira {`{{${r.tag}}}`} à mão, ou
+                                remova o campo.
+                              </span>
+                            )}
                           <EGBtn
                             variant="danger"
                             onClick={() => removeField(r.idx!)}

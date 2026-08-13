@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest"
 
-import { auditSchemaTags, renameTagInHtml } from "./schema-tag-coherence"
+import {
+  anchorByExample,
+  auditSchemaTags,
+  findExampleAnchor,
+  renameTagInHtml,
+} from "./schema-tag-coherence"
 import type { ComponentOutputField } from "@/types/email-generation"
 
 const field = (over: Partial<ComponentOutputField>): ComponentOutputField => ({
@@ -100,5 +105,54 @@ describe("consertos do painel levam a variante a alinhada", () => {
     ])
     const withField = [...s, field({ key: "coupon_code", max_len: 15 })]
     expect(auditSchemaTags(html, withField).ok).toBe(true)
+  })
+})
+
+describe("âncora pelo exemplo — o outro caminho (13/08)", () => {
+  // A variante é um exemplo PRONTO: quando não há tag para renomear, a
+  // frase real ainda está no HTML. Sem isto, todo campo de uma variante
+  // recém-colada aparecia como "sem tag" e sem conserto oferecido.
+  const schema = [
+    { key: "hero_headline", label: "", type: "text_short", max_len: 0, required: false, example: "Buy 1, Get 3 Free", guidance: "" },
+  ] as any
+
+  it("acha a frase única e propõe a troca", () => {
+    const html = "<h1>Buy 1, Get 3 Free</h1><p>outro texto</p>"
+    const a = auditSchemaTags(html, schema)
+    expect(a.missing[0].examplePhrase).toBe("Buy 1, Get 3 Free")
+    expect(anchorByExample(html, a.missing[0].examplePhrase!, "HERO_HEADLINE")).toBe(
+      "<h1>{{HERO_HEADLINE}}</h1><p>outro texto</p>",
+    )
+  })
+
+  it("casa sem diferenciar caixa e devolve o trecho REAL do documento", () => {
+    // Quem cadastra digita normalmente; a arte grita.
+    expect(findExampleAnchor("<h1>BUY 1, GET 3 FREE</h1>", "Buy 1, Get 3 Free")).toBe(
+      "BUY 1, GET 3 FREE",
+    )
+  })
+
+  it("frase repetida NÃO vira proposta — trocar uma seria adivinhar", () => {
+    expect(findExampleAnchor("<a>Comprar agora</a><a>Comprar agora</a>", "Comprar agora")).toBeNull()
+  })
+
+  it("exemplo curto demais não ancora (casaria em qualquer canto)", () => {
+    expect(findExampleAnchor("<p>Sim, quero</p>", "Sim")).toBeNull()
+  })
+
+  it("frase com metacaractere de regex é trocada literalmente", () => {
+    // `$`, `(` e `.` na copy quebrariam uma substituição por regex.
+    const html = "<p>Economize R$ 50.00 (hoje)</p>"
+    const phrase = findExampleAnchor(html, "R$ 50.00 (hoje)")!
+    expect(anchorByExample(html, phrase, "OFFER_VALUE")).toBe(
+      "<p>Economize {{OFFER_VALUE}}</p>",
+    )
+  })
+
+  it("campo sem exemplo e sem tag continua sem proposta nenhuma", () => {
+    const semExemplo = [{ ...schema[0], example: "" }] as any
+    const a = auditSchemaTags("<h1>nada a ver</h1>", semExemplo)
+    expect(a.missing[0].examplePhrase).toBeNull()
+    expect(a.missing[0].legacyTag).toBeNull()
   })
 })

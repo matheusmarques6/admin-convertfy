@@ -57,6 +57,15 @@ export interface MissingAnchor {
    * Não é fallback: é a proposta de retagueamento. null = nem proposta há.
    */
   legacyTag: string | null
+  /**
+   * A frase do `example` encontrada, uma única vez, dentro do HTML — o
+   * OUTRO caminho para ancorar. Uma variante é um exemplo pronto: quando não
+   * há tag para renomear, a frase real ainda está lá, e trocá-la pelo
+   * placeholder é o mesmo trabalho que o Taguedor faz nas regras 1 e 2.
+   * null = a frase não está no HTML, ou está mais de uma vez (aí a troca
+   * seria um chute sobre qual ocorrência é a certa).
+   */
+  examplePhrase: string | null
 }
 
 export interface OrphanTag {
@@ -146,6 +155,58 @@ function findLegacyTag(
 }
 
 /**
+ * Frase mínima para valer como âncora. Abaixo disso o exemplo é curto demais
+ * ("Sim", "R$ 99") e casaria em qualquer canto do documento.
+ */
+const MIN_EXAMPLE_LEN = 4
+
+/**
+ * A frase do exemplo aparece UMA vez no HTML? Devolve o trecho exatamente
+ * como está no documento (é ele que será substituído).
+ *
+ * Exato primeiro; se não achar, sem diferenciar caixa — quem cadastra digita
+ * "Aproveite Agora" e a arte traz "APROVEITE AGORA". Duas ocorrências não
+ * viram proposta: trocar uma delas seria adivinhar qual.
+ */
+export function findExampleAnchor(
+  html: string,
+  example: string | null | undefined,
+): string | null {
+  const phrase = (example ?? "").trim()
+  if (phrase.length < MIN_EXAMPLE_LEN) return null
+  if (!html) return null
+
+  const first = html.indexOf(phrase)
+  if (first !== -1) {
+    return html.indexOf(phrase, first + 1) === -1 ? phrase : null
+  }
+
+  const lower = html.toLowerCase()
+  const target = phrase.toLowerCase()
+  const at = lower.indexOf(target)
+  if (at === -1) return null
+  if (lower.indexOf(target, at + 1) !== -1) return null
+  // O trecho REAL do documento, com a caixa que ele tem.
+  return html.slice(at, at + phrase.length)
+}
+
+/**
+ * Troca a frase pelo placeholder — a primeira e única ocorrência achada por
+ * `findExampleAnchor`. Substituição literal (nada de regex): a frase é texto
+ * do cliente e pode conter `$`, `(`, `.` e outros metacaracteres.
+ */
+export function anchorByExample(
+  html: string,
+  phrase: string,
+  placeholder: string,
+): string {
+  if (!phrase || !placeholder) return html
+  const at = html.indexOf(phrase)
+  if (at === -1) return html
+  return html.slice(0, at) + `{{${placeholder}}}` + html.slice(at + phrase.length)
+}
+
+/**
  * Audita uma variante contra a regra `tag = {{UPPER(key)}}`.
  *
  * `asset_fixo` fica de fora dos campos: a arte da biblioteca continua como
@@ -184,6 +245,10 @@ export function auditSchemaTags(
       placeholder,
       nature: deriveFieldNature(f),
       legacyTag: findLegacyTag(key, tags, claimed),
+      // Os dois caminhos convivem: sem tag para renomear, a frase do exemplo
+      // ainda pode estar no HTML. Um campo sem NENHUM dos dois é o único que
+      // exige mexer na arte.
+      examplePhrase: findExampleAnchor(html, f.example),
     })
   }
 
