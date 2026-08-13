@@ -363,6 +363,86 @@ export async function subscribePageToWebhooks(
   }
 }
 
+export interface AppSubscriptionCheck {
+  /** Deu pra consultar? (precisa de META_APP_ID + META_APP_SECRET) */
+  checked: boolean
+  /** Existe assinatura do objeto `instagram` com o campo `messages`. */
+  instagram_messages: boolean
+  /** Existe assinatura do campo `comments`. */
+  instagram_comments: boolean
+  /** URL de callback que a Meta tem registrada — compare com a sua. */
+  callback_url: string | null
+  /** Objetos assinados no app (instagram, page...). */
+  objects: string[]
+  error?: { code: string; message: string }
+}
+
+/**
+ * O que o APP tem assinado — a camada ACIMA da Página.
+ *
+ * Assinar a Página diz "entregue os eventos desta conta"; a assinatura
+ * do app diz "deste objeto, destes campos, nesta URL". As duas precisam
+ * existir, e só a segunda é feita à mão no painel — então quando a
+ * Página está assinada e nada chega, é aqui que está o buraco. Sem esta
+ * consulta o diagnóstico vira tentativa e erro no painel da Meta.
+ *
+ * Usa app access token (`{app-id}|{app-secret}`), que não expira.
+ */
+export async function getAppWebhookSubscriptions(): Promise<AppSubscriptionCheck> {
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET
+  const vazio: AppSubscriptionCheck = {
+    checked: false,
+    instagram_messages: false,
+    instagram_comments: false,
+    callback_url: null,
+    objects: [],
+  }
+  if (!appId || !appSecret) {
+    return {
+      ...vazio,
+      error: {
+        code: "config_missing",
+        message:
+          "Defina META_APP_ID e META_APP_SECRET no servidor para eu conseguir checar a assinatura do app.",
+      },
+    }
+  }
+
+  try {
+    const res = await fetch(
+      `${BASE_URL}/${appId}/subscriptions?access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`,
+      { cache: "no-store" },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data.error) {
+      return { ...vazio, error: friendlySendError(res.status, data) }
+    }
+
+    const rows = (data.data ?? []) as Array<{
+      object?: string
+      callback_url?: string
+      active?: boolean
+      fields?: Array<{ name?: string }>
+    }>
+    const ig = rows.find((r) => r.object === "instagram")
+    const nomes = (ig?.fields ?? []).map((f) => f.name)
+
+    return {
+      checked: true,
+      instagram_messages: Boolean(ig?.active) && nomes.includes("messages"),
+      instagram_comments: Boolean(ig?.active) && nomes.includes("comments"),
+      callback_url: ig?.callback_url ?? null,
+      objects: rows.map((r) => r.object ?? "?"),
+    }
+  } catch (err) {
+    return {
+      ...vazio,
+      error: { code: "network_error", message: err instanceof Error ? err.message : "Network error" },
+    }
+  }
+}
+
 /** O que a Página tem assinado hoje — diagnóstico honesto pra tela. */
 export async function getPageWebhookSubscription(
   pageId: string,

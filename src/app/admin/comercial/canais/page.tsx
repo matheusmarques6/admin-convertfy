@@ -344,10 +344,22 @@ function ChannelCard({
           (typeof raw === "string" ? raw : raw?.message) ?? "Falha ao ativar o recebimento",
         )
       } else {
-        const campos: string[] = json?.data?.fields ?? json?.fields ?? []
-        setActionOk(
-          `Recebimento ativo${campos.length ? ` (${campos.join(", ")})` : ""}. Mande um direct de teste para conferir.`,
-        )
+        const d = json?.data ?? json
+        const campos: string[] = d?.fields ?? []
+        const aviso: string | null = d?.app_aviso ?? null
+        const urlMeta: string | null = d?.app_check?.callback_url ?? null
+        // A Página assinada é só metade. Quando a assinatura do APP está
+        // incompleta, dizer "ativo" seria mentira — o direct não chega.
+        if (aviso) {
+          setActionError(
+            `Página assinada, mas falta um passo no painel da Meta: ${aviso}` +
+              (urlMeta ? ` (URL registrada lá: ${urlMeta})` : ""),
+          )
+        } else {
+          setActionOk(
+            `Recebimento ativo${campos.length ? ` (${campos.join(", ")})` : ""}. Mande um direct de teste para conferir.`,
+          )
+        }
       }
       onChanged()
     } catch {

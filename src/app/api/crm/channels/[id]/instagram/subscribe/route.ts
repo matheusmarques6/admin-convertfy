@@ -23,6 +23,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { resolveAndHealInstagramChannel } from "@/lib/services/instagram-activity.service"
 import {
+  getAppWebhookSubscriptions,
   getPageWebhookSubscription,
   subscribePageToWebhooks,
 } from "@/lib/services/instagram-graph.service"
@@ -164,17 +165,44 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       fields,
     })
 
+    // A Página está assinada. Se ainda assim não chega evento, o buraco
+    // é a camada de cima — a assinatura do APP, feita à mão no painel.
+    // Perguntamos à Meta em vez de mandar o operador conferir de olho.
+    const app = await getAppWebhookSubscriptions()
+
     return successResponse(request, {
       channel_id: channel.id,
       page_id: healed.pageId,
       subscribed: true,
       fields,
       account_fix: healed.resolution.corrected,
+      app_check: app,
+      app_aviso: appWarning(app),
     })
   } catch (error) {
     log.error("Instagram subscribe POST error:", error)
     return errorResponse(request, error, "crm-instagram-subscribe")
   }
+}
+
+/**
+ * Traduz o estado da assinatura do app no PRÓXIMO passo do operador.
+ * null = nada a fazer aqui.
+ */
+function appWarning(app: Awaited<ReturnType<typeof getAppWebhookSubscriptions>>): string | null {
+  if (!app.checked) {
+    return app.error?.message ?? "Não consegui checar a assinatura do app na Meta."
+  }
+  if (!app.objects.includes("instagram")) {
+    return "O APP não tem o objeto Instagram assinado. Painel da Meta → Webhooks → adicionar o objeto Instagram com a URL de callback e o verify token."
+  }
+  if (!app.instagram_messages) {
+    return "O objeto Instagram existe no app, mas o campo `messages` NÃO está assinado — salvar a URL não assina os campos, é preciso clicar em Assinar na linha de cada campo."
+  }
+  if (!app.instagram_comments) {
+    return "Direct vai funcionar, mas o campo `comments` não está assinado — comentários não vão chegar."
+  }
+  return null
 }
 
 function pageMissingMessage(pageId: string | null): string {
