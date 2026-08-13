@@ -39,6 +39,10 @@ import {
   auditSchemaTags,
   renameTagInHtml,
 } from "@/lib/email-workspace/schema-tag-coherence"
+import {
+  CAUSE_TEXT,
+  groupDivergence,
+} from "@/lib/email-workspace/tagging-divergence"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -167,6 +171,12 @@ export function VariantTaggerCard({
   }, [schema, tagged, status])
 
   const divergent = status != null && missing.length > 0
+
+  // Causa de cada ausência, lida do relatório do agente.
+  const divergence = useMemo(
+    () => (divergent ? groupDivergence(missing, meta?.fields) : []),
+    [divergent, missing, meta?.fields],
+  )
 
   const badge: { tone: EGBadgeTone; label: string } =
     status === "approved"
@@ -426,14 +436,28 @@ export function VariantTaggerCard({
         </div>
       )}
 
-      {/* Divergência: campo do schema sem placeholder no tagueado */}
+      {/* Divergência: campo do schema sem placeholder no tagueado.
+          A causa sai do relatório do agente, não de um palpite fixo — cada
+          uma pede um conserto diferente, e "re-rode" só serve para uma
+          delas. Campo que voltou `not_found` não tem onde ancorar: mandar
+          re-rodar manda repetir o mesmo resultado. */}
       {divergent && (
         <div style={{ marginTop: 14 }}>
           <EGNotice tone={status === "approved" ? "neg" : "warn"}>
-            Placeholders esperados ausentes do HTML tagueado:{" "}
-            {missing.map((m) => `{{${m.placeholder}}}`).join(", ")} — o schema
-            mudou depois do taguedor ou a edição removeu a tag. Re-rode o
-            taguedor ou ajuste na revisão.
+            <div style={{ marginBottom: divergence.length > 1 ? 7 : 0 }}>
+              Placeholders esperados ausentes do HTML tagueado.
+            </div>
+            {divergence.map((g) => (
+              <div
+                key={g.cause}
+                style={{ marginTop: divergence.length > 1 ? 5 : 0 }}
+              >
+                <span style={{ fontFamily: F.mono, fontSize: 11.5 }}>
+                  {g.placeholders.join(", ")}
+                </span>{" "}
+                — {CAUSE_TEXT[g.cause].what}. {CAUSE_TEXT[g.cause].fix}.
+              </div>
+            ))}
           </EGNotice>
         </div>
       )}
