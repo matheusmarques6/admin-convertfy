@@ -17,6 +17,7 @@ import type {
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
 import {
+  auditSchemaTags,
   renameTagInHtml,
   validateSchemaTagCoherence,
 } from "@/lib/email-workspace/schema-tag-coherence"
@@ -183,19 +184,32 @@ export function ComponentsWorkspace() {
     let never = 0
     let pending = 0
     let noSchema = 0
+    // Desalinhada = o schema tem campo sem âncora no HTML EFETIVO, qualquer
+    // que seja o status. É a fila que o `only_misaligned` alcança: variante
+    // aprovada sob as regras antigas (antes do RENAME para a key virar norma)
+    // nunca voltaria pela fila de status, que só vê `tagging_status IS NULL`.
+    let misaligned = 0
     for (const v of variants) {
       if (!v.is_active) continue
-      const hasSchema = (v.output_schema?.length ?? 0) > 0
+      const schema = v.output_schema ?? []
+      const hasSchema = schema.length > 0
       if (v.tagging_status === "pending") pending++
       else if (v.tagging_status == null) {
         if (hasSchema) never++
         else noSchema++
       }
+      if (hasSchema) {
+        const eff =
+          v.tagging_status === "approved" && v.html_tagged?.trim()
+            ? v.html_tagged
+            : (v.html ?? "")
+        if (!auditSchemaTags(eff, schema).ok) misaligned++
+      }
     }
-    return { never, pending, noSchema }
+    return { never, pending, noSchema, misaligned }
   }, [variants])
 
-  async function syncLibrary() {
+  async function syncLibrary(onlyMisaligned = false) {
     setSync({ processed: 0, failed: 0, remaining: null })
     let processed = 0
     let failed = 0
@@ -212,7 +226,11 @@ export function ComponentsWorkspace() {
         const res = await fetch("/api/admin/components/tag-batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 1, exclude_ids: failedIds }),
+          body: JSON.stringify({
+            limit: 1,
+            exclude_ids: failedIds,
+            only_misaligned: onlyMisaligned,
+          }),
         })
         // 502/503/504 = gateway estourou ANTES do servidor terminar — a
         // variante geralmente É persistida mesmo assim. Não aborta: a
@@ -461,6 +479,24 @@ export function ComponentsWorkspace() {
             : `Sincronizar biblioteca${
                 tagStats.never > 0 ? ` (${tagStats.never})` : ""
               }`}
+        </EGBtn>
+        {/* Fila por RESULTADO. A de status não alcança variante já aprovada,
+            e é lá que estava a maioria das desalinhadas — aprovadas antes de
+            o RENAME para a key do schema virar norma. */}
+        <EGBtn
+          variant="secondary"
+          onClick={() => void syncLibrary(true)}
+          disabled={sync != null || tagStats.misaligned === 0}
+          title="Roda o taguedor nas variantes cujo schema tem campo sem âncora no HTML — inclusive as já aprovadas. Tudo vira proposta pendente; nada é aprovado sozinho."
+        >
+          {sync ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RefreshCw size={14} />
+          )}
+          {`Retaguear desalinhadas${
+            tagStats.misaligned > 0 ? ` (${tagStats.misaligned})` : ""
+          }`}
         </EGBtn>
       </div>
 

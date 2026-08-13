@@ -32,6 +32,10 @@ export const maxDuration = 300
 const bodySchema = z.object({
   limit: z.number().int().min(1).max(5).optional(),
   exclude_ids: z.array(z.string().uuid()).max(500).optional(),
+  // Fila por RESULTADO em vez de por status: variante cujo schema tem campo
+  // sem âncora entra, mesmo já aprovada. É o que alcança as aprovadas sob as
+  // regras antigas — sem isto elas ficam fora da sincronização para sempre.
+  only_misaligned: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -45,9 +49,11 @@ export async function POST(request: NextRequest) {
     const result = await tagPendingBatch(
       parsed.limit ?? 3,
       parsed.exclude_ids ?? [],
+      { onlyMisaligned: parsed.only_misaligned ?? false },
     )
 
     log.info("tag-batch.done", {
+      only_misaligned: parsed.only_misaligned ?? false,
       processed: result.processed.length,
       failed: result.failed.length,
       remaining: result.remaining,

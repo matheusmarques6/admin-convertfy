@@ -5,10 +5,12 @@
  * proposta (html_tagged + tagging_status='pending' + tagging_meta). NUNCA
  * aprova sozinho — a revisão/edição/aprovação é humana (aba Componentes).
  *
- * tagPendingBatch: processa até `limit` variantes ativas que nunca
- * passaram pelo taguedor (tagging_status IS NULL) — inclui as que JÁ têm
- * {{TAGS}} no HTML (modo sync: o relatório acusa keys sem tag / tags
- * órfãs). Chamado em loop pela UI (cada chamada cabe no maxDuration).
+ * tagPendingBatch: processa até `limit` variantes ativas em uma de duas
+ * filas — as que nunca passaram pelo taguedor (`tagging_status IS NULL`,
+ * default) ou, com `onlyMisaligned`, as que estão DESALINHADAS pela régua do
+ * `auditSchemaTags`, independente do status. Inclui as que JÁ têm {{TAGS}}
+ * no HTML (modo sync: o relatório acusa keys sem tag / tags órfãs). Chamado
+ * em loop pela UI (cada chamada cabe no maxDuration).
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -18,9 +20,11 @@ import {
   ValidationError,
 } from "@/lib/api/errors"
 import type {
+  ComponentOutputField,
   EmailComponentVariant,
   TaggingMeta,
 } from "@/types/email-generation"
+import { auditSchemaTags } from "@/lib/email-workspace/schema-tag-coherence"
 import { loadActiveAgentConfig } from "@/lib/agents/architect/llm-invoke"
 import type { FormatChainConfig } from "@/lib/agents/chains/format-invoke"
 import {
@@ -188,14 +192,24 @@ export interface TagBatchResult {
 export async function tagPendingBatch(
   limit = 3,
   excludeIds: string[] = [],
+  opts: { onlyMisaligned?: boolean } = {},
 ): Promise<TagBatchResult> {
   const admin = createAdminClient()
-  const { data: rows, error } = await admin
+  // `onlyMisaligned` seleciona pelo RESULTADO (o schema tem campo sem
+  // âncora), não pelo status. Sem isso a fila é `tagging_status IS NULL` e
+  // variante já aprovada fica fora do alcance para sempre — o que travou a
+  // biblioteca: 17 das 18 desalinhadas estavam `approved`, aprovadas sob as
+  // regras ANTIGAS, antes de o RENAME para a key do schema virar norma
+  // (migration 20261064). O botão "Sincronizar biblioteca" passava por elas
+  // sem enxergar.
+  const base = admin
     .from("email_component_variants")
-    .select("id, name, output_schema")
+    .select("id, name, output_schema, html, html_tagged, tagging_status")
     .eq("is_active", true)
-    .is("tagging_status", null)
     .order("created_at", { ascending: true })
+  const { data: rows, error } = opts.onlyMisaligned
+    ? await base
+    : await base.is("tagging_status", null)
   if (error) throw error
 
   // Só variantes com schema (sem schema o taguedor não tem o que ancorar —
@@ -204,12 +218,25 @@ export async function tagPendingBatch(
   // variante quebrada no topo da fila (created_at asc) seria re-tentada
   // pra sempre e bloquearia o resto.
   const excluded = new Set(excludeIds)
-  const eligible = (rows ?? []).filter(
-    (r) =>
-      Array.isArray(r.output_schema) &&
-      r.output_schema.length > 0 &&
-      !excluded.has(r.id as string),
-  )
+  const eligible = (rows ?? [])
+    .filter(
+      (r) =>
+        Array.isArray(r.output_schema) &&
+        r.output_schema.length > 0 &&
+        !excluded.has(r.id as string),
+    )
+    // Mesma régua do painel "Schema × HTML" do editor: audita o HTML EFETIVO
+    // (tagueado aprovado, senão o original). Variante já alinhada não volta
+    // para a fila — reprocessar o que está certo só gasta token e gera
+    // proposta para o revisor recusar.
+    .filter((r) => {
+      if (!opts.onlyMisaligned) return true
+      const eff =
+        r.tagging_status === "approved" && (r.html_tagged as string)?.trim()
+          ? (r.html_tagged as string)
+          : ((r.html as string) ?? "")
+      return !auditSchemaTags(eff, r.output_schema as ComponentOutputField[]).ok
+    })
   const batch = eligible.slice(0, Math.max(1, Math.min(limit, 5)))
 
   const processed: TagBatchResult["processed"] = []
