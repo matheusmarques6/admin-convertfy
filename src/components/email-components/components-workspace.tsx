@@ -21,6 +21,7 @@ import {
   renameTagInHtml,
   validateSchemaTagCoherence,
 } from "@/lib/email-workspace/schema-tag-coherence"
+import { buildKeyUsage } from "@/lib/email-workspace/key-collision"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -208,6 +209,10 @@ export function ComponentsWorkspace() {
     }
     return { never, pending, noSchema, misaligned }
   }, [variants])
+
+  // Índice key → variantes, derivado da lista já carregada (o GET traz a
+  // biblioteca inteira). Alimenta o aviso de colisão no editor de schema.
+  const keyUsage = useMemo(() => buildKeyUsage(variants), [variants])
 
   async function syncLibrary(onlyMisaligned = false) {
     setSync({ processed: 0, failed: 0, remaining: null })
@@ -725,6 +730,8 @@ export function ComponentsWorkspace() {
             onChange={setDraft}
             taggedHtml={selected?.html_tagged ?? null}
             taggingStatus={selected?.tagging_status ?? null}
+            keyUsage={keyUsage}
+            selfId={selected?.id ?? null}
             testCard={
               <VariantTestCard
                 // key atrelada à variante: remonta (reseta result/briefing) ao

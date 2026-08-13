@@ -17,6 +17,12 @@ import {
   sanitizeOutputKeyInput,
   type ComponentFieldType,
 } from "@/lib/agents/shared/component-dimensions"
+import {
+  classifyKeyCollision,
+  suggestScopedKey,
+  type KeyCollision,
+  type KeyUser,
+} from "@/lib/email-workspace/key-collision"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import { EGCard, EGCheck, EGSelect } from "@/components/email-generation/ui/eg-atoms"
 
@@ -26,15 +32,20 @@ function SchemaRow({
   field,
   onChange,
   onDelete,
+  collision,
+  onFixKey,
 }: {
   field: ComponentOutputField
   onChange: (f: ComponentOutputField) => void
   onDelete: () => void
+  collision?: KeyCollision
+  onFixKey?: () => void
 }) {
+  const conflita = collision?.severity === "conflita"
   return (
     <div
       style={{
-        border: `1px solid ${C.border}`,
+        border: `1px solid ${conflita ? C.warnBorder : C.border}`,
         borderRadius: 10,
         padding: 14,
         background: C.g25,
@@ -230,6 +241,71 @@ function SchemaRow({
           </div>
         </div>
       )}
+
+      {/* Colisão de key. Só avisa quando outra SEÇÃO usa a mesma key: as duas
+          convivem no mesmo email, viram o mesmo {{PLACEHOLDER}}, e o set_text
+          do merge troca todas as ocorrências — a copy de uma é escrita na
+          outra. Repetição dentro da mesma seção é reuso legítimo (só existe
+          uma hero por email), então fica em nota discreta. Nunca bloqueia. */}
+      {conflita && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "9px 11px",
+            borderRadius: 7,
+            background: C.warnBg,
+            border: `1px solid ${C.warnBorder}`,
+            fontSize: 12,
+            fontFamily: F.sans,
+            color: C.warn,
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>Também em outra seção</strong> —{" "}
+          {collision!.outras_secoes
+            .map((v) => `${v.name} (${v.block_type})`)
+            .join(", ")}
+          . Se as duas caírem no mesmo email, viram o mesmo{" "}
+          <code style={{ fontFamily: F.mono }}>
+            {`{{${field.key.toUpperCase()}}}`}
+          </code>{" "}
+          e a copy de uma é escrita na outra.
+          {onFixKey && (
+            <button
+              type="button"
+              onClick={onFixKey}
+              style={{
+                marginLeft: 8,
+                border: `1px solid ${C.warnBorder}`,
+                background: C.white,
+                color: C.warn,
+                borderRadius: 6,
+                padding: "2px 9px",
+                fontSize: 11.5,
+                fontWeight: 600,
+                fontFamily: F.sans,
+                cursor: "pointer",
+              }}
+            >
+              Escopar pela seção
+            </button>
+          )}
+        </div>
+      )}
+      {collision?.severity === "mesma_secao" && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11.5,
+            fontFamily: F.sans,
+            color: C.g500,
+          }}
+        >
+          Mesma key em {collision.mesma_secao.length} variante
+          {collision.mesma_secao.length > 1 ? "s" : ""} da mesma seção — elas
+          não convivem no mesmo email, então não há conflito.
+        </div>
+      )}
     </div>
   )
 }
@@ -237,9 +313,18 @@ function SchemaRow({
 export function OutputSchemaEditor({
   schema,
   onChange,
+  blockType,
+  selfId,
+  keyUsage,
 }: {
   schema: ComponentOutputField[]
   onChange: (schema: ComponentOutputField[]) => void
+  /** Seção da variante — decide se a colisão conflita ou é reuso. */
+  blockType?: string
+  /** Id da própria variante, para não colidir consigo mesma. */
+  selfId?: string | null
+  /** Uso cru vindo de `/api/admin/components/key-usage`. */
+  keyUsage?: Record<string, KeyUser[]>
 }) {
   const setField = (i: number, f: ComponentOutputField) =>
     onChange(schema.map((x, j) => (j === i ? f : x)))
@@ -303,6 +388,24 @@ export function OutputSchemaEditor({
             field={f}
             onChange={(nf) => setField(i, nf)}
             onDelete={() => delField(i)}
+            collision={
+              blockType && keyUsage
+                ? classifyKeyCollision(
+                    blockType,
+                    keyUsage[f.key?.trim() ?? ""] ?? [],
+                    selfId,
+                  )
+                : undefined
+            }
+            onFixKey={
+              blockType
+                ? () =>
+                    setField(i, {
+                      ...f,
+                      key: suggestScopedKey(blockType, f.key),
+                    })
+                : undefined
+            }
           />
         ))}
         {schema.length === 0 && (

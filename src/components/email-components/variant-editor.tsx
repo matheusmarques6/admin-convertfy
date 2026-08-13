@@ -36,6 +36,7 @@ import {
   EGTextarea,
   EGToggle,
 } from "@/components/email-generation/ui/eg-atoms"
+import type { KeyUser } from "@/lib/email-workspace/key-collision"
 import { OutputSchemaEditor } from "./output-schema-editor"
 import { SchemaTagAuditPanel } from "./schema-tag-audit-panel"
 
@@ -189,6 +190,8 @@ export function VariantEditor({
   taggedHtml,
   taggingStatus,
   testCard,
+  keyUsage,
+  selfId,
 }: {
   draft: VariantDraft
   onChange: (draft: VariantDraft) => void
@@ -197,6 +200,10 @@ export function VariantEditor({
   taggingStatus?: "pending" | "approved" | null
   /** Card "Testar geração" (injetado na fase do teste por bloco). */
   testCard?: ReactNode
+  /** key → variantes que a usam, para o aviso de colisão no schema. */
+  keyUsage?: Record<string, KeyUser[]>
+  /** Id da variante em edição — não colide consigo mesma. */
+  selfId?: string | null
 }) {
   const [pv, setPv] = useState<PreviewMode>("preview")
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -516,6 +523,9 @@ export function VariantEditor({
         <OutputSchemaEditor
           schema={draft.output_schema}
           onChange={(s) => set({ output_schema: s })}
+          blockType={draft.block_type}
+          selfId={selfId}
+          keyUsage={keyUsage}
         />
 
         {/* Relação campo ↔ tag, editável dos dois lados. Opera no HTML de
