@@ -112,13 +112,35 @@ DECLARE
 BEGIN
   FOR v IN
     SELECT id, name, block_type, coalesce(html, '') AS html,
-           output_schema, tagging_status
+           html_tagged, output_schema, tagging_status
     FROM email_component_variants
     WHERE is_active
       AND jsonb_typeof(output_schema) = 'array'
       AND jsonb_array_length(output_schema) > 0
     ORDER BY block_type, name
   LOOP
+    -- TRAVA (13/08): variante JÁ ALINHADA não entra. Sem esta linha o bloco
+    -- lia o `html` de ORIGEM (sem tags), ancorava o pouco que achava por
+    -- frase e SOBRESCREVIA um `html_tagged` aprovado e perfeito com uma
+    -- versão pior — foi o que derrubou `body 3` de 7/7 para 1/7 e
+    -- `welcome - hero section 5` de 7/7 para 2/7 na primeira execução.
+    -- Mede o HTML que produção consome, igual ao painel Schema × HTML.
+    CONTINUE WHEN NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(v.output_schema) e2
+      WHERE btrim(coalesce(e2->>'key', '')) <> ''
+        AND coalesce(e2->>'nature',
+              CASE WHEN e2->>'type' = 'image' THEN 'imagem_gerada' ELSE 'copy' END
+            ) <> 'asset_fixo'
+        AND NOT (
+          CASE WHEN v.tagging_status = 'approved' AND btrim(coalesce(v.html_tagged,'')) <> ''
+               THEN v.html_tagged ELSE v.html END
+          ~ ('\{\{\s*' ||
+             btrim(regexp_replace(upper(btrim(e2->>'key')), '[^A-Z0-9_]+', '_', 'g'), '_')
+             || '\s*\}\}')
+        )
+    );
+
     novo := v.html;
     ancorados := 0;
     campos_meta := '[]'::jsonb;
@@ -178,6 +200,10 @@ BEGIN
           'model', 'mecanico_sql',
           'generated_at', now(),
           'previous_status', v.tagging_status,
+          -- O tagueado ANTERIOR, para a PARTE 4 restaurar. Guardar só o
+          -- status foi o segundo erro de 13/08: desfazer apagava a proposta
+          -- boa em vez de devolvê-la.
+          'previous_html_tagged', v.html_tagged,
           'fields', campos_meta,
           'issues', issues
         ),
@@ -230,12 +256,19 @@ ORDER BY (count(*) FILTER (WHERE NOT (eff ~ ('\{\{\s*' || ph || '\s*\}\}')))) DE
 
 
 -- ============================================================
--- PARTE 4 — DESFAZ (só se precisar). Devolve o status anterior e
--- descarta a proposta mecânica. O `html` de origem nunca foi tocado.
+-- PARTE 4 — DESFAZ (só se precisar).
+--
+-- RESTAURA o `html_tagged` anterior a partir do que a PARTE 2 guardou, e
+-- devolve o status. O `html` de origem nunca foi tocado.
+--
+-- A versão anterior deste bloco fazia `html_tagged = NULL`, o que APAGAVA a
+-- proposta boa em vez de devolvê-la. Só funciona para execuções da PARTE 2
+-- já corrigida (as que gravaram `previous_html_tagged`).
 -- ============================================================
 -- UPDATE email_component_variants
--- SET tagging_status = nullif(tagging_meta->>'previous_status', 'null'),
---     html_tagged = NULL,
+-- SET tagging_status = tagging_meta->>'previous_status',
+--     html_tagged = tagging_meta->>'previous_html_tagged',
 --     tagging_meta = NULL,
 --     updated_at = now()
--- WHERE tagging_meta->>'model' = 'mecanico_sql';
+-- WHERE tagging_meta->>'model' = 'mecanico_sql'
+--   AND tagging_meta ? 'previous_html_tagged';
