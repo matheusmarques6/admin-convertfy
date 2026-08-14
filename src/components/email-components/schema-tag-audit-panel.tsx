@@ -30,6 +30,7 @@ import {
   auditSchemaTags,
   renameTagInHtml,
 } from "@/lib/email-workspace/schema-tag-coherence"
+import { tagContext } from "@/lib/email-workspace/tag-context"
 import {
   deriveFieldNature,
   FIELD_NATURE_LABELS_PT,
@@ -77,6 +78,40 @@ const th: React.CSSProperties = {
   color: C.g500,
   textAlign: "left",
   borderBottom: `1px solid ${C.g300}`,
+}
+
+/** Onde a tag está no documento — ou por que não está. */
+function TagWhere({
+  kind,
+  tag,
+  html,
+}: {
+  kind: RowKind
+  tag: string
+  html: string
+}) {
+  const ctx = useMemo(() => tagContext(html, tag), [html, tag])
+
+  if (kind === "missing") {
+    return (
+      <div style={{ fontSize: 10.5, color: C.neg, marginTop: 4, lineHeight: 1.4 }}>
+        não está no HTML — este endereço vem da key, não do documento
+      </div>
+    )
+  }
+  if (!ctx) return null
+  return (
+    <div style={{ fontSize: 10.5, color: C.g500, marginTop: 4, lineHeight: 1.4 }}>
+      <span style={{ opacity: 0.75 }}>…{ctx.before} </span>
+      <span style={{ ...mono, fontSize: 10, color: C.g700 }}>[tag]</span>
+      <span style={{ opacity: 0.75 }}> {ctx.after}…</span>
+      {ctx.repeated && (
+        <div style={{ color: C.warn, marginTop: 2 }}>
+          aparece mais de uma vez — a copy é escrita em todas
+        </div>
+      )}
+    </div>
+  )
 }
 
 type RowKind = "anchored" | "missing" | "orphan"
@@ -274,10 +309,22 @@ export function SchemaTagAuditPanel({
           lineHeight: 1.6,
         }}
       >
+        Esta tabela lê o <b>HTML de origem</b> — a aba “HTML” ao lado, que é
+        o que você edita. Não lê a aba “Placeholders”, que mostra a proposta
+        do Taguedor.
+        {approvedTaggedHtml?.trim() ? (
+          <>
+            {" "}
+            Em produção quem roda é o tagueado aprovado, e ele pode estar
+            diferente daqui.
+          </>
+        ) : null}{" "}
         O schema é a base: cada campo endereça{" "}
         <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span> no HTML — sem
         apelido, sem tradução. É esse endereço que o blueprint manda ao n8n e
-        que o merge procura para montar o email.
+        que o merge procura para montar o email. <b>O endereço é calculado a
+        partir da key</b>: escrever a key no schema não escreve a tag no HTML,
+        e por isso um campo novo nasce como “sem tag” até você ancorar.
       </p>
       <p
         style={{
@@ -469,11 +516,19 @@ export function SchemaTagAuditPanel({
                             ...mono,
                             color: r.kind === "missing" ? C.neg : C.g700,
                           }}
-                          title="Derivado da key — o endereço não se escolhe"
+                          title={
+                            r.kind === "missing"
+                              ? "Endereço que o schema EXIGE — derivado da key. Ainda não existe no HTML: por isso você não o encontra procurando lá."
+                              : "Derivado da key — o endereço não se escolhe"
+                          }
                         >
                           {`{{${r.tag}}}`}
                         </span>
                       )}
+                      {/* De onde saiu o nome: ancorado mostra o trecho do
+                          documento; sem tag deixa explícito que o endereço é
+                          CALCULADO da key e ainda não foi escrito no HTML. */}
+                      <TagWhere kind={r.kind} tag={r.tag} html={html} />
                     </td>
 
                     {/* Conserto */}
