@@ -6,7 +6,7 @@
  * exemplo e orientação específica pro campo.
  */
 
-import { Trash2, Plus } from "lucide-react"
+import { Copy, Trash2, Plus } from "lucide-react"
 import type { ComponentOutputField, FieldNature } from "@/types/email-generation"
 import {
   FIELD_NATURES,
@@ -23,6 +23,11 @@ import {
   type KeyCollision,
   type KeyUser,
 } from "@/lib/email-workspace/key-collision"
+import {
+  duplicateField,
+  mergeSchemas,
+} from "@/lib/email-workspace/schema-duplicate"
+import { toast } from "@/lib/hooks/use-toast"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import { EGCard, EGCheck, EGSelect } from "@/components/email-generation/ui/eg-atoms"
 
@@ -32,12 +37,14 @@ function SchemaRow({
   field,
   onChange,
   onDelete,
+  onDuplicate,
   collision,
   onFixKey,
 }: {
   field: ComponentOutputField
   onChange: (f: ComponentOutputField) => void
   onDelete: () => void
+  onDuplicate: () => void
   collision?: KeyCollision
   onFixKey?: () => void
 }) {
@@ -79,6 +86,26 @@ function SchemaRow({
             }))}
           />
         </div>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          title="Duplicar campo — a cópia entra logo abaixo, com o número da chave somado (product_1_name → product_2_name)"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 7,
+            border: `1px solid ${C.border}`,
+            background: C.white,
+            color: C.g400,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Copy size={14} />
+        </button>
         <button
           type="button"
           onClick={onDelete}
@@ -316,6 +343,7 @@ export function OutputSchemaEditor({
   blockType,
   selfId,
   keyUsage,
+  schemaSources,
 }: {
   schema: ComponentOutputField[]
   onChange: (schema: ComponentOutputField[]) => void
@@ -325,10 +353,47 @@ export function OutputSchemaEditor({
   selfId?: string | null
   /** Uso cru vindo de `/api/admin/components/key-usage`. */
   keyUsage?: Record<string, KeyUser[]>
+  /**
+   * Outras variantes da biblioteca, para copiar o schema de uma delas.
+   * Metade das que não têm schema repete a forma de outra que já está
+   * pronta — `body_title`/`body_text`/`body_cta_label` aparece em quatro.
+   */
+  schemaSources?: Array<{
+    id: string
+    name: string
+    block_type: string
+    output_schema?: ComponentOutputField[] | null
+  }>
 }) {
   const setField = (i: number, f: ComponentOutputField) =>
     onChange(schema.map((x, j) => (j === i ? f : x)))
   const delField = (i: number) => onChange(schema.filter((_, j) => j !== i))
+  /** Traz os campos de outra variante, sem sobrescrever os daqui. */
+  function copyFrom(sourceId: string) {
+    const src = (schemaSources ?? []).find((v) => v.id === sourceId)
+    if (!src) return
+    const r = mergeSchemas(schema, src.output_schema ?? [])
+    if (r.added.length === 0) {
+      toast({
+        title: "Nada a copiar",
+        description:
+          r.skipped.length > 0
+            ? `Todos os ${r.skipped.length} campos de “${src.name}” já existem aqui.`
+            : `“${src.name}” não tem campos.`,
+      })
+      return
+    }
+    onChange(r.schema)
+    toast({
+      title: `${r.added.length} campo(s) copiado(s)`,
+      description:
+        `De “${src.name}”.` +
+        (r.skipped.length > 0
+          ? ` ${r.skipped.length} já existia(m) aqui e ficou(aram) como está(ão): ${r.skipped.join(", ")}.`
+          : ""),
+    })
+  }
+
   const addField = () =>
     onChange([
       ...schema,
@@ -347,6 +412,34 @@ export function OutputSchemaEditor({
     <EGCard
       title="Schema de output"
       right={
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {(schemaSources ?? []).some(
+            (v) => v.id !== selfId && (v.output_schema?.length ?? 0) > 0,
+          ) && (
+            <div style={{ width: 210 }}>
+              <EGSelect
+                value=""
+                placeholder="copiar campos de…"
+                onChange={(v) => v && copyFrom(v)}
+                options={(schemaSources ?? [])
+                  .filter(
+                    (v) =>
+                      v.id !== selfId && (v.output_schema?.length ?? 0) > 0,
+                  )
+                  // Mesma seção primeiro: é de onde a forma costuma servir.
+                  .sort(
+                    (a, b) =>
+                      Number(b.block_type === blockType) -
+                        Number(a.block_type === blockType) ||
+                      a.name.localeCompare(b.name),
+                  )
+                  .map((v) => ({
+                    value: v.id,
+                    label: `${v.name} (${v.output_schema?.length})`,
+                  }))}
+              />
+            </div>
+          )}
         <button
           type="button"
           onClick={addField}
@@ -368,6 +461,7 @@ export function OutputSchemaEditor({
         >
           <Plus size={14} /> Campo
         </button>
+        </div>
       }
     >
       <div
@@ -388,6 +482,16 @@ export function OutputSchemaEditor({
             field={f}
             onChange={(nf) => setField(i, nf)}
             onDelete={() => delField(i)}
+            onDuplicate={() =>
+              onChange([
+                ...schema.slice(0, i + 1),
+                duplicateField(
+                  f,
+                  schema.map((x) => x.key ?? ""),
+                ),
+                ...schema.slice(i + 1),
+              ])
+            }
             collision={
               blockType && keyUsage
                 ? classifyKeyCollision(

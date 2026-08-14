@@ -191,6 +191,7 @@ export function VariantEditor({
   taggingStatus,
   testCard,
   keyUsage,
+  schemaSources,
   selfId,
 }: {
   draft: VariantDraft
@@ -202,6 +203,13 @@ export function VariantEditor({
   testCard?: ReactNode
   /** key → variantes que a usam, para o aviso de colisão no schema. */
   keyUsage?: Record<string, KeyUser[]>
+  /** Outras variantes, para copiar o schema de uma delas. */
+  schemaSources?: Array<{
+    id: string
+    name: string
+    block_type: string
+    output_schema?: ComponentOutputField[] | null
+  }>
   /** Id da variante em edição — não colide consigo mesma. */
   selfId?: string | null
 }) {
@@ -526,6 +534,7 @@ export function VariantEditor({
           blockType={draft.block_type}
           selfId={selfId}
           keyUsage={keyUsage}
+          schemaSources={schemaSources}
         />
 
         {/* Relação campo ↔ tag, editável dos dois lados. Opera no HTML de

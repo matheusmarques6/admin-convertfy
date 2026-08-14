@@ -214,6 +214,19 @@ export function ComponentsWorkspace() {
   // biblioteca inteira). Alimenta o aviso de colisão no editor de schema.
   const keyUsage = useMemo(() => buildKeyUsage(variants), [variants])
 
+  // Fontes para "copiar campos de…" no editor de schema. Só o necessário —
+  // a lista inteira já está carregada, então não custa uma requisição.
+  const schemaSources = useMemo(
+    () =>
+      variants.map((v) => ({
+        id: v.id,
+        name: v.name,
+        block_type: v.block_type,
+        output_schema: v.output_schema ?? null,
+      })),
+    [variants],
+  )
+
   async function syncLibrary(onlyMisaligned = false) {
     setSync({ processed: 0, failed: 0, remaining: null })
     let processed = 0
@@ -731,6 +744,7 @@ export function ComponentsWorkspace() {
             taggedHtml={selected?.html_tagged ?? null}
             taggingStatus={selected?.tagging_status ?? null}
             keyUsage={keyUsage}
+            schemaSources={schemaSources}
             selfId={selected?.id ?? null}
             testCard={
               <VariantTestCard
