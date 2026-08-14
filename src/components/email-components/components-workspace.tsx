@@ -18,7 +18,6 @@ import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
 import {
   auditSchemaTags,
-  renameTagInHtml,
   validateSchemaTagCoherence,
 } from "@/lib/email-workspace/schema-tag-coherence"
 import { buildKeyUsage } from "@/lib/email-workspace/key-collision"
@@ -721,19 +720,9 @@ export function ComponentsWorkspace() {
                 key={selected.id}
                 variant={selected}
                 onChanged={reloadSilent}
-                // Schema VIVO do rascunho: o relatório do Taguedor e o editor
-                // olham o mesmo dado, então renomear um campo no relatório já
-                // aparece embaixo (e vice-versa) antes de salvar.
+                // Schema VIVO do rascunho, para o veredito do card medir o
+                // mesmo dado que o painel Schema × HTML edita.
                 schema={draft.output_schema}
-                onChangeSchema={(output_schema) =>
-                  setDraft((d) => ({ ...d, output_schema }))
-                }
-                onRenameInOriginHtml={(from, to) =>
-                  setDraft((d) => ({
-                    ...d,
-                    html: renameTagInHtml(d.html, from, to),
-                  }))
-                }
               />
             </div>
           )}
@@ -742,6 +731,7 @@ export function ComponentsWorkspace() {
             draft={draft}
             onChange={setDraft}
             taggedHtml={selected?.html_tagged ?? null}
+            agentReport={selected?.tagging_meta?.fields ?? undefined}
             taggingStatus={selected?.tagging_status ?? null}
             keyUsage={keyUsage}
             schemaSources={schemaSources}

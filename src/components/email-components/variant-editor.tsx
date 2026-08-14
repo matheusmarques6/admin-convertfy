@@ -188,6 +188,8 @@ export function VariantEditor({
   draft,
   onChange,
   taggedHtml,
+  onChangeTaggedHtml,
+  agentReport,
   taggingStatus,
   testCard,
   keyUsage,
@@ -198,6 +200,10 @@ export function VariantEditor({
   onChange: (draft: VariantDraft) => void
   /** html_tagged da variante (proposta/aprovado do Taguedor) — aba própria. */
   taggedHtml?: string | null
+  /** Edita a proposta pelo painel Schema × HTML (2º documento do seletor). */
+  onChangeTaggedHtml?: (html: string) => void
+  /** Relatório do último run do Taguedor — vira a nota do agente no painel. */
+  agentReport?: Array<{ key: string; anchored_by?: string; note?: string }>
   taggingStatus?: "pending" | "approved" | null
   /** Card "Testar geração" (injetado na fase do teste por bloco). */
   testCard?: ReactNode
@@ -546,9 +552,10 @@ export function VariantEditor({
           schema={draft.output_schema}
           onChangeHtml={(html) => set({ html })}
           onChangeSchema={(output_schema) => set({ output_schema })}
-          approvedTaggedHtml={
-            taggingStatus === "approved" ? taggedHtml : null
-          }
+          taggedHtml={taggedHtml}
+          onChangeTaggedHtml={onChangeTaggedHtml}
+          taggingStatus={taggingStatus}
+          agentReport={agentReport}
         />
       </div>
 

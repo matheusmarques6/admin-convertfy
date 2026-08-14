@@ -23,7 +23,7 @@
  */
 
 import { useMemo, useState } from "react"
-import { AlertTriangle, Check, Link2, Plus, Quote, Trash2 } from "lucide-react"
+import { Check, Link2, Plus, Quote, Trash2 } from "lucide-react"
 
 import {
   anchorByExample,
@@ -33,6 +33,7 @@ import {
 import { tagContext } from "@/lib/email-workspace/tag-context"
 import {
   deriveFieldNature,
+  FIELD_NATURES,
   FIELD_NATURE_LABELS_PT,
   FIELD_TYPE_LABELS_PT,
   placeholderForKey,
@@ -140,19 +141,57 @@ export function SchemaTagAuditPanel({
   schema,
   onChangeHtml,
   onChangeSchema,
-  /** HTML tagueado aprovado, quando existir — é ele que roda em produção. */
-  approvedTaggedHtml,
+  taggedHtml,
+  onChangeTaggedHtml,
+  taggingStatus,
+  agentReport,
 }: {
   html: string
   schema: ComponentOutputField[]
   onChangeHtml: (html: string) => void
   onChangeSchema: (schema: ComponentOutputField[]) => void
-  approvedTaggedHtml?: string | null
+  /** Proposta do Taguedor. Vira o 2º documento do seletor. */
+  taggedHtml?: string | null
+  onChangeTaggedHtml?: (html: string) => void
+  taggingStatus?: string | null
+  /** Relatório do último run — vira a coluna "nota do agente". */
+  agentReport?: Array<{ key: string; anchored_by?: string; note?: string }>
 }) {
   const [draftKeys, setDraftKeys] = useState<Record<number, string>>({})
   const [draftTags, setDraftTags] = useState<Record<string, string>>({})
+  // Qual documento a tabela está lendo. Antes eram DOIS painéis quase
+  // idênticos — este, sobre o HTML de origem, e o do card do Taguedor, sobre
+  // a proposta. Mesmas linhas, mesmos campos, e nada na tela dizia que eram
+  // documentos diferentes: os nomes nunca batiam e parecia haver trabalho em
+  // dobro. Uma tabela só, e o documento se escolhe.
+  const [doc, setDoc] = useState<"origem" | "proposta">("origem")
 
-  const audit = useMemo(() => auditSchemaTags(html, schema), [html, schema])
+  const temProposta = !!taggedHtml?.trim()
+  /**
+   * A proposta é VISÍVEL aqui, mas não editável: `html_tagged` não faz parte
+   * do rascunho do editor e não tem caminho de gravação pelo "Salvar
+   * variante". Habilitar os consertos sobre ela perderia a edição em
+   * silêncio — o conserto da proposta mora na sub-aba "Revisão" do card do
+   * Taguedor, que grava ao Aprovar.
+   */
+  const podeEditar = (a: "origem" | "proposta") =>
+    a === "origem" || !!onChangeTaggedHtml
+  const alvo: "origem" | "proposta" = temProposta ? doc : "origem"
+  const activeHtml = alvo === "proposta" ? (taggedHtml as string) : html
+
+  /** Escreve no documento ativo. */
+  const writeHtml = (next: string) =>
+    alvo === "proposta" ? onChangeTaggedHtml?.(next) : onChangeHtml(next)
+
+  const audit = useMemo(
+    () => auditSchemaTags(activeHtml, schema),
+    [activeHtml, schema],
+  )
+
+  const notaPorKey = useMemo(
+    () => new Map((agentReport ?? []).map((r) => [r.key, r])),
+    [agentReport],
+  )
 
   const rows = useMemo<Row[]>(() => {
     const byKey = new Map(
@@ -201,10 +240,15 @@ export function SchemaTagAuditPanel({
     onChangeSchema(
       schema.map((f, i) => (i === idx ? { ...f, key: nextKey } : f)),
     )
+    // Renomear a key troca o endereço nos DOIS documentos. O endereço é o
+    // contrato: deixar um deles para trás recria exatamente o desalinhamento
+    // que este painel existe para acabar.
     const from = placeholderForKey(prevKey)
     const to = placeholderForKey(nextKey)
-    if (from && to && html.includes(`{{${from}}}`)) {
-      onChangeHtml(renameTagInHtml(html, from, to))
+    if (!from || !to) return
+    if (html.includes(`{{${from}}}`)) onChangeHtml(renameTagInHtml(html, from, to))
+    if (taggedHtml?.includes(`{{${from}}}`)) {
+      onChangeTaggedHtml?.(renameTagInHtml(taggedHtml, from, to))
     }
   }
 
@@ -213,7 +257,7 @@ export function SchemaTagAuditPanel({
     const key = schema[fieldIdx]?.key?.trim()
     const to = placeholderForKey(key ?? "")
     if (!tagFrom || !to) return
-    onChangeHtml(renameTagInHtml(html, tagFrom, to))
+    writeHtml(renameTagInHtml(activeHtml, tagFrom, to))
   }
 
   /**
@@ -226,7 +270,7 @@ export function SchemaTagAuditPanel({
     const key = schema[fieldIdx]?.key?.trim()
     const to = placeholderForKey(key ?? "")
     if (!phrase || !to) return
-    onChangeHtml(anchorByExample(html, phrase, to))
+    writeHtml(anchorByExample(activeHtml, phrase, to))
   }
 
   /** Cria no schema o campo que a tag órfã estava pedindo. */
@@ -266,7 +310,7 @@ export function SchemaTagAuditPanel({
     })
     const to = placeholderForKey(raw ?? "")
     if (!to || to === from) return
-    onChangeHtml(renameTagInHtml(html, from, to))
+    writeHtml(renameTagInHtml(activeHtml, from, to))
   }
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -281,10 +325,12 @@ export function SchemaTagAuditPanel({
     label: `{{${o.tag}}}`,
   }))
 
-  const taggedAudit =
-    approvedTaggedHtml && approvedTaggedHtml.trim()
-      ? auditSchemaTags(approvedTaggedHtml, schema)
-      : null
+  /** Contagem de problemas no documento que NÃO está aberto. */
+  const outroAudit = useMemo(() => {
+    if (!temProposta) return null
+    const outro = alvo === "proposta" ? html : (taggedHtml as string)
+    return auditSchemaTags(outro, schema)
+  }, [temProposta, alvo, html, taggedHtml, schema])
 
   return (
     <EGCard
@@ -301,6 +347,61 @@ export function SchemaTagAuditPanel({
         )
       }
     >
+      {/* Seletor de documento. Substitui o painel gêmeo do card do Taguedor:
+          as mesmas linhas, e você escolhe o que está olhando. */}
+      {temProposta && (
+        <div
+          style={{
+            display: "flex",
+            gap: 2,
+            background: C.g100,
+            padding: 3,
+            borderRadius: 8,
+            marginBottom: 12,
+            maxWidth: 460,
+          }}
+        >
+          {(
+            [
+              ["origem", "HTML de origem"],
+              ["proposta", "Proposta do Taguedor"],
+            ] as Array<["origem" | "proposta", string]>
+          ).map(([v, label]) => {
+            const on = alvo === v
+            const probs =
+              v === alvo
+                ? missingCount + orphanCount
+                : (outroAudit?.missing.length ?? 0) +
+                  (outroAudit?.orphans.length ?? 0)
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setDoc(v)}
+                style={{
+                  flex: 1,
+                  height: 30,
+                  border: "none",
+                  borderRadius: 6,
+                  background: on ? C.white : "transparent",
+                  color: on ? C.g900 : C.g500,
+                  boxShadow: on ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  fontSize: 12.5,
+                  fontWeight: on ? 600 : 500,
+                  fontFamily: F.sans,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+                <span style={{ color: probs === 0 ? C.pos : C.neg, marginLeft: 6 }}>
+                  {probs === 0 ? "ok" : probs}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <p
         style={{
           fontSize: 12,
@@ -309,22 +410,27 @@ export function SchemaTagAuditPanel({
           lineHeight: 1.6,
         }}
       >
-        Esta tabela lê o <b>HTML de origem</b> — a aba “HTML” ao lado, que é
-        o que você edita. Não lê a aba “Placeholders”, que mostra a proposta
-        do Taguedor.
-        {approvedTaggedHtml?.trim() ? (
+        {alvo === "proposta" ? (
           <>
-            {" "}
-            Em produção quem roda é o tagueado aprovado, e ele pode estar
-            diferente daqui.
+            Você está vendo a <b>proposta do Taguedor</b> — o que vai para
+            produção <b>depois</b> de aprovada
+            {taggingStatus === "approved"
+              ? " (já está aprovada, então é ela que roda hoje)"
+              : " (ainda pendente: hoje produção usa o HTML de origem)"}
+            .{" "}
           </>
-        ) : null}{" "}
+        ) : (
+          <>
+            Você está vendo o <b>HTML de origem</b> — o que você edita e o que
+            o Taguedor lê para propor.{" "}
+          </>
+        )}
         O schema é a base: cada campo endereça{" "}
-        <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span> no HTML — sem
-        apelido, sem tradução. É esse endereço que o blueprint manda ao n8n e
-        que o merge procura para montar o email. <b>O endereço é calculado a
-        partir da key</b>: escrever a key no schema não escreve a tag no HTML,
-        e por isso um campo novo nasce como “sem tag” até você ancorar.
+        <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span> — sem apelido, sem
+        tradução. É esse endereço que o blueprint manda ao n8n e que o merge
+        procura para montar o email. <b>O endereço é calculado a partir da
+        key</b>: escrever a key no schema não escreve a tag no HTML, e por isso
+        um campo novo nasce como “sem tag” até você ancorar.
       </p>
       <p
         style={{
@@ -335,36 +441,9 @@ export function SchemaTagAuditPanel({
         }}
       >
         {audit.anchored.length} ancorado(s) · {missingCount} campo(s) sem tag ·{" "}
-        {orphanCount} tag(s) sem campo. Toda ação aqui escreve nos dois lados:
-        renomear uma key troca também o placeholder no HTML.
+        {orphanCount} tag(s) sem campo. Renomear uma key troca o endereço nos{" "}
+        <b>dois</b> documentos; as demais ações escrevem só no que está aberto.
       </p>
-
-      {taggedAudit && !taggedAudit.ok && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-start",
-            fontSize: 12,
-            lineHeight: 1.6,
-            color: C.warn,
-            background: C.warnBg,
-            border: `1px solid ${C.warnBorder}`,
-            borderRadius: 5,
-            padding: "8px 10px",
-            marginBottom: 14,
-          }}
-        >
-          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>
-            Em produção esta variante usa o <strong>HTML tagueado aprovado</strong>
-            , e ele também está desalinhado ({taggedAudit.missing.length} campo(s)
-            sem tag, {taggedAudit.orphans.length} tag(s) sem campo). Consertar
-            aqui arruma o HTML de origem — para o tagueado valer, rode o Taguedor
-            de novo e aprove a proposta.
-          </span>
-        </div>
-      )}
 
       {schema.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.g500 }}>
@@ -457,10 +536,33 @@ export function SchemaTagAuditPanel({
                     </td>
 
                     <td style={{ ...cell, fontSize: 11.5, color: C.g600 }}>
-                      {r.field ? (
+                      {r.field && r.idx != null ? (
                         <>
-                          {FIELD_NATURE_LABELS_PT[deriveFieldNature(r.field)]}
-                          <div style={{ color: C.g400, fontSize: 10.5 }}>
+                          {/* Natureza decide quem preenche o campo — o n8n,
+                              o agente de imagem, ou ninguém (arte fixa). Era
+                              editável só no card do Taguedor; veio junto. */}
+                          <EGSelect
+                            value={r.field.nature ?? ""}
+                            onChange={(v) => {
+                              const next = { ...schema[r.idx!] }
+                              if (v) next.nature = v as ComponentOutputField["nature"]
+                              else delete next.nature
+                              onChangeSchema(
+                                schema.map((f, i) => (i === r.idx ? next : f)),
+                              )
+                            }}
+                            options={[
+                              {
+                                value: "",
+                                label: `Auto (${FIELD_NATURE_LABELS_PT[deriveFieldNature(r.field)]})`,
+                              },
+                              ...FIELD_NATURES.map((n) => ({
+                                value: n,
+                                label: FIELD_NATURE_LABELS_PT[n],
+                              })),
+                            ]}
+                          />
+                          <div style={{ color: C.g400, fontSize: 10.5, marginTop: 3 }}>
                             {FIELD_TYPE_LABELS_PT[r.field.type]}
                           </div>
                         </>
@@ -528,12 +630,38 @@ export function SchemaTagAuditPanel({
                       {/* De onde saiu o nome: ancorado mostra o trecho do
                           documento; sem tag deixa explícito que o endereço é
                           CALCULADO da key e ainda não foi escrito no HTML. */}
-                      <TagWhere kind={r.kind} tag={r.tag} html={html} />
+                      <TagWhere kind={r.kind} tag={r.tag} html={activeHtml} />
+                      {/* Nota do agente — o "porquê" que só o relatório do
+                          Taguedor tinha. Vale para a proposta; no HTML de
+                          origem ela descreveria outro documento. */}
+                      {alvo === "proposta" &&
+                        r.field &&
+                        notaPorKey.get(r.field.key.trim())?.note && (
+                          <div
+                            style={{
+                              fontSize: 10.5,
+                              color: C.g500,
+                              marginTop: 4,
+                              lineHeight: 1.4,
+                              fontStyle: "italic",
+                            }}
+                          >
+                            agente: {notaPorKey.get(r.field.key.trim())!.note}
+                          </div>
+                        )}
                     </td>
 
-                    {/* Conserto */}
+                    {/* Conserto — só no documento que tem onde gravar */}
                     <td style={{ ...cell, fontSize: 11.5 }}>
-                      {r.kind === "anchored" && (
+                      {!podeEditar(alvo) && r.kind !== "anchored" && (
+                        <span style={{ color: C.g500, lineHeight: 1.5 }}>
+                          A proposta é só leitura aqui. Conserte no{" "}
+                          <b>HTML de origem</b> e re-rode o Taguedor, ou edite
+                          a proposta na sub-aba <b>Revisão</b> do card acima —
+                          é ela que grava ao Aprovar.
+                        </span>
+                      )}
+                      {podeEditar(alvo) && r.kind === "anchored" && (
                         <span
                           style={{
                             display: "inline-flex",
@@ -546,7 +674,7 @@ export function SchemaTagAuditPanel({
                         </span>
                       )}
 
-                      {r.kind === "missing" && r.idx != null && (
+                      {podeEditar(alvo) && r.kind === "missing" && r.idx != null && (
                         <div
                           style={{
                             display: "flex",
@@ -614,7 +742,7 @@ export function SchemaTagAuditPanel({
                         </div>
                       )}
 
-                      {r.kind === "orphan" && (
+                      {podeEditar(alvo) && r.kind === "orphan" && (
                         <div
                           style={{
                             display: "flex",
