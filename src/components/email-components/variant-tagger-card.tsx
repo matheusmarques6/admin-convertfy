@@ -5,17 +5,21 @@
  *
  * A variante é um "exemplo pronto" (HTML com frases/URLs reais); o taguedor
  * propõe o html_tagged com {{UPPER(key)}} no lugar dos exemplos. Aqui o
- * humano revisa: relatório por campo (âncora exact/fuzzy/inference/
- * existing_tag/not_found), comparação lado a lado com edição manual do
- * tagueado, preview com os exemplos do schema, e as ações rodar/re-rodar,
- * aprovar e rejeitar. Só com aprovação o pipeline consome o html_tagged.
+ * humano revisa: o veredito do run (quais campos ficaram sem endereço e por
+ * quê), comparação lado a lado com edição manual do tagueado, preview com os
+ * exemplos do schema, e as ações rodar/re-rodar, aprovar e rejeitar. Só com
+ * aprovação o pipeline consome o html_tagged.
+ *
+ * A relação campo ↔ tag NÃO mora mais aqui: ela é uma tabela só, no painel
+ * Schema × HTML, com seletor entre o HTML de origem e esta proposta. Havia
+ * duas tabelas quase idênticas sobre documentos diferentes, e nada dizia qual
+ * era qual.
  */
 
 import { useMemo, useState } from "react"
 import {
   Check,
   Eye,
-  ListChecks,
   Loader2,
   Pencil,
   Play,
@@ -47,7 +51,7 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { mergeExamplesIntoHtml } from "./variant-editor"
 
-type View = "report" | "review" | "preview"
+type View = "review" | "preview"
 
 export function VariantTaggerCard({
   variant,
@@ -62,7 +66,7 @@ export function VariantTaggerCard({
 }) {
   const [running, setRunning] = useState(false)
   const [acting, setActing] = useState(false)
-  const [view, setView] = useState<View>("report")
+  const [view, setView] = useState<View>("review")
   // null = sem edição manual; string = HTML tagueado editado na revisão.
   const [editedHtml, setEditedHtml] = useState<string | null>(null)
   // Modo manual: o humano faz as vezes do taguedor — parte do HTML
@@ -89,7 +93,7 @@ export function VariantTaggerCard({
   function cancelManual() {
     setManualMode(false)
     setEditedHtml(null)
-    setView("report")
+    setView("review")
   }
 
   // Placeholders esperados = {{UPPER(key)}} de cada campo (asset_fixo fica
@@ -150,7 +154,7 @@ export function VariantTaggerCard({
       })
       setEditedHtml(null)
       setManualMode(false)
-      setView("report")
+      setView("review")
       await onChanged()
     } catch (e) {
       toast({
@@ -220,7 +224,7 @@ export function VariantTaggerCard({
       if (!res.ok) throw new Error(json?.error || `Erro ${res.status}`)
       toast({ title: "Proposta rejeitada" })
       setEditedHtml(null)
-      setView("report")
+      setView("review")
       await onChanged()
     } catch (e) {
       toast({
@@ -291,7 +295,7 @@ export function VariantTaggerCard({
               : status == null
                 ? "Converte o HTML de exemplo em HTML tagueado ({{PLACEHOLDER}} por campo do schema). A proposta fica pendente até você aprovar — ou taguee manualmente e faça as vezes do agente."
                 : status === "pending"
-                  ? "Revise a proposta abaixo (edite o HTML tagueado se precisar) e aprove — só então o pipeline consome."
+                  ? "Revise a proposta e aprove — só então o pipeline consome. Campo a campo, veja no painel Schema × HTML abaixo (aba “Proposta do Taguedor”)."
                   : "O pipeline consome este HTML tagueado. Re-rode se o HTML ou o schema mudarem."}
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -427,10 +431,9 @@ export function VariantTaggerCard({
           >
             {(
               [
-                ["report", "Relatório", ListChecks],
                 ["review", "Revisão", SplitSquareHorizontal],
                 ["preview", "Preview", Eye],
-              ] as Array<[View, string, typeof ListChecks]>
+              ] as Array<[View, string, typeof Eye]>
             ).map(([k, l, Icon]) => {
               const on = view === k
               return (
@@ -462,35 +465,6 @@ export function VariantTaggerCard({
               )
             })}
           </div>
-
-          {view === "report" && (
-            <div
-              style={{
-                fontSize: 12.5,
-                color: C.g600,
-                fontFamily: F.sans,
-                lineHeight: 1.7,
-                border: `1px dashed ${C.border}`,
-                borderRadius: 7,
-                padding: "14px 16px",
-              }}
-            >
-              A relação campo ↔ tag vive no painel{" "}
-              <strong>Schema × HTML</strong>, abaixo — lá você alterna entre o{" "}
-              <strong>HTML de origem</strong> e <strong>esta proposta</strong>{" "}
-              na mesma tabela, com o conserto em cada linha e a nota do agente.
-              <div style={{ marginTop: 8, color: C.g500, fontSize: 11.5 }}>
-                Existiam duas tabelas quase idênticas — esta, sobre a proposta,
-                e a de lá, sobre o HTML de origem. Mesmas linhas, documentos
-                diferentes, e nada dizia qual era qual: os nomes nunca batiam.
-                Ficou uma só.
-              </div>
-              <div style={{ marginTop: 8, color: C.g500, fontSize: 11.5 }}>
-                Aqui ficam o veredito do run, o preview e as ações — aprovar,
-                rejeitar, re-rodar e editar o tagueado à mão.
-              </div>
-            </div>
-          )}
 
           {view === "review" && (
             <div>
