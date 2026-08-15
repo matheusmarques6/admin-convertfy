@@ -18,13 +18,17 @@
  *   nem uma nem outra          → Remover campo (a arte não tem o elemento)
  *   tag sem campo no schema    → Criar campo
  *
- * Alternativas, diagnóstico (natureza, trecho do documento, nota do agente) e
- * ajuste fino ficam atrás de "Avançado", fechado por padrão.
+ * Tag sem campo tem DUAS saídas legítimas e o código não tem como adivinhar
+ * a intenção: virar campo no schema, ou sumir do HTML. As duas ficam na
+ * linha — "Criar campo" em botão, "apagar a tag" em link.
  *
- * Renomear a key troca o endereço nos DOIS documentos — o endereço é o
- * contrato, e deixar um para trás recria o desalinhamento. Não bloqueia
- * salvar: a biblioteca tem variantes legadas, e travar o save travaria
- * justamente o conserto delas.
+ * Alternativas, diagnóstico (natureza, trecho do documento) e ajuste fino
+ * ficam atrás de "Avançado", fechado por padrão.
+ *
+ * Este painel opera sobre o `html` — o único documento. A camada tagueada
+ * (`html_tagged` + proposta + aprovação) foi removida da biblioteca: era um
+ * segundo documento sobre o mesmo assunto e ninguém conseguia dizer qual
+ * estava vendo. Não bloqueia salvar.
  */
 
 import { useMemo, useState } from "react"
@@ -146,61 +150,19 @@ export function SchemaTagAuditPanel({
   schema,
   onChangeHtml,
   onChangeSchema,
-  taggedHtml,
-  onChangeTaggedHtml,
-  taggingStatus,
-  agentReport,
 }: {
   html: string
   schema: ComponentOutputField[]
   onChangeHtml: (html: string) => void
   onChangeSchema: (schema: ComponentOutputField[]) => void
-  /** Proposta do Taguedor. Vira o 2º documento do seletor. */
-  taggedHtml?: string | null
-  onChangeTaggedHtml?: (html: string) => void
-  taggingStatus?: string | null
-  /** Relatório do último run — vira a coluna "nota do agente". */
-  agentReport?: Array<{ key: string; anchored_by?: string; note?: string }>
 }) {
   const [draftKeys, setDraftKeys] = useState<Record<number, string>>({})
   const [draftTags, setDraftTags] = useState<Record<string, string>>({})
-  // Qual documento a tabela está lendo. Antes eram DOIS painéis quase
-  // idênticos — este, sobre o HTML de origem, e o do card do Taguedor, sobre
-  // a proposta. Mesmas linhas, mesmos campos, e nada na tela dizia que eram
-  // documentos diferentes: os nomes nunca batiam e parecia haver trabalho em
-  // dobro. Uma tabela só, e o documento se escolhe.
-  const [doc, setDoc] = useState<"origem" | "proposta">("origem")
-  // Modo simples por padrão: UMA ação por linha e mais nada. Tudo o que é
-  // alternativa, diagnóstico ou ajuste fino fica atrás daqui. A tela tinha
-  // virado um mural de botões onde nem escolher entre dois caminhos dava.
+  // Modo simples por padrão: UMA ação por linha e mais nada. Alternativas,
+  // diagnóstico e ajuste fino ficam atrás daqui.
   const [avancado, setAvancado] = useState(false)
 
-  const temProposta = !!taggedHtml?.trim()
-  /**
-   * A proposta é VISÍVEL aqui, mas não editável: `html_tagged` não faz parte
-   * do rascunho do editor e não tem caminho de gravação pelo "Salvar
-   * variante". Habilitar os consertos sobre ela perderia a edição em
-   * silêncio — o conserto da proposta mora na sub-aba "Revisão" do card do
-   * Taguedor, que grava ao Aprovar.
-   */
-  const podeEditar = (a: "origem" | "proposta") =>
-    a === "origem" || !!onChangeTaggedHtml
-  const alvo: "origem" | "proposta" = temProposta ? doc : "origem"
-  const activeHtml = alvo === "proposta" ? (taggedHtml as string) : html
-
-  /** Escreve no documento ativo. */
-  const writeHtml = (next: string) =>
-    alvo === "proposta" ? onChangeTaggedHtml?.(next) : onChangeHtml(next)
-
-  const audit = useMemo(
-    () => auditSchemaTags(activeHtml, schema),
-    [activeHtml, schema],
-  )
-
-  const notaPorKey = useMemo(
-    () => new Map((agentReport ?? []).map((r) => [r.key, r])),
-    [agentReport],
-  )
+  const audit = useMemo(() => auditSchemaTags(html, schema), [html, schema])
 
   const rows = useMemo<Row[]>(() => {
     const byKey = new Map(
@@ -249,16 +211,20 @@ export function SchemaTagAuditPanel({
     onChangeSchema(
       schema.map((f, i) => (i === idx ? { ...f, key: nextKey } : f)),
     )
-    // Renomear a key troca o endereço nos DOIS documentos. O endereço é o
-    // contrato: deixar um deles para trás recria exatamente o desalinhamento
-    // que este painel existe para acabar.
     const from = placeholderForKey(prevKey)
     const to = placeholderForKey(nextKey)
     if (!from || !to) return
     if (html.includes(`{{${from}}}`)) onChangeHtml(renameTagInHtml(html, from, to))
-    if (taggedHtml?.includes(`{{${from}}}`)) {
-      onChangeTaggedHtml?.(renameTagInHtml(taggedHtml, from, to))
-    }
+  }
+
+  /** Apaga a tag do HTML — para a tag que ninguém preenche. */
+  function removeTag(tag: string) {
+    onChangeHtml(
+      html.replace(
+        new RegExp(`\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`, "g"),
+        "",
+      ),
+    )
   }
 
   /** Ancora um campo sem tag numa tag existente do HTML (renomeia a tag). */
@@ -266,7 +232,7 @@ export function SchemaTagAuditPanel({
     const key = schema[fieldIdx]?.key?.trim()
     const to = placeholderForKey(key ?? "")
     if (!tagFrom || !to) return
-    writeHtml(renameTagInHtml(activeHtml, tagFrom, to))
+    onChangeHtml(renameTagInHtml(html, tagFrom, to))
   }
 
   /**
@@ -279,7 +245,7 @@ export function SchemaTagAuditPanel({
     const key = schema[fieldIdx]?.key?.trim()
     const to = placeholderForKey(key ?? "")
     if (!phrase || !to) return
-    writeHtml(anchorByExample(activeHtml, phrase, to))
+    onChangeHtml(anchorByExample(html, phrase, to))
   }
 
   /** Cria no schema o campo que a tag órfã estava pedindo. */
@@ -319,7 +285,7 @@ export function SchemaTagAuditPanel({
     })
     const to = placeholderForKey(raw ?? "")
     if (!to || to === from) return
-    writeHtml(renameTagInHtml(activeHtml, from, to))
+    onChangeHtml(renameTagInHtml(html, from, to))
   }
 
   /**
@@ -392,13 +358,6 @@ export function SchemaTagAuditPanel({
     label: `{{${o.tag}}}`,
   }))
 
-  /** Contagem de problemas no documento que NÃO está aberto. */
-  const outroAudit = useMemo(() => {
-    if (!temProposta) return null
-    const outro = alvo === "proposta" ? html : (taggedHtml as string)
-    return auditSchemaTags(outro, schema)
-  }, [temProposta, alvo, html, taggedHtml, schema])
-
   return (
     <EGCard
       title="Schema × HTML"
@@ -414,61 +373,6 @@ export function SchemaTagAuditPanel({
         )
       }
     >
-      {/* Seletor de documento. Substitui o painel gêmeo do card do Taguedor:
-          as mesmas linhas, e você escolhe o que está olhando. */}
-      {temProposta && (
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            background: C.g100,
-            padding: 3,
-            borderRadius: 8,
-            marginBottom: 12,
-            maxWidth: 460,
-          }}
-        >
-          {(
-            [
-              ["origem", "HTML de origem"],
-              ["proposta", "Proposta do Taguedor"],
-            ] as Array<["origem" | "proposta", string]>
-          ).map(([v, label]) => {
-            const on = alvo === v
-            const probs =
-              v === alvo
-                ? missingCount + orphanCount
-                : (outroAudit?.missing.length ?? 0) +
-                  (outroAudit?.orphans.length ?? 0)
-            return (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setDoc(v)}
-                style={{
-                  flex: 1,
-                  height: 30,
-                  border: "none",
-                  borderRadius: 6,
-                  background: on ? C.white : "transparent",
-                  color: on ? C.g900 : C.g500,
-                  boxShadow: on ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                  fontSize: 12.5,
-                  fontWeight: on ? 600 : 500,
-                  fontFamily: F.sans,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-                <span style={{ color: probs === 0 ? C.pos : C.neg, marginLeft: 6 }}>
-                  {probs === 0 ? "ok" : probs}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
       <div
         style={{
           display: "flex",
@@ -512,23 +416,10 @@ export function SchemaTagAuditPanel({
             lineHeight: 1.6,
           }}
         >
-          {alvo === "proposta" ? (
-            <>
-              Vendo a <b>proposta do Taguedor</b>
-              {taggingStatus === "approved"
-                ? " — é ela que roda em produção hoje."
-                : " — ainda pendente: hoje produção usa o HTML de origem."}{" "}
-            </>
-          ) : (
-            <>
-              Vendo o <b>HTML de origem</b> — o que você edita e o que o
-              Taguedor lê.{" "}
-            </>
-          )}
-          O endereço de um campo é <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span>,
-          calculado da key: escrever a key no schema não escreve a tag no HTML.
-          Renomear a key troca o endereço nos <b>dois</b> documentos; as demais
-          ações escrevem só no que está aberto.
+          O endereço de um campo é{" "}
+          <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span>, calculado da key:
+          escrever a key no schema não escreve a tag no HTML. Renomear a key
+          troca os dois lados de uma vez.
         </p>
       )}
 
@@ -656,30 +547,13 @@ export function SchemaTagAuditPanel({
                         >
                           {`{{${r.tag}}}`}
                         </span>
-                        <TagWhere kind={r.kind} tag={r.tag} html={activeHtml} />
-                        {alvo === "proposta" &&
-                          r.field &&
-                          notaPorKey.get(r.field.key.trim())?.note && (
-                            <div
-                              style={{
-                                fontSize: 10.5,
-                                color: C.g500,
-                                marginTop: 4,
-                                lineHeight: 1.4,
-                                fontStyle: "italic",
-                              }}
-                            >
-                              agente: {notaPorKey.get(r.field.key.trim())!.note}
-                            </div>
-                          )}
+                        <TagWhere kind={r.kind} tag={r.tag} html={html} />
                       </td>
                     )}
 
                     {/* O QUE FAZER — uma acao por linha, e so */}
                     <td style={{ ...cell, fontSize: 12 }}>
-                      {!podeEditar(alvo) ? (
-                        <span style={{ color: C.g400 }}>—</span>
-                      ) : acao ? (
+                      {acao ? (
                         <>
                           <EGBtn
                             variant={acao.tone}
@@ -707,7 +581,7 @@ export function SchemaTagAuditPanel({
                       )}
 
                       {/* Alternativas: fora do caminho, atras de Avancado */}
-                      {avancado && podeEditar(alvo) && r.kind === "missing" && r.idx != null && (
+                      {avancado && r.kind === "missing" && r.idx != null && (
                         <div
                           style={{
                             display: "flex",
@@ -738,7 +612,28 @@ export function SchemaTagAuditPanel({
                           </EGBtn>
                         </div>
                       )}
-                      {avancado && podeEditar(alvo) && r.kind === "orphan" && (
+                      {r.kind === "orphan" && (
+                        <div style={{ marginTop: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => removeTag(r.tag)}
+                            title={`Apaga {{${r.tag}}} do HTML`}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              padding: 0,
+                              color: C.neg,
+                              fontSize: 11.5,
+                              fontFamily: F.sans,
+                              cursor: "pointer",
+                              textDecoration: "underline",
+                            }}
+                          >
+                            ou apagar a tag do HTML
+                          </button>
+                        </div>
+                      )}
+                      {avancado && r.kind === "orphan" && (
                         <div
                           style={{
                             display: "flex",

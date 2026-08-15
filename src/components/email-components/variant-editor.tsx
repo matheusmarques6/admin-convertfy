@@ -25,7 +25,6 @@ import {
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
-  EGBadge,
   EGBtn,
   EGCard,
   EGCheck,
@@ -97,7 +96,7 @@ const DENSITY_OPTIONS = [
   })),
 ]
 
-type PreviewMode = "preview" | "html" | "rendered" | "tagged"
+type PreviewMode = "preview" | "html" | "rendered"
 
 /**
  * Estado do exemplo renderizado (story CM-6).
@@ -187,10 +186,6 @@ function Note({
 export function VariantEditor({
   draft,
   onChange,
-  taggedHtml,
-  onChangeTaggedHtml,
-  agentReport,
-  taggingStatus,
   testCard,
   keyUsage,
   schemaSources,
@@ -198,13 +193,6 @@ export function VariantEditor({
 }: {
   draft: VariantDraft
   onChange: (draft: VariantDraft) => void
-  /** html_tagged da variante (proposta/aprovado do Taguedor) — aba própria. */
-  taggedHtml?: string | null
-  /** Edita a proposta pelo painel Schema × HTML (2º documento do seletor). */
-  onChangeTaggedHtml?: (html: string) => void
-  /** Relatório do último run do Taguedor — vira a nota do agente no painel. */
-  agentReport?: Array<{ key: string; anchored_by?: string; note?: string }>
-  taggingStatus?: "pending" | "approved" | null
   /** Card "Testar geração" (injetado na fase do teste por bloco). */
   testCard?: ReactNode
   /** key → variantes que a usam, para o aviso de colisão no schema. */
@@ -222,7 +210,6 @@ export function VariantEditor({
   const [pv, setPv] = useState<PreviewMode>("preview")
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [editRendered, setEditRendered] = useState(false)
-  const [taggedView, setTaggedView] = useState<"render" | "code">("render")
 
   const set = (patch: Partial<VariantDraft>) => onChange({ ...draft, ...patch })
 
@@ -552,10 +539,6 @@ export function VariantEditor({
           schema={draft.output_schema}
           onChangeHtml={(html) => set({ html })}
           onChangeSchema={(output_schema) => set({ output_schema })}
-          taggedHtml={taggedHtml}
-          onChangeTaggedHtml={onChangeTaggedHtml}
-          taggingStatus={taggingStatus}
-          agentReport={agentReport}
         />
       </div>
 
@@ -585,7 +568,6 @@ export function VariantEditor({
                 ["preview", "Preview"],
                 ["html", "HTML"],
                 ["rendered", "HTML renderizado"],
-                ["tagged", "Placeholders"],
               ] as Array<[PreviewMode, string]>
             ).map(([k, l]) => {
               const on = pv === k
@@ -761,124 +743,6 @@ export function VariantEditor({
               </div>
             </>
           )}
-          {pv === "tagged" &&
-            (taggedHtml ? (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    marginBottom: 10,
-                  }}
-                >
-                  <EGBadge
-                    tone={taggingStatus === "approved" ? "pos" : "warn"}
-                    dot
-                  >
-                    {taggingStatus === "approved"
-                      ? "Aprovado — em uso pelo pipeline"
-                      : "Proposta pendente"}
-                  </EGBadge>
-                  {/* Sub-toggle render/código do HTML tagueado */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 2,
-                      background: C.g100,
-                      padding: 3,
-                      borderRadius: 8,
-                    }}
-                  >
-                    {(
-                      [
-                        ["render", "Renderizado"],
-                        ["code", "Código"],
-                      ] as Array<["render" | "code", string]>
-                    ).map(([k, l]) => {
-                      const on = taggedView === k
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setTaggedView(k)}
-                          style={{
-                            padding: "5px 12px",
-                            borderRadius: 6,
-                            border: "none",
-                            cursor: "pointer",
-                            fontFamily: F.sans,
-                            fontSize: 11.5,
-                            fontWeight: on ? 600 : 500,
-                            color: on ? C.g900 : C.g500,
-                            background: on ? C.white : "transparent",
-                            boxShadow: on ? C.shadowSm : "none",
-                          }}
-                        >
-                          {l}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-                {taggedView === "render" ? (
-                  <div
-                    style={{
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 8,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <EGRenderFrame html={taggedHtml} minHeight={480} />
-                  </div>
-                ) : (
-                  <pre
-                    style={{
-                      margin: 0,
-                      maxHeight: 520,
-                      overflow: "auto",
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 8,
-                      background: C.g25,
-                      padding: "11px 12px",
-                      fontFamily: F.mono,
-                      fontSize: 12,
-                      lineHeight: 1.5,
-                      color: C.g700,
-                      whiteSpace: "pre",
-                    }}
-                  >
-                    {taggedHtml}
-                  </pre>
-                )}
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: C.g400,
-                    fontFamily: F.sans,
-                    marginTop: 10,
-                  }}
-                >
-                  {"HTML com os {{PLACEHOLDERS}} no lugar dos exemplos — é isso que o Montador consome quando aprovado. Edição e aprovação ficam no card Taguedor, acima."}
-                </div>
-              </>
-            ) : (
-              <div
-                style={{
-                  border: `1px dashed ${C.border}`,
-                  borderRadius: 8,
-                  padding: "60px 24px",
-                  textAlign: "center",
-                  fontSize: 12.5,
-                  color: C.g400,
-                  fontFamily: F.sans,
-                }}
-              >
-                Sem HTML com placeholders ainda — rode o taguedor no card
-                acima (ou pelo Sincronizar biblioteca) para gerar a proposta.
-              </div>
-            ))}
         </EGCard>
 
         {testCard}
