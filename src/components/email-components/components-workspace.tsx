@@ -20,7 +20,6 @@ import {
   auditSchemaTags,
   validateSchemaTagCoherence,
 } from "@/lib/email-workspace/schema-tag-coherence"
-import { buildKeyUsage } from "@/lib/email-workspace/key-collision"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -182,9 +181,6 @@ export function ComponentsWorkspace() {
     return { noSchema, misaligned }
   }, [variants])
 
-  // Índice key → variantes, derivado da lista já carregada (o GET traz a
-  // biblioteca inteira). Alimenta o aviso de colisão no editor de schema.
-  const keyUsage = useMemo(() => buildKeyUsage(variants), [variants])
 
   // Fontes para "copiar campos de…" no editor de schema. Só o necessário —
   // a lista inteira já está carregada, então não custa uma requisição.
@@ -526,7 +522,6 @@ export function ComponentsWorkspace() {
           <VariantEditor
             draft={draft}
             onChange={setDraft}
-            keyUsage={keyUsage}
             schemaSources={schemaSources}
             selfId={selected?.id ?? null}
             testCard={

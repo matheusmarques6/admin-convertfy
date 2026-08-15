@@ -35,7 +35,6 @@ import {
   EGTextarea,
   EGToggle,
 } from "@/components/email-generation/ui/eg-atoms"
-import type { KeyUser } from "@/lib/email-workspace/key-collision"
 import { OutputSchemaEditor } from "./output-schema-editor"
 import { SchemaTagAuditPanel } from "./schema-tag-audit-panel"
 
@@ -187,7 +186,6 @@ export function VariantEditor({
   draft,
   onChange,
   testCard,
-  keyUsage,
   schemaSources,
   selfId,
 }: {
@@ -196,7 +194,6 @@ export function VariantEditor({
   /** Card "Testar geração" (injetado na fase do teste por bloco). */
   testCard?: ReactNode
   /** key → variantes que a usam, para o aviso de colisão no schema. */
-  keyUsage?: Record<string, KeyUser[]>
   /** Outras variantes, para copiar o schema de uma delas. */
   schemaSources?: Array<{
     id: string
@@ -526,7 +523,6 @@ export function VariantEditor({
           onChange={(s) => set({ output_schema: s })}
           blockType={draft.block_type}
           selfId={selfId}
-          keyUsage={keyUsage}
           schemaSources={schemaSources}
         />
 
