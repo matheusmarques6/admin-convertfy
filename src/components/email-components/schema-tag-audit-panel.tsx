@@ -8,22 +8,27 @@
  * schema e carregar `{{HERO_EYEBROW}}`/`{{COUPON_CODE}}` no HTML por meses —
  * a copy voltava do n8n sem endereço e o placeholder cru chegava ao email.
  *
- * Aqui as duas colunas ficam lado a lado, uma linha por relação, com os três
- * estados possíveis (ancorado · campo sem tag · tag sem campo) e um conserto
- * possível em cada linha. Toda ação escreve nos DOIS lados de uma vez, para
- * que não exista um jeito de salvar algo desalinhado sem querer:
+ * Uma linha por relação, três estados (ancorado · campo sem tag · tag sem
+ * campo) e UMA ação por linha — a coluna "O que fazer". A tela tinha virado
+ * um mural de botões onde nem escolher entre dois caminhos dava; agora o
+ * caminho é escolhido por `primaryAction`, na ordem do custo:
  *
- *   renomear key   → troca a key no schema E o {{PLACEHOLDER}} no HTML
- *   ancorar campo  → renomeia a tag escolhida do HTML para o placeholder
- *   criar campo    → adiciona ao schema o campo que a tag órfã pedia
- *   renomear tag   → conserto de nome direto no HTML (tags órfãs)
+ *   tag existe com outro nome  → Renomear tag
+ *   frase do exemplo no HTML   → Ancorar pelo exemplo
+ *   nem uma nem outra          → Remover campo (a arte não tem o elemento)
+ *   tag sem campo no schema    → Criar campo
  *
- * Não bloqueia salvar: a biblioteca tem variantes legadas, e travar o save
- * travaria justamente o conserto delas.
+ * Alternativas, diagnóstico (natureza, trecho do documento, nota do agente) e
+ * ajuste fino ficam atrás de "Avançado", fechado por padrão.
+ *
+ * Renomear a key troca o endereço nos DOIS documentos — o endereço é o
+ * contrato, e deixar um para trás recria o desalinhamento. Não bloqueia
+ * salvar: a biblioteca tem variantes legadas, e travar o save travaria
+ * justamente o conserto delas.
  */
 
 import { useMemo, useState } from "react"
-import { Check, Link2, Plus, Quote, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 
 import {
   anchorByExample,
@@ -165,6 +170,10 @@ export function SchemaTagAuditPanel({
   // documentos diferentes: os nomes nunca batiam e parecia haver trabalho em
   // dobro. Uma tabela só, e o documento se escolhe.
   const [doc, setDoc] = useState<"origem" | "proposta">("origem")
+  // Modo simples por padrão: UMA ação por linha e mais nada. Tudo o que é
+  // alternativa, diagnóstico ou ajuste fino fica atrás daqui. A tela tinha
+  // virado um mural de botões onde nem escolher entre dois caminhos dava.
+  const [avancado, setAvancado] = useState(false)
 
   const temProposta = !!taggedHtml?.trim()
   /**
@@ -313,6 +322,64 @@ export function SchemaTagAuditPanel({
     writeHtml(renameTagInHtml(activeHtml, from, to))
   }
 
+  /**
+   * A ÚNICA ação que a linha oferece no modo simples.
+   *
+   * A ordem é a do custo: renomear a tag que já existe no lugar certo é o
+   * conserto mais barato e mais seguro; trocar a frase do exemplo vem depois;
+   * e quando não há nem tag nem frase, a arte não tem onde receber o campo —
+   * aí a ação honesta é tirar o campo do schema, não fingir que há conserto.
+   */
+  function primaryAction(r: Row): {
+    label: string
+    tone: "dark" | "secondary" | "danger"
+    title: string
+    hint?: string
+    run: () => void
+  } | null {
+    if (r.kind === "anchored") return null
+
+    if (r.kind === "orphan") {
+      return {
+        label: "Criar campo",
+        tone: "dark",
+        title: `Adiciona ao schema o campo que {{${r.tag}}} está pedindo`,
+        hint: "o HTML escreve aqui, mas schema nenhum declara o campo",
+        run: () => createFieldForTag(r.tag),
+      }
+    }
+
+    if (r.idx == null) return null
+
+    if (r.legacyTag) {
+      return {
+        label: "Renomear tag",
+        tone: "dark",
+        title: `Renomeia {{${r.legacyTag}}} para {{${r.tag}}} no HTML`,
+        hint: `o slot existe com outro nome: {{${r.legacyTag}}}`,
+        run: () => bindTag(r.idx!, r.legacyTag!),
+      }
+    }
+
+    if (r.examplePhrase) {
+      return {
+        label: "Ancorar pelo exemplo",
+        tone: "dark",
+        title: `Troca “${r.examplePhrase}” por {{${r.tag}}} no HTML`,
+        hint: `a frase “${r.examplePhrase}” está no HTML`,
+        run: () => anchorFieldByExample(r.idx!, r.examplePhrase!),
+      }
+    }
+
+    return {
+      label: "Remover campo",
+      tone: "danger",
+      title: "Tira o campo do schema — a arte não tem onde recebê-lo",
+      hint: "sem tag e sem a frase do exemplo: a arte não tem esse elemento",
+      run: () => removeField(r.idx!),
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────
 
   const missingCount = audit.missing.length
@@ -402,48 +469,68 @@ export function SchemaTagAuditPanel({
         </div>
       )}
 
-      <p
+      <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          margin: "0 0 12px",
           fontSize: 12,
           color: C.g500,
-          margin: "0 0 4px",
-          lineHeight: 1.6,
+          fontFamily: F.sans,
         }}
       >
-        {alvo === "proposta" ? (
-          <>
-            Você está vendo a <b>proposta do Taguedor</b> — o que vai para
-            produção <b>depois</b> de aprovada
-            {taggingStatus === "approved"
-              ? " (já está aprovada, então é ela que roda hoje)"
-              : " (ainda pendente: hoje produção usa o HTML de origem)"}
-            .{" "}
-          </>
-        ) : (
-          <>
-            Você está vendo o <b>HTML de origem</b> — o que você edita e o que
-            o Taguedor lê para propor.{" "}
-          </>
-        )}
-        O schema é a base: cada campo endereça{" "}
-        <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span> — sem apelido, sem
-        tradução. É esse endereço que o blueprint manda ao n8n e que o merge
-        procura para montar o email. <b>O endereço é calculado a partir da
-        key</b>: escrever a key no schema não escreve a tag no HTML, e por isso
-        um campo novo nasce como “sem tag” até você ancorar.
-      </p>
-      <p
-        style={{
-          fontSize: 11.5,
-          color: C.g400,
-          margin: "0 0 14px",
-          lineHeight: 1.6,
-        }}
-      >
-        {audit.anchored.length} ancorado(s) · {missingCount} campo(s) sem tag ·{" "}
-        {orphanCount} tag(s) sem campo. Renomear uma key troca o endereço nos{" "}
-        <b>dois</b> documentos; as demais ações escrevem só no que está aberto.
-      </p>
+        <span>
+          {audit.anchored.length} ancorado(s) · {missingCount} sem tag ·{" "}
+          {orphanCount} tag(s) sem campo
+        </span>
+        <button
+          type="button"
+          onClick={() => setAvancado((v) => !v)}
+          style={{
+            marginLeft: "auto",
+            border: `1px solid ${C.border}`,
+            background: avancado ? C.g100 : C.white,
+            color: C.g600,
+            borderRadius: 6,
+            padding: "3px 10px",
+            fontSize: 11.5,
+            fontFamily: F.sans,
+            cursor: "pointer",
+          }}
+        >
+          {avancado ? "Ocultar avançado" : "Avançado"}
+        </button>
+      </div>
+
+      {avancado && (
+        <p
+          style={{
+            fontSize: 11.5,
+            color: C.g500,
+            margin: "0 0 14px",
+            lineHeight: 1.6,
+          }}
+        >
+          {alvo === "proposta" ? (
+            <>
+              Vendo a <b>proposta do Taguedor</b>
+              {taggingStatus === "approved"
+                ? " — é ela que roda em produção hoje."
+                : " — ainda pendente: hoje produção usa o HTML de origem."}{" "}
+            </>
+          ) : (
+            <>
+              Vendo o <b>HTML de origem</b> — o que você edita e o que o
+              Taguedor lê.{" "}
+            </>
+          )}
+          O endereço de um campo é <span style={mono}>{"{{MAIÚSCULA_DA_KEY}}"}</span>,
+          calculado da key: escrever a key no schema não escreve a tag no HTML.
+          Renomear a key troca o endereço nos <b>dois</b> documentos; as demais
+          ações escrevem só no que está aberto.
+        </p>
+      )}
 
       {schema.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.g500 }}>
@@ -452,156 +539,53 @@ export function SchemaTagAuditPanel({
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              tableLayout: "fixed",
-            }}
-          >
-            <colgroup>
-              <col style={{ width: 96 }} />
-              <col style={{ width: "30%" }} />
-              <col style={{ width: 128 }} />
-              <col style={{ width: "26%" }} />
-              <col />
-            </colgroup>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 <th style={th}>Estado</th>
-                <th style={th}>Campo (key)</th>
-                <th style={th}>Natureza</th>
-                <th style={th}>Tag no HTML</th>
-                <th style={th}>Conserto</th>
+                <th style={th}>Campo</th>
+                {avancado && <th style={th}>Natureza</th>}
+                {avancado && <th style={th}>Tag no HTML</th>}
+                <th style={th}>O que fazer</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const badge = ROW_BADGE[r.kind]
-                const rowBg =
-                  r.kind === "missing"
-                    ? C.negBg
-                    : r.kind === "orphan"
-                      ? C.warnBg
-                      : undefined
+                const acao = primaryAction(r)
                 return (
-                  <tr
-                    key={`${r.kind}:${r.tag}:${r.idx ?? "x"}`}
-                    style={{ background: rowBg }}
-                  >
+                  <tr key={`${r.kind}:${r.tag}:${r.idx ?? "x"}`}>
                     <td style={cell}>
                       <EGBadge tone={badge.tone}>{badge.label}</EGBadge>
                     </td>
 
-                    {/* Campo — editável nas linhas que têm campo */}
+                    {/* Campo — a key, editável */}
                     <td style={cell}>
                       {r.field && r.idx != null ? (
-                        <EGInput
-                          mono
-                          value={draftKeys[r.idx] ?? r.field.key}
-                          onChange={(v) =>
-                            setDraftKeys((d) => ({ ...d, [r.idx!]: v }))
-                          }
-                          title="Renomear troca a key no schema e o placeholder no HTML"
-                          style={{ height: 30, fontSize: 12 }}
-                        />
-                      ) : (
-                        <span style={{ ...mono, color: C.g400 }}>
-                          — nenhum campo —
-                        </span>
-                      )}
-                      {r.field && r.idx != null && draftKeys[r.idx] != null && (
-                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                          <EGBtn
-                            variant="dark"
-                            onClick={() => commitKey(r.idx!)}
-                            style={{ height: 26, fontSize: 11.5 }}
-                          >
-                            Aplicar
-                          </EGBtn>
-                          <EGBtn
-                            onClick={() =>
-                              setDraftKeys((d) => {
-                                const n = { ...d }
-                                delete n[r.idx!]
-                                return n
-                              })
-                            }
-                            style={{ height: 26, fontSize: 11.5 }}
-                          >
-                            Cancelar
-                          </EGBtn>
-                        </div>
-                      )}
-                    </td>
-
-                    <td style={{ ...cell, fontSize: 11.5, color: C.g600 }}>
-                      {r.field && r.idx != null ? (
-                        <>
-                          {/* Natureza decide quem preenche o campo — o n8n,
-                              o agente de imagem, ou ninguém (arte fixa). Era
-                              editável só no card do Taguedor; veio junto. */}
-                          <EGSelect
-                            value={r.field.nature ?? ""}
-                            onChange={(v) => {
-                              const next = { ...schema[r.idx!] }
-                              if (v) next.nature = v as ComponentOutputField["nature"]
-                              else delete next.nature
-                              onChangeSchema(
-                                schema.map((f, i) => (i === r.idx ? next : f)),
-                              )
-                            }}
-                            options={[
-                              {
-                                value: "",
-                                label: `Auto (${FIELD_NATURE_LABELS_PT[deriveFieldNature(r.field)]})`,
-                              },
-                              ...FIELD_NATURES.map((n) => ({
-                                value: n,
-                                label: FIELD_NATURE_LABELS_PT[n],
-                              })),
-                            ]}
-                          />
-                          <div style={{ color: C.g400, fontSize: 10.5, marginTop: 3 }}>
-                            {FIELD_TYPE_LABELS_PT[r.field.type]}
-                          </div>
-                        </>
-                      ) : (
-                        <span style={{ color: C.g400 }}>
-                          {r.orphanKind === "copy"
-                            ? "tag de copy"
-                            : "fora do registry"}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Tag — derivada nas linhas de campo, editável nas órfãs */}
-                    <td style={cell}>
-                      {r.kind === "orphan" ? (
                         <>
                           <EGInput
                             mono
-                            value={draftTags[r.tag] ?? r.tag}
+                            value={draftKeys[r.idx] ?? r.field.key}
                             onChange={(v) =>
-                              setDraftTags((d) => ({ ...d, [r.tag]: v }))
+                              setDraftKeys((d) => ({ ...d, [r.idx!]: v }))
                             }
-                            title="Renomear a tag diretamente no HTML"
+                            title="Renomear troca a key no schema e o endereço nos dois HTMLs"
                             style={{ height: 30, fontSize: 12 }}
                           />
-                          {draftTags[r.tag] != null && (
+                          {draftKeys[r.idx] != null && (
                             <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                               <EGBtn
                                 variant="dark"
-                                onClick={() => commitTag(r.tag)}
+                                onClick={() => commitKey(r.idx!)}
                                 style={{ height: 26, fontSize: 11.5 }}
                               >
                                 Aplicar
                               </EGBtn>
                               <EGBtn
                                 onClick={() =>
-                                  setDraftTags((d) => {
+                                  setDraftKeys((d) => {
                                     const n = { ...d }
-                                    delete n[r.tag]
+                                    delete n[r.idx!]
                                     return n
                                   })
                                 }
@@ -613,157 +597,176 @@ export function SchemaTagAuditPanel({
                           )}
                         </>
                       ) : (
+                        <span style={{ ...mono, color: C.g500 }}>
+                          {`{{${r.tag}}}`}
+                          <div style={{ fontSize: 10.5, marginTop: 2 }}>
+                            tag do HTML, sem campo no schema
+                          </div>
+                        </span>
+                      )}
+                    </td>
+
+                    {avancado && (
+                      <td style={{ ...cell, fontSize: 11.5, color: C.g600 }}>
+                        {r.field && r.idx != null ? (
+                          <>
+                            <EGSelect
+                              value={r.field.nature ?? ""}
+                              onChange={(v) => {
+                                const next = { ...schema[r.idx!] }
+                                if (v)
+                                  next.nature = v as ComponentOutputField["nature"]
+                                else delete next.nature
+                                onChangeSchema(
+                                  schema.map((f, i) => (i === r.idx ? next : f)),
+                                )
+                              }}
+                              options={[
+                                {
+                                  value: "",
+                                  label: `Auto (${FIELD_NATURE_LABELS_PT[deriveFieldNature(r.field)]})`,
+                                },
+                                ...FIELD_NATURES.map((n) => ({
+                                  value: n,
+                                  label: FIELD_NATURE_LABELS_PT[n],
+                                })),
+                              ]}
+                            />
+                            <div style={{ color: C.g400, fontSize: 10.5, marginTop: 3 }}>
+                              {FIELD_TYPE_LABELS_PT[r.field.type]}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: C.g400 }}>
+                            {r.orphanKind === "copy"
+                              ? "tag de copy"
+                              : "fora do registry"}
+                          </span>
+                        )}
+                      </td>
+                    )}
+
+                    {avancado && (
+                      <td style={cell}>
                         <span
                           style={{
                             ...mono,
                             color: r.kind === "missing" ? C.neg : C.g700,
                           }}
-                          title={
-                            r.kind === "missing"
-                              ? "Endereço que o schema EXIGE — derivado da key. Ainda não existe no HTML: por isso você não o encontra procurando lá."
-                              : "Derivado da key — o endereço não se escolhe"
-                          }
                         >
                           {`{{${r.tag}}}`}
                         </span>
-                      )}
-                      {/* De onde saiu o nome: ancorado mostra o trecho do
-                          documento; sem tag deixa explícito que o endereço é
-                          CALCULADO da key e ainda não foi escrito no HTML. */}
-                      <TagWhere kind={r.kind} tag={r.tag} html={activeHtml} />
-                      {/* Nota do agente — o "porquê" que só o relatório do
-                          Taguedor tinha. Vale para a proposta; no HTML de
-                          origem ela descreveria outro documento. */}
-                      {alvo === "proposta" &&
-                        r.field &&
-                        notaPorKey.get(r.field.key.trim())?.note && (
-                          <div
-                            style={{
-                              fontSize: 10.5,
-                              color: C.g500,
-                              marginTop: 4,
-                              lineHeight: 1.4,
-                              fontStyle: "italic",
-                            }}
+                        <TagWhere kind={r.kind} tag={r.tag} html={activeHtml} />
+                        {alvo === "proposta" &&
+                          r.field &&
+                          notaPorKey.get(r.field.key.trim())?.note && (
+                            <div
+                              style={{
+                                fontSize: 10.5,
+                                color: C.g500,
+                                marginTop: 4,
+                                lineHeight: 1.4,
+                                fontStyle: "italic",
+                              }}
+                            >
+                              agente: {notaPorKey.get(r.field.key.trim())!.note}
+                            </div>
+                          )}
+                      </td>
+                    )}
+
+                    {/* O QUE FAZER — uma acao por linha, e so */}
+                    <td style={{ ...cell, fontSize: 12 }}>
+                      {!podeEditar(alvo) ? (
+                        <span style={{ color: C.g400 }}>—</span>
+                      ) : acao ? (
+                        <>
+                          <EGBtn
+                            variant={acao.tone}
+                            onClick={acao.run}
+                            title={acao.title}
+                            style={{ height: 28, fontSize: 12 }}
                           >
-                            agente: {notaPorKey.get(r.field.key.trim())!.note}
-                          </div>
-                        )}
-                    </td>
-
-                    {/* Conserto — só no documento que tem onde gravar */}
-                    <td style={{ ...cell, fontSize: 11.5 }}>
-                      {!podeEditar(alvo) && r.kind !== "anchored" && (
-                        <span style={{ color: C.g500, lineHeight: 1.5 }}>
-                          A proposta é só leitura aqui. Conserte no{" "}
-                          <b>HTML de origem</b> e re-rode o Taguedor, ou edite
-                          a proposta na sub-aba <b>Revisão</b> do card acima —
-                          é ela que grava ao Aprovar.
-                        </span>
-                      )}
-                      {podeEditar(alvo) && r.kind === "anchored" && (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            color: C.pos,
-                          }}
-                        >
-                          <Check size={13} /> campo e HTML no mesmo endereço
-                        </span>
+                            {acao.label}
+                          </EGBtn>
+                          {acao.hint && (
+                            <div
+                              style={{
+                                fontSize: 10.5,
+                                color: C.g500,
+                                marginTop: 4,
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {acao.hint}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ color: C.g400 }}>—</span>
                       )}
 
-                      {podeEditar(alvo) && r.kind === "missing" && r.idx != null && (
+                      {/* Alternativas: fora do caminho, atras de Avancado */}
+                      {avancado && podeEditar(alvo) && r.kind === "missing" && r.idx != null && (
                         <div
                           style={{
                             display: "flex",
                             flexWrap: "wrap",
                             gap: 8,
                             alignItems: "center",
+                            marginTop: 8,
+                            paddingTop: 8,
+                            borderTop: `1px dashed ${C.g200}`,
                           }}
                         >
-                          {r.legacyTag && (
-                            <EGBtn
-                              variant="dark"
-                              onClick={() => bindTag(r.idx!, r.legacyTag!)}
-                              title={`Renomeia {{${r.legacyTag}}} para {{${r.tag}}} no HTML`}
-                              style={{ height: 28, fontSize: 11.5 }}
-                            >
-                              <Link2 size={12} /> {`{{${r.legacyTag}}}`} →{" "}
-                              {`{{${r.tag}}}`}
-                            </EGBtn>
-                          )}
                           {orphanOptions.length > 0 && (
                             <div style={{ minWidth: 190 }}>
                               <EGSelect
                                 value=""
-                                placeholder="ancorar numa tag do HTML…"
+                                placeholder="ancorar noutra tag…"
                                 options={orphanOptions}
                                 onChange={(v) => v && bindTag(r.idx!, v)}
                               />
                             </div>
                           )}
-                          {/* O outro caminho: sem tag para renomear, a frase
-                              real do exemplo ainda pode estar no HTML — a
-                              variante É um exemplo pronto. Trocar a frase
-                              pelo placeholder é o mesmo trabalho das regras
-                              1 e 2 do Taguedor, feito por código. */}
-                          {r.examplePhrase && (
-                            <EGBtn
-                              variant="dark"
-                              onClick={() =>
-                                anchorFieldByExample(r.idx!, r.examplePhrase!)
-                              }
-                              title={`Troca “${r.examplePhrase}” por {{${r.tag}}} no HTML`}
-                              style={{ height: 28, fontSize: 11.5 }}
-                            >
-                              <Quote size={12} /> ancorar pelo exemplo
-                            </EGBtn>
-                          )}
-                          {!r.legacyTag &&
-                            !r.examplePhrase &&
-                            orphanOptions.length === 0 && (
-                              <span style={{ color: C.neg }}>
-                                Nem tag livre, nem a frase do exemplo no HTML —
-                                a arte não tem onde receber este campo. Rode o
-                                Taguedor, insira {`{{${r.tag}}}`} à mão, ou
-                                remova o campo.
-                              </span>
-                            )}
                           <EGBtn
                             variant="danger"
                             onClick={() => removeField(r.idx!)}
-                            title="Remove o campo do schema"
-                            style={{ height: 28, fontSize: 11.5 }}
+                            style={{ height: 26, fontSize: 11.5 }}
                           >
                             <Trash2 size={12} /> remover campo
                           </EGBtn>
                         </div>
                       )}
-
-                      {podeEditar(alvo) && r.kind === "orphan" && (
+                      {avancado && podeEditar(alvo) && r.kind === "orphan" && (
                         <div
                           style={{
                             display: "flex",
-                            flexWrap: "wrap",
-                            gap: 8,
+                            gap: 6,
                             alignItems: "center",
+                            marginTop: 8,
+                            paddingTop: 8,
+                            borderTop: `1px dashed ${C.g200}`,
                           }}
                         >
-                          <EGBtn
-                            variant="dark"
-                            onClick={() => createFieldForTag(r.tag)}
-                            title={`Cria o campo ${r.tag.toLowerCase()} no schema`}
+                          <EGInput
+                            mono
+                            value={draftTags[r.tag] ?? r.tag}
+                            onChange={(v) =>
+                              setDraftTags((d) => ({ ...d, [r.tag]: v }))
+                            }
+                            title="Renomear a tag direto no HTML"
                             style={{ height: 28, fontSize: 11.5 }}
-                          >
-                            <Plus size={12} /> criar campo{" "}
-                            <span style={mono}>{r.tag.toLowerCase()}</span>
-                          </EGBtn>
-                          <span style={{ color: C.warn }}>
-                            ou renomeie a tag ao lado para o endereço de um
-                            campo existente.
-                          </span>
+                          />
+                          {draftTags[r.tag] != null && (
+                            <EGBtn
+                              variant="dark"
+                              onClick={() => commitTag(r.tag)}
+                              style={{ height: 26, fontSize: 11.5 }}
+                            >
+                              Aplicar
+                            </EGBtn>
+                          )}
                         </div>
                       )}
                     </td>
