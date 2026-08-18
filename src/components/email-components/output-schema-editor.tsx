@@ -15,6 +15,7 @@ import {
   FIELD_TYPE_LABELS_PT,
   deriveFieldNature,
   sanitizeOutputKeyInput,
+  type ComponentFieldNature,
   type ComponentFieldType,
 } from "@/lib/agents/shared/component-dimensions"
 import {
@@ -56,12 +57,6 @@ function SchemaRow({
           placeholder="chave_tecnica"
           title="Chave técnica (minúsculas/underscore) — casa com o {{PLACEHOLDER}} do HTML sem diferenciar maiúsculas"
           style={{ ...rowInput, flex: 1, fontFamily: F.mono, fontSize: 12 }}
-        />
-        <input
-          value={field.label}
-          onChange={(e) => onChange({ ...field, label: e.target.value })}
-          placeholder="Rótulo"
-          style={{ ...rowInput, flex: 1 }}
         />
         <div style={{ width: 130, flexShrink: 0 }}>
           <EGSelect
@@ -316,19 +311,40 @@ export function OutputSchemaEditor({
     })
   }
 
-  const addField = () =>
+  /**
+   * Campo novo nasce SEM rótulo. O `label` continua no tipo porque o n8n e o
+   * Montador o consomem, mas os dois já caem na key quando ele vem vazio
+   * (`block-copy-schema`, `deterministic-blueprint.builder`) — e a key é
+   * sempre significativa. Preencher "Novo campo" automaticamente criava um
+   * rótulo que ninguém corrigia: 184 campos em 23 variantes ativas chegaram
+   * à IA anunciando que se chamavam "Novo campo", enquanto a key ao lado
+   * dizia hero_headline.
+   */
+  const addField = (nature: ComponentFieldNature) =>
     onChange([
       ...schema,
       {
-        key: "novo_campo",
-        label: "Novo campo",
-        type: "text_short",
-        max_len: 60,
+        key: "",
+        label: "",
+        type: nature === "imagem_gerada" ? "image" : "text_short",
+        nature,
+        max_len: nature === "imagem_gerada" ? 0 : 60,
         required: false,
         example: "",
         guidance: "",
       },
     ])
+
+  // Agrupa por NATUREZA — quem produz o valor final. É o mesmo eixo que o
+  // pipeline usa para decidir o que vai no payload de copy, o que vira
+  // image_brief e o que não vai a lugar nenhum; ver as listas misturadas
+  // escondia justamente essa diferença.
+  const grupos = FIELD_NATURES.map((nature) => ({
+    nature,
+    itens: schema
+      .map((field, index) => ({ field, index }))
+      .filter(({ field }) => deriveFieldNature(field) === nature),
+  }))
 
   return (
     <EGCard
@@ -362,27 +378,6 @@ export function OutputSchemaEditor({
               />
             </div>
           )}
-        <button
-          type="button"
-          onClick={addField}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            height: 30,
-            padding: "0 12px",
-            borderRadius: 7,
-            border: `1px solid ${C.border}`,
-            background: C.white,
-            color: C.g700,
-            fontSize: 12.5,
-            fontWeight: 500,
-            fontFamily: F.sans,
-            cursor: "pointer",
-          }}
-        >
-          <Plus size={14} /> Campo
-        </button>
         </div>
       }
     >
@@ -391,47 +386,121 @@ export function OutputSchemaEditor({
           fontSize: 12.5,
           color: C.g500,
           fontFamily: F.sans,
-          marginBottom: 14,
+          marginBottom: 16,
         }}
       >
-        Campos que a IA gera para este bloco. Chave técnica, tipo, limite e
-        exemplo alimentam o preview e o prompt.
+        Campos que a IA gera para este bloco, separados por quem produz o
+        valor. Chave técnica, tipo, limite e exemplo alimentam o preview e o
+        prompt.
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {schema.map((f, i) => (
-          <SchemaRow
-            key={i}
-            field={f}
-            onChange={(nf) => setField(i, nf)}
-            onDelete={() => delField(i)}
-            onDuplicate={() =>
-              onChange([
-                ...schema.slice(0, i + 1),
-                duplicateField(
-                  f,
-                  schema.map((x) => x.key ?? ""),
-                ),
-                ...schema.slice(i + 1),
-              ])
-            }
-          />
-        ))}
-        {schema.length === 0 && (
-          <div
-            style={{
-              fontSize: 13,
-              color: C.g400,
-              fontFamily: F.sans,
-              textAlign: "center",
-              padding: 24,
-              border: `1px dashed ${C.border}`,
-              borderRadius: 10,
-            }}
-          >
-            Nenhum campo. Clique em “Campo” para adicionar.
+      <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+        {grupos.map(({ nature, itens }) => (
+          <div key={nature}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: C.g700,
+                    fontFamily: F.sans,
+                  }}
+                >
+                  {NATURE_SECTION_TITLE[nature]}
+                  <span style={{ color: C.g400, fontWeight: 400 }}>
+                    {" "}
+                    · {itens.length}
+                  </span>
+                </div>
+                <div
+                  style={{ fontSize: 11.5, color: C.g500, fontFamily: F.sans }}
+                >
+                  {NATURE_SECTION_HINT[nature]}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => addField(nature)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  height: 30,
+                  padding: "0 12px",
+                  borderRadius: 7,
+                  border: `1px solid ${C.border}`,
+                  background: C.white,
+                  color: C.g700,
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  fontFamily: F.sans,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <Plus size={14} /> Campo
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {itens.map(({ field, index }) => (
+                <SchemaRow
+                  key={index}
+                  field={field}
+                  onChange={(nf) => setField(index, nf)}
+                  onDelete={() => delField(index)}
+                  onDuplicate={() =>
+                    onChange([
+                      ...schema.slice(0, index + 1),
+                      duplicateField(
+                        field,
+                        schema.map((x) => x.key ?? ""),
+                      ),
+                      ...schema.slice(index + 1),
+                    ])
+                  }
+                />
+              ))}
+              {itens.length === 0 && (
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: C.g400,
+                    fontFamily: F.sans,
+                    textAlign: "center",
+                    padding: 16,
+                    border: `1px dashed ${C.border}`,
+                    borderRadius: 10,
+                  }}
+                >
+                  Nenhum campo aqui.
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        ))}
       </div>
     </EGCard>
   )
 }
+
+const NATURE_SECTION_TITLE: Record<ComponentFieldNature, string> = {
+  copy: "Texto",
+  imagem_gerada: "Imagem",
+  asset_fixo: "Asset fixo",
+}
+
+const NATURE_SECTION_HINT: Record<ComponentFieldNature, string> = {
+  copy: "O n8n escreve. Vai no payload de copy.",
+  imagem_gerada: "O agente de imagem cria, uma por loja.",
+  asset_fixo: "Arte da biblioteca — fica como foi desenhada.",
+}
+

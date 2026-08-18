@@ -36,7 +36,6 @@ import {
   EGToggle,
 } from "@/components/email-generation/ui/eg-atoms"
 import { OutputSchemaEditor } from "./output-schema-editor"
-import { SchemaTagAuditPanel } from "./schema-tag-audit-panel"
 
 /** Rascunho editável de variante (strings vazias no lugar de null). */
 export interface VariantDraft {
@@ -526,16 +525,6 @@ export function VariantEditor({
           schemaSources={schemaSources}
         />
 
-        {/* Relação campo ↔ tag, editável dos dois lados. Opera no HTML de
-            ORIGEM (draft.html) — é o que o designer autora e o que o Taguedor
-            recebe. Quando existe tagueado aprovado, o painel avisa que é ele
-            que roda em produção. Não bloqueia salvar. */}
-        <SchemaTagAuditPanel
-          html={draft.html}
-          schema={draft.output_schema}
-          onChangeHtml={(html) => set({ html })}
-          onChangeSchema={(output_schema) => set({ output_schema })}
-        />
       </div>
 
       {/* ── COLUNA DIREITA — Estrutura & Preview (+ Testar) ── */}

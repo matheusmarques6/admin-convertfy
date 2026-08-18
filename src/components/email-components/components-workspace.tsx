@@ -249,7 +249,7 @@ export function ComponentsWorkspace() {
       // O schema é a base: cada campo endereça {{UPPER(key)}} no HTML. O que
       // não bate NÃO impede o save (a biblioteca tem variantes legadas e
       // travar aqui travaria o conserto delas) — mas o toast grita e o painel
-      // "Schema × HTML" do editor mantém os dois lados à vista.
+      // desde que o painel "Schema × HTML" saiu do editor ele é o único aviso.
       const coherence = validateSchemaTagCoherence(
         payload.html,
         payload.output_schema,
@@ -274,7 +274,7 @@ export function ComponentsWorkspace() {
         toast({
           variant: "destructive",
           title: "Salva, mas o HTML não segue o schema",
-          description: `${parts.join(" · ")}. Veja o painel Schema × HTML.`,
+          description: `${parts.join(" · ")}. Rode o retagueamento para reendereçar o HTML.`,
         })
       } else {
         toast({ title: "Variante salva" })
