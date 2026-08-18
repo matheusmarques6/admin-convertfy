@@ -37,7 +37,6 @@ import {
   FileText,
   Megaphone,
   Cpu,
-  ListChecks,
   Activity,
   Package,
   CalendarDays,
@@ -209,8 +208,10 @@ export const GERAL_NAV: NavGroup[] = [
       { id: "tools.currency_audit", name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
       { id: "tools.email_generation", name: "Geração de Emails", href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION, icon: Mail },
       { id: "tools.ai_usage", name: "Custo de IA", href: ROUTES.ADMIN.AI_USAGE, icon: Cpu },
-      { id: "tools.email_logs", name: "Logs de geração", href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION_LOGS, icon: ListChecks },
-      { id: "tools.agent_runs", name: "Execuções ao vivo", href: ROUTES.ADMIN.AGENTS.RUNS, icon: Activity },
+      // Estúdio de Agentes absorve "Logs de geração" e "Execuções ao vivo"
+      // na nav (ago/2026) — as rotas antigas seguem vivas como drill-down,
+      // linkadas de dentro do Estúdio.
+      { id: "tools.agent_studio", name: "Estúdio de Agentes", href: ROUTES.ADMIN.AGENTS.STUDIO, icon: Activity },
     ],
   },
 ]

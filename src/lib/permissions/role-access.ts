@@ -55,8 +55,7 @@ export type NavItemId =
   | "tools.currency_audit"
   | "tools.email_generation"
   | "tools.ai_usage"
-  | "tools.email_logs"
-  | "tools.agent_runs"
+  | "tools.agent_studio"
 
 const ALL_ITEMS: NavItemId[] = [
   "comercial.dashboard",
@@ -100,8 +99,7 @@ const ALL_ITEMS: NavItemId[] = [
   "tools.currency_audit",
   "tools.email_generation",
   "tools.ai_usage",
-  "tools.email_logs",
-  "tools.agent_runs",
+  "tools.agent_studio",
 ]
 
 // Funções bypass (veem tudo).

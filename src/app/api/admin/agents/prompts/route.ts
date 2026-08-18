@@ -41,7 +41,10 @@ async function authorize(supabase: ReturnType<typeof createAdminClient>, userId:
 }
 
 const postSchema = z.object({
-  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "assembler_chooser", "campaign_suggestion", "campaign_trends", "campaign_architect", "campaign_image", "refiner", "component_test", "subject"]),
+  // Cobre também os agentes da cadeia de formatação (split do HTML,
+  // migration 20261039) — sem eles o Estúdio de Agentes não salva a
+  // config de hero/text/image/color/merge_verifier.
+  agent_type: z.enum(["copy", "image", "html", "qa", "blueprint", "assembler", "assembler_chooser", "campaign_suggestion", "campaign_trends", "campaign_architect", "campaign_image", "refiner", "component_test", "subject", "hero_section", "text_format", "image_format", "color_format", "component_tagger", "merge_verifier"]),
   model: z.string().min(3),
   system_prompt: z.string().min(10).max(20000),
   user_template: z.string().min(10).max(20000),

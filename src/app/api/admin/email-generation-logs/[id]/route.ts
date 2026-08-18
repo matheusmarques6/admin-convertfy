@@ -131,6 +131,9 @@ export async function GET(
       error_message: r.error_message,
       error_stack: r.error_stack,
       input_vars: r.input_vars,
+      // Selecionado desde a criação da rota mas nunca devolvido — a aba
+      // "Prompt" do Estúdio de Agentes lê daqui o input exato do modelo.
+      rendered_prompt: r.rendered_prompt,
       raw_output: r.raw_output,
       parsed_output: r.parsed_output,
       store_id: r.store_id,

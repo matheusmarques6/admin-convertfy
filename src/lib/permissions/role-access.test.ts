@@ -64,8 +64,7 @@ const MATRIX: Matrix = {
   "tools.currency_audit":   { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
   "tools.email_generation": { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
   "tools.ai_usage":         { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
-  "tools.email_logs":       { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
-  "tools.agent_runs":       { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
+  "tools.agent_studio":     { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
 }
 
 describe("canAccess — matriz item × função", () => {
