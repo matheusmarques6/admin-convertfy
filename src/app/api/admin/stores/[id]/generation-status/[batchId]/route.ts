@@ -113,14 +113,14 @@ export async function GET(
       admin
         .from("email_generation_runs")
         .select(
-          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
+          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, retry_count, created_at",
         )
         .eq("email_id", emailId)
         .order("created_at", { ascending: true }),
       admin
         .from("email_generation_runs")
         .select(
-          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, created_at",
+          "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, retry_count, created_at",
         )
         .eq("batch_id", currentBatchId)
         .is("email_id", null)
@@ -246,6 +246,9 @@ export async function GET(
       errors,
       // Devolve TODOS os runs do email (com batch_id pra UI agrupar).
       runs: runs.map((r) => ({
+        // id habilita o drill-down por nó no Estúdio (detalhe da run via
+        // /api/admin/email-generation-logs/[id]) — aditivo.
+        id: r.id,
         agent: r.agent,
         status: r.status,
         error_message: r.error_message,
@@ -253,6 +256,7 @@ export async function GET(
         tokens_input: r.tokens_input,
         tokens_output: r.tokens_output,
         cost_cents: r.cost_cents,
+        retry_count: r.retry_count,
         batch_id: r.batch_id,
         created_at: r.created_at,
       })),

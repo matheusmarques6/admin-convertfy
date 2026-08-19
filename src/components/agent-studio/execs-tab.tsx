@@ -266,7 +266,7 @@ function stringify(v: unknown): string {
   }
 }
 
-function NodeRunPanel({
+export function NodeRunPanel({
   exec,
   nodeKey,
   run,

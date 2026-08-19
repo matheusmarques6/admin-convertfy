@@ -567,9 +567,12 @@ function InfoNote({ children }: { children: React.ReactNode }) {
 export function EditorTab({
   positions,
   onMove,
+  onRunPipeline,
 }: {
   positions: Positions
   onMove: (key: string, x: number, y: number) => void
+  /** Abre a aba Teste do próprio Estúdio (sem sair da página). */
+  onRunPipeline?: () => void
 }) {
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -610,28 +613,54 @@ export function EditorTab({
                 transform: "translateX(-50%)",
               }}
             >
-              <Link
-                href={`${ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION}?tab=test`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  height: 38,
-                  padding: "0 18px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: C.brand,
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  fontFamily: F.sans,
-                  cursor: "pointer",
-                  boxShadow: SHADOW_LG,
-                  textDecoration: "none",
-                }}
-              >
-                <Zap size={15} /> Executar pipeline
-              </Link>
+              {/* Abre a aba Teste do próprio Estúdio; fallback: aba Testar
+                  do hub quando montado sem o callback. */}
+              {onRunPipeline ? (
+                <button
+                  onClick={onRunPipeline}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 38,
+                    padding: "0 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: C.brand,
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: F.sans,
+                    cursor: "pointer",
+                    boxShadow: SHADOW_LG,
+                  }}
+                >
+                  <Zap size={15} /> Executar pipeline
+                </button>
+              ) : (
+                <Link
+                  href={`${ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION}?tab=test`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 38,
+                    padding: "0 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: C.brand,
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: F.sans,
+                    cursor: "pointer",
+                    boxShadow: SHADOW_LG,
+                    textDecoration: "none",
+                  }}
+                >
+                  <Zap size={15} /> Executar pipeline
+                </Link>
+              )}
             </div>
           }
         />

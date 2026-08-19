@@ -257,6 +257,153 @@ export function execCostUsd(runs: Record<string, NodeRun>): number {
   return Object.values(runs).reduce((s, r) => s + (r.usd ?? 0), 0)
 }
 
+// ── Projeção AO VIVO de um teste (aba Teste do Estúdio) ──────────────────
+
+export type LiveTestMode = "default" | "phase2" | "full"
+
+/** Run como devolvida pelo polling generation-status (batch do teste). */
+export interface LiveTestRun {
+  id?: string
+  agent: string
+  status: string
+  error_message?: string | null
+  duration_ms?: number | null
+  tokens_input?: number | null
+  tokens_output?: number | null
+  cost_cents?: number | null
+  retry_count?: number | null
+  created_at?: string
+}
+
+const PHASE1_NODE_KEYS = ["assembler_chooser", "assembler", "blueprint", "subject"] as const
+
+/**
+ * Qual nó está RODANDO agora, derivado da máquina de status do email —
+ * as runs só aparecem quando o agente termina (ou grava running), então
+ * sem esta derivação o canvas ficaria mudo entre um agente e outro.
+ * `html_pipeline_stage` é o último step CONCLUÍDO da cadeia.
+ */
+export function liveRunningNode(
+  emailStatus: string | null | undefined,
+  htmlStage: string | null | undefined,
+): string | null {
+  switch (emailStatus) {
+    case "copy_generating":
+    case "copy_generating_recovery":
+      return "copy"
+    case "copy_ready":
+      return "image"
+    case "image_done":
+      return "hero_section"
+    case "rendering":
+      switch (htmlStage) {
+        case "hero":
+          return "text_format"
+        case "text":
+          return "image_format"
+        case "image":
+          return "color_format"
+        default:
+          return "hero_section"
+      }
+    case "qa_running":
+      return "qa"
+    default:
+      return null
+  }
+}
+
+/**
+ * Projeta o TESTE em curso sobre o grafo:
+ *   - runs do batch (última por agente; `copy_dispatch` conta como copy)
+ *     dão status/tempo/custo dos nós que já rodaram;
+ *   - o nó "rodando" vem da máquina de status do email quando nenhuma run
+ *     o marca (liveRunningNode);
+ *   - nós sem run: à frente da posição atual ficam `aguardando` enquanto o
+ *     teste vive; atrás, `pulado`. Em modo phase2 a fase 1 é sempre
+ *     `pulado` (reusada — nunca "aguardando").
+ *   - terminal=done: sem run vira pulado e a saída conclui;
+ *     terminal=error: downstream pulado.
+ */
+export function projectLiveTest(opts: {
+  runs: LiveTestRun[]
+  emailStatus: string | null | undefined
+  htmlStage: string | null | undefined
+  mode: LiveTestMode
+  /** statusInfo.status do polling: 'done' | 'error' | outro. */
+  terminal: string | null | undefined
+}): Record<string, NodeRun> {
+  const { runs, emailStatus, htmlStage, mode, terminal } = opts
+
+  // Última run por agente (lista chega em ordem cronológica asc).
+  const byAgent = new Map<string, LiveTestRun>()
+  for (const r of runs) {
+    const key = r.agent === "copy_dispatch" ? "copy" : r.agent
+    byAgent.set(key, r)
+  }
+
+  const isDone = terminal === "done" || emailStatus === "ready"
+  const isError = terminal === "error" || emailStatus === "failed"
+  const running = !isDone && !isError ? liveRunningNode(emailStatus, htmlStage) : null
+
+  const out: Record<string, NodeRun> = {}
+  let lastActivityIdx = -1
+  MAIN_ORDER.forEach((k, i) => {
+    if (byAgent.has(k) || k === running) lastActivityIdx = i
+  })
+
+  MAIN_ORDER.forEach((key, i) => {
+    if (key === "trigger") {
+      out[key] = { status: "sucesso", durSec: null }
+      return
+    }
+    if (key === "out") {
+      out[key] = isDone
+        ? { status: "sucesso", durSec: null }
+        : isError
+          ? { status: "pulado" }
+          : { status: "aguardando" }
+      return
+    }
+    const r = byAgent.get(key)
+    if (r) {
+      const st =
+        key === running && r.status !== "error" && r.status !== "running"
+          ? // Status do email diz que este nó está em curso de novo
+            // (retry/nova passada) — o vivo vence a run antiga.
+            "rodando"
+          : apiStatusToNode(r.status)
+      out[key] = {
+        status: st,
+        runId: r.id,
+        durSec: r.duration_ms != null ? r.duration_ms / 1000 : null,
+        usd: r.cost_cents != null ? r.cost_cents / 100 : null,
+        tokIn: r.tokens_input ?? null,
+        tokOut: r.tokens_output ?? null,
+        retries: r.retry_count ?? null,
+        err: r.error_message ?? null,
+      }
+      return
+    }
+    if (key === running) {
+      out[key] = { status: "rodando", durSec: null }
+      return
+    }
+    // Sem run e sem estar rodando:
+    if (mode === "phase2" && (PHASE1_NODE_KEYS as readonly string[]).includes(key)) {
+      out[key] = { status: "pulado" }
+      return
+    }
+    if (!isDone && !isError && i > lastActivityIdx) {
+      out[key] = { status: "aguardando" }
+    } else {
+      out[key] = { status: "pulado" }
+    }
+  })
+
+  return out
+}
+
 // ── Visual das arestas conforme runs ─────────────────────────────────────
 
 export interface EdgeVisual {

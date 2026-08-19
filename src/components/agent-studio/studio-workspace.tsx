@@ -24,6 +24,7 @@ import { defaultPositions, type Positions } from "./flow-canvas"
 import { EditorTab } from "./editor-tab"
 import { ExecutionsTab } from "./execs-tab"
 import { OverviewTab } from "./overview-tab"
+import { StudioTestTab } from "./test-tab"
 import { AgentChip, StudioBtn, StudioSpinStyle } from "./studio-atoms"
 import type { PromptsPayload } from "./studio-data"
 
@@ -33,6 +34,7 @@ const TABS = [
   { key: "overview", label: "Visão Geral" },
   { key: "editor", label: "Editor" },
   { key: "execs", label: "Execuções" },
+  { key: "test", label: "Teste" },
 ] as const
 
 type TabKey = (typeof TABS)[number]["key"]
@@ -41,7 +43,7 @@ const TAB_LS_KEY = "cf-agent-studio-tab"
 const POS_LS_KEY = "cf-agent-studio-positions"
 
 function isTabKey(v: string | null | undefined): v is TabKey {
-  return v === "overview" || v === "editor" || v === "execs"
+  return v === "overview" || v === "editor" || v === "execs" || v === "test"
 }
 
 function HistoryDrawer({
@@ -469,8 +471,15 @@ export function StudioWorkspace() {
         onHistory={() => setHistoryOpen(true)}
       />
       {tab === "overview" && <OverviewTab days={days} onDays={setDays} />}
-      {tab === "editor" && <EditorTab positions={positions} onMove={onMove} />}
+      {tab === "editor" && (
+        <EditorTab
+          positions={positions}
+          onMove={onMove}
+          onRunPipeline={() => pickTab("test")}
+        />
+      )}
       {tab === "execs" && <ExecutionsTab positions={positions} />}
+      {tab === "test" && <StudioTestTab positions={positions} />}
       {historyOpen && (
         <HistoryDrawer
           prompts={prompts}

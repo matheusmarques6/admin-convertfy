@@ -2,11 +2,15 @@
 
 /**
  * Aba Testar do hub de Geração de Emails (3 modos de execução + polling de
- * batch + preview de vars). Extraída de `email-generation-workspace.tsx`.
+ * batch + preview de vars).
+ *
+ * Refactor ago/2026: TODO o estado e a mecânica (disparos, polling,
+ * recovery de timeout, cronômetro, guards anti-trava) foram extraídos para
+ * o hook compartilhado `useTestGeneration` — a aba Teste do Estúdio de
+ * Agentes usa o mesmo hook com outra visualização. Este arquivo é só a
+ * camada de exibição original.
  */
 
-import { useState, useEffect } from "react"
-import useSWR from "swr"
 import {
   Loader2,
   Play,
@@ -27,455 +31,50 @@ import {
   EGSelect,
   EGTextarea,
 } from "./ui/eg-atoms"
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
-
-interface StoreOption {
-  id: string
-  store_name: string
-}
-
-interface FlowOption {
-  id: string
-  flow_type: string
-  name: string
-  emails: Array<{
-    id: string
-    number: number
-    name: string
-    status: string
-    subject: string | null
-  }>
-}
-
-interface RunStep {
-  agent: string
-  status: "pending" | "success" | "error" | "skipped" | "running"
-  error?: string
-  durationMs?: number
-  tokens?: number
-  cost?: number
-}
-
-/**
- * Normaliza qualquer payload de erro (string, Error-like, objeto da API) para
- * texto legível. Evita o clássico "[object Object]" quando a resposta traz o
- * erro como objeto (ex.: { error: { message, code } } ou um PostgrestError).
- */
-function errText(x: unknown): string {
-  if (x == null) return ""
-  if (typeof x === "string") return x
-  if (typeof x === "object") {
-    const o = x as Record<string, unknown>
-    for (const k of ["error", "message", "reason", "failure_reason", "detail"]) {
-      if (typeof o[k] === "string") return o[k] as string
-    }
-    try {
-      return JSON.stringify(x)
-    } catch {
-      return String(x)
-    }
-  }
-  return String(x)
-}
+import { useTestGeneration } from "./use-test-generation"
+import {
+  TEST_AGENT_LABELS,
+  TEST_BASE_AGENT_KEYS,
+  fmtElapsed,
+} from "@/lib/agents/test-run-view"
+import { useState } from "react"
 
 export function TestTab() {
-  const { data: storesData, isLoading: loadingStores } = useSWR<{ stores: StoreOption[] }>(
-    "/api/admin/stores",
-    fetcher,
-  )
-  const stores = storesData?.stores ?? []
-
-  const [selectedStoreId, setSelectedStoreId] = useState("")
-  const [selectedFlowId, setSelectedFlowId] = useState("")
-  const [selectedEmailId, setSelectedEmailId] = useState("")
-  const [testContext, setTestContext] = useState("")
-  const [generating, setGenerating] = useState(false)
-  const [batchId, setBatchId] = useState<string | null>(null)
-  const [result, setResult] = useState<{
-    status: "done" | "error" | "dispatched" | "running"
-    error?: string
-    message?: string
-    batchId?: string
-    emailId?: string
-    relaxedBrand?: boolean
-  } | null>(null)
-  const [steps, setSteps] = useState<RunStep[]>([])
-  const [pollInterval, setPollInterval] = useState(0)
+  const t = useTestGeneration()
+  const {
+    stores,
+    loadingStores,
+    flows,
+    loadingFlows,
+    selectedStoreId,
+    selectedFlowId,
+    selectedEmailId,
+    selectedFlow,
+    testContext,
+    setTestContext,
+    handleGenerate,
+    generating,
+    generationInFlight,
+    result,
+    steps,
+    batchId,
+    statusInfo,
+    isTerminalStatus,
+    phaseMessage,
+    showStaleWarning,
+    hasRun,
+    startedAt,
+    nowTick,
+    timerActive,
+    handlePreviewVars,
+    previewingVars,
+    previewVars,
+    previewError,
+    clearPreview,
+  } = t
   const [showHistory, setShowHistory] = useState(false)
-  // ── Preview de vars HTML resolvidas (debug do Master Prompt v2) ─
-  const [previewingVars, setPreviewingVars] = useState(false)
-  const [previewVars, setPreviewVars] = useState<Record<string, string> | null>(
-    null,
-  )
-  const [previewError, setPreviewError] = useState<string | null>(null)
 
-  const { data: producaoData, isLoading: loadingFlows } = useSWR<{ flows: FlowOption[] }>(
-    selectedStoreId ? `/api/admin/stores/${selectedStoreId}/producao` : null,
-    fetcher,
-  )
-  const flows = producaoData?.flows ?? []
-
-  const selectedFlow = flows.find((f) => f.id === selectedFlowId)
-  const selectedEmail = selectedFlow?.emails.find((e) => e.id === selectedEmailId)
-
-  const { data: statusData, error: statusError } = useSWR(
-    batchId && selectedStoreId
-      ? `/api/admin/stores/${selectedStoreId}/generation-status/${batchId}`
-      : null,
-    fetcher,
-    {
-      refreshInterval: pollInterval,
-      revalidateOnFocus: false,
-    },
-  )
-
-  const statusInfo = statusData?.data ?? statusData
-
-  // Estado terminal do polling — usado tanto p/ parar o polling quanto p/
-  // reconciliar a UI (esconder a msg "rodando em background" quando acabou).
-  const isTerminalStatus = Boolean(
-    statusInfo &&
-      (statusInfo.status === "done" ||
-        statusInfo.status === "error" ||
-        statusInfo.email_status === "failed" ||
-        statusInfo.email_status === "ready"),
-  )
-
-  // Geração em voo = request em curso OU polling ativo de um batch ainda
-  // não-terminal. Usado pra desabilitar os botões de disparo — reclicar
-  // durante uma geração abria pipeline duplicado (o server também bloqueia,
-  // mas aqui evitamos até o convite). Escapes anti-trava: sem batch não há
-  // voo; erro persistente do fetch de status não pode congelar os botões.
-  const generationInFlight =
-    generating ||
-    (pollInterval > 0 && batchId != null && !statusError && !isTerminalStatus)
-
-  // Texto do estagio atual da fase 2, derivado do email_status do polling —
-  // evita o loading "mudo" e a mensagem inicial congelada do `result`.
-  // Dentro de `rendering`, o html_pipeline_stage (último step CONCLUÍDO da
-  // cadeia de formatação) diz em qual dos 4 agentes de montagem estamos.
-  const phaseMessage = ((): string | null => {
-    switch (statusInfo?.email_status) {
-      case "pending":
-        return "Na fila…"
-      case "copy_generating":
-      case "copy_generating_recovery":
-        return "Gerando copy (n8n)…"
-      case "copy_ready":
-        return "Copy pronta — gerando imagens…"
-      case "image_done":
-        return "Imagens prontas — iniciando montagem HTML (Hero Section)…"
-      case "rendering": {
-        switch (statusInfo?.html_pipeline_stage) {
-          case "hero":
-            return "Hero pronta — Formatação de Texto…"
-          case "text":
-            return "Texto posicionado — Formatação de Imagem…"
-          case "image":
-            return "Imagens posicionadas — Cores & Botões…"
-          default:
-            return "Montagem HTML — Hero Section…"
-        }
-      }
-      case "qa_running":
-        return "HTML pronto — validando (QA)…"
-      default:
-        return null
-    }
-  })()
-
-  useEffect(() => {
-    if (isTerminalStatus && pollInterval > 0) {
-      setPollInterval(0)
-    }
-  }, [isTerminalStatus, pollInterval])
-
-  // Anti-trava: erro persistente no fetch de status (500/rede) ou polling
-  // sem batch derruba o polling — senão generationInFlight congelaria os
-  // botões pra sempre (o watchdog do servidor cuida da geração em si).
-  useEffect(() => {
-    if (pollInterval > 0 && (statusError || batchId == null)) {
-      setPollInterval(0)
-    }
-  }, [pollInterval, statusError, batchId])
-
-  // ── Cronômetro: tempo total decorrido + tempo ao vivo por agente ─────
-  // `startedAt` marca o clique; o tick de 1s alimenta o header e o tempo
-  // do run em execução (runs "running" ainda não têm duration_ms).
-  const [startedAt, setStartedAt] = useState<number | null>(null)
-  const [nowTick, setNowTick] = useState(() => Date.now())
-  const timerActive = startedAt != null && (generating || pollInterval > 0)
-  useEffect(() => {
-    if (!timerActive) return
-    const t = setInterval(() => setNowTick(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [timerActive])
-
-  const fmtElapsed = (ms: number): string => {
-    const s = Math.max(0, Math.floor(ms / 1000))
-    const m = Math.floor(s / 60)
-    return m > 0 ? `${m}m${String(s % 60).padStart(2, "0")}s` : `${s}s`
-  }
-
-  // Teto do polling: 25min sem chegar a estado terminal (mesma janela do
-  // watchdog PHASE2_TIMEOUT_MIN) → para de acompanhar e libera os botões.
-  // Cobre o batch irresolúvel ({status:"pending"} eterno) sem travar a UI.
-  useEffect(() => {
-    if (
-      pollInterval > 0 &&
-      startedAt != null &&
-      nowTick - startedAt > 25 * 60_000
-    ) {
-      setPollInterval(0)
-    }
-  }, [pollInterval, startedAt, nowTick])
-
-  // Detecta inatividade — se o pipeline esta numa fase in-flight (rendering,
-  // image_done, qa_running) e nao houve atualizacao ha >90s, mostra warning
-  // pro usuario explicando que o watchdog vai limpar em breve.
-  const [showStaleWarning, setShowStaleWarning] = useState(false)
-
-  useEffect(() => {
-    if (!statusInfo || pollInterval === 0) {
-      setShowStaleWarning(false)
-      return
-    }
-
-    const checkStale = () => {
-      const runs = (statusInfo.runs ?? []) as Array<{ created_at?: string }>
-      const lastRun = runs[runs.length - 1]
-      const lastTs = lastRun?.created_at ?? statusInfo.email_updated_at
-      if (!lastTs) {
-        setShowStaleWarning(false)
-        return
-      }
-      const ageMs = Date.now() - new Date(lastTs).getTime()
-      const isInFlight = ["rendering", "image_done", "qa_running"].includes(
-        statusInfo.email_status ?? "",
-      )
-      setShowStaleWarning(isInFlight && ageMs > 90 * 1000)
-    }
-
-    checkStale()
-    const interval = setInterval(checkStale, 15_000)
-    return () => clearInterval(interval)
-  }, [statusInfo, pollInterval])
-
-  const handleGenerate = async (phase2Only = false, fullPipeline = false) => {
-    if (!selectedStoreId || !selectedFlowId || !selectedEmailId || !selectedFlow || !selectedEmail) return
-
-    setGenerating(true)
-    setResult(null)
-    setBatchId(null)
-    setStartedAt(Date.now())
-    setNowTick(Date.now())
-    const PHASE2_STEPS: RunStep[] = [
-      { agent: "image", status: "pending" },
-      { agent: "hero_section", status: "pending" },
-      { agent: "text_format", status: "pending" },
-      { agent: "image_format", status: "pending" },
-      { agent: "color_format", status: "pending" },
-      { agent: "qa", status: "pending" },
-    ]
-    setSteps(
-      phase2Only
-        ? PHASE2_STEPS
-        : [
-            { agent: "assembler_chooser", status: "pending" },
-            { agent: "assembler", status: "pending" },
-            { agent: "blueprint", status: "pending" },
-            { agent: "seed", status: "pending" },
-            { agent: "copy", status: "pending" },
-            ...PHASE2_STEPS,
-          ],
-    )
-
-    try {
-      const res = await fetch(`/api/admin/stores/${selectedStoreId}/generate-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phase2_only: phase2Only,
-          full_pipeline: fullPipeline,
-          flowId: selectedFlowId,
-          emailId: selectedEmailId,
-          flowType: selectedFlow.flow_type,
-          emailNumber: selectedEmail.number,
-          ...(testContext.trim() ? { test_context: testContext.trim() } : {}),
-        }),
-      })
-
-      const text = await res.text()
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(text)
-      } catch {
-        throw new Error(
-          res.status === 504 || text.includes("timed out")
-            ? "__timeout__: a conexão com o servidor expirou (300s)."
-            : `Resposta inválida do servidor (HTTP ${res.status})`,
-        )
-      }
-      const responseData = (parsed?.data ?? parsed) as Record<string, unknown>
-
-      if (!res.ok) {
-        throw new Error(errText(responseData?.error) || `HTTP ${res.status}`)
-      }
-
-      const respStatus = responseData.status as string
-      const isError = respStatus === "error"
-      const isDispatched = respStatus === "dispatched"
-      const isRunning = respStatus === "running"
-      const isFullPipeline = responseData.fullPipeline === true
-      const errMsg =
-        responseData.error != null ? errText(responseData.error) : undefined
-      setResult({
-        status: isError
-          ? "error"
-          : isDispatched
-            ? "dispatched"
-            : isRunning
-              ? "running"
-              : "done",
-        error: isError
-          ? errMsg || "Falha na geração (sem detalhe retornado)"
-          : errMsg,
-        message: isFullPipeline
-          ? "Geração completa: fase 1 (Curador → Montador → Blueprint) concluída e copy nova disparada ao N8N só deste e-mail. Ao chegar a copy, a fase 2 (imagem → montagem HTML em 4 agentes → QA) roda sozinha — esta página atualiza automaticamente."
-          : isDispatched
-            ? "Sem copy detectada — disparado ao N8N (Montador → Blueprint → seed → N8N). O render (imagem → montagem HTML → QA) virá depois, após o callback da copy."
-            : isRunning
-              ? "Montador e Blueprint concluídos. Render (imagem → montagem HTML → QA) rodando em background — esta página atualiza sozinha."
-              : undefined,
-        batchId: responseData.batchId as string | undefined,
-        emailId: responseData.emailId as string | undefined,
-        relaxedBrand: responseData.relaxedBrand === true,
-      })
-      // Polling no caminho síncrono (with_copy), no "running" (phase2 em
-      // background) E no teste "Geração completa" (dispatched + fullPipeline:
-      // a copy vem async e a fase 2 dispara sozinha no copy_ready). Só pula no
-      // "dispatched" comum, cujo render vem sob outro batch.
-      if (responseData.batchId && (!isDispatched || isFullPipeline)) {
-        setBatchId(responseData.batchId as string)
-        setPollInterval(2000)
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido"
-      // Timeout do gateway ≠ geração morta: no teste completo a fase 1 é
-      // síncrona (~4-5min) e o TRABALHO CONTINUA no servidor depois do corte.
-      // Reclicar aqui abria um pipeline duplicado (incidente Luxe Lift
-      // 27/07). SÓ o marcador __timeout__ (504/corpo de gateway detectado no
-      // parse da resposta) conta — casar "timed out" no texto de um erro do
-      // SERVIDOR mascararia falha real (ex.: LLM timeout no Architect) como
-      // corte de conexão. O recovery só vale no fullPipeline: é o único
-      // caminho cujo claim grava o batch ANTES da fase 1 — nos demais, o
-      // batch do email ainda é o de uma geração antiga.
-      const isTimeout = msg.startsWith("__timeout__")
-      if (isTimeout && fullPipeline) {
-        const recovered = await recoverBatchIdAfterTimeout()
-        if (recovered) {
-          setBatchId(recovered)
-          setPollInterval(2000)
-          setResult({
-            status: "running",
-            message:
-              "A conexão expirou (300s), mas a geração CONTINUA no servidor. " +
-              "Acompanhando pelo batch persistido — não reclique.",
-            batchId: recovered,
-            emailId: selectedEmailId ?? undefined,
-          })
-          return
-        }
-      }
-      setResult({
-        status: "error",
-        error: isTimeout
-          ? "Timeout: a conexão expirou (300s), mas a geração pode seguir rodando no servidor. Verifique em /admin/settings/email-generation-logs antes de re-testar."
-          : msg,
-      })
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  /**
-   * Após timeout do gateway, o servidor já persistiu generation_batch_id no
-   * email (claim antes da fase 1) — busca pra retomar o polling sem reclique.
-   */
-  const recoverBatchIdAfterTimeout = async (): Promise<string | null> => {
-    if (!selectedStoreId || !selectedEmailId) return null
-    try {
-      // flow_id restringe a resposta (o endpoint devolve html+blocks por
-      // email — a loja inteira seriam MBs pra ler um único campo).
-      const qs = selectedFlowId ? `?flow_id=${selectedFlowId}` : ""
-      const res = await fetch(`/api/admin/stores/${selectedStoreId}/emails${qs}`)
-      if (!res.ok) return null
-      // successResponse espalha os dados na RAIZ ({success, emails, ...});
-      // o fallback .data cobre wrappers de proxy/versões antigas.
-      const json = (await res.json()) as Record<string, unknown>
-      const root = (json.data ?? json) as {
-        emails?: Array<{ id: string; generation_batch_id: string | null }>
-      }
-      const emails = root.emails ?? []
-      return (
-        emails.find((e) => e.id === selectedEmailId)?.generation_batch_id ?? null
-      )
-    } catch {
-      return null
-    }
-  }
-
-  const handlePreviewVars = async () => {
-    if (!selectedStoreId || !selectedEmailId) return
-    setPreviewingVars(true)
-    setPreviewError(null)
-    setPreviewVars(null)
-    try {
-      const res = await fetch(
-        `/api/admin/stores/${selectedStoreId}/preview-html-vars`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ emailId: selectedEmailId }),
-        },
-      )
-      const text = await res.text()
-      let parsed: Record<string, unknown>
-      try {
-        parsed = JSON.parse(text)
-      } catch {
-        throw new Error(`Resposta inválida (HTTP ${res.status})`)
-      }
-      const data = (parsed?.data ?? parsed) as Record<string, unknown>
-      if (!res.ok) {
-        throw new Error(errText(data?.error) || `HTTP ${res.status}`)
-      }
-      setPreviewVars(data.vars as Record<string, string>)
-    } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : "Erro desconhecido")
-    } finally {
-      setPreviewingVars(false)
-    }
-  }
-
-  const agentLabels: Record<string, string> = {
-    assembler_chooser: "Curador",
-    assembler: "Montador",
-    blueprint: "Blueprint (estrutura)",
-    subject: "Assunto",
-    seed: "Seed Blocos",
-    copy: "Copy (n8n)",
-    image: "Imagem (IA)",
-    hero_section: "Hero Section",
-    copy_merge: "Merge de Copy (código)",
-    text_format: "Formatação de Texto",
-    image_format: "Formatação de Imagem",
-    color_format: "Cores & Botões",
-    qa: "QA",
-    html: "HTML (legado)",
-    refiner: "Refinador (legado)",
-  }
+  const agentLabels = TEST_AGENT_LABELS
 
   const statusIcon = (s: string) => {
     switch (s) {
@@ -486,8 +85,6 @@ export function TestTab() {
       default: return <Clock className="h-4 w-4 text-slate-300 dark:text-white/20" />
     }
   }
-
-  const hasRun = Boolean(result || generating || statusInfo)
 
   return (
     <div>
@@ -527,14 +124,7 @@ export function TestTab() {
               ) : (
                 <EGSelect
                   value={selectedStoreId}
-                  onChange={(v) => {
-                    setSelectedStoreId(v)
-                    setSelectedFlowId("")
-                    setSelectedEmailId("")
-                    setResult(null)
-                    setBatchId(null)
-                    setPollInterval(0)
-                  }}
+                  onChange={t.selectStore}
                   placeholder="Selecione uma loja..."
                   options={stores.map((s) => ({
                     value: s.id,
@@ -577,13 +167,7 @@ export function TestTab() {
                   ) : (
                     <EGSelect
                       value={selectedFlowId}
-                      onChange={(v) => {
-                        setSelectedFlowId(v)
-                        setSelectedEmailId("")
-                        setResult(null)
-                        setBatchId(null)
-                        setPollInterval(0)
-                      }}
+                      onChange={t.selectFlow}
                       placeholder="Selecione..."
                       options={flows.map((f) => ({
                         value: f.id,
@@ -596,12 +180,7 @@ export function TestTab() {
                   <EGLabel>Email #</EGLabel>
                   <EGSelect
                     value={selectedEmailId}
-                    onChange={(v) => {
-                      setSelectedEmailId(v)
-                      setResult(null)
-                      setBatchId(null)
-                      setPollInterval(0)
-                    }}
+                    onChange={t.selectEmail}
                     placeholder="Selecione..."
                     disabled={!selectedFlow || selectedFlow.emails.length === 0}
                     options={(selectedFlow?.emails ?? []).map((e) => ({
@@ -785,19 +364,8 @@ export function TestTab() {
           {/* Agent steps — default mostra só runs do batch atual.
               Toggle revela histórico (runs de batches anteriores agrupados). */}
           {statusInfo?.runs && (() => {
-            const allRuns = (statusInfo.runs ?? []) as Array<{
-              agent: string
-              status: string
-              error_message?: string
-              duration_ms?: number
-              tokens_input?: number
-              tokens_output?: number
-              cost_cents?: number
-              batch_id?: string
-              created_at?: string
-            }>
-            const currentBatchId =
-              (statusInfo as { currentBatchId?: string }).currentBatchId ?? batchId
+            const allRuns = statusInfo.runs ?? []
+            const currentBatchId = statusInfo.currentBatchId ?? batchId
             const currentRuns = allRuns.filter(
               (r) => !currentBatchId || r.batch_id === currentBatchId,
             )
@@ -880,20 +448,7 @@ export function TestTab() {
             // Blueprint → seed → copy → imagem → cadeia de formatação → QA).
             // Agentes fora da base (subject, html/refiner legados) aparecem
             // dinamicamente quando têm run no batch — sem linha fantasma.
-            const BASE_AGENT_KEYS = [
-              "assembler_chooser",
-              "assembler",
-              "blueprint",
-              "seed",
-              "copy",
-              "image",
-              "hero_section",
-              "copy_merge",
-              "text_format",
-              "image_format",
-              "color_format",
-              "qa",
-            ]
+            const BASE_AGENT_KEYS: string[] = [...TEST_BASE_AGENT_KEYS]
             const keysFor = (runs: typeof allRuns): string[] => {
               const present = new Set(
                 runs.map((r) =>
@@ -1083,10 +638,7 @@ export function TestTab() {
             </div>
             <button
               type="button"
-              onClick={() => {
-                setPreviewVars(null)
-                setPreviewError(null)
-              }}
+              onClick={clearPreview}
               className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-white/60"
             >
               fechar
