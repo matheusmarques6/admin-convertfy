@@ -221,6 +221,20 @@ export function ComponentsWorkspace() {
   }
 
   async function save() {
+    // Campo sem chave técnica é barrado pelo servidor com "Dados inválidos"
+    // e nenhuma pista de QUAL campo — inútil numa lista de dez. Como o campo
+    // novo agora nasce com a chave vazia (era "novo_campo", que passava na
+    // validação e virava lixo no schema), o aviso preciso tem de vir daqui.
+    const semChave = draft.output_schema.filter((f) => !f.key?.trim()).length
+    if (semChave > 0) {
+      toast({
+        variant: "destructive",
+        title: `${semChave} campo(s) sem chave técnica`,
+        description:
+          "Preencha a chave (ex.: hero_headline) ou remova o campo — é ela que endereça o {{PLACEHOLDER}} no HTML.",
+      })
+      return
+    }
     setSaving(true)
     try {
       const payload = payloadFromDraft(draft)

@@ -70,6 +70,21 @@ describe("outputFieldSchema", () => {
     expect(() => outputFieldSchema.parse({ ...base, key: "123" })).toThrow()
   })
 
+  // O editor deixou de pedir o rótulo (ele viajava pro n8n dizendo "Novo
+  // campo"). Exigir >=1 aqui reprovava o save inteiro com "Dados inválidos".
+  it("aceita rótulo vazio e ausente — a key é quem identifica o campo", () => {
+    expect(outputFieldSchema.parse({ ...base, key: "x", label: "" }).label).toBe("")
+    expect(
+      outputFieldSchema.parse({ key: "y", type: "text_short" }).label,
+    ).toBe("")
+  })
+
+  it("continua exigindo a chave técnica", () => {
+    expect(() =>
+      outputFieldSchema.parse({ key: "", type: "text_short", label: "" }),
+    ).toThrow()
+  })
+
   it("aceita nature válida e rejeita inválida (épico Taguedor)", () => {
     const parsed = outputFieldSchema.parse({
       ...base,

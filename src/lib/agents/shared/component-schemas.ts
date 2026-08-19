@@ -21,7 +21,12 @@ export const outputFieldSchema = z.object({
       .min(1, "chave técnica vazia após normalização")
       .regex(/^[a-z][a-z0-9_]*$/, "chave técnica: minúsculas/underscore"),
   ),
-  label: z.string().min(1),
+  // Rótulo é OPCIONAL desde que o editor deixou de pedi-lo: os consumidores
+  // (payload de copy do n8n e Montador) caem na `key` quando ele vem vazio,
+  // e a key é sempre significativa. Exigir >=1 aqui reprovava o save inteiro
+  // com "Dados inválidos" e nenhuma pista de qual campo — a UI nem tinha
+  // mais onde preencher.
+  label: z.string().default(""),
   type: z.enum(FIELD_TYPES),
   // Natureza do valor final (épico Taguedor). Ausente → derivação por tipo
   // (image → imagem_gerada; resto → copy) via deriveFieldNature.
