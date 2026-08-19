@@ -634,6 +634,25 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
               <div style={{ marginTop: 2, fontSize: 11.5, color: C.g500, fontFamily: F.sans }}>
                 {exec.store_name} · {exec.email_name} · {exec.flow_type_label}
               </div>
+              {/* Falha de agente legado (html/refiner) não tem nó no grafo
+                  novo — sem esta linha o motivo do erro ficaria invisível. */}
+              {exec.bucket === "error" && exec.failure_reason && (
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 11.5,
+                    color: "#991B1B",
+                    fontFamily: F.sans,
+                    maxWidth: 520,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={exec.failure_reason}
+                >
+                  {exec.failure_reason}
+                </div>
+              )}
             </div>
             <div style={{ flex: 1 }} />
             {notice && (

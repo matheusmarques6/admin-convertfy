@@ -60,9 +60,14 @@ interface EmailRow {
   } | null
 }
 
-interface RunRow {
-  id: string
-  created_at: string
+/**
+ * Linha devolvida pela função agent_studio_latest_runs (migration
+ * 20261073): já é a run MAIS RECENTE por (email, agente), com QA Vision
+ * derivado no banco (bucket 'qavision') e component_test excluído.
+ */
+interface LatestRunRow {
+  run_id: string
+  email_id: string
   agent: string
   model: string | null
   status: string
@@ -72,14 +77,7 @@ interface RunRow {
   duration_ms: number | null
   retry_count: number | null
   error_message: string | null
-  email_id: string | null
-  is_qa_vision: boolean | null
-}
-
-/** Mesmo bucket derivado da rota de logs: QA com vision vira 'qavision'. */
-function agentBucket(row: RunRow): PipelineAgentKey {
-  if (row.agent === "qa" && row.is_qa_vision) return "qavision"
-  return row.agent as PipelineAgentKey
+  created_at: string
 }
 
 export async function GET(request: NextRequest) {
@@ -127,26 +125,20 @@ export async function GET(request: NextRequest) {
     if (emailErr) throw emailErr
     const emails = (emailData ?? []) as unknown as EmailRow[]
 
-    // Runs dos emails listados — mais recentes primeiro; a projeção pega a
-    // PRIMEIRA por (email, agente). Select de metadados apenas (a view
-    // esconde input_vars/raw_output — mesmo cuidado da rota de logs).
+    // Última run por (email, agente) resolvida NO BANCO (DISTINCT ON via
+    // agent_studio_latest_runs — migration 20261073). Antes o agrupamento
+    // era em JS sobre um teto global de linhas, e um email regenerado
+    // muitas vezes (caso real: 439 runs) podia perder a run mais antiga
+    // de um agente pro corte, mostrando o nó como "pulado" à toa.
     const emailIds = emails.map((e) => e.id)
-    const runsByEmail = new Map<string, RunRow[]>()
+    const runsByEmail = new Map<string, LatestRunRow[]>()
     if (emailIds.length > 0) {
-      const { data: runData, error: runErr } = await admin
-        .from("v_email_generation_logs")
-        .select(
-          "id, created_at, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, email_id, is_qa_vision",
-        )
-        .in("email_id", emailIds)
-        .neq("agent", "component_test")
-        .order("created_at", { ascending: false })
-        // 17 agentes × 100 emails com folga pra retries; runs antigas além
-        // disso pertencem a gerações passadas e não entram na projeção.
-        .limit(4000)
+      const { data: runData, error: runErr } = await admin.rpc(
+        "agent_studio_latest_runs",
+        { p_email_ids: emailIds },
+      )
       if (runErr) throw runErr
-      for (const r of (runData ?? []) as RunRow[]) {
-        if (!r.email_id) continue
+      for (const r of (runData ?? []) as LatestRunRow[]) {
         const list = runsByEmail.get(r.email_id) ?? []
         list.push(r)
         runsByEmail.set(r.email_id, list)
@@ -154,20 +146,13 @@ export async function GET(request: NextRequest) {
     }
 
     const executions = emails.map((e) => {
-      const all = runsByEmail.get(e.id) ?? []
-      // Última run por agente (a lista já vem em ordem desc).
-      const latest = new Map<PipelineAgentKey, RunRow>()
-      for (const r of all) {
-        const key = agentBucket(r)
-        if (!latest.has(key)) latest.set(key, r)
-      }
-      const runs = Array.from(latest.entries()).map(([agent, r]) => ({
-        run_id: r.id,
-        agent,
+      const runs = (runsByEmail.get(e.id) ?? []).map((r) => ({
+        run_id: r.run_id,
+        agent: r.agent as PipelineAgentKey,
         model: r.model,
         status: r.status,
         duration_ms: r.duration_ms,
-        cost_cents: r.cost_cents,
+        cost_cents: r.cost_cents != null ? Number(r.cost_cents) : null,
         tokens_input: r.tokens_input,
         tokens_output: r.tokens_output,
         retry_count: r.retry_count,
