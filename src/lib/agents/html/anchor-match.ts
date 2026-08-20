@@ -20,10 +20,12 @@
  *      declaração; sobrando ocorrência → todos ambíguos (nunca chutar).
  *   5. campo único com 2+ ocorrências livres → ambíguo.
  *
- * A frase precisa caber INTEIRA em UM nó de texto: frase que atravessa
- * markup (`Use <strong>code</strong>`) não tem range contíguo e cai em
- * sem_lugar:nao_encontrado — o desenho aceita perder esse caso a inventar
- * um splice que engole tags.
+ * A frase casa em UM nó de texto OU num RUN costurado de nós irmãos
+ * separados só por `<br>`/wrappers inline (ver STITCH_GAP_RE) — o caso
+ * `Product<br>Name 1` que derrubava 23 campos da biblioteca. Âncora
+ * costurada continua sendo um range CONTÍGUO do source (as tags do vão
+ * saem no splice) e é sinalizada com `costurado: true` na telemetria.
+ * Fronteira de bloco (`<td>`, `<div>`) e comentários nunca são cruzados.
  *
  * Puro (zero I/O) — client-safe.
  */
@@ -133,12 +135,19 @@ export function normalizeForMatch(s: string): string {
 // ── Índice de texto com projeção normalizada ──────────────────────────
 
 interface NodeProjection {
-  /** Texto normalizado do nó. */
+  /** Texto normalizado do nó (ou do RUN costurado de nós irmãos). */
   norm: string
   /** Para cada char de `norm`: início no source original. */
   starts: number[]
   /** Para cada char de `norm`: fim (exclusivo) no source original. */
   ends: number[]
+  /**
+   * Índices em `norm` dos espaços SINTÉTICOS de costura (projeção de run).
+   * Ocorrência cujo miolo atravessa um joint = âncora costurada — o range
+   * devolvido engole as tags do vão (`<br>`, wrappers inline) e o splice
+   * as remove junto. Ausente em projeção de nó único.
+   */
+  joints?: number[]
 }
 
 /**
@@ -203,39 +212,138 @@ function projectNode(text: string, base: number): NodeProjection {
   return { norm: norm.join(""), starts, ends }
 }
 
+// ── Costura de nós de texto (frase partida por markup) ─────────────────
+//
+// Caso real (Luxe Lift, produto 8): o HTML escreve `Product<br>Name 1` e o
+// example "Product Name 1" nunca cabia num nó só — 23 campos da biblioteca
+// caíam em sem_lugar por isso. Um RUN costura nós de texto consecutivos
+// cujo VÃO no source contém apenas whitespace e tags "atravessáveis":
+// quebras (`<br>`, `<wbr>`) e wrappers inline (span/strong/em/b/i/u/a/…).
+// Como os segmentos são adjacentes no source, a âncora do run é um range
+// CONTÍGUO (início do 1º char casado → fim do último) — o splice existente
+// funciona sem mudança e as tags do vão saem junto com a frase antiga
+// (a quebra visual volta a ser natural, por largura).
+//
+// O vão é julgado pelo SOURCE, não pela árvore: atravessar um `</td>`, um
+// `<div>` ou um comentário reprova o regex e o run quebra ali — nunca se
+// costura através de fronteira de bloco nem de conditional comment MSO.
+
+const STITCH_GAP_RE =
+  /^(?:\s|<\/?(?:br|wbr|span|strong|em|b|i|u|a|sup|sub|small|font)\b[^>]*>)*$/i
+
+/** Teto de segmentos por run — rodapés com muitos `<br>` não viram mega-run. */
+const MAX_RUN_SEGMENTS = 8
+
+function stitchRuns(
+  html: string,
+  nodes: Array<{ range: Range; text: string }>,
+  projections: NodeProjection[],
+): NodeProjection[] {
+  const runs: NodeProjection[] = []
+  let i = 0
+  while (i < nodes.length - 1) {
+    // Estende a cadeia enquanto o vão até o próximo nó for atravessável.
+    let end = i
+    while (
+      end < nodes.length - 1 &&
+      end - i + 1 < MAX_RUN_SEGMENTS &&
+      nodes[end + 1].range.start > nodes[end].range.end &&
+      STITCH_GAP_RE.test(
+        html.slice(nodes[end].range.end, nodes[end + 1].range.start),
+      )
+    ) {
+      end++
+    }
+    if (end > i) {
+      const norm: string[] = []
+      const starts: number[] = []
+      const ends: number[] = []
+      const joints: number[] = []
+      for (let s = i; s <= end; s++) {
+        if (s > i) {
+          // Espaço sintético mapeado no VÃO inteiro — se uma ocorrência
+          // começasse/terminasse nele o range engordaria, mas frase
+          // normalizada nunca começa nem termina em espaço (trim).
+          joints.push(norm.length)
+          norm.push(" ")
+          starts.push(nodes[s - 1].range.end)
+          ends.push(nodes[s].range.start)
+        }
+        const p = projections[s]
+        for (let c = 0; c < p.norm.length; c++) {
+          norm.push(p.norm[c])
+          starts.push(p.starts[c])
+          ends.push(p.ends[c])
+        }
+      }
+      runs.push({ norm: norm.join(""), starts, ends, joints })
+    }
+    i = end > i ? end : i + 1
+  }
+  return runs
+}
+
 /**
  * Constrói o índice do documento (ou de um recorte dele — `scope` limita aos
  * nós de texto inteiramente dentro do range, ex.: só a região da hero).
+ * Inclui as projeções por nó E os runs costurados (ver STITCH_GAP_RE);
+ * ocorrências duplicadas entre as duas formas são deduplicadas na busca.
  */
 export function buildTextIndex(html: string, scope?: Range): TextIndex {
   const nodes = textNodes(html).filter(
     (n) => !scope || (n.range.start >= scope.start && n.range.end <= scope.end),
   )
+  const projections = nodes.map((n) => projectNode(n.text, n.range.start))
   return {
-    projections: nodes.map((n) => projectNode(n.text, n.range.start)),
+    projections: [...projections, ...stitchRuns(html, nodes, projections)],
   }
+}
+
+export interface PhraseOccurrence extends Range {
+  /** true = a ocorrência atravessa um vão costurado (`<br>`/wrapper inline). */
+  costurado: boolean
 }
 
 /**
  * Todas as ocorrências do example (normalizado) no índice, como ranges do
- * SOURCE original, em ordem de documento. Ocorrência só vale dentro de um
- * único nó de texto.
+ * SOURCE original, em ordem de documento. Vale ocorrência em nó único E em
+ * run costurado; frase inteira dentro de um segmento aparece nas duas
+ * projeções com o MESMO range — dedup por (start,end), preferindo a forma
+ * não-costurada.
  */
-export function findPhraseOccurrences(index: TextIndex, example: string): Range[] {
+export function findPhraseOccurrencesDetailed(
+  index: TextIndex,
+  example: string,
+): PhraseOccurrence[] {
   const phrase = normalizeForMatch(example)
   if (!phrase) return []
-  const out: Range[] = []
+  const byRange = new Map<string, PhraseOccurrence>()
   for (const p of index.projections) {
     let from = 0
     while (true) {
       const at = p.norm.indexOf(phrase, from)
       if (at < 0) break
-      out.push({ start: p.starts[at], end: p.ends[at + phrase.length - 1] })
+      const occ: PhraseOccurrence = {
+        start: p.starts[at],
+        end: p.ends[at + phrase.length - 1],
+        costurado:
+          p.joints != null &&
+          p.joints.some((j) => j > at && j < at + phrase.length - 1),
+      }
+      const key = `${occ.start}-${occ.end}`
+      const prev = byRange.get(key)
+      if (!prev || (prev.costurado && !occ.costurado)) byRange.set(key, occ)
       from = at + 1
     }
   }
-  out.sort((a, b) => a.start - b.start)
-  return out
+  return Array.from(byRange.values()).sort((a, b) => a.start - b.start)
+}
+
+export function findPhraseOccurrences(index: TextIndex, example: string): Range[] {
+  return findPhraseOccurrencesDetailed(index, example).map(({ start, end }) => ({
+    start,
+    end,
+  }))
 }
 
 // ── Atribuição campo → range ───────────────────────────────────────────
@@ -265,6 +373,8 @@ export interface AnchorAssignment {
   motivo?: AnchorMotivo
   /** Trecho original que será substituído (trunc 120) — só quando ancorado. */
   de: string | null
+  /** true = âncora costurada através de `<br>`/wrapper inline (telemetria). */
+  costurado?: boolean
 }
 
 function isJsonArrayExample(example: string): boolean {
@@ -335,7 +445,10 @@ export function assignTextAnchors(
 
   for (const norm of ordered) {
     const memberIdxs = groups.get(norm)!
-    const occurrences = findPhraseOccurrences(index, fields[memberIdxs[0]].example)
+    const occurrences = findPhraseOccurrencesDetailed(
+      index,
+      fields[memberIdxs[0]].example,
+    )
     const free = occurrences.filter((o) => !claimed.some((c) => intersects(o, c)))
 
     const fail = (motivo: AnchorMotivo) => {
@@ -372,7 +485,8 @@ export function assignTextAnchors(
 
     // free.length === memberIdxs.length: ordem de ocorrência × declaração.
     memberIdxs.forEach((idx, i) => {
-      const range = free[i]
+      const occ = free[i]
+      const range = { start: occ.start, end: occ.end }
       claimed.push(range)
       results[idx] = {
         field: fields[idx],
@@ -380,6 +494,7 @@ export function assignTextAnchors(
         desfecho: "ancorado_exemplo",
         motivo: undefined,
         de: null, // preenchido abaixo com o slice do source
+        ...(occ.costurado ? { costurado: true } : {}),
       }
     })
   }

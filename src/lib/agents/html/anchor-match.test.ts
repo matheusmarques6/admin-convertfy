@@ -71,10 +71,15 @@ describe("findPhraseOccurrences", () => {
     )
   })
 
-  it("frase que atravessa markup NÃO casa — sem range contíguo, sem chute", () => {
+  it("frase através de wrapper inline agora CASA (costura) — range contíguo", () => {
+    // Comportamento novo (20/08): antes caía em sem_lugar; a costura de
+    // runs cobre wrappers inline com texto. Fronteira de BLOCO segue
+    // recusando — ver o describe "costura através de <br>".
     const html = "<td>Use <strong>code</strong> NOW</td>"
     const index = buildTextIndex(html)
-    expect(findPhraseOccurrences(index, "Use code NOW")).toHaveLength(0)
+    const occ = findPhraseOccurrences(index, "Use code NOW")
+    expect(occ).toHaveLength(1)
+    expect(html.slice(occ[0].start, occ[0].end)).toBe("Use <strong>code</strong> NOW")
   })
 
   it("conteúdo de <style> fica fora (não é texto que o cliente lê)", () => {
@@ -239,5 +244,99 @@ describe("withOriginalSlices", () => {
       assignTextAnchors(index, [field("headline", "Summer Sale")]),
     )
     expect(out[0].de).toBeNull()
+  })
+})
+
+// ── Costura de nós de texto (STITCH_GAP_RE) — caso Luxe Lift produto 8 ──
+
+import { findPhraseOccurrencesDetailed } from "./anchor-match"
+
+describe("costura através de <br> e wrappers inline", () => {
+  it("caso real: Product<br>Name 1 ancora com example 'Product Name 1'", () => {
+    const html = "<td><div>\n  Product<br>Name 1\n</div></td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("product_1_name", "Product Name 1")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].costurado).toBe(true)
+    // Range contíguo: engole o <br> — o splice remove a quebra junto.
+    const slice = html.slice(out[0].range!.start, out[0].range!.end)
+    expect(slice).toBe("Product<br>Name 1")
+  })
+
+  it("variações de <br/> e indentação entre segmentos", () => {
+    const html = "<td>Section\n  <br />\n  Title 1<br></td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("section_title", "Section Title 1")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].costurado).toBe(true)
+  })
+
+  it("atravessa wrapper inline COM texto (Use code <span>'X'</span>)", () => {
+    const html =
+      "<td>Use code <span style=\"font-weight:700\">&lsquo;WELCOMEHERO&rsquo;</span> for $10 off</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [
+      field("banner_benefit", "Use code 'WELCOMEHERO' for $10 off"),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].costurado).toBe(true)
+  })
+
+  it("NÃO costura através de fronteira de bloco (<td>)", () => {
+    const html = "<table><tr><td>Product</td><td>Name 1</td></tr></table>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("k", "Product Name 1")])
+    expect(out[0].desfecho).toBe("sem_lugar")
+    expect(out[0].motivo).toBe("nao_encontrado")
+  })
+
+  it("NÃO costura através de comentário (espelho MSO fica de fora)", () => {
+    const html = "<td>Product<!--[if mso]>MSO<![endif]-->Name 1</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("k", "Product Name 1")])
+    expect(out[0].desfecho).toBe("sem_lugar")
+  })
+
+  it("frase inteira num segmento só não vira duplicata (dedup por range)", () => {
+    const html = "<td>Product Name 1<br>and more</td>"
+    const index = buildTextIndex(html)
+    const occ = findPhraseOccurrencesDetailed(index, "Product Name 1")
+    expect(occ).toHaveLength(1)
+    expect(occ[0].costurado).toBe(false)
+    const out = assignTextAnchors(index, [field("k", "Product Name 1")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].costurado).toBeUndefined()
+  })
+
+  it("ambiguidade continua valendo com runs: 2 ocorrências costuradas p/ 1 campo", () => {
+    const html =
+      "<td>Product<br>Name 1</td><td>Product<br>Name 1</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("k", "Product Name 1")])
+    expect(out[0].desfecho).toBe("ambiguo")
+    expect(out[0].motivo).toBe("ocorrencias_excedem_campos")
+  })
+
+  it("irmãos idênticos com runs: ordem de ocorrência × declaração", () => {
+    const html = "<td>Product<br>Name</td><td>Product<br>Name</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [
+      field("product_1_name", "Product Name"),
+      field("product_2_name", "Product Name"),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[1].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].range!.start).toBeLessThan(out[1].range!.start)
+  })
+
+  it("withOriginalSlices devolve o trecho com as tags do vão", () => {
+    const html = "<td>THREE<br>INGREDIENTS.<br>ZERO FILLERS.</td>"
+    const index = buildTextIndex(html)
+    const out = withOriginalSlices(
+      html,
+      assignTextAnchors(index, [field("headline", "THREE INGREDIENTS. ZERO FILLERS.")]),
+    )
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].de).toBe("THREE<br>INGREDIENTS.<br>ZERO FILLERS.")
   })
 })

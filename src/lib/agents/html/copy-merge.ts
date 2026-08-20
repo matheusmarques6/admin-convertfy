@@ -79,6 +79,8 @@ export interface CampoMergeLog {
   de: string | null
   /** Valor aplicado (trunc 120) — null quando nada foi escrito. */
   para: string | null
+  /** true = âncora costurada através de `<br>`/wrapper inline. */
+  costurado?: boolean
 }
 
 export interface CopyMergeReport {
@@ -294,6 +296,7 @@ export function copyMergeByExample(
       key: e.field.key,
       desfecho: a.desfecho,
       ...(a.motivo ? { motivo: a.motivo } : {}),
+      ...(a.costurado ? { costurado: true } : {}),
       de: a.de,
       para: null,
     }
