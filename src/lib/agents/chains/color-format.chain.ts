@@ -6,9 +6,15 @@
  *
  * Arquitetura por views (F4): o agente NÃO recebe o documento — recebe o
  * INVENTÁRIO de cores extraído por código ({valor, ocorrencias, contextos})
- * e emite ops `recolor {from, to}`, aplicadas globalmente por código
- * (todas as formas textuais da cor; allowHero=true — o botão da hero
- * também entra na paleta). Atômico: impossível quebrar estrutura.
+ * e emite ops `recolor {from, to, where?}`, aplicadas por código (todas as
+ * formas textuais da cor; allowHero=true — o botão da hero também entra na
+ * paleta). Atômico: impossível quebrar estrutura.
+ *
+ * ESCOPO (20/08): `where` restringe a troca ao papel da ocorrência. Antes
+ * só existia troca global, e cor com vários papéis não tinha resposta
+ * correta — o agente pulava justamente as dominantes (na Luxe Lift,
+ * #000000/#FFFFFF/#130E31 somavam 114 das 132 ocorrências e sobreviveram
+ * intactas). Agora conflito de papel deixou de ser motivo de skip.
  *
  * Fail-open no runner: falhou 2x → mantém o HTML anterior e segue pra
  * ready (cores são polimento; o email já está completo).
@@ -38,9 +44,11 @@ You are the COLOR & BUTTON finisher of an email-design pipeline — the last vis
 
 <ops_vocabulary>
 Respond with ONLY this JSON (no fences, no commentary):
-{"ops":[{"action":"recolor","from":"#6B46C1","to":"#1F1F1F"}]}
-- "recolor" swaps EVERY occurrence of the color "from" (all textual forms: #hex, short #hex, rgb/rgba) for the color "to". It is GLOBAL — if the inventory shows the color in conflicting contexts (e.g. both a button background and body text), DO NOT emit the op.
+{"ops":[{"action":"recolor","from":"#6B46C1","to":"#1F1F1F"},{"action":"recolor","from":"#000000","to":"#3D2820","where":"background"}]}
+- "recolor" swaps occurrences of the color "from" (all textual forms: #hex, short #hex, rgb/rgba) for the color "to".
+- "where" (OPTIONAL) restricts the swap to occurrences playing THAT role. Valid values, and the exact same ones the inventory reports: "background", "color", "border", "bgcolor", "css-var", "outro". Omit "where" to swap every occurrence.
 - "from" must be a "valor" from <color_inventory>; "to" must be a palette color (or a functional derivative: pure white/black for contrast).
+- <color_inventory> gives you, per color, how many occurrences sit in each role. Use those counts: a color that is 30x body text and 12x section background is TWO decisions, not one skip.
 - Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
 </ops_vocabulary>
 
@@ -67,14 +75,17 @@ Rules:
   borders, scrims and shadows.
 - NEVER introduce a color outside <color_roles>. Empty roles and empty
   <brand_identity_colors> → emit no ops at all.
-- The conflict rule still wins: a value used as BOTH a button background and body
-  text cannot be recolored globally — skip it and say nothing.
+- Conflicting roles are NO LONGER a reason to skip: scope the op with "where". A value
+  used as both button background and body text becomes two scoped ops (or one, when
+  only one of the roles is wrong). Skipping a dominant color because it appears in
+  several contexts is the single most common way this step fails.
 
-Where the doubt goes (this changed): being unsure whether a generic color CARRIES a
-brand role is not a reason to skip — a black button on a brand with its own primary is
-a target, not a neutral. Stay fail-open only about CONTRAST and CONFLICT: when you
-cannot tell what sits on top of a background, or the same value serves two roles, skip
-it. A small divergence beats an unreadable email.
+Where the doubt goes: being unsure whether a generic color CARRIES a brand role is not
+a reason to skip — a black button on a brand with its own primary is a target, not a
+neutral. Multiple roles are not a reason either: that is what "where" is for. Stay
+fail-open about ONE thing only — CONTRAST: when you cannot tell what sits on top of a
+background you would darken (or lighten), skip that pair. A small divergence beats an
+unreadable email. Never send a background and the text on it to the same color.
 </identity_conformance>
 
 <button_rules>
@@ -126,8 +137,9 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 
 Apply the identity to the inventory and emit the ops JSON now. Every color carrying a
 brand role (page background, section backgrounds, button backgrounds, headings) should
-end on a <color_roles> value. Emit {"ops":[]} only when the document already uses the
-palette in those roles.`
+end on a <color_roles> value — including the most frequent colors in the document,
+scoped with "where" when they serve more than one role. Emit {"ops":[]} only when the
+document already uses the palette in those roles.`
 
 export interface InvokeColorFormatResult {
   ops: FormatOp[]

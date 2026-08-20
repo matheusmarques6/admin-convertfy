@@ -124,3 +124,89 @@ describe("applyOps — recolor", () => {
     expect(r.skipped[0].reason).toBe("find_not_found")
   })
 })
+
+// ── recolor com escopo + guard de contraste (20/08) ────────────────────
+
+describe("parseOps — where", () => {
+  it("aceita where do vocabulário fechado", () => {
+    const ops = parseOps(
+      '{"ops":[{"action":"recolor","from":"#000000","to":"#3D2820","where":"background"}]}',
+    )
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ action: "recolor", where: "background" })
+  })
+
+  it("op sem where continua válida (global)", () => {
+    const ops = parseOps('{"ops":[{"action":"recolor","from":"#000","to":"#FFF"}]}')
+    expect(ops[0]).not.toHaveProperty("where")
+  })
+
+  it("where fora do vocabulário lança OpsParseError", () => {
+    expect(() =>
+      parseOps(
+        '{"ops":[{"action":"recolor","from":"#000","to":"#FFF","where":"botao"}]}',
+      ),
+    ).toThrow(OpsParseError)
+  })
+})
+
+describe("applyOps — escopo e contraste", () => {
+  const DOC = [
+    '<td style="background:#000000;"><a style="color:#FFFFFF;">CTA</a></td>',
+    '<p style="color:#000000;">corpo</p>',
+  ].join("\n")
+
+  it("aplica ops escopadas e conta OCORRÊNCIAS, não só ops", () => {
+    const res = applyOps(
+      DOC,
+      [
+        { action: "recolor", from: "#000000", to: "#3D2820", where: "background" },
+        { action: "recolor", from: "#000000", to: "#1F1F1F", where: "color" },
+      ],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(2)
+    expect(res.recoloredOccurrences).toBe(2)
+    expect(res.html).toContain("background:#3D2820")
+    expect(res.html).toContain("color:#1F1F1F")
+  })
+
+  it("guard: fundo e texto da mesma origem pro mesmo destino → contrast_risk", () => {
+    const res = applyOps(
+      DOC,
+      [
+        { action: "recolor", from: "#000000", to: "#3D2820", where: "background" },
+        { action: "recolor", from: "#000000", to: "#3D2820", where: "color" },
+      ],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(1)
+    expect(res.skipped).toHaveLength(1)
+    expect(res.skipped[0].reason).toBe("contrast_risk")
+    // O texto sobreviveu: nada de seção monocromática ilegível.
+    expect(res.html).toContain('style="color:#000000;">corpo')
+  })
+
+  it("destinos diferentes para fundo e texto passam", () => {
+    const res = applyOps(
+      DOC,
+      [
+        { action: "recolor", from: "#000000", to: "#3D2820", where: "background" },
+        { action: "recolor", from: "#000000", to: "#1F1F1F", where: "color" },
+      ],
+      { allowHero: true },
+    )
+    expect(res.skipped).toHaveLength(0)
+  })
+
+  it("op escopada sem alvo vira find_not_found", () => {
+    const res = applyOps(
+      DOC,
+      [{ action: "recolor", from: "#000000", to: "#3D2820", where: "css-var" }],
+      { allowHero: true },
+    )
+    expect(res.applied).toBe(0)
+    expect(res.skipped[0].reason).toBe("find_not_found")
+    expect(res.recoloredOccurrences).toBe(0)
+  })
+})

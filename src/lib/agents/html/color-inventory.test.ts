@@ -41,12 +41,17 @@ describe("extractColorInventory", () => {
     const inv = extractColorInventory(DOC)
     const roxo = inv.find((e) => e.valor === "#6B46C1")!
     expect(roxo.ocorrencias).toBe(3) // bgcolor + background-color + background
-    expect(roxo.contextos).toContain("bgcolor")
-    expect(roxo.contextos).toContain("background")
+    // `contextos` virou mapa contexto→contagem (20/08): a soma das
+    // contagens fecha com o total de ocorrências, por construção.
+    expect(roxo.contextos.bgcolor).toBeGreaterThan(0)
+    expect(roxo.contextos.background).toBeGreaterThan(0)
+    expect(
+      Object.values(roxo.contextos).reduce((a, b) => a + b, 0),
+    ).toBe(roxo.ocorrencias)
 
     const branco = inv.find((e) => e.valor === "#FFFFFF")!
     expect(branco.ocorrencias).toBe(2) // #fff + rgb(255,255,255)
-    expect(branco.contextos).toContain("color")
+    expect(branco.contextos.color).toBeGreaterThan(0)
 
     // <style> entra (dark mode) e rgba entra
     expect(inv.some((e) => e.valor === "#111111")).toBe(true)
@@ -129,5 +134,120 @@ describe("recolor NÃO come entidade HTML (incidente Luxe Lift, 10/08)", () => {
   it("hex completo colado num & também é preservado", () => {
     const r = applyRecolor("&#884477;", "#884477", "#000000")
     expect(r.replaced).toBe(0)
+  })
+})
+
+// ── Escopo por contexto (20/08) ────────────────────────────────────────
+
+import { colorOccurrenceCount, contextOf, isColorContext } from "./color-inventory"
+
+describe("recolor com escopo (where)", () => {
+  // Caso Luxe Lift: preto é fundo de botão E texto de corpo. Antes do
+  // escopo, a única resposta correta era não mexer — e o email inteiro
+  // ficava fora da marca.
+  const DOC_MISTO = [
+    '<td style="background:#000000;">',
+    '<a style="color:#FFFFFF;">CTA</a></td>',
+    '<p style="color:#000000;">corpo preto</p>',
+    '<td bgcolor="#000000">outro fundo</td>',
+  ].join("\n")
+
+  it("where:background troca só os fundos e preserva o texto", () => {
+    const r = applyRecolor(DOC_MISTO, "#000000", "#3D2820", "background")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain('background:#3D2820;')
+    expect(r.html).toContain('style="color:#000000;">corpo preto')
+    // bgcolor é OUTRO contexto — não entra em where:background.
+    expect(r.html).toContain('bgcolor="#000000"')
+  })
+
+  it("where:color troca só o texto", () => {
+    const r = applyRecolor(DOC_MISTO, "#000000", "#1F1F1F", "color")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain('style="color:#1F1F1F;">corpo preto')
+    expect(r.html).toContain("background:#000000;")
+  })
+
+  it("sem where continua global (retrocompatibilidade)", () => {
+    const r = applyRecolor(DOC_MISTO, "#000000", "#3D2820")
+    expect(r.replaced).toBe(3) // background + color + bgcolor
+    expect(r.html).not.toContain("#000000")
+  })
+
+  it("where sem ocorrência naquele papel devolve replaced 0", () => {
+    const r = applyRecolor(DOC_MISTO, "#000000", "#3D2820", "css-var")
+    expect(r.replaced).toBe(0)
+    expect(r.html).toBe(DOC_MISTO)
+  })
+
+  it("offsets não driftam quando `to` é mais longo que `from`", () => {
+    // rgb(...) → #hex encurta; #hex → rgba() alonga. Se o contexto fosse
+    // julgado no doc já parcialmente alterado, o 2º match cairia na
+    // posição errada e o escopo trocaria o alvo errado.
+    const doc = [
+      '<td style="background:rgb(0,0,0);">a</td>',
+      '<td style="color:rgb(0,0,0);">b</td>',
+      '<td style="background:rgb(0,0,0);">c</td>',
+    ].join("\n")
+    const r = applyRecolor(doc, "#000000", "#FAF5F3", "background")
+    expect(r.replaced).toBe(2)
+    expect(r.html).toContain('background:#FAF5F3;">a')
+    expect(r.html).toContain('color:rgb(0,0,0);">b') // texto intacto
+    expect(r.html).toContain('background:#FAF5F3;">c')
+  })
+
+  it("alpha do rgba é preservado sob escopo", () => {
+    const doc = '<td style="background:rgba(0, 0, 0, 0.5);">x</td>'
+    const r = applyRecolor(doc, "#000000", "#3D2820", "background")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain("rgba(61, 40, 32, 0.5)")
+  })
+
+  it("regressão: entidade &#847; do preheader segue imune com escopo", () => {
+    const doc = '<span style="color:#884477;">&#847;&#847;</span>'
+    const r = applyRecolor(doc, "#884477", "#3D2820", "color")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain("&#847;&#847;")
+    expect(r.html).toContain("color:#3D2820")
+  })
+
+  it("forma curta #abc entra no escopo", () => {
+    const doc = '<td style="background:#fff;">x</td><p style="color:#fff;">y</p>'
+    const r = applyRecolor(doc, "#FFFFFF", "#FAF5F3", "background")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain("background:#FAF5F3")
+    expect(r.html).toContain("color:#fff")
+  })
+})
+
+describe("inventário por contexto", () => {
+  it("conta ocorrências por papel — a informação que permite escopar", () => {
+    const doc = [
+      '<td style="background:#000000;">a</td>',
+      '<p style="color:#000000;">b</p>',
+      '<p style="color:#000000;">c</p>',
+    ].join("\n")
+    const inv = extractColorInventory(doc)
+    const preto = inv.find((e) => e.valor === "#000000")!
+    expect(preto.ocorrencias).toBe(3)
+    expect(preto.contextos.color).toBe(2)
+    expect(preto.contextos.background).toBe(1)
+    // Papel mais usado primeiro.
+    expect(Object.keys(preto.contextos)[0]).toBe("color")
+  })
+
+  it("contextOf é a mesma régua do inventário e do aplicador", () => {
+    const doc = '<td bgcolor="#000000">x</td>'
+    expect(contextOf(doc, doc.indexOf("#000000"))).toBe("bgcolor")
+    expect(isColorContext("bgcolor")).toBe(true)
+    expect(isColorContext("qualquer")).toBe(false)
+  })
+
+  it("colorOccurrenceCount fecha com a soma do inventário", () => {
+    const doc = '<td style="background:#000;color:#FFF;">x</td>'
+    const inv = extractColorInventory(doc)
+    expect(colorOccurrenceCount(doc)).toBe(
+      inv.reduce((s, e) => s + e.ocorrencias, 0),
+    )
   })
 })

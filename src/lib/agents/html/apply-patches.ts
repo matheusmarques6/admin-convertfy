@@ -6,10 +6,14 @@
  *   {action:"replace", find, replace}  → find/replace com `find` ÚNICO no
  *                                        documento (crop params, ajustes
  *                                        pontuais de estilo).
- *   {action:"recolor", from, to}       → troca GLOBAL por VALOR de cor —
- *                                        todas as formas equivalentes
- *                                        (#AABBCC, #abc, rgb/rgba) viram
- *                                        `to`. Atômico: não muda estrutura.
+ *   {action:"recolor", from, to,      → troca por VALOR de cor — todas as
+ *              where?}                   formas equivalentes (#AABBCC,
+ *                                        #abc, rgb/rgba) viram `to`.
+ *                                        `where` (opcional) restringe ao
+ *                                        papel da ocorrência (background,
+ *                                        color, border…); sem ele a troca
+ *                                        é global. Atômico: não muda
+ *                                        estrutura.
  *
  * Regras de segurança (nunca corrompem o documento):
  *   - op replace cujo alcance intersecta a região sentinelada da hero é
@@ -22,12 +26,24 @@
  */
 
 import { extractHeroBySentinels } from "./hero-locator"
-import { applyRecolor, isColorLiteral } from "./color-inventory"
+import {
+  applyRecolor,
+  isColorContext,
+  isColorLiteral,
+  type ColorContext,
+} from "./color-inventory"
 import { applySplices, type Splice } from "./dom-locator"
 
 export type FormatOp =
   | { action: "replace"; find: string; replace: string; block_id?: string }
-  | { action: "recolor"; from: string; to: string; block_id?: string }
+  | {
+      action: "recolor"
+      from: string
+      to: string
+      /** Restringe ao papel da ocorrência; ausente = global. */
+      where?: ColorContext
+      block_id?: string
+    }
 // block_id (opcional): amarra a op ao email_blocks.id de origem — a MESMA
 // chave do callback do n8n. Não muda a aplicação; existe pra telemetria.
 
@@ -49,12 +65,23 @@ export interface SkippedOp {
     // Duas ops disputam a mesma região do documento: a da direita vence; a
     // outra é rejeitada em vez de corromper o documento.
     | "overlapping_edit"
+    // Escopo resolve papel, não legibilidade: mandar o FUNDO e o TEXTO da
+    // mesma cor para o mesmo destino produz texto invisível. A segunda op
+    // do par é recusada.
+    | "contrast_risk"
 }
 
 export interface ApplyOpsResult {
   html: string
   applied: number
   skipped: SkippedOp[]
+  /**
+   * Ocorrências de cor efetivamente trocadas. `applied` conta OPS — uma op
+   * que trocou 1 ocorrência valia o mesmo que uma que trocaria 30, e foi
+   * por isso que a Luxe Lift saiu com 11 ops "aplicadas" e o email inteiro
+   * fora da marca. Este número é o que diz quanto do email virou marca.
+   */
+  recoloredOccurrences: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -92,7 +119,14 @@ export function parseOps(raw: string): FormatOp[] {
       ) {
         throw new OpsParseError("op recolor com from/to não-cor", raw)
       }
-      out.push({ action: "recolor", from: o.from, to: o.to, ...bid })
+      let where: { where?: ColorContext } = {}
+      if (o.where != null) {
+        if (!isColorContext(o.where)) {
+          throw new OpsParseError(`op recolor com where inválido: ${String(o.where)}`, raw)
+        }
+        where = { where: o.where }
+      }
+      out.push({ action: "recolor", from: o.from, to: o.to, ...where, ...bid })
     } else if (o.action === "replace") {
       if (
         typeof o.find !== "string" ||
@@ -125,7 +159,12 @@ export function applyOps(
   let applied = 0
   const skipped: SkippedOp[] = []
   const splices: Array<Splice & { op: FormatOp }> = []
-  const recolors: Array<{ op: FormatOp; from: string; to: string }> = []
+  const recolors: Array<{
+    op: FormatOp
+    from: string
+    to: string
+    where?: ColorContext
+  }> = []
 
   const hero = extractHeroBySentinels(doc)
   const intersectsHero = (start: number, end: number): boolean => {
@@ -137,7 +176,12 @@ export function applyOps(
     if (op.action === "recolor") {
       // Global e atômico por natureza; a hero entra de propósito (recolor
       // nunca muda estrutura, e o botão da hero pertence à paleta).
-      recolors.push({ op, from: op.from, to: op.to })
+      recolors.push({
+        op,
+        from: op.from,
+        to: op.to,
+        ...(op.where ? { where: op.where } : {}),
+      })
       continue
     }
     const idx = doc.indexOf(op.find)
@@ -174,16 +218,41 @@ export function applyOps(
   }
 
   // Recolors por último: troca por VALOR, não compete por posição.
+  //
+  // Guard de contraste: escopo separa papéis, mas não garante que dê pra
+  // ler. O caso catastrófico é o FUNDO e o TEXTO da mesma cor de origem
+  // caírem no mesmo destino — aí a seção inteira fica de uma cor só e a
+  // copy some. Recusa a segunda op do par (a primeira já vale) em vez de
+  // entregar um email invisível.
+  const destinoPorOrigem = new Map<string, string>()
+  const isPar = (a: ColorContext | undefined, b: string): boolean =>
+    (a === "background" && b === "color") || (a === "color" && b === "background")
+
   let out = res.html
+  let recoloredOccurrences = 0
   for (const r of recolors) {
-    const rc = applyRecolor(out, r.from, r.to)
+    const chaveOrigem = r.from.toUpperCase()
+    const conflito = Array.from(destinoPorOrigem.entries()).find(
+      ([k, v]) =>
+        k.startsWith(chaveOrigem) &&
+        v === r.to.toUpperCase() &&
+        isPar(r.where, k.slice(chaveOrigem.length + 1)),
+    )
+    if (conflito) {
+      skipped.push({ op: r.op, reason: "contrast_risk" })
+      continue
+    }
+
+    const rc = applyRecolor(out, r.from, r.to, r.where)
     if (rc.replaced === 0) {
       skipped.push({ op: r.op, reason: "find_not_found" })
       continue
     }
     out = rc.html
+    recoloredOccurrences += rc.replaced
+    destinoPorOrigem.set(`${chaveOrigem}:${r.where ?? "global"}`, r.to.toUpperCase())
     applied++
   }
 
-  return { html: out, applied, skipped }
+  return { html: out, applied, skipped, recoloredOccurrences }
 }

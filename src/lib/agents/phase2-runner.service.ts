@@ -120,6 +120,7 @@ import {
 } from "./html/hero-graft"
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { applyOps } from "./html/apply-patches"
+import { colorOccurrenceCount } from "./html/color-inventory"
 import {
   stripUnresolvedPlaceholders,
   stripUnresolvedAttrTokens,
@@ -2503,10 +2504,31 @@ async function runFormattingChain(p: {
           rawOutput: r.rawOutput,
           parsed: {
             ops_applied: applied.applied,
+            // OPS não medem conformidade: 11 ops que trocam 1 ocorrência
+            // cada contavam igual a 11 que trocariam 30, e foi assim que a
+            // Luxe Lift saiu com "11 aplicadas" e o email fora da marca.
+            // `brand_share` é a fração do inventário que a marca cobre —
+            // a métrica que denuncia a regressão sem abrir o HTML.
+            recolor_summary: {
+              occurrences_recolored: applied.recoloredOccurrences,
+              occurrences_total: colorOccurrenceCount(inputHtml),
+              brand_share: (() => {
+                const total = colorOccurrenceCount(inputHtml)
+                return total > 0
+                  ? Number((applied.recoloredOccurrences / total).toFixed(3))
+                  : 0
+              })(),
+              scoped_ops: r.ops.filter(
+                (o) => o.action === "recolor" && o.where != null,
+              ).length,
+            },
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
               target:
                 s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.from,
+              ...(s.op.action === "recolor" && s.op.where
+                ? { where: s.op.where }
+                : {}),
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
