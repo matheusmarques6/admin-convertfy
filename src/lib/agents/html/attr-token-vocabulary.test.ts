@@ -138,7 +138,12 @@ describe("classificação estrutural × alt", () => {
   it("URL_DO_LOGO_AQUI e NOME_DA_MARCA são da plataforma", () => {
     expect(isStructuralToken("URL_DO_LOGO_AQUI")).toBe(true)
     expect(isStructuralToken("NOME_DA_MARCA")).toBe(true)
+    expect(isStructuralToken("URL_UNSUBSCRIBE")).toBe(true)
+    expect(isStructuralToken("URL_PREFERENCIAS")).toBe(true)
     expect(isStructuralToken("URL_PRODUTO_1")).toBe(false)
+    // Destino de campanha não é estrutural — a plataforma não sabe pra onde
+    // o CTA aponta.
+    expect(isStructuralToken("URL_DO_CTA_AQUI")).toBe(false)
   })
 
   it("ALT_* é texto alternativo (nesta rodada: só limpo, não preenchido)", () => {

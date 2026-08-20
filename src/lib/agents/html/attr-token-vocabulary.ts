@@ -23,13 +23,34 @@
 export const TOKEN_SHAPE = /^[A-Z][A-Z0-9_]{2,}$/
 
 /**
- * Tokens ESTRUTURAIS: preenchidos pela plataforma (dados da loja), não pela
- * copy do bloco nem pelo agente de imagem. Inventário real:
+ * Tokens ESTRUTURAIS: preenchidos pela plataforma (dados da loja ou merge
+ * tag do provedor), não pela copy do bloco nem pelo agente de imagem.
+ * Inventário real:
  *   - URL_DO_LOGO_AQUI  → logo da loja (src)
  *   - NOME_DA_MARCA     → nome da loja (alt do logo E texto corrido)
+ *   - URL_UNSUBSCRIBE   → merge tag de descadastro do ESP (href)
+ *   - URL_PREFERENCIAS  → merge tag da central de preferências (href)
  * Lista explícita de propósito — estrutural é decisão, não forma.
+ *
+ * Os dois de href entraram em 20/08 junto com o cadastro do output_schema
+ * dos rodapés (migration 20261075). Sem eles o rodapé montava e o check de
+ * compliance passava — a palavra "Unsubscribe" estava lá —, mas o link não
+ * clicava: `stripUnresolvedAttrTokens` esvaziava o href e
+ * `neutralizeDeadLinks` o removia. Link de descadastro sem destino é pior
+ * que rodapé ausente, porque a ausência pelo menos dispara o aviso.
+ *
+ * NÃO cobre os demais tokens de href da biblioteca — CTA
+ * (`URL_DO_CTA_AQUI` e família, 60+ ocorrências), site e redes sociais.
+ * Aqueles dependem de destino de campanha e de dados da loja que não
+ * chegam neste ponto; seguem virando `<a>` sem href, reportados pelo
+ * render-checks como "link sem destino".
  */
-export const STRUCTURAL_TOKENS = new Set(["URL_DO_LOGO_AQUI", "NOME_DA_MARCA"])
+export const STRUCTURAL_TOKENS = new Set([
+  "URL_DO_LOGO_AQUI",
+  "NOME_DA_MARCA",
+  "URL_UNSUBSCRIBE",
+  "URL_PREFERENCIAS",
+])
 
 /** Arte fixa da biblioteca — nunca é slot, nunca é tocada. */
 export const FIXED_ART_SRC = /^data:image\//i

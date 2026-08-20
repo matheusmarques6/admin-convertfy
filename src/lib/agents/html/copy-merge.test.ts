@@ -276,6 +276,42 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.html).toContain("<td>Loja Y</td>")
   })
 
+  it("href do rodapé: URL_UNSUBSCRIBE/URL_PREFERENCIAS viram merge tag do ESP", () => {
+    const html = [
+      "<table><tr><td>",
+      'No longer want to receive these emails? <a href="URL_UNSUBSCRIBE">Unsubscribe</a><br>',
+      '<a href="URL_PREFERENCIAS">Manage my preferences</a>',
+      "</td></tr></table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, { brandName: "Luxe Lift" })
+    expect(r.html).toContain('href="[unsubscribe_link]"')
+    expect(r.html).toContain('href="[preferences_link]"')
+    expect(r.cleaned).toEqual([])
+    expect(r.filled.map((f) => f.token).sort()).toEqual([
+      "URL_PREFERENCIAS",
+      "URL_UNSUBSCRIBE",
+    ])
+  })
+
+  it("merge tag do ESP NÃO depende de dado da loja — resolve com contexto vazio", () => {
+    // Sem brandName/logoUrl o token do logo cai em `cleaned`; o do
+    // descadastro não pode cair junto, senão o link morre exatamente como
+    // antes da correção.
+    const html = '<table><tr><td><a href="URL_UNSUBSCRIBE">Descadastrar</a></td></tr></table>'
+    const r = applyStructuralFills(html, {})
+    expect(r.html).toContain('href="[unsubscribe_link]"')
+    expect(r.cleaned).toEqual([])
+  })
+
+  it("href de CTA continua FORA do preenchimento estrutural", () => {
+    // Destino de campanha não é dado de plataforma: URL_DO_CTA_AQUI segue
+    // intacto aqui e vira "link sem destino" no render-checks — deliberado.
+    const html = '<table><tr><td><a href="URL_DO_CTA_AQUI">Finalizar pedido</a></td></tr></table>'
+    const r = applyStructuralFills(html, { brandName: "Loja" })
+    expect(r.html).toContain('href="URL_DO_CTA_AQUI"')
+    expect(r.filled).toEqual([])
+  })
+
   it("legado {{}}: EMAIL_TITLE/YEAR preenchidos, LOGO recebe o markup, sem valor vai a cleaned", () => {
     const html = [
       "<table><tr><td>{{EMAIL_TITLE}} — {{YEAR}}</td></tr>",

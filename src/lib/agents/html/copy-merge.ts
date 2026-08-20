@@ -424,6 +424,18 @@ export interface StructuralFillResult {
   cleaned: string[]
 }
 
+/**
+ * Merge tags do provedor de envio para os tokens de href legais do rodapé.
+ * São substituídas no DISPARO (Klaviyo/ESP), não aqui — o valor literal é a
+ * convenção que o template padrão (`default-reference.ts`) já usa e que o
+ * strip de placeholders preserva de propósito. O QA também as reconhece
+ * como destino válido (MERGE_TAG_HREF).
+ */
+const ESP_MERGE_TAG: Record<string, string> = {
+  URL_UNSUBSCRIBE: "[unsubscribe_link]",
+  URL_PREFERENCIAS: "[preferences_link]",
+}
+
 const LEGACY_TAG_TOKEN = /\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}/g
 const LEGACY_STRUCTURAL = new Set([
   "EMAIL_TITLE",
@@ -454,10 +466,22 @@ export function applyStructuralFills(
   const cleanedSet = new Set<string>()
 
   // ── Tokens de atributo (vocabulário real) ──────────────────────────
+  const structuralValue = (token: string): string => {
+    switch (token) {
+      case "URL_DO_LOGO_AQUI":
+        return logoUrl
+      case "NOME_DA_MARCA":
+        return brandName
+      default:
+        // Merge tag do provedor — nunca depende de dado da loja, então
+        // não passa por `cleaned`: sempre resolve.
+        return ESP_MERGE_TAG[token] ?? ""
+    }
+  }
   for (const slot of findAttrSlots(html)) {
     if (!isStructuralToken(slot.token)) continue
     if (inRange(slot.valueRange.start, hero)) continue
-    const value = slot.token === "URL_DO_LOGO_AQUI" ? logoUrl : brandName
+    const value = structuralValue(slot.token)
     if (!value) {
       cleanedSet.add(slot.token)
       continue
