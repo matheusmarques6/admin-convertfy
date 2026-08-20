@@ -33,6 +33,7 @@ import { loadEffectiveBlueprint } from "./blueprint-loader"
 import {
   buildDeterministicBlueprint,
   collectSchemaAnchorIssues,
+  matchFromSlots,
   matchVariantsToSkeleton,
   packageBlueprint,
   schemaTagsFromSlots,
@@ -495,33 +496,37 @@ export async function generateStoreBlueprint(
   const variantSlots = (input.slots ?? []).filter(
     (s): s is Extract<AssemblySlot, { kind: "variant" }> => s.kind === "variant",
   )
-  // Placeholders schema-backed das variantes escolhidas (épico Taguedor):
-  // a extração os reconhece como vocabulário legítimo — entram nas tags do
-  // bloco (fields.tag resolve por nome) e não derrubam o threshold canônico.
+  const mode = input.blueprintMode ?? "auto"
+
+  // Gate D4 (endereçamento sem placeholder): a rota A não depende mais do
+  // skeleton por tags — os SLOTS são a estrutura do documento. Basta que
+  // todo slot de variante tenha output_schema (é dele que saem os fields e
+  // as âncoras por example/token).
+  const allSlotsHaveSchema =
+    variantSlots.length > 0 &&
+    variantSlots.every((s) => (s.variant.output_schema ?? []).length > 0)
+  const useDeterministic =
+    mode !== "llm" && (mode === "deterministic" || allSlotsHaveSchema)
+
+  if (useDeterministic && variantSlots.length > 0) {
+    const match = matchFromSlots(input.slots ?? [])
+    return generateDeterministicBlueprint(input, match)
+  }
+
+  // Rota B (LLM): fluxo intacto — skeleton por tags imposto quando existe
+  // (references legadas com {{TAG}}); null → LLM cru.
   const skeletonEarly = extractStructureFromReference(input.referenceHtml, {
     schemaTags: schemaTagsFromSlots(variantSlots),
   })
-  const match = skeletonEarly
+  const matchB = skeletonEarly
     ? matchVariantsToSkeleton(skeletonEarly, variantSlots)
     : null
-  const mode = input.blueprintMode ?? "auto"
-  const useDeterministic =
-    mode !== "llm" &&
-    skeletonEarly !== null &&
-    match !== null &&
-    (mode === "deterministic" || match.coverage >= 1)
-
-  if (useDeterministic && skeletonEarly && match) {
-    return generateDeterministicBlueprint(input, skeletonEarly, match)
-  }
-
-  return generateLlmBlueprint(input, skeletonEarly, match, mode)
+  return generateLlmBlueprint(input, skeletonEarly, matchB, mode)
 }
 
 /** ROTA A — builder determinístico + mini-LLM subject. */
 async function generateDeterministicBlueprint(
   input: GenerateBlueprintInput,
-  skeleton: ExtractedStructure,
   match: MatchResult,
 ): Promise<GenerateBlueprintResult> {
   const t0 = Date.now()
@@ -534,7 +539,7 @@ async function generateDeterministicBlueprint(
   })
 
   const blueprint = buildDeterministicBlueprint({
-    skeleton,
+    slots: input.slots ?? [],
     match,
     outline: input.outline,
   })
@@ -591,11 +596,12 @@ async function generateDeterministicBlueprint(
       unused_variant_ids: match.unusedVariantIds,
       unmatched_block_indexes: match.unmatchedBlockIndexes,
       subject_source: subj ? "llm" : "fallback",
-      skeleton_used: true,
-      skeleton_blocks: skeleton.blocks.length,
-      skeleton_unknown_tags: skeleton.unknownTags,
-      // Campos de schema sem {{UPPER(key)}} no HTML da variante — erro de
-      // CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
+      // Rota A nova (D4): a estrutura vem dos SLOTS do Curador, sem
+      // skeleton por tags.
+      skeleton_used: false,
+      blueprint_route: "slots",
+      // Campos cujo example/token não é encontrável no HTML da variante —
+      // erro de CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
     },

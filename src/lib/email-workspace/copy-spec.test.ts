@@ -123,7 +123,6 @@ describe("copy-spec", () => {
       required: true,
       example: "",
       guidance: "",
-      tag: null,
       source: "schema",
       ...p,
     })

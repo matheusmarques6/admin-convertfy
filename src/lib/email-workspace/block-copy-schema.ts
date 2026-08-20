@@ -21,9 +21,8 @@
  * exatamente as chaves que o n8n tem de devolver em `content`. Não há mais
  * `key` dentro do item — ela é a posição dele.
  *
- * `placeholder_no_html` é informativo (onde o valor cai no HTML) e vai com
- * as chaves `{{}}` justamente para não ser confundido com a chave de
- * resposta.
+ * `placeholder_no_html` SAIU (20/08): o endereço do campo passou a ser o
+ * próprio `exemplo` (merge por example) — não há mais {{TAG}} a informar.
  *
  * Campos internos ficam de fora: `nature` já filtrou o que é copy antes de
  * chegar aqui, `source` é telemetria do blueprint e `image_*` é do agente
@@ -38,7 +37,6 @@ export interface BlockCopySchemaField {
   min_caracteres: number | null
   exemplo: string | null
   orientacao: string | null
-  placeholder_no_html: string | null
 }
 
 export interface BlockCopySchema {
@@ -59,7 +57,6 @@ export interface CopySchemaInputField {
   required?: boolean | null
   example?: string | null
   guidance?: string | null
-  tag?: string | null
 }
 
 function texto(v: unknown): string | null {
@@ -99,7 +96,6 @@ export function buildBlockCopySchema(
       min_caracteres: numeroPositivo(f?.min_len),
       exemplo: texto(f?.example),
       orientacao: texto(f?.guidance),
-      placeholder_no_html: texto(f?.tag) ? `{{${texto(f?.tag)}}}` : null,
     }
     if (obrigatorio) obrigatorios.push(key)
   }

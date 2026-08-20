@@ -13,7 +13,6 @@ describe("buildBlockCopySchema", () => {
       required: true,
       example: "Bem-vinda ao clube",
       guidance: "Promessa central em 2ª pessoa",
-      tag: "HERO_HEADLINE",
       source: "schema",
     },
     {
@@ -25,7 +24,6 @@ describe("buildBlockCopySchema", () => {
       required: false,
       example: "Ver coleção",
       guidance: "",
-      tag: "HERO_CTA_2_LABEL",
       source: "schema",
     },
   ]
@@ -41,7 +39,7 @@ describe("buildBlockCopySchema", () => {
     expect(s.diretriz).toBe("Abertura calorosa")
   })
 
-  it("o item não repete a key e traz o placeholder com chaves", () => {
+  it("o item não repete a key; o exemplo É o endereço (sem placeholder)", () => {
     const s = buildBlockCopySchema(hero, {})
     expect(s.campos.hero_headline).toEqual({
       label: "Headline",
@@ -51,9 +49,9 @@ describe("buildBlockCopySchema", () => {
       min_caracteres: null,
       exemplo: "Bem-vinda ao clube",
       orientacao: "Promessa central em 2ª pessoa",
-      placeholder_no_html: "{{HERO_HEADLINE}}",
     })
     expect("key" in s.campos.hero_headline).toBe(false)
+    expect("placeholder_no_html" in s.campos.hero_headline).toBe(false)
   })
 
   it("lista os obrigatórios separadamente", () => {
@@ -89,13 +87,12 @@ describe("buildBlockCopySchema", () => {
 
   it("normaliza vazio para null em vez de string em branco", () => {
     const s = buildBlockCopySchema(
-      [{ key: "x", label: "  ", example: "", guidance: "   ", tag: null }],
+      [{ key: "x", label: "  ", example: "", guidance: "   " }],
       { variantName: "  ", purpose: "" },
     )
     expect(s.campos.x.label).toBe("x")
     expect(s.campos.x.exemplo).toBeNull()
     expect(s.campos.x.orientacao).toBeNull()
-    expect(s.campos.x.placeholder_no_html).toBeNull()
     expect(s.variante).toBeNull()
     expect(s.diretriz).toBeNull()
   })

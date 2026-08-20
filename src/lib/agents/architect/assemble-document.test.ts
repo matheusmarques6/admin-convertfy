@@ -130,7 +130,10 @@ describe("assembleDocument", () => {
     expect(html).toContain("{{HERO_HEADLINE}}")
   })
 
-  it("usa html_tagged aprovado no lugar do exemplo", () => {
+  it("o html AUTORADO é o documento — html_tagged não é mais consumido (20/08)", () => {
+    // O merge por example ancora nas frases reais; a camada tagueada saiu
+    // do pipeline (as colunas caem na F7). Mesmo aprovado, o tagged é
+    // ignorado: o exemplo autorado É a matéria-prima do documento.
     const v = variant("hero", "a", TR("Frase real de exemplo"), {
       html_tagged: TR("{{HERO_HEADLINE}}"),
       tagging_status: "approved",
@@ -138,19 +141,8 @@ describe("assembleDocument", () => {
     const { html } = assembleDocument({
       slots: [{ kind: "variant", variant: v, section: "hero", label: "hero" }],
     })
-    expect(html).toContain("{{HERO_HEADLINE}}")
-    expect(html).not.toContain("Frase real de exemplo")
-  })
-
-  it("ignora html_tagged pendente", () => {
-    const v = variant("hero", "a", TR("Frase real de exemplo"), {
-      html_tagged: TR("{{HERO_HEADLINE}}"),
-      tagging_status: "pending",
-    })
-    const { html } = assembleDocument({
-      slots: [{ kind: "variant", variant: v, section: "hero", label: "hero" }],
-    })
     expect(html).toContain("Frase real de exemplo")
+    expect(html).not.toContain("{{HERO_HEADLINE}}")
   })
 
   it("embrulha fragmento que começa com <table>", () => {

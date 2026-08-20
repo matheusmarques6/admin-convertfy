@@ -721,7 +721,6 @@ describe("dispatchEmailCopyWebhook — payload v2 (fields/variant/tones)", () =>
       min_caracteres: null,
       exemplo: "Bem-vindo!",
       orientacao: "Tom acolhedor",
-      placeholder_no_html: "{{HERO_HEADLINE}}",
     })
     expect(schema.obrigatorios).toEqual(["headline"])
     expect(block.variant_id).toBe("var-1")
@@ -1055,11 +1054,9 @@ describe("digestPayload", () => {
                 schema: {
                   variante: "welcome - hero section 9",
                   campos: {
-                    hero_headline: { placeholder_no_html: "{{HERO_HEADLINE}}" },
-                    hero_cta_2_label: {
-                      placeholder_no_html: "{{HERO_CTA_2_LABEL}}",
-                    },
-                    orfao: { placeholder_no_html: null },
+                    hero_headline: { exemplo: "Bem-vinda ao clube" },
+                    hero_cta_2_label: { exemplo: "Ver coleção" },
+                    orfao: { exemplo: null },
                   },
                 },
               },
@@ -1070,11 +1067,11 @@ describe("digestPayload", () => {
     ],
   }
 
-  it("guarda as keys pedidas por bloco e as que foram sem tag", () => {
+  it("guarda as keys pedidas por bloco e as que foram sem example (sem âncora)", () => {
     const d = digestPayload(payload) as {
       flows: Array<{
         emails: Array<{
-          blocks: Array<{ field_keys: string[]; fields_sem_tag: string[] }>
+          blocks: Array<{ field_keys: string[]; fields_sem_example: string[] }>
         }>
       }>
     }
@@ -1084,7 +1081,7 @@ describe("digestPayload", () => {
       "hero_cta_2_label",
       "orfao",
     ])
-    expect(bloco.fields_sem_tag).toEqual(["orfao"])
+    expect(bloco.fields_sem_example).toEqual(["orfao"])
   })
 
   it("não quebra com payload vazio ou malformado", () => {

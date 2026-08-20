@@ -42,7 +42,7 @@ export const TELEMETRY_CONTRACT: Record<
     invalid_ids: "ids que não existem no catálogo (o modelo inventou)",
     wrong_type_ids: "ids de outra seção — risco criado por mandar o catálogo inteiro",
     empty_blocks: "posições sem finalista válido: saem do email e viram selo",
-    candidates_excluded_untagged: "variantes ativas impreenchíveis pelo pipeline — pressão de curadoria",
+    candidates_excluded_unfillable: "variantes ativas impreenchíveis pelo pipeline (sem schema ou sem âncora de example/token no HTML) — pressão de curadoria",
   },
   assembler: {
     escolhas: "a composição final: id e rank por posição",

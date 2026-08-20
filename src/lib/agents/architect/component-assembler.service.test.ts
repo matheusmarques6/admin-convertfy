@@ -10,7 +10,7 @@ import {
   parseAssemblerOutput,
   resolveChoices,
   slotMapFromSlots,
-  variantHasPlaceholders,
+  variantIsFillable,
   type AssemblySlot,
 } from "./component-assembler.service"
 
@@ -133,42 +133,72 @@ describe("slotMapFromSlots", () => {
   })
 })
 
-describe("variantHasPlaceholders (guard de elegibilidade)", () => {
-  it("variante com {{TAG}} é elegível", () => {
+describe("variantIsFillable (guard de elegibilidade por example/token)", () => {
+  const schemaCopy = [
+    {
+      key: "headline",
+      label: "H",
+      type: "text_short" as const,
+      max_len: 40,
+      required: true,
+      example: "Frase autorada no HTML",
+      guidance: "",
+    },
+  ]
+  const schemaImage = [
+    {
+      key: "hero_image",
+      label: "Foto",
+      type: "image" as const,
+      max_len: 0,
+      required: false,
+      example: "",
+      guidance: "",
+    },
+  ]
+
+  it("schema + example encontrável no HTML → elegível (as 30 da biblioteca real)", () => {
     expect(
-      variantHasPlaceholders(mk({ html: "<td>{{HERO_HEADLINE}}</td>" })),
-    ).toBe(true)
-  })
-  it("variante 100% hardcoded (caso body 2) NÃO é elegível", () => {
-    expect(
-      variantHasPlaceholders(
-        mk({ html: "<td>Lorem ipsum</td><img src=\"\" alt=\"\">" }),
-      ),
-    ).toBe(false)
-  })
-  it("merge tag minúscula do provedor não conta como placeholder", () => {
-    expect(
-      variantHasPlaceholders(mk({ html: "<a href=\"{{ unsubscribe }}\">x</a>" })),
-    ).toBe(false)
-  })
-  it("html_tagged APROVADO com placeholder torna elegível (T7)", () => {
-    expect(
-      variantHasPlaceholders(
+      variantIsFillable(
         mk({
-          html: "<td>Lorem ipsum</td>",
-          html_tagged: "<td>{{SECTION_HEADLINE}}</td>",
-          tagging_status: "approved",
+          html: "<table><tr><td>Frase autorada no HTML</td></tr></table>",
+          output_schema: schemaCopy,
         }),
       ),
     ).toBe(true)
   })
-  it("proposta PENDENTE não conta — só aprovado entra no pool", () => {
+
+  it("sem schema → fora do pool (não há contrato de copy)", () => {
     expect(
-      variantHasPlaceholders(
+      variantIsFillable(mk({ html: "<td>{{HERO_HEADLINE}}</td>", output_schema: [] })),
+    ).toBe(false)
+  })
+
+  it("schema cujo example NÃO existe no HTML → fora (cadastro podre)", () => {
+    expect(
+      variantIsFillable(
         mk({
-          html: "<td>Lorem ipsum</td>",
-          html_tagged: "<td>{{SECTION_HEADLINE}}</td>",
-          tagging_status: "pending",
+          html: "<table><tr><td>Outra frase qualquer</td></tr></table>",
+          output_schema: schemaCopy,
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it("só imagem: token de atributo casável torna elegível", () => {
+    expect(
+      variantIsFillable(
+        mk({
+          html: '<table><tr><td><img src="URL_DA_IMAGEM_1" alt=""></td></tr></table>',
+          output_schema: schemaImage,
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      variantIsFillable(
+        mk({
+          html: '<table><tr><td><img src="https://cdn/real.png" alt=""></td></tr></table>',
+          output_schema: schemaImage,
         }),
       ),
     ).toBe(false)

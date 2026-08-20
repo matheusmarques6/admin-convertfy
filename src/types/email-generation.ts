@@ -28,8 +28,11 @@ export interface BlueprintBlockField {
   required: boolean
   example: string
   guidance: string
-  tag: string | null
-  source: "schema" | "tag_registry" | "llm"
+  // O EXAMPLE é o endereço (20/08): a `tag` saiu do snapshot — o merge
+  // ancora pela frase do example (texto) e pelo token de atributo (imagem).
+  // Snapshots antigos podem carregar `tag`/"tag_registry" no jsonb; são
+  // ignorados na leitura.
+  source: "schema" | "llm"
   // ── Só para type="image" (opcionais) — snapshot do output_schema +
   // comentário do slot extraído do HTML da variante. Dirigem a geração de
   // imagem (IMAGE_SLOTS + resize por dimensões declaradas). ──────────────

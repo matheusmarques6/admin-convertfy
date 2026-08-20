@@ -53,8 +53,8 @@ import {
 } from "./assembler-choice.parser"
 import {
   deriveFieldNature,
-  effectiveVariantHtml,
 } from "../shared/component-dimensions"
+import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
 import { assembleDocument, validateBlockMarkers } from "./assemble-document"
 import type { OutlineSection } from "./outline-sections"
 import {
@@ -433,21 +433,19 @@ export interface AssembleReferenceResult {
   slots: AssemblySlot[]
 }
 
-// Placeholder canônico ({{TAG_MAIUSCULA}}) — mesmo formato do tag-registry.
-const ANY_PLACEHOLDER = /\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/
-
 /**
- * Guard de elegibilidade: variante cujo HTML não tem NENHUM placeholder é
- * impreenchível pelo pipeline (blueprint não a vê → n8n não gera copy →
- * agentes não têm o que substituir → exemplo hardcoded vaza pro cliente —
- * caso "body 2" da Luxe Lift, jul/2026). Fica fora do pool de candidatas
- * até ser tagueada (manual ou taguedor). Pura, testável.
- * Elegível quando o html TEM placeholder OU quando o taguedor produziu um
- * html_tagged APROVADO com placeholder — é esse HTML efetivo que o
- * pipeline consome (effectiveVariantHtml).
+ * Guard de elegibilidade (D8, 20/08): variante é PREENCHÍVEL quando tem
+ * schema E pelo menos uma âncora real no HTML — example de texto
+ * encontrável OU token de imagem casável (a régua única de
+ * schema-example-coherence, a MESMA do merge em produção). O guard antigo
+ * exigia {{TAG}} e excluía as 30 variantes autoradas da biblioteca real —
+ * que nunca adotaram placeholder e sempre foram preenchíveis por example.
  */
-export function variantHasPlaceholders(v: EmailComponentVariant): boolean {
-  return ANY_PLACEHOLDER.test(effectiveVariantHtml(v) ?? "")
+export function variantIsFillable(v: EmailComponentVariant): boolean {
+  return coherenceVariantIsFillable({
+    html: v.html ?? "",
+    output_schema: v.output_schema ?? null,
+  })
 }
 
 /** Carrega as variantes ativas agrupadas por block_type. */
@@ -470,7 +468,7 @@ async function loadActiveVariantsByType(): Promise<{
     return { all, byType, excludedUntagged }
   }
   for (const v of (data as EmailComponentVariant[] | null) ?? []) {
-    if (!variantHasPlaceholders(v)) {
+    if (!variantIsFillable(v)) {
       ;(excludedUntagged[v.block_type] ??= []).push(v.name)
       continue
     }
@@ -480,7 +478,7 @@ async function loadActiveVariantsByType(): Promise<{
     byType.set(v.block_type, arr)
   }
   if (Object.keys(excludedUntagged).length > 0) {
-    log.warn("chooser.candidates_excluded_untagged", { excludedUntagged })
+    log.warn("chooser.candidates_excluded_unfillable", { excludedUntagged })
   }
   return { all, byType, excludedUntagged }
 }
@@ -735,8 +733,8 @@ export async function assembleStoreReference(
     // Posições sem nenhum finalista válido → saem do email (selo nos logs).
     empty_blocks: ranking?.emptyBlocks ?? [],
     // Variantes ativas SEM placeholder ficaram fora do pool (pressão de
-    // curadoria — ver variantHasPlaceholders).
-    candidates_excluded_untagged: excludedUntagged,
+    // curadoria — ver variantIsFillable).
+    candidates_excluded_unfillable: excludedUntagged,
   }
 
   // Nenhuma posição recebeu finalista depois do retry → não há o que
@@ -933,7 +931,7 @@ export async function assembleStoreReference(
   // concatenação. Diferente de zero é bug de código.
   const droppedImageTags = findDroppedImageTags(
     slots
-      .flatMap((sl) => (sl.kind === "variant" ? [effectiveVariantHtml(sl.variant)] : []))
+      .flatMap((sl) => (sl.kind === "variant" ? [sl.variant.html] : []))
       .join("\n"),
     html,
   )

@@ -24,11 +24,13 @@ import type {
   CopySpecField,
   EmailOutlineTemplate,
 } from "@/types/email-generation"
-import { lookupTag } from "@/lib/email-workspace/tag-registry"
 import { blockTypeToCategory } from "../shared/component-categories"
 import {
+  auditImageAnchors,
+  auditSchemaAnchors,
+} from "@/lib/email-workspace/schema-example-coherence"
+import {
   deriveFieldNature,
-  effectiveVariantHtml,
   placeholderForKey,
 } from "../shared/component-dimensions"
 import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
@@ -119,6 +121,36 @@ export function matchVariantsToSkeleton(
   }
 }
 
+/**
+ * Rota A NOVA (endereçamento sem placeholder): o match não depende mais do
+ * skeleton por tags — os SLOTS do Curador SÃO a estrutura do documento (o
+ * assembleDocument monta uma seção por slot de variante, na ordem). Um
+ * bloco por slot, coverage sempre 1 (o gate da rota é "todo slot tem
+ * schema", checado pelo roteador).
+ */
+export function matchFromSlots(slots: AssemblySlot[]): MatchResult {
+  const matches = new Map<number, VariantMatch>()
+  let copyBlocks = 0
+  const variantSlots = slots.filter(
+    (s): s is Extract<AssemblySlot, { kind: "variant" }> => s.kind === "variant",
+  )
+  variantSlots.forEach((s, i) => {
+    matches.set(i, { variant: s.variant, slotLabel: s.label })
+    const hasCopy = (s.variant.output_schema ?? []).some(
+      (f) => deriveFieldNature(f) === "copy",
+    )
+    if (hasCopy) copyBlocks++
+  })
+  return {
+    matches,
+    coverage: 1,
+    copyBlocks,
+    coveredCopyBlocks: copyBlocks,
+    unusedVariantIds: [],
+    unmatchedBlockIndexes: [],
+  }
+}
+
 /** A variante consegue dirigir a copy do bloco (guidance OU schema). */
 function variantHasCopyContext(v: SlotVariant): boolean {
   return Boolean(
@@ -154,75 +186,24 @@ export function schemaTagsFromSlots(
 /**
  * Origem "schema": os campos definidos na variante (aba Componentes).
  *
- * O SCHEMA É A BASE. O endereço de um campo no template é `{{UPPER(key)}}`,
- * e só isso: `hero_headline` → `{{HERO_HEADLINE}}`. Os três caminhos antigos
- * (copyKey do tag-registry, nome normalizado da tag, placeholder literal)
- * FORAM REMOVIDOS. Eles davam a ilusão de que a variante estava correta:
- * quando o HTML carregava `{{HERO_EYEBROW}}` e o schema pedia
- * `hero_headline`, algum dos aliases casava por acaso — ou nenhum casava, e
- * o campo virava `tag: null` em silêncio, sem copy e sem aviso.
- *
- * Campo sem `{{UPPER(key)}}` no HTML da variante continua saindo com a tag
- * PREENCHIDA (o contrato é o schema, não o HTML) e é REGISTRADO como erro de
- * cadastro por `schemaAnchorIssues` — quem conserta é o retagueamento da
- * variante, não o resolvedor em tempo de geração.
+ * O EXAMPLE É A BASE (20/08): o endereço de um campo no HTML é a própria
+ * frase do `example` (texto) ou o token de atributo (imagem) — não existe
+ * mais `tag` no snapshot. A coerência example×HTML é auditada pela régua
+ * única (schema-example-coherence) e vai para a telemetria do blueprint;
+ * quem conserta é o cadastro da variante, não o resolvedor em geração.
  */
-/** Endereço canônico de um key de schema. Regra única, sem alias. */
-function resolveTagForKey(key: string): string | null {
-  return placeholderForKey(key) || null
-}
-
-/** O `{{PLACEHOLDER}}` existe de fato no HTML da variante? */
-function tagAnchoredInHtml(tag: string, variantHtml?: string): boolean {
-  if (!variantHtml) return false
-  const re = new RegExp(
-    `\\{\\{\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`,
-  )
-  return re.test(variantHtml)
-}
-
-/** Campo do schema cujo `{{UPPER(key)}}` não existe no HTML da variante. */
-export interface SchemaAnchorIssue {
-  key: string
-  tag: string
-  nature: string
-}
-
-/**
- * Erros de cadastro do bloco: campos que o schema declara e o HTML da
- * variante não endereça. Sem `variantHtml` não há o que auditar (rota B).
- * Vai para a telemetria do blueprint — é o sinal que faz a biblioteca ser
- * consertada em vez do defeito reaparecer a cada geração.
- */
-export function schemaAnchorIssues(
-  schema: ComponentOutputField[],
-  variantHtml?: string,
-): SchemaAnchorIssue[] {
-  if (!variantHtml) return []
-  const out: SchemaAnchorIssue[] = []
-  for (const f of schema) {
-    const key = f.key?.trim()
-    if (!key) continue
-    const nature = deriveFieldNature(f)
-    // asset_fixo é arte da biblioteca — não vira placeholder por desenho.
-    if (nature === "asset_fixo") continue
-    const tag = resolveTagForKey(key)
-    if (!tag || tagAnchoredInHtml(tag, variantHtml)) continue
-    out.push({ key, tag, nature })
-  }
-  return out
-}
-
 export function fieldsFromSchema(
   schema: ComponentOutputField[],
   // HTML da variante — quando presente, extrai o comentário do <td>/<tr> de
-  // cada slot de imagem (slot_note). Ausente (ex.: rota B) → sem slot_note.
+  // cada slot de imagem legado {{TAG}} (slot_note). Ausente → sem slot_note.
   variantHtml?: string,
 ): BlueprintFieldV2[] {
-  // Slots de imagem do bloco → extrai os comentários UMA vez.
+  // slot_note LEGADO: só variantes antigas com {{UPPER(key)}} de imagem no
+  // HTML carregam comentário de direção de arte colado no slot. A biblioteca
+  // por token não usa placeholder — o lookup simplesmente não acha nada.
   const imageTags = schema
     .filter((f) => f.type === "image")
-    .map((f) => resolveTagForKey(f.key.trim()))
+    .map((f) => placeholderForKey(f.key.trim()))
     .filter((t): t is string => !!t)
   const slotNotes =
     variantHtml && imageTags.length > 0
@@ -231,7 +212,6 @@ export function fieldsFromSchema(
 
   return schema.map((f) => {
     const key = f.key.trim()
-    const tag = resolveTagForKey(key)
     const base: BlueprintFieldV2 = {
       key,
       label: f.label || key,
@@ -244,48 +224,18 @@ export function fieldsFromSchema(
       required: f.required === true,
       example: f.example ?? "",
       guidance: f.guidance ?? "",
-      tag,
       source: "schema",
     }
     if (f.type === "image") {
+      const legacyTag = placeholderForKey(key)
       base.image_spec = f.image_spec ?? null
       base.image_aspect = f.image_aspect ?? null
       base.image_width = f.image_width ?? null
       base.image_height = f.image_height ?? null
-      base.slot_note = (tag && slotNotes[tag]) || null
+      base.slot_note = (legacyTag && slotNotes[legacyTag]) || null
     }
     return base
   })
-}
-
-/**
- * Origem "tag_registry": derivação das tags canônicas do bloco (fallback de
- * blocos sem variante/schema — mesmo dado que alimentava o `fields` v1).
- * Dedup por copyKey; só tags kind='copy'.
- */
-export function fieldsFromTags(blockTags: string[]): BlueprintFieldV2[] {
-  const seen = new Set<string>()
-  const out: BlueprintFieldV2[] = []
-  for (const t of blockTags) {
-    const spec = lookupTag(t)
-    if (!spec || spec.kind !== "copy" || !spec.copyKey) continue
-    if (seen.has(spec.copyKey)) continue
-    seen.add(spec.copyKey)
-    const max = spec.max ?? 0
-    out.push({
-      key: spec.copyKey,
-      label: spec.copyKey,
-      type: max > 120 ? "text_long" : "text_short",
-      max_len: max,
-      min_len: spec.min ?? null,
-      required: true,
-      example: "",
-      guidance: "",
-      tag: t,
-      source: "tag_registry",
-    })
-  }
-  return out
 }
 
 /**
@@ -304,7 +254,6 @@ export function fieldsFromCopySpec(
     required: true,
     example: "",
     guidance: "",
-    tag: null,
     source: "llm",
   }))
 }
@@ -339,44 +288,38 @@ export function imageBriefFromSchema(
   return parts.length > 0 ? parts.join(" · ") : null
 }
 
-// ── Rota A — blueprint 100% determinístico ───────────────────────────
+// ── Rota A — blueprint 100% determinístico (por SLOTS, sem skeleton) ──
 
 export function buildDeterministicBlueprint(input: {
-  skeleton: ExtractedStructure
+  slots: AssemblySlot[]
   match: MatchResult
   outline: EmailOutlineTemplate | null
 }): GeneratedBlueprint {
-  const { skeleton, match, outline } = input
+  const { slots, match, outline } = input
+  const variantSlots = slots.filter(
+    (s): s is Extract<AssemblySlot, { kind: "variant" }> => s.kind === "variant",
+  )
 
-  const blocks: GeneratedBlock[] = skeleton.blocks.map((sb, i) => {
+  const blocks: GeneratedBlock[] = variantSlots.map((slot, i) => {
     const m = match.matches.get(i)
-    const schema = m?.variant.output_schema ?? []
-    const tags = dedupePreservingOrder(sb.tags)
+    const variant = m?.variant ?? slot.variant
+    const schema = variant.output_schema ?? []
     const purpose =
-      (m?.variant.copy_guidance ?? "").trim() ||
-      (m?.variant.description ?? "").trim()
-    // T8: schema com campo imagem_gerada liga needs_image mesmo sem tag
-    // canônica de imagem no skeleton — o slot vive no {{UPPER(key)}}.
-    const needsImage = sb.needs_image || schemaHasGeneratedImage(schema)
+      (variant.copy_guidance ?? "").trim() || (variant.description ?? "").trim()
+    const needsImage = schemaHasGeneratedImage(schema)
     return {
-      type: sb.type,
-      label: m?.slotLabel?.trim() || m?.variant.name || sb.type,
+      type: variant.block_type,
+      label: (m?.slotLabel ?? slot.label)?.trim() || variant.name,
       purpose,
       needs_image: needsImage,
       image_brief:
         needsImage && schema.length > 0 ? imageBriefFromSchema(schema) : null,
-      image_aspect: sb.image_aspect,
-      copy_spec: sb.copy_spec,
-      tags,
-      variant_id: m?.variant.id ?? null,
-      variant_name: m?.variant.name ?? null,
-      fields:
-        schema.length > 0
-          ? fieldsFromSchema(
-              schema,
-              m ? effectiveVariantHtml(m.variant) : undefined,
-            )
-          : fieldsFromTags(tags),
+      image_aspect: null,
+      copy_spec: [],
+      tags: [],
+      variant_id: variant.id,
+      variant_name: variant.name,
+      fields: fieldsFromSchema(schema, variant.html),
     }
   })
 
@@ -407,7 +350,6 @@ export function packageBlueprint(
   const blocks: GeneratedBlock[] = blueprint.blocks.map((b, i) => {
     const m = match?.matches.get(i)
     const schema = m?.variant.output_schema ?? []
-    const tags = b.tags ?? []
     const curatedPurpose = (m?.variant.copy_guidance ?? "").trim()
     // T8: campo imagem_gerada no schema da variante casada liga needs_image
     // (o slot é o {{UPPER(key)}} do HTML tagueado, não uma tag canônica).
@@ -415,17 +357,10 @@ export function packageBlueprint(
     const curatedBrief =
       needsImage && schema.length > 0 ? imageBriefFromSchema(schema) : null
 
-    let fields: BlueprintFieldV2[]
-    if (schema.length > 0) {
-      fields = fieldsFromSchema(
-        schema,
-        m ? effectiveVariantHtml(m.variant) : undefined,
-      )
-    } else if (tags.length > 0) {
-      fields = fieldsFromTags(tags)
-    } else {
-      fields = fieldsFromCopySpec(b.copy_spec ?? [])
-    }
+    const fields: BlueprintFieldV2[] =
+      schema.length > 0
+        ? fieldsFromSchema(schema, m?.variant.html)
+        : fieldsFromCopySpec(b.copy_spec ?? [])
 
     return {
       ...b,
@@ -440,16 +375,20 @@ export function packageBlueprint(
   return { ...blueprint, blocks }
 }
 
-export interface BlockAnchorIssue extends SchemaAnchorIssue {
+export interface BlockAnchorIssue {
+  key: string
+  /** Motivo do merge (nao_encontrado, frase_curta, ambiguo, token...). */
+  motivo: string
   block_index: number
   variant_id: string
   variant_name: string
 }
 
 /**
- * Varre as variantes casadas e junta todo campo de schema sem `{{UPPER(key)}}`
- * no HTML. Roda nas DUAS rotas (o `match` é o mesmo) e vai inteiro para a
- * telemetria do blueprint: lista vazia = biblioteca alinhada com o schema.
+ * Varre as variantes casadas e junta todo campo cujo EXAMPLE (texto) ou
+ * TOKEN (imagem) não é encontrável no HTML — a régua única
+ * (schema-example-coherence, D7). Roda nas DUAS rotas e vai inteiro para a
+ * telemetria do blueprint: lista vazia = biblioteca alinhada.
  */
 export function collectSchemaAnchorIssues(
   match: MatchResult | null,
@@ -459,10 +398,10 @@ export function collectSchemaAnchorIssues(
   for (const [blockIndex, m] of match.matches) {
     const schema = m.variant.output_schema ?? []
     if (schema.length === 0) continue
-    for (const issue of schemaAnchorIssues(
-      schema,
-      effectiveVariantHtml(m.variant),
-    )) {
+    const html = m.variant.html ?? ""
+    const text = auditSchemaAnchors(html, schema)
+    const image = auditImageAnchors(html, schema)
+    for (const issue of [...text.missing, ...image.missing]) {
       out.push({
         ...issue,
         block_index: blockIndex,
@@ -472,11 +411,6 @@ export function collectSchemaAnchorIssues(
     }
   }
   return out.sort((a, b) => a.block_index - b.block_index)
-}
-
-function dedupePreservingOrder(items: string[]): string[] {
-  const seen = new Set<string>()
-  return items.filter((t) => (seen.has(t) ? false : (seen.add(t), true)))
 }
 
 /** O schema declara ao menos um campo de imagem GERADA (T8). */

@@ -9,12 +9,12 @@ import type { AssemblySlot } from "./component-assembler.service"
 import type { GeneratedBlueprint } from "./blueprint-generator.service"
 import {
   matchVariantsToSkeleton,
+  matchFromSlots,
   fieldsFromSchema,
-  schemaAnchorIssues,
-  fieldsFromTags,
   fieldsFromCopySpec,
   imageBriefFromSchema,
   buildDeterministicBlueprint,
+  collectSchemaAnchorIssues,
   packageBlueprint,
   schemaTagsFromSlots,
 } from "./deterministic-blueprint.builder"
@@ -64,7 +64,7 @@ function slot(
   return { kind: "variant", variant: v, section, label }
 }
 
-// Blocos do skeleton com tags REAIS do registry (specs válidas no lookup).
+// Blocos do skeleton com tags REAIS do registry (rota B legada).
 function heroBlock(): ExtractedBlock {
   return {
     type: "hero",
@@ -126,7 +126,7 @@ const SCHEMA_HERO: ComponentOutputField[] = [
   },
 ]
 
-// ── matchVariantsToSkeleton ─────────────────────────────────────────
+// ── matchVariantsToSkeleton (rota B legada) ─────────────────────────
 
 describe("matchVariantsToSkeleton", () => {
   it("casa FIFO por categoria e mede cobertura 100%", () => {
@@ -173,128 +173,66 @@ describe("matchVariantsToSkeleton", () => {
     expect(m.matches.get(0)?.variant.id).toBe("vh")
     expect(m.matches.get(1)).toBeUndefined()
     expect(m.matches.get(2)?.variant.id).toBe("vc")
-    // bloco de texto sem variante → cobertura < 100%
     expect(m.coverage).toBeLessThan(1)
     expect(m.unmatchedBlockIndexes).toEqual([1])
   })
+})
 
-  it("variante sem guidance/schema não conta como coberta", () => {
-    const vHero = variant({ id: "vh", block_type: "hero" }) // sem contexto
-    const m = matchVariantsToSkeleton(skeleton([heroBlock()]), [
+// ── matchFromSlots (rota A nova — os slots SÃO a estrutura) ─────────
+
+describe("matchFromSlots", () => {
+  it("um match por slot de variante, na ordem; missing fica fora", () => {
+    const vHero = variant({ id: "vh", block_type: "hero", output_schema: SCHEMA_HERO })
+    const vBody = variant({
+      id: "vb",
+      block_type: "text",
+      output_schema: [SCHEMA_HERO[0]],
+    })
+    const m = matchFromSlots([
       slot("hero", vHero),
+      { kind: "missing", section: "body", label: "Body" },
+      slot("body", vBody),
     ])
+    expect(m.matches.size).toBe(2)
     expect(m.matches.get(0)?.variant.id).toBe("vh")
-    expect(m.coverage).toBe(0)
-  })
-
-  it("sem blocos de copy → cobertura 1", () => {
-    const imgOnly: ExtractedBlock = { ...heroBlock(), copy_spec: [] }
-    const m = matchVariantsToSkeleton(skeleton([imgOnly]), [])
+    expect(m.matches.get(1)?.variant.id).toBe("vb")
     expect(m.coverage).toBe(1)
+    expect(m.copyBlocks).toBe(2)
   })
 })
 
-// ── fields v2 (3 origens) ───────────────────────────────────────────
+// ── fields v2 ───────────────────────────────────────────────────────
 
-describe("fieldsFromSchema — o schema é a base", () => {
-  it("a tag é SEMPRE {{UPPER(key)}}", () => {
+describe("fieldsFromSchema — o example é a base", () => {
+  it("snapshot sem tag: key/example/nature/source é o contrato inteiro", () => {
     const fields = fieldsFromSchema(SCHEMA_HERO)
     const headline = fields.find((f) => f.key === "headline")!
-    expect(headline.tag).toBe("HEADLINE")
     expect(headline.source).toBe("schema")
     expect(headline.max_len).toBe(40)
+    expect(headline.example).toBe("Bem-vindo")
     expect(headline.guidance).toBe("CAIXA ALTA")
-    expect(fields.find((f) => f.key === "hero_image")!.tag).toBe("HERO_IMAGE")
-  })
-
-  it("não traduz por copyKey do registry: key 'headline' NUNCA vira HERO_HEADLINE", () => {
-    // Era o alias que escondia o desalinhamento: o HTML tinha
-    // {{HERO_HEADLINE}}, o schema pedia `headline`, e o resolvedor "casava".
-    // Agora o endereço é HEADLINE — e o HTML é que precisa segui-lo.
-    const fields = fieldsFromSchema(
-      [SCHEMA_HERO[0]],
-      "<div>{{HERO_HEADLINE}}</div>",
-    )
-    expect(fields[0].tag).toBe("HEADLINE")
-  })
-
-  it("key fora do registry também endereça por {{UPPER(key)}}", () => {
-    const schema: ComponentOutputField[] = [
-      {
-        key: "testimonial_1_quote_body",
-        label: "Depoimento",
-        type: "text_long",
-        max_len: 200,
-        required: true,
-        example: "Melhor compra do ano.",
-        guidance: "",
-      },
-    ]
-    expect(fieldsFromSchema(schema)[0].tag).toBe("TESTIMONIAL_1_QUOTE_BODY")
+    expect("tag" in headline).toBe(false)
+    const image = fields.find((f) => f.key === "hero_image")!
+    expect(image.nature).toBe("imagem_gerada")
   })
 })
 
-describe("schemaAnchorIssues — erro de cadastro, não silêncio", () => {
-  const schema: ComponentOutputField[] = [
-    {
-      key: "hero_headline",
-      label: "Headline",
+describe("fieldsFromCopySpec", () => {
+  it("converte copy_spec do LLM pro shape v2 com source=llm", () => {
+    const fields = fieldsFromCopySpec([
+      { key: "headline", min_chars: 18, max_chars: 40 },
+    ])
+    expect(fields[0]).toMatchObject({
+      key: "headline",
       type: "text_short",
       max_len: 40,
-      required: true,
-      example: "",
-      guidance: "",
-    },
-    {
-      key: "hero_subhead",
-      label: "Sub",
-      type: "text_short",
-      max_len: 90,
-      required: false,
-      example: "",
-      guidance: "",
-    },
-  ]
-
-  it("campo cujo placeholder não está no HTML vira issue", () => {
-    // Caso real: o HTML carrega {{HERO_EYEBROW}} e o schema pede
-    // hero_headline/hero_subhead. Antes: dois campos sem âncora, em silêncio.
-    const issues = schemaAnchorIssues(
-      schema,
-      "<div>{{HERO_EYEBROW}}{{HERO_HEADLINE}}</div>",
-    )
-    expect(issues.map((i) => i.key)).toEqual(["hero_subhead"])
-    expect(issues[0].tag).toBe("HERO_SUBHEAD")
-  })
-
-  it("HTML alinhado → nenhuma issue", () => {
-    expect(
-      schemaAnchorIssues(schema, "<div>{{HERO_HEADLINE}}{{HERO_SUBHEAD}}</div>"),
-    ).toEqual([])
-  })
-
-  it("sem HTML da variante não há o que auditar (rota B)", () => {
-    expect(schemaAnchorIssues(schema)).toEqual([])
-  })
-
-  it("asset_fixo fica de fora — a arte não vira placeholder", () => {
-    const art: ComponentOutputField[] = [
-      {
-        key: "selo_frete",
-        label: "Selo",
-        type: "image",
-        max_len: 0,
-        required: false,
-        example: "",
-        guidance: "",
-        nature: "asset_fixo",
-      },
-    ]
-    expect(schemaAnchorIssues(art, "<div>nada</div>")).toEqual([])
+      min_len: 18,
+      source: "llm",
+    })
   })
 })
 
-describe("schemaTagsFromSlots", () => {
+describe("schemaTagsFromSlots (rota B legada)", () => {
   it("mapeia UPPER(key)→kind por natureza e exclui asset_fixo", () => {
     const v = variant({
       id: "v1",
@@ -340,38 +278,6 @@ describe("schemaTagsFromSlots", () => {
   })
 })
 
-describe("fieldsFromTags", () => {
-  it("deriva do registry, dedup por copyKey, type heurístico", () => {
-    const fields = fieldsFromTags(["BODY_TEXT", "BODY_TEXT", "HERO_IMAGE"])
-    expect(fields).toHaveLength(1)
-    expect(fields[0]).toMatchObject({
-      key: "body",
-      type: "text_long", // max 280 > 120
-      max_len: 280,
-      min_len: 120,
-      required: true,
-      tag: "BODY_TEXT",
-      source: "tag_registry",
-    })
-  })
-})
-
-describe("fieldsFromCopySpec", () => {
-  it("converte copy_spec do LLM pro shape v2 com source=llm", () => {
-    const fields = fieldsFromCopySpec([
-      { key: "headline", min_chars: 18, max_chars: 40 },
-    ])
-    expect(fields[0]).toMatchObject({
-      key: "headline",
-      type: "text_short",
-      max_len: 40,
-      min_len: 18,
-      tag: null,
-      source: "llm",
-    })
-  })
-})
-
 describe("imageBriefFromSchema", () => {
   it("concatena guidance+example dos campos type=image", () => {
     expect(imageBriefFromSchema(SCHEMA_HERO)).toBe(
@@ -399,10 +305,10 @@ describe("imageBriefFromSchema", () => {
   })
 })
 
-// ── buildDeterministicBlueprint (rota A) ────────────────────────────
+// ── buildDeterministicBlueprint (rota A por slots) ──────────────────
 
 describe("buildDeterministicBlueprint", () => {
-  it("monta o blueprint completo a partir do skeleton + variantes + outline", () => {
+  it("um bloco por slot de variante, com fields do schema e brief da imagem", () => {
     const vHero = variant({
       id: "vh",
       block_type: "hero",
@@ -410,78 +316,48 @@ describe("buildDeterministicBlueprint", () => {
       copy_guidance: "Headline em caixa alta",
       output_schema: SCHEMA_HERO,
     })
-    const sk = skeleton([heroBlock()])
-    const match = matchVariantsToSkeleton(sk, [slot("hero", vHero, "Hero de boas-vindas")])
-    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: OUTLINE })
+    const slots = [slot("hero", vHero, "Hero de boas-vindas")]
+    const match = matchFromSlots(slots)
+    const bp = buildDeterministicBlueprint({ slots, match, outline: OUTLINE })
 
     expect(bp.objective).toBe("Boas-vindas com cupom")
     expect(bp.messaging).toBe("Storytelling antes da oferta")
     expect(bp.subject_hint).toBeNull()
+    expect(bp.blocks).toHaveLength(1)
     const b = bp.blocks[0]
     expect(b.type).toBe("hero")
     expect(b.label).toBe("Hero de boas-vindas")
     expect(b.purpose).toBe("Headline em caixa alta")
+    expect(b.needs_image).toBe(true)
     expect(b.image_brief).toContain("Foto lifestyle")
     expect(b.variant_id).toBe("vh")
     expect(b.fields?.[0]?.source).toBe("schema")
-    expect(b.tags).toEqual(["HERO_HEADLINE", "HERO_IMAGE"])
-    expect(b.copy_spec).toEqual(heroBlock().copy_spec)
   })
 
-  it("bloco sem variante casada cai em fields do tag-registry", () => {
-    const sk = skeleton([textBlock()])
-    const match = matchVariantsToSkeleton(sk, [])
-    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: null })
-    expect(bp.blocks[0].variant_id).toBeNull()
-    expect(bp.blocks[0].purpose).toBe("")
-    expect(bp.blocks[0].fields?.[0]?.source).toBe("tag_registry")
-  })
-
-  it("T8: campo imagem_gerada no schema liga needs_image mesmo sem tag canônica de imagem", () => {
-    const vText = variant({
-      id: "vt",
-      block_type: "body",
+  it("slot missing não vira bloco (a montagem também o pula)", () => {
+    const vBody = variant({
+      id: "vb",
+      block_type: "text",
       copy_guidance: "g",
-      output_schema: [
-        {
-          key: "texto",
-          label: "Texto",
-          type: "text_long",
-          max_len: 200,
-          required: true,
-          example: "",
-          guidance: "",
-        },
-        {
-          key: "foto_ambiente",
-          label: "Foto",
-          type: "image",
-          max_len: 0,
-          required: false,
-          example: "",
-          guidance: "ambiente da marca",
-        },
-      ],
+      output_schema: [SCHEMA_HERO[0]],
     })
-    // textBlock não tem tag de imagem → needs_image false no skeleton.
-    const sk = skeleton([textBlock()])
-    const match = matchVariantsToSkeleton(sk, [slot("body", vText)])
-    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: null })
-    expect(bp.blocks[0].needs_image).toBe(true)
-    expect(bp.blocks[0].image_brief).toContain("ambiente da marca")
-    // nature explícita no snapshot dos fields
-    expect(
-      bp.blocks[0].fields?.find((f) => f.key === "foto_ambiente")?.nature,
-    ).toBe("imagem_gerada")
-    expect(bp.blocks[0].fields?.find((f) => f.key === "texto")?.nature).toBe(
-      "copy",
-    )
+    const slots: AssemblySlot[] = [
+      { kind: "missing", section: "hero", label: "Hero" },
+      slot("body", vBody),
+    ]
+    const bp = buildDeterministicBlueprint({
+      slots,
+      match: matchFromSlots(slots),
+      outline: null,
+    })
+    expect(bp.blocks).toHaveLength(1)
+    expect(bp.blocks[0].variant_id).toBe("vb")
   })
 
   it("T8: schema só com asset_fixo NÃO liga needs_image", () => {
     const vText = variant({
       id: "vt",
-      block_type: "body",
+      block_type: "text",
       copy_guidance: "g",
       output_schema: [
         {
@@ -496,11 +372,74 @@ describe("buildDeterministicBlueprint", () => {
         },
       ],
     })
-    const sk = skeleton([textBlock()])
-    const match = matchVariantsToSkeleton(sk, [slot("body", vText)])
-    const bp = buildDeterministicBlueprint({ skeleton: sk, match, outline: null })
+    const slots = [slot("body", vText)]
+    const bp = buildDeterministicBlueprint({
+      slots,
+      match: matchFromSlots(slots),
+      outline: null,
+    })
     expect(bp.blocks[0].needs_image).toBe(false)
     expect(bp.blocks[0].image_brief).toBeNull()
+  })
+})
+
+// ── collectSchemaAnchorIssues (régua única por example) ─────────────
+
+describe("collectSchemaAnchorIssues", () => {
+  it("campo cujo example não é encontrável no HTML vira issue com motivo", () => {
+    const v = variant({
+      id: "vh",
+      block_type: "hero",
+      html: "<table><tr><td>Frase que existe no HTML</td></tr></table>",
+      output_schema: [
+        {
+          key: "headline",
+          label: "H",
+          type: "text_short",
+          max_len: 40,
+          required: true,
+          example: "Frase que existe no HTML",
+          guidance: "",
+        },
+        {
+          key: "subhead",
+          label: "S",
+          type: "text_short",
+          max_len: 90,
+          required: false,
+          example: "Frase que NUNCA esteve lá",
+          guidance: "",
+        },
+      ],
+    })
+    const issues = collectSchemaAnchorIssues(matchFromSlots([slot("hero", v)]))
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      key: "subhead",
+      motivo: "nao_encontrado",
+      variant_id: "vh",
+    })
+  })
+
+  it("biblioteca alinhada → lista vazia; match null (rota B crua) idem", () => {
+    const v = variant({
+      id: "vh",
+      block_type: "hero",
+      html: "<table><tr><td>Frase ancorada</td></tr></table>",
+      output_schema: [
+        {
+          key: "headline",
+          label: "H",
+          type: "text_short",
+          max_len: 40,
+          required: true,
+          example: "Frase ancorada",
+          guidance: "",
+        },
+      ],
+    })
+    expect(collectSchemaAnchorIssues(matchFromSlots([slot("hero", v)]))).toEqual([])
+    expect(collectSchemaAnchorIssues(null)).toEqual([])
   })
 })
 
@@ -543,53 +482,15 @@ describe("packageBlueprint", () => {
     expect(out.subject_hint).toBe("assunto do llm")
   })
 
-  it("sem match (skeleton null): mantém o LLM e deriva fields das tags", () => {
+  it("sem match (rota B crua): mantém o LLM e converte o copy_spec (source=llm)", () => {
+    // fieldsFromTags morreu com o tag-registry como origem de contrato — o
+    // fallback sem variante é sempre a conversão do copy_spec do LLM.
     const out = packageBlueprint(llmBlueprint, null)
     const b = out.blocks[0]
     expect(b.purpose).toBe("purpose do llm")
     expect(b.image_brief).toBe("brief do llm")
     expect(b.variant_id).toBeNull()
-    expect(b.fields?.every((f) => f.source === "tag_registry")).toBe(true)
-  })
-
-  it("bloco sem tags nem schema converte o copy_spec do LLM (source=llm)", () => {
-    const noTags: GeneratedBlueprint = {
-      ...llmBlueprint,
-      blocks: [{ ...llmBlueprint.blocks[0], tags: [] }],
-    }
-    const out = packageBlueprint(noTags, null)
-    expect(out.blocks[0].fields?.[0]).toMatchObject({
-      key: "headline",
-      source: "llm",
-      max_len: 40,
-    })
-  })
-
-  it("T5: html_tagged APROVADO alimenta o fallback literal do fields.tag", () => {
-    const vHero = variant({
-      id: "vh",
-      block_type: "hero",
-      copy_guidance: "g",
-      // Exemplo pronto sem placeholder; o taguedor aprovado tem a tag.
-      html: "<table><tr><td>Frase de exemplo</td></tr></table>",
-      html_tagged: "<table><tr><td>{{FRASE_DESTAQUE}}</td></tr></table>",
-      tagging_status: "approved",
-      output_schema: [
-        {
-          key: "frase_destaque",
-          label: "Frase",
-          type: "text_short",
-          max_len: 60,
-          required: true,
-          example: "Frase de exemplo",
-          guidance: "",
-        },
-      ],
-    })
-    const sk = skeleton([heroBlock()])
-    const match = matchVariantsToSkeleton(sk, [slot("hero", vHero)])
-    const out = packageBlueprint(llmBlueprint, match)
-    const field = out.blocks[0].fields?.find((f) => f.key === "frase_destaque")
-    expect(field?.tag).toBe("FRASE_DESTAQUE")
+    expect(b.fields?.every((f) => f.source === "llm")).toBe(true)
+    expect(b.fields?.[0]?.key).toBe("headline")
   })
 })

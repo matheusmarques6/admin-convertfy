@@ -28,7 +28,6 @@ import {
   withOriginalSlices,
 } from "./anchor-match"
 import type { AnchorField } from "./anchor-match"
-import { looksLikeMarkup } from "./apply-patches"
 import { isStructuralToken } from "./attr-token-vocabulary"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
@@ -178,6 +177,16 @@ function copyValueOf(content: Record<string, unknown>, key: string): string | nu
  */
 function neutralizeAngles(value: string): string {
   return value.replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
+
+/**
+ * Valor de copy que é MARCAÇÃO em vez de texto (nasceu no set_text do
+ * Integrador; mora aqui desde que o merge virou o único escritor de texto).
+ * Conservador de propósito: só pega tag HTML de verdade (`<img ...>`,
+ * `<a ...>`), não "preço < 100" nem comparação solta.
+ */
+export function looksLikeMarkup(value: string): boolean {
+  return /<\s*\/?\s*[a-z][a-z0-9-]*(\s[^<>]*)?\/?\s*>/i.test(value)
 }
 
 function inRange(offset: number, range: Range | null): boolean {

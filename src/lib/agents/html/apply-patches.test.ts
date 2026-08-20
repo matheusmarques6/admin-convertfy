@@ -1,264 +1,126 @@
-import { describe, it, expect } from "vitest"
+/**
+ * Aplicador de ops do color_format — o vocabulário encolheu em 20/08:
+ * img/set_text/remove_slot/remove_row viraram código (image-merge e
+ * copy-merge); sobraram replace (find único) e recolor (troca global por
+ * valor de cor).
+ */
 
-import {
-  parseOps,
-  applyOps,
-  OpsParseError,
-  looksLikeMarkup,
-} from "./apply-patches"
+import { describe, it, expect } from "vitest"
+import { applyOps, parseOps, OpsParseError } from "./apply-patches"
 import { HERO_SENTINEL_START, HERO_SENTINEL_END } from "./hero-locator"
 
 describe("parseOps", () => {
-  it("aceita o objeto com fences e tags com chaves", () => {
-    const raw = '```json\n{"ops":[{"action":"img","tag":"{{BODY_IMAGE}}","url":"https://cdn/a.png","alt":"foto"}]}\n```'
-    expect(parseOps(raw)).toEqual([
-      { action: "img", tag: "BODY_IMAGE", url: "https://cdn/a.png", alt: "foto" },
-    ])
+  it("aceita replace e recolor com envelope {ops:[...]}", () => {
+    const ops = parseOps(
+      '{"ops":[{"action":"replace","find":"x","replace":"y"},{"action":"recolor","from":"#111111","to":"#222222"}]}',
+    )
+    expect(ops).toHaveLength(2)
+    expect(ops[0]).toMatchObject({ action: "replace", find: "x" })
+    expect(ops[1]).toMatchObject({ action: "recolor", from: "#111111" })
   })
 
-  it("lança OpsParseError em JSON inválido / sem ops / action desconhecida", () => {
-    expect(() => parseOps("nada")).toThrow(OpsParseError)
-    expect(() => parseOps('{"x":1}')).toThrow(OpsParseError)
-    expect(() => parseOps('{"ops":[{"action":"zzz"}]}')).toThrow(OpsParseError)
-    expect(() => parseOps('{"ops":[{"action":"img","tag":"A"}]}')).toThrow(
-      OpsParseError,
+  it("action do vocabulário antigo (set_text/img) é ERRO de config, não silêncio", () => {
+    expect(() =>
+      parseOps('{"ops":[{"action":"set_text","tag":"X","value":"y"}]}'),
+    ).toThrow(OpsParseError)
+    expect(() =>
+      parseOps('{"ops":[{"action":"img","tag":"X","url":"https://x"}]}'),
+    ).toThrow(OpsParseError)
+  })
+
+  it("recolor com from/to que não são cor é rejeitado no parse", () => {
+    expect(() =>
+      parseOps('{"ops":[{"action":"recolor","from":"azul","to":"#111111"}]}'),
+    ).toThrow(OpsParseError)
+  })
+
+  it("fences markdown e texto em volta são tolerados", () => {
+    const ops = parseOps(
+      'antes\n```json\n{"ops":[{"action":"replace","find":"a","replace":"b"}]}\n```',
     )
+    expect(ops).toHaveLength(1)
   })
 })
 
-const hero = `${HERO_SENTINEL_START}<table><tr><td><img src="https://cdn/hero.png">Hero {{HERO_BADGE}}</td></tr></table>${HERO_SENTINEL_END}`
-const body = `<table><tr><td><img src="{{BODY_IMAGE}}" alt="{{BODY_IMAGE_ALT}}"></td></tr><tr><td>{{BODY_TEXT}}</td></tr></table>`
-const doc = `<!DOCTYPE html><html><body>${hero}${body}<p style="color:#111111">CTA</p></body></html>`
-
-describe("applyOps", () => {
-  it("img: troca o token pela URL (e o _ALT quando vem alt)", () => {
-    const res = applyOps(
-      doc,
-      [{ action: "img", tag: "BODY_IMAGE", url: "https://cdn/b.png", alt: "vitrine" }],
-      { allowHero: false },
-    )
-    expect(res.applied).toBe(1)
-    expect(res.html).toContain('src="https://cdn/b.png"')
-    expect(res.html).toContain('alt="vitrine"')
-    expect(res.html).not.toContain("{{BODY_IMAGE}}")
-  })
-
-  it("img: tag inexistente → skipped tag_not_found", () => {
-    const res = applyOps(
-      doc,
-      [{ action: "img", tag: "PRODUCTS_IMAGE", url: "https://cdn/p.png" }],
-      { allowHero: false },
-    )
-    expect(res.applied).toBe(0)
-    expect(res.skipped[0].reason).toBe("tag_not_found")
-  })
-
-  it("remove_slot: remove a <tr> envolvente balanceada", () => {
-    const res = applyOps(doc, [{ action: "remove_slot", tag: "BODY_IMAGE" }], {
-      allowHero: false,
-    })
-    expect(res.applied).toBe(1)
-    expect(res.html).not.toContain("{{BODY_IMAGE}}")
-    expect(res.html).toContain("{{BODY_TEXT}}")
-  })
-
-  it("remove_slot: <tr> com OUTRO token de imagem → row_not_removable", () => {
-    const shared = `<table><tr><td><img src="{{PRODUCT_1_IMAGE}}"><img src="{{PRODUCT_2_IMAGE}}"></td></tr></table>`
-    const res = applyOps(
-      `<html><body>${shared}</body></html>`,
-      [{ action: "remove_slot", tag: "PRODUCT_1_IMAGE" }],
-      { allowHero: false },
-    )
-    expect(res.applied).toBe(0)
-    expect(res.skipped[0].reason).toBe("row_not_removable")
-    expect(res.html).toContain("{{PRODUCT_2_IMAGE}}")
-  })
-
-  it("replace: find único aplica; ambíguo pula", () => {
-    const ok = applyOps(
-      doc,
-      [{ action: "replace", find: 'style="color:#111111"', replace: 'style="color:#BB0000"' }],
-      { allowHero: false },
-    )
-    expect(ok.applied).toBe(1)
-    expect(ok.html).toContain("#BB0000")
-
-    const ambiguous = applyOps(
-      doc,
-      [{ action: "replace", find: "<table>", replace: "<table X>" }],
-      { allowHero: false },
-    )
-    expect(ambiguous.applied).toBe(0)
-    expect(ambiguous.skipped[0].reason).toBe("find_ambiguous")
-  })
-
-  it("hero protegida: op dentro das sentinelas é rejeitada com allowHero=false", () => {
-    const res = applyOps(
-      doc,
-      [{ action: "replace", find: "https://cdn/hero.png", replace: "https://cdn/x.png" }],
-      { allowHero: false },
-    )
-    expect(res.applied).toBe(0)
-    expect(res.skipped[0].reason).toBe("hero_protected")
-  })
-
-  it("allowHero=true (color_format) pode tocar a hero", () => {
-    const res = applyOps(
-      doc,
-      [{ action: "replace", find: "https://cdn/hero.png", replace: "https://cdn/x.png" }],
+describe("applyOps — replace", () => {
+  it("find ÚNICO é trocado; ambíguo e ausente são pulados com a razão", () => {
+    const html = "<td>alpha</td><td>beta</td><td>beta</td>"
+    const r = applyOps(
+      html,
+      [
+        { action: "replace", find: "alpha", replace: "ALPHA" },
+        { action: "replace", find: "beta", replace: "BETA" },
+        { action: "replace", find: "gamma", replace: "GAMMA" },
+      ],
       { allowHero: true },
     )
-    expect(res.applied).toBe(1)
-    expect(res.html).toContain("https://cdn/x.png")
+    expect(r.html).toContain("ALPHA")
+    expect(r.html).not.toContain("BETA")
+    expect(r.applied).toBe(1)
+    expect(r.skipped.map((s) => s.reason).sort()).toEqual([
+      "find_ambiguous",
+      "find_not_found",
+    ])
   })
 
-  // Fase 3 do endereçamento: TODA op é resolvida contra o SNAPSHOT — o
-  // mesmo documento que o agente viu ao planejar. Encadeamento (op 2
-  // mirando o resultado da op 1) deixou de ser suportado DE PROPÓSITO: era
-  // o que fazia uma remoção invalidar o endereço das ops seguintes
-  // (cascata de tag_not_found no incidente da Luxe Lift). O agente de
-  // imagem já emite a URL final com crop params na própria op `img`.
-  it("ops são resolvidas contra o snapshot (sem encadeamento)", () => {
-    const res = applyOps(
-      doc,
-      [
-        { action: "img", tag: "BODY_IMAGE", url: "https://cdn/b.png" },
-        {
-          action: "replace",
-          find: 'src="https://cdn/b.png"',
-          replace: 'src="https://cdn/b.png" width="600"',
-        },
-      ],
-      { allowHero: false },
-    )
-    expect(res.applied).toBe(1)
-    expect(res.html).toContain("https://cdn/b.png")
-    // A 2ª op mirava um texto que só existiria DEPOIS da 1ª — no snapshot
-    // ele não existe, então é recusada com razão explícita.
-    expect(res.skipped[0].reason).toBe("find_not_found")
-  })
-
-  it("remoção NÃO invalida o endereço das ops seguintes (snapshot)", () => {
+  it("hero protegida quando allowHero=false; liberada quando true", () => {
     const html = [
       "<table>",
-      '  <tr id="a"><td>{{A}}</td></tr>',
-      '  <tr id="b"><td>{{B}}</td></tr>',
-      '  <tr id="c"><td>{{C}}</td></tr>',
+      HERO_SENTINEL_START,
+      "<tr><td>hero copy</td></tr>",
+      HERO_SENTINEL_END,
       "</table>",
     ].join("\n")
-    const res = applyOps(
+    const blocked = applyOps(
+      html,
+      [{ action: "replace", find: "hero copy", replace: "x" }],
+      { allowHero: false },
+    )
+    expect(blocked.skipped[0].reason).toBe("hero_protected")
+    const allowed = applyOps(
+      html,
+      [{ action: "replace", find: "hero copy", replace: "nova copy" }],
+      { allowHero: true },
+    )
+    expect(allowed.html).toContain("nova copy")
+  })
+
+  it("splices sobrepostos: o da direita vence, o outro vira overlapping_edit", () => {
+    const html = "<td>um dois tres</td>"
+    const r = applyOps(
       html,
       [
-        { action: "remove_row", tag: "A" },
-        { action: "set_text", tag: "B", value: "texto B" },
-        { action: "remove_row", tag: "C" },
+        { action: "replace", find: "um dois tres", replace: "A" },
+        { action: "replace", find: "dois", replace: "B" },
       ],
       { allowHero: true },
     )
-    expect(res.applied).toBe(3)
-    expect(res.skipped).toEqual([])
-    expect(res.html).not.toContain('id="a"')
-    expect(res.html).toContain("texto B")
-    expect(res.html).not.toContain('id="c"')
-  })
-
-  it("ops sobrepostas: a região é preservada e a perdedora é telemetrizada", () => {
-    const html = '<table><tr id="r"><td>{{X}}</td></tr></table>'
-    const res = applyOps(
-      html,
-      [
-        { action: "set_text", tag: "X", value: "valor" },
-        { action: "remove_row", tag: "X" },
-      ],
-      { allowHero: true },
-    )
-    // Uma das duas vence; a outra vira overlapping_edit — nunca as duas.
-    expect(res.applied).toBe(1)
-    expect(res.skipped[0].reason).toBe("overlapping_edit")
-  })
-})
-
-describe("set_text com MARCAÇÃO é recusado (incidente Luxe Lift, 10/08)", () => {
-  // O set_text neutraliza `<>` por contrato. Aplicar uma tag HTML como
-  // valor escreve a marcação ESCAPADA e VISÍVEL na tela — foi assim que o
-  // logo do rodapé virou o literal `&lt;img src="..."&gt;` dentro de um
-  // <span>. Trocar imagem é a op `img`; recusar é melhor que renderizar
-  // lixo com cara de bug de template.
-  const doc = '<tr><td data-cfy-slot="LOGO">{{LOGO}}</td></tr>'
-
-  it("valor com tag <img> não é aplicado", () => {
-    const r = applyOps(doc, [
-      { action: "set_text", tag: "LOGO", value: '<img src="https://x/l.png" width="180" />' },
-    ], { allowHero: true })
-    expect(r.applied).toBe(0)
-    expect(r.skipped).toEqual([
-      expect.objectContaining({ reason: "value_is_html" }),
-    ])
-    expect(r.html).toBe(doc)
-  })
-
-  it("texto com sinal de menor CONTINUA passando", () => {
-    // O guard tem de ser conservador: copy legítima usa "<" o tempo todo.
-    const r = applyOps(doc, [
-      { action: "set_text", tag: "LOGO", value: "frete < R$ 100 e 5 > 3" },
-    ], { allowHero: true })
+    expect(r.skipped.some((s) => s.reason === "overlapping_edit")).toBe(true)
     expect(r.applied).toBe(1)
-    expect(r.skipped).toEqual([])
   })
 })
 
-describe("looksLikeMarkup", () => {
-  it("pega tag de verdade", () => {
-    expect(looksLikeMarkup('<img src="x">')).toBe(true)
-    expect(looksLikeMarkup("<a href='y'>link</a>")).toBe(true)
-    expect(looksLikeMarkup("<br/>")).toBe(true)
-  })
-  it("não pega comparação nem texto solto", () => {
-    expect(looksLikeMarkup("de < 100 para > 200")).toBe(false)
-    expect(looksLikeMarkup("Bem-vinda!")).toBe(false)
-    expect(looksLikeMarkup("5 < 10")).toBe(false)
-  })
-})
-
-describe("remove_row não destrói copy já preenchida (incidente Luxe Lift, 12/08)", () => {
-  // `REVIEW_VERIFIED_LABEL` ("Verified Buyer") é rótulo fixo que schema
-  // nenhum declara. Ficou sem valor, o verificador o marcou como slot vazio
-  // e o text_format pediu a remoção da linha — que carregava o depoimento
-  // INTEIRO, já preenchido pelo copy_merge. Os dois reviews sumiram do email.
-  const linhaDoDepoimento = [
-    '<table><tr data-cfy-row="TESTIMONIAL_1_TITLE REVIEW_VERIFIED_LABEL">',
-    "<td>",
-    "<p>Finally, real support all day</p>",
-    "<p>I&#39;ve tried so many bras that promised comfort.</p>",
-    "<p>&#9733;&#9733;&#9733;&#9733;&#9733;</p>",
-    "<p><strong>Sarah M.</strong><br>{{REVIEW_VERIFIED_LABEL}}</p>",
-    "</td></tr></table>",
-  ].join("")
-
-  it("recusa a remoção e mantém o depoimento", () => {
-    const res = applyOps(linhaDoDepoimento, [
-      { action: "remove_row", tag: "REVIEW_VERIFIED_LABEL" },
-    ], { allowHero: true })
-    expect(res.applied).toBe(0)
-    expect(res.skipped[0].reason).toBe("row_not_removable")
-    expect(res.html).toContain("Finally, real support all day")
-    expect(res.html).toContain("Sarah M.")
+describe("applyOps — recolor", () => {
+  it("troca global por VALOR (todas as formas equivalentes) e conta como aplicada", () => {
+    const html =
+      '<td style="color:#111111">a</td><td bgcolor="#111111">b</td>'
+    const r = applyOps(
+      html,
+      [{ action: "recolor", from: "#111111", to: "#ABCDEF" }],
+      { allowHero: true },
+    )
+    expect(r.html).not.toContain("#111111")
+    expect((r.html.match(/#ABCDEF/gi) ?? []).length).toBe(2)
+    expect(r.applied).toBe(1)
   })
 
-  it("linha REALMENTE vazia continua removível", () => {
-    const vazia =
-      '<table><tr data-cfy-row="CAMPAIGN_TAPE"><td>{{CAMPAIGN_TAPE}} &#183; {{CAMPAIGN_TAPE}}</td></tr></table>'
-    const res = applyOps(vazia, [{ action: "remove_row", tag: "CAMPAIGN_TAPE" }], { allowHero: true })
-    expect(res.applied).toBe(1)
-    expect(res.html).not.toContain("CAMPAIGN_TAPE")
-  })
-
-  it("moldura decorativa não conta como copy", () => {
-    // Só estrelas, aspas e pontuação em volta do slot vazio: a linha não
-    // carrega nada que o cliente leria, então sai.
-    const so_moldura =
-      '<table><tr><td><p>&#8221;</p><p>&#9733;&#9733;&#9733;</p><p>{{X_LABEL}}</p></td></tr></table>'
-    const res = applyOps(so_moldura, [{ action: "remove_row", tag: "X_LABEL" }], { allowHero: true })
-    expect(res.applied).toBe(1)
+  it("cor ausente no documento → find_not_found (telemetria, não erro)", () => {
+    const r = applyOps(
+      "<td>sem cor</td>",
+      [{ action: "recolor", from: "#123456", to: "#654321" }],
+      { allowHero: true },
+    )
+    expect(r.applied).toBe(0)
+    expect(r.skipped[0].reason).toBe("find_not_found")
   })
 })

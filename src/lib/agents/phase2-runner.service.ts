@@ -105,11 +105,7 @@ import {
   type QaBlockView,
 } from "./html/qa-views"
 import { stripSlotAttributes } from "./html/slot-annotate"
-import {
-  buildBlockContracts,
-  contractTags,
-  measureOpsAgainstContract,
-} from "./html/block-contract"
+import { buildBlockContracts } from "./html/block-contract"
 import {
   locateHeroRegion,
   spliceHero,
@@ -123,7 +119,6 @@ import {
   normalizeFonts,
   type GraftStatus,
 } from "./html/hero-graft"
-import { effectiveVariantHtml } from "./shared/component-dimensions"
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { applyOps } from "./html/apply-patches"
 import {
@@ -1956,7 +1951,7 @@ async function runFormattingChain(p: {
   if (heroGraftApplies) {
     const graft = graftHeroVariant(
       fmtCtx.referenceHtml,
-      heroVariant ? effectiveVariantHtml(heroVariant) : null,
+      heroVariant?.html ?? null,
     )
     heroGraftStatus = graft.status
     if (graft.status === "grafted") {
@@ -1984,12 +1979,6 @@ async function runFormattingChain(p: {
       })
     }
   }
-
-  // ── Contrato dos blocos (MC-3) ─────────────────────────────────────
-  // Régua para MEDIR as ops do color_format (o único formatador LLM que
-  // ainda emite ops). Texto e imagem viraram código — o contrato como
-  // INPUT de formatador morreu com eles.
-  const contractTagSet = contractTags(fmtCtx.blocks)
 
   // ── Estágio 0 — MERGE POR EXAMPLE (antes da hero, D1) ──────────────
   // O endereço da copy é a frase do `example` do schema, encontrada no HTML
@@ -2516,16 +2505,11 @@ async function runFormattingChain(p: {
           renderedPrompt: r.renderedPrompt,
           rawOutput: r.rawOutput,
           parsed: {
-            contrato: measureOpsAgainstContract(r.ops, contractTagSet),
             ops_applied: applied.applied,
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
               target:
-                s.op.action === "replace"
-                  ? s.op.find.slice(0, 60)
-                  : s.op.action === "recolor"
-                    ? s.op.from
-                    : s.op.tag,
+                s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.from,
               reason: s.reason,
             })),
             output_html_len: applied.html.length,
