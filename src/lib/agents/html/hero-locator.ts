@@ -25,7 +25,6 @@
  * Puro (zero deps de server) — testável.
  */
 
-import { lookupTag } from "@/lib/email-workspace/tag-registry"
 
 // SYNC: mesmo formato de BLOCK_MARKER_PATTERN em component-assembler.service.ts.
 const CFY_BLOCK_MARKER =
@@ -64,15 +63,84 @@ interface SectionTag {
   end: number
 }
 
+// ── LEGADO (D10, 20/08): mapa tag→seção da cascata 2 ─────────────────
+// A cascata por tags só serve a documentos ANTIGOS com {{TAG}} (a
+// biblioteca por example nunca os teve; o caminho normal é o marcador
+// cfy:block). Snapshot do tag-registry no dia da sua remoção — apagar
+// quando a telemetria mostrar a cascata 2 zerada (`mode: "tag"`).
+const LEGACY_HERO_TAG_SECTIONS: Record<string, string> = {
+  LOGO: "HEADER", LOGO_URL: "HEADER",
+  HEADER_LINK_N_LABEL: "HEADER", HEADER_LINK_N_URL: "HEADER",
+  HERO_EYEBROW: "HERO", HERO_HEADLINE: "HERO", HERO_HEADLINE_LINE_N: "HERO",
+  HERO_SUBHEAD: "HERO", HERO_BODY: "HERO", HERO_CTA_LABEL: "HERO",
+  HERO_CTA_N_LABEL: "HERO", HERO_CTA_URL: "HERO", HERO_CTA_N_URL: "HERO",
+  HERO_IMAGE: "HERO", HERO_IMAGE_ALT: "HERO",
+  BODY_TITLE: "BODY", BODY_SUBHEAD: "BODY", BODY_TEXT: "BODY",
+  BODY_TEXT_N: "BODY", BODY_QUOTE_LINE_N: "BODY", BODY_CTA_LABEL: "BODY",
+  BODY_CTA_URL: "BODY", BODY_IMAGE: "BODY", BODY_IMAGE_N: "BODY",
+  BODY_IMAGE_ALT: "BODY", BODY_BG_IMAGE: "BODY",
+  OFFER_EYEBROW: "OFFER", OFFER_HEADLINE: "OFFER", OFFER_BODY: "OFFER",
+  OFFER_VALUE: "OFFER", COUPON_CODE: "OFFER", COUPON_HINT: "OFFER",
+  OFFER_CTA_LABEL: "OFFER", OFFER_CTA_URL: "OFFER",
+  PRODUCTS_TITLE: "PRODUCTS", PRODUCTS_SUBHEAD: "PRODUCTS",
+  PRODUCTS_CTA_LABEL: "PRODUCTS", PRODUCTS_CTA_URL: "PRODUCTS",
+  PRODUCTS_IMAGE: "PRODUCTS", PRODUCTS_IMAGE_ALT: "PRODUCTS",
+  PRODUCTS_BG_IMAGE: "PRODUCTS", PRODUCT_CTA_LABEL: "PRODUCTS",
+  PRODUCT_N_NAME: "PRODUCTS", PRODUCT_N_PRICE: "PRODUCTS",
+  PRODUCT_N_COMPARE_PRICE: "PRODUCTS", PRODUCT_N_REVIEWS_COUNT: "PRODUCTS",
+  PRODUCT_N_DESC: "PRODUCTS", PRODUCT_N_DESC_N: "PRODUCTS",
+  PRODUCT_N_SUBHEAD: "PRODUCTS", PRODUCT_N_USP_N: "PRODUCTS",
+  PRODUCT_N_CTA_LABEL: "PRODUCTS", PRODUCT_N_URL: "PRODUCTS",
+  PRODUCT_N_IMAGE: "PRODUCTS", PRODUCT_N_IMAGE_ALT: "PRODUCTS",
+  PRODUCT_N_THUMB_N: "PRODUCTS",
+  USP_HEADLINE: "USP", USP_N_TITLE: "USP", USP_N_SUBHEAD: "USP",
+  USP_N_TEXT: "USP", USP_N_ICON: "USP", USP_ICON: "USP",
+  USP_N_IMAGE: "USP", USP_N_IMAGE_ALT: "USP",
+  STEP_N_TITLE: "USP", STEP_N_TEXT: "USP", STEP_N_IMAGE: "USP",
+  STEP_N_NUMBER: "USP",
+  REVIEWS_TITLE: "REVIEWS", REVIEWS_TEXT: "REVIEWS",
+  REVIEWS_CTA_LABEL: "REVIEWS", REVIEWS_CTA_URL: "REVIEWS",
+  REVIEWS_IMAGE: "REVIEWS", REVIEWS_IMAGE_ALT: "REVIEWS",
+  REVIEW_N_TEXT: "REVIEWS", REVIEW_N_NAME: "REVIEWS",
+  REVIEW_N_META: "REVIEWS", REVIEW_VERIFIED_LABEL: "REVIEWS",
+  REVIEW_N_RATING: "REVIEWS", REVIEW_N_IMAGE: "REVIEWS",
+  REVIEW_N_INITIAL: "REVIEWS", REVIEW_N_PHOTOS: "REVIEWS",
+  REVIEW_N_URL: "REVIEWS", BADGE_N_TEXT: "REVIEWS", BADGE_N_ICON: "REVIEWS",
+  URGENCY_HEADLINE: "URGENCY", URGENCY_TEXT: "URGENCY",
+  COUNTDOWN_DD: "URGENCY", COUNTDOWN_HH: "URGENCY", COUNTDOWN_MM: "URGENCY",
+  COUNTDOWN_SS: "URGENCY", COUNTDOWN_DD_LABEL: "URGENCY",
+  COUNTDOWN_HH_LABEL: "URGENCY", COUNTDOWN_MM_LABEL: "URGENCY",
+  COUNTDOWN_SS_LABEL: "URGENCY",
+  FINAL_CTA_HEADLINE: "CTA", FINAL_CTA_TEXT: "CTA", FINAL_CTA_LABEL: "CTA",
+  FINAL_CTA_URL: "CTA", CTA_LABEL: "CTA", CTA_URL: "CTA",
+  FOOTER_TAGLINE: "FOOTER", FOOTER_TEXT: "FOOTER", FOOTER_ADDRESS: "FOOTER",
+  FOOTER_LINK_N_LABEL: "FOOTER", FOOTER_LINK_N_URL: "FOOTER",
+  INSTAGRAM_URL: "FOOTER", FACEBOOK_URL: "FOOTER", TIKTOK_URL: "FOOTER",
+  PINTEREST_URL: "FOOTER", YOUTUBE_URL: "FOOTER", INSTAGRAM_ICON: "FOOTER",
+  FACEBOOK_ICON: "FOOTER", TIKTOK_ICON: "FOOTER", PINTEREST_ICON: "FOOTER",
+  YOUTUBE_ICON: "FOOTER", UNSUBSCRIBE_LABEL: "FOOTER",
+  UNSUBSCRIBE_URL: "FOOTER", PREFERENCES_LABEL: "FOOTER",
+  PREFERENCES_URL: "FOOTER",
+}
+
+/** Mesma normalização do registry morto: dígitos indexados viram N. */
+function legacySectionOf(tag: string): string | null {
+  return (
+    LEGACY_HERO_TAG_SECTIONS[tag] ??
+    LEGACY_HERO_TAG_SECTIONS[tag.replace(/_\d+/g, "_N")] ??
+    null
+  )
+}
+
 /** Tags canônicas com seção (META/desconhecidas ficam de fora). */
 function collectSectionTags(html: string): SectionTag[] {
   const out: SectionTag[] = []
   for (const m of html.matchAll(TAG_PATTERN)) {
-    const spec = lookupTag(m[1])
-    if (!spec || !spec.blockType) continue
+    const section = legacySectionOf(m[1])
+    if (!section) continue
     out.push({
       raw: m[1],
-      section: spec.section,
+      section,
       start: m.index ?? 0,
       end: (m.index ?? 0) + m[0].length,
     })

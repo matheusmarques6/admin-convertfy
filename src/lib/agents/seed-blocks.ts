@@ -249,15 +249,19 @@ interface ExistingBlockRow {
 }
 
 /**
- * Os dois contratos de copy são o mesmo? Compara por (key, tag, max_len,
- * required, nature) — o que o n8n precisa saber. Ordem importa: `fields` é
- * a lista que o payload envia, e reordenar muda o que o modelo lê primeiro.
+ * Os dois contratos de copy são o mesmo? Compara por (key, example, max_len,
+ * required, nature) — o que o merge por example e o n8n precisam saber. A
+ * `tag` saiu do snapshot (20/08) e o `example` entrou na assinatura porque
+ * virou o ENDEREÇO do campo: mudar a frase no schema muda a âncora e o
+ * bloco tem de ser re-reconciliado. Esperado: uma leva de re-reconcile em
+ * massa no 1º seed após o corte (inócuo — monitorar volume).
+ * Ordem importa: `fields` é a lista que o payload envia.
  */
 function sameFields(a: unknown, b: BlueprintBlockField[]): boolean {
   const cur = Array.isArray(a) ? (a as BlueprintBlockField[]) : []
   if (cur.length !== b.length) return false
   const sig = (f: BlueprintBlockField) =>
-    [f.key, f.tag ?? "", f.max_len ?? 0, f.required ? 1 : 0, f.nature ?? ""].join("|")
+    [f.key, f.example ?? "", f.max_len ?? 0, f.required ? 1 : 0, f.nature ?? ""].join("|")
   return cur.every((f, i) => sig(f) === sig(b[i]))
 }
 

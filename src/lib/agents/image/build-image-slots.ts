@@ -101,7 +101,9 @@ export function buildImageSlots(
   if (imageFields.length === 0) return ""
 
   const sections = imageFields.map((f) => {
-    const tag = f.tag ?? f.key.toUpperCase()
+    // A `tag` saiu do snapshot (20/08): o identificador do slot é a própria
+    // key em maiúsculas — snapshot antigo com tag residual no jsonb ignora.
+    const tag = f.key.toUpperCase()
     const spec = (f.image_spec ?? "").trim() || (f.guidance ?? "").trim()
     const example = (f.example ?? "").trim()
     const formato = formatoLine(f)

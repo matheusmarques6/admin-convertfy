@@ -13,17 +13,8 @@
  * endereçável por key, não um array de propriedades planas. `nature` e
  * `source` do snapshot ficam de fora do que não interessa a quem formata.
  *
- * A segunda metade do módulo é a MEDIDA: toda op que um formatador emite
- * é conferida contra as tags do contrato. O `allowedTags` do applyOps já
- * REJEITA op fora da alçada; o que não existia era o número — sem ele não
- * dá para saber se um agente está fora do trilho, só que uma op foi
- * descartada. É o mesmo raciocínio do `contrato.taxa_pct` que o callback
- * de copy passou a gravar.
- *
  * Puro (zero I/O) — testável.
  */
-
-import { lookupTag } from "@/lib/email-workspace/tag-registry"
 
 /** Campo do contrato como o formatador o vê. */
 export interface ContractField {
@@ -31,7 +22,8 @@ export interface ContractField {
   tipo: string
   natureza: string
   max_caracteres: number | null
-  placeholder_no_html: string | null
+  /** A frase-âncora do campo no HTML (o example do schema). */
+  exemplo_ancora: string | null
 }
 
 /** Contrato de um bloco do email. */
@@ -58,7 +50,7 @@ interface RawField {
   type?: string | null
   nature?: string | null
   max_len?: number | null
-  tag?: string | null
+  example?: string | null
 }
 
 function texto(v: unknown): string | null {
@@ -92,14 +84,13 @@ export function buildBlockContracts(
     for (const f of fields) {
       const key = texto(f?.key)
       if (!key || key in campos) continue
-      const tag = texto(f?.tag)
       campos[key] = {
         label: texto(f?.label) ?? key,
         tipo: texto(f?.type) ?? "text_short",
         natureza: natureza(f),
         max_caracteres:
           typeof f?.max_len === "number" && f.max_len > 0 ? f.max_len : null,
-        placeholder_no_html: tag ? `{{${tag}}}` : null,
+        exemplo_ancora: texto(f?.example),
       }
     }
     if (Object.keys(campos).length === 0) continue
@@ -112,95 +103,4 @@ export function buildBlockContracts(
     })
   }
   return out
-}
-
-/** Tags canônicas cobertas pelo contrato dos blocos (para a medida). */
-export function contractTags(
-  rows: ReadonlyArray<ContractBlockRow> | null | undefined,
-): Set<string> {
-  const tags = new Set<string>()
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const fields = Array.isArray(row.fields) ? (row.fields as RawField[]) : []
-    for (const f of fields) {
-      const tag = texto(f?.tag)
-      if (tag) tags.add(tag)
-    }
-  }
-  return tags
-}
-
-/**
- * Tag que a PLATAFORMA preenche, não o contrato: logo, preheader, ano,
- * unsubscribe, `*_URL`, `*_ALT`. Um formatador tocá-las é legítimo, então
- * elas ficam fora do numerador e do denominador da taxa — contá-las como
- * desvio faria todo run parecer fora do contrato.
- */
-export function isPlatformTag(tag: string): boolean {
-  const kind = lookupTag(tag)?.kind
-  return kind === "data" || kind === "url"
-}
-
-export interface OpsContractReport {
-  /** Ops emitidas pelo agente. */
-  total: number
-  /** Ops ancoradas em tag (replace/recolor não têm — ficam fora). */
-  com_tag: number
-  /** Ops cuja tag está no contrato de algum bloco. */
-  no_contrato: number
-  /** Ops em tag de plataforma (LOGO, PREHEADER, *_URL, *_ALT). */
-  plataforma: number
-  /** Percentual sobre no_contrato + fora. `null` quando não há o que medir. */
-  taxa_pct: number | null
-  /** Amostra do que ficou fora — é isto que se investiga. */
-  fora: Array<{ action: string; tag: string; block_id: string | null }>
-}
-
-interface MeasurableOp {
-  action: string
-  tag?: string
-  block_id?: string | null
-}
-
-/** Confere as ops de um estágio contra as tags do contrato. Pura. */
-export function measureOpsAgainstContract(
-  opsInput: ReadonlyArray<MeasurableOp> | null | undefined,
-  tags: ReadonlySet<string>,
-  foraSampleMax = 20,
-): OpsContractReport {
-  const ops = Array.isArray(opsInput) ? opsInput : []
-  let comTag = 0
-  let noContrato = 0
-  let plataforma = 0
-  const fora: OpsContractReport["fora"] = []
-
-  for (const op of ops) {
-    const tag = texto(op?.tag)
-    if (!tag) continue
-    comTag++
-    if (tags.has(tag)) {
-      noContrato++
-    } else if (isPlatformTag(tag)) {
-      plataforma++
-    } else {
-      if (fora.length < foraSampleMax) {
-        fora.push({
-          action: op.action,
-          tag,
-          block_id: op.block_id ?? null,
-        })
-      }
-    }
-  }
-
-  const foraTotal = comTag - noContrato - plataforma
-  const denominador = noContrato + foraTotal
-  return {
-    total: ops.length,
-    com_tag: comTag,
-    no_contrato: noContrato,
-    plataforma,
-    taxa_pct:
-      denominador > 0 ? Math.round((noContrato / denominador) * 100) : null,
-    fora,
-  }
 }

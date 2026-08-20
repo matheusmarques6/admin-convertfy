@@ -36,7 +36,6 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 
-import { lookupTag } from "@/lib/email-workspace/tag-registry"
 
 import { loadGlobalReferenceTemplate } from "../reference-template"
 import { isAspectKey } from "../image/aspect-ratio"
@@ -321,7 +320,11 @@ export function buildImageMap(
     const content = blk.content ?? {}
     const bp = bpFor(blk.position, blk.block_type)
     const imageTag =
-      bp?.tags?.find((t) => lookupTag(t)?.kind === "image") ?? null
+      // Forma da tag de imagem legada ({{X_IMAGE}}/{{X_THUMB_2}}) — o
+      // registry morreu; blueprints novos nem carregam tags.
+      bp?.tags?.find(
+        (t) => /(?:IMAGE|THUMB)(?:_\d+)?$/.test(t) && !t.endsWith("_ALT"),
+      ) ?? null
 
     const url = (content.image_url as string | undefined)?.trim()
     if (url) {

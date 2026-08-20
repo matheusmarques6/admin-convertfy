@@ -22,7 +22,6 @@ import {
   textFormatGuard,
   DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT,
 } from "./text-format.chain"
-import { DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT } from "./image-format.chain"
 import { DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT } from "./color-format.chain"
 import {
   HERO_SENTINEL_START,
@@ -256,9 +255,7 @@ describe("buildHeroSystemPrompt", () => {
     "{{PLACEHOLDERS}}",
     "{{HERO_IMAGE}}",
     "{{HERO_IMAGE_ALT}}",
-    "{{COUPON_CODE}}",
-    "{{HERO_HEADLINE}}",
-    "{{HERO_CTA_LABEL}}",
+    "{{PLACEHOLDER}}",
     "{{ unsubscribe }}",
   ]
 
@@ -305,10 +302,8 @@ describe("system prompts não passam por renderImageTemplate", () => {
   const CHAINS = [
     "hero.chain.ts",
     "text-format.chain.ts",
-    "image-format.chain.ts",
     "color-format.chain.ts",
     "qa.chain.ts",
-    "component-tagger.chain.ts",
     "copy.chain.ts",
   ]
 
@@ -381,17 +376,6 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("NO DUPLICATE PRODUCTS")
   })
 
-  it("imagem herda as slot rules v6 adaptadas a ops (views, sem documento)", () => {
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("ONE SLOT PER IMAGE")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("MATCH BY TAG")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("remove_slot")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("width=520&height=650&crop=center")
-    // F3 (arquitetura por views): o agente não vê mais o documento — a
-    // menção a cfy:hero saiu do prompt (a proteção segue no applyOps).
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("do NOT see the email document")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).not.toContain("{{html}}")
-  })
-
   it("cores herda a conformidade de identidade do Refinador + regras de botão", () => {
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("identity_conformance")
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("NEVER introduce a color")
@@ -401,13 +385,16 @@ describe("prompts default da cadeia", () => {
 })
 
 describe("regras novas (Luxe Lift, jul/2026)", () => {
-  it("hero: hero_content é ARRAY (hero composta) + regra de slot vazio", () => {
+  it("hero: copy da região é FINAL (merge por example) + remoção só via hero_pending", () => {
+    // D1 (ago/2026): o merge determinístico roda ANTES da hero — a região
+    // chega com a copy final e o agente é PROIBIDO de reescrever texto.
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("THE COPY IN THE REGION IS FINAL")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("is an ARRAY")
-    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("coupon banner")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("empty_slot_rule")
+    expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("<hero_pending>")
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain('never emit a button with empty label or href=""')
-    // Copy ainda não chegou (array vazio) NÃO autoriza remover slot — foi o
-    // que comeu o CTA da Luxe Lift.
+    // hero_pending vazio NÃO autoriza remover slot — foi o que comeu o CTA
+    // da Luxe Lift.
     expect(DEFAULT_HERO_SYSTEM_PROMPT).toContain("remove NOTHING")
   })
   it("texto: ignora blocos já colocados + fatiamento de copy corrida + slot vazio", () => {

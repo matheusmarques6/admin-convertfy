@@ -6,6 +6,13 @@ const h = vi.hoisted(() => ({
   variants: [] as Array<Record<string, unknown>>,
 }))
 
+// O guard de elegibilidade (variantIsFillable) tem unit test próprio no
+// component-assembler.service.test — aqui o assunto é a ORQUESTRAÇÃO
+// Curador→Montador, então toda fixture é elegível por definição.
+vi.mock("@/lib/email-workspace/schema-example-coherence", () => ({
+  variantIsFillable: () => true,
+}))
+
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: () => ({
     from: (table: string) => {

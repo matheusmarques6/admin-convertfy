@@ -5,6 +5,7 @@ import {
   postProcessFullDocument,
   collapseRunawaySpacers,
   stripUnresolvedPlaceholders,
+  stripUnresolvedAttrTokens,
   neutralizeDeadLinks,
   stripCfyBlockMarkers,
   stripNbspIndentation,
@@ -268,5 +269,38 @@ describe("stripAgentProtocolBlocks", () => {
   it("não confunde comentário cfy:block com wrapper de protocolo", () => {
     const html = "<!-- cfy:block:0:hero:start --><tr></tr>"
     expect(stripAgentProtocolBlocks(html)).toBe(html)
+  })
+})
+
+describe("stripUnresolvedAttrTokens", () => {
+  it("limpa src/alt crus, apaga NOME_DA_MARCA em texto e poda a casca oca", () => {
+    const html = [
+      "<table><tr><td>",
+      '<img src="URL_FOTO_1" alt="ALT_FOTO_1">',
+      "</td></tr>",
+      "<tr><td>NOME_DA_MARCA</td></tr>",
+      "<tr><td>Texto legítimo</td></tr></table>",
+    ].join("\n")
+    const out = stripUnresolvedAttrTokens(html)
+    expect(out).not.toContain("URL_FOTO_1")
+    expect(out).not.toContain("ALT_FOTO_1")
+    expect(out).not.toContain("NOME_DA_MARCA")
+    expect(out).toContain("Texto legítimo")
+  })
+
+  it("arte fixa base64 e URL real ficam intactas (não são token)", () => {
+    const html = [
+      '<img src="data:image/png;base64,AAAA" alt="selo">',
+      '<img src="https://cdn/x.png" alt="produto">',
+    ].join("\n")
+    expect(stripUnresolvedAttrTokens(html)).toBe(html)
+  })
+
+  it("href com token vira link morto e é neutralizado", () => {
+    const html = '<table><tr><td><a href="URL_DO_BOTAO" style="border:1px solid">Comprar</a></td></tr></table>'
+    const out = stripUnresolvedAttrTokens(html)
+    expect(out).not.toContain("URL_DO_BOTAO")
+    expect(out).not.toContain('href=""')
+    expect(out).toContain("Comprar")
   })
 })

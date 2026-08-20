@@ -73,8 +73,6 @@ describe("buildHeroVars — modo enxertado", () => {
   const variant = {
     id: "v1",
     html: "<tr><td>{{HERO_HEADLINE}}</td></tr>",
-    html_tagged: null,
-    tagging_status: null,
     rendered_html: "<table><tr><td><img src='mockup.png'></td></tr></table>",
     output_schema: [],
     block_type: "hero",

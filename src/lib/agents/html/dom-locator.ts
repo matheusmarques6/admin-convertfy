@@ -221,6 +221,97 @@ export function enclosingRow(html: string, offset: number): Range | null {
 }
 
 /**
+ * Consulta reutilizável "elemento MAIS INTERNO no offset" — parseia UMA vez
+ * e devolve a função de lookup. Para varreduras com muitas consultas no
+ * mesmo documento (slots de imagem); consulta avulsa usa `elementAt`.
+ * null em comentário MSO — ali não há árvore, e o caller decide o que
+ * fazer com isso (troca de texto é segura; estrutura, não).
+ */
+export function buildElementLookup(
+  html: string,
+): (offset: number) => { tagName: string; range: Range } | null {
+  const entries = indexElements(html)
+  const mso = msoCommentRanges(html)
+  return (offset) => {
+    if (inAnyRange(offset, mso)) return null
+    const entry = entryAt(entries, offset)
+    return entry ? { tagName: entry.tagName, range: entry.range } : null
+  }
+}
+
+/** Conveniência de `buildElementLookup` para consulta única. */
+export function elementAt(
+  html: string,
+  offset: number,
+): { tagName: string; range: Range } | null {
+  return buildElementLookup(html)(offset)
+}
+
+/** Ranges dos comentários (MSO conditional incluído) — o parser não entra neles. */
+export function commentRanges(html: string): Range[] {
+  return msoCommentRanges(html)
+}
+
+export interface TextNodeEntry {
+  /** Range do nó de texto no source original. */
+  range: Range
+  /** Texto CRU do source (entidades não decodificadas). */
+  text: string
+}
+
+/**
+ * Nós de TEXTO do documento, em ordem, com o range de origem. É a matéria-
+ * prima do casamento por `example`: a frase do schema é procurada dentro de
+ * UM nó (frase que atravessa markup não tem range contíguo e é recusada —
+ * nunca adivinhada). Conteúdo de <script>/<style> fica fora — não é texto
+ * que o cliente de email lê. Comentários nem chegam aqui: para o parser são
+ * nós próprios, não texto.
+ */
+export function textNodes(html: string): TextNodeEntry[] {
+  const doc = parse(html, { sourceCodeLocationInfo: true })
+  const out: TextNodeEntry[] = []
+  const SKIP = new Set(["script", "style"])
+
+  const walk = (node: Node, insideSkipped: boolean) => {
+    if (node.nodeName === "#text") {
+      const r = rangeOf(node)
+      const value = (node as { value?: string }).value ?? ""
+      if (r && !insideSkipped && value.trim().length > 0) {
+        out.push({ range: r, text: html.slice(r.start, r.end) })
+      }
+      return
+    }
+    const skipChildren =
+      insideSkipped || (isElement(node) && SKIP.has(node.tagName.toLowerCase()))
+    for (const child of childrenOf(node)) walk(child, skipChildren)
+  }
+
+  walk(doc, false)
+  out.sort((a, b) => a.range.start - b.range.start)
+  return out
+}
+
+/**
+ * A linha ainda tem texto de verdade depois de tirar os placeholders?
+ *
+ * Guard compartilhado da remoção de linha (nasceu em apply-patches; movido
+ * para cá porque o merge determinístico de imagem também precisa dele).
+ * Slot preenchido já é texto no documento; tirados tokens `{{}}`, tags e
+ * entidades, o que sobrar de alfanumérico é conteúdo que o cliente leria —
+ * e remover a linha o destruiria (foi assim que os dois depoimentos da
+ * Luxe Lift sumiram em 12/08). Pontuação, estrelas (`&#9733;`) e aspas
+ * decorativas não contam: são moldura da variante, não copy.
+ */
+export function rowHasFilledCopy(region: string): boolean {
+  const text = region
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[#a-z0-9]+;/gi, " ")
+  return /[\p{L}\p{N}]/u.test(text)
+}
+
+/**
  * Texto visível de um trecho do source (tags e comentários removidos).
  * Usado pelas views que mostram ao agente o que o cliente de email vê.
  */

@@ -16,7 +16,6 @@ import {
 } from "./assemble-document"
 import { graftHeroVariant } from "../html/hero-graft"
 import { locateHeroRegion } from "../html/hero-locator"
-import { extractStructureFromReference } from "./reference-structure"
 
 function variant(
   section: string,
@@ -30,8 +29,6 @@ function variant(
     name,
     html,
     rendered_html: null,
-    html_tagged: null,
-    tagging_status: null,
     output_schema: [],
     ...extra,
   } as unknown as EmailComponentVariant
@@ -130,27 +127,15 @@ describe("assembleDocument", () => {
     expect(html).toContain("{{HERO_HEADLINE}}")
   })
 
-  it("usa html_tagged aprovado no lugar do exemplo", () => {
-    const v = variant("hero", "a", TR("Frase real de exemplo"), {
-      html_tagged: TR("{{HERO_HEADLINE}}"),
-      tagging_status: "approved",
-    })
-    const { html } = assembleDocument({
-      slots: [{ kind: "variant", variant: v, section: "hero", label: "hero" }],
-    })
-    expect(html).toContain("{{HERO_HEADLINE}}")
-    expect(html).not.toContain("Frase real de exemplo")
-  })
-
-  it("ignora html_tagged pendente", () => {
-    const v = variant("hero", "a", TR("Frase real de exemplo"), {
-      html_tagged: TR("{{HERO_HEADLINE}}"),
-      tagging_status: "pending",
-    })
+  it("o html AUTORADO é o documento (a camada tagueada morreu em 20/08)", () => {
+    // O merge por example ancora nas frases reais — o exemplo autorado É a
+    // matéria-prima do documento; as colunas de tagging caem na F7.
+    const v = variant("hero", "a", TR("Frase real de exemplo"))
     const { html } = assembleDocument({
       slots: [{ kind: "variant", variant: v, section: "hero", label: "hero" }],
     })
     expect(html).toContain("Frase real de exemplo")
+    expect(html).not.toContain("{{HERO_HEADLINE}}")
   })
 
   it("embrulha fragmento que começa com <table>", () => {
@@ -407,33 +392,6 @@ describe("integração com o enxerto da hero", () => {
     expect(graft.status).toBe("grafted")
     expect(graft.html).toContain("{{HERO_IMAGE}}")
     expect(graft.html).toContain("background:#111")
-  })
-})
-
-// O blueprint determinístico depende de extrair o esqueleto do documento
-// (extractStructureFromReference). Se a cobertura cair, a geração vai para a
-// rota B (LLM) — funciona, mas paga LLM sem precisar.
-describe("esqueleto extraído do documento montado", () => {
-  it("encontra os blocos e as tags de cada um", () => {
-    const { html } = assembleDocument({
-      slots: [
-        slot(
-          "hero",
-          "a",
-          `<tr><td>{{HERO_EYEBROW}}<h1>{{HERO_HEADLINE}}</h1><p>{{HERO_BODY}}</p><a href="{{HERO_CTA_URL}}">{{HERO_CTA_LABEL}}</a><img src="{{HERO_IMAGE}}"></td></tr>`,
-        ),
-        slot("offer", "b", TR("{{OFFER_HEADLINE}} {{COUPON_CODE}}")),
-        slot("footer", "c", TR("{{FOOTER_TAGLINE}}")),
-      ],
-    })
-    const skeleton = extractStructureFromReference(html)
-    expect(skeleton).not.toBeNull()
-    const types = skeleton!.blocks.map((b) => b.type)
-    expect(types).toContain("hero")
-    expect(types).toContain("footer")
-    const hero = skeleton!.blocks.find((b) => b.type === "hero")!
-    expect(hero.tags).toContain("HERO_HEADLINE")
-    expect(hero.needs_image).toBe(true)
   })
 })
 

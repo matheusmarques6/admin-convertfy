@@ -12,7 +12,6 @@ function f(p: Partial<BlueprintBlockField>): BlueprintBlockField {
     required: false,
     example: "",
     guidance: "",
-    tag: null,
     source: "schema",
     ...p,
   }
@@ -26,12 +25,11 @@ describe("buildImageSlots", () => {
 
   it("T8: asset_fixo NÃO vira slot (arte da biblioteca fica intacta)", () => {
     const fields = [
-      f({ key: "hero_image", type: "image", tag: "HERO_IMAGE" }),
+      f({ key: "hero_image", type: "image" }),
       f({
         key: "selo_qualidade",
         type: "image",
         nature: "asset_fixo",
-        tag: "SELO_QUALIDADE",
       }),
     ]
     const out = buildImageSlots(fields, {})
@@ -53,7 +51,6 @@ describe("buildImageSlots", () => {
       f({
         key: "hero_image",
         type: "image",
-        tag: "HERO_IMAGE",
         image_spec: "pessoa aplicando o sérum",
         example: "close no rosto",
         image_width: 600,
@@ -81,9 +78,9 @@ describe("buildImageSlots", () => {
     const fields = [
       f({ key: "product_1_name", type: "text_short" }),
       f({ key: "product_1_cta", type: "text_short" }),
-      f({ key: "product_1_image", type: "image", tag: "PRODUCT_1_IMAGE" }),
+      f({ key: "product_1_image", type: "image" }),
       f({ key: "product_2_name", type: "text_short" }),
-      f({ key: "product_2_image", type: "image", tag: "PRODUCT_2_IMAGE" }),
+      f({ key: "product_2_image", type: "image" }),
     ]
     const content = {
       product_1_name: "Sérum",
@@ -106,7 +103,6 @@ describe("buildImageSlots", () => {
         f({
           key: "bg_image",
           type: "image",
-          tag: "BG_IMAGE",
           guidance: "textura suave",
           image_aspect: "16:9",
         }),
@@ -120,7 +116,7 @@ describe("buildImageSlots", () => {
   it("prefixo vazio (key 'image') → todos os campos de copy do bloco", () => {
     const fields = [
       f({ key: "headline", type: "text_short" }),
-      f({ key: "image", type: "image", tag: "IMAGE" }),
+      f({ key: "image", type: "image" }),
     ]
     const out = buildImageSlots(fields, { headline: "Olá" })
     expect(out).toContain('- headline: "Olá"')
@@ -130,7 +126,7 @@ describe("buildImageSlots", () => {
     const out = buildImageSlots(
       [
         f({ key: "hero_headline", type: "text_short" }),
-        f({ key: "hero_image", type: "image", tag: "HERO_IMAGE" }),
+        f({ key: "hero_image", type: "image" }),
       ],
       { hero_headline: "  " },
     )

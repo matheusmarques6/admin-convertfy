@@ -44,17 +44,9 @@ import { deriveColorRoles, type ColorRoles } from "./color-roles"
 import {
   ColorFormatPromptVarsSchema,
   HeroPromptVarsSchema,
-  ImageFormatPromptVarsSchema,
   TextFormatPromptVarsSchema,
 } from "./contract"
-import {
-  buildExceptionSlots,
-  imageTagsOutsideHero,
-  mergeBlocksFromContext,
-  rowsContainingText,
-  tagToBlockIdMap,
-  type MergeField,
-} from "./copy-merge"
+import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
 
 const log = logger.child("FormatContext")
@@ -246,9 +238,6 @@ export async function loadFormatChainContext(
 export interface HeroVariantData {
   id: string
   html: string
-  /** Proposta do Taguedor — canônica quando tagging_status='approved'. */
-  html_tagged: string | null
-  tagging_status: string | null
   rendered_html: string | null
   /** Hash do `html` que originou o exemplo renderizado (CM-6). */
   rendered_html_source_sha?: string | null
@@ -368,7 +357,7 @@ export async function resolveHeroVariant(
       // no select, `resolveRenderedReference` via undefined e devolvia
       // `unknown_sha` SEMPRE — o hash de origem nunca chegou a ser
       // comparado, e todo exemplo aparecia como desatualizado.
-      "id, html, html_tagged, tagging_status, rendered_html, rendered_html_source_sha, output_schema, block_type, design_system",
+      "id, html, rendered_html, rendered_html_source_sha, output_schema, block_type, design_system",
     )
     .eq("id", variantId)
     .maybeSingle()
@@ -449,6 +438,24 @@ export function blocksInsideHeroRegion(
   regionHtml: string,
 ): BlockWithContent[] {
   if (regionHtml) {
+    // 1. Marcadores cfy:block dentro da região (D5) — o caminho canônico
+    //    quando a reference veio montada por código. Cada marcador casa
+    //    com o bloco do MESMO tipo, na ordem (n-ésima ocorrência), a mesma
+    //    convenção sequencial do qa-views. A hero ENXERTADA consome os
+    //    marcadores no splice — aí cai nas cascatas abaixo.
+    const markers = locateBlockRegions(regionHtml)
+    if (markers.length > 0) {
+      const nthByType = new Map<string, number>()
+      const included: BlockWithContent[] = []
+      for (const m of markers) {
+        const nth = nthByType.get(m.tipo) ?? 0
+        nthByType.set(m.tipo, nth + 1)
+        const matches = ctx.blocksWithContent.filter((b) => b.type === m.tipo)
+        if (matches[nth]) included.push(matches[nth])
+      }
+      if (included.length > 0) return included
+    }
+    // 2. Legado {{TAG}}: região ainda com placeholders do blueprint.
     const regionTags = tagsIn(regionHtml)
     if (regionTags.size > 0) {
       const included = ctx.blocksWithContent.filter((b) =>
@@ -474,6 +481,12 @@ export function buildHeroVars(
      * recebida como verdade estrutural.
      */
     grafted?: boolean
+    /**
+     * Campos da região que o merge por example NÃO escreveu (sem lugar,
+     * ambíguo, copy ausente) — a ÚNICA base legítima para o agente remover
+     * uma linha. Vazio = nada pode ser removido.
+     */
+    heroPending?: Array<{ key: string; motivo: string; tem_valor: boolean }>
   },
 ): Record<string, string> {
   const heroBlocks = blocksInsideHeroRegion(ctx, params.regionHtml)
@@ -509,6 +522,9 @@ export function buildHeroVars(
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
       heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
+    // Campos que o merge por example deixou pendentes na região — decide o
+    // que o agente PODE remover (lista vazia = remover nada).
+    hero_pending_json: JSON.stringify(params.heroPending ?? [], null, 2),
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
     // Preenchida pelo chain com o contrato de output — presente aqui só
@@ -559,45 +575,6 @@ export function buildTextFormatVars(
     top_products_json: ctx.topProductsJson,
   }
   return validateVars(TextFormatPromptVarsSchema, vars, "text_format")
-}
-
-export function buildImageFormatVars(
-  ctx: FormatChainContext,
-  html: string,
-): Record<string, string> {
-  // A entry da hero fica de fora — a imagem da hero já foi colocada pelo
-  // agente hero_section (avatares/reviews/products entram normalmente).
-  const nonHeroEntries = ctx.imageMap.filter((e) => e.block_type !== "hero")
-  // Arquitetura por views (F3): em vez do documento inteiro, o agente
-  // recebe a view de cada slot de imagem ({block_id, tag, row_html} —
-  // fatiada por código) + as linhas candidatas a logo de texto. Corta o
-  // prompt de dezenas de KB pra poucos KB e impede o agente de "ver"
-  // (e alucinar sobre) o resto do documento.
-  const tagMap = tagToBlockIdMap(
-    mergeBlocksFromContext(
-      ctx.blocks as Array<{
-        id?: string
-        position: number
-        block_type: string
-        content: Record<string, unknown> | null
-      }>,
-      ctx.blueprint?.blocks as
-        | Array<{ type: string; fields?: MergeField[] | null }>
-        | undefined,
-    ),
-  )
-  const slots = buildExceptionSlots(html, imageTagsOutsideHero(html), tagMap)
-  const logoCandidates = rowsContainingText(html, ctx.brandName)
-  const vars = {
-    brand_name: ctx.brandName,
-    image_slots_json: JSON.stringify(slots, null, 2),
-    image_map_json: JSON.stringify(nonHeroEntries, null, 2),
-    logo_candidates_json: JSON.stringify(logoCandidates, null, 2),
-    logo_light: ctx.logoLight,
-    logo_dark: ctx.logoDark,
-    top_products_json: ctx.topProductsJson,
-  }
-  return validateVars(ImageFormatPromptVarsSchema, vars, "image_format")
 }
 
 export function buildColorFormatVars(

@@ -266,6 +266,127 @@ function stringify(v: unknown): string {
   }
 }
 
+// ── Tabela campo a campo do merge (copy_merge / image_format) ─────────
+// Decisão 20/08: o log dos merges determinísticos é CAMPO A CAMPO — a
+// tabela é o radar operacional dos sem_lugar/ambíguos (fail-open). O JSON
+// bruto permanece logo abaixo.
+
+interface CampoMergeRow {
+  block_id?: string | null
+  key?: string
+  desfecho?: string
+  motivo?: string
+  de?: string | null
+  para?: string | null
+}
+
+const DESFECHO_TONE: Record<string, { c: string; bg: string; b: string }> = {
+  ancorado_exemplo: { c: "#065F46", bg: "#ECFDF5", b: "#A7F3D0" },
+  ancorado_token: { c: "#065F46", bg: "#ECFDF5", b: "#A7F3D0" },
+  estrutural: { c: "#0F766E", bg: "#F0FDFA", b: "#99F6E4" },
+  imagem_sem_url: { c: "#92400E", bg: "#FFFBEB", b: "#FDE68A" },
+  ambiguo: { c: "#92400E", bg: "#FFFBEB", b: "#FDE68A" },
+  sem_lugar: { c: "#991B1B", bg: "#FEF2F2", b: "#FECACA" },
+}
+
+function CopyMergeFieldTable({ campos }: { campos: CampoMergeRow[] }) {
+  if (campos.length === 0) return null
+  const cell: React.CSSProperties = {
+    padding: "5px 8px",
+    fontSize: 11.5,
+    fontFamily: F.sans,
+    color: C.g900,
+    borderBottom: `1px solid ${C.border}`,
+    verticalAlign: "top",
+    wordBreak: "break-word",
+  }
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${C.border}`,
+        borderRadius: 8,
+        overflow: "hidden",
+      }}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ background: C.g50 }}>
+            {["Campo", "Desfecho", "De → Para"].map((h) => (
+              <th
+                key={h}
+                style={{
+                  ...cell,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
+                  color: C.g400,
+                  textAlign: "left",
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {campos.map((c, i) => {
+            const tone =
+              DESFECHO_TONE[c.desfecho ?? ""] ?? {
+                c: C.g400,
+                bg: C.g50,
+                b: C.border,
+              }
+            return (
+              <tr key={`${c.key}-${i}`}>
+                <td style={{ ...cell, whiteSpace: "nowrap", fontWeight: 600 }}>
+                  {c.key ?? "—"}
+                </td>
+                <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      color: tone.c,
+                      background: tone.bg,
+                      border: `1px solid ${tone.b}`,
+                      borderRadius: 999,
+                      padding: "1px 8px",
+                    }}
+                  >
+                    {c.desfecho ?? "—"}
+                  </span>
+                  {c.motivo && (
+                    <div style={{ fontSize: 10.5, color: C.g400, marginTop: 2 }}>
+                      {c.motivo}
+                    </div>
+                  )}
+                </td>
+                <td style={cell}>
+                  {c.de || c.para ? (
+                    <>
+                      {c.de && (
+                        <span style={{ color: C.g400, textDecoration: "line-through" }}>
+                          {c.de}
+                        </span>
+                      )}
+                      {c.de && c.para && " → "}
+                      {c.para && <span>{c.para}</span>}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function NodeRunPanel({
   exec,
   nodeKey,
@@ -479,6 +600,17 @@ export function NodeRunPanel({
           borderTop: `1px solid ${C.border}`,
         }}
       >
+        {tab === "output" &&
+          (n.agent === "copy_merge" || n.agent === "image_format") &&
+          Array.isArray(
+            (detail?.parsed_output as { campos?: unknown } | null)?.campos,
+          ) && (
+            <CopyMergeFieldTable
+              campos={
+                (detail?.parsed_output as { campos: CampoMergeRow[] }).campos
+              }
+            />
+          )}
         <CodeBlock text={bodyText} />
         {run.status === "pulado" && (
           <div style={{ marginTop: 10, fontSize: 11.5, color: C.g400, fontFamily: F.sans }}>

@@ -83,6 +83,8 @@ export const HeroPromptVarsSchema = z.object({
   /** "library" = região enxertada da biblioteca; "montador" = HTML do LLM. */
   hero_source: z.enum(["library", "montador"]),
   hero_content_json: z.string(),
+  /** Campos da região que o merge por example deixou pendentes (D1). */
+  hero_pending_json: z.string(),
   hero_image_url: z.string(),
   hero_image_alt: z.string(),
   output_contract: z.string(),

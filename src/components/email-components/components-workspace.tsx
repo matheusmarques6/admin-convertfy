@@ -17,9 +17,9 @@ import type {
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
 import {
-  auditSchemaTags,
-  validateSchemaTagCoherence,
-} from "@/lib/email-workspace/schema-tag-coherence"
+  auditImageAnchors,
+  auditSchemaAnchors,
+} from "@/lib/email-workspace/schema-example-coherence"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -158,29 +158,6 @@ export function ComponentsWorkspace() {
     return m
   }, [variants])
 
-  // Estado do taguedor na biblioteca (só variantes ativas — espelha a
-  // elegibilidade do batch): never = fila de sync; pending = propostas
-  // aguardando revisão; noSchema = pendência de curadoria (fora da fila).
-  /**
-   * Fila de curadoria. A camada tagueada foi removida da biblioteca, então
-   * não existe mais "sincronizada"/"pendente": o `html` é o único documento,
-   * e o que importa é se o schema tem endereço nele.
-   */
-  const tagStats = useMemo(() => {
-    let noSchema = 0
-    let misaligned = 0
-    for (const v of variants) {
-      if (!v.is_active) continue
-      const schema = v.output_schema ?? []
-      if (schema.length === 0) {
-        noSchema++
-        continue
-      }
-      if (!auditSchemaTags(v.html ?? "", schema).ok) misaligned++
-    }
-    return { noSchema, misaligned }
-  }, [variants])
-
 
   // Fontes para "copiar campos de…" no editor de schema. Só o necessário —
   // a lista inteira já está carregada, então não custa uma requisição.
@@ -221,6 +198,20 @@ export function ComponentsWorkspace() {
   }
 
   async function save() {
+    // Campo sem chave técnica é barrado pelo servidor com "Dados inválidos"
+    // e nenhuma pista de QUAL campo — inútil numa lista de dez. Como o campo
+    // novo agora nasce com a chave vazia (era "novo_campo", que passava na
+    // validação e virava lixo no schema), o aviso preciso tem de vir daqui.
+    const semChave = draft.output_schema.filter((f) => !f.key?.trim()).length
+    if (semChave > 0) {
+      toast({
+        variant: "destructive",
+        title: `${semChave} campo(s) sem chave técnica`,
+        description:
+          "Preencha a chave (ex.: hero_headline) ou remova o campo — é ela que endereça o {{PLACEHOLDER}} no HTML.",
+      })
+      return
+    }
     setSaving(true)
     try {
       const payload = payloadFromDraft(draft)
@@ -246,35 +237,29 @@ export function ComponentsWorkspace() {
         data?: { variant?: EmailComponentVariant }
       }
       const saved = json.variant ?? json.data?.variant
-      // O schema é a base: cada campo endereça {{UPPER(key)}} no HTML. O que
-      // não bate NÃO impede o save (a biblioteca tem variantes legadas e
-      // travar aqui travaria o conserto delas) — mas o toast grita e o painel
-      // desde que o painel "Schema × HTML" saiu do editor ele é o único aviso.
-      const coherence = validateSchemaTagCoherence(
-        payload.html,
-        payload.output_schema,
-      )
+      // O EXAMPLE é a âncora (20/08): cada campo de texto é encontrado no
+      // HTML pela frase do example, e cada imagem gerada pelo token de
+      // atributo — a MESMA régua do merge em produção. Desalinhamento NÃO
+      // impede o save (travar aqui travaria o conserto das variantes), mas
+      // o toast grita: campo sem âncora vira sem_lugar em toda geração.
+      const textAudit = auditSchemaAnchors(payload.html, payload.output_schema)
+      const imageAudit = auditImageAnchors(payload.html, payload.output_schema)
       const parts: string[] = []
-      if (coherence.keysWithoutTag.length > 0) {
+      if (textAudit.missing.length > 0) {
         parts.push(
-          `${coherence.keysWithoutTag.length} campo(s) sem {{UPPER(key)}} no HTML: ${coherence.keysWithoutTag.join(", ")}`,
+          `${textAudit.missing.length} campo(s) cujo example não é encontrável no HTML: ${textAudit.missing.map((m) => m.key).join(", ")}`,
         )
       }
-      if (coherence.copyTagsWithoutKey.length > 0) {
+      if (imageAudit.missing.length > 0) {
         parts.push(
-          `tags de copy sem campo: ${coherence.copyTagsWithoutKey.join(", ")}`,
-        )
-      }
-      if (coherence.unknownTagsWithoutKey.length > 0) {
-        parts.push(
-          `tags que ninguém preenche: ${coherence.unknownTagsWithoutKey.join(", ")}`,
+          `${imageAudit.missing.length} slot(s) de imagem sem token casável: ${imageAudit.missing.map((m) => m.key).join(", ")}`,
         )
       }
       if (parts.length > 0) {
         toast({
           variant: "destructive",
-          title: "Salva, mas o HTML não segue o schema",
-          description: `${parts.join(" · ")}. Rode o retagueamento para reendereçar o HTML.`,
+          title: "Salva, mas o schema não ancora no HTML",
+          description: `${parts.join(" · ")}. Ajuste o example (texto) ou o token src/alt (imagem) para casar com o HTML.`,
         })
       } else {
         toast({ title: "Variante salva" })
@@ -320,32 +305,6 @@ export function ComponentsWorkspace() {
         title="Email / Componentes"
         sub="Acervo de variantes por tipo de bloco. O agente escolhe a melhor para cada loja com base nas dimensões de matching."
       />
-
-      {(tagStats.noSchema > 0 || tagStats.misaligned > 0) && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 14,
-            fontSize: 12.5,
-            color: C.g500,
-            fontFamily: F.sans,
-          }}
-        >
-          {tagStats.misaligned > 0 && (
-            <EGBadge tone="neg" dot>
-              {tagStats.misaligned} com campo sem endereço no HTML
-            </EGBadge>
-          )}
-          {tagStats.noSchema > 0 && (
-            <EGBadge tone="neut" dot>
-              {tagStats.noSchema} sem schema
-            </EGBadge>
-          )}
-        </div>
-      )}
 
       <EGCatPills
         items={COMPONENT_CATEGORIES.map((c) => ({
@@ -476,23 +435,6 @@ export function ComponentsWorkspace() {
               <EGBadge tone={draft.is_active ? "pos" : "neut"} dot>
                 {draft.is_active ? "Ativo" : "Inativo"}
               </EGBadge>
-              {selected && (
-                <EGBadge
-                  tone={
-                    selected.tagging_status === "approved"
-                      ? "pos"
-                      : selected.tagging_status === "pending"
-                        ? "warn"
-                        : "neut"
-                  }
-                >
-                  {selected.tagging_status === "approved"
-                    ? "Tag aprovada"
-                    : selected.tagging_status === "pending"
-                      ? "Tag pendente"
-                      : "Sem tag"}
-                </EGBadge>
-              )}
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               {selected && (

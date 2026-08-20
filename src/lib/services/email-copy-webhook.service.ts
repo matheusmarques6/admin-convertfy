@@ -63,7 +63,7 @@ export function digestPayload(payload: unknown): unknown {
           type?: string
           schema?: {
             variante?: string | null
-            campos?: Record<string, { placeholder_no_html?: string | null }>
+            campos?: Record<string, { exemplo?: string | null }>
           }
         }>
       }>
@@ -81,8 +81,8 @@ export function digestPayload(payload: unknown): unknown {
             type: b.type,
             variant_name: b.schema?.variante ?? null,
             field_keys: campos.map(([k]) => k),
-            fields_sem_tag: campos
-              .filter(([, v]) => !v?.placeholder_no_html)
+            fields_sem_example: campos
+              .filter(([, v]) => !(v?.exemplo ?? "").trim())
               .map(([k]) => k),
           }
         }),
@@ -965,18 +965,18 @@ export async function dispatchEmailCopyWebhook(
     )
   }
 
-  // Auditoria de ancoragem do spec: bloco cujos fields saem majoritariamente
-  // com tag:null tem schema↔HTML incoerentes na variante (keys do output_schema
-  // sem tag correspondente) — a copy volta desancorada do template (caso
-  // "review 3" da Luxe Lift, jul/2026). Observabilidade: warn + telemetria no
-  // run do copy_dispatch; nunca bloqueia o dispatch.
-  const fieldsSemTag: Array<{
+  // Auditoria de ancoragem do spec: bloco cujos fields de copy saem
+  // majoritariamente SEM example não tem âncora no HTML — o merge por
+  // example não terá onde escrever a copy que volta (o example É o endereço
+  // desde 20/08). Observabilidade: warn + telemetria no run do
+  // copy_dispatch; nunca bloqueia o dispatch.
+  const fieldsSemExample: Array<{
     flow_type: string
     email_number: number
     position: number
     type: string
     variant_name: string | null
-    sem_tag: number
+    sem_example: number
     total: number
   }> = []
 
@@ -1222,8 +1222,8 @@ export async function dispatchEmailCopyWebhook(
               const fields = allFields.filter(
                 (fld) => deriveFieldNature(fld) === "copy",
               )
-              const semTag = fields.filter(
-                (fld) => !(fld as { tag?: string | null }).tag,
+              const semExample = fields.filter(
+                (fld) => !(fld.example ?? "").trim(),
               ).length
               // Bloco SEM schema é erro de curadoria, não modo de operação:
               // sem variante casada não há contrato, e o n8n volta a
@@ -1237,14 +1237,14 @@ export async function dispatchEmailCopyWebhook(
                   variant_id: resolved?.variantId ?? null,
                 })
               }
-              if (fields.length > 0 && semTag / fields.length > 0.5) {
-                fieldsSemTag.push({
+              if (fields.length > 0 && semExample / fields.length > 0.5) {
+                fieldsSemExample.push({
                   flow_type: f.flow_type,
                   email_number: e.number,
                   position: b.position,
                   type: b.block_type,
                   variant_name: resolved?.variantName ?? null,
-                  sem_tag: semTag,
+                  sem_example: semExample,
                   total: fields.length,
                 })
               }
@@ -1445,11 +1445,11 @@ export async function dispatchEmailCopyWebhook(
       headers["x-webhook-secret"] = process.env.N8N_WEBHOOK_SECRET
     }
 
-    if (fieldsSemTag.length > 0) {
-      log.warn("email_copy.fields_sem_tag", {
+    if (fieldsSemExample.length > 0) {
+      log.warn("email_copy.fields_sem_example", {
         storeId,
-        blocks: fieldsSemTag.length,
-        sample: fieldsSemTag.slice(0, 10),
+        blocks: fieldsSemExample.length,
+        sample: fieldsSemExample.slice(0, 10),
       })
     }
 
@@ -1544,10 +1544,10 @@ export async function dispatchEmailCopyWebhook(
       flow_count: flows.length,
       email_count: emails.length,
       only_drafts: options.onlyDrafts ?? false,
-      // Blocos com spec desancorado (fields majoritariamente tag:null) —
+      // Blocos com spec desancorado (fields de copy sem example) —
       // incoerência schema↔HTML na variante, visível no drawer de logs.
-      ...(fieldsSemTag.length > 0
-        ? { fields_sem_tag: fieldsSemTag.slice(0, 30) }
+      ...(fieldsSemExample.length > 0
+        ? { fields_sem_example: fieldsSemExample.slice(0, 30) }
         : {}),
       // Blocos que saíram SEM contrato de copy. O bloco é o schema: sem
       // fields o n8n não tem o que preencher e volta a inventar as chaves.

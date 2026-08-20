@@ -252,19 +252,6 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "logo_dark", desc: "Logo pra fundo escuro (vazio se não houver)" },
     { key: "top_products_json", desc: "Produtos top (urls de imagem/crop)" },
   ],
-  component_tagger: [
-    { key: "variant_name", desc: "Nome da variante" },
-    { key: "block_type", desc: "Seção da biblioteca" },
-    { key: "schema_json", desc: "Schema com key/placeholder/nature/example/guidance/image_spec" },
-    { key: "existing_tags", desc: "Placeholders que o HTML já tem (modo sync)" },
-    { key: "html", desc: "HTML exemplo-pronto da variante" },
-  ],
-  merge_verifier: [
-    { key: "relatorio_merge_json", desc: "Relatório mecânico do copy_merge (slots/merged/left)" },
-    { key: "slots_preenchidos_json", desc: "Slots resolvidos por código (tag + valor aplicado)" },
-    { key: "slots_sobrando_json", desc: "Slots sem copy (tag + row_html + block_id)" },
-    { key: "copy_nao_usada_json", desc: "Copy do n8n que não entrou no documento" },
-  ],
   color_format: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "niche", desc: "Nicho do negócio" },

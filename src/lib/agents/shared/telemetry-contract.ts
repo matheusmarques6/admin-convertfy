@@ -42,7 +42,7 @@ export const TELEMETRY_CONTRACT: Record<
     invalid_ids: "ids que não existem no catálogo (o modelo inventou)",
     wrong_type_ids: "ids de outra seção — risco criado por mandar o catálogo inteiro",
     empty_blocks: "posições sem finalista válido: saem do email e viram selo",
-    candidates_excluded_untagged: "variantes ativas impreenchíveis pelo pipeline — pressão de curadoria",
+    candidates_excluded_unfillable: "variantes ativas impreenchíveis pelo pipeline (sem schema ou sem âncora de example/token no HTML) — pressão de curadoria",
   },
   assembler: {
     escolhas: "a composição final: id e rank por posição",
@@ -68,12 +68,13 @@ export const TELEMETRY_CONTRACT: Record<
     vision: "se o exemplo foi ANEXADO como imagem e em qual modelo — sem isto o custo do fallback visual sobe sem explicação",
   },
   copy_merge: {
-    slots_total: "tags de texto fora da hero antes do merge — o denominador de tudo aqui",
-    ops_built: "campos com tag E valor: o que o código tentou resolver",
-    merged: "ops que o Integrador aplicou de fato",
-    left_for_llm: "o que sobrou para o agente de exceção; alto = copy chegando fora do contrato",
-    unanchored_keys: "copy com valor e sem tag — texto que não tem onde entrar no template",
-    keys_via_canonical: "campos que só casaram pelo copyKey do tag-registry; mede a dependência da ponte entre o vocabulário do schema e o do n8n, e zero significa schemas alinhados",
+    slots_total: "campos de texto do blueprint processados — o denominador de tudo aqui",
+    ops_built: "campos ancorados pelo example E com valor: o que o código tentou escrever",
+    merged: "splices aplicados de fato (sobreposição rejeita)",
+    campos: "relatório campo a campo (key, desfecho, de → para) — vira a tabela da aba Execuções",
+    sem_lugar: "campos cujo example não é encontrável no HTML — cadastro da variante divergiu do documento",
+    ambiguos: "campos com ocorrências que não batem com o grupo (nunca chutar) — também cadastro",
+    estruturais: "tokens da plataforma preenchidos por código (logo, nome da marca)",
   },
 }
 

@@ -18,7 +18,6 @@
  * Puro (zero I/O) — testável.
  */
 
-import { effectiveVariantHtml } from "../shared/component-dimensions"
 import { fitFragment } from "../html/fragment-fit"
 // normalizeFonts mora no hero-graft por herança (foi escrita lá para o
 // enxerto); é genérica e vale para o documento inteiro.
@@ -183,7 +182,7 @@ export function assembleDocument(
       return
     }
     variants++
-    const variantHtml = effectiveVariantHtml(slot.variant)
+    const variantHtml = slot.variant.html
     if (!variantHtml || !variantHtml.trim()) {
       skipped.push({ block_index: i, section, label, reason: "empty_html" })
       return

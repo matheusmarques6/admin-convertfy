@@ -13,7 +13,13 @@
 
 import { logger } from "@/lib/logger"
 import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "./orphan-spacer"
-import { locateEmptyShells, applySplices } from "./dom-locator"
+import {
+  locateEmptyShells,
+  applySplices,
+  textNodes,
+  type Splice,
+} from "./dom-locator"
+import { findAttrSlots } from "./slot-finder"
 
 const log = logger.child("HtmlPostProcess")
 
@@ -155,6 +161,38 @@ export function stripUnresolvedPlaceholders(html: string): string {
 }
 
 /**
+ * Limpa os TOKENS DE ATRIBUTO que sobraram sem valor (vocabulário sem
+ * placeholder, F3): `src="URL_FOTO_1"` cru vira `src=""`, `alt="ALT_X"`
+ * vira `alt=""`, `NOME_DA_MARCA` em texto corrido some — e a casca que
+ * ficou oca é podada (pruneEmptyShells) e o link morto neutralizado, o
+ * mesmo tratamento do strip de `{{TAG}}`. Token cru no cliente de email é
+ * pior que campo vazio: `<img src="URL_FOTO_1">` renderiza ícone quebrado
+ * e "NOME_DA_MARCA" sai impresso na tela.
+ */
+export function stripUnresolvedAttrTokens(html: string): string {
+  const splices: Splice[] = []
+  for (const slot of findAttrSlots(html)) {
+    splices.push({ ...slot.valueRange, replacement: "" })
+  }
+  for (const node of textNodes(html)) {
+    let at = node.text.indexOf("NOME_DA_MARCA")
+    while (at !== -1) {
+      splices.push({
+        start: node.range.start + at,
+        end: node.range.start + at + "NOME_DA_MARCA".length,
+        replacement: "",
+      })
+      at = node.text.indexOf("NOME_DA_MARCA", at + 1)
+    }
+  }
+  if (splices.length === 0) return html
+  log.warn("html.unresolved_attr_tokens", { count: splices.length })
+  return neutralizeDeadLinks(
+    pruneEmptyShells(applySplices(html, splices).html),
+  )
+}
+
+/**
  * Forca o atributo `lang` do <html> pro locale da loja. O modelo escolhia
  * o lang arbitrariamente (lang="en" em loja pt-BR e vice-versa — batch de
  * jul/2026 saiu misturado). O locale ja e' resolvido/normalizado por
@@ -182,6 +220,19 @@ const CFY_BLOCK_MARKER =
 /** Remove os marcadores de bloco do Montador (limpeza final da cadeia). */
 export function stripCfyBlockMarkers(html: string): string {
   return html.replace(CFY_BLOCK_MARKER, "")
+}
+
+/**
+ * Remove os atributos internos de endereçamento (data-cfy-slot/data-cfy-row)
+ * que a anotação de slots injetava. A anotação morreu com o vocabulário
+ * {{TAG}} (20/08) — o strip fica porque documentos persistidos em estágio
+ * intermediário ainda podem carregá-los, e atributo interno jamais chega
+ * ao cliente de email. Migrado de slot-annotate na remoção do módulo.
+ */
+const CFY_SLOT_ATTR = /\s+data-cfy-(?:slot|row)\s*=\s*"[^"]*"/gi
+
+export function stripSlotAttributes(html: string): string {
+  return html.replace(CFY_SLOT_ATTR, "")
 }
 
 /**

@@ -45,8 +45,6 @@ function client(variants: Row[], choices: Row | null = null) {
 const V_BLUEPRINT = {
   id: "v-blueprint",
   html: "<tr><td>{{HERO_HEADLINE}}</td></tr>",
-  html_tagged: null,
-  tagging_status: null,
   rendered_html: null,
   output_schema: [],
   block_type: "hero",
