@@ -1,0 +1,238 @@
+/**
+ * Casos travados na biblioteca REAL: tokens de src/alt das 38 variantes
+ * ativas, arte fixa base64 dos footers, resíduo de export do Figma, selo
+ * repetido e dimensões deliberadamente diferentes entre schema e HTML
+ * (ativo 90×230 vs slot 74×215 — dimensão NUNCA é âncora).
+ */
+
+import { describe, expect, it } from "vitest"
+import {
+  assignImageSlots,
+  blockIndexesInRange,
+  findAttrSlots,
+  keyOrdinal,
+  locateBlockRegions,
+  type AttrSlot,
+  type ImageField,
+} from "./slot-finder"
+
+const imageField = (
+  key: string,
+  overrides: Partial<ImageField> = {},
+): ImageField => ({
+  block_id: "blk-1",
+  blockIndice: null,
+  key,
+  url: `https://cdn.convertfy.me/${key}.png`,
+  ...overrides,
+})
+
+describe("locateBlockRegions", () => {
+  it("resolve as regiões pelos marcadores cfy:block do Montador", () => {
+    const html = [
+      "<!-- cfy:block:0:hero:start -->",
+      "<table><tr><td>hero</td></tr></table>",
+      "<!-- cfy:block:0:hero:end -->",
+      "<!-- cfy:block:1:beneficios:start -->",
+      "<table><tr><td>beneficios</td></tr></table>",
+      "<!-- cfy:block:1:beneficios:end -->",
+    ].join("\n")
+    const regions = locateBlockRegions(html)
+    expect(regions).toHaveLength(2)
+    expect(regions[0]).toMatchObject({ indice: 0, tipo: "hero" })
+    expect(regions[1]).toMatchObject({ indice: 1, tipo: "beneficios" })
+    expect(html.slice(regions[0].range.start, regions[0].range.end)).toContain(
+      "hero",
+    )
+    expect(
+      html.slice(regions[0].range.start, regions[0].range.end),
+    ).not.toContain("beneficios")
+  })
+
+  it("marcador de start sem end é ignorado (documento truncado não engole vizinhos)", () => {
+    const html = [
+      "<!-- cfy:block:0:hero:start -->",
+      "<td>hero</td>",
+      "<!-- cfy:block:1:cta:start -->",
+      "<td>cta</td>",
+      "<!-- cfy:block:1:cta:end -->",
+    ].join("\n")
+    const regions = locateBlockRegions(html)
+    expect(regions).toHaveLength(1)
+    expect(regions[0].indice).toBe(1)
+  })
+})
+
+describe("blockIndexesInRange", () => {
+  it("devolve os blocos que INTERSECTAM o range (a hero pode começar no meio de um)", () => {
+    const html = [
+      "<!-- cfy:block:0:header:start --><td>logo</td><!-- cfy:block:0:header:end -->",
+      "<!-- cfy:block:1:hero:start --><td>hero</td><!-- cfy:block:1:hero:end -->",
+      "<!-- cfy:block:2:cta:start --><td>cta</td><!-- cfy:block:2:cta:end -->",
+    ].join("\n")
+    const heroAt = html.indexOf("<td>hero</td>")
+    expect(
+      blockIndexesInRange(html, { start: heroAt, end: heroAt + 13 }),
+    ).toEqual([1])
+    expect(blockIndexesInRange(html, { start: 0, end: html.length })).toEqual([
+      0, 1, 2,
+    ])
+  })
+})
+
+describe("findAttrSlots", () => {
+  it("encontra tokens de src e alt com o range EXATO do valor", () => {
+    const html = [
+      '<img src="URL_DA_IMAGEM_1" alt="ALT_DA_IMAGEM_1" width="600">',
+    ].join("\n")
+    const slots = findAttrSlots(html)
+    expect(slots).toHaveLength(2)
+    expect(slots[0]).toMatchObject({ token: "URL_DA_IMAGEM_1", attr: "src" })
+    expect(slots[1]).toMatchObject({ token: "ALT_DA_IMAGEM_1", attr: "alt" })
+    expect(html.slice(slots[0].valueRange.start, slots[0].valueRange.end)).toBe(
+      "URL_DA_IMAGEM_1",
+    )
+    expect(slots[0].imgRange).not.toBeNull()
+    expect(
+      html.slice(slots[0].imgRange!.start, slots[0].imgRange!.end),
+    ).toContain("<img")
+  })
+
+  it("arte fixa base64 e URL real do Figma NUNCA viram slot", () => {
+    const html = [
+      '<img src="data:image/png;base64,iVBORw0KGgo" alt="">',
+      '<img src="https://www.figma.com/api/mcp/asset/d9880f17" alt="">',
+      '<img src="URL_FOTO_1" alt="">',
+    ].join("\n")
+    const slots = findAttrSlots(html)
+    expect(slots).toHaveLength(1)
+    expect(slots[0].token).toBe("URL_FOTO_1")
+  })
+
+  it("marca o bloco dono (cfy:block) e o espelho MSO", () => {
+    const html = [
+      "<!-- cfy:block:0:produtos:start -->",
+      '<img src="URL_PRODUTO_1" alt="">',
+      '<!--[if mso]><img src="URL_PRODUTO_1" alt=""><![endif]-->',
+      "<!-- cfy:block:0:produtos:end -->",
+    ].join("\n")
+    const slots = findAttrSlots(html)
+    expect(slots).toHaveLength(2)
+    expect(slots[0]).toMatchObject({ blockIndice: 0, inMso: false })
+    expect(slots[1]).toMatchObject({ blockIndice: 0, inMso: true })
+    expect(slots[1].imgRange).toBeNull()
+  })
+})
+
+describe("keyOrdinal", () => {
+  it("último grupo numérico da key: tip_1_image → 1, review_2_photo → 2", () => {
+    expect(keyOrdinal("tip_1_image")).toBe(1)
+    expect(keyOrdinal("review_2_photo")).toBe(2)
+    expect(keyOrdinal("product_10_image")).toBe(10)
+  })
+
+  it("key sem número → null", () => {
+    expect(keyOrdinal("hero_image")).toBeNull()
+    expect(keyOrdinal("main_photo")).toBeNull()
+  })
+})
+
+describe("assignImageSlots", () => {
+  const slotsOf = (html: string): AttrSlot[] => findAttrSlots(html)
+
+  it("ordinal da key casa com o ordinal do token: tip_1_image → URL_*_1", () => {
+    const html = [
+      '<img src="URL_DA_IMAGEM_2" alt="">',
+      '<img src="URL_DA_IMAGEM_1" alt="">',
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("tip_1_image"),
+      imageField("tip_2_image"),
+    ])
+    expect(out[0].slot!.token).toBe("URL_DA_IMAGEM_1")
+    expect(out[1].slot!.token).toBe("URL_DA_IMAGEM_2")
+    expect(out.map((a) => a.desfecho)).toEqual([
+      "ancorado_token",
+      "ancorado_token",
+    ])
+  })
+
+  it("key sem ordinal → ordem de aparição no documento", () => {
+    const html = [
+      '<img src="URL_TOPO_COLUNA_A" alt="">',
+      '<img src="URL_TOPO_COLUNA_B" alt="">',
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("left_column_image"),
+      imageField("right_column_image"),
+    ])
+    expect(out[0].slot!.token).toBe("URL_TOPO_COLUNA_A")
+    expect(out[1].slot!.token).toBe("URL_TOPO_COLUNA_B")
+  })
+
+  it("campo com blockIndice só casa token do MESMO bloco", () => {
+    const html = [
+      "<!-- cfy:block:0:hero:start -->",
+      '<img src="URL_DA_IMAGEM_1" alt="">',
+      "<!-- cfy:block:0:hero:end -->",
+      "<!-- cfy:block:1:produtos:start -->",
+      '<img src="URL_PRODUTO_1" alt="">',
+      "<!-- cfy:block:1:produtos:end -->",
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("product_1_image", { blockIndice: 1 }),
+      imageField("other_image", { blockIndice: 2 }),
+    ])
+    expect(out[0].slot!.token).toBe("URL_PRODUTO_1")
+    expect(out[1].desfecho).toBe("sem_lugar")
+    expect(out[1].slot).toBeNull()
+  })
+
+  it("mesmo token repetido (selo ×3, espelho MSO) é UM grupo — groupSlots traz todas", () => {
+    const html = [
+      '<img src="URL_SELO_VERIFICADO" alt="">',
+      '<img src="URL_SELO_VERIFICADO" alt="">',
+      '<img src="URL_SELO_VERIFICADO" alt="">',
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [imageField("badge_image")])
+    expect(out[0].desfecho).toBe("ancorado_token")
+    expect(out[0].groupSlots).toHaveLength(3)
+  })
+
+  it("token estrutural (logo) e slot de alt ficam FORA do casamento de imagem", () => {
+    const html = [
+      '<img src="URL_DO_LOGO_AQUI" alt="NOME_DA_MARCA">',
+      '<img src="URL_FOTO_1" alt="ALT_FOTO_1">',
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [imageField("hero_image")])
+    expect(out[0].slot!.token).toBe("URL_FOTO_1")
+  })
+
+  it("campo sem URL gerada → imagem_sem_url (a remoção de linha é do image-merge)", () => {
+    const html = '<img src="URL_FOTO_1" alt="">'
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("hero_image", { url: null }),
+    ])
+    expect(out[0].desfecho).toBe("imagem_sem_url")
+    expect(out[0].slot!.token).toBe("URL_FOTO_1")
+  })
+
+  it("mais campos que tokens → o excedente sai sem_lugar (fail-open)", () => {
+    const html = '<img src="URL_FOTO_1" alt="">'
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("photo_1_image"),
+      imageField("photo_2_image"),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_token")
+    expect(out[1].desfecho).toBe("sem_lugar")
+  })
+
+  it("dimensões NUNCA são âncora: schema 90×230 casa com slot 74×215", () => {
+    const html =
+      '<img src="URL_SELO_VERIFICADO" width="74" height="215" alt="">'
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("verified_badge", { url: "https://cdn/x-90x230.png" }),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_token")
+  })
+})

@@ -26,7 +26,7 @@
 import { extractHeroBySentinels } from "./hero-locator"
 import { applyRecolor, isColorLiteral } from "./color-inventory"
 import { resolveSlotRegion, readAnnotatedSlots } from "./slot-annotate"
-import { applySplices, type Splice } from "./dom-locator"
+import { applySplices, rowHasFilledCopy, type Splice } from "./dom-locator"
 
 export type FormatOp =
   | { action: "img"; tag: string; url: string; alt?: string; block_id?: string }
@@ -401,24 +401,7 @@ function rowRemovable(
   // `REVIEW_VERIFIED_LABEL` ("Verified Buyer") é rótulo fixo que schema
   // nenhum declara, ficou sem valor, e mora na MESMA <tr> que o título, o
   // texto e o autor do depoimento — que o copy_merge já tinha preenchido.
-  // Uma tag órfã levou a seção inteira.
+  // Uma tag órfã levou a seção inteira. O guard vive em dom-locator porque
+  // o merge determinístico de imagem usa a mesma régua.
   return !rowHasFilledCopy(region)
-}
-
-/**
- * A linha ainda tem texto de verdade depois de tirar os placeholders?
- *
- * Roda DEPOIS do copy_merge, então slot preenchido já é texto no documento e
- * slot vazio ainda é `{{TAG}}`. Tirados os tokens, o que sobrar de
- * alfanumérico é conteúdo que o cliente leria — e remover a linha o
- * destruiria. Pontuação, estrelas (`&#9733;`) e aspas decorativas não contam:
- * são moldura da variante, não copy.
- */
-function rowHasFilledCopy(region: string): boolean {
-  const text = region
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/\{\{\s*[A-Z][A-Z0-9_]*\s*\}\}/g, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&[#a-z0-9]+;/gi, " ")
-  return /[\p{L}\p{N}]/u.test(text)
 }
