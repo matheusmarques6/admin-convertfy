@@ -1,309 +1,295 @@
 /**
- * Merge determinístico de copy (Fase A, estágio 0 — sem LLM).
+ * Merge por EXAMPLE: a frase do schema é a âncora e a troca é splice.
+ * Os casos espelham a biblioteca real (frases autoradas, sentinelas
+ * cfy:hero, espelho MSO, tokens estruturais de atributo).
  */
-import { describe, it, expect } from "vitest"
+
+import { describe, expect, it } from "vitest"
 import {
-  copyMerge,
-  textTagsOutsideHero,
-  imageTagsOutsideHero,
-  rowsContainingText,
-  mergeBlocksFromContext,
-  tagToBlockIdMap,
-  buildExceptionSlots,
-  buildMergeVerifierInput,
-  isStructuralTag,
   applyStructuralFills,
+  copyMergeByExample,
+  heroCopyPreserved,
+  mergeBlocksFromContext,
+  type MergeBlock,
 } from "./copy-merge"
 import {
   HERO_SENTINEL_START,
   HERO_SENTINEL_END,
 } from "./hero-locator"
 
-const DOC = [
-  `${HERO_SENTINEL_START}<table><tr><td>{{HERO_HEADLINE}}</td></tr></table>${HERO_SENTINEL_END}`,
-  "<table><tr><td>{{BODY_TITLE}}</td></tr>",
-  '<tr><td><a href="{{BODY_CTA_URL}}">{{BODY_CTA_LABEL}}</a></td></tr>',
-  '<tr><td><img src="{{SECTION_IMAGE}}"></td></tr>',
-  "<tr><td>{{ORFAO_SEM_COPY}}</td></tr></table>",
-].join("\n")
-
-const field = (key: string, tag: string | null, type = "text_short") => ({
-  key,
-  tag,
-  type,
+const block = (
+  fields: Array<{ key: string; example: string; type?: string; nature?: string }>,
+  content: Record<string, unknown>,
+  overrides: Partial<MergeBlock> = {},
+): MergeBlock => ({
+  fields: fields.map((f) => ({
+    key: f.key,
+    example: f.example,
+    type: f.type ?? "text_short",
+    nature: f.nature ?? "copy",
+  })),
+  content,
+  block_id: "blk-1",
+  block_type: "beneficios",
+  ...overrides,
 })
 
-describe("textTagsOutsideHero", () => {
-  it("lista só tags de TEXTO fora da hero (imagem e hero ficam de fora)", () => {
-    expect(textTagsOutsideHero(DOC)).toEqual([
-      "BODY_TITLE",
-      "BODY_CTA_URL",
-      "BODY_CTA_LABEL",
-      "ORFAO_SEM_COPY",
-    ])
-  })
-})
-
-describe("copyMerge", () => {
-  it("resolve por código o que tem tag+valor; hero e imagem intocadas; relatório metrificado", () => {
-    const { html, report } = copyMerge(DOC, [
-      {
-        fields: [
-          field("body_title", "BODY_TITLE"),
-          field("body_cta_label", "BODY_CTA_LABEL"),
-          field("body_cta_url", "BODY_CTA_URL", "url"),
-          // sem âncora: vai pro relatório, não pro doc
-          field("frase_solta", null),
-          // imagem: fora do merge por natureza
-          field("section_image", "SECTION_IMAGE", "image"),
+describe("copyMergeByExample", () => {
+  it("troca a frase do example pelo valor do n8n, por splice, no lugar exato", () => {
+    const html = [
+      "<table><tr>",
+      "<td>Don&rsquo;t miss the Summer Sale</td>",
+      "<td>Shop the collection</td>",
+      "</tr></table>",
+    ].join("\n")
+    const r = copyMergeByExample(html, [
+      block(
+        [
+          { key: "headline", example: "Don't miss the Summer Sale" },
+          { key: "cta_label", example: "Shop the collection" },
         ],
-        content: {
-          body_title: "Título real",
-          body_cta_label: "Comprar",
-          body_cta_url: "https://loja.com/x",
-          frase_solta: "texto sem casa",
-        },
-      },
+        { headline: "Última chamada do inverno", cta_label: "Ver ofertas" },
+      ),
     ])
-
-    expect(html).toContain("Título real")
-    expect(html).toContain('href="https://loja.com/x"')
-    expect(html).toContain(">Comprar<")
-    // hero intocada; imagem intocada; órfã sobra pro agente de exceção
-    expect(html).toContain("{{HERO_HEADLINE}}")
-    expect(html).toContain("{{SECTION_IMAGE}}")
-    expect(report.slots_total).toBe(4)
-    expect(report.ops_built).toBe(3)
-    expect(report.merged).toBe(3)
-    expect(report.left_for_llm).toEqual(["ORFAO_SEM_COPY"])
-    expect(report.unanchored_keys).toEqual(["frase_solta"])
-    expect(report.skipped).toEqual([])
+    expect(r.html).toContain("<td>Última chamada do inverno</td>")
+    expect(r.html).toContain("<td>Ver ofertas</td>")
+    expect(r.report.slots_total).toBe(2)
+    expect(r.report.ops_built).toBe(2)
+    expect(r.report.merged).toBe(2)
+    const campo = r.report.campos.find((c) => c.key === "headline")!
+    expect(campo).toMatchObject({
+      block_id: "blk-1",
+      desfecho: "ancorado_exemplo",
+      de: "Don&rsquo;t miss the Summer Sale",
+      para: "Última chamada do inverno",
+    })
   })
 
-  it("content vazio/ausente não vira op (slot fica pro LLM decidir remoção)", () => {
-    const { report } = copyMerge(DOC, [
-      {
-        fields: [field("body_title", "BODY_TITLE")],
-        content: { body_title: "   " },
-      },
+  it("escreve DENTRO da região cfy:hero e devolve os valores em hero_values", () => {
+    const html = [
+      "<table>",
+      HERO_SENTINEL_START,
+      "<tr><td>Hero headline here</td></tr>",
+      HERO_SENTINEL_END,
+      "<tr><td>Body text here</td></tr>",
+      "</table>",
+    ].join("\n")
+    const r = copyMergeByExample(html, [
+      block(
+        [
+          { key: "hero_headline", example: "Hero headline here" },
+          { key: "body_text", example: "Body text here" },
+        ],
+        { hero_headline: "Bem-vinda à loja", body_text: "Texto do corpo" },
+        { block_type: "hero" },
+      ),
     ])
-    expect(report.ops_built).toBe(0)
-    expect(report.left_for_llm).toContain("BODY_TITLE")
+    expect(r.html).toContain("<td>Bem-vinda à loja</td>")
+    // hero_values carrega SÓ o que caiu entre as sentinelas.
+    expect(r.report.hero_values).toEqual(["Bem-vinda à loja"])
+    const anchors = Object.fromEntries(r.anchors.map((a) => [a.key, a]))
+    expect(anchors.hero_headline.inHero).toBe(true)
+    expect(anchors.body_text.inHero).toBe(false)
   })
 
-  it("tag apontando pra dentro da hero é pulada (hero_protected)", () => {
-    const { report } = copyMerge(DOC, [
-      {
-        fields: [field("hero_headline", "HERO_HEADLINE")],
-        content: { hero_headline: "invasão" },
-      },
+  it("valor que é MARCAÇÃO é recusado (value_is_html) e o HTML fica intacto", () => {
+    const html = "<table><tr><td>Brand tagline</td></tr></table>"
+    const r = copyMergeByExample(html, [
+      block(
+        [{ key: "tagline", example: "Brand tagline" }],
+        { tagline: '<img src="https://x/logo.png">' },
+      ),
     ])
-    expect(report.merged).toBe(0)
-    expect(report.skipped[0]?.reason).toBe("hero_protected")
+    expect(r.html).toBe(html)
+    expect(r.report.merged).toBe(0)
+    expect(r.report.skipped[0]).toMatchObject({
+      key: "tagline",
+      reason: "value_is_html",
+    })
+  })
+
+  it("sem_lugar não altera o HTML e entra no report com o motivo (fail-open)", () => {
+    const html = "<table><tr><td>Outro texto</td></tr></table>"
+    const r = copyMergeByExample(html, [
+      block(
+        [{ key: "headline", example: "Summer Sale" }],
+        { headline: "Valor que não tem onde entrar" },
+      ),
+    ])
+    expect(r.html).toBe(html)
+    expect(r.report.sem_lugar).toEqual([
+      { block_id: "blk-1", key: "headline", motivo: "nao_encontrado" },
+    ])
+    expect(r.report.campos[0].desfecho).toBe("sem_lugar")
+    expect(r.report.campos[0].para).toBeNull()
+  })
+
+  it("campo ancorado SEM valor do n8n fica registrado como copy_ausente e a frase sobrevive", () => {
+    const html = "<table><tr><td>Original phrase stays</td></tr></table>"
+    const r = copyMergeByExample(html, [
+      block([{ key: "headline", example: "Original phrase stays" }], {}),
+    ])
+    expect(r.html).toBe(html)
+    expect(r.report.campos[0]).toMatchObject({
+      desfecho: "ancorado_exemplo",
+      motivo: "copy_ausente",
+      para: null,
+    })
+  })
+
+  it("irmãos idênticos + espelho MSO: o espelho no comentário também é preenchido", () => {
+    const html = [
+      "<table><tr><td>Name.</td></tr></table>",
+      '<!--[if mso]><table><tr><td>Name.</td></tr></table><![endif]-->',
+    ].join("\n")
+    const r = copyMergeByExample(html, [
+      block([{ key: "review_1_name", example: "Name." }], {
+        review_1_name: "Marina S.",
+      }),
+    ])
+    // A árvore só vê a ocorrência real (o comentário não é nó de texto),
+    // então o casamento é único — e o espelho MSO é trocado por código.
+    expect(r.report.merged).toBe(1)
+    const mainCount = (r.html.match(/Marina S\./g) ?? []).length
+    expect(mainCount).toBe(2)
+    expect(r.html).not.toContain("Name.")
+  })
+
+  it("neutraliza < e > soltos do valor (contrato do set_text herdado)", () => {
+    const html = "<table><tr><td>Price note</td></tr></table>"
+    const r = copyMergeByExample(html, [
+      block([{ key: "note", example: "Price note" }], {
+        note: "preço < 100 reais",
+      }),
+    ])
+    expect(r.html).toContain("preço &lt; 100 reais")
+  })
+
+  it("campo de imagem (nature imagem_gerada) fica FORA do merge de texto", () => {
+    const html = '<table><tr><td><img src="URL_FOTO_1" alt=""></td></tr></table>'
+    const r = copyMergeByExample(html, [
+      block(
+        [{ key: "hero_image", example: "foto do produto", type: "image", nature: "imagem_gerada" }],
+        { hero_image: "https://cdn/x.png" },
+      ),
+    ])
+    expect(r.report.slots_total).toBe(0)
+    expect(r.html).toBe(html)
   })
 })
 
-describe("block_id — amarração com a chave do n8n (views + ops)", () => {
-  it("mergeBlocksFromContext propaga o email_blocks.id como block_id", () => {
-    const blocks = mergeBlocksFromContext(
-      [{ id: "b1-uuid", position: 1, block_type: "hero", content: { x: "1" } }],
-      [{ type: "hero", fields: [field("x", "X")] }],
+describe("mergeBlocksFromContext", () => {
+  it("casa position-1 guardado por type; estrutura divergente fica sem fields", () => {
+    const blocks = [
+      { id: "b1", position: 1, block_type: "hero", content: { x: "1" } },
+      { id: "b2", position: 2, block_type: "cta", content: null },
+    ]
+    const bp = [
+      { type: "hero", fields: [{ key: "h", type: "text_short" }] },
+      { type: "beneficios", fields: [{ key: "z", type: "text_short" }] },
+    ]
+    const out = mergeBlocksFromContext(blocks, bp)
+    expect(out[0].fields).toHaveLength(1)
+    expect(out[0].block_id).toBe("b1")
+    expect(out[0].block_type).toBe("hero")
+    // position 2 = bp[1] type beneficios ≠ cta → sem fields (fail-open).
+    expect(out[1].fields).toHaveLength(0)
+  })
+})
+
+describe("heroCopyPreserved", () => {
+  it("valor sumido do fragmento → falha com o valor em missing", () => {
+    const r = heroCopyPreserved(
+      ["Bem-vinda à loja", "Ver ofertas"],
+      "<tr><td>Bem-vinda à loja</td></tr>",
     )
-    expect(blocks[0].block_id).toBe("b1-uuid")
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(["Ver ofertas"])
   })
 
-  it("tagToBlockIdMap resolve tag normalizada → block_id (primeira ocorrência vence)", () => {
-    const map = tagToBlockIdMap([
-      {
-        block_id: "b1",
-        fields: [field("titulo", "{{ BODY_TITLE }}")],
-        content: {},
-      },
-      { block_id: "b2", fields: [field("dup", "BODY_TITLE")], content: {} },
-      { block_id: null, fields: [field("solto", "SEM_DONO")], content: {} },
-    ])
-    expect(map.get("BODY_TITLE")).toBe("b1")
-    expect(map.has("SEM_DONO")).toBe(false)
+  it("valor re-espaçado/re-entidade passa (mesma régua do casamento)", () => {
+    const r = heroCopyPreserved(
+      ["Don't miss  this"],
+      "<tr><td>Don&rsquo;t\n  miss this</td></tr>",
+    )
+    expect(r.ok).toBe(true)
   })
 
-  it("buildExceptionSlots carrega o block_id da tag (null quando não resolvido)", () => {
-    const map = new Map([["ORFAO_SEM_COPY", "b7-uuid"]])
-    const slots = buildExceptionSlots(DOC, ["ORFAO_SEM_COPY", "INEXISTENTE"], map)
-    expect(slots[0].block_id).toBe("b7-uuid")
-    expect(slots[0].row_html).toContain("{{ORFAO_SEM_COPY}}")
-    expect(slots[1].block_id).toBeNull()
-  })
-
-  it("copyMerge emite ops com block_id do bloco dono", () => {
-    const { report } = copyMerge(DOC, [
-      {
-        block_id: "b1-uuid",
-        fields: [field("hero_headline", "HERO_HEADLINE")],
-        content: { hero_headline: "invasão" },
-      },
-    ])
-    // A op foi pulada (hero_protected), mas carrega o block_id de origem.
-    expect(report.skipped[0]?.op.block_id).toBe("b1-uuid")
+  it("lista vazia passa sempre (resume, região sem copy do merge)", () => {
+    expect(heroCopyPreserved([], "<tr></tr>").ok).toBe(true)
   })
 })
 
-describe("buildMergeVerifierInput — views do Verificador (7b)", () => {
-  it("separa preenchidos / sobrando / copy sem uso, tudo amarrado por block_id", () => {
-    const blocks = [
-      {
-        block_id: "b1",
-        fields: [
-          field("body_title", "BODY_TITLE"),
-          field("frase_solta", null),
-        ],
-        content: { body_title: "Título real", frase_solta: "texto sem casa" },
-      },
-      {
-        block_id: "b2",
-        fields: [field("orfao", "ORFAO_SEM_COPY")],
-        // valor presente mas o slot não resolveu (ex.: skip) → copy sem uso
-        content: { orfao: "" },
-      },
-    ]
-    const { html, report } = copyMerge(DOC, blocks)
-    expect(report.merged_tags).toEqual(["BODY_TITLE"])
-
-    const input = buildMergeVerifierInput(html, blocks, report)
-    // Preenchido: tag + valor aplicado (sem row_html — julgamento semântico).
-    expect(input.slots_preenchidos).toEqual([
-      { block_id: "b1", tag: "BODY_TITLE", valor_aplicado: "Título real" },
-    ])
-    // Sobrando: views com row_html + block_id resolvido via fields.
-    const sobrando = input.slots_sobrando.map((s) => ({
-      tag: s.tag,
-      block_id: s.block_id,
-    }))
-    expect(sobrando).toContainEqual({ tag: "ORFAO_SEM_COPY", block_id: "b2" })
-    // Copy sem uso: a key sem âncora, com o dono.
-    expect(input.copy_nao_usada).toEqual([
-      { block_id: "b1", key: "frase_solta", valor: "texto sem casa", tag: null },
-    ])
-  })
-
-  it("copy cujo slot ancorado SOBROU aparece como não usada (candidata natural)", () => {
-    const blocks = [
-      {
-        block_id: "b9",
-        // tag existe no doc mas dentro da hero → merge pula (hero_protected)
-        fields: [field("hero_headline", "HERO_HEADLINE")],
-        content: { hero_headline: "valor preso" },
-      },
-    ]
-    const { html, report } = copyMerge(DOC, blocks)
-    const input = buildMergeVerifierInput(html, blocks, report)
-    expect(input.slots_preenchidos).toEqual([])
-    // HERO_HEADLINE não está em left_for_llm (hero fica fora do universo de
-    // texto), então a copy não pareia com slot sobrando — mas o registro de
-    // não-uso existe quando a âncora falha fora da hero (coberto acima).
-    expect(
-      input.copy_nao_usada.every((c) => typeof c.key === "string"),
-    ).toBe(true)
-  })
-})
-
-describe("views do image_format (F3 — arquitetura por views)", () => {
-  it("imageTagsOutsideHero lista só tags de imagem fora da hero, sem _ALT", () => {
-    const doc = [
-      `${HERO_SENTINEL_START}<table><tr><td><img src="{{HERO_IMAGE}}"></td></tr></table>${HERO_SENTINEL_END}`,
-      '<table><tr><td><img src="{{PRODUCTS_IMAGE}}" alt="{{PRODUCTS_IMAGE_ALT}}"></td></tr>',
-      '<tr><td><img src="{{REVIEW_1_THUMB}}"></td></tr>',
-      "<tr><td>{{BODY_TITLE}}</td></tr></table>",
+describe("applyStructuralFills — tokens reais da biblioteca", () => {
+  it('src="URL_DO_LOGO_AQUI" vira a URL da logo e NOME_DA_MARCA (alt+texto) vira a marca', () => {
+    const html = [
+      "<table><tr>",
+      '<td><img src="URL_DO_LOGO_AQUI" alt="NOME_DA_MARCA" width="120"></td>',
+      "<td>NOME_DA_MARCA</td>",
+      "</tr></table>",
     ].join("\n")
-    expect(imageTagsOutsideHero(doc)).toEqual([
-      "PRODUCTS_IMAGE",
-      "REVIEW_1_THUMB",
-    ])
-  })
-
-  it("rowsContainingText acha a <tr> do logo de texto (fora da hero, texto visível)", () => {
-    const doc = [
-      `${HERO_SENTINEL_START}<table><tr><td>Luxe Lift dentro da hero</td></tr></table>${HERO_SENTINEL_END}`,
-      '<table><tr><td style="font-weight:bold">LUXE LIFT</td></tr>',
-      '<tr><td><img alt="Luxe Lift produto" src="x.png"></td></tr></table>',
-    ].join("\n")
-    const rows = rowsContainingText(doc, "Luxe Lift")
-    // hero fora; ocorrência só em atributo (alt=) fora; texto visível entra
-    expect(rows).toHaveLength(1)
-    expect(rows[0].row_html).toContain("LUXE LIFT")
-  })
-
-  it("rowsContainingText: needle vazio → nada; respeita o limite", () => {
-    expect(rowsContainingText("<tr><td>Marca</td></tr>", "  ")).toEqual([])
-    const many = Array.from(
-      { length: 6 },
-      (_, i) => `<table><tr><td>Marca ${i}</td></tr></table>`,
-    ).join("")
-    expect(rowsContainingText(many, "Marca", 2)).toHaveLength(2)
-  })
-})
-
-describe("tags estruturais — posse do código, nunca do LLM (fix Luxe Lift 28/07)", () => {
-  const DOC_FOOTER = [
-    "<table>",
-    "<tr><td>{{BODY_TITLE}}</td></tr>",
-    '<tr><td><a href="{{FOOTER_LINK_1_URL}}">{{FOOTER_LINK_1_LABEL}}</a></td></tr>',
-    '<tr><td><a href="{{INSTAGRAM_URL}}"><img src="{{INSTAGRAM_ICON}}"></a></td></tr>',
-    "<tr><td>© {{YEAR}} {{BRAND_NAME}}</td></tr>",
-    '<tr><td><a href="{{UNSUBSCRIBE_URL}}">sair</a></td></tr>',
-    "</table>",
-  ].join("\n")
-
-  it("isStructuralTag reconhece exatas e prefixos (footer/social)", () => {
-    expect(isStructuralTag("YEAR")).toBe(true)
-    expect(isStructuralTag("FOOTER_LINK_3_LABEL")).toBe(true)
-    expect(isStructuralTag("INSTAGRAM_ICON")).toBe(true)
-    expect(isStructuralTag("BODY_TITLE")).toBe(false)
-    expect(isStructuralTag("REVIEW_1_TEXT")).toBe(false)
-  })
-
-  it("left_for_llm NÃO leva estruturais — elas saem em structural_out", () => {
-    const { report } = copyMerge(DOC_FOOTER, [])
-    expect(report.left_for_llm).toEqual(["BODY_TITLE"])
-    expect(report.structural_out).toContain("FOOTER_LINK_1_LABEL")
-    expect(report.structural_out).toContain("INSTAGRAM_ICON")
-    expect(report.structural_out).toContain("YEAR")
-  })
-
-  it("applyStructuralFills preenche o que sabe e PRESERVA o resto (não remove linha)", () => {
-    const r = applyStructuralFills(DOC_FOOTER, {
-      subject: "Seu carrinho",
-      preheader: "Volte",
+    const r = applyStructuralFills(html, {
       brandName: "Luxe Lift",
-      logoUrl: "https://cdn/logo.png",
+      logoUrl: "https://cdn.loja.com/logo.png",
+    })
+    expect(r.html).toContain('src="https://cdn.loja.com/logo.png"')
+    expect(r.html).toContain('alt="Luxe Lift"')
+    expect(r.html).toContain("<td>Luxe Lift</td>")
+    expect(r.cleaned).toEqual([])
+    expect(r.filled.map((f) => f.token)).toContain("URL_DO_LOGO_AQUI")
+  })
+
+  it("sem logoUrl a linha FICA e o token vai para cleaned (strip limpa depois)", () => {
+    const html = '<table><tr><td><img src="URL_DO_LOGO_AQUI" alt=""></td></tr></table>'
+    const r = applyStructuralFills(html, { brandName: "Loja" })
+    expect(r.html).toBe(html)
+    expect(r.cleaned).toContain("URL_DO_LOGO_AQUI")
+  })
+
+  it("arte fixa base64 na mesma linha fica intacta", () => {
+    const html = [
+      "<table><tr>",
+      '<td><img src="data:image/png;base64,iVBORw0KGgo" alt=""></td>',
+      "<td>NOME_DA_MARCA</td>",
+      "</tr></table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, { brandName: "Loja X" })
+    expect(r.html).toContain("data:image/png;base64,iVBORw0KGgo")
+    expect(r.html).toContain("<td>Loja X</td>")
+  })
+
+  it("dentro da hero NADA é tocado (contraste de logo é juízo do agente)", () => {
+    const html = [
+      "<table>",
+      HERO_SENTINEL_START,
+      '<tr><td><img src="URL_DO_LOGO_AQUI" alt="NOME_DA_MARCA"></td></tr>',
+      HERO_SENTINEL_END,
+      "<tr><td>NOME_DA_MARCA</td></tr>",
+      "</table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, {
+      brandName: "Loja Y",
+      logoUrl: "https://cdn/l.png",
+    })
+    expect(r.html).toContain('src="URL_DO_LOGO_AQUI"')
+    expect(r.html).toContain('alt="NOME_DA_MARCA"')
+    expect(r.html).toContain("<td>Loja Y</td>")
+  })
+
+  it("legado {{}}: EMAIL_TITLE/YEAR preenchidos, LOGO recebe o markup, sem valor vai a cleaned", () => {
+    const html = [
+      "<table><tr><td>{{EMAIL_TITLE}} — {{YEAR}}</td></tr>",
+      "<tr><td>{{LOGO}}</td></tr>",
+      "<tr><td>{{PREHEADER}}</td></tr></table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, {
+      subject: "Oferta da semana",
       year: 2026,
+      logoMarkup: '<img src="https://cdn/l.png" alt="Loja">',
     })
-    expect(r.html).toContain("© 2026 Luxe Lift")
-    expect(r.html).toContain("[unsubscribe_link]")
-    expect(r.filled).toEqual(expect.arrayContaining(["YEAR", "BRAND_NAME", "UNSUBSCRIBE_URL"]))
-    // Footer/social sem valor: token fica, LINHA PRESERVADA (strip limpa depois)
-    expect(r.html).toContain("{{FOOTER_LINK_1_URL}}")
-    expect(r.html).toContain("{{INSTAGRAM_ICON}}")
-    expect(r.left).toEqual(expect.arrayContaining(["FOOTER_LINK_1_URL", "INSTAGRAM_ICON"]))
-    // Estrutura intacta: nenhuma <tr> removida
-    expect((r.html.match(/<tr>/g) ?? []).length).toBe(5)
-  })
-
-  it("valor vazio no contexto não vira op (não apaga nem escreve string vazia)", () => {
-    const r = applyStructuralFills("<td>{{BRAND_NAME}}</td>", {
-      subject: "", preheader: "", brandName: "  ", logoUrl: "", year: 2026,
-    })
-    expect(r.html).toContain("{{BRAND_NAME}}")
-    expect(r.filled).toEqual([])
-  })
-})
-
-describe("applyStructuralFills — contexto parcial nunca derruba o estágio", () => {
-  it("campos ausentes/null são ignorados (sem throw, tokens preservados)", () => {
-    const doc = "<td>{{BRAND_NAME}} {{YEAR}} {{LOGO}}</td>"
-    const r = applyStructuralFills(doc, { year: 2026 })
-    expect(r.html).toContain("2026")
-    expect(r.html).toContain("{{BRAND_NAME}}")
-    expect(r.html).toContain("{{LOGO}}")
-    expect(r.filled).toEqual(["YEAR"])
+    expect(r.html).toContain("Oferta da semana — 2026")
+    expect(r.html).toContain('<td><img src="https://cdn/l.png" alt="Loja"></td>')
+    expect(r.html).toContain("{{PREHEADER}}")
+    expect(r.cleaned).toContain("PREHEADER")
   })
 })

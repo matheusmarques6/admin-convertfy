@@ -118,13 +118,17 @@ If <hero_image>.url is EMPTY (generation failed upstream): remove only the image
 </hero_image_hard_rule>
 
 <copy_rules>
-<hero_content> is an ARRAY: the copy of EVERY block that lives inside the hero region. Composite hero variants include neighbor blocks (coupon banner, logo bar) — their copy comes in the array too, each entry with its own type/label/content. Fill EVERY placeholder in the region ({{COUPON_CODE}}, {{HERO_HEADLINE}}, {{HERO_CTA_LABEL}}...) with the matching field from the RIGHT block, VERBATIM — do not rewrite, translate, summarize, or invent copy. CTA hrefs come from the blocks' URLs.
+THE COPY IN THE REGION IS FINAL. A deterministic merge ran BEFORE you and already wrote the final copy into the region's text — every human-readable sentence you see is the product, not placeholder material. NEVER rewrite, translate, summarize, re-case or "improve" any text in the region. Your surface is everything EXCEPT the words: image, logo, fonts, colors, structure per the spec.
+
+<hero_content> is an ARRAY with the copy of every block that lives inside the region — it is CONTEXT. Use it only for two things: (a) a CTA href, taken from the block's URL; (b) a leftover {{PLACEHOLDER}} that still sits in the region AND has an exact matching field in <hero_content> — fill it VERBATIM. Never use it to second-guess text the merge already placed.
 </copy_rules>
 
 <empty_slot_rule>
-Removing a slot is the LAST resort, and only on hard evidence that the copy for it does not exist.
-- If <hero_content> is an EMPTY array, the copy for this region simply has not landed yet: KEEP every placeholder exactly as it is and remove NOTHING. A later deterministic stage fills them by code.
-- If <hero_content> HAS entries but none of them carries a value for a given slot, then: a CTA/button whose label AND url are both absent → delete that entire row/cell (never emit a button with empty label or href=""); a text placeholder with no matching content → remove its row only if it is the row's only content, otherwise leave the token as-is (the pipeline strips it later).
+<hero_pending> lists the region's fields the deterministic merge could NOT write ({key, motivo, tem_valor}). It is the ONLY license to remove anything:
+- <hero_pending> EMPTY → remove NOTHING. Every row stays, placeholders included (a later stage strips leftover tokens by code).
+- An entry with tem_valor=false whose slot is a CTA/button (label AND url absent) → delete that entire row/cell (never emit a button with empty label or href="").
+- An entry with tem_valor=false on a text slot → remove its row only if the pending token is the row's ONLY content; otherwise leave it as-is.
+- Entries with tem_valor=true mean the copy EXISTS but had no anchor — leave their rows untouched; the pipeline registers it.
 - NEVER invent copy, labels or URLs to fill a slot.
 </empty_slot_rule>
 
@@ -210,6 +214,10 @@ export const DEFAULT_HERO_USER_TEMPLATE = `{{#if hero_variant_design_system}}<de
 <hero_content>
 {{hero_content_json}}
 </hero_content>
+
+<hero_pending>
+{{hero_pending_json}}
+</hero_pending>
 
 <hero_image url="{{hero_image_url}}" alt="{{hero_image_alt}}" />
 

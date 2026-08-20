@@ -45,7 +45,10 @@ import {
   OPENROUTER_IMAGE_MODEL,
 } from "./chains/image.chain"
 import { renderImageTemplate } from "./image/template-renderer"
-import { deriveToneKeys } from "./shared/component-dimensions"
+import {
+  deriveToneKeys,
+  deriveFieldNature,
+} from "./shared/component-dimensions"
 import {
   resolveAspectForBlock,
   blockAspectFromBlueprint,
@@ -73,7 +76,6 @@ import {
 import {
   invokeTextFormatChain,
   textFormatGuard,
-  invokeTextExceptionChain,
 } from "./chains/text-format.chain"
 import { invokeImageFormatChain } from "./chains/image-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
@@ -91,24 +93,19 @@ import {
   type HeroVariantSource,
 } from "./html/format-context"
 import {
-  copyMerge,
+  copyMergeByExample,
+  heroCopyPreserved,
   mergeBlocksFromContext,
-  buildExceptionSlots,
-  buildMergeVerifierInput,
   applyStructuralFills,
-  tagToBlockIdMap,
   type MergeField,
+  type MergeAnchor,
 } from "./html/copy-merge"
-import {
-  invokeMergeVerifierChain,
-  type MergeVerifierExcecao,
-} from "./chains/merge-verifier.chain"
 import {
   buildQaBlockViews,
   viewsFromBlocksFallback,
   type QaBlockView,
 } from "./html/qa-views"
-import { annotateSlots, stripSlotAttributes } from "./html/slot-annotate"
+import { stripSlotAttributes } from "./html/slot-annotate"
 import {
   buildBlockContracts,
   contractTags,
@@ -129,7 +126,7 @@ import {
 } from "./html/hero-graft"
 import { effectiveVariantHtml } from "./shared/component-dimensions"
 import { resolveRenderedReference } from "./shared/rendered-reference"
-import { applyOps, parseOps } from "./html/apply-patches"
+import { applyOps } from "./html/apply-patches"
 import {
   stripUnresolvedPlaceholders,
   stripCfyBlockMarkers,
@@ -1540,20 +1537,6 @@ function toChainConfig(
   }
 }
 
-// Verificador de merge (7b): não é step da cadeia (sem failStep/budget
-// próprios — falha vira fallback mecânico), então tem defaults próprios.
-// Kimi K3 via OpenRouter (mesma conta do resto da cadeia) — o seed
-// original em Haiku morria por falta de crédito na Anthropic (28/07).
-function verifierChainConfig(config: EmailAgentConfig | null): FormatChainConfig {
-  return {
-    model: config?.model || FMT_DEFAULT_MODEL,
-    temperature: config?.temperature ?? 0.2,
-    max_tokens: config?.max_tokens ?? 2048,
-    system_prompt: config?.system_prompt ?? "",
-    user_template: config?.user_template ?? "",
-  }
-}
-
 /** Hash curto pra auditoria "output do step N = input do step N+1". */
 function sha8(s: string): string {
   return createHash("sha256").update(s).digest("hex").slice(0, 8)
@@ -1861,14 +1844,12 @@ async function runFormattingChain(p: {
   const textSwitch = resolveAgentSwitch(ctx.textFormatConfig)
   const imageFmtSwitch = resolveAgentSwitch(ctx.imageFormatConfig)
   const colorSwitch = resolveAgentSwitch(ctx.colorFormatConfig)
-  const verifierSwitch = resolveAgentSwitch(ctx.mergeVerifierConfig)
   const disabledAgents = (
     [
       ["hero_section", heroSwitch],
       ["text_format", textSwitch],
       ["image_format", imageFmtSwitch],
       ["color_format", colorSwitch],
-      ["merge_verifier", verifierSwitch],
     ] as const
   )
     .filter(([, s]) => s.disabled)
@@ -2013,21 +1994,132 @@ async function runFormattingChain(p: {
   const blockContractsJson = JSON.stringify(blockContracts, null, 2)
   const contractTagSet = contractTags(fmtCtx.blocks)
 
-  // ── Anotação de slots (Fase 2 do endereçamento) ────────────────────
-  // Injeta data-cfy-slot/data-cfy-row por CÓDIGO (offset exato) antes de
-  // qualquer agente rodar. Feito aqui — e não no Montador — para valer
-  // também para as references JÁ persistidas, sem regerar nada. Os
-  // atributos são internos: a limpeza final (após o step de imagem) os
-  // remove junto com os marcadores cfy:block.
-  {
-    const ann = annotateSlots(fmtCtx.referenceHtml)
-    if (ann.annotated > 0) {
-      fmtCtx.referenceHtml = ann.html
-      log.info("phase2.fmt.slots_annotated", {
+  // ── Estágio 0 — MERGE POR EXAMPLE (antes da hero, D1) ──────────────
+  // O endereço da copy é a frase do `example` do schema, encontrada no HTML
+  // pelo anchor-match — e a hero (LLM) reescreveria a região e mataria as
+  // âncoras, então o merge roda ANTES do STEP 1 e escreve TAMBÉM dentro das
+  // sentinelas cfy:hero. O guard `heroCopyPreserved` cobra, no fragmento
+  // devolvido pelo agente, cada valor aplicado na região.
+  //
+  // `mergeBlocks`/`textFieldsTotal` são computados SEMPRE (resume incluso):
+  // a decisão de pular o text_format depende de saber se o blueprint tem
+  // campos de texto, mesmo quando o merge já rodou numa invocação anterior.
+  const mergeBlocks = mergeBlocksFromContext(
+    fmtCtx.blocks as Array<{
+      id?: string
+      position: number
+      block_type: string
+      content: Record<string, unknown> | null
+    }>,
+    fmtCtx.blueprint?.blocks as
+      | Array<{ type: string; fields?: MergeField[] | null }>
+      | undefined,
+  )
+  const textFieldsTotal = mergeBlocks.reduce(
+    (n, b) =>
+      n + b.fields.filter((f) => deriveFieldNature(f) === "copy").length,
+    0,
+  )
+  /** Valores que o merge aplicou DENTRO da hero — insumo do guard do STEP 1. */
+  let heroValues: string[] = []
+  /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
+  let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
+    []
+
+  if (stage === null) {
+    const mergeInput = fmtCtx.referenceHtml
+    const mergeT0 = Date.now()
+    // Região da hero no PRIMEIRO passe: sentinelas quando o graft rodou;
+    // senão a mesma cascata do STEP 1 (marcadores/tags do hero-locator).
+    const heroRegionForMerge =
+      extractHeroBySentinels(mergeInput) ?? locateHeroRegion(mergeInput)
+    const merge = copyMergeByExample(mergeInput, mergeBlocks, {
+      heroRange: heroRegionForMerge
+        ? { start: heroRegionForMerge.start, end: heroRegionForMerge.end }
+        : null,
+    })
+
+    // Estruturais por CÓDIGO: logo (src="URL_DO_LOGO_AQUI") e marca
+    // (NOME_DA_MARCA em texto/alt) — fora da hero, que é posse do agente
+    // (contraste de logo em banda escura é juízo dele). Os tokens {{}}
+    // seguem como sobrevida do caminho full-doc legado.
+    const logoUrl = /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoLight)?.[1] ?? ""
+    const structural = applyStructuralFills(merge.html, {
+      brandName: fmtCtx.brandName,
+      logoUrl,
+      subject: fmtCtx.emailRow?.subject ?? "",
+      preheader: fmtCtx.emailRow?.preheader ?? "",
+      logoMarkup: fmtCtx.logoLight,
+      year: new Date().getFullYear(),
+    })
+
+    // Guard anti-colapso: maioria dos campos sem lugar = biblioteca com
+    // examples podres (cadastro divergiu do HTML), não "copy faltando".
+    // Fail-open por decisão — registra alto e claro, nunca derruba.
+    const collapsed =
+      merge.report.slots_total >= 10 &&
+      merge.report.sem_lugar.length / merge.report.slots_total > 0.6
+    if (collapsed) {
+      log.error("phase2.fmt.merge_anchor_collapse", {
         emailId,
-        annotated: ann.annotated,
+        slots_total: merge.report.slots_total,
+        merged: merge.report.merged,
+        sem_lugar: merge.report.sem_lugar.length,
+        hint: "examples do schema não batem com o HTML — revisar o cadastro das variantes",
       })
     }
+
+    await logGenerationRun({
+      ...ids,
+      agent: "copy_merge",
+      status: "success",
+      model: "deterministic",
+      inputVars: {
+        stage: "text",
+        input_html_len: mergeInput.length,
+        input_sha8: sha8(mergeInput),
+      },
+      parsedOutput: {
+        slots_total: merge.report.slots_total,
+        ops_built: merge.report.ops_built,
+        merged: merge.report.merged,
+        campos: merge.report.campos,
+        sem_lugar: merge.report.sem_lugar,
+        ambiguos: merge.report.ambiguos,
+        estruturais: structural.filled,
+        estruturais_left: structural.cleaned,
+        skipped: merge.report.skipped,
+        hero_values: merge.report.hero_values,
+        anchor_collapse: collapsed,
+        output_html_len: structural.html.length,
+        output_sha8: sha8(structural.html),
+        output_html: htmlSnapshot(structural.html),
+      },
+      costCents: 0,
+      durationMs: Date.now() - mergeT0,
+    }).catch(() => {})
+
+    fmtCtx.referenceHtml = structural.html
+    heroValues = merge.report.hero_values
+
+    // Escopo da hero: blocos com âncora aplicada dentro das sentinelas +
+    // o bloco type='hero' (variante composta engole vizinhos). O agente
+    // recebe os campos NÃO escritos desses blocos — é a única base legítima
+    // para remover uma linha (CTA sem copy) na região.
+    const heroBlockIds = new Set(
+      merge.anchors
+        .filter((a) => a.applied && a.inHero && a.block_id)
+        .map((a) => a.block_id as string),
+    )
+    const isHeroAnchor = (a: MergeAnchor) =>
+      a.block_type === "hero" || (a.block_id ? heroBlockIds.has(a.block_id) : false)
+    heroPending = merge.anchors
+      .filter((a) => isHeroAnchor(a) && !a.applied)
+      .map((a) => ({
+        key: a.key,
+        motivo: a.motivo ?? a.desfecho,
+        tem_valor: a.value != null,
+      }))
   }
 
   // ── STEP 1 — HERO SECTION ──────────────────────────────────────────
@@ -2081,6 +2173,7 @@ async function runFormattingChain(p: {
       regionHtml,
       variant,
       grafted: regionIsCanonical,
+      heroPending,
     })
     const config = toChainConfig(heroSwitch.config, "hero_section")
 
@@ -2118,6 +2211,17 @@ async function runFormattingChain(p: {
               fmtCtx.referenceHtml.slice(region.start, region.end),
             ) ?? undefined,
         })
+        // Guard D1: a região chegou com a copy do merge APLICADA — o
+        // fragmento tem de devolvê-la inteira (re-espaçar passa; sumir com
+        // o texto derruba a tentativa e o retry cobra de novo).
+        const preserved = heroCopyPreserved(heroValues, r.output)
+        if (!preserved.ok) {
+          throw new Error(
+            `guard: hero_copy_lost: ${preserved.missing
+              .map((m) => m.slice(0, 60))
+              .join(" | ")}`,
+          )
+        }
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
           value: next,
@@ -2171,364 +2275,37 @@ async function runFormattingChain(p: {
   }
 
   // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
-  // Relatório do merge visível aos ramos seguintes (exceção × legado).
-  let lastMergeReport: import("./html/copy-merge").CopyMergeReport | null = null
-  // Blocos do merge (com block_id) — amarram as views do agente de exceção
-  // à mesma chave do n8n.
-  let lastMergeBlocks: import("./html/copy-merge").MergeBlock[] | null = null
-  // Triagem do Verificador (7b) por tag — null = verificador off/falhou/
-  // não rodou → o agente de exceção segue com a fila mecânica pura.
-  let verifierTriage: Map<string, MergeVerifierExcecao> | null = null
   // Views por bloco do QA (F5) — extraídas ANTES do strip dos marcadores
   // cfy:block. Vazio no resume pós-strip (o QA cai no fallback por content).
   let qaViews: QaBlockView[] = []
-  if (stage === "hero") {
-    // ── Estágio 0 (Fase A): merge determinístico de copy — CÓDIGO, sem
-    // LLM. Campo com fields.tag resolvido + valor do n8n é trocado pelo
-    // Integrador; run próprio (agent='copy_merge') com métricas completas.
-    // Tudo resolvido → o LLM de texto é PULADO (run 'skipped').
-    const mergeInput = currentHtml
-    const mergeT0 = Date.now()
-    lastMergeReport = null
-    const mergeBlocks = mergeBlocksFromContext(
-      fmtCtx.blocks as Array<{
-        id?: string
-        position: number
-        block_type: string
-        content: Record<string, unknown> | null
-      }>,
-      fmtCtx.blueprint?.blocks as
-        | Array<{ type: string; fields?: MergeField[] | null }>
-        | undefined,
-    )
-    const merge = copyMerge(mergeInput, mergeBlocks)
-    lastMergeBlocks = mergeBlocks
-
-    // Estruturais por CÓDIGO (título/preheader/marca/ano/logo/unsubscribe).
-    // Links de footer/social ficam intactos — o strip final limpa o token
-    // sem apagar a linha. Nada disso vai pro LLM (incidente Luxe Lift:
-    // o agente de exceção apagava o rodapé inteiro por "slot sem copy").
-    const structural = applyStructuralFills(merge.html, {
-      subject: fmtCtx.emailRow?.subject ?? "",
-      preheader: fmtCtx.emailRow?.preheader ?? "",
-      brandName: fmtCtx.brandName,
-      logoUrl: fmtCtx.logoLight,
-      year: new Date().getFullYear(),
-    })
-    merge.html = structural.html
-
-    // Guard anti-colapso: fila de copy tomando quase todo o documento =
-    // blueprint sem âncoras (fields.tag null — variantes não tagueadas),
-    // não "copy faltando". Antes isso passava silencioso e o LLM comia
-    // seções inteiras.
-    const copySlots = merge.report.slots_total - merge.report.structural_out.length
-    const collapsed =
-      copySlots >= 10 && merge.report.left_for_llm.length / copySlots > 0.6
-    if (collapsed) {
-      log.error("phase2.fmt.merge_anchor_collapse", {
-        emailId,
-        slots_total: merge.report.slots_total,
-        merged: merge.report.merged,
-        left_for_llm: merge.report.left_for_llm.length,
-        hint: "blueprint sem fields.tag — passar as variantes pelo Taguedor",
-      })
-    }
-    // O schema é a base: a key do campo deveria ser a mesma chave que o n8n
-    // devolve. Todo campo que só casou pelo copyKey canônico é uma variante
-    // ainda no vocabulário velho — e é o que segura a ponte de
-    // copy-key-resolve viva.
-    if (merge.report.keys_via_canonical.length > 0) {
-      log.warn("phase2.fmt.merge_via_canonical_key", {
-        emailId,
-        keys: merge.report.keys_via_canonical,
-        hint: "schema da variante fora do vocabulário do n8n — alinhar as keys",
-      })
-    }
-    await logGenerationRun({
-      ...ids,
-      agent: "copy_merge",
-      status: "success",
-      model: "deterministic",
-      inputVars: {
-        stage: "text",
-        input_html_len: mergeInput.length,
-        input_sha8: sha8(mergeInput),
-        slots_total: merge.report.slots_total,
-        ops_built: merge.report.ops_built,
-      },
-      parsedOutput: {
-        merged: merge.report.merged,
-        left_for_llm: merge.report.left_for_llm,
-        unanchored_keys: merge.report.unanchored_keys,
-        // Ponte do vocabulário antigo: campos que só casaram pelo copyKey
-        // canônico do tag-registry, e não pela key do schema. Enquanto isso
-        // não zerar, o n8n ainda devolve copy no vocabulário velho e
-        // copy-key-resolve não pode ser removido. Zerou = pode cair fora.
-        keys_via_canonical: merge.report.keys_via_canonical,
-        // Estruturais: posse do código (nunca vão pro LLM).
-        structural_out: merge.report.structural_out,
-        structural_filled: structural.filled,
-        structural_left: structural.left,
-        // Blueprint sem âncoras → fila de copy engole o documento.
-        anchor_collapse: collapsed,
-        ops_skipped: merge.report.skipped.map((s) => ({
-          action: s.op.action,
-          tag: "tag" in s.op ? s.op.tag : null,
-          block_id: s.op.block_id ?? null,
-          reason: s.reason,
-        })),
-        output_html_len: merge.html.length,
-        output_sha8: sha8(merge.html),
-        output_html: htmlSnapshot(merge.html),
-      },
-      costCents: 0,
-      durationMs: Date.now() - mergeT0,
-    }).catch(() => {})
-    currentHtml = merge.html
-    lastMergeReport = merge.report
-
-    // ── 7b: Verificador de merge (LLM barato; migration 20261043) ────
-    // Audita o resultado do merge com views (nunca o documento) e tria a
-    // fila do agente de exceção. Modo via settings: on_flag (default) só
-    // roda quando o relatório acusa algo; always audita tudo; off = fila
-    // mecânica. FALLBACK OBRIGATÓRIO: erro/timeout aqui NUNCA derruba a
-    // geração — verifierTriage fica null e o fluxo segue como antes.
-    // Doc legado sem slots (slots_total=0) não tem o que triar — pula.
-    // Toggle desativado na aba Agentes equivale a modo 'off'.
-    const verifierMode = verifierSwitch.disabled ? "off" : ctx.mergeVerifierMode
-    const reportFlagged =
-      merge.report.left_for_llm.length > 0 ||
-      merge.report.unanchored_keys.length > 0 ||
-      merge.report.skipped.length > 0
-    if (verifierMode !== "off" && merge.report.slots_total > 0) {
-      const shouldRun = verifierMode === "always" || reportFlagged
-      if (!shouldRun) {
-        await logGenerationRun({
-          ...ids,
-          agent: "merge_verifier",
-          status: "skipped",
-          model: "n/a",
-          parsedOutput: { skip_reason: "merge_clean", mode: verifierMode },
-          costCents: 0,
-          durationMs: 0,
-        }).catch(() => {})
-      } else {
-        const vT0 = Date.now()
-        const vConfig = verifierChainConfig(verifierSwitch.config)
-        try {
-          const vInput = buildMergeVerifierInput(
-            merge.html,
-            mergeBlocks,
-            merge.report,
-          )
-          const v = await invokeMergeVerifierChain({
-            config: vConfig,
-            vars: {
-              relatorio_merge_json: JSON.stringify(
-                {
-                  slots_total: merge.report.slots_total,
-                  merged: merge.report.merged,
-                  left_for_llm: merge.report.left_for_llm,
-                  unanchored_keys: merge.report.unanchored_keys,
-                },
-                null,
-                2,
-              ),
-              slots_preenchidos_json: JSON.stringify(
-                vInput.slots_preenchidos,
-                null,
-                2,
-              ),
-              slots_sobrando_json: JSON.stringify(
-                vInput.slots_sobrando,
-                null,
-                2,
-              ),
-              copy_nao_usada_json: JSON.stringify(
-                vInput.copy_nao_usada,
-                null,
-                2,
-              ),
-            },
-          })
-          // Só entradas fixáveis pelo 7c (tags que AINDA têm token no doc)
-          // alimentam a fila; flags sobre slots preenchidos são telemetria
-          // (o 7c não tem op pra reescrever valor já aplicado).
-          const leftSet = new Set(merge.report.left_for_llm)
-          const fixable = v.result.excecoes.filter((e) => leftSet.has(e.tag))
-          verifierTriage = new Map(fixable.map((e) => [e.tag, e]))
-          await logGenerationRun({
-            ...ids,
-            agent: "merge_verifier",
-            status: "success",
-            model: vConfig.model,
-            inputVars: {
-              stage: "text",
-              mode: verifierMode,
-              flagged: reportFlagged,
-              slots_preenchidos: vInput.slots_preenchidos.length,
-              slots_sobrando: vInput.slots_sobrando.length,
-              copy_nao_usada: vInput.copy_nao_usada.length,
-            },
-            renderedPrompt: v.renderedPrompt,
-            rawOutput: v.rawOutput.slice(0, 8000),
-            parsedOutput: {
-              aprovado: v.result.aprovado,
-              excecoes: v.result.excecoes,
-              fila_para_excecao: fixable.length,
-              flags_slots_preenchidos: v.result.excecoes.filter(
-                (e) => !leftSet.has(e.tag),
-              ),
-            },
-            tokensInput: v.tokensInput,
-            tokensOutput: v.tokensOutput,
-            costCents: resolveCostCents({
-              model: vConfig.model,
-              tokensInput: v.tokensInput,
-              tokensOutput: v.tokensOutput,
-              costUsd: v.costUsd,
-            }),
-            durationMs: Date.now() - vT0,
-          }).catch(() => {})
-        } catch (err) {
-          verifierTriage = null // fallback: fila mecânica decide
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn("phase2.fmt.merge_verifier_failed_fallback", {
-            emailId,
-            error: msg,
-          })
-          await logGenerationRun({
-            ...ids,
-            agent: "merge_verifier",
-            status: "error",
-            model: vConfig.model,
-            errorMessage: msg.slice(0, 500),
-            parsedOutput: { fallback: "mechanical_queue" },
-            costCents: 0,
-            durationMs: Date.now() - vT0,
-          }).catch(() => {})
-        }
-      }
-    }
-
-    // Skip só quando o doc TINHA slots e todos resolveram — documento
-    // legado sem {{TAGS}} (slots_total=0) precisa do full-doc pra colocar
-    // a copy (senão ela se perderia).
-    if (
-      merge.report.left_for_llm.length === 0 &&
-      merge.report.slots_total > 0
-    ) {
-      // Biblioteca 100% ancorada: nada pro LLM — a baleia é pulada.
-      await logGenerationRun({
-        ...ids,
-        agent: "text_format",
-        status: "skipped",
-        model: "deterministic",
-        parsedOutput: {
-          skip_reason: "copy_merge_resolveu_tudo",
-          output_html_len: currentHtml.length,
-          output_sha8: sha8(currentHtml),
-        },
-        costCents: 0,
-        durationMs: 0,
-      }).catch(() => {})
-      await persistStage(currentHtml, "text")
-      stage = "text"
-    }
-  }
   // text_format desativado na aba Agentes: o que o merge não resolveu
-  // fica como está (o strip final limpa os tokens órfãos) — nenhum LLM
-  // toca o texto.
+  // fica como está (o strip final limpa o que sobrou) — nenhum LLM toca o
+  // texto.
   if (stage === "hero" && textSwitch.disabled) {
     await logStepDisabled("text_format", currentHtml)
     await persistStage(currentHtml, "text")
     stage = "text"
   }
-  // ── A3b — agente de EXCEÇÃO por slot: só a fila do merge, output em
-  // ops do protocolo do Integrador (posse = tags da fila; hero vetada).
-  if (
-    stage === "hero" &&
-    lastMergeReport &&
-    lastMergeReport.left_for_llm.length > 0
-  ) {
-    const inputHtml = currentHtml
-    const leftTags = lastMergeReport.left_for_llm
-    // View base por slot; quando o Verificador (7b) rodou, cada slot ganha
-    // a triagem dele (motivo + copy candidata pareada + ação sugerida) —
-    // fila triada. Sem verificador (off/falha) segue a view mecânica pura.
-    const slots = buildExceptionSlots(
-      inputHtml,
-      leftTags,
-      lastMergeBlocks ? tagToBlockIdMap(lastMergeBlocks) : undefined,
-    ).map((s) => {
-      const t = verifierTriage?.get(s.tag)
-      return t
-        ? {
-            ...s,
-            motivo: t.motivo,
-            copy_candidata: t.copy_candidata,
-            acao_sugerida: t.acao_sugerida,
-          }
-        : s
-    })
-    const config = toChainConfig(textSwitch.config, "text_format")
-
-    const outcome = await executeFormatStep<string>({
-      ids,
+  // Merge por example é o caminho ÚNICO de texto quando o blueprint tem
+  // campos (decisão 20/08: sem LLM de recurso — sem_lugar/ambíguo são
+  // telemetria, não fila; a fila do agente de exceção morreu junto com o
+  // verificador de merge). O LLM full-doc abaixo sobrevive SÓ para o
+  // documento legado sem schema (textFieldsTotal === 0), onde a copy não
+  // teria como entrar de outro jeito.
+  if (stage === "hero" && textFieldsTotal > 0) {
+    await logGenerationRun({
+      ...ids,
       agent: "text_format",
-      config: textSwitch.config,
-      model: config.model,
-      routeT0,
-      budgetMs,
-      inputHtml,
-      attempt: async () => {
-        const textVars = buildTextFormatVars(fmtCtx, inputHtml)
-        const r = await invokeTextExceptionChain({
-          config,
-          vars: {
-            exception_slots_json: JSON.stringify(slots, null, 2),
-            blocks_with_content_json:
-              textVars.blocks_with_content_json ?? "[]",
-            block_contracts_json: blockContractsJson,
-          },
-        })
-        const ops = parseOps(r.rawOps)
-        const applied = applyOps(inputHtml, ops, {
-          allowHero: false,
-          allowedTags: new Set(leftTags),
-        })
-        return {
-          value: applied.html,
-          tokensInput: r.tokensInput,
-          tokensOutput: r.tokensOutput,
-          costUsd: r.costUsd,
-          renderedPrompt: r.renderedPrompt,
-          rawOutput: r.rawOutput,
-          parsed: {
-            mode: "exception_slots",
-            slots_sent: slots.length,
-            contrato: measureOpsAgainstContract(ops, contractTagSet),
-            ops_applied: applied.applied,
-            ops_skipped: applied.skipped.map((s) => ({
-              action: s.op.action,
-              tag: "tag" in s.op ? s.op.tag : null,
-              block_id: s.op.block_id ?? null,
-              reason: s.reason,
-            })),
-            output_html_len: applied.html.length,
-            output_sha8: sha8(applied.html),
-            output_html: htmlSnapshot(applied.html),
-          },
-        }
+      status: "skipped",
+      model: "deterministic",
+      parsedOutput: {
+        skip_reason: "merge_por_exemplo",
+        output_html_len: currentHtml.length,
+        output_sha8: sha8(currentHtml),
       },
-    })
-
-    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
-    if (outcome.kind === "failed") {
-      await failStep("text_format", outcome.lastError)
-      return { status: "failed" }
-    }
-    currentHtml = outcome.value
+      costCents: 0,
+      durationMs: 0,
+    }).catch(() => {})
     await persistStage(currentHtml, "text")
     stage = "text"
   }

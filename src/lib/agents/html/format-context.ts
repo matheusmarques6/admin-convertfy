@@ -55,6 +55,7 @@ import {
   tagToBlockIdMap,
   type MergeField,
 } from "./copy-merge"
+import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
 
 const log = logger.child("FormatContext")
@@ -449,6 +450,24 @@ export function blocksInsideHeroRegion(
   regionHtml: string,
 ): BlockWithContent[] {
   if (regionHtml) {
+    // 1. Marcadores cfy:block dentro da região (D5) — o caminho canônico
+    //    quando a reference veio montada por código. Cada marcador casa
+    //    com o bloco do MESMO tipo, na ordem (n-ésima ocorrência), a mesma
+    //    convenção sequencial do qa-views. A hero ENXERTADA consome os
+    //    marcadores no splice — aí cai nas cascatas abaixo.
+    const markers = locateBlockRegions(regionHtml)
+    if (markers.length > 0) {
+      const nthByType = new Map<string, number>()
+      const included: BlockWithContent[] = []
+      for (const m of markers) {
+        const nth = nthByType.get(m.tipo) ?? 0
+        nthByType.set(m.tipo, nth + 1)
+        const matches = ctx.blocksWithContent.filter((b) => b.type === m.tipo)
+        if (matches[nth]) included.push(matches[nth])
+      }
+      if (included.length > 0) return included
+    }
+    // 2. Legado {{TAG}}: região ainda com placeholders do blueprint.
     const regionTags = tagsIn(regionHtml)
     if (regionTags.size > 0) {
       const included = ctx.blocksWithContent.filter((b) =>
@@ -474,6 +493,12 @@ export function buildHeroVars(
      * recebida como verdade estrutural.
      */
     grafted?: boolean
+    /**
+     * Campos da região que o merge por example NÃO escreveu (sem lugar,
+     * ambíguo, copy ausente) — a ÚNICA base legítima para o agente remover
+     * uma linha. Vazio = nada pode ser removido.
+     */
+    heroPending?: Array<{ key: string; motivo: string; tem_valor: boolean }>
   },
 ): Record<string, string> {
   const heroBlocks = blocksInsideHeroRegion(ctx, params.regionHtml)
@@ -509,6 +534,9 @@ export function buildHeroVars(
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
       heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
+    // Campos que o merge por example deixou pendentes na região — decide o
+    // que o agente PODE remover (lista vazia = remover nada).
+    hero_pending_json: JSON.stringify(params.heroPending ?? [], null, 2),
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
     // Preenchida pelo chain com o contrato de output — presente aqui só

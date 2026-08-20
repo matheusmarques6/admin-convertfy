@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 /**
  * Cadeia de formatação (split do HTML agent): orquestração no runner.
- * Cobre: caminho feliz (4 steps, sha8 encadeado), retry 1x, 2º erro →
- * failed com reason do agente, fail-open do color_format, out_of_budget
- * persistindo o estágio, resume pulando steps concluídos e re-splice
- * determinístico quando o agente de texto mexe na hero.
+ * Cobre: caminho feliz legado (4 steps, sha8 encadeado), retry 1x, 2º erro
+ * → failed com reason do agente, fail-open do color_format, out_of_budget
+ * persistindo o estágio, resume pulando steps concluídos, enxerto da hero
+ * e o MERGE POR EXAMPLE (caso-mestre: biblioteca real sem placeholder —
+ * copy por splice, text_format pulado, guard da hero).
  *
- * hero-locator/apply-patches/guards são REAIS (puros); só os invokes de
- * LLM, o contexto e a telemetria são mockados.
+ * hero-locator/apply-patches/copy-merge/anchor-match são REAIS (puros); só
+ * os invokes de LLM, o contexto e a telemetria são mockados.
  */
 
 type Row = Record<string, unknown>
@@ -165,13 +166,11 @@ vi.mock("./chains/hero.chain", async (importActual) => {
   return { ...actual, invokeHeroChain: (...a: unknown[]) => invokeHeroChain(...a) }
 })
 const invokeTextFormatChain = vi.fn()
-const invokeTextExceptionChain = vi.fn()
 vi.mock("./chains/text-format.chain", async (importActual) => {
   const actual = await importActual<typeof import("./chains/text-format.chain")>()
   return {
     ...actual,
     invokeTextFormatChain: (...a: unknown[]) => invokeTextFormatChain(...a),
-    invokeTextExceptionChain: (...a: unknown[]) => invokeTextExceptionChain(...a),
   }
 })
 const invokeImageFormatChain = vi.fn()
@@ -188,15 +187,6 @@ vi.mock("./chains/color-format.chain", async (importActual) => {
   return {
     ...actual,
     invokeColorFormatChain: (...a: unknown[]) => invokeColorFormatChain(...a),
-  }
-})
-const invokeMergeVerifierChain = vi.fn()
-vi.mock("./chains/merge-verifier.chain", async (importActual) => {
-  const actual =
-    await importActual<typeof import("./chains/merge-verifier.chain")>()
-  return {
-    ...actual,
-    invokeMergeVerifierChain: (...a: unknown[]) => invokeMergeVerifierChain(...a),
   }
 })
 
@@ -230,6 +220,8 @@ const buildHeroVars = vi.fn(
 // "global" = comportamento anterior (enxerta), para não mexer nos demais
 // testes; o caso "assembler" tem teste próprio.
 const refSource = vi.hoisted(() => ({ value: "global" as string }))
+// Campos extras do contexto (caso-mestre injeta blocks/blueprint/brand).
+const ctxExtra = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 
 vi.mock("./html/format-context", () => ({
   loadFormatChainContext: vi.fn(async () => ({
@@ -239,13 +231,12 @@ vi.mock("./html/format-context", () => ({
     fontHeading: "Playfair Display",
     fontBody: "Inter",
     referenceSource: refSource.value,
+    ...ctxExtra.value,
   })),
   resolveHeroVariant: (...a: unknown[]) =>
     (resolveHeroVariant as unknown as (...x: unknown[]) => unknown)(...a),
   buildHeroVars: (...a: unknown[]) =>
     (buildHeroVars as unknown as (...x: unknown[]) => unknown)(...a),
-  // A copy REAL do email — o agente de exceção precisa recebê-la em
-  // blocks_with_content_json (regressão: chave errada => sempre "[]").
   buildTextFormatVars: vi.fn(() => ({
     blocks_with_content_json: '[{"headline":"Copy do n8n"}]',
   })),
@@ -255,6 +246,7 @@ vi.mock("./html/format-context", () => ({
 
 import { runPhase2HtmlQa } from "./phase2-runner.service"
 import { spliceHero, locateHeroRegion } from "./html/hero-locator"
+import { missingTelemetryKeys } from "./shared/telemetry-contract"
 
 const HERO_FRAGMENT =
   '<table role="presentation"><tr><td><img src="https://cdn/hero.png">Hero pronta</td></tr></table>'
@@ -283,17 +275,6 @@ function mockHappyChains() {
     ...chainResultBase,
     html: docAfterHero().replace("{{BODY_TEXT}}", "corpo final da copy"),
   }))
-  // A3b: com slots pendentes (LOGO/BODY_TEXT) o runner usa o agente de
-  // EXCEÇÃO (ops do protocolo do Integrador), não o full-doc.
-  invokeTextExceptionChain.mockResolvedValue({
-    ...chainResultBase,
-    rawOps: JSON.stringify({
-      ops: [
-        { action: "set_text", tag: "LOGO", value: "LogoX" },
-        { action: "set_text", tag: "BODY_TEXT", value: "corpo final da copy" },
-      ],
-    }),
-  })
   invokeImageFormatChain.mockResolvedValue({
     ...chainResultBase,
     ops: [{ action: "img", tag: "BODY_IMAGE", url: "https://cdn/body.png" }],
@@ -301,23 +282,6 @@ function mockHappyChains() {
   invokeColorFormatChain.mockResolvedValue({
     ...chainResultBase,
     ops: [],
-  })
-  // 7b: triagem padrão — pareia a sobra de COPY com a copy candidata.
-  // (LOGO é tag ESTRUTURAL: preenchida por código, nunca entra na fila.)
-  invokeMergeVerifierChain.mockResolvedValue({
-    ...chainResultBase,
-    result: {
-      aprovado: true,
-      excecoes: [
-        {
-          block_id: null,
-          tag: "BODY_TEXT",
-          motivo: "slot_vazio",
-          copy_candidata: { key: "body", valor: "corpo final da copy" },
-          acao_sugerida: "preencher",
-        },
-      ],
-    },
   })
 }
 
@@ -348,10 +312,8 @@ function reset(overrides: Row = {}) {
   h.tables.store_image_overrides = []
   invokeHeroChain.mockReset()
   invokeTextFormatChain.mockReset()
-  invokeTextExceptionChain.mockReset()
   invokeImageFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
-  invokeMergeVerifierChain.mockReset()
   buildHeroVars.mockReset()
   buildHeroVars.mockReturnValue({})
   resolveHeroVariant.mockReset()
@@ -361,6 +323,7 @@ function reset(overrides: Row = {}) {
     mismatch: false,
   })
   refSource.value = "global"
+  ctxExtra.value = {}
 }
 
 const email = () => h.tables.email_flow_emails[0]
@@ -410,6 +373,12 @@ describe("toggle is_active desliga o step", () => {
 
   it("hero_section desativado: cadeia segue da reference, sem LLM na hero", async () => {
     mockHappyChains()
+    // Com a hero desligada o input do texto mantém {{HERO_IMAGE}} — o
+    // full-doc devolve o MESMO documento (o guard cobra as tags de imagem).
+    invokeTextFormatChain.mockImplementation(async () => ({
+      ...chainResultBase,
+      html: REFERENCE_HTML.replace("{{BODY_TEXT}}", "corpo final da copy"),
+    }))
     h.tables.email_agent_configs = [agentConfig("hero_section", false)]
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
@@ -433,7 +402,7 @@ describe("toggle is_active desliga o step", () => {
   })
 })
 
-describe("cadeia de formatação — runner", () => {
+describe("cadeia de formatação — runner (legado full-doc)", () => {
   it("caminho feliz: 4 steps, sha8 encadeado, sentinelas removidas, ready", async () => {
     mockHappyChains()
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
@@ -454,6 +423,10 @@ describe("cadeia de formatação — runner", () => {
       expect(rs).toHaveLength(1)
       expect(rs[0].status).toBe("success")
     }
+
+    // Sem schema no blueprint (doc legado), o texto cai no full-doc — o
+    // caminho que coloca a copy quando o merge não tem campos.
+    expect(invokeTextFormatChain).toHaveBeenCalledTimes(1)
 
     // sha8 encadeado: output do hero = input do texto; output do texto =
     // input da imagem.
@@ -581,91 +554,6 @@ describe("cadeia de formatação — runner", () => {
     expect((email().html as string)).toContain("copy já posicionada")
     expect((email().html as string)).toContain("https://cdn/body.png")
   })
-
-  it("A3b: op do agente de exceção mirando a hero é REJEITADA (posse)", async () => {
-    mockHappyChains()
-    invokeTextExceptionChain.mockResolvedValue({
-      ...chainResultBase,
-      rawOps: JSON.stringify({
-        ops: [
-          { action: "set_text", tag: "BODY_TEXT", value: "corpo final da copy" },
-          { action: "set_text", tag: "LOGO", value: "LogoX" },
-          // fora da fila do merge → ownership_rejected; hero intacta
-          { action: "set_text", tag: "HERO_HEADLINE", value: "invasão" },
-        ],
-      }),
-    })
-    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("ready")
-    const html = email().html as string
-    expect(html).toContain("Hero pronta")
-    expect(html).not.toContain("invasão")
-    const parsed = runsOf("text_format")[0].parsed_output as Row
-    expect(parsed.mode).toBe("exception_slots")
-    expect(
-      (parsed.ops_skipped as Array<{ reason: string }>).some(
-        (o) => o.reason === "ownership_rejected",
-      ),
-    ).toBe(true)
-  })
-
-  it("A3b: agente de exceção recebe a copy em blocks_with_content_json (não [])", async () => {
-    mockHappyChains()
-    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(invokeTextExceptionChain).toHaveBeenCalledWith(
-      expect.objectContaining({
-        vars: expect.objectContaining({
-          blocks_with_content_json: '[{"headline":"Copy do n8n"}]',
-        }),
-      }),
-    )
-  })
-})
-
-describe("7b — Verificador de merge", () => {
-  it("triagem do verificador enriquece a fila do agente de exceção", async () => {
-    mockHappyChains()
-    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("ready")
-    // Run próprio, com a fila triada na telemetria.
-    const vRuns = runsOf("merge_verifier")
-    expect(vRuns.some((r) => r.status === "success")).toBe(true)
-    // As views do 7c carregam a triagem (motivo + copy candidata pareada).
-    const call = invokeTextExceptionChain.mock.calls[0][0] as {
-      vars: Record<string, string>
-    }
-    expect(call.vars.exception_slots_json).toContain("copy_candidata")
-    expect(call.vars.exception_slots_json).toContain("corpo final da copy")
-    expect(call.vars.exception_slots_json).toContain("slot_vazio")
-    // LOGO é estrutural — preenchida por código, fora da fila do LLM.
-    expect(call.vars.exception_slots_json).not.toContain("LOGO")
-  })
-
-  it("verificador falha → fallback mecânico: exceção roda com a fila crua e o email conclui", async () => {
-    mockHappyChains()
-    invokeMergeVerifierChain.mockRejectedValue(new Error("boom do verificador"))
-    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("ready")
-    expect(runsOf("merge_verifier")[0]?.status).toBe("error")
-    const call = invokeTextExceptionChain.mock.calls[0][0] as {
-      vars: Record<string, string>
-    }
-    // Sem triagem — view mecânica pura (nada de copy_candidata).
-    expect(call.vars.exception_slots_json).not.toContain("copy_candidata")
-    expect(call.vars.exception_slots_json).toContain("BODY_TEXT")
-  })
-
-  it("merge_verifier_mode=off → verificador nem roda (comportamento pré-7b)", async () => {
-    mockHappyChains()
-    h.tables.client_stores[0].org_id = "org1"
-    h.tables.email_generation_settings = [
-      { org_id: "org1", merge_verifier_mode: "off" },
-    ]
-    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("ready")
-    expect(invokeMergeVerifierChain).not.toHaveBeenCalled()
-    expect(runsOf("merge_verifier")).toHaveLength(0)
-  })
 })
 
 // ── MC-5: o enxerto da hero não roda sobre documento montado por código ──
@@ -733,5 +621,189 @@ describe("enxerto da hero × reference montada", () => {
     await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
 
     expect(resolveHeroVariant).toHaveBeenCalled()
+  })
+})
+
+// ── Caso-mestre: merge por EXAMPLE (biblioteca real, sem placeholder) ────
+// A reference é HTML autorado: as frases SÃO os examples do schema, a
+// imagem é src="URL_DA_IMAGEM_1", a arte fixa é base64 e a marca é
+// NOME_DA_MARCA. Nenhum {{TAG}} de texto.
+const EXAMPLE_REFERENCE = [
+  "<!DOCTYPE html><html><body>",
+  "<!-- cfy:block:0:header:start -->",
+  '<table role="presentation"><tr><td><img src="URL_DO_LOGO_AQUI" alt="NOME_DA_MARCA" width="120"></td></tr></table>',
+  "<!-- cfy:block:0:header:end -->",
+  "<!-- cfy:block:1:hero:start -->",
+  '<table role="presentation"><tr><td>Don&rsquo;t miss the Summer Sale</td></tr><tr><td><a href="#">Shop the collection</a></td></tr></table>',
+  "<!-- cfy:block:1:hero:end -->",
+  "<!-- cfy:block:2:beneficios:start -->",
+  '<table role="presentation"><tr><td>Body copy example here</td></tr><tr><td><img src="URL_DA_IMAGEM_1" alt="ALT_DA_IMAGEM_1"></td></tr>',
+  '<tr><td><img src="data:image/png;base64,AAAA" alt=""></td></tr></table>',
+  "<!-- cfy:block:2:beneficios:end -->",
+  "</body></html>",
+].join("\n")
+
+const EXAMPLE_BLUEPRINT = {
+  blocks: [
+    { type: "header", fields: [] },
+    {
+      type: "hero",
+      fields: [
+        { key: "hero_headline", type: "text_short", example: "Don't miss the Summer Sale" },
+        { key: "hero_cta_label", type: "text_short", example: "Shop the collection" },
+        { key: "hero_note", type: "text_short", example: "Frase que nao existe no HTML" },
+      ],
+    },
+    {
+      type: "beneficios",
+      fields: [
+        { key: "body_text", type: "text_long", example: "Body copy example here" },
+      ],
+    },
+  ],
+}
+
+const EXAMPLE_BLOCKS = [
+  { id: "b-header", position: 1, block_type: "header", content: {} },
+  {
+    id: "b-hero",
+    position: 2,
+    block_type: "hero",
+    content: {
+      hero_headline: "Última chamada do inverno",
+      hero_cta_label: "Ver ofertas",
+      hero_note: "valor sem lugar",
+    },
+  },
+  {
+    id: "b-body",
+    position: 3,
+    block_type: "beneficios",
+    content: { body_text: "Corpo final da copy" },
+  },
+]
+
+const EXAMPLE_HERO_FRAGMENT = [
+  '<table role="presentation"><tr><td>Última chamada do inverno</td></tr>',
+  '<tr><td><a href="https://loja.com/colecao">Ver ofertas</a></td></tr></table>',
+].join("\n")
+
+function setupExampleCase() {
+  refSource.value = "assembler" // sem enxerto — a reference já é canônica
+  ctxExtra.value = {
+    referenceHtml: EXAMPLE_REFERENCE,
+    blocks: EXAMPLE_BLOCKS,
+    blueprint: EXAMPLE_BLUEPRINT,
+    brandName: "Loja Bonita",
+    logoLight: '<img src="https://cdn/logo.png" alt="Loja Bonita">',
+    emailRow: { name: "Welcome #1", subject: "Oi", preheader: "pre" },
+  }
+  invokeHeroChain.mockResolvedValue({
+    ...chainResultBase,
+    output: EXAMPLE_HERO_FRAGMENT,
+    mode: "fragment",
+  })
+  invokeImageFormatChain.mockResolvedValue({ ...chainResultBase, ops: [] })
+  invokeColorFormatChain.mockResolvedValue({ ...chainResultBase, ops: [] })
+}
+
+describe("merge por example — caso-mestre", () => {
+  it("copy por splice, hero com copy final, text_format pulado, sem_lugar registrado", async () => {
+    setupExampleCase()
+    // ctxExtra troca a reference — o mock de format-context lê no momento
+    // da chamada, então basta setar antes do run.
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+
+    // (1) Run copy_merge success com o contrato de telemetria completo.
+    const mergeRun = runsOf("copy_merge")[0]
+    expect(mergeRun.status).toBe("success")
+    const parsed = mergeRun.parsed_output as Row
+    expect(missingTelemetryKeys("copy_merge", parsed)).toEqual([])
+    expect(parsed.slots_total).toBe(4)
+    expect(parsed.merged).toBe(3)
+    expect(parsed.sem_lugar).toEqual([
+      { block_id: "b-hero", key: "hero_note", motivo: "nao_encontrado" },
+    ])
+    const campos = parsed.campos as Array<Record<string, unknown>>
+    expect(campos).toHaveLength(4)
+    expect(
+      campos.find((c) => c.key === "body_text"),
+    ).toMatchObject({
+      block_id: "b-body",
+      desfecho: "ancorado_exemplo",
+      de: "Body copy example here",
+      para: "Corpo final da copy",
+    })
+    // Estruturais por código: logo (URL crua) e marca (alt).
+    const estruturais = parsed.estruturais as Array<{ token: string }>
+    expect(estruturais.map((e) => e.token)).toContain("URL_DO_LOGO_AQUI")
+    expect(estruturais.map((e) => e.token)).toContain("NOME_DA_MARCA")
+
+    // (2) O agente de hero recebeu a região JÁ com a copy final aplicada,
+    // e o hero_pending carrega SÓ o campo que o merge não escreveu.
+    const [, heroParams] = buildHeroVars.mock.calls[0] as [
+      unknown,
+      {
+        regionHtml: string
+        heroPending?: Array<{ key: string; motivo: string; tem_valor: boolean }>
+      },
+    ]
+    expect(heroParams.regionHtml).toContain("Última chamada do inverno")
+    expect(heroParams.regionHtml).toContain("Ver ofertas")
+    expect(heroParams.heroPending).toEqual([
+      { key: "hero_note", motivo: "nao_encontrado", tem_valor: true },
+    ])
+
+    // (3) text_format PULADO — o merge é o caminho único de texto.
+    expect(invokeTextFormatChain).not.toHaveBeenCalled()
+    const textRun = runsOf("text_format")[0]
+    expect(textRun.status).toBe("skipped")
+    expect((textRun.parsed_output as Row).skip_reason).toBe("merge_por_exemplo")
+
+    // (4) HTML final: copy nova no lugar das frases de example; logo e
+    // marca preenchidos; arte fixa intacta. (Imagem URL_* é assunto da F3.)
+    const html = email().html as string
+    expect(html).toContain("Corpo final da copy")
+    expect(html).not.toContain("Body copy example here")
+    expect(html).toContain('src="https://cdn/logo.png"')
+    expect(html).toContain('alt="Loja Bonita"')
+    expect(html).toContain("data:image/png;base64,AAAA")
+    expect(html).not.toContain("{{")
+  })
+
+  it("guard da hero: fragmento que perdeu a copy do merge derruba o step (hero_failed)", async () => {
+    setupExampleCase()
+    // O agente "reescreveu" a headline — o valor aplicado pelo merge sumiu.
+    invokeHeroChain.mockResolvedValue({
+      ...chainResultBase,
+      output:
+        '<table role="presentation"><tr><td>Headline inventada</td></tr></table>',
+      mode: "fragment",
+    })
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("failed")
+    expect(email().failure_reason).toBe("hero_failed")
+    const rs = runsOf("hero_section")
+    expect(rs).toHaveLength(2)
+    expect(
+      rs.every((r) => String(r.error_message ?? "").includes("hero_copy_lost")),
+    ).toBe(true)
+  })
+
+  it("guard da hero: fragmento re-espaçado passa (mesma régua do casamento)", async () => {
+    setupExampleCase()
+    invokeHeroChain.mockResolvedValue({
+      ...chainResultBase,
+      output: [
+        '<table role="presentation"><tr><td>Última  chamada',
+        "do inverno</td></tr>",
+        '<tr><td><a href="https://loja.com/colecao">Ver ofertas</a></td></tr></table>',
+      ].join("\n"),
+      mode: "fragment",
+    })
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    expect(runsOf("hero_section")[0].status).toBe("success")
   })
 })
