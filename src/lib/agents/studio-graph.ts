@@ -7,8 +7,10 @@
  *
  * O grafo é o pipeline REAL completo (decisão ago/2026 — não a síntese da
  * maquete): fase 1 por loja (Curador → Montador → Blueprint → Assunto),
- * copy no n8n, fase 2 por email (Image → Hero → Merge → Verificador →
- * Texto → Imagens → Cores) e qualidade (QA → QA Vision).
+ * copy no n8n, fase 2 por email (Image → Merge por example → Hero →
+ * Texto → Imagens → Cores) e qualidade (QA → QA Vision). O merge roda
+ * ANTES da hero (D1, 20/08) e o verificador de merge morreu com a fila
+ * de exceção.
  */
 
 import {
@@ -49,18 +51,17 @@ export const STUDIO_NODES: StudioNode[] = [
   { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 812, y: 308 },
   // ── Copy (externo, n8n) ──
   { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1068, y: 452 },
-  // ── Fase 2: montagem (por email) ──
+  // ── Fase 2: montagem (por email) — merge por example ANTES da hero ──
   { key: "image", type: "agent", agent: "image", icon: "file", x: 1324, y: 308 },
-  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 1324, y: 452 },
-  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1580, y: 452 },
-  { key: "merge_verifier", type: "agent", agent: "merge_verifier", icon: "search", x: 1836, y: 452 },
-  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2092, y: 452 },
-  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2348, y: 452 },
-  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2604, y: 452 },
+  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1324, y: 452 },
+  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 1580, y: 452 },
+  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 1836, y: 452 },
+  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2092, y: 452 },
+  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2348, y: 452 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 2860, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3116, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3372, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 2604, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 2860, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3116, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -75,11 +76,10 @@ export const STUDIO_EDGES: Array<[string, string]> = [
   ["blueprint", "copy"],
   ["subject", "copy"],
   ["copy", "image"],
-  ["copy", "hero_section"],
-  ["image", "hero_section"],
-  ["hero_section", "copy_merge"],
-  ["copy_merge", "merge_verifier"],
-  ["merge_verifier", "text_format"],
+  ["copy", "copy_merge"],
+  ["image", "copy_merge"],
+  ["copy_merge", "hero_section"],
+  ["hero_section", "text_format"],
   ["text_format", "image_format"],
   ["image_format", "color_format"],
   ["color_format", "qa"],
@@ -102,8 +102,8 @@ export interface StudioGroup {
 export const STUDIO_GROUPS: StudioGroup[] = [
   { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 792, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
   { label: "COPY (N8N)", x: 1040, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
-  { label: "MONTAGEM", x: 1296, y: 244, w: 1560, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
-  { label: "QUALIDADE", x: 2832, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
+  { label: "MONTAGEM", x: 1296, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
+  { label: "QUALIDADE", x: 2576, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
 ]
 
 // ── Estado de run por nó ─────────────────────────────────────────────────
@@ -170,9 +170,8 @@ const MAIN_ORDER = [
   "subject",
   "copy",
   "image",
-  "hero_section",
   "copy_merge",
-  "merge_verifier",
+  "hero_section",
   "text_format",
   "image_format",
   "color_format",
@@ -447,9 +446,8 @@ export interface RerunPlan {
 const PHASE1_KEYS = new Set(["assembler_chooser", "assembler", "blueprint", "subject"])
 const PHASE2_KEYS = new Set([
   "image",
-  "hero_section",
   "copy_merge",
-  "merge_verifier",
+  "hero_section",
   "text_format",
   "image_format",
   "color_format",

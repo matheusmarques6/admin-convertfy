@@ -100,15 +100,18 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   copy_merge: {
     name: "Merge de Copy",
-    desc: "Estágio de CÓDIGO (Fase A): troca {{TAG}} pela copy ancorada — sem LLM, custo zero",
+    desc: "Casa o example do schema com a frase real do HTML e escreve por splice — código, custo zero",
     color: "#0F766E",
     bg: "#F0FDFA",
     border: "#99F6E4",
     kind: "texto",
   },
+  // LEGADO (20/08): o merge por example matou a fila de exceção e o
+  // verificador junto. A entrada fica para renderizar runs históricas —
+  // mesmo tratamento de html/refiner.
   merge_verifier: {
-    name: "Verificador de Merge",
-    desc: "Audita o merge (views, nunca o doc) e tria a fila do agente de exceção — nunca escreve HTML",
+    name: "Verificador de Merge (legado)",
+    desc: "Substituído pelo merge por example — auditava a fila do agente de exceção",
     color: "#4338CA",
     bg: "#EEF2FF",
     border: "#C7D2FE",
@@ -116,7 +119,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   text_format: {
     name: "Formatação de Texto",
-    desc: "Posiciona a copy do n8n no documento (sem tocar na hero)",
+    desc: "Pulado quando o merge por example cobre o blueprint — full-doc só p/ documento legado sem schema",
     color: "#B45309",
     bg: "#FFFBEB",
     border: "#FDE68A",
@@ -124,7 +127,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   image_format: {
     name: "Formatação de Imagem",
-    desc: "Posiciona as imagens geradas nos slots (ops aplicadas por código)",
+    desc: "Escreve as imagens nos tokens URL_* do HTML — determinístico, sem LLM",
     color: "#92400E",
     bg: "#FFFBEB",
     border: "#FDE68A",

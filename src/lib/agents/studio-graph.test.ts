@@ -76,11 +76,13 @@ describe("projectRuns", () => {
       "running",
     )
     expect(runs.hero_section.status).toBe("rodando")
-    expect(runs.copy_merge.status).toBe("aguardando")
+    expect(runs.text_format.status).toBe("aguardando")
     expect(runs.qa.status).toBe("aguardando")
     expect(runs.out.status).toBe("aguardando")
-    // Fase 1 sem run (reusada de geração anterior) não fica "aguardando".
+    // Fase 1 sem run (reusada de geração anterior) não fica "aguardando" —
+    // e o copy_merge, que roda ANTES da hero, sem run também é passado.
     expect(runs.assembler.status).toBe("pulado")
+    expect(runs.copy_merge.status).toBe("pulado")
   })
 
   it("execução com sucesso: ausência de run vira pulado (qavision OFF)", () => {
@@ -120,11 +122,15 @@ describe("edgeVisual", () => {
 
   it("caminho percorrido fica verde; não percorrido tracejado", () => {
     const runs = projectRuns(
-      [run("image", "success"), run("hero_section", "success")],
+      [
+        run("image", "success"),
+        run("copy_merge", "success"),
+        run("hero_section", "success"),
+      ],
       "running",
     )
-    expect(edgeVisual("image", "hero_section", runs).stroke).toBe("#6EBB9A")
-    expect(edgeVisual("copy_merge", "merge_verifier", runs).dash).toBe("5 5")
+    expect(edgeVisual("copy_merge", "hero_section", runs).stroke).toBe("#6EBB9A")
+    expect(edgeVisual("hero_section", "text_format", runs).dash).toBe("5 5")
   })
 })
 
