@@ -16,7 +16,6 @@ import {
 } from "./assemble-document"
 import { graftHeroVariant } from "../html/hero-graft"
 import { locateHeroRegion } from "../html/hero-locator"
-import { extractStructureFromReference } from "./reference-structure"
 
 function variant(
   section: string,
@@ -30,8 +29,6 @@ function variant(
     name,
     html,
     rendered_html: null,
-    html_tagged: null,
-    tagging_status: null,
     output_schema: [],
     ...extra,
   } as unknown as EmailComponentVariant
@@ -130,14 +127,10 @@ describe("assembleDocument", () => {
     expect(html).toContain("{{HERO_HEADLINE}}")
   })
 
-  it("o html AUTORADO é o documento — html_tagged não é mais consumido (20/08)", () => {
-    // O merge por example ancora nas frases reais; a camada tagueada saiu
-    // do pipeline (as colunas caem na F7). Mesmo aprovado, o tagged é
-    // ignorado: o exemplo autorado É a matéria-prima do documento.
-    const v = variant("hero", "a", TR("Frase real de exemplo"), {
-      html_tagged: TR("{{HERO_HEADLINE}}"),
-      tagging_status: "approved",
-    })
+  it("o html AUTORADO é o documento (a camada tagueada morreu em 20/08)", () => {
+    // O merge por example ancora nas frases reais — o exemplo autorado É a
+    // matéria-prima do documento; as colunas de tagging caem na F7.
+    const v = variant("hero", "a", TR("Frase real de exemplo"))
     const { html } = assembleDocument({
       slots: [{ kind: "variant", variant: v, section: "hero", label: "hero" }],
     })
@@ -399,33 +392,6 @@ describe("integração com o enxerto da hero", () => {
     expect(graft.status).toBe("grafted")
     expect(graft.html).toContain("{{HERO_IMAGE}}")
     expect(graft.html).toContain("background:#111")
-  })
-})
-
-// O blueprint determinístico depende de extrair o esqueleto do documento
-// (extractStructureFromReference). Se a cobertura cair, a geração vai para a
-// rota B (LLM) — funciona, mas paga LLM sem precisar.
-describe("esqueleto extraído do documento montado", () => {
-  it("encontra os blocos e as tags de cada um", () => {
-    const { html } = assembleDocument({
-      slots: [
-        slot(
-          "hero",
-          "a",
-          `<tr><td>{{HERO_EYEBROW}}<h1>{{HERO_HEADLINE}}</h1><p>{{HERO_BODY}}</p><a href="{{HERO_CTA_URL}}">{{HERO_CTA_LABEL}}</a><img src="{{HERO_IMAGE}}"></td></tr>`,
-        ),
-        slot("offer", "b", TR("{{OFFER_HEADLINE}} {{COUPON_CODE}}")),
-        slot("footer", "c", TR("{{FOOTER_TAGLINE}}")),
-      ],
-    })
-    const skeleton = extractStructureFromReference(html)
-    expect(skeleton).not.toBeNull()
-    const types = skeleton!.blocks.map((b) => b.type)
-    expect(types).toContain("hero")
-    expect(types).toContain("footer")
-    const hero = skeleton!.blocks.find((b) => b.type === "hero")!
-    expect(hero.tags).toContain("HERO_HEADLINE")
-    expect(hero.needs_image).toBe(true)
   })
 })
 

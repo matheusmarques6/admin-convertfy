@@ -104,7 +104,6 @@ import {
   viewsFromBlocksFallback,
   type QaBlockView,
 } from "./html/qa-views"
-import { stripSlotAttributes } from "./html/slot-annotate"
 import { buildBlockContracts } from "./html/block-contract"
 import {
   locateHeroRegion,
@@ -124,6 +123,7 @@ import { applyOps } from "./html/apply-patches"
 import {
   stripUnresolvedPlaceholders,
   stripUnresolvedAttrTokens,
+  stripSlotAttributes,
   stripCfyBlockMarkers,
   stripAgentProtocolBlocks,
   stripNbspIndentation,
@@ -1854,10 +1854,7 @@ async function runFormattingChain(p: {
   }
 
   /** Registra o step pulado por toggle (visível no drill-down dos logs). */
-  const logStepDisabled = async (
-    agent: FormatAgent | "merge_verifier",
-    html: string,
-  ) => {
+  const logStepDisabled = async (agent: FormatAgent, html: string) => {
     await logGenerationRun({
       ...ids,
       agent,

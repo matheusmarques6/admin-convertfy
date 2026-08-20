@@ -41,7 +41,6 @@ const EDITABLE_AGENTS = new Set([
   "text_format",
   "image_format",
   "color_format",
-  "merge_verifier",
   "qa",
 ])
 

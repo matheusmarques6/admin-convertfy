@@ -10,11 +10,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CopySpecField, EmailOutlineTemplate } from "@/types/email-generation"
-import {
-  extractStructureFromReference,
-  skeletonToPromptJson,
-  type ExtractedStructure,
-} from "./reference-structure"
 import { normalizeCopySpec } from "@/lib/email-workspace/copy-spec"
 
 import { DEFAULT_BLUEPRINTS } from "../email-blueprint"
@@ -34,9 +29,7 @@ import {
   buildDeterministicBlueprint,
   collectSchemaAnchorIssues,
   matchFromSlots,
-  matchVariantsToSkeleton,
   packageBlueprint,
-  schemaTagsFromSlots,
   type BlueprintFieldV2,
   type MatchResult,
 } from "./deterministic-blueprint.builder"
@@ -188,52 +181,6 @@ export function parseBlueprintOutput(raw: string): GeneratedBlueprint | null {
   } catch {
     return null
   }
-}
-
-/**
- * Impõe o esqueleto determinístico (extraído das tags canônicas do
- * reference) sobre o blueprint do LLM: número/ordem/type dos blocos,
- * needs_image e copy_spec vêm SEMPRE do esqueleto; do LLM aproveita-se só
- * label/purpose/image_brief (casados por posição+tipo, best-effort). Assim o
- * LLM não tem como corromper a estrutura — se fundir/pular blocos, o
- * esqueleto ganha e os campos criativos do bloco não-casado ficam default.
- */
-export function applySkeletonToBlueprint(
-  blueprint: GeneratedBlueprint,
-  skeleton: ExtractedStructure,
-): GeneratedBlueprint {
-  const used = new Set<number>()
-  const pick = (type: string, idx: number): GeneratedBlock | null => {
-    const at = blueprint.blocks[idx]
-    if (at && at.type === type && !used.has(idx)) {
-      used.add(idx)
-      return at
-    }
-    const j = blueprint.blocks.findIndex(
-      (b, k) => !used.has(k) && b.type === type,
-    )
-    if (j >= 0) {
-      used.add(j)
-      return blueprint.blocks[j]
-    }
-    return null
-  }
-  const blocks: GeneratedBlock[] = skeleton.blocks.map((sb, i) => {
-    const src = pick(sb.type, i)
-    const seen = new Set<string>()
-    return {
-      type: sb.type,
-      label: src?.label?.trim() ? src.label : sb.type,
-      purpose: src?.purpose ?? "",
-      needs_image: sb.needs_image,
-      image_brief: sb.needs_image ? (src?.image_brief ?? null) : null,
-      image_aspect: sb.image_aspect,
-      copy_spec: sb.copy_spec,
-      // Tags indexadas reais ({{PRODUCT_1_NAME}}), dedup na ordem do DOM.
-      tags: sb.tags.filter((t) => (seen.has(t) ? false : (seen.add(t), true))),
-    }
-  })
-  return { ...blueprint, blocks }
 }
 
 /** Fallback determinístico a partir dos DEFAULT_BLUEPRINTS in-code. */
@@ -513,15 +460,10 @@ export async function generateStoreBlueprint(
     return generateDeterministicBlueprint(input, match)
   }
 
-  // Rota B (LLM): fluxo intacto — skeleton por tags imposto quando existe
-  // (references legadas com {{TAG}}); null → LLM cru.
-  const skeletonEarly = extractStructureFromReference(input.referenceHtml, {
-    schemaTags: schemaTagsFromSlots(variantSlots),
-  })
-  const matchB = skeletonEarly
-    ? matchVariantsToSkeleton(skeletonEarly, variantSlots)
-    : null
-  return generateLlmBlueprint(input, skeletonEarly, matchB, mode)
+  // Rota B (LLM cru): o skeleton por tags morreu com o tag-registry —
+  // o LLM lê o reference e o packageBlueprint normaliza (fields do
+  // copy_spec, source=llm). É o fallback para slot sem schema/mode=llm.
+  return generateLlmBlueprint(input, mode)
 }
 
 /** ROTA A — builder determinístico + mini-LLM subject. */
@@ -612,19 +554,12 @@ async function generateDeterministicBlueprint(
   return { blueprint, source: "ai", model: "deterministic" }
 }
 
-/** ROTA B — Blueprint LLM como sempre foi + empacotamento normalizado. */
+/** ROTA B — Blueprint LLM + empacotamento normalizado (sem skeleton). */
 async function generateLlmBlueprint(
   input: GenerateBlueprintInput,
-  skeletonEarly: ExtractedStructure | null,
-  match: MatchResult | null,
   mode: "auto" | "llm" | "deterministic",
 ): Promise<GenerateBlueprintResult> {
-  const fallbackReason =
-    mode === "llm"
-      ? "forced"
-      : skeletonEarly === null
-        ? "no_skeleton"
-        : "low_coverage"
+  const fallbackReason = mode === "llm" ? "forced" : "slots_sem_schema"
   const cfgRow = await loadActiveAgentConfig("blueprint")
   const config: AgentInvokeConfig = cfgRow
     ? {
@@ -643,20 +578,6 @@ async function generateLlmBlueprint(
         user_template: DEFAULT_BLUEPRINT_USER,
       }
 
-  // Estrutura determinística das tags canônicas do reference (tag-registry),
-  // já extraída pelo roteador. Quando presente: o LLM só preenche os campos
-  // criativos e o merge pós-parse impõe estrutura/copy_spec do esqueleto.
-  // null = reference legado (sem tags canônicas) → fluxo atual intacto.
-  const skeleton = skeletonEarly
-  if (skeleton && skeleton.unknownTags.length > 0) {
-    log.warn("blueprint.unknown_tags", {
-      storeId: input.storeId,
-      flowType: input.flowType,
-      emailNumber: input.emailNumber,
-      unknownTags: skeleton.unknownTags,
-    })
-  }
-
   const vars: Record<string, string> = {
     brand_name: input.brandName,
     nicho: input.nicho,
@@ -672,7 +593,9 @@ async function generateLlmBlueprint(
     allowed_block_types: Array.from(ALLOWED_BLOCK_TYPES).join(", "),
     reference_html: input.referenceHtml,
     pesquisa_diagnostico: input.pesquisa,
-    estrutura_extraida: skeleton ? skeletonToPromptJson(skeleton) : "",
+    // O skeleton por tags morreu (20/08) — a var fica vazia por compat com
+    // prompts customizados que ainda a referenciam.
+    estrutura_extraida: "",
   }
 
   const t0 = Date.now()
@@ -694,10 +617,6 @@ async function generateLlmBlueprint(
   let rawOutput = ""
   let invokeError: string | null = null
 
-  // O match variante↔bloco por índice só vale quando o blueprint seguiu a
-  // segmentação do skeleton (applySkeletonToBlueprint) — NUNCA nos fallbacks
-  // (global/default/mínimo), cuja estrutura é outra.
-  let skeletonApplied = false
   try {
     const res = await invokeAgent(config, vars)
     rawOutput = res.raw
@@ -707,11 +626,6 @@ async function generateLlmBlueprint(
     blueprint = parseBlueprintOutput(res.raw)
     // LLM respondeu mas o JSON não pôde ser parseado em um blueprint válido.
     if (!blueprint) invokeError = "blueprint_unparseable_json"
-    // Estrutura determinística ganha do LLM (tags canônicas no reference).
-    if (blueprint && skeleton) {
-      blueprint = applySkeletonToBlueprint(blueprint, skeleton)
-      skeletonApplied = true
-    }
   } catch (err) {
     invokeError = err instanceof Error ? err.message : String(err)
     log.error("blueprint.invoke_failed", {
@@ -763,12 +677,12 @@ async function generateLlmBlueprint(
   // ── EMPACOTADOR ÚNICO: mesmo formato de output da rota determinística ──
   // Todo bloco sai com `fields` v2; onde o Curador casou uma variante, o
   // dado curado (purpose/image_brief/fields do schema) VENCE o LLM. O
-  // matching por índice só é confiável quando o blueprint seguiu o skeleton;
-  // fallbacks/sem-skeleton → fields caem em tags/copy_spec (sem variante).
-  blueprint = packageBlueprint(blueprint, skeletonApplied ? match : null)
+  // Sem skeleton não há match por índice confiável entre os blocos do LLM
+  // e as variantes — fields caem na conversão do copy_spec (source=llm).
+  blueprint = packageBlueprint(blueprint, null)
 
   // Mesma auditoria da rota A — o empacotador é o mesmo, o contrato também.
-  const anchorIssues = collectSchemaAnchorIssues(skeletonApplied ? match : null)
+  const anchorIssues = collectSchemaAnchorIssues(null)
   if (anchorIssues.length > 0) {
     log.warn("blueprint.schema_anchor_issues", {
       storeId: input.storeId,
@@ -804,15 +718,13 @@ async function generateLlmBlueprint(
       // Rota do blueprint híbrido + motivo do fallback pro LLM.
       blueprint_path: "llm_fallback",
       fallback_reason: fallbackReason,
-      coverage: match?.coverage ?? null,
+      coverage: null,
       // Fonte do fallback registrada na página de Logs de geração.
       fallback_source: fallbackSource,
       attempted_model: config.model,
       invoke_error: invokeError,
       // Estrutura determinística via tags canônicas do reference.
-      skeleton_used: skeleton !== null,
-      skeleton_blocks: skeleton?.blocks.length ?? null,
-      skeleton_unknown_tags: skeleton?.unknownTags ?? null,
+      skeleton_used: false,
       // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,

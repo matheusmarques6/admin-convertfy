@@ -435,23 +435,6 @@ export function ComponentsWorkspace() {
               <EGBadge tone={draft.is_active ? "pos" : "neut"} dot>
                 {draft.is_active ? "Ativo" : "Inativo"}
               </EGBadge>
-              {selected && (
-                <EGBadge
-                  tone={
-                    selected.tagging_status === "approved"
-                      ? "pos"
-                      : selected.tagging_status === "pending"
-                        ? "warn"
-                        : "neut"
-                  }
-                >
-                  {selected.tagging_status === "approved"
-                    ? "Tag aprovada"
-                    : selected.tagging_status === "pending"
-                      ? "Tag pendente"
-                      : "Sem tag"}
-                </EGBadge>
-              )}
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               {selected && (

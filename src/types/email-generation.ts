@@ -169,15 +169,9 @@ export type AgentType =
   | "text_format"
   | "image_format"
   | "color_format"
-  // component_tagger: Taguedor de Variantes (migration 20261040) — converte
-  // o HTML "exemplo pronto" da variante em html_tagged ({{UPPER(key)}} no
-  // lugar das frases de exemplo do output_schema), 1x por variante, com
-  // proposta pendente revisável na aba Componentes.
-  | "component_tagger"
-  // merge_verifier: Verificador de merge (7b, migration 20261043) — audita
-  // o resultado do copy_merge (views, nunca o documento) e emite a fila de
-  // exceções triada que alimenta o agente de exceção. Nunca escreve HTML.
-  | "merge_verifier"
+  // component_tagger e merge_verifier morreram em 20/08 (merge por
+  // example): saíram do union — runs históricas renderizam pelo
+  // AGENT_VISUAL legado, e config órfã no banco não é lida.
 
 // ── QA Agent (Epic AE) ─────────────────────────────────────
 // Espelha o output do qa.chain.ts. Persistido em
@@ -308,14 +302,9 @@ export type GenerationRunAgent =
   | "text_format"
   | "image_format"
   | "color_format"
-  // Taguedor de Variantes (migration 20261040).
-  | "component_tagger"
-  // Merge determinístico de copy (Fase A — migration 20261042): estágio de
-  // CÓDIGO, sem LLM; run próprio pra metrificação (slots merged/left).
+  // Merge determinístico de copy (por EXAMPLE desde 20/08): estágio de
+  // CÓDIGO, sem LLM; run próprio pra metrificação campo a campo.
   | "copy_merge"
-  // Verificador de merge (7b — migration 20261043): audita o copy_merge e
-  // tria a fila do agente de exceção.
-  | "merge_verifier"
 
 export interface EmailGenerationRun {
   id: string
@@ -476,40 +465,9 @@ export interface EmailComponentVariant {
   version: number
   created_at: string
   created_by: string | null
-  // ── Épico Taguedor (migration 20261040) ────────────────────────────
-  // Proposta de HTML tagueado (exemplo→{{UPPER(key)}}), estado da revisão
-  // e relatório por campo. Pipeline consome html_tagged SÓ com approved.
-  html_tagged: string | null
-  tagging_status: "pending" | "approved" | null
-  tagging_meta: TaggingMeta | null
-}
-
-// Relatório do taguedor por campo — anchored_by='inference' merece atenção
-// extra na revisão; 'existing_tag' = HTML já tinha tag equivalente (sync).
-export interface TaggingFieldReport {
-  key: string
-  placeholder: string
-  /**
-   * `renamed` = o slot já tinha uma {{TAG}}, mas com nome divergente do
-   * schema, e ela foi renomeada para {{UPPER(key)}}.
-   * `existing_tag` é LEGADO: valia quando manter a tag divergente era aceito.
-   * Não use em proposta nova — hoje toda tag segue o schema.
-   */
-  anchored_by:
-    | "exact"
-    | "fuzzy"
-    | "inference"
-    | "renamed"
-    | "existing_tag"
-    | "not_found"
-  note?: string
-}
-
-export interface TaggingMeta {
-  model: string
-  generated_at: string
-  fields: TaggingFieldReport[]
-  issues: string[]
+  // As colunas do épico Taguedor (html_tagged/tagging_status/tagging_meta)
+  // saíram do tipo em 20/08 — o merge por example matou a camada tagueada.
+  // A migration APPLY_MANUALLY_drop_tagged_columns.sql derruba as colunas.
 }
 
 // Estrutura geral (INPUT) por email do flow — global, curável. Consumida

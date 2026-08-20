@@ -1,14 +1,11 @@
 /**
  * Builder determinístico do blueprint (substitui o LLM Blueprint na rota A).
  *
- * Recebe o esqueleto extraído das tags canônicas do reference HTML
- * (reference-structure) + os slots do Curador (variantes escolhidas, na ordem
- * da estrutura do outline) e monta o blueprint SEM LLM:
- *   - estrutura (type/ordem/needs_image/copy_spec/tags/image_aspect) ← skeleton
- *   - purpose ← copy_guidance da variante casada (→ description)
- *   - image_brief ← campos type=image do output_schema (guidance + example)
- *   - fields (contrato v2 do payload n8n) ← output_schema; sem schema →
- *     derivação do tag-registry; sem tags → conversão do copy_spec (rota LLM)
+ * Recebe os SLOTS do Curador (variantes escolhidas, na ordem da estrutura
+ * do outline — que é a ordem do documento montado) e monta o blueprint SEM
+ * LLM: um bloco por slot de variante, purpose ← copy_guidance, image_brief
+ * ← campos de imagem do output_schema, fields (contrato v2 do n8n) ←
+ * output_schema. Sem schema (rota LLM) → conversão do copy_spec.
  *
  * O `packageBlueprint` é o EMPACOTADOR ÚNICO: aplica variant_id/fields (e os
  * overrides curados) a QUALQUER GeneratedBlueprint — inclusive o do LLM
@@ -24,7 +21,6 @@ import type {
   CopySpecField,
   EmailOutlineTemplate,
 } from "@/types/email-generation"
-import { blockTypeToCategory } from "../shared/component-categories"
 import {
   auditImageAnchors,
   auditSchemaAnchors,
@@ -34,7 +30,6 @@ import {
   placeholderForKey,
 } from "../shared/component-dimensions"
 import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
-import type { ExtractedStructure, SchemaTagKind } from "./reference-structure"
 import type { AssemblySlot } from "./component-assembler.service"
 import type {
   GeneratedBlock,
@@ -66,62 +61,6 @@ export interface MatchResult {
 }
 
 /**
- * Casa as variantes escolhidas pelo Curador com os blocos do skeleton.
- * FIFO por categoria (8 chaves da biblioteca), na ordem dos slots — tolera
- * runs fundidos (2 variantes adjacentes da mesma seção → 1 bloco: a 2ª vira
- * sobra em unusedVariantIds) e slots missing (simplesmente não entram).
- */
-export function matchVariantsToSkeleton(
-  skeleton: ExtractedStructure,
-  slots: AssemblySlot[],
-): MatchResult {
-  // Filas FIFO por categoria, na ordem dos slots do outline.
-  const queues = new Map<string, Array<{ variant: SlotVariant; label: string }>>()
-  for (const s of slots) {
-    if (s.kind !== "variant") continue
-    const cat =
-      blockTypeToCategory(s.variant.block_type) ?? s.section.toLowerCase()
-    const q = queues.get(cat) ?? []
-    q.push({ variant: s.variant, label: s.label })
-    queues.set(cat, q)
-  }
-
-  const matches = new Map<number, VariantMatch>()
-  const unmatchedBlockIndexes: number[] = []
-  let copyBlocks = 0
-  let coveredCopyBlocks = 0
-
-  skeleton.blocks.forEach((sb, i) => {
-    const cat = blockTypeToCategory(sb.type)
-    const isCopyBlock = sb.copy_spec.length > 0
-    if (isCopyBlock) copyBlocks++
-
-    const entry = cat ? queues.get(cat)?.shift() : undefined
-    if (!entry) {
-      unmatchedBlockIndexes.push(i)
-      return
-    }
-    matches.set(i, { variant: entry.variant, slotLabel: entry.label })
-    if (isCopyBlock && variantHasCopyContext(entry.variant)) {
-      coveredCopyBlocks++
-    }
-  })
-
-  const unusedVariantIds = Array.from(queues.values())
-    .flat()
-    .map((e) => e.variant.id)
-
-  return {
-    matches,
-    coverage: copyBlocks === 0 ? 1 : coveredCopyBlocks / copyBlocks,
-    copyBlocks,
-    coveredCopyBlocks,
-    unusedVariantIds,
-    unmatchedBlockIndexes,
-  }
-}
-
-/**
  * Rota A NOVA (endereçamento sem placeholder): o match não depende mais do
  * skeleton por tags — os SLOTS do Curador SÃO a estrutura do documento (o
  * assembleDocument monta uma seção por slot de variante, na ordem). Um
@@ -149,36 +88,6 @@ export function matchFromSlots(slots: AssemblySlot[]): MatchResult {
     unusedVariantIds: [],
     unmatchedBlockIndexes: [],
   }
-}
-
-/** A variante consegue dirigir a copy do bloco (guidance OU schema). */
-function variantHasCopyContext(v: SlotVariant): boolean {
-  return Boolean(
-    (v.copy_guidance ?? "").trim() || (v.output_schema ?? []).length > 0,
-  )
-}
-
-/**
- * Vocabulário schema-backed do email (épico Taguedor): {{UPPER(key)}} dos
- * output_schemas das variantes escolhidas → kind (copy | image), para a
- * extração do skeleton reconhecê-los como tags legítimas (não drift).
- * asset_fixo fica de fora — a arte não vira placeholder.
- */
-export function schemaTagsFromSlots(
-  slots: AssemblySlot[],
-): Map<string, SchemaTagKind> {
-  const map = new Map<string, SchemaTagKind>()
-  for (const s of slots) {
-    if (s.kind !== "variant") continue
-    for (const f of s.variant.output_schema ?? []) {
-      const nature = deriveFieldNature(f)
-      if (nature === "asset_fixo") continue
-      const ph = placeholderForKey(f.key)
-      if (!ph || map.has(ph)) continue
-      map.set(ph, nature === "imagem_gerada" ? "image" : "copy")
-    }
-  }
-  return map
 }
 
 // ── fields v2 — as 3 origens ─────────────────────────────────────────

@@ -238,9 +238,6 @@ export async function loadFormatChainContext(
 export interface HeroVariantData {
   id: string
   html: string
-  /** Proposta do Taguedor — canônica quando tagging_status='approved'. */
-  html_tagged: string | null
-  tagging_status: string | null
   rendered_html: string | null
   /** Hash do `html` que originou o exemplo renderizado (CM-6). */
   rendered_html_source_sha?: string | null
@@ -360,7 +357,7 @@ export async function resolveHeroVariant(
       // no select, `resolveRenderedReference` via undefined e devolvia
       // `unknown_sha` SEMPRE — o hash de origem nunca chegou a ser
       // comparado, e todo exemplo aparecia como desatualizado.
-      "id, html, html_tagged, tagging_status, rendered_html, rendered_html_source_sha, output_schema, block_type, design_system",
+      "id, html, rendered_html, rendered_html_source_sha, output_schema, block_type, design_system",
     )
     .eq("id", variantId)
     .maybeSingle()

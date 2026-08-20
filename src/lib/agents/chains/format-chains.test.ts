@@ -304,7 +304,6 @@ describe("system prompts não passam por renderImageTemplate", () => {
     "text-format.chain.ts",
     "color-format.chain.ts",
     "qa.chain.ts",
-    "component-tagger.chain.ts",
     "copy.chain.ts",
   ]
 

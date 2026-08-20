@@ -223,6 +223,19 @@ export function stripCfyBlockMarkers(html: string): string {
 }
 
 /**
+ * Remove os atributos internos de endereçamento (data-cfy-slot/data-cfy-row)
+ * que a anotação de slots injetava. A anotação morreu com o vocabulário
+ * {{TAG}} (20/08) — o strip fica porque documentos persistidos em estágio
+ * intermediário ainda podem carregá-los, e atributo interno jamais chega
+ * ao cliente de email. Migrado de slot-annotate na remoção do módulo.
+ */
+const CFY_SLOT_ATTR = /\s+data-cfy-(?:slot|row)\s*=\s*"[^"]*"/gi
+
+export function stripSlotAttributes(html: string): string {
+  return html.replace(CFY_SLOT_ATTR, "")
+}
+
+/**
  * Remove os wrappers de PROTOCOLO dos agentes e o que houver dentro deles.
  *
  * `<CFY_HERO_OUTPUT>` e `<CFY_HERO_REPORT>` existem para delimitar a

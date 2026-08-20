@@ -4,11 +4,9 @@ import type {
   EmailComponentVariant,
   EmailOutlineTemplate,
 } from "@/types/email-generation"
-import type { ExtractedStructure, ExtractedBlock } from "./reference-structure"
 import type { AssemblySlot } from "./component-assembler.service"
 import type { GeneratedBlueprint } from "./blueprint-generator.service"
 import {
-  matchVariantsToSkeleton,
   matchFromSlots,
   fieldsFromSchema,
   fieldsFromCopySpec,
@@ -16,7 +14,6 @@ import {
   buildDeterministicBlueprint,
   collectSchemaAnchorIssues,
   packageBlueprint,
-  schemaTagsFromSlots,
 } from "./deterministic-blueprint.builder"
 
 // ── Fixtures ────────────────────────────────────────────────────────
@@ -28,9 +25,6 @@ function variant(p: Partial<EmailComponentVariant>): EmailComponentVariant {
     name: p.name ?? "Variante",
     html: p.html ?? "<div></div>",
     rendered_html: p.rendered_html ?? null,
-    html_tagged: p.html_tagged ?? null,
-    tagging_status: p.tagging_status ?? null,
-    tagging_meta: p.tagging_meta ?? null,
     description: p.description ?? null,
     long_description: p.long_description ?? null,
     slots: p.slots ?? [],
@@ -64,41 +58,6 @@ function slot(
   return { kind: "variant", variant: v, section, label }
 }
 
-// Blocos do skeleton com tags REAIS do registry (rota B legada).
-function heroBlock(): ExtractedBlock {
-  return {
-    type: "hero",
-    section: "HERO",
-    tags: ["HERO_HEADLINE", "HERO_IMAGE"],
-    needs_image: true,
-    image_aspect: "4:5",
-    copy_spec: [{ key: "headline", min_chars: 18, max_chars: 40 }],
-  }
-}
-function textBlock(): ExtractedBlock {
-  return {
-    type: "text",
-    section: "BODY",
-    tags: ["BODY_TEXT"],
-    needs_image: false,
-    image_aspect: null,
-    copy_spec: [{ key: "body", min_chars: 120, max_chars: 280 }],
-  }
-}
-function couponBlock(): ExtractedBlock {
-  return {
-    type: "coupon",
-    section: "OFFER",
-    tags: ["COUPON_CODE"],
-    needs_image: false,
-    image_aspect: null,
-    copy_spec: [{ key: "code", min_chars: 4, max_chars: 15 }],
-  }
-}
-function skeleton(blocks: ExtractedBlock[]): ExtractedStructure {
-  return { blocks, knownTags: [], unknownTags: [] }
-}
-
 const OUTLINE = {
   objective: "Boas-vindas com cupom",
   guidance: "Storytelling antes da oferta",
@@ -125,58 +84,6 @@ const SCHEMA_HERO: ComponentOutputField[] = [
     guidance: "Foto lifestyle com overlay escuro",
   },
 ]
-
-// ── matchVariantsToSkeleton (rota B legada) ─────────────────────────
-
-describe("matchVariantsToSkeleton", () => {
-  it("casa FIFO por categoria e mede cobertura 100%", () => {
-    const vHero = variant({ id: "vh", block_type: "hero", copy_guidance: "g" })
-    const vText = variant({ id: "vt", block_type: "body", copy_guidance: "g" })
-    const m = matchVariantsToSkeleton(skeleton([heroBlock(), textBlock()]), [
-      slot("hero", vHero),
-      slot("body", vText),
-    ])
-    expect(m.matches.get(0)?.variant.id).toBe("vh")
-    expect(m.matches.get(1)?.variant.id).toBe("vt")
-    expect(m.coverage).toBe(1)
-    expect(m.unusedVariantIds).toEqual([])
-  })
-
-  it("run fundido: 2 variantes da mesma categoria → 1 bloco; a 2ª vira sobra", () => {
-    const v1 = variant({ id: "b1", block_type: "body", copy_guidance: "g" })
-    const v2 = variant({ id: "b2", block_type: "body", copy_guidance: "g" })
-    const m = matchVariantsToSkeleton(skeleton([textBlock()]), [
-      slot("body", v1),
-      slot("body", v2),
-    ])
-    expect(m.matches.get(0)?.variant.id).toBe("b1")
-    expect(m.unusedVariantIds).toEqual(["b2"])
-    expect(m.coverage).toBe(1)
-  })
-
-  it("slot missing no meio não desalinha o casamento", () => {
-    const vHero = variant({ id: "vh", block_type: "hero", copy_guidance: "g" })
-    const vCoupon = variant({
-      id: "vc",
-      block_type: "offer",
-      copy_guidance: "g",
-    })
-    const slots: AssemblySlot[] = [
-      slot("hero", vHero),
-      { kind: "missing", section: "body", label: "Body" },
-      slot("offer", vCoupon),
-    ]
-    const m = matchVariantsToSkeleton(
-      skeleton([heroBlock(), textBlock(), couponBlock()]),
-      slots,
-    )
-    expect(m.matches.get(0)?.variant.id).toBe("vh")
-    expect(m.matches.get(1)).toBeUndefined()
-    expect(m.matches.get(2)?.variant.id).toBe("vc")
-    expect(m.coverage).toBeLessThan(1)
-    expect(m.unmatchedBlockIndexes).toEqual([1])
-  })
-})
 
 // ── matchFromSlots (rota A nova — os slots SÃO a estrutura) ─────────
 
@@ -229,52 +136,6 @@ describe("fieldsFromCopySpec", () => {
       min_len: 18,
       source: "llm",
     })
-  })
-})
-
-describe("schemaTagsFromSlots (rota B legada)", () => {
-  it("mapeia UPPER(key)→kind por natureza e exclui asset_fixo", () => {
-    const v = variant({
-      id: "v1",
-      block_type: "testimonial",
-      output_schema: [
-        {
-          key: "quote_body",
-          label: "Depoimento",
-          type: "text_long",
-          max_len: 200,
-          required: true,
-          example: "",
-          guidance: "",
-        },
-        {
-          key: "avatar_foto",
-          label: "Avatar",
-          type: "image",
-          max_len: 0,
-          required: false,
-          example: "",
-          guidance: "",
-        },
-        {
-          key: "selo_arte",
-          label: "Selo",
-          type: "image",
-          nature: "asset_fixo",
-          max_len: 0,
-          required: false,
-          example: "",
-          guidance: "",
-        },
-      ],
-    })
-    const map = schemaTagsFromSlots([
-      slot("testimonial", v),
-      { kind: "missing", section: "body", label: "Body" },
-    ])
-    expect(map.get("QUOTE_BODY")).toBe("copy")
-    expect(map.get("AVATAR_FOTO")).toBe("image")
-    expect(map.has("SELO_ARTE")).toBe(false)
   })
 })
 
@@ -470,8 +331,7 @@ describe("packageBlueprint", () => {
       copy_guidance: "guidance CURADA",
       output_schema: SCHEMA_HERO,
     })
-    const sk = skeleton([heroBlock()])
-    const match = matchVariantsToSkeleton(sk, [slot("hero", vHero)])
+    const match = matchFromSlots([slot("hero", vHero)])
     const out = packageBlueprint(llmBlueprint, match)
     const b = out.blocks[0]
     expect(b.purpose).toBe("guidance CURADA")
