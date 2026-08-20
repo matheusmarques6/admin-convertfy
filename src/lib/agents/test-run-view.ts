@@ -177,17 +177,29 @@ export function canRecoverAfterTimeout(
 /**
  * Geração travada: fase in-flight (rendering/image_done/qa_running) sem
  * atualização há mais de `staleMs` (default 90s) — o watchdog vai limpar.
+ *
+ * Quando a ÚLTIMA run está `running`, o step ainda está legitimamente
+ * trabalhando — o maior budget da cadeia é o da Formatação de Texto
+ * (540s), então o limiar sobe para `runningStaleMs` (default 10min).
+ * Sem isso, todo step longo disparava "parece travada" aos 90s (alarme
+ * falso observado em produção, ago/2026).
  */
 export function computeStale(
   opts: {
     emailStatus: string | null | undefined
     lastRunCreatedAt: string | null | undefined
+    /** Status da última run — `running` estende o limiar. */
+    lastRunStatus?: string | null
     emailUpdatedAt: string | null | undefined
     nowMs: number
     staleMs?: number
+    runningStaleMs?: number
   },
 ): boolean {
-  const staleMs = opts.staleMs ?? 90 * 1000
+  const staleMs =
+    opts.lastRunStatus === "running"
+      ? (opts.runningStaleMs ?? 10 * 60 * 1000)
+      : (opts.staleMs ?? 90 * 1000)
   const lastTs = opts.lastRunCreatedAt ?? opts.emailUpdatedAt
   if (!lastTs) return false
   const ageMs = opts.nowMs - new Date(lastTs).getTime()
@@ -195,6 +207,29 @@ export function computeStale(
     opts.emailStatus ?? "",
   )
   return isInFlight && ageMs > staleMs
+}
+
+/**
+ * Título do estado do teste. A resposta inicial "dispatched" ("Copy
+ * disparada ao N8N") só vale ENQUANTO o email não progrediu além da copy —
+ * no teste completo a fase 2 dispara sozinha e o header precisa acompanhar
+ * (bug observado em produção: header preso em "Copy disparada" com a
+ * montagem já rodando).
+ */
+export function runHeaderLabel(opts: {
+  resultStatus: string | null | undefined
+  pollStatus: string | null | undefined
+  emailStatus: string | null | undefined
+  hasRun: boolean
+}): string | null {
+  const { resultStatus, pollStatus, emailStatus, hasRun } = opts
+  if (pollStatus === "done" || resultStatus === "done") return "Geração concluída"
+  if (pollStatus === "error" || resultStatus === "error") return "Erro na geração"
+  const progressed =
+    emailStatus != null &&
+    ["copy_ready", "image_done", "rendering", "qa_running"].includes(emailStatus)
+  if (resultStatus === "dispatched" && !progressed) return "Copy disparada ao N8N"
+  return hasRun ? "Gerando email…" : null
 }
 
 /** "3m07s" / "42s" para o cronômetro. */

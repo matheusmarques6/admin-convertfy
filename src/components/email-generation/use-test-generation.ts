@@ -208,6 +208,10 @@ export function useTestGeneration() {
         computeStale({
           emailStatus: statusInfo.email_status,
           lastRunCreatedAt: lastRun?.created_at ?? null,
+          // Run em `running` = step trabalhando dentro do próprio budget
+          // (até 540s na Formatação de Texto) — limiar maior, sem alarme
+          // falso.
+          lastRunStatus: lastRun?.status ?? null,
           emailUpdatedAt: statusInfo.email_updated_at ?? null,
           nowMs: Date.now(),
         }),

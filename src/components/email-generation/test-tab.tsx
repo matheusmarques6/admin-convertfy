@@ -36,6 +36,7 @@ import {
   TEST_AGENT_LABELS,
   TEST_BASE_AGENT_KEYS,
   fmtElapsed,
+  runHeaderLabel,
 } from "@/lib/agents/test-run-view"
 import { useState } from "react"
 
@@ -299,9 +300,16 @@ export function TestTab() {
               </div>
             ) : (
               <div className="space-y-4">
-          {/* Status header */}
+          {/* Status header — ícone segue o MESMO rótulo do runHeaderLabel
+              (senão o relógio de "dispatched" persistia com a montagem
+              já rodando). */}
           <div className="flex items-center gap-2">
-            {result?.status === "dispatched" ? (
+            {runHeaderLabel({
+              resultStatus: result?.status ?? null,
+              pollStatus: statusInfo?.status ?? null,
+              emailStatus: statusInfo?.email_status ?? null,
+              hasRun: true,
+            }) === "Copy disparada ao N8N" ? (
               <Clock className="h-5 w-5 text-blue-500" />
             ) : statusInfo?.status === "done" || result?.status === "done" ? (
               <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -311,13 +319,15 @@ export function TestTab() {
               <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
             )}
             <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">
-              {result?.status === "dispatched"
-                ? "Copy disparada ao N8N"
-                : statusInfo?.status === "done" || result?.status === "done"
-                  ? "Geração concluída"
-                  : statusInfo?.status === "error" || result?.status === "error"
-                    ? "Erro na geração"
-                    : "Gerando email..."}
+              {/* "Copy disparada" só ANTES do email progredir além da copy —
+                  no teste completo a fase 2 dispara sozinha e o header
+                  precisa acompanhar (runHeaderLabel). */}
+              {runHeaderLabel({
+                resultStatus: result?.status ?? null,
+                pollStatus: statusInfo?.status ?? null,
+                emailStatus: statusInfo?.email_status ?? null,
+                hasRun: true,
+              }) ?? "Gerando email..."}
             </h3>
             {/* Tempo total decorrido desde o clique (congela no terminal) */}
             {startedAt != null && (

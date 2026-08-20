@@ -122,3 +122,97 @@ describe("fmtElapsed", () => {
     expect(fmtElapsed(-5)).toBe("0s")
   })
 })
+
+// ── Correções pós-observação em produção (ago/2026) ──────────────────────
+
+import { runHeaderLabel } from "./test-run-view"
+
+describe("computeStale com run em execução", () => {
+  const now = Date.parse("2026-08-19T16:37:00Z")
+  it("run running dentro do budget do step NÃO é travada (falso alarme corrigido)", () => {
+    // Caso real: text_format retry rodando há ~3,5min (budget do step: 540s).
+    const started = new Date(now - 3.5 * 60_000).toISOString()
+    expect(
+      computeStale({
+        emailStatus: "rendering",
+        lastRunCreatedAt: started,
+        lastRunStatus: "running",
+        emailUpdatedAt: null,
+        nowMs: now,
+      }),
+    ).toBe(false)
+  })
+
+  it("run running além do limiar estendido (10min) ainda alerta", () => {
+    const started = new Date(now - 11 * 60_000).toISOString()
+    expect(
+      computeStale({
+        emailStatus: "rendering",
+        lastRunCreatedAt: started,
+        lastRunStatus: "running",
+        emailUpdatedAt: null,
+        nowMs: now,
+      }),
+    ).toBe(true)
+  })
+
+  it("run concluída mantém o limiar curto de 90s", () => {
+    const done = new Date(now - 120_000).toISOString()
+    expect(
+      computeStale({
+        emailStatus: "rendering",
+        lastRunCreatedAt: done,
+        lastRunStatus: "success",
+        emailUpdatedAt: null,
+        nowMs: now,
+      }),
+    ).toBe(true)
+  })
+})
+
+describe("runHeaderLabel", () => {
+  it("dispatched vale só ANTES do email progredir além da copy", () => {
+    expect(
+      runHeaderLabel({
+        resultStatus: "dispatched",
+        pollStatus: "pending",
+        emailStatus: "copy_generating",
+        hasRun: true,
+      }),
+    ).toBe("Copy disparada ao N8N")
+    // Caso real: copy voltou e a montagem está rodando — header acompanha.
+    expect(
+      runHeaderLabel({
+        resultStatus: "dispatched",
+        pollStatus: "pending",
+        emailStatus: "rendering",
+        hasRun: true,
+      }),
+    ).toBe("Gerando email…")
+  })
+
+  it("terminais vencem tudo", () => {
+    expect(
+      runHeaderLabel({
+        resultStatus: "dispatched",
+        pollStatus: "done",
+        emailStatus: "ready",
+        hasRun: true,
+      }),
+    ).toBe("Geração concluída")
+    expect(
+      runHeaderLabel({
+        resultStatus: "error",
+        pollStatus: null,
+        emailStatus: null,
+        hasRun: true,
+      }),
+    ).toBe("Erro na geração")
+  })
+
+  it("sem execução em contexto, sem header", () => {
+    expect(
+      runHeaderLabel({ resultStatus: null, pollStatus: null, emailStatus: null, hasRun: false }),
+    ).toBeNull()
+  })
+})

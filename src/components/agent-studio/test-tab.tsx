@@ -17,7 +17,7 @@ import { Eye, Play, Rocket, Zap } from "lucide-react"
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { FLOW_TYPE_LABELS } from "@/components/email-generation/flow-labels"
 import { useTestGeneration } from "@/components/email-generation/use-test-generation"
-import { fmtElapsed } from "@/lib/agents/test-run-view"
+import { fmtElapsed, runHeaderLabel } from "@/lib/agents/test-run-view"
 import { projectLiveTest } from "@/lib/agents/studio-graph"
 import type { ExecutionRow } from "./studio-data"
 import { FlowCanvas, defaultPositions, type Positions } from "./flow-canvas"
@@ -133,15 +133,12 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
     Boolean(t.selectedStoreId && t.selectedFlowId && t.selectedEmailId) &&
     !t.generationInFlight
 
-  const headerText = t.result?.status === "dispatched"
-    ? "Copy disparada ao N8N"
-    : t.statusInfo?.status === "done" || t.result?.status === "done"
-      ? "Geração concluída"
-      : t.statusInfo?.status === "error" || t.result?.status === "error"
-        ? "Erro na geração"
-        : t.hasRun
-          ? "Gerando email…"
-          : null
+  const headerText = runHeaderLabel({
+    resultStatus: t.result?.status ?? null,
+    pollStatus: t.statusInfo?.status ?? null,
+    emailStatus: t.statusInfo?.email_status ?? null,
+    hasRun: t.hasRun,
+  })
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
