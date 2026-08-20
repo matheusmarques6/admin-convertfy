@@ -22,7 +22,6 @@ import {
   textFormatGuard,
   DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT,
 } from "./text-format.chain"
-import { DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT } from "./image-format.chain"
 import { DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT } from "./color-format.chain"
 import {
   HERO_SENTINEL_START,
@@ -303,7 +302,6 @@ describe("system prompts não passam por renderImageTemplate", () => {
   const CHAINS = [
     "hero.chain.ts",
     "text-format.chain.ts",
-    "image-format.chain.ts",
     "color-format.chain.ts",
     "qa.chain.ts",
     "component-tagger.chain.ts",
@@ -377,17 +375,6 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain(HERO_SENTINEL_START)
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("image_tags_survive")
     expect(DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT).toContain("NO DUPLICATE PRODUCTS")
-  })
-
-  it("imagem herda as slot rules v6 adaptadas a ops (views, sem documento)", () => {
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("ONE SLOT PER IMAGE")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("MATCH BY TAG")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("remove_slot")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("width=520&height=650&crop=center")
-    // F3 (arquitetura por views): o agente não vê mais o documento — a
-    // menção a cfy:hero saiu do prompt (a proteção segue no applyOps).
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).toContain("do NOT see the email document")
-    expect(DEFAULT_IMAGE_FORMAT_SYSTEM_PROMPT).not.toContain("{{html}}")
   })
 
   it("cores herda a conformidade de identidade do Refinador + regras de botão", () => {

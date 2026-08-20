@@ -34,14 +34,11 @@ import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
   applySplices,
   commentRanges,
-  enclosingRow as domEnclosingRow,
-  locateSlots,
   textNodes,
   type Range,
   type Splice,
 } from "./dom-locator"
 import { findAttrSlots } from "./slot-finder"
-import { readAnnotatedSlots } from "./slot-annotate"
 
 /** Campo mínimo do snapshot fields v2 que o merge precisa. */
 export interface MergeField {
@@ -50,8 +47,6 @@ export interface MergeField {
   example?: string | null
   type: string
   nature?: string | null
-  /** LEGADO — só as views de imagem (image_format LLM) ainda leem; F3 mata. */
-  tag?: string | null
 }
 
 /** Bloco de entrada: fields do blueprint casado + content do n8n. */
@@ -62,6 +57,8 @@ export interface MergeBlock {
   block_id?: string | null
   /** Tipo do bloco (hero, beneficios...) — decide o escopo do hero_pending. */
   block_type?: string | null
+  /** email_blocks.position (1-based) — amarra a URL do imageMap ao bloco. */
+  position?: number | null
 }
 
 /** Desfecho de um campo no merge (vocabulário único da telemetria). */
@@ -157,6 +154,7 @@ export function mergeBlocksFromContext(
       content: b.content ?? {},
       block_id: b.id ?? null,
       block_type: b.block_type ?? null,
+      position: b.position ?? null,
     }
   })
 }
@@ -502,124 +500,4 @@ export function applyStructuralFills(
 
   const res = applySplices(html, splices)
   return { html: res.html, filled, cleaned: Array.from(cleanedSet) }
-}
-
-// ═══ LEGADO até a F3 — views do image_format (LLM) ════════════════════
-// O agente de imagem ainda é LLM e enxerga o documento por views de tags
-// `{{X_IMAGE}}`. Morre inteiro quando o image-merge determinístico entrar.
-
-const TAG_TOKEN = LEGACY_TAG_TOKEN
-const IMAGE_TAG = /(?:IMAGE|THUMB|_IMG)(?:_\d+)?$/
-
-/**
- * Tags de IMAGEM presentes no doc FORA da hero (a imagem da hero é posse
- * do agente de hero). O {{TAG_ALT}} companheiro não conta como slot.
- */
-export function imageTagsOutsideHero(html: string): string[] {
-  const hero = extractHeroBySentinels(html)
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const m of html.matchAll(TAG_TOKEN)) {
-    const start = m.index ?? 0
-    if (hero && start >= hero.start && start < hero.end) continue
-    const tag = m[1]
-    if (!IMAGE_TAG.test(tag) || tag.endsWith("_ALT") || seen.has(tag)) continue
-    seen.add(tag)
-    out.push(tag)
-  }
-  return out
-}
-
-/**
- * <tr>s (fora da hero) cujo TEXTO visível contém `needle` (ex.: nome da
- * marca como "logo de texto"). View pro replace de logo do image_format.
- */
-export function rowsContainingText(
-  html: string,
-  needle: string,
-  limit = 4,
-): Array<{ row_html: string }> {
-  const clean = needle.trim()
-  if (!clean) return []
-  const hero = extractHeroBySentinels(html)
-  const needleLower = clean.toLowerCase()
-  const out: Array<{ row_html: string }> = []
-  const taken = new Set<number>()
-
-  const lower = html.toLowerCase()
-  let idx = lower.indexOf(needleLower)
-  while (idx !== -1 && out.length < limit) {
-    const inHero = hero && idx >= hero.start && idx < hero.end
-    if (!inHero) {
-      const row = domEnclosingRow(html, idx)
-      if (row && !taken.has(row.start)) {
-        const rowHtml = html.slice(row.start, row.end)
-        const textOnly = rowHtml.replace(/<[^>]*>/g, " ").toLowerCase()
-        if (textOnly.includes(needleLower)) {
-          out.push({ row_html: rowHtml })
-          taken.add(row.start)
-        }
-      }
-    }
-    idx = lower.indexOf(needleLower, idx + clean.length)
-  }
-  return out
-}
-
-/**
- * Mapa tag normalizada → block_id, derivado dos fields dos blocos (só as
- * views de imagem consomem). Primeira ocorrência vence.
- */
-export function tagToBlockIdMap(blocks: MergeBlock[]): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const b of blocks) {
-    if (!b.block_id) continue
-    for (const f of b.fields) {
-      if (!f.tag) continue
-      const tag = f.tag.replace(/[{}\s]/g, "")
-      if (tag && !map.has(tag)) map.set(tag, b.block_id)
-    }
-  }
-  return map
-}
-
-/** View por slot das views de imagem: tag + linha envolvente. */
-export interface ExceptionSlot {
-  tag: string
-  /** <tr>…</tr> que envolve o token; fallback: ±200 chars de contexto. */
-  row_html: string
-  /** email_blocks.id dono da tag (via blueprint) — null quando não resolvido. */
-  block_id?: string | null
-}
-
-/**
- * Views dos slots de tag — a região vem do MESMO localizador por árvore que
- * aplica as ops (dom-locator): o que o agente vê É o que o código edita.
- */
-export function buildExceptionSlots(
-  html: string,
-  tags: string[],
-  tagToBlock?: ReadonlyMap<string, string>,
-): ExceptionSlot[] {
-  const located = locateSlots(html, tags)
-  const annotated = readAnnotatedSlots(html)
-  return tags.map((tag) => {
-    const key = tag.replace(/[{}\s]/g, "")
-    const block_id = tagToBlock?.get(key) ?? null
-    // Cascata canônica: endereço declarado > árvore > vizinhança do token.
-    const declared = annotated.get(key)
-    const range =
-      declared?.row ??
-      declared?.cell ??
-      located.get(key)?.row ??
-      located.get(key)?.cell ??
-      (located.has(key)
-        ? {
-            start: Math.max(0, located.get(key)!.token.start - 200),
-            end: Math.min(html.length, located.get(key)!.token.end + 200),
-          }
-        : null)
-    if (!range) return { tag, row_html: "", block_id }
-    return { tag, row_html: html.slice(range.start, range.end), block_id }
-  })
 }

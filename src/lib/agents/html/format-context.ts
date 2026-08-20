@@ -44,17 +44,8 @@ import { deriveColorRoles, type ColorRoles } from "./color-roles"
 import {
   ColorFormatPromptVarsSchema,
   HeroPromptVarsSchema,
-  ImageFormatPromptVarsSchema,
   TextFormatPromptVarsSchema,
 } from "./contract"
-import {
-  buildExceptionSlots,
-  imageTagsOutsideHero,
-  mergeBlocksFromContext,
-  rowsContainingText,
-  tagToBlockIdMap,
-  type MergeField,
-} from "./copy-merge"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
 
@@ -587,45 +578,6 @@ export function buildTextFormatVars(
     top_products_json: ctx.topProductsJson,
   }
   return validateVars(TextFormatPromptVarsSchema, vars, "text_format")
-}
-
-export function buildImageFormatVars(
-  ctx: FormatChainContext,
-  html: string,
-): Record<string, string> {
-  // A entry da hero fica de fora — a imagem da hero já foi colocada pelo
-  // agente hero_section (avatares/reviews/products entram normalmente).
-  const nonHeroEntries = ctx.imageMap.filter((e) => e.block_type !== "hero")
-  // Arquitetura por views (F3): em vez do documento inteiro, o agente
-  // recebe a view de cada slot de imagem ({block_id, tag, row_html} —
-  // fatiada por código) + as linhas candidatas a logo de texto. Corta o
-  // prompt de dezenas de KB pra poucos KB e impede o agente de "ver"
-  // (e alucinar sobre) o resto do documento.
-  const tagMap = tagToBlockIdMap(
-    mergeBlocksFromContext(
-      ctx.blocks as Array<{
-        id?: string
-        position: number
-        block_type: string
-        content: Record<string, unknown> | null
-      }>,
-      ctx.blueprint?.blocks as
-        | Array<{ type: string; fields?: MergeField[] | null }>
-        | undefined,
-    ),
-  )
-  const slots = buildExceptionSlots(html, imageTagsOutsideHero(html), tagMap)
-  const logoCandidates = rowsContainingText(html, ctx.brandName)
-  const vars = {
-    brand_name: ctx.brandName,
-    image_slots_json: JSON.stringify(slots, null, 2),
-    image_map_json: JSON.stringify(nonHeroEntries, null, 2),
-    logo_candidates_json: JSON.stringify(logoCandidates, null, 2),
-    logo_light: ctx.logoLight,
-    logo_dark: ctx.logoDark,
-    top_products_json: ctx.topProductsJson,
-  }
-  return validateVars(ImageFormatPromptVarsSchema, vars, "image_format")
 }
 
 export function buildColorFormatVars(

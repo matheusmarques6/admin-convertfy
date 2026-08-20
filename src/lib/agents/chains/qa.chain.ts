@@ -43,6 +43,7 @@ import {
 } from "../callbacks/telemetry.callback"
 import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
 import { deriveFieldNature } from "../shared/component-dimensions"
+import { isAttrToken } from "../html/attr-token-vocabulary"
 import { runQaVisionCheck } from "./qa-vision.chain"
 
 const log = logger.child("QaChain")
@@ -302,6 +303,22 @@ export function runGlobalDocChecks(
       type: "html_invalido",
       severity: "medium",
       message: `Placeholders internos sobrando no HTML final: ${[...new Set(leftover)].slice(0, 5).join(", ")}`,
+      location: "html",
+    })
+  }
+
+  // Token de ATRIBUTO cru (vocabulário sem placeholder, F3): o strip da
+  // cadeia deveria tê-lo limpado — sobrar aqui é `<img src="URL_FOTO_1">`
+  // (ícone quebrado) ou "NOME_DA_MARCA" impresso no email.
+  const attrTokens: string[] = []
+  for (const m of html.matchAll(/\b(?:src|alt|href)\s*=\s*"([^"]*)"/gi)) {
+    if (isAttrToken(m[1])) attrTokens.push(m[1].trim())
+  }
+  if (attrTokens.length > 0) {
+    issues.push({
+      type: "html_invalido",
+      severity: "medium",
+      message: `Tokens de atributo sobrando no HTML final: ${[...new Set(attrTokens)].slice(0, 5).join(", ")}`,
       location: "html",
     })
   }

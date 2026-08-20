@@ -13,7 +13,13 @@
 
 import { logger } from "@/lib/logger"
 import { fixOrphanSpacerDivs, fixSpacerColumnWidths } from "./orphan-spacer"
-import { locateEmptyShells, applySplices } from "./dom-locator"
+import {
+  locateEmptyShells,
+  applySplices,
+  textNodes,
+  type Splice,
+} from "./dom-locator"
+import { findAttrSlots } from "./slot-finder"
 
 const log = logger.child("HtmlPostProcess")
 
@@ -152,6 +158,38 @@ export function stripUnresolvedPlaceholders(html: string): string {
     )
   }
   return html
+}
+
+/**
+ * Limpa os TOKENS DE ATRIBUTO que sobraram sem valor (vocabulário sem
+ * placeholder, F3): `src="URL_FOTO_1"` cru vira `src=""`, `alt="ALT_X"`
+ * vira `alt=""`, `NOME_DA_MARCA` em texto corrido some — e a casca que
+ * ficou oca é podada (pruneEmptyShells) e o link morto neutralizado, o
+ * mesmo tratamento do strip de `{{TAG}}`. Token cru no cliente de email é
+ * pior que campo vazio: `<img src="URL_FOTO_1">` renderiza ícone quebrado
+ * e "NOME_DA_MARCA" sai impresso na tela.
+ */
+export function stripUnresolvedAttrTokens(html: string): string {
+  const splices: Splice[] = []
+  for (const slot of findAttrSlots(html)) {
+    splices.push({ ...slot.valueRange, replacement: "" })
+  }
+  for (const node of textNodes(html)) {
+    let at = node.text.indexOf("NOME_DA_MARCA")
+    while (at !== -1) {
+      splices.push({
+        start: node.range.start + at,
+        end: node.range.start + at + "NOME_DA_MARCA".length,
+        replacement: "",
+      })
+      at = node.text.indexOf("NOME_DA_MARCA", at + 1)
+    }
+  }
+  if (splices.length === 0) return html
+  log.warn("html.unresolved_attr_tokens", { count: splices.length })
+  return neutralizeDeadLinks(
+    pruneEmptyShells(applySplices(html, splices).html),
+  )
 }
 
 /**

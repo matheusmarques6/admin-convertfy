@@ -77,7 +77,6 @@ import {
   invokeTextFormatChain,
   textFormatGuard,
 } from "./chains/text-format.chain"
-import { invokeImageFormatChain } from "./chains/image-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
 import type { FormatChainConfig } from "./chains/format-invoke"
 import { usageOf } from "./chains/step-usage"
@@ -86,7 +85,6 @@ import {
   resolveHeroVariant,
   buildHeroVars,
   buildTextFormatVars,
-  buildImageFormatVars,
   buildColorFormatVars,
   type FormatChainContext,
   type HeroVariantData,
@@ -100,6 +98,7 @@ import {
   type MergeField,
   type MergeAnchor,
 } from "./html/copy-merge"
+import { imageMerge } from "./html/image-merge"
 import {
   buildQaBlockViews,
   viewsFromBlocksFallback,
@@ -129,6 +128,7 @@ import { resolveRenderedReference } from "./shared/rendered-reference"
 import { applyOps } from "./html/apply-patches"
 import {
   stripUnresolvedPlaceholders,
+  stripUnresolvedAttrTokens,
   stripCfyBlockMarkers,
   stripAgentProtocolBlocks,
   stripNbspIndentation,
@@ -1986,12 +1986,9 @@ async function runFormattingChain(p: {
   }
 
   // ── Contrato dos blocos (MC-3) ─────────────────────────────────────
-  // O que cada bloco DEVE conter — campos, natureza, limite — extraído do
-  // snapshot gravado na linha. Vai para os formatadores como INPUT (slot
-  // vazio cujo campo está no contrato é campo esperando valor, não sujeira
-  // a remover) e serve de régua para MEDIR as ops que eles emitem.
-  const blockContracts = buildBlockContracts(fmtCtx.blocks)
-  const blockContractsJson = JSON.stringify(blockContracts, null, 2)
+  // Régua para MEDIR as ops do color_format (o único formatador LLM que
+  // ainda emite ops). Texto e imagem viraram código — o contrato como
+  // INPUT de formatador morreu com eles.
   const contractTagSet = contractTags(fmtCtx.blocks)
 
   // ── Estágio 0 — MERGE POR EXAMPLE (antes da hero, D1) ──────────────
@@ -2375,69 +2372,67 @@ async function runFormattingChain(p: {
     stage = "image"
   }
   if (stage === "text") {
+    // ── Imagem DETERMINÍSTICA (F3): o slot se autodenuncia no HTML
+    // (src="URL_DA_IMAGEM_1") e o casamento campo↔token é mecânico — o LLM
+    // do image_format morreu. Mesmo agent key, model 'deterministic' (o
+    // grafo do Estúdio e a máquina de estágios ficam intactos).
     const inputHtml = currentHtml
-    const vars: Record<string, string> = {
-      ...buildImageFormatVars(fmtCtx, inputHtml),
-      block_contracts_json: blockContractsJson,
-    }
-    const config = toChainConfig(imageFmtSwitch.config, "image_format")
-
-    const outcome = await executeFormatStep<string>({
-      ids,
-      agent: "image_format",
-      config: imageFmtSwitch.config,
-      model: config.model,
-      routeT0,
-      budgetMs,
-      inputHtml,
-      attempt: async () => {
-        const r = await invokeImageFormatChain({ config, vars })
-        const applied = applyOps(inputHtml, r.ops, { allowHero: false })
-        let slotsSent = 0
-        try {
-          slotsSent = (JSON.parse(vars.image_slots_json) as unknown[]).length
-        } catch {
-          /* view ausente (prompt custom antigo) — segue 0 */
-        }
-        return {
-          value: applied.html,
-          tokensInput: r.tokensInput,
-          tokensOutput: r.tokensOutput,
-          costUsd: r.costUsd,
-          renderedPrompt: r.renderedPrompt,
-          rawOutput: r.rawOutput,
-          parsed: {
-            slots_sent: slotsSent,
-            contrato: measureOpsAgainstContract(r.ops, contractTagSet),
-            ops_applied: applied.applied,
-            ops_skipped: applied.skipped.map((s) => ({
-              action: s.op.action,
-              target:
-                s.op.action === "replace"
-                  ? s.op.find.slice(0, 60)
-                  : s.op.action === "recolor"
-                    ? s.op.from
-                    : s.op.tag,
-              reason: s.reason,
-            })),
-            output_html_len: applied.html.length,
-            output_sha8: sha8(applied.html),
-            output_html: htmlSnapshot(applied.html),
-          },
-        }
-      },
-    })
-
-    if (outcome.kind === "out_of_budget") return { status: "out_of_budget" }
-    if (outcome.kind === "failed") {
-      await failStep("image_format", outcome.lastError)
+    const imgT0 = Date.now()
+    try {
+      const im = imageMerge({
+        html: inputHtml,
+        blocks: mergeBlocks,
+        imageMap: (fmtCtx.imageMap ?? []).map((e) => ({
+          block_type: e.block_type,
+          url: e.url,
+          tag: e.tag ?? null,
+          position: Number(/^IMG_(\d+)$/.exec(e.id ?? "")?.[1]) || null,
+        })),
+      })
+      await logGenerationRun({
+        ...ids,
+        agent: "image_format",
+        status: "success",
+        model: "deterministic",
+        inputVars: {
+          stage: "image",
+          input_html_len: inputHtml.length,
+          input_sha8: sha8(inputHtml),
+        },
+        parsedOutput: {
+          slots_total: im.report.slots_total,
+          merged: im.report.merged,
+          campos: im.report.campos,
+          alts_limpos: im.report.alts_limpos,
+          rows_removidas: im.report.rows_removidas,
+          output_html_len: im.html.length,
+          output_sha8: sha8(im.html),
+          output_html: htmlSnapshot(im.html),
+        },
+        costCents: 0,
+        durationMs: Date.now() - imgT0,
+      }).catch(() => {})
+      currentHtml = im.html
+    } catch (err) {
+      // Determinístico não tem retry que ajude — erro aqui é bug nosso.
+      const msg = err instanceof Error ? err.message : String(err)
+      await logGenerationRun({
+        ...ids,
+        agent: "image_format",
+        status: "error",
+        model: "deterministic",
+        errorMessage: msg.slice(0, 500),
+        costCents: 0,
+        durationMs: Date.now() - imgT0,
+      }).catch(() => {})
+      await failStep("image_format", msg)
       return { status: "failed" }
     }
 
     // Views do QA (F5): extraídas AQUI, com os marcadores ainda no doc —
     // depois do strip eles somem e a view por bloco fica irrecuperável.
     qaViews = buildQaBlockViews(
-      outcome.value,
+      currentHtml,
       (fmtCtx.blocks ?? []).map((b) => ({
         id: b.id,
         position: b.position,
@@ -2447,14 +2442,17 @@ async function runFormattingChain(p: {
 
     // Limpeza final do documento (era o fim do postProcessHtml do agente
     // monolítico): sentinelas + marcadores cfy:block fora, indentação
-    // &nbsp; do GLM removida, placeholders órfãos limpos, lang da loja.
-    // O color_format recebe o documento já apresentável.
+    // &nbsp; do GLM removida, placeholders {{}} órfãos e tokens de
+    // atributo crus limpos, lang da loja. O color_format recebe o
+    // documento já apresentável.
     currentHtml = enforceLangAttribute(
-      stripUnresolvedPlaceholders(
-        stripNbspIndentation(
-          stripSlotAttributes(
-            stripCfyBlockMarkers(
-              stripAgentProtocolBlocks(stripSentinels(outcome.value)),
+      stripUnresolvedAttrTokens(
+        stripUnresolvedPlaceholders(
+          stripNbspIndentation(
+            stripSlotAttributes(
+              stripCfyBlockMarkers(
+                stripAgentProtocolBlocks(stripSentinels(currentHtml)),
+              ),
             ),
           ),
         ),

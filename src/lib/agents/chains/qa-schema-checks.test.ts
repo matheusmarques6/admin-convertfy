@@ -195,6 +195,18 @@ describe("runGlobalDocChecks — visão global vira código (F5)", () => {
     expect(runGlobalDocChecks(html)).toEqual([])
   })
 
+  it("token de atributo cru (src=\"URL_FOTO_1\") é flagado; URL real e base64 não", () => {
+    const issues = runGlobalDocChecks(
+      '<html><body><img src="URL_FOTO_1" alt="ALT_FOTO_1"></body></html>',
+    )
+    expect(issues.some((i) => i.message.includes("URL_FOTO_1"))).toBe(true)
+    expect(
+      runGlobalDocChecks(
+        '<html><body><img src="https://cdn/x.png" alt="foto"><img src="data:image/png;base64,AA" alt=""></body></html>',
+      ),
+    ).toEqual([])
+  })
+
   it("contagem de blocos divergente do blueprint gera issue informativa", () => {
     const issues = runGlobalDocChecks("<html></html>", {
       blocksCount: 7,

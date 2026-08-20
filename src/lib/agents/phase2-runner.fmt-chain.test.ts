@@ -122,6 +122,7 @@ vi.mock("./callbacks/telemetry.callback", () => ({
       email_id: p.emailId ?? null,
       agent: p.agent,
       status: p.status,
+      model: p.model ?? null,
       batch_id: (p.batchId as string) || null,
       input_vars: p.inputVars ?? null,
       parsed_output: p.parsedOutput ?? null,
@@ -171,14 +172,6 @@ vi.mock("./chains/text-format.chain", async (importActual) => {
   return {
     ...actual,
     invokeTextFormatChain: (...a: unknown[]) => invokeTextFormatChain(...a),
-  }
-})
-const invokeImageFormatChain = vi.fn()
-vi.mock("./chains/image-format.chain", async (importActual) => {
-  const actual = await importActual<typeof import("./chains/image-format.chain")>()
-  return {
-    ...actual,
-    invokeImageFormatChain: (...a: unknown[]) => invokeImageFormatChain(...a),
   }
 })
 const invokeColorFormatChain = vi.fn()
@@ -231,6 +224,11 @@ vi.mock("./html/format-context", () => ({
     fontHeading: "Playfair Display",
     fontBody: "Inter",
     referenceSource: refSource.value,
+    // Imagem por CÓDIGO (F3): a URL vem do imageMap; a tag legada
+    // {{BODY_IMAGE}} é preenchida pelo caminho {{}} do image-merge.
+    imageMap: [
+      { id: "IMG_3", url: "https://cdn/body.png", tag: "BODY_IMAGE", block_type: "body" },
+    ],
     ...ctxExtra.value,
   })),
   resolveHeroVariant: (...a: unknown[]) =>
@@ -275,10 +273,6 @@ function mockHappyChains() {
     ...chainResultBase,
     html: docAfterHero().replace("{{BODY_TEXT}}", "corpo final da copy"),
   }))
-  invokeImageFormatChain.mockResolvedValue({
-    ...chainResultBase,
-    ops: [{ action: "img", tag: "BODY_IMAGE", url: "https://cdn/body.png" }],
-  })
   invokeColorFormatChain.mockResolvedValue({
     ...chainResultBase,
     ops: [],
@@ -312,7 +306,6 @@ function reset(overrides: Row = {}) {
   h.tables.store_image_overrides = []
   invokeHeroChain.mockReset()
   invokeTextFormatChain.mockReset()
-  invokeImageFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
   buildHeroVars.mockReset()
   buildHeroVars.mockReturnValue({})
@@ -357,7 +350,6 @@ describe("toggle is_active desliga o step", () => {
     ]
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
-    expect(invokeImageFormatChain).not.toHaveBeenCalled()
     expect(invokeColorFormatChain).not.toHaveBeenCalled()
     // Hero e texto seguem rodando (sem row → defaults).
     expect(invokeHeroChain).toHaveBeenCalledTimes(1)
@@ -397,7 +389,10 @@ describe("toggle is_active desliga o step", () => {
       agentConfig("color_format", true),
     ]
     await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(invokeImageFormatChain).toHaveBeenCalledTimes(1)
+    // Imagem virou código: a "execução" é o run deterministic com sucesso.
+    const imgRun = runsOf("image_format")[0]
+    expect(imgRun.status).toBe("success")
+    expect(imgRun.model).toBe("deterministic")
     expect(invokeColorFormatChain).toHaveBeenCalledTimes(1)
   })
 })
@@ -549,7 +544,7 @@ describe("cadeia de formatação — runner (legado full-doc)", () => {
     expect(res.status).toBe("ready")
     expect(invokeHeroChain).not.toHaveBeenCalled()
     expect(invokeTextFormatChain).not.toHaveBeenCalled()
-    expect(invokeImageFormatChain).toHaveBeenCalledTimes(1)
+    expect(runsOf("image_format")[0].status).toBe("success")
     expect(invokeColorFormatChain).toHaveBeenCalledTimes(1)
     expect((email().html as string)).toContain("copy já posicionada")
     expect((email().html as string)).toContain("https://cdn/body.png")
@@ -658,6 +653,7 @@ const EXAMPLE_BLUEPRINT = {
       type: "beneficios",
       fields: [
         { key: "body_text", type: "text_long", example: "Body copy example here" },
+        { key: "body_image", type: "image", example: "" },
       ],
     },
   ],
@@ -697,13 +693,17 @@ function setupExampleCase() {
     brandName: "Loja Bonita",
     logoLight: '<img src="https://cdn/logo.png" alt="Loja Bonita">',
     emailRow: { name: "Welcome #1", subject: "Oi", preheader: "pre" },
+    // A imagem GERADA do bloco beneficios (position 3) — o image-merge
+    // determinístico a escreve no token src="URL_DA_IMAGEM_1".
+    imageMap: [
+      { id: "IMG_3", url: "https://cdn/gerada.png", tag: null, block_type: "beneficios" },
+    ],
   }
   invokeHeroChain.mockResolvedValue({
     ...chainResultBase,
     output: EXAMPLE_HERO_FRAGMENT,
     mode: "fragment",
   })
-  invokeImageFormatChain.mockResolvedValue({ ...chainResultBase, ops: [] })
   invokeColorFormatChain.mockResolvedValue({ ...chainResultBase, ops: [] })
 }
 
@@ -761,11 +761,28 @@ describe("merge por example — caso-mestre", () => {
     expect(textRun.status).toBe("skipped")
     expect((textRun.parsed_output as Row).skip_reason).toBe("merge_por_exemplo")
 
-    // (4) HTML final: copy nova no lugar das frases de example; logo e
-    // marca preenchidos; arte fixa intacta. (Imagem URL_* é assunto da F3.)
+    // (4) Imagem DETERMINÍSTICA (F3): run image_format sem LLM, URL gerada
+    // no lugar do token, alt cru limpo.
+    const imgRun = runsOf("image_format")[0]
+    expect(imgRun.status).toBe("success")
+    expect(imgRun.model).toBe("deterministic")
+    const imgParsed = imgRun.parsed_output as Row
+    expect(imgParsed.merged).toBe(1)
+    expect(
+      (imgParsed.campos as Array<Record<string, unknown>>).find(
+        (c) => c.key === "body_image",
+      ),
+    ).toMatchObject({ desfecho: "ancorado_token", de: "URL_DA_IMAGEM_1" })
+
+    // (5) HTML final: copy nova no lugar das frases de example; imagem
+    // gerada no token; logo e marca preenchidos; arte fixa intacta; nenhum
+    // token cru sobrando.
     const html = email().html as string
     expect(html).toContain("Corpo final da copy")
     expect(html).not.toContain("Body copy example here")
+    expect(html).toContain('src="https://cdn/gerada.png"')
+    expect(html).not.toContain("URL_DA_IMAGEM_1")
+    expect(html).not.toContain("ALT_DA_IMAGEM_1")
     expect(html).toContain('src="https://cdn/logo.png"')
     expect(html).toContain('alt="Loja Bonita"')
     expect(html).toContain("data:image/png;base64,AAAA")
