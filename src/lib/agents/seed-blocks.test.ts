@@ -238,3 +238,20 @@ describe("reconcileBlocksAdditive", () => {
     expect(insertCalls[0].every((r) => Object.keys(r.content as object).length === 0)).toBe(true)
   })
 })
+
+// ── sanitizeBlockType (CHECK do banco × vocabulário da biblioteca) ───────
+
+import { sanitizeBlockType } from "./seed-blocks"
+
+describe("sanitizeBlockType", () => {
+  it("aceita o vocabulário da biblioteca (incidente Luxe Lift: reviews/body)", () => {
+    expect(sanitizeBlockType("reviews", "e1")).toBe("reviews")
+    expect(sanitizeBlockType("body", "e1")).toBe("body")
+    expect(sanitizeBlockType("hero", "e1")).toBe("hero")
+    expect(sanitizeBlockType("products", "e1")).toBe("products")
+  })
+
+  it("tipo desconhecido degrada pra 'text' — nunca derruba o INSERT", () => {
+    expect(sanitizeBlockType("categoria_futura", "e1")).toBe("text")
+  })
+})

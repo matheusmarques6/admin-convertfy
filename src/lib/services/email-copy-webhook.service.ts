@@ -666,7 +666,11 @@ export async function dispatchEmailCopyWebhook(
           await reconcileBlocksAdditive(e.id, flow.flow_type, e.number, seedStoreId)
         }
       } catch (err) {
-        log.warn("email_copy.webhook.ensure_blocks_failed", {
+        // log.error, não warn: seed/reconcile falho aqui significa email
+        // sem contrato de blocos — o payload sai capenga pro n8n e a fase
+        // 2 degrada em cascata (incidente Luxe Lift ago/2026: CHECK de
+        // block_type zerava os blocos e o dispatch seguia em silêncio).
+        log.error("email_copy.webhook.ensure_blocks_failed", {
           storeId,
           emailId: e.id,
           flowType: flow.flow_type,

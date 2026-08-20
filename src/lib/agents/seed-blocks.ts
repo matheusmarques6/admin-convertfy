@@ -17,6 +17,31 @@ import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
 
 const log = logger.child("SeedBlocks")
 
+/**
+ * Vocabulário aceito pelo CHECK de email_blocks.block_type (migration
+ * 20261074 — legado + tipos da biblioteca de componentes). Manter em
+ * sincronia com a constraint: um INSERT com tipo fora daqui violaria o
+ * CHECK e, no reconcile (DELETE antes do INSERT), zeraria os blocos do
+ * email — incidente Luxe Lift ago/2026 (blueprint com 'reviews'/'body'
+ * numa era em que o CHECK não os conhecia).
+ */
+const ALLOWED_BLOCK_TYPES = new Set([
+  "hero", "text", "coupon", "products", "footer", "image", "cta",
+  "divider", "spacer", "social", "header", "headline", "features",
+  "social_proof", "testimonials", "urgency", "comparison", "story",
+  "letter", "body", "reviews",
+])
+
+/**
+ * Tipo fora do vocabulário degrada pra 'text' com log.error — bloco
+ * genérico entregue é infinitamente melhor que email sem blocos.
+ */
+export function sanitizeBlockType(type: string, emailId: string): string {
+  if (ALLOWED_BLOCK_TYPES.has(type)) return type
+  log.error("seed.unknown_block_type", { emailId, type, fallback: "text" })
+  return "text"
+}
+
 export interface SeededBlock {
   id: string
   block_type: string
@@ -56,7 +81,7 @@ export async function seedBlocksFromBlueprint(
   // 4. Inserir novos blocos com content vazio
   const inserts = blockDefs.map((def, idx) => ({
     email_id: emailId,
-    block_type: def.type,
+    block_type: sanitizeBlockType(def.type, emailId),
     label: def.label,
     position: idx + 1,
     content: {},
@@ -151,7 +176,7 @@ export async function ensureBlocksSeeded(
   // 3. INSERT direto (sem DELETE — está vazio mesmo)
   const inserts = blockDefs.map((def, idx) => ({
     email_id: emailId,
-    block_type: def.type,
+    block_type: sanitizeBlockType(def.type, emailId),
     label: def.label,
     position: idx + 1,
     content: {},
@@ -365,7 +390,7 @@ export async function reconcileBlocksAdditive(
     if (!match) added++
     return {
       email_id: emailId,
-      block_type: def.type,
+      block_type: sanitizeBlockType(def.type, emailId),
       label: def.label,
       position: idx + 1,
       content: match?.content ?? {},
@@ -392,7 +417,42 @@ export async function reconcileBlocksAdditive(
   }
   const { error: insErr } = await admin.from("email_blocks").insert(inserts)
   if (insErr) {
+    // DELETE já rodou — sem restore, o email fica com ZERO blocos e todo
+    // o downstream degrada em silêncio (payload sem blocos, merge sem
+    // âncoras, text_format full-doc). Incidente Luxe Lift ago/2026: o
+    // INSERT violava o CHECK de block_type e cada retry repetia o ciclo.
+    // Restore best-effort dos blocos lidos no início (mesmos ids —
+    // referências em email_generation_runs continuam válidas).
     log.error("reconcile.insert_failed", { emailId, error: insErr.message })
+    if (existing.length > 0) {
+      const restore = existing.map((b) => ({
+        id: b.id,
+        email_id: emailId,
+        block_type: b.block_type,
+        label: b.label,
+        position: b.position,
+        content: b.content ?? {},
+        applied: b.applied,
+        applied_at: b.applied_at,
+        needs_image: b.needs_image,
+        variant_id: b.variant_id,
+        fields: b.fields ?? [],
+      }))
+      const { error: restoreErr } = await admin
+        .from("email_blocks")
+        .insert(restore)
+      if (restoreErr) {
+        log.error("reconcile.restore_failed", {
+          emailId,
+          error: restoreErr.message,
+        })
+      } else {
+        log.warn("reconcile.restored_after_insert_failure", {
+          emailId,
+          restored: restore.length,
+        })
+      }
+    }
     throw new Error(`Falha ao inserir blocos: ${insErr.message}`)
   }
 
