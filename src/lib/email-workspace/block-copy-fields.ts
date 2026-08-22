@@ -60,6 +60,9 @@ const SKIP_KEYS = new Set([
   "link_url",
   "image_url",
   "image_alt",
+  // Mapa de imagens por slot (geração por campo). É objeto, não copy —
+  // sem isto o fallback genérico tentaria imprimi-lo como texto.
+  "images",
   "image_instruction",
   "image_last_generated_at",
   "image_last_prompt",

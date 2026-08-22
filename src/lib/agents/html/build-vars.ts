@@ -91,6 +91,19 @@ export interface ImageMapEntry {
   id: string
   url: string
   /**
+   * Key do campo `imagem_gerada` que esta URL preenche. Presente desde que
+   * a geração virou por slot; ausente nas entradas legadas (bloco com uma
+   * imagem só) e nas de avatar, que se endereçam por tag.
+   */
+  field_key?: string | null
+  /**
+   * `email_blocks.position` do bloco dono. Carregado explicitamente porque
+   * só a entrada âncora conserva o id `IMG_{position}` — sem isto, um slot
+   * não-âncora só se resolveria por `block_type` e dois blocos do mesmo
+   * tipo poderiam roubar a imagem um do outro.
+   */
+  block_position?: number | null
+  /**
    * Tag canônica do slot no reference ({{HERO_IMAGE}}, {{REVIEW_1_IMAGE}}...).
    * É a chave de casamento slot↔imagem no prompt do HTML agent. null quando o
    * blueprint não expõe a tag (rows pré-contrato).
@@ -326,15 +339,58 @@ export function buildImageMap(
         (t) => /(?:IMAGE|THUMB)(?:_\d+)?$/.test(t) && !t.endsWith("_ALT"),
       ) ?? null
 
-    const url = (content.image_url as string | undefined)?.trim()
-    if (url) {
-      // Aspecto POR BLOCO (tags do template via registry) vence o global —
-      // o achatamento pro nível-email mandava toda imagem como 4:5.
-      const blockAspect =
-        bp?.image_aspect && isAspectKey(bp.image_aspect) ? bp.image_aspect : null
+    // Aspecto POR BLOCO (tags do template via registry) vence o global —
+    // o achatamento pro nível-email mandava toda imagem como 4:5.
+    const blockAspect =
+      bp?.image_aspect && isAspectKey(bp.image_aspect) ? bp.image_aspect : null
+
+    // Geração por SLOT: `content.images` guarda uma URL por campo
+    // `imagem_gerada`. Uma entrada por slot, endereçada por `field_key` —
+    // é o que permite ao image-merge preencher os N tokens do bloco em vez
+    // de só o primeiro.
+    //
+    // A ÂNCORA (a que também está espelhada em `content.image_url`) mantém
+    // o id `IMG_{position}`: o adaptador do runner deriva `position` do id
+    // com `^IMG_(\d+)$`, e trocar o id da âncora quebraria esse casamento
+    // em silêncio. Os demais slots levam o sufixo da key.
+    const images =
+      content.images && typeof content.images === "object"
+        ? (content.images as Record<string, { url?: unknown; alt?: unknown }>)
+        : null
+    const anchorUrl = (content.image_url as string | undefined)?.trim()
+    const aspectFor = (fieldKey: string): string => {
+      const f = bp?.fields?.find(
+        (x) => (x as { key?: string }).key === fieldKey,
+      ) as { image_aspect?: string | null } | undefined
+      const a = f?.image_aspect
+      return a && isAspectKey(a) ? a : (blockAspect ?? globalAspect)
+    }
+
+    if (images) {
+      for (const [fieldKey, val] of Object.entries(images)) {
+        const slotUrl = typeof val?.url === "string" ? val.url.trim() : ""
+        if (!slotUrl) continue
+        const isAnchor = !!anchorUrl && slotUrl === anchorUrl
+        entries.push({
+          id: isAnchor
+            ? `IMG_${blk.position}`
+            : `IMG_${blk.position}_${fieldKey.toUpperCase()}`,
+          url: slotUrl,
+          field_key: fieldKey,
+          block_position: blk.position,
+          tag: isAnchor ? imageTag : null,
+          block_type: blk.block_type,
+          aspect_ratio: aspectFor(fieldKey),
+          render_width_px: renderWidthFor(imageTag, blk.block_type),
+          overlay: blk.block_type === "hero" ? heroOverlay : "burned",
+        })
+      }
+    } else if (anchorUrl) {
+      // LEGADO: bloco gerado antes da geração por slot — uma imagem só.
       entries.push({
         id: `IMG_${blk.position}`,
-        url,
+        url: anchorUrl,
+        block_position: blk.position,
         tag: imageTag,
         block_type: blk.block_type,
         aspect_ratio: blockAspect ?? globalAspect,
@@ -356,6 +412,7 @@ export function buildImageMap(
       entries.push({
         id: `IMG_${blk.position}_AVATAR_${idx + 1}`,
         url: avatarUrl,
+        block_position: blk.position,
         tag: `REVIEW_${idx + 1}_IMAGE`,
         block_type: blk.block_type,
         aspect_ratio: "1:1",

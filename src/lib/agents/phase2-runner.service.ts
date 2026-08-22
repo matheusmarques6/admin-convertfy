@@ -32,6 +32,7 @@ import type {
   TopProduct,
 } from "@/types/email-workspace"
 import type {
+  BlueprintBlockField,
   EmailAgentConfig,
   EmailBlueprint,
   QaIssue,
@@ -50,7 +51,7 @@ import {
   deriveFieldNature,
 } from "./shared/component-dimensions"
 import {
-  resolveAspectForBlock,
+  resolveAspectForField,
   blockAspectFromBlueprint,
   imageDimsFromBlueprint,
   aspectInstructionForPrompt,
@@ -138,7 +139,8 @@ import {
   resolveCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
-import { MAX_AI_IMAGES } from "./image/limits"
+import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
+import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
 import { loadTopProducts } from "./top-products"
 import {
   loadEffectiveBlueprint,
@@ -147,6 +149,69 @@ import {
 import { isBrandConfirmed } from "./html/brand-guards"
 
 const log = logger.child("Phase2Runner")
+
+// ── Fase de imagem: geração por SLOT ──────────────────────────────────
+//
+// Um bloco gera uma imagem POR CAMPO `imagem_gerada` do schema. Até 22/08
+// gerava uma só, e a variante `produtos 7 - dois produtos` (8 slots) saía
+// com sete `<img src="">` no e-mail do cliente.
+
+/** Item da worklist: o campo, o grupo dele e o papel na ordem de geração. */
+type SlotWork = ReturnType<typeof flattenGroups>[number]
+
+/**
+ * Concorrência da fase de imagem. Antes era `allSettled` sem limite sobre no
+ * máximo 4 blocos; com ~16 slots por e-mail, disparar todos de uma vez vira
+ * martelo no provedor.
+ */
+function imageConcurrency(): number {
+  const env = Number(process.env.IMAGE_CONCURRENCY)
+  return Number.isFinite(env) && env > 0 ? Math.floor(env) : 6
+}
+
+/**
+ * Orçamento de tempo da fase de imagem. Não existia — só a cadeia de
+ * formatação tinha guard (`PHASE2_CHAIN_BUDGET_MS`). Com uma imagem por
+ * bloco o risco era baixo; com uma por slot, um e-mail pesado encosta no
+ * `maxDuration` da rota (800s) e morre sem gravar nada. Estourado, para de
+ * lançar slots novos e segue para o HTML com o que já tem.
+ */
+function imagePhaseBudgetMs(): number {
+  const env = Number(process.env.IMAGE_PHASE_BUDGET_MS)
+  return Number.isFinite(env) && env > 0 ? env : 600_000
+}
+
+/**
+ * Campos do bloco. `email_blocks.fields` é o contrato da instância
+ * (migration 20261065) e vence; o blueprint é fallback para linhas
+ * anteriores a ela.
+ */
+function fieldsForImageBlock(
+  blk: { position?: number | null; block_type?: string | null; fields?: unknown },
+  blueprint: { blocks?: unknown } | null | undefined,
+): BlueprintBlockField[] {
+  if (Array.isArray(blk.fields) && blk.fields.length > 0) {
+    return blk.fields as BlueprintBlockField[]
+  }
+  const bpBlocks = (blueprint?.blocks ?? []) as Array<{
+    type?: string
+    fields?: BlueprintBlockField[]
+  }>
+  const pos = blk.position ?? null
+  const byIndex = (i: number) => {
+    const cand = bpBlocks[i]
+    return cand && cand.type === blk.block_type ? cand : null
+  }
+  const matched =
+    pos != null ? (byIndex(pos - 1) ?? byIndex(pos)) : null
+  return Array.isArray(matched?.fields) ? matched.fields : []
+}
+
+/** Blocos únicos por id, preservando a ordem. */
+function dedupeBlocks<T extends { id: unknown }>(blocks: T[]): T[] {
+  const seen = new Set<unknown>()
+  return blocks.filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)))
+}
 
 /**
  * true se o email é "somente texto" (email_blueprints.text_only). No fluxo
@@ -796,29 +861,21 @@ export async function runPhase2Image(
   // ── Step 1: Image generation (se habilitado) ─────────────────────────
   if (ctx.generateImages) {
     // Seleção por needs_image (o checkbox "imagem" do blueprint), não mais
-    // por block_type hardcoded. Ordena por position (prioriza topo do email)
-    // e aplica o teto MAX_AI_IMAGES.
+    // por block_type hardcoded. Ordena por position (prioriza topo do email).
+    //
+    // O teto NÃO entra aqui: ele conta IMAGENS, e um bloco gera uma imagem
+    // por slot do schema. Cortar blocos na query era o que fazia o Welcome 1
+    // da Luxe Lift perder a seção de reviews inteira (5 blocos marcados,
+    // teto de 4 BLOCOS) — o corte agora é na worklist, por slot.
+    //
+    // `fields` é o contrato do bloco (migration 20261065): é dele que saem
+    // os slots de imagem. Sem ele o bloco cai no caminho legado (1 imagem).
     const { data: imageBlocks } = await admin
       .from("email_blocks")
-      .select("id, block_type, label, content, position, needs_image")
+      .select("id, block_type, label, content, position, needs_image, fields")
       .eq("email_id", emailId)
       .eq("needs_image", true)
       .order("position", { ascending: true })
-      .limit(MAX_AI_IMAGES)
-
-    // Observabilidade: avisa se há mais blocos marcados do que o teto permite.
-    const { count: needsImageCount } = await admin
-      .from("email_blocks")
-      .select("id", { count: "exact", head: true })
-      .eq("email_id", emailId)
-      .eq("needs_image", true)
-    if ((needsImageCount ?? 0) > MAX_AI_IMAGES) {
-      log.warn("phase2.image.capped", {
-        emailId,
-        needsImageCount,
-        cap: MAX_AI_IMAGES,
-      })
-    }
 
     // ── Direção fotográfica por variante (migration 20261060) ──────
     // Uma query por email: as variantes que o Montador casou aos blocos
@@ -844,7 +901,6 @@ export async function runPhase2Image(
     // (o HTML usa placeholder/slot vazio). O banner do modo teste já avisa que o
     // email pode sair com visual incompleto. Sem isso, 1 timeout/erro de imagem
     // matava o email inteiro e o HTML nunca rodava.
-    const imageTotal = (imageBlocks ?? []).length
     type ImageBlockRow = NonNullable<typeof imageBlocks>[number]
 
     // Geracao das imagens em PARALELO (antes sequencial ~90s x N). Cada bloco
@@ -1027,12 +1083,23 @@ export async function runPhase2Image(
       return okCount > 0
     }
 
-    const processImageBlock = async (blk: ImageBlockRow): Promise<boolean> => {
-      // Testimonials tem semântica especial: 1 avatar por item, não 1 imagem
-      // pro bloco. Roteia antes do fluxo normal.
-      if ((blk.block_type as string) === "testimonials") {
-        return processTestimonialAvatars(blk)
-      }
+    /**
+     * Gera UMA imagem: a do `slot` (um campo `imagem_gerada` do schema do
+     * bloco) ou, quando `slot` é null, a imagem única do bloco — caminho
+     * legado para bloco sem schema de imagem.
+     *
+     * `referenceUrl` é a imagem da ÂNCORA do grupo, passada aos slots
+     * dependentes para que a miniatura mostre o mesmo item, cor e luz da
+     * foto grande. É o que o cadastro pede ("o mesmo item e cor", "mesmo
+     * enquadramento e mesma luz do painel 1").
+     */
+    const runImageSlot = async (
+      blk: ImageBlockRow,
+      slot: SlotWork | null,
+      referenceUrl?: string | null,
+    ): Promise<{ ok: boolean; fieldKey: string | null; url: string | null; alt: string }> => {
+      const fieldKey = slot?.field.key ?? null
+      const fail = { ok: false, fieldKey, url: null, alt: "" }
       const imgT0 = Date.now()
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined
@@ -1100,7 +1167,10 @@ export async function runPhase2Image(
         )
         const blockAspectIsValid =
           !!blockAspectRaw && isAspectKey(blockAspectRaw)
-        const aspect: AspectKey = resolveAspectForBlock({
+        const aspect: AspectKey = resolveAspectForField({
+          // O aspect do SLOT vence: uma variante mistura 9:16 (foto grande)
+          // com 4:5 (miniaturas), e herdar o do bloco gera errado.
+          fieldAspect: slot?.field.image_aspect ?? null,
           blockAspect: blockAspectRaw,
           blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
           flowType: ctx.flowType,
@@ -1140,6 +1210,7 @@ export async function runPhase2Image(
             | undefined,
           blk.position as number | undefined,
           blk.block_type as string | undefined,
+          fieldKey,
         )
 
         // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
@@ -1212,6 +1283,8 @@ export async function runPhase2Image(
           aspect,
           mode,
           photoDirectionByVariant,
+          // Um slot por chamada: o prompt carrega só o brief deste campo.
+          fieldKey,
         })
 
         // Se config existe no DB: renderImageTemplate (handlebars-lite,
@@ -1274,6 +1347,16 @@ export async function runPhase2Image(
               mode === "product_ref" && topProductImageUrl
                 ? topProductImageUrl
                 : undefined,
+            // Coerência dentro do grupo: a miniatura nasce DA foto grande.
+            // Vazio quando a âncora falhou — o slot gera sozinho em vez de
+            // cascatear a falha.
+            ...(referenceUrl
+              ? {
+                  referenceImages: [
+                    { label: "anchor", url: referenceUrl },
+                  ],
+                }
+              : {}),
             // Master Prompt v2: Part A do email_agent_configs.system_prompt.
             // Quando ausente (config v1 ainda ativa), generateEmailImage
             // não envia role:"system" e mantém comportamento legacy.
@@ -1298,13 +1381,10 @@ export async function runPhase2Image(
         } catch {
           altText = (blk.label as string) ?? ""
         }
-        const merged = {
-          ...((blk.content as Record<string, unknown>) ?? {}),
-          image_url: imageUrl,
-          image_alt: altText,
-        }
-        await admin.from("email_blocks").update({ content: merged }).eq("id", blk.id)
-
+        // NÃO grava aqui: os slots do mesmo bloco correm em paralelo e um
+        // read-modify-write por slot faria o último sobrescrever os outros.
+        // Quem persiste é o orquestrador, uma vez por bloco, depois que
+        // todos os slots dele assentam.
         await finishGenerationRun(imgRunId, {
           storeId,
           flowId,
@@ -1320,12 +1400,25 @@ export async function runPhase2Image(
           tokensInput: imgMeta.tokensInput,
           tokensOutput: imgMeta.tokensOutput,
           costCents: imgMeta.costCents,
-          parsedOutput: { blockId: blk.id, imageUrl },
+          parsedOutput: {
+            blockId: blk.id,
+            imageUrl,
+            // O endereço do slot. Sem ele o reuse (agente desligado) não
+            // sabe em qual campo regravar a URL e volta a 1 imagem/bloco.
+            fieldKey,
+            groupKey: slot?.groupKey ?? null,
+            role: slot?.role ?? null,
+          },
         })
-        return true
+        return { ok: true, fieldKey, url: imageUrl, alt: altText }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro na imagem"
-        log.error("phase2.image.error", { emailId, blockId: blk.id, error: msg })
+        log.error("phase2.image.error", {
+          emailId,
+          blockId: blk.id,
+          fieldKey,
+          error: msg,
+        })
         await finishGenerationRun(imgRunId, {
           storeId,
           flowId,
@@ -1342,21 +1435,174 @@ export async function runPhase2Image(
           tokensInput: imgMeta.tokensInput,
           tokensOutput: imgMeta.tokensOutput,
           costCents: imgMeta.costCents,
+          parsedOutput: {
+            blockId: blk.id,
+            fieldKey,
+            groupKey: slot?.groupKey ?? null,
+            role: slot?.role ?? null,
+          },
         })
         // NÃO aborta: sinaliza falha e deixa as outras imagens seguirem. O
-        // bloco fica sem `image_url` (placeholder no HTML). Quem decide o
-        // estado terminal do email é a fase HTML+QA, não uma imagem isolada.
-        return false
+        // slot fica sem URL (o image-merge remove a linha ou limpa o token).
+        // Quem decide o estado terminal do email é a fase HTML+QA, não uma
+        // imagem isolada.
+        return fail
       }
     }
 
-    const imageResults = await Promise.allSettled(
-      (imageBlocks ?? []).map((blk) => processImageBlock(blk)),
+    // ── Worklist: um item por SLOT, não por bloco ────────────────────
+    //
+    // Testimonials mantém a semântica própria (1 avatar por depoimento) e
+    // fica fora da worklist.
+    const testimonialBlocks = (imageBlocks ?? []).filter(
+      (b) => (b.block_type as string) === "testimonials",
     )
-    const imageFailures = imageResults.filter(
+    const slotBlocks = (imageBlocks ?? []).filter(
+      (b) => (b.block_type as string) !== "testimonials",
+    )
+    const work = buildImageWorklist(
+      slotBlocks,
+      (blk) => fieldsForImageBlock(blk, ctx.blueprint),
+      MAX_AI_IMAGES,
+      selectImageSlots,
+    )
+    const selected = [...work.anchors, ...work.dependents]
+
+    if (work.droppedByCap > 0) {
+      log.warn("phase2.image.capped", {
+        emailId,
+        generating: selected.length,
+        dropped: work.droppedByCap,
+        cap: MAX_AI_IMAGES,
+      })
+    }
+    if (work.lockupSkipped > 0) {
+      // Slot de lockup/ícone não vai ao modelo (wordmark e line-art saem
+      // deformados). Registrado para não virar omissão silenciosa.
+      log.info("phase2.image.lockup_slots_skipped", {
+        emailId,
+        count: work.lockupSkipped,
+      })
+    }
+
+    // Acumulador por bloco: os slots do mesmo bloco correm em paralelo, e
+    // gravar `content` dentro de cada um faria o último sobrescrever os
+    // outros. Persiste uma vez por bloco, ao fim de cada onda.
+    const imagesByBlock = new Map<
+      string,
+      Record<string, { url: string; alt: string }>
+    >()
+    const anchorUrlByGroup = new Map<string, string>()
+
+    const persistBlock = async (blk: ImageBlockRow): Promise<void> => {
+      const images = imagesByBlock.get(blk.id as string)
+      if (!images || Object.keys(images).length === 0) return
+      const content = (blk.content as Record<string, unknown>) ?? {}
+      const anchorKey = Object.keys(images)[0]
+      await admin
+        .from("email_blocks")
+        .update({
+          content: {
+            ...content,
+            images,
+            // ESPELHO da imagem principal do bloco. Todo o preview do
+            // designer (render-html, email-detail-view, email-card) lê
+            // `image_url`; mantê-lo evita quebrar essas telas de graça.
+            image_url: images[anchorKey].url,
+            image_alt: images[anchorKey].alt,
+          },
+        })
+        .eq("id", blk.id)
+    }
+
+    const record = (
+      blk: ImageBlockRow,
+      r: { ok: boolean; fieldKey: string | null; url: string | null; alt: string },
+      groupKey?: string,
+    ): void => {
+      if (!r.ok || !r.url) return
+      const id = blk.id as string
+      const acc = imagesByBlock.get(id) ?? {}
+      // Bloco legado (sem slot) grava numa chave sintética só para o
+      // espelho; o image-merge dele resolve por bloco, não por campo.
+      acc[r.fieldKey ?? "image"] = { url: r.url, alt: r.alt }
+      imagesByBlock.set(id, acc)
+      if (groupKey) anchorUrlByGroup.set(`${id}:${groupKey}`, r.url)
+    }
+
+    const t0Images = Date.now()
+    const budgetLeft = () => imagePhaseBudgetMs() - (Date.now() - t0Images)
+
+    const runWave = async (
+      items: typeof selected,
+      withReference: boolean,
+    ): Promise<number> => {
+      let failures = 0
+      let skippedNoBudget = 0
+      const queue = [...items]
+      const workers = Array.from(
+        { length: Math.min(imageConcurrency(), queue.length) },
+        async () => {
+          for (;;) {
+            const item = queue.shift()
+            if (!item) return
+            if (budgetLeft() <= 0) {
+              skippedNoBudget++
+              continue
+            }
+            const ref =
+              withReference && item.slot
+                ? anchorUrlByGroup.get(`${item.blk.id}:${item.slot.groupKey}`)
+                : undefined
+            try {
+              const r = await runImageSlot(item.blk, item.slot, ref)
+              if (!r.ok) failures++
+              record(
+                item.blk,
+                r,
+                item.slot?.role === "anchor" ? item.slot.groupKey : undefined,
+              )
+            } catch {
+              failures++
+            }
+          }
+        },
+      )
+      await Promise.all(workers)
+      if (skippedNoBudget > 0) {
+        log.warn("phase2.image.out_of_budget", {
+          emailId,
+          skipped: skippedNoBudget,
+          budgetMs: imagePhaseBudgetMs(),
+        })
+      }
+      return failures
+    }
+
+    // ONDA 1 — âncoras e singletons. ONDA 2 — dependentes, cada um com a
+    // imagem da sua âncora como referência visual. Na maioria dos e-mails a
+    // onda 2 é vazia: a biblioteca inteira tem só 4 grupos com mais de um
+    // slot.
+    let imageFailures = await runWave(work.anchors, false)
+    for (const blk of dedupeBlocks(work.anchors.map((w) => w.blk))) {
+      await persistBlock(blk)
+    }
+
+    if (work.dependents.length > 0) {
+      imageFailures += await runWave(work.dependents, true)
+      for (const blk of dedupeBlocks(work.dependents.map((w) => w.blk))) {
+        await persistBlock(blk)
+      }
+    }
+
+    const avatarResults = await Promise.allSettled(
+      testimonialBlocks.map((blk) => processTestimonialAvatars(blk)),
+    )
+    imageFailures += avatarResults.filter(
       (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value === false),
     ).length
 
+    const imageTotal = selected.length + testimonialBlocks.length
     if (imageFailures > 0) {
       log.warn("phase2.image.partial", {
         emailId,
@@ -1365,6 +1611,12 @@ export async function runPhase2Image(
         total: imageTotal,
       })
     }
+    log.info("phase2.image.slots_done", {
+      emailId,
+      slots: selected.length,
+      waves: work.dependents.length > 0 ? 2 : 1,
+      elapsedMs: Date.now() - t0Images,
+    })
   } else {
     // Agente de imagem DESLIGADO (aba Configurações → "Gerar imagens"):
     // reaproveita as imagens da última geração via telemetria em vez de
@@ -2385,7 +2637,14 @@ async function runFormattingChain(p: {
           block_type: e.block_type,
           url: e.url,
           tag: e.tag ?? null,
-          position: Number(/^IMG_(\d+)$/.exec(e.id ?? "")?.[1]) || null,
+          field_key: e.field_key ?? null,
+          // `position` sai do id, e só a entrada ÂNCORA de cada bloco
+          // conserva a forma `IMG_{position}` — os demais slots levam
+          // sufixo. Os outros casam por `field_key`, que é endereço
+          // melhor; este regex fica para o caminho legado.
+          position:
+            e.block_position ??
+            (Number(/^IMG_(\d+)$/.exec(e.id ?? "")?.[1]) || null),
         })),
       })
       await logGenerationRun({

@@ -169,3 +169,138 @@ describe("imageMerge — legado {{X_IMAGE}}", () => {
     expect(r.html).not.toContain("{{BODY_IMAGE}}")
   })
 })
+
+// ── Geração por SLOT: N campos, N URLs ────────────────────────────────
+// Lacuna até 22/08: nenhum teste exercitava 2+ campos `imagem_gerada`
+// recebendo URLs distintas. É exatamente o caso que saía quebrado em
+// produção — a variante `produtos 7 - dois produtos` declara 8 slots e o
+// e-mail chegava com 7 `<img src="">`.
+describe("imageMerge — N imagens por bloco", () => {
+  // Tokens reais da variante `produtos 7 - dois produtos`.
+  const painelHtml = [
+    "<!-- cfy:block:0:products:start -->",
+    "<table>",
+    '<tr><td><img src="URL_FOTO_GRANDE_1" alt="ALT_1"></td></tr>',
+    '<tr><td><img src="URL_FOTO_PEQUENA_1A"></td>',
+    '<td><img src="URL_FOTO_PEQUENA_1B"></td>',
+    '<td><img src="URL_FOTO_PEQUENA_1C"></td></tr>',
+    "</table>",
+    "<!-- cfy:block:0:products:end -->",
+  ].join("\n")
+
+  const painelBlock = block({
+    block_type: "products",
+    position: 4,
+    fields: [
+      imageField("panel_1_main_photo"),
+      imageField("panel_1_thumb_a"),
+      imageField("panel_1_thumb_b"),
+      imageField("panel_1_thumb_c"),
+    ],
+  })
+
+  const mapa = (pares: Array<[string, string]>) =>
+    pares.map(([field_key, url]) => ({
+      block_type: "products",
+      position: 4,
+      field_key,
+      url,
+    }))
+
+  it("4 campos com 4 URLs → 4 tokens preenchidos, nenhum src vazio", () => {
+    const r = run(
+      painelHtml,
+      [painelBlock],
+      mapa([
+        ["panel_1_main_photo", "https://cdn/main.png"],
+        ["panel_1_thumb_a", "https://cdn/a.png"],
+        ["panel_1_thumb_b", "https://cdn/b.png"],
+        ["panel_1_thumb_c", "https://cdn/c.png"],
+      ]),
+    )
+    expect(r.html).toContain('src="https://cdn/main.png"')
+    expect(r.html).toContain('src="https://cdn/a.png"')
+    expect(r.html).toContain('src="https://cdn/b.png"')
+    expect(r.html).toContain('src="https://cdn/c.png"')
+    expect(r.html).not.toContain('src=""')
+    expect(r.report.merged).toBe(4)
+    expect(r.report.slots_total).toBe(4)
+  })
+
+  it("cada URL vai no SEU token (ordinal + ordem), não embaralha", () => {
+    const r = run(
+      painelHtml,
+      [painelBlock],
+      mapa([
+        ["panel_1_main_photo", "https://cdn/GRANDE.png"],
+        ["panel_1_thumb_a", "https://cdn/A.png"],
+        ["panel_1_thumb_b", "https://cdn/B.png"],
+        ["panel_1_thumb_c", "https://cdn/C.png"],
+      ]),
+    )
+    // A ordem no documento tem que espelhar a ordem dos tokens: a foto
+    // grande vem antes dos três thumbs, e A/B/C na sequência. (O `alt` cru
+    // é zerado pelo próprio merge, então não serve de âncora.)
+    const ordem = ["GRANDE", "A", "B", "C"].map((n) =>
+      r.html.indexOf(`https://cdn/${n}.png`),
+    )
+    expect(ordem.every((i) => i >= 0)).toBe(true)
+    expect([...ordem].sort((x, y) => x - y)).toEqual(ordem)
+  })
+
+  it("URLs parciais: quem tem imagem recebe, quem não tem segue a regra antiga", () => {
+    const r = run(
+      painelHtml,
+      [painelBlock],
+      mapa([["panel_1_main_photo", "https://cdn/main.png"]]),
+    )
+    expect(r.html).toContain('src="https://cdn/main.png"')
+    expect(r.report.merged).toBe(1)
+    // Os três thumbs estão na MESMA linha e a linha tem outros tokens de
+    // imagem — não é removível, então os tokens são limpos.
+    expect(r.report.campos.filter((c) => c.motivo === "token_limpo")).toHaveLength(3)
+  })
+
+  it("slot pulado na geração NÃO herda a imagem do bloco por ser o primeiro", () => {
+    // O lockup vem primeiro no schema e a geração o pula de propósito. Sem a
+    // exclusividade entre os dois caminhos ele exibiria a foto no lugar do
+    // wordmark.
+    const html = [
+      "<!-- cfy:block:0:hero:start -->",
+      '<table><tr><td><img src="URL_LOGO_1"></td></tr>',
+      '<tr><td><img src="URL_FOTO_1"></td></tr></table>',
+      "<!-- cfy:block:0:hero:end -->",
+    ].join("\n")
+    const r = run(
+      html,
+      [
+        block({
+          block_type: "hero",
+          position: 1,
+          fields: [imageField("brand_lockup"), imageField("hero_campanha")],
+        }),
+      ],
+      [
+        {
+          block_type: "hero",
+          position: 1,
+          field_key: "hero_campanha",
+          url: "https://cdn/foto.png",
+        },
+      ],
+    )
+    expect(r.html).toContain('src="https://cdn/foto.png"')
+    const lockup = r.report.campos.find((c) => c.key === "brand_lockup")
+    expect(lockup?.para).toBeNull()
+  })
+
+  it("bloco legado (imageMap sem field_key) mantém 1 imagem no primeiro campo", () => {
+    const r = run(
+      painelHtml,
+      [painelBlock],
+      [{ block_type: "products", position: 4, url: "https://cdn/unica.png" }],
+    )
+    expect(r.html).toContain('src="https://cdn/unica.png"')
+    expect(r.report.merged).toBe(1)
+  })
+})

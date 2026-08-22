@@ -89,15 +89,24 @@ export function blockAspectFromBlueprint(
  * Dimensões EXATAS declaradas no campo de imagem do bloco (image_width ×
  * image_height do output_schema, persistidas em blocks[].fields). Casa o
  * email_block (position 1-based) com blueprint.blocks[position-1] por type
- * (mesma convenção do dispatch/aspect) e devolve as dims do PRIMEIRO field
- * type=image com largura E altura > 0. null quando nada declarado — o caller
- * cai no aspect tipado.
+ * (mesma convenção do dispatch/aspect).
+ *
+ * `fieldKey` escolhe DE QUAL slot vêm as dims — obrigatório desde que a
+ * geração passou a ser por campo: num bloco de produtos a foto grande é
+ * 314×733 e as miniaturas 160×182, e gerar as quatro no tamanho da primeira
+ * entrega três imagens com o enquadramento errado. Sem `fieldKey` (ou com
+ * key que não existe) mantém o comportamento antigo — o PRIMEIRO field
+ * type=image com largura E altura > 0 —, que é o certo para bloco de
+ * imagem única e para snapshots legados.
+ *
+ * null quando nada declarado: o caller cai no aspect tipado.
  */
 export function imageDimsFromBlueprint(
   blueprintBlocks:
     | Array<{
         type?: string
         fields?: Array<{
+          key?: string
           type?: string
           image_width?: number | null
           image_height?: number | null
@@ -107,6 +116,7 @@ export function imageDimsFromBlueprint(
     | undefined,
   position: number | null | undefined,
   blockType: string | null | undefined,
+  fieldKey?: string | null,
 ): { width: number; height: number } | null {
   if (!Array.isArray(blueprintBlocks) || position == null || !blockType) {
     return null
@@ -117,13 +127,44 @@ export function imageDimsFromBlueprint(
   }
   const matched = byIndex(position - 1) ?? byIndex(position)
   const fields = Array.isArray(matched?.fields) ? matched.fields : []
-  for (const f of fields) {
-    if (f.type !== "image") continue
+  const dimsOf = (f: {
+    image_width?: number | null
+    image_height?: number | null
+  }): { width: number; height: number } | null => {
     const w = f.image_width ?? 0
     const h = f.image_height ?? 0
-    if (w > 0 && h > 0) return { width: w, height: h }
+    return w > 0 && h > 0 ? { width: w, height: h } : null
+  }
+  if (fieldKey) {
+    const exact = fields.find((f) => f.type === "image" && f.key === fieldKey)
+    if (exact) return dimsOf(exact)
+  }
+  for (const f of fields) {
+    if (f.type !== "image") continue
+    const d = dimsOf(f)
+    if (d) return d
   }
   return null
+}
+
+/**
+ * Aspect do SLOT, com fallback na cascata do bloco. O `image_aspect` vive no
+ * campo desde o épico Taguedor (62 dos 76 campos da biblioteca o declaram),
+ * mas até a geração virar por campo ninguém o lia — todo slot herdava o
+ * aspect do bloco. Numa variante que mistura 9:16 (foto grande) com 4:5
+ * (miniaturas), herdar é gerar errado.
+ */
+export function resolveAspectForField(input: {
+  fieldAspect?: string | null
+  blockAspect?: AspectKey | string | null
+  blueprintAspect?: AspectKey | string | null
+  flowType?: string | null
+  emailNumber?: number | null
+}): AspectKey {
+  if (input.fieldAspect && isAspectKey(input.fieldAspect)) {
+    return input.fieldAspect
+  }
+  return resolveAspectForBlock(input)
 }
 
 export function resolveAspectForBlock(input: {

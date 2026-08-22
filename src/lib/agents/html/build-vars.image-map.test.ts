@@ -152,3 +152,88 @@ describe("buildImageMap", () => {
     expect(entries).toHaveLength(0)
   })
 })
+
+// ── Geração por SLOT (content.images) ─────────────────────────────────
+describe("buildImageMap — N entradas por bloco", () => {
+  const bpComSlots: EmailBlueprint = {
+    image_aspect: "4:5",
+    blocks: [
+      {
+        type: "products",
+        label: "Painéis",
+        needs_image: true,
+        image_aspect: "4:3",
+        tags: ["PRODUCTS_IMAGE"],
+        fields: [
+          { key: "panel_1_main_photo", type: "image", image_aspect: "9:16" },
+          { key: "panel_1_thumb_a", type: "image", image_aspect: "4:5" },
+        ],
+      },
+    ],
+  } as unknown as EmailBlueprint
+
+  const blocoComImagens = [
+    block(1, "products", {
+      image_url: "https://cdn/main.png",
+      image_alt: "principal",
+      images: {
+        panel_1_main_photo: { url: "https://cdn/main.png", alt: "principal" },
+        panel_1_thumb_a: { url: "https://cdn/a.png", alt: "detalhe" },
+      },
+    }),
+  ]
+
+  it("emite uma entrada por slot, com field_key e position", () => {
+    const map = buildImageMap(blocoComImagens, bpComSlots)
+    expect(map).toHaveLength(2)
+    expect(map.map((e) => e.field_key)).toEqual([
+      "panel_1_main_photo",
+      "panel_1_thumb_a",
+    ])
+    expect(map.every((e) => e.block_position === 1)).toBe(true)
+  })
+
+  it("a âncora conserva o id IMG_{position} — o regex de position no runner depende disso", () => {
+    const map = buildImageMap(blocoComImagens, bpComSlots)
+    const ancora = map.find((e) => e.field_key === "panel_1_main_photo")
+    const thumb = map.find((e) => e.field_key === "panel_1_thumb_a")
+    expect(ancora?.id).toBe("IMG_1")
+    expect(thumb?.id).toBe("IMG_1_PANEL_1_THUMB_A")
+    // Só a âncora carrega a tag legada do bloco.
+    expect(ancora?.tag).toBe("PRODUCTS_IMAGE")
+    expect(thumb?.tag).toBeNull()
+  })
+
+  it("aspecto vem do CAMPO quando declarado, senão do bloco", () => {
+    const map = buildImageMap(blocoComImagens, bpComSlots)
+    expect(map.find((e) => e.field_key === "panel_1_main_photo")?.aspect_ratio).toBe("9:16")
+    expect(map.find((e) => e.field_key === "panel_1_thumb_a")?.aspect_ratio).toBe("4:5")
+  })
+
+  it("slot com url vazia é ignorado", () => {
+    const map = buildImageMap(
+      [
+        block(1, "products", {
+          images: {
+            a: { url: "https://cdn/a.png" },
+            b: { url: "   " },
+            c: {},
+          },
+        }),
+      ],
+      bpComSlots,
+    )
+    expect(map).toHaveLength(1)
+    expect(map[0].field_key).toBe("a")
+  })
+
+  it("bloco legado (só image_url) segue com uma entrada e sem field_key", () => {
+    const map = buildImageMap(
+      [block(1, "products", { image_url: "https://cdn/unica.png" })],
+      bpComSlots,
+    )
+    expect(map).toHaveLength(1)
+    expect(map[0].id).toBe("IMG_1")
+    expect(map[0].field_key).toBeUndefined()
+  })
+})

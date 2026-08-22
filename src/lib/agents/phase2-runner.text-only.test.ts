@@ -112,7 +112,10 @@ vi.mock("./callbacks/telemetry.callback", () => ({
   computeCostCents: vi.fn(() => 0),
 }))
 vi.mock("./email-generation.service", () => ({ buildImagePromptVars: vi.fn(async () => ({})) }))
-vi.mock("./image/limits", () => ({ MAX_AI_IMAGES: 3 }))
+vi.mock("./image/limits", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./image/limits")>()),
+  MAX_AI_IMAGES: 3,
+}))
 vi.mock("./top-products", () => ({ loadTopProducts: vi.fn(async () => []) }))
 vi.mock("./architect/blueprint-loader", () => ({
   loadEffectiveBlueprint: vi.fn(async () => null),

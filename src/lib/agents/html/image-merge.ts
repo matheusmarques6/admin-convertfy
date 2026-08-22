@@ -48,6 +48,12 @@ export interface ImageMergeMapEntry {
   tag?: string | null
   /** email_blocks.position (1-based) — amarra a URL ao bloco certo. */
   position?: number | null
+  /**
+   * Key do campo `imagem_gerada` que esta URL preenche. É o endereço exato
+   * desde que a geração passou a ser por slot; sem ele a entrada só resolve
+   * no nível do bloco (caminho legado).
+   */
+  field_key?: string | null
 }
 
 export interface ImageMergeInput {
@@ -97,7 +103,12 @@ function markerIndiceByBlock(
   return out
 }
 
-/** URL gerada para o bloco: por position quando o imageMap a carrega. */
+/**
+ * URL gerada para o bloco, sem distinguir campo. LEGADO: só serve a blocos
+ * gerados antes da geração por slot (uma imagem, gravada em
+ * `content.image_url`). Quando o imageMap traz `field_key`, quem manda é
+ * `urlForField`.
+ */
 function urlForBlock(
   block: MergeBlock,
   imageMap: ImageMergeMapEntry[],
@@ -109,6 +120,27 @@ function urlForBlock(
   if (byPosition) return byPosition.url || null
   const sameType = imageMap.filter((e) => e.block_type === block.block_type)
   return sameType[nthOfType]?.url || null
+}
+
+/**
+ * URL do campo, quando o imageMap a endereça por `field_key`. Restringe ao
+ * bloco (por `position`, ou pelo tipo quando o mapa não a carrega) para que
+ * dois blocos com o mesmo nome de slot não roubem a imagem um do outro —
+ * `product_1_photo` existe em mais de uma variante de produtos.
+ */
+function urlForField(
+  block: MergeBlock,
+  imageMap: ImageMergeMapEntry[],
+  fieldKey: string,
+): string | null {
+  const hit = imageMap.find(
+    (e) =>
+      e.field_key === fieldKey &&
+      (e.position != null && block.position != null
+        ? e.position === block.position
+        : e.block_type === block.block_type),
+  )
+  return hit?.url || null
 }
 
 // Token de imagem LEGADO ({{X_IMAGE}}) — templates globais full-doc.
@@ -127,13 +159,33 @@ export function imageMerge(input: ImageMergeInput): {
   )
   const indiceByBlock = markerIndiceByBlock(html, blocks)
 
-  // ── Campos imagem_gerada, com a URL do bloco no PRIMEIRO campo ──────
+  // ── Campos imagem_gerada, cada um com a SUA URL ─────────────────────
+  //
+  // A geração é por slot (uma imagem por campo `imagem_gerada`), então cada
+  // campo se endereça por `field_key` no imageMap. Até 22/08 só o PRIMEIRO
+  // campo do bloco recebia URL e os demais viravam `imagem_sem_url` — foi
+  // assim que o Welcome 1 da Luxe Lift saiu com 12 dos 18 `<img>` em
+  // `src=""` (a variante `produtos 7` declara 8 slots e recebia 1).
+  //
+  // O fallback por BLOCO continua para o que foi gerado antes da mudança:
+  // bloco cujo imageMap não traz `field_key` NENHUM mantém a regra antiga —
+  // primeiro campo leva a imagem única, o resto fica sem URL.
+  //
+  // Os dois caminhos são EXCLUSIVOS de propósito. Misturá-los faria um slot
+  // sem imagem própria herdar a URL do bloco só por ser o primeiro da lista
+  // — e o primeiro pode ser justamente um que a geração pulou (lockup), que
+  // então exibiria a foto da hero no lugar do wordmark.
   const fields: ImageField[] = []
   const nthOfTypeSeen = new Map<string, number>()
   for (const b of blocks) {
     const nth = nthOfTypeSeen.get(b.block_type ?? "") ?? 0
     nthOfTypeSeen.set(b.block_type ?? "", nth + 1)
-    const blockUrl = urlForBlock(b, imageMap, nth)
+    const perField = b.fields.some(
+      (f) =>
+        deriveFieldNature(f) === "imagem_gerada" &&
+        urlForField(b, imageMap, f.key) != null,
+    )
+    const blockUrl = perField ? null : urlForBlock(b, imageMap, nth)
     let first = true
     for (const f of b.fields) {
       if (deriveFieldNature(f) !== "imagem_gerada") continue
@@ -141,9 +193,11 @@ export function imageMerge(input: ImageMergeInput): {
         block_id: b.block_id ?? null,
         blockIndice: indiceByBlock.get(b) ?? null,
         key: f.key,
-        // Um bloco gera UMA imagem hoje (content.image_url) — o primeiro
-        // campo do bloco a recebe; os demais ficam imagem_sem_url.
-        url: first ? blockUrl : null,
+        url: perField
+          ? urlForField(b, imageMap, f.key)
+          : first
+            ? blockUrl
+            : null,
       })
       first = false
     }

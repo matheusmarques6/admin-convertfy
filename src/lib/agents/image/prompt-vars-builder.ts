@@ -85,6 +85,16 @@ export interface ImagePromptVarsInput {
    * segue como antes.
    */
   photoDirectionByVariant?: Record<string, string>
+  /**
+   * Slot alvo desta geração. Desde que a geração virou por campo, cada
+   * chamada corresponde a UM slot — e o prompt precisa carregar só o brief
+   * dele. Sem isto o modelo recebia os N briefs do bloco de uma vez e
+   * devolvia uma imagem só, tentando (mal) atender todos.
+   *
+   * Ausente → IMAGE_SLOTS traz todos os campos do bloco, comportamento
+   * legado usado pelo preview de prompt e por blocos sem schema.
+   */
+  fieldKey?: string | null
 }
 
 /**
@@ -204,7 +214,15 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
   ).trim()
 
-  const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent)
+  // Um slot por chamada: filtra o schema do bloco para o campo alvo. A
+  // `copy_do_grupo` do buildImageSlots continua vindo do content INTEIRO do
+  // bloco, então o slot isolado não perde o contexto de copy dos irmãos.
+  const slotFields = input.fieldKey
+    ? (bpBlock?.fields ?? []).filter(
+        (f) => (f as { key?: string }).key === input.fieldKey,
+      )
+    : bpBlock?.fields
+  const imageSlots = buildImageSlots(slotFields, input.blockContent)
   const legacyImageBrief =
     bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
 

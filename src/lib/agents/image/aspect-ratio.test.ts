@@ -4,6 +4,7 @@ import {
   resolveAspectForBlock,
   blockAspectFromBlueprint,
   imageDimsFromBlueprint,
+  resolveAspectForField,
   aspectInstructionForPrompt,
   dimsInstructionForPrompt,
   isAspectKey,
@@ -290,5 +291,68 @@ describe("dimsInstructionForPrompt", () => {
     expect(dimsInstructionForPrompt(1600, 800, true)).toContain(
       "horizontal landscape",
     )
+  })
+})
+
+describe("dims e aspect POR CAMPO (geração por slot)", () => {
+  // `produtos 7 - dois produtos`: a foto grande e as miniaturas do mesmo
+  // bloco têm geometrias diferentes. Gerar as quatro no tamanho da primeira
+  // entregava três imagens com o enquadramento errado.
+  const blocks = [
+    {
+      type: "products",
+      fields: [
+        {
+          key: "panel_1_main_photo",
+          type: "image",
+          image_width: 314,
+          image_height: 733,
+          image_aspect: "9:16",
+        },
+        {
+          key: "panel_1_thumb_a",
+          type: "image",
+          image_width: 160,
+          image_height: 182,
+          image_aspect: "4:5",
+        },
+      ],
+    },
+  ]
+
+  it("devolve as dims DAQUELE campo, não as do primeiro", () => {
+    expect(
+      imageDimsFromBlueprint(blocks, 1, "products", "panel_1_main_photo"),
+    ).toEqual({ width: 314, height: 733 })
+    expect(
+      imageDimsFromBlueprint(blocks, 1, "products", "panel_1_thumb_a"),
+    ).toEqual({ width: 160, height: 182 })
+  })
+
+  it("sem fieldKey mantém o comportamento antigo (primeiro campo com dims)", () => {
+    expect(imageDimsFromBlueprint(blocks, 1, "products")).toEqual({
+      width: 314,
+      height: 733,
+    })
+  })
+
+  it("fieldKey inexistente cai no primeiro campo com dims", () => {
+    expect(
+      imageDimsFromBlueprint(blocks, 1, "products", "nao_existe"),
+    ).toEqual({ width: 314, height: 733 })
+  })
+
+  it("resolveAspectForField prefere o aspect do campo", () => {
+    expect(
+      resolveAspectForField({ fieldAspect: "9:16", blockAspect: "4:5" }),
+    ).toBe("9:16")
+  })
+
+  it("campo sem aspect (ou inválido) cai na cascata do bloco", () => {
+    expect(resolveAspectForField({ blockAspect: "4:5" })).toBe("4:5")
+    expect(
+      resolveAspectForField({ fieldAspect: "banana", blockAspect: "1:1" }),
+    ).toBe("1:1")
+    expect(resolveAspectForField({})).toBe("4:5")
   })
 })
