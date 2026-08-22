@@ -380,15 +380,37 @@ export function copyMergeByExample(
  * aplicou na região? Comparação pela mesma régua do casamento
  * (normalizeForMatch) — re-espaçar/re-indentar passa; sumir com o texto
  * não. É o guard do desenho "merge antes da hero" (D1).
+ *
+ * A comparação é feita sobre o TEXTO, com o markup removido. O guard
+ * nasceu comparando o fragmento CRU, e isso o transformava num falso
+ * positivo garantido justamente onde o agente faz o trabalho dele: pintar
+ * e destacar. Na Luxe Lift (21/08) o campo `coupon_line` tem guidance
+ * "valor da oferta em bold e na cor de acento"; o agente obedeceu e
+ * devolveu `Enjoy <strong style="color:#B08D57">15%</strong> off your
+ * first order using the code:`. A frase estava inteira e visível, mas
+ * deixou de ser substring contígua — o guard acusou `hero_copy_lost`
+ * quatro vezes seguidas e matou o e-mail em duas gerações.
+ *
+ * Duas formas de remoção porque nenhuma sozinha cobre os dois casos: tag
+ * trocada por ESPAÇO é a forma normal (o wrapper fica entre palavras, e o
+ * espaço extra some no colapso de whitespace), e tag trocada por NADA
+ * cobre o wrapper no meio de uma palavra (`Enjo<em>y</em>`), onde o espaço
+ * partiria a palavra em duas. Basta UMA das duas conter a frase.
+ *
+ * O guard mede sobrevivência do TEXTO, não do layout: valor que o agente
+ * espalhou por células vizinhas conta como preservado. Reprovar é para
+ * quando a frase sumiu de verdade.
  */
 export function heroCopyPreserved(
   heroValues: string[],
   fragment: string,
 ): { ok: boolean; missing: string[] } {
-  const frag = normalizeForMatch(fragment)
+  const spaced = normalizeForMatch(fragment.replace(/<[^>]*>/g, " "))
+  const glued = normalizeForMatch(fragment.replace(/<[^>]*>/g, ""))
   const missing = heroValues.filter((v) => {
     const norm = normalizeForMatch(v)
-    return norm.length >= 4 && !frag.includes(norm)
+    if (norm.length < 4) return false
+    return !spaced.includes(norm) && !glued.includes(norm)
   })
   return { ok: missing.length === 0, missing }
 }

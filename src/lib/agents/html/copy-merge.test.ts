@@ -215,6 +215,36 @@ describe("heroCopyPreserved", () => {
     expect(r.ok).toBe(true)
   })
 
+  it("bold/cor DENTRO da frase passa — é o trabalho do agente, não perda", () => {
+    // Incidente Luxe Lift 21/08: guidance do coupon_line manda "valor da
+    // oferta em bold e na cor de acento". O agente obedeceu e o guard, que
+    // comparava o fragmento CRU, acusou copy perdida em 4 tentativas.
+    const r = heroCopyPreserved(
+      ["Enjoy 15% off your first order using the code:"],
+      `<tr><td style="font-size:22px;">
+         Enjoy <strong style="color:#B08D57;">15%</strong> off your first order using the code:
+       </td></tr>`,
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it("wrapper no meio da palavra passa (forma colada)", () => {
+    const r = heroCopyPreserved(
+      ["Bem-vinda à loja"],
+      "<td>Bem-vind<em>a</em> à loja</td>",
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it("texto realmente removido continua reprovando", () => {
+    const r = heroCopyPreserved(
+      ["Enjoy 15% off your first order using the code:", "WELCOME15"],
+      '<tr><td><strong style="color:#B08D57;">WELCOME15</strong></td></tr>',
+    )
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(["Enjoy 15% off your first order using the code:"])
+  })
+
   it("lista vazia passa sempre (resume, região sem copy do merge)", () => {
     expect(heroCopyPreserved([], "<tr></tr>").ok).toBe(true)
   })

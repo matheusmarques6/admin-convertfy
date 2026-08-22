@@ -79,7 +79,7 @@ import {
 } from "./chains/text-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
 import type { FormatChainConfig } from "./chains/format-invoke"
-import { usageOf } from "./chains/step-usage"
+import { attachUsage, usageOf } from "./chains/step-usage"
 import {
   loadFormatChainContext,
   resolveHeroVariant,
@@ -2200,11 +2200,23 @@ async function runFormattingChain(p: {
         // o texto derruba a tentativa e o retry cobra de novo).
         const preserved = heroCopyPreserved(heroValues, r.output)
         if (!preserved.ok) {
-          throw new Error(
+          // O output CRU e o consumo vão grudados no erro: a chamada foi
+          // PAGA e este é o run que mais precisa ser depurado. Sem isso o
+          // painel mostra 0 token, $0 e as abas "Prompt"/"Saída" vazias —
+          // foi assim que o falso positivo de markup na frase (21/08)
+          // sobreviveu a quatro tentativas sem deixar rastro nenhum.
+          const err = new Error(
             `guard: hero_copy_lost: ${preserved.missing
               .map((m) => m.slice(0, 60))
               .join(" | ")}`,
-          )
+          ) as Error & { raw?: string }
+          err.raw = r.rawOutput
+          throw attachUsage(err, {
+            tokensInput: r.tokensInput,
+            tokensOutput: r.tokensOutput,
+            costUsd: r.costUsd,
+            renderedPrompt: r.renderedPrompt,
+          })
         }
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
