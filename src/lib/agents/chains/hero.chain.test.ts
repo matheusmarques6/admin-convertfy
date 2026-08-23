@@ -6,6 +6,7 @@ import {
   parseHeroReport,
   decideHeroVision,
   buildHeroSystemPrompt,
+  buildHeroRetryNote,
   HERO_VISION_MODEL,
   DEFAULT_HERO_SYSTEM_PROMPT,
   DEFAULT_HERO_USER_TEMPLATE,
@@ -295,5 +296,31 @@ describe("relatório solto, sem as tags", () => {
     expect(parseHeroFragment(`<CFY_HERO_OUTPUT>${frag}</CFY_HERO_OUTPUT>`)).toBe(
       frag,
     )
+  })
+})
+
+describe("buildHeroRetryNote — a reclamação do guard chega ao modelo", () => {
+  // O retry sempre rodou o prompt IDÊNTICO. Contra um desacordo
+  // determinístico (o agente refazendo o que a instrução manda), a 2ª
+  // chamada só repetia a 1ª: Luxe Lift 23/08, mesma frase, 44,1s e 44,9s.
+  const nota = buildHeroRetryNote([
+    "Luxe Lift",
+    "Enjoy 15% off your first order",
+  ])
+
+  it("lista as frases que precisam voltar", () => {
+    expect(nota).toContain("- Luxe Lift")
+    expect(nota).toContain("- Enjoy 15% off your first order")
+  })
+
+  it("não desmente o próprio prompt: trocar wordmark por logo segue valendo", () => {
+    // Sem isto a nota mandaria o agente desfazer o que a instrução da
+    // linha do logo manda fazer — e o e-mail sairia sem a marca real.
+    expect(nota).toContain("alt/title counts as keeping it")
+  })
+
+  it("nomeia o que NÃO é permitido", () => {
+    expect(nota).toContain("dropping the sentence")
+    expect(nota).toContain("removing the row")
   })
 })

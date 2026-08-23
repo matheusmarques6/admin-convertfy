@@ -248,6 +248,48 @@ describe("heroCopyPreserved", () => {
   it("lista vazia passa sempre (resume, região sem copy do merge)", () => {
     expect(heroCopyPreserved([], "<tr></tr>").ok).toBe(true)
   })
+
+  it("wordmark virado logo passa pelo alt — o prompt MANDA fazer isso", () => {
+    // Incidente Luxe Lift 23/08: o campo de copy `logo` traz o nome da
+    // marca, e o prompt da hero manda trocar o wordmark em texto pelo
+    // <img> do logo real. O agente obedeceu, manteve a marca no alt, e o
+    // guard (que apagava a tag inteira) matou o e-mail duas vezes.
+    const r = heroCopyPreserved(
+      ["Luxe Lift", "SHOP 10% OFF"],
+      '<tr><td><img src="https://cdn/logo_main.png" alt="Luxe Lift" width="152" /></td></tr>' +
+        '<tr><td><a href="https://loja.com">SHOP 10% OFF</a></td></tr>',
+    )
+    expect(r.ok).toBe(true)
+    // Só a marca foi salva pelo atributo; o CTA sobreviveu como texto.
+    expect(r.viaAtributo).toEqual(["Luxe Lift"])
+  })
+
+  it("title e aria-label contam do mesmo jeito", () => {
+    expect(
+      heroCopyPreserved(["Luxe Lift"], '<img title="Luxe Lift" src="x.png" />').ok,
+    ).toBe(true)
+    expect(
+      heroCopyPreserved(["Luxe Lift"], '<a aria-label="Luxe Lift" href="#"></a>').ok,
+    ).toBe(true)
+  })
+
+  it("frase só dentro de src/href NÃO conta — URL não é copy entregue", () => {
+    const r = heroCopyPreserved(
+      ["Luxe Lift"],
+      '<tr><td><a href="https://loja.com/luxe-lift"><img src="/luxe-lift.png" /></a></td></tr>',
+    )
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(["Luxe Lift"])
+  })
+
+  it("valor que sobreviveu como TEXTO não entra em viaAtributo", () => {
+    const r = heroCopyPreserved(
+      ["Luxe Lift"],
+      '<tr><td>Luxe Lift</td><td><img alt="Luxe Lift" src="x.png" /></td></tr>',
+    )
+    expect(r.ok).toBe(true)
+    expect(r.viaAtributo).toEqual([])
+  })
 })
 
 describe("applyStructuralFills — tokens reais da biblioteca", () => {

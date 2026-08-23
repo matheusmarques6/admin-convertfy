@@ -2513,6 +2513,15 @@ async function runFormattingChain(p: {
       modelOverride: ctx.heroVisionModel,
     })
 
+    // Frases que o guard derrubou na tentativa anterior. O retry sempre
+    // rodou o prompt IDÊNTICO — a reclamação nunca chegava ao modelo, e
+    // contra um desacordo determinístico a 2ª chamada só repetia a 1ª
+    // (Luxe Lift 23/08: mesma frase, 44,1s e 44,9s). As tentativas são
+    // sequenciais, então a variável de fechamento basta; se o processo
+    // serverless recomeçar entre elas, degrada para o comportamento antigo
+    // (`priorErrors` vem do banco, esta lista não).
+    let faltantesAnteriores: string[] = []
+
     const outcome = await executeFormatStep<string>({
       ids,
       agent: "hero_section",
@@ -2526,6 +2535,7 @@ async function runFormattingChain(p: {
           config,
           vars,
           vision: visionDecision,
+          missingCopy: faltantesAnteriores,
           // A região é trocada pelo fragmento NO MESMO lugar: ele tem de
           // voltar com a mesma fronteira. Em modo marker a região é uma
           // <tr>; em modo tag, uma <table>.
@@ -2539,6 +2549,7 @@ async function runFormattingChain(p: {
         // o texto derruba a tentativa e o retry cobra de novo).
         const preserved = heroCopyPreserved(heroValues, r.output)
         if (!preserved.ok) {
+          faltantesAnteriores = preserved.missing
           // O output CRU e o consumo vão grudados no erro: a chamada foi
           // PAGA e este é o run que mais precisa ser depurado. Sem isso o
           // painel mostra 0 token, $0 e as abas "Prompt"/"Saída" vazias —
@@ -2555,6 +2566,12 @@ async function runFormattingChain(p: {
             tokensOutput: r.tokensOutput,
             costUsd: r.costUsd,
             renderedPrompt: r.renderedPrompt,
+          })
+        }
+        if (preserved.viaAtributo.length > 0) {
+          log.warn("phase2.fmt.hero_copy_via_alt", {
+            emailId,
+            valores: preserved.viaAtributo,
           })
         }
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
@@ -2576,6 +2593,12 @@ async function runFormattingChain(p: {
             // fragmento vale do mesmo jeito; só a observabilidade se perde.
             hero_report: r.report,
             hero_report_missing: r.report === null,
+            // Copy que sobreviveu SÓ no alt/title — o wordmark trocado
+            // pelo logo é o caso normal. Medir a frequência é o que
+            // impede a permissão de virar silêncio.
+            ...(preserved.viaAtributo.length > 0
+              ? { hero_copy_via_alt: preserved.viaAtributo }
+              : {}),
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
             rendered_reference: heroRendered

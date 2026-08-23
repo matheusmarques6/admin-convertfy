@@ -811,6 +811,56 @@ describe("merge por example — caso-mestre", () => {
     ).toBe(true)
   })
 
+  it("guard da hero: wordmark trocado pelo logo passa — a marca fica no alt", async () => {
+    // Incidente Luxe Lift 23/08: o prompt da hero MANDA trocar o nome da
+    // marca em texto pelo <img> do logo, e o guard matava o e-mail por
+    // isso — o strip de tags apagava o alt junto com a tag.
+    setupExampleCase()
+    invokeHeroChain.mockResolvedValue({
+      ...chainResultBase,
+      output: [
+        '<table role="presentation">',
+        '<tr><td><img src="https://cdn/logo.png" alt="Última chamada do inverno" /></td></tr>',
+        '<tr><td><a href="https://loja.com/colecao">Ver ofertas</a></td></tr></table>',
+      ].join("\n"),
+      mode: "fragment",
+    })
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    const run = runsOf("hero_section")[0]
+    expect(run.status).toBe("success")
+    expect((run.parsed_output as Row).hero_copy_via_alt).toEqual([
+      "Última chamada do inverno",
+    ])
+  })
+
+  it("retry da hero recebe as frases que faltaram na tentativa anterior", async () => {
+    setupExampleCase()
+    // 1ª tentativa perde a copy; 2ª devolve o fragmento correto.
+    invokeHeroChain
+      .mockResolvedValueOnce({
+        ...chainResultBase,
+        output: '<table role="presentation"><tr><td>Headline inventada</td></tr></table>',
+        mode: "fragment",
+      })
+      .mockResolvedValue({
+        ...chainResultBase,
+        output: EXAMPLE_HERO_FRAGMENT,
+        mode: "fragment",
+      })
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+
+    // A 1ª chamada não carrega nota; a 2ª carrega o que o guard acusou.
+    const primeira = invokeHeroChain.mock.calls[0][0] as { missingCopy?: string[] }
+    const segunda = invokeHeroChain.mock.calls[1][0] as { missingCopy?: string[] }
+    expect(primeira.missingCopy ?? []).toEqual([])
+    expect(segunda.missingCopy).toEqual([
+      "Última chamada do inverno",
+      "Ver ofertas",
+    ])
+  })
+
   it("guard da hero: fragmento re-espaçado passa (mesma régua do casamento)", async () => {
     setupExampleCase()
     invokeHeroChain.mockResolvedValue({

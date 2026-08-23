@@ -400,19 +400,54 @@ export function copyMergeByExample(
  * O guard mede sobrevivência do TEXTO, não do layout: valor que o agente
  * espalhou por células vizinhas conta como preservado. Reprovar é para
  * quando a frase sumiu de verdade.
+ *
+ * Terceira forma, o texto de ATRIBUTO (23/08): o campo `logo` da hero é
+ * copy — o nome da marca —, e o prompt da hero manda, com todas as letras,
+ * trocar o wordmark em texto pelo `<img>` do logo real. O agente obedeceu e
+ * devolveu `<img src="...logo.png" alt="Luxe Lift">`. A marca não sumiu:
+ * está na tela como logo e no `alt` (leitor de tela, e Gmail/Outlook com
+ * imagens desligadas mostram o alt). Mas o strip de tags apaga o atributo
+ * JUNTO com a tag, e o guard matou o e-mail duas vezes. O prompt mandava
+ * fazer; o guard matava por ter feito.
+ *
+ * Só `alt`/`title`/`aria-label` — o que um leitor (humano ou de tela)
+ * alcança. `src`/`href` ficam de fora: URL que por acaso contenha a frase
+ * não é a frase entregue.
  */
+
+/** Texto que um leitor alcança nos atributos — nunca `src`/`href`. */
+const READABLE_ATTR_RE = /\b(?:alt|title|aria-label)\s*=\s*"([^"]*)"/gi
+
+function attributeText(fragment: string): string {
+  const partes: string[] = []
+  for (const m of fragment.matchAll(READABLE_ATTR_RE)) partes.push(m[1])
+  return normalizeForMatch(partes.join(" "))
+}
+
 export function heroCopyPreserved(
   heroValues: string[],
   fragment: string,
-): { ok: boolean; missing: string[] } {
+): { ok: boolean; missing: string[]; viaAtributo: string[] } {
   const spaced = normalizeForMatch(fragment.replace(/<[^>]*>/g, " "))
   const glued = normalizeForMatch(fragment.replace(/<[^>]*>/g, ""))
-  const missing = heroValues.filter((v) => {
+  const attrs = attributeText(fragment)
+
+  const missing: string[] = []
+  // Salvos SÓ pelo atributo. Sem esta lista a correção vira silêncio e
+  // ninguém sabe com que frequência o agente converte copy em imagem.
+  const viaAtributo: string[] = []
+
+  for (const v of heroValues) {
     const norm = normalizeForMatch(v)
-    if (norm.length < 4) return false
-    return !spaced.includes(norm) && !glued.includes(norm)
-  })
-  return { ok: missing.length === 0, missing }
+    if (norm.length < 4) continue
+    if (spaced.includes(norm) || glued.includes(norm)) continue
+    if (attrs.includes(norm)) {
+      viaAtributo.push(v)
+      continue
+    }
+    missing.push(v)
+  }
+  return { ok: missing.length === 0, missing, viaAtributo }
 }
 
 // ── Estruturais — posse do CÓDIGO, nunca do LLM ────────────────────────

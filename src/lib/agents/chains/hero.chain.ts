@@ -534,6 +534,31 @@ It is NOT your reference for structure, and <hero_variant_rendered> arrives EMPT
 The example may show an older version of the variant. Treat it as a photo of the intended finish, never as a spec to restore.
 </attached_example>`
 
+/**
+ * Nota anexada ao fim do user message QUANDO a tentativa anterior morreu no
+ * guard `hero_copy_lost`.
+ *
+ * O retry sempre rodou o prompt IDÊNTICO: a reclamação do guard nunca
+ * chegava ao modelo. Contra um desacordo determinístico — o agente fazendo
+ * de novo exatamente o que a instrução manda — isso é uma segunda chamada
+ * paga para obter a mesma resposta (Luxe Lift 23/08: duas tentativas, mesma
+ * frase, 44,1s e 44,9s).
+ *
+ * Vai no CÓDIGO e não no `user_template` de propósito: o template vive em
+ * `email_agent_configs`, e uma var nova ali exigiria migration para um
+ * texto que só existe na 2ª tentativa.
+ */
+export function buildHeroRetryNote(missing: string[]): string {
+  const lista = missing.map((m) => `  - ${m}`).join("\n")
+  return `<previous_attempt_rejected>
+Your previous answer was REJECTED by an automated check: these sentences, which the deterministic merge had already written into the region, were missing from your fragment.
+
+${lista}
+
+Each of them must come back. Keeping a sentence inside an image's alt/title counts as keeping it — swapping a styled wordmark for the logo markup is still correct. What is NOT allowed is dropping the sentence, rewriting it, or removing the row that holds it.
+</previous_attempt_rejected>`
+}
+
 export async function invokeHeroChain(input: {
   config: FormatChainConfig
   vars: Record<string, string>
@@ -551,6 +576,11 @@ export async function invokeHeroChain(input: {
    * `<tr>` ou `<table>`.
    */
   expectShape?: HeroShape
+  /**
+   * Frases que o guard `hero_copy_lost` acusou na tentativa anterior. Não
+   * vazio → a nota de retry é anexada ao fim do user message.
+   */
+  missingCopy?: string[]
 }): Promise<InvokeHeroResult> {
   const { config, vars } = input
 
@@ -566,7 +596,7 @@ export async function invokeHeroChain(input: {
     HERO_OUTPUT_CONTRACT,
     vision.used,
   )
-  const userMessage = renderImageTemplate(
+  const rendered = renderImageTemplate(
     config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,
     {
       ...vars,
@@ -577,6 +607,12 @@ export async function invokeHeroChain(input: {
       ...(vision.used ? { hero_variant_rendered_html: "" } : {}),
     },
   )
+  // No FIM: é a última coisa que o modelo lê antes de responder.
+  const missingCopy = (input.missingCopy ?? []).filter((m) => m.trim())
+  const userMessage =
+    missingCopy.length > 0
+      ? `${rendered}\n\n${buildHeroRetryNote(missingCopy)}`
+      : rendered
 
   if (vision.used) {
     log.warn("hero.vision_fallback", {
