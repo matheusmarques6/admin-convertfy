@@ -100,6 +100,7 @@ import {
   type MergeAnchor,
 } from "./html/copy-merge"
 import { imageMerge } from "./html/image-merge"
+import { fixHeroOverlayText } from "./html/fix-hero-overlay"
 import {
   buildQaBlockViews,
   viewsFromBlocksFallback,
@@ -141,6 +142,12 @@ import {
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
 import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
+import {
+  hasOverlay,
+  overlayFraction,
+  measureOverlayLuminance,
+  overlayIsLight,
+} from "./image/overlay-luminance"
 import { loadTopProducts } from "./top-products"
 import {
   loadEffectiveBlueprint,
@@ -1125,8 +1132,22 @@ export async function runPhase2Image(
       blk: ImageBlockRow,
       slot: SlotWork | null,
       referenceUrl?: string | null,
-    ): Promise<{ ok: boolean; fieldKey: string | null; url: string | null; alt: string }> => {
+    ): Promise<{
+      ok: boolean
+      fieldKey: string | null
+      url: string | null
+      alt: string
+      /** Luminância da faixa de overlay, quando o slot recebe texto por cima. */
+      overlayLuminance?: number | null
+    }> => {
       const fieldKey = slot?.field.key ?? null
+      // Cadastro diz se este slot recebe overlay e em que fração da altura
+      // ("sobrepostos aos 43% superiores"). null = imagem sem texto por cima.
+      const overlayTexto = `${slot?.field.guidance ?? ""} ${slot?.field.image_spec ?? ""}`
+      const overlayFrac = hasOverlay(overlayTexto)
+        ? overlayFraction(overlayTexto)
+        : null
+      let overlayLum: number | null = null
       const fail = { ok: false, fieldKey, url: null, alt: "" }
       const imgT0 = Date.now()
       // Declarados fora do try pra o catch tambem registrar o input no run.
@@ -1395,6 +1416,24 @@ export async function runPhase2Image(
             onMeta: (m) => {
               imgMeta = m
             },
+            // Slot que recebe texto por cima (a hero): mede a faixa antes
+            // do upload. Contraste sobre FOTO não se calcula com aritmética
+            // de cor — o fundo ali é bitmap, não hex.
+            ...(overlayFrac != null
+              ? {
+                  onFinalBuffer: async (buf: Buffer) => {
+                    overlayLum = await measureOverlayLuminance(buf, overlayFrac)
+                    log.info("phase2.image.overlay_luminance", {
+                      emailId,
+                      blockId: blk.id,
+                      fieldKey,
+                      fraction: overlayFrac,
+                      luminance: overlayLum,
+                      light: overlayIsLight(overlayLum),
+                    })
+                  },
+                }
+              : {}),
           },
         )
 
@@ -1438,7 +1477,13 @@ export async function runPhase2Image(
             role: slot?.role ?? null,
           },
         })
-        return { ok: true, fieldKey, url: imageUrl, alt: altText }
+        return {
+          ok: true,
+          fieldKey,
+          url: imageUrl,
+          alt: altText,
+          overlayLuminance: overlayLum,
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro na imagem"
         log.error("phase2.image.error", {
@@ -1518,7 +1563,7 @@ export async function runPhase2Image(
     // outros. Persiste uma vez por bloco, ao fim de cada onda.
     const imagesByBlock = new Map<
       string,
-      Record<string, { url: string; alt: string }>
+      Record<string, { url: string; alt: string; overlay_luminance?: number }>
     >()
     const anchorUrlByGroup = new Map<string, string>()
 
@@ -1545,7 +1590,13 @@ export async function runPhase2Image(
 
     const record = (
       blk: ImageBlockRow,
-      r: { ok: boolean; fieldKey: string | null; url: string | null; alt: string },
+      r: {
+        ok: boolean
+        fieldKey: string | null
+        url: string | null
+        alt: string
+        overlayLuminance?: number | null
+      },
       groupKey?: string,
     ): void => {
       if (!r.ok || !r.url) return
@@ -1553,7 +1604,15 @@ export async function runPhase2Image(
       const acc = imagesByBlock.get(id) ?? {}
       // Bloco legado (sem slot) grava numa chave sintética só para o
       // espelho; o image-merge dele resolve por bloco, não por campo.
-      acc[r.fieldKey ?? "image"] = { url: r.url, alt: r.alt }
+      acc[r.fieldKey ?? "image"] = {
+        url: r.url,
+        alt: r.alt,
+        // Só em slot com overlay. Quem consome é a correção de texto da
+        // hero — o único jeito de saber se a foto aguenta branco em cima.
+        ...(r.overlayLuminance != null
+          ? { overlay_luminance: Number(r.overlayLuminance.toFixed(4)) }
+          : {}),
+      }
       imagesByBlock.set(id, acc)
       if (groupKey) anchorUrlByGroup.set(`${id}:${groupKey}`, r.url)
     }
@@ -2657,6 +2716,8 @@ async function runFormattingChain(p: {
     // grafo do Estúdio e a máquina de estágios ficam intactos).
     const inputHtml = currentHtml
     const imgT0 = Date.now()
+    let overlayTextFixed = 0
+    let overlaySlotsLight = 0
     try {
       const im = imageMerge({
         html: inputHtml,
@@ -2675,6 +2736,45 @@ async function runFormattingChain(p: {
             (Number(/^IMG_(\d+)$/.exec(e.id ?? "")?.[1]) || null),
         })),
       })
+
+      // ── Overlay claro: adapta o TEXTO à foto que saiu ──────────────
+      // Branco sobre foto é o certo — o problema é a foto ter vindo
+      // clara. Aritmética de cor não alcança bitmap, então quem decide é
+      // a luminância medida na geração
+      // (`content.images[key].overlay_luminance`). O alvo é a URL, não a
+      // região do bloco: `review 7` tem TRÊS bandas com overlay e cada
+      // uma tem a sua medição — escurecer o bloco inteiro criaria o
+      // defeito oposto na banda escura.
+      let mergedHtml = im.html
+      for (const blk of fmtCtx.blocks ?? []) {
+        const imgs = (blk.content as { images?: unknown } | null)?.images
+        if (!imgs || typeof imgs !== "object") continue
+        for (const val of Object.values(
+          imgs as Record<string, { url?: unknown; overlay_luminance?: unknown }>,
+        )) {
+          const lum =
+            typeof val?.overlay_luminance === "number"
+              ? val.overlay_luminance
+              : null
+          if (!overlayIsLight(lum)) continue
+          overlaySlotsLight++
+          // URL ausente do documento é no-op: slot declarado dentro de
+          // `style` não é preenchido pelo merge (o slot-finder só varre
+          // src/alt/href), e corrigir às cegas seria pior.
+          const url = typeof val?.url === "string" ? val.url : ""
+          const fix = fixHeroOverlayText(mergedHtml, url, fmtCtx.roles.text)
+          mergedHtml = fix.html
+          overlayTextFixed += fix.fixed
+        }
+      }
+      if (overlaySlotsLight > 0) {
+        log.info("phase2.fmt.overlay_text_fixed", {
+          emailId,
+          slots_light: overlaySlotsLight,
+          fixed: overlayTextFixed,
+        })
+      }
+
       await logGenerationRun({
         ...ids,
         agent: "image_format",
@@ -2691,14 +2791,16 @@ async function runFormattingChain(p: {
           campos: im.report.campos,
           alts_limpos: im.report.alts_limpos,
           rows_removidas: im.report.rows_removidas,
-          output_html_len: im.html.length,
-          output_sha8: sha8(im.html),
-          output_html: htmlSnapshot(im.html),
+          overlay_slots_light: overlaySlotsLight,
+          overlay_text_fixed: overlayTextFixed,
+          output_html_len: mergedHtml.length,
+          output_sha8: sha8(mergedHtml),
+          output_html: htmlSnapshot(mergedHtml),
         },
         costCents: 0,
         durationMs: Date.now() - imgT0,
       }).catch(() => {})
-      currentHtml = im.html
+      currentHtml = mergedHtml
     } catch (err) {
       // Determinístico não tem retry que ajude — erro aqui é bug nosso.
       const msg = err instanceof Error ? err.message : String(err)

@@ -35,7 +35,14 @@ export { contrastRatio, relativeLuminance }
  */
 export type EffectiveBg =
   | { kind: "color"; hex: string }
-  | { kind: "image" }
+  /**
+   * `url` é o ENDEREÇO do slot: é por ela que a correção de overlay sabe
+   * qual texto pertence a qual foto. Um bloco de reviews tem três bandas
+   * com luminâncias diferentes; sem a URL, corrigir "a região" escureceria
+   * também o texto que pousa na foto escura. null quando o fundo é imagem
+   * mas a URL não é legível (atributo `background="..."` legado).
+   */
+  | { kind: "image"; url: string | null }
   | { kind: "unknown" }
 
 /**
@@ -52,9 +59,10 @@ function bgFromStyle(openTag: string): EffectiveBg | null {
   const style = /style\s*=\s*"([^"]*)"/i.exec(openTag)?.[1]
   if (style) {
     // Imagem vence: `background:#FFF url(...)` é foto, não cor chapada.
-    if (/background(?:-image)?\s*:[^;]*url\s*\(/i.test(style)) {
-      return { kind: "image" }
-    }
+    const img = /background(?:-image)?\s*:[^;]*url\s*\(\s*(['"]?)([^'")]*)\1\s*\)/i.exec(
+      style,
+    )
+    if (img) return { kind: "image", url: img[2].trim() || null }
     const m =
       new RegExp(`background-color\\s*:\\s*(${HEX})`, "i").exec(style) ??
       new RegExp(`background\\s*:\\s*(?:[^;]*?\\s)?(${HEX})`, "i").exec(style)
@@ -63,7 +71,8 @@ function bgFromStyle(openTag: string): EffectiveBg | null {
   const bgcolor = new RegExp(`bgcolor\\s*=\\s*"?(${HEX})`, "i").exec(openTag)
   if (bgcolor) return { kind: "color", hex: canonicalHex(bgcolor[1]) }
   // `background="url"` como ATRIBUTO (padrão antigo de e-mail).
-  if (/\sbackground\s*=\s*"[^"]*\S/i.test(openTag)) return { kind: "image" }
+  const bgAttr = /\sbackground\s*=\s*"([^"]*\S)"/i.exec(openTag)
+  if (bgAttr) return { kind: "image", url: bgAttr[1].trim() }
   return null
 }
 

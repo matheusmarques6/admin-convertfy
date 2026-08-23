@@ -51,12 +51,26 @@ describe("resolveEffectiveBackground", () => {
     expect(bgAt(html, "#FFFFFF")).toEqual({ kind: "color", hex: "#FAF5F3" })
   })
 
-  it("background-image devolve kind:image — não inventa hex (é a hero)", () => {
+  it("background-image devolve kind:image com a URL — é o endereço do slot", () => {
     const html = cell(
       'style="background-image:url(https://cdn/foto.png);background-size:598px 1150px;"',
       '<div style="color:#FFFFFF;">Welcome to</div>',
     )
-    expect(bgAt(html, "#FFFFFF")).toEqual({ kind: "image" })
+    expect(bgAt(html, "#FFFFFF")).toEqual({
+      kind: "image",
+      url: "https://cdn/foto.png",
+    })
+  })
+
+  it("aspas simples no url() — a forma que o agente de hero escreve", () => {
+    const html = cell(
+      `style="background-image:url('https://cdn/assinada.png?token=AAA');"`,
+      '<div style="color:#FFFFFF;">x</div>',
+    )
+    expect(bgAt(html, "#FFFFFF")).toEqual({
+      kind: "image",
+      url: "https://cdn/assinada.png?token=AAA",
+    })
   })
 
   it("shorthand com url() também é imagem, mesmo tendo hex antes", () => {
@@ -64,7 +78,21 @@ describe("resolveEffectiveBackground", () => {
       'style="background:#FFFFFF url(https://cdn/f.png) center;"',
       '<div style="color:#FFFFFF;">x</div>',
     )
-    expect(bgAt(html, "#FFFFFF")).toEqual({ kind: "image" })
+    expect(bgAt(html, "#FFFFFF")).toEqual({
+      kind: "image",
+      url: "https://cdn/f.png",
+    })
+  })
+
+  it("background como ATRIBUTO (padrão antigo) também carrega a URL", () => {
+    const html = cell(
+      'background="https://cdn/legado.png"',
+      '<div style="color:#FFFFFF;">x</div>',
+    )
+    expect(bgAt(html, "#FFFFFF")).toEqual({
+      kind: "image",
+      url: "https://cdn/legado.png",
+    })
   })
 
   it("sem fundo em nenhum ancestral → cai no branco do container", () => {

@@ -396,6 +396,13 @@ export async function generateEmailImage(
      * quais refs foram efetivamente anexadas. Sem ele, ZERO trabalho extra
      * (caminho de email intocado, sem overhead).
      */
+    /**
+     * Callback OPT-IN com o buffer FINAL (já redimensionado), chamado logo
+     * antes do upload. Existe para medir a imagem sem pagar um download de
+     * volta: a hero precisa saber se a faixa que recebe o texto sobreposto
+     * saiu clara demais para branco. Erro aqui nunca derruba a geração.
+     */
+    onFinalBuffer?: (buf: Buffer) => void | Promise<void>
     onMeta?: (m: {
       tokensInput: number
       tokensOutput: number
@@ -779,6 +786,17 @@ export async function generateEmailImage(
       })
       // fallback: mantem buffer original
       finalBuffer = imageBuffer
+    }
+  }
+
+  if (options?.onFinalBuffer) {
+    try {
+      await options.onFinalBuffer(finalBuffer)
+    } catch (err) {
+      log.warn("image.on_final_buffer_failed", {
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
