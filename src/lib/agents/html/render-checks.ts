@@ -14,6 +14,7 @@
  */
 
 import type { QaIssue } from "@/types/email-generation"
+import { auditContrast } from "./color-contrast"
 
 // Padrões de unsubscribe aceitos: merge tags dos ESPs + âncora com texto.
 // Cobre Klaviyo/Liquid ({% unsubscribe %}, {{ unsubscribe }}), Mailchimp
@@ -100,6 +101,26 @@ export function computeRenderChecks(
       severity: "medium",
       message:
         'HTML sem <table role="presentation"> — layout não table-based pode quebrar em Outlook/Gmail.',
+    })
+  }
+
+  // 5. Contraste texto/fundo abaixo do mínimo AA. Aritmética de luminância
+  //    (WCAG), custo zero. Sem isto, um botão com texto branco sobre fundo
+  //    quase branco (1,05:1) chegava ao designer sem uma linha de aviso —
+  //    foi o que aconteceu na Luxe Lift (22/08). Só entram pares que dá
+  //    para medir: fundo em foto fica de fora (a hero tem outro caminho).
+  const contraste = auditContrast(html).filter((f) => f.ratio != null)
+  if (contraste.length > 0) {
+    const pior = contraste.reduce((a, b) =>
+      (a.ratio as number) <= (b.ratio as number) ? a : b,
+    )
+    issues.push({
+      type: "contraste_baixo",
+      severity: "medium",
+      message:
+        `${contraste.length} trecho(s) com contraste abaixo do mínimo legível. ` +
+        `Pior caso: texto ${pior.textHex} sobre ${pior.bgHex} ` +
+        `(${(pior.ratio as number).toFixed(2)}:1, mínimo ${pior.min}:1).`,
     })
   }
 

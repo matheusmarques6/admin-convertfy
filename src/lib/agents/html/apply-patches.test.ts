@@ -187,7 +187,10 @@ describe("applyOps — escopo e contraste", () => {
     expect(res.html).toContain('style="color:#000000;">corpo')
   })
 
-  it("destinos diferentes para fundo e texto passam", () => {
+  // Nome antigo era "destinos diferentes para fundo e texto passam", o que
+  // soava como garantia de que o par estava seguro. Ele cobre só o guard de
+  // seção monocromática; legibilidade é dos testes de conserto do PAR abaixo.
+  it("guard monocromático não dispara quando os destinos diferem", () => {
     const res = applyOps(
       DOC,
       [
@@ -197,6 +200,71 @@ describe("applyOps — escopo e contraste", () => {
       { allowHero: true },
     )
     expect(res.skipped).toHaveLength(0)
+  })
+
+  // ── Conserto do PAR ────────────────────────────────────────────────
+  // Regressao real (Luxe Lift, 22/08): o agente pintou o fundo de um botao
+  // com a cor da marca e o rotulo branco ficou intacto — 1,05:1. Ate entao
+  // um teste afirmava que "destinos diferentes passam", sem olhar se os
+  // dois destinos eram ambos claros.
+  const BOTAO = [
+    '<table><tr><td style="width:556px;background:#BEBEBE;">',
+    '<a style="font-size:25px;font-weight:700;color:#FFFFFF;">SHOP</a>',
+    "</td></tr></table>",
+  ].join("\n")
+
+  it("recolor so do FUNDO que quebra o contraste conserta o texto em cima", () => {
+    const res = applyOps(
+      BOTAO,
+      [{ action: "recolor", from: "#BEBEBE", to: "#FAF5F3", where: "background" }],
+      { allowHero: true },
+    )
+    // A op vale: o botao fica na cor da marca.
+    expect(res.applied).toBe(1)
+    expect(res.html).toContain("background:#FAF5F3")
+    // E o texto deixa de ser branco invisivel.
+    expect(res.html).not.toContain("color:#FFFFFF")
+    expect(res.pairedTextFixes).toBe(1)
+    expect(res.contrastRemaining).toBe(0)
+  })
+
+  it("recolor de fundo que NAO quebra o contraste nao toca no texto", () => {
+    const res = applyOps(
+      BOTAO,
+      [{ action: "recolor", from: "#BEBEBE", to: "#3D2820", where: "background" }],
+      { allowHero: true },
+    )
+    expect(res.html).toContain("background:#3D2820")
+    expect(res.html).toContain("color:#FFFFFF")
+    expect(res.pairedTextFixes).toBe(0)
+  })
+
+  it("contraste que ja estava ruim ANTES nao e consertado em silencio", () => {
+    // #BEBEBE + branco ja e 2,3:1. Sem op nenhuma tocando esse fundo, o
+    // step nao mexe — o achado fica para o render-check reportar.
+    const res = applyOps(
+      BOTAO,
+      [{ action: "recolor", from: "#123456", to: "#654321" }],
+      { allowHero: true },
+    )
+    expect(res.pairedTextFixes).toBe(0)
+    expect(res.html).toContain("color:#FFFFFF")
+    expect(res.contrastRemaining).toBe(1)
+  })
+
+  it("fundo em FOTO: a op passa e o texto fica intacto (e a hero)", () => {
+    const HERO = [
+      '<table><tr><td style="background-image:url(https://cdn/h.png);">',
+      '<div style="font-size:50px;color:#FFFFFF;">Welcome</div>',
+      '</td></tr><tr><td style="background:#BEBEBE;">x</td></tr></table>',
+    ].join("\n")
+    const res = applyOps(
+      HERO,
+      [{ action: "recolor", from: "#BEBEBE", to: "#FAF5F3", where: "background" }],
+      { allowHero: true },
+    )
+    expect(res.html).toContain("color:#FFFFFF")
+    expect(res.pairedTextFixes).toBe(0)
   })
 
   it("op escopada sem alvo vira find_not_found", () => {

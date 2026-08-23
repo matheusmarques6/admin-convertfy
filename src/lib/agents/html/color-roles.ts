@@ -72,14 +72,14 @@ export function relativeLuminance(hex: string): number {
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
 }
 
-function contrastRatio(a: string, b: string): number {
+export function contrastRatio(a: string, b: string): number {
   const la = relativeLuminance(a)
   const lb = relativeLuminance(b)
   const [hi, lo] = la > lb ? [la, lb] : [lb, la]
   return (hi + 0.05) / (lo + 0.05)
 }
 
-function contrastingText(bg: string): string {
+export function contrastingText(bg: string): string {
   return relativeLuminance(bg) > 0.5 ? DEFAULT_DARK : DEFAULT_LIGHT
 }
 

@@ -2820,6 +2820,12 @@ async function runFormattingChain(p: {
               scoped_ops: r.ops.filter(
                 (o) => o.action === "recolor" && o.where != null,
               ).length,
+              // Legibilidade: quantos textos o código reescreveu para
+              // sobreviver ao fundo que o agente pintou, e quantos pares
+              // continuam abaixo do mínimo AA (fundo em foto, ou contraste
+              // que já estava quebrado antes deste step).
+              contrast_fixed: applied.pairedTextFixes,
+              contrast_remaining: applied.contrastRemaining,
             },
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,

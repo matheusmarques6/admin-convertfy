@@ -239,6 +239,33 @@ export function buildElementLookup(
   }
 }
 
+/**
+ * Cadeia `[próprio, ...ancestrais]` que contém o offset, do mais interno ao
+ * mais externo. Mesma indexação de `buildElementLookup` — uma passada de
+ * parse por documento, consultas lineares depois.
+ *
+ * Existe porque decidir contraste exige subir a árvore: a cor do texto está
+ * num `<a style="color:…">` e o fundo em que ele pousa costuma estar num
+ * `<td bgcolor>` ou `<table style="background:…">` acima. `contextOf` do
+ * inventário de cores olha 60 chars para trás e por isso só sabe o PAPEL da
+ * declaração, nunca sobre o quê ela está.
+ *
+ * null em comentário MSO, pela mesma razão de `buildElementLookup`: ali não
+ * há árvore.
+ */
+export function buildAncestorChain(
+  html: string,
+): (offset: number) => Array<{ tagName: string; range: Range }> | null {
+  const entries = indexElements(html)
+  const mso = msoCommentRanges(html)
+  return (offset) => {
+    if (inAnyRange(offset, mso)) return null
+    const entry = entryAt(entries, offset)
+    if (!entry) return null
+    return [{ tagName: entry.tagName, range: entry.range }, ...entry.ancestors]
+  }
+}
+
 /** Conveniência de `buildElementLookup` para consulta única. */
 export function elementAt(
   html: string,

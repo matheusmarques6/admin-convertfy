@@ -380,7 +380,22 @@ describe("prompts default da cadeia", () => {
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("identity_conformance")
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("NEVER introduce a color")
     expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("button_rules")
-    expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("fail-open")
+  })
+
+  it("cores: contraste deixou de ser motivo de skip de FUNDO", () => {
+    // Antes o prompt mandava pular quando "you cannot tell what sits on top
+    // of a background" — condição sempre verdadeira, porque o inventário não
+    // carregava o par. O agente ficava entre uma ordem insatisfazível e a
+    // pressão de não pular cor dominante, e resolvia agindo às cegas: foi
+    // assim que o botão saiu #FFFFFF sobre #FAF5F3 (1,05:1).
+    expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).not.toContain(
+      "you cannot tell what sits on top",
+    )
+    // Agora o inventário traz o par e o aplicador garante a legibilidade.
+    expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain("contraste_min")
+    expect(DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT).toContain(
+      "Changing a BACKGROUND is safe",
+    )
   })
 })
 

@@ -48,6 +48,7 @@ import {
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
+import { annotateInventoryPairs } from "./color-contrast"
 
 const log = logger.child("FormatContext")
 
@@ -591,7 +592,10 @@ export function buildColorFormatVars(
   // vira uma lista de ~10-30 cores com contextos — o agente decide QUAIS
   // valores trocar por quais papéis da paleta; o código aplica o recolor
   // global no documento que o agente nunca viu.
-  const inventory = extractColorInventory(html)
+  // Com os pares texto↔fundo anotados: sem eles o agente via `#FFFFFF`
+  // como uma linha só e não tinha como saber que estava trocando o fundo
+  // debaixo de um texto branco (incidente Luxe Lift, 22/08).
+  const inventory = annotateInventoryPairs(html, extractColorInventory(html))
   const vars = {
     brand_name: ctx.brandName,
     niche: extras.niche,

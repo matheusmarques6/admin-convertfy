@@ -53,6 +53,16 @@ export interface ColorInventoryEntry {
    * menos. É o que permite ao agente escopar a op em vez de pular a cor.
    */
   contextos: Partial<Record<ColorContext, number>>
+  /**
+   * Só para cor usada como TEXTO: sobre quais fundos ela pousa, e quantas
+   * vezes em cada um. É o dado que faltava — o agente via `#FFFFFF` como
+   * uma linha só, somando o branco da hero escura, o do container e o do
+   * botão, e trocar o fundo debaixo de um deles era invisível para ele.
+   * Fundo em foto entra como "imagem".
+   */
+  sobre?: Record<string, number>
+  /** Pior contraste desta cor de texto no documento (null = só sobre foto). */
+  contraste_min?: number | null
 }
 
 // Hex completo/curto e rgb()/rgba() — as formas que emails usam na prática.
@@ -100,6 +110,11 @@ export function contextOf(html: string, idx: number): ColorContext {
 /**
  * Varre o documento (inclui blocos <style> — dark mode entra) e agrega
  * cores por valor canônico. Ordena por ocorrências desc.
+ *
+ * Os campos `sobre`/`contraste_min` da entrada NÃO são preenchidos aqui:
+ * quem os anota é `annotateInventoryPairs` (color-contrast.ts), que precisa
+ * do DOM. Manter a dependência nessa direção evita import circular —
+ * color-contrast já consome o `canonicalHex` daqui.
  */
 export function extractColorInventory(html: string): ColorInventoryEntry[] {
   const acc = new Map<string, { count: number; ctx: Map<ColorContext, number> }>()
@@ -120,7 +135,7 @@ export function extractColorInventory(html: string): ColorInventoryEntry[] {
     const hex = rgbToHex(Number(m[1]), Number(m[2]), Number(m[3]))
     if (hex) add(hex, m.index ?? 0)
   }
-  return Array.from(acc.entries())
+  const entries = Array.from(acc.entries())
     .map(([valor, v]) => ({
       valor,
       ocorrencias: v.count,
@@ -130,6 +145,8 @@ export function extractColorInventory(html: string): ColorInventoryEntry[] {
       ) as Partial<Record<ColorContext, number>>,
     }))
     .sort((a, b) => b.ocorrencias - a.ocorrencias)
+
+  return entries
 }
 
 /**

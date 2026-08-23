@@ -84,3 +84,45 @@ describe("computeRenderChecks", () => {
     expect(computeRenderChecks(DEFAULT_REFERENCE_SKELETON)).toEqual([])
   })
 })
+
+describe("computeRenderChecks — contraste", () => {
+  const base =
+    '<a href="[unsubscribe_link]">Unsubscribe</a>' +
+    '<table role="presentation"><tr>'
+
+  it("acusa o par do incidente (branco sobre quase branco)", () => {
+    const html =
+      base +
+      '<td style="background:#FAF5F3;">' +
+      '<a style="font-size:25px;font-weight:700;color:#FFFFFF;" href="#x">SHOP</a>' +
+      "</td></tr></table>"
+    const issue = computeRenderChecks(html).find(
+      (i) => i.type === "contraste_baixo",
+    )
+    expect(issue).toBeDefined()
+    expect(issue?.message).toContain("#FFFFFF")
+    expect(issue?.message).toContain("#FAF5F3")
+  })
+
+  it("HTML legível não gera o issue", () => {
+    const html =
+      base +
+      '<td style="background:#3D2820;">' +
+      '<a style="font-size:18px;color:#FFFFFF;" href="https://x.com">SHOP</a>' +
+      "</td></tr></table>"
+    expect(
+      computeRenderChecks(html).some((i) => i.type === "contraste_baixo"),
+    ).toBe(false)
+  })
+
+  it("fundo em foto não vira reprovação de contraste (é a hero)", () => {
+    const html =
+      base +
+      '<td style="background-image:url(https://cdn/h.png);">' +
+      '<div style="font-size:50px;color:#FFFFFF;">Welcome</div>' +
+      "</td></tr></table>"
+    expect(
+      computeRenderChecks(html).some((i) => i.type === "contraste_baixo"),
+    ).toBe(false)
+  })
+})

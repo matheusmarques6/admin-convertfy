@@ -187,6 +187,10 @@ export type QaIssueType =
   | "html_invalido"
   | "alt_text_faltando"
   | "compliance"
+  // Par texto/fundo abaixo do mínimo AA (luminância WCAG, custo zero).
+  // Nasceu do botão que saiu #FFFFFF sobre #FAF5F3 (1,05:1) sem nenhum
+  // aviso em lugar nenhum do pipeline.
+  | "contraste_baixo"
   // ── Epic AE-15: Image niche-adaptive QA cascade ───────
   // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
   // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:

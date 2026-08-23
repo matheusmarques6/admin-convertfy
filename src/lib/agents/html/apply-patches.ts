@@ -28,11 +28,14 @@
 import { extractHeroBySentinels } from "./hero-locator"
 import {
   applyRecolor,
+  canonicalHex,
   isColorContext,
   isColorLiteral,
   type ColorContext,
 } from "./color-inventory"
 import { applySplices, type Splice } from "./dom-locator"
+import { auditContrast } from "./color-contrast"
+import { contrastingText } from "./color-roles"
 
 export type FormatOp =
   | { action: "replace"; find: string; replace: string; block_id?: string }
@@ -82,6 +85,17 @@ export interface ApplyOpsResult {
    * fora da marca. Este número é o que diz quanto do email virou marca.
    */
   recoloredOccurrences: number
+  /**
+   * Declarações de cor de TEXTO reescritas para restaurar a legibilidade
+   * sobre um fundo que estas ops acabaram de pintar.
+   */
+  pairedTextFixes: number
+  /**
+   * Pares texto/fundo que continuam abaixo do mínimo AA depois do conserto
+   * — fundo em foto, ou contraste que já estava quebrado antes deste step e
+   * não foi causado por ele.
+   */
+  contrastRemaining: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -225,6 +239,8 @@ export function applyOps(
   // copy some. Recusa a segunda op do par (a primeira já vale) em vez de
   // entregar um email invisível.
   const destinoPorOrigem = new Map<string, string>()
+  /** Destinos que ESTE step pintou — escopo do conserto de par abaixo. */
+  const pintados = new Set<string>()
   const isPar = (a: ColorContext | undefined, b: string): boolean =>
     (a === "background" && b === "color") || (a === "color" && b === "background")
 
@@ -251,8 +267,45 @@ export function applyOps(
     out = rc.html
     recoloredOccurrences += rc.replaced
     destinoPorOrigem.set(`${chaveOrigem}:${r.where ?? "global"}`, r.to.toUpperCase())
+    pintados.add(canonicalHex(r.to))
     applied++
   }
 
-  return { html: out, applied, skipped, recoloredOccurrences }
+  // ── Conserto do PAR ────────────────────────────────────────────────
+  //
+  // O recolor troca por VALOR e o agente não vê o documento: ele não tem
+  // como saber o que pousa sobre o fundo que acabou de pintar. Na Luxe Lift
+  // (22/08) uma op legítima (`#BEBEBE → #FAF5F3` no fundo de um botão)
+  // deixou o `color:#FFFFFF` do rótulo intacto — contraste 1,05:1, texto
+  // invisível, e `skipped` vazio porque o guard acima só pega o par
+  // mesma-origem/mesmo-destino.
+  //
+  // Aqui o código mede de verdade (luminância WCAG) e conserta o texto em
+  // cima. Escopo deliberado: só ocorrências cujo fundo efetivo é um destino
+  // QUE ESTAS OPS PINTARAM. Contraste que já estava ruim antes não é
+  // problema deste step consertar em silêncio — vira issue do render-check.
+  let pairedTextFixes = 0
+  const findings = auditContrast(out)
+  const consertar = findings
+    .filter((f) => f.bgHex && f.ratio != null && pintados.has(f.bgHex))
+    // De trás pra frente: cada splice só desloca offsets maiores que ele.
+    .sort((a, b) => b.offset - a.offset)
+  for (const f of consertar) {
+    const novo = contrastingText(f.bgHex as string)
+    out = out.slice(0, f.offset) + novo + out.slice(f.offset + f.textHex.length)
+    pairedTextFixes++
+  }
+
+  const contrastRemaining = pairedTextFixes
+    ? auditContrast(out).filter((f) => f.ratio != null).length
+    : findings.filter((f) => f.ratio != null).length
+
+  return {
+    html: out,
+    applied,
+    skipped,
+    recoloredOccurrences,
+    pairedTextFixes,
+    contrastRemaining,
+  }
 }

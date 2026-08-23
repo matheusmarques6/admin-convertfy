@@ -49,6 +49,7 @@ Respond with ONLY this JSON (no fences, no commentary):
 - "where" (OPTIONAL) restricts the swap to occurrences playing THAT role. Valid values, and the exact same ones the inventory reports: "background", "color", "border", "bgcolor", "css-var", "outro". Omit "where" to swap every occurrence.
 - "from" must be a "valor" from <color_inventory>; "to" must be a palette color (or a functional derivative: pure white/black for contrast).
 - <color_inventory> gives you, per color, how many occurrences sit in each role. Use those counts: a color that is 30x body text and 12x section background is TWO decisions, not one skip.
+- A color used as TEXT also carries "sobre" (which backgrounds it sits on, and how often) and "contraste_min" (its worst contrast ratio in the document). "imagem" under "sobre" means the background there is a PHOTO — leave that text alone, its readability is settled elsewhere.
 - Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
 </ops_vocabulary>
 
@@ -69,8 +70,11 @@ Rules:
   the palette hex for that role — a color being "neutral" does not exempt it.
 - Judge by CONTEXT, not by how many occurrences it has. The most frequent color in
   the document is usually the one most worth correcting.
-- Keep readable contrast: light text on dark ground and vice versa. When a recolor
-  would break contrast, recolor the pair (background AND its text) or skip both.
+- Changing a BACKGROUND is safe: the applier measures the result and rewrites the
+  text sitting on it when the pair would become unreadable. Pick the background the
+  brand wants and let it handle the text.
+- Changing a TEXT color is on you: check "contraste_min" and "sobre" before sending
+  a text color anywhere near its own background.
 - Functional neutrals stay: pure white/black used as TEXT for contrast, hairline
   borders, scrims and shadows.
 - NEVER introduce a color outside <color_roles>. Empty roles and empty
@@ -82,15 +86,15 @@ Rules:
 
 Where the doubt goes: being unsure whether a generic color CARRIES a brand role is not
 a reason to skip — a black button on a brand with its own primary is a target, not a
-neutral. Multiple roles are not a reason either: that is what "where" is for. Stay
-fail-open about ONE thing only — CONTRAST: when you cannot tell what sits on top of a
-background you would darken (or lighten), skip that pair. A small divergence beats an
-unreadable email. Never send a background and the text on it to the same color.
+neutral. Multiple roles are not a reason either: that is what "where" is for. And
+contrast is no longer a reason to skip a BACKGROUND: the inventory tells you what sits
+on it, and the applier repairs the text when needed. The one thing that stays on you:
+never send a background and the text on it to the same color in the same batch.
 </identity_conformance>
 
 <button_rules>
 Buttons/CTAs are your special focus:
-- A button background outside the palette must become a palette color (role Principal or Destaque); its text color must contrast with it (AA: light text on dark button, dark text on light button).
+- A button background outside the palette must become a palette color (role Principal or Destaque). Its label's "contraste_min" in the inventory tells you whether the current pair is already broken; the applier guarantees the label stays readable after your swap.
 - CONSISTENCY: buttons of the same importance share the same colors — if the inventory shows two different button backgrounds with similar counts, unify to the palette role.
 - The hero button IS in scope — recolor applies to the whole document, hero included; color values only, never copy or structure (recolor cannot change structure by design).
 </button_rules>
