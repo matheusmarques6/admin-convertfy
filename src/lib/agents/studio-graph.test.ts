@@ -286,3 +286,82 @@ describe("projectLiveTest", () => {
     expect(runs.hero_section.status).toBe("rodando")
   })
 })
+
+describe("agregação de N runs do mesmo agente", () => {
+  // O agente de imagem gera uma run POR SLOT (~16 num e-mail pesado).
+  // Guardar só a última escondia falhas: 1 imagem quebrada em 16 ficava
+  // invisível se a última tivesse dado certo.
+  const imgRun = (
+    status: string,
+    cost: number,
+    dur: number,
+    err?: string,
+  ) => ({
+    id: `r-${status}-${cost}`,
+    agent: "image",
+    status,
+    error_message: err ?? null,
+    duration_ms: dur,
+    tokens_input: 100,
+    tokens_output: 50,
+    cost_cents: cost,
+    retry_count: 0,
+    created_at: "2026-08-22T03:00:00Z",
+  })
+
+  it("soma custo e tokens, e reporta contagem e falhas", () => {
+    const out = projectLiveTest({
+      runs: [
+        imgRun("success", 16, 60_000),
+        imgRun("success", 16, 90_000),
+        imgRun("error", 16, 30_000, "timeout"),
+      ],
+      emailStatus: "ready",
+      htmlStage: null,
+      mode: "default",
+      terminal: "done",
+    })
+    expect(out.image.count).toBe(3)
+    expect(out.image.failed).toBe(1)
+    expect(out.image.usd).toBeCloseTo(0.48, 5)
+    expect(out.image.tokIn).toBe(300)
+    // Rodam em paralelo: a duração do nó é a MAIOR, não a soma.
+    expect(out.image.durSec).toBe(90)
+  })
+
+  it("uma falha no meio deixa o nó em erro, mesmo com a última ok", () => {
+    const out = projectLiveTest({
+      runs: [imgRun("error", 16, 10_000, "falhou"), imgRun("success", 16, 20_000)],
+      emailStatus: "ready",
+      htmlStage: null,
+      mode: "default",
+      terminal: "done",
+    })
+    expect(out.image.status).toBe("erro")
+    expect(out.image.err).toBe("falhou")
+  })
+
+  it("todas ok → nó em sucesso", () => {
+    const out = projectLiveTest({
+      runs: [imgRun("success", 16, 10_000), imgRun("success", 16, 20_000)],
+      emailStatus: "ready",
+      htmlStage: null,
+      mode: "default",
+      terminal: "done",
+    })
+    expect(out.image.status).toBe("sucesso")
+    expect(out.image.failed).toBe(0)
+  })
+
+  it("agente com uma run só continua sem contagem (comportamento antigo)", () => {
+    const out = projectLiveTest({
+      runs: [imgRun("success", 16, 10_000)],
+      emailStatus: "ready",
+      htmlStage: null,
+      mode: "default",
+      terminal: "done",
+    })
+    expect(out.image.count).toBeUndefined()
+    expect(out.image.status).toBe("sucesso")
+  })
+})

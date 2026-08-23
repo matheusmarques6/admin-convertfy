@@ -57,12 +57,30 @@ export async function POST(
     const user = await requireAuth(sb)
     const admin = createAdminClient()
 
+    // Slot alvo (geração por campo). Um bloco de produtos tem 8 imagens:
+    // sem isto, "regenerar a imagem do bloco" não diz qual.
+    const body = await request.json().catch(() => ({}))
+    const fieldKey =
+      typeof (body as { field_key?: unknown })?.field_key === "string"
+        ? ((body as { field_key: string }).field_key.trim() || null)
+        : null
+
     // 1. Resolve prompt + contexto (carrega bloco, valida existencia)
-    const resolution = await resolveBlockPrompt(blockId)
+    const resolution = await resolveBlockPrompt(blockId, fieldKey)
+
+    // Rate limit POR SLOT quando há slot: o carimbo do bloco bloquearia as
+    // outras 7 fotos por 30s só porque uma foi regerada.
+    const slotStamp = fieldKey
+      ? ((
+          resolution.blockContent.images as
+            | Record<string, { generated_at?: string }>
+            | undefined
+        )?.[fieldKey]?.generated_at ?? null)
+      : resolution.lastGeneratedAt
 
     // 2. Rate limit — usa image_last_generated_at do proprio content
-    if (resolution.lastGeneratedAt) {
-      const lastMs = new Date(resolution.lastGeneratedAt).getTime()
+    if (slotStamp) {
+      const lastMs = new Date(slotStamp).getTime()
       if (!Number.isNaN(lastMs)) {
         const elapsed = Date.now() - lastMs
         if (elapsed < RATE_LIMIT_WINDOW_MS) {
@@ -100,13 +118,33 @@ export async function POST(
     // 4. Persiste no bloco (merge preservando outros campos)
     const generatedAt = new Date().toISOString()
     const promptSnapshot = resolution.prompt.slice(0, PROMPT_SNAPSHOT_LIMIT)
+    const altText =
+      (resolution.blockContent.image_alt as string | undefined) ??
+      resolution.blockLabel ??
+      undefined
+    const existingImages =
+      (resolution.blockContent.images as
+        | Record<string, { url: string; alt?: string; generated_at?: string }>
+        | undefined) ?? {}
+    // Com slot, grava NO SLOT e só espelha em `image_url` quando ele é a
+    // imagem principal do bloco — sobrescrever o espelho com uma miniatura
+    // trocaria a foto do preview do designer.
+    const images = fieldKey
+      ? {
+          ...existingImages,
+          [fieldKey]: {
+            url: imageUrl,
+            alt: altText ?? "",
+            generated_at: generatedAt,
+          },
+        }
+      : existingImages
+    const isMainSlot =
+      !fieldKey || Object.keys(existingImages)[0] === fieldKey
     const mergedContent = {
       ...resolution.blockContent,
-      image_url: imageUrl,
-      image_alt:
-        (resolution.blockContent.image_alt as string | undefined) ??
-        resolution.blockLabel ??
-        undefined,
+      ...(fieldKey ? { images } : {}),
+      ...(isMainSlot ? { image_url: imageUrl, image_alt: altText } : {}),
       image_last_generated_at: generatedAt,
       image_last_prompt: promptSnapshot,
     }

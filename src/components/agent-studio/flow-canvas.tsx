@@ -86,6 +86,13 @@ function RunPill({ run }: { run: NodeRun | null }) {
       {run.status === "sucesso" || run.status === "erro"
         ? fmtDur(run.durSec)
         : st.label}
+      {/* Nó que agrega várias runs (imagem gera uma por slot): "12/16"
+          diz de cara quantas entraram e quantas falharam. */}
+      {run.count != null && run.count > 1 && (
+        <span style={{ fontWeight: 500, color: st.c, opacity: 0.75 }}>
+          · {run.count - (run.failed ?? 0)}/{run.count}
+        </span>
+      )}
       {run.usd != null && run.usd > 0 && (
         <span style={{ fontWeight: 500, color: st.c, opacity: 0.75 }}>
           · {usd3(run.usd)}

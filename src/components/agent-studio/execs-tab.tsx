@@ -550,6 +550,10 @@ export function NodeRunPanel({
             : "—",
         )}
         {metric("Retries", run.retries != null ? String(run.retries) : "—")}
+        {/* Só aparece quando o nó agrega mais de uma run (imagem por slot). */}
+        {run.count != null && run.count > 1
+          ? metric("Imagens", `${run.count - (run.failed ?? 0)}/${run.count}`)
+          : null}
       </div>
 
       {run.err && (

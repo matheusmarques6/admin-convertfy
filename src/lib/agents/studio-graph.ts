@@ -125,6 +125,14 @@ export interface NodeRun {
   tokOut?: number | null
   retries?: number | null
   err?: string | null
+  /**
+   * Quantas runs o nó agrega, quando é mais de uma. O agente de imagem
+   * gera uma run POR SLOT (~16 num e-mail pesado), e o nó precisa dizer
+   * "12 de 16" em vez de mostrar a última e esconder as falhas.
+   */
+  count?: number
+  /** Runs com erro dentro do agregado. */
+  failed?: number
 }
 
 export const RUN_STYLE: Record<
@@ -203,8 +211,51 @@ export function projectRuns(
   runs: ExecutionAgentRun[],
   bucket: ExecutionBucket,
 ): Record<string, NodeRun> {
+  // Um agente pode ter VÁRIAS runs na mesma execução — o de imagem gera
+  // uma por slot desde 22/08. `byAgent.set` sozinho guardava só a última:
+  // uma falha em 1 de 16 imagens ficava invisível se a última desse certo.
   const byAgent = new Map<string, ExecutionAgentRun>()
-  for (const r of runs) byAgent.set(r.agent, r)
+  const allByAgent = new Map<string, ExecutionAgentRun[]>()
+  for (const r of runs) {
+    byAgent.set(r.agent, r)
+    const arr = allByAgent.get(r.agent)
+    if (arr) arr.push(r)
+    else allByAgent.set(r.agent, [r])
+  }
+
+  /**
+   * Colapsa as N runs de um agente num NodeRun só: soma custo, tokens e
+   * duração, e o status do conjunto é o pior — uma imagem quebrada é
+   * informação, não ruído.
+   */
+  const aggregate = (list: ExecutionAgentRun[]): NodeRun => {
+    const failed = list.filter((r) => r.status === "error").length
+    const running = list.some((r) => r.status === "running")
+    const sum = (pick: (r: ExecutionAgentRun) => number | null | undefined) =>
+      list.reduce((acc, r) => acc + (pick(r) ?? 0), 0)
+    const withError = list.find((r) => r.status === "error")
+    return {
+      status: running
+        ? "rodando"
+        : failed === list.length
+          ? "erro"
+          : failed > 0
+            ? "erro"
+            : apiStatusToNode(list[list.length - 1].status),
+      runId: (withError ?? list[list.length - 1]).run_id,
+      // Duração do conjunto: as runs de imagem correm em paralelo, então
+      // somar daria um número que ninguém esperou. A maior é a que o
+      // usuário sentiu.
+      durSec: Math.max(...list.map((r) => (r.duration_ms ?? 0) / 1000)) || null,
+      usd: sum((r) => r.cost_cents) / 100,
+      tokIn: sum((r) => r.tokens_input),
+      tokOut: sum((r) => r.tokens_output),
+      retries: sum((r) => r.retry_count),
+      err: withError?.error_message ?? null,
+      count: list.length,
+      failed,
+    }
+  }
 
   const out: Record<string, NodeRun> = {}
   // Último índice na linha principal com run registrada.
@@ -227,7 +278,12 @@ export function projectRuns(
             : { status: "pulado" }
       return
     }
+    const list = allByAgent.get(key)
     const r = byAgent.get(key)
+    if (list && list.length > 1) {
+      out[key] = aggregate(list)
+      return
+    }
     if (r) {
       out[key] = {
         status: apiStatusToNode(r.status),
@@ -334,11 +390,44 @@ export function projectLiveTest(opts: {
 }): Record<string, NodeRun> {
   const { runs, emailStatus, htmlStage, mode, terminal } = opts
 
-  // Última run por agente (lista chega em ordem cronológica asc).
+  // Última run por agente (lista chega em ordem cronológica asc) e a lista
+  // COMPLETA por agente — o de imagem gera uma run por slot, e mostrar só
+  // a última esconderia as que falharam.
   const byAgent = new Map<string, LiveTestRun>()
+  const allByAgent = new Map<string, LiveTestRun[]>()
   for (const r of runs) {
     const key = r.agent === "copy_dispatch" ? "copy" : r.agent
     byAgent.set(key, r)
+    const arr = allByAgent.get(key)
+    if (arr) arr.push(r)
+    else allByAgent.set(key, [r])
+  }
+
+  /** Colapsa as N runs de um agente num NodeRun só. */
+  const aggregateLive = (list: LiveTestRun[]): NodeRun => {
+    const failed = list.filter((r) => r.status === "error").length
+    const running = list.some((r) => r.status === "running")
+    const sum = (pick: (r: LiveTestRun) => number | null | undefined) =>
+      list.reduce((acc, r) => acc + (pick(r) ?? 0), 0)
+    const withError = list.find((r) => r.status === "error")
+    return {
+      status: running
+        ? "rodando"
+        : failed > 0
+          ? "erro"
+          : apiStatusToNode(list[list.length - 1].status),
+      runId: (withError ?? list[list.length - 1]).id,
+      // As runs de imagem correm em paralelo: somar duração daria um número
+      // que ninguém esperou. A maior é a que o usuário sentiu.
+      durSec: Math.max(...list.map((r) => (r.duration_ms ?? 0) / 1000)) || null,
+      usd: sum((r) => r.cost_cents) / 100,
+      tokIn: sum((r) => r.tokens_input),
+      tokOut: sum((r) => r.tokens_output),
+      retries: sum((r) => r.retry_count),
+      err: withError?.error_message ?? null,
+      count: list.length,
+      failed,
+    }
   }
 
   const isDone = terminal === "done" || emailStatus === "ready"
@@ -362,6 +451,11 @@ export function projectLiveTest(opts: {
         : isError
           ? { status: "pulado" }
           : { status: "aguardando" }
+      return
+    }
+    const multi = allByAgent.get(key)
+    if (multi && multi.length > 1 && key !== running) {
+      out[key] = aggregateLive(multi)
       return
     }
     const r = byAgent.get(key)

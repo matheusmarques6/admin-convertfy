@@ -663,6 +663,8 @@ export async function reuseImagesFromPreviousRuns(
     imageUrl?: string
     kind?: string
     itemIndex?: number
+    /** Slot que a URL preenche (geração por campo). */
+    fieldKey?: string | null
   }
   // Runs vêm em ordem desc — o PRIMEIRO por chave é o mais recente.
   // Duas chaves de match, em cascata:
@@ -673,6 +675,10 @@ export async function reuseImagesFromPreviousRuns(
   const mainByBlock = new Map<string, string>()
   const mainByType = new Map<string, string>()
   const avatarByBlockItem = new Map<string, string>()
+  // Geração por SLOT: uma URL por campo. Sem esta chave o reuse regravava
+  // uma imagem só por bloco e desfazia, no modo "agente desligado", tudo o
+  // que o fan-out por campo tinha resolvido.
+  const slotByBlockField = new Map<string, string>()
   for (const r of runs ?? []) {
     const po = (r.parsed_output ?? {}) as ImageRunOutput
     if (!po.imageUrl) continue
@@ -681,6 +687,10 @@ export async function reuseImagesFromPreviousRuns(
       const key = `${po.blockId}:${po.itemIndex ?? 0}`
       if (!avatarByBlockItem.has(key)) avatarByBlockItem.set(key, po.imageUrl)
       continue
+    }
+    if (po.blockId && po.fieldKey) {
+      const key = `${po.blockId}:${po.fieldKey}`
+      if (!slotByBlockField.has(key)) slotByBlockField.set(key, po.imageUrl)
     }
     if (po.blockId && !mainByBlock.has(po.blockId)) {
       mainByBlock.set(po.blockId, po.imageUrl)
@@ -701,8 +711,26 @@ export async function reuseImagesFromPreviousRuns(
     >
     let changed = false
 
+    // Slots do bloco, um a um. Preserva o que já existe: o reuse só
+    // preenche buraco, nunca sobrescreve imagem viva.
+    const slotUrls: Record<string, { url: string; alt: string }> = {
+      ...((content.images as Record<string, { url: string; alt: string }>) ??
+        {}),
+    }
+    for (const [key, url] of slotByBlockField) {
+      const [blockId, fieldKey] = key.split(":")
+      if (blockId !== (blk.id as string)) continue
+      if (slotUrls[fieldKey]?.url) continue
+      slotUrls[fieldKey] = { url, alt: "" }
+      changed = true
+    }
+    if (Object.keys(slotUrls).length > 0) content.images = slotUrls
+
     if (!content.image_url) {
       const url =
+        // A principal sai do mapa de slots quando ele existe — assim o
+        // espelho aponta para uma imagem que de fato está no bloco.
+        Object.values(slotUrls)[0]?.url ??
         mainByBlock.get(blk.id as string) ??
         mainByType.get(blk.block_type as string)
       if (url) {

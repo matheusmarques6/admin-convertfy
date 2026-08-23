@@ -24,7 +24,7 @@ import {
 } from "@/lib/agents/chains/image.chain"
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
 import {
-  resolveAspectForBlock,
+  resolveAspectForField,
   blockAspectFromBlueprint,
   imageDimsFromBlueprint,
   aspectInstructionForPrompt,
@@ -142,13 +142,20 @@ function truncateVarsForDebug(
  */
 export async function resolveBlockPrompt(
   blockId: string,
+  /**
+   * Slot alvo. Desde que a geração virou por campo, regerar "a imagem do
+   * bloco" é ambíguo num bloco de 8 slots: aspecto, dimensões e brief
+   * mudam por slot. Ausente → primeiro campo com dims (comportamento
+   * antigo), que é o certo para bloco de imagem única.
+   */
+  fieldKey?: string | null,
 ): Promise<BlockPromptResolution> {
   const admin = createAdminClient()
 
   // ── 1. Bloco + email_id ────────────────────────────────────────
   const { data: blk, error: blkErr } = await admin
     .from("email_blocks")
-    .select("id, block_type, label, content, email_id, position")
+    .select("id, block_type, label, content, email_id, position, fields")
     .eq("id", blockId)
     .maybeSingle()
 
@@ -284,7 +291,11 @@ export async function resolveBlockPrompt(
     (blk.position as number | undefined) ?? null,
     (blk.block_type as string | undefined) ?? null,
   )
-  const aspect: AspectKey = resolveAspectForBlock({
+  const fieldAspect = ((blk.fields as Array<{ key?: string; image_aspect?: string | null }> | null) ?? []).find(
+    (f) => f?.key === fieldKey,
+  )?.image_aspect
+  const aspect: AspectKey = resolveAspectForField({
+    fieldAspect: fieldAspect ?? null,
     blockAspect: blockAspectRaw,
     blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
     flowType,
@@ -305,6 +316,7 @@ export async function resolveBlockPrompt(
       | undefined,
     (blk.position as number | undefined) ?? null,
     (blk.block_type as string | undefined) ?? null,
+    fieldKey,
   )
 
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
@@ -319,6 +331,8 @@ export async function resolveBlockPrompt(
 
   // ── 6. buildImagePromptVars (com INSTRUCAO_ADICIONAL do bloco + ctx v2) ─
   const promptVars = buildImagePromptVars({
+    // Um slot por chamada — mesmo contrato do phase2-runner.
+    fieldKey,
     brand,
     briefing,
     topProducts,

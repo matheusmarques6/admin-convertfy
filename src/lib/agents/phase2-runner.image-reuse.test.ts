@@ -148,3 +148,98 @@ describe("reuseImagesFromPreviousRuns", () => {
     expect(items[1].avatar_url).toBeUndefined()
   })
 })
+
+describe("reuseImagesFromPreviousRuns — geração por slot", () => {
+  it("reconstrói content.images por fieldKey, não uma imagem por bloco", async () => {
+    // Sem isto, o modo "agente de imagem desligado" desfazia o fan-out por
+    // campo: o bloco voltava a ter uma imagem só.
+    const state: FakeState = {
+      blocks: [{ id: "b1", block_type: "products", content: {} }],
+      runs: [
+        {
+          parsed_output: {
+            blockId: "b1",
+            fieldKey: "panel_1_main_photo",
+            imageUrl: "https://cdn/main.png",
+          },
+          created_at: "2026-08-22T03:00:00Z",
+        },
+        {
+          parsed_output: {
+            blockId: "b1",
+            fieldKey: "panel_1_thumb_a",
+            imageUrl: "https://cdn/a.png",
+          },
+          created_at: "2026-08-22T02:59:00Z",
+        },
+      ],
+      updates: [],
+    }
+    const n = await reuseImagesFromPreviousRuns(fakeAdmin(state), "e1")
+    expect(n).toBe(1)
+    const images = state.updates[0].content.images as Record<
+      string,
+      { url: string }
+    >
+    expect(images.panel_1_main_photo.url).toBe("https://cdn/main.png")
+    expect(images.panel_1_thumb_a.url).toBe("https://cdn/a.png")
+    // O espelho aponta para uma imagem que está mesmo no bloco.
+    expect(state.updates[0].content.image_url).toBe("https://cdn/main.png")
+  })
+
+  it("preserva slot que já tem imagem e só preenche o buraco", async () => {
+    const state: FakeState = {
+      blocks: [
+        {
+          id: "b1",
+          block_type: "products",
+          content: {
+            images: { panel_1_main_photo: { url: "https://cdn/viva.png", alt: "" } },
+            image_url: "https://cdn/viva.png",
+          },
+        },
+      ],
+      runs: [
+        {
+          parsed_output: {
+            blockId: "b1",
+            fieldKey: "panel_1_main_photo",
+            imageUrl: "https://cdn/antiga.png",
+          },
+          created_at: "2026-08-22T03:00:00Z",
+        },
+        {
+          parsed_output: {
+            blockId: "b1",
+            fieldKey: "panel_1_thumb_a",
+            imageUrl: "https://cdn/a.png",
+          },
+          created_at: "2026-08-22T02:59:00Z",
+        },
+      ],
+      updates: [],
+    }
+    await reuseImagesFromPreviousRuns(fakeAdmin(state), "e1")
+    const images = state.updates[0].content.images as Record<
+      string,
+      { url: string }
+    >
+    expect(images.panel_1_main_photo.url).toBe("https://cdn/viva.png")
+    expect(images.panel_1_thumb_a.url).toBe("https://cdn/a.png")
+  })
+
+  it("run antigo sem fieldKey continua reaproveitado pelo caminho de bloco", async () => {
+    const state: FakeState = {
+      blocks: [{ id: "b1", block_type: "hero", content: {} }],
+      runs: [
+        {
+          parsed_output: { blockId: "b1", imageUrl: URL_NOVA },
+          created_at: "2026-08-22T03:00:00Z",
+        },
+      ],
+      updates: [],
+    }
+    await reuseImagesFromPreviousRuns(fakeAdmin(state), "e1")
+    expect(state.updates[0].content.image_url).toBe(URL_NOVA)
+  })
+})
