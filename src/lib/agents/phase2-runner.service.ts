@@ -141,6 +141,7 @@ import {
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
+import { runSlotWithRetry } from "./image/retry-slot"
 import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
 import {
   overlaySpec,
@@ -1635,6 +1636,7 @@ export async function runPhase2Image(
 
     const t0Images = Date.now()
     const budgetLeft = () => imagePhaseBudgetMs() - (Date.now() - t0Images)
+    let totalRetried = 0
 
     const runWave = async (
       items: typeof selected,
@@ -1642,6 +1644,7 @@ export async function runPhase2Image(
     ): Promise<number> => {
       let failures = 0
       let skippedNoBudget = 0
+      let retried = 0
       const queue = [...items]
       const workers = Array.from(
         { length: Math.min(imageConcurrency(), queue.length) },
@@ -1658,7 +1661,24 @@ export async function runPhase2Image(
                 ? anchorUrlByGroup.get(`${item.blk.id}:${item.slot.groupKey}`)
                 : undefined
             try {
-              const r = await runImageSlot(item.blk, item.slot, ref)
+              // UMA segunda chance por slot. O retry envolve `runImageSlot`
+              // por fora, e não mora dentro dele, de propósito: cada chamada
+              // abre o próprio run de telemetria, então as duas tentativas
+              // aparecem no Estúdio — a primeira com o erro real. Escondê-lo
+              // lá dentro apagaria a tentativa perdida do histórico.
+              const { result: r, retried: tentouDeNovo } = await runSlotWithRetry(
+                () => runImageSlot(item.blk, item.slot, ref),
+                budgetLeft,
+              )
+              if (tentouDeNovo) {
+                retried++
+                log.warn("phase2.image.retry", {
+                  emailId,
+                  blockId: item.blk.id,
+                  fieldKey: item.slot?.field.key ?? null,
+                  recuperado: r.ok,
+                })
+              }
               if (!r.ok) failures++
               record(
                 item.blk,
@@ -1679,6 +1699,7 @@ export async function runPhase2Image(
           budgetMs: imagePhaseBudgetMs(),
         })
       }
+      totalRetried += retried
       return failures
     }
 
@@ -1718,6 +1739,7 @@ export async function runPhase2Image(
       emailId,
       slots: selected.length,
       waves: work.dependents.length > 0 ? 2 : 1,
+      retried: totalRetried,
       elapsedMs: Date.now() - t0Images,
     })
   } else {

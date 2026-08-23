@@ -1010,6 +1010,13 @@ export async function assembleStoreReference(
       missing_motivo: decisions.missingMotivo,
       extra_motivo: decisions.extraMotivo,
       rank_mismatch: decisions.rankMismatch,
+      // Repetição de variante entre posições, desfeita por CÓDIGO. O
+      // prompt do Curador manda ignorar repetição e o do Montador só a
+      // evita como exceção — sem esta medida, a troca vira silêncio e
+      // ninguém sabe se o Curador está entregando finalistas variados o
+      // bastante. `dedup_sem_alternativa` é o sinal de que não está.
+      dedup: decisions.dedup,
+      dedup_sem_alternativa: decisions.dedupSemAlternativa,
       // Resultado da MONTAGEM (código). Vive no run do Montador porque é o
       // desfecho da composição que ele decidiu — e é o que alimenta o selo
       // "seções puladas" nos logs.

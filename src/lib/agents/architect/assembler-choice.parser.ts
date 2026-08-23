@@ -44,6 +44,10 @@ export interface ParsedAssemblerChoices {
   extraMotivo: number[]
   /** `rank` autodeclarado diferente do real (corrigido). */
   rankMismatch: number[]
+  /** Repetições desfeitas pelo código: a posição trocou de variante. */
+  dedup: Array<{ block_index: number; de: string; para: string }>
+  /** Repetição que FICOU — não havia finalista livre naquela posição. */
+  dedupSemAlternativa: number[]
   /** O JSON não pôde ser lido — tudo caiu no rank 1. */
   malformed: boolean
 }
@@ -74,6 +78,8 @@ export function parseAssemblerChoices(
     missingMotivo: [],
     extraMotivo: [],
     rankMismatch: [],
+    dedup: [],
+    dedupSemAlternativa: [],
     malformed: false,
   }
 
@@ -145,7 +151,68 @@ export function parseAssemblerChoices(
     out.desvios.push(decision)
   }
 
+  dedupeDecisions(out, ranking)
   return out
+}
+
+/**
+ * Desfaz variante repetida entre POSIÇÕES do mesmo e-mail.
+ *
+ * Não havia nada disso: o `Set` de `curator-ranking.parser` é recriado a
+ * cada posição (só evita id repetido na mesma lista de finalistas), e entre
+ * posições a única barreira era instrução de prompt. O Curador é
+ * explicitamente instruído a NÃO se preocupar com repetição ("quem garante
+ * variedade dentro do email é a etapa seguinte, não você") e o Montador tem
+ * como PADRÃO ficar com o rank 1 — evitar a repetição é exceção que ele
+ * precisa reconhecer sozinho. Quando não reconhece, o e-mail sai com o
+ * mesmo componente duas vezes seguidas (Luxe Lift 23/08: posições 2 e 3
+ * idênticas).
+ *
+ * A PRIMEIRA posição fica com a escolha original — é a ordem estrutural do
+ * e-mail, e trocar a de cima por causa da de baixo seria arbitrário.
+ *
+ * Sem finalista livre, a repetição FICA: um e-mail repetido é melhor que um
+ * e-mail com variante de outro tipo ou com posição vazia. O caso vai para
+ * `dedupSemAlternativa`, que é o sinal de que o Curador não está entregando
+ * finalistas variados o bastante.
+ */
+function dedupeDecisions(
+  out: ParsedAssemblerChoices,
+  ranking: Map<number, RankedChoice[]>,
+): void {
+  const usados = new Set<string>()
+  for (const decision of out.decisions) {
+    if (!usados.has(decision.variant_id)) {
+      usados.add(decision.variant_id)
+      continue
+    }
+    const finalists = ranking.get(decision.block_index) ?? []
+    const alternativa = finalists.find((f) => !usados.has(f.variant_id))
+    if (!alternativa) {
+      out.dedupSemAlternativa.push(decision.block_index)
+      continue
+    }
+    out.dedup.push({
+      block_index: decision.block_index,
+      de: decision.variant_id,
+      para: alternativa.variant_id,
+    })
+    decision.variant_id = alternativa.variant_id
+    // `rank` é a colocação REAL nos finalistas daquela posição — o resto do
+    // código conta com isso para separar "seguiu o Curador" de "desviou".
+    decision.rank =
+      finalists.findIndex((f) => f.variant_id === alternativa.variant_id) + 1
+    // A troca pode ATERRISSAR no rank 1 (o Montador desviou para uma
+    // variante já usada e o topo daquela posição estava livre). Aí deixa de
+    // ser desvio: `desvios` é "o Montador saiu do rank 1", e depois desta
+    // troca ele não está mais fora dele.
+    if (decision.rank === 1) {
+      const i = out.desvios.indexOf(decision)
+      if (i !== -1) out.desvios.splice(i, 1)
+      delete decision.motivo
+    }
+    usados.add(alternativa.variant_id)
+  }
 }
 
 function indexByBlock(
