@@ -361,7 +361,7 @@ export function runGlobalDocChecks(
 // builder). Matching bloco↔blueprint por índice + type (blocks chegam
 // ordenados por position; mesma convenção position-1 do dispatch). Sem
 // fields → skip silencioso (emails legados/fallback). Custo zero.
-interface SchemaCheckBlueprintBlock {
+export interface SchemaCheckBlueprintBlock {
   type: string
   fields?: Array<{
     key: string

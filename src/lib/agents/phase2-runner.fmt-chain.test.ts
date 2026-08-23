@@ -114,7 +114,13 @@ vi.mock("./generation-notify.service", () => ({
   notifyBatchComplete: vi.fn(async () => undefined),
   notifyBatchAllFailed: vi.fn(async () => undefined),
 }))
-vi.mock("./chains/qa.chain", () => ({ runQaAgent: vi.fn() }))
+// `runSchemaChecks` vem do ORIGINAL: é ele que está sendo testado (o check
+// de contrato que passou a rodar com o QA desligado). Só o agente LLM é
+// mockado.
+vi.mock("./chains/qa.chain", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./chains/qa.chain")>()),
+  runQaAgent: vi.fn(),
+}))
 
 // ── Telemetria: grava runs nas tabelas do mock (retry usa o count) ────
 vi.mock("./callbacks/telemetry.callback", () => ({
@@ -859,6 +865,62 @@ describe("merge por example — caso-mestre", () => {
       "Última chamada do inverno",
       "Ver ofertas",
     ])
+  })
+
+  it("copy acima do max_len vira issue no e-mail mesmo com o QA desligado", async () => {
+    // Luxe Lift 23/08: SEIS campos estouraram o limite e ninguém viu. O
+    // check existia, mas só dentro do agente de QA — que nesta loja está
+    // desligado. O e-mail saiu com o botão final quebrado em duas linhas.
+    setupExampleCase()
+    h.tables.email_blocks = [
+      {
+        id: "b-produtos",
+        email_id: "e1",
+        position: 1,
+        block_type: "products",
+        content: { final_cta_label: "SHOP THE COMFORT LIFT COLLECTION" },
+        fields: [
+          {
+            key: "final_cta_label",
+            type: "text_short",
+            nature: "copy",
+            max_len: 26,
+            required: false,
+          },
+        ],
+      },
+    ]
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+    const issues = (email().qa_issues ?? []) as Array<Record<string, unknown>>
+    const estouro = issues.find((i) => i.type === "copy_excede_max_len")
+    expect(estouro).toBeDefined()
+    expect(String(estouro?.message)).toContain("final_cta_label")
+  })
+
+  it("copy dentro do limite não gera issue", async () => {
+    setupExampleCase()
+    h.tables.email_blocks = [
+      {
+        id: "b-produtos",
+        email_id: "e1",
+        position: 1,
+        block_type: "products",
+        content: { final_cta_label: "SHOP COLLECTION" },
+        fields: [
+          {
+            key: "final_cta_label",
+            type: "text_short",
+            nature: "copy",
+            max_len: 26,
+            required: false,
+          },
+        ],
+      },
+    ]
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    const issues = (email().qa_issues ?? []) as Array<Record<string, unknown>>
+    expect(issues.some((i) => i.type === "copy_excede_max_len")).toBe(false)
   })
 
   it("guard da hero: fragmento re-espaçado passa (mesma régua do casamento)", async () => {

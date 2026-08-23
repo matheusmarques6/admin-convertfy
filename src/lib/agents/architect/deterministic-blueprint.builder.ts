@@ -30,6 +30,9 @@ import {
   placeholderForKey,
 } from "../shared/component-dimensions"
 import { extractImageSlotNotes } from "../image/extract-image-slot-notes"
+import { buildAncestorChain } from "../html/dom-locator"
+import { assignTextAnchors, buildTextIndex } from "../html/anchor-match"
+import { measureSlot } from "../html/fit-budget"
 import type { AssemblySlot } from "./component-assembler.service"
 import type {
   GeneratedBlock,
@@ -101,6 +104,49 @@ export function matchFromSlots(slots: AssemblySlot[]): MatchResult {
  * única (schema-example-coherence) e vai para a telemetria do blueprint;
  * quem conserta é o cadastro da variante, não o resolvedor em geração.
  */
+/**
+ * Caracteres que cabem, por key, medidos no HTML da variante.
+ *
+ * Ancora cada campo de copy pelo `example` — a MESMA régua do merge
+ * (`assignTextAnchors`), então o que não ancora aqui também não seria
+ * escrito lá — e mede a caixa em volta. Campo sem âncora, ou slot que não é
+ * comprovadamente de uma linha, simplesmente não entra no mapa.
+ */
+function fitBudgets(
+  schema: ComponentOutputField[],
+  variantHtml: string,
+): Record<string, number> {
+  const copyFields = schema.filter(
+    (f) => deriveFieldNature(f) === "copy" && (f.example ?? "").trim(),
+  )
+  if (copyFields.length === 0) return {}
+
+  const out: Record<string, number> = {}
+  try {
+    const anchors = assignTextAnchors(
+      buildTextIndex(variantHtml),
+      copyFields.map((f) => ({
+        block_id: null,
+        key: f.key.trim(),
+        example: f.example ?? "",
+        // Aqui só interessa ONDE o campo mora; o valor é da geração.
+        value: "",
+      })),
+    )
+    const chainAt = buildAncestorChain(variantHtml)
+    for (const a of anchors) {
+      if (!a.range) continue
+      const texto = variantHtml.slice(a.range.start, a.range.end)
+      const m = measureSlot(variantHtml, a.range.start, texto, chainAt)
+      if (m) out[a.field.key] = m.chars
+    }
+  } catch {
+    // Medir é polimento: qualquer tropeço no parse devolve o cadastro.
+    return {}
+  }
+  return out
+}
+
 export function fieldsFromSchema(
   schema: ComponentOutputField[],
   // HTML da variante — quando presente, extrai o comentário do <td>/<tr> de
@@ -119,8 +165,20 @@ export function fieldsFromSchema(
       ? extractImageSlotNotes(variantHtml, imageTags)
       : {}
 
+  // Limite MEDIDO na caixa do slot. O `max_len` do cadastro conta
+  // caracteres, e caractere não mede largura: o CTA final da Luxe Lift
+  // (23/08) recebeu 32 caracteres num campo de limite 34 — dentro do
+  // cadastro — e quebrou em duas linhas, vazando de uma faixa travada em
+  // `height:58px`. A caixa aguentava ~26.
+  //
+  // Só aperta, nunca afrouxa: um limite mais baixo no cadastro pode ser
+  // intenção editorial, e a medida não tem por que discordar dela.
+  const cabem = variantHtml ? fitBudgets(schema, variantHtml) : {}
+
   return schema.map((f) => {
     const key = f.key.trim()
+    const medido = cabem[key]
+    const cadastrado = f.max_len ?? 0
     const base: BlueprintFieldV2 = {
       key,
       label: f.label || key,
@@ -128,7 +186,10 @@ export function fieldsFromSchema(
       // Natureza explícita no snapshot (T8): consumidores (dispatch, image
       // slots, QA) filtram por ela sem re-derivar do schema da variante.
       nature: deriveFieldNature(f),
-      max_len: f.max_len ?? 0,
+      max_len:
+        medido != null && (cadastrado <= 0 || medido < cadastrado)
+          ? medido
+          : cadastrado,
       min_len: null,
       required: f.required === true,
       example: f.example ?? "",

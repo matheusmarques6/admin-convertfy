@@ -124,6 +124,89 @@ describe("fieldsFromSchema — o example é a base", () => {
   })
 })
 
+describe("fieldsFromSchema — o limite sai da CAIXA do slot", () => {
+  // CTA final de `produtos 7 - dois produtos`. O cadastro diz 34; a caixa
+  // de 556px em Montserrat Bold 25px com tracking 0.15em aguenta ~26. Foi
+  // com 32 caracteres — dentro do cadastro — que o botão da Luxe Lift
+  // quebrou em duas linhas (23/08).
+  const BOTAO =
+    '<table><tr><td align="center" style="padding:47px 21px 49px 21px;">' +
+    '<table width="556" style="width:556px;"><tr>' +
+    '<td align="center" height="58" style="width:556px;height:58px;">' +
+    '<a style="display:block;width:556px;height:58px;line-height:58px;' +
+    "font-family:Montserrat,Arial,Helvetica,sans-serif;font-size:25px;" +
+    'font-weight:700;letter-spacing:0.15em;">' +
+    "SHOP COLLECTION</a></td></tr></table></td></tr></table>"
+
+  const SCHEMA_CTA = [
+    {
+      key: "final_cta_label",
+      label: "CTA final",
+      type: "text_short" as const,
+      max_len: 34,
+      required: false,
+      example: "SHOP COLLECTION",
+      guidance: "Caixa alta, nomeia a coleção",
+    },
+  ]
+
+  it("aperta o max_len para o que a caixa aguenta", () => {
+    const [campo] = fieldsFromSchema(SCHEMA_CTA, BOTAO)
+    expect(campo.max_len).toBeLessThan(34)
+    expect(campo.max_len).toBeGreaterThanOrEqual(20)
+    // O rótulo que quebrou tem 32 e agora seria reprovado.
+    expect("SHOP THE COMFORT LIFT COLLECTION".length).toBeGreaterThan(
+      campo.max_len,
+    )
+  })
+
+  it("NUNCA afrouxa: cadastro mais apertado que a caixa manda", () => {
+    // 12 pode ser intenção editorial; a medida não discorda dela.
+    const [campo] = fieldsFromSchema(
+      [{ ...SCHEMA_CTA[0], max_len: 12 }],
+      BOTAO,
+    )
+    expect(campo.max_len).toBe(12)
+  })
+
+  it("sem HTML da variante, o cadastro vale como antes", () => {
+    const [campo] = fieldsFromSchema(SCHEMA_CTA)
+    expect(campo.max_len).toBe(34)
+  })
+
+  it("slot que não é de uma linha mantém o cadastro", () => {
+    // Célula de corpo sem altura declarada: a largura de UMA linha não é o
+    // limite do campo, e chutar quantas linhas cabem seria pior que o
+    // cadastro.
+    const corpo =
+      '<table><tr><td style="width:300px;font-size:16px;line-height:24px;">' +
+      "Uma frase de corpo bem comprida para ancorar</td></tr></table>"
+    const [campo] = fieldsFromSchema(
+      [
+        {
+          key: "section_copy",
+          label: "Copy",
+          type: "text_long" as const,
+          max_len: 130,
+          required: false,
+          example: "Uma frase de corpo bem comprida para ancorar",
+          guidance: "",
+        },
+      ],
+      corpo,
+    )
+    expect(campo.max_len).toBe(130)
+  })
+
+  it("campo que não ancora no HTML mantém o cadastro", () => {
+    const [campo] = fieldsFromSchema(
+      [{ ...SCHEMA_CTA[0], example: "FRASE QUE NAO EXISTE NO HTML" }],
+      BOTAO,
+    )
+    expect(campo.max_len).toBe(34)
+  })
+})
+
 describe("fieldsFromCopySpec", () => {
   it("converte copy_spec do LLM pro shape v2 com source=llm", () => {
     const fields = fieldsFromCopySpec([

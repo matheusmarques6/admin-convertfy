@@ -67,7 +67,11 @@ import { isUsableProductImage } from "./image/product-image-guard"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
-import { runQaAgent } from "./chains/qa.chain"
+import {
+  runQaAgent,
+  runSchemaChecks,
+  type SchemaCheckBlueprintBlock,
+} from "./chains/qa.chain"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
@@ -3151,7 +3155,35 @@ export async function runPhase2HtmlQa(
   // em qa_issues pra dar visibilidade de formatacao ao designer.
   // Claim atomico `rendering -> ready` mantem idempotencia.
   if (!isQaEnabled()) {
-    const renderIssues = computeRenderChecks(finalHtml)
+    // Contrato do bloco: copy estourando `max_len` e campo obrigatório
+    // vazio. O check já existia, mas SÓ dentro do agente de QA — com o QA
+    // desligado (que é o caso desta loja) ninguém era avisado. Na Luxe
+    // Lift de 23/08 SEIS campos estouraram o limite (231/200, 218/200,
+    // 193/156, 175/130, 170/130, 101/90), todos medidos e registrados no
+    // run `copy`, e o e-mail saiu com o botão final quebrado em duas
+    // linhas sem um aviso em lugar nenhum.
+    //
+    // A fonte é o `fields` do PRÓPRIO bloco (migration 20261065, "o bloco
+    // é o schema"), não o blueprint pareado por índice.
+    const { data: checkBlocks } = await admin
+      .from("email_blocks")
+      .select("block_type, content, fields")
+      .eq("email_id", emailId)
+      .order("position", { ascending: true })
+    const contratoBlocks = (checkBlocks ?? []).map(
+      (b: Record<string, unknown>) => ({
+        block_type: (b.block_type as string) ?? "unknown",
+        content: (b.content as Record<string, unknown>) ?? {},
+      }),
+    )
+    const schemaIssues = runSchemaChecks(
+      contratoBlocks,
+      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+        type: (b.block_type as string) ?? "unknown",
+        fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
+      })),
+    )
+    const renderIssues = [...computeRenderChecks(finalHtml), ...schemaIssues]
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
