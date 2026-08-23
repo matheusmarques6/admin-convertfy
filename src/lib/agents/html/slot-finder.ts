@@ -24,9 +24,12 @@
 
 import { buildElementLookup, commentRanges, type Range } from "./dom-locator"
 import {
+  FIXED_ART_SRC,
+  isAltToken,
   isAttrToken,
   isStructuralToken,
   parseAttrToken,
+  srcTokenFromAltToken,
 } from "./attr-token-vocabulary"
 
 // ── Regiões de bloco (marcadores cfy:block) ────────────────────────────
@@ -87,6 +90,13 @@ export interface AttrSlot {
   blockIndice: number | null
   /** Slot dentro de conditional comment do Outlook (espelho MSO). */
   inMso: boolean
+  /**
+   * Slot DERIVADO: o token não está no documento — a `<img>` declarou o
+   * slot pelo `alt` e o `src` é base64 de placeholder. Quem limpa token
+   * cru (`stripUnresolvedAttrTokens`) tem de PULAR estes: sem URL, o certo
+   * é a arte do designer ficar onde está, não virar `src=""`.
+   */
+  synthetic?: boolean
 }
 
 const ATTR_RE = /\b(src|alt|href)\s*=\s*"([^"]*)"/gi
@@ -122,6 +132,67 @@ export function findAttrSlots(html: string): AttrSlot[] {
       imgRange: inMso ? null : (elementLookup(matchStart)?.range ?? null),
       blockIndice: block?.indice ?? null,
       inMso,
+    })
+  }
+  // Ordem de DOCUMENTO: `assignImageSlots` usa "o candidato mais cedo"
+  // como 2º critério, e um sintético jogado no fim faria a foto do
+  // produto 2 cair no card do 1 numa variante que mistura os dois tipos.
+  return [...out, ...slotsFromBase64Placeholder(html, out)].sort(
+    (a, b) => a.valueRange.start - b.valueRange.start,
+  )
+}
+
+/** `src="data:..."` da `<img>` que começa em `start` — range do VALOR. */
+function base64SrcRange(html: string, imgRange: Range): Range | null {
+  const openEnd = html.indexOf(">", imgRange.start)
+  const end = openEnd === -1 || openEnd > imgRange.end ? imgRange.end : openEnd
+  const openTag = html.slice(imgRange.start, end)
+  const m = /\bsrc\s*=\s*"([^"]*)"/i.exec(openTag)
+  if (!m || !FIXED_ART_SRC.test(m[1].trim())) return null
+  const valueStart = imgRange.start + (m.index ?? 0) + m[0].indexOf('"') + 1
+  return { start: valueStart, end: valueStart + m[1].length }
+}
+
+/**
+ * `<img>` que declara o slot no `alt` e traz BASE64 no `src`.
+ *
+ * A regra "base64 é arte fixa" (attr-token-vocabulary) foi escrita para a
+ * `<img>` SEM token nenhum — o ícone social, o selo, que têm de sair
+ * exatamente como o designer desenhou. Uma `<img>` cujo `alt` É token de
+ * slot se autodeclara: aquele base64 é o xadrez de placeholder, não a arte
+ * final.
+ *
+ * Sem isto, `produtos 4 - um produto` gerava a imagem, pagava por ela, e o
+ * merge não tinha onde escrever — `sem_lugar/token_nao_encontrado` — e o
+ * xadrez cinza viajava até o e-mail entregue (Luxe Lift, 23/08). Seis
+ * variantes ativas declaram `imagem_gerada` sem um único `src="URL_…"`.
+ */
+function slotsFromBase64Placeholder(
+  html: string,
+  slots: AttrSlot[],
+): AttrSlot[] {
+  const out: AttrSlot[] = []
+  const jaTemSrc = new Set(
+    slots.filter((s) => s.attr === "src").map((s) => s.token),
+  )
+  for (const alt of slots) {
+    if (alt.attr !== "alt" || !alt.imgRange) continue
+    if (isStructuralToken(alt.token)) continue
+    // Só token de imagem: `alt="NOME_DA_MARCA"` no logo é da plataforma, e
+    // um alt de texto qualquer não promove base64 a destino de foto.
+    if (!isAltToken(alt.token)) continue
+    const range = base64SrcRange(html, alt.imgRange)
+    if (!range) continue
+    const token = srcTokenFromAltToken(alt.token)
+    if (jaTemSrc.has(token)) continue
+    out.push({
+      token,
+      attr: "src",
+      valueRange: range,
+      imgRange: alt.imgRange,
+      blockIndice: alt.blockIndice,
+      inMso: alt.inMso,
+      synthetic: true,
     })
   }
   return out

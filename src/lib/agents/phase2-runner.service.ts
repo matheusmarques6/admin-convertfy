@@ -143,8 +143,7 @@ import { buildImagePromptVars } from "./email-generation.service"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
 import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
 import {
-  hasOverlay,
-  overlayFraction,
+  overlaySpec,
   measureOverlayLuminance,
   overlayIsLight,
 } from "./image/overlay-luminance"
@@ -1144,9 +1143,10 @@ export async function runPhase2Image(
       // Cadastro diz se este slot recebe overlay e em que fração da altura
       // ("sobrepostos aos 43% superiores"). null = imagem sem texto por cima.
       const overlayTexto = `${slot?.field.guidance ?? ""} ${slot?.field.image_spec ?? ""}`
-      const overlayFrac = hasOverlay(overlayTexto)
-        ? overlayFraction(overlayTexto)
-        : null
+      // O MESMO `overlaySpec` decide a instrução dada ao modelo (mais
+      // abaixo) e a faixa medida aqui — pedir a faixa de cima e medir a de
+      // baixo seria auditar com régua diferente da que gerou.
+      const overlayMedida = overlaySpec(overlayTexto)
       let overlayLum: number | null = null
       const fail = { ok: false, fieldKey, url: null, alt: "" }
       const imgT0 = Date.now()
@@ -1200,11 +1200,22 @@ export async function runPhase2Image(
             invalidValue: blueprintAspectRaw,
           })
         }
-        // Hero v5 (jul/2026): a imagem do hero é um <img> standalone e o texto
-        // é HTML SEPARADO (não sobreposto) → a imagem NÃO reserva área pro
-        // texto. reserveBottom fica desligado (a instrução de "fundo/overlay"
-        // não se aplica mais). SYNC CONTRACT com resolve-block-prompt.service.ts.
-        const reserveBottom = false
+        // Reserva de overlay: sai do CADASTRO do campo, não de um booleano
+        // fixo.
+        //
+        // Estava travada em `false` desde "Hero v5 (jul/2026)", com a
+        // justificativa de que "a imagem do hero é um <img> standalone e o
+        // texto é HTML separado". Essa premissa morreu quando a biblioteca
+        // de componentes virou a fonte da arquitetura: `welcome - hero
+        // section 4` põe a foto como background de TUDO e sobrepõe logo,
+        // headline, cupom e CTA aos 43% de cima. O código dizia ao modelo o
+        // contrário do que o schema pedia, na mesma chamada.
+        //
+        // É o MESMO texto que alimenta a medição de luminância mais abaixo
+        // e o `especificidade` do IMAGE_SLOTS — três leitores, um cadastro.
+        // SYNC CONTRACT com resolve-block-prompt.service.ts.
+        const overlay = overlaySpec(overlayTexto)
+        const reserveBottom = overlay != null
         // Aspect POR BLOCO (blocks[].image_aspect, derivado das tags do
         // template via registry) — prioridade máxima sobre o nível-email.
         const blockAspectRaw = blockAspectFromBlueprint(
@@ -1349,9 +1360,9 @@ export async function runPhase2Image(
           ? dimsInstructionForPrompt(
               customDims.width,
               customDims.height,
-              reserveBottom,
+              overlay,
             )
-          : aspectInstructionForPrompt(aspect, reserveBottom)
+          : aspectInstructionForPrompt(aspect, overlay)
         promptWithAspect = `${prompt}\n\n${geometryInstruction}`
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
@@ -1419,15 +1430,20 @@ export async function runPhase2Image(
             // Slot que recebe texto por cima (a hero): mede a faixa antes
             // do upload. Contraste sobre FOTO não se calcula com aritmética
             // de cor — o fundo ali é bitmap, não hex.
-            ...(overlayFrac != null
+            ...(overlayMedida != null
               ? {
                   onFinalBuffer: async (buf: Buffer) => {
-                    overlayLum = await measureOverlayLuminance(buf, overlayFrac)
+                    overlayLum = await measureOverlayLuminance(
+                      buf,
+                      overlayMedida.fraction,
+                      overlayMedida.side,
+                    )
                     log.info("phase2.image.overlay_luminance", {
                       emailId,
                       blockId: blk.id,
                       fieldKey,
-                      fraction: overlayFrac,
+                      side: overlayMedida.side,
+                      fraction: overlayMedida.fraction,
                       luminance: overlayLum,
                       light: overlayIsLight(overlayLum),
                     })

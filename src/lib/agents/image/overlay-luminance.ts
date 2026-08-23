@@ -44,15 +44,47 @@ export function hasOverlay(text: string | null | undefined): boolean {
  * faixa que interessa; abaixo de 5% a amostra é ruído.
  */
 export function overlayFraction(text: string | null | undefined): number {
-  const m = /(\d{1,3})\s*%\s*(?:superior|de cima|do topo|top)/i.exec(text ?? "")
+  const m =
+    /(\d{1,3})\s*%\s*(?:superior|de cima|do topo|top|inferior|de baixo|da base|embaixo|bottom)/i.exec(
+      text ?? "",
+    )
   const pct = Number(m?.[1])
   if (!Number.isFinite(pct)) return DEFAULT_OVERLAY_FRACTION
   const frac = pct / 100
   return frac >= 0.05 && frac <= 0.95 ? frac : DEFAULT_OVERLAY_FRACTION
 }
 
+/** Lado da imagem que recebe o texto sobreposto. */
+export type OverlaySide = "top" | "bottom"
+
+export interface OverlaySpec {
+  side: OverlaySide
+  /** Fração da altura ocupada pelo overlay (0.05–0.95). */
+  fraction: number
+}
+
 /**
- * Luminância relativa média (0..1) da faixa SUPERIOR da imagem.
+ * O cadastro do campo descreve overlay? Onde e quanto?
+ *
+ * É a MESMA leitura que decide a instrução dada ao modelo de imagem e a
+ * faixa que a medição de luminância confere depois. Um segundo parser em
+ * outro módulo divergiria do primeiro no primeiro texto ambíguo, e aí a
+ * imagem seria gerada com uma régua e auditada com outra.
+ *
+ * Sem lado explícito → `top`: é o padrão da biblioteca (das 15 declarações
+ * de overlay, as que dizem o lado dizem "superiores"/"do topo").
+ */
+export function overlaySpec(text: string | null | undefined): OverlaySpec | null {
+  if (!hasOverlay(text)) return null
+  const t = text ?? ""
+  const side: OverlaySide = /inferior|de baixo|da base|embaixo|bottom/i.test(t)
+    ? "bottom"
+    : "top"
+  return { side, fraction: overlayFraction(t) }
+}
+
+/**
+ * Luminância relativa média (0..1) da faixa que recebe o overlay.
  *
  * Usa a mesma linearização sRGB de `relativeLuminance` (WCAG 2.1), aplicada
  * às médias por canal que o `sharp` devolve — é a aproximação certa para
@@ -65,6 +97,7 @@ export function overlayFraction(text: string | null | undefined): number {
 export async function measureOverlayLuminance(
   buffer: Buffer,
   fraction: number = DEFAULT_OVERLAY_FRACTION,
+  side: OverlaySide = "top",
 ): Promise<number | null> {
   try {
     const img = sharp(buffer)
@@ -79,7 +112,12 @@ export async function measureOverlayLuminance(
     // do pipeline. Encadeado, uma hero com topo escuro e base clara media a
     // média das duas metades e a faixa que interessa sumia na conta.
     const recorte = await sharp(buffer)
-      .extract({ left: 0, top: 0, width: w, height: faixa })
+      .extract({
+        left: 0,
+        top: side === "bottom" ? h - faixa : 0,
+        width: w,
+        height: faixa,
+      })
       .toBuffer()
     const stats = await sharp(recorte).stats()
 

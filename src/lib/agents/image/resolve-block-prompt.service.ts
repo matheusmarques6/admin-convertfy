@@ -32,6 +32,7 @@ import {
   isAspectKey,
   type AspectKey,
 } from "@/lib/agents/image/aspect-ratio"
+import { overlaySpec } from "@/lib/agents/image/overlay-luminance"
 import {
   resolveImageMode,
   productRefDescriptionFallback,
@@ -278,10 +279,25 @@ export async function resolveBlockPrompt(
       invalidValue: blueprintAspectRaw,
     })
   }
-  // Hero v5 (jul/2026): a imagem do hero é um <img> standalone e o texto é
-  // HTML SEPARADO (não sobreposto) → a imagem NÃO reserva área pro texto.
-  // reserveBottom fica desligado. SYNC CONTRACT com phase2-runner.service.ts.
-  const overlayReserveBottom = false
+  // Reserva de overlay: sai do CADASTRO do campo, não de um booleano fixo.
+  //
+  // Estava travada em `false` desde "Hero v5 (jul/2026)", com a justificativa
+  // de que "a imagem do hero é um <img> standalone e o texto é HTML separado".
+  // Essa premissa morreu quando a biblioteca de componentes virou a fonte da
+  // arquitetura: `welcome - hero section 4` põe a foto como background de
+  // TUDO e sobrepõe logo, headline, cupom e CTA aos 43% de cima. O código
+  // dizia ao modelo o contrário do que o schema pedia, na mesma chamada.
+  //
+  // Mesma fonte que o `especificidade` do IMAGE_SLOTS
+  // (image/build-image-slots.ts) — as duas descrições não podem divergir.
+  // SYNC CONTRACT com phase2-runner.service.ts.
+  const overlayField = (
+    (blk.fields as Array<{ key?: string; guidance?: string | null; image_spec?: string | null }> | null) ?? []
+  ).find((f) => f?.key === fieldKey)
+  const overlay = overlaySpec(
+    `${overlayField?.guidance ?? ""} ${overlayField?.image_spec ?? ""}`,
+  )
+  const overlayReserveBottom = overlay != null
   // Aspect POR BLOCO (blocks[].image_aspect via tags do template) —
   // prioridade máxima. SYNC CONTRACT com phase2-runner.service.ts.
   const blockAspectRaw = blockAspectFromBlueprint(
@@ -358,12 +374,8 @@ export async function resolveBlockPrompt(
     : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
 
   const geometryInstruction = customDims
-    ? dimsInstructionForPrompt(
-        customDims.width,
-        customDims.height,
-        overlayReserveBottom,
-      )
-    : aspectInstructionForPrompt(aspect, overlayReserveBottom)
+    ? dimsInstructionForPrompt(customDims.width, customDims.height, overlay)
+    : aspectInstructionForPrompt(aspect, overlay)
   let prompt = `${basePrompt}\n\n${geometryInstruction}`
 
   // Se caiu em fallback text2img + temos top product, adicionar

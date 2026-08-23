@@ -156,43 +156,52 @@ describe("resolveAspectForBlock — defaults", () => {
 
 describe("aspectInstructionForPrompt", () => {
   it("inclui o aspect ratio textualmente", () => {
-    const out = aspectInstructionForPrompt("4:5", false)
+    const out = aspectInstructionForPrompt("4:5", null)
     expect(out).toContain("4:5 aspect ratio")
   })
 
   it("inclui dimensoes esperadas", () => {
-    const out = aspectInstructionForPrompt("4:5", false)
+    const out = aspectInstructionForPrompt("4:5", null)
     expect(out).toContain("1200x1500")
   })
 
   it("orientation portrait para 4:5", () => {
-    const out = aspectInstructionForPrompt("4:5", false)
+    const out = aspectInstructionForPrompt("4:5", null)
     expect(out).toContain("vertical portrait")
   })
 
   it("orientation landscape para 4:3", () => {
-    const out = aspectInstructionForPrompt("4:3", false)
+    const out = aspectInstructionForPrompt("4:3", null)
     expect(out).toContain("horizontal landscape")
   })
 
   it("orientation square para 1:1", () => {
-    const out = aspectInstructionForPrompt("1:1", false)
+    const out = aspectInstructionForPrompt("1:1", null)
     expect(out).toContain("square")
   })
 
-  it("reserveBottom=true menciona reserve bottom", () => {
-    const out = aspectInstructionForPrompt("4:5", true)
-    expect(out).toContain("Reserve the bottom")
+  it("a reserva nomeia LADO e FRAÇÃO do cadastro", () => {
+    // O caso real: `welcome - hero section 4` põe a foto como fundo de
+    // tudo e quer os 43% de CIMA limpos. O booleano antigo só sabia dizer
+    // "bottom 30%" — instrução errada mesmo quando ligada.
+    const out = aspectInstructionForPrompt("9:16", { side: "top", fraction: 0.43 })
+    expect(out).toContain("Reserve the top 43%")
     expect(out).toContain("overlay")
+    expect(out).not.toContain("bottom")
   })
 
-  it("reserveBottom=false NAO menciona reserve bottom", () => {
-    const out = aspectInstructionForPrompt("4:5", false)
-    expect(out).not.toContain("Reserve the bottom")
+  it("overlay embaixo também é dito corretamente", () => {
+    const out = aspectInstructionForPrompt("4:5", { side: "bottom", fraction: 0.3 })
+    expect(out).toContain("Reserve the bottom 30%")
+  })
+
+  it("sem overlay, nenhuma frase de reserva", () => {
+    const out = aspectInstructionForPrompt("4:5", null)
+    expect(out).not.toContain("Reserve")
   })
 
   it("3:5 vertical portrait com dims corretas", () => {
-    const out = aspectInstructionForPrompt("3:5", false)
+    const out = aspectInstructionForPrompt("3:5", null)
     expect(out).toContain("3:5")
     expect(out).toContain("vertical portrait")
     expect(out).toContain("720x1200")
@@ -279,18 +288,21 @@ describe("imageDimsFromBlueprint (dims declaradas no schema)", () => {
 
 describe("dimsInstructionForPrompt", () => {
   it("reduz a proporção e descreve o frame exato", () => {
-    const txt = dimsInstructionForPrompt(600, 700, false)
+    const txt = dimsInstructionForPrompt(600, 700, null)
     expect(txt).toContain("600x700 pixels")
     expect(txt).toContain("proportion 6:7")
     expect(txt).toContain("vertical portrait")
-    expect(txt).not.toContain("bottom 30%")
+    expect(txt).not.toContain("Reserve")
   })
 
-  it("reserveBottom acrescenta a área do overlay", () => {
-    expect(dimsInstructionForPrompt(1600, 800, true)).toContain("bottom 30%")
-    expect(dimsInstructionForPrompt(1600, 800, true)).toContain(
-      "horizontal landscape",
-    )
+  it("o overlay do cadastro acrescenta a faixa, com lado e fração", () => {
+    // Frame exato da hero: 598 × 1150, faixa de cima.
+    const txt = dimsInstructionForPrompt(598, 1150, {
+      side: "top",
+      fraction: 0.43,
+    })
+    expect(txt).toContain("598x1150 pixels")
+    expect(txt).toContain("Reserve the top 43%")
   })
 })
 

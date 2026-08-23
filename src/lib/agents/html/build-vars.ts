@@ -308,11 +308,15 @@ export function buildImageMap(
   blueprint: EmailBlueprint | null,
 ): ImageMapEntry[] {
   const globalAspect = blueprint?.image_aspect ?? "4:5"
-  // Hero v5 (jul/2026): a imagem do hero é um <img> full-width de altura
-  // natural (NUNCA background-image/overlay/cover) e o texto é HTML separado.
-  // Logo o hero é "burned" (imagem colocada como-está, sem texto sobreposto),
-  // igual a products/reviews/body. O flag image_overlay_reserve_bottom não
-  // tem mais efeito no hero.
+  // `image_map_json` é var do agente de HTML MONOLÍTICO legado — não chega
+  // ao modelo de imagem, que hoje deriva a reserva de overlay do cadastro
+  // do campo (`overlaySpec`, em resolve-block-prompt/phase2-runner).
+  //
+  // O valor fixo ficou de uma premissa que morreu ("Hero v5, jul/2026: a
+  // imagem do hero é um <img> standalone e o texto é HTML separado"): com a
+  // biblioteca de componentes como fonte, a hero voltou a ser background com
+  // texto sobreposto. Fica "burned" porque o consumidor é legado e mudá-lo
+  // não muda imagem nenhuma — mas não leia isto como descrição da hero atual.
   const heroOverlay: "needs_html_overlay" | "burned" = "burned"
 
   // Casa email_block (position 1-based) com blueprint.blocks[position-1],

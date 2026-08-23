@@ -109,6 +109,68 @@ describe("findAttrSlots", () => {
     expect(slots[0].token).toBe("URL_FOTO_1")
   })
 
+  it("alt de slot + base64 no src: a <img> se autodeclara destino", () => {
+    // Cadastro real de `produtos 4 - um produto` (Luxe Lift 23/08): o slot
+    // vem com o xadrez em base64 no src e o token no alt. Sem isto a
+    // imagem era gerada, paga, e não tinha onde entrar.
+    const html =
+      '<img src="data:image/png;base64,iVBORw0KGgoAAAA" width="292" height="332"' +
+      ' alt="ALT_DO_PRODUTO" style="display:block;">'
+    const slots = findAttrSlots(html)
+    const src = slots.find((x) => x.attr === "src")
+    expect(src).toMatchObject({ token: "URL_DO_PRODUTO", synthetic: true })
+    // O range aponta para o base64 — é ele que será substituído pela URL.
+    expect(html.slice(src!.valueRange.start, src!.valueRange.end)).toBe(
+      "data:image/png;base64,iVBORw0KGgoAAAA",
+    )
+  })
+
+  it("o token sintético preserva o ordinal do alt", () => {
+    // `assignImageSlots` casa por ordinal: sem preservá-lo, a foto do
+    // produto 2 cairia no card do 1.
+    const html =
+      '<img src="data:image/png;base64,AAA" alt="ALT_PRODUTO_1">' +
+      '<img src="data:image/png;base64,BBB" alt="ALT_PRODUTO_2">'
+    const slots = findAttrSlots(html)
+    const assigns = assignImageSlots(slots, [
+      imageField("product_2_image", { url: "https://cdn/dois.png" }),
+      imageField("product_1_image", { url: "https://cdn/um.png" }),
+    ])
+    expect(assigns[0].slot?.token).toBe("URL_PRODUTO_2")
+    expect(assigns[1].slot?.token).toBe("URL_PRODUTO_1")
+  })
+
+  it("base64 SEM token no alt continua arte fixa", () => {
+    // Ícone social do rodapé: promovê-lo a destino colocaria uma foto
+    // gerada no lugar do desenho do designer.
+    const html = '<img src="data:image/png;base64,iVBORw0" alt="Instagram">'
+    expect(findAttrSlots(html)).toHaveLength(0)
+  })
+
+  it("alt ESTRUTURAL não promove o base64 do logo a slot de imagem", () => {
+    const html = '<img src="data:image/png;base64,iVBORw0" alt="NOME_DA_MARCA">'
+    const slots = findAttrSlots(html)
+    expect(slots.every((x) => x.attr !== "src")).toBe(true)
+  })
+
+  it("<img> que já tem token de src real não ganha slot duplicado", () => {
+    const html = '<img src="URL_DO_PRODUTO" alt="ALT_DO_PRODUTO">'
+    const slots = findAttrSlots(html)
+    expect(slots.filter((x) => x.attr === "src")).toHaveLength(1)
+    expect(slots.find((x) => x.attr === "src")?.synthetic).toBeUndefined()
+  })
+
+  it("slots saem em ordem de DOCUMENTO, sintéticos incluídos", () => {
+    const html = [
+      '<img src="data:image/png;base64,AAA" alt="ALT_UM">',
+      '<img src="URL_DOIS" alt="">',
+    ].join("\n")
+    const srcs = findAttrSlots(html)
+      .filter((x) => x.attr === "src")
+      .map((x) => x.token)
+    expect(srcs).toEqual(["URL_UM", "URL_DOIS"])
+  })
+
   it("marca o bloco dono (cfy:block) e o espelho MSO", () => {
     const html = [
       "<!-- cfy:block:0:produtos:start -->",

@@ -105,6 +105,24 @@ export function isAltToken(raw: string): boolean {
 }
 
 /**
+ * Token de `src` correspondente a um token de `alt`, para a `<img>` que
+ * declara o slot pelo alt e traz base64 no src (ver `findAttrSlots`).
+ *
+ * Deriva do NOME, não de um sintético qualquer: `assignImageSlots` casa
+ * `tip_2_image` com o token de ordinal 2, e um nome inventado sem ordinal
+ * quebraria esse casamento em variante de grade — a foto do produto 2
+ * cairia no card do 1.
+ *
+ *   ALT_DO_PRODUTO   → URL_DO_PRODUTO
+ *   ALT_PRODUTO_2    → URL_PRODUTO_2
+ *   FOTO_REVIEW_1    → URL_FOTO_REVIEW_1   (alt sem o prefixo ALT_)
+ */
+export function srcTokenFromAltToken(raw: string): string {
+  const value = raw.trim()
+  return value.startsWith("ALT_") ? `URL_${value.slice(4)}` : `URL_${value}`
+}
+
+/**
  * URL "de verdade" — resquício de export (Figma) ou asset externo. Não é
  * slot: o valor já resolve para uma imagem real e não há o que casar.
  */

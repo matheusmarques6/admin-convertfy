@@ -3,6 +3,7 @@ import sharp from "sharp"
 import {
   hasOverlay,
   overlayFraction,
+  overlaySpec,
   measureOverlayLuminance,
   overlayIsLight,
   DEFAULT_OVERLAY_FRACTION,
@@ -108,5 +109,43 @@ describe("overlayIsLight", () => {
 
   it("sem medição não afirma nada", () => {
     expect(overlayIsLight(null)).toBe(false)
+  })
+})
+
+describe("overlaySpec", () => {
+  it("lê lado e fração do cadastro real da hero", () => {
+    // `hero_campanha_editorial` de `welcome - hero section 4`.
+    const spec = overlaySpec(
+      "Onde fica: fundo de todo o e-mail; wordmark, lockup, tagline, cupom e" +
+        " CTA são sobrepostos aos 43% superiores.",
+    )
+    expect(spec).toEqual({ side: "top", fraction: 0.43 })
+  })
+
+  it("overlay embaixo é reconhecido, com a fração do texto", () => {
+    const spec = overlaySpec("texto sobreposto aos 30% inferiores da foto")
+    expect(spec).toEqual({ side: "bottom", fraction: 0.3 })
+  })
+
+  it("sem lado explícito assume o topo — é o padrão da biblioteca", () => {
+    expect(overlaySpec("headline sobreposta à imagem")).toEqual({
+      side: "top",
+      fraction: DEFAULT_OVERLAY_FRACTION,
+    })
+  })
+
+  it("campo sem overlay devolve null (sem instrução, como antes)", () => {
+    expect(overlaySpec("Ideia: detalhe lateral do mesmo item e cor.")).toBeNull()
+    expect(overlaySpec(null)).toBeNull()
+  })
+})
+
+describe("measureOverlayLuminance — lado", () => {
+  it("mede a faixa de BAIXO quando o cadastro pede overlay embaixo", async () => {
+    const buf = await meiaAMeia("#1A1A1A", "#FAF5F3")
+    const base = await measureOverlayLuminance(buf, 0.45, "bottom")
+    const topo = await measureOverlayLuminance(buf, 0.45, "top")
+    expect(base as number).toBeGreaterThan(0.8)
+    expect(topo as number).toBeLessThan(0.1)
   })
 })

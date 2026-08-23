@@ -172,6 +172,10 @@ export function stripUnresolvedPlaceholders(html: string): string {
 export function stripUnresolvedAttrTokens(html: string): string {
   const splices: Splice[] = []
   for (const slot of findAttrSlots(html)) {
+    // Sintético = base64 de placeholder que não recebeu URL. Esvaziar o
+    // `src` trocaria o xadrez cinza do designer por ícone quebrado — pior
+    // que o placeholder. Fica como está.
+    if (slot.synthetic) continue
     splices.push({ ...slot.valueRange, replacement: "" })
   }
   for (const node of textNodes(html)) {

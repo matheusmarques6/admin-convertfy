@@ -12,6 +12,8 @@
  * @see docs/stories/AE-12.image-aspect-ratio-resize.md
  */
 
+import type { OverlaySpec } from "./overlay-luminance"
+
 export type AspectKey =
   | "4:5"
   | "3:5"
@@ -214,10 +216,30 @@ function reduceRatio(w: number, h: number): string {
  * mas com o frame exato do designer. SYNC CONTRACT com o phase2-runner e o
  * resolve-block-prompt.
  */
+/**
+ * Frase da reserva de overlay.
+ *
+ * Era um booleano que só sabia dizer "bottom 30%" — e a biblioteca pede o
+ * contrário: `welcome - hero section 4` põe a foto como fundo de TUDO e
+ * quer os **43% de cima** limpos ("parede lisa em tom neutro quente
+ * ocupando os 43% superiores, para receber todo o overlay"). Um booleano
+ * não carrega lado nem fração, então a instrução saía errada mesmo ligada.
+ * Agora vem do cadastro, via `overlaySpec`.
+ */
+function overlaySentence(overlay: OverlaySpec | null | undefined): string {
+  if (!overlay) return ""
+  const pct = Math.round(overlay.fraction * 100)
+  return (
+    ` Reserve the ${overlay.side} ${pct}% of the frame as a clean, unobstructed band` +
+    " for text overlay — no subject, no hard shadow, no busy detail there;" +
+    " the rest of the composition must sit outside that band."
+  )
+}
+
 export function dimsInstructionForPrompt(
   width: number,
   height: number,
-  reserveBottom: boolean,
+  overlay?: OverlaySpec | null,
 ): string {
   const orientation =
     width > height
@@ -225,17 +247,15 @@ export function dimsInstructionForPrompt(
       : width === height
         ? "square"
         : "vertical portrait"
-  let txt = `Render the image at exactly ${width}x${height} pixels (${orientation} composition, proportion ${reduceRatio(width, height)}) — compose for this exact frame.`
-  if (reserveBottom) {
-    txt +=
-      " Reserve the bottom 30% as a darker/cleaner area suitable for white text overlay."
-  }
-  return txt
+  return (
+    `Render the image at exactly ${width}x${height} pixels (${orientation} composition, proportion ${reduceRatio(width, height)}) — compose for this exact frame.` +
+    overlaySentence(overlay)
+  )
 }
 
 export function aspectInstructionForPrompt(
   aspect: AspectKey,
-  reserveBottom: boolean,
+  overlay?: OverlaySpec | null,
 ): string {
   const dims = DIMENSIONS[aspect]
   const orientation =
@@ -244,10 +264,8 @@ export function aspectInstructionForPrompt(
       : dims.width === dims.height
         ? "square"
         : "vertical portrait"
-  let txt = `Render the image with a ${aspect} aspect ratio (${orientation} composition, ~${dims.width}x${dims.height}).`
-  if (reserveBottom) {
-    txt +=
-      " Reserve the bottom 30% as a darker/cleaner area suitable for white text overlay."
-  }
-  return txt
+  return (
+    `Render the image with a ${aspect} aspect ratio (${orientation} composition, ~${dims.width}x${dims.height}).` +
+    overlaySentence(overlay)
+  )
 }
