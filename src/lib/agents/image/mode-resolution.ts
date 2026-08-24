@@ -9,7 +9,19 @@
  * Resolucao em ordem de prioridade:
  *   1. `blueprintMode` (override explicito do email_blueprints.image_mode)
  *   2. Matriz `WELCOME_MODE_BY_EMAIL` (por flow_type=welcome + email_number)
- *   3. Default `"text2img"`
+ *   3. Default `"product_ref"` quando ha foto de produto — ver abaixo
+ *
+ * O default era `text2img`, e a matriz so cobre `flow_type=welcome`. Todo o
+ * resto (abandoned_cart, browse_abandonment, site_abandoned...) caia no
+ * `else` e GERAVA o produto do zero, mesmo com a foto real ja carregada no
+ * payload. Foi o que aconteceu com a Innova Bay (ago/2026): as 5 URLs do CDN
+ * da Shopify chegaram ao agente em `top_products_images` e nenhuma foi usada
+ * como referencia — o modelo inventou os produtos.
+ *
+ * Agora, sem override e fora da matriz, o default e `product_ref` sempre que
+ * houver `topProductImageUrl` (a viabilidade real ainda passa pelos
+ * fallbacks abaixo e pelo gate de download em `product-image-guard`). Sem
+ * foto, `text2img` segue sendo o unico caminho possivel.
  *
  * Fallbacks (apos resolver o mode "ideal"):
  *   - Se ideal=product_ref mas `multimodalEnabled=false`: cai pra text2img
@@ -61,11 +73,13 @@ export function resolveImageMode(input: {
       desired = fromMatrix
       source = "matrix"
     } else {
-      desired = "text2img"
+      desired = input.topProductImageUrl ? "product_ref" : "text2img"
       source = "default"
     }
   } else {
-    desired = "text2img"
+    // Espelhar a foto real é o comportamento desejado sempre que ela
+    // existir — não só no flow welcome.
+    desired = input.topProductImageUrl ? "product_ref" : "text2img"
     source = "default"
   }
 
@@ -80,6 +94,30 @@ export function resolveImageMode(input: {
   }
 
   return { mode: desired, source }
+}
+
+/**
+ * Instrucao de FIDELIDADE para o modo `product_ref`.
+ *
+ * Mandar a foto no content array nao basta: sem instrucao explicita o modelo
+ * trata a imagem como inspiracao de estilo e devolve um produto "parecido" —
+ * outra embalagem, outro formato, outro rotulo. O produto do e-mail tem que
+ * ser o produto da loja, nao um primo dele.
+ *
+ * A direcao fotografica da variante continua mandando na CENA (luz,
+ * enquadramento, fundo, pose). Esta instrucao manda no OBJETO.
+ */
+export function productRefFidelityInstruction(input: {
+  productName: string
+}): string {
+  return [
+    "CFY_PRODUCT_FIDELITY — THE ATTACHED PHOTO IS THE PRODUCT, NOT A MOOD REFERENCE.",
+    `The attached image shows "${input.productName}", the real product sold by this store.`,
+    "Reproduce THAT EXACT product: same shape, same proportions, same materials and finish, same colours, same label and typography, same details. Down to the badge, the port, the seam.",
+    "You may change ONLY the scene around it — lighting, angle, framing, background, staging — as the photographic direction asks.",
+    "You may NOT redesign the product, restyle the packaging, invent a variant, swap the logo, change the wording on the label, or produce a similar item from the same category.",
+    "If the photographic direction describes a product category that does not match the attached photo, the ATTACHED PHOTO WINS: shoot this product, in the scene the direction asks for.",
+  ].join("\n")
 }
 
 /**

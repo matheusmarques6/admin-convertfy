@@ -40,6 +40,7 @@ import {
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { buildCatalog, buildTypeIndex } from "./catalog-builder"
+import { fieldOrMissing } from "./store-context"
 import {
   parseCuratorRanking,
   rankingIds,
@@ -616,10 +617,12 @@ export async function assembleStoreReference(
 
   const chooserVars: Record<string, string> = {
     brand_name: input.brandName,
-    nicho: input.nicho,
-    posicionamento: input.posicionamento,
-    persona: input.persona,
-    tom_voz: input.tomVoz,
+    // Campo vazio é ruído que o modelo pula; o marcador redireciona para
+    // <perfil_marca>, que agora carrega a Pesquisa quando não há briefing.
+    nicho: fieldOrMissing(input.nicho),
+    posicionamento: fieldOrMissing(input.posicionamento),
+    persona: fieldOrMissing(input.persona),
+    tom_voz: fieldOrMissing(input.tomVoz),
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
@@ -810,10 +813,10 @@ export async function assembleStoreReference(
   try {
     const res = await invokeAgent(asmConfig, {
       brand_name: input.brandName,
-      nicho: input.nicho,
-      posicionamento: input.posicionamento,
-      persona: input.persona,
-      tom_voz: input.tomVoz,
+      nicho: fieldOrMissing(input.nicho),
+      posicionamento: fieldOrMissing(input.posicionamento),
+      persona: fieldOrMissing(input.persona),
+      tom_voz: fieldOrMissing(input.tomVoz),
       outline_objective: input.outlineObjective,
       outline_guidance: input.outlineGuidance,
       outline_tone_hint: input.outlineToneHint,

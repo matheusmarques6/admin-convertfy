@@ -12,6 +12,13 @@ import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
+import {
+  missingStoreFields,
+  resolveBrandProfile,
+  resolvePersonaText,
+  type IcpDemographics,
+  type IcpPersona,
+} from "./store-context"
 import { mapTomVozToMood } from "../image/mood-mapping"
 import { isTextOnlyEmail } from "./blueprint-loader"
 import { loadGlobalReferenceTemplate } from "../reference-template"
@@ -178,11 +185,14 @@ export async function generateBlueprintAndReference(
   const nicho = marca.nicho || (store.niche as string) || ""
   const posicionamento =
     marca.posicionamento || (store.posicionamento_preco as string) || ""
-  const persona =
-    marca.persona ||
-    (store.icp_persona as string) ||
-    (store.persona as string) ||
-    ""
+  // `icp_persona` é JSONB. O `as string` de antes era só TypeScript: em
+  // runtime o OBJETO seguia para o prompt e virava "[object Object]".
+  const persona = resolvePersonaText({
+    marcaPersona: marca.persona,
+    icpPersona: store.icp_persona as IcpPersona | null,
+    icpDemographics: store.icp_demographics as IcpDemographics | null,
+    personaColumn: store.persona,
+  })
   const tomVoz =
     marca.tom_voz ||
     (store.tone_description as string) ||
@@ -192,6 +202,31 @@ export async function generateBlueprintAndReference(
   const mood = mapTomVozToMood(tomVoz)
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica p/ os agentes.
   const pesquisa = pesquisaToFullText(store as PesquisaFields)
+
+  // Perfil da marca do Curador: briefing curado quando existe, senão a
+  // PESQUISA. Sem esse fallback, loja sem `store_briefings` mandava o
+  // literal "{}" em <perfil_marca> — com a pesquisa carregada ao lado, sem
+  // uso. Era metade da razão de a Innova Bay ter recebido a composição da
+  // Luxe Lift inteira (ago/2026).
+  const brandProfile = resolveBrandProfile({
+    marca: marca as Record<string, unknown>,
+    pesquisa,
+  })
+  const missingFields = missingStoreFields({
+    nicho,
+    posicionamento,
+    persona,
+    tomVoz,
+  })
+  if (missingFields.length > 0 || brandProfile.source !== "briefing") {
+    log.warn("architect.store_context_partial", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      missingFields,
+      brandProfileSource: brandProfile.source,
+    })
+  }
 
   // Parâmetros globais do pipeline (aba Configurações): clamp de blocos por
   // email e modelo default usado como fallback quando o agente não tem
@@ -239,7 +274,7 @@ export async function generateBlueprintAndReference(
     tomVoz,
     mood,
     persona,
-    briefingJson: JSON.stringify(marca),
+    briefingJson: brandProfile.text,
     topProductNames,
     outlineObjective: outline?.objective ?? "",
     outlineGuidance: outline?.guidance ?? "",

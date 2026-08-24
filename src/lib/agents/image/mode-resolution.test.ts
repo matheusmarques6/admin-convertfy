@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   resolveImageMode,
   productRefDescriptionFallback,
+  productRefFidelityInstruction,
 } from "./mode-resolution"
 
 describe("resolveImageMode — blueprint override", () => {
@@ -126,12 +127,12 @@ describe("resolveImageMode — matriz Welcome", () => {
     })
   })
 
-  it("welcome E99 (fora da matriz) → text2img/default", () => {
+  it("welcome E99 (fora da matriz) SEM foto → text2img/default", () => {
     const res = resolveImageMode({
       blueprintMode: null,
       flowType: "welcome",
       emailNumber: 99,
-      topProductImageUrl: "https://cdn/x.jpg",
+      topProductImageUrl: null,
       multimodalEnabled: true,
     })
     expect(res).toEqual({ mode: "text2img", source: "default" })
@@ -139,7 +140,9 @@ describe("resolveImageMode — matriz Welcome", () => {
 })
 
 describe("resolveImageMode — default", () => {
-  it("flow desconhecido → text2img/default", () => {
+  // Regressao Innova Bay (ago/2026): abandoned_cart com foto de produto
+  // carregada gerava o produto do zero, porque a matriz so cobre welcome.
+  it("flow fora da matriz COM foto → product_ref/default", () => {
     const res = resolveImageMode({
       blueprintMode: null,
       flowType: "abandoned_cart",
@@ -147,7 +150,31 @@ describe("resolveImageMode — default", () => {
       topProductImageUrl: "https://cdn/x.jpg",
       multimodalEnabled: true,
     })
+    expect(res).toEqual({ mode: "product_ref", source: "default" })
+  })
+
+  it("flow fora da matriz SEM foto → text2img/default", () => {
+    const res = resolveImageMode({
+      blueprintMode: null,
+      flowType: "abandoned_cart",
+      emailNumber: 1,
+      topProductImageUrl: null,
+      multimodalEnabled: true,
+    })
     expect(res).toEqual({ mode: "text2img", source: "default" })
+  })
+
+  it("flow fora da matriz com foto mas multimodal OFF → fallback", () => {
+    const res = resolveImageMode({
+      flowType: "abandoned_cart",
+      emailNumber: 1,
+      topProductImageUrl: "https://cdn/x.jpg",
+      multimodalEnabled: false,
+    })
+    expect(res).toEqual({
+      mode: "text2img",
+      source: "fallback_text2img_disabled",
+    })
   })
 
   it("sem flowType nem blueprint → text2img/default", () => {
@@ -155,13 +182,37 @@ describe("resolveImageMode — default", () => {
     expect(res).toEqual({ mode: "text2img", source: "default" })
   })
 
-  it("emailNumber null em welcome → text2img/default", () => {
+  it("emailNumber null em welcome, sem foto → text2img/default", () => {
     const res = resolveImageMode({
       flowType: "welcome",
       emailNumber: null,
       multimodalEnabled: true,
     })
     expect(res).toEqual({ mode: "text2img", source: "default" })
+  })
+
+  it("welcome fora da matriz (E99) COM foto → product_ref/default", () => {
+    const res = resolveImageMode({
+      flowType: "welcome",
+      emailNumber: 99,
+      topProductImageUrl: "https://cdn/x.jpg",
+      multimodalEnabled: true,
+    })
+    expect(res).toEqual({ mode: "product_ref", source: "default" })
+  })
+})
+
+describe("productRefFidelityInstruction", () => {
+  it("manda reproduzir o produto exato e proibe redesenhar", () => {
+    const out = productRefFidelityInstruction({ productName: "EnergySave Pro" })
+    expect(out).toContain("EnergySave Pro")
+    expect(out).toContain("Reproduce THAT EXACT product")
+    expect(out).toMatch(/NOT redesign the product/)
+  })
+
+  it("resolve o conflito a favor da foto quando a direcao fala de outra categoria", () => {
+    const out = productRefFidelityInstruction({ productName: "OBD CarScan" })
+    expect(out).toContain("ATTACHED PHOTO WINS")
   })
 })
 

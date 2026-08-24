@@ -62,6 +62,7 @@ import {
 import {
   resolveImageMode,
   productRefDescriptionFallback,
+  productRefFidelityInstruction,
 } from "./image/mode-resolution"
 import { isUsableProductImage } from "./image/product-image-guard"
 import { personaToText } from "./image/persona-text"
@@ -1384,6 +1385,15 @@ export async function runPhase2Image(
           promptWithAspect += `\n\n${productRefDescriptionFallback({
             productName: ctx.topProducts[0].name,
             productImageUrl: topProductImageUrl,
+          })}`
+        }
+
+        // Em product_ref a foto real vai anexada. Sem instrução explícita o
+        // modelo a lê como referência de ESTILO e devolve um produto
+        // parecido — outro rótulo, outro formato. A foto é o produto.
+        if (mode === "product_ref" && ctx.topProducts[0]?.name) {
+          promptWithAspect += `\n\n${productRefFidelityInstruction({
+            productName: ctx.topProducts[0].name,
           })}`
         }
 
