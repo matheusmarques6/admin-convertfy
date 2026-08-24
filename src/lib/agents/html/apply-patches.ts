@@ -34,7 +34,7 @@ import {
   type ColorContext,
 } from "./color-inventory"
 import { applySplices, type Splice } from "./dom-locator"
-import { auditContrast } from "./color-contrast"
+import { auditContrast, backgroundDeclarations } from "./color-contrast"
 import { contrastingText } from "./color-roles"
 
 export type FormatOp =
@@ -96,6 +96,14 @@ export interface ApplyOpsResult {
    * não foi causado por ele.
    */
   contrastRemaining: number
+  /**
+   * Painéis que colapsaram no próprio fundo e o código reergueu.
+   *
+   * `0` é o resultado bom quando o agente escolheu certo sozinho; `> 0`
+   * significa que a guarda trabalhou. O que não pode acontecer é `0` com
+   * painel sumido — foi o estado das quatro gerações de 23-24/08.
+   */
+  panelFixes: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -167,7 +175,14 @@ export function parseOps(raw: string): FormatOp[] {
 export function applyOps(
   html: string,
   ops: FormatOp[],
-  opts: { allowHero: boolean },
+  opts: {
+    allowHero: boolean
+    /**
+     * Tons de painel da loja (`ColorRoles.surface` / `surface_strong`).
+     * Ausentes, a guarda de painel não roda — nada para onde reerguer.
+     */
+    surfaces?: { surface: string; surface_strong: string }
+  },
 ): ApplyOpsResult {
   const doc = html
   let applied = 0
@@ -271,6 +286,74 @@ export function applyOps(
     applied++
   }
 
+  // ── Conserto do PAINEL ─────────────────────────────────────────────
+  //
+  // O agente decide sem ver o documento: ele não sabe que `#D9D9D9` é um
+  // card DENTRO do `#FFFFFF`. Com a paleta da loja tendo um único valor
+  // claro, todo cinza de superfície tem um destino legal só — o `bg` — e em
+  // quatro gerações seguidas (Luxe Lift, 23-24/08) ele mandou de 6 a 10
+  // cinzas para o mesmo hex do canvas. Figura e fundo viram a mesma cor: o
+  // destaque não ficou feio, ficou INVISÍVEL. A guarda `isPar` acima não
+  // pega isso — ela só olha fundo↔texto da MESMA origem.
+  //
+  // Casamento por POSIÇÃO na ordem de documento: recolor troca valor, nunca
+  // cria nem remove declaração, então a n-ésima da entrada é a n-ésima da
+  // saída. Offset não serve (`#abc` → `#AABBCC` cresce e desloca o resto) e
+  // valor menos ainda — depois do colapso o painel e o pai são o MESMO
+  // valor, que é exatamente o que se quer detectar.
+  //
+  // O "era distinto ANTES" é o que impede reerguer `<td>` e `<table>` que já
+  // nasceram da mesma cor (redundância de compatibilidade que e-mail usa o
+  // tempo todo): esses nunca foram painel, e pintá-los criaria uma camada
+  // que o designer não desenhou.
+  //
+  // Tom inválido = guarda desligada, nunca exceção: um contexto montado sem
+  // os papéis novos (fixture, chamada antiga, ctx parcial) derrubaria o step
+  // de cor INTEIRO — o e-mail sairia sem marca nenhuma para consertar um
+  // painel. Guarda de acabamento falha para o lado aberto.
+  let panelFixes = 0
+  const tons =
+    opts.surfaces &&
+    isColorLiteral(opts.surfaces.surface ?? "") &&
+    isColorLiteral(opts.surfaces.surface_strong ?? "")
+      ? opts.surfaces
+      : null
+  if (tons) {
+    const surface = canonicalHex(tons.surface)
+    const surfaceStrong = canonicalHex(tons.surface_strong)
+    const antes = backgroundDeclarations(res.html)
+    // Duas rodadas: painel dentro de painel colapsa de novo quando os dois
+    // são reerguidos para o mesmo tom. Na segunda, o de dentro já vê o pai
+    // em `surface` e sobe para `surface_strong`.
+    for (let rodada = 0; rodada < 2; rodada++) {
+      const depois = backgroundDeclarations(out)
+      if (antes.length !== depois.length) break
+      const consertos: Array<{ start: number; end: number; tom: string }> = []
+      for (let i = 0; i < antes.length; i++) {
+        const a = antes[i]
+        const d = depois[i]
+        if (a.parent.kind !== "color" || d.parent.kind !== "color") continue
+        if (a.hex === a.parent.hex) continue
+        if (d.hex !== d.parent.hex) continue
+        if (!pintados.has(d.hex)) continue
+        consertos.push({
+          ...d.valueRange,
+          tom: d.parent.hex === surface ? surfaceStrong : surface,
+        })
+      }
+      if (consertos.length === 0) break
+      // De trás pra frente: cada splice só desloca offsets maiores que ele.
+      consertos.sort((x, y) => y.start - x.start)
+      for (const c of consertos) {
+        out = out.slice(0, c.start) + c.tom + out.slice(c.end)
+        // Entra em `pintados` para o conserto de par abaixo medir o texto
+        // contra o fundo FINAL, não contra o que colapsou.
+        pintados.add(canonicalHex(c.tom))
+        panelFixes++
+      }
+    }
+  }
+
   // ── Conserto do PAR ────────────────────────────────────────────────
   //
   // O recolor troca por VALOR e o agente não vê o documento: ele não tem
@@ -307,5 +390,6 @@ export function applyOps(
     recoloredOccurrences,
     pairedTextFixes,
     contrastRemaining,
+    panelFixes,
   }
 }

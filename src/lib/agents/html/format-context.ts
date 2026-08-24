@@ -404,6 +404,8 @@ function identityVars(ctx: FormatChainContext): Record<string, string> {
     color_button_bg: ctx.roles.button_bg,
     color_button_text: ctx.roles.button_text,
     color_accent: ctx.roles.accent,
+    color_surface: ctx.roles.surface,
+    color_surface_strong: ctx.roles.surface_strong,
     font_heading: ctx.fontHeading,
     font_heading_weight: ctx.fontHeadingWeight,
     font_body: ctx.fontBody,

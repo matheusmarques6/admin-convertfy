@@ -278,3 +278,129 @@ describe("applyOps — escopo e contraste", () => {
     expect(res.recoloredOccurrences).toBe(0)
   })
 })
+
+describe("guarda de PAINEL — o destaque que colapsa no próprio fundo", () => {
+  // Tons derivados da paleta real da Luxe Lift (duas cores: #3D2820/#FAF5F3).
+  const SURF = { surface: "#F3E6E1", surface_strong: "#E9D4CB" }
+
+  /** Canvas branco com um painel cinza dentro — a forma da `produtos 4`. */
+  const painel = (canvas: string, card: string) =>
+    `<table width="600" style="background:${canvas};"><tr><td>` +
+    `<table width="598" style="background:${card};"><tr><td>` +
+    '<span style="color:#000000">Product Feature</span>' +
+    "</td></tr></table></td></tr></table>"
+
+  it("dois fundos aninhados no mesmo destino: o de dentro é reerguido", () => {
+    // As ops REAIS do run 5f676526: o canvas e o card indo ao mesmo hex.
+    const r = applyOps(
+      painel("#FFFFFF", "#D9D9D9"),
+      [
+        { action: "recolor", from: "#FFFFFF", to: "#FAF5F3", where: "background" },
+        { action: "recolor", from: "#D9D9D9", to: "#FAF5F3" },
+      ],
+      { allowHero: true, surfaces: SURF },
+    )
+    expect(r.panelFixes).toBe(1)
+    expect(r.html).toContain("background:#FAF5F3;") // canvas
+    expect(r.html).toContain(`background:${SURF.surface};`) // painel de pé
+  })
+
+  it("sem os tons de superfície, a guarda não roda (comportamento antigo)", () => {
+    const r = applyOps(
+      painel("#FFFFFF", "#D9D9D9"),
+      [
+        { action: "recolor", from: "#FFFFFF", to: "#FAF5F3", where: "background" },
+        { action: "recolor", from: "#D9D9D9", to: "#FAF5F3" },
+      ],
+      { allowHero: true },
+    )
+    expect(r.panelFixes).toBe(0)
+    expect(r.html).not.toContain(SURF.surface)
+  })
+
+  it("painel DENTRO de painel sobe para o tom forte", () => {
+    const html =
+      '<table style="background:#FFFFFF;"><tr><td>' +
+      '<table style="background:#EFEFEF;"><tr><td>' +
+      '<table style="background:#D9D9D9;"><tr><td>x</td></tr></table>' +
+      "</td></tr></table></td></tr></table>"
+    const r = applyOps(
+      html,
+      [
+        { action: "recolor", from: "#FFFFFF", to: "#FAF5F3", where: "background" },
+        { action: "recolor", from: "#EFEFEF", to: "#FAF5F3" },
+        { action: "recolor", from: "#D9D9D9", to: "#FAF5F3" },
+      ],
+      { allowHero: true, surfaces: SURF },
+    )
+    expect(r.html).toContain(`background:${SURF.surface};`)
+    expect(r.html).toContain(`background:${SURF.surface_strong};`)
+  })
+
+  it("td repetindo a cor do table NÃO vira painel novo", () => {
+    // Redundância de compatibilidade: nunca foi um degrau visual, e pintá-la
+    // criaria uma camada que o designer não desenhou.
+    const html =
+      '<table style="background:#EFEFEF;"><tr>' +
+      '<td bgcolor="#EFEFEF">x</td></tr></table>'
+    const r = applyOps(
+      html,
+      [{ action: "recolor", from: "#EFEFEF", to: "#FAF5F3" }],
+      { allowHero: true, surfaces: SURF },
+    )
+    expect(r.panelFixes).toBe(0)
+    expect(r.html).not.toContain(SURF.surface)
+  })
+
+  it("painel cujo destino NÃO foi pintado por estas ops fica como está", () => {
+    // Canvas e painel já eram iguais na entrada — problema anterior a este
+    // step, e consertá-lo em silêncio esconderia de onde ele veio.
+    const r = applyOps(
+      painel("#FAF5F3", "#FAF5F3"),
+      [{ action: "recolor", from: "#000000", to: "#1F1F1F", where: "color" }],
+      { allowHero: true, surfaces: SURF },
+    )
+    expect(r.panelFixes).toBe(0)
+  })
+
+  it("tom inválido desliga a guarda, NÃO derruba o passo de cor", () => {
+    // Um contexto sem os papéis novos chegava como {surface: undefined} e
+    // explodia dentro do aplicador: as duas tentativas do step falhavam e o
+    // e-mail saía sem NENHUMA cor de marca — para consertar um painel.
+    // Guarda de acabamento falha para o lado aberto.
+    const r = applyOps(
+      painel("#FFFFFF", "#D9D9D9"),
+      [{ action: "recolor", from: "#D9D9D9", to: "#FAF5F3" }],
+      {
+        allowHero: true,
+        surfaces: { surface: undefined, surface_strong: "" } as unknown as {
+          surface: string
+          surface_strong: string
+        },
+      },
+    )
+    expect(r.panelFixes).toBe(0)
+    expect(r.applied).toBe(1)
+  })
+
+  it("o conserto de par mede o texto contra o fundo FINAL do painel", () => {
+    // Texto branco dentro do card: depois de reerguido o painel fica claro,
+    // então o rótulo tem de virar escuro. Se o par medisse o fundo
+    // colapsado, mediria a cor errada.
+    const html =
+      '<table style="background:#000000;"><tr><td>' +
+      '<table style="background:#D9D9D9;"><tr><td>' +
+      '<span style="color:#FFFFFF">Feature</span>' +
+      "</td></tr></table></td></tr></table>"
+    const r = applyOps(
+      html,
+      [
+        { action: "recolor", from: "#000000", to: "#FAF5F3", where: "background" },
+        { action: "recolor", from: "#D9D9D9", to: "#FAF5F3" },
+      ],
+      { allowHero: true, surfaces: SURF },
+    )
+    expect(r.panelFixes).toBe(1)
+    expect(r.html).not.toContain('color:#FFFFFF')
+  })
+})

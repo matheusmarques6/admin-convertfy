@@ -39,6 +39,22 @@ export interface ColorRoles {
   button_bg: string
   button_text: string
   accent: string
+  /**
+   * Fundo de PAINEL — o card, a faixa de destaque, a coluna que precisa se
+   * separar do canvas sem virar bloco escuro. Derivado do `bg`, sempre mais
+   * escuro que ele.
+   *
+   * Por que existe: a paleta da loja é registrada com pouquíssimas cores (a
+   * Luxe Lift tem DUAS), e o prompt do agente de cor proíbe inventar valor
+   * fora dos papéis. Com um único valor claro, todo cinza de painel da
+   * biblioteca tinha um destino legal só — o próprio `bg`. Em quatro
+   * gerações seguidas o agente mandou de 6 a 10 cinzas para o mesmo hex do
+   * canvas: figura e fundo viram a mesma cor e o destaque some. Ele obedeceu
+   * a regra; faltava lugar para onde mandar.
+   */
+  surface: string
+  /** Segundo nível: painel DENTRO de painel, ou destaque mais afirmativo. */
+  surface_strong: string
 }
 
 const DEFAULT_DARK = "#1F1F1F"
@@ -146,9 +162,111 @@ function shiftLuminance(hex: string, delta: number): string {
   return `#${toHex(nr)}${toHex(ng)}${toHex(nb)}`
 }
 
+// ── Superfícies ───────────────────────────────────────────────────────
+
+/**
+ * Distância mínima entre canvas e painel para o painel EXISTIR aos olhos.
+ * 1.08:1 é pouco em termos de WCAG — e é de propósito: painel não precisa
+ * ser legível contra o fundo, precisa ser percebido como uma área. Os
+ * cinzas que a biblioteca usa hoje (#EFEFEF, #D9D9D9 sobre branco) ficam
+ * nessa ordem de grandeza.
+ */
+const SURFACE_MIN_RATIO = 1.08
+
+/** Piso de leitura do texto EM CIMA do painel (AA texto normal). */
+const SURFACE_TEXT_MIN = 4.5
+
+/** Mistura linear de dois hex. `t` = quanto de `b` entra (0..1). */
+function mixHex(a: string, b: string, t: number): string {
+  const na = normalizeHex(a)
+  const nb = normalizeHex(b)
+  if (!na || !nb) return a
+  const canal = (i: number) => {
+    const va = parseInt(na.slice(1 + i * 2, 3 + i * 2), 16)
+    const vb = parseInt(nb.slice(1 + i * 2, 3 + i * 2), 16)
+    return Math.round(va * (1 - t) + vb * t)
+  }
+  const hex = (n: number) => n.toString(16).padStart(2, "0").toUpperCase()
+  return `#${hex(canal(0))}${hex(canal(1))}${hex(canal(2))}`
+}
+
+/**
+ * Ajusta a dose até o tom (a) se separar do canvas e (b) ainda deixar o
+ * texto legível em cima.
+ *
+ * A ordem importa: separação primeiro, leitura depois — o piso de leitura
+ * VENCE. Painel discreto demais é decisão de design que ninguém nota;
+ * painel com texto ilegível é o bug que estamos consertando, e trocar um
+ * pelo outro não seria conserto nenhum. No limite a dose cai a zero e o
+ * painel vira o próprio canvas: o pipeline volta ao comportamento de hoje
+ * em vez de entregar algo pior.
+ */
+function tonalizar(
+  bg: string,
+  text: string,
+  base: number,
+  make: (dose: number) => string,
+): string {
+  let dose = base
+  let tom = make(dose)
+  for (let i = 0; i < 12 && contrastRatio(bg, tom) < SURFACE_MIN_RATIO; i++) {
+    dose += base / 2
+    tom = make(dose)
+  }
+  for (let i = 0; i < 12 && contrastRatio(text, tom) < SURFACE_TEXT_MIN; i++) {
+    dose *= 0.7
+    tom = make(dose)
+  }
+  return tom
+}
+
+/**
+ * As duas fórmulas em avaliação (a perdedora sai antes do merge).
+ *
+ *   luminance — escurece o próprio `bg` no espaço HSL, preservando matiz e
+ *               saturação. Previsível em qualquer paleta; é o que o código
+ *               já faz para o `accent` quando a paleta é mono.
+ *   mix       — puxa o `bg` na direção da cor mais escura da marca. O painel
+ *               fica "mais da marca", mas em paleta de dois matizes distantes
+ *               o resultado pode sujar o bege.
+ */
+export type SurfaceFormula = "luminance" | "mix"
+
+/** Doses base de cada nível. A segunda mira a faixa dos #D9D9D9 da biblioteca. */
+const SURFACE_DOSE: Record<SurfaceFormula, [number, number]> = {
+  luminance: [0.05, 0.11],
+  mix: [0.06, 0.14],
+}
+
+export function deriveSurfaces(
+  bg: string,
+  text: string,
+  darkest: string,
+  formula: SurfaceFormula,
+): { surface: string; surface_strong: string } {
+  const make =
+    formula === "mix"
+      ? (dose: number) => mixHex(bg, darkest, Math.min(1, dose))
+      : (dose: number) => shiftLuminance(bg, -dose)
+  const [d1, d2] = SURFACE_DOSE[formula]
+  return {
+    surface: tonalizar(bg, text, d1, make),
+    surface_strong: tonalizar(bg, text, d2, make),
+  }
+}
+
+/** Cor mais escura da paleta — origem da mistura. */
+function darkest(colors: BrandColor[]): string | undefined {
+  if (colors.length === 0) return undefined
+  return colors.reduce((acc, c) =>
+    relativeLuminance(c.hex) < relativeLuminance(acc.hex) ? c : acc,
+  ).hex
+}
+
 export function deriveColorRoles(
   primary: BrandColor[] = [],
   secondary: BrandColor[] = [],
+  surfaceFormula: SurfaceFormula = "luminance",
 ): ColorRoles {
   const validPrimary = primary
     .filter((c) => normalizeHex(c.hex))
@@ -209,5 +327,24 @@ export function deriveColorRoles(
     accent = shiftLuminance(button_bg, isDark ? 0.2 : -0.2)
   }
 
-  return { bg, text, heading, button_bg, button_text, accent }
+  // Superfícies — derivadas do canvas já resolvido, nunca da paleta crua:
+  // o painel tem de ser um degrau do fundo que ele mora, não uma terceira
+  // cor solta.
+  const { surface, surface_strong } = deriveSurfaces(
+    bg,
+    text,
+    darkest(all) ?? text,
+    surfaceFormula,
+  )
+
+  return {
+    bg,
+    text,
+    heading,
+    button_bg,
+    button_text,
+    accent,
+    surface,
+    surface_strong,
+  }
 }

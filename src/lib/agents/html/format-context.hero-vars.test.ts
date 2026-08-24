@@ -30,6 +30,8 @@ function minimalCtx(): FormatChainContext {
       button_bg: "#111111",
       button_text: "#FFFFFF",
       accent: "#333333",
+      surface: "#F2F2F2",
+      surface_strong: "#E3E3E3",
     },
     logoLight: "",
     logoDark: "",

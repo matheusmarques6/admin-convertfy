@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { deriveColorRoles } from "./color-roles"
+import {
+  contrastRatio,
+  deriveColorRoles,
+  deriveSurfaces,
+  relativeLuminance,
+} from "./color-roles"
 
 describe("deriveColorRoles", () => {
   it("paleta vazia → defaults seguros (bg branco, text preto)", () => {
@@ -151,5 +156,76 @@ describe("deriveColorRoles", () => {
       [],
     )
     expect(r.bg).toBe("#FAF7F2")
+  })
+})
+
+describe("superfícies (surface / surface_strong)", () => {
+  // Paleta REAL da Luxe Lift: duas cores, e foi ela que produziu o colapso
+  // de 7 cinzas de painel num único #FAF5F3.
+  const LUXE = [
+    { hex: "#3D2820", name: "Nova cor", role: "Principal" },
+    { hex: "#FAF5F3", name: "Nova cor", role: "Principal" },
+  ]
+
+  it("os dois níveis são mais escuros que o canvas, em ordem", () => {
+    const r = deriveColorRoles(LUXE, [])
+    expect(r.bg).toBe("#FAF5F3")
+    expect(relativeLuminance(r.surface)).toBeLessThan(relativeLuminance(r.bg))
+    expect(relativeLuminance(r.surface_strong)).toBeLessThan(
+      relativeLuminance(r.surface),
+    )
+  })
+
+  it("o painel se separa do canvas o bastante para ser percebido", () => {
+    const r = deriveColorRoles(LUXE, [])
+    expect(contrastRatio(r.bg, r.surface)).toBeGreaterThanOrEqual(1.08)
+  })
+
+  it("o texto continua legível EM CIMA do painel", () => {
+    const r = deriveColorRoles(LUXE, [])
+    expect(contrastRatio(r.text, r.surface_strong)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it("as duas fórmulas produzem tons distintos, ambos válidos", () => {
+    const lum = deriveColorRoles(LUXE, [], "luminance")
+    const mix = deriveColorRoles(LUXE, [], "mix")
+    expect(lum.surface).not.toBe(mix.surface)
+    for (const r of [lum, mix]) {
+      expect(contrastRatio(r.bg, r.surface)).toBeGreaterThanOrEqual(1.08)
+      expect(contrastRatio(r.text, r.surface_strong)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("bg médio-claro: o piso de LEITURA vence a separação", () => {
+    // Canvas já puxado para o meio do caminho. Escurecer o painel na dose
+    // cheia deixaria o texto escuro sem contraste; o tonalizador desce a
+    // dose até passar, mesmo que o painel fique discreto.
+    const r = deriveSurfaces("#8A8A8A", "#1F1F1F", "#1F1F1F", "luminance")
+    expect(contrastRatio("#1F1F1F", r.surface_strong)).toBeGreaterThanOrEqual(
+      4.5,
+    )
+  })
+
+  it("paleta vazia ainda devolve superfícies utilizáveis", () => {
+    const r = deriveColorRoles([], [])
+    expect(r.bg).toBe("#FFFFFF")
+    expect(r.surface).not.toBe(r.bg)
+    expect(contrastRatio(r.text, r.surface)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it("a mistura puxa o painel na direção da cor escura da marca", () => {
+    // Marca com escuro AZUL: o painel misturado tem de ficar mais azul que
+    // o obtido só baixando a luminância do bege.
+    const azul = [
+      { hex: "#0B1D51", name: "x", role: "Principal" },
+      { hex: "#FAF5F3", name: "y", role: "Fundo" },
+    ]
+    const mix = deriveColorRoles(azul, [], "mix")
+    const lum = deriveColorRoles(azul, [], "luminance")
+    const azulidade = (hex: string) =>
+      parseInt(hex.slice(5, 7), 16) - parseInt(hex.slice(1, 3), 16)
+    expect(azulidade(mix.surface_strong)).toBeGreaterThan(
+      azulidade(lum.surface_strong),
+    )
   })
 })

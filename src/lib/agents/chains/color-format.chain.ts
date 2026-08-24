@@ -51,6 +51,8 @@ Respond with ONLY this JSON (no fences, no commentary):
 - <color_inventory> gives you, per color, how many occurrences sit in each role. Use those counts: a color that is 30x body text and 12x section background is TWO decisions, not one skip.
 - A color used as TEXT also carries "sobre" (which backgrounds it sits on, and how often) and "contraste_min" (its worst contrast ratio in the document). "imagem" under "sobre" means the background there is a PHOTO — leave that text alone, its readability is settled elsewhere.
 - A color used as BACKGROUND may carry "cobre_px": the declared width, in px, of the widest container it fills. It is the only measure of AREA you get, and area is what the reader sees. A section background covering 598px occurs ONCE and outweighs a 1px hairline that occurs 24 times. Entries with a wide "cobre_px" are listed first for that reason. Its absence means the width was not declared on that element, not that the area is small.
+- A color used as BACKGROUND may also carry "dentro_de": which background(s) it sits INSIDE, and how often. That color is a PANEL — a card, a highlight band, a section that has to read as raised off the page. Sending a panel and the background it sits inside to the SAME value erases the panel: it does not look wrong, it stops existing. Check "dentro_de" before every background op.
+- Panels go to <surface>, or to <surface_strong> when the thing they sit inside is already <surface>. Those two ARE palette roles, derived from <bg> for exactly this purpose — reaching for <bg> because it is the only light value you recognise is the mistake this rule exists to stop.
 - Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
 </ops_vocabulary>
 
@@ -71,9 +73,10 @@ Rules:
   the palette hex for that role — a color being "neutral" does not exempt it.
 - Judge by CONTEXT, not by how many occurrences it has. The most frequent color in
   the document is usually the one most worth correcting.
-- Changing a BACKGROUND is safe: the applier measures the result and rewrites the
-  text sitting on it when the pair would become unreadable. Pick the background the
-  brand wants and let it handle the text.
+- Changing a BACKGROUND is safe FOR THE TEXT on it: the applier measures the result and
+  rewrites that text when the pair would become unreadable. It does not make the
+  background choice itself safe — a panel sent to the colour of what it sits on is
+  gone, and no text fix brings it back. Read "dentro_de" first.
 - Changing a TEXT color is on you: check "contraste_min" and "sobre" before sending
   a text color anywhere near its own background.
 - Functional neutrals stay: pure white/black used as TEXT for contrast, hairline
@@ -123,6 +126,8 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
   <button_bg>{{color_button_bg}}</button_bg>
   <button_text>{{color_button_text}}</button_text>
   <accent>{{color_accent}}</accent>
+  <surface>{{color_surface}}</surface>
+  <surface_strong>{{color_surface_strong}}</surface_strong>
 </color_roles>
 
 <tones>{{tones}}</tones>

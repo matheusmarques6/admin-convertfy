@@ -81,6 +81,19 @@ export interface ColorInventoryEntry {
    * negativo silencioso, que é o lado seguro do erro.
    */
   cobre_px?: number
+  /**
+   * Só para cor usada como FUNDO: sobre quais fundos ELA pousa, e quantas
+   * vezes. É o espelho do `sobre` do texto, e existe pela mesma razão — o
+   * agente não vê o documento, então o que não chega no inventário ele não
+   * sabe.
+   *
+   * O que faltava saber: que `#D9D9D9` é um PAINEL dentro de `#FFFFFF`.
+   * Sem isso o agente mandou os dois para o mesmo destino em quatro
+   * gerações seguidas (Luxe Lift, 23-24/08) — decisão que apaga o painel e
+   * que ele não tinha como enxergar como tal. Fundo em foto entra como
+   * "imagem"; sem fundo declarado acima, o canvas do Montador.
+   */
+  dentro_de?: Record<string, number>
 }
 
 // Hex completo/curto e rgb()/rgba() — as formas que emails usam na prática.

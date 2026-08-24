@@ -10,6 +10,7 @@ import {
   isLargeText,
   DEFAULT_CANVAS,
   annotateInventoryPairs,
+  backgroundDeclarations,
 } from "./color-contrast"
 import { extractColorInventory } from "./color-inventory"
 import { buildAncestorChain } from "./dom-locator"
@@ -222,5 +223,70 @@ describe("annotateInventoryPairs", () => {
       .find((e) => e.valor === "#FAF5F3")
     expect(fundo?.sobre).toBeUndefined()
     expect(fundo?.contraste_min).toBeUndefined()
+  })
+})
+
+describe("fundo dentro de fundo (dentro_de)", () => {
+  it("o painel sabe sobre qual fundo ele pousa", () => {
+    // A forma exata da `produtos 4`: seção de 598px pintada dentro do
+    // wrapper branco do Montador.
+    const html =
+      '<table width="600" style="background:#FFFFFF;"><tr><td>' +
+      '<table width="598" style="background:#D9D9D9;"><tr><td>x</td></tr></table>' +
+      "</td></tr></table>"
+    const inv = annotateInventoryPairs(html, extractColorInventory(html))
+    expect(inv.find((e) => e.valor === "#D9D9D9")?.dentro_de).toEqual({
+      "#FFFFFF": 1,
+    })
+  })
+
+  it("fundo no topo do documento não tem dentro_de", () => {
+    const html = '<table width="600" style="background:#FFFFFF;"><tr><td>x</td></tr></table>'
+    const inv = annotateInventoryPairs(html, extractColorInventory(html))
+    expect(inv.find((e) => e.valor === "#FFFFFF")?.dentro_de).toBeUndefined()
+  })
+
+  it("td repetindo a cor do table não conta como um segundo painel", () => {
+    // Redundância de compatibilidade, não hierarquia visual: o painel é UM
+    // só. Contar as duas declarações faria o agente ver duas camadas onde
+    // existe uma.
+    const html =
+      '<table style="background:#FFFFFF;"><tr><td>' +
+      '<table style="background:#EEEEEE;"><tr>' +
+      '<td bgcolor="#EEEEEE">x</td></tr></table>' +
+      "</td></tr></table>"
+    const inv = annotateInventoryPairs(html, extractColorInventory(html))
+    expect(inv.find((e) => e.valor === "#EEEEEE")?.dentro_de).toEqual({
+      "#FFFFFF": 1,
+    })
+  })
+
+  it("painel sobre FOTO é anotado como imagem", () => {
+    const html =
+      '<table style="background:#FFFFFF url(https://cdn/x.jpg);"><tr><td>' +
+      '<table style="background:#D9D9D9;"><tr><td>x</td></tr></table>' +
+      "</td></tr></table>"
+    const inv = annotateInventoryPairs(html, extractColorInventory(html))
+    expect(inv.find((e) => e.valor === "#D9D9D9")?.dentro_de).toEqual({
+      imagem: 1,
+    })
+  })
+
+  it("backgroundDeclarations sai em ordem de documento, com bgcolor junto", () => {
+    const html =
+      '<table style="background:#FFFFFF;"><tr>' +
+      '<td bgcolor="#D9D9D9">a</td>' +
+      '<td style="background-color:#BEBEBE">b</td>' +
+      "</tr></table>"
+    const decls = backgroundDeclarations(html)
+    expect(decls.map((d) => d.hex)).toEqual(["#FFFFFF", "#D9D9D9", "#BEBEBE"])
+    // Os dois painéis pousam no branco da tabela; o branco, no canvas.
+    expect(decls[1].parent).toEqual({ kind: "color", hex: "#FFFFFF" })
+    expect(decls[2].parent).toEqual({ kind: "color", hex: "#FFFFFF" })
+  })
+
+  it("borda NÃO entra como declaração de fundo", () => {
+    const html = '<table><tr><td style="border:1px solid #130E31">x</td></tr></table>'
+    expect(backgroundDeclarations(html)).toHaveLength(0)
   })
 })

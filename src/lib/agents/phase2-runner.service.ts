@@ -2950,7 +2950,19 @@ async function runFormattingChain(p: {
       inputHtml,
       attempt: async () => {
         const r = await invokeColorFormatChain({ config, vars })
-        const applied = applyOps(inputHtml, r.ops, { allowHero: true })
+        const applied = applyOps(inputHtml, r.ops, {
+          allowHero: true,
+          // Para onde reerguer um painel que o agente colapsou no próprio
+          // fundo. Sem os tons a guarda não roda — e o painel some, que é o
+          // comportamento de antes.
+          // `?? ""` porque um contexto sem os papéis novos (chamada antiga,
+          // ctx parcial) não pode derrubar o passo de cor INTEIRO: applyOps
+          // trata tom inválido como guarda desligada.
+          surfaces: {
+            surface: fmtCtx.roles?.surface ?? "",
+            surface_strong: fmtCtx.roles?.surface_strong ?? "",
+          },
+        })
         // Guard: ops replace não podem quebrar a estrutura (um find/replace
         // que engole um </table> corrompe o documento).
         const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
@@ -2993,6 +3005,10 @@ async function runFormattingChain(p: {
               // que já estava quebrado antes deste step).
               contrast_fixed: applied.pairedTextFixes,
               contrast_remaining: applied.contrastRemaining,
+              // Painéis que colapsaram no próprio fundo e o código
+              // reergueu. `0` com painel sumido é o estado que estamos
+              // consertando — por isso a contagem é explícita.
+              panel_fixes: applied.panelFixes,
             },
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,

@@ -141,6 +141,11 @@ export const ColorFormatPromptVarsSchema = z.object({
   color_button_bg: z.string(),
   color_button_text: z.string(),
   color_accent: z.string(),
+  // Fundo de PAINEL. Com um único valor claro na paleta, todo cinza de
+  // superfície da biblioteca tinha um destino legal só — o próprio `bg` — e
+  // o agente colapsava figura e fundo na mesma cor (Luxe Lift, 23-24/08).
+  color_surface: z.string(),
+  color_surface_strong: z.string(),
   font_heading: z.string(),
   font_body: z.string(),
   pesquisa_full_text: z.string(),

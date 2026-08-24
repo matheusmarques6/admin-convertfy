@@ -95,14 +95,65 @@ export function resolveEffectiveBackground(
   html: string,
   offset: number,
   chainAt: ReturnType<typeof buildAncestorChain>,
+  /**
+   * Quantos elementos da cadeia pular. `1` responde "o que está ATRÁS deste
+   * elemento" em vez de "qual o fundo aqui" — é como se resolve o fundo do
+   * PAI de uma declaração de fundo, que é o que diz se ela é um painel.
+   */
+  pular = 0,
 ): EffectiveBg {
   const chain = chainAt(offset)
   if (!chain) return { kind: "unknown" }
-  for (const el of chain) {
+  for (const el of chain.slice(pular)) {
     const bg = bgFromStyle(openTagOf(html, el.range))
     if (bg) return bg
   }
   return { kind: "color", hex: DEFAULT_CANVAS }
+}
+
+// ── Declarações de FUNDO ──────────────────────────────────────────────
+
+/**
+ * Valor de cor de uma declaração de fundo: `background`/`background-color`
+ * no style, ou o atributo `bgcolor`. Não casa `border-color` (o prefixo
+ * `background`/`bgcolor` é obrigatório) nem cor de texto.
+ */
+const BG_COLOR_RE = new RegExp(
+  `(?:background(?:-color)?\\s*:\\s*(?:[^;"']*?\\s)?|bgcolor\\s*=\\s*"?)(${HEX})`,
+  "gi",
+)
+
+export interface BgDeclaration {
+  /** Range do VALOR da cor no source — é o que um splice reescreve. */
+  valueRange: Range
+  /** A cor declarada, canônica. */
+  hex: string
+  /** O fundo que está ATRÁS desta declaração. */
+  parent: EffectiveBg
+}
+
+/**
+ * Toda declaração de fundo do documento, em ordem de aparição, cada uma com
+ * o fundo do pai resolvido.
+ *
+ * A ordem é o que permite casar entrada e saída de um recolor: trocar cor
+ * não cria nem remove declaração, então a n-ésima da entrada é a n-ésima da
+ * saída. Offset não serve (`#abc` → `#AABBCC` cresce e desloca o resto) e
+ * valor menos ainda — depois de um colapso, painel e pai são o MESMO valor,
+ * que é justamente o que se quer detectar.
+ */
+export function backgroundDeclarations(html: string): BgDeclaration[] {
+  const chainAt = buildAncestorChain(html)
+  const out: BgDeclaration[] = []
+  for (const m of html.matchAll(BG_COLOR_RE)) {
+    const valueOffset = (m.index ?? 0) + m[0].length - m[1].length
+    out.push({
+      valueRange: { start: valueOffset, end: valueOffset + m[1].length },
+      hex: canonicalHex(m[1]),
+      parent: resolveEffectiveBackground(html, valueOffset, chainAt, 1),
+    })
+  }
+  return out
 }
 
 // ── Limiar AA ─────────────────────────────────────────────────────────
@@ -185,7 +236,7 @@ export function auditContrast(html: string): ContrastFinding[] {
 }
 
 /**
- * Anota o inventário com os pares texto↔fundo.
+ * Anota o inventário com os pares texto↔fundo e fundo↔fundo-do-pai.
  *
  * Vive aqui, e não em color-inventory, porque precisa do DOM — e porque
  * color-contrast já depende de color-inventory para o `canonicalHex`.
@@ -212,19 +263,41 @@ export function annotateInventoryPairs(
     porTexto.set(textHex, mapa)
   }
 
+  // Segunda passada: fundo sobre fundo. Um fundo declarado DENTRO de outro
+  // é um painel, e é a informação que decide se mandar os dois para o mesmo
+  // valor apaga alguma coisa.
+  const porFundo = new Map<string, Map<string, number>>()
+  for (const d of backgroundDeclarations(html)) {
+    const rotulo =
+      d.parent.kind === "color"
+        ? d.parent.hex
+        : d.parent.kind === "image"
+          ? "imagem"
+          : "?"
+    // Fundo igual ao do pai não é painel — é a redundância `<td>`/`<table>`
+    // que e-mail usa para compatibilidade. Anotar isso viraria ruído.
+    if (rotulo === d.hex) continue
+    const mapa = porFundo.get(d.hex) ?? new Map<string, number>()
+    mapa.set(rotulo, (mapa.get(rotulo) ?? 0) + 1)
+    porFundo.set(d.hex, mapa)
+  }
+
+  const ordenado = (m: Map<string, number>) =>
+    Object.fromEntries([...m.entries()].sort((a, b) => b[1] - a[1]))
+
   return entries.map((e) => {
     const mapa = porTexto.get(e.valor)
-    if (!mapa) return e
-    const medidos = [...mapa.keys()].filter((k) => k.startsWith("#"))
-    const pior = medidos.length
-      ? Math.min(...medidos.map((bg) => contrastRatio(e.valor, bg)))
-      : null
-    return {
-      ...e,
-      sobre: Object.fromEntries(
-        [...mapa.entries()].sort((a, b) => b[1] - a[1]),
-      ),
-      contraste_min: pior == null ? null : Number(pior.toFixed(2)),
+    const fundos = porFundo.get(e.valor)
+    const anotada = { ...e }
+    if (mapa) {
+      const medidos = [...mapa.keys()].filter((k) => k.startsWith("#"))
+      const pior = medidos.length
+        ? Math.min(...medidos.map((bg) => contrastRatio(e.valor, bg)))
+        : null
+      anotada.sobre = ordenado(mapa)
+      anotada.contraste_min = pior == null ? null : Number(pior.toFixed(2))
     }
+    if (fundos) anotada.dentro_de = ordenado(fundos)
+    return anotada
   })
 }

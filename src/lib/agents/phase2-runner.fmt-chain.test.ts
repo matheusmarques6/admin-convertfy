@@ -233,6 +233,16 @@ vi.mock("./html/format-context", () => ({
     fontHeading: "Playfair Display",
     fontBody: "Inter",
     referenceSource: refSource.value,
+    roles: {
+      bg: "#FFFFFF",
+      text: "#1F1F1F",
+      heading: "#1F1F1F",
+      button_bg: "#1F1F1F",
+      button_text: "#FFFFFF",
+      accent: "#333333",
+      surface: "#F2F2F2",
+      surface_strong: "#E3E3E3",
+    },
     // Imagem por CÓDIGO (F3): a URL vem do imageMap; a tag legada
     // {{BODY_IMAGE}} é preenchida pelo caminho {{}} do image-merge.
     imageMap: [
