@@ -123,12 +123,50 @@ export function srcTokenFromAltToken(raw: string): string {
 }
 
 /**
- * URL "de verdade" — resquício de export (Figma) ou asset externo. Não é
- * slot: o valor já resolve para uma imagem real e não há o que casar.
+ * URL "de verdade" — asset externo ou caminho do próprio ESP. Não tem forma
+ * de token e não é slot: o valor já resolve para uma imagem real.
+ *
+ * Cuidado: "já resolve para uma imagem real" é o que se assume, não o que se
+ * verifica — ver `isDesignExportUrl` para a exceção que essa suposição custou.
  */
 export function isResidualUrl(src: string): boolean {
   const v = src.trim()
   return /^(https?:)?\/\//i.test(v) || v.startsWith("/") || v.startsWith("#")
+}
+
+/**
+ * Hosts de EXPORT de ferramenta de design. Nenhum deles hospeda asset de
+ * produção: `figma.com` não tem hospedagem pública de arquivo — toda URL
+ * `figma.com` dentro de um HTML é vazamento da ferramenta, seja o endpoint
+ * de asset do MCP (`/api/mcp/asset/…`) ou o CDN assinado e EXPIRÁVEL de
+ * imagem (`s3-alpha-sig.figma.com`).
+ *
+ * Lista explícita e curta de propósito: a regra oposta ("toda URL http é
+ * placeholder") sobrescreveria asset legítimo hospedado pela loja.
+ */
+export const DESIGN_EXPORT_HOSTS = [/(^|\.)figma\.com$/i]
+
+/**
+ * URL que é PLACEHOLDER de design, não asset final.
+ *
+ * `isResidualUrl` recusava a `<img>` inteira com a justificativa de que "o
+ * valor já resolve para uma imagem real e não há o que casar". Na `body 2 -
+ * bridge textos linha produtos` as duas molduras vinham com
+ * `src="https://www.figma.com/api/mcp/asset/…"`: a imagem do bloco era
+ * gerada, PAGA, e não tinha onde entrar — e o que viajava no lugar dela até
+ * a caixa de entrada era um endereço que não carrega (ícone quebrado, não
+ * moldura vazia). Dois defeitos empilhados atrás de uma suposição.
+ */
+export function isDesignExportUrl(src: string): boolean {
+  const v = src.trim()
+  if (!/^(https?:)?\/\//i.test(v)) return false
+  let host: string
+  try {
+    host = new URL(v.startsWith("//") ? `https:${v}` : v).hostname
+  } catch {
+    return false
+  }
+  return DESIGN_EXPORT_HOSTS.some((re) => re.test(host))
 }
 
 /**

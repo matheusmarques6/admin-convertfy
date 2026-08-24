@@ -1,11 +1,12 @@
 /**
  * Casos travados na biblioteca REAL: tokens de src/alt das 38 variantes
- * ativas, arte fixa base64 dos footers, resíduo de export do Figma, selo
+ * ativas, arte fixa base64 dos footers, placeholder de export do Figma, selo
  * repetido e dimensões deliberadamente diferentes entre schema e HTML
  * (ativo 90×230 vs slot 74×215 — dimensão NUNCA é âncora).
  */
 
 import { describe, expect, it } from "vitest"
+import { stripUnresolvedAttrTokens } from "./post-process"
 import {
   assignImageSlots,
   blockIndexesInRange,
@@ -98,15 +99,93 @@ describe("findAttrSlots", () => {
     ).toContain("<img")
   })
 
-  it("arte fixa base64 e URL real do Figma NUNCA viram slot", () => {
+  it("arte fixa base64 e asset hospedado NUNCA viram slot", () => {
     const html = [
       '<img src="data:image/png;base64,iVBORw0KGgo" alt="">',
-      '<img src="https://www.figma.com/api/mcp/asset/d9880f17" alt="">',
+      '<img src="https://cdn.convertfy.me/lojas/selo.png" alt="">',
       '<img src="URL_FOTO_1" alt="">',
     ].join("\n")
     const slots = findAttrSlots(html)
     expect(slots).toHaveLength(1)
     expect(slots[0].token).toBe("URL_FOTO_1")
+  })
+
+  it("src de export do Figma vira slot sintético", () => {
+    // `body 2 - bridge textos linha produtos` (Luxe Lift, 24/08): a regra
+    // "URL http real não é slot" assumia que a URL resolve para uma imagem.
+    // Esta não carrega — é placeholder da ferramenta de design. A imagem do
+    // bloco era gerada, paga, e não tinha onde entrar.
+    const html =
+      '<img src="https://www.figma.com/api/mcp/asset/d9880f17-4c4a-4c00" alt="">'
+    const slots = findAttrSlots(html)
+    expect(slots).toHaveLength(1)
+    expect(slots[0]).toMatchObject({
+      token: "URL_EXPORT_1",
+      attr: "src",
+      synthetic: true,
+    })
+    expect(html.slice(slots[0].valueRange.start, slots[0].valueRange.end)).toBe(
+      "https://www.figma.com/api/mcp/asset/d9880f17-4c4a-4c00",
+    )
+  })
+
+  it("o CDN assinado do Figma conta como export", () => {
+    // Expira: hoje carrega, na semana que vem é ícone quebrado.
+    const html = '<img src="https://s3-alpha-sig.figma.com/img/ab/cd?x=1" alt="">'
+    expect(findAttrSlots(html)[0]).toMatchObject({ synthetic: true })
+  })
+
+  it("dois exports no mesmo bloco viram dois destinos, em ordem de documento", () => {
+    const html = [
+      "<!-- cfy:block:0:body:start -->",
+      '<img src="https://www.figma.com/api/mcp/asset/aaa" alt="">',
+      '<img src="https://www.figma.com/api/mcp/asset/bbb" alt="">',
+      "<!-- cfy:block:0:body:end -->",
+    ].join("\n")
+    const out = assignImageSlots(findAttrSlots(html), [
+      imageField("collage_photo_a", { blockIndice: 0 }),
+      imageField("collage_photo_b", { blockIndice: 0 }),
+    ])
+    expect(out.map((a) => a.slot?.token)).toEqual([
+      "URL_EXPORT_1",
+      "URL_EXPORT_2",
+    ])
+    expect(out.map((a) => a.desfecho)).toEqual([
+      "ancorado_token",
+      "ancorado_token",
+    ])
+  })
+
+  it("exports em blocos diferentes não colidem no mesmo token", () => {
+    // Numerar por BLOCO daria `URL_EXPORT_1` nos dois; `assignImageSlots`
+    // agrupa por token, então os dois destinos virariam um grupo só e o
+    // segundo bloco ficaria sem candidato.
+    const html = [
+      "<!-- cfy:block:0:body:start -->",
+      '<img src="https://www.figma.com/api/mcp/asset/aaa" alt="">',
+      "<!-- cfy:block:0:body:end -->",
+      "<!-- cfy:block:1:produtos:start -->",
+      '<img src="https://www.figma.com/api/mcp/asset/bbb" alt="">',
+      "<!-- cfy:block:1:produtos:end -->",
+    ].join("\n")
+    const out = assignImageSlots(findAttrSlots(html), [
+      imageField("body_photo", { blockIndice: 0 }),
+      imageField("produto_photo", { blockIndice: 1 }),
+    ])
+    expect(out.map((a) => a.slot?.token)).toEqual([
+      "URL_EXPORT_1",
+      "URL_EXPORT_2",
+    ])
+  })
+
+  it("sem URL gerada, o src de export fica INTACTO", () => {
+    // Trocar o placeholder do designer por `src=""` não melhora nada.
+    const html =
+      '<img src="https://www.figma.com/api/mcp/asset/aaa" alt="">' +
+      '<img src="URL_FOTO_1" alt="">'
+    expect(stripUnresolvedAttrTokens(html)).toContain(
+      'src="https://www.figma.com/api/mcp/asset/aaa"',
+    )
   })
 
   it("alt de slot + base64 no src: a <img> se autodeclara destino", () => {

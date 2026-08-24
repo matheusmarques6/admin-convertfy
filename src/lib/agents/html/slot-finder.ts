@@ -13,8 +13,11 @@
  *     grupo — o valor casado preenche todas as ocorrências (groupSlots).
  *
  * O que nunca é slot se autodenuncia (attr-token-vocabulary): base64 é arte
- * fixa, URL http real é resquício de export, URL_DO_LOGO_AQUI/NOME_DA_MARCA
- * são estruturais (a plataforma preenche, não o agente de imagem).
+ * fixa, URL http real é asset externo, URL_DO_LOGO_AQUI/NOME_DA_MARCA são
+ * estruturais (a plataforma preenche, não o agente de imagem). Duas exceções
+ * viram slot SINTÉTICO, porque a `<img>` está declarando placeholder e não
+ * arte final: base64 com `alt` de token, e `src` de export de ferramenta de
+ * design (que sequer carrega na caixa de entrada).
  *
  * Os limites de bloco vêm dos marcadores `<!-- cfy:block:{i}:{tipo}:start/end -->`
  * do Montador — MESMA gramática do qa-views (mudar lá exige mudar aqui).
@@ -27,6 +30,7 @@ import {
   FIXED_ART_SRC,
   isAltToken,
   isAttrToken,
+  isDesignExportUrl,
   isStructuralToken,
   parseAttrToken,
   srcTokenFromAltToken,
@@ -91,10 +95,11 @@ export interface AttrSlot {
   /** Slot dentro de conditional comment do Outlook (espelho MSO). */
   inMso: boolean
   /**
-   * Slot DERIVADO: o token não está no documento — a `<img>` declarou o
-   * slot pelo `alt` e o `src` é base64 de placeholder. Quem limpa token
-   * cru (`stripUnresolvedAttrTokens`) tem de PULAR estes: sem URL, o certo
-   * é a arte do designer ficar onde está, não virar `src=""`.
+   * Slot DERIVADO: o token não está no documento — a `<img>` declarou o slot
+   * de outra forma (base64 com `alt` de token, ou `src` de export de design).
+   * Quem limpa token cru (`stripUnresolvedAttrTokens`) tem de PULAR estes:
+   * sem URL, o certo é o que o designer deixou ficar onde está, não virar
+   * `src=""`.
    */
   synthetic?: boolean
 }
@@ -137,7 +142,11 @@ export function findAttrSlots(html: string): AttrSlot[] {
   // Ordem de DOCUMENTO: `assignImageSlots` usa "o candidato mais cedo"
   // como 2º critério, e um sintético jogado no fim faria a foto do
   // produto 2 cair no card do 1 numa variante que mistura os dois tipos.
-  return [...out, ...slotsFromBase64Placeholder(html, out)].sort(
+  const sinteticos = [
+    ...slotsFromBase64Placeholder(html, out),
+    ...slotsFromDesignExport(html, out, { blocks, comments, elementLookup }),
+  ]
+  return [...out, ...sinteticos].sort(
     (a, b) => a.valueRange.start - b.valueRange.start,
   )
 }
@@ -192,6 +201,73 @@ function slotsFromBase64Placeholder(
       imgRange: alt.imgRange,
       blockIndice: alt.blockIndice,
       inMso: alt.inMso,
+      synthetic: true,
+    })
+  }
+  return out
+}
+
+/** Contexto já indexado por `findAttrSlots`, para não reindexar o documento. */
+interface DocIndex {
+  blocks: BlockRegion[]
+  comments: Range[]
+  elementLookup: ReturnType<typeof buildElementLookup>
+}
+
+const SRC_RE = /\bsrc\s*=\s*"([^"]*)"/gi
+
+/**
+ * `<img>` cujo `src` é EXPORT de ferramenta de design.
+ *
+ * `isResidualUrl` recusava essas `<img>` por regra explícita — "o valor já
+ * resolve para uma imagem real e não há o que casar". Na `body 2 - bridge
+ * textos linha produtos` as duas molduras vêm com
+ * `src="https://www.figma.com/api/mcp/asset/…"`: a imagem do bloco era
+ * gerada, paga, e o merge não tinha onde escrever; o que chegava à caixa de
+ * entrada era um endereço que não carrega.
+ *
+ * Diferente do caso base64, aqui o `alt` é vazio — não há nome de onde
+ * derivar o token. Ele é sintético e numerado por ordem de aparição no
+ * DOCUMENTO, não no bloco: numerar por bloco faria duas variantes com export
+ * gerarem `URL_EXPORT_1` cada uma, e `assignImageSlots` agrupa por token —
+ * os dois destinos virariam um grupo só, e o segundo bloco ficaria sem
+ * candidato. O casamento com os campos cai no 2º critério (ordem de
+ * aparição × ordem de declaração), que é o certo para molduras irmãs.
+ */
+function slotsFromDesignExport(
+  html: string,
+  slots: AttrSlot[],
+  { blocks, comments, elementLookup }: DocIndex,
+): AttrSlot[] {
+  const usados = new Set(slots.map((s) => s.token))
+  const out: AttrSlot[] = []
+  let n = 0
+  for (const m of html.matchAll(SRC_RE)) {
+    const value = m[1].trim()
+    if (!isDesignExportUrl(value)) continue
+    const matchStart = m.index ?? 0
+    const valueStart = matchStart + m[0].indexOf('"') + 1
+    // Improvável, mas barato: um `URL_EXPORT_1` de verdade no documento não
+    // pode ser sequestrado por um sintético de mesmo nome.
+    let token = ""
+    do {
+      n += 1
+      token = `URL_EXPORT_${n}`
+    } while (usados.has(token))
+    usados.add(token)
+    const inMso = comments.some(
+      (c) => matchStart >= c.start && matchStart < c.end,
+    )
+    const block = blocks.find(
+      (b) => matchStart >= b.range.start && matchStart < b.range.end,
+    )
+    out.push({
+      token,
+      attr: "src",
+      valueRange: { start: valueStart, end: valueStart + m[1].length },
+      imgRange: inMso ? null : (elementLookup(matchStart)?.range ?? null),
+      blockIndice: block?.indice ?? null,
+      inMso,
       synthetic: true,
     })
   }
