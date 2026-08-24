@@ -63,6 +63,24 @@ export interface ColorInventoryEntry {
   sobre?: Record<string, number>
   /** Pior contraste desta cor de texto no documento (null = só sobre foto). */
   contraste_min?: number | null
+  /**
+   * Só para cor usada como FUNDO: a maior largura declarada, em px, do
+   * container que ela pinta.
+   *
+   * É a única medida de ÁREA do inventário. Sem ela o agente enxerga um
+   * ranking de CONTAGEM, e contagem não é peso visual: na Luxe Lift
+   * (24/08) o `#B1B3B6` que pinta a seção inteira de produtos entrava em
+   * 18º de 20 com `ocorrencias: 1`, enquanto o `#130E31` de uma borda de
+   * 1px entrava em 3º com 24 — a hairline pesando 24× mais que o fundo do
+   * bloco. Não era regra dura ("1 ocorrência não conta"): o `#E8E8E8`,
+   * também com 1 e também fundo, FOI recolorido. O agente escolhia sem o
+   * dado.
+   *
+   * Ausente quando a largura não está declarada no próprio tag (fundo em
+   * `<td>` cujo `<table>` pai carrega a largura, ou largura em %) — falso
+   * negativo silencioso, que é o lado seguro do erro.
+   */
+  cobre_px?: number
 }
 
 // Hex completo/curto e rgb()/rgba() — as formas que emails usam na prática.
@@ -91,6 +109,52 @@ function rgbToHex(r: number, g: number, b: number): string | null {
   return `#${to2(r)}${to2(g)}${to2(b)}`.toUpperCase()
 }
 
+// Largura a partir da qual um fundo é SEÇÃO, não chip. O container do e-mail
+// tem 600px: 400 é "atravessa a largura", e deixa de fora fundo de botão
+// (~260px), pílula e badge, que não competem com a superfície do bloco.
+const LARGURA_DE_SECAO = 400
+
+// `(?!\d|%)` — `width="100%"` é a largura mais comum de e-mail (o wrapper) e
+// sem a guarda ela entraria como 100px: um container que atravessa a tela
+// registrado como estreito. Percentual não é medida de área aqui: sem saber
+// de quê é a porcentagem, não há px a declarar.
+const WIDTH_ATTR = /\swidth\s*=\s*"?(\d{2,4})(?!\d|%)/i
+const WIDTH_CSS = /(?:^|[;\s"])(?:max-|min-)?width\s*:\s*(\d{2,4})px/gi
+
+/**
+ * Maior largura em px declarada NO PRÓPRIO tag de abertura.
+ *
+ * Só o próprio tag, de propósito: subir a árvore atrás da largura de um
+ * ancestral creditaria 598px a um `<span>` de destaque dentro da seção, e
+ * uma medida de área inflada é pior que medida nenhuma — mandaria o agente
+ * tratar um grifo como fundo de bloco. No documento entregue da Luxe Lift,
+ * 29 das 53 declarações de fundo trazem a largura no mesmo tag.
+ */
+export function declaredWidth(openTag: string): number | null {
+  const larguras: number[] = []
+  const attr = WIDTH_ATTR.exec(openTag)
+  if (attr) larguras.push(Number(attr[1]))
+  for (const m of openTag.matchAll(WIDTH_CSS)) larguras.push(Number(m[1]))
+  return larguras.length ? Math.max(...larguras) : null
+}
+
+/**
+ * Tag de ABERTURA que contém o offset — null quando o offset não está
+ * dentro de um.
+ *
+ * O `>` anterior ao offset é o que separa os dois casos: a cor de uma regra
+ * dentro de `<style>` tem como `<` mais próximo o do próprio `<style>`, cujo
+ * `>` já ficou para trás. Sem essa guarda, toda cor do bloco de dark mode
+ * herdaria a largura do primeiro tag do documento.
+ */
+function openTagAt(html: string, idx: number): string | null {
+  const lt = html.lastIndexOf("<", idx)
+  if (lt === -1 || !/[a-zA-Z]/.test(html[lt + 1] ?? "")) return null
+  const gt = html.indexOf(">", lt)
+  if (gt === -1 || gt < idx) return null
+  return html.slice(lt, gt + 1)
+}
+
 /**
  * Contexto da ocorrência a partir do trecho imediatamente anterior.
  * Exportado porque o inventário e o aplicador PRECISAM usar a mesma
@@ -109,7 +173,8 @@ export function contextOf(html: string, idx: number): ColorContext {
 
 /**
  * Varre o documento (inclui blocos <style> — dark mode entra) e agrega
- * cores por valor canônico. Ordena por ocorrências desc.
+ * cores por valor canônico. Ordena fundo de seção primeiro (por largura) e
+ * depois por ocorrências desc.
  *
  * Os campos `sobre`/`contraste_min` da entrada NÃO são preenchidos aqui:
  * quem os anota é `annotateInventoryPairs` (color-contrast.ts), que precisa
@@ -117,15 +182,26 @@ export function contextOf(html: string, idx: number): ColorContext {
  * color-contrast já consome o `canonicalHex` daqui.
  */
 export function extractColorInventory(html: string): ColorInventoryEntry[] {
-  const acc = new Map<string, { count: number; ctx: Map<ColorContext, number> }>()
+  const acc = new Map<
+    string,
+    { count: number; ctx: Map<ColorContext, number>; largura: number }
+  >()
   const add = (canonical: string, idx: number) => {
     const cur = acc.get(canonical) ?? {
       count: 0,
       ctx: new Map<ColorContext, number>(),
+      largura: 0,
     }
     cur.count++
     const c = contextOf(html, idx)
     cur.ctx.set(c, (cur.ctx.get(c) ?? 0) + 1)
+    // Área só faz sentido para FUNDO: a largura do tag onde um `color:` mora
+    // é a largura do container, não a do texto.
+    if (c === "background" || c === "bgcolor") {
+      const tag = openTagAt(html, idx)
+      const w = tag ? declaredWidth(tag) : null
+      if (w && w > cur.largura) cur.largura = w
+    }
     acc.set(canonical, cur)
   }
   for (const m of html.matchAll(HEX_RE)) {
@@ -135,18 +211,31 @@ export function extractColorInventory(html: string): ColorInventoryEntry[] {
     const hex = rgbToHex(Number(m[1]), Number(m[2]), Number(m[3]))
     if (hex) add(hex, m.index ?? 0)
   }
-  const entries = Array.from(acc.entries())
-    .map(([valor, v]) => ({
+  const entries: ColorInventoryEntry[] = Array.from(acc.entries()).map(
+    ([valor, v]) => ({
       valor,
       ocorrencias: v.count,
       // Papel mais usado primeiro — a ordem sugere onde a troca rende mais.
       contextos: Object.fromEntries(
         Array.from(v.ctx.entries()).sort((a, b) => b[1] - a[1]),
       ) as Partial<Record<ColorContext, number>>,
-    }))
-    .sort((a, b) => b.ocorrencias - a.ocorrencias)
+      ...(v.largura > 0 ? { cobre_px: v.largura } : {}),
+    }),
+  )
 
-  return entries
+  // Fundo de SEÇÃO primeiro, e só depois a contagem.
+  //
+  // Ordenar só por ocorrências é um ranking de FREQUÊNCIA apresentado como
+  // ranking de importância: a borda de 1px repetida 24 vezes chegava antes
+  // do fundo do bloco inteiro, que aparece uma vez. O agente lê a lista de
+  // cima para baixo e tem orçamento de ops — a ordem é uma recomendação,
+  // ainda que nunca tenha sido escrita como tal.
+  const secao = (e: ColorInventoryEntry) => (e.cobre_px ?? 0) >= LARGURA_DE_SECAO
+  return entries.sort((a, b) => {
+    if (secao(a) !== secao(b)) return secao(a) ? -1 : 1
+    if (secao(a) && a.cobre_px !== b.cobre_px) return b.cobre_px! - a.cobre_px!
+    return b.ocorrencias - a.ocorrencias
+  })
 }
 
 /**

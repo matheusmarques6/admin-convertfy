@@ -50,6 +50,7 @@ Respond with ONLY this JSON (no fences, no commentary):
 - "from" must be a "valor" from <color_inventory>; "to" must be a palette color (or a functional derivative: pure white/black for contrast).
 - <color_inventory> gives you, per color, how many occurrences sit in each role. Use those counts: a color that is 30x body text and 12x section background is TWO decisions, not one skip.
 - A color used as TEXT also carries "sobre" (which backgrounds it sits on, and how often) and "contraste_min" (its worst contrast ratio in the document). "imagem" under "sobre" means the background there is a PHOTO — leave that text alone, its readability is settled elsewhere.
+- A color used as BACKGROUND may carry "cobre_px": the declared width, in px, of the widest container it fills. It is the only measure of AREA you get, and area is what the reader sees. A section background covering 598px occurs ONCE and outweighs a 1px hairline that occurs 24 times. Entries with a wide "cobre_px" are listed first for that reason. Its absence means the width was not declared on that element, not that the area is small.
 - Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
 </ops_vocabulary>
 

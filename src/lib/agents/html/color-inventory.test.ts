@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest"
 import {
+  declaredWidth,
   extractColorInventory,
   applyRecolor,
   canonicalHex,
@@ -249,5 +250,58 @@ describe("inventário por contexto", () => {
     expect(colorOccurrenceCount(doc)).toBe(
       inv.reduce((s, e) => s + e.ocorrencias, 0),
     )
+  })
+})
+
+describe("área: fundo de container tem largura, borda não", () => {
+  it("marca o fundo da seção com a largura declarada no próprio tag", () => {
+    // Cadastro real de `produtos 4 - um produto`: a largura vem três vezes
+    // no mesmo style (width/min-width/max-width) e mais uma no atributo.
+    const html =
+      '<table width="598" style="width:598px;min-width:598px;max-width:598px;' +
+      'background:#B1B3B6;"><tr><td style="border:1px solid #130E31">x</td></tr>' +
+      "</table>"
+    const inv = extractColorInventory(html)
+    expect(inv.find((e) => e.valor === "#B1B3B6")?.cobre_px).toBe(598)
+    // Borda não tem área: `cobre_px` só existe para fundo.
+    expect(inv.find((e) => e.valor === "#130E31")?.cobre_px).toBeUndefined()
+  })
+
+  it("fundo de seção com 1 ocorrência vem ANTES de borda com 24", () => {
+    const borda = '<td style="border:1px solid #130E31"></td>'
+    const html =
+      '<table width="598" style="background:#B1B3B6;"><tr>' +
+      borda.repeat(24) +
+      "</tr></table>"
+    const inv = extractColorInventory(html)
+    expect(inv[0].valor).toBe("#B1B3B6")
+    expect(inv[0].ocorrencias).toBe(1)
+    expect(inv[1].valor).toBe("#130E31")
+    expect(inv[1].ocorrencias).toBe(24)
+  })
+
+  it("fundo estreito (botão) não vira seção — segue ordenado por contagem", () => {
+    const html =
+      '<table width="260" style="background:#123456"><tr><td></td></tr></table>' +
+      '<td style="border:1px solid #ABCDEF"></td>'.repeat(5)
+    const inv = extractColorInventory(html)
+    expect(inv[0].valor).toBe("#ABCDEF")
+    expect(inv.find((e) => e.valor === "#123456")?.cobre_px).toBe(260)
+  })
+
+  it("cor de regra CSS dentro de <style> não herda largura de tag nenhum", () => {
+    const html =
+      '<table width="600"><tr><td>' +
+      "<style>.x { background:#AA0000 }</style>" +
+      "</td></tr></table>"
+    expect(
+      extractColorInventory(html).find((e) => e.valor === "#AA0000")?.cobre_px,
+    ).toBeUndefined()
+  })
+
+  it("declaredWidth pega a maior largura declarada, e ignora %", () => {
+    expect(declaredWidth('<table width="598" style="max-width:600px">')).toBe(600)
+    expect(declaredWidth('<td width="100%">')).toBeNull()
+    expect(declaredWidth("<td>")).toBeNull()
   })
 })
