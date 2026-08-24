@@ -176,20 +176,6 @@ const SURFACE_MIN_RATIO = 1.08
 /** Piso de leitura do texto EM CIMA do painel (AA texto normal). */
 const SURFACE_TEXT_MIN = 4.5
 
-/** Mistura linear de dois hex. `t` = quanto de `b` entra (0..1). */
-function mixHex(a: string, b: string, t: number): string {
-  const na = normalizeHex(a)
-  const nb = normalizeHex(b)
-  if (!na || !nb) return a
-  const canal = (i: number) => {
-    const va = parseInt(na.slice(1 + i * 2, 3 + i * 2), 16)
-    const vb = parseInt(nb.slice(1 + i * 2, 3 + i * 2), 16)
-    return Math.round(va * (1 - t) + vb * t)
-  }
-  const hex = (n: number) => n.toString(16).padStart(2, "0").toUpperCase()
-  return `#${hex(canal(0))}${hex(canal(1))}${hex(canal(2))}`
-}
-
 /**
  * Ajusta a dose até o tom (a) se separar do canvas e (b) ainda deixar o
  * texto legível em cima.
@@ -201,12 +187,8 @@ function mixHex(a: string, b: string, t: number): string {
  * painel vira o próprio canvas: o pipeline volta ao comportamento de hoje
  * em vez de entregar algo pior.
  */
-function tonalizar(
-  bg: string,
-  text: string,
-  base: number,
-  make: (dose: number) => string,
-): string {
+function tonalizar(bg: string, text: string, base: number): string {
+  const make = (dose: number) => shiftLuminance(bg, -dose)
   let dose = base
   let tom = make(dose)
   for (let i = 0; i < 12 && contrastRatio(bg, tom) < SURFACE_MIN_RATIO; i++) {
@@ -221,52 +203,31 @@ function tonalizar(
 }
 
 /**
- * As duas fórmulas em avaliação (a perdedora sai antes do merge).
+ * Doses base dos dois níveis, no espaço HSL do próprio `bg`.
  *
- *   luminance — escurece o próprio `bg` no espaço HSL, preservando matiz e
- *               saturação. Previsível em qualquer paleta; é o que o código
- *               já faz para o `accent` quando a paleta é mono.
- *   mix       — puxa o `bg` na direção da cor mais escura da marca. O painel
- *               fica "mais da marca", mas em paleta de dois matizes distantes
- *               o resultado pode sujar o bege.
+ * Escurecer o bg preserva matiz e saturação, o que mantém o painel dentro da
+ * mesma família do canvas em qualquer paleta — é o que o código já faz para
+ * o `accent` quando a paleta é mono. A alternativa avaliada (puxar o bg na
+ * direção da cor escura da marca) foi comparada no bloco real de produtos e
+ * descartada.
+ *
+ * A segunda dose mira a faixa dos #D9D9D9 que a biblioteca usa como painel.
  */
-export type SurfaceFormula = "luminance" | "mix"
-
-/** Doses base de cada nível. A segunda mira a faixa dos #D9D9D9 da biblioteca. */
-const SURFACE_DOSE: Record<SurfaceFormula, [number, number]> = {
-  luminance: [0.05, 0.11],
-  mix: [0.06, 0.14],
-}
+const SURFACE_DOSE = [0.05, 0.11] as const
 
 export function deriveSurfaces(
   bg: string,
   text: string,
-  darkest: string,
-  formula: SurfaceFormula,
 ): { surface: string; surface_strong: string } {
-  const make =
-    formula === "mix"
-      ? (dose: number) => mixHex(bg, darkest, Math.min(1, dose))
-      : (dose: number) => shiftLuminance(bg, -dose)
-  const [d1, d2] = SURFACE_DOSE[formula]
   return {
-    surface: tonalizar(bg, text, d1, make),
-    surface_strong: tonalizar(bg, text, d2, make),
+    surface: tonalizar(bg, text, SURFACE_DOSE[0]),
+    surface_strong: tonalizar(bg, text, SURFACE_DOSE[1]),
   }
-}
-
-/** Cor mais escura da paleta — origem da mistura. */
-function darkest(colors: BrandColor[]): string | undefined {
-  if (colors.length === 0) return undefined
-  return colors.reduce((acc, c) =>
-    relativeLuminance(c.hex) < relativeLuminance(acc.hex) ? c : acc,
-  ).hex
 }
 
 export function deriveColorRoles(
   primary: BrandColor[] = [],
   secondary: BrandColor[] = [],
-  surfaceFormula: SurfaceFormula = "luminance",
 ): ColorRoles {
   const validPrimary = primary
     .filter((c) => normalizeHex(c.hex))
@@ -330,12 +291,7 @@ export function deriveColorRoles(
   // Superfícies — derivadas do canvas já resolvido, nunca da paleta crua:
   // o painel tem de ser um degrau do fundo que ele mora, não uma terceira
   // cor solta.
-  const { surface, surface_strong } = deriveSurfaces(
-    bg,
-    text,
-    darkest(all) ?? text,
-    surfaceFormula,
-  )
+  const { surface, surface_strong } = deriveSurfaces(bg, text)
 
   return {
     bg,

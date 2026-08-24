@@ -186,21 +186,11 @@ describe("superfícies (surface / surface_strong)", () => {
     expect(contrastRatio(r.text, r.surface_strong)).toBeGreaterThanOrEqual(4.5)
   })
 
-  it("as duas fórmulas produzem tons distintos, ambos válidos", () => {
-    const lum = deriveColorRoles(LUXE, [], "luminance")
-    const mix = deriveColorRoles(LUXE, [], "mix")
-    expect(lum.surface).not.toBe(mix.surface)
-    for (const r of [lum, mix]) {
-      expect(contrastRatio(r.bg, r.surface)).toBeGreaterThanOrEqual(1.08)
-      expect(contrastRatio(r.text, r.surface_strong)).toBeGreaterThanOrEqual(4.5)
-    }
-  })
-
   it("bg médio-claro: o piso de LEITURA vence a separação", () => {
     // Canvas já puxado para o meio do caminho. Escurecer o painel na dose
     // cheia deixaria o texto escuro sem contraste; o tonalizador desce a
     // dose até passar, mesmo que o painel fique discreto.
-    const r = deriveSurfaces("#8A8A8A", "#1F1F1F", "#1F1F1F", "luminance")
+    const r = deriveSurfaces("#8A8A8A", "#1F1F1F")
     expect(contrastRatio("#1F1F1F", r.surface_strong)).toBeGreaterThanOrEqual(
       4.5,
     )
@@ -213,19 +203,11 @@ describe("superfícies (surface / surface_strong)", () => {
     expect(contrastRatio(r.text, r.surface)).toBeGreaterThanOrEqual(4.5)
   })
 
-  it("a mistura puxa o painel na direção da cor escura da marca", () => {
-    // Marca com escuro AZUL: o painel misturado tem de ficar mais azul que
-    // o obtido só baixando a luminância do bege.
-    const azul = [
-      { hex: "#0B1D51", name: "x", role: "Principal" },
-      { hex: "#FAF5F3", name: "y", role: "Fundo" },
-    ]
-    const mix = deriveColorRoles(azul, [], "mix")
-    const lum = deriveColorRoles(azul, [], "luminance")
-    const azulidade = (hex: string) =>
-      parseInt(hex.slice(5, 7), 16) - parseInt(hex.slice(1, 3), 16)
-    expect(azulidade(mix.surface_strong)).toBeGreaterThan(
-      azulidade(lum.surface_strong),
-    )
+  it("os tons são os escolhidos na comparação visual", () => {
+    // Trava os valores: uma mexida na dose muda o e-mail de toda loja, e a
+    // escolha foi feita olhando ESTES dois tons no bloco real de produtos.
+    const r = deriveColorRoles(LUXE, [])
+    expect(r.surface).toBe("#F3E6E1")
+    expect(r.surface_strong).toBe("#E9D4CB")
   })
 })
