@@ -127,11 +127,55 @@ describe("overlaySpec", () => {
     expect(spec).toEqual({ side: "bottom", fraction: 0.3 })
   })
 
-  it("sem lado explícito assume o topo — é o padrão da biblioteca", () => {
+  it("menção genérica de sobreposição assume o topo (padrão da biblioteca)", () => {
     expect(overlaySpec("headline sobreposta à imagem")).toEqual({
       side: "top",
       fraction: DEFAULT_OVERLAY_FRACTION,
     })
+  })
+
+  it("o CADASTRO REAL da hero 4, inteiro, devolve top — não bottom", () => {
+    // Luxe Lift 24/08: este texto saiu como `bottom` e o modelo recebeu
+    // "Reserve the bottom 43%". Ele diz "43% SUPERIORES" duas vezes sobre o
+    // overlay e fala de "base/inferior" QUATRO vezes sobre a cena — a
+    // versão que testava o texto inteiro caía nas quatro.
+    const guidance =
+      "Onde fica: fundo de todo o e-mail; wordmark, lockup, tagline, cupom e" +
+      " CTA são sobrepostos aos 43% superiores.\nNome do ativo:" +
+      " hero_campanha_[marca]_welcome.jpg"
+    const spec =
+      "Proporção: 9:16. Slot de 598 × 1150px. Ativo final 1196 × 2300px (2x)," +
+      " JPG q80 ou WebP, < 320 KB. Gerar em 9:16 na altura de 2300px" +
+      " (1294 × 2300) e cortar 98px de largura para chegar a 1196 × 2300.\n" +
+      "Ideia: cena de campanha editorial com uma ou duas figuras em corpo" +
+      " parcial ocupando a base do quadro, cortadas pela borda inferior," +
+      " guarda-roupa na cor de acento da interface. Parede lisa em tom neutro" +
+      " quente ocupando os 43% superiores, sem objeto nem sombra dura, para" +
+      " receber todo o overlay. Elemento vegetal ou arquitetônico entrando" +
+      " por um canto inferior, sombras projetadas nas laterais da metade" +
+      " inferior, luz natural quente."
+    expect(overlaySpec(`${guidance} ${spec}`)).toEqual({
+      side: "top",
+      fraction: 0.43,
+    })
+  })
+
+  it("o lado colado ao número vence menções soltas do lado oposto", () => {
+    expect(
+      overlaySpec("texto sobreposto aos 30% inferiores; topo com a marca"),
+    ).toEqual({ side: "bottom", fraction: 0.3 })
+  })
+
+  it("sem número, o lado vem da vizinhança da menção de overlay", () => {
+    // "inferior" longe da menção não decide; "no topo" colado a ela decide.
+    const t =
+      "Headline sobreposta no topo da imagem. Sombra projetada na metade" +
+      " inferior, elemento entrando pelo canto inferior direito."
+    expect(overlaySpec(t)?.side).toBe("top")
+  })
+
+  it("sem número e sem lado por perto, assume o topo", () => {
+    expect(overlaySpec("headline sobreposta à imagem")?.side).toBe("top")
   })
 
   it("campo sem overlay devolve null (sem instrução, como antes)", () => {

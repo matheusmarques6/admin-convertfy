@@ -37,6 +37,28 @@ export function hasOverlay(text: string | null | undefined): boolean {
 }
 
 /**
+ * "43% superiores" — o número E o lado, colados, numa única leitura.
+ *
+ * É o casamento dos dois que dá a resposta confiável: no cadastro real, a
+ * porcentagem só aparece grudada na palavra do lado, enquanto "base",
+ * "inferior" e "embaixo" pipocam pelo texto inteiro descrevendo a CENA.
+ */
+/**
+ * Vocabulário de lado, um só para as duas leituras (fração e vizinhança).
+ * `topo` precisa entrar como palavra inteira: `\btop\b` não casa "no topo",
+ * e era por aí que "sobreposta no topo" escapava para o lado errado.
+ */
+const LADO_TOPO = "superior\\w*|de cima|\\btopo\\b|\\btop\\b|acima"
+const LADO_BASE = "inferior\\w*|de baixo|\\bbase\\b|embaixo|bottom|abaixo"
+
+// O conectivo entre o número e o lado é opcional e varia: "43% superiores",
+// "60% do topo", "30% da metade inferior".
+const FRACAO_E_LADO = new RegExp(
+  `(\\d{1,3})\\s*%\\s*(?:d[eoa]s?\\s+)?(?:metade\\s+)?(?:(${LADO_TOPO})|(${LADO_BASE}))`,
+  "i",
+)
+
+/**
  * Fração da altura que o overlay ocupa, lida do próprio cadastro
  * ("43% superiores" → 0.43). Sem número, o default.
  *
@@ -44,10 +66,7 @@ export function hasOverlay(text: string | null | undefined): boolean {
  * faixa que interessa; abaixo de 5% a amostra é ruído.
  */
 export function overlayFraction(text: string | null | undefined): number {
-  const m =
-    /(\d{1,3})\s*%\s*(?:superior|de cima|do topo|top|inferior|de baixo|da base|embaixo|bottom)/i.exec(
-      text ?? "",
-    )
+  const m = FRACAO_E_LADO.exec(text ?? "")
   const pct = Number(m?.[1])
   if (!Number.isFinite(pct)) return DEFAULT_OVERLAY_FRACTION
   const frac = pct / 100
@@ -77,10 +96,52 @@ export interface OverlaySpec {
 export function overlaySpec(text: string | null | undefined): OverlaySpec | null {
   if (!hasOverlay(text)) return null
   const t = text ?? ""
-  const side: OverlaySide = /inferior|de baixo|da base|embaixo|bottom/i.test(t)
-    ? "bottom"
-    : "top"
-  return { side, fraction: overlayFraction(t) }
+  return { side: overlaySide(t), fraction: overlayFraction(t) }
+}
+
+/** Distância em caracteres, ao redor da menção de overlay, onde o lado vale. */
+const JANELA_OVERLAY = 90
+
+/**
+ * De que lado o overlay pousa.
+ *
+ * Nasceu de um erro caro (Luxe Lift, 24/08): a versão anterior testava o
+ * texto INTEIRO com /inferior|de baixo|da base|embaixo|bottom/. O
+ * `image_spec` da hero diz "sobrepostos aos 43% SUPERIORES" e, na mesma
+ * frase seguinte, descreve a CENA — "figuras ocupando a BASE do quadro,
+ * cortadas pela borda INFERIOR", "canto INFERIOR", "metade INFERIOR".
+ * Quatro menções sobre a figura contra duas sobre o overlay: o lado saía
+ * invertido.
+ *
+ * O estrago foi triplo, porque este parser é fonte única: o prompt pediu a
+ * faixa limpa embaixo, a medição de luminância olhou os 43% de baixo (onde
+ * está a figura, escura), concluiu "não precisa corrigir", e a hero foi
+ * entregue com texto claro sobre parede clara — sem um aviso.
+ *
+ * Ordem de confiança:
+ *   1. número + lado colados ("43% superiores") — no cadastro real a
+ *      porcentagem SÓ aparece junto da palavra do lado;
+ *   2. lado dito perto da menção de overlay, numa janela estreita;
+ *   3. `top`, o padrão da biblioteca.
+ */
+function overlaySide(t: string): OverlaySide {
+  const casado = FRACAO_E_LADO.exec(t)
+  if (casado) return casado[2] ? "top" : "bottom"
+
+  const mencao = /sobrepost\w*|sobrep\u00f5e|overlay/i.exec(t)
+  if (mencao) {
+    const at = mencao.index
+    const janela = t.slice(
+      Math.max(0, at - JANELA_OVERLAY),
+      at + mencao[0].length + JANELA_OVERLAY,
+    )
+    // O lado dito MAIS PERTO da menção manda — testar um antes do outro
+    // faria "sobreposta no topo … sombra na metade inferior" virar bottom
+    // só pela ordem do código.
+    const perto = new RegExp(`(${LADO_TOPO})|(${LADO_BASE})`, "i").exec(janela)
+    if (perto) return perto[1] ? "top" : "bottom"
+  }
+  return "top"
 }
 
 /**
