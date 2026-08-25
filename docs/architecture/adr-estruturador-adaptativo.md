@@ -1,6 +1,6 @@
 # ADR — Estruturador adaptativo (estrutura por loja × email, com embasamento)
 
-**Status**: aprovado em conceito (decisões fechadas em 25/08/2026 com o CEO) · implementação pendente
+**Status**: aprovado (decisões fechadas em 25/08/2026 com o CEO; vault analisado — welcome completo) · passo 1 implementado
 **Substitui**: o papel estrutural fixo de `email_outline_templates` (que permanece como fallback e como fonte da intenção de partida)
 
 ---
@@ -57,22 +57,82 @@ Pesquisa completa
 
 ### Inputs do Estruturador
 
-1. **Intenção canônica** do `flow × email` (var1, status aprovada no vault).
-2. **Referências do flow** (var2): todas, de todos os nichos, cada uma com
-   escopo, procedência e o porquê de funcionar. O agente escolhe/funde/adapta.
-3. **Contexto da loja**: nicho, top products (+ quantos produtos a loja tem),
-   pesquisa serializada (`pesquisaToFullText` — tese, sobre, pilares, ICP, tom).
-4. **Histórico desta loja**: estruturas já geradas para este `flow × email`
-   (das runs anteriores do próprio Estruturador) — insumo para variar e para
-   propor teste A/B, injetado como restrição, não como sugestão.
-5. **Capacidade da biblioteca**: categorias com variantes preenchíveis +
-   `product_slots` × produtos da loja. Restrição dura no prompt.
-6. **Aprendizados do COO**: feedbacks curados (loop 9.ii) relevantes ao flow.
+O vault real (analisado em 25/08 — `All-for-Eficiencia`, welcome completo) tem
+CINCO camadas, com papéis de autoridade DIFERENTES. O agente não recebe "notas":
+recebe camadas com precedência.
+
+| Camada | Nota | Papel no prompt |
+|---|---|---|
+| Intenção do flow | `_flow.md` | RESTRIÇÕES DURAS: regras transversais invioláveis (ex.: as 6 regras do incentivo do welcome). Não são adaptáveis por loja |
+| Progressão observada | `_progressao.md` | Posição no arco: compressão, rotação de voz, retirada da vitrine — padrões do flow que independem de nicho |
+| Intenção do email | `{n}.md` | CRITÉRIO DE ACEITAÇÃO: "quando ela termina de ler, precisa ser verdade que..." é checklist de validação, não inspiração. Os anti-objetivos são proibições |
+| Estruturas validadas | `estruturas/{flow}/*.md` | CANDIDATAS A ADAPTAR. A chave de indexação real é a OBJEÇÃO que a estrutura ataca ("quando usar"), não o nicho da amostra — o nicho é só a renderização |
+| Aprendizados | `aprendizados/{flow}/` + `_global/` | CAMADA DE CORREÇÃO que VENCE a estrutura: uma estrutura `aprovada` pode carregar ressalva apontando erro próprio (caso real: prova-de-terceiro-antes-do-cta corrige a posição 7 da avelmore-inspecao-antecipada). O agente aplica a estrutura JÁ corrigida |
+
+**Precedência:** regras do `_flow` > aprendizados > estrutura de referência >
+preferência própria do agente.
+
+Mais o contexto de runtime:
+
+6. **Contexto da loja**: nicho, posicionamento, tom (via store-context), top
+   products (+ quantos), e a pesquisa serializada — que já carrega o dado que a
+   intenção pede: a OBJEÇÃO DOMINANTE da categoria (caso Innova: "se o produto
+   realmente funciona" + "garantia vitalícia como destrava").
+7. **Capacidade da biblioteca**: categorias com variantes preenchíveis +
+   product_slots × produtos da loja. Restrição dura.
+8. **Histórico desta loja**: estruturas já emitidas para este flow×email
+   (runs anteriores do Estruturador) — exclusão de repetição EM CÓDIGO
+   (filtradas antes do prompt), nunca como sugestão.
+
+### A decisão que o agente toma (formalizada)
+
+Não é invenção — é TRADUÇÃO:
+
+> "Qual é a objeção dominante DESTA loja neste toque, qual mecanismo validado a
+> ataca, e como cada posição da referência se traduz quando troco a objeção da
+> amostra pela da loja?"
+
+1. **Diagnóstico** — intenção do toque × objeção dominante da pesquisa da loja.
+2. **Seleção/fusão** — referência(s) cujo MECANISMO serve à objeção (decisão 1:
+   fusão permitida, com origem+porquê por pedaço).
+3. **Tradução posição a posição** — mantém o papel ("o pivô que troca desconto
+   por razão"), troca o conteúdo do papel. Padrões transferíveis (cupom 2× com
+   papéis distintos) ficam; renderização da amostra (foto de pé calçado) sai.
+4. **Correção** — aplica os aprendizados por cima da referência.
+5. **Validação** — checklist da intenção + regras do `_flow` + capacidade.
+6. **Embasamento** — output estruturado abaixo.
+
+### Absorção de categorias (decisão 25/08 com o CEO)
+
+As estruturas do vault usam 8 categorias; a biblioteca ativa cobre 5 (hero,
+body, products, reviews, footer). Resolução por DESIGN, não por curadoria:
+
+- **`header` → NUNCA no output.** O header vem junto da hero section (variantes
+  de hero já carregam a banda de logo). O papel do header da referência é
+  incorporado ao papel da posição hero.
+- **`cta` → NUNCA no output.** O CTA vem dentro do próprio bloco (as variantes
+  têm CTA embutido). Papel de um cta isolado da referência é anotado na posição
+  vizinha que o absorve.
+- **`offer` → condicional.** Variantes de offer estão em curadoria (variáveis
+  sendo anexadas). Enquanto não houver variante preenchível, cai na decisão 2:
+  segue sem a posição, registrando a demanda.
+- **Welcome #8 (carta plain-text, 1 posição)** → não é estrutura montável: o
+  Estruturador marca o email como `text_only` (mecanismo existente do pipeline)
+  e a copy segue pelo caminho de texto.
+
+O sync normaliza `secoes` do frontmatter com esse mapa (header/cta removidos com
+papel re-anotado) ANTES de servir ao agente — o vault continua descrevendo o
+email completo; a normalização é da ponte, não da curadoria.
 
 ### Output (JSON, validado por código antes de seguir)
 
 ```jsonc
 {
+  "diagnostico": {
+    "objecao_dominante": "Se o produto realmente funciona (eficácia)",
+    "traducao_do_mecanismo": "O convite à inspeção da referência vira demonstração + garantia vitalícia",
+    "aspecto_da_loja": "ICP 35+ prova-antes; garantia vitalícia é a destrava documentada na pesquisa"
+  },
   "estrutura": [
     {
       "section": "hero",              // uma das 8 categorias da biblioteca
@@ -85,10 +145,13 @@ Pesquisa completa
   ],
   "fio_narrativo": "Dúvida → prova com o produto → risco zero → ação",
   "fontes": [
-    { "ref": "ac1-gamification-close", "o_que_pegou": "estrutura de abertura+fechamento", "porque": "..." },
-    { "ref": "ac1-prova-tecnica",      "o_que_pegou": "bloco de comparação",              "porque": "..." }
+    { "ref": "avelmore-inspecao-antecipada", "o_que_pegou": "arco dúvida→compromisso→prova", "porque": "..." },
+    { "ref": "medicube-comparacao-categoria", "o_que_pegou": "bloco de comparação", "porque": "..." }
   ],
-  "aspecto_da_loja": "Objeção dominante: eficácia. Garantia vitalícia como destrava.",
+  "aprendizados_aplicados": [
+    { "slug": "prova-de-terceiro-antes-do-cta", "como": "reviews movida para antes do último CTA" }
+  ],
+  "text_only": false,
   "descartes": [
     { "section": "offer", "porque": "loja sem oferta ativa no contexto" }
   ]
@@ -96,7 +159,8 @@ Pesquisa completa
 ```
 
 Validação por código (nunca pelo LLM):
-- `section` ∈ 8 categorias; posição sem variante preenchível → removida
+- `section` ∈ categorias PREENCHÍVEIS (header/cta são rejeitados — absorvidos
+  por design, ver acima); posição sem variante preenchível → removida
   (decisão 2) e registrada em `posicoes_descartadas` na telemetria;
 - toda posição precisa de `referencia` + `porque` (justificativa dupla da
   decisão 1) — ausência reprova o output e dispara retry 1x;
@@ -115,76 +179,42 @@ Validação por código (nunca pelo LLM):
 
 ## Vault (Obsidian sobre git → Supabase)
 
-Obsidian é a superfície de AUTORIA (vault = repo git de markdown, plugin
-Obsidian Git). O runtime NUNCA lê o vault: um sync (cron + webhook de push)
-ingere as notas para tabelas no Supabase; só `status: aprovada` vira ativa.
-Frontmatter é o índice; o corpo em prosa é o conhecimento.
+O vault REAL (`All-for-Eficiencia/Admin Convertfy/Emails/`) é o contrato — este
+ADR descreve o que existe, não prescreve template novo. Welcome está completo:
+8 intenções + `_flow` + `_progressao`, 8 estruturas, 13 aprendizados (~1.450
+linhas).
 
 ```
-vault/
-├── intencoes/{flow_type}/{numero}.md          # var1
-├── estruturas/{flow_type}/{slug}.md           # var2
-└── aprendizados/{flow_type}/{slug}.md         # loop 9.ii (feedback COO curado)
+Emails/
+├── intencoes/{flow}/
+│   ├── _flow.md          # intenção do flow + regras transversais invioláveis
+│   ├── _progressao.md    # camada DESCRITIVA: como a forma varia no arco
+│   └── {n}.md            # intenção por email (aceitação + anti-objetivos)
+├── estruturas/{flow}/{slug}.md
+└── aprendizados/
+    ├── {flow}/{slug}.md
+    └── _global/{slug}.md # cross-flow, com aplica_a: [flows]
 ```
 
-### Template — intenção (var1)
+Campos de frontmatter em uso (o sync valida contra esta lista):
+- intenção: `tipo, flow_type, email_number|escopo:flow, status, revisado_por`
+- estrutura: `tipo, slug, flow_type, emails[], escopo (geral|loja-especifica),
+  loja, amostra, procedencia (nossa|swipe|editorial), status, secoes[],
+  performance`
+- aprendizado: `tipo, flow_type|escopo:cross-flow+aplica_a[], origem_email_id,
+  origem_estrutura, autor, status, status_evidencia`
 
-```markdown
----
-tipo: intencao
-flow_type: abandoned_cart
-email_number: 2
-status: pendente        # pendente | aprovada | arquivada
-revisado_por:           # preenchido na aprovação
----
-# O que este email deve fazer
-(a intenção em prosa: papel na sequência, estado mental do leitor ao recebê-lo,
-o que precisa ser verdade quando ele terminar de ler)
+Regras da ponte (sync → Supabase, cron + webhook de push):
+- só `status: aprovada` vira ativa;
+- **wikilinks `[[slug]]` são resolvidos** para referências estáveis (as camadas
+  se citam: intenção→estrutura, estrutura→aprendizado, aprendizado→estrutura);
+- `secoes` é normalizada pelo mapa de absorção (header/cta) antes de servir;
+- corpo markdown vai INTEIRO para o agente — o frontmatter é índice, a prosa é
+  o conhecimento.
 
-# O que este email NÃO deve fazer
-(anti-objetivos: ex. não queimar desconto no 2º toque)
-```
-
-### Template — estrutura validada (var2)
-
-```markdown
----
-tipo: estrutura
-slug: ac1-gamification-close
-flow_type: abandoned_cart
-emails: [1]              # ou [qualquer]
-escopo: geral            # geral | loja-especifica
-loja:                    # quando loja-especifica: nome/nicho da loja de origem
-procedencia: swipe       # swipe | nossa | editorial
-status: pendente
-performance:             # opcional; reservado p/ loop 9.i (métricas quando houver)
----
-# A estrutura
-1. **hero** — presente dourado clicável. Por quê: curiosidade sem prometer desconto.
-2. **products** — produto único, explicação antes do preço. Por quê: ...
-3. ...
-
-# Por que essa estrutura funciona
-(prosa livre — o embasamento que o agente vai ler)
-
-# Quando usar / quando não usar
-```
-
-### Template — aprendizado (loop do COO)
-
-```markdown
----
-tipo: aprendizado
-flow_type: abandoned_cart
-origem_email_id:         # email gerado que motivou o feedback
-autor: coo
-status: aprovada
----
-# Feedback
-"Abrir carrinho abandonado com FAQ ficou defensivo demais — guardar FAQ para o 3º toque."
-# Regra derivada
-(uma frase acionável que entra no prompt de futuras gerações do flow)
-```
+Obsidian é a superfície de autoria (plugin Git já instalado no vault); o
+runtime lê exclusivamente as tabelas sincronizadas (`email_intents`,
+`email_structure_refs`, `email_learnings`).
 
 ## Ciclo de feedback (decisão 9)
 
@@ -219,9 +249,9 @@ estruturas. O campo `performance` do frontmatter já nasce reservado para isso.
 
 ## Ordem de implementação proposta
 
-1. Corrigir `email_id`/`flow_id` nas runs de fase 1 (pré-requisito de telemetria).
-2. Vault: repo + templates + seed das intenções (geradas dos 34 outlines atuais,
-   status pendente) + sync → tabelas `email_intents`, `email_structure_refs`.
+1. ~~Corrigir `email_id`/`flow_id` nas runs de fase 1~~ ✅ (commit c09fc9e + migration 20261080, 25/08).
+2. Sync do vault real → tabelas `email_intents`, `email_structure_refs`,
+   `email_learnings` (welcome já curado; demais flows conforme curadoria avançar).
 3. Agente Estruturador + validação de output + fallback, em modo `shadow`.
 4. Fio narrativo descendo o pipeline (Curador, Blueprint, payload n8n).
 5. UI do embasamento no Estúdio + feedback do COO (`estruturador_feedback`).
