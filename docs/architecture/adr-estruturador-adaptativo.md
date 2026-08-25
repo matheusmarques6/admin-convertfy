@@ -107,15 +107,22 @@ Não é invenção — é TRADUÇÃO:
 As estruturas do vault usam 8 categorias; a biblioteca ativa cobre 5 (hero,
 body, products, reviews, footer). Resolução por DESIGN, não por curadoria:
 
-- **`header` → NUNCA no output.** O header vem junto da hero section (variantes
-  de hero já carregam a banda de logo). O papel do header da referência é
-  incorporado ao papel da posição hero.
-- **`cta` → NUNCA no output.** O CTA vem dentro do próprio bloco (as variantes
-  têm CTA embutido). Papel de um cta isolado da referência é anotado na posição
-  vizinha que o absorve.
-- **`offer` → condicional.** Variantes de offer estão em curadoria (variáveis
-  sendo anexadas). Enquanto não houver variante preenchível, cai na decisão 2:
-  segue sem a posição, registrando a demanda.
+- **`header` → NUNCA no output.** O papel do header é incorporado à **primeira
+  posição da sequência** — a hero quando existe. (Correção pós-review do agente
+  do vault, 25/08: 3 das 8 referências do welcome não têm hero — exatamente os
+  toques comprimidos onde a progressão manda a hero sumir; "primeira posição"
+  cobre todos os casos.)
+- **`cta` → NUNCA no output.** Papel de um cta isolado é anotado na posição
+  **anterior** a ele (regra por ÍNDICE — referência com dois `body` tornaria
+  "vizinha" ambíguo).
+- **`offer` → condicional, com RE-PROJEÇÃO.** Variantes de offer estão em
+  curadoria (variáveis sendo anexadas). Enquanto não houver variante
+  preenchível, o agente NÃO emite a posição nem a deixa cair em silêncio:
+  re-projeta o papel dela numa seção construível (prazo e cupom são copy — um
+  `body` pode carregá-los) e registra a demanda em `descartes`. Sem isso, o
+  welcome #2/#6/#7 perderia o bloco que o próprio vault chama de "o motor" — e
+  o #7 (`header, offer, footer`) viraria um email de UMA posição. Re-projeção
+  que reduza o email a uma posição → candidato a `text_only`.
 - **Welcome #8 (carta plain-text, 1 posição)** → não é estrutura montável: o
   Estruturador marca o email como `text_only` (mecanismo existente do pipeline)
   e a copy segue pelo caminho de texto.
@@ -206,6 +213,16 @@ Campos de frontmatter em uso (o sync valida contra esta lista):
 
 Regras da ponte (sync → Supabase, cron + webhook de push):
 - só `status: aprovada` vira ativa;
+- **identificadores viajam** (correção pós-review, 25/08): cada documento é
+  servido ao prompt embrulhado com seu slug — `<referencia slug="...">` /
+  `<aprendizado slug="...">`, slug derivado do NOME DO ARQUIVO (o mesmo que a
+  resolução de wikilinks já usa). Sem isso o contrato de output (`referencia`
+  + `aprendizados_aplicados[].slug`) seria inexecutável e a checagem
+  anti-alucinação reprovaria 100% das runs;
+- **contagem da progressão**: os números de posições do `_progressao` contam
+  as `secoes` PRÉ-absorção (validado 5/5 contra o vault). O system prompt
+  avisa: "sua sequência emitível terá 1–2 posições a menos" — o código nunca
+  reescreve a prosa do vault;
 - **wikilinks `[[slug]]` são resolvidos** para referências estáveis (as camadas
   se citam: intenção→estrutura, estrutura→aprendizado, aprendizado→estrutura);
 - `secoes` é normalizada pelo mapa de absorção (header/cta) antes de servir;
@@ -215,6 +232,18 @@ Regras da ponte (sync → Supabase, cron + webhook de push):
 Obsidian é a superfície de autoria (plugin Git já instalado no vault); o
 runtime lê exclusivamente as tabelas sincronizadas (`email_intents`,
 `email_structure_refs`, `email_learnings`).
+
+**Pendências de curadoria do vault** (review de 25/08, lado do agente do
+vault — em ordem de alavancagem):
+1. `objecao_alvo:` + `mecanismo:` no frontmatter das 8 estruturas — é a chave
+   de decisão do agente e só 3/8 têm "Quando usar" (viés de seleção embutido);
+2. `_progressao` cobre #1–#5 mas declara `cobertura: completa` — completar
+   #6–#8 ou rebaixar para `parcial` (metadado falso desliga checagem);
+3. "Quando usar" nas 5 estruturas que só têm "quando não usar";
+4. "Exige da loja" nas 6 que não declaram pré-requisitos (o agente pode checar
+   contra `devolucao_politica`/`frete_*` de client_stores, que já existem);
+5. Anti-repetição: N de sequências proibidas nasce em 2 (espaço pequeno com 5
+   categorias pós-absorção).
 
 ## Ciclo de feedback (decisão 9)
 
