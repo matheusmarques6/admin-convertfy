@@ -1027,6 +1027,18 @@ nunca azul/roxo, densidade alta (cards 280px, rows 36px), cinzas dominam
 APIs em `/api/crm/*` seguem o padrao do projeto: `createAdminClient` + Zod
 + `errorResponse/successResponse`. Tipos em `src/types/crm.ts`.
 
+**RLS (incidente ago/2026)**: as tabelas do CRM nasceram com policies
+`FOR ALL USING (true)` SEM `TO` (⇒ TO PUBLIC, inclui `anon` — leitura e
+escrita com a chave pública do browser via /rest/v1) e outras com
+`TO authenticated USING (true)` (cross-org + portal do cliente).
+Corrigido nos rounds 3/4 (`APPLY_MANUALLY_fix_rls_round3_crm_anon.sql`,
+`..._round4_authenticated.sql`) + advisors de produção
+(`APPLY_MANUALLY_fix_security_advisors.sql`). **Regra obrigatória**: toda
+policy nova declara `TO authenticated` (ou role específica) + helper de
+escopo (`is_admin()`/`is_org_member()`/`can_access_store(store_id)`).
+"A API valida" NÃO protege o /rest/v1 direto — o service role bypassa RLS,
+mas a anon key não passa pela API.
+
 **Mensageria**: WhatsApp Cloud API oficial (v20.0) — webhook em
 `/api/webhooks/whatsapp` com HMAC SHA-256, send via channel config,
 inbox unificado em `/admin/crm/inbox`.
