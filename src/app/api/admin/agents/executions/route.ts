@@ -111,7 +111,16 @@ export async function GET(request: NextRequest) {
          flow:email_flows!inner(id, flow_type, store_id,
            store:client_stores!inner(id, store_name))`,
       )
-      .not("generation_batch_id", "is", null)
+      // Email em geração aparece DESDE a fase 1: o generation_batch_id só é
+      // gravado quando a copy volta do n8n, então filtrar apenas por ele
+      // escondia o email exatamente na janela em que a geração pode empacar
+      // (fase 1 → dispatch → aguardando callback). Status em voo entra
+      // mesmo sem batch; as runs da fase 1 agora carregam email_id e a
+      // agent_studio_latest_runs as encontra.
+      .or(
+        "generation_batch_id.not.is.null," +
+          "status.in.(pending,in_progress,copy_generating,copy_generating_recovery,copy_ready,rendering,image_done,qa_running)",
+      )
       .order("updated_at", { ascending: false })
       .limit(limit)
 

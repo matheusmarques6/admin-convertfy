@@ -241,6 +241,9 @@ export interface GenerateBlueprintInput {
   emailNumber: number
   batchId: string
   triggeredBy?: string
+  /** Email/flow desta geração — vão nas runs de telemetria (ver AssembleReferenceInput). */
+  emailId?: string | null
+  flowId?: string | null
   brandName: string
   nicho: string
   posicionamento: string
@@ -304,6 +307,8 @@ async function generateSubjectHint(input: {
   storeId: string
   batchId: string
   triggeredBy?: string
+  emailId?: string | null
+  flowId?: string | null
   brandName: string
   nicho: string
   tomVoz: string
@@ -349,6 +354,8 @@ async function generateSubjectHint(input: {
   const runId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "subject",
     agentConfigId: cfgRow?.id,
@@ -369,6 +376,8 @@ async function generateSubjectHint(input: {
     await finishGenerationRun(runId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
+      emailId: input.emailId ?? undefined,
+      flowId: input.flowId ?? undefined,
       batchId: input.batchId,
       agent: "subject",
       agentConfigId: cfgRow?.id,
@@ -399,6 +408,8 @@ async function generateSubjectHint(input: {
     await finishGenerationRun(runId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
+      emailId: input.emailId ?? undefined,
+      flowId: input.flowId ?? undefined,
       batchId: input.batchId,
       agent: "subject",
       agentConfigId: cfgRow?.id,
@@ -475,6 +486,8 @@ async function generateDeterministicBlueprint(
   const runId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "blueprint",
     model: "deterministic",
@@ -504,6 +517,8 @@ async function generateDeterministicBlueprint(
     storeId: input.storeId,
     batchId: input.batchId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId,
+    flowId: input.flowId,
     brandName: input.brandName,
     nicho: input.nicho,
     tomVoz: input.tomVoz,
@@ -524,6 +539,8 @@ async function generateDeterministicBlueprint(
   await finishGenerationRun(runId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "blueprint",
     status: "success",
@@ -603,6 +620,8 @@ async function generateLlmBlueprint(
   const runId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "blueprint",
     agentConfigId: cfgRow?.id,
@@ -703,6 +722,8 @@ async function generateLlmBlueprint(
   await finishGenerationRun(runId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "blueprint",
     agentConfigId: cfgRow?.id,

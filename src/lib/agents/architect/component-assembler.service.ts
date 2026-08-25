@@ -379,6 +379,13 @@ export interface AssembleReferenceInput {
   emailNumber: number
   batchId: string
   triggeredBy?: string
+  /**
+   * Email/flow desta geração — vão nas runs de telemetria. A fase 1 opera
+   * por (loja × flow × número), mas sem estes ids as runs ficam invisíveis
+   * na UI (resolvida por email). null quando o email não está seedado.
+   */
+  emailId?: string | null
+  flowId?: string | null
   brandName: string
   nicho: string
   posicionamento: string
@@ -655,6 +662,8 @@ export async function assembleStoreReference(
   const chooserRunId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "assembler_chooser",
     agentConfigId: chooserRow?.id,
@@ -748,6 +757,8 @@ export async function assembleStoreReference(
     await finishGenerationRun(chooserRunId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
+      emailId: input.emailId ?? undefined,
+      flowId: input.flowId ?? undefined,
       batchId: input.batchId,
       agent: "assembler_chooser",
       agentConfigId: chooserRow?.id,
@@ -797,6 +808,8 @@ export async function assembleStoreReference(
   const asmRunId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "assembler",
     agentConfigId: asmRow?.id,
@@ -882,6 +895,8 @@ export async function assembleStoreReference(
   await finishGenerationRun(chooserRunId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "assembler_chooser",
     agentConfigId: chooserRow?.id,
@@ -982,6 +997,8 @@ export async function assembleStoreReference(
   await finishGenerationRun(asmRunId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
     batchId: input.batchId,
     agent: "assembler",
     agentConfigId: asmRow?.id,

@@ -37,8 +37,16 @@ vi.mock("@/lib/supabase/server", () => {
         }
         return Promise.resolve({ data: {}, error: null })
       },
-      then: (onF: (v: unknown) => unknown) =>
-        Promise.resolve({ data: [], error: null }).then(onF),
+      then: (onF: (v: unknown) => unknown) => {
+        // Lookup do email desta geração (email_id/flow_id p/ telemetria).
+        if (table === "email_flow_emails") {
+          return Promise.resolve({
+            data: [{ id: "email-1", flow_id: "flow-1" }],
+            error: null,
+          }).then(onF)
+        }
+        return Promise.resolve({ data: [], error: null }).then(onF)
+      },
     }
     return chain
   }
@@ -104,6 +112,18 @@ beforeEach(() => {
 })
 
 describe("generateBlueprintAndReference — propaga estrutura (Fase 1)", () => {
+  it("resolve o email da geração e repassa emailId/flowId ao Montador e ao Blueprint", async () => {
+    // Sem isso as runs da fase 1 nascem com email_id NULL e ficam
+    // invisíveis na aba Execuções (nós "pulado" com run success no banco).
+    await generateBlueprintAndReference(input)
+    expect(h.assembleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ emailId: "email-1", flowId: "flow-1" }),
+    )
+    expect(h.blueprintSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ emailId: "email-1", flowId: "flow-1" }),
+    )
+  })
+
   it("source='ai' → reconcilia os email_blocks com a estrutura nova", async () => {
     h.blueprintSource = "ai"
     const res = await generateBlueprintAndReference(input)

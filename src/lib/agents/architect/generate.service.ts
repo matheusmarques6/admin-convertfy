@@ -128,6 +128,25 @@ export async function generateBlueprintAndReference(
     }
   }
 
+  // Resolve o EMAIL desta geração. A fase 1 opera por (loja × flow × número),
+  // mas as runs precisam do email_id/flow_id — sem eles a telemetria fica
+  // invisível na UI (a aba Execuções resolve runs POR EMAIL, e os 4 agentes
+  // daqui gravavam 100% com email_id NULL → nós "pulado" à toa e tela vazia
+  // durante a janela do n8n). Best-effort: loja sem o email seedado segue
+  // com null, comportamento antigo — telemetria nunca bloqueia geração.
+  const { data: emailRows } = await admin
+    .from("email_flow_emails")
+    .select("id, flow_id, flow:email_flows!inner(store_id, flow_type)")
+    .eq("flow.store_id", input.storeId)
+    .eq("flow.flow_type", input.flowType)
+    .eq("number", input.emailNumber)
+    .limit(1)
+  const emailRow = (emailRows?.[0] ?? null) as
+    | { id: string; flow_id: string }
+    | null
+  const emailId = emailRow?.id ?? null
+  const flowId = emailRow?.flow_id ?? null
+
   const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes] = await Promise.all([
     admin
       .from("client_stores")
@@ -268,6 +287,8 @@ export async function generateBlueprintAndReference(
     emailNumber: input.emailNumber,
     batchId: input.batchId,
     triggeredBy: input.triggeredBy,
+    emailId,
+    flowId,
     brandName,
     nicho,
     posicionamento,
@@ -293,6 +314,8 @@ export async function generateBlueprintAndReference(
     emailNumber: input.emailNumber,
     batchId: input.batchId,
     triggeredBy: input.triggeredBy,
+    emailId,
+    flowId,
     brandName,
     nicho,
     posicionamento,
