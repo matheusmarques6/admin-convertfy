@@ -250,16 +250,27 @@ runtime lê exclusivamente as tabelas sincronizadas (`email_intents`,
 `email_structure_refs`, `email_learnings`).
 
 **Pendências de curadoria do vault** (review de 25/08, lado do agente do
-vault — em ordem de alavancagem):
-1. `objecao_alvo:` + `mecanismo:` no frontmatter das 8 estruturas — é a chave
-   de decisão do agente e só 3/8 têm "Quando usar" (viés de seleção embutido);
-2. `_progressao` cobre #1–#5 mas declara `cobertura: completa` — completar
-   #6–#8 ou rebaixar para `parcial` (metadado falso desliga checagem);
-3. "Quando usar" nas 5 estruturas que só têm "quando não usar";
-4. "Exige da loja" nas 6 que não declaram pré-requisitos (o agente pode checar
-   contra `devolucao_politica`/`frete_*` de client_stores, que já existem);
-5. Anti-repetição: N de sequências proibidas nasce em 2 (espaço pequeno com 5
-   categorias pós-absorção).
+vault — em ordem de alavancagem; rótulos P4–P7 = worklist aberta em 26/08,
+a resolver no Obsidian antes/durante a janela de shadow):
+- **P4** — `objecao_alvo:` + `mecanismo:` no frontmatter das 8 estruturas — é
+  a chave de decisão do agente (seleção por OBJEÇÃO, não por nicho) — e
+  "Quando usar" nas 5 que só têm "quando não usar". Só 3/8 têm o positivo
+  hoje: viés de seleção embutido (o shadow vai mostrar "sempre as mesmas 3");
+- **P5** — `_progressao` cobre #1–#5 mas declara `cobertura: completa` —
+  completar #6–#8 ou rebaixar para `parcial` (metadado falso desliga
+  checagem);
+- **P6** — `exige_da_loja:` nas 6 estruturas que não declaram pré-requisitos
+  (o agente pode checar contra `devolucao_politica`/`frete_*` de
+  client_stores, que já existem — descarte com motivo em vez de estrutura
+  que promete o que a loja não tem);
+- **P7** — manter a âncora "Quando ela termina de ler" no material novo (o
+  welcome já está 8/8);
+- Depois: replicar o formato do welcome para os demais flows
+  (abandoned_cart, win_back…) — sem material o Estruturador devolve
+  `sem_material` e o pipeline segue no outline.
+
+(Do review original, o item "anti-repetição N=2" já foi absorvido no código
+— `HISTORICO_N` no estruturador.service.)
 
 ## Ciclo de feedback (decisão 9)
 
