@@ -131,11 +131,15 @@ export function OpsDashboard({ userName }: { userName: string }) {
     fetchJson,
     SWR_OPTS,
   )
-  const { data: weekly } = useSWR<WeeklyPerfData>(
+  const { data: weekly, error: weeklyError } = useSWR<WeeklyPerfData>(
     "/api/dashboard/weekly-perf?weeks=4",
     fetchJson,
     SWR_OPTS,
   )
+  // Mesma chave das tabelas de Lojas/Clientes — SWR dedupe, 1 request só.
+  const { data: overview } = useSWR<{
+    stores: Array<{ clientName: string; storeName: string; totalRevenueBRL: number }>
+  }>(`/api/dashboard/stores-overview?${q}`, fetchJson, SWR_OPTS)
 
   const hr = new Date().getHours()
   const saud = hr < 12 ? "Bom dia" : hr < 18 ? "Boa tarde" : "Boa noite"
@@ -143,11 +147,20 @@ export function OpsDashboard({ userName }: { userName: string }) {
   const atribuida = revenue ? revenue.campaignRevenue + revenue.flowRevenue : null
   const campanhasSpark = series?.atual?.map((p) => p.revenue) ?? []
 
+  // Faturamento das LOJAS (Shopify/Statistics) agregado por cliente —
+  // soma da carteira ativa no período + média por cliente ativo.
+  const faturamento = (() => {
+    if (!overview) return null
+    const total = overview.stores.reduce((s, r) => s + (r.totalRevenueBRL || 0), 0)
+    const clientes = new Set(overview.stores.map((r) => r.clientName || r.storeName)).size
+    return { total, clientes, media: clientes > 0 ? total / clientes : 0 }
+  })()
+
   return (
     // Sangra o padding do shell (-m-*) pra página controlar o próprio
     // respiro (32/40px do design) — mesmo padrão das páginas full-bleed.
     <div className="-m-4 md:-m-6 lg:-m-8 bg-[var(--ops-page)] min-h-[100dvh]">
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10 py-8 flex flex-col gap-5">
+      <div className="mx-auto max-w-[1560px] px-3 sm:px-4 lg:px-6 py-6 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-end gap-3.5 flex-wrap">
           <div>
@@ -219,9 +232,14 @@ export function OpsDashboard({ userName }: { userName: string }) {
             sub={cs ? `${cs.mrr_client_count} de ${cs.total_clients} clientes mapeados` : undefined}
           />
           <OpsKpi
-            label="NPS"
-            value={cs?.nps?.score ?? "—"}
-            sub={cs?.nps ? `${cs.nps.count} respostas` : undefined}
+            label="Faturamento total"
+            value={faturamento ? fmtBRLCompact(faturamento.total) : "—"}
+            sub="soma das lojas ativas no período"
+          />
+          <OpsKpi
+            label="Média por cliente"
+            value={faturamento ? fmtBRLCompact(faturamento.media) : "—"}
+            sub={faturamento ? `${faturamento.clientes} clientes ativos` : undefined}
           />
           <OpsKpi
             label="Lojas em risco"
@@ -238,12 +256,6 @@ export function OpsDashboard({ userName }: { userName: string }) {
                 : "assinaturas canceladas"
             }
             tone="neg"
-          />
-          <OpsKpi
-            label="Sem envio 14d"
-            value={extras ? extras.no_send_14d.count : "—"}
-            sub="lojas ativas paradas"
-            tone="warn"
           />
         </div>
 
@@ -266,8 +278,10 @@ export function OpsDashboard({ userName }: { userName: string }) {
               </div>
             }
           >
-            {!series || series.collecting || series.atual.length < 2 ? (
-              <CollectingState />
+            {!series ? (
+              <CollectingState label="Carregando série diária…" />
+            ) : series.collecting || series.atual.length < 2 ? (
+              <CollectingState label="Sem pontos diários na janela — o cron store-daily-metrics precisa rodar (ou o backfill)." />
             ) : (
               <>
                 <AreaCompareChart
@@ -291,8 +305,12 @@ export function OpsDashboard({ userName }: { userName: string }) {
             title="Performance por semana"
             hint="campanhas · 4 semanas"
           >
-            {!weekly || weekly.totalsZero || weekly.weeks.length === 0 ? (
-              <CollectingState label="Sem campanhas na janela de 4 semanas." />
+            {weeklyError ? (
+              <CollectingState label={`Erro ao carregar: ${String(weeklyError.message || weeklyError)}`} />
+            ) : !weekly ? (
+              <CollectingState label="Carregando performance semanal…" />
+            ) : weekly.totalsZero || weekly.weeks.length === 0 ? (
+              <CollectingState label="Sem campanha com send_time na janela de 90d — cheque a sincronização de campanhas." />
             ) : (
               <WeekLines
                 labels={weekly.weeks.map((w) => w.week)}
@@ -308,7 +326,11 @@ export function OpsDashboard({ userName }: { userName: string }) {
 
         {/* ── Email + Saúde das lojas ── */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <EmailPerfCard q={q} seriesDeltas={period.compare ? series?.deltas : undefined} />
+          <EmailPerfCard
+            q={q}
+            seriesDeltas={period.compare ? series?.deltas : undefined}
+            openRateSpark={series?.atual?.map((p) => p.openRate)}
+          />
           <StoresHealthTable q={q} />
         </div>
 

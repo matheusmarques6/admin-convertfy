@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 import { resolveWindow, previousWindow, computeDeltaPct } from "./period-window"
-import { buildOpsSeries, fillDays, totalsFromPoints } from "./series"
+import {
+  buildOpsSeries,
+  dailyPointsFromCampaignRows,
+  fillDays,
+  totalsFromPoints,
+} from "./series"
 import {
   computeStoreTrends,
   midDate,
@@ -92,6 +97,43 @@ describe("série diária (buildOpsSeries)", () => {
     const payload = buildOpsSeries([], [], win, prevWin)
     expect(payload.collecting).toBe(true)
     expect(payload.deltas.revenue).toBeNull()
+  })
+
+  it("janela atual vazia com histórico anterior → TODOS os deltas null (coleta parada não vira ↓100pp)", () => {
+    const payload = buildOpsSeries([], [point("2026-07-29")], win, prevWin)
+    expect(payload.collecting).toBe(true)
+    for (const v of Object.values(payload.deltas)) expect(v).toBeNull()
+  })
+
+  it("fallback por campanhas: dedup por sync mais recente, bucket por dia de envio, fora da janela cai", () => {
+    const row = (over: Record<string, unknown>) => ({
+      store_id: "s1",
+      campaign_id: "c1",
+      send_time: "2026-08-01T14:00:00Z",
+      recipients: 1000,
+      delivered: 900,
+      opened: 90,
+      clicked: 9,
+      conversions: 2,
+      conversion_value: 300,
+      bounced: 5,
+      unsubscribed: 1,
+      fetched_at: "2026-08-20T00:00:00Z",
+      ...over,
+    })
+    const points = dailyPointsFromCampaignRows(
+      [
+        row({}), // versão antiga da MESMA campanha…
+        row({ fetched_at: "2026-08-24T00:00:00Z", opened: 180 }), // …vence a mais recente
+        row({ campaign_id: "c2", send_time: "2026-08-02T09:00:00Z" }),
+        row({ campaign_id: "c3", send_time: "2026-07-20T09:00:00Z" }), // fora da janela
+        row({ campaign_id: "c4", send_time: null }), // sem send_time não entra
+      ],
+      win,
+    )
+    expect(points.map((p) => p.date)).toEqual(["2026-08-01", "2026-08-02"])
+    expect(points[0].opened).toBe(180) // dedup manteve o sync novo
+    expect(points[0].openRate).toBe(20)
   })
 
   it("delta de taxa é em PONTOS PERCENTUAIS; de valor é relativo", () => {

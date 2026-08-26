@@ -109,6 +109,83 @@ export function fillDays(points: EmailDailyPoint[], win: DateWindow): OpsSeriesP
   return out
 }
 
+/**
+ * Fallback da série diária: deriva pontos por dia direto das linhas de
+ * campanha (send_time) quando store_daily_metrics ainda não tem a
+ * janela — MESMA fonte que o backfill do cron usa, só que em memória.
+ * Sem isso, cron parado = gráfico eternamente "coletando".
+ */
+export interface CampaignDailyRow {
+  store_id: string
+  campaign_id: string
+  send_time: string | null
+  recipients: number | null
+  delivered: number | null
+  opened: number | null
+  clicked: number | null
+  conversions: number | null
+  conversion_value: number | null
+  bounced: number | null
+  unsubscribed: number | null
+  fetched_at: string | null
+}
+
+export function dailyPointsFromCampaignRows(
+  rows: CampaignDailyRow[],
+  win: DateWindow,
+): EmailDailyPoint[] {
+  // Dedup por (store, campaign) mantendo o sync mais recente — a mesma
+  // campanha pode ter linhas de syncs concorrentes.
+  const dedup = new Map<string, CampaignDailyRow>()
+  for (const r of rows) {
+    if (!r.send_time) continue
+    const key = `${r.store_id}|${r.campaign_id}`
+    const ex = dedup.get(key)
+    if (!ex || new Date(r.fetched_at ?? 0).getTime() > new Date(ex.fetched_at ?? 0).getTime()) {
+      dedup.set(key, r)
+    }
+  }
+  const byDate = new Map<string, EmailDailyPoint>()
+  for (const r of dedup.values()) {
+    const date = String(r.send_time).slice(0, 10)
+    if (date < win.from || date > win.to) continue
+    const p = byDate.get(date) ?? {
+      date,
+      recipients: 0,
+      delivered: 0,
+      opened: 0,
+      clicked: 0,
+      conversions: 0,
+      conversion_value: 0,
+      bounced: 0,
+      unsubscribed: 0,
+      openRate: 0,
+      clickRate: 0,
+      ctor: 0,
+      placedOrderRate: 0,
+    }
+    p.recipients += Number(r.recipients) || 0
+    p.delivered += Number(r.delivered) || 0
+    p.opened += Number(r.opened) || 0
+    p.clicked += Number(r.clicked) || 0
+    p.conversions += Number(r.conversions) || 0
+    p.conversion_value += Number(r.conversion_value) || 0
+    p.bounced += Number(r.bounced) || 0
+    p.unsubscribed += Number(r.unsubscribed) || 0
+    byDate.set(date, p)
+  }
+  return [...byDate.values()]
+    .map((p) => ({
+      ...p,
+      openRate: p.delivered > 0 ? Math.round((p.opened / p.delivered) * 1000) / 10 : 0,
+      clickRate: p.delivered > 0 ? Math.round((p.clicked / p.delivered) * 1000) / 10 : 0,
+      ctor: p.opened > 0 ? Math.round((p.clicked / p.opened) * 1000) / 10 : 0,
+      placedOrderRate:
+        p.delivered > 0 ? Math.round((p.conversions / p.delivered) * 10000) / 100 : 0,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
+
 export function buildOpsSeries(
   current: EmailDailyPoint[],
   previous: EmailDailyPoint[],
@@ -119,20 +196,23 @@ export function buildOpsSeries(
   const totalsPrev = totalsFromPoints(previous)
   // Delta de taxa é diferença em PONTOS PERCENTUAIS (pp), não %-de-% —
   // exceto revenue/rpe, que são valores (delta relativo em %).
+  // Janela ATUAL vazia = coleta parada → NENHUM delta (comparar "0" da
+  // coleta parada com o histórico gerava "↓100 pp" mentiroso na tela).
+  const comparable = current.length > 0 && previous.length > 0
   const ppDelta = (cur: number, prev: number): number | null =>
-    previous.length === 0 ? null : Math.round((cur - prev) * 100) / 100
+    comparable ? Math.round((cur - prev) * 100) / 100 : null
   return {
     atual: fillDays(current, curWin),
     anterior: fillDays(previous, prevWin),
     totals,
     totalsPrev,
     deltas: {
-      revenue: computeDeltaPct(totals.revenue, totalsPrev.revenue),
+      revenue: comparable ? computeDeltaPct(totals.revenue, totalsPrev.revenue) : null,
       openRate: ppDelta(totals.openRate, totalsPrev.openRate),
       clickRate: ppDelta(totals.clickRate, totalsPrev.clickRate),
       ctor: ppDelta(totals.ctor, totalsPrev.ctor),
       placedOrderRate: ppDelta(totals.placedOrderRate, totalsPrev.placedOrderRate),
-      rpe: computeDeltaPct(totals.rpe, totalsPrev.rpe),
+      rpe: comparable ? computeDeltaPct(totals.rpe, totalsPrev.rpe) : null,
       deliveryRate: ppDelta(totals.deliveryRate, totalsPrev.deliveryRate),
       unsubRate: ppDelta(totals.unsubRate, totalsPrev.unsubRate),
     },

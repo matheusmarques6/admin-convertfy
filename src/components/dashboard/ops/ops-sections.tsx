@@ -60,11 +60,6 @@ interface EmailPerfData {
   audience: { totalLeads: number; engagedLeads: number }
 }
 
-interface EmailSeriesData {
-  series: Array<{ date: string; openRate: number }>
-  collecting: boolean
-}
-
 interface StoreOverviewRow {
   id: string
   storeName: string
@@ -118,16 +113,14 @@ const PHASE_FALLBACK_COLORS = [
 export function EmailPerfCard({
   q,
   seriesDeltas,
+  openRateSpark,
 }: {
   q: string
   seriesDeltas?: Record<string, number | null>
+  /** Open rate por dia da janela (ops-series, com fallback por campanhas). */
+  openRateSpark?: number[]
 }) {
   const { data } = useSWR<EmailPerfData>(`/api/dashboard/email-performance?${q}`, fetchJson, SWR_OPTS)
-  const { data: trend } = useSWR<EmailSeriesData>(
-    "/api/dashboard/email-series?period=15d",
-    fetchJson,
-    SWR_OPTS,
-  )
 
   const tiles: Array<[string, string, number | null | undefined, boolean]> = data
     ? [
@@ -179,10 +172,10 @@ export function EmailPerfCard({
             ))}
           </div>
           <div className="mt-4">
-            <div className="text-[10.5px] text-[var(--ops-mut)] mb-1.5">Open rate por dia · 14 dias</div>
-            {trend && !trend.collecting && trend.series.length >= 2 ? (
+            <div className="text-[10.5px] text-[var(--ops-mut)] mb-1.5">Open rate por dia · período</div>
+            {openRateSpark && openRateSpark.length >= 2 ? (
               <span className="block text-[var(--ops-accent)]">
-                <Spark data={trend.series.map((p) => p.openRate)} w={470} h={44} className="w-full" />
+                <Spark data={openRateSpark} w={470} h={44} className="w-full" />
               </span>
             ) : (
               <div className="text-[11.5px] text-[var(--ops-mut)]">coletando série diária…</div>
