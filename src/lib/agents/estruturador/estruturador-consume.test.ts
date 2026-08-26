@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   aplicarEstruturadorNoBlueprint,
   estruturaParaPosicoes,
+  resumoParaCurador,
 } from "./estruturador-consume"
 import { clampStructure } from "../architect/outline-sections"
 import type { EstruturadorOutput } from "./estruturador-prompt"
@@ -69,6 +70,35 @@ describe("estruturaParaPosicoes", () => {
     expect(clamped.map((p) => p.section)).toEqual(["hero", "body", "footer"])
     // O papel viaja junto — structure e papéis saem da MESMA lista clampada.
     expect(clamped[1].papel).toContain("pivô")
+  })
+})
+
+describe("resumoParaCurador", () => {
+  it("resume diagnóstico + fio + papéis com porquê, na ordem das posições", () => {
+    const o = output()
+    const pos = estruturaParaPosicoes(o)
+    const r = resumoParaCurador(o, pos)
+    expect(r).toContain("Objeção dominante: Eficácia")
+    expect(r).toContain("Fio narrativo: cupom → razão → saída")
+    expect(r).toContain("1. hero — Entregar o cupom em 3s (porquê: x)")
+    // A adaptação viaja dentro do papel completo.
+    expect(r).toContain("Adaptação: troca a categoria pela rotina noturna")
+  })
+
+  it("usa as posições CLAMPADAS (não o output cru) — ordem/quantidade casam com a sequência", () => {
+    const o = output()
+    const pos = estruturaParaPosicoes(o).slice(0, 2) // simulando clamp
+    const r = resumoParaCurador(o, pos)
+    expect(r).toContain("1. hero")
+    expect(r).toContain("2. body")
+    expect(r).not.toContain("footer")
+  })
+
+  it("aprendizados aplicados entram quando existem", () => {
+    const o = output()
+    o.aprendizados_aplicados = [{ slug: "prova-antes-do-cta", como: "reviews antes da grade" }]
+    const r = resumoParaCurador(o, estruturaParaPosicoes(o))
+    expect(r).toContain("prova-antes-do-cta: reviews antes da grade")
   })
 })
 

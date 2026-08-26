@@ -28,6 +28,7 @@ import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
 import {
   estruturaParaPosicoes,
+  resumoParaCurador,
   type PosicaoEstruturada,
 } from "../estruturador/estruturador-consume"
 import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
@@ -193,7 +194,7 @@ export async function generateBlueprintAndReference(
   const emailId = emailRow?.id ?? null
   const flowId = emailRow?.flow_id ?? null
 
-  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes] = await Promise.all([
+  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes, intentsRes] = await Promise.all([
     admin
       .from("client_stores")
       .select("*")
@@ -233,6 +234,15 @@ export async function generateBlueprintAndReference(
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Intenções do vault (flow + este email): contrato editorial servido ao
+    // CURADOR como critério de escolha — independe do modo do Estruturador
+    // (vault vazio → nulls, prompt declara ausência). Fonte: email_intents
+    // sincronizada do Obsidian.
+    admin
+      .from("email_intents")
+      .select("slug, email_number, body_md")
+      .eq("flow_type", input.flowType)
+      .eq("is_active", true),
   ])
 
   const store = (storeRes.data ?? {}) as Record<string, unknown>
@@ -245,6 +255,15 @@ export async function generateBlueprintAndReference(
     font_heading?: string | null
     font_body?: string | null
   } | null
+  const intents = (intentsRes.data ?? []) as Array<{
+    slug: string
+    email_number: number | null
+    body_md: string
+  }>
+  const intencaoFlow =
+    intents.find((i) => i.slug === "_flow")?.body_md ?? null
+  const intencaoEmail =
+    intents.find((i) => i.email_number === input.emailNumber)?.body_md ?? null
 
   const brandName = (store.store_name as string) || "Loja"
   const nicho = marca.nicho || (store.niche as string) || ""
@@ -409,6 +428,15 @@ export async function generateBlueprintAndReference(
     defaultModel,
     fontHeading: brand?.font_heading ?? null,
     fontBody: brand?.font_body ?? null,
+    // Contrato editorial do vault + decisão do Estruturador — critérios de
+    // escolha do Curador. A decisão só desce quando foi CONSUMIDA (modo on):
+    // em shadow o pipeline não pode ser influenciado por ela.
+    intencaoFlow,
+    intencaoEmail,
+    estruturadorDecisao:
+      estruturadorOutput && posicoes
+        ? resumoParaCurador(estruturadorOutput, posicoes)
+        : null,
   })
 
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.

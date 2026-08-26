@@ -140,6 +140,8 @@ Regras de seleção:
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
+- Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
+- Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
 - Use <memoria> como sinal, nunca como regra:
   - <email_anterior_desta_loja>: as variantes escolhidas no email ANTERIOR do MESMO flow desta loja. Busque COERÊNCIA visual — mesma linguagem de layout — sem copiar cegamente: cada email tem seu objetivo.
   - <mesmo_email_em_outras_lojas>: as variantes que ESTE mesmo email recebeu em OUTRAS lojas recentes. Busque VARIEDADE quando houver alternativa igualmente adequada à marca e ao objetivo.
@@ -165,6 +167,18 @@ export const DEFAULT_CHOOSER_USER = `<store>
 - diretriz: {{outline_guidance}}
 - tom sugerido: {{outline_tone_hint}}
 </outline>
+
+<intencao>
+[do flow]
+{{intencao_flow}}
+
+[deste email]
+{{intencao_email}}
+</intencao>
+
+<decisao_do_estruturador>
+{{estruturador_decisao}}
+</decisao_do_estruturador>
 
 <perfil_marca>
 {{briefing_marca}}
@@ -419,6 +433,16 @@ export interface AssembleReferenceInput {
   // sem invalidar a arquitetura persistida.
   fontHeading?: string | null
   fontBody?: string | null
+  // ── Contrato editorial do vault (email_intents) — critério do Curador ──
+  // Intenção do FLOW (o que a sequência inteira protege) e DESTE email (o
+  // que este toque precisa entregar). null = vault sem material — o prompt
+  // declara a ausência em vez de mandar string vazia.
+  intencaoFlow?: string | null
+  intencaoEmail?: string | null
+  // Resumo da decisão do Estruturador (resumoParaCurador) — só chega quando
+  // o modo é 'on' e a run validou (em shadow o pipeline não vê a decisão).
+  // Papéis na MESMA ordem da structure/<sequencia_do_email>.
+  estruturadorDecisao?: string | null
 }
 
 // "code" = documento concatenado pelo código a partir das variantes
@@ -549,6 +573,19 @@ export function buildFinalistsJson(params: {
 }
 
 /**
+ * Notas do vault podem ser longas; acima disso o critério vira ruído no
+ * prompt do Curador. Corta com marcador explícito (nunca em silêncio).
+ */
+const PROMPT_TEXT_MAX = 4000
+
+function clampPromptText(v: string | null | undefined, ausente: string): string {
+  const t = v?.trim()
+  if (!t) return ausente
+  if (t.length <= PROMPT_TEXT_MAX) return t
+  return `${t.slice(0, PROMPT_TEXT_MAX)}\n(… truncado)`
+}
+
+/**
  * Monta o reference HTML da loja a partir dos blocos do blueprint.
  * Retorna `html: null` quando não há nenhuma variante (consumidor cai no
  * template global).
@@ -633,6 +670,21 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    // Contrato editorial do vault. Ausência é DECLARADA (não string vazia):
+    // instrui o modelo a ignorar o critério em vez de alucinar intenção.
+    intencao_flow: clampPromptText(
+      input.intencaoFlow,
+      "(não catalogada — siga o outline e o perfil da marca)",
+    ),
+    intencao_email: clampPromptText(
+      input.intencaoEmail,
+      "(não catalogada — siga o outline e o perfil da marca)",
+    ),
+    // Decisão do Estruturador (só no modo 'on' com run válida).
+    estruturador_decisao: clampPromptText(
+      input.estruturadorDecisao,
+      "(sem decisão do Estruturador nesta geração — siga o outline)",
+    ),
     // Perfil da marca (store_briefings.marca) — ancora a escolha na
     // identidade, não só no objetivo do email.
     briefing_marca: input.briefingJson,
@@ -671,6 +723,10 @@ export async function assembleStoreReference(
     inputVars: {
       sections: input.structure.length,
       catalog_variants: catalog.total,
+      // Critérios editoriais servidos nesta run (auditoria do Estúdio).
+      has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
+      has_intencao_email: Boolean(input.intencaoEmail?.trim()),
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
     },
   })
 
@@ -905,6 +961,10 @@ export async function assembleStoreReference(
     inputVars: {
       sections: input.structure.length,
       catalog_variants: catalog.total,
+      // Critérios editoriais servidos nesta run (auditoria do Estúdio).
+      has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
+      has_intencao_email: Boolean(input.intencaoEmail?.trim()),
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
     },
     rawOutput: chooserRaw.slice(0, 8000),
     parsedOutput: chooserTelemetry,

@@ -20,6 +20,8 @@ export interface PosicaoEstruturada {
   label: string
   /** Papel narrativo completo (+ adaptação) — vira o purpose do blueprint. */
   papel: string
+  /** Porquê da posição (embasamento) — entra no resumo servido ao Curador. */
+  porque: string
 }
 
 const LABEL_MAX = 90
@@ -45,8 +47,39 @@ export function estruturaParaPosicoes(
       section: p.section,
       label: truncateLabel(papelBase) || p.section,
       papel: adaptacao ? `${papelBase} — Adaptação: ${adaptacao}` : papelBase,
+      porque: p.porque?.trim() ?? "",
     }
   })
+}
+
+/**
+ * Resumo da decisão do Estruturador servido ao CURADOR (var
+ * `estruturador_decisao` do prompt): diagnóstico + fio + papel/porquê por
+ * posição, na MESMA ordem (pós-clamp) da <sequencia_do_email> — por isso
+ * recebe as `posicoes` já clampadas, não o output cru. Compacto de
+ * propósito: é critério de escolha, não o embasamento completo (que fica
+ * na run).
+ */
+export function resumoParaCurador(
+  output: EstruturadorOutput,
+  posicoes: PosicaoEstruturada[],
+): string {
+  const linhas = posicoes.map((p, i) => {
+    const porque = p.porque ? ` (porquê: ${p.porque})` : ""
+    return `${i + 1}. ${p.section} — ${p.papel}${porque}`
+  })
+  const aprendizados = (output.aprendizados_aplicados ?? [])
+    .map((a) => `- ${a.slug}${a.como ? `: ${a.como}` : ""}`)
+    .join("\n")
+  const partes = [
+    `Objeção dominante: ${output.diagnostico?.objecao_dominante ?? "—"}`,
+    `Mecanismo traduzido: ${output.diagnostico?.traducao_do_mecanismo ?? "—"}`,
+    `Fio narrativo: ${output.fio_narrativo ?? "—"}`,
+    `Papéis por posição (mesma ordem de <sequencia_do_email>):`,
+    ...linhas,
+  ]
+  if (aprendizados) partes.push(`Aprendizados aplicados:\n${aprendizados}`)
+  return partes.join("\n")
 }
 
 /**

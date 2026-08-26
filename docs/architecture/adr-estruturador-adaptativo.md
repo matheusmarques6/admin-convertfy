@@ -189,10 +189,23 @@ Validação por código (nunca pelo LLM):
 - 2 falhas → fallback integral para `resolveStructure(outline)` (comportamento
   atual, zero regressão).
 
-### O fio narrativo desce o pipeline
+### O fio narrativo desce o pipeline (implementado — fases 3/3.1, 26/08)
 
-- **Curador**: `papel` de cada posição entra no prompt como critério de ranking
-  (hoje ele rankeia contra objetivo genérico do outline).
+- **Curador**: recebe TRÊS critérios editoriais novos no user prompt
+  (default in-code; vars sempre presentes, ausência declarada em texto):
+  - `<sequencia_do_email>`: posições/ordem/quantidade decididas pelo
+    Estruturador, com o `papel` de cada posição no campo `componente`;
+  - `<intencao>`: intenção do FLOW + intenção DESTE email (de
+    `email_intents`, servidas SEMPRE que o vault tem material — independem
+    do modo do Estruturador: são contrato editorial, não decisão);
+  - `<decisao_do_estruturador>`: resumo da decisão (`resumoParaCurador` —
+    objeção dominante, mecanismo, fio, papel+porquê por posição pós-clamp,
+    aprendizados aplicados) — SÓ no modo `on` com run válida (em shadow o
+    pipeline não pode ser influenciado). Regra no system: papel é critério
+    DOMINANTE por posição; vence memória e estética; marca e viabilidade
+    seguem vetos absolutos. Clamp de 4000 chars por nota com marcador de
+    truncagem; telemetria da run do Curador ganha `has_intencao_flow`/
+    `has_intencao_email`/`estruturador_consumido`.
 - **Blueprint**: `purpose` do bloco = `papel` (o `copy_guidance` da variante
   vira complemento de forma, não de intenção).
 - **Payload n8n**: `fio_narrativo` no nível do email + `papel` por bloco —
