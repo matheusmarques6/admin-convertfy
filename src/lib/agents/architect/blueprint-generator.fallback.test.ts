@@ -58,7 +58,7 @@ vi.mock("../callbacks/telemetry.callback", () => ({
 }))
 
 import { generateStoreBlueprint } from "./blueprint-generator.service"
-import { missingProvenance } from "../shared/telemetry-contract"
+import { missingProvenance, missingTelemetryKeys } from "../shared/telemetry-contract"
 
 const baseInput = {
   storeId: "s1",
@@ -176,5 +176,35 @@ describe("generateStoreBlueprint — proveniência do prompt", () => {
       .map((sg) => sg.texto ?? "")
       .join("")
     expect(user).toBe(run.renderedPrompt)
+  })
+})
+
+// ── Saída legível (PR 2) ────────────────────────────────────────────────
+// O parsed_output guardava só `blocks: number`. Entender O QUE foi decidido
+// exigia abrir store_email_blueprints — que já pode ter sido regerado.
+describe("generateStoreBlueprint — blocos na telemetria", () => {
+  const parsedOf = (agent: string) =>
+    (finishGenerationRun.mock.calls.find(
+      (c) => (c[1] as { agent?: string }).agent === agent,
+    )?.[1] as { parsedOutput?: unknown } | undefined)?.parsedOutput as
+      | Record<string, unknown>
+      | undefined
+
+  it("grava o recorte de cada bloco e cumpre o contrato", async () => {
+    invokeAgent.mockResolvedValue({
+      raw: '{"objective":"o","messaging":"m","subject_hint":"s","blocks":[{"type":"hero","label":"Hero da promessa","purpose":"Abre com a promessa central.\\nForma (variante): faixa escura.","needs_image":true}]}',
+      tokensInput: 10,
+      tokensOutput: 20,
+    })
+    await generateStoreBlueprint(baseInput)
+    const parsed = parsedOf("blueprint")!
+    expect(missingTelemetryKeys("blueprint", parsed)).toEqual([])
+    const blocos = parsed.blocos as Array<Record<string, unknown>>
+    expect(blocos.length).toBe(1)
+    expect(blocos[0].type).toBe("hero")
+    expect(blocos[0].needs_image).toBe(true)
+    // O papel é a PRIMEIRA linha do purpose — o resto é a forma da variante.
+    expect(blocos[0].papel).toBe("Abre com a promessa central.")
+    expect(typeof blocos[0].campos).toBe("number")
   })
 })

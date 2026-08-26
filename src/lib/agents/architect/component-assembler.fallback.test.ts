@@ -752,6 +752,36 @@ describe("contrato de telemetria", () => {
     expect(missingProvenance("assembler_chooser", provOf("assembler_chooser"))).toEqual([])
   })
 
+  // ── Saídas legíveis (PR 2) ──
+  // `ranking` guarda só UUID: auditar curadoria a partir dele exigia cruzar
+  // id com a biblioteca à mão. O nome viaja junto agora.
+  it("Curador grava o ranking COM nome, seção e motivo do 1º", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const parsed = parsedOf("assembler_chooser") as Record<string, unknown>
+    expect(missingTelemetryKeys("assembler_chooser", parsed)).toEqual([])
+    const detalhado = parsed.ranking_detalhado as Array<Record<string, unknown>>
+    expect(Array.isArray(detalhado)).toBe(true)
+    expect(detalhado.length).toBeGreaterThan(0)
+    const primeira = detalhado[0]
+    expect(primeira.section).toBeTruthy()
+    const opcoes = primeira.opcoes as Array<Record<string, unknown>>
+    expect(opcoes.length).toBeGreaterThan(0)
+    expect(opcoes[0].rank).toBe(1)
+    expect(typeof opcoes[0].name).toBe("string")
+    expect(String(opcoes[0].name).length).toBeGreaterThan(0)
+  })
+
+  it("Montador grava a escolha COM o nome da variante", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const parsed = parsedOf("assembler") as Record<string, unknown>
+    const escolhas = parsed.escolhas as Array<Record<string, unknown>>
+    expect(escolhas.length).toBeGreaterThan(0)
+    expect(escolhas[0]).toHaveProperty("variant_name")
+    expect(escolhas[0]).toHaveProperty("section")
+  })
+
   it("cada agente do contrato de proveniência tem um motivo escrito", () => {
     for (const [agent, req] of Object.entries(PROVENANCE_CONTRACT)) {
       expect(req.motivo.length, `${agent} sem motivo`).toBeGreaterThan(20)

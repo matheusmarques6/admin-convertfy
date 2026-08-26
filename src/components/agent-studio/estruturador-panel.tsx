@@ -22,7 +22,14 @@ import { Copy as CopyIcon, ThumbsDown, ThumbsUp } from "lucide-react"
 
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
-import { CodeBlock, StudioBtn } from "./studio-atoms"
+import {
+  CodeBlock,
+  OUT_BODY,
+  OUT_LABEL,
+  OutPill,
+  OutSection,
+  StudioBtn,
+} from "./studio-atoms"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -67,55 +74,15 @@ interface FeedbackRow {
   created_at: string
 }
 
-const label: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-  color: C.g400,
-  fontFamily: F.sans,
-}
-
-const body: React.CSSProperties = {
-  fontSize: 12,
-  color: C.g900,
-  fontFamily: F.sans,
-  lineHeight: 1.55,
-}
-
-function Sec({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ ...label, marginBottom: 4 }}>{title}</div>
-      {children}
-    </div>
-  )
-}
-
-function Pill({ text, tone }: { text: string; tone: "neut" | "warn" | "info" }) {
-  const t =
-    tone === "warn"
-      ? { c: "#92400E", bg: "#FFFBEB", b: "#FDE68A" }
-      : tone === "info"
-        ? { c: "#0E7490", bg: "#ECFEFF", b: "#A5F3FC" }
-        : { c: C.g500, bg: C.g50, b: C.border }
-  return (
-    <span
-      style={{
-        fontSize: 10.5,
-        fontWeight: 600,
-        color: t.c,
-        background: t.bg,
-        border: `1px solid ${t.b}`,
-        borderRadius: 999,
-        padding: "1px 8px",
-        fontFamily: F.sans,
-      }}
-    >
-      {text}
-    </span>
-  )
-}
+// Os átomos (label/body/Sec/Pill) viraram compartilhados em studio-atoms:
+// as saídas do Curador, do Montador e do Blueprint usam a MESMA anatomia
+// que este painel estabeleceu.
+const label = OUT_LABEL
+const body = OUT_BODY
+const Sec = OutSection
+const Pill = ({ text, tone }: { text: string; tone: "neut" | "warn" | "info" }) => (
+  <OutPill text={text} tone={tone} />
+)
 
 export function EstruturadorEmbasamento({ output }: { output: unknown }) {
   const o = (output ?? {}) as EmbasamentoView

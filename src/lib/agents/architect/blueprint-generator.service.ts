@@ -520,6 +520,30 @@ async function generateSubjectHint(input: {
   }
 }
 
+/**
+ * Resumo dos blocos para a telemetria (aba Saída do Estúdio).
+ *
+ * O `parsed_output` do blueprint guardava só `blocks: number` — a contagem.
+ * Para saber O QUE foi decidido era preciso abrir `store_email_blueprints`,
+ * que já pode ter sido regerado. Aqui fica o recorte que explica a decisão:
+ * papel (a 1ª linha do purpose, que é onde o Estruturador escreve), forma,
+ * variante casada e quantos campos de copy o bloco vai exigir. O blueprint
+ * completo continua na tabela — isto é resumo, não cópia.
+ */
+export function blocosParaTelemetria(
+  blueprint: GeneratedBlueprint,
+): Array<Record<string, unknown>> {
+  return blueprint.blocks.map((b, i) => ({
+    position: i + 1,
+    type: b.type,
+    label: b.label,
+    papel: (b.purpose ?? "").split("\n")[0] || null,
+    needs_image: b.needs_image === true,
+    campos: (b.fields ?? []).length,
+    variant_name: b.variant_name ?? null,
+  }))
+}
+
 /** Resumo compacto das orientações de copy das variantes casadas (p/ o subject). */
 function copyGuidanceResumo(match: MatchResult | null): string {
   if (!match) return ""
@@ -690,6 +714,8 @@ async function generateDeterministicBlueprint(
     inputSummary: detInputSummary,
     parsedOutput: {
       blocks: blueprint.blocks.length,
+      blocos: blocosParaTelemetria(blueprint),
+      fio_narrativo: blueprint.fio_narrativo ?? null,
       source: "ai",
       blueprint_path: "deterministic",
       coverage: match.coverage,
@@ -934,6 +960,8 @@ async function generateLlmBlueprint(
     rawOutput: rawOutput.slice(0, 4000),
     parsedOutput: {
       blocks: blueprint.blocks.length,
+      blocos: blocosParaTelemetria(blueprint),
+      fio_narrativo: blueprint.fio_narrativo ?? null,
       source,
       // Rota do blueprint híbrido + motivo do fallback pro LLM.
       blueprint_path: "llm_fallback",

@@ -53,18 +53,23 @@ export const STUDIO_NODES: StudioNode[] = [
   { key: "blueprint", type: "agent", agent: "blueprint", icon: "layers", x: 1068, y: 452 },
   { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 1068, y: 308 },
   // ── Copy (externo, n8n) ──
-  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1324, y: 452 },
+  // Dois nós, não um: o Dispatch é o que ENVIAMOS (payload com blocos,
+  // campos e blueprint) e o Copy é o que VOLTOU do n8n. Colapsá-los
+  // escondia o payload atrás do retorno — e era justamente o payload que
+  // ninguém conseguia abrir (a run não tinha email/flow/batch).
+  { key: "copy_dispatch", type: "agent", agent: "copy_dispatch", icon: "send", x: 1324, y: 452 },
+  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1580, y: 452 },
   // ── Fase 2: montagem (por email) — merge por example ANTES da hero ──
-  { key: "image", type: "agent", agent: "image", icon: "file", x: 1580, y: 308 },
-  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1580, y: 452 },
-  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 1836, y: 452 },
-  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2092, y: 452 },
-  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2348, y: 452 },
-  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2604, y: 452 },
+  { key: "image", type: "agent", agent: "image", icon: "file", x: 1836, y: 308 },
+  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1836, y: 452 },
+  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 2092, y: 452 },
+  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2348, y: 452 },
+  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2604, y: 452 },
+  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2860, y: 452 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 2860, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3116, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3372, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3116, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3372, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3628, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -77,8 +82,9 @@ export const STUDIO_EDGES: Array<[string, string]> = [
   ["assembler_chooser", "assembler"],
   ["assembler", "blueprint"],
   ["blueprint", "subject"],
-  ["blueprint", "copy"],
-  ["subject", "copy"],
+  ["blueprint", "copy_dispatch"],
+  ["subject", "copy_dispatch"],
+  ["copy_dispatch", "copy"],
   ["copy", "image"],
   ["copy", "copy_merge"],
   ["image", "copy_merge"],
@@ -181,6 +187,7 @@ const MAIN_ORDER = [
   "assembler",
   "blueprint",
   "subject",
+  "copy_dispatch",
   "copy",
   "image",
   "copy_merge",
@@ -375,7 +382,7 @@ export function liveRunningNode(
 
 /**
  * Projeta o TESTE em curso sobre o grafo:
- *   - runs do batch (última por agente; `copy_dispatch` conta como copy)
+ *   - runs do batch (última por agente; `copy_dispatch` tem nó próprio)
  *     dão status/tempo/custo dos nós que já rodaram;
  *   - o nó "rodando" vem da máquina de status do email quando nenhuma run
  *     o marca (liveRunningNode);
@@ -401,7 +408,9 @@ export function projectLiveTest(opts: {
   const byAgent = new Map<string, LiveTestRun>()
   const allByAgent = new Map<string, LiveTestRun[]>()
   for (const r of runs) {
-    const key = r.agent === "copy_dispatch" ? "copy" : r.agent
+    // O dispatch tem NÓ PRÓPRIO desde ago/2026 — colapsá-lo em "copy"
+    // escondia o payload enviado atrás da copy que voltou.
+    const key = r.agent
     byAgent.set(key, r)
     const arr = allByAgent.get(key)
     if (arr) arr.push(r)
@@ -570,7 +579,7 @@ export function rerunPlanFor(nodeKey: string): RerunPlan | null {
       hint: "Roda Curador + Montador + Blueprint da loja de novo (fase 1).",
     }
   }
-  if (nodeKey === "copy") {
+  if (nodeKey === "copy" || nodeKey === "copy_dispatch") {
     return {
       mode: "full_pipeline",
       label: "Reexecutar com copy nova",

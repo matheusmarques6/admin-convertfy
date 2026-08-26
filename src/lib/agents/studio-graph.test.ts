@@ -59,6 +59,18 @@ describe("grafo", () => {
 })
 
 describe("projectRuns", () => {
+  // O envio ao n8n tem nó próprio: até ago/2026 a run não tinha email_id e
+  // nunca chegava aqui — o payload enviado ficava gravado e inalcançável.
+  it("projeta o Dispatch no nó próprio, separado da copy que voltou", () => {
+    const runs = projectRuns(
+      [run("copy_dispatch", "success"), run("copy", "success")],
+      "success",
+    )
+    expect(runs.copy_dispatch.status).toBe("sucesso")
+    expect(runs.copy_dispatch.runId).toBe("run-copy_dispatch")
+    expect(runs.copy.runId).toBe("run-copy")
+  })
+
   it("mapeia status da API e preenche métricas", () => {
     const runs = projectRuns(
       [run("qa", "success", { duration_ms: 11400, cost_cents: 1 })],
@@ -235,7 +247,9 @@ describe("projectLiveTest", () => {
     expect(runs.image.status).toBe("rodando")
   })
 
-  it("copy_dispatch conta como copy", () => {
+  // O dispatch ganhou NÓ PRÓPRIO (ago/2026): o que foi ENVIADO ao n8n não é
+  // a copy que voltou, e colapsar os dois escondia o payload atrás dela.
+  it("copy_dispatch ocupa o nó próprio, não o de copy", () => {
     const runs = projectLiveTest({
       runs: [live("copy_dispatch", "success")],
       emailStatus: "copy_generating",
@@ -243,9 +257,11 @@ describe("projectLiveTest", () => {
       mode: "full",
       terminal: "running",
     })
-    // status do email diz que a copy está em curso — o vivo vence a run.
+    expect(runs.copy_dispatch.status).toBe("sucesso")
+    expect(runs.copy_dispatch.runId).toBe("run-copy_dispatch")
+    // status do email diz que a copy está em curso — o vivo vence a ausência.
     expect(runs.copy.status).toBe("rodando")
-    expect(runs.copy.runId).toBe("run-copy_dispatch")
+    expect(runs.copy.runId).toBeUndefined()
   })
 
   it("done conclui a saída e o que não rodou vira pulado", () => {

@@ -36,6 +36,8 @@ import type {
 } from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
+import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
+import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import {
   deriveFieldNature,
   deriveToneKeys,
@@ -1542,15 +1544,100 @@ export async function dispatchEmailCopyWebhook(
     : { payload_truncated: false, payload_chars: payloadJson.length,
         payload }
 
-  const { error: telemetryErr } = await admin.from("email_generation_runs").insert({
-    store_id: storeId,
-    triggered_by: options.triggeredBy ?? null,
+  // ── Identidade da run (ago/2026) ──
+  // Até aqui o insert era cru e não gravava email/flow/batch — e as DUAS
+  // abas do Estúdio filtram por isso (Execuções por email_id; Teste por
+  // email_id OU batch_id). Resultado: o payload ficava gravado e ninguém
+  // conseguia abrir. O batch sai dos próprios emails (já ecoado no payload
+  // como `dispatch_batch_id`); email/flow só quando o lote é de UM email —
+  // que é o caminho do Estúdio (a aba Teste sempre despacha 1).
+  const batches = new Set(
+    emails.map((e) => e.generation_batch_id).filter((b): b is string => !!b),
+  )
+  const loteDeUm = dispatchedEmailIds.length === 1
+  const emailDoLote = loteDeUm
+    ? emails.find((e) => e.id === dispatchedEmailIds[0])
+    : undefined
+
+  // Entrada estruturada: o que foi ENVIADO, com origem. Os números saem do
+  // payload já montado — nada é recalculado.
+  const emailsDoPayload = payload.flows.flatMap((f) => f.emails)
+  const blocosTotal = emailsDoPayload.reduce((n, e) => n + e.blocks.length, 0)
+  const camposTotal = emailsDoPayload.reduce(
+    (n, e) =>
+      n +
+      e.blocks.reduce(
+        (m, b) => m + Object.keys(b.schema?.campos ?? {}).length,
+        0,
+      ),
+    0,
+  )
+  const comFio = emailsDoPayload.filter((e) => !!e.blueprint?.fio_narrativo).length
+  const inputSummary: InputSummaryItem[] = [
+    {
+      rotulo: "Loja",
+      cls: "loja",
+      // O select do store é `select("*")`-ish e o TS infere `{}` no campo;
+      // aqui só precisamos do rótulo legível.
+      valor: String(payload.store?.store_name ?? "") || storeId,
+    },
+    {
+      rotulo: "Lote",
+      cls: "sistema",
+      valor: `${flows.length} flow(s) · ${emails.length} email(s) · disparo ${options.triggerSource}`,
+    },
+    {
+      rotulo: "Blocos enviados",
+      cls: "sistema",
+      valor: `${blocosTotal} bloco(s) em ${emailsDoPayload.length} email(s)`,
+    },
+    {
+      rotulo: "Campos pedidos ao n8n",
+      cls: "biblioteca",
+      valor: `${camposTotal} campo(s) — do output_schema das variantes casadas`,
+    },
+    {
+      rotulo: "Blueprint + fio narrativo",
+      cls: "upstream",
+      valor: comFio > 0
+        ? `${comFio} de ${emailsDoPayload.length} email(s) com fio do Estruturador`
+        : "sem fio nesta geração (consumidores caem no messaging)",
+    },
+    {
+      rotulo: "Pesquisa & Diagnóstico",
+      cls: "loja",
+      valor: `${(payload.pesquisa_diagnostico ?? "").length.toLocaleString("pt-BR")} chars`,
+    },
+    {
+      rotulo: "Top produtos",
+      cls: "loja",
+      valor: `${payload.top_products?.length ?? 0} produto(s)`,
+    },
+    {
+      rotulo: "Payload",
+      cls: "sistema",
+      valor: payloadTooBig
+        ? `${payloadJson.length.toLocaleString("pt-BR")} chars — acima do teto, gravado o esqueleto (digest)`
+        : `${payloadJson.length.toLocaleString("pt-BR")} chars — gravado na íntegra`,
+    },
+  ]
+
+  const telemetryRunId = await logGenerationRun({
+    storeId,
+    // Batch único no lote → a run entra na aba Teste; heterogêneo → "" (o
+    // helper normaliza para null) e ela fica só na aba de Logs.
+    batchId: batches.size === 1 ? Array.from(batches)[0] : "",
+    emailId: emailDoLote?.id,
+    flowId: emailDoLote?.flow_id,
+    triggeredBy: options.triggeredBy,
     agent: "copy_dispatch",
     status: dispatchStatus,
     model: "n8n",
-    duration_ms: Date.now() - t0,
-    input_vars: inputVars,
-    parsed_output: {
+    durationMs: Date.now() - t0,
+    inputVars,
+    inputSummary,
+    errorMessage: dispatchError ?? undefined,
+    parsedOutput: {
       trigger_source: options.triggerSource,
       flow_count: flows.length,
       email_count: emails.length,
@@ -1577,13 +1664,12 @@ export async function dispatchEmailCopyWebhook(
         ? { emails_sem_secao: emailsSemSecao.slice(0, 30) }
         : {}),
     },
-    error_message: dispatchError,
   })
-  if (telemetryErr) {
-    log.warn("email_copy.telemetry_failed", {
-      storeId,
-      error_message: telemetryErr.message,
-    })
+  // logGenerationRun nunca lança: devolve "" e loga `telemetry.insert_failed`.
+  // A falha PRECISA aparecer — este insert ficou meses falhando em silêncio
+  // porque 'copy_dispatch' não estava no CHECK do agent (migration 20260728).
+  if (!telemetryRunId) {
+    log.warn("email_copy.telemetry_failed", { storeId })
   }
 
   if (dispatchStatus === "success") {

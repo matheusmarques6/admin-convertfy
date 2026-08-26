@@ -285,3 +285,96 @@ export function StudioBtn({
     </button>
   )
 }
+
+// ── Átomos das SAÍDAS legíveis (Estruturador, Curador, Montador…) ────────
+// Vieram do painel do Estruturador, que estabeleceu o padrão: label
+// uppercase + corpo, mini-cards cinza e pílulas de status. Ficam aqui para
+// que cada agente novo não reinvente a anatomia da própria saída.
+
+export const OUT_LABEL: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  color: C.g400,
+  fontFamily: F.sans,
+}
+
+export const OUT_BODY: CSSProperties = {
+  fontSize: 12,
+  color: C.g900,
+  fontFamily: F.sans,
+  lineHeight: 1.55,
+}
+
+export function OutSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ ...OUT_LABEL, marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+export type OutPillTone = "neut" | "warn" | "info" | "pos"
+
+export function OutPill({ text, tone = "neut" }: { text: string; tone?: OutPillTone }) {
+  const t =
+    tone === "warn"
+      ? { c: "#92400E", bg: "#FFFBEB", b: "#FDE68A" }
+      : tone === "info"
+        ? { c: "#0E7490", bg: "#ECFEFF", b: "#A5F3FC" }
+        : tone === "pos"
+          ? { c: "#065F46", bg: "#ECFDF5", b: "#A7F3D0" }
+          : { c: C.g500, bg: C.g50, b: C.border }
+  return (
+    <span
+      style={{
+        fontSize: 10.5,
+        fontWeight: 600,
+        color: t.c,
+        background: t.bg,
+        border: `1px solid ${t.b}`,
+        borderRadius: 999,
+        padding: "1px 8px",
+        fontFamily: F.sans,
+      }}
+    >
+      {text}
+    </span>
+  )
+}
+
+/** Card que embrulha uma saída legível inteira (acima do JSON cru). */
+export function OutCard({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${C.border}`,
+        borderRadius: 8,
+        padding: "12px 14px",
+        background: C.white,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Mini-card de item de lista (uma posição, um bloco…). */
+export function OutItem({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${C.g100}`,
+        borderRadius: 7,
+        padding: "8px 10px",
+        background: C.g50,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+

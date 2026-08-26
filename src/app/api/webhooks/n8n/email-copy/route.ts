@@ -30,6 +30,8 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { findFieldDeviations } from "@/lib/email-workspace/copy-spec"
+import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
+import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
@@ -185,22 +187,29 @@ export async function POST(request: NextRequest) {
       // Rastro nos logs de geração — sem isso a copy "some" sem explicação.
       // status='skipped' (NÃO success): o classificador do watchdog só conta
       // copy success como atividade, então o descarte não adia kills.
-      await admin
-        .from("email_generation_runs")
-        .insert({
-          store_id: body.store_id,
-          flow_id: email.flow_id,
-          email_id: body.email_id,
-          agent: "copy",
-          status: "skipped",
-          model: body.meta?.model ?? "n8n",
-          parsed_output: {
-            skip_reason: "stale_dispatch_batch",
-            dispatch_batch_id: body.dispatch_batch_id,
-            current_batch_id: currentBatchId,
-            subject: body.subject,
+      await logGenerationRun({
+        storeId: body.store_id,
+        flowId: email.flow_id,
+        emailId: body.email_id,
+        batchId: currentBatchId ?? "",
+        agent: "copy",
+        status: "skipped",
+        model: body.meta?.model ?? "n8n",
+        inputSummary: [
+          {
+            rotulo: "Descarte",
+            cls: "sistema",
+            valor: `copy de um disparo antigo (${body.dispatch_batch_id ?? "sem batch"}) chegou depois de um novo (${currentBatchId ?? "sem batch"})`,
           },
-        })
+          { rotulo: "Assunto descartado", cls: "upstream", valor: body.subject },
+        ],
+        parsedOutput: {
+          skip_reason: "stale_dispatch_batch",
+          dispatch_batch_id: body.dispatch_batch_id,
+          current_batch_id: currentBatchId,
+          subject: body.subject,
+        },
+      })
         .then(
           () => {},
           () => {},
@@ -419,6 +428,8 @@ export async function POST(request: NextRequest) {
     // o número que diz se o n8n já migrou.
     let keysRecebidas = 0
     let keysNoContrato = 0
+    let charsTotal = 0
+    const charsPorBloco: Array<{ position: number; type: string; chars: number }> = []
     const contratoPorBloco: Array<Record<string, unknown>> = []
     for (let i = 0; i < body.blocks.length; i++) {
       // Resolve o bloco real pelo block_id (o array do callback pode ser um
@@ -433,6 +444,15 @@ export async function POST(request: NextRequest) {
       // a única chave recebida e reportaria 0% de adesão para uma copy que,
       // desembrulhada, cumpre o contrato inteiro.
       const { content } = normalizeCopyEnvelope(body.blocks[i].content)
+      // Quanto de copy voltou, em caracteres. Não existia medida nenhuma de
+      // TAMANHO no callback — só contagem de chaves —, e bloco que volta com
+      // as chaves certas e valores vazios passava como 100% de adesão.
+      const charsDoBloco = Object.values(content).reduce<number>(
+        (n, v) => n + (typeof v === "string" ? v.length : 0),
+        0,
+      )
+      charsPorBloco.push({ position: idx, type: blockType, chars: charsDoBloco })
+      charsTotal += charsDoBloco
       if (fields.length === 0) {
         keysRecebidas += Object.keys(content).length
         contratoPorBloco.push({
@@ -502,17 +522,78 @@ export async function POST(request: NextRequest) {
     }
 
     // 4) Telemetria
-    await admin.from("email_generation_runs").insert({
-      store_id: body.store_id,
-      flow_id: email.flow_id,
-      email_id: body.email_id,
+    //
+    // Entrada estruturada: o que VOLTOU do n8n, com origem. A copy é do
+    // agente externo (`upstream`); o contrato contra o qual ela é medida é da
+    // biblioteca (o `fields` da variante casada, gravado na linha do bloco).
+    const porKind = new Map<string, number>()
+    for (const d of copyDeviations) {
+      const k = String(d.kind ?? "?")
+      porKind.set(k, (porKind.get(k) ?? 0) + 1)
+    }
+    const inputSummary: InputSummaryItem[] = [
+      {
+        rotulo: "Copy recebida do n8n",
+        cls: "upstream",
+        valor: `${body.blocks.length} bloco(s) · ${charsTotal.toLocaleString("pt-BR")} chars de texto`,
+      },
+      {
+        rotulo: "Assunto / preheader",
+        cls: "upstream",
+        valor: `${body.subject}${body.preheader ? ` · ${body.preheader}` : ""}`,
+      },
+      {
+        rotulo: "Blocos gravados",
+        cls: "sistema",
+        valor: `${blocksWritten} de ${body.blocks.length} recebido(s)`,
+      },
+      {
+        rotulo: "Adesão ao contrato",
+        cls: "biblioteca",
+        valor: taxaContrato == null
+          ? "sem chaves recebidas"
+          : `${taxaContrato}% — ${keysNoContrato} de ${keysRecebidas} chave(s) dentro do schema da variante`,
+      },
+      {
+        rotulo: "Desvios",
+        cls: "sistema",
+        valor: copyDeviations.length === 0
+          ? "nenhum"
+          : Array.from(porKind.entries())
+              .map(([k, n]) => `${k}: ${n}`)
+              .join(" · "),
+      },
+      {
+        rotulo: "Chars por bloco",
+        cls: "upstream",
+        valor: charsPorBloco.length === 0
+          ? "—"
+          : charsPorBloco
+              .map((b) => `#${b.position} ${b.type}: ${b.chars}`)
+              .join(" · "),
+      },
+      {
+        rotulo: "Batch da geração",
+        cls: "sistema",
+        valor: currentBatchId ?? "(sem batch)",
+      },
+    ]
+
+    await logGenerationRun({
+      storeId: body.store_id,
+      flowId: email.flow_id,
+      emailId: body.email_id,
+      // Sem batch_id a run não entrava na aba Teste como batch-scoped — e o
+      // id já estava aqui em escopo desde o guard de batch stale.
+      batchId: currentBatchId ?? "",
       agent: "copy",
       status: "success",
       model: body.meta?.model ?? "n8n",
-      tokens_input: body.meta?.tokens_input ?? null,
-      tokens_output: body.meta?.tokens_output ?? null,
-      duration_ms: body.meta?.duration_ms ?? null,
-      parsed_output: {
+      tokensInput: body.meta?.tokens_input ?? undefined,
+      tokensOutput: body.meta?.tokens_output ?? undefined,
+      durationMs: body.meta?.duration_ms ?? undefined,
+      inputSummary,
+      parsedOutput: {
         subject: body.subject,
         preheader: body.preheader ?? null,
         blocks_written: blocksWritten,

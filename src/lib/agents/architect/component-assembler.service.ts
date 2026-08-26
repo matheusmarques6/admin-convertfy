@@ -135,6 +135,35 @@ function topMotivos(parsed: ParsedRanking): Record<number, string> {
   return out
 }
 
+/**
+ * O ranking com NOME por posição (telemetria legível).
+ *
+ * `rankingIds` devolve `Record<block_index, variant_id[]>` — auditar
+ * curadoria a partir disso exige cruzar UUID com a biblioteca à mão. Aqui o
+ * nome viaja junto, mais a seção e o papel daquela posição.
+ */
+export function rankingDetalhado(
+  ranking: Map<number, RankedChoice[]>,
+  byId: Map<string, EmailComponentVariant>,
+  sections: string[],
+  labels: string[],
+): Array<Record<string, unknown>> {
+  return Array.from(ranking.keys())
+    .sort((a, b) => a - b)
+    .map((blockIndex) => ({
+      block_index: blockIndex,
+      section: sections[blockIndex] ?? "",
+      label: labels[blockIndex] ?? sections[blockIndex] ?? "",
+      opcoes: (ranking.get(blockIndex) ?? []).map((c, idx) => ({
+        rank: idx + 1,
+        variant_id: c.variant_id,
+        name: byId.get(c.variant_id)?.name ?? "(variante fora do catálogo)",
+        // Só o rank 1 tem motivo — é a tese do Curador para a posição.
+        ...(idx === 0 && c.motivo ? { motivo: c.motivo } : {}),
+      })),
+    }))
+}
+
 export const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. Para CADA posição da sequência de um email, você seleciona da biblioteca as ATÉ ${CHOOSER_TOP_N} variantes que melhor servem àquele email e àquela loja, em ordem de preferência.
 
 Você decide pelo nome, pela descrição e pelos metadados de cada variante. Você NÃO recebe o HTML delas.
@@ -935,6 +964,15 @@ export async function assembleStoreReference(
     // Ranking completo — insumo do Montador e auditoria da curadoria.
     ranking: ranking ? rankingIds(ranking) : {},
     motivos: ranking ? topMotivos(ranking) : {},
+    // Mesmo ranking, legível: `ranking` guarda só UUID, e ninguém audita
+    // curadoria lendo uma lista de ids. O nome está aqui em `byId` — não
+    // custa nada carregá-lo junto, e é o que a aba Saída do Estúdio mostra.
+    ranking_detalhado: rankingDetalhado(
+      rankingByBlock,
+      byId,
+      sections,
+      input.structure.map((st, i) => st.label ?? sections[i]),
+    ),
     // Validações do parser (o catálogo vai inteiro, então o modelo pode
     // indicar id inexistente ou de outra seção).
     invalid_ids: ranking?.invalidIds ?? [],
@@ -1289,6 +1327,11 @@ export async function assembleStoreReference(
         block_index: d.block_index,
         variant_id: d.variant_id,
         rank: d.rank,
+        // Nome, seção e papel junto do id: sem eles a composição final só
+        // era auditável cruzando UUID com a biblioteca à mão.
+        variant_name: byId.get(d.variant_id)?.name ?? null,
+        section: sections[d.block_index] ?? null,
+        label: input.structure[d.block_index]?.label ?? null,
       })),
       // Métrica do épico: com que frequência o Montador corrige o Curador.
       // Perto de 0 → a segunda passada é barata; acima de ~40% → o critério
@@ -1299,6 +1342,9 @@ export async function assembleStoreReference(
         variant_id: d.variant_id,
         rank: d.rank,
         motivo: d.motivo ?? null,
+        variant_name: byId.get(d.variant_id)?.name ?? null,
+        section: sections[d.block_index] ?? null,
+        label: input.structure[d.block_index]?.label ?? null,
       })),
       forced_rank1: decisions.forcedRank1,
       missing_motivo: decisions.missingMotivo,

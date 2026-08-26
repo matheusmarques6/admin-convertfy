@@ -23,6 +23,7 @@
 export type TelemetryAgent =
   | "assembler_chooser"
   | "assembler"
+  | "blueprint"
   | "hero_section"
   | "copy_merge"
 
@@ -43,6 +44,7 @@ export const TELEMETRY_CONTRACT: Record<
     wrong_type_ids: "ids de outra seção — risco criado por mandar o catálogo inteiro",
     empty_blocks: "posições sem finalista válido: saem do email e viram selo",
     candidates_excluded_unfillable: "variantes ativas impreenchíveis pelo pipeline (sem schema ou sem âncora de example/token no HTML) — pressão de curadoria",
+    ranking_detalhado: "o mesmo ranking COM o nome da variante, a seção e o papel de cada posição: `ranking` só guarda UUID, e ninguém audita curadoria lendo uma lista de ids",
   },
   assembler: {
     escolhas: "a composição final: id e rank por posição",
@@ -56,6 +58,13 @@ export const TELEMETRY_CONTRACT: Record<
     marker_selfcheck: "self-check dos marcadores emitidos pelo código; diferente de ok é bug nosso",
     image_tags_dropped: "self-check das tags de imagem; diferente de vazio é bug nosso",
     reference_source: "de onde saiu o reference que o consumidor vai usar",
+  },
+  blueprint: {
+    blocks: "quantos blocos o blueprint tem — a contagem que o dispatch vai pedir ao n8n",
+    blocos: "o recorte legível de cada bloco (papel, forma, variante, nº de campos): sem isto, entender a decisão exigia abrir store_email_blueprints, que já pode ter sido regerado",
+    blueprint_path: "determinístico ou LLM fallback — a rota decide o custo e a confiabilidade do resultado",
+    estruturador_consumido: "se os papéis do Estruturador entraram no purpose dos blocos",
+    schema_anchor_issue_count: "campos cujo example/token não é encontrável no HTML da variante — erro de CADASTRO da biblioteca, não do run",
   },
   hero_section: {
     hero_source: "library (região é a variante enxertada) ou montador (fallback legado) — decide quanta liberdade o agente teve",
@@ -135,6 +144,16 @@ export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
     prompt: false,
     input: true,
     motivo: "a rota determinística não tem prompt (é código); a Entrada é o que explica de onde vieram slots, papéis e fio",
+  },
+  copy_dispatch: {
+    prompt: false,
+    input: true,
+    motivo: "é envio HTTP, não LLM: o que precisa ser auditável é o que foi ENVIADO — blocos, campos pedidos e o blueprint por trás deles",
+  },
+  copy: {
+    prompt: false,
+    input: true,
+    motivo: "a copy vem de um agente externo (n8n); a Entrada é o que voltou e o quanto disso coube no contrato da variante",
   },
 }
 

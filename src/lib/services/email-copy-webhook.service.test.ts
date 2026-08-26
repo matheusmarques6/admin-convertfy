@@ -22,10 +22,15 @@ const h = vi.hoisted(() => {
     const exec = () => {
       const rows = tables[table] ?? (tables[table] = [])
       if (op === "insert") {
+        // Devolve as linhas COM id: o `logGenerationRun` faz
+        // `.insert().select("id").single()` e usa o id devolvido.
+        const inserted: Row[] = []
         for (const r of insertRows) {
-          rows.push({ id: `${table}-${rows.length + 1}`, ...r })
+          const row = { id: `${table}-${rows.length + 1}`, ...r }
+          rows.push(row)
+          inserted.push(row)
         }
-        return { data: insertRows, error: null }
+        return { data: inserted, error: null }
       }
       if (op === "update") {
         const matched = rows.filter((r) => filters.every((f) => f(r)))
@@ -53,6 +58,10 @@ const h = vi.hoisted(() => {
         return api
       },
       maybeSingle: () => {
+        const res = exec()
+        return Promise.resolve({ data: res.data[0] ?? null, error: null })
+      },
+      single: () => {
         const res = exec()
         return Promise.resolve({ data: res.data[0] ?? null, error: null })
       },
@@ -1359,5 +1368,127 @@ describe("dispatchEmailCopyWebhook — piso de seções", () => {
     expect(body.flows[0].emails[0].blocks).toEqual([])
     const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")
     expect(e1?.status).toBe("in_progress")
+  })
+})
+
+// ── Identidade da run de dispatch (PR 2, ago/2026) ──────────────────────
+// Sem email/flow/batch a run era INVISÍVEL nas duas abas do Estúdio
+// (Execuções filtra por email_id; Teste por email_id ou batch_id) — o
+// payload ficava gravado e ninguém conseguia abrir.
+describe("dispatchEmailCopyWebhook — identidade e Entrada da run", () => {
+  function runDoDispatch(): Row | undefined {
+    return h.tables.email_generation_runs.find(
+      (r: Row) => r.agent === "copy_dispatch",
+    )
+  }
+
+  beforeEach(() => {
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        ["welcome__1", {
+          flow_type: "welcome", email_number: 1, objective: "OBJ",
+          messaging: "MSG", subject_hint: null, fio_narrativo: "o fio",
+          blocks: [{ type: "hero", label: "Hero", purpose: "P", copy_spec: [] }],
+        }],
+      ]),
+    )
+    loadTextOnlyBlueprints.mockResolvedValue(new Map())
+  })
+
+  it("lote de UM email grava email_id, flow_id e o batch do email", async () => {
+    resetTables([
+      {
+        id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1",
+        status: "draft", generation_batch_id: "batch-abc",
+      },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v1",
+        fields: [{ key: "hero_headline", label: "H", type: "text_short", example: "ex" }] },
+    ]
+
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "test_full_pipeline",
+      flowIds: ["flow1"],
+      emailIds: ["e1"],
+      onlyDrafts: true,
+    })
+    expect(res.ok).toBe(true)
+
+    const run = runDoDispatch()
+    expect(run?.email_id).toBe("e1")
+    expect(run?.flow_id).toBe("flow1")
+    expect(run?.batch_id).toBe("batch-abc")
+  })
+
+  it("Entrada estruturada diz o que foi enviado, com origem", async () => {
+    resetTables([
+      {
+        id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1",
+        status: "draft", generation_batch_id: "batch-abc",
+      },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v1",
+        fields: [{ key: "hero_headline", label: "H", type: "text_short", example: "ex" }] },
+    ]
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const summary = runDoDispatch()?.input_summary as Array<Record<string, unknown>>
+    expect(Array.isArray(summary)).toBe(true)
+    const rotulos = summary.map((i) => i.rotulo)
+    expect(rotulos).toContain("Loja")
+    expect(rotulos).toContain("Campos pedidos ao n8n")
+    expect(rotulos).toContain("Payload")
+    // A origem de cada item é o que responde "de onde veio isso?".
+    expect(summary.find((i) => i.rotulo === "Loja")?.cls).toBe("loja")
+    expect(summary.find((i) => i.rotulo === "Campos pedidos ao n8n")?.cls).toBe("biblioteca")
+    // O fio do Estruturador é saída de agente anterior.
+    expect(summary.find((i) => i.rotulo === "Blueprint + fio narrativo")?.cls).toBe("upstream")
+  })
+
+  it("batch heterogêneo no lote → batch_id null (não inventa um)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "W1", status: "draft",
+        generation_batch_id: "batch-a" },
+      { id: "e2", flow_id: "flow1", number: 2, name: "W2", status: "draft",
+        generation_batch_id: "batch-b" },
+    ])
+    h.tables.email_blocks = [
+      { id: "b1", email_id: "e1", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v1",
+        fields: [{ key: "hero_headline", label: "H", type: "text_short", example: "ex" }] },
+      { id: "b2", email_id: "e2", position: 1, block_type: "hero", label: "Hero",
+        content: {}, variant_id: "v1",
+        fields: [{ key: "hero_headline", label: "H", type: "text_short", example: "ex" }] },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(
+      new Map([
+        ["welcome__1", { flow_type: "welcome", email_number: 1, objective: "O",
+          messaging: "M", subject_hint: null,
+          blocks: [{ type: "hero", label: "Hero", purpose: "P", copy_spec: [] }] }],
+        ["welcome__2", { flow_type: "welcome", email_number: 2, objective: "O",
+          messaging: "M", subject_hint: null,
+          blocks: [{ type: "hero", label: "Hero", purpose: "P", copy_spec: [] }] }],
+      ]),
+    )
+
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+
+    const run = runDoDispatch()
+    expect(run?.batch_id).toBeNull()
+    // Lote de 2 → sem email/flow: a run é do LOTE, não de um email.
+    expect(run?.email_id).toBeNull()
   })
 })

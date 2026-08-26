@@ -29,6 +29,7 @@ import {
 import { FlowCanvas, type Positions } from "./flow-canvas"
 import { CodeBlock, Spinner, StudioBtn, fmtTok, usd3 } from "./studio-atoms"
 import { EstruturadorEmbasamento, EstruturadorFeedback } from "./estruturador-panel"
+import { AgentOutputView } from "./agent-output-views"
 import {
   InputSummaryView,
   PromptProvenanceView,
@@ -644,6 +645,12 @@ export function NodeRunPanel({
               runIso={exec.updated_at}
             />
           </>
+        )}
+        {/* Saída legível da fase 1 (Curador, Montador, Blueprint, Assunto).
+            Devolve null quando a run não tem o campo — o JSON cru abaixo
+            continua sendo a verdade completa. */}
+        {tab === "output" && (
+          <AgentOutputView agent={n.agent} output={detail?.parsed_output} />
         )}
         {showProvPrompt && <PromptProvenanceView segments={segments!} />}
         {showProvInput && (
