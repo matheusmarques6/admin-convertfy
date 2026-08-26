@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { fetchWithTimeout } from "./admin"
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -8,6 +9,9 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Mesmo timeout defensivo do admin client — sem ele, Supabase fora
+      // do ar pendurava toda rota autenticada até o maxDuration.
+      global: { fetch: fetchWithTimeout },
       cookies: {
         getAll() {
           return cookieStore.getAll()

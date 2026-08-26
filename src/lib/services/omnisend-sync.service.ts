@@ -6,15 +6,15 @@
  *
  * Follows the same architecture as klaviyo-sync.service.ts.
  *
- * Omnisend API:
- *   - Campaigns list: GET /v3/campaigns (includes stats inline)
- *   - Campaign stats: GET /v5/campaigns/{id}/statistics (detailed metrics + revenue)
- *   - Automations list: GET /v3/automations (includes stats inline)
- *   - Automation stats: GET /v5/automations/{id}/statistics (detailed metrics + revenue)
+ * Omnisend API (ago/2026):
+ *   - Campaigns list: GET /api/campaigns (cursor; fallback /v5/campaigns)
+ *   - Automations list: GET /api/automations (cursor; fallback /v5/automations)
+ *   - Campaign stats: GET /v3/campaigns (stats inline, enrichment)
  *   - Contacts: GET /v5/contacts (for audience size)
- *   - Segments: GET /v5/segments (for segment data + contactsCount)
+ *   - Segments: GET /api/segments (fallback /v5/segments)
  *   - Brands: GET /v5/brands/current (account info)
  *   - Orders: GET /v3/orders (for revenue attribution)
+ *   - Reports/Statistics: POST /api/analytics/{reports,statistics}
  */
 
 import { logger } from "@/lib/logger"
@@ -24,6 +24,7 @@ import {
   omnisendRequest,
   omnisendPaginateV3,
   omnisendPaginateV5,
+  omnisendPaginateCursor,
   OMNISEND_V3,
   OMNISEND_V5,
   OMNISEND_API,
@@ -253,14 +254,32 @@ export interface SyncResult<T> {
 export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendCampaign[]> {
   const EXCLUDE_STATUSES = new Set(["draft"])
 
-  const all = await omnisendPaginateV5<OmnisendCampaign>(
+  // Endpoint atual (Omnisend-Version 2026-03-15): GET /api/campaigns com
+  // paginação por cursor (paging.cursors.after + hasMore). O /v5/campaigns
+  // saiu do catálogo público em ago/2026 e passou a devolver 0 itens — o
+  // [DIAG] abaixo flagrou em produção. O /v5 fica como FALLBACK para contas
+  // que ainda respondam nele. O shape dos itens já era suportado pelo
+  // mapeamento (id, content.email.subject, startedAt — ver buildCampaignRows).
+  let all = await omnisendPaginateCursor<OmnisendCampaign>(
     apiKey,
-    `${OMNISEND_V5}/campaigns`,
+    `${OMNISEND_API}/campaigns`,
     "campaigns",
     {
-      logTag: "OmnisendCampaigns_v5",
+      logTag: "OmnisendCampaigns_api",
     }
   )
+
+  if (all.length === 0) {
+    log.info(`[OmnisendCampaigns] /api/campaigns vazio — tentando fallback /v5/campaigns`)
+    all = await omnisendPaginateV5<OmnisendCampaign>(
+      apiKey,
+      `${OMNISEND_V5}/campaigns`,
+      "campaigns",
+      {
+        logTag: "OmnisendCampaigns_v5",
+      }
+    )
+  }
 
   if (all.length > 0) {
     const statusBreakdown: Record<string, number> = {}
@@ -274,7 +293,7 @@ export async function fetchAllReportCampaigns(apiKey: string): Promise<OmnisendC
     // subject, channel, etc.) sem precisar rodar o sync com debugger.
     log.info(`[DIAG] Campaign[0] raw: ${JSON.stringify(sample).slice(0, 600)}`)
   } else {
-    log.warn(`[DIAG] fetchAllReportCampaigns returned 0 items — /v5/campaigns may have migrated or retornou vazio`)
+    log.warn(`[DIAG] fetchAllReportCampaigns returned 0 items — /api/campaigns E /v5/campaigns vazios (conta sem campanha ou key sem scope)`)
   }
 
   return all.filter((c) => !EXCLUDE_STATUSES.has((c.status || "").toLowerCase()))
@@ -371,9 +390,18 @@ async function enrichCampaignsWithV3Stats(
 // ── Automations ───────────────────────────────────────────
 
 export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomation[]> {
-  const all = await omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
-    logTag: "OmnisendAutomations",
+  // Mesma migração das campanhas: /api/automations (cursor) com /v5 de
+  // fallback. Itens do /api trazem `id` + `isEnabled` + `trigger.condition`
+  // — todos já suportados por getAutomationId/getAutomationStatusStr.
+  let all = await omnisendPaginateCursor<OmnisendAutomation>(apiKey, `${OMNISEND_API}/automations`, "automations", {
+    logTag: "OmnisendAutomations_api",
   })
+  if (all.length === 0) {
+    log.info(`[OmnisendAutomations] /api/automations vazio — tentando fallback /v5/automations`)
+    all = await omnisendPaginateV5<OmnisendAutomation>(apiKey, `${OMNISEND_V5}/automations`, "automations", {
+      logTag: "OmnisendAutomations",
+    })
+  }
   if (all.length > 0) {
     const sample = all[0] as Record<string, unknown>
     log.info(`[DIAG] Automation sample keys: ${Object.keys(sample).slice(0, 15).join(",")}, total=${all.length}`)
@@ -384,7 +412,7 @@ export async function fetchAutomations(apiKey: string): Promise<OmnisendAutomati
     const enabledCount = all.filter((a) => a.isEnabled === true).length
     log.info(`[DIAG] Automations with isEnabled=true: ${enabledCount}/${all.length}`)
   } else {
-    log.warn(`[DIAG] fetchAutomations returned 0 items — /v5/automations may have migrated or API key lacks scope`)
+    log.warn(`[DIAG] fetchAutomations returned 0 items — /api/automations E /v5/automations vazios (conta sem automação ou key sem scope)`)
   }
   return all
 }

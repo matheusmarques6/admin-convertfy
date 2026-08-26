@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { AppError, requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
@@ -180,7 +180,11 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    log.error("KpiSeries error:", error)
+    // 401/403 nao e erro da rota (sessao expirada em aba aberta gera um
+    // por poll) — o errorResponse ja loga o que for 5xx.
+    if (!(error instanceof AppError) || error.statusCode >= 500) {
+      log.error("KpiSeries error:", error)
+    }
     return errorResponse(request, error, "kpi-series")
   }
 }

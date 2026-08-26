@@ -33,6 +33,7 @@ export const maxDuration = 120
 
 type ChannelRow = {
   id: string
+  name: string | null
   external_id: string
   config: Record<string, unknown> | null
 }
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const { data: channels, error } = await admin
       .from("crm_channels")
-      .select("id, external_id, config")
+      .select("id, name, external_id, config")
       .eq("type", "whatsapp")
       .eq("provider", "evolution")
       .eq("is_active", true)
@@ -61,6 +62,9 @@ export async function GET(request: NextRequest) {
     let healthy = 0
     let unhealthy = 0
     let unreachable = 0
+    // Nome + estado de cada canal com problema — o warn agregado só com
+    // contadores ({unhealthy:1}) não dizia QUAL canal reconectar.
+    const problems: string[] = []
 
     for (const channel of (channels as ChannelRow[] | null) ?? []) {
       const client = createEvolutionClient({
@@ -77,7 +81,8 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         unreachable++
         const detail = err instanceof Error ? err.message : String(err)
-        log.warn("connectionState falhou no health check", { channelId: channel.id, detail })
+        problems.push(`${channel.name || channel.external_id} (inacessível)`)
+        log.warn("connectionState falhou no health check", { channelId: channel.id, channelName: channel.name, detail })
         await notifyChannelDisconnected(admin, { channelId: channel.id, kind: "unreachable", detail })
         continue
       }
@@ -121,11 +126,12 @@ export async function GET(request: NextRequest) {
         kind,
         detail: live === "unknown" ? "estado desconhecido" : null,
       })
-      log.warn("instância não operante no health check", { channelId: channel.id, state: live })
+      problems.push(`${channel.name || channel.external_id} (${live})`)
+      log.warn("instância não operante no health check", { channelId: channel.id, channelName: channel.name, state: live })
     }
 
     if (unhealthy > 0 || unreachable > 0) {
-      log.warn("health check com problemas", { healthy, unhealthy, unreachable })
+      log.warn("health check com problemas", { healthy, unhealthy, unreachable, channels: problems })
     }
 
     return NextResponse.json({ success: true, healthy, unhealthy, unreachable })

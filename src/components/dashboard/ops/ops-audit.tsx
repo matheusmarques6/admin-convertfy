@@ -76,8 +76,20 @@ const MODE_META: Record<AuditMode, { title: string; note: string }> = {
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url)
   const body = await res.json().catch(() => null)
-  if (!res.ok) throw new Error((body && body.error) || `Erro ${res.status}`)
+  if (!res.ok) {
+    const err = new Error((body && body.error) || `Erro ${res.status}`) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
   return body as T
+}
+
+// 401 = sessão expirada; re-tentar só gera storm de requests.
+const AUDIT_SWR_OPTS = {
+  revalidateOnFocus: false,
+  dedupingInterval: 30_000,
+  shouldRetryOnError: (err: unknown) =>
+    (err as { status?: number } | null)?.status !== 401,
 }
 
 // ── Auditoria da Performance do Email ───────────────────────────────
@@ -118,7 +130,7 @@ export function EmailAuditDialog({
   const { data, error } = useSWR<EmailPerfAudit>(
     `/api/dashboard/email-performance?${q}`,
     fetchJson,
-    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+    AUDIT_SWR_OPTS,
   )
   const rows = data?.storeBreakdown ?? []
 
@@ -265,7 +277,7 @@ export function AuditDialog({
   const { data, error } = useSWR<TotalRevenueAudit>(
     mode ? `/api/dashboard/total-revenue?${q}` : null,
     fetchJson,
-    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+    AUDIT_SWR_OPTS,
   )
 
   const view = useMemo(() => {

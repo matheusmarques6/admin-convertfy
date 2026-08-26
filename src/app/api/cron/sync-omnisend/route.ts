@@ -24,6 +24,20 @@ export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
 const MAX_DURATION_MS = 270_000 // 90% of 300s (deixa margem para finalizar graciosamente)
+// Não vale a pena COMEÇAR uma loja/period com menos que isso de sobra —
+// um sync de period leva dezenas de segundos (Statistics API: 6,5s entre
+// calls + backoff 30/60/120s nos 429).
+const MIN_BUDGET_TO_START_MS = 25_000
+
+/** Corrida contra o deadline: se o sync não terminar a tempo, devolvemos
+ *  "deadline" e finalizamos a resposta ANTES do Vercel matar a função com
+ *  504 (o 504 não tem log nosso, não grava resultado e polui o painel de
+ *  erros — era exatamente o que aparecia em produção). O promise perdedor
+ *  segue rodando até o freeze do serverless; inofensivo. */
+function raceWithDeadline<T>(p: Promise<T>, ms: number): Promise<T | "deadline"> {
+  if (ms <= 0) return Promise.resolve("deadline" as const)
+  return Promise.race([p, sleep(ms).then(() => "deadline" as const)])
+}
 
 interface SyncResult {
   storeId: string
@@ -69,10 +83,13 @@ export async function GET(request: NextRequest) {
 
     log.info(`Found ${stores.length} stores with Omnisend credentials`)
 
+    let deadlineHit = false
     for (const store of stores) {
-      // Check time budget
-      if (Date.now() - startTime > MAX_DURATION_MS) {
-        log.warn("Time budget exhausted, stopping sync")
+      // Check time budget — com folga mínima: começar uma loja com 5s
+      // sobrando garantia o 504 (o check antigo só barrava DEPOIS de
+      // estourar, e uma loja multi-period leva minutos).
+      if (Date.now() - startTime > MAX_DURATION_MS - MIN_BUDGET_TO_START_MS) {
+        log.info("Time budget exhausted, stopping sync (parcial — próximo cron continua)")
         break
       }
 
@@ -122,12 +139,31 @@ export async function GET(request: NextRequest) {
         let syncedCount = 0
         let lastSyncResult: Awaited<ReturnType<typeof syncOmnisendForStore>> | null = null
         for (const period of periodsToSync) {
-          const syncResult = await syncOmnisendForStore({
-            storeId: store.id,
-            orgId: store.org_id,
-            apiKey,
-            periodDays: period.days,
-          })
+          // Budget também ENTRE periods — era o buraco do 504: o check de
+          // loja passava e os 4 periods (com backoffs da Statistics API)
+          // estouravam os 300s no meio.
+          const remainingMs = MAX_DURATION_MS - (Date.now() - startTime)
+          if (remainingMs < MIN_BUDGET_TO_START_MS) {
+            log.info(`Time budget exhausted mid-store (${store.store_name}, faltando ${period.label}) — parcial`)
+            deadlineHit = true
+            break
+          }
+
+          const syncResult = await raceWithDeadline(
+            syncOmnisendForStore({
+              storeId: store.id,
+              orgId: store.org_id,
+              apiKey,
+              periodDays: period.days,
+            }),
+            remainingMs,
+          )
+
+          if (syncResult === "deadline") {
+            log.warn(`[CronSyncOmnisend] Deadline durante sync de ${store.store_name}/${period.label} — respondendo parcial antes do 504`)
+            deadlineHit = true
+            break
+          }
 
           if (!syncResult.ok || !syncResult.data) {
             log.warn(`[CronSyncOmnisend] sync failed for ${store.store_name}/${period.label}`, {
@@ -153,9 +189,12 @@ export async function GET(request: NextRequest) {
           results.push({
             storeId: store.id,
             storeName: store.store_name,
-            status: "error",
-            error: lastSyncResult?.error || "All period syncs failed",
+            status: deadlineHit ? "skipped" : "error",
+            error: deadlineHit
+              ? "Time budget do cron — fica para a próxima execução"
+              : lastSyncResult?.error || "All period syncs failed",
           })
+          if (deadlineHit) break
           continue
         }
 
@@ -189,6 +228,7 @@ export async function GET(request: NextRequest) {
 
       // Rate limit spacing between stores
       await sleep(1500)
+      if (deadlineHit) break
     }
 
     const okCount = results.filter((r) => r.status === "ok").length

@@ -1,7 +1,7 @@
 import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { AppError, requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
 import {
@@ -200,20 +200,27 @@ async function handleGet(request: NextRequest) {
 
       // Log de inconsistencia: summary tem revenue mas rows individuais
       // estao zeradas. Indica que marketingActivityID da Statistics API
-      // nao casou com os IDs do listing /v5 e o sync caiu em fallback=0.
+      // nao casou com os IDs do listing e o sync caiu em fallback=0.
       // Os totais por canal (CAMPANHAS Receita, AUTOMACOES Receita)
       // continuam corretos via summary, mas as ultimas campanhas e top
       // flows mostram R$ 0 individual.
+      // log.info de propósito: é estado PERSISTENTE de dado (nasce no
+      // sync, não nesta leitura) e a rota roda a cada load do dashboard —
+      // como warn, afogava o painel level:warn da Vercel com a mesma loja
+      // dezenas de vezes por dia. O conserto de verdade é no sync
+      // (migração /api/campaigns realinha os IDs).
       if (campaignRevenue > 0 && campaigns.reduce((s, c) => s + c.conversion_value, 0) === 0) {
-        log.warn("[StoresOverview] Campaign revenue mismatch: summary has value but rows are zero", {
+        log.info("[StoresOverview] Campaign revenue mismatch: summary has value but rows are zero", {
           storeId: store.id,
+          storeName: store.store_name,
           summaryCampaignRevenue: campaignRevenue,
           campaignRowsCount: campaigns.length,
         })
       }
       if (flowRevenue > 0 && flows.reduce((s, f) => s + f.conversion_value, 0) === 0) {
-        log.warn("[StoresOverview] Flow revenue mismatch: summary has value but rows are zero", {
+        log.info("[StoresOverview] Flow revenue mismatch: summary has value but rows are zero", {
           storeId: store.id,
+          storeName: store.store_name,
           summaryFlowRevenue: flowRevenue,
           flowRowsCount: flows.length,
         })
@@ -279,7 +286,11 @@ async function handleGet(request: NextRequest) {
 
     return successResponse(request, { stores: results, period })
   } catch (error) {
-    log.error("StoresOverview error:", error)
+    // 401/403 não são erro da rota (sessão expirada em aba aberta gera um
+    // por poll) — o errorResponse já loga o que for 5xx.
+    if (!(error instanceof AppError) || error.statusCode >= 500) {
+      log.error("StoresOverview error:", error)
+    }
     return errorResponse(request, error, "stores-overview")
   }
 }

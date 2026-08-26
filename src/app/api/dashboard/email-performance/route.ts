@@ -13,7 +13,7 @@
 
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { AppError, requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import {
   getUnifiedRevenue,
@@ -195,7 +195,11 @@ export async function GET(request: NextRequest) {
       storeBreakdown,
     })
   } catch (error) {
-    log.error("EmailPerf error:", error)
+    // 401/403 nao e erro da rota (sessao expirada em aba aberta gera um
+    // por poll) — o errorResponse ja loga o que for 5xx.
+    if (!(error instanceof AppError) || error.statusCode >= 500) {
+      log.error("EmailPerf error:", error)
+    }
     return errorResponse(request, error, "email-performance")
   }
 }
