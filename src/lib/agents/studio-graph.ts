@@ -45,23 +45,26 @@ export interface StudioNode {
 export const STUDIO_NODES: StudioNode[] = [
   { key: "trigger", type: "trigger", label: "Pesquisa completa", sub: "Fila de dispatch · por loja", icon: "zap", x: 40, y: 452 },
   // ── Fase 1: referência & estrutura (por loja × email) ──
-  { key: "assembler_chooser", type: "agent", agent: "assembler_chooser", icon: "search", x: 300, y: 452 },
-  { key: "assembler", type: "agent", agent: "assembler", icon: "package", x: 556, y: 452 },
-  { key: "blueprint", type: "agent", agent: "blueprint", icon: "layers", x: 812, y: 452 },
-  { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 812, y: 308 },
+  // Estruturador antes do Curador: decide o esqueleto (modo shadow/on) que a
+  // fase 1 consome — em off o nó aparece como pulado, que é a verdade.
+  { key: "estruturador", type: "agent", agent: "estruturador", icon: "layers", x: 300, y: 452 },
+  { key: "assembler_chooser", type: "agent", agent: "assembler_chooser", icon: "search", x: 556, y: 452 },
+  { key: "assembler", type: "agent", agent: "assembler", icon: "package", x: 812, y: 452 },
+  { key: "blueprint", type: "agent", agent: "blueprint", icon: "layers", x: 1068, y: 452 },
+  { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 1068, y: 308 },
   // ── Copy (externo, n8n) ──
-  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1068, y: 452 },
+  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1324, y: 452 },
   // ── Fase 2: montagem (por email) — merge por example ANTES da hero ──
-  { key: "image", type: "agent", agent: "image", icon: "file", x: 1324, y: 308 },
-  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1324, y: 452 },
-  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 1580, y: 452 },
-  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 1836, y: 452 },
-  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2092, y: 452 },
-  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2348, y: 452 },
+  { key: "image", type: "agent", agent: "image", icon: "file", x: 1580, y: 308 },
+  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1580, y: 452 },
+  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 1836, y: 452 },
+  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2092, y: 452 },
+  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2348, y: 452 },
+  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2604, y: 452 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 2604, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 2860, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3116, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 2860, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3116, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3372, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -69,7 +72,8 @@ export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries
 )
 
 export const STUDIO_EDGES: Array<[string, string]> = [
-  ["trigger", "assembler_chooser"],
+  ["trigger", "estruturador"],
+  ["estruturador", "assembler_chooser"],
   ["assembler_chooser", "assembler"],
   ["assembler", "blueprint"],
   ["blueprint", "subject"],
@@ -100,10 +104,10 @@ export interface StudioGroup {
 }
 
 export const STUDIO_GROUPS: StudioGroup[] = [
-  { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 792, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
-  { label: "COPY (N8N)", x: 1040, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
-  { label: "MONTAGEM", x: 1296, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
-  { label: "QUALIDADE", x: 2576, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
+  { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 1048, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
+  { label: "COPY (N8N)", x: 1296, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
+  { label: "MONTAGEM", x: 1552, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
+  { label: "QUALIDADE", x: 2832, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
 ]
 
 // ── Estado de run por nó ─────────────────────────────────────────────────
@@ -172,6 +176,7 @@ export type ExecutionBucket = "success" | "error" | "running"
 /** Ordem topológica da linha principal — usada para derivar aguardando/pulado. */
 const MAIN_ORDER = [
   "trigger",
+  "estruturador",
   "assembler_chooser",
   "assembler",
   "blueprint",
@@ -330,7 +335,7 @@ export interface LiveTestRun {
   created_at?: string
 }
 
-const PHASE1_NODE_KEYS = ["assembler_chooser", "assembler", "blueprint", "subject"] as const
+const PHASE1_NODE_KEYS = ["estruturador", "assembler_chooser", "assembler", "blueprint", "subject"] as const
 
 /**
  * Qual nó está RODANDO agora, derivado da máquina de status do email —
@@ -537,7 +542,7 @@ export interface RerunPlan {
   hint: string
 }
 
-const PHASE1_KEYS = new Set(["assembler_chooser", "assembler", "blueprint", "subject"])
+const PHASE1_KEYS = new Set(["estruturador", "assembler_chooser", "assembler", "blueprint", "subject"])
 const PHASE2_KEYS = new Set([
   "image",
   "copy_merge",

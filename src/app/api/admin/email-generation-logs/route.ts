@@ -109,6 +109,7 @@ function bucketOf(row: LogRow): PipelineAgentKey {
   if (row.agent === "qa" && row.is_qa_vision) return "qavision"
   if (
     row.agent === "copy" ||
+    row.agent === "estruturador" ||
     row.agent === "blueprint" ||
     row.agent === "subject" ||
     row.agent === "assembler_chooser" ||

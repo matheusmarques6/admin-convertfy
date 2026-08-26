@@ -8,6 +8,7 @@
 
 export type PipelineAgentKey =
   | "copy"
+  | "estruturador"
   | "blueprint"
   | "subject"
   | "assembler_chooser"
@@ -49,6 +50,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#E5E7EB",
     external: true,
     kind: "externo",
+  },
+  estruturador: {
+    name: "Estruturador",
+    desc: "Decide a estrutura adaptada à loja a partir do material do vault (modo shadow/on)",
+    color: "#0E7490",
+    bg: "#ECFEFF",
+    border: "#A5F3FC",
+    kind: "texto",
   },
   blueprint: {
     name: "Blueprint",
@@ -202,6 +211,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
 /** Ordem canônica de exibição dos agentes operacionais (sem 'seed'). */
 export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "copy",
+  "estruturador",
   "blueprint",
   "subject",
   "assembler_chooser",

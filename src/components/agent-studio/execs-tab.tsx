@@ -28,6 +28,7 @@ import {
 } from "@/lib/agents/studio-graph"
 import { FlowCanvas, type Positions } from "./flow-canvas"
 import { CodeBlock, Spinner, StudioBtn, fmtTok, usd3 } from "./studio-atoms"
+import { EstruturadorEmbasamento, EstruturadorFeedback } from "./estruturador-panel"
 import type { ExecutionRow, ExecutionsPayload, RunDetailPayload } from "./studio-data"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -615,6 +616,21 @@ export function NodeRunPanel({
               }
             />
           )}
+        {/* Estruturador: embasamento legível + ciclo de feedback do COO
+            (fase 4 do ADR) — o JSON bruto continua logo abaixo. */}
+        {tab === "output" && n.agent === "estruturador" && run.runId && (
+          <>
+            <EstruturadorEmbasamento output={detail?.parsed_output} />
+            <EstruturadorFeedback
+              runId={run.runId}
+              output={detail?.parsed_output}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+              storeName={exec.store_name}
+              runIso={exec.updated_at}
+            />
+          </>
+        )}
         <CodeBlock text={bodyText} />
         {run.status === "pulado" && (
           <div style={{ marginTop: 10, fontSize: 11.5, color: C.g400, fontFamily: F.sans }}>
