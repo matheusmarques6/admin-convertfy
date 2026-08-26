@@ -76,11 +76,14 @@ export function OpsKpi({
   value,
   sub,
   tone,
+  onClick,
 }: {
   label: string
   value: ReactNode
   sub?: ReactNode
   tone?: "neg" | "warn" | "pos"
+  /** Presente = card auditável (abre o detalhamento loja a loja). */
+  onClick?: () => void
 }) {
   const toneClass =
     tone === "neg"
@@ -91,7 +94,18 @@ export function OpsKpi({
           ? "text-[var(--ops-pos)]"
           : "text-[var(--ops-title)]"
   return (
-    <div className="rounded-[10px] border bg-[var(--ops-card)] border-[var(--ops-border)] px-[18px] py-[17px]">
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => (e.key === "Enter" || e.key === " ") && onClick() : undefined}
+      title={onClick ? "Clique para auditar loja a loja" : undefined}
+      className={cn(
+        "rounded-[10px] border bg-[var(--ops-card)] border-[var(--ops-border)] px-[18px] py-[17px]",
+        onClick &&
+          "cursor-pointer transition-colors hover:border-[var(--ops-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ops-accent)]",
+      )}
+    >
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--ops-sec)]">
         {label}
       </div>

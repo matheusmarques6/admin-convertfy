@@ -13,6 +13,7 @@
 
 import { useState } from "react"
 import useSWR from "swr"
+import { cn } from "@/lib/utils"
 import {
   DateControl,
   defaultOpsPeriod,
@@ -39,6 +40,7 @@ import {
   StoresHealthTable,
   type CsDashboardData,
 } from "./ops-sections"
+import { AuditDialog, type AuditMode } from "./ops-audit"
 
 // ── Fetch ───────────────────────────────────────────────────────────
 
@@ -110,6 +112,7 @@ const KPI_SERIES_PERIODS = new Set(["7d", "15d", "30d", "90d"])
 
 export function OpsDashboard({ userName }: { userName: string }) {
   const [period, setPeriod] = useState<OpsPeriodValue>(defaultOpsPeriod)
+  const [audit, setAudit] = useState<AuditMode | null>(null)
   const q = periodQuery(period)
 
   const { data: revenue, error: revenueError } = useSWR<TotalRevenueData>(
@@ -183,26 +186,35 @@ export function OpsDashboard({ userName }: { userName: string }) {
           </div>
         )}
 
-        {/* ── Receita ── */}
+        {/* ── Receita (cards clicáveis → auditoria loja a loja) ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <RevenueCard
             label="Receita Atribuída"
             value={atribuida}
             delta={kpi?.deltas?.total}
+            onClick={() => setAudit("atribuida")}
           />
           <RevenueCard
             label="Receita Campanhas"
             value={revenue?.campaignRevenue ?? null}
             delta={kpi?.deltas?.campaign}
             spark={campanhasSpark.length >= 2 ? campanhasSpark : undefined}
+            onClick={() => setAudit("campanhas")}
           />
           <RevenueCard
             label="Receita Automações"
             value={revenue?.flowRevenue ?? null}
             delta={kpi?.deltas?.flow}
+            onClick={() => setAudit("automacoes")}
           />
           {/* Hero — Taxa média Convertfy (gradient brand) */}
-          <div className="rounded-[10px] p-[17px_18px] flex flex-col bg-gradient-to-br from-[#4E62D8] to-[#2137B6] dark:from-[#2137B6] dark:to-[#4E62D8]">
+          <div
+            onClick={() => setAudit("taxa")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setAudit("taxa")}
+            title="Clique para auditar loja a loja"
+            className="rounded-[10px] p-[17px_18px] flex flex-col bg-gradient-to-br from-[#4E62D8] to-[#2137B6] dark:from-[#2137B6] dark:to-[#4E62D8] cursor-pointer">
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-white/75">
               Taxa média Convertfy
             </div>
@@ -237,11 +249,13 @@ export function OpsDashboard({ userName }: { userName: string }) {
             label="Faturamento total"
             value={faturamento ? fmtBRLCompact(faturamento.total) : "—"}
             sub="soma das lojas ativas no período"
+            onClick={() => setAudit("faturamento")}
           />
           <OpsKpi
             label="Média por cliente"
             value={faturamento ? fmtBRLCompact(faturamento.media) : "—"}
             sub={faturamento ? `${faturamento.clientes} clientes ativos` : undefined}
+            onClick={() => setAudit("media")}
           />
           <OpsKpi
             label="Lojas em risco"
@@ -360,6 +374,28 @@ export function OpsDashboard({ userName }: { userName: string }) {
           <ClientsRevenueTable className="xl:col-span-7" q={q} />
         </div>
       </div>
+
+      {/* Auditoria loja a loja (aberta pelo clique nos cards de receita) */}
+      <AuditDialog
+        mode={audit}
+        q={q}
+        cardValue={
+          audit === "atribuida"
+            ? atribuida
+            : audit === "campanhas"
+              ? revenue?.campaignRevenue ?? null
+              : audit === "automacoes"
+                ? revenue?.flowRevenue ?? null
+                : audit === "taxa"
+                  ? kpi?.rate ?? null
+                  : audit === "faturamento"
+                    ? faturamento?.total ?? null
+                    : audit === "media"
+                      ? faturamento?.media ?? null
+                      : null
+        }
+        onClose={() => setAudit(null)}
+      />
     </div>
   )
 }
@@ -371,14 +407,27 @@ function RevenueCard({
   value,
   delta,
   spark,
+  onClick,
 }: {
   label: string
   value: number | null
   delta?: { value: number | null; label: string }
   spark?: number[]
+  onClick?: () => void
 }) {
   return (
-    <div className="rounded-[10px] border bg-[var(--ops-card)] border-[var(--ops-border)] px-[18px] py-[17px] flex flex-col">
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => (e.key === "Enter" || e.key === " ") && onClick() : undefined}
+      title={onClick ? "Clique para auditar loja a loja" : undefined}
+      className={cn(
+        "rounded-[10px] border bg-[var(--ops-card)] border-[var(--ops-border)] px-[18px] py-[17px] flex flex-col",
+        onClick &&
+          "cursor-pointer transition-colors hover:border-[var(--ops-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ops-accent)]",
+      )}
+    >
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--ops-sec)]">
         {label}
       </div>
