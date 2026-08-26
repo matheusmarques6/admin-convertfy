@@ -21,12 +21,20 @@
  * Puro (zero I/O) — testável.
  */
 
+import type { PromptSegment } from "../shared/prompt-provenance"
+
 export interface StepUsage {
   tokensInput: number
   tokensOutput: number
   costUsd: number
   /** O prompt que gerou a resposta rejeitada — o insumo do debug. */
   renderedPrompt?: string
+  /**
+   * O mesmo prompt marcado por ORIGEM (migration 20261085). Viaja junto no
+   * erro porque é no erro que a proveniência mais importa: é a única forma
+   * de ver se o que entrou estava certo e o modelo é que errou.
+   */
+  promptSegments?: PromptSegment[] | null
 }
 
 const KEY = "__cfyStepUsage"
@@ -65,6 +73,11 @@ export function usageOf(err: unknown): StepUsage | null {
     costUsd: rec.costUsd,
     ...(typeof rec.renderedPrompt === "string"
       ? { renderedPrompt: rec.renderedPrompt }
+      : {}),
+    // Cópia EXPLÍCITA: o que não for copiado aqui atravessa o guard acima e
+    // some em silêncio — o modo de falha que esta função já teve de campo.
+    ...(Array.isArray(rec.promptSegments)
+      ? { promptSegments: rec.promptSegments as PromptSegment[] }
       : {}),
   }
 }

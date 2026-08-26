@@ -134,6 +134,11 @@ vi.mock("./callbacks/telemetry.callback", () => ({
       model: p.model ?? null,
       batch_id: (p.batchId as string) || null,
       input_vars: p.inputVars ?? null,
+      // Proveniência (migration 20261085): o mock DESCARTAVA estes campos,
+      // então uma run podia perdê-los sem nenhum teste acusar.
+      rendered_prompt: p.renderedPrompt ?? null,
+      prompt_segments: p.promptSegments ?? null,
+      input_summary: p.inputSummary ?? null,
       parsed_output: p.parsedOutput ?? null,
       cost_cents: 0,
     })
@@ -148,6 +153,9 @@ vi.mock("./callbacks/telemetry.callback", () => ({
       status: "running",
       batch_id: (p.batchId as string) || null,
       input_vars: p.inputVars ?? null,
+      rendered_prompt: p.renderedPrompt ?? null,
+      prompt_segments: p.promptSegments ?? null,
+      input_summary: p.inputSummary ?? null,
       parsed_output: null,
       cost_cents: 0,
     })
@@ -160,6 +168,11 @@ vi.mock("./callbacks/telemetry.callback", () => ({
         status: p.status,
         parsed_output: p.parsedOutput ?? row.parsed_output,
         input_vars: p.inputVars ?? row.input_vars,
+        // Espelha o `?? undefined` do writer real: ausente no finish
+        // PRESERVA o que o start gravou.
+        rendered_prompt: p.renderedPrompt ?? row.rendered_prompt,
+        prompt_segments: p.promptSegments ?? row.prompt_segments,
+        input_summary: p.inputSummary ?? row.input_summary,
         error_message: p.errorMessage ?? null,
         raw_output: p.rawOutput ?? null,
       })
@@ -263,7 +276,11 @@ vi.mock("./html/format-context", () => ({
 
 import { runPhase2HtmlQa } from "./phase2-runner.service"
 import { spliceHero, locateHeroRegion } from "./html/hero-locator"
-import { missingTelemetryKeys } from "./shared/telemetry-contract"
+import {
+  missingProvenance,
+  missingTelemetryKeys,
+} from "./shared/telemetry-contract"
+import { attachUsage } from "./chains/step-usage"
 
 const HERO_FRAGMENT =
   '<table role="presentation"><tr><td><img src="https://cdn/hero.png">Hero pronta</td></tr></table>'
@@ -947,5 +964,93 @@ describe("merge por example — caso-mestre", () => {
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     expect(res.status).toBe("ready")
     expect(runsOf("hero_section")[0].status).toBe("success")
+  })
+})
+
+// ── Proveniência da fase 2 (migration 20261085) ─────────────────────────
+// O prompt de cada agente deixou de ser texto opaco: cada run guarda de
+// onde veio cada pedaço. O teste cobra a presença E a honestidade da
+// marcação (os segmentos têm de recompor o prompt enviado).
+describe("proveniência dos agentes da fase 2", () => {
+  const provOf = (agent: string) => {
+    const r = runsOf(agent)[0] ?? {}
+    return {
+      prompt_segments: r.prompt_segments,
+      input_summary: r.input_summary,
+      rendered_prompt: r.rendered_prompt,
+    }
+  }
+
+  it("os determinísticos gravam Entrada estruturada (e nenhum prompt)", async () => {
+    setupExampleCase()
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+
+    for (const agent of ["copy_merge", "image_format"]) {
+      const p = provOf(agent)
+      expect(missingProvenance(agent, p), `${agent} sem Entrada`).toEqual([])
+      // Código não tem prompt — e não deve inventar um.
+      expect(p.prompt_segments ?? null).toBeNull()
+      const itens = p.input_summary as Array<Record<string, unknown>>
+      expect(itens.length).toBeGreaterThan(0)
+      expect(itens.every((i) => typeof i.cls === "string")).toBe(true)
+    }
+  })
+
+  // O chain é mockado aqui: o que este arquivo prova é que o RUNNER
+  // (executeFormatStep) leva os segmentos do chain até a run — a
+  // segmentação em si é provada no teste do próprio chain.
+  it("o runner propaga os segmentos do chain para a run", async () => {
+    setupExampleCase()
+    invokeHeroChain.mockResolvedValue({
+      ...chainResultBase,
+      output: EXAMPLE_HERO_FRAGMENT,
+      mode: "fragment",
+      renderedPrompt: "SYSTEM+USER DA HERO",
+      promptSegments: [
+        { cls: "agente", rotulo: "Template do agente", texto: "SYSTEM+", chars: 7, parte: "system" },
+        { cls: "biblioteca", rotulo: "Variante", texto: "USER DA HERO", chars: 12, parte: "user" },
+      ],
+    })
+
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    expect(res.status).toBe("ready")
+
+    const p = provOf("hero_section")
+    expect(missingProvenance("hero_section", p)).toEqual([])
+    const segs = (p.prompt_segments ?? []) as Array<{ texto?: string; cls?: string }>
+    expect(segs.map((sg) => sg.texto).join("")).toBe("SYSTEM+USER DA HERO")
+    expect(new Set(segs.map((sg) => sg.cls))).toEqual(
+      new Set(["agente", "biblioteca"]),
+    )
+    // E a Entrada estruturada do step veio junto.
+    expect((p.input_summary as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  it("o erro do step preserva a proveniência (o prompt não some na falha)", async () => {
+    setupExampleCase()
+    // 1ª tentativa quebra no parse; a 2ª passa. A run de ERRO é a que
+    // interessa: era ela que fechava sem prompt.
+    invokeHeroChain
+      .mockRejectedValueOnce(
+        attachUsage(new Error("hero_output_invalid"), {
+          tokensInput: 10,
+          tokensOutput: 5,
+          costUsd: 0,
+          renderedPrompt: "PROMPT DA TENTATIVA 1",
+          promptSegments: [
+            { cls: "agente", rotulo: "Template do agente", texto: "PROMPT DA ", chars: 10, parte: "user" },
+            { cls: "loja", rotulo: "Dados da loja", texto: "TENTATIVA 1", chars: 11, parte: "user" },
+          ],
+        }),
+      )
+
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    const erro = runsOf("hero_section").find((r) => r.status === "error")
+    expect(erro, "run de erro do hero não encontrada").toBeTruthy()
+    expect(erro!.rendered_prompt).toBe("PROMPT DA TENTATIVA 1")
+    const segs = erro!.prompt_segments as Array<{ texto?: string }>
+    expect(segs.map((sg) => sg.texto).join("")).toBe("PROMPT DA TENTATIVA 1")
   })
 })

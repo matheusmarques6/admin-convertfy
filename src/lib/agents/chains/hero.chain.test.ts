@@ -11,6 +11,7 @@ import {
   DEFAULT_HERO_SYSTEM_PROMPT,
   DEFAULT_HERO_USER_TEMPLATE,
 } from "./hero.chain"
+import { heroDesignSystemBlock } from "../html/format-context"
 
 // O relatório é RECIBO, não conteúdo. Quando o modelo o emite dentro do
 // wrapper de output, o JSON entra no documento e o cliente de email o mostra
@@ -168,13 +169,16 @@ describe("design system é o input principal da hero", () => {
     )
   })
 
+  // A var mudou de nome quando o `{{#if}}` saiu do template (a seção passou
+  // a nascer montada no código); a POSIÇÃO — abrir a mensagem — é o que este
+  // teste protege, e continua valendo.
   it("o briefing chega ANTES do restante do contexto na mensagem", () => {
     const t = DEFAULT_HERO_USER_TEMPLATE
-    expect(t.indexOf("{{hero_variant_design_system}}")).toBeGreaterThanOrEqual(0)
-    expect(t.indexOf("{{hero_variant_design_system}}")).toBeLessThan(
+    expect(t.indexOf("{{hero_design_system_block}}")).toBeGreaterThanOrEqual(0)
+    expect(t.indexOf("{{hero_design_system_block}}")).toBeLessThan(
       t.indexOf("{{hero_region_html}}"),
     )
-    expect(t.indexOf("{{hero_variant_design_system}}")).toBeLessThan(
+    expect(t.indexOf("{{hero_design_system_block}}")).toBeLessThan(
       t.indexOf("{{hero_content_json}}"),
     )
   })
@@ -241,6 +245,9 @@ describe("a seção do design system só existe quando há texto", () => {
     hero_variant_rendered_html: "",
     hero_variant_schema_json: "",
     hero_variant_design_system: designSystem,
+    // A seção nasce PRONTA no código (heroDesignSystemBlock) desde que o
+    // `{{#if}}` saiu do template — o texto final é o mesmo.
+    hero_design_system_block: heroDesignSystemBlock(designSystem),
     hero_content_json: "[]",
     hero_image_url: "",
     hero_image_alt: "",

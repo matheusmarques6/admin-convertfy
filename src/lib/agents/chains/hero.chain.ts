@@ -24,6 +24,12 @@
 
 import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type PromptSegment,
+} from "../shared/prompt-provenance"
+import { HERO_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { withUsage, type StepUsage } from "./step-usage"
 import type { RenderedKind } from "../shared/rendered-classify"
@@ -162,11 +168,14 @@ After the fragment, emit a short report wrapped EXACTLY in ${HERO_REPORT_OPEN} a
 
 The report is what the pipeline knows about what you discarded. Report it honestly: a removed CTA row or an unfilled placeholder MUST appear there.`
 
-export const DEFAULT_HERO_USER_TEMPLATE = `{{#if hero_variant_design_system}}<design_system>
-{{hero_variant_design_system}}
-</design_system>
-
-{{/if}}<store>
+// A seção de design_system nasce PRONTA no código (`hero_design_system_block`
+// em format-context.ts) em vez de um `{{#if}}` aqui. O texto que o modelo
+// recebe é byte-idêntico nos dois casos — o teste prova —, e o cortador de
+// proveniência, que sabe substituir vars mas não executar condicionais,
+// passa a conseguir marcar de onde veio cada pedaço do prompt.
+// Config antiga no banco (com `{{#if}}`) continua funcionando: o renderer
+// resolve o bloco e a run cai no fail-open (prompt sem segmentação).
+export const DEFAULT_HERO_USER_TEMPLATE = `{{hero_design_system_block}}<store>
   <brand_name>{{brand_name}}</brand_name>
   <locale>{{locale}}</locale>
 </store>
@@ -248,6 +257,8 @@ export interface InvokeHeroResult {
   tokensOutput: number
   costUsd: number
   renderedPrompt: string
+  /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
+  promptSegments: PromptSegment[] | null
   rawOutput: string
   /** O que aconteceu com o espelho visual (CM-8). */
   vision: VisionDecision
@@ -596,23 +607,60 @@ export async function invokeHeroChain(input: {
     HERO_OUTPUT_CONTRACT,
     vision.used,
   )
+  const renderVars: Record<string, string> = {
+    ...vars,
+    output_contract: HERO_OUTPUT_CONTRACT,
+    // Com a imagem anexada, o HTML do mockup NÃO vai junto: é uma URL
+    // crua que não ensina nada e ainda oferece ao modelo um molde do
+    // formato errado (foi assim que o documento entrou no fragmento).
+    ...(vision.used ? { hero_variant_rendered_html: "" } : {}),
+  }
   const rendered = renderImageTemplate(
     config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,
-    {
-      ...vars,
-      output_contract: HERO_OUTPUT_CONTRACT,
-      // Com a imagem anexada, o HTML do mockup NÃO vai junto: é uma URL
-      // crua que não ensina nada e ainda oferece ao modelo um molde do
-      // formato errado (foi assim que o documento entrou no fragmento).
-      ...(vision.used ? { hero_variant_rendered_html: "" } : {}),
-    },
+    renderVars,
   )
   // No FIM: é a última coisa que o modelo lê antes de responder.
   const missingCopy = (input.missingCopy ?? []).filter((m) => m.trim())
-  const userMessage =
-    missingCopy.length > 0
-      ? `${rendered}\n\n${buildHeroRetryNote(missingCopy)}`
-      : rendered
+  const retryNote = missingCopy.length > 0 ? buildHeroRetryNote(missingCopy) : ""
+  const userMessage = retryNote ? `${rendered}\n\n${retryNote}` : rendered
+
+  // ── Proveniência (migration 20261085) ──
+  // O guard é a recomposição: só marcamos o prompt quando os segmentos
+  // reproduzem EXATAMENTE o que vai ser enviado. Config customizada com
+  // `{{#if}}`, ou qualquer divergência de renderer, cai em `null` — e a run
+  // grava o prompt como texto, o comportamento de antes.
+  const segUser = buildSegmentedPrompt(
+    config.user_template.trim() || DEFAULT_HERO_USER_TEMPLATE,
+    renderVars,
+    HERO_VAR_ORIGINS,
+    { parte: "user" },
+  )
+  const promptSegments =
+    segUser.segments && segUser.prompt === rendered
+      ? concatSegments(
+          [
+            {
+              cls: "agente" as const,
+              rotulo: "Template do agente",
+              texto: systemPrompt,
+              chars: systemPrompt.length,
+              parte: "system" as const,
+            },
+          ],
+          segUser.segments,
+          retryNote
+            ? [
+                {
+                  cls: "sistema" as const,
+                  rotulo: "Retry — campos que a tentativa anterior perdeu",
+                  texto: `\n\n${retryNote}`,
+                  chars: retryNote.length + 2,
+                  parte: "user" as const,
+                },
+              ]
+            : [],
+        )
+      : null
 
   if (vision.used) {
     log.warn("hero.vision_fallback", {
@@ -646,6 +694,7 @@ export async function invokeHeroChain(input: {
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
+    promptSegments,
   }
   const output = withUsage(usage, () =>
     parseHeroFragment(res.text, { expect: input.expectShape }),
@@ -666,6 +715,7 @@ export async function invokeHeroChain(input: {
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
+    promptSegments,
     rawOutput: res.text,
     vision,
   }

@@ -27,6 +27,12 @@ import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type SegmentOrigin,
+} from "../shared/prompt-provenance"
 import type {
   EmailAgentConfig,
   QaIssue,
@@ -421,6 +427,17 @@ export function runSchemaChecks(
   return issues
 }
 
+// ── Proveniência: origem de cada var do prompt do QA ──────────────────
+const QA_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  html: { cls: "upstream", rotulo: "Documento final — saída da cadeia de formatação" },
+  block_views_json: { cls: "upstream", rotulo: "Views por bloco — texto visível extraído por código" },
+  block_contracts_json: { cls: "biblioteca", rotulo: "Contrato dos blocos — schema das variantes" },
+  blocks_json: { cls: "upstream", rotulo: "Copy esperada — callback do n8n" },
+  briefing_json: { cls: "loja", rotulo: "Briefing da loja — store_briefings" },
+  brand_json: { cls: "loja", rotulo: "Identidade visual — store_brand_identity" },
+  blueprint_objective: { cls: "upstream", rotulo: "Objetivo — blueprint da loja" },
+}
+
 // ── Render do user prompt ─────────────────────────────────────────────
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
@@ -641,8 +658,76 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   // `[unsubscribe_link]` como links_quebrados/compliance/claim_nao_coberto e
   // bloqueava emails legitimos. Forcado in-code pra nao depender do prompt
   // versionado no DB.
-  const userPrompt =
-    renderTemplate(userTemplate, renderVars) + MERGE_TAGS_INSTRUCTION
+  const renderedUser = renderTemplate(userTemplate, renderVars)
+  const userPrompt = renderedUser + MERGE_TAGS_INSTRUCTION
+
+  // ── Proveniência (migration 20261085) ──
+  // Esta run NUNCA gravou prompt: o `userPrompt` existia montado aqui e não
+  // era passado ao `startGenerationRun`. Agora vai — e marcado por origem.
+  //
+  // O renderer deste chain é próprio e mais estrito que o do helper; o guard
+  // de recomposição abaixo é o que impede a marcação de divergir do que foi
+  // realmente enviado.
+  const segUser = buildSegmentedPrompt(userTemplate, renderVars, QA_VAR_ORIGINS, {
+    parte: "user",
+  })
+  const promptSegments =
+    segUser.segments && segUser.prompt === renderedUser
+      ? concatSegments(
+          [
+            {
+              cls: "agente" as const,
+              rotulo: "Template do agente",
+              texto: systemPrompt,
+              chars: systemPrompt.length,
+              parte: "system" as const,
+            },
+          ],
+          segUser.segments,
+          [
+            {
+              cls: "agente" as const,
+              rotulo: "Merge tags do provedor — apêndice fixo in-code",
+              texto: MERGE_TAGS_INSTRUCTION,
+              chars: MERGE_TAGS_INSTRUCTION.length,
+              parte: "user" as const,
+            },
+          ],
+        )
+      : null
+
+  const inputSummary: InputSummaryItem[] = [
+    {
+      rotulo: "Documento avaliado",
+      cls: "upstream",
+      valor: `${html.length.toLocaleString("pt-BR")} chars — saída da cadeia de formatação`,
+    },
+    {
+      rotulo: "Views por bloco",
+      cls: "upstream",
+      valor: `${(input.blockViews ?? []).length} view(s) — texto visível extraído por código`,
+    },
+    {
+      rotulo: "Contrato dos blocos",
+      cls: "biblioteca",
+      valor: `${(input.blockContracts ?? []).length} contrato(s) — schema das variantes`,
+    },
+    {
+      rotulo: "Copy esperada",
+      cls: "upstream",
+      valor: `${blocks.length} bloco(s) do callback do n8n`,
+    },
+    {
+      rotulo: "Objetivo do email",
+      cls: "upstream",
+      valor: blueprintObjective || "(sem objetivo no blueprint)",
+    },
+    {
+      rotulo: "Marca e briefing",
+      cls: "loja",
+      valor: `${brand ? "identidade visual" : "sem identidade"} · ${briefing ? "briefing" : "sem briefing"}`,
+    },
+  ]
 
   // Run 'running' aberto antes da chamada LLM (live view).
   const qaRunId = await startGenerationRun({
@@ -654,6 +739,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     agent: "qa",
     agentConfigId: config.id,
     model,
+    renderedPrompt: userPrompt,
+    promptSegments,
+    inputSummary,
   }).catch(() => "")
 
   // ── 4. Chama Claude com timeout 15s ─────────────────────────────────
@@ -704,6 +792,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       agentConfigId: config.id,
       status: "error",
       model,
+      renderedPrompt: userPrompt,
+      promptSegments,
+      inputSummary,
       durationMs: result.meta.duration_ms,
       errorMessage: msg,
       parsedOutput: {
@@ -785,6 +876,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       agentConfigId: config.id,
       status: "error",
       model,
+      renderedPrompt: userPrompt,
+      promptSegments,
+      inputSummary,
       tokensInput,
       tokensOutput,
       costCents,
@@ -895,6 +989,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     agentConfigId: config.id,
     status: "success",
     model,
+    renderedPrompt: userPrompt,
+    promptSegments,
+    inputSummary,
     tokensInput,
     tokensOutput,
     costCents,

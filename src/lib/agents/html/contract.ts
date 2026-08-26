@@ -80,6 +80,8 @@ export const HeroPromptVarsSchema = z.object({
    * abrir um bloco vazio que o modelo tenta preencher sozinho.
    */
   hero_variant_design_system: z.string(),
+  /** A seção <design_system> pronta (ou vazia) — ver heroDesignSystemBlock. */
+  hero_design_system_block: z.string(),
   /** "library" = região enxertada da biblioteca; "montador" = HTML do LLM. */
   hero_source: z.enum(["library", "montador"]),
   hero_content_json: z.string(),

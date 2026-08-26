@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { languageLabelToCode } from "@/lib/i18n/store-language"
 import { logger } from "@/lib/logger"
+import type { SegmentOrigin } from "../shared/prompt-provenance"
 import type {
   EmailBlueprint,
   ReferenceSlotMapEntry,
@@ -471,6 +472,91 @@ export function blocksInsideHeroRegion(
   return hero ? [hero] : []
 }
 
+// ── Proveniência: a origem de cada var dos prompts da fase 2 ────────────
+//
+// Ficam AQUI, ao lado de quem monta as vars: quem sabe de onde o valor veio
+// é o builder, não o chain. Constantes (não parâmetros) para não mexer na
+// assinatura de `build*Vars`, fixada por 13 testes.
+
+const LOJA_STORE: SegmentOrigin = { cls: "loja", rotulo: "Dados da loja — client_stores" }
+const LOJA_BRAND: SegmentOrigin = { cls: "loja", rotulo: "Identidade visual aprovada — store_brand_identity" }
+const ROLES: SegmentOrigin = { cls: "sistema", rotulo: "Papéis de cor — deriveColorRoles (código)" }
+const EMAIL_ROW: SegmentOrigin = { cls: "sistema", rotulo: "Email — email_flow_emails" }
+
+/** Vars comuns a hero/text/color (identityVars). */
+const IDENTITY_ORIGINS: Record<string, SegmentOrigin> = {
+  brand_name: LOJA_STORE,
+  locale: LOJA_STORE,
+  color_bg: ROLES,
+  color_text: ROLES,
+  color_heading: ROLES,
+  color_button_bg: ROLES,
+  color_button_text: ROLES,
+  color_accent: ROLES,
+  color_surface: ROLES,
+  color_surface_strong: ROLES,
+  font_heading: LOJA_BRAND,
+  font_heading_weight: LOJA_BRAND,
+  font_body: LOJA_BRAND,
+  font_body_weight: LOJA_BRAND,
+}
+
+export const HERO_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  ...IDENTITY_ORIGINS,
+  logo_light: LOJA_BRAND,
+  logo_dark: LOJA_BRAND,
+  email_name: EMAIL_ROW,
+  subject: EMAIL_ROW,
+  hero_region_html: { cls: "upstream", rotulo: "Região da hero — documento montado (Montador + enxerto)" },
+  hero_variant_html: { cls: "biblioteca", rotulo: "HTML canônico da variante — email_component_variants" },
+  hero_variant_rendered_html: { cls: "biblioteca", rotulo: "Exemplo renderizado da variante" },
+  hero_variant_schema_json: { cls: "biblioteca", rotulo: "output_schema da variante" },
+  hero_variant_design_system: { cls: "biblioteca", rotulo: "Regras de design da variante" },
+  hero_design_system_block: { cls: "biblioteca", rotulo: "Regras de design da variante" },
+  hero_source: { cls: "sistema", rotulo: "Origem da região (library/montador) — código" },
+  hero_content_json: { cls: "upstream", rotulo: "Copy da hero — callback do n8n" },
+  hero_pending_json: { cls: "upstream", rotulo: "Campos que o copy_merge não ancorou" },
+  hero_image_url: { cls: "upstream", rotulo: "Imagem gerada — SAÍDA do agente de imagem" },
+  hero_image_alt: { cls: "upstream", rotulo: "Alt da imagem gerada" },
+  output_contract: { cls: "agente", rotulo: "Contrato de saída — in-code" },
+  montador_html: { cls: "upstream", rotulo: "Documento do Montador (var legada, vazia desde o CM-5)" },
+}
+
+export const TEXT_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  ...IDENTITY_ORIGINS,
+  html: { cls: "upstream", rotulo: "Documento — SAÍDA do step anterior (hero)" },
+  email_name: EMAIL_ROW,
+  subject: EMAIL_ROW,
+  preheader: EMAIL_ROW,
+  objective: { cls: "upstream", rotulo: "Objetivo — blueprint da loja" },
+  messaging: { cls: "upstream", rotulo: "Direção editorial — blueprint da loja" },
+  blocks_with_content_json: { cls: "upstream", rotulo: "Copy por bloco — callback do n8n" },
+  fields_json: { cls: "biblioteca", rotulo: "Contrato de campos — schema das variantes casadas" },
+  top_products_json: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+}
+
+export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  ...IDENTITY_ORIGINS,
+  niche: LOJA_STORE,
+  tones: { cls: "sistema", rotulo: "Tons derivados do tom de voz — deriveToneKeys" },
+  color_inventory_json: { cls: "sistema", rotulo: "Inventário de cores do documento — extractColorInventory" },
+  brand_colors: LOJA_BRAND,
+  pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
+  email_name: EMAIL_ROW,
+  subject: EMAIL_ROW,
+}
+
+/**
+ * A seção `<design_system>` do prompt do hero, pronta — ou string vazia.
+ * Pura: o teste compara o render do template novo com o do antigo
+ * (`{{#if}}`) nos DOIS casos, byte a byte.
+ */
+export function heroDesignSystemBlock(designSystem: string | null | undefined): string {
+  const ds = (designSystem ?? "").trim()
+  if (!ds) return ""
+  return `<design_system>\n${ds}\n</design_system>\n\n`
+}
+
 export function buildHeroVars(
   ctx: FormatChainContext,
   params: {
@@ -522,6 +608,11 @@ export function buildHeroVars(
     // diferente do exemplo renderizado, aqui é texto escrito para ser lido
     // por um modelo, sem ambiguidade de formato.
     hero_variant_design_system: (params.variant?.design_system ?? "").trim(),
+    // A SEÇÃO pronta (tag + conteúdo + as duas quebras) ou vazia. Substitui
+    // o `{{#if}}` que abria o template do hero: o texto final é o mesmo, e o
+    // prompt passa a ser cortável por origem. A var crua acima continua
+    // servindo configs customizadas que ainda usam o condicional.
+    hero_design_system_block: heroDesignSystemBlock(params.variant?.design_system),
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
       heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",

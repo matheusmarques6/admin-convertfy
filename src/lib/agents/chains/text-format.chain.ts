@@ -14,6 +14,13 @@
 
 import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
+import { withUsage } from "./step-usage"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type PromptSegment,
+} from "../shared/prompt-provenance"
+import { TEXT_FORMAT_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { postProcessDocumentPreserveTags } from "../html/post-process"
 import {
@@ -151,6 +158,8 @@ export interface InvokeTextFormatResult {
   tokensOutput: number
   costUsd: number
   renderedPrompt: string
+  /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
+  promptSegments: PromptSegment[] | null
   rawOutput: string
 }
 
@@ -202,10 +211,29 @@ export async function invokeTextFormatChain(input: {
 
   const systemPrompt =
     config.system_prompt.trim() || DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT
-  const userMessage = renderImageTemplate(
-    config.user_template.trim() || DEFAULT_TEXT_FORMAT_USER_TEMPLATE,
-    vars,
-  )
+  const template = config.user_template.trim() || DEFAULT_TEXT_FORMAT_USER_TEMPLATE
+  const userMessage = renderImageTemplate(template, vars)
+
+  // Proveniência (migration 20261085): o guard é a recomposição — só marcamos
+  // quando os segmentos reproduzem EXATAMENTE o prompt enviado.
+  const segUser = buildSegmentedPrompt(template, vars, TEXT_FORMAT_VAR_ORIGINS, {
+    parte: "user",
+  })
+  const promptSegments =
+    segUser.segments && segUser.prompt === userMessage
+      ? concatSegments(
+          [
+            {
+              cls: "agente" as const,
+              rotulo: "Template do agente",
+              texto: systemPrompt,
+              chars: systemPrompt.length,
+              parte: "system" as const,
+            },
+          ],
+          segUser.segments,
+        )
+      : null
 
   const t0 = Date.now()
   const res = await invokeFormatModel({
@@ -225,7 +253,20 @@ export async function invokeTextFormatChain(input: {
 
   // PreserveTags: o strip de placeholders + lang rodam SÓ no fim da cadeia
   // (runner) — as tags de imagem pertencem ao próximo agente.
-  const html = postProcessDocumentPreserveTags(res.text)
+  //
+  // `withUsage`: este era o ÚNICO dos três chains de formatação sem ele —
+  // uma falha aqui fechava a run com 0 token, $0 e sem prompt, apagando o
+  // insumo do debug justamente no caso em que ele é necessário.
+  const html = withUsage(
+    {
+      tokensInput: res.tokensInput,
+      tokensOutput: res.tokensOutput,
+      costUsd: res.costUsd,
+      renderedPrompt: userMessage,
+      promptSegments,
+    },
+    () => postProcessDocumentPreserveTags(res.text),
+  )
 
   log.info("text_format.invoke.success", {
     model: config.model,
@@ -239,6 +280,7 @@ export async function invokeTextFormatChain(input: {
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
+    promptSegments,
     rawOutput: res.text,
   }
 }

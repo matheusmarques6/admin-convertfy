@@ -25,6 +25,12 @@
 
 import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type PromptSegment,
+} from "../shared/prompt-provenance"
+import { COLOR_FORMAT_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { parseOps, type FormatOp } from "../html/apply-patches"
 import { withUsage } from "./step-usage"
@@ -157,6 +163,8 @@ export interface InvokeColorFormatResult {
   tokensOutput: number
   costUsd: number
   renderedPrompt: string
+  /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
+  promptSegments: PromptSegment[] | null
   rawOutput: string
 }
 
@@ -168,10 +176,29 @@ export async function invokeColorFormatChain(input: {
 
   const systemPrompt =
     config.system_prompt.trim() || DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT
-  const userMessage = renderImageTemplate(
-    config.user_template.trim() || DEFAULT_COLOR_FORMAT_USER_TEMPLATE,
-    vars,
-  )
+  const template = config.user_template.trim() || DEFAULT_COLOR_FORMAT_USER_TEMPLATE
+  const userMessage = renderImageTemplate(template, vars)
+
+  // Proveniência (migration 20261085): o guard é a recomposição — só marcamos
+  // quando os segmentos reproduzem EXATAMENTE o prompt enviado.
+  const segUser = buildSegmentedPrompt(template, vars, COLOR_FORMAT_VAR_ORIGINS, {
+    parte: "user",
+  })
+  const promptSegments =
+    segUser.segments && segUser.prompt === userMessage
+      ? concatSegments(
+          [
+            {
+              cls: "agente" as const,
+              rotulo: "Template do agente",
+              texto: systemPrompt,
+              chars: systemPrompt.length,
+              parte: "system" as const,
+            },
+          ],
+          segUser.segments,
+        )
+      : null
 
   const t0 = Date.now()
   const res = await invokeFormatModel({
@@ -200,6 +227,7 @@ export async function invokeColorFormatChain(input: {
       tokensOutput: res.tokensOutput,
       costUsd: res.costUsd,
       renderedPrompt: userMessage,
+    promptSegments,
     },
     () => parseOps(res.text),
   ).filter((op) => op.action === "recolor")
@@ -216,6 +244,7 @@ export async function invokeColorFormatChain(input: {
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
+    promptSegments,
     rawOutput: res.text,
   }
 }

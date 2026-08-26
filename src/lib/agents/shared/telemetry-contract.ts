@@ -155,6 +155,42 @@ export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
     input: true,
     motivo: "a copy vem de um agente externo (n8n); a Entrada é o que voltou e o quanto disso coube no contrato da variante",
   },
+  // ── Fase 2 ──
+  hero_section: {
+    prompt: true,
+    input: true,
+    motivo: "é o agente mais delicado do pipeline: sem separar a variante da biblioteca, a copy do n8n e a imagem gerada, um fragmento errado não tem como ser explicado",
+  },
+  text_format: {
+    prompt: true,
+    input: true,
+    motivo: "recebe o documento do step anterior e o contrato de campos — distinguir os dois é o que diz se a culpa é do agente ou do cadastro",
+  },
+  color_format: {
+    prompt: true,
+    input: true,
+    motivo: "decide sobre um inventário de cores derivado por código a partir da paleta da loja; sem a marcação não se sabe qual dos dois errou",
+  },
+  image: {
+    prompt: true,
+    input: true,
+    motivo: "o prompt é template + geometria + fidelidade concatenados, e a direção fotográfica vem da variante — tudo isso era uma string única",
+  },
+  qa: {
+    prompt: true,
+    input: true,
+    motivo: "run que NUNCA gravou prompt nenhum, mesmo com o userPrompt montado a uma linha do startGenerationRun",
+  },
+  copy_merge: {
+    prompt: false,
+    input: true,
+    motivo: "merge por código: o que importa é de onde vieram a copy (n8n) e as âncoras (cadastro da variante)",
+  },
+  image_format: {
+    prompt: false,
+    input: true,
+    motivo: "casamento mecânico campo↔token: a Entrada diz quais imagens e quais tokens entraram na conta",
+  },
 }
 
 /**

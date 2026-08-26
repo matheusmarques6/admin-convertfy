@@ -78,6 +78,19 @@ export interface SegmentedPromptResult {
 // exatamente onde o render cai, ou a recomposição deixa de ser byte-igual.
 const SIMPLE_VAR_RE = /\{\{\s*([^#/\s}][^}]*?)\s*\}\}/g
 
+/**
+ * Dialeto de chave ÚNICA (`{VAR}`) — o do `renderImagePrompt`
+ * (chains/image.chain.ts): `template.replace(/\{(\w+)\}/g, …)`.
+ *
+ * O prompt de imagem existe nos dois dialetos: `{{var}}` quando há config no
+ * banco (renderImageTemplate) e `{var}` no default in-code. Cortar com a
+ * regex errada produziria segmentos que não recompõem o prompt — e é
+ * exatamente isso que o guard de recomposição do call site pega.
+ */
+const SINGLE_VAR_RE = /\{(\w+)\}/g
+
+export type VarDialeto = "double" | "single"
+
 function normalize(v: string | number | undefined | null): string {
   if (v === null || v === undefined) return ""
   return typeof v === "number" ? String(v) : v
@@ -146,9 +159,12 @@ export function buildSegmentedPrompt(
   template: string,
   vars: Record<string, string | number>,
   origins: Record<string, SegmentOrigin>,
-  opts?: { parte?: "system" | "user" },
+  opts?: { parte?: "system" | "user"; dialeto?: VarDialeto },
 ): SegmentedPromptResult {
-  if (template.includes("{{#")) {
+  const dialeto = opts?.dialeto ?? "double"
+  // Block helper só existe no dialeto `{{}}`; no `{}` não há sintaxe de
+  // bloco nenhuma (o renderer de imagem só substitui).
+  if (dialeto === "double" && template.includes("{{#")) {
     // Import tardio impossível num módulo síncrono client-safe — replicar o
     // renderer aqui criaria um segundo renderer a divergir. O call site que
     // cair aqui usa o render que JÁ fazia; este módulo só sinaliza.
@@ -160,9 +176,10 @@ export function buildSegmentedPrompt(
   let prompt = ""
   let cursor = 0
 
-  SIMPLE_VAR_RE.lastIndex = 0
+  const re = dialeto === "single" ? SINGLE_VAR_RE : SIMPLE_VAR_RE
+  re.lastIndex = 0
   let m: RegExpExecArray | null
-  while ((m = SIMPLE_VAR_RE.exec(template)) !== null) {
+  while ((m = re.exec(template)) !== null) {
     const literal = template.slice(cursor, m.index)
     if (literal) {
       prompt += literal
@@ -183,13 +200,16 @@ export function buildSegmentedPrompt(
     } else {
       pushSegment(segments, {
         cls: "sistema",
-        rotulo: `{{${name}}} (origem não declarada)`,
+        // O rótulo mostra o placeholder NO DIALETO do template — `{{x}}` num
+        // template de chave única seria uma pista errada para quem procura.
+        rotulo: `${m[0]} (origem não declarada)`,
         texto: value,
         parte,
       })
     }
     cursor = m.index + m[0].length
   }
+  re.lastIndex = 0
   const tail = template.slice(cursor)
   if (tail) {
     prompt += tail

@@ -87,6 +87,13 @@ import { invokeColorFormatChain } from "./chains/color-format.chain"
 import type { FormatChainConfig } from "./chains/format-invoke"
 import { attachUsage, usageOf } from "./chains/step-usage"
 import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type PromptSegment,
+  type SegmentOrigin,
+} from "./shared/prompt-provenance"
+import {
   loadFormatChainContext,
   resolveHeroVariant,
   buildHeroVars,
@@ -145,6 +152,7 @@ import {
   resolveCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
+import { IMAGE_VAR_ORIGINS } from "./image/prompt-vars-builder"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
 import { runSlotWithRetry } from "./image/retry-slot"
 import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
@@ -1159,6 +1167,10 @@ export async function runPhase2Image(
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined
       let promptWithAspect = ""
+      // Segmentos do template; os apêndices (geometria, fallback, fidelidade)
+      // entram depois, com a origem de cada um.
+      let promptPartes: PromptSegment[] | null = null
+      let promptSegments: PromptSegment[] | null = null
       // Run 'running' aberto antes da chamada de imagem (live view).
       let imgRunId = ""
       // Instrumentação opt-in do agente de imagem (tokens + custo real do
@@ -1356,9 +1368,26 @@ export async function runPhase2Image(
         // Se config existe no DB: renderImageTemplate (handlebars-lite,
         // suporta switch + if). Sem config: fallback pro template
         // hardcoded com o renderImagePrompt legacy (compat retroativa).
+        const imageTemplate =
+          ctx.imageConfig?.user_template ?? DEFAULT_IMAGE_PROMPT_TEMPLATE
         const prompt = ctx.imageConfig
           ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
           : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
+
+        // Proveniência: o template de imagem existe em DOIS dialetos — o do
+        // banco usa `{{var}}` (renderImageTemplate) e o in-code usa `{var}`
+        // (renderImagePrompt). Cortar com a regex errada é justamente o que
+        // o guard de recomposição abaixo pega.
+        const segTemplate = buildSegmentedPrompt(
+          imageTemplate,
+          promptVars,
+          IMAGE_VAR_ORIGINS,
+          { parte: "user", dialeto: ctx.imageConfig ? "double" : "single" },
+        )
+        promptPartes =
+          segTemplate.segments && segTemplate.prompt === prompt
+            ? segTemplate.segments
+            : null
 
         // Dims declaradas no schema vencem o aspect tipado também na
         // instrução de composição (o modelo compõe pro frame exato).
@@ -1370,6 +1399,15 @@ export async function runPhase2Image(
             )
           : aspectInstructionForPrompt(aspect, overlay)
         promptWithAspect = `${prompt}\n\n${geometryInstruction}`
+        const apendices: PromptSegment[] = [
+          {
+            cls: "sistema",
+            rotulo: "Geometria — proporção/dimensões calculadas pelo código",
+            texto: `\n\n${geometryInstruction}`,
+            chars: geometryInstruction.length + 2,
+            parte: "user",
+          },
+        ]
 
         // Se caimos no fallback E o slot esperava product_ref, adiciona
         // descricao textual rica do produto pra compensar a perda visual.
@@ -1382,20 +1420,44 @@ export async function runPhase2Image(
             modeSource === "fallback_text2img_unreachable") &&
           ctx.topProducts[0]?.name
         ) {
-          promptWithAspect += `\n\n${productRefDescriptionFallback({
+          const fallbackDesc = productRefDescriptionFallback({
             productName: ctx.topProducts[0].name,
             productImageUrl: topProductImageUrl,
-          })}`
+          })
+          promptWithAspect += `\n\n${fallbackDesc}`
+          apendices.push({
+            cls: "sistema",
+            rotulo: "Descrição do produto — fallback text2img (o anexo não pôde ir)",
+            texto: `\n\n${fallbackDesc}`,
+            chars: fallbackDesc.length + 2,
+            parte: "user",
+          })
         }
 
         // Em product_ref a foto real vai anexada. Sem instrução explícita o
         // modelo a lê como referência de ESTILO e devolve um produto
         // parecido — outro rótulo, outro formato. A foto é o produto.
         if (mode === "product_ref" && ctx.topProducts[0]?.name) {
-          promptWithAspect += `\n\n${productRefFidelityInstruction({
+          const fidelity = productRefFidelityInstruction({
             productName: ctx.topProducts[0].name,
-          })}`
+          })
+          promptWithAspect += `\n\n${fidelity}`
+          apendices.push({
+            cls: "agente",
+            rotulo: "Fidelidade ao produto anexado — instrução in-code",
+            texto: `\n\n${fidelity}`,
+            chars: fidelity.length + 2,
+            parte: "user",
+          })
         }
+
+        // Guard final: os segmentos têm de reproduzir o prompt enviado.
+        const candidato = concatSegments(promptPartes, apendices)
+        promptSegments =
+          candidato &&
+          candidato.map((sg) => sg.texto ?? "").join("") === promptWithAspect
+            ? candidato
+            : null
 
         imgRunId = await startGenerationRun({
           storeId,
@@ -1407,6 +1469,40 @@ export async function runPhase2Image(
           model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
+          promptSegments,
+          inputSummary: [
+            {
+              rotulo: "Bloco",
+              cls: "upstream",
+              valor: `#${blk.position} ${blk.block_type} — ${(blk.label as string) ?? "sem rótulo"}`,
+            },
+            {
+              rotulo: "Ideia do email",
+              cls: "upstream",
+              valor: promptVars.EMAIL_IDEIA || "(sem fio nem messaging)",
+            },
+            {
+              rotulo: "Direção fotográfica",
+              cls: "biblioteca",
+              valor: promptVars.PHOTO_DIRECTION
+                ? "da variante deste bloco"
+                : "(não cadastrada na variante)",
+            },
+            {
+              rotulo: "Produto de referência",
+              cls: "loja",
+              valor: mode === "product_ref"
+                ? `foto real anexada — ${ctx.topProducts[0]?.name ?? "?"}`
+                : `sem anexo (${modeSource})`,
+            },
+            {
+              rotulo: "Geometria",
+              cls: "sistema",
+              valor: customDims
+                ? `${customDims.width}×${customDims.height} (schema)`
+                : `aspect ${aspect}`,
+            },
+          ] as InputSummaryItem[],
         })
 
         const imageUrl = await generateEmailImage(
@@ -1495,6 +1591,7 @@ export async function runPhase2Image(
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
+          promptSegments,
           tokensInput: imgMeta.tokensInput,
           tokensOutput: imgMeta.tokensOutput,
           costCents: imgMeta.costCents,
@@ -1535,6 +1632,7 @@ export async function runPhase2Image(
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
+          promptSegments,
           errorMessage: msg,
           tokensInput: imgMeta.tokensInput,
           tokensOutput: imgMeta.tokensOutput,
@@ -1969,6 +2067,10 @@ interface StepAttemptResult<T> {
   tokensOutput: number
   costUsd: number
   renderedPrompt: string
+  /** O mesmo prompt marcado por origem (migration 20261085). */
+  promptSegments?: PromptSegment[] | null
+  /** A Entrada estruturada do step — o que ele recebeu, com origem. */
+  inputSummary?: InputSummaryItem[] | null
   rawOutput: string
   parsed: Record<string, unknown>
 }
@@ -2050,6 +2152,8 @@ async function executeFormatStep<T>(p: {
         status: "success",
         model: p.model,
         renderedPrompt: r.renderedPrompt,
+        promptSegments: r.promptSegments,
+        inputSummary: r.inputSummary,
         rawOutput: r.rawOutput,
         parsedOutput: r.parsed,
         tokensInput: r.tokensInput,
@@ -2111,6 +2215,9 @@ async function executeFormatStep<T>(p: {
               }),
               ...(usage.renderedPrompt
                 ? { renderedPrompt: usage.renderedPrompt }
+                : {}),
+              ...(usage.promptSegments
+                ? { promptSegments: usage.promptSegments }
                 : {}),
             }
           : {}),
@@ -2454,6 +2561,25 @@ async function runFormattingChain(p: {
         input_html_len: mergeInput.length,
         input_sha8: sha8(mergeInput),
       },
+      // Sem prompt — é código. A Entrada é o que explica de onde veio o que
+      // foi escrito no documento.
+      inputSummary: [
+        {
+          rotulo: "Documento de entrada",
+          cls: "upstream",
+          valor: `${mergeInput.length.toLocaleString("pt-BR")} chars (sha8 ${sha8(mergeInput)})`,
+        },
+        {
+          rotulo: "Copy a ancorar",
+          cls: "upstream",
+          valor: `${merge.report.slots_total} campo(s) do contrato, com valor do callback do n8n`,
+        },
+        {
+          rotulo: "Âncoras",
+          cls: "biblioteca",
+          valor: "example de cada campo no HTML da variante (mesma régua do cadastro)",
+        },
+      ] as InputSummaryItem[],
       parsedOutput: {
         slots_total: merge.report.slots_total,
         ops_built: merge.report.ops_built,
@@ -2633,6 +2759,42 @@ async function runFormattingChain(p: {
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
           renderedPrompt: r.renderedPrompt,
+          promptSegments: r.promptSegments,
+          inputSummary: [
+            {
+              rotulo: "Região da hero",
+              cls: "upstream",
+              valor: `${region.mode} · ${regionIsCanonical ? "variante enxertada pelo código" : "HTML do Montador"}`,
+            },
+            {
+              rotulo: "Variante",
+              cls: "biblioteca",
+              // A variante carregada aqui não traz `name` (HeroVariantData é o
+              // recorte mínimo); o id é o que cruza com a escolha do Montador.
+              valor: variant
+                ? `${variant.id} (${variantSource ?? "origem desconhecida"})`
+                : "(nenhuma resolvida)",
+            },
+            {
+              rotulo: "Copy da hero",
+              cls: "upstream",
+              valor: `${heroPending.length} campo(s) pendente(s) do copy_merge`,
+            },
+            {
+              rotulo: "Imagem da hero",
+              cls: "upstream",
+              valor: fmtCtx.imageMap.find((e) => e.block_type === "hero")?.url
+                ? "gerada e disponível"
+                : "(sem imagem)",
+            },
+            {
+              rotulo: "Exemplo renderizado",
+              cls: "biblioteca",
+              valor: visionDecision.used
+                ? `anexado como imagem (${visionDecision.model})`
+                : (heroRendered?.reason ?? "não usado"),
+            },
+          ] as InputSummaryItem[],
           rawOutput: r.rawOutput,
           parsed: {
             hero_mode: region.mode,
@@ -2757,6 +2919,24 @@ async function runFormattingChain(p: {
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
           renderedPrompt: r.renderedPrompt,
+          promptSegments: r.promptSegments,
+          inputSummary: [
+            {
+              rotulo: "Documento de entrada",
+              cls: "upstream",
+              valor: `${inputHtml.length.toLocaleString("pt-BR")} chars — saída do step da hero (sha8 ${sha8(inputHtml)})`,
+            },
+            {
+              rotulo: "Copy a colocar",
+              cls: "upstream",
+              valor: `${(fmtCtx.blocksWithContent ?? []).filter((b) => b.type !== "hero").length} bloco(s) não-hero, do callback do n8n`,
+            },
+            {
+              rotulo: "Contrato de campos",
+              cls: "biblioteca",
+              valor: "schema das variantes casadas (fields do blueprint)",
+            },
+          ] as InputSummaryItem[],
           rawOutput: r.rawOutput,
           parsed: {
             hero_respliced: heroRespliced,
@@ -2860,6 +3040,23 @@ async function runFormattingChain(p: {
           input_html_len: inputHtml.length,
           input_sha8: sha8(inputHtml),
         },
+        inputSummary: [
+          {
+            rotulo: "Documento de entrada",
+            cls: "upstream",
+            valor: `${inputHtml.length.toLocaleString("pt-BR")} chars (sha8 ${sha8(inputHtml)})`,
+          },
+          {
+            rotulo: "Imagens a colocar",
+            cls: "upstream",
+            valor: `${im.report.slots_total} slot(s) — URLs do agente de imagem`,
+          },
+          {
+            rotulo: "Tokens de destino",
+            cls: "biblioteca",
+            valor: "atributos src do HTML da variante (URL_DA_IMAGEM_N)",
+          },
+        ] as InputSummaryItem[],
         parsedOutput: {
           slots_total: im.report.slots_total,
           merged: im.report.merged,
@@ -2989,6 +3186,24 @@ async function runFormattingChain(p: {
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
           renderedPrompt: r.renderedPrompt,
+          promptSegments: r.promptSegments,
+          inputSummary: [
+            {
+              rotulo: "Documento de entrada",
+              cls: "upstream",
+              valor: `${inputHtml.length.toLocaleString("pt-BR")} chars (sha8 ${sha8(inputHtml)})`,
+            },
+            {
+              rotulo: "Inventário de cores",
+              cls: "sistema",
+              valor: `${colorOccurrenceCount(inputHtml)} ocorrência(s) extraídas do documento por código`,
+            },
+            {
+              rotulo: "Paleta da marca",
+              cls: "loja",
+              valor: "cores aprovadas em store_brand_identity + papéis derivados",
+            },
+          ] as InputSummaryItem[],
           rawOutput: r.rawOutput,
           parsed: {
             ops_applied: applied.applied,

@@ -36,6 +36,7 @@ import { deriveCenario } from "./cenario-derivation"
 import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
+import type { SegmentOrigin } from "../shared/prompt-provenance"
 import { deriveColorRoles } from "@/lib/agents/html/color-roles"
 import { deriveShotArchetype } from "./shot-archetype"
 import { buildImageSlots } from "./build-image-slots"
@@ -326,3 +327,71 @@ export const BOOLEAN_LIKE_VARS = new Set([
   "product_ref",
   "image_overlay_reserve_bottom",
 ])
+
+// ── Proveniência das vars do prompt de imagem (migration 20261085) ──────
+//
+// Ao lado de quem as monta. As classes seguem a fonte real: dados da loja e
+// da identidade visual são `loja`; a direção fotográfica é da BIBLIOTECA
+// (escrita no cadastro da variante); a ideia do email e a direção de arte
+// por slot vêm do blueprint/Estruturador, portanto `upstream`; o que o
+// código deriva (arquétipo, modo, geometria) é `sistema`.
+
+const IMG_LOJA: SegmentOrigin = { cls: "loja", rotulo: "Dados da loja — client_stores" }
+const IMG_BRAND: SegmentOrigin = { cls: "loja", rotulo: "Identidade visual — store_brand_identity" }
+const IMG_PROD: SegmentOrigin = { cls: "loja", rotulo: "Produtos da loja — store_products" }
+const IMG_BLUEPRINT: SegmentOrigin = { cls: "upstream", rotulo: "Blueprint do email" }
+const IMG_CODIGO: SegmentOrigin = { cls: "sistema", rotulo: "Derivado por código" }
+
+export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  brand_name: IMG_LOJA,
+  MARCA: IMG_LOJA,
+  nicho: IMG_LOJA,
+  NICHO: IMG_LOJA,
+  posicionamento: IMG_LOJA,
+  PUBLICO: IMG_LOJA,
+  IDIOMA: IMG_LOJA,
+  MOEDA: IMG_LOJA,
+  BG_COLOR: IMG_BRAND,
+  primary_colors: IMG_BRAND,
+  secondary_colors: IMG_BRAND,
+  color_names: IMG_BRAND,
+  PALETA_1: IMG_BRAND,
+  PALETA_2: IMG_BRAND,
+  NEUTRO: IMG_BRAND,
+  font_heading: IMG_BRAND,
+  font_body: IMG_BRAND,
+  logo_url: IMG_BRAND,
+  LOGO_STYLE: IMG_BRAND,
+  top_products: IMG_PROD,
+  top_products_images: IMG_PROD,
+  product_1_name: IMG_PROD,
+  product_2_name: IMG_PROD,
+  product_3_name: IMG_PROD,
+  product_4_name: IMG_PROD,
+  product_5_name: IMG_PROD,
+  PRODUTO_HEROI: IMG_PROD,
+  EMAIL_OBJETIVO: IMG_BLUEPRINT,
+  EMAIL_ASSUNTO: IMG_BLUEPRINT,
+  // O fio do Estruturador quando existe; messaging do blueprint como fallback.
+  EMAIL_IDEIA: { cls: "upstream", rotulo: "Ideia do email — fio do Estruturador (ou messaging)" },
+  // Escrita no cadastro da variante: é a biblioteca dizendo COMO fotografar.
+  PHOTO_DIRECTION: { cls: "biblioteca", rotulo: "Direção fotográfica da variante" },
+  IMAGE_SLOTS: { cls: "biblioteca", rotulo: "Direção de arte por slot — schema da variante" },
+  IMAGE_BRIEF: IMG_BLUEPRINT,
+  blueprint_purpose: IMG_BLUEPRINT,
+  block_purpose: IMG_BLUEPRINT,
+  block_label: IMG_BLUEPRINT,
+  block_type: IMG_CODIGO,
+  block_position: IMG_CODIGO,
+  CENARIO: IMG_CODIGO,
+  MOOD: IMG_CODIGO,
+  shot_archetype: IMG_CODIGO,
+  SHOT_ARCHETYPE: IMG_CODIGO,
+  mode: IMG_CODIGO,
+  aspect_ratio: IMG_CODIGO,
+  flow_type: IMG_CODIGO,
+  email_number: IMG_CODIGO,
+  image_overlay_reserve_bottom: IMG_CODIGO,
+  product_ref: IMG_CODIGO,
+  INSTRUCAO_ADICIONAL: { cls: "loja", rotulo: "Instrução do operador no bloco" },
+}
