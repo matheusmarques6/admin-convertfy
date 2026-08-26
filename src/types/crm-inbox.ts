@@ -25,6 +25,8 @@ export interface ThreadSummary {
 export interface InboxMessage {
   id: string
   external_id?: string | null
+  /** Autor do comentário do Instagram ("@usuario") — metadata->>sender_username. */
+  sender_username?: string | null
   direction: "inbound" | "outbound"
   content_type: string
   body: string | null

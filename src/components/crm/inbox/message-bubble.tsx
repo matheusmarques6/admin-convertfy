@@ -1,19 +1,21 @@
 "use client"
 
 /**
- * Bolha de mensagem do inbox — render por content_type (texto, imagem
- * com lightbox, áudio, vídeo, documento, sticker, location, template/
- * interactive/system), status de entrega ✓/✓✓/✓✓-azul e retry.
+ * Bolha de mensagem do inbox — design v3: saída em brand indigo, entrada
+ * em cinza suave, meta (autor · hora · status) FORA da bolha e só na
+ * última mensagem de uma sequência do mesmo autor.
  *
- * Mídia com signed URL expirada (1h) ou legado wa-media:{id}: o onError
- * do elemento dispara refresh via GET /media?message_id= — se a Meta já
- * expirou o media_id (410), mostra "mídia indisponível".
+ * Mantém tudo que já funcionava: render por content_type (texto, imagem
+ * com lightbox, áudio, vídeo, documento, sticker, location, system),
+ * refresh de mídia expirada (signed URL 1h / legado wa-media:{id}) e
+ * retry de texto falho.
  */
 
 import { useCallback, useState } from "react"
-import { Bot, Check, CheckCheck, Download, FileText, ImageOff, MapPin, RefreshCw, Smartphone, X } from "lucide-react"
+import { Bot, Download, FileText, ImageOff, MapPin, RefreshCw, Smartphone, X } from "lucide-react"
 import { messageAuthor } from "@/lib/services/crm-inbox-format"
 import type { InboxMessage } from "@/types/crm-inbox"
+import { INBOX_BRAND, TNUM } from "./inbox-theme"
 
 interface MessageBubbleProps {
   message: InboxMessage
@@ -21,9 +23,35 @@ interface MessageBubbleProps {
   onRetry?: (message: InboxMessage) => void
   /** Rótulo de quem enviou — só na primeira de uma sequência do mesmo autor. */
   showAuthor?: boolean
+  /** Meta (hora · status) — só na última de uma sequência do mesmo autor. */
+  showMeta?: boolean
+  /** Thread de comentário: respostas out são públicas no post. */
+  isComment?: boolean
 }
 
-export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: MessageBubbleProps) {
+function statusLabel(status: string): string | null {
+  switch (status) {
+    case "queued":
+      return "enviando…"
+    case "sent":
+      return "enviado"
+    case "delivered":
+      return "entregue"
+    case "read":
+      return "visto"
+    default:
+      return null
+  }
+}
+
+export function MessageBubble({
+  message: m,
+  threadId,
+  onRetry,
+  showAuthor,
+  showMeta = true,
+  isComment = false,
+}: MessageBubbleProps) {
   const isOut = m.direction === "outbound"
   const author = messageAuthor(m)
   const [mediaUrl, setMediaUrl] = useState(m.media_url)
@@ -54,19 +82,15 @@ export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: Mes
   const hasMedia = ["image", "audio", "video", "document", "sticker"].includes(m.content_type)
   // Sentinela legada wa-media:{id} não é URL — força refresh no primeiro render
   const usableUrl = mediaUrl && !mediaUrl.startsWith("wa-media:") ? mediaUrl : null
+  const isBareImage = hasMedia && usableUrl && m.content_type === "image"
 
   // Mensagens de sistema (reações etc.) — centralizadas, discretas
   if (m.content_type === "system") {
     return (
       <div className="flex justify-center">
         <span
-          style={{
-            fontSize: "var(--crm-text-xs)",
-            color: "var(--crm-gray-500)",
-            background: "var(--crm-gray-100)",
-            padding: "2px 10px",
-            borderRadius: "var(--crm-radius-full)",
-          }}
+          className="rounded-full px-2.5 py-0.5 text-[10.5px]"
+          style={{ background: "var(--ops-hover, rgba(0,0,0,0.05))", color: "var(--ops-sec)" }}
         >
           {m.body}
         </span>
@@ -74,33 +98,31 @@ export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: Mes
     )
   }
 
+  // Autor da entrada: em comentário/grupo, o username do remetente vem
+  // por mensagem (metadata) — o rótulo padrão só cobre saídas.
+  const inboundAuthor = !isOut ? m.sender_username : null
+
   return (
     <div className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
-      {/* Quem enviou: atendente, automação ou o celular pareado. Sem
-          isso, num time com vários atendentes ninguém sabe quem falou
-          com o cliente — nem se foi uma pessoa. */}
-      {showAuthor && author.label && (
+      {showAuthor && (author.label || inboundAuthor) && (
         <span
-          className="mb-0.5 flex items-center gap-1 px-1"
-          style={{ fontSize: 10, color: "var(--crm-gray-500)" }}
+          className="mx-0.5 mb-[3px] flex items-center gap-1 text-[10px] font-semibold"
+          style={{ color: "var(--ops-mut)" }}
         >
           {author.kind === "automation" && <Bot className="h-2.5 w-2.5" />}
           {author.kind === "device" && <Smartphone className="h-2.5 w-2.5" />}
-          {author.label}
+          {isOut ? author.label : inboundAuthor || author.label}
         </span>
       )}
+
       <div
-        className="max-w-[85%] md:max-w-[70%]"
+        className={`max-w-[85%] overflow-hidden whitespace-pre-wrap rounded-[10px] text-[12.5px] leading-[1.55] md:max-w-[56%] ${
+          isOut ? "" : "bg-[#F1F2F5] dark:bg-white/[0.055]"
+        }`}
         style={{
-          background: isOut ? "var(--crm-gray-900)" : "var(--crm-gray-0)",
-          color: isOut ? "var(--crm-gray-0)" : "var(--crm-gray-900)",
-          padding: hasMedia && usableUrl && m.content_type === "image" ? 4 : "8px 12px",
-          borderRadius: "var(--crm-radius-md)",
-          border: isOut ? "none" : "1px solid var(--crm-gray-200)",
-          fontSize: "var(--crm-text-base)",
-          lineHeight: "var(--crm-leading-normal)",
-          whiteSpace: "pre-wrap",
-          overflow: "hidden",
+          background: isOut ? INBOX_BRAND : undefined,
+          color: isOut ? "#fff" : "var(--ops-title)",
+          padding: isBareImage ? 4 : "8px 12px",
         }}
       >
         {hasMedia && (
@@ -128,46 +150,37 @@ export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: Mes
         )}
 
         {m.content_type !== "location" && m.body && (
-          <div style={{ padding: hasMedia && usableUrl && m.content_type === "image" ? "4px 8px 0" : 0 }}>
-            {m.body}
-          </div>
+          <div style={{ padding: isBareImage ? "4px 8px 2px" : 0 }}>{m.body}</div>
         )}
         {!m.body && !hasMedia && m.content_type !== "location" && `[${m.content_type}]`}
-
-        {/* Rodapé: hora + status */}
-        <div
-          className="mt-1 flex items-center justify-end gap-1"
-          style={{
-            fontSize: 10,
-            color: isOut ? "rgba(255,255,255,0.55)" : "var(--crm-gray-400)",
-            padding: hasMedia && usableUrl && m.content_type === "image" ? "0 8px 4px" : 0,
-          }}
-        >
-          <span>
-            {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-          {isOut && <StatusTicks status={m.status} />}
-        </div>
-
-        {m.status === "failed" && (
-          <div
-            className="mt-1 flex items-center gap-2"
-            style={{ fontSize: 10, color: isOut ? "#FCA5A5" : "var(--crm-danger-fg)" }}
-          >
-            <X className="h-3 w-3 shrink-0" />
-            <span className="min-w-0 truncate">{m.error_message || "Falha no envio"}</span>
-            {onRetry && m.content_type === "text" && (
-              <button
-                onClick={() => onRetry(m)}
-                className="shrink-0 underline"
-                style={{ color: "inherit", background: "none", border: "none", cursor: "pointer", fontSize: 10 }}
-              >
-                Reenviar
-              </button>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* Falha: motivo + reenviar (texto) logo abaixo da bolha */}
+      {m.status === "failed" && (
+        <div className="mt-1 flex items-center gap-2 px-0.5 text-[10px]" style={{ color: "var(--ops-neg)" }}>
+          <X className="h-3 w-3 shrink-0" />
+          <span className="min-w-0 truncate">{m.error_message || "Falha no envio"}</span>
+          {onRetry && m.content_type === "text" && (
+            <button
+              onClick={() => onRetry(m)}
+              className="shrink-0 cursor-pointer border-0 bg-transparent text-[10px] underline"
+              style={{ color: "inherit" }}
+            >
+              Reenviar
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Meta fora da bolha — só no fim da sequência */}
+      {showMeta && m.status !== "failed" && (
+        <span className="mx-0.5 mb-1.5 mt-1 text-[9.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+          {isOut && !isComment && author.label ? `${author.label} · ` : ""}
+          {new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          {isOut && statusLabel(m.status) ? ` · ${statusLabel(m.status)}` : ""}
+          {isOut && isComment ? " · resposta pública" : ""}
+        </span>
+      )}
 
       {/* Lightbox simples pra imagem */}
       {lightbox && usableUrl && (
@@ -177,7 +190,11 @@ export function MessageBubble({ message: m, threadId, onRetry, showAuthor }: Mes
           onClick={() => setLightbox(false)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={usableUrl} alt={m.body || "imagem"} style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }} />
+          <img
+            src={usableUrl}
+            alt={m.body || "imagem"}
+            style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
+          />
         </div>
       )}
     </div>
@@ -202,8 +219,8 @@ function MediaContent({
   if (mediaState === "gone") {
     return (
       <div
-        className="flex items-center gap-2"
-        style={{ fontSize: "var(--crm-text-xs)", color: isOut ? "rgba(255,255,255,0.6)" : "var(--crm-gray-500)", padding: "4px 0" }}
+        className="flex items-center gap-2 py-1 text-[11px]"
+        style={{ color: isOut ? "rgba(255,255,255,0.6)" : "var(--ops-sec)" }}
       >
         <ImageOff className="h-3.5 w-3.5" /> Mídia indisponível (expirada na Meta)
       </div>
@@ -214,16 +231,8 @@ function MediaContent({
     return (
       <button
         onClick={onRefresh}
-        className="flex items-center gap-2"
-        style={{
-          fontSize: "var(--crm-text-xs)",
-          color: isOut ? "rgba(255,255,255,0.7)" : "var(--crm-gray-600)",
-          background: "none",
-          border: "1px dashed currentColor",
-          borderRadius: "var(--crm-radius-sm)",
-          padding: "6px 10px",
-          cursor: "pointer",
-        }}
+        className="flex cursor-pointer items-center gap-2 rounded-[6px] border border-dashed border-current bg-transparent px-2.5 py-1.5 text-[11px]"
+        style={{ color: isOut ? "rgba(255,255,255,0.7)" : "var(--ops-sec)" }}
       >
         <RefreshCw className={`h-3 w-3 ${mediaState === "refreshing" ? "animate-spin" : ""}`} />
         {mediaState === "refreshing" ? "Carregando mídia…" : `Carregar ${labelForType(m.content_type)}`}
@@ -244,7 +253,7 @@ function MediaContent({
           style={{
             maxWidth: "100%",
             maxHeight: m.content_type === "sticker" ? 120 : 280,
-            borderRadius: "var(--crm-radius-sm)",
+            borderRadius: 7,
             cursor: "zoom-in",
             display: "block",
           }}
@@ -258,7 +267,7 @@ function MediaContent({
           controls
           src={usableUrl}
           onError={onRefresh}
-          style={{ maxWidth: "100%", maxHeight: 280, borderRadius: "var(--crm-radius-sm)", display: "block" }}
+          style={{ maxWidth: "100%", maxHeight: 280, borderRadius: 7, display: "block" }}
         />
       )
     case "document":
@@ -268,19 +277,15 @@ function MediaContent({
           target="_blank"
           rel="noreferrer"
           download={m.media_filename ?? undefined}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-[11px] no-underline"
           style={{
-            padding: "6px 8px",
-            borderRadius: "var(--crm-radius-sm)",
-            background: isOut ? "rgba(255,255,255,0.1)" : "var(--crm-gray-100)",
+            background: isOut ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.05)",
             color: "inherit",
-            textDecoration: "none",
-            fontSize: "var(--crm-text-xs)",
           }}
         >
           <FileText className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate">{m.media_filename || "Documento"}</span>
-          <Download className="h-3 w-3 shrink-0 ml-auto" />
+          <Download className="ml-auto h-3 w-3 shrink-0" />
         </a>
       )
     default:
@@ -290,28 +295,17 @@ function MediaContent({
 
 function labelForType(t: string): string {
   switch (t) {
-    case "image": return "imagem"
-    case "audio": return "áudio"
-    case "video": return "vídeo"
-    case "document": return "documento"
-    case "sticker": return "sticker"
-    default: return "mídia"
-  }
-}
-
-function StatusTicks({ status }: { status: string }) {
-  switch (status) {
-    case "queued":
-      return <span title="Enviando">…</span>
-    case "sent":
-      return <Check className="h-3 w-3" aria-label="Enviado" />
-    case "delivered":
-      return <CheckCheck className="h-3 w-3" aria-label="Entregue" />
-    case "read":
-      return <CheckCheck className="h-3 w-3" style={{ color: "#60A5FA" }} aria-label="Lido" />
-    case "failed":
-      return <X className="h-3 w-3" style={{ color: "#FCA5A5" }} aria-label="Falhou" />
+    case "image":
+      return "imagem"
+    case "audio":
+      return "áudio"
+    case "video":
+      return "vídeo"
+    case "document":
+      return "documento"
+    case "sticker":
+      return "sticker"
     default:
-      return null
+      return "mídia"
   }
 }

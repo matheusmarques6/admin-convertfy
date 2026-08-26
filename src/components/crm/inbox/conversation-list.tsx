@@ -1,20 +1,32 @@
 "use client"
 
 /**
- * Lista de conversas do inbox (apresentacional) — busca, filtro de
- * status, "apenas meus" e badge de janela de 24h aberta (dot verde).
+ * Lista de conversas do inbox — design v3 (ago/2026): segmented
+ * Todas|WhatsApp|Instagram com contadores do servidor, sub-abas do
+ * Instagram (Direct/Comentários), fila SLA, busca e filtros compactos.
+ * Superfície nos tokens --ops-* (claro/escuro automáticos).
  */
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Clock, Filter, MessageSquare, Search } from "lucide-react"
+import { AlertTriangle, Filter, MessageSquare, Search } from "lucide-react"
 import { formatWait, waitingInfo } from "@/lib/services/crm-inbox-sla"
 import { cn } from "@/lib/utils"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
 import type { ThreadSummary } from "@/types/crm-inbox"
+import {
+  AvatarWithChannel,
+  ChLabel,
+  IcoBtn,
+  INBOX_BRAND,
+  fmtWaitShort,
+  threadKind,
+  TNUM,
+} from "./inbox-theme"
 import { ThreadTagChips, useTagRegistry } from "./thread-tags"
 
 export type StatusFilter = "open" | "pending" | "resolved" | "all"
 export type ChannelTypeFilter = "all" | "whatsapp" | "instagram"
+export type KindFilter = "" | "direct" | "comment"
 
 export interface InboxChannelOption {
   id: string
@@ -22,11 +34,12 @@ export interface InboxChannelOption {
   display_name: string
 }
 
-const CHANNEL_PILLS: Array<{ key: ChannelTypeFilter; label: string; dot: string | null }> = [
-  { key: "all", label: "Todos", dot: null },
-  { key: "whatsapp", label: "WhatsApp", dot: "#25D366" },
-  { key: "instagram", label: "Instagram", dot: "#E1306C" },
-]
+export interface ChannelCounts {
+  whatsapp: number
+  instagram: number
+  instagram_direct: number
+  instagram_comment: number
+}
 
 interface ConversationListProps {
   threads: ThreadSummary[]
@@ -46,21 +59,23 @@ interface ConversationListProps {
   onOrderModeChange: (m: "recent" | "queue") => void
   channelType: ChannelTypeFilter
   onChannelTypeChange: (t: ChannelTypeFilter) => void
+  /** Sub-aba do Instagram ("" = tudo). */
+  kind: KindFilter
+  onKindChange: (k: KindFilter) => void
+  channelCounts?: ChannelCounts | null
   /** Conta específica ("" = todas do tipo). Só aparece com 2+ contas do tipo. */
   channelId: string
   onChannelIdChange: (id: string) => void
   channels: InboxChannelOption[]
-  /** Primeiro carregamento (sem dados ainda). */
   loading?: boolean
-  /** Falha ao buscar — distinta de "não há conversas". */
   error?: string | null
   onRetry?: () => void
-  /** Total no servidor (com os filtros atuais). */
   total?: number
   hasMore?: boolean
   onLoadMore?: () => void
-  /** Filtro por canal sem nenhuma conta conectada desse tipo. */
   noChannelOfType?: string | null
+  /** Largura no desktop (330 em containers largos, 296 nos estreitos). */
+  width?: number
 }
 
 export function ConversationList({
@@ -81,6 +96,9 @@ export function ConversationList({
   onOrderModeChange,
   channelType,
   onChannelTypeChange,
+  kind,
+  onKindChange,
+  channelCounts,
   channelId,
   onChannelIdChange,
   channels,
@@ -91,6 +109,7 @@ export function ConversationList({
   hasMore = false,
   onLoadMore,
   noChannelOfType = null,
+  width = 330,
 }: ConversationListProps) {
   const tagRegistry = useTagRegistry()
 
@@ -102,9 +121,6 @@ export function ConversationList({
     return () => clearInterval(id)
   }, [])
 
-  // Resumo da fila: quantas conversas estão esperando resposta e
-  // quantas já passaram do limite. O sinal existia por conversa e
-  // nunca era somado em lugar nenhum.
   const slaSummary = useMemo(() => {
     let waiting = 0
     let critical = 0
@@ -116,185 +132,146 @@ export function ConversationList({
     }
     return { waiting, critical }
   }, [threads, now])
-  // Contas do tipo selecionado — o sub-filtro por conta só faz sentido
-  // quando há mais de uma (ex.: 2 Instagrams conectados).
+
   const accountsOfType =
     channelType === "all" ? [] : channels.filter((c) => c.type === channelType)
+
+  const allCount = (channelCounts?.whatsapp ?? 0) + (channelCounts?.instagram ?? 0)
+
+  const seg = (key: ChannelTypeFilter, label: string, n: number, icon?: React.ReactNode) => {
+    const on = channelType === key
+    return (
+      <button
+        key={key}
+        onClick={() => onChannelTypeChange(key)}
+        aria-pressed={on}
+        className="flex h-[30px] min-w-0 flex-1 cursor-pointer items-center justify-center gap-[5px] overflow-hidden whitespace-nowrap rounded-[6px] border-0 px-1 text-[11px]"
+        style={{
+          fontWeight: on ? 600 : 450,
+          background: on ? "var(--ops-card)" : "transparent",
+          color: on ? "var(--ops-title)" : "var(--ops-sec)",
+          boxShadow: on ? "0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px var(--ops-border)" : "none",
+        }}
+      >
+        {icon}
+        <span className="overflow-hidden text-ellipsis">{label}</span>
+        <span className="shrink-0 text-[9.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+          {n}
+        </span>
+      </button>
+    )
+  }
+
+  const subTabs: Array<[KindFilter, string, number]> | null =
+    channelType === "instagram"
+      ? [
+          ["", "Tudo", channelCounts?.instagram ?? 0],
+          ["direct", "Direct", channelCounts?.instagram_direct ?? 0],
+          ["comment", "Comentários", channelCounts?.instagram_comment ?? 0],
+        ]
+      : null
+
   return (
     <aside
       className={cn(
-        "flex flex-col border-r w-full md:w-[320px] md:shrink-0",
+        "flex w-full flex-col border-r md:shrink-0",
+        width >= 330 ? "md:w-[330px]" : "md:w-[296px]",
         activeThreadId && "hidden md:flex",
       )}
-      style={{ borderColor: "var(--crm-gray-200)", background: "var(--crm-gray-0)" }}
+      style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)" }}
     >
-      <div className="border-b px-3 py-3" style={{ borderColor: "var(--crm-gray-200)" }}>
-        <div className="flex items-center justify-between mb-2">
-          <h2
-            style={{
-              fontSize: "var(--crm-text-md)",
-              fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
-              color: "var(--crm-gray-900)",
-            }}
-          >
+      <div className="px-3.5 pt-4">
+        {/* Título + status + fila */}
+        <div className="flex items-center gap-2">
+          <h1 className="m-0 text-[15.5px] font-[650] tracking-[-0.01em]" style={{ color: "var(--ops-title)" }}>
             Inbox
-            {totalUnread > 0 && (
-              <span
-                className="ml-2"
-                style={{
-                  fontSize: "var(--crm-text-xs)",
-                  color: "var(--crm-brand-fg)",
-                  background: "var(--crm-brand)",
-                  padding: "2px 8px",
-                  borderRadius: "var(--crm-radius-full)",
-                  fontFamily: "var(--crm-font-mono)",
-                }}
-              >
-                {totalUnread}
-              </span>
-            )}
-          </h2>
-          {typeof total === "number" && total > 0 && (
-            <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
-              {threads.length === total ? `${total}` : `${threads.length} de ${total}`}
+          </h1>
+          {totalUnread > 0 && (
+            <span
+              className="rounded-full px-1.5 text-[9.5px] font-bold text-white"
+              style={{ background: INBOX_BRAND, ...TNUM }}
+              title="Não lidas em toda a organização"
+            >
+              {totalUnread}
             </span>
           )}
-        </div>
-
-        {/* Fila: quantas esperam resposta agora e quantas estouraram */}
-        {slaSummary.waiting > 0 && (
-          <button
-            type="button"
-            onClick={() => onOrderModeChange("queue")}
-            className="mb-2 flex w-full items-center gap-1.5"
-            title="Ver primeiro quem espera há mais tempo"
-            style={{
-              fontSize: "var(--crm-text-xs)",
-              padding: "4px 8px",
-              borderRadius: "var(--crm-radius-sm)",
-              border: `1px solid ${slaSummary.critical > 0 ? "var(--crm-neg-border)" : "var(--crm-warn-border)"}`,
-              background: slaSummary.critical > 0 ? "var(--crm-neg-bg)" : "var(--crm-warn-bg)",
-              color: slaSummary.critical > 0 ? "var(--crm-neg)" : "var(--crm-warn)",
-              cursor: "pointer",
-            }}
+          <span className="ml-auto" />
+          <select
+            value={statusFilter}
+            onChange={(e) => onStatusFilterChange(e.target.value as StatusFilter)}
+            aria-label="Filtrar por status"
+            className="h-[26px] rounded-[6px] border px-1.5 text-[11px] outline-none"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
           >
-            <Clock className="h-3 w-3 shrink-0" />
-            <span>
-              <strong>{slaSummary.waiting}</strong> aguardando resposta
-              {slaSummary.critical > 0 && ` · ${slaSummary.critical} há mais de 1h`}
-            </span>
-            {orderMode !== "queue" && (
-              <span className="ml-auto shrink-0 underline">ver fila</span>
-            )}
-          </button>
-        )}
-
-        <div className="relative mb-2">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5"
-            style={{ color: "var(--crm-gray-400)" }}
+            <option value="open">Abertas</option>
+            <option value="pending">Pendentes</option>
+            <option value="resolved">Resolvidas</option>
+            <option value="all">Todas</option>
+          </select>
+          <IcoBtn
+            title="Ordenar como fila de atendimento (quem espera há mais tempo primeiro)"
+            on={orderMode === "queue"}
+            onClick={() => onOrderModeChange(orderMode === "queue" ? "recent" : "queue")}
+            label="Fila"
           />
-          <input
-            type="text"
-            className="crm-input w-full"
-            style={{ paddingLeft: 30 }}
-            placeholder="Buscar contato..."
-            aria-label="Buscar conversas por contato"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-1" role="group" aria-label="Filtrar por status">
-          {(["open", "pending", "resolved", "all"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => onStatusFilterChange(s)}
-              aria-pressed={statusFilter === s}
-              style={{
-                fontSize: "var(--crm-text-xs)",
-                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
-                padding: "4px 8px",
-                borderRadius: "var(--crm-radius-sm)",
-                background: statusFilter === s ? "var(--crm-gray-900)" : "var(--crm-gray-100)",
-                color: statusFilter === s ? "var(--crm-gray-0)" : "var(--crm-gray-700)",
-                cursor: "pointer",
-                border: "none",
-                textTransform: "capitalize",
-              }}
-            >
-              {s === "open" ? "Abertos" : s === "pending" ? "Pendentes" : s === "resolved" ? "Resolvidos" : "Todos"}
-            </button>
-          ))}
-          <button
+          <IcoBtn
+            title="Apenas conversas atribuídas a mim"
+            on={mineOnly}
             onClick={() => onMineOnlyChange(!mineOnly)}
-            title="Apenas meus"
-            aria-pressed={mineOnly}
-            aria-label="Filtrar apenas conversas atribuidas a mim"
-            style={{
-              marginLeft: "auto",
-              padding: 4,
-              borderRadius: "var(--crm-radius-sm)",
-              background: mineOnly ? "var(--crm-gray-900)" : "transparent",
-              color: mineOnly ? "var(--crm-gray-0)" : "var(--crm-gray-500)",
-              border: mineOnly ? "none" : "1px solid var(--crm-gray-200)",
-              cursor: "pointer",
-            }}
           >
             <Filter className="h-3 w-3" />
-          </button>
+          </IcoBtn>
         </div>
 
-        {/* Separação por canal: só WhatsApp, só Instagram — e por conta
-            quando houver mais de uma do mesmo tipo. */}
-        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Filtrar por canal">
-          {CHANNEL_PILLS.map(({ key, label, dot }) => (
-            <button
-              key={key}
-              onClick={() => onChannelTypeChange(key)}
-              aria-pressed={channelType === key}
-              style={{
-                fontSize: "var(--crm-text-xs)",
-                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
-                padding: "4px 8px",
-                borderRadius: "var(--crm-radius-sm)",
-                background: channelType === key ? "var(--crm-gray-900)" : "var(--crm-gray-100)",
-                color: channelType === key ? "var(--crm-gray-0)" : "var(--crm-gray-700)",
-                cursor: "pointer",
-                border: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              {dot && (
-                <span
-                  aria-hidden
+        {/* Segmented por canal */}
+        <div
+          className="mt-3 flex gap-0.5 rounded-[8px] p-0.5"
+          role="group"
+          aria-label="Filtrar por canal"
+          style={{ background: "var(--ops-track, rgba(0,0,0,0.05))" }}
+        >
+          {seg("all", "Todas", allCount)}
+          {seg("whatsapp", "WhatsApp", channelCounts?.whatsapp ?? 0, <WABadgeMini />)}
+          {seg("instagram", "Instagram", channelCounts?.instagram ?? 0, <IGBadgeMini />)}
+        </div>
+
+        {/* Sub-abas do Instagram (Direct × Comentários) */}
+        {subTabs && (
+          <div className="mt-[9px] flex items-center gap-3.5 px-0.5" role="group" aria-label="Sub-filtro do Instagram">
+            {subTabs.map(([k, l, n]) => {
+              const on = kind === k
+              return (
+                <button
+                  key={k || "tudo"}
+                  onClick={() => onKindChange(k)}
+                  aria-pressed={on}
+                  className="inline-flex cursor-pointer items-center gap-[5px] border-0 bg-transparent pb-[5px] text-[11px]"
                   style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: channelType === key ? "#fff" : dot,
-                    opacity: channelType === key ? 0.7 : 1,
+                    fontWeight: on ? 600 : 450,
+                    color: on ? "var(--ops-title)" : "var(--ops-sec)",
+                    boxShadow: on ? `inset 0 -2px 0 ${INBOX_BRAND}` : "none",
                   }}
-                />
-              )}
-              {label}
-            </button>
-          ))}
-        </div>
+                >
+                  {l}
+                  <span className="text-[9.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+                    {n}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
+        {/* Conta específica (2+ contas do mesmo tipo) */}
         {accountsOfType.length >= 2 && (
           <select
-            className="crm-input mt-1.5 w-full"
-            style={{ height: 28, fontSize: 12 }}
+            className="mt-2 h-[26px] w-full rounded-[6px] border px-1.5 text-[11px] outline-none"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
             value={channelId}
             onChange={(e) => onChannelIdChange(e.target.value)}
             aria-label="Filtrar por conta do canal"
           >
-            <option value="">
-              Todas as contas ({accountsOfType.length})
-            </option>
+            <option value="">Todas as contas ({accountsOfType.length})</option>
             {accountsOfType.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.display_name}
@@ -303,42 +280,27 @@ export function ConversationList({
           </select>
         )}
 
-        {/* Recentes = ordem de chegada; Fila = quem espera resposta há
-            mais tempo primeiro (SLA), pra ninguém esfriar esquecido. */}
-        <div className="mt-2 flex items-center gap-1" role="group" aria-label="Ordenação">
-          {([
-            { mode: "recent" as const, label: "Recentes" },
-            { mode: "queue" as const, label: "Fila" },
-          ]).map(({ mode, label }) => (
-            <button
-              key={mode}
-              onClick={() => onOrderModeChange(mode)}
-              aria-pressed={orderMode === mode}
-              style={{
-                fontSize: "var(--crm-text-xs)",
-                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
-                padding: "3px 8px",
-                borderRadius: "var(--crm-radius-sm)",
-                background: orderMode === mode ? "var(--crm-blue-50)" : "transparent",
-                color: orderMode === mode ? "var(--crm-brand)" : "var(--crm-gray-500)",
-                border: orderMode === mode ? "1px solid var(--crm-blue-100)" : "1px solid transparent",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              {mode === "queue" && <Clock className="h-3 w-3" />}
-              {label}
-            </button>
-          ))}
+        {/* Busca */}
+        <div className="relative mt-2.5">
+          <Search
+            className="absolute left-2.5 top-1/2 h-[13px] w-[13px] -translate-y-1/2"
+            style={{ color: "var(--ops-mut)" }}
+          />
+          <input
+            placeholder="Buscar…"
+            aria-label="Buscar conversas por contato"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="box-border h-[31px] w-full rounded-[7px] border bg-transparent px-2.5 pl-[30px] text-[12px] outline-none"
+            style={{ borderColor: "var(--ops-border)", color: "var(--ops-title)" }}
+          />
         </div>
 
-        {/* Filtro por tag — só aparece quando a org tem tags */}
+        {/* Filtro por tag — só quando a org tem tags */}
         {tagRegistry.length > 0 && (
           <select
-            className="crm-input w-full"
-            style={{ marginTop: 8, height: 28, fontSize: "var(--crm-text-xs)" }}
+            className="mt-2 h-[26px] w-full rounded-[6px] border px-1.5 text-[11px] outline-none"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
             aria-label="Filtrar conversas por tag"
             value={tagFilter}
             onChange={(e) => onTagFilterChange(e.target.value)}
@@ -351,24 +313,55 @@ export function ConversationList({
             ))}
           </select>
         )}
+
+        {/* Resumo da fila */}
+        <div className="flex min-h-[30px] items-center px-0.5 py-1">
+          {slaSummary.waiting > 0 ? (
+            <button
+              onClick={() => onOrderModeChange("queue")}
+              title="Ver primeiro quem espera há mais tempo"
+              className="flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[10.5px]"
+              style={{ color: slaSummary.critical > 0 ? "var(--ops-neg)" : "var(--ops-warn)" }}
+            >
+              <span className="h-[5px] w-[5px] rounded-full bg-current" />
+              {slaSummary.waiting} aguardando resposta
+              {slaSummary.critical > 0 && ` · ${slaSummary.critical} há +1h`}
+            </button>
+          ) : (
+            <span className="text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+              Tudo respondido
+            </span>
+          )}
+          <span className="ml-auto text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+            {typeof total === "number" && total !== threads.length
+              ? `${threads.length} de ${total}`
+              : `${threads.length} conversas`}
+          </span>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto pb-safe">
-        {/* Falha de carregamento NÃO pode se passar por "inbox vazia" */}
+      {/* Linhas */}
+      <div className="min-h-0 flex-1 overflow-y-auto border-t pb-safe" style={{ borderColor: "var(--ops-border)" }}>
         {error ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <div
-              className="mb-2 flex h-9 w-9 items-center justify-center rounded-[4px]"
-              style={{ background: "var(--crm-neg-bg)", color: "var(--crm-neg)" }}
+              className="mb-2 flex h-9 w-9 items-center justify-center rounded-[7px]"
+              style={{ background: "var(--ops-warn-bg)", color: "var(--ops-neg)" }}
             >
               <AlertTriangle className="h-4 w-4" />
             </div>
-            <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 530, color: "var(--crm-gray-700)" }}>
+            <p className="text-[12.5px] font-medium" style={{ color: "var(--ops-title)" }}>
               Não foi possível carregar as conversas
             </p>
-            <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>{error}</p>
+            <p className="mt-1 text-[11px]" style={{ color: "var(--ops-sec)" }}>
+              {error}
+            </p>
             {onRetry && (
-              <button onClick={onRetry} className="crm-button-secondary" style={{ marginTop: 10 }}>
+              <button
+                onClick={onRetry}
+                className="mt-2.5 h-[30px] rounded-[7px] border px-3 text-[11.5px] font-medium"
+                style={{ borderColor: "var(--ops-border)", color: "var(--ops-text)" }}
+              >
                 Tentar de novo
               </button>
             )}
@@ -376,8 +369,8 @@ export function ConversationList({
         ) : loading ? (
           <div className="flex flex-col gap-3 p-3" aria-label="Carregando conversas">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <SkeletonShimmer className="h-8 w-8 shrink-0 rounded-full" />
+              <div key={i} className="flex items-start gap-2.5">
+                <SkeletonShimmer className="h-[38px] w-[38px] shrink-0 rounded-full" />
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <SkeletonShimmer className="h-3 w-1/2 rounded-[4px]" />
                   <SkeletonShimmer className="h-2.5 w-4/5 rounded-[4px]" />
@@ -388,19 +381,19 @@ export function ConversationList({
         ) : threads.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-[4px] mb-2"
-              style={{ background: "var(--crm-gray-100)", color: "var(--crm-gray-400)" }}
+              className="mb-2 flex h-9 w-9 items-center justify-center rounded-[7px]"
+              style={{ background: "var(--ops-hover, rgba(0,0,0,0.04))", color: "var(--ops-mut)" }}
             >
               <MessageSquare className="h-4 w-4" />
             </div>
-            <p style={{ fontSize: "var(--crm-text-sm)", fontWeight: 530, color: "var(--crm-gray-700)" }}>
+            <p className="text-[12.5px] font-medium" style={{ color: "var(--ops-title)" }}>
               {noChannelOfType
                 ? `Nenhuma conta de ${noChannelOfType === "instagram" ? "Instagram" : "WhatsApp"} conectada`
                 : hasActiveFilters
                   ? "Nenhuma conversa encontrada"
                   : "Inbox vazia"}
             </p>
-            <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 4 }}>
+            <p className="mt-1 text-[11px]" style={{ color: "var(--ops-sec)" }}>
               {noChannelOfType
                 ? "Conecte a conta em Comercial → Canais para receber as conversas aqui."
                 : hasActiveFilters
@@ -409,154 +402,23 @@ export function ConversationList({
             </p>
           </div>
         ) : (
-          threads.map((t) => {
-            // Janela de 24h só existe no WhatsApp OFICIAL e no
-            // Instagram — no Evolution (QR) o envio é livre, e o ponto
-            // verde ali dizia algo que o chat não confirmava.
-            const channelHasWindow =
-              t.channel?.type === "instagram" ||
-              (t.channel?.type === "whatsapp" && t.channel?.provider !== "evolution")
-            const windowOpen =
-              channelHasWindow &&
-              Boolean(t.is_window_open) &&
-              Boolean(t.window_expires_at) &&
-              new Date(t.window_expires_at as string).getTime() > now
-            return (
-              <button
-                key={t.id}
-                onClick={() => onSelect(t.id)}
-                className="w-full text-left"
-                style={{
-                  borderBottom: "1px solid var(--crm-gray-100)",
-                  padding: "10px 12px",
-                  background: activeThreadId === t.id ? "var(--crm-gray-100)" : "transparent",
-                  cursor: "pointer",
-                  display: "block",
-                }}
-              >
-                <div className="flex items-start gap-2">
-                  <div className="relative shrink-0">
-                    {/* Foto do contato: a API já devolvia e a lista
-                        mostrava só as iniciais. */}
-                    {t.contact_avatar_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={t.contact_avatar_url}
-                        alt=""
-                        className="h-8 w-8 rounded-full object-cover"
-                        style={{ border: "1px solid var(--crm-gray-200)" }}
-                      />
-                    ) : (
-                      <div
-                        className="flex h-8 w-8 items-center justify-center text-xs font-medium"
-                        style={{
-                          background: "var(--crm-gray-200)",
-                          color: "var(--crm-gray-700)",
-                          borderRadius: "var(--crm-radius-full)",
-                        }}
-                      >
-                        {(t.contact_name || t.contact_external_id).slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    {windowOpen && (
-                      <span
-                        className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full"
-                        style={{ background: "#10B981", border: "2px solid var(--crm-gray-0)" }}
-                        title="Janela de 24h aberta"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className="truncate"
-                        style={{
-                          fontSize: "var(--crm-text-sm)",
-                          fontWeight: (t.unread_count > 0
-                            ? "var(--crm-weight-medium)"
-                            : "var(--crm-weight-regular)") as React.CSSProperties["fontWeight"],
-                          color: "var(--crm-gray-900)",
-                        }}
-                      >
-                        {t.contact_name || t.contact_external_id}
-                      </span>
-                      {t.unread_count > 0 && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            background: "var(--crm-brand)",
-                            color: "var(--crm-brand-fg)",
-                            borderRadius: "var(--crm-radius-full)",
-                            padding: "1px 6px",
-                            fontFamily: "var(--crm-font-mono)",
-                          }}
-                        >
-                          {t.unread_count}
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      className="truncate"
-                      style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", marginTop: 2 }}
-                    >
-                      {t.last_message_direction === "outbound" ? "Voce: " : ""}
-                      {t.last_message_preview || "Sem mensagens"}
-                    </p>
-                    {(t.tags?.length ?? 0) > 0 && (
-                      <div className="mt-1">
-                        <ThreadTagChips tags={t.tags ?? []} registry={tagRegistry} max={2} size="sm" />
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between mt-1">
-                      <span
-                        className="flex min-w-0 items-center gap-1"
-                        style={{ fontSize: 10, color: "var(--crm-gray-400)" }}
-                      >
-                        {/* Ponto do canal: com WhatsApp e Instagram na
-                            mesma lista, saber a origem antes de abrir
-                            muda o tom da resposta. */}
-                        <span
-                          aria-hidden
-                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{
-                            background:
-                              t.channel?.type === "instagram"
-                                ? "#E1306C"
-                                : t.channel?.type === "whatsapp"
-                                  ? "#25D366"
-                                  : "var(--crm-gray-400)",
-                          }}
-                        />
-                        <span className="truncate">
-                          {t.channel?.type === "instagram"
-                            ? isCommentThread(t)
-                              ? "Instagram · comentário"
-                              : "Instagram · direct"
-                            : t.channel?.display_name || "—"}
-                          {t.channel?.type === "whatsapp"
-                            ? t.channel?.provider === "evolution"
-                              ? " · QR"
-                              : " · Oficial"
-                            : ""}
-                          {t.assignee?.name ? ` · ${t.assignee.name.split(" ")[0]}` : ""}
-                        </span>
-                      </span>
-                      <ThreadTimeCell thread={t} now={now} />
-                    </div>
-                  </div>
-                </div>
-              </button>
-            )
-          })
+          threads.map((t) => (
+            <ThreadRow
+              key={t.id}
+              thread={t}
+              active={activeThreadId === t.id}
+              onSelect={() => onSelect(t.id)}
+              now={now}
+              tagRegistry={tagRegistry}
+            />
+          ))
         )}
 
-        {/* Paginação: a lista era limitada a 50 e não havia como ver o
-            resto — org com 200 conversas perdia 150 sem aviso. */}
         {hasMore && onLoadMore && (
           <button
             onClick={onLoadMore}
-            className="w-full py-3 text-center hover:bg-black/[0.03]"
-            style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-600)" }}
+            className="w-full py-3 text-center text-[11px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+            style={{ color: "var(--ops-sec)" }}
           >
             Carregar mais conversas
             {typeof total === "number" && ` (${threads.length} de ${total})`}
@@ -567,55 +429,149 @@ export function ConversationList({
   )
 }
 
-/**
- * Horário relativo + badge de espera. O badge só existe quando a bola
- * está com o time (última mensagem do contato, conversa não resolvida):
- * âmbar aos 15min, vermelho a 1h — lead de rede social esfria em minutos.
- */
-function ThreadTimeCell({
-  thread,
+function ThreadRow({
+  thread: t,
+  active,
+  onSelect,
   now,
+  tagRegistry,
 }: {
-  thread: { status: string; last_message_at: string; last_message_direction: string | null }
+  thread: ThreadSummary
+  active: boolean
+  onSelect: () => void
   now: number
+  tagRegistry: ReturnType<typeof useTagRegistry>
 }) {
-  const w = waitingInfo(thread, now)
-  if (!w.waiting || w.level === "ok") {
-    return (
-      <span style={{ fontSize: 10, color: "var(--crm-gray-400)" }}>
-        {formatRelativeTime(thread.last_message_at)}
-      </span>
-    )
-  }
-  const isCritical = w.level === "critical"
+  const isCom = threadKind(t) === "comment"
+  const name = t.contact_name || t.contact_external_id
+  const w = waitingInfo(t, now)
+  const waitMin = w.waiting ? w.minutes : 0
+
   return (
-    <span
-      title={`Aguardando resposta há ${formatWait(w.minutes)}`}
+    <button
+      onClick={onSelect}
+      className="relative block w-full cursor-pointer border-b px-3.5 py-[11px] text-left transition-colors"
       style={{
-        fontSize: 10,
-        fontWeight: 600,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 3,
-        padding: "1px 6px",
-        borderRadius: "var(--crm-radius-full)",
-        background: isCritical ? "var(--crm-neg-bg)" : "var(--crm-warn-bg)",
-        color: isCritical ? "var(--crm-neg)" : "var(--crm-warn)",
-        border: `1px solid ${isCritical ? "var(--crm-neg-border)" : "var(--crm-warn-border)"}`,
+        borderColor: "var(--ops-border)",
+        background: active ? "var(--ops-hover, rgba(0,0,0,0.045))" : "transparent",
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.background = "var(--ops-hover, rgba(0,0,0,0.02))"
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.background = "transparent"
       }}
     >
-      <Clock style={{ width: 10, height: 10 }} />
-      {formatWait(w.minutes)}
-    </span>
+      {active && (
+        <span
+          className="absolute bottom-2.5 left-0 top-2.5 w-[2.5px] rounded-r-[2px]"
+          style={{ background: INBOX_BRAND }}
+        />
+      )}
+      <div className="flex gap-2.5">
+        <AvatarWithChannel
+          name={name}
+          avatarUrl={t.contact_avatar_url}
+          canal={t.channel?.type ?? "whatsapp"}
+          size={38}
+          badge={15}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span
+              className="min-w-0 flex-1 truncate text-[12.5px]"
+              style={{ fontWeight: t.unread_count > 0 ? 640 : 500, color: "var(--ops-title)" }}
+            >
+              {name}
+            </span>
+            {waitMin >= 15 ? (
+              <span
+                className="shrink-0 text-[9.5px] font-[650]"
+                title={`Aguardando resposta há ${formatWait(waitMin)}`}
+                style={{ color: waitMin >= 60 ? "var(--ops-neg)" : "var(--ops-warn)", ...TNUM }}
+              >
+                {fmtWaitShort(waitMin)}
+              </span>
+            ) : (
+              <span className="shrink-0 text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+                {formatRelativeTime(t.last_message_at)}
+              </span>
+            )}
+          </div>
+          <div className="mt-[2.5px] flex items-center gap-[7px]">
+            <span
+              className="min-w-0 flex-1 truncate text-[11.5px]"
+              style={{ color: t.unread_count > 0 ? "var(--ops-text)" : "var(--ops-sec)" }}
+            >
+              {isCom
+                ? `“${t.last_message_preview || ""}”`
+                : `${t.last_message_direction === "outbound" ? "Você: " : ""}${t.last_message_preview || "Sem mensagens"}`}
+            </span>
+            {t.unread_count > 0 && (
+              <span
+                className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[8px] px-1 text-[9.5px] font-bold text-white"
+                style={{ background: INBOX_BRAND, ...TNUM }}
+              >
+                {t.unread_count}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+            {isCom ? (
+              <span
+                className="inline-flex min-w-0 items-center gap-1.5 truncate text-[10px]"
+                style={{ color: "var(--ops-mut)" }}
+              >
+                <span
+                  className="h-[11px] w-[11px] shrink-0 rounded-[3px] opacity-85"
+                  style={{ background: "linear-gradient(45deg, #F58529 0%, #DD2A7B 55%, #8134AF 100%)" }}
+                />
+                comentário em post · {t.channel?.display_name}
+              </span>
+            ) : (
+              <>
+                <ChLabel thread={t} />
+                {t.assignee?.name && (
+                  <span className="truncate text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                    · {t.assignee.name.split(" ")[0]}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          {(t.tags?.length ?? 0) > 0 && (
+            <div className="mt-1">
+              <ThreadTagChips tags={t.tags ?? []} registry={tagRegistry} max={2} size="sm" />
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
   )
 }
 
-/**
- * Comentário de post vem com contact_external_id "comment:{media_id}"
- * (o webhook agrupa por publicação) — é o que distingue de um direct.
- */
-function isCommentThread(t: { contact_external_id?: string | null }): boolean {
-  return typeof t.contact_external_id === "string" && t.contact_external_id.startsWith("comment:")
+/** Mini logos pro segmented (13px, mesmos SVGs do ChBadge). */
+function WABadgeMini() {
+  return (
+    <span className="inline-flex h-[13px] w-[13px] shrink-0 items-center justify-center rounded-full" style={{ background: "#25D366" }}>
+      <svg width={9} height={9} viewBox="0 0 24 24" fill="#fff">
+        <path d="M17.6 6.32A7.85 7.85 0 0012.05 4a7.94 7.94 0 00-6.88 11.89L4 20l4.2-1.1a7.93 7.93 0 003.8.97h.01a7.95 7.95 0 005.6-13.55zm-5.55 12.2h-.01a6.6 6.6 0 01-3.36-.92l-.24-.14-2.49.65.67-2.43-.16-.25a6.59 6.59 0 1112.23-3.5 6.6 6.6 0 01-6.64 6.6z" />
+      </svg>
+    </span>
+  )
+}
+function IGBadgeMini() {
+  return (
+    <span
+      className="inline-flex h-[13px] w-[13px] shrink-0 items-center justify-center"
+      style={{ borderRadius: "30%", background: "linear-gradient(45deg, #F58529 0%, #DD2A7B 55%, #8134AF 100%)" }}
+    >
+      <svg width={8} height={8} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4">
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+      </svg>
+    </span>
+  )
 }
 
 export function formatRelativeTime(iso: string): string {

@@ -1,15 +1,17 @@
 "use client"
 
 /**
- * Inbox unificado (WhatsApp + Instagram) — orquestrador.
+ * Inbox unificado (WhatsApp + Instagram) — orquestrador do design v3:
+ * lista (segmented por canal + sub-abas do Instagram + fila SLA) ·
+ * conversa · painel de contexto CRM (coluna fixa em containers largos,
+ * overlay nos estreitos).
  *
- * Composição: ConversationList (filtros/busca) + ChatPanel (mensagens,
- * janela 24h, mídia, templates, atribuição). Dados via SWR; realtime
- * via Supabase postgres_changes (use-realtime-inbox) com o polling SWR
- * relaxado pra 30s como fallback quando conectado.
+ * Dados via SWR; realtime via Supabase postgres_changes
+ * (use-realtime-inbox) com o polling SWR relaxado pra 30s como
+ * fallback quando conectado.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { sortThreadsAsQueue } from "@/lib/services/crm-inbox-sla"
 import useSWR from "swr"
 import { AlertTriangle, MessageSquare } from "lucide-react"
@@ -20,10 +22,13 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import type { ThreadDetail, ThreadSummary } from "@/types/crm-inbox"
 import { CrmEmptyState } from "./crm-empty-state"
 import { ChatPanel } from "./inbox/chat-panel"
+import { ContextPanel } from "./inbox/context-panel"
 import {
   ConversationList,
+  type ChannelCounts,
   type ChannelTypeFilter,
   type InboxChannelOption,
+  type KindFilter,
   type StatusFilter,
 } from "./inbox/conversation-list"
 
@@ -49,16 +54,36 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   const [mineOnly, setMineOnly] = useState(false)
   const [search, setSearch] = useState("")
   const [tagFilter, setTagFilter] = useState("")
-  // Separação por canal: só WhatsApp / só Instagram, e conta específica
-  // quando a org tem mais de uma do mesmo tipo.
   const [channelType, setChannelType] = useState<ChannelTypeFilter>("all")
   const [channelId, setChannelId] = useState("")
+  // Sub-aba do Instagram (Direct × Comentários) — server-side.
+  const [kind, setKind] = useState<KindFilter>("")
   const debouncedSearch = useDebounce(search, 250)
 
   const pickChannelType = (t: ChannelTypeFilter) => {
     setChannelType(t)
     setChannelId("") // trocar de tipo zera a conta selecionada
+    setKind("") // e a sub-aba
   }
+
+  // Medição do container: >=1240px o contexto vira coluna fixa; a lista
+  // alarga de 296→330 a partir de 1100px. Síncrono antes do 1º paint.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [cw, setCw] = useState(0)
+  useLayoutEffect(() => {
+    if (!rootRef.current) return
+    const measure = () => {
+      if (rootRef.current) setCw(rootRef.current.getBoundingClientRect().width)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(rootRef.current)
+    return () => ro.disconnect()
+  }, [])
+  const medido = cw > 0
+  const contextIsColumn = medido && cw >= 1240
+  const listWidth = !medido || cw >= 1100 ? 330 : 296
+  const [ctxOpen, setCtxOpen] = useState(false)
 
   const { data: channelsData } = useSWR<{
     channels: Array<InboxChannelOption & { is_active?: boolean }>
@@ -67,9 +92,8 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     () => (channelsData?.channels ?? []).filter((c) => c.is_active !== false),
     [channelsData],
   )
-  // initialThreadId = deep-link ?thread=<id> vindo das notificações do
-  // sino; o SWR de detail busca por id direto, então funciona mesmo se
-  // a thread não estiver na lista filtrada atual.
+
+  // initialThreadId = deep-link ?thread=<id> das notificações do sino.
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
 
@@ -80,9 +104,8 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   if (tagFilter) params.set("tag", tagFilter)
   if (channelType !== "all") params.set("channel_type", channelType)
   if (channelId) params.set("channel_id", channelId)
+  if (channelType === "instagram" && kind) params.set("kind", kind)
 
-  // Com realtime conectado o polling vira fallback lento; sem realtime
-  // mantém a cadência antiga.
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   params.set("limit", String(pageSize))
 
@@ -98,6 +121,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     has_more?: boolean
     total_unread?: number
     no_channel_of_type?: string
+    channel_counts?: ChannelCounts
   }>(`/api/crm/inbox/threads?${params.toString()}`, fetcher, {
     refreshInterval: realtimeConnected ? 30000 : 10000,
     keepPreviousData: true,
@@ -132,7 +156,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   useEffect(() => setRealtimeConnected(rtConnected), [rtConnected])
 
   // "recent" preserva o comportamento de sempre; "queue" ordena como
-  // fila de atendimento — quem espera resposta ha mais tempo primeiro.
+  // fila de atendimento — quem espera resposta há mais tempo primeiro.
   const [orderMode, setOrderMode] = useState<"recent" | "queue">("recent")
 
   const threads = useMemo(() => {
@@ -140,6 +164,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     if (orderMode === "queue") return sortThreadsAsQueue(list, Date.now())
     return list
   }, [threadsData, orderMode])
+
   // Detalhe de OUTRA conversa (keepPreviousData) não pode ser exibido
   // como se fosse a atual.
   const detail = detailData?.thread?.id === activeThreadId ? detailData : undefined
@@ -150,8 +175,6 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   }, [threads])
 
   // Marca como lida ao abrir (zera unread + read receipt na Meta).
-  // Só quando há não-lidas: abrir conversa já lida não precisa de POST
-  // nem de read receipt na Meta.
   useEffect(() => {
     if (!activeThreadId) return
     const known = threadsRef.current.find((t) => t.id === activeThreadId)
@@ -161,10 +184,8 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
       .catch(() => {})
   }, [activeThreadId, mutateThreads])
 
-  // Mensagem inbound que chega com a conversa JÁ aberta não passa pelo
-  // effect acima (activeThreadId não muda) e deixaria unread_count e a
-  // notificação do sino pendurados — re-marca como lida uma vez por
-  // mensagem (dedup por id via ref).
+  // Mensagem inbound que chega com a conversa JÁ aberta — re-marca como
+  // lida uma vez por mensagem (dedup por id via ref).
   const lastReadInboundRef = useRef<string | null>(null)
   useEffect(() => {
     if (!activeThreadId || !detailData?.messages?.length) return
@@ -177,8 +198,6 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
       .catch(() => {})
   }, [activeThreadId, detailData, mutateThreads])
 
-  // Não-lidas de toda a org (vem da API) — o badge tem de bater com o
-  // do sino, e não mudar conforme o filtro da lista.
   const totalUnread = threadsData?.total_unread ?? 0
   const totalThreads = threadsData?.total ?? threads.length
   const hasMore = Boolean(threadsData?.has_more)
@@ -189,12 +208,14 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     mineOnly ||
     Boolean(tagFilter) ||
     channelType !== "all" ||
-    Boolean(channelId)
+    Boolean(channelId) ||
+    Boolean(kind)
 
   return (
     <div
-      className="flex h-full"
-      style={{ background: "var(--crm-gray-50)", fontFamily: "var(--crm-font-sans)" }}
+      ref={rootRef}
+      className="relative flex h-full min-w-0 overflow-hidden"
+      style={{ background: "var(--ops-page)" }}
     >
       <ConversationList
         threads={threads}
@@ -214,6 +235,9 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         hasActiveFilters={hasActiveFilters}
         channelType={channelType}
         onChannelTypeChange={pickChannelType}
+        kind={kind}
+        onKindChange={setKind}
+        channelCounts={threadsData?.channel_counts ?? null}
         channelId={channelId}
         onChannelIdChange={setChannelId}
         channels={channels}
@@ -224,12 +248,16 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         hasMore={hasMore}
         onLoadMore={() => setPageSize((n) => n + PAGE_SIZE)}
         noChannelOfType={threadsData?.no_channel_of_type ?? null}
+        width={listWidth}
       />
 
       {/* Painel da conversa — em mobile só aparece quando há thread ativa.
           min-h-0 é essencial: sem ele o container de mensagens (flex-1
           overflow-auto) não recebe altura limitada e o composer some/rola. */}
-      <main className={cn("min-h-0 min-w-0 flex-1 flex-col", activeThreadId ? "flex" : "hidden md:flex")}>
+      <main
+        className={cn("min-h-0 min-w-0 flex-1 flex-col md:min-w-[320px]", activeThreadId ? "flex" : "hidden md:flex")}
+        style={{ background: "var(--ops-page)" }}
+      >
         {!activeThreadId ? (
           <div className="flex flex-1 items-center justify-center">
             <CrmEmptyState
@@ -268,7 +296,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
               {Array.from({ length: 4 }).map((_, i) => (
                 <SkeletonShimmer
                   key={i}
-                  className="h-12 rounded-[6px]"
+                  className="h-12 rounded-[10px]"
                   style={{ width: i % 2 === 0 ? "70%" : "55%", marginLeft: i % 2 === 0 ? 0 : "auto" }}
                 />
               ))}
@@ -280,9 +308,24 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
             onBack={() => setActiveThreadId(null)}
             onRefresh={mutateDetail}
             onThreadsRefresh={mutateThreads}
+            containerWidth={cw}
+            contextIsColumn={contextIsColumn}
+            contextOpen={ctxOpen}
+            onToggleContext={() => setCtxOpen((v) => !v)}
           />
         )}
       </main>
+
+      {/* Painel de contexto CRM — coluna fixa (>=1240px) ou overlay */}
+      {detail && (contextIsColumn || ctxOpen) && (
+        <ContextPanel
+          thread={detail.thread}
+          wide={contextIsColumn}
+          onClose={() => setCtxOpen(false)}
+          onRefresh={mutateDetail}
+          onThreadsRefresh={mutateThreads}
+        />
+      )}
     </div>
   )
 }

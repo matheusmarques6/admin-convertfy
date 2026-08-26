@@ -4,13 +4,14 @@
  *                                        vincula a lead/deal/client
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
+import { ensureThreadAvatar } from "@/lib/services/crm-contact-avatar.service"
 import { normalizeThreadTags, THREAD_TAG_MAX_LENGTH, THREAD_TAGS_MAX_COUNT } from "@/lib/crm/thread-tags"
 import { logger } from "@/lib/logger"
 
@@ -50,10 +51,34 @@ export async function GET(
       .eq("id", id)
       .single<{ org_id: string } & Record<string, unknown>>()
 
-    if (error || !thread) {
+    // PGRST116 = zero linhas (aí sim, 404). Qualquer OUTRO erro é falha
+    // de query e tem de subir como 500 com a mensagem real — tratar tudo
+    // como "não encontrada" mascarou uma coluna inexistente no select e
+    // derrubou a abertura de TODA conversa (incidente ago/2026).
+    if (error && (error as { code?: string }).code !== "PGRST116") {
+      throw error
+    }
+    if (!thread) {
       throw new AppError("Conversa não encontrada", 404, "not-found")
     }
     assertThreadInOrg(thread.org_id, orgId)
+
+    // Foto de perfil do contato: webhooks não entregam — busca na
+    // abertura (IG Messaging Profile / Evolution) e persiste. Em
+    // after(): inline, uma Evolution lenta (retry interno) atrasaria a
+    // abertura da conversa; o poll de 30s traz a foto persistida.
+    if (!before && !thread.contact_avatar_url) {
+      const forAvatar = thread as unknown as Parameters<typeof ensureThreadAvatar>[1]
+      after(async () => {
+        try {
+          await ensureThreadAvatar(admin, forAvatar)
+        } catch (err) {
+          log.warn("avatar backfill (detail) falhou", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      })
+    }
 
     let mq = admin
       .from("crm_messages")
@@ -62,6 +87,7 @@ export async function GET(
         media_storage_path, media_filename, media_size,
         sent_by, sent_by_kind, status, status_updated_at, error_code, error_message,
         created_at,
+        sender_username:metadata->>sender_username,
         sender:profiles!crm_messages_sent_by_fkey (id, name, avatar_url)
       `)
       .eq("thread_id", id)

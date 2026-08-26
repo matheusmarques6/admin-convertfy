@@ -79,6 +79,94 @@ export function buildTokenAttempts(config: InstagramChannelConfig): string[] {
   return out
 }
 
+// ─── Leitura: post (media) e foto de perfil ─────────────────────────
+
+export interface InstagramMediaInfo {
+  id: string
+  caption: string | null
+  permalink: string | null
+  /** Melhor imagem pra thumb: thumbnail_url (vídeo) ou media_url. */
+  thumbnail_url: string | null
+  media_type: string | null
+  like_count: number | null
+  comments_count: number | null
+  timestamp: string | null
+}
+
+/**
+ * Dados do post pra thread de comentários (card do inbox): legenda,
+ * permalink, thumb e contadores. Tenta token de Página e do canal —
+ * apps diferentes servem o node de media por caminhos diferentes.
+ * null = nenhum token conseguiu (post apagado, permissão, token morto).
+ */
+export async function getInstagramMediaInfo(
+  config: InstagramChannelConfig,
+  mediaId: string,
+): Promise<InstagramMediaInfo | null> {
+  const fields = "caption,permalink,media_url,thumbnail_url,media_type,like_count,comments_count,timestamp"
+  for (const token of buildTokenAttempts(config)) {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/${encodeURIComponent(mediaId)}?fields=${fields}&access_token=${encodeURIComponent(token)}`,
+        { signal: AbortSignal.timeout(6_000), cache: "no-store" },
+      )
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      if (!res.ok || !body) {
+        log.info("[IG] media info falhou, tentando próximo token", {
+          mediaId,
+          status: res.status,
+          error: (body as { error?: { message?: string } } | null)?.error?.message,
+        })
+        continue
+      }
+      const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+      const num = (v: unknown) => (typeof v === "number" ? v : null)
+      return {
+        id: str(body.id) ?? mediaId,
+        caption: str(body.caption),
+        permalink: str(body.permalink),
+        thumbnail_url: str(body.thumbnail_url) ?? str(body.media_url),
+        media_type: str(body.media_type),
+        like_count: num(body.like_count),
+        comments_count: num(body.comments_count),
+        timestamp: str(body.timestamp),
+      }
+    } catch (err) {
+      log.warn("[IG] media info erro de rede", {
+        mediaId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  return null
+}
+
+/**
+ * Foto de perfil de quem mandou DM (IGSID via Messaging Profile API).
+ * Só está disponível para contatos que já falaram com a conta; null
+ * quando a Meta não expõe (privacidade/escopo) — não é erro.
+ */
+export async function getInstagramUserProfilePic(
+  config: InstagramChannelConfig,
+  igsid: string,
+): Promise<string | null> {
+  for (const token of buildTokenAttempts(config)) {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/${encodeURIComponent(igsid)}?fields=profile_pic&access_token=${encodeURIComponent(token)}`,
+        { signal: AbortSignal.timeout(5_000), cache: "no-store" },
+      )
+      const body = (await res.json().catch(() => null)) as { profile_pic?: unknown } | null
+      if (res.ok && body && typeof body.profile_pic === "string" && body.profile_pic) {
+        return body.profile_pic
+      }
+    } catch {
+      // rede/timeout — tenta o próximo token
+    }
+  }
+  return null
+}
+
 export interface InstagramDirectMessage {
   /** IG-scoped recipient ID (vem do webhook em entry.messaging[].sender.id). */
   to: string
