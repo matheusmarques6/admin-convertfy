@@ -63,7 +63,7 @@ import {
   KlaviyoPermissionError,
   KlaviyoRateLimitError,
 } from "@/lib/integrations/klaviyo"
-import type { SyncResult } from "@/lib/shared/data-status"
+import { parseCustomPeriodLabel, type SyncResult } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoSyncService")
@@ -538,7 +538,13 @@ export async function syncKlaviyoForPeriod(
   const { apiKey, period, timezone, timezoneOffset, metricId, flowNames, campNames, storeId, orgId, currency } = params
 
   try {
-    const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
+    // Rótulo composto "custom:YYYY-MM-DD:YYYY-MM-DD" (RG-1): sincroniza o
+    // range EXATO e o upsert grava o cache sob esse mesmo label — é o que
+    // faz "selecionar uma data" popular o cache do período escolhido.
+    const customRange = parseCustomPeriodLabel(period)
+    const { startDateStr, endDateStr } = customRange
+      ? { startDateStr: customRange.startDate, endDateStr: customRange.endDate }
+      : parseDateRangeInTimezone(period, timezone)
     const timeframe = {
       start: `${startDateStr}T00:00:00${timezoneOffset}`,
       end: `${endDateStr}T23:59:59${timezoneOffset}`,

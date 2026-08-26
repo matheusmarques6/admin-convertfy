@@ -139,21 +139,27 @@ export function OpsDashboard({ userName }: { userName: string }) {
       { revalidate: true },
     )
   }, [globalMutate])
+  const isoDate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   const { isRefreshing, triggerRefresh } = useRealtimeRevenue({
     period: period.period,
+    start: isoDate(period.start),
+    end: isoDate(period.end),
     onDataUpdate: revalidateDashboards,
   })
+  // Uma tentativa por SELEÇÃO (período+datas): range custom novo dispara
+  // de novo; o lock server-side segura duplicatas concorrentes.
+  const selectionKey = `${period.period}:${isoDate(period.start)}:${isoDate(period.end)}`
   const autoRefreshedFor = useRef<string | null>(null)
   const needsSync =
     revenue != null &&
-    period.period !== "custom" &&
     (revenue.dataStatus === "empty" || revenue.dataStatus === "stale" || revenue.isStale === true)
   useEffect(() => {
     if (!needsSync) return
-    if (autoRefreshedFor.current === period.period) return
-    autoRefreshedFor.current = period.period
+    if (autoRefreshedFor.current === selectionKey) return
+    autoRefreshedFor.current = selectionKey
     void triggerRefresh()
-  }, [needsSync, period.period, triggerRefresh])
+  }, [needsSync, selectionKey, triggerRefresh])
   const { data: kpi } = useSWR<KpiSeriesData>(
     KPI_SERIES_PERIODS.has(period.period) ? `/api/dashboard/kpi-series?period=${period.period}` : null,
     fetchJson,
