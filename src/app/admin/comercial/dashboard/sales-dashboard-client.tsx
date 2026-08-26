@@ -18,19 +18,23 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { Target } from "lucide-react"
+import { Check, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { sourceLabel } from "@/lib/services/crm-sources"
 import { GoalDialog } from "@/components/crm/goal-dialog"
 import type { GoalType } from "@/lib/services/crm-performance"
 import {
+  DateControl,
+  defaultOpsPeriod,
+  type OpsPeriodValue,
+} from "@/components/dashboard/ops/date-control"
+import {
   CollectingState,
   OpsCard,
   OpsKpi,
   Td,
   Th,
-  fmtBRLCompact,
   fmtBRLFull,
   fmtPct,
 } from "@/components/dashboard/ops/primitives"
@@ -95,7 +99,6 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 const SWR_OPTS = { revalidateOnFocus: false, dedupingInterval: 30_000 }
-const WINDOWS = [7, 30, 90, 180] as const
 
 const fmtQuando = (iso: string | null): string => {
   if (!iso) return "—"
@@ -113,8 +116,18 @@ const fmtQuando = (iso: string | null): string => {
 // ── Component ───────────────────────────────────────────────────────
 
 export function SalesDashboardClient({ initialData }: { initialData: DashboardData | null }) {
-  const [days, setDays] = useState<number>(30)
+  // DateControl idêntico ao do Operacional (design). A rota de vendas é
+  // "últimos N dias a partir de hoje" — o N vem do INÍCIO do range.
+  const [period, setPeriod] = useState<OpsPeriodValue>(() => ({
+    ...defaultOpsPeriod(),
+    compare: false,
+  }))
   const [goalOpen, setGoalOpen] = useState(false)
+
+  const days = useMemo(() => {
+    const diff = Math.round((Date.now() - period.start.getTime()) / 86_400_000) + 1
+    return Math.min(365, Math.max(1, diff))
+  }, [period.start])
 
   const { data: sales, error: salesError } = useSWR<DashboardData>(
     `/api/crm/dashboard/sales?days=${days}`,
@@ -167,37 +180,27 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
   return (
     <div className="ops-accent-comercial -m-4 md:-m-6 lg:-m-8 bg-[var(--ops-page)] min-h-[100dvh]">
       <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-7 flex flex-col gap-4">
-        {/* Header */}
-        <div className="flex items-end gap-3.5 flex-wrap">
-          <div>
+        {/* Header (DashHead do design: dot + label, título + chip, sub) */}
+        <div className="flex items-start gap-3.5 flex-wrap">
+          <div className="min-w-0">
             <div className="flex items-center gap-[7px] text-[11.5px] text-[var(--ops-mut)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--ops-accent)]" />
               Comercial
             </div>
-            <h1 className="mt-1 m-0 text-[22px] font-semibold tracking-[-0.015em] text-[var(--ops-title)]">
-              Dashboard Comercial
-            </h1>
-            <div className="mt-0.5 text-[12.5px] text-[var(--ops-sec)]">
+            <div className="mt-1 flex items-center gap-2.5 flex-wrap">
+              <h1 className="m-0 text-[22px] font-semibold tracking-[-0.015em] text-[var(--ops-title)]">
+                Dashboard Comercial
+              </h1>
+              <span className="text-[10.5px] font-medium text-[var(--ops-warn)] bg-[var(--ops-warn-bg)] border border-[var(--ops-warn-br)] rounded-full px-2.5 py-[3px]">
+                funde Dashboard Comercial + visão do Funil
+              </span>
+            </div>
+            <div className="mt-[3px] text-[12.5px] text-[var(--ops-sec)]">
               Meta, pipeline e fechamentos — visão única de vendas
             </div>
           </div>
           <div className="flex-1" />
-          <div className="flex gap-0.5 rounded-lg p-[3px] bg-[var(--ops-track)]">
-            {WINDOWS.map((w) => (
-              <button
-                key={w}
-                onClick={() => setDays(w)}
-                className={cn(
-                  "h-[28px] px-3 rounded-md text-[12px] font-medium transition-colors tabular-nums",
-                  days === w
-                    ? "bg-[var(--ops-card)] text-[var(--ops-title)] shadow-sm dark:shadow-none font-semibold"
-                    : "text-[var(--ops-sec)] hover:text-[var(--ops-title)]",
-                )}
-              >
-                {w}D
-              </button>
-            ))}
-          </div>
+          <DateControl value={period} onChange={setPeriod} />
         </div>
 
         {salesError && (
@@ -234,30 +237,14 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
               </div>
               {gp ? (
                 <>
-                  <div className="relative mt-2 h-2.5 rounded-md bg-[var(--ops-track)] overflow-hidden">
+                  <div className="mt-2 h-[10px] rounded-md bg-[var(--ops-track)] overflow-hidden">
                     <div
                       className="h-full rounded-md bg-[var(--ops-accent)]"
                       style={{ width: `${Math.min(100, gp.percent)}%` }}
                     />
-                    {/* Marca de onde o período está: marca à frente da barra = atraso */}
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-[var(--ops-title)]/40"
-                      style={{ left: `${Math.min(100, (gp.daysElapsed / gp.daysTotal) * 100)}%` }}
-                      title={`${gp.daysElapsed} de ${gp.daysTotal} dias do período`}
-                    />
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2.5 text-[12px] tabular-nums">
-                    <span className="font-semibold text-[var(--ops-title)]">
-                      {gp.percent.toFixed(0)}% atingido
-                    </span>
-                    {gp.paceNeeded != null && gp.paceNeeded > 0 && (
-                      <span className="text-[var(--ops-mut)]">
-                        precisa de {goalIsCount ? `${Math.ceil(gp.paceNeeded)} negócios` : fmtBRLCompact(gp.paceNeeded)}/dia · {gp.daysRemaining}d restantes
-                      </span>
-                    )}
-                    {!gp.onTrack && gp.daysRemaining > 0 && (
-                      <span className="text-[var(--ops-warn)] font-medium">fora do ritmo</span>
-                    )}
+                  <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-text)] tabular-nums">
+                    {gp.percent.toFixed(0)}% atingido
                   </div>
                 </>
               ) : (
@@ -272,12 +259,10 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
                 Previsão do mês
               </div>
               <div className="mt-1 text-[19px] font-semibold text-[var(--ops-title)] tabular-nums">
-                {previsao ? fmtBRLCompact(previsao.total) : "—"}
+                {previsao ? fmtBRLFull(previsao.total) : "—"}
               </div>
-              <div className="text-[11px] text-[var(--ops-pos)] font-medium tabular-nums">
-                {previsao
-                  ? `ritmo ${fmtBRLCompact(previsao.ritmo)} + pipeline pond. ${fmtBRLCompact(previsao.ponderado)}`
-                  : "ritmo atual + pipeline ponderado"}
+              <div className="text-[11px] text-[var(--ops-pos)] font-medium">
+                ritmo atual + pipeline ponderado
               </div>
             </div>
             {/* Gargalo */}
@@ -287,7 +272,7 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
               </div>
               <div className="mt-0.5 text-[12px] leading-[1.45] text-[var(--ops-warn)]">
                 {gargalo
-                  ? `${gargalo.stage_name}: negócios param ${Math.round(gargalo.medianDays)}d (mediana de ${gargalo.samples} passagens · 180d)`
+                  ? `${gargalo.stage_name}: deals param ${Math.round(gargalo.medianDays)}d em média`
                   : "Sem gargalo medido — histórico de etapas ainda curto na janela de 180d."}
               </div>
             </div>
@@ -298,19 +283,19 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           <OpsKpi
             label="Pipeline aberto"
-            value={sales ? fmtBRLCompact(sales.pipeline_value) : "—"}
-            sub={sales ? `${sales.open_count} negócios abertos` : undefined}
+            value={sales ? fmtBRLFull(sales.pipeline_value) : "—"}
+            sub={sales ? `${sales.open_count} deals abertos` : undefined}
           />
           <OpsKpi
             label="Ganhos"
-            value={sales ? fmtBRLCompact(sales.won_value) : "—"}
-            sub={sales ? `${sales.won_count} negócios em ${sales.window_days}d` : undefined}
+            value={sales ? fmtBRLFull(sales.won_value) : "—"}
+            sub={sales ? `${sales.won_count} deals em ${sales.window_days}d` : undefined}
             tone="pos"
           />
           <OpsKpi
             label="Win rate"
             value={sales ? fmtPct(sales.win_rate) : "—"}
-            sub={sales ? `${sales.won_count}W · ${sales.lost_count}L no período` : undefined}
+            sub={sales ? `${sales.won_count}W · ${sales.lost_count}L` : undefined}
           />
           <OpsKpi
             label="Ciclo médio"
@@ -344,12 +329,6 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
                       return (
                         <tr key={p.id}>
                           <Td last={last} className="font-semibold text-[var(--ops-title)]">
-                            {p.color && (
-                              <span
-                                className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
-                                style={{ background: p.color }}
-                              />
-                            )}
                             {p.name}
                           </Td>
                           <Td right last={last}>{p.open_count}</Td>
@@ -417,8 +396,8 @@ export function SalesDashboardClient({ initialData }: { initialData: DashboardDa
                     i < sales.recent_wins.length - 1 && "border-b border-[var(--ops-border)]",
                   )}
                 >
-                  <span className="w-[26px] h-[26px] rounded-[7px] bg-[var(--ops-pos)]/10 text-[var(--ops-pos)] inline-flex items-center justify-center shrink-0 text-[13px]">
-                    ✓
+                  <span className="w-[26px] h-[26px] rounded-[7px] bg-[var(--ops-pos)]/10 text-[var(--ops-pos)] inline-flex items-center justify-center shrink-0">
+                    <Icon icon={Check} customSize={13} />
                   </span>
                   <span className="flex-1 text-[12.5px] font-medium text-[var(--ops-title)] truncate">
                     {w.title}
