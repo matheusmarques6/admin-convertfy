@@ -320,6 +320,16 @@ erro do modelo, do material ou da biblioteca. A curadoria lê os recorrentes e
 promove MANUALMENTE a nota de `aprendizados/` (que volta pela ocasião A) — o
 banco nunca alimenta o prompt direto; só o vault curado alimenta.
 
+**Onde aparece na UI** (superfícies existentes): o sync e o material do
+vault ganham a aba **"Conhecimento"** no hub `/admin/settings/email-generation`
+(ao lado de "Estrutura geral", que permanece como fallback) — estado do sync,
+material ativo por flow, notas puladas com motivo, e a seção "Feedback
+recebido" com o botão "Gerar rascunho de aprendizado" (.md no formato do
+vault; promoção é humana). O embasamento aparece no Estúdio
+`/admin/agents/studio`: nó "Estruturador" no canvas (abas Execuções e Teste)
++ drill-down renderizado — nunca JSON cru. A captura do feedback do COO é
+👍/👎 + comentário em cada linha do próprio painel de embasamento.
+
 Custo: as leituras de B são queries indexadas (desprezível); o peso é o
 SYSTEM (~15-20k tokens), idêntico entre lojas do flow → prompt caching paga o
 prompt grande uma vez por dia de geração.
