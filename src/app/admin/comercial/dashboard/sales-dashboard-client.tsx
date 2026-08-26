@@ -1,15 +1,41 @@
 "use client"
 
-import { useRef, useState } from "react"
-import Link from "next/link"
-import useSWR from "swr"
-import { CrmPageShell } from "@/components/crm/crm-page-shell"
-import { CrmEmptyState } from "@/components/crm/crm-empty-state"
-import { PageSkeleton } from "@/components/ui/page-skeleton"
-import { TrendingUp, Trophy, Target, Clock, BarChart3 } from "lucide-react"
-import { PerformancePanel } from "@/components/crm/performance-panel"
+/**
+ * Dashboard Comercial — design ago/2026 (Claude Design): Meta do mês +
+ * Previsão + Gargalo → KPIs → Por pipeline + Por fonte → Últimos
+ * ganhos. Visual único de vendas (funde o dashboard antigo com a visão
+ * resumida do funil), 100% dados reais:
+ *
+ *  - /api/crm/dashboard/sales?days=N — KPIs, por pipeline, por fonte e
+ *    últimos ganhos (o RSC pré-carrega como initialData);
+ *  - /api/crm/performance — meta do mês (crm_sales_goals), progresso,
+ *    forecast ponderado e tempos por etapa (gargalo).
+ *
+ * Tokens --ops-* com o acento AZUL do workspace (classe
+ * .ops-accent-comercial em globals.css). Meta editável pelo GoalDialog
+ * existente — nada da funcionalidade antiga se perdeu.
+ */
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+import { useMemo, useState } from "react"
+import useSWR from "swr"
+import { Target } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
+import { sourceLabel } from "@/lib/services/crm-sources"
+import { GoalDialog } from "@/components/crm/goal-dialog"
+import type { GoalType } from "@/lib/services/crm-performance"
+import {
+  CollectingState,
+  OpsCard,
+  OpsKpi,
+  Td,
+  Th,
+  fmtBRLCompact,
+  fmtBRLFull,
+  fmtPct,
+} from "@/components/dashboard/ops/primitives"
+
+// ── Shapes ──────────────────────────────────────────────────────────
 
 export interface DashboardData {
   window_days: number
@@ -21,327 +47,412 @@ export interface DashboardData {
   lost_count: number
   win_rate: number
   avg_cycle_days: number
-  by_pipeline: Array<{ id: string; name: string; color: string | null; open_value: number; open_count: number; won_value: number; won_count: number }>
+  by_pipeline: Array<{
+    id: string
+    name: string
+    color: string | null
+    open_value: number
+    open_count: number
+    won_value: number
+    won_count: number
+  }>
   by_source: Array<{ source: string; open_count: number; won_count: number; won_value: number }>
-  recent_wins: Array<{ id: string; title: string; value: number | null; won_at: string | null; pipeline_id: string }>
+  recent_wins: Array<{ id: string; title: string; value: number | null; won_at: string | null }>
 }
 
-const fmtBRL = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
+interface PerformanceData {
+  period: { type: string; start: string; end: string }
+  goal: { id: string; goal_type: string; target_value: number } | null
+  goal_progress: {
+    target: number
+    achieved: number
+    percent: number
+    daysTotal: number
+    daysElapsed: number
+    daysRemaining: number
+    paceNeeded: number | null
+    projected: number | null
+    onTrack: boolean
+  } | null
+  achieved: { revenue: number; count: number }
+  forecast: { buckets: Array<{ month: string; count: number; value: number; weighted: number }> }
+  by_owner: Array<{ owner_id: string; owner_name: string }>
+  individual_goals?: Array<{ owner_id: string; goal_type: string; target_value: number }>
+  stage_durations: Array<{
+    stage_id: string
+    stage_name: string
+    avgDays: number
+    medianDays: number
+    samples: number
+  }>
+}
 
-export function SalesDashboardClient({
-  initialData,
-}: {
-  initialData?: DashboardData | null
-}) {
-  const [days, setDays] = useState(30)
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url)
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw new Error((body && body.error) || `Erro ${res.status}`)
+  return body as T
+}
 
-  // Congela o initialData do RSC: só vale para a key inicial (days=30).
-  // Mudança de days gera key nova → fetch normal, comportamento idêntico.
-  const initialRef = useRef(initialData ?? undefined)
+const SWR_OPTS = { revalidateOnFocus: false, dedupingInterval: 30_000 }
+const WINDOWS = [7, 30, 90, 180] as const
 
-  // fallbackData pinta os dados do RSC imediatamente; o SWR ainda revalida
-  // em background no mount — frescor idêntico ao comportamento anterior.
-  const { data, isLoading } = useSWR<DashboardData>(
+const fmtQuando = (iso: string | null): string => {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  const today = new Date()
+  const oneDay = 86_400_000
+  const dayStart = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diffDays = Math.round((dayStart(today) - dayStart(d)) / oneDay)
+  if (diffDays === 0)
+    return `hoje, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+  if (diffDays === 1) return "ontem"
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`
+}
+
+// ── Component ───────────────────────────────────────────────────────
+
+export function SalesDashboardClient({ initialData }: { initialData: DashboardData | null }) {
+  const [days, setDays] = useState<number>(30)
+  const [goalOpen, setGoalOpen] = useState(false)
+
+  const { data: sales, error: salesError } = useSWR<DashboardData>(
     `/api/crm/dashboard/sales?days=${days}`,
-    fetcher,
-    {
-      fallbackData: days === 30 ? initialRef.current : undefined,
-    },
+    fetchJson,
+    { ...SWR_OPTS, fallbackData: days === 30 ? (initialData ?? undefined) : undefined },
+  )
+  const { data: perf, mutate: mutatePerf } = useSWR<PerformanceData>(
+    "/api/crm/performance?period_type=month",
+    fetchJson,
+    SWR_OPTS,
   )
 
-  const d = data
+  const gp = perf?.goal_progress ?? null
+
+  // Previsão do mês = ritmo atual (projeção linear do realizado) +
+  // pipeline PONDERADO com fechamento previsto no mês corrente.
+  const previsao = useMemo(() => {
+    if (!perf) return null
+    const ritmo =
+      gp?.projected ??
+      (() => {
+        // Sem meta ainda dá pra projetar: realizado ÷ dias decorridos × dias totais.
+        const start = new Date(`${perf.period.start}T00:00:00`)
+        const end = new Date(`${perf.period.end}T00:00:00`)
+        const now = new Date()
+        const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
+        const elapsed = Math.min(
+          total,
+          Math.max(1, Math.round((now.getTime() - start.getTime()) / 86_400_000) + 1),
+        )
+        return (perf.achieved.revenue / elapsed) * total
+      })()
+    const mesAtual = new Date().toISOString().slice(0, 7)
+    const ponderado = perf.forecast.buckets.find((b) => b.month === mesAtual)?.weighted ?? 0
+    return { ritmo, ponderado, total: ritmo + ponderado }
+  }, [perf, gp])
+
+  // Gargalo = etapa com a maior MEDIANA de permanência (mín. 2 passagens).
+  const gargalo = useMemo(() => {
+    const candidates = (perf?.stage_durations ?? []).filter((s) => s.samples >= 2)
+    if (candidates.length === 0) return null
+    return candidates.reduce((a, b) => (b.medianDays > a.medianDays ? b : a))
+  }, [perf])
+
+  const goalIsCount = perf?.goal?.goal_type === "deals_won"
+  const fmtGoal = (v: number) => (goalIsCount ? `${Math.round(v)} negócios` : fmtBRLFull(v))
+  const maxFonte = Math.max(1, ...(sales?.by_source ?? []).map((f) => f.won_value))
+  const fontes = (sales?.by_source ?? []).filter((f) => f.won_count > 0).slice(0, 6)
 
   return (
-    <CrmPageShell
-      title="Dashboard comercial"
-      subtitle={`Janela: ${days} dias · Pipeline value e fechamentos`}
-      actions={
-        <select
-          className="crm-input"
-          value={days}
-          onChange={(e) => setDays(parseInt(e.target.value, 10))}
-        >
-          <option value={7}>7 dias</option>
-          <option value={30}>30 dias</option>
-          <option value={90}>90 dias</option>
-          <option value={180}>180 dias</option>
-          <option value={365}>365 dias</option>
-        </select>
-      }
-    >
-      <div className="p-4 md:p-6">
-        {isLoading || !d ? (
-          <PageSkeleton variant="metrics" showHeader={false} className="px-0 py-0" />
-        ) : d.open_count === 0 && d.won_count === 0 && d.lost_count === 0 ? (
-          <CrmEmptyState
-            icon={<BarChart3 className="h-5 w-5" />}
-            title="Sem deals na janela selecionada"
-            description="Aumente o intervalo no seletor acima ou crie um novo deal em qualquer pipeline comercial."
-            action={
-              <Link
-                href="/admin/comercial/pipelines"
-                className="crm-button-primary"
-                style={{ display: "inline-flex", alignItems: "center", gap: "var(--crm-space-2)" }}
-              >
-                Ver pipelines
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-6">
-            {/* Meta, previsão, time e gargalo — o que o gestor pergunta
-                antes de olhar qualquer número solto. */}
-            <PerformancePanel />
-
-            {/* KPIs */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Kpi
-                icon={<TrendingUp className="h-4 w-4" />}
-                label="Pipeline value"
-                value={fmtBRL(d.pipeline_value)}
-                hint={`${d.open_count} deals abertos`}
-              />
-              <Kpi
-                icon={<Trophy className="h-4 w-4" />}
-                label="Ganhos"
-                value={fmtBRL(d.won_value)}
-                hint={`${d.won_count} deals em ${d.window_days}d`}
-                color="success"
-              />
-              <Kpi
-                icon={<Target className="h-4 w-4" />}
-                label="Win rate"
-                value={`${d.win_rate.toFixed(1)}%`}
-                hint={`${d.won_count}W · ${d.lost_count}L`}
-              />
-              <Kpi
-                icon={<Clock className="h-4 w-4" />}
-                label="Ciclo medio"
-                value={`${d.avg_cycle_days.toFixed(0)}d`}
-                hint="Criacao -> ganho"
-              />
+    <div className="ops-accent-comercial -m-4 md:-m-6 lg:-m-8 bg-[var(--ops-page)] min-h-[100dvh]">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-7 flex flex-col gap-4">
+        {/* Header */}
+        <div className="flex items-end gap-3.5 flex-wrap">
+          <div>
+            <div className="flex items-center gap-[7px] text-[11.5px] text-[var(--ops-mut)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--ops-accent)]" />
+              Comercial
             </div>
+            <h1 className="mt-1 m-0 text-[22px] font-semibold tracking-[-0.015em] text-[var(--ops-title)]">
+              Dashboard Comercial
+            </h1>
+            <div className="mt-0.5 text-[12.5px] text-[var(--ops-sec)]">
+              Meta, pipeline e fechamentos — visão única de vendas
+            </div>
+          </div>
+          <div className="flex-1" />
+          <div className="flex gap-0.5 rounded-lg p-[3px] bg-[var(--ops-track)]">
+            {WINDOWS.map((w) => (
+              <button
+                key={w}
+                onClick={() => setDays(w)}
+                className={cn(
+                  "h-[28px] px-3 rounded-md text-[12px] font-medium transition-colors tabular-nums",
+                  days === w
+                    ? "bg-[var(--ops-card)] text-[var(--ops-title)] shadow-sm dark:shadow-none font-semibold"
+                    : "text-[var(--ops-sec)] hover:text-[var(--ops-title)]",
+                )}
+              >
+                {w}D
+              </button>
+            ))}
+          </div>
+        </div>
 
-            {/* By pipeline */}
-            {d.by_pipeline.length > 0 && (
-              <section>
-                <h3
-                  style={{
-                    fontSize: "var(--crm-text-xs)",
-                    color: "var(--crm-gray-500)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontWeight: "var(--crm-weight-medium)",
-                    marginBottom: "var(--crm-space-3)",
-                  }}
-                >
-                  Por pipeline
-                </h3>
-                <div
-                  className="overflow-x-auto scrollbar-thin"
-                  style={{
-                    border: "1px solid var(--crm-gray-200)",
-                    borderRadius: "var(--crm-radius-md)",
-                    background: "var(--crm-gray-0)",
-                  }}
-                >
-                  <table className="w-full min-w-[520px]" style={{ fontSize: "var(--crm-text-base)" }}>
-                    <thead>
-                      <tr style={{ background: "var(--crm-gray-50)", height: "var(--crm-table-header-height)" }}>
-                        <Th>PIPELINE</Th>
-                        <Th align="right">ABERTOS</Th>
-                        <Th align="right">VALOR ABERTO</Th>
-                        <Th align="right">GANHOS</Th>
-                        <Th align="right">VALOR GANHO</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.by_pipeline.map((p) => (
-                        <tr
-                          key={p.id}
-                          style={{
-                            height: "var(--crm-table-row-height)",
-                            borderTop: "1px solid var(--crm-gray-200)",
-                          }}
-                        >
-                          <td className="px-3" style={{ color: "var(--crm-gray-900)", fontWeight: "var(--crm-weight-medium)" }}>
-                            {p.name}
-                          </td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-gray-700)" }}>
-                            {p.open_count}
-                          </td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-gray-900)", fontFamily: "var(--crm-font-mono)" }}>
-                            {fmtBRL(p.open_value)}
-                          </td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-gray-700)" }}>
-                            {p.won_count}
-                          </td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-success-fg)", fontFamily: "var(--crm-font-mono)" }}>
-                            {fmtBRL(p.won_value)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {/* By source */}
-            {d.by_source.length > 0 && (
-              <section>
-                <h3
-                  style={{
-                    fontSize: "var(--crm-text-xs)",
-                    color: "var(--crm-gray-500)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontWeight: "var(--crm-weight-medium)",
-                    marginBottom: "var(--crm-space-3)",
-                  }}
-                >
-                  Por fonte
-                </h3>
-                <div
-                  className="overflow-x-auto scrollbar-thin"
-                  style={{
-                    border: "1px solid var(--crm-gray-200)",
-                    borderRadius: "var(--crm-radius-md)",
-                    background: "var(--crm-gray-0)",
-                  }}
-                >
-                  <table className="w-full min-w-[440px]" style={{ fontSize: "var(--crm-text-base)" }}>
-                    <thead>
-                      <tr style={{ background: "var(--crm-gray-50)", height: "var(--crm-table-header-height)" }}>
-                        <Th>FONTE</Th>
-                        <Th align="right">ABERTOS</Th>
-                        <Th align="right">GANHOS</Th>
-                        <Th align="right">VALOR GANHO</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.by_source.map((s) => (
-                        <tr
-                          key={s.source}
-                          style={{
-                            height: "var(--crm-table-row-height)",
-                            borderTop: "1px solid var(--crm-gray-200)",
-                          }}
-                        >
-                          <td className="px-3" style={{ color: "var(--crm-gray-900)" }}>{s.source}</td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-gray-700)" }}>{s.open_count}</td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-gray-700)" }}>{s.won_count}</td>
-                          <td className="px-3 text-right tabular-nums" style={{ color: "var(--crm-success-fg)", fontFamily: "var(--crm-font-mono)" }}>
-                            {fmtBRL(s.won_value)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {/* Recent wins */}
-            {d.recent_wins.length > 0 && (
-              <section>
-                <h3
-                  style={{
-                    fontSize: "var(--crm-text-xs)",
-                    color: "var(--crm-gray-500)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontWeight: "var(--crm-weight-medium)",
-                    marginBottom: "var(--crm-space-3)",
-                  }}
-                >
-                  Ultimos ganhos
-                </h3>
-                <ul className="space-y-2">
-                  {d.recent_wins.map((w) => (
-                    <li
-                      key={w.id}
-                      className="crm-card flex items-center justify-between"
-                    >
-                      <span style={{ color: "var(--crm-gray-900)", fontWeight: "var(--crm-weight-medium)" }}>
-                        {w.title}
-                      </span>
-                      <span className="flex items-center gap-3">
-                        {w.value != null && (
-                          <span style={{ color: "var(--crm-success-fg)", fontFamily: "var(--crm-font-mono)", fontWeight: "var(--crm-weight-medium)" }}>
-                            {fmtBRL(w.value)}
-                          </span>
-                        )}
-                        <span style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-                          {w.won_at && new Date(w.won_at).toLocaleDateString("pt-BR")}
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+        {salesError && (
+          <div className="rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-3 text-[12.5px] text-[var(--ops-warn)]">
+            Não consegui carregar os KPIs: {String(salesError.message || salesError)}
           </div>
         )}
-      </div>
-    </CrmPageShell>
-  )
-}
 
-function Kpi({ icon, label, value, hint, color }: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  hint?: string
-  color?: "success" | "default"
-}) {
-  return (
-    <div className="crm-card flex flex-col gap-1.5">
-      <div
-        className="flex items-center gap-2"
-        style={{
-          fontSize: "var(--crm-text-xs)",
-          color: "var(--crm-gray-500)",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          fontWeight: "var(--crm-weight-medium)",
-        }}
-      >
-        {icon}
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "var(--crm-text-2xl)",
-          fontWeight: "var(--crm-weight-medium)",
-          color: color === "success" ? "var(--crm-success-fg)" : "var(--crm-gray-900)",
-          fontFamily: "var(--crm-font-mono)",
-          lineHeight: "var(--crm-leading-tight)",
-        }}
-      >
-        {value}
-      </div>
-      {hint && (
-        <div style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
-          {hint}
+        {/* ── Meta + Previsão + Gargalo ── */}
+        <OpsCard>
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1.4fr] gap-7 items-center">
+            {/* Meta do mês */}
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--ops-sec)]">
+                  Meta do mês
+                </span>
+                {gp ? (
+                  <button
+                    onClick={() => setGoalOpen(true)}
+                    className="text-[11.5px] text-[var(--ops-sec)] hover:text-[var(--ops-title)] tabular-nums"
+                    title="Editar meta"
+                  >
+                    {fmtGoal(gp.achieved)} de {fmtGoal(gp.target)}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setGoalOpen(true)}
+                    className="flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--ops-accent)]"
+                  >
+                    <Icon icon={Target} customSize={13} /> Definir meta
+                  </button>
+                )}
+              </div>
+              {gp ? (
+                <>
+                  <div className="relative mt-2 h-2.5 rounded-md bg-[var(--ops-track)] overflow-hidden">
+                    <div
+                      className="h-full rounded-md bg-[var(--ops-accent)]"
+                      style={{ width: `${Math.min(100, gp.percent)}%` }}
+                    />
+                    {/* Marca de onde o período está: marca à frente da barra = atraso */}
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-[var(--ops-title)]/40"
+                      style={{ left: `${Math.min(100, (gp.daysElapsed / gp.daysTotal) * 100)}%` }}
+                      title={`${gp.daysElapsed} de ${gp.daysTotal} dias do período`}
+                    />
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2.5 text-[12px] tabular-nums">
+                    <span className="font-semibold text-[var(--ops-title)]">
+                      {gp.percent.toFixed(0)}% atingido
+                    </span>
+                    {gp.paceNeeded != null && gp.paceNeeded > 0 && (
+                      <span className="text-[var(--ops-mut)]">
+                        precisa de {goalIsCount ? `${Math.ceil(gp.paceNeeded)} negócios` : fmtBRLCompact(gp.paceNeeded)}/dia · {gp.daysRemaining}d restantes
+                      </span>
+                    )}
+                    {!gp.onTrack && gp.daysRemaining > 0 && (
+                      <span className="text-[var(--ops-warn)] font-medium">fora do ritmo</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-[12.5px] text-[var(--ops-mut)]">
+                  Nenhuma meta definida para este mês — defina pra acompanhar o ritmo do time aqui.
+                </p>
+              )}
+            </div>
+            {/* Previsão */}
+            <div>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--ops-sec)]">
+                Previsão do mês
+              </div>
+              <div className="mt-1 text-[19px] font-semibold text-[var(--ops-title)] tabular-nums">
+                {previsao ? fmtBRLCompact(previsao.total) : "—"}
+              </div>
+              <div className="text-[11px] text-[var(--ops-pos)] font-medium tabular-nums">
+                {previsao
+                  ? `ritmo ${fmtBRLCompact(previsao.ritmo)} + pipeline pond. ${fmtBRLCompact(previsao.ponderado)}`
+                  : "ritmo atual + pipeline ponderado"}
+              </div>
+            </div>
+            {/* Gargalo */}
+            <div className="rounded-lg border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-[13px] py-2.5">
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-[var(--ops-warn)]">
+                Gargalo
+              </div>
+              <div className="mt-0.5 text-[12px] leading-[1.45] text-[var(--ops-warn)]">
+                {gargalo
+                  ? `${gargalo.stage_name}: negócios param ${Math.round(gargalo.medianDays)}d (mediana de ${gargalo.samples} passagens · 180d)`
+                  : "Sem gargalo medido — histórico de etapas ainda curto na janela de 180d."}
+              </div>
+            </div>
+          </div>
+        </OpsCard>
+
+        {/* ── KPIs ── */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <OpsKpi
+            label="Pipeline aberto"
+            value={sales ? fmtBRLCompact(sales.pipeline_value) : "—"}
+            sub={sales ? `${sales.open_count} negócios abertos` : undefined}
+          />
+          <OpsKpi
+            label="Ganhos"
+            value={sales ? fmtBRLCompact(sales.won_value) : "—"}
+            sub={sales ? `${sales.won_count} negócios em ${sales.window_days}d` : undefined}
+            tone="pos"
+          />
+          <OpsKpi
+            label="Win rate"
+            value={sales ? fmtPct(sales.win_rate) : "—"}
+            sub={sales ? `${sales.won_count}W · ${sales.lost_count}L no período` : undefined}
+          />
+          <OpsKpi
+            label="Ciclo médio"
+            value={sales ? `${Math.round(sales.avg_cycle_days)}d` : "—"}
+            sub="criação → ganho"
+          />
         </div>
+
+        {/* ── Por pipeline + Por fonte ── */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          <OpsCard className="xl:col-span-7" title="Por pipeline" hint={`${days} dias`} noPad>
+            {!sales ? (
+              <CollectingState label="Carregando pipelines…" />
+            ) : sales.by_pipeline.length === 0 ? (
+              <CollectingState label="Nenhum pipeline de vendas configurado." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <Th>Pipeline</Th>
+                      <Th right>Abertos</Th>
+                      <Th right>Valor aberto</Th>
+                      <Th right>Ganhos</Th>
+                      <Th right>Valor ganho</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.by_pipeline.map((p, i) => {
+                      const last = i === sales.by_pipeline.length - 1
+                      return (
+                        <tr key={p.id}>
+                          <Td last={last} className="font-semibold text-[var(--ops-title)]">
+                            {p.color && (
+                              <span
+                                className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
+                                style={{ background: p.color }}
+                              />
+                            )}
+                            {p.name}
+                          </Td>
+                          <Td right last={last}>{p.open_count}</Td>
+                          <Td right last={last}>{fmtBRLFull(p.open_value)}</Td>
+                          <Td right last={last}>{p.won_count}</Td>
+                          <Td right last={last} className="font-semibold text-[var(--ops-pos)]">
+                            {fmtBRLFull(p.won_value)}
+                          </Td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </OpsCard>
+
+          <OpsCard className="xl:col-span-5" title="Por fonte" hint={`valor ganho · ${days} dias`}>
+            {!sales ? (
+              <CollectingState label="Carregando fontes…" />
+            ) : fontes.length === 0 ? (
+              <CollectingState label="Nenhum ganho com fonte registrada no período." />
+            ) : (
+              <div className="flex flex-col gap-[11px]">
+                {fontes.map((f) => (
+                  <div key={f.source}>
+                    <div className="flex justify-between text-[12px] mb-1 gap-2">
+                      <span className="font-medium text-[var(--ops-text)] truncate">
+                        {sourceLabel(f.source)}
+                      </span>
+                      <span className="text-[var(--ops-sec)] tabular-nums shrink-0">
+                        {f.won_count} {f.won_count === 1 ? "ganho" : "ganhos"} ·{" "}
+                        <span className="font-semibold text-[var(--ops-pos)]">
+                          {fmtBRLFull(f.won_value)}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="h-[7px] rounded overflow-hidden bg-[var(--ops-track)]">
+                      <div
+                        className="h-full rounded bg-[var(--ops-accent)] opacity-85"
+                        style={{ width: `${(f.won_value / maxFonte) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </OpsCard>
+        </div>
+
+        {/* ── Últimos ganhos ── */}
+        <OpsCard title="Últimos ganhos" noPad className="mb-2">
+          {!sales ? (
+            <CollectingState label="Carregando…" />
+          ) : sales.recent_wins.length === 0 ? (
+            <CollectingState label="Nenhum negócio ganho no período." />
+          ) : (
+            <div className="px-2.5 py-1.5">
+              {sales.recent_wins.map((w, i) => (
+                <a
+                  key={w.id}
+                  href={`/admin/comercial/deals/${w.id}/detail`}
+                  className={cn(
+                    "flex items-center gap-2.5 px-2.5 py-[9px] rounded-[7px] hover:bg-[var(--ops-hover)]",
+                    i < sales.recent_wins.length - 1 && "border-b border-[var(--ops-border)]",
+                  )}
+                >
+                  <span className="w-[26px] h-[26px] rounded-[7px] bg-[var(--ops-pos)]/10 text-[var(--ops-pos)] inline-flex items-center justify-center shrink-0 text-[13px]">
+                    ✓
+                  </span>
+                  <span className="flex-1 text-[12.5px] font-medium text-[var(--ops-title)] truncate">
+                    {w.title}
+                  </span>
+                  <span className="text-[12.5px] font-semibold text-[var(--ops-pos)] tabular-nums">
+                    {w.value != null ? fmtBRLFull(w.value) : "—"}
+                  </span>
+                  <span className="w-[76px] text-right text-[11px] text-[var(--ops-mut)] tabular-nums">
+                    {fmtQuando(w.won_at)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </OpsCard>
+      </div>
+
+      {/* Meta editável — mesmo GoalDialog do painel antigo (zero regressão) */}
+      {perf && (
+        <GoalDialog
+          open={goalOpen}
+          onOpenChange={setGoalOpen}
+          periodStart={perf.period.start}
+          periodType="month"
+          currentTarget={perf.goal?.target_value ?? null}
+          currentType={(perf.goal?.goal_type as GoalType) ?? "revenue_won"}
+          owners={perf.by_owner.map((o) => ({ id: o.owner_id, name: o.owner_name }))}
+          individualGoals={perf.individual_goals}
+          onSaved={() => {
+            setGoalOpen(false)
+            void mutatePerf()
+          }}
+        />
       )}
     </div>
-  )
-}
-
-function Th({ children, align }: { children: React.ReactNode; align?: "left" | "right" }) {
-  return (
-    <th
-      className="font-medium px-3"
-      style={{
-        textAlign: align || "left",
-        color: "var(--crm-gray-600)",
-        fontSize: "var(--crm-text-xs)",
-      }}
-    >
-      {children}
-    </th>
   )
 }

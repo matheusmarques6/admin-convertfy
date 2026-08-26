@@ -383,3 +383,15 @@
 .react-flow__edge-custom {
   stroke: var(--muted-foreground);
 }
+
+/* Acento do workspace COMERCIAL sobre os tokens --ops-* (o default é o
+   grafite do Operacional). O dashboard comercial embrulha a página nesta
+   classe e todos os componentes ops-* herdam o azul certo por tema. */
+.ops-accent-comercial {
+  --ops-accent: #2563EB;
+  --ops-on-accent: #FFFFFF;
+}
+.dark .ops-accent-comercial {
+  --ops-accent: #7C90F2;
+  --ops-on-accent: #0C0F16;
+}
