@@ -125,6 +125,43 @@ interface StoreRow {
   id: string
   store_name: string
   org_id: string | null
+  klaviyo_validated_at?: string | null
+  klaviyo_validation_error?: string | null
+}
+
+// Mesma régua do cron sync-reports: loja marcada [INVALID_KEY] há menos de
+// 24h nem é tentada — cada tentativa é um 401 garantido que queima ~5-10s
+// do budget de 270s (com 24 lojas quebradas, o refresh gastava metade do
+// tempo colecionando 401 antes de chegar nas lojas boas).
+const INVALID_KEY_RETRY_MS = 24 * 60 * 60 * 1000
+
+function isInInvalidKeyCooldown(store: StoreRow): boolean {
+  const errMsg = store.klaviyo_validation_error ?? ""
+  if (!errMsg.startsWith("[INVALID_KEY]")) return false
+  if (!store.klaviyo_validated_at) return false
+  return Date.now() - new Date(store.klaviyo_validated_at).getTime() < INVALID_KEY_RETRY_MS
+}
+
+/** Marca a chave como inválida em client_stores — liga o cooldown de 24h
+ *  para o cron E para os próximos refreshes (antes só o cron gravava, então
+ *  o refresh manual re-tentava as mesmas lojas quebradas a cada clique). */
+async function markInvalidKey(
+  supabase: SupabaseClient,
+  storeId: string,
+  message: string,
+): Promise<void> {
+  try {
+    await supabase
+      .from("client_stores")
+      .update({
+        klaviyo_validation_error: `[INVALID_KEY] ${message}`.slice(0, 500),
+        klaviyo_validated_at: new Date().toISOString(),
+        klaviyo_has_reporting_access: false,
+      })
+      .eq("id", storeId)
+  } catch {
+    // best-effort — não pode derrubar o loop
+  }
 }
 
 const PERIOD_DAYS: Record<string, number> = {
@@ -275,6 +312,7 @@ async function refreshStoreForPeriod(
       return { status: "error", error: `Rate limited (retry after ${err.retryAfterMs}ms)` }
     }
     if (err instanceof KlaviyoInvalidKeyError) {
+      await markInvalidKey(supabase, store.id, err.message)
       return { status: "error", error: `Invalid key: ${err.message}` }
     }
     return { status: "error", error: err instanceof Error ? err.message : "Unknown error" }
@@ -337,23 +375,50 @@ export async function POST(request: NextRequest) {
       // Get ALL stores with Klaviyo OR Omnisend credentials for this org.
       // Resiliente a migration pendente: fallback para so-Klaviyo se omnisend_api_key
       // coluna nao existe.
+      const storeCols = "id, store_name, org_id, klaviyo_validated_at, klaviyo_validation_error"
       let storesResp = await adminClient
         .from("client_stores")
-        .select("id, store_name, org_id")
+        .select(storeCols)
         .eq("org_id", orgId)
         .or(ANY_EMAIL_PLATFORM_FILTER)
       if (storesResp.error && /omnisend_api_key/.test(storesResp.error.message || "")) {
         storesResp = await adminClient
           .from("client_stores")
-          .select("id, store_name, org_id")
+          .select(storeCols)
           .eq("org_id", orgId)
           .or(KLAVIYO_CREDENTIALS_FILTER)
       }
-      const { data: stores, error: storesError } = storesResp
+      const { data: allStores, error: storesError } = storesResp
 
-      if (storesError || !stores || stores.length === 0) {
+      if (storesError || !allStores || allStores.length === 0) {
         log.warn("[RefreshRevenue] No stores found for org", orgId)
         return NextResponse.json({ success: true, storesRefreshed: 0, durationMs: Date.now() - startTime })
+      }
+
+      // Cooldown de chave inválida (24h, mesma régua do cron): não tentar o
+      // 401 garantido, mas MARCAR o erro no cache do período pra loja
+      // aparecer no aviso do dashboard (rótulos custom não têm a linha que
+      // o cron grava).
+      const cooldownStores = (allStores as StoreRow[]).filter(isInInvalidKeyCooldown)
+      const stores = (allStores as StoreRow[]).filter((s) => !isInInvalidKeyCooldown(s))
+      if (cooldownStores.length > 0) {
+        log.info(
+          `[RefreshRevenue] Pulando ${cooldownStores.length} lojas em cooldown de INVALID_KEY: ${cooldownStores.map((s) => s.store_name).join(", ")}`,
+        )
+        await Promise.all(
+          cooldownStores.map((s) =>
+            markStoreSyncError(adminClient, s, period, s.klaviyo_validation_error || "[INVALID_KEY] Chave Klaviyo inválida"),
+          ),
+        )
+      }
+
+      if (stores.length === 0) {
+        return NextResponse.json({
+          success: true,
+          storesRefreshed: 0,
+          storesInCooldown: cooldownStores.length,
+          durationMs: Date.now() - startTime,
+        })
       }
 
       // Refresh stores sequentially, mas com deadline pra nao estourar
@@ -401,6 +466,7 @@ export async function POST(request: NextRequest) {
         storesRefreshed: okCount,
         storeErrors: errorCount,
         storesSkipped: skippedCount,
+        storesInCooldown: cooldownStores.length,
         timedOut,
         durationMs,
       })

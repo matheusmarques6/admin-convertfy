@@ -99,11 +99,11 @@ export async function GET(request: NextRequest) {
     // AC 42.12.8: Lock/dedup
     const canRun = await acquireLock(supabase)
     if (!canRun) {
-      log.warn("Lock active, skipping execution")
-      return NextResponse.json(
-        { skipped: true, reason: "lock_active" },
-        { status: 409 }
-      )
+      // Dedup por design (execução anterior ainda rodando) — não é anomalia.
+      // Como warn + 409, cada skip pintava âmbar no painel level:warn da
+      // Vercel e parecia falha do cron.
+      log.info("Lock active, skipping execution")
+      return NextResponse.json({ skipped: true, reason: "lock_active" })
     }
 
     try {

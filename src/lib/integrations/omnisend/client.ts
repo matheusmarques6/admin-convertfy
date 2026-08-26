@@ -383,6 +383,53 @@ export async function omnisendPaginateV5<TItem>(
 }
 
 /**
+ * Paginate through an /api/* list endpoint (Omnisend-Version 2026-03-15).
+ *
+ * Estilo atual da API: a resposta traz `paging.cursors.after` + `hasMore`
+ * (não mais `paging.next` com URL completa, como o /v5). A request de
+ * continuação envia APENAS `?after=<cursor>` — o cursor embute limit,
+ * filtros e ordenação; repetir params divergentes retorna 400.
+ */
+export async function omnisendPaginateCursor<TItem>(
+  apiKey: string,
+  basePath: string,
+  itemsKey: string,
+  options?: {
+    logTag?: string
+    maxPages?: number
+    limit?: number
+    queryParams?: Record<string, string>
+  }
+): Promise<TItem[]> {
+  const { logTag = "Omnisend", maxPages = 200, limit = 250, queryParams = {} } = options || {}
+  const allItems: TItem[] = []
+  let after: string | null = null
+
+  for (let page = 0; page < maxPages; page++) {
+    const params: URLSearchParams = after
+      ? new URLSearchParams({ after })
+      : new URLSearchParams({ ...queryParams, limit: String(limit) })
+    const response = await omnisendRequest<Record<string, unknown>>(
+      apiKey,
+      `${basePath}?${params}`,
+      { logTag },
+    )
+    if (!response) break
+
+    const items = (response[itemsKey] as TItem[]) || []
+    allItems.push(...items)
+
+    const paging = response.paging as
+      | { cursors?: { after?: string | null }; hasMore?: boolean }
+      | undefined
+    after = paging?.hasMore ? paging?.cursors?.after || null : null
+    if (!after) break
+  }
+
+  return allItems
+}
+
+/**
  * Paginate through an Omnisend v3 list endpoint.
  * Omnisend v3 uses offset/limit pagination with a `paging` object.
  */

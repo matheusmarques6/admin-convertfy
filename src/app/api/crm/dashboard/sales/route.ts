@@ -115,18 +115,26 @@ async function handleGet(request: NextRequest) {
       return successResponse(request, emptyPayload(days))
     }
 
-    // Open deals (current pipeline value)
-    const { data: openDeals } = await admin
-      .from("deals")
-      .select("id, pipeline_id, value, source, created_at")
-      .in("pipeline_id", pipelineIds)
-      .eq("status", "open")
-
     const sincePrev = new Date(Date.now() - 2 * days * 24 * 60 * 60 * 1000).toISOString()
+    const sinceDay = since.slice(0, 10)
+    const snapFloor = new Date(Date.parse(since) - 3 * 86_400_000).toISOString().slice(0, 10)
 
-    // Closed deals in window (won + lost) + vendas da janela ANTERIOR
-    // (base dos deltas "vs período anterior" — antes o delta não existia)
-    const [{ data: closedDeals }, { data: prevWonDeals }] = await Promise.all([
+    // Todas as leituras que só dependem de pipelineIds rodam JUNTAS — eram
+    // 4 awaits em série (open → closed → snapshots → atividades) e a rota
+    // passava de 4s no ApiTiming; em paralelo o custo é o da query mais
+    // lenta. Cash e itens de produto ficam de fora porque dependem de `won`.
+    const [
+      { data: openDeals },
+      { data: closedDeals },
+      { data: prevWonDeals },
+      { data: snapRows },
+      { data: activityRows },
+    ] = await Promise.all([
+      admin
+        .from("deals")
+        .select("id, pipeline_id, value, source, created_at")
+        .in("pipeline_id", pipelineIds)
+        .eq("status", "open"),
       admin
         .from("deals")
         .select("id, pipeline_id, title, value, status, source, created_at, won_at, lost_at, client_id, cash_collected")
@@ -141,6 +149,19 @@ async function handleGet(request: NextRequest) {
         .eq("status", "won")
         .gte("won_at", sincePrev)
         .lt("won_at", since),
+      admin
+        .from("crm_pipeline_snapshots")
+        .select("pipeline_id, day, open_value")
+        .in("pipeline_id", pipelineIds)
+        .gte("day", snapFloor)
+        .lte("day", sinceDay)
+        .order("day", { ascending: false }),
+      admin
+        .from("crm_deal_activities")
+        .select("type, created_at, deal:deals!inner(pipeline_id)")
+        .in("deal.pipeline_id", pipelineIds)
+        .gte("created_at", sincePrev)
+        .limit(20000),
     ])
 
     const open: DealRow[] = (openDeals as DealRow[] | null) ?? []
@@ -230,15 +251,6 @@ async function handleGet(request: NextRequest) {
 
     // Pipeline aberto "vs anterior": snapshot diário mais próximo do
     // início da janela (cron crm-snapshot). Sem snapshot → delta null.
-    const sinceDay = since.slice(0, 10)
-    const snapFloor = new Date(Date.parse(since) - 3 * 86_400_000).toISOString().slice(0, 10)
-    const { data: snapRows } = await admin
-      .from("crm_pipeline_snapshots")
-      .select("pipeline_id, day, open_value")
-      .in("pipeline_id", pipelineIds)
-      .gte("day", snapFloor)
-      .lte("day", sinceDay)
-      .order("day", { ascending: false })
     const snapByPipeline = new Map<string, number>()
     for (const s of snapRows ?? []) {
       if (!snapByPipeline.has(s.pipeline_id as string)) {
@@ -250,10 +262,32 @@ async function handleGet(request: NextRequest) {
         ? [...snapByPipeline.values()].reduce((a, b) => a + b, 0)
         : null
 
-    // Cash collect (unified_invoices + override) — janela atual e anterior.
-    const [cashNow, cashPrev] = await Promise.all([
+    // Cash collect (unified_invoices + override) — janela atual e anterior
+    // — e as linhas de produto das vendas, tudo em paralelo (dependem só
+    // de `won`/`wonPrev`).
+    const fetchWonItems = async (): Promise<{
+      data: unknown[] | null
+      error: { code?: string; message?: string } | null
+    }> => {
+      if (won.length === 0) return { data: [], error: null }
+      const wonIds = won.map((d) => d.id)
+      let q: { data: unknown[] | null; error: { code?: string; message?: string } | null } =
+        await admin
+          .from("crm_deal_products")
+          .select("deal_id, quantity, unit_price, discount_pct, billing_type, recurring_interval")
+          .in("deal_id", wonIds)
+      if (q.error && /column .* does not exist|42703/i.test(`${q.error.code} ${q.error.message}`)) {
+        q = await admin
+          .from("crm_deal_products")
+          .select("deal_id, quantity, unit_price, discount_pct, billing_type")
+          .in("deal_id", wonIds)
+      }
+      return q
+    }
+    const [cashNow, cashPrev, wonItemsQ] = await Promise.all([
       computeCash(admin, won),
       computeCash(admin, wonPrev),
+      fetchWonItems(),
     ])
     const won_value_prev = sumValue(wonPrev)
     const ticket = won.length > 0 ? won_value / won.length : null
@@ -261,12 +295,6 @@ async function handleGet(request: NextRequest) {
 
     // Atividades do time por tipo — janela atual vs anterior (join inner
     // pra contar só atividades de deals dos pipelines de VENDAS).
-    const { data: activityRows } = await admin
-      .from("crm_deal_activities")
-      .select("type, created_at, deal:deals!inner(pipeline_id)")
-      .in("deal.pipeline_id", pipelineIds)
-      .gte("created_at", sincePrev)
-      .limit(20000)
     const actMap = new Map<string, { current: number; previous: number }>()
     for (const a of (activityRows ?? []) as Array<{ type: string; created_at: string }>) {
       const key = a.type || "outro"
@@ -287,19 +315,7 @@ async function handleGet(request: NextRequest) {
     let mrrNovo = 0
     const dealsComItens = new Set<string>()
     if (won.length > 0) {
-      const wonIds = won.map((d) => d.id)
-      let itemsQ: { data: unknown[] | null; error: { code?: string; message?: string } | null } =
-        await admin
-          .from("crm_deal_products")
-          .select("deal_id, quantity, unit_price, discount_pct, billing_type, recurring_interval")
-          .in("deal_id", wonIds)
-      if (itemsQ.error && /column .* does not exist|42703/i.test(`${itemsQ.error.code} ${itemsQ.error.message}`)) {
-        itemsQ = await admin
-          .from("crm_deal_products")
-          .select("deal_id, quantity, unit_price, discount_pct, billing_type")
-          .in("deal_id", wonIds)
-      }
-      const items = (itemsQ.data ?? []) as Array<DealProductLine & { deal_id: string }>
+      const items = (wonItemsQ.data ?? []) as Array<DealProductLine & { deal_id: string }>
       for (const item of items) {
         dealsComItens.add(item.deal_id)
         const t = lineTotal(item)

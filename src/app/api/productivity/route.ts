@@ -160,6 +160,27 @@ async function handleGet(request: NextRequest) {
 
     const groups = Array.from(groupMap.values()).sort((a, b) => a.position - b.position)
 
+    // Leituras independentes da projeção de onboarding COMEÇAM aqui e são
+    // aguardadas depois — em série (onboardings → campanhas → meetings) a
+    // rota passava de 6s no ApiTiming.
+    const campaignGroupsPromise = listCampaignDesignProjectGroups({
+      orgId: orgId as string,
+      roles: userRoles,
+    }).catch((e) => {
+      console.error("[productivity GET] campaign design projection failed", e)
+      return []
+    })
+    const todayStartEarly = new Date()
+    todayStartEarly.setHours(0, 0, 0, 0)
+    const todayEndEarly = new Date()
+    todayEndEarly.setHours(23, 59, 59, 999)
+    const meetingsPromise = supabase
+      .from("meetings")
+      .select("id, title, scheduled_at, duration_minutes")
+      .gte("scheduled_at", todayStartEarly.toISOString())
+      .lte("scheduled_at", todayEndEarly.toISOString())
+      .order("scheduled_at", { ascending: true })
+
     // ── Onboardings como projetos virtuais ───────────────────────────────
     // Cada onboarding ativo vira um grupo no board com items = tasks da
     // stage atual (filtradas por version atual pra evitar misturar v1+v2).
@@ -454,10 +475,7 @@ async function handleGet(request: NextRequest) {
     // grupo no board, filtrada por funcao × etapa no servidor. Aditivo — nao
     // mexe na projecao de onboarding nem nos grupos legados.
     try {
-      const campaignGroups = await listCampaignDesignProjectGroups({
-        orgId: orgId as string,
-        roles: userRoles,
-      })
+      const campaignGroups = await campaignGroupsPromise
       for (const cg of campaignGroups) {
         groups.push({
           id: cg.id,
@@ -515,18 +533,9 @@ async function handleGet(request: NextRequest) {
       }
     })
 
-    // Today's calendar events from meetings table
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date()
-    todayEnd.setHours(23, 59, 59, 999)
-
-    const { data: meetings } = await supabase
-      .from("meetings")
-      .select("id, title, scheduled_at, duration_minutes")
-      .gte("scheduled_at", todayStart.toISOString())
-      .lte("scheduled_at", todayEnd.toISOString())
-      .order("scheduled_at", { ascending: true })
+    // Today's calendar events from meetings table (query disparada lá em
+    // cima, em paralelo com as projeções de onboarding/campanha)
+    const { data: meetings } = await meetingsPromise
 
     const calendarEvents = (meetings || []).map((m) => ({
       id: m.id,

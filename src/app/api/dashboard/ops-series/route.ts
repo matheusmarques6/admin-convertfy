@@ -37,15 +37,9 @@ export const dynamic = "force-dynamic"
  */
 async function campaignFallback(
   admin: SupabaseClient,
-  orgId: string,
+  storeIds: string[],
   win: DateWindow,
 ): Promise<CampaignDailyRow[]> {
-  const { data: stores } = await admin
-    .from("client_stores")
-    .select("id")
-    .eq("org_id", orgId)
-    .limit(1000)
-  const storeIds = (stores ?? []).map((s) => s.id)
   if (storeIds.length === 0) return []
 
   const cols =
@@ -97,7 +91,19 @@ async function handleGet(request: NextRequest) {
     let source: "daily" | "campaign_fallback" = "daily"
     let fallbackRows = 0
     if (current.length === 0) {
-      const rows = await campaignFallback(admin, orgId, win)
+      // As duas janelas do fallback rodam em PARALELO com uma lista de
+      // lojas compartilhada — em série (lojas + 2 janelas × 2 tabelas) a
+      // rota passava de 4s no ApiTiming quando o cron diário está parado.
+      const { data: stores } = await admin
+        .from("client_stores")
+        .select("id")
+        .eq("org_id", orgId)
+        .limit(1000)
+      const storeIds = (stores ?? []).map((s) => s.id)
+      const [rows, prevRows] = await Promise.all([
+        campaignFallback(admin, storeIds, win),
+        campaignFallback(admin, storeIds, prevWin),
+      ])
       fallbackRows = rows.length
       const fallback = dailyPointsFromCampaignRows(rows, win)
       if (fallback.length > 0) {
@@ -105,7 +111,6 @@ async function handleGet(request: NextRequest) {
         source = "campaign_fallback"
         // Janela anterior na MESMA régua (comparar fonte diária com
         // fonte de campanha distorceria o "vs anterior").
-        const prevRows = await campaignFallback(admin, orgId, prevWin)
         previous = dailyPointsFromCampaignRows(prevRows, prevWin)
       }
     }
