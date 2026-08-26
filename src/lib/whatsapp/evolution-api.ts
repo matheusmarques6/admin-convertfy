@@ -317,6 +317,19 @@ export class EvolutionAPI {
     })
   }
 
+  /**
+   * Foto de perfil de um contato (WhatsApp via QR). Retorna null quando o
+   * contato não tem foto ou a privacidade dele esconde — não é erro.
+   */
+  async fetchProfilePictureUrl(number: string): Promise<string | null> {
+    const json = await this.request<{ profilePictureUrl?: string | null; profilePicUrl?: string | null }>(
+      `/chat/fetchProfilePictureUrl/${this.config.instanceName}`,
+      { method: "POST", json: { number } },
+    )
+    const url = json?.profilePictureUrl ?? json?.profilePicUrl ?? null
+    return typeof url === "string" && url.startsWith("http") ? url : null
+  }
+
   // ── Mensagens ──────────────────────────────────────────────────
 
   async sendText(to: string, text: string, typingDelayMs = 1200): Promise<EvolutionSendResult> {

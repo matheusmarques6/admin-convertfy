@@ -11,6 +11,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
+import { ensureThreadAvatar } from "@/lib/services/crm-contact-avatar.service"
 import { normalizeThreadTags, THREAD_TAG_MAX_LENGTH, THREAD_TAGS_MAX_COUNT } from "@/lib/crm/thread-tags"
 import { logger } from "@/lib/logger"
 
@@ -61,6 +62,17 @@ export async function GET(
       throw new AppError("Conversa não encontrada", 404, "not-found")
     }
     assertThreadInOrg(thread.org_id, orgId)
+
+    // Foto de perfil do contato: webhooks não entregam — busca na
+    // primeira abertura (IG Messaging Profile / Evolution) e persiste.
+    // Só na página inicial (sem cursor) pra não pagar em todo scroll.
+    if (!before && !thread.contact_avatar_url) {
+      const avatarUrl = await ensureThreadAvatar(
+        admin,
+        thread as unknown as Parameters<typeof ensureThreadAvatar>[1],
+      )
+      if (avatarUrl) (thread as Record<string, unknown>).contact_avatar_url = avatarUrl
+    }
 
     let mq = admin
       .from("crm_messages")

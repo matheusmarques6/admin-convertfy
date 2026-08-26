@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import useSWR from "swr"
 import {
   AlertTriangle,
   ArrowDown,
@@ -28,6 +29,7 @@ import {
   ChBadge,
   ChLabel,
   IcoBtn,
+  INBOX_BRAND,
   threadKind,
   windowHoursLeft,
   TNUM,
@@ -274,9 +276,6 @@ export function ChatPanel({
   }
 
   const contactLabel = thread.contact_name || thread.contact_external_id
-  // Thread de comentário: o external_id É "comment:{media_id}" — a
-  // tabela não tem coluna metadata (selecioná-la derrubou o detail).
-  const mediaId = isComment ? thread.contact_external_id.slice("comment:".length) : null
 
   /** Sequências do mesmo autor: rótulo na primeira, meta na última. */
   const runKey = (m: InboxMessage) =>
@@ -365,57 +364,7 @@ export function ChatPanel({
       </div>
 
       {/* Card do post — threads de comentário do Instagram */}
-      {isComment && (
-        <div className="mx-4 mt-3.5 shrink-0 md:mx-[22px]">
-          <div
-            className="flex gap-[13px] rounded-t-[10px] border border-b-0 px-[13px] py-3"
-            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)" }}
-          >
-            <span
-              className="relative h-[64px] w-[64px] shrink-0 overflow-hidden rounded-[8px]"
-              style={{ background: "linear-gradient(45deg, #F58529 0%, #DD2A7B 55%, #8134AF 100%)" }}
-            >
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                <span className="text-[7.5px] font-bold tracking-[0.08em] text-white/85">POST</span>
-              </span>
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col justify-center gap-[3px]">
-              <span
-                className="inline-flex items-center gap-1.5 text-[9.5px] font-[650] uppercase tracking-[0.07em]"
-                style={{ color: "var(--ops-mut)" }}
-              >
-                <ChBadge canal="instagram" size={12} />
-                Post · {thread.channel?.display_name}
-              </span>
-              <span className="truncate text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }}>
-                Comentários agrupados desta publicação
-              </span>
-              {mediaId && (
-                <span className="truncate text-[10.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
-                  mídia {mediaId}
-                </span>
-              )}
-            </span>
-          </div>
-          <div
-            className="flex items-center gap-2 rounded-b-[10px] border px-[13px] py-[7px]"
-            style={{ borderColor: "var(--ops-border)", background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
-          >
-            <span className="text-[10px] font-[650] uppercase tracking-[0.06em]" style={{ color: "var(--ops-sec)" }}>
-              Thread deste post
-            </span>
-            <span className="h-px flex-1" style={{ background: "var(--ops-border)" }} />
-            <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
-              respostas são públicas
-            </span>
-          </div>
-        </div>
-      )}
+      {isComment && <CommentPostCard threadId={thread.id} accountName={thread.channel?.display_name ?? ""} />}
 
       {/* Erro de ação do painel (histórico, reenvio, status) */}
       {panelError && (
@@ -529,5 +478,122 @@ export function ChatPanel({
         />
       )}
     </>
+  )
+}
+
+// ─── Card do post (thread de comentários) ───────────────────────────
+
+interface PostInfoResponse {
+  media_id: string
+  unavailable?: boolean
+  post?: {
+    caption: string | null
+    permalink: string | null
+    thumbnail_url: string | null
+    media_type: string | null
+    like_count: number | null
+    comments_count: number | null
+    timestamp: string | null
+  }
+}
+
+const postFetcher = async (url: string): Promise<PostInfoResponse> => {
+  const res = await fetch(url)
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((body as { error?: string })?.error || `Erro ${res.status}`)
+  return body as PostInfoResponse
+}
+
+/**
+ * Legenda, permalink, thumb e contadores do POST vêm da Graph API pela
+ * rota /post (token do canal). Enquanto carrega — ou quando a Meta não
+ * devolve (post apagado, permissão) — degrada pro card genérico.
+ */
+function CommentPostCard({ threadId, accountName }: { threadId: string; accountName: string }) {
+  const { data } = useSWR<PostInfoResponse>(
+    `/api/crm/inbox/threads/${threadId}/post`,
+    postFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 5 * 60_000, shouldRetryOnError: false },
+  )
+  const post = data?.post
+  const caption = post?.caption?.replace(/\s+/g, " ").trim()
+
+  return (
+    <div className="mx-4 mt-3.5 shrink-0 md:mx-[22px]">
+      <div
+        className="flex gap-[13px] rounded-t-[10px] border border-b-0 px-[13px] py-3"
+        style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)" }}
+      >
+        {post?.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={post.thumbnail_url}
+            alt="Thumb do post"
+            className="h-[76px] w-[76px] shrink-0 rounded-[8px] object-cover"
+            style={{ border: "1px solid var(--ops-border)" }}
+          />
+        ) : (
+          <span
+            className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[8px]"
+            style={{ background: "linear-gradient(45deg, #F58529 0%, #DD2A7B 55%, #8134AF 100%)" }}
+          >
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              <span className="text-[8px] font-bold tracking-[0.08em] text-white/85">
+                {data ? "POST" : "…"}
+              </span>
+            </span>
+          </span>
+        )}
+        <span className="flex min-w-0 flex-1 flex-col justify-center gap-[3px]">
+          <span
+            className="inline-flex items-center gap-1.5 text-[9.5px] font-[650] uppercase tracking-[0.07em]"
+            style={{ color: "var(--ops-mut)" }}
+          >
+            <ChBadge canal="instagram" size={12} />
+            {post?.media_type === "VIDEO" || post?.media_type === "REELS" ? "Reel" : "Post"} · {accountName}
+          </span>
+          <span className="truncate text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }} title={caption || undefined}>
+            {caption || (data?.unavailable ? "Publicação indisponível na Meta" : data ? "Publicação sem legenda" : "Carregando publicação…")}
+          </span>
+          <span className="truncate text-[10.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+            {post?.timestamp
+              ? new Date(post.timestamp).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+              : null}
+            {typeof post?.like_count === "number" && (
+              <> · {post.like_count.toLocaleString("pt-BR")} curtidas</>
+            )}
+            {typeof post?.comments_count === "number" && <> · {post.comments_count} comentários</>}
+          </span>
+          {post?.permalink && (
+            <a
+              href={post.permalink}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-0.5 text-[11px] font-medium"
+              style={{ color: INBOX_BRAND }}
+            >
+              Abrir no Instagram ↗
+            </a>
+          )}
+        </span>
+      </div>
+      <div
+        className="flex items-center gap-2 rounded-b-[10px] border px-[13px] py-[7px]"
+        style={{ borderColor: "var(--ops-border)", background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
+      >
+        <span className="text-[10px] font-[650] uppercase tracking-[0.06em]" style={{ color: "var(--ops-sec)" }}>
+          Thread deste post
+        </span>
+        <span className="h-px flex-1" style={{ background: "var(--ops-border)" }} />
+        <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+          respostas são públicas
+        </span>
+      </div>
+    </div>
   )
 }
