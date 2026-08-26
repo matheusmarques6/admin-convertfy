@@ -232,7 +232,11 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
 
     // ── Ideia do email (F5) — do blueprint (nível email) ────
     EMAIL_OBJETIVO: blueprint?.objective?.trim() ?? "",
-    EMAIL_IDEIA: blueprint?.messaging?.trim() ?? "",
+    // Fase 3 do Estruturador: o fio narrativo (quando existe) é a ideia do
+    // email mais fiel — messaging segue como fallback (gerações sem
+    // Estruturador / rows legadas).
+    EMAIL_IDEIA:
+      (blueprint?.fio_narrativo ?? blueprint?.messaging)?.trim() ?? "",
 
     // Direção fotográfica da variante deste bloco (COMO fotografar).
     // Vazia quando ninguém escreveu — o template omite a seção inteira.

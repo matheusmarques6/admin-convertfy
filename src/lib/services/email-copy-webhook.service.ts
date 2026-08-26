@@ -290,6 +290,9 @@ interface BlueprintRow {
   objective: string | null
   messaging: string | null
   subject_hint: string | null
+  // Fio narrativo do Estruturador (fase 3) — aditivo no payload; null em
+  // gerações sem Estruturador, rows globais e defaults in-code.
+  fio_narrativo?: string | null
 }
 
 interface ReferenceRow {
@@ -768,6 +771,7 @@ export async function dispatchEmailCopyWebhook(
       objective: bp.objective ?? null,
       messaging: bp.messaging ?? null,
       subject_hint: bp.subject_hint ?? null,
+      fio_narrativo: bp.fio_narrativo ?? null,
     })
   }
   // Somente-texto: o blueprint do payload é SEMPRE o global — desfaz o
@@ -1200,6 +1204,9 @@ export async function dispatchEmailCopyWebhook(
                 objective: bpEffective.objective,
                 messaging: bpEffective.messaging,
                 subject_hint: bpEffective.subject_hint,
+                // Aditivo (fase 3 do Estruturador): o fio que liga as
+                // posições — o n8n ignora até consumir.
+                fio_narrativo: bpEffective.fio_narrativo ?? null,
               }
             : null,
           blocks: (options.regenerateAll

@@ -93,6 +93,10 @@ export interface EmailBlueprint {
   // estrutura geral + text_only, e o email vai copy->ready sem imagem/HTML.
   // Opcional: rows de store_email_blueprints passam pelo mesmo cast.
   text_only?: boolean
+  // Fio narrativo do Estruturador (fase 3, modo 'on') — só existe em
+  // store_email_blueprints (migration 20261083). Opcional: rows globais e
+  // legadas passam pelo mesmo cast; consumidores caem no `messaging`.
+  fio_narrativo?: string | null
   // ── Epic AE-Image Niche-Adaptive (story AE-10) ───────────
   // Briefing visual por blueprint (slot E1..E6). Opcional para
   // retrocompat com rows legacy criados antes da migration

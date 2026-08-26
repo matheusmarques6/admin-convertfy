@@ -893,6 +893,8 @@ describe("dispatchEmailCopyWebhook — fallback DEFAULT_BLUEPRINTS no payload", 
       objective: "Agradecer pela compra e reforçar confiança",
       messaging: "Obrigado pela compra, suporte disponível, conteúdo de uso do produto",
       subject_hint: "Obrigado pela compra! Confira dicas exclusivas",
+      // Aditivo da fase 3 do Estruturador — null em defaults in-code.
+      fio_narrativo: null,
     })
     // Sem outline: o objective por email também cai no default in-code.
     expect(email.objective).toBe("Agradecer pela compra e reforçar confiança")

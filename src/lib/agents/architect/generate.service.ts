@@ -27,6 +27,11 @@ import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
 import {
+  estruturaParaPosicoes,
+  type PosicaoEstruturada,
+} from "../estruturador/estruturador-consume"
+import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
+import {
   assembleStoreReference,
   type ReferenceSource,
 } from "./component-assembler.service"
@@ -95,6 +100,37 @@ export async function generateBlueprintAndReference(
     return { referenceSource: "global" }
   }
 
+  // Parâmetros globais do pipeline (aba Configurações). Lidos ANTES do guard
+  // de reuso porque o modo do Estruturador muda a decisão de reusar: em 'on'
+  // a estrutura é regerada a cada geração (decisão 6 do ADR
+  // adr-estruturador-adaptativo) — arquitetura persistida não pode
+  // curto-circuitar a run.
+  const { data: orgRow } = await admin
+    .from("client_stores")
+    .select("org_id")
+    .eq("id", input.storeId)
+    .maybeSingle()
+  const orgId = (orgRow?.org_id as string | undefined) ?? null
+  let maxBlocksPerEmail: number | null = null
+  let defaultModel: string | null = null
+  let blueprintMode: "auto" | "llm" | "deterministic" = "auto"
+  let estruturadorMode: "off" | "shadow" | "on" = "off"
+  if (orgId) {
+    const { data: settingsRow } = await admin
+      .from("email_generation_settings")
+      .select("max_blocks_per_email, default_model, blueprint_mode, estruturador_mode")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    maxBlocksPerEmail =
+      (settingsRow?.max_blocks_per_email as number | undefined) ?? null
+    defaultModel = (settingsRow?.default_model as string | undefined) ?? null
+    const rawMode = settingsRow?.blueprint_mode as string | undefined
+    if (rawMode === "llm" || rawMode === "deterministic") blueprintMode = rawMode
+    const rawEstruturador = settingsRow?.estruturador_mode as string | undefined
+    if (rawEstruturador === "shadow" || rawEstruturador === "on")
+      estruturadorMode = rawEstruturador
+  }
+
   // REUSO: sem `force`, arquitetura já persistida para este loja×flow×email
   // não é regerada. Curador+Montador+Blueprint são o maior custo do pipeline
   // e o consumidor (dispatch/build-vars) lê direto de store_email_references/
@@ -102,7 +138,16 @@ export async function generateBlueprintAndReference(
   // mesmo resultado. Regeração explícita continua via force=true (teste
   // completo / botão Regenerar). Só reusa quando AMBOS existem: reference sem
   // blueprint (ou vice-versa) indica geração anterior incompleta → regera.
-  if (input.force !== true) {
+  // Com Estruturador 'on', o reuso NÃO se aplica: a estrutura é decidida a
+  // cada geração e a arquitetura acompanha (custo aceito no ADR).
+  if (input.force !== true && estruturadorMode === "on") {
+    log.info("architect.reuse_bypassed_estruturador", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+    })
+  }
+  if (input.force !== true && estruturadorMode !== "on") {
     const [refRes, bpRes] = await Promise.all([
       admin
         .from("store_email_references")
@@ -248,35 +293,13 @@ export async function generateBlueprintAndReference(
     })
   }
 
-  // Parâmetros globais do pipeline (aba Configurações): clamp de blocos por
-  // email e modelo default usado como fallback quando o agente não tem
-  // config ativa em email_agent_configs.
-  const orgId = (store.org_id as string | undefined) ?? null
-  let maxBlocksPerEmail: number | null = null
-  let defaultModel: string | null = null
-  let blueprintMode: "auto" | "llm" | "deterministic" = "auto"
-  let estruturadorMode: "off" | "shadow" | "on" = "off"
-  if (orgId) {
-    const { data: settingsRow } = await admin
-      .from("email_generation_settings")
-      .select("max_blocks_per_email, default_model, blueprint_mode, estruturador_mode")
-      .eq("org_id", orgId)
-      .maybeSingle()
-    maxBlocksPerEmail =
-      (settingsRow?.max_blocks_per_email as number | undefined) ?? null
-    defaultModel = (settingsRow?.default_model as string | undefined) ?? null
-    const rawMode = settingsRow?.blueprint_mode as string | undefined
-    if (rawMode === "llm" || rawMode === "deterministic") blueprintMode = rawMode
-    const rawEstruturador = settingsRow?.estruturador_mode as string | undefined
-    if (rawEstruturador === "shadow" || rawEstruturador === "on")
-      estruturadorMode = rawEstruturador
-  }
-
-  // ── Estruturador (fase 2: SHADOW — ADR adr-estruturador-adaptativo) ──
+  // ── Estruturador (ADR adr-estruturador-adaptativo) ──
   // Roda quando o modo não é 'off': decide a estrutura adaptada e grava a
-  // run com o embasamento completo. Na fase 2 o resultado NÃO altera o
-  // pipeline (mesmo em 'on' — o consumo é a fase 3); falha NUNCA derruba a
-  // geração. O outline segue mandando na estrutura abaixo.
+  // run com o embasamento completo. Em 'shadow' o resultado NÃO altera o
+  // pipeline (mede-se a decisão); em 'on' (fase 3) o output validado
+  // SUBSTITUI o outline abaixo. Falha/sem_material NUNCA derruba a geração —
+  // fallback documentado é o outline, com log.
+  let estruturadorOutput: EstruturadorOutput | null = null
   if (estruturadorMode !== "off") {
     try {
       const r = await runEstruturador({
@@ -296,14 +319,29 @@ export async function generateBlueprintAndReference(
         pesquisa,
         topProductNames,
       })
-      if (estruturadorMode === "on" && r.status === "ok") {
-        log.warn("estruturador.on_sem_consumo", {
-          storeId: input.storeId,
-          note: "modo 'on' ainda se comporta como shadow — consumo chega na fase 3",
-        })
+      if (estruturadorMode === "on") {
+        if (r.status === "ok" && r.output && r.output.text_only) {
+          // text_only decidido pelo agente ainda não tem caminho de consumo
+          // (o pipeline text_only é flag GLOBAL de email_blueprints) — v1
+          // registra e segue no outline, sem perder o embasamento da run.
+          log.warn("estruturador.text_only_nao_consumido", {
+            storeId: input.storeId,
+            flowType: input.flowType,
+            emailNumber: input.emailNumber,
+          })
+        } else if (r.status === "ok" && r.output) {
+          estruturadorOutput = r.output
+        } else {
+          log.warn("estruturador.on_fallback_outline", {
+            storeId: input.storeId,
+            flowType: input.flowType,
+            emailNumber: input.emailNumber,
+            status: r.status,
+          })
+        }
       }
     } catch (err) {
-      log.error("estruturador.shadow_failed", {
+      log.error("estruturador.run_failed", {
         storeId: input.storeId,
         flowType: input.flowType,
         emailNumber: input.emailNumber,
@@ -312,9 +350,22 @@ export async function generateBlueprintAndReference(
     }
   }
 
-  // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline
-  // (categoria + rótulo original de cada bloco, na ordem).
-  let structure = resolveStructure(outline)
+  // Passo 1 — Montador: gera o HTML seguindo a estrutura decidida pelo
+  // Estruturador (modo 'on' com run válida) ou, senão, a estrutura geral do
+  // outline (categoria + rótulo original de cada bloco, na ordem).
+  let posicoes: PosicaoEstruturada[] | null = estruturadorOutput
+    ? estruturaParaPosicoes(estruturadorOutput)
+    : null
+  if (posicoes) {
+    log.info("estruturador.consumido", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      sequencia: posicoes.map((p) => p.section),
+    })
+  }
+  let structure: Array<{ section: string; label: string }> =
+    posicoes ?? resolveStructure(outline)
   if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
     log.info("architect.structure_clamped", {
       storeId: input.storeId,
@@ -325,6 +376,10 @@ export async function generateBlueprintAndReference(
     })
     // Apara o MIOLO preservando abertura + footer (não corta a cauda direto).
     structure = clampStructure(structure, maxBlocksPerEmail)
+    // O clamp é genérico: quando a estrutura veio do Estruturador, os papéis
+    // viajam DENTRO dos itens — structure e papéis saem da mesma lista
+    // clampada, sem desalinhamento de índice com o blueprint.
+    if (posicoes) posicoes = structure as PosicaoEstruturada[]
   }
   const { html, source, slots } = await assembleStoreReference({
     storeId: input.storeId,
@@ -343,7 +398,11 @@ export async function generateBlueprintAndReference(
     briefingJson: brandProfile.text,
     topProductNames,
     outlineObjective: outline?.objective ?? "",
-    outlineGuidance: outline?.guidance ?? "",
+    // Com Estruturador consumido, o fio narrativo dele guia o Montador no
+    // lugar da diretriz genérica do outline (os papéis já vão por bloco via
+    // structure.label).
+    outlineGuidance:
+      estruturadorOutput?.fio_narrativo ?? outline?.guidance ?? "",
     outlineToneHint: outline?.tone_hint ?? "",
     referenceTemplateHtml: refTemplateHtml ?? "",
     structure,
@@ -373,6 +432,10 @@ export async function generateBlueprintAndReference(
     defaultModel,
     slots,
     blueprintMode,
+    // Fase 3: papel narrativo por posição sobrescreve o purpose dos blocos
+    // (é como a decisão chega à copy do n8n) e o fio persiste no blueprint.
+    papeisPorPosicao: posicoes ? posicoes.map((p) => p.papel) : null,
+    fioNarrativo: estruturadorOutput?.fio_narrativo ?? null,
   })
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.

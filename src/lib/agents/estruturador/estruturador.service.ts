@@ -8,9 +8,10 @@
  * persistência do embasamento (não há tabela própria).
  *
  * Em shadow o resultado NÃO altera o pipeline: a função devolve o output
- * validado (ou null) e o caller decide o que fazer — na fase 2, nada; na
- * fase 3, o modo 'on' o consumirá como estrutura. Falha aqui NUNCA derruba
- * a geração (try/catch no caller + fallback documentado).
+ * validado (ou null) e o caller decide o que fazer — em 'shadow', nada; em
+ * 'on' (fase 3) o generate.service o consome como estrutura (ver
+ * estruturador-consume.ts). Falha aqui NUNCA derruba a geração (try/catch
+ * no caller + fallback documentado no outline).
  *
  * Telemetria (ocasiões B/C do mapa de dados): input_vars auditável
  * (slugs servidos, vault_commit_sha, capacidade, proibidas, modo),

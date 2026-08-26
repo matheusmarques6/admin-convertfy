@@ -34,6 +34,7 @@ import {
   type MatchResult,
 } from "./deterministic-blueprint.builder"
 import type { AssemblySlot } from "./component-assembler.service"
+import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
 
 const log = logger.child("BlueprintGenerator")
 
@@ -99,6 +100,10 @@ export interface GeneratedBlueprint {
   messaging: string
   subject_hint: string | null
   blocks: GeneratedBlock[]
+  // Fio narrativo do Estruturador (fase 3, modo 'on') — o que liga as
+  // posições. Persistido em coluna própria (migration 20261083); null =
+  // geração sem Estruturador, consumidores caem no `messaging`.
+  fio_narrativo?: string | null
 }
 
 const DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -264,6 +269,12 @@ export interface GenerateBlueprintInput {
   // skeleton existe e a cobertura é 100%, senão LLM; 'llm' força o fallback;
   // 'deterministic' força o builder (testes/rollout).
   blueprintMode?: "auto" | "llm" | "deterministic"
+  // ── Fase 3 do Estruturador (modo 'on') ──
+  // Papel narrativo por posição (mesma ordem/índice da structure que gerou o
+  // reference): sobrescreve o purpose do bloco correspondente nas DUAS rotas
+  // antes do upsert. O fio persiste no blueprint (fio_narrativo).
+  papeisPorPosicao?: string[] | null
+  fioNarrativo?: string | null
 }
 
 export interface GenerateBlueprintResult {
@@ -493,7 +504,7 @@ async function generateDeterministicBlueprint(
     model: "deterministic",
   })
 
-  const blueprint = buildDeterministicBlueprint({
+  let blueprint: GeneratedBlueprint = buildDeterministicBlueprint({
     slots: input.slots ?? [],
     match,
     outline: input.outline,
@@ -534,6 +545,20 @@ async function generateDeterministicBlueprint(
     if (subj.messaging) blueprint.messaging = subj.messaging
   }
 
+  // Fase 3 (Estruturador 'on'): o papel decidido por posição vira a 1ª linha
+  // do purpose (a diretiva da variante vira "Forma") e o fio persiste.
+  // Depois do subject de propósito — o messaging do mini-LLM não pode
+  // apagar a decisão do Estruturador.
+  const consumiuEstruturador =
+    (input.papeisPorPosicao?.length ?? 0) > 0 || !!input.fioNarrativo
+  if (consumiuEstruturador) {
+    blueprint = aplicarEstruturadorNoBlueprint(
+      blueprint,
+      input.papeisPorPosicao ?? [],
+      input.fioNarrativo ?? "",
+    )
+  }
+
   await upsertStoreBlueprint(input, blueprint, "ai", "deterministic")
 
   await finishGenerationRun(runId, {
@@ -559,6 +584,8 @@ async function generateDeterministicBlueprint(
       // skeleton por tags.
       skeleton_used: false,
       blueprint_route: "slots",
+      // Fase 3: papéis do Estruturador aplicados no purpose dos blocos.
+      estruturador_consumido: consumiuEstruturador,
       // Campos cujo example/token não é encontrável no HTML da variante —
       // erro de CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
       schema_anchor_issues: anchorIssues,
@@ -700,6 +727,20 @@ async function generateLlmBlueprint(
   // e as variantes — fields caem na conversão do copy_spec (source=llm).
   blueprint = packageBlueprint(blueprint, null)
 
+  // Fase 3 (Estruturador 'on'): mesmo tratamento da rota A — o papel por
+  // posição sobrescreve o purpose e o fio persiste. Aplica também no
+  // blueprint de fallback (source='manual'): não há upsert, mas o retorno
+  // alimenta o run corrente.
+  const consumiuEstruturador =
+    (input.papeisPorPosicao?.length ?? 0) > 0 || !!input.fioNarrativo
+  if (consumiuEstruturador) {
+    blueprint = aplicarEstruturadorNoBlueprint(
+      blueprint,
+      input.papeisPorPosicao ?? [],
+      input.fioNarrativo ?? "",
+    )
+  }
+
   // Mesma auditoria da rota A — o empacotador é o mesmo, o contrato também.
   const anchorIssues = collectSchemaAnchorIssues(null)
   if (anchorIssues.length > 0) {
@@ -746,6 +787,8 @@ async function generateLlmBlueprint(
       invoke_error: invokeError,
       // Estrutura determinística via tags canônicas do reference.
       skeleton_used: false,
+      // Fase 3: papéis do Estruturador aplicados no purpose dos blocos.
+      estruturador_consumido: consumiuEstruturador,
       // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
@@ -768,21 +811,35 @@ async function upsertStoreBlueprint(
   model: string | null,
 ): Promise<void> {
   const admin = createAdminClient()
-  const { error } = await admin.from("store_email_blueprints").upsert(
-    {
-      store_id: input.storeId,
-      flow_type: input.flowType,
-      email_number: input.emailNumber,
-      objective: blueprint.objective,
-      messaging: blueprint.messaging,
-      subject_hint: blueprint.subject_hint,
-      blocks: blueprint.blocks,
-      source,
-      model,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "store_id,flow_type,email_number" },
-  )
+  const row = {
+    store_id: input.storeId,
+    flow_type: input.flowType,
+    email_number: input.emailNumber,
+    objective: blueprint.objective,
+    messaging: blueprint.messaging,
+    subject_hint: blueprint.subject_hint,
+    blocks: blueprint.blocks,
+    fio_narrativo: blueprint.fio_narrativo ?? null,
+    source,
+    model,
+    updated_at: new Date().toISOString(),
+  }
+  let { error } = await admin
+    .from("store_email_blueprints")
+    .upsert(row, { onConflict: "store_id,flow_type,email_number" })
+  // Migration 20261083 ainda não aplicada → retry sem a coluna (padrão da
+  // casa: a geração nunca quebra por schema atrasado; o fio só não persiste).
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    log.warn("blueprint.fio_narrativo_column_missing", {
+      storeId: input.storeId,
+      error: error.message,
+    })
+    const { fio_narrativo: _omitido, ...semFio } = row
+    void _omitido
+    ;({ error } = await admin
+      .from("store_email_blueprints")
+      .upsert(semFio, { onConflict: "store_id,flow_type,email_number" }))
+  }
   if (error) {
     log.error("blueprint.upsert_failed", {
       storeId: input.storeId,

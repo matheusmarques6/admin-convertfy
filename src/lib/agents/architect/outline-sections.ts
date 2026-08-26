@@ -100,10 +100,10 @@ export function resolveSections(
  * MIOLO. Cortar a cauda direto (slice(0,max)) removeria o footer e o CTA/oferta
  * finais — regressão legal e de conversão.
  */
-export function clampStructure(
-  structure: OutlineSection[],
+export function clampStructure<T extends { section: string }>(
+  structure: T[],
   max: number,
-): OutlineSection[] {
+): T[] {
   if (!Number.isFinite(max) || max < 1 || structure.length <= max) {
     return structure
   }
