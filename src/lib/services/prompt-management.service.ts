@@ -153,6 +153,7 @@ export async function listPrompts(opts: {
     : enriched
 
   const by_type: Record<AgentType, PromptListGroup> = {
+    estruturador: { active: null, history: [] },
     copy: { active: null, history: [] },
     image: { active: null, history: [] },
     html: { active: null, history: [] },

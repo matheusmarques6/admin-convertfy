@@ -29,6 +29,9 @@ const patchSchema = z.object({
   // relatório do copy_merge acusa algo; always = toda geração; off = fila
   // mecânica (kill-switch sem deploy).
   merge_verifier_mode: z.enum(["always", "on_flag", "off"]).optional(),
+  // Estruturador (fase 2): off = nem roda; shadow = roda e grava o
+  // embasamento sem alterar o pipeline; on = consumo (fase 3).
+  estruturador_mode: z.enum(["off", "shadow", "on"]).optional(),
 })
 
 export async function GET(request: NextRequest) {

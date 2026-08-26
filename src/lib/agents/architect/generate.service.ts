@@ -25,6 +25,7 @@ import { loadGlobalReferenceTemplate } from "../reference-template"
 import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service"
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
+import { runEstruturador } from "../estruturador/estruturador.service"
 import {
   assembleStoreReference,
   type ReferenceSource,
@@ -254,10 +255,11 @@ export async function generateBlueprintAndReference(
   let maxBlocksPerEmail: number | null = null
   let defaultModel: string | null = null
   let blueprintMode: "auto" | "llm" | "deterministic" = "auto"
+  let estruturadorMode: "off" | "shadow" | "on" = "off"
   if (orgId) {
     const { data: settingsRow } = await admin
       .from("email_generation_settings")
-      .select("max_blocks_per_email, default_model, blueprint_mode")
+      .select("max_blocks_per_email, default_model, blueprint_mode, estruturador_mode")
       .eq("org_id", orgId)
       .maybeSingle()
     maxBlocksPerEmail =
@@ -265,6 +267,49 @@ export async function generateBlueprintAndReference(
     defaultModel = (settingsRow?.default_model as string | undefined) ?? null
     const rawMode = settingsRow?.blueprint_mode as string | undefined
     if (rawMode === "llm" || rawMode === "deterministic") blueprintMode = rawMode
+    const rawEstruturador = settingsRow?.estruturador_mode as string | undefined
+    if (rawEstruturador === "shadow" || rawEstruturador === "on")
+      estruturadorMode = rawEstruturador
+  }
+
+  // ── Estruturador (fase 2: SHADOW — ADR adr-estruturador-adaptativo) ──
+  // Roda quando o modo não é 'off': decide a estrutura adaptada e grava a
+  // run com o embasamento completo. Na fase 2 o resultado NÃO altera o
+  // pipeline (mesmo em 'on' — o consumo é a fase 3); falha NUNCA derruba a
+  // geração. O outline segue mandando na estrutura abaixo.
+  if (estruturadorMode !== "off") {
+    try {
+      const r = await runEstruturador({
+        storeId: input.storeId,
+        flowId,
+        emailId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        batchId: input.batchId,
+        triggeredBy: input.triggeredBy,
+        mode: estruturadorMode,
+        brandName,
+        nicho,
+        posicionamento,
+        tomVoz,
+        persona,
+        pesquisa,
+        topProductNames,
+      })
+      if (estruturadorMode === "on" && r.status === "ok") {
+        log.warn("estruturador.on_sem_consumo", {
+          storeId: input.storeId,
+          note: "modo 'on' ainda se comporta como shadow — consumo chega na fase 3",
+        })
+      }
+    } catch (err) {
+      log.error("estruturador.shadow_failed", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura geral do outline

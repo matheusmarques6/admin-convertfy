@@ -24,6 +24,25 @@ import {
 // Lista mantida em sincronia com `email-generation.service.ts::buildAllVars`.
 // Edits aqui são lightweight (somente sidebar informativa + validador).
 const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string }>> = {
+  estruturador: [
+    { key: "intencao_flow", desc: "Intenção do flow (vault, system)" },
+    { key: "progressao", desc: "Progressão observada (vault, system)" },
+    { key: "referencias", desc: "Estruturas validadas embrulhadas por slug (system)" },
+    { key: "aprendizados", desc: "Aprendizados embrulhados por slug (system)" },
+    { key: "brand_name", desc: "Nome da loja" },
+    { key: "nicho", desc: "Nicho (ou marcador de ausência)" },
+    { key: "posicionamento", desc: "Posicionamento" },
+    { key: "tom_voz", desc: "Tom de voz" },
+    { key: "persona", desc: "Persona (texto)" },
+    { key: "produtos_count", desc: "Quantos produtos a loja tem" },
+    { key: "top_products", desc: "Top produtos (nomes)" },
+    { key: "pesquisa", desc: "Pesquisa & Diagnóstico serializada" },
+    { key: "flow_type", desc: "Flow do email" },
+    { key: "email_number", desc: "Número do email no flow" },
+    { key: "intencao_email", desc: "Intenção deste email (vault)" },
+    { key: "capacidade_biblioteca", desc: "Categorias construíveis + produtos" },
+    { key: "estruturas_proibidas", desc: "Sequências recentes proibidas" },
+  ],
   copy: [
     { key: "brand_name", desc: "Nome da loja/marca" },
     { key: "nicho", desc: "Nicho do negócio" },

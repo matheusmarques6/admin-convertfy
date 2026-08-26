@@ -32,6 +32,7 @@ import { PromptEditor } from "@/components/agents/prompt-editor"
 import { PromptHistory } from "@/components/agents/prompt-history"
 
 const AGENT_LABELS: Record<AgentType, string> = {
+  estruturador: "Estruturador",
   copy: "Copy",
   image: "Imagens",
   html: "HTML (legado)",
@@ -54,6 +55,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
+  estruturador: Bot,
   copy: Bot,
   image: ImageIcon,
   html: Code2,

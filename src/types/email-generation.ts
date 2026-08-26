@@ -119,6 +119,10 @@ export interface StoreImageOverrides {
 }
 
 export type AgentType =
+  // estruturador: decide o esqueleto do email adaptando o vault de
+  // conhecimento à loja (fase 1, antes do Curador — ADR
+  // adr-estruturador-adaptativo). Fase 2: shadow.
+  | "estruturador"
   | "copy"
   | "image"
   | "html"
@@ -280,6 +284,7 @@ export interface EmailGenerationSettings {
 
 export type GenerationRunStatus = "running" | "success" | "error" | "skipped"
 export type GenerationRunAgent =
+  | "estruturador"
   | "seed"
   | "copy"
   | "image"
