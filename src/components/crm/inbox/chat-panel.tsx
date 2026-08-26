@@ -1,55 +1,79 @@
 "use client"
 
 /**
- * Painel da conversa: identidade do contato + contexto de CRM, barra da
- * janela de 24h, mensagens agrupadas por dia com autoria, e composer.
+ * Painel da conversa — design v3: header com identidade + chip da
+ * janela de 24h + atribuir/resolver, card do post nas threads de
+ * comentário, mensagens agrupadas por dia E por sequência de autor
+ * (meta só na última da sequência), composer novo.
  *
- * Regras de erro (o que mais faltava aqui): toda ação que fala com o
- * servidor — trocar status, carregar histórico, reenviar — precisa
- * mostrar o que deu errado. Antes, um PATCH falhando deixava o select
- * mostrando o valor novo até o refresh silenciosamente devolver o
- * antigo, e um `loadMore` com erro sumia com o botão como se o
- * histórico tivesse acabado.
+ * Contexto de CRM/tags/status migrou pro ContextPanel (coluna direita);
+ * este componente segue dono das ações de envio e do histórico.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ArrowDown, ArrowLeft, ChevronUp, Loader2, X } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowLeft,
+  Check,
+  ChevronUp,
+  Loader2,
+  PanelRight,
+  X,
+} from "lucide-react"
 import { groupMessagesByDay, shouldShowAuthor } from "@/lib/services/crm-inbox-format"
 import type { InboxMessage, ThreadDetail } from "@/types/crm-inbox"
+import {
+  AvatarWithChannel,
+  ChBadge,
+  ChLabel,
+  IcoBtn,
+  threadKind,
+  windowHoursLeft,
+  TNUM,
+} from "./inbox-theme"
 import { AssignDropdown } from "./assign-dropdown"
 import { Composer } from "./composer"
-import { ContactContext } from "./contact-context"
 import { MessageBubble } from "./message-bubble"
-import { ServiceWindowBar, windowIsOpen } from "./service-window-bar"
+import { windowIsOpen } from "./service-window-bar"
 import { TemplatePickerModal } from "./template-picker-modal"
-import { ThreadTags } from "./thread-tags"
 
 interface ChatPanelProps {
   detail: ThreadDetail
   onBack: () => void
   onRefresh: () => Promise<unknown> | void
   onThreadsRefresh: () => void
+  /** Largura do container do inbox (px) — condicionais do header. */
+  containerWidth?: number
+  /** Painel de contexto: coluna fixa (wide) ou overlay (toggle).
+   *  Defaults cobrem o uso embutido (whatsapp-chat-popup), que não tem
+   *  painel de contexto. */
+  contextIsColumn?: boolean
+  contextOpen?: boolean
+  onToggleContext?: () => void
 }
 
-/** Iniciais do contato para o avatar sem foto. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "?"
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatPanelProps) {
+export function ChatPanel({
+  detail,
+  onBack,
+  onRefresh,
+  onThreadsRefresh,
+  containerWidth = 0,
+  contextIsColumn = true,
+  contextOpen = false,
+  onToggleContext,
+}: ChatPanelProps) {
   const thread = detail.thread
   const isWhatsApp = thread.channel?.type === "whatsapp"
   const isInstagram = thread.channel?.type === "instagram"
   const isEvolution = thread.channel?.provider === "evolution"
+  const isComment = threadKind(thread) === "comment"
   // Janela de 24h: WhatsApp OFICIAL (Cloud) e Instagram têm; Evolution
-  // (Baileys) é free-form sempre. O Instagram ficava sem NENHUM aviso —
-  // a Meta rejeitava o envio e o atendente não sabia por quê.
+  // (Baileys) é free-form sempre.
   const isCloudWhatsApp = isWhatsApp && !isEvolution
-  const hasServiceWindow = isCloudWhatsApp || isInstagram
+  const hasServiceWindow = (isCloudWhatsApp || isInstagram) && !isComment
   const windowOpen = windowIsOpen(thread.is_window_open, thread.window_expires_at)
+  const hoursLeft = windowHoursLeft(thread.window_expires_at)
 
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [olderMessages, setOlderMessages] = useState<InboxMessage[]>([])
@@ -89,8 +113,7 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
   }, [])
 
   // Auto-scroll: instantâneo na troca de thread, smooth em mensagem nova
-  // (só se o usuário já estava no fim — não interrompe leitura de
-  // histórico; nesse caso avisa com o botão "novas mensagens").
+  // (só se o usuário já estava no fim).
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
@@ -138,8 +161,7 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
       const older = page.filter((m) => !allMessages.some((a) => a.id === m.id))
       setOlderMessages((prev) => [...older, ...prev])
       setHasMore(page.length >= 100)
-      // Prepend empurra o conteúdo pra baixo — sem compensar, o leitor
-      // é teleportado pra outro ponto da conversa a cada clique.
+      // Prepend empurra o conteúdo pra baixo — compensa o scroll.
       requestAnimationFrame(() => {
         const c = messagesContainerRef.current
         if (c) c.scrollTop = prevTop + (c.scrollHeight - prevHeight)
@@ -161,8 +183,8 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      // A rota agora devolve 502 quando o provedor recusa — o texto
-      // volta pro composer e o erro aparece, em vez de sumir.
+      // A rota devolve 502 quando o provedor recusa — o texto volta pro
+      // composer e o erro aparece, em vez de sumir.
       await onRefresh()
       onThreadsRefresh()
       throw new Error(data.error || "Falha no envio")
@@ -181,8 +203,7 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
       body: form,
     })
     if (!res.ok) {
-      // 413 vem da PLATAFORMA (limite de body da Vercel ~4,5MB) — o JSON
-      // de erro nem existe nesse caso.
+      // 413 vem da PLATAFORMA (limite de body da Vercel ~4,5MB).
       if (res.status === 413) {
         throw new Error("Arquivo grande demais para enviar (limite ~4,5 MB). Comprima ou envie um arquivo menor.")
       }
@@ -214,11 +235,7 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
     onThreadsRefresh()
   }
 
-  /**
-   * Reenvio: só texto tem como ser refeito pelo servidor (a mídia
-   * original não fica guardada). Antes o botão aparecia em qualquer
-   * mensagem falha e o clique em mídia simplesmente não fazia nada.
-   */
+  /** Reenvio: só texto tem como ser refeito pelo servidor. */
   const retryMessage = async (m: InboxMessage) => {
     setPanelError(null)
     if (m.content_type !== "text" || !m.body) {
@@ -232,14 +249,15 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
     }
   }
 
-  const handleStatusChange = async (newStatus: string) => {
+  const isResolved = thread.status === "resolved"
+  const toggleResolved = async () => {
     setSavingStatus(true)
     setPanelError(null)
     try {
       const res = await fetch(`/api/crm/inbox/threads/${thread.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: isResolved ? "open" : "resolved" }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -256,134 +274,152 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
   }
 
   const contactLabel = thread.contact_name || thread.contact_external_id
+  const mediaId = (thread.metadata as { media_id?: string } | null)?.media_id
+
+  /** Sequências do mesmo autor: rótulo na primeira, meta na última. */
+  const runKey = (m: InboxMessage) =>
+    `${m.direction}|${m.sender_username ?? ""}|${m.sender?.id ?? m.sent_by_kind ?? ""}`
 
   return (
     <>
-      {/* Header — no mobile as ações (tags/atribuir/status) caem numa
-          segunda linha rolável; no desktop (md) tudo numa linha só. */}
+      {/* Header */}
       <div
-        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2 md:flex-nowrap"
-        style={{
-          minHeight: "var(--crm-topbar-height)",
-          borderColor: "var(--crm-gray-200)",
-          background: "var(--crm-gray-0)",
-        }}
+        className="box-border flex min-h-[56px] shrink-0 items-center gap-[11px] border-b px-3 py-2.5 md:px-[18px]"
+        style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)" }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <button
-            onClick={onBack}
-            className="md:hidden flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px]"
-            style={{ color: "var(--crm-gray-600)", background: "var(--crm-gray-100)" }}
-            aria-label="Voltar para lista de conversas"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+        <button
+          onClick={onBack}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[7px] md:hidden"
+          style={{ color: "var(--ops-sec)", background: "var(--ops-hover, rgba(0,0,0,0.05))" }}
+          aria-label="Voltar para lista de conversas"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
 
-          {/* Avatar do contato — a API já devolvia a foto e a tela
-              mostrava um ícone de telefone genérico. */}
-          {thread.contact_avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={thread.contact_avatar_url}
-              alt=""
-              className="h-8 w-8 shrink-0 rounded-full object-cover"
-              style={{ border: "1px solid var(--crm-gray-200)" }}
-            />
-          ) : (
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-              style={{
-                background: "var(--crm-gray-100)",
-                color: "var(--crm-gray-600)",
-                fontSize: "var(--crm-text-xs)",
-                fontWeight: 600,
-              }}
-              aria-hidden
-            >
-              {initials(contactLabel)}
-            </span>
-          )}
+        <AvatarWithChannel
+          name={contactLabel}
+          avatarUrl={thread.contact_avatar_url}
+          canal={thread.channel?.type ?? "whatsapp"}
+          size={34}
+          badge={14}
+        />
 
-          <div className="flex min-w-0 flex-col justify-center">
-            <span
-              className="truncate"
-              style={{
-                fontSize: "var(--crm-text-md)",
-                fontWeight: "var(--crm-weight-medium)" as React.CSSProperties["fontWeight"],
-                color: "var(--crm-gray-900)",
-                lineHeight: 1.2,
-              }}
-            >
-              {contactLabel}
-            </span>
-            <span
-              className="truncate"
-              style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)", lineHeight: 1.3 }}
-            >
-              {thread.contact_name ? `${thread.contact_external_id} · ` : ""}
-              {thread.channel?.display_name ?? ""}
-              {isWhatsApp ? (isEvolution ? " · WhatsApp (QR)" : " · WhatsApp Oficial") : ""}
-              {isInstagram ? " · Instagram" : ""}
-            </span>
+        <div className="min-w-[110px] flex-auto overflow-hidden">
+          <div className="truncate text-[13px] font-[650]" style={{ color: "var(--ops-title)" }}>
+            {contactLabel}
+          </div>
+          <div className="mt-px flex items-center gap-1.5 overflow-hidden whitespace-nowrap">
+            <ChLabel thread={thread} />
+            {containerWidth >= 1000 && (
+              <span className="truncate text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                · via {thread.channel?.display_name}
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="flex w-full items-center justify-end gap-2 overflow-x-auto scrollbar-hide md:w-auto">
-          <ThreadTags
-            threadId={thread.id}
-            tags={thread.tags ?? []}
-            onChanged={() => {
-              onRefresh()
-              onThreadsRefresh()
+        {/* Chip da janela de 24h */}
+        {hasServiceWindow && windowOpen && hoursLeft != null && hoursLeft > 0 && containerWidth >= 860 && (
+          <span
+            title="Janela de atendimento — 24h desde a última mensagem do contato"
+            className="inline-flex h-[26px] items-center gap-1.5 rounded-[6px] border px-2.5 text-[10.5px] font-medium"
+            style={{
+              borderColor: "var(--ops-border)",
+              color: hoursLeft < 4 ? "var(--ops-warn)" : "var(--ops-sec)",
+              ...TNUM,
             }}
-          />
-          <AssignDropdown
-            threadId={thread.id}
-            assignedTo={thread.assigned_to}
-            onAssigned={() => {
-              onRefresh()
-              onThreadsRefresh()
-            }}
-          />
-          <select
-            value={thread.status}
-            disabled={savingStatus}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className="crm-input"
-            style={{ height: "var(--crm-button-height-sm)", opacity: savingStatus ? 0.6 : 1 }}
-            aria-label="Status da conversa"
           >
-            <option value="open">Aberto</option>
-            <option value="pending">Pendente</option>
-            <option value="resolved">Resolvido</option>
-            <option value="archived">Arquivado</option>
-          </select>
-        </div>
+            <span
+              className="h-[5px] w-[5px] rounded-full"
+              style={{ background: hoursLeft < 4 ? "var(--ops-warn)" : "var(--ops-pos)" }}
+            />
+            janela · {Math.floor(hoursLeft)}h{String(Math.round((hoursLeft % 1) * 60)).padStart(2, "0")}
+          </span>
+        )}
+
+        <AssignDropdown
+          threadId={thread.id}
+          assignedTo={thread.assigned_to}
+          onAssigned={() => {
+            onRefresh()
+            onThreadsRefresh()
+          }}
+          compact={containerWidth < 1100}
+        />
+        <IcoBtn
+          title={isResolved ? "Reabrir conversa" : "Marcar como resolvida"}
+          on={isResolved}
+          disabled={savingStatus}
+          onClick={toggleResolved}
+          label={containerWidth >= 920 ? (isResolved ? "Reabrir" : "Resolver") : null}
+        >
+          <Check className="h-[13px] w-[13px]" />
+        </IcoBtn>
+        {!contextIsColumn && (
+          <IcoBtn title="Detalhes do contato" on={contextOpen} onClick={onToggleContext}>
+            <PanelRight className="h-3.5 w-3.5" />
+          </IcoBtn>
+        )}
       </div>
 
-      {/* Quem é essa pessoa no CRM (negócio / cliente / lead) */}
-      <ContactContext thread={thread} />
-
-      {/* Janela de 24h — WhatsApp oficial e Instagram (Evolution não tem) */}
-      {hasServiceWindow && (
-        <ServiceWindowBar
-          isWindowOpen={thread.is_window_open}
-          windowExpiresAt={thread.window_expires_at}
-          onOpenTemplates={isCloudWhatsApp ? () => setTemplatesOpen(true) : undefined}
-          channelLabel={isInstagram ? "Instagram" : "WhatsApp"}
-        />
+      {/* Card do post — threads de comentário do Instagram */}
+      {isComment && (
+        <div className="mx-4 mt-3.5 shrink-0 md:mx-[22px]">
+          <div
+            className="flex gap-[13px] rounded-t-[10px] border border-b-0 px-[13px] py-3"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)" }}
+          >
+            <span
+              className="relative h-[64px] w-[64px] shrink-0 overflow-hidden rounded-[8px]"
+              style={{ background: "linear-gradient(45deg, #F58529 0%, #DD2A7B 55%, #8134AF 100%)" }}
+            >
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <span className="text-[7.5px] font-bold tracking-[0.08em] text-white/85">POST</span>
+              </span>
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col justify-center gap-[3px]">
+              <span
+                className="inline-flex items-center gap-1.5 text-[9.5px] font-[650] uppercase tracking-[0.07em]"
+                style={{ color: "var(--ops-mut)" }}
+              >
+                <ChBadge canal="instagram" size={12} />
+                Post · {thread.channel?.display_name}
+              </span>
+              <span className="truncate text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }}>
+                Comentários agrupados desta publicação
+              </span>
+              {mediaId && (
+                <span className="truncate text-[10.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+                  mídia {mediaId}
+                </span>
+              )}
+            </span>
+          </div>
+          <div
+            className="flex items-center gap-2 rounded-b-[10px] border px-[13px] py-[7px]"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
+          >
+            <span className="text-[10px] font-[650] uppercase tracking-[0.06em]" style={{ color: "var(--ops-sec)" }}>
+              Thread deste post
+            </span>
+            <span className="h-px flex-1" style={{ background: "var(--ops-border)" }} />
+            <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+              respostas são públicas
+            </span>
+          </div>
+        </div>
       )}
 
-      {/* Erro de ação do painel (status, histórico, reenvio) */}
+      {/* Erro de ação do painel (histórico, reenvio, status) */}
       {panelError && (
         <div
-          className="flex items-start gap-2 border-b px-4 py-2"
-          style={{
-            borderColor: "var(--crm-neg-border)",
-            background: "var(--crm-neg-bg)",
-            color: "var(--crm-neg)",
-            fontSize: "var(--crm-text-xs)",
-          }}
+          className="flex items-start gap-2 border-b px-4 py-2 text-[11px]"
+          style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }}
           role="alert"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -399,24 +435,16 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
         <div
           ref={messagesContainerRef}
           onScroll={handleMessagesScroll}
-          className="flex-1 overflow-auto px-4 py-4"
-          style={{ background: "var(--crm-gray-50)" }}
+          className="flex-1 overflow-auto px-4 py-[18px] md:px-[22px]"
+          style={{ background: "var(--ops-page)" }}
         >
           {hasMore && allMessages.length > 0 && (
             <div className="flex justify-center pb-3">
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="flex items-center gap-1.5"
-                style={{
-                  fontSize: "var(--crm-text-xs)",
-                  color: "var(--crm-gray-600)",
-                  background: "var(--crm-gray-0)",
-                  border: "1px solid var(--crm-gray-200)",
-                  borderRadius: "var(--crm-radius-full)",
-                  padding: "4px 12px",
-                  cursor: "pointer",
-                }}
+                className="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]"
+                style={{ borderColor: "var(--ops-border)", color: "var(--ops-sec)", background: "var(--ops-card)" }}
               >
                 {loadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronUp className="h-3 w-3" />}
                 Carregar anteriores
@@ -425,45 +453,40 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
           )}
 
           {allMessages.length === 0 ? (
-            <div
-              className="py-12 text-center"
-              style={{ fontSize: "var(--crm-text-sm)", color: "var(--crm-gray-500)" }}
-            >
+            <div className="py-12 text-center text-[12.5px]" style={{ color: "var(--ops-sec)" }}>
               Nenhuma mensagem ainda.
             </div>
           ) : (
             dayGroups.map((group) => (
-              <section key={group.key} className="space-y-3 pb-3">
-                {/* Separador de dia — sem isso a conversa é uma parede
-                    de bolhas com só HH:MM em cada uma. */}
+              <section key={group.key} className="pb-2">
                 {group.label && (
                   <div className="sticky top-0 z-10 flex justify-center py-1">
                     <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        letterSpacing: "0.03em",
-                        textTransform: "uppercase",
-                        color: "var(--crm-gray-600)",
-                        background: "var(--crm-gray-0)",
-                        border: "1px solid var(--crm-gray-200)",
-                        borderRadius: "var(--crm-radius-full)",
-                        padding: "2px 10px",
-                      }}
+                      className="text-[9.5px] font-semibold uppercase tracking-[0.04em]"
+                      style={{ color: "var(--ops-mut)" }}
                     >
                       {group.label}
                     </span>
                   </div>
                 )}
-                {group.messages.map((m, i) => (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    threadId={thread.id}
-                    onRetry={retryMessage}
-                    showAuthor={shouldShowAuthor(m, group.messages[i - 1])}
-                  />
-                ))}
+                {group.messages.map((m, i) => {
+                  const prev = group.messages[i - 1]
+                  const next = group.messages[i + 1]
+                  const firstOfRun = !prev || runKey(prev) !== runKey(m)
+                  const lastOfRun = !next || runKey(next) !== runKey(m)
+                  return (
+                    <div key={m.id} className={firstOfRun ? "mt-2.5" : "mt-0.5"}>
+                      <MessageBubble
+                        message={m}
+                        threadId={thread.id}
+                        onRetry={retryMessage}
+                        showAuthor={firstOfRun && (shouldShowAuthor(m, prev) || Boolean(m.sender_username))}
+                        showMeta={lastOfRun}
+                        isComment={isComment}
+                      />
+                    </div>
+                  )
+                })}
               </section>
             ))
           )}
@@ -474,15 +497,8 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
         {hasNewBelow && (
           <button
             onClick={() => scrollToBottom()}
-            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 shadow-sm"
-            style={{
-              fontSize: "var(--crm-text-xs)",
-              fontWeight: 500,
-              color: "var(--crm-gray-0)",
-              background: "var(--crm-gray-900)",
-              borderRadius: "var(--crm-radius-full)",
-              padding: "5px 12px",
-            }}
+            className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3 py-[5px] text-[11px] font-medium shadow-sm"
+            style={{ background: "var(--ops-title)", color: "var(--ops-page)" }}
           >
             <ArrowDown className="h-3 w-3" />
             Novas mensagens
@@ -490,13 +506,13 @@ export function ChatPanel({ detail, onBack, onRefresh, onThreadsRefresh }: ChatP
         )}
       </div>
 
-      {/* Composer — evolution mantém anexo/áudio, mas nunca bloqueia por
-          janela e não oferece template (exclusivos do cloud oficial) */}
+      {/* Composer */}
       <Composer
         disabled={false}
         windowClosed={hasServiceWindow && !windowOpen}
         isWhatsApp={Boolean(isWhatsApp)}
         supportsTemplates={Boolean(isCloudWhatsApp)}
+        isComment={isComment}
         onSendText={sendText}
         onSendMedia={sendMedia}
         onOpenTemplates={() => setTemplatesOpen(true)}

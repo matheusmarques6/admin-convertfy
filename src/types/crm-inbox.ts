@@ -25,6 +25,8 @@ export interface ThreadSummary {
 export interface InboxMessage {
   id: string
   external_id?: string | null
+  /** Autor do comentário do Instagram ("@usuario") — metadata->>sender_username. */
+  sender_username?: string | null
   direction: "inbound" | "outbound"
   content_type: string
   body: string | null
@@ -58,6 +60,8 @@ export interface ThreadDetail {
     is_window_open?: boolean | null
     window_expires_at?: string | null
     tags?: string[]
+    /** {kind:"comments", media_id} nas threads de comentário do Instagram. */
+    metadata?: Record<string, unknown> | null
     channel?: { id: string; type: string; provider?: string | null; display_name: string }
     assignee?: { id: string; name: string; avatar_url: string | null } | null
     // Vínculos com o resto do CRM: a API sempre devolveu e a tela nunca

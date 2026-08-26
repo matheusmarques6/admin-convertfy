@@ -39,7 +39,7 @@ export async function GET(
         id, org_id, status, contact_name, contact_external_id, contact_avatar_url,
         last_message_at, last_message_preview, last_message_direction, unread_count, tags,
         assigned_to, lead_id, deal_id, client_id, contact_id, channel_id,
-        is_window_open, window_expires_at,
+        is_window_open, window_expires_at, metadata,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url, email),
         channel:crm_channels (id, type, provider, display_name, external_id),
@@ -62,6 +62,7 @@ export async function GET(
         media_storage_path, media_filename, media_size,
         sent_by, sent_by_kind, status, status_updated_at, error_code, error_message,
         created_at,
+        sender_username:metadata->>sender_username,
         sender:profiles!crm_messages_sent_by_fkey (id, name, avatar_url)
       `)
       .eq("thread_id", id)
