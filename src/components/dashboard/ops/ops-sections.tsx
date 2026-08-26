@@ -27,14 +27,24 @@ async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url)
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new Error(
+    const err = new Error(
       (body && typeof body.error === "string" && body.error) || `Erro ${res.status}`,
-    )
+    ) as Error & { status?: number }
+    err.status = res.status
+    throw err
   }
   return body as T
 }
 
-const SWR_OPTS = { revalidateOnFocus: false, dedupingInterval: 30_000 }
+const SWR_OPTS = {
+  revalidateOnFocus: false,
+  dedupingInterval: 30_000,
+  // 401 = sessão expirada — re-tentar vira storm de requests (o retry
+  // default do SWR martelava kpi-series/flows/email-perf a cada ~10s
+  // numa aba esquecida aberta).
+  shouldRetryOnError: (err: unknown) =>
+    (err as { status?: number } | null)?.status !== 401,
+}
 
 // ── Shapes ──────────────────────────────────────────────────────────
 
