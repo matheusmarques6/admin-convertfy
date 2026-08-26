@@ -31,6 +31,8 @@ export interface WorkspaceMeta {
   initials: string
   /** Cor de acento (CSS var) — define brand do workspace */
   color: string
+  /** Acento legivel sobre fundo escuro (modo dark do shell) */
+  colorDark: string
   /** Variante mais clara (background sutil em hovers/selected) */
   colorBg: string
   /** Border do badge */
@@ -49,6 +51,7 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
     description: "Vendas e prospeccao",
     initials: "CM",
     color: "#2563EB",
+    colorDark: "#7C90F2",
     colorBg: "rgba(37, 99, 235, 0.08)",
     colorBorder: "rgba(37, 99, 235, 0.25)",
     colorFg: "#FFFFFF",
@@ -60,9 +63,11 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
     label: "Operacional",
     description: "Customer Success e operacoes",
     initials: "OP",
-    color: "#047857",
-    colorBg: "rgba(4, 120, 87, 0.08)",
-    colorBorder: "rgba(4, 120, 87, 0.25)",
+    // Grafite-escuro (design ago/2026) — alinhado ao brand preto do CRM.
+    color: "#1F2937",
+    colorDark: "#AEB8CF",
+    colorBg: "rgba(31, 41, 55, 0.08)",
+    colorBorder: "rgba(31, 41, 55, 0.25)",
     colorFg: "#FFFFFF",
     homeHref: "/admin/operacional/dashboard",
     icon: HeartHandshake,
@@ -70,12 +75,12 @@ export const WORKSPACES: Record<WorkspaceKey, WorkspaceMeta> = {
   geral: {
     key: "geral",
     label: "Geral",
-    description: "Produtividade, financeiro, configs",
+    description: "Produtividade e financeiro",
     initials: "GR",
-    // Cinza grafite — visivel sobre fundo preto da sidebar.
-    // O brand do CRM continua sendo #1F1F1F (em crm-tokens.css); aqui
-    // usamos um cinza neutro pra dar identidade ao workspace sem sumir.
+    // Cinza neutro pra dar identidade ao workspace sem competir com os
+    // acentos de trabalho (comercial azul, operacional grafite).
     color: "#71717A",
+    colorDark: "#B0B6C9",
     colorBg: "rgba(113, 113, 122, 0.10)",
     colorBorder: "rgba(113, 113, 122, 0.30)",
     colorFg: "#FFFFFF",
@@ -100,6 +105,9 @@ const OPERACIONAL_PREFIXES = [
   "/admin/campaigns",
   "/admin/insights",
   "/admin/list-hygiene",
+  // Geracao de Imagens: o item mora no nav Operacional (Marketing) — sem
+  // este prefixo, entrar pela URL trocava a sidebar pro Geral (Onda 1).
+  "/admin/imagens",
 ]
 
 // Rotas que NAO pertencem a workspace nenhum (configuracoes, notificacoes,
@@ -110,6 +118,11 @@ const NEUTRAL_PREFIXES = [
   "/admin/settings",
   "/admin/notifications",
   "/admin/onboarding-help",
+  // Ferramentas internas (admin/dev) sairam do workspace Geral e agora sao
+  // acessadas via Configuracoes (Onda 1) — visitar nao troca o workspace.
+  "/admin/tools",
+  "/admin/ai-usage",
+  "/admin/agents",
 ]
 
 /**

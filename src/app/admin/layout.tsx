@@ -236,7 +236,7 @@ export default async function DashboardLayout({
 
             100dvh > 100vh porque inclui ajuste dinamico de URL bar mobile
             (Safari/Chrome iOS) e nao "salta" quando barra some/aparece. */}
-        <div className="flex h-[100dvh] w-full overflow-hidden bg-[#FCFCFD] dark:bg-[#0F1117]">
+        <div className="flex h-[100dvh] w-full overflow-hidden bg-[var(--ops-page)]">
           {/* Sidebar — desktop/tablet (oculta em mobile) */}
           <aside className="hidden md:block shrink-0 h-[100dvh] sticky top-0">
             <Sidebar user={userData} />
