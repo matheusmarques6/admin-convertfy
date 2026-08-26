@@ -64,8 +64,8 @@ recebe camadas com precedência.
 | Camada | Nota | Papel no prompt |
 |---|---|---|
 | Intenção do flow | `_flow.md` | RESTRIÇÕES DURAS: regras transversais invioláveis (ex.: as 6 regras do incentivo do welcome). Não são adaptáveis por loja |
-| Progressão observada | `_progressao.md` | Posição no arco: compressão, rotação de voz, retirada da vitrine — padrões do flow que independem de nicho |
-| Intenção do email | `{n}.md` | CRITÉRIO DE ACEITAÇÃO: "quando ela termina de ler, precisa ser verdade que..." é checklist de validação, não inspiração. Os anti-objetivos são proibições |
+| Progressão observada | `_progressao.md` | Posição no arco: compressão (8 posições no #1 → 1 no #8 — o "1 no #8" é literal da nota da carta: "de 8 posições no #1 para uma"), rotação de voz, retirada da vitrine. ATENÇÃO: a tabela cobre #1–#5; completar #6–#8 ou rebaixar `cobertura` para `parcial` está na lista do vault |
+| Intenção do email | `{n}.md` | CRITÉRIO DE ACEITAÇÃO: a seção "Quando ela termina de ler..." (âncora presente nas 8 intenções) é checklist de validação, não inspiração. Os anti-objetivos são proibições |
 | Estruturas validadas | `estruturas/{flow}/*.md` | CANDIDATAS A ADAPTAR. A chave de indexação real é a OBJEÇÃO que a estrutura ataca ("quando usar"), não o nicho da amostra — o nicho é só a renderização |
 | Aprendizados | `aprendizados/{flow}/` + `_global/` | CAMADA DE CORREÇÃO que VENCE a estrutura: uma estrutura `aprovada` pode carregar ressalva apontando erro próprio (caso real: prova-de-terceiro-antes-do-cta corrige a posição 7 da avelmore-inspecao-antecipada). O agente aplica a estrutura JÁ corrigida |
 
@@ -115,14 +115,24 @@ body, products, reviews, footer). Resolução por DESIGN, não por curadoria:
 - **`cta` → NUNCA no output.** Papel de um cta isolado é anotado na posição
   **anterior** a ele (regra por ÍNDICE — referência com dois `body` tornaria
   "vizinha" ambíguo).
-- **`offer` → condicional, com RE-PROJEÇÃO.** Variantes de offer estão em
-  curadoria (variáveis sendo anexadas). Enquanto não houver variante
-  preenchível, o agente NÃO emite a posição nem a deixa cair em silêncio:
-  re-projeta o papel dela numa seção construível (prazo e cupom são copy — um
-  `body` pode carregá-los) e registra a demanda em `descartes`. Sem isso, o
-  welcome #2/#6/#7 perderia o bloco que o próprio vault chama de "o motor" — e
-  o #7 (`header, offer, footer`) viraria um email de UMA posição. Re-projeção
-  que reduza o email a uma posição → candidato a `text_only`.
+- **`offer` → condicional, com RE-PROJEÇÃO que preserva o MECANISMO** (lote 2
+  do review, 26/08). "Prazo e cupom são copy" era licença errada — o vault
+  refuta: "o isolamento visual o transforma em interrupção, não em parágrafo"
+  (avelmore-deadline-objecao). A re-projeção só vale numa variante que
+  preserve o isolamento (o próprio vault mostra a forma correta: o motor do
+  #6 JÁ é um body em bloco escuro na medicube-escassez). Sem variante que
+  preserve o mecanismo → `descartes`, sem forçar. **Fato verificado na
+  biblioteca (26/08)**: nenhuma das 9 variantes de body ativas é bloco escuro
+  isolado — o máximo são elementos escuros (cabeçalho da comparison table,
+  linhas do FAQ). Logo, até a curadoria entregar as variantes de offer (em
+  andamento) OU uma variante de body-bloco-escuro, o welcome #2/#6/#7 re-cai
+  em `descartes` — é o único item de curadoria obrigatório antes da virada.
+- **`text_only` é dispositivo POSICIONAL, nunca fallback de capacidade**
+  (lote 2): só é válido quando a intenção do email ou sua referência pedem
+  quebra de formato — o valor da quebra depende de todos os toques desenhados
+  que vieram antes (aprendizado quebra-de-formato-atravessa-a-cegueira).
+  Acionar por escassez no #7 queimaria a carta do #8 e entregaria dois
+  plain-text seguidos — o oposto do mecanismo.
 - **Welcome #8 (carta plain-text, 1 posição)** → não é estrutura montável: o
   Estruturador marca o email como `text_only` (mecanismo existente do pipeline)
   e a copy segue pelo caminho de texto.
@@ -171,6 +181,11 @@ Validação por código (nunca pelo LLM):
   (decisão 2) e registrada em `posicoes_descartadas` na telemetria;
 - toda posição precisa de `referencia` + `porque` (justificativa dupla da
   decisão 1) — ausência reprova o output e dispara retry 1x;
+- `descartes` tem UM shape: `{section|null, papel_na_referencia|null, porque,
+  origem: "modelo"|"validador"}` — "o modelo decidiu não emitir" e "o código
+  rejeitou o emitido" são naturezas diferentes, e a distinção é o dado
+  principal do loop do COO (sem ela, um aprendizado promovido pode corrigir o
+  modelo por falha que era da biblioteca);
 - 2 falhas → fallback integral para `resolveStructure(outline)` (comportamento
   atual, zero regressão).
 
@@ -221,8 +236,9 @@ Regras da ponte (sync → Supabase, cron + webhook de push):
   anti-alucinação reprovaria 100% das runs;
 - **contagem da progressão**: os números de posições do `_progressao` contam
   as `secoes` PRÉ-absorção (validado 5/5 contra o vault). O system prompt
-  avisa: "sua sequência emitível terá 1–2 posições a menos" — o código nunca
-  reescreve a prosa do vault;
+  manda descontar header/cta DA REFERÊNCIA correspondente — não "1–2 a menos"
+  cego, que mandaria emitir zero num email cuja referência não tem header/cta
+  (o #8 tem 1 posição pré E pós-absorção). O código nunca reescreve a prosa;
 - **wikilinks `[[slug]]` são resolvidos** para referências estáveis (as camadas
   se citam: intenção→estrutura, estrutura→aprendizado, aprendizado→estrutura);
 - `secoes` é normalizada pelo mapa de absorção (header/cta) antes de servir;
