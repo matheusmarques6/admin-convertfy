@@ -11,9 +11,10 @@
  * inventado.
  */
 
-import { useState } from "react"
-import useSWR from "swr"
+import { useCallback, useEffect, useRef, useState } from "react"
+import useSWR, { useSWRConfig } from "swr"
 import { cn } from "@/lib/utils"
+import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import {
   DateControl,
   defaultOpsPeriod,
@@ -65,7 +66,9 @@ interface TotalRevenueData {
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
+  /** "ready" | "stale" | "empty" | "syncing" — postura do cache do período. */
   dataStatus?: string
+  isStale?: boolean
 }
 
 interface KpiSeriesData {
@@ -120,6 +123,37 @@ export function OpsDashboard({ userName }: { userName: string }) {
     fetchJson,
     SWR_OPTS,
   )
+
+  // ── Auto-sincronização do período (incidente 7d zerado) ──────────
+  // total-revenue é CACHE-ONLY (store_revenue_summary) e o cron prioriza
+  // 30d — trocar pra 7d/90d podia cair num rótulo vazio/velho e a tela
+  // mostrava R$ 0 sem explicação. Quando o cache do período está
+  // stale/empty, dispara POST /api/dashboard/refresh-revenue (com lock
+  // server-side) UMA vez por período e o realtime/polling revalida os
+  // cards conforme as lojas sincronizam.
+  const { mutate: globalMutate } = useSWRConfig()
+  const revalidateDashboards = useCallback(() => {
+    void globalMutate(
+      (key) => typeof key === "string" && key.startsWith("/api/dashboard/"),
+      undefined,
+      { revalidate: true },
+    )
+  }, [globalMutate])
+  const { isRefreshing, triggerRefresh } = useRealtimeRevenue({
+    period: period.period,
+    onDataUpdate: revalidateDashboards,
+  })
+  const autoRefreshedFor = useRef<string | null>(null)
+  const needsSync =
+    revenue != null &&
+    period.period !== "custom" &&
+    (revenue.dataStatus === "empty" || revenue.dataStatus === "stale" || revenue.isStale === true)
+  useEffect(() => {
+    if (!needsSync) return
+    if (autoRefreshedFor.current === period.period) return
+    autoRefreshedFor.current = period.period
+    void triggerRefresh()
+  }, [needsSync, period.period, triggerRefresh])
   const { data: kpi } = useSWR<KpiSeriesData>(
     KPI_SERIES_PERIODS.has(period.period) ? `/api/dashboard/kpi-series?period=${period.period}` : null,
     fetchJson,
@@ -183,6 +217,36 @@ export function OpsDashboard({ userName }: { userName: string }) {
         {revenueError && (
           <div className="rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-3 text-[12.5px] text-[var(--ops-warn)]">
             Não consegui carregar a receita: {String(revenueError.message || revenueError)}
+          </div>
+        )}
+
+        {/* Cache do período incompleto → sincronização em andamento */}
+        {(isRefreshing || needsSync) && (
+          <div className="flex items-center gap-3 rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-2.5 text-[12.5px] text-[var(--ops-warn)]">
+            {isRefreshing ? (
+              <>
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
+                <span>
+                  Sincronizando <strong>{period.presetLabel ?? "o período"}</strong> com Klaviyo/Omnisend
+                  {revenue ? ` — ${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com dado até agora` : ""}.
+                  Os números completam sozinhos conforme as lojas terminam.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="flex-1">
+                  O cache deste período está incompleto/desatualizado
+                  {revenue ? ` (${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com receita)` : ""} —
+                  os cards podem mostrar menos do que o real.
+                </span>
+                <button
+                  onClick={() => void triggerRefresh()}
+                  className="shrink-0 h-7 px-3 rounded-md border border-[var(--ops-warn-br)] font-semibold hover:bg-[var(--ops-warn)]/10"
+                >
+                  Sincronizar agora
+                </button>
+              </>
+            )}
           </div>
         )}
 
