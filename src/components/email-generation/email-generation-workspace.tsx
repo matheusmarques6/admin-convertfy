@@ -21,10 +21,12 @@ import { GeneratedTab } from "@/components/email-generation/generated-tab"
 import { SettingsTab } from "@/components/email-generation/settings-tab"
 import { ReferencesTab } from "@/components/email-generation/references-tab"
 import { TestTab } from "@/components/email-generation/test-tab"
+import { VaultTab } from "@/components/email-generation/vault-tab"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 
 const TABS = [
   "agents",
+  "vault",
   "blueprints",
   "outlines",
   "components",
@@ -37,6 +39,7 @@ type Tab = (typeof TABS)[number]
 
 const TAB_LABELS: Record<Tab, string> = {
   agents: "Agentes",
+  vault: "Conhecimento",
   blueprints: "Blueprints",
   outlines: "Estrutura geral",
   components: "Componentes",
@@ -148,6 +151,7 @@ export function EmailGenerationWorkspace({
       </div>
 
       {tab === "agents" && <PromptsWorkspace initial={prompts} />}
+      {tab === "vault" && <VaultTab />}
       {tab === "blueprints" && <BlueprintsWorkspace initial={blueprints} />}
       {tab === "outlines" && <OutlinesWorkspace />}
       {tab === "components" && <ComponentsWorkspace />}
