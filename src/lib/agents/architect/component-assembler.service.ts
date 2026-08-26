@@ -220,6 +220,7 @@ O que só você vê: o schema de output de cada finalista — os campos que aque
 
 Como decidir:
 - PADRÃO: fique com a 1ª indicação do Curador. Ela é o mérito daquela posição avaliada isoladamente. Você só sai dela por uma das razões abaixo.
+- Quando <decisao_do_estruturador> trouxer uma decisão, o \`label\` de cada posição é o PAPEL que ela cumpre no arco — avalie os finalistas contra ele: a razão de CONJUNTO se mede pelo fio narrativo (as posições precisam conversar na ordem decidida) e a de VIABILIDADE pelo que o papel exige dos dados da loja. Finalista que não consegue CUMPRIR o papel é caso de viabilidade, mesmo sendo o rank 1. <intencao> protege o contrato do flow na escolha final (ex.: regra "sem desconto neste toque" derruba variante com slot de cupom obrigatório).
 - Razão de CONJUNTO: duas posições ficariam com a mesma variante, ou com variantes de linguagem visual idêntica (mesma faixa, mesma anatomia); o email ficaria monótono ou desequilibrado na densidade; abertura e fechamento não conversam.
 - Razão de VIABILIDADE: o schema do 1º exige dado que esta loja não tem (campo obrigatório de cupom sem oferta no contexto, mais slots de produto do que <top_products>) e o 2º ou o 3º resolve.
 - Razão de HISTÓRICO: <memoria> mostra que a 1ª indicação já ocupou posição equivalente no email anterior desta loja, ou vem se repetindo em outras lojas, e existe finalista igualmente adequada.
@@ -243,6 +244,18 @@ export const DEFAULT_ASSEMBLER_USER = `<store>
 - diretriz: {{outline_guidance}}
 - tom sugerido: {{outline_tone_hint}}
 </outline>
+
+<intencao>
+[do flow]
+{{intencao_flow}}
+
+[deste email]
+{{intencao_email}}
+</intencao>
+
+<decisao_do_estruturador>
+{{estruturador_decisao}}
+</decisao_do_estruturador>
 
 <top_products>
 {{top_products}}
@@ -899,7 +912,10 @@ export async function assembleStoreReference(
     agent: "assembler",
     agentConfigId: asmRow?.id,
     model: asmConfig.model,
-    inputVars: { positions: rankingByBlock.size },
+    inputVars: {
+      positions: rankingByBlock.size,
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+    },
   })
 
   const asmVars: Record<string, string> = {
@@ -911,6 +927,21 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    // Mesmos critérios editoriais do Curador (26/08): a escolha FINAL também
+    // precisa entender O QUE cada posição faz no arco e por quê — sem isso o
+    // Montador desempata por estética contra a decisão do Estruturador.
+    intencao_flow: clampPromptText(
+      input.intencaoFlow,
+      "(não catalogada — siga o outline e o perfil da marca)",
+    ),
+    intencao_email: clampPromptText(
+      input.intencaoEmail,
+      "(não catalogada — siga o outline e o perfil da marca)",
+    ),
+    estruturador_decisao: clampPromptText(
+      input.estruturadorDecisao,
+      "(sem decisão do Estruturador nesta geração — siga o outline)",
+    ),
     top_products:
       input.topProductNames.length > 0
         ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
@@ -1094,7 +1125,10 @@ export async function assembleStoreReference(
     status: asmError || decisions.malformed ? "error" : "success",
     model: asmConfig.model,
     errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
-    inputVars: { positions: rankingByBlock.size },
+    inputVars: {
+      positions: rankingByBlock.size,
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+    },
     renderedPrompt: asmUserPrompt,
     rawOutput: asmRaw.slice(0, 8000),
     parsedOutput: {
