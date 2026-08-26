@@ -160,7 +160,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
     // Sangra o padding do shell (-m-*) pra página controlar o próprio
     // respiro (32/40px do design) — mesmo padrão das páginas full-bleed.
     <div className="-m-4 md:-m-6 lg:-m-8 bg-[var(--ops-page)] min-h-[100dvh]">
-      <div className="mx-auto max-w-[1560px] px-3 sm:px-4 lg:px-6 py-6 flex flex-col gap-4">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-7 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-end gap-3.5 flex-wrap">
           <div>
