@@ -78,6 +78,8 @@ interface OpsSeriesData {
   deltas: Record<string, number | null>
   collecting: boolean
   window: { from: string; to: string; days: number }
+  source?: "daily" | "campaign_fallback"
+  debug?: { daily_points: number; fallback_campaign_rows: number }
 }
 
 interface PortfolioExtrasData {
@@ -120,7 +122,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
     fetchJson,
     SWR_OPTS,
   )
-  const { data: series } = useSWR<OpsSeriesData>(
+  const { data: series, error: seriesError } = useSWR<OpsSeriesData>(
     `/api/dashboard/ops-series?${q}`,
     fetchJson,
     SWR_OPTS,
@@ -278,10 +280,16 @@ export function OpsDashboard({ userName }: { userName: string }) {
               </div>
             }
           >
-            {!series ? (
+            {seriesError ? (
+              <CollectingState
+                label={`Erro ao carregar a série: ${String(seriesError.message || seriesError)}`}
+              />
+            ) : !series ? (
               <CollectingState label="Carregando série diária…" />
             ) : series.collecting || series.atual.length < 2 ? (
-              <CollectingState label="Sem pontos diários na janela — o cron store-daily-metrics precisa rodar (ou o backfill)." />
+              <CollectingState
+                label={`Sem pontos na janela (diária: ${series.debug?.daily_points ?? 0} · campanhas com send_time: ${series.debug?.fallback_campaign_rows ?? 0}) — se ambos são 0, o sync de campanhas não grava send_time.`}
+              />
             ) : (
               <>
                 <AreaCompareChart

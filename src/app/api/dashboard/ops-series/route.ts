@@ -51,21 +51,25 @@ async function campaignFallback(
   const cols =
     "store_id, campaign_id, send_time, recipients, delivered, opened, clicked, conversions, conversion_value, bounced, unsubscribed, fetched_at"
 
+  // SEM filtro de period_label: se a org só tem linhas de outra janela
+  // ("30d" etc.), o fallback ainda funciona — o dedup por
+  // (store, campaign, fetched_at mais recente) no builder elimina a
+  // multiplicidade entre labels.
   const [k, o] = await Promise.all([
     admin
       .from("klaviyo_campaign_metrics")
       .select(cols)
       .in("store_id", storeIds)
-      .eq("period_label", "90d")
       .gte("send_time", `${win.from}T00:00:00Z`)
-      .lte("send_time", `${win.to}T23:59:59Z`),
+      .lte("send_time", `${win.to}T23:59:59Z`)
+      .limit(10000),
     admin
       .from("omnisend_campaign_metrics")
       .select(cols)
       .in("store_id", storeIds)
-      .eq("period_label", "90d")
       .gte("send_time", `${win.from}T00:00:00Z`)
-      .lte("send_time", `${win.to}T23:59:59Z`),
+      .lte("send_time", `${win.to}T23:59:59Z`)
+      .limit(10000),
   ])
   const kRows = (k.error ? [] : (k.data ?? [])) as unknown as CampaignDailyRow[]
   const oRows = (o.error ? [] : (o.data ?? [])) as unknown as CampaignDailyRow[]
@@ -83,14 +87,18 @@ async function handleGet(request: NextRequest) {
     const win = resolveWindow(sp.get("period"), sp.get("start"), sp.get("end"))
     const prevWin = previousWindow(win)
 
+    // store_daily_metrics pode nem existir (migration pendente) — erro
+    // aqui NÃO pode derrubar a rota: cai no fallback por campanhas.
     let [current, previous] = await Promise.all([
-      getEmailDailySeries(admin, orgId, win.from, win.to),
-      getEmailDailySeries(admin, orgId, prevWin.from, prevWin.to),
+      getEmailDailySeries(admin, orgId, win.from, win.to).catch(() => []),
+      getEmailDailySeries(admin, orgId, prevWin.from, prevWin.to).catch(() => []),
     ])
 
     let source: "daily" | "campaign_fallback" = "daily"
+    let fallbackRows = 0
     if (current.length === 0) {
       const rows = await campaignFallback(admin, orgId, win)
+      fallbackRows = rows.length
       const fallback = dailyPointsFromCampaignRows(rows, win)
       if (fallback.length > 0) {
         current = fallback
@@ -109,6 +117,13 @@ async function handleGet(request: NextRequest) {
       source,
       window: win,
       previous_window: prevWin,
+      // Diagnóstico visível na UI quando vazio: quantos pontos a fonte
+      // diária tinha e quantas linhas de campanha (com send_time na
+      // janela) o fallback encontrou.
+      debug: {
+        daily_points: source === "daily" ? current.length : 0,
+        fallback_campaign_rows: fallbackRows,
+      },
     })
   } catch (error) {
     return errorResponse(request, error, "dashboard-ops-series")
