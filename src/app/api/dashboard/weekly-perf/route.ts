@@ -86,22 +86,32 @@ export async function GET(request: NextRequest) {
     }
 
     // Um unico period_label ("90d") cobre ate ~13 semanas sem contar a mesma
-    // campanha em multiplas janelas. Filtra por send_time (data real de envio).
+    // campanha em multiplas janelas. Filtra por send_time (data real de
+    // envio) MAS mantém linhas com send_time NULL: o `.gte` puro as
+    // excluía na query e o fallback pra period_end (abaixo) era código
+    // morto — org cujo sync não preenche send_time via card vazio pra
+    // sempre. O NULL entra e o code decide a semana pelo period_end.
+    const oldestIso = oldest.toISOString()
+    const sendTimeOrNull = `send_time.gte.${oldestIso},send_time.is.null`
     const selectCols = "store_id, campaign_id, delivered, opened, clicked, conversions, send_time, period_end, fetched_at"
+    // SEM .eq(period_label): a org pode não manter linhas "90d" (caso
+    // real em prod — o card ficava vazio com 11M de envios na tela ao
+    // lado). O dedup por (store, campaign) abaixo já elimina a
+    // multiplicidade entre labels, então filtrar por label só perdia dado.
     const fetchKlav = admin
       .from("klaviyo_campaign_metrics")
       .select(selectCols)
       .in("store_id", storeIds)
-      .eq("period_label", "90d")
-      .gte("send_time", oldest.toISOString())
+      .or(sendTimeOrNull)
+      .limit(10000)
       .returns<CampaignRow[]>()
 
     const fetchOmni = admin
       .from("omnisend_campaign_metrics")
       .select(selectCols)
       .in("store_id", storeIds)
-      .eq("period_label", "90d")
-      .gte("send_time", oldest.toISOString())
+      .or(sendTimeOrNull)
+      .limit(10000)
       .returns<CampaignRow[]>()
 
     const [klavRes, omniRes] = await Promise.all([fetchKlav, fetchOmni])

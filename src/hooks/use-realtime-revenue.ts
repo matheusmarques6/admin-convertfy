@@ -9,6 +9,9 @@ const POLLING_INTERVAL_MS = 30_000
 
 interface UseRealtimeRevenueOptions {
   period: string
+  /** Range personalizado (YYYY-MM-DD) — vai no body quando period="custom". */
+  start?: string
+  end?: string
   onDataUpdate: () => void
   enabled?: boolean
   refreshUrl?: string
@@ -21,7 +24,7 @@ interface UseRealtimeRevenueOptions {
  *
  * Fallback: if Realtime disconnects, polls every 30s.
  */
-export function useRealtimeRevenue({ period, onDataUpdate, enabled = true, refreshUrl = "/api/dashboard/refresh-revenue" }: UseRealtimeRevenueOptions) {
+export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled = true, refreshUrl = "/api/dashboard/refresh-revenue" }: UseRealtimeRevenueOptions) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -53,7 +56,7 @@ export function useRealtimeRevenue({ period, onDataUpdate, enabled = true, refre
       const res = await fetch(refreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period }),
+        body: JSON.stringify({ period, start, end }),
         signal: controller.signal,
       })
       const data = await res.json()
@@ -79,7 +82,7 @@ export function useRealtimeRevenue({ period, onDataUpdate, enabled = true, refre
       clearTimeout(timeoutId)
       setIsRefreshing(false)
     }
-  }, [period, isRefreshing, onDataUpdate, refreshUrl])
+  }, [period, start, end, isRefreshing, onDataUpdate, refreshUrl])
 
   // Start/stop polling fallback
   const startPolling = useCallback(() => {

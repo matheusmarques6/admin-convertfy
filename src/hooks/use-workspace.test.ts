@@ -19,6 +19,8 @@ describe("detectWorkspaceOrNull", () => {
       "/admin/campaigns/central",
       "/admin/insights",
       "/admin/list-hygiene",
+      // Geração de Imagens mora no nav Operacional (fix Onda 1)
+      "/admin/imagens",
     ]) {
       expect(detectWorkspaceOrNull(p)).toBe("operacional")
     }
@@ -32,7 +34,6 @@ describe("detectWorkspaceOrNull", () => {
       "/admin/team",
       "/admin/meetings",
       "/admin/reports",
-      "/admin/tools",
     ]) {
       expect(detectWorkspaceOrNull(p)).toBe("geral")
     }
@@ -44,6 +45,11 @@ describe("detectWorkspaceOrNull", () => {
     expect(detectWorkspaceOrNull("/admin/notifications")).toBeNull()
     expect(detectWorkspaceOrNull("/admin/onboarding-help")).toBeNull()
     expect(detectWorkspaceOrNull("/admin/onboarding-help/x/edit")).toBeNull()
+    // Ferramentas internas viraram rota neutra (acesso via Configurações)
+    expect(detectWorkspaceOrNull("/admin/tools")).toBeNull()
+    expect(detectWorkspaceOrNull("/admin/tools/currency-audit")).toBeNull()
+    expect(detectWorkspaceOrNull("/admin/ai-usage")).toBeNull()
+    expect(detectWorkspaceOrNull("/admin/agents/studio")).toBeNull()
   })
 
   it("onboarding-help é neutro SEM engolir /admin/onboarding (operacional)", () => {

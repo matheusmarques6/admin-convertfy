@@ -272,12 +272,34 @@ async function handleGet(request: NextRequest) {
         }))
     }
 
+    // ── Vendas por dia — período atual e o equivalente anterior ─────
+    // (TrendChart do dashboard: acumulado do mês vs mês anterior). Os
+    // deals já estão em memória; é só bucketizar won_at por dia.
+    const prevPeriod = resolvePeriod(periodType, new Date(period.start.getTime() - 86_400_000))
+    const dailyOf = (start: Date, end: Date): number[] => {
+      const nDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+      const arr = new Array<number>(nDays).fill(0)
+      for (const d of deals) {
+        if (d.status !== "won" || !d.won_at) continue
+        const t = Date.parse(d.won_at)
+        if (t < start.getTime() || t >= end.getTime()) continue
+        const idx = Math.min(nDays - 1, Math.floor((t - start.getTime()) / 86_400_000))
+        arr[idx] += d.value || 0
+      }
+      return arr
+    }
+    const won_daily = {
+      current: dailyOf(period.start, period.end),
+      previous: dailyOf(prevPeriod.start, prevPeriod.end),
+    }
+
     return successResponse(request, {
       period: {
         type: periodType,
         start: ymd(period.start),
         end: ymd(new Date(period.end.getTime() - 86_400_000)),
       },
+      won_daily,
       goal: goal
         ? { id: goal.id, goal_type: goal.goal_type, target_value: Number(goal.target_value) }
         : null,

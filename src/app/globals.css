@@ -110,9 +110,9 @@
     --ring: var(--brand-400);
     --radius: var(--radius-md);
 
-    /* ═══ SIDEBAR (DS v3.0 — light bg, brand active) ═══ */
+    /* ═══ SIDEBAR (shell variante C — clara, flat, acento no texto ativo) ═══ */
     --sidebar-background: #FFFFFF;
-    --sidebar-foreground: var(--gray-600);
+    --sidebar-foreground: var(--gray-700);
     --sidebar-primary: var(--brand-400);
     --sidebar-primary-foreground: #FFFFFF;
     --sidebar-accent: var(--brand-50);
@@ -121,6 +121,28 @@
     --sidebar-ring: var(--brand-400);
     --sidebar-muted: var(--gray-50);
     --sidebar-muted-foreground: var(--gray-400);
+    --sidebar-hover: var(--gray-50);
+    --sidebar-track: var(--gray-100);      /* fundo do switcher em abas */
+    --sidebar-tab-on: #FFFFFF;             /* aba de workspace ativa */
+
+    /* ═══ OPS DASHBOARD (design ago/2026 — claro) ═══ */
+    --ops-page: var(--gray-50);
+    --ops-card: #FFFFFF;
+    --ops-border: rgba(0,0,0,0.08);
+    --ops-title: var(--gray-900);
+    --ops-text: var(--gray-700);
+    --ops-sec: var(--gray-500);
+    --ops-mut: var(--gray-400);
+    --ops-hover: var(--gray-50);
+    --ops-track: var(--gray-100);
+    --ops-tile: var(--gray-50);
+    --ops-accent: #1F2937;
+    --ops-on-accent: #FFFFFF;
+    --ops-pos: #047857;
+    --ops-neg: #B91C1C;
+    --ops-warn: #92400E;
+    --ops-warn-bg: #FFFBEB;
+    --ops-warn-br: #FDE68A;
 
     /* ═══ CHART COLORS ═══ */
     --chart-1: var(--brand-400);
@@ -133,14 +155,15 @@
   /* ═══ DARK MODE (Regra 11 do DS — elevated surfaces get LIGHTER) ═══ */
   .dark,
   [data-theme="dark"] {
-    --dark-bg: #0F1117;
-    --dark-surface: #1A1D27;
-    --dark-surface-elevated: #242836;
-    --dark-surface-hover: #2A2F3D;
-    --dark-text: #EAEDF3;
-    --dark-text-secondary: #8B92A5;
-    --dark-text-muted: #5C6378;
-    --dark-border: rgba(255,255,255,0.08);
+    /* Paleta GRAFITE (design ago/2026) */
+    --dark-bg: #111318;
+    --dark-surface: #1D212B;
+    --dark-surface-elevated: #262B39;
+    --dark-surface-hover: #2B3140;
+    --dark-text: #F0F3FA;
+    --dark-text-secondary: rgba(235,240,252,0.55);
+    --dark-text-muted: rgba(235,240,252,0.40);
+    --dark-border: rgba(255,255,255,0.09);
     --dark-border-hover: rgba(255,255,255,0.14);
     --dark-border-focus: rgba(90,110,224,0.4);
     --dark-brand: #7B8CEA;
@@ -148,15 +171,15 @@
     --dark-brand-muted: rgba(123,140,234,0.12);
     --dark-brand-gradient: linear-gradient(90deg, #7B8CEA, #5A6EE0, #3B50C8);
 
-    --dark-positive-bg: #052E1C;
-    --dark-positive-text: #6EE7B7;
-    --dark-positive-border: rgba(110,231,183,0.15);
-    --dark-negative-bg: #3B1111;
-    --dark-negative-text: #FCA5A5;
-    --dark-negative-border: rgba(252,165,165,0.15);
-    --dark-warning-bg: #3B2506;
-    --dark-warning-text: #FCD34D;
-    --dark-warning-border: rgba(252,211,77,0.15);
+    --dark-positive-bg: rgba(61,214,163,0.12);
+    --dark-positive-text: #3DD6A3;
+    --dark-positive-border: rgba(61,214,163,0.22);
+    --dark-negative-bg: rgba(248,113,113,0.12);
+    --dark-negative-text: #F87171;
+    --dark-negative-border: rgba(248,113,113,0.22);
+    --dark-warning-bg: rgba(251,191,36,0.09);
+    --dark-warning-text: #FBBF24;
+    --dark-warning-border: rgba(251,191,36,0.28);
     --dark-info-bg: #141C3D;
     --dark-info-text: #A8B8F0;
     --dark-info-border: rgba(168,184,240,0.15);
@@ -188,17 +211,39 @@
     --input: var(--dark-border);
     --ring: var(--dark-brand);
 
-    /* Sidebar dark (DS v3.0 — surface bg, brand accent) */
-    --sidebar-background: #1A1D27;
-    --sidebar-foreground: #8B92A5;
+    /* Sidebar dark (grafite — lateral #191C24, um passo acima do page) */
+    --sidebar-background: #191C24;
+    --sidebar-foreground: rgba(235,240,252,0.80);
     --sidebar-primary: #7B8CEA;
     --sidebar-primary-foreground: #FFFFFF;
     --sidebar-accent: rgba(123,140,234,0.12);
     --sidebar-accent-foreground: #7B8CEA;
-    --sidebar-border: rgba(255,255,255,0.08);
+    --sidebar-border: rgba(255,255,255,0.09);
     --sidebar-ring: #7B8CEA;
-    --sidebar-muted: #242836;
-    --sidebar-muted-foreground: #5C6378;
+    --sidebar-muted: #262B39;
+    --sidebar-muted-foreground: rgba(235,240,252,0.46);
+    --sidebar-hover: rgba(255,255,255,0.06);
+    --sidebar-track: rgba(255,255,255,0.11);
+    --sidebar-tab-on: #2B3140;
+
+    /* Ops dashboard (grafite) */
+    --ops-page: #111318;
+    --ops-card: #1D212B;
+    --ops-border: rgba(255,255,255,0.09);
+    --ops-title: #F0F3FA;
+    --ops-text: rgba(235,240,252,0.85);
+    --ops-sec: rgba(235,240,252,0.55);
+    --ops-mut: rgba(235,240,252,0.40);
+    --ops-hover: rgba(255,255,255,0.06);
+    --ops-track: rgba(255,255,255,0.11);
+    --ops-tile: rgba(124,144,255,0.06);
+    --ops-accent: #AEB8CF;
+    --ops-on-accent: #0C0F16;
+    --ops-pos: #3DD6A3;
+    --ops-neg: #F87171;
+    --ops-warn: #FBBF24;
+    --ops-warn-bg: rgba(251,191,36,0.09);
+    --ops-warn-br: rgba(251,191,36,0.28);
 
     /* Chart */
     --chart-1: var(--dark-brand);
@@ -337,4 +382,16 @@
 
 .react-flow__edge-custom {
   stroke: var(--muted-foreground);
+}
+
+/* Acento do workspace COMERCIAL sobre os tokens --ops-* (o default é o
+   grafite do Operacional). O dashboard comercial embrulha a página nesta
+   classe e todos os componentes ops-* herdam o azul certo por tema. */
+.ops-accent-comercial {
+  --ops-accent: #2563EB;
+  --ops-on-accent: #FFFFFF;
+}
+.dark .ops-accent-comercial {
+  --ops-accent: #7C90F2;
+  --ops-on-accent: #0C0F16;
 }

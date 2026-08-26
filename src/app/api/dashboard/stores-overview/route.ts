@@ -10,6 +10,12 @@ import {
   getUnifiedFlows,
 } from "@/lib/services/unified-metrics.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
+import { resolveWindow } from "@/lib/services/ops-dashboard/period-window"
+import {
+  computeStoreTrends,
+  midDate,
+  type DailyTrendRow,
+} from "@/lib/services/ops-dashboard/portfolio"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoresOverview")
@@ -63,11 +69,31 @@ async function handleGet(request: NextRequest) {
 
     const storeIds = stores.map((s) => s.id)
 
-    const [revenueRows, campaignRows, flowRows] = await Promise.all([
+    // Trend REAL por loja (aditivo, ago/2026): open rate da 2ª metade da
+    // janela vs a 1ª, via store_daily_metrics. O front antigo exibia como
+    // "trend" a comparação com a média da carteira — não era temporal.
+    const win = resolveWindow(
+      request.nextUrl.searchParams.get("period"),
+      request.nextUrl.searchParams.get("start"),
+      request.nextUrl.searchParams.get("end"),
+    )
+
+    const [revenueRows, campaignRows, flowRows, dailyQ] = await Promise.all([
       getUnifiedRevenue(supabase, orgId, [period], storeIds),
       getUnifiedCampaigns(supabase, orgId, period, storeIds),
       getUnifiedFlows(supabase, orgId, period, storeIds, true),
+      supabase
+        .from("store_daily_metrics")
+        .select("store_id, metric_date, delivered, opened")
+        .eq("org_id", orgId)
+        .gte("metric_date", win.from)
+        .lte("metric_date", win.to),
     ])
+    // Trend é enfeite: erro aqui (ex.: migration da tabela pendente) não
+    // pode derrubar a visão inteira — degrada pra null.
+    const trends = dailyQ.error
+      ? new Map<string, "up" | "down" | null>()
+      : computeStoreTrends((dailyQ.data ?? []) as DailyTrendRow[], midDate(win))
 
     const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
     const campByStore = new Map<string, typeof campaignRows>()
@@ -208,6 +234,8 @@ async function handleGet(request: NextRequest) {
         // crm-health-compute (email35/rev30/tickets20/nps15). null quando
         // ainda nao calculado — o front trata como badge neutro.
         healthScore: typeof s.health_score === "number" ? s.health_score : null,
+        // Tendência temporal real (2ª metade vs 1ª); null = sem volume ou estável.
+        trend: trends.get(store.id) ?? null,
         // true = câmbio indisponivel, valores estao na moeda original (nao BRL).
         fxDegraded,
         totalRevenueBRL: Math.round(totalBRL * 100) / 100,

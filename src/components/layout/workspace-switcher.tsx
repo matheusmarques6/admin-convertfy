@@ -1,188 +1,151 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { Check, ChevronsUpDown } from "lucide-react"
-import { cn } from "@/lib/utils"
-import {
-  WORKSPACES,
-  type WorkspaceKey,
-  type WorkspaceMeta,
-} from "@/hooks/use-workspace"
+/**
+ * WorkspaceTabs — switcher de workspaces em ABAS de ícone (design
+ * ago/2026, shell variante C). Substitui o dropdown antigo: troca em
+ * 1 clique, os 3 sistemas sempre visíveis.
+ *
+ * Gate por função: workspace sem NENHUM item permitido aparece com
+ * cadeado e desabilitado (antes o switcher deixava entrar num
+ * workspace vazio). A régua é a MESMA da sidebar (filterNavGroups).
+ */
 
-interface WorkspaceSwitcherProps {
-  current: WorkspaceKey
-  collapsed?: boolean
+import { useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import { Lock } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { usePermissions } from "@/lib/hooks/use-permissions"
+import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
+import {
+  firstAllowedItem,
+  workspaceAllowed,
+  type NavPermissionCtx,
+} from "./nav-config"
+
+const WS_ORDER: WorkspaceKey[] = ["comercial", "operacional", "geral"]
+
+export function useNavPermissionCtx(): NavPermissionCtx | null {
+  const { permissions, canAccess, isLoading } = usePermissions()
+  return useMemo(() => {
+    if (isLoading || !permissions) return null
+    return {
+      canAccess,
+      isAdmin: permissions.isAdmin,
+      roles: permissions.roles,
+      storeAccessCount: permissions.storeAccess.length,
+    }
+  }, [permissions, canAccess, isLoading])
 }
 
 /**
- * Switcher de workspace estilo Linear/Vercel — card clicavel no topo
- * da sidebar com dropdown elegante. Acessibilidade gratis via Radix
- * (focus trap, escape, click-outside, ARIA).
- *
- * Trigger expandido: avatar quadrado 36px com icone + label/descricao
- * em duas linhas + chevron. Hover bg sutil.
- *
- * Trigger colapsado: somente o quadrado 36px clicavel; dropdown
- * abre lateralmente.
- *
- * Dropdown: header "Workspaces" minusculo + 3 items com avatar +
- * label/descricao + check do ativo. Animacao slide+fade do Radix.
+ * Hook compartilhado (abas + atalhos ⌥1-3): navega pro 1º item
+ * permitido do workspace — a home do workspace pode ser vetada pra
+ * função (ex.: designer não vê o Dashboard operacional, mas vê Lojas).
  */
-export function WorkspaceSwitcher({
-  current,
-  collapsed = false,
-}: WorkspaceSwitcherProps) {
+export function useWorkspaceNavigation() {
   const router = useRouter()
-  const meta = WORKSPACES[current]
-  const TriggerIcon = meta.icon
-  const goTo = (w: WorkspaceMeta) => router.push(w.homeHref)
+  const ctx = useNavPermissionCtx()
 
-  // Pré-carrega as homes dos outros workspaces para a troca ser instantânea
+  const goTo = (ws: WorkspaceKey): boolean => {
+    if (!ctx || !workspaceAllowed(ws, ctx)) return false
+    const item = firstAllowedItem(ws, ctx)
+    if (!item) return false
+    router.push(item.href)
+    return true
+  }
+
+  return { ctx, goTo }
+}
+
+interface WorkspaceTabsProps {
+  current: WorkspaceKey
+}
+
+export function WorkspaceTabs({ current }: WorkspaceTabsProps) {
+  const router = useRouter()
+  const { ctx, goTo } = useWorkspaceNavigation()
+
+  // Prefetch dos destinos permitidos — troca de workspace instantânea.
   useEffect(() => {
-    for (const w of Object.values(WORKSPACES)) {
-      if (w.key !== current) router.prefetch(w.homeHref)
+    if (!ctx) return
+    for (const ws of WS_ORDER) {
+      if (ws === current) continue
+      const item = firstAllowedItem(ws, ctx)
+      if (item) router.prefetch(item.href)
     }
-  }, [router, current])
+  }, [ctx, current, router])
 
   return (
-    <div className={collapsed ? "flex justify-center" : "px-3"}>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          {collapsed ? (
-            <button
-              aria-label={`Workspace atual: ${meta.label}`}
-              title={`${meta.label} — clique para trocar`}
-              className="group flex h-9 w-9 items-center justify-center rounded-md transition-all outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-              style={{
-                background: meta.color,
-                color: "#FFFFFF",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
-              }}
-            >
-              <TriggerIcon className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              aria-label="Trocar workspace"
-              className={cn(
-                "group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors outline-none",
-                "hover:bg-white/[0.05] focus-visible:bg-white/[0.05] focus-visible:ring-1 focus-visible:ring-white/20",
-              )}
-            >
+    <div
+      className="flex gap-0.5 rounded-lg p-[3px] bg-[var(--sidebar-track)]"
+      role="tablist"
+      aria-label="Workspaces"
+    >
+      {WS_ORDER.map((ws, i) => {
+        const meta = WORKSPACES[ws]
+        const allowed = ctx ? workspaceAllowed(ws, ctx) : false
+        const on = ws === current
+        const tab = (
+          <button
+            key={ws}
+            role="tab"
+            aria-selected={on}
+            disabled={!allowed}
+            onClick={() => {
+              if (allowed && !on) goTo(ws)
+            }}
+            className={cn(
+              "flex-1 h-[30px] rounded-md flex items-center justify-center",
+              "transition-colors duration-150 outline-none",
+              on
+                ? "bg-[var(--sidebar-tab-on)] shadow-sm dark:shadow-none"
+                : allowed
+                  ? "text-[var(--sidebar-muted-foreground)] hover:text-[var(--sidebar-foreground)]"
+                  : "opacity-40 cursor-not-allowed",
+            )}
+          >
+            {on ? (
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+                className="flex text-[var(--ws-accent)] dark:text-[var(--ws-accent-dark)]"
                 style={{
-                  background: meta.color,
-                  color: "#FFFFFF",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
+                  ["--ws-accent" as string]: meta.color,
+                  ["--ws-accent-dark" as string]: meta.colorDark,
                 }}
               >
-                <TriggerIcon className="h-4 w-4" />
+                <Icon icon={meta.icon} customSize={15} />
               </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className="block truncate leading-tight text-white"
-                  style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}
-                >
-                  {meta.label}
-                </span>
-                <span
-                  className="block truncate leading-tight text-white/50 mt-0.5"
-                  style={{ fontSize: 11 }}
-                >
-                  {meta.description}
-                </span>
-              </span>
-              <ChevronsUpDown
-                className="h-3.5 w-3.5 shrink-0 text-white/40 group-hover:text-white/70 transition-colors"
-              />
-            </button>
-          )}
-        </DropdownMenu.Trigger>
-
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            align={collapsed ? "start" : "start"}
-            side={collapsed ? "right" : "bottom"}
-            sideOffset={collapsed ? 12 : 6}
-            alignOffset={collapsed ? 0 : 0}
-            className={cn(
-              "z-50 w-[260px] overflow-hidden rounded-lg p-1.5",
-              "data-[state=open]:animate-in data-[state=closed]:animate-out",
-              "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
-              "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
-              "data-[side=bottom]:slide-in-from-top-1 data-[side=right]:slide-in-from-left-1",
+            ) : allowed ? (
+              <Icon icon={meta.icon} customSize={15} />
+            ) : (
+              <Icon icon={Lock} customSize={13} />
             )}
-            style={{
-              background: "#0E1015",
-              border: "1px solid rgba(255,255,255,0.08)",
-              boxShadow:
-                "0 12px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)",
-            }}
-          >
-            <DropdownMenu.Label
-              className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/40"
-            >
-              Workspaces
-            </DropdownMenu.Label>
-            <div className="space-y-0.5">
-              {Object.values(WORKSPACES).map((w) => {
-                const Icon = w.icon
-                const active = w.key === current
-                return (
-                  <DropdownMenu.Item
-                    key={w.key}
-                    onSelect={() => goTo(w)}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left outline-none transition-colors",
-                      "data-[highlighted]:bg-white/[0.06]",
-                      active && "bg-white/[0.04]",
-                    )}
-                  >
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
-                      style={{
-                        background: w.color,
-                        color: "#FFFFFF",
-                        boxShadow:
-                          "0 1px 2px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.1)",
-                      }}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className="block truncate leading-tight text-white"
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: active ? 600 : 500,
-                          letterSpacing: "-0.01em",
-                        }}
-                      >
-                        {w.label}
-                      </span>
-                      <span
-                        className="block truncate leading-tight text-white/45 mt-0.5"
-                        style={{ fontSize: 10.5 }}
-                      >
-                        {w.description}
-                      </span>
-                    </span>
-                    {active && (
-                      <Check
-                        className="h-3.5 w-3.5 shrink-0"
-                        style={{ color: w.color }}
-                      />
-                    )}
-                  </DropdownMenu.Item>
-                )
-              })}
-            </div>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+          </button>
+        )
+        return (
+          <Tooltip key={ws}>
+            <TooltipTrigger asChild>{tab}</TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={6} className="text-xs font-medium">
+              {allowed
+                ? `${meta.label} (⌥${i + 1})`
+                : `${meta.label} — sem acesso com esta função`}
+            </TooltipContent>
+          </Tooltip>
+        )
+      })}
     </div>
   )
+}
+
+/**
+ * Compat: alguns pontos ainda importam WorkspaceSwitcher pelo nome
+ * antigo. O visual agora é o de abas.
+ */
+export function WorkspaceSwitcher({ current }: { current: WorkspaceKey; collapsed?: boolean }) {
+  return <WorkspaceTabs current={current} />
 }

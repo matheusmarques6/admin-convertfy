@@ -27,8 +27,12 @@ describe("SETTINGS_SECTIONS (registry)", () => {
       .map((s) => s.key)
       .sort()
     expect(pageLinks).toEqual([
+      "agent-studio",
+      "ai-usage",
+      "currency-audit",
       "email-generation",
       "email-generation-logs",
+      "tools",
       "tutorial-cliente",
     ])
   })

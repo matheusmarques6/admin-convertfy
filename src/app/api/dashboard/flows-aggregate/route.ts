@@ -155,6 +155,10 @@ export async function GET(request: NextRequest) {
           title,
           rate: Math.round(avgRate * 10) / 10,
           revenue: fmtCurrency(agg.totalRevenueBRL),
+          // Numérico (aditivo, ago/2026): o dashboard novo formata no
+          // cliente — a string pré-formatada acima segue pros consumidores
+          // antigos.
+          revenueBRL: Math.round(agg.totalRevenueBRL),
           // Sem série per-flow ainda (Grupo 3 cobre store-level). null =
           // "sem comparação" → o card não mostra um "+0%" falso.
           delta: null as number | null,

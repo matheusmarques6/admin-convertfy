@@ -47,13 +47,13 @@ export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
         "sticky top-0 z-40 h-14 md:hidden",
         "flex items-center px-4",
         "bg-white border-b border-[rgba(0,0,0,0.08)]",
-        "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]"
+        "dark:bg-[var(--sidebar-background)] dark:border-[var(--dark-border)]"
       )}
     >
       {/* Hamburger */}
       <button
         onClick={openMobile}
-        className="flex items-center justify-center w-11 h-11 -ml-2 rounded-[6px] text-gray-600 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-[#242836] transition-colors"
+        className="flex items-center justify-center w-11 h-11 -ml-2 rounded-[6px] text-gray-600 dark:text-[var(--dark-text-secondary)] hover:bg-gray-50 dark:hover:bg-[var(--dark-surface-elevated)] transition-colors"
         aria-label="Abrir menu"
       >
         <Icon icon={Menu} size={20} />
@@ -71,7 +71,7 @@ export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
         {/* Notification bell */}
         <Link
           href={ROUTES.ADMIN.NOTIFICATIONS}
-          className="relative flex items-center justify-center w-11 h-11 rounded-[6px] text-gray-600 dark:text-[#8B92A5] hover:bg-gray-50 dark:hover:bg-[#242836] transition-colors"
+          className="relative flex items-center justify-center w-11 h-11 rounded-[6px] text-gray-600 dark:text-[var(--dark-text-secondary)] hover:bg-gray-50 dark:hover:bg-[var(--dark-surface-elevated)] transition-colors"
         >
           <Icon icon={Bell} size={20} />
           {unreadCount > 0 && (
@@ -87,7 +87,7 @@ export function MobileTopBar({ user: userProp }: MobileTopBarProps) {
             <button className="flex items-center justify-center w-11 h-11 rounded-[6px]">
               <Avatar className="h-8 w-8 rounded-full">
                 <AvatarImage src={userProp?.avatar_url} />
-                <AvatarFallback className="rounded-full bg-gray-200 text-gray-600 text-[11px] font-semibold dark:bg-[#242836] dark:text-[#8B92A5]">
+                <AvatarFallback className="rounded-full bg-gray-200 text-gray-600 text-[11px] font-semibold dark:bg-[#242836] dark:text-[var(--dark-text-secondary)]">
                   {getInitials(userProp?.name || "U")}
                 </AvatarFallback>
               </Avatar>

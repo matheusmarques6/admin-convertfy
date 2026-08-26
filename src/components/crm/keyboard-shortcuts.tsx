@@ -3,6 +3,10 @@
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { ROUTES } from "@/lib/routes"
+import type { NavItemId } from "@/lib/permissions/role-access"
+import { usePermissions } from "@/lib/hooks/use-permissions"
+import { useWorkspaceNavigation } from "@/components/layout/workspace-switcher"
+import type { WorkspaceKey } from "@/hooks/use-workspace"
 
 /**
  * Atalhos globais de navegacao (estilo Linear/Superhuman) com prefixo
@@ -14,37 +18,50 @@ import { ROUTES } from "@/lib/routes"
  *   g + l  → Leads
  *   g + f  → Funil
  *   g + r  → Reports comercial
+ *   g + a  → Automações
  *
  * Operacional:
  *   g + o  → Dashboard operacional (CS)
  *   g + c  → Pipelines CS
- *   g + s  → Saude
- *   g + a  → Automacoes
+ *   g + s  → Saúde
  *
  * Compartilhado:
  *   g + i  → Inbox
  *
- * Cmd+K continua sendo o command palette (gerenciado em outro lugar).
+ * Workspaces (Onda 1): ⌥1 Comercial · ⌥2 Operacional · ⌥3 Geral.
+ *
+ * TODOS os destinos respeitam o gate de função (canAccess) — antes os
+ * atalhos navegavam pra páginas que a sidebar escondia. Cmd+K continua
+ * sendo o command palette (gerenciado em outro lugar).
  */
 
-const SHORTCUTS: Record<string, string> = {
+const SHORTCUTS: Record<string, { href: string; id: NavItemId }> = {
   // Comercial
-  d: ROUTES.ADMIN.COMERCIAL.DASHBOARD,
-  p: ROUTES.ADMIN.COMERCIAL.PIPELINES,
-  l: ROUTES.ADMIN.COMERCIAL.LEADS,
-  f: ROUTES.ADMIN.COMERCIAL.FUNIL,
-  r: ROUTES.ADMIN.COMERCIAL.REPORTS,
-  a: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST,
-  i: ROUTES.ADMIN.INBOX,
+  d: { href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, id: "comercial.dashboard" },
+  p: { href: ROUTES.ADMIN.COMERCIAL.PIPELINES, id: "comercial.pipelines" },
+  l: { href: ROUTES.ADMIN.COMERCIAL.LEADS, id: "comercial.leads" },
+  f: { href: ROUTES.ADMIN.COMERCIAL.FUNIL, id: "comercial.funil" },
+  r: { href: ROUTES.ADMIN.COMERCIAL.REPORTS, id: "comercial.reports" },
+  a: { href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, id: "comercial.automacoes" },
+  i: { href: ROUTES.ADMIN.INBOX, id: "comercial.inbox" },
   // Operacional
-  o: ROUTES.ADMIN.OPERACIONAL.DASHBOARD,
-  c: ROUTES.ADMIN.OPERACIONAL.PIPELINES,
-  s: ROUTES.ADMIN.HEALTH,
+  o: { href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, id: "ops.dashboard" },
+  c: { href: ROUTES.ADMIN.OPERACIONAL.PIPELINES, id: "ops.cs.pipelines" },
+  s: { href: ROUTES.ADMIN.HEALTH, id: "ops.health" },
+}
+
+// ⌥1/2/3 — mesma ordem das abas do switcher.
+const WS_BY_DIGIT: Record<string, WorkspaceKey> = {
+  Digit1: "comercial",
+  Digit2: "operacional",
+  Digit3: "geral",
 }
 
 export function CrmKeyboardShortcuts() {
   const router = useRouter()
   const pathname = usePathname()
+  const { canAccess, isLoading } = usePermissions()
+  const { goTo } = useWorkspaceNavigation()
 
   useEffect(() => {
     // Ativa em qualquer rota /admin/*
@@ -65,7 +82,16 @@ export function CrmKeyboardShortcuts() {
       ) {
         return
       }
-      // Ignora se tem modificador
+
+      // ⌥1/2/3 troca workspace. e.code (não e.key): no mac, Option+1
+      // produz caracteres especiais ("¡") e o match por key nunca casa.
+      if (e.altKey && !e.metaKey && !e.ctrlKey && WS_BY_DIGIT[e.code]) {
+        e.preventDefault()
+        goTo(WS_BY_DIGIT[e.code])
+        return
+      }
+
+      // Ignora se tem modificador (sequências g+letra são sem modificador)
       if (e.metaKey || e.ctrlKey || e.altKey) return
 
       const key = e.key.toLowerCase()
@@ -82,10 +108,11 @@ export function CrmKeyboardShortcuts() {
       if (prefixActive) {
         prefixActive = false
         if (prefixTimer) clearTimeout(prefixTimer)
-        const target = SHORTCUTS[key]
-        if (target) {
+        const shortcut = SHORTCUTS[key]
+        // Gate de função: destino vetado = atalho inerte (igual à sidebar).
+        if (shortcut && !isLoading && canAccess(shortcut.id)) {
           e.preventDefault()
-          router.push(target)
+          router.push(shortcut.href)
         }
       }
     }
@@ -95,7 +122,7 @@ export function CrmKeyboardShortcuts() {
       document.removeEventListener("keydown", onKeyDown)
       if (prefixTimer) clearTimeout(prefixTimer)
     }
-  }, [pathname, router])
+  }, [pathname, router, canAccess, isLoading, goTo])
 
   return null
 }

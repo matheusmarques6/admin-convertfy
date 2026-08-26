@@ -5,7 +5,11 @@ import { requireAuth, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER, getStoreCredentials } from "@/lib/services/credentials.service"
-import { CACHED_PERIODS } from "@/lib/shared/data-status"
+import {
+  CACHED_PERIODS,
+  buildCustomPeriodLabel,
+  parseCustomPeriodLabel,
+} from "@/lib/shared/data-status"
 import {
   getTimezoneOffset,
   getCachedAccountInfo,
@@ -139,7 +143,23 @@ async function refreshStoreForPeriod(
     const credentials = await getStoreCredentials(store.id, store.org_id ?? undefined)
     const apiKey = credentials.omnisend_api_key
     if (!apiKey) return { status: "error", error: "No Omnisend API key" }
-    const days = PERIOD_DAYS[period] ?? 30
+    // Range custom: o sync Omnisend só entende janela relativa (now−Nd).
+    // Range terminando HOJE vira periodDays exato; range retroativo é
+    // pulado com erro honesto (melhor sem número que número errado).
+    const custom = parseCustomPeriodLabel(period)
+    let days = PERIOD_DAYS[period] ?? 30
+    if (custom) {
+      const today = new Date().toISOString().slice(0, 10)
+      if (custom.endDate < today) {
+        return { status: "error", error: "Omnisend não suporta range retroativo (janela é relativa a hoje)" }
+      }
+      days = Math.max(
+        1,
+        Math.round(
+          (Date.parse(custom.endDate) - Date.parse(custom.startDate)) / 86_400_000,
+        ) + 1,
+      )
+    }
     const result = await syncOmnisendForStore({
       storeId: store.id,
       orgId: store.org_id ?? "",
@@ -220,11 +240,29 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(supabase)
 
     const body = await request.json().catch(() => ({}))
-    const period = body.period || "30d"
+    let period: string = body.period || "30d"
 
-    if (!(CACHED_PERIODS as readonly string[]).includes(period)) {
+    // Range personalizado: {period:"custom", start, end} vira o rótulo
+    // composto custom:YYYY-MM-DD:YYYY-MM-DD — o MESMO que as rotas de
+    // leitura resolvem via normalizePeriodLabel. Sincronizar sob esse
+    // label é o que popula o cache do range selecionado.
+    if (period === "custom") {
+      const start = typeof body.start === "string" ? body.start.slice(0, 10) : null
+      const end = typeof body.end === "string" ? body.end.slice(0, 10) : null
+      const valid =
+        start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) &&
+        start <= end &&
+        (Date.parse(end) - Date.parse(start)) / 86_400_000 <= 366
+      if (!valid) {
+        return NextResponse.json(
+          { success: false, error: "Range custom inválido: envie start/end (YYYY-MM-DD, máx. 366 dias)" },
+          { status: 400 },
+        )
+      }
+      period = buildCustomPeriodLabel(start!, end!)
+    } else if (!(CACHED_PERIODS as readonly string[]).includes(period)) {
       return NextResponse.json(
-        { success: false, error: `Invalid period: ${period}. Use: ${CACHED_PERIODS.join(", ")}` },
+        { success: false, error: `Invalid period: ${period}. Use: ${CACHED_PERIODS.join(", ")} ou custom+start/end` },
         { status: 400 }
       )
     }

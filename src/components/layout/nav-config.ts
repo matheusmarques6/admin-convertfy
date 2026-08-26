@@ -14,7 +14,6 @@ import {
   Users,
   Store,
   Calendar,
-  Mail,
   DollarSign,
   FileBarChart,
   Rocket,
@@ -32,12 +31,8 @@ import {
   UserPlus,
   Phone,
   Users2,
-  Wrench,
-  Coins,
   FileText,
   Megaphone,
-  Cpu,
-  Activity,
   Package,
   CalendarDays,
   Instagram,
@@ -90,7 +85,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
       { id: "comercial.pipelines", name: "Pipelines", href: ROUTES.ADMIN.COMERCIAL.PIPELINES, icon: Briefcase },
       { id: "comercial.leads", name: "Leads", href: ROUTES.ADMIN.COMERCIAL.LEADS, icon: UserPlus },
       { id: "comercial.produtos", name: "Produtos", href: ROUTES.ADMIN.COMERCIAL.PRODUTOS, icon: Package },
-      { id: "comercial.forms", name: "Formularios", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
+      { id: "comercial.forms", name: "Formulários", href: ROUTES.ADMIN.COMERCIAL.FORMS, icon: FileText },
     ],
   },
   {
@@ -100,8 +95,8 @@ export const COMERCIAL_NAV: NavGroup[] = [
       { id: "comercial.inbox", name: "Inbox", href: ROUTES.ADMIN.INBOX, icon: Inbox },
       { id: "comercial.canais", name: "Canais", href: ROUTES.ADMIN.COMERCIAL.CANAIS, icon: Phone },
       { id: "comercial.instagram", name: "Instagram", href: ROUTES.ADMIN.COMERCIAL.INSTAGRAM, icon: Instagram },
-      { id: "comercial.automacoes", name: "Automacoes", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
-      { id: "comercial.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
+      { id: "comercial.automacoes", name: "Automações", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
+      { id: "comercial.meetings", name: "Reuniões", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
       { id: "comercial.agenda", name: "Agenda", href: ROUTES.ADMIN.COMERCIAL.AGENDA, icon: CalendarDays },
     ],
   },
@@ -111,6 +106,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     items: [
       { id: "comercial.funil", name: "Funil", href: ROUTES.ADMIN.COMERCIAL.FUNIL, icon: Filter },
       { id: "comercial.reports", name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
+      // (Onda 1: nomes com acentuação correta — a UI mostra pt-BR real.)
     ],
   },
 ]
@@ -129,7 +125,7 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     items: [
       { id: "ops.clients", name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users },
       { id: "ops.stores", name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, requiresStoreAccess: true },
-      { id: "ops.health", name: "Saude", href: ROUTES.ADMIN.HEALTH, icon: Heart },
+      { id: "ops.health", name: "Saúde", href: ROUTES.ADMIN.HEALTH, icon: Heart },
     ],
   },
   {
@@ -157,8 +153,10 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     key: "marketing",
     label: "Marketing",
     items: [
-      { id: "ops.campaigns.central", name: "Central de Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL, icon: Megaphone },
-      { id: "ops.campaigns.list", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail },
+      // Campanhas 2→1 (Onda 1, ago/2026): "Central de Campanhas" + a lista
+      // viraram UM item — o hub abre na Central; a rota /admin/campaigns
+      // segue viva (acessível por link direto), só saiu da nav.
+      { id: "ops.campaigns.central", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL, icon: Megaphone },
       { id: "ops.image_studio", name: "Geração de Imagens", href: ROUTES.ADMIN.IMAGE_STUDIO, icon: ImagePlus },
       { id: "ops.insights", name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
       { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
@@ -173,7 +171,7 @@ export const GERAL_NAV: NavGroup[] = [
     key: "overview",
     label: "",
     items: [
-      { id: "geral.home", name: "Inicio", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
+      { id: "geral.home", name: "Início", href: ROUTES.ADMIN.PRODUCTIVITY.HOME, icon: Home },
       { id: "geral.board", name: "Projetos", href: ROUTES.ADMIN.PRODUCTIVITY.BOARD, icon: Columns3 },
     ],
   },
@@ -181,7 +179,9 @@ export const GERAL_NAV: NavGroup[] = [
     key: "agenda",
     label: "Agenda",
     items: [
-      { id: "geral.meetings", name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.MINE, icon: Calendar },
+      // Nome próprio pra rota compartilhada (Onda 1): "Reuniões" no
+      // Comercial = todas; aqui = só as minhas (?scope=mine).
+      { id: "geral.meetings", name: "Minhas reuniões", href: ROUTES.ADMIN.MEETINGS.MINE, icon: Calendar },
     ],
   },
   {
@@ -196,28 +196,56 @@ export const GERAL_NAV: NavGroup[] = [
     label: "Financeiro",
     items: [
       { id: "geral.financial", name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign },
-      { id: "geral.reports", name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart },
+      { id: "geral.reports", name: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart },
     ],
   },
-  {
-    key: "ferramentas",
-    label: "Ferramentas",
-    items: [
-      // Grupo restrito a admin/dev — gate centralizado em role-access.ts.
-      { id: "tools.tools", name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench },
-      { id: "tools.currency_audit", name: "Auditoria moeda", href: ROUTES.ADMIN.TOOLS_CURRENCY_AUDIT, icon: Coins },
-      { id: "tools.email_generation", name: "Geração de Emails", href: ROUTES.ADMIN.SETTINGS.EMAIL_GENERATION, icon: Mail },
-      { id: "tools.ai_usage", name: "Custo de IA", href: ROUTES.ADMIN.AI_USAGE, icon: Cpu },
-      // Estúdio de Agentes absorve "Logs de geração" e "Execuções ao vivo"
-      // na nav (ago/2026) — as rotas antigas seguem vivas como drill-down,
-      // linkadas de dentro do Estúdio.
-      { id: "tools.agent_studio", name: "Estúdio de Agentes", href: ROUTES.ADMIN.AGENTS.STUDIO, icon: Activity },
-    ],
-  },
+  // Grupo "Ferramentas" saiu do Geral (Onda 1, ago/2026): os 5 itens
+  // técnicos (só admin/dev) viraram cards da seção "Ferramentas" em
+  // Configurações (settings-sections.ts). As rotas seguem vivas e agora
+  // são NEUTRAS no use-workspace (visitar não troca o workspace).
 ]
 
 export const NAV_BY_WORKSPACE: Record<WorkspaceKey, NavGroup[]> = {
   comercial: COMERCIAL_NAV,
   operacional: OPERACIONAL_NAV,
   geral: GERAL_NAV,
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Gate de permissão — helpers PUROS compartilhados por Sidebar, switcher
+// de workspaces, ⌘K e atalhos de teclado (⌥1-3). Antes cada consumidor
+// refazia (ou PULAVA) o filtro: o ⌘K listava páginas que a sidebar
+// escondia. Uma régua só elimina o drift.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface NavPermissionCtx {
+  canAccess: (id: NavItemId) => boolean
+  isAdmin: boolean
+  roles: string[]
+  storeAccessCount: number
+}
+
+export function navItemAllowed(item: NavItem, ctx: NavPermissionCtx): boolean {
+  if (!ctx.canAccess(item.id)) return false
+  if (item.requiresStoreAccess && !ctx.isAdmin && !ctx.roles.includes("dev")) {
+    return ctx.storeAccessCount > 0
+  }
+  return true
+}
+
+export function filterNavGroups(groups: NavGroup[], ctx: NavPermissionCtx): NavGroup[] {
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((i) => navItemAllowed(i, ctx)) }))
+    .filter((group) => group.items.length > 0)
+}
+
+/** Workspace visível no switcher = tem ao menos 1 item permitido. */
+export function workspaceAllowed(ws: WorkspaceKey, ctx: NavPermissionCtx): boolean {
+  return filterNavGroups(NAV_BY_WORKSPACE[ws], ctx).length > 0
+}
+
+/** Destino ao trocar de workspace: o 1º item permitido (a home pode ser vetada). */
+export function firstAllowedItem(ws: WorkspaceKey, ctx: NavPermissionCtx): NavItem | null {
+  const groups = filterNavGroups(NAV_BY_WORKSPACE[ws], ctx)
+  return groups.length > 0 ? groups[0].items[0] : null
 }
