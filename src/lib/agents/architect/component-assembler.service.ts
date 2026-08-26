@@ -27,6 +27,8 @@
  *     template global.
  */
 
+import crypto from "crypto"
+
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
@@ -59,11 +61,13 @@ import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-wor
 import { assembleDocument, validateBlockMarkers } from "./assemble-document"
 import type { OutlineSection } from "./outline-sections"
 import {
+  interpolateSystem,
   invokeAgent,
   loadActiveAgentConfig,
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
+import { renderImageTemplate } from "../image/template-renderer"
 import {
   loadCuradorMemory,
   logCuradorChoice,
@@ -710,6 +714,37 @@ export async function assembleStoreReference(
     throw new CuratorFailedError("catalogo_ausente")
   }
 
+  // Auditoria do Estúdio (26/08 — "cadê o prompt do Curador?"): a run passa
+  // a guardar o USER prompt RENDERIZADO (o MESMO userMessage do invoke) e os
+  // sha8 do system resolvido e do catálogo. O system de ~120k chars fica de
+  // fora do rendered_prompt de propósito (é o catálogo cacheável,
+  // reconstruível por conteúdo via buildCatalog + sha); o prompt de user —
+  // loja, perfil, sequência, intenções — NÃO era reconstruível sem isso.
+  const chooserUserPrompt = renderImageTemplate(
+    chooserConfig.user_template,
+    chooserVars,
+  )
+  const chooserSystemSha8 = crypto
+    .createHash("sha256")
+    .update(interpolateSystem(chooserConfig.system_prompt, { catalogo: catalog.json }))
+    .digest("hex")
+    .slice(0, 8)
+  const catalogSha8 = crypto
+    .createHash("sha256")
+    .update(catalog.json)
+    .digest("hex")
+    .slice(0, 8)
+  const chooserInputVars = {
+    sections: input.structure.length,
+    catalog_variants: catalog.total,
+    catalog_sha8: catalogSha8,
+    system_sha8: chooserSystemSha8,
+    // Critérios editoriais servidos nesta run (auditoria do Estúdio).
+    has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
+    has_intencao_email: Boolean(input.intencaoEmail?.trim()),
+    estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+  }
+
   // Run 'running' visível na live view enquanto o LLM roda.
   const chooserRunId = await startGenerationRun({
     storeId: input.storeId,
@@ -720,14 +755,7 @@ export async function assembleStoreReference(
     agent: "assembler_chooser",
     agentConfigId: chooserRow?.id,
     model: chooserConfig.model,
-    inputVars: {
-      sections: input.structure.length,
-      catalog_variants: catalog.total,
-      // Critérios editoriais servidos nesta run (auditoria do Estúdio).
-      has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
-      has_intencao_email: Boolean(input.intencaoEmail?.trim()),
-      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
-    },
+    inputVars: chooserInputVars,
   })
 
   // Retry 1x. Sem o score do pré-filtro não existe mais fallback determinístico
@@ -821,7 +849,8 @@ export async function assembleStoreReference(
       status: "error",
       model: chooserConfig.model,
       errorMessage: chooserError ?? "curador_sem_escolhas",
-      inputVars: { sections: input.structure.length },
+      inputVars: chooserInputVars,
+      renderedPrompt: chooserUserPrompt,
       rawOutput: chooserRaw.slice(0, 8000),
       parsedOutput: chooserTelemetry,
       tokensInput: chooserTokensIn,
@@ -873,6 +902,27 @@ export async function assembleStoreReference(
     inputVars: { positions: rankingByBlock.size },
   })
 
+  const asmVars: Record<string, string> = {
+    brand_name: input.brandName,
+    nicho: fieldOrMissing(input.nicho),
+    posicionamento: fieldOrMissing(input.posicionamento),
+    persona: fieldOrMissing(input.persona),
+    tom_voz: fieldOrMissing(input.tomVoz),
+    outline_objective: input.outlineObjective,
+    outline_guidance: input.outlineGuidance,
+    outline_tone_hint: input.outlineToneHint,
+    top_products:
+      input.topProductNames.length > 0
+        ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
+        : "(sem produtos cadastrados)",
+    // Mesma memória que o Curador recebeu — carregada uma vez, sem query
+    // nova. É insumo da razão de HISTÓRICO da escolha final.
+    memoria: renderCuradorMemory(memory),
+    finalists_json: finalistsJson,
+  }
+  // Mesma auditoria do Curador: o prompt REAL do Montador fica na run.
+  const asmUserPrompt = renderImageTemplate(asmConfig.user_template, asmVars)
+
   let asmRaw = ""
   let asmTokensIn = 0
   let asmTokensOut = 0
@@ -880,24 +930,7 @@ export async function assembleStoreReference(
   let asmError: string | null = null
   let decisions: ParsedAssemblerChoices | null = null
   try {
-    const res = await invokeAgent(asmConfig, {
-      brand_name: input.brandName,
-      nicho: fieldOrMissing(input.nicho),
-      posicionamento: fieldOrMissing(input.posicionamento),
-      persona: fieldOrMissing(input.persona),
-      tom_voz: fieldOrMissing(input.tomVoz),
-      outline_objective: input.outlineObjective,
-      outline_guidance: input.outlineGuidance,
-      outline_tone_hint: input.outlineToneHint,
-      top_products:
-        input.topProductNames.length > 0
-          ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
-          : "(sem produtos cadastrados)",
-      // Mesma memória que o Curador recebeu — carregada uma vez, sem query
-      // nova. É insumo da razão de HISTÓRICO da escolha final.
-      memoria: renderCuradorMemory(memory),
-      finalists_json: finalistsJson,
-    })
+    const res = await invokeAgent(asmConfig, asmVars)
     asmRaw = res.raw
     asmTokensIn = res.tokensInput
     asmTokensOut = res.tokensOutput
@@ -958,14 +991,8 @@ export async function assembleStoreReference(
     agentConfigId: chooserRow?.id,
     status: "success",
     model: chooserConfig.model,
-    inputVars: {
-      sections: input.structure.length,
-      catalog_variants: catalog.total,
-      // Critérios editoriais servidos nesta run (auditoria do Estúdio).
-      has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
-      has_intencao_email: Boolean(input.intencaoEmail?.trim()),
-      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
-    },
+    inputVars: chooserInputVars,
+    renderedPrompt: chooserUserPrompt,
     rawOutput: chooserRaw.slice(0, 8000),
     parsedOutput: chooserTelemetry,
     tokensInput: chooserTokensIn,
@@ -1068,6 +1095,7 @@ export async function assembleStoreReference(
     model: asmConfig.model,
     errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
     inputVars: { positions: rankingByBlock.size },
+    renderedPrompt: asmUserPrompt,
     rawOutput: asmRaw.slice(0, 8000),
     parsedOutput: {
       degraded: Boolean(asmError) || decisions.malformed,
