@@ -1,7 +1,7 @@
 /**
  * Backfill da foto de perfil do contato da thread (crm_threads.
  * contact_avatar_url) — os webhooks não entregam a foto, então ela é
- * buscada na primeira abertura da conversa e PERSISTIDA:
+ * buscada sob demanda e PERSISTIDA:
  *
  *  - Instagram DM: Messaging Profile API (GET /{igsid}?fields=profile_pic)
  *  - WhatsApp via QR (Evolution): POST /chat/fetchProfilePictureUrl
@@ -9,9 +9,10 @@
  *  - Comentário de post: o "contato" é a publicação — skip (o card do
  *    post cobre a identidade visual).
  *
- * Cooldown in-memory por thread (15 min) segura o custo quando a API
- * não devolve foto (privacidade/sem foto) e a conversa fica aberta com
- * o polling de 30s batendo no detail.
+ * Chamado pelo detail (abertura da conversa) e em LOTE pelo after() da
+ * lista — sem o lote, só conversa aberta ganhava foto e a lista ficava
+ * de iniciais pra sempre. Cooldown in-memory por thread (15 min) segura
+ * o custo quando a API não devolve foto e o polling segue batendo.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -32,12 +33,9 @@ interface ThreadForAvatar {
   id: string
   contact_external_id: string
   contact_avatar_url?: string | null
-  channel?: {
-    id: string
-    type: string
-    provider?: string | null
-    external_id?: string | null
-  } | null
+  /** Só o id é obrigatório — o canal é recarregado com config/external_id. */
+  channel?: { id: string } | null
+  channel_id?: string | null
 }
 
 function igConfigFromChannel(channel: {
@@ -64,8 +62,8 @@ export async function ensureThreadAvatar(
   thread: ThreadForAvatar,
 ): Promise<string | null> {
   if (thread.contact_avatar_url) return null
-  const channel = thread.channel
-  if (!channel) return null
+  const channelId = thread.channel?.id ?? thread.channel_id
+  if (!channelId) return null
   if (thread.contact_external_id.startsWith("comment:")) return null
 
   const now = Date.now()
@@ -80,28 +78,47 @@ export async function ensureThreadAvatar(
   }
 
   try {
+    // Canal fresco com config/external_id — a lista não os expõe.
+    const { data: ch } = await admin
+      .from("crm_channels")
+      .select("id, type, provider, external_id, config")
+      .eq("id", channelId)
+      .maybeSingle()
+    if (!ch) {
+      log.info("avatar: canal não encontrado", { threadId: thread.id, channelId })
+      return null
+    }
+
     let url: string | null = null
 
-    if (channel.type === "instagram") {
-      const { data: ch } = await admin
-        .from("crm_channels")
-        .select("external_id, config")
-        .eq("id", channel.id)
-        .maybeSingle()
-      if (!ch) return null
-      url = await getInstagramUserProfilePic(igConfigFromChannel(ch), thread.contact_external_id)
-    } else if (channel.type === "whatsapp" && channel.provider === "evolution") {
+    if (ch.type === "instagram") {
+      url = await getInstagramUserProfilePic(
+        igConfigFromChannel(ch),
+        thread.contact_external_id,
+      )
+      if (!url) {
+        log.info("avatar: IG sem profile_pic (privacidade/permissão)", {
+          threadId: thread.id,
+          igsid: thread.contact_external_id,
+        })
+      }
+    } else if (ch.type === "whatsapp" && ch.provider === "evolution") {
       const cfg = await getEvolutionRuntimeConfig(admin)
-      const instanceName = channel.external_id
-      if (!cfg || !instanceName) return null
+      if (!cfg || !ch.external_id) {
+        log.info("avatar: Evolution sem config/instância", { threadId: thread.id })
+        return null
+      }
       const client = createEvolutionClient({
         baseUrl: cfg.baseUrl,
         apiKey: cfg.apiKey,
-        instanceName,
+        instanceName: ch.external_id,
       })
       const number = thread.contact_external_id.replace(/\D/g, "")
       if (!number) return null
       url = await client.fetchProfilePictureUrl(number)
+      if (!url) {
+        log.info("avatar: WhatsApp sem foto (privacidade)", { threadId: thread.id })
+      }
     } else {
       // WhatsApp Cloud: sem API de foto de contato.
       return null
@@ -117,7 +134,7 @@ export async function ensureThreadAvatar(
       log.warn("avatar: update falhou", { threadId: thread.id, error: error.message })
       return url // ainda serve pra resposta atual
     }
-    log.info("avatar: preenchido", { threadId: thread.id, channelType: channel.type })
+    log.info("avatar: preenchido", { threadId: thread.id, channelType: ch.type })
     return url
   } catch (err) {
     log.warn("avatar: fetch falhou", {
@@ -125,5 +142,24 @@ export async function ensureThreadAvatar(
       error: err instanceof Error ? err.message : String(err),
     })
     return null
+  }
+}
+
+/**
+ * Backfill em lote pra página da lista (roda no after() da rota, fora
+ * do caminho da resposta). Sequencial de propósito — são APIs de
+ * terceiros com rate limit; `max` limita o custo por request e o
+ * polling da lista completa o resto aos poucos.
+ */
+export async function backfillThreadAvatars(
+  admin: SupabaseClient,
+  threads: ThreadForAvatar[],
+  max = 6,
+): Promise<void> {
+  const candidates = threads
+    .filter((t) => !t.contact_avatar_url && !t.contact_external_id.startsWith("comment:"))
+    .slice(0, max)
+  for (const t of candidates) {
+    await ensureThreadAvatar(admin, t)
   }
 }

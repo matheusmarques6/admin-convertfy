@@ -4,7 +4,7 @@
  *                                        vincula a lead/deal/client
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { uuid } from "@/lib/validations/uuid"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
@@ -64,14 +64,20 @@ export async function GET(
     assertThreadInOrg(thread.org_id, orgId)
 
     // Foto de perfil do contato: webhooks não entregam — busca na
-    // primeira abertura (IG Messaging Profile / Evolution) e persiste.
-    // Só na página inicial (sem cursor) pra não pagar em todo scroll.
+    // abertura (IG Messaging Profile / Evolution) e persiste. Em
+    // after(): inline, uma Evolution lenta (retry interno) atrasaria a
+    // abertura da conversa; o poll de 30s traz a foto persistida.
     if (!before && !thread.contact_avatar_url) {
-      const avatarUrl = await ensureThreadAvatar(
-        admin,
-        thread as unknown as Parameters<typeof ensureThreadAvatar>[1],
-      )
-      if (avatarUrl) (thread as Record<string, unknown>).contact_avatar_url = avatarUrl
+      const forAvatar = thread as unknown as Parameters<typeof ensureThreadAvatar>[1]
+      after(async () => {
+        try {
+          await ensureThreadAvatar(admin, forAvatar)
+        } catch (err) {
+          log.warn("avatar backfill (detail) falhou", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      })
     }
 
     let mq = admin

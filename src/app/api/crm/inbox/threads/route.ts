@@ -11,11 +11,12 @@ import { withTiming } from "@/lib/api/with-timing"
  *   - limit: default 50, max 200
  */
 
-import { NextRequest } from "next/server"
+import { NextRequest, after } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { sanitizeSearchTerm } from "@/lib/crm/inbox-thread-guard"
+import { backfillThreadAvatars } from "@/lib/services/crm-contact-avatar.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmInboxThreads")
@@ -176,6 +177,27 @@ async function handleGet(request: NextRequest) {
       (sum, t) => sum + (Number(t.unread_count) || 0),
       0,
     )
+
+    // Fotos de perfil que faltam nesta página: busca em lote FORA da
+    // resposta (after) e persiste — o próximo poll da lista (30s) já
+    // vem com as fotos. Sem isto, só conversa aberta ganhava avatar.
+    const rows = (data ?? []) as Array<{
+      id: string
+      contact_external_id: string
+      contact_avatar_url: string | null
+      channel_id: string | null
+    }>
+    if (rows.some((t) => !t.contact_avatar_url)) {
+      after(async () => {
+        try {
+          await backfillThreadAvatars(admin, rows)
+        } catch (err) {
+          log.warn("avatar backfill (lista) falhou", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      })
+    }
 
     return successResponse(request, {
       org_id: orgId,

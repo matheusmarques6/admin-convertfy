@@ -322,12 +322,27 @@ export class EvolutionAPI {
    * contato não tem foto ou a privacidade dele esconde — não é erro.
    */
   async fetchProfilePictureUrl(number: string): Promise<string | null> {
-    const json = await this.request<{ profilePictureUrl?: string | null; profilePicUrl?: string | null }>(
-      `/chat/fetchProfilePictureUrl/${this.config.instanceName}`,
-      { method: "POST", json: { number } },
-    )
-    const url = json?.profilePictureUrl ?? json?.profilePicUrl ?? null
-    return typeof url === "string" && url.startsWith("http") ? url : null
+    const parse = (json: { profilePictureUrl?: string | null; profilePicUrl?: string | null } | null) => {
+      const url = json?.profilePictureUrl ?? json?.profilePicUrl ?? null
+      return typeof url === "string" && url.startsWith("http") ? url : null
+    }
+    try {
+      const json = await this.request<{ profilePictureUrl?: string | null; profilePicUrl?: string | null }>(
+        `/chat/fetchProfilePictureUrl/${this.config.instanceName}`,
+        { method: "POST", json: { number } },
+      )
+      return parse(json)
+    } catch (err) {
+      // Builds v1 expõem o endpoint com o nome curto.
+      if (err instanceof EvolutionAPIError && err.status === 404) {
+        const json = await this.request<{ profilePictureUrl?: string | null; profilePicUrl?: string | null }>(
+          `/chat/fetchProfilePicUrl/${this.config.instanceName}`,
+          { method: "POST", json: { number } },
+        )
+        return parse(json)
+      }
+      throw err
+    }
   }
 
   // ── Mensagens ──────────────────────────────────────────────────
