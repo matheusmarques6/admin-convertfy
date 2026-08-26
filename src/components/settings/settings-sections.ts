@@ -31,6 +31,9 @@ import {
   LifeBuoy,
   ListChecks,
   QrCode,
+  Activity,
+  Cpu,
+  Coins,
   type LucideIcon,
 } from "lucide-react"
 
@@ -185,6 +188,46 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     href: "/admin/settings/manutencao",
     adminOnly: true,
     kind: "component",
+  },
+  // ── Ferramentas internas (Onda 1, ago/2026) ─────────────────────────
+  // O grupo "Ferramentas" saiu do workspace Geral da sidebar: os destinos
+  // seguem vivos e agora são alcançados por aqui (e pelo ⌘K). As rotas
+  // são NEUTRAS no use-workspace — visitar não troca o workspace.
+  {
+    key: "agent-studio",
+    title: "Estúdio de Agentes",
+    description: "Fluxo, execuções e custo do pipeline de emails",
+    icon: Activity,
+    href: "/admin/agents/studio",
+    adminOnly: true,
+    kind: "page-link",
+  },
+  {
+    key: "ai-usage",
+    title: "Custo de IA",
+    description: "Gasto por modelo e por agente",
+    icon: Cpu,
+    href: "/admin/ai-usage",
+    adminOnly: true,
+    kind: "page-link",
+  },
+  {
+    key: "tools",
+    title: "Ferramentas",
+    description: "Utilitários internos de dev",
+    icon: Wrench,
+    href: "/admin/tools",
+    adminOnly: true,
+    kind: "page-link",
+  },
+  {
+    key: "currency-audit",
+    title: "Auditoria de moeda",
+    description: "Verificação de valores BRL/USD",
+    icon: Coins,
+    href: "/admin/tools/currency-audit",
+    adminOnly: true,
+    kind: "page-link",
   },
 ]
 
