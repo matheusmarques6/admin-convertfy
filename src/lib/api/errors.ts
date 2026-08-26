@@ -189,10 +189,37 @@ export interface AuthUser {
   email?: string
 }
 
+/** AuthRetryableFetchError (e 5xx do GoTrue) = falha de REDE/serviço até o
+ *  Supabase Auth — não é sessão inválida. Sem distinguir, um blip virava
+ *  401 em TODAS as rotas do dashboard ao mesmo tempo (storm real em
+ *  ago/2026: total-revenue/ops-series/stores-overview/portfolio-extras em
+ *  401 a cada poll de 30s) e o front tratava como "deslogado". */
+function isRetryableAuthError(error: { name?: string; status?: number } | null | undefined): boolean {
+  if (!error) return false
+  if (error.name === "AuthRetryableFetchError") return true
+  return typeof error.status === "number" && error.status >= 500
+}
+
 export async function requireAuth(
   supabase: SupabaseClient
 ): Promise<AuthUser> {
-  const { data: { user }, error } = await supabase.auth.getUser()
+  let { data: { user }, error } = await supabase.auth.getUser()
+
+  if (error && isRetryableAuthError(error)) {
+    // Uma nova tentativa curta resolve o blip; se persistir, é indisponibilidade
+    // do serviço → 503 (o client mantém a sessão e tenta de novo), nunca 401
+    // (que significa "sessão inválida" e derruba o usuário).
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    ;({ data: { user }, error } = await supabase.auth.getUser())
+    if (error && isRetryableAuthError(error)) {
+      throw new AppError(
+        "Serviço de autenticação indisponível — tente novamente",
+        503,
+        "AUTH_UNAVAILABLE",
+      )
+    }
+  }
+
   if (error || !user) {
     throw new UnauthorizedError()
   }

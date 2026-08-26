@@ -1,7 +1,7 @@
 import { withTiming } from "@/lib/api/with-timing"
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { AppError, requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
 import {
@@ -286,7 +286,11 @@ async function handleGet(request: NextRequest) {
 
     return successResponse(request, { stores: results, period })
   } catch (error) {
-    log.error("StoresOverview error:", error)
+    // 401/403 não são erro da rota (sessão expirada em aba aberta gera um
+    // por poll) — o errorResponse já loga o que for 5xx.
+    if (!(error instanceof AppError) || error.statusCode >= 500) {
+      log.error("StoresOverview error:", error)
+    }
     return errorResponse(request, error, "stores-overview")
   }
 }

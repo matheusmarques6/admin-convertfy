@@ -49,14 +49,24 @@ async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url)
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new Error(
+    const err = new Error(
       (body && typeof body.error === "string" && body.error) || `Erro ${res.status}`,
-    )
+    ) as Error & { status?: number }
+    err.status = res.status
+    throw err
   }
   return body as T
 }
 
-const SWR_OPTS = { revalidateOnFocus: false, dedupingInterval: 30_000 }
+const SWR_OPTS = {
+  revalidateOnFocus: false,
+  dedupingInterval: 30_000,
+  // 401 = sessão expirada — re-tentar não conserta e vira storm de
+  // requests (caso real ago/2026: 5 rotas × 1 poll/30s em 401 por horas
+  // numa aba esquecida aberta). O usuário vê o banner "entrar de novo".
+  shouldRetryOnError: (err: unknown) =>
+    (err as { status?: number } | null)?.status !== 401,
+}
 
 // ── Shapes das rotas (unwrap direto: successResponse espalha no topo) ──
 
@@ -166,11 +176,15 @@ export function OpsDashboard({ userName }: { userName: string }) {
   }, [globalMutate])
   const isoDate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  // Sessão expirada: desliga realtime + polling + auto-sync (cada poll era
+  // mais um 401 no log) e mostra o banner de login.
+  const sessionExpired = (revenueError as (Error & { status?: number }) | undefined)?.status === 401
   const { isRefreshing, triggerRefresh } = useRealtimeRevenue({
     period: period.period,
     start: isoDate(period.start),
     end: isoDate(period.end),
     onDataUpdate: revalidateDashboards,
+    enabled: !sessionExpired,
   })
   // Uma tentativa por SELEÇÃO (período+datas): range custom novo dispara
   // de novo; o lock server-side segura duplicatas concorrentes.
@@ -254,11 +268,23 @@ export function OpsDashboard({ userName }: { userName: string }) {
           <DateControl value={period} onChange={setPeriod} />
         </div>
 
-        {revenueError && (
+        {sessionExpired ? (
+          <div className="flex items-center gap-3 rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-3 text-[12.5px] text-[var(--ops-warn)]">
+            <span className="flex-1">
+              Sua sessão expirou — os dados pararam de atualizar para não gerar erro em série.
+            </span>
+            <a
+              href="/login"
+              className="shrink-0 h-7 px-3 inline-flex items-center rounded-md border border-[var(--ops-warn-br)] font-semibold hover:bg-[var(--ops-warn)]/10"
+            >
+              Entrar de novo
+            </a>
+          </div>
+        ) : revenueError ? (
           <div className="rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-3 text-[12.5px] text-[var(--ops-warn)]">
             Não consegui carregar a receita: {String(revenueError.message || revenueError)}
           </div>
-        )}
+        ) : null}
 
         {/* Cache do período incompleto → sincronização em andamento */}
         {(isRefreshing || needsSync) && (
