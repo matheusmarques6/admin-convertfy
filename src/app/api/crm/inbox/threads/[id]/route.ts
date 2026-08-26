@@ -39,7 +39,7 @@ export async function GET(
         id, org_id, status, contact_name, contact_external_id, contact_avatar_url,
         last_message_at, last_message_preview, last_message_direction, unread_count, tags,
         assigned_to, lead_id, deal_id, client_id, contact_id, channel_id,
-        is_window_open, window_expires_at, metadata,
+        is_window_open, window_expires_at,
         created_at, updated_at,
         assignee:profiles!crm_threads_assigned_to_fkey (id, name, avatar_url, email),
         channel:crm_channels (id, type, provider, display_name, external_id),
@@ -50,7 +50,14 @@ export async function GET(
       .eq("id", id)
       .single<{ org_id: string } & Record<string, unknown>>()
 
-    if (error || !thread) {
+    // PGRST116 = zero linhas (aí sim, 404). Qualquer OUTRO erro é falha
+    // de query e tem de subir como 500 com a mensagem real — tratar tudo
+    // como "não encontrada" mascarou uma coluna inexistente no select e
+    // derrubou a abertura de TODA conversa (incidente ago/2026).
+    if (error && (error as { code?: string }).code !== "PGRST116") {
+      throw error
+    }
+    if (!thread) {
       throw new AppError("Conversa não encontrada", 404, "not-found")
     }
     assertThreadInOrg(thread.org_id, orgId)

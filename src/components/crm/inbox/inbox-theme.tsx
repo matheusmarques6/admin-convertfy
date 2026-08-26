@@ -212,7 +212,10 @@ export function AvatarWithChannel({
 }
 
 export function fmtWaitShort(min: number): string {
-  return min < 60 ? `${min}m` : `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ""}`
+  if (min < 60) return `${min}m`
+  // Acima de 48h, "626h 9m" vira ruído — dias dizem mais.
+  if (min >= 48 * 60) return `${Math.floor(min / 1440)}d`
+  return `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ""}`
 }
 
 /** Horas restantes da janela de 24h (null = sem janela / fechada). */

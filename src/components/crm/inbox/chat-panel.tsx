@@ -274,7 +274,9 @@ export function ChatPanel({
   }
 
   const contactLabel = thread.contact_name || thread.contact_external_id
-  const mediaId = (thread.metadata as { media_id?: string } | null)?.media_id
+  // Thread de comentário: o external_id É "comment:{media_id}" — a
+  // tabela não tem coluna metadata (selecioná-la derrubou o detail).
+  const mediaId = isComment ? thread.contact_external_id.slice("comment:".length) : null
 
   /** Sequências do mesmo autor: rótulo na primeira, meta na última. */
   const runKey = (m: InboxMessage) =>
