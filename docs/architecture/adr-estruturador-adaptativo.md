@@ -277,6 +277,53 @@ Klaviyo/Omnisend existentes) cruzadas com a estrutura usada → job periódico
 propõe testes A/B e rascunhos de nota (`status: pendente`) promovendo/rebaixando
 estruturas. O campo `performance` do frontmatter já nasce reservado para isso.
 
+## Telemetria e mapa de dados (por ocasião)
+
+Todo acesso do épico ao Supabase, pelo evento que o dispara:
+
+**A — Sync do vault** (webhook de push + cron 30min + manual): lê o tarball do
+GitHub (única chamada externa do épico) e `vault_sync_state` (SHA do último
+commit — igual ao HEAD = no-op); grava upsert idempotente em `email_intents` /
+`email_structure_refs` / `email_learnings` (chave `tipo+flow+slug`, frontmatter
+em colunas + corpo cru + `secoes_normalizadas` + `synced_commit_sha`; arquivo
+removido → `is_active=false`, nunca DELETE) e UMA linha de telemetria em
+`vault_sync_runs` (`trigger`, `commit_sha`, `files_total`, `upserted`,
+`deactivated`, `skipped_invalid[{path,motivo}]`, `duration_ms`, `error`) — é o
+que responde "por que minha edição não valeu?".
+
+**B — Geração** (fila de dispatch / teste / regen): 10 leituras montam o
+prompt — settings (`estruturador_mode`), config do agente, as 3 tabelas do
+vault (filtradas por flow + `_global` por `aplica_a`), `client_stores` +
+`store_briefings` + `store_top_products` (contexto/objeção dominante — já
+lidos pela fase 1 hoje), `email_component_variants` (capacidade: preenchíveis
+por categoria + product_slots) e `email_generation_runs` (últimas N=2 runs do
+próprio Estruturador deste loja×flow×email → `estruturas_proibidas`).
+Escrita: UMA run `agent='estruturador'` — aberta `running` antes do LLM,
+fechada com `email_id`/`flow_id` (passo 1), `input_vars` auditável
+(`refs_servidas[]`, `aprendizados_servidos[]`, `vault_commit_sha`,
+capacidade, proibidas, campos ausentes da loja, modo), `rendered_prompt`
+(user completo + `system_sha8` — o system de ~15-20k tokens é reconstruível
+por `vault_commit_sha`; lição da fase 1 sem prompt logado), `parsed_output`
+(embasamento completo + relatório do validador: retry, posições removidas,
+descartes com `origem`, dedup, fallback) e tokens/custo/duração. Em modo
+`on` o output segue EM MEMÓRIA para o Curador — não há tabela intermediária:
+**a run é a persistência do embasamento**.
+
+**C — Leitura humana** (Estúdio): `agent_studio_latest_runs` (o nó novo já é
+coberto pela migration 20261080) + drill-down do `parsed_output` renderizado.
+
+**D — Feedback do COO** (clique no embasamento): grava
+`estruturador_feedback` (`run_id`, `email_id`, `alvo` — posição N |
+diagnostico | fio | fonte —, `veredito`, `comentario`, `autor`); o `run_id`
+amarra o feedback ao `vault_commit_sha` exato — sem isso não se distingue
+erro do modelo, do material ou da biblioteca. A curadoria lê os recorrentes e
+promove MANUALMENTE a nota de `aprendizados/` (que volta pela ocasião A) — o
+banco nunca alimenta o prompt direto; só o vault curado alimenta.
+
+Custo: as leituras de B são queries indexadas (desprezível); o peso é o
+SYSTEM (~15-20k tokens), idêntico entre lojas do flow → prompt caching paga o
+prompt grande uma vez por dia de geração.
+
 ## Operação
 
 - **Kill-switch** em `email_generation_settings.estruturador_mode`:
