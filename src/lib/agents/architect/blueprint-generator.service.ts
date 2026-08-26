@@ -24,6 +24,13 @@ import {
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
+import { renderImageTemplate } from "../image/template-renderer"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type SegmentOrigin,
+} from "../shared/prompt-provenance"
 import { loadEffectiveBlueprint } from "./blueprint-loader"
 import {
   buildDeterministicBlueprint,
@@ -304,6 +311,39 @@ TOP PRODUTOS: {{top_products}}
 
 Gere o JSON agora.`
 
+// Proveniência (plano telemetria 26/08): origem de cada var dos prompts.
+const SUBJECT_ORIGINS: Record<string, SegmentOrigin> = {
+  brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  nicho: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  persona: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  outline_objective: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  outline_guidance: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  tones: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  copy_guidance_resumo: { cls: "biblioteca", rotulo: "Orientações de copy das variantes casadas" },
+  top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+}
+
+const BLUEPRINT_ORIGINS: Record<string, SegmentOrigin> = {
+  brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  nicho: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  posicionamento: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  persona: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+  flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  outline_objective: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  outline_guidance: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  suggested_blocks: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+  allowed_block_types: { cls: "sistema", rotulo: "Tipos permitidos — constante do código" },
+  reference_html: { cls: "upstream", rotulo: "HTML montado — SAÍDA do Montador" },
+  pesquisa_diagnostico: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
+  estrutura_extraida: { cls: "sistema", rotulo: "Esqueleto por tags (vazio desde 20/08)" },
+}
+
 interface SubjectHintResult {
   subject_hint: string | null
   messaging: string | null
@@ -361,6 +401,38 @@ async function generateSubjectHint(input: {
     top_products: input.topProductNames.join(", "),
   }
 
+  // Proveniência: o system do Assunto não tem var (100% agente); o user é
+  // plain-var. Até 26/08 esta run não gravava prompt NENHUM — passa a gravar.
+  const segUser = buildSegmentedPrompt(config.user_template, vars, SUBJECT_ORIGINS, {
+    parte: "user",
+  })
+  const renderedPrompt = segUser.segments
+    ? segUser.prompt
+    : renderImageTemplate(config.user_template, vars)
+  const promptSegments = concatSegments(
+    [
+      {
+        cls: "agente" as const,
+        rotulo: "Template do agente",
+        texto: config.system_prompt,
+        chars: config.system_prompt.length,
+        parte: "system" as const,
+      },
+    ],
+    segUser.segments,
+  )
+  const inputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${input.nicho || "(sem nicho)"}` },
+    { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber}` },
+    { rotulo: "Outline", cls: "curadoria", valor: input.outline?.objective ?? "(sem outline)" },
+    {
+      rotulo: "Orientações de copy das variantes",
+      cls: "biblioteca",
+      valor: input.copyGuidanceResumo || "(nenhuma)",
+    },
+    { rotulo: "Top produtos", cls: "loja", valor: input.topProductNames.join("; ") || "(sem produtos)" },
+  ]
+
   const t0 = Date.now()
   const runId = await startGenerationRun({
     storeId: input.storeId,
@@ -371,6 +443,9 @@ async function generateSubjectHint(input: {
     agent: "subject",
     agentConfigId: cfgRow?.id,
     model: config.model,
+    renderedPrompt,
+    promptSegments,
+    inputSummary,
   })
 
   try {
@@ -395,8 +470,17 @@ async function generateSubjectHint(input: {
       status: "success",
       model: config.model,
       inputVars: vars,
+      renderedPrompt,
+      promptSegments,
+      inputSummary,
       rawOutput: res.raw.slice(0, 2000),
-      parsedOutput: { has_subject: subjectHint !== null, has_messaging: messaging !== null },
+      parsedOutput: {
+        has_subject: subjectHint !== null,
+        has_messaging: messaging !== null,
+        // Os TEXTOS, não só as flags: é o que a aba Saída do Estúdio mostra.
+        subject_hint: subjectHint,
+        messaging,
+      },
       tokensInput: res.tokensInput,
       tokensOutput: res.tokensOutput,
       costCents: resolveCostCents({
@@ -427,6 +511,9 @@ async function generateSubjectHint(input: {
       status: "error",
       model: config.model,
       errorMessage: msg,
+      renderedPrompt,
+      promptSegments,
+      inputSummary,
       durationMs: Date.now() - t0,
     }).catch(() => {})
     return null
@@ -494,6 +581,35 @@ async function generateDeterministicBlueprint(
   match: MatchResult,
 ): Promise<GenerateBlueprintResult> {
   const t0 = Date.now()
+  // Rota A não tem prompt (é código): a proveniência aqui é a ENTRADA — de
+  // onde veio cada insumo que virou blueprint.
+  const detInputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${input.nicho || "(sem nicho)"}` },
+    { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber}` },
+    {
+      rotulo: "Slots do Curador/Montador",
+      cls: "upstream",
+      valor: `${(input.slots ?? []).length} posições · ${match.matches.size} com variante casada`,
+    },
+    {
+      rotulo: "Schemas das variantes",
+      cls: "biblioteca",
+      valor: `cobertura ${Math.round((match.coverage ?? 0) * 100)}% dos blocos de copy`,
+    },
+    { rotulo: "Outline", cls: "curadoria", valor: input.outline?.objective ?? "(sem outline)" },
+    {
+      rotulo: "Papéis por posição",
+      cls: "upstream",
+      valor: (input.papeisPorPosicao?.length ?? 0) > 0
+        ? `${input.papeisPorPosicao!.length} papéis do Estruturador`
+        : "(sem Estruturador nesta geração)",
+    },
+    {
+      rotulo: "Fio narrativo",
+      cls: "upstream",
+      valor: input.fioNarrativo?.trim() || "(sem fio — consumidores caem no messaging)",
+    },
+  ]
   const runId = await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
@@ -502,6 +618,7 @@ async function generateDeterministicBlueprint(
     batchId: input.batchId,
     agent: "blueprint",
     model: "deterministic",
+    inputSummary: detInputSummary,
   })
 
   let blueprint: GeneratedBlueprint = buildDeterministicBlueprint({
@@ -570,6 +687,7 @@ async function generateDeterministicBlueprint(
     agent: "blueprint",
     status: "success",
     model: "deterministic",
+    inputSummary: detInputSummary,
     parsedOutput: {
       blocks: blueprint.blocks.length,
       source: "ai",
@@ -643,6 +761,40 @@ async function generateLlmBlueprint(
   }
 
   const t0 = Date.now()
+  const segUser = buildSegmentedPrompt(config.user_template, vars, BLUEPRINT_ORIGINS, {
+    parte: "user",
+  })
+  const renderedPrompt = segUser.segments
+    ? segUser.prompt
+    : renderImageTemplate(config.user_template, vars)
+  const promptSegments = concatSegments(
+    [
+      {
+        cls: "agente" as const,
+        rotulo: "Template do agente",
+        texto: config.system_prompt,
+        chars: config.system_prompt.length,
+        parte: "system" as const,
+      },
+    ],
+    segUser.segments,
+  )
+  const llmInputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${input.nicho || "(sem nicho)"}` },
+    { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber}` },
+    {
+      rotulo: "HTML montado (lido pelo agente)",
+      cls: "upstream",
+      valor: `${input.referenceHtml.length.toLocaleString("pt-BR")} chars — SAÍDA do Montador`,
+    },
+    { rotulo: "Outline", cls: "curadoria", valor: input.outline?.objective ?? "(sem outline)" },
+    {
+      rotulo: "Pesquisa & Diagnóstico",
+      cls: "loja",
+      valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars servidos`,
+    },
+    { rotulo: "Motivo do fallback pro LLM", cls: "sistema", valor: fallbackReason },
+  ]
   // Run 'running' visível na live view enquanto o LLM roda.
   const runId = await startGenerationRun({
     storeId: input.storeId,
@@ -653,6 +805,9 @@ async function generateLlmBlueprint(
     agent: "blueprint",
     agentConfigId: cfgRow?.id,
     model: config.model,
+    renderedPrompt,
+    promptSegments,
+    inputSummary: llmInputSummary,
   })
   let blueprint: GeneratedBlueprint | null = null
   let source: "ai" | "manual" = "ai"
@@ -773,6 +928,9 @@ async function generateLlmBlueprint(
     // Em fallback (skipped), registra o motivo + modelo tentado pra diagnóstico.
     errorMessage: source === "ai" ? undefined : (invokeError ?? undefined),
     inputVars: vars,
+    renderedPrompt,
+    promptSegments,
+    inputSummary: llmInputSummary,
     rawOutput: rawOutput.slice(0, 4000),
     parsedOutput: {
       blocks: blueprint.blocks.length,

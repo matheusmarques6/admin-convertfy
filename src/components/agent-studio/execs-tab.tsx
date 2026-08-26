@@ -29,6 +29,10 @@ import {
 import { FlowCanvas, type Positions } from "./flow-canvas"
 import { CodeBlock, Spinner, StudioBtn, fmtTok, usd3 } from "./studio-atoms"
 import { EstruturadorEmbasamento, EstruturadorFeedback } from "./estruturador-panel"
+import {
+  InputSummaryView,
+  PromptProvenanceView,
+} from "./prompt-provenance-view"
 import type { ExecutionRow, ExecutionsPayload, RunDetailPayload } from "./studio-data"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -440,11 +444,21 @@ export function NodeRunPanel({
         ? (detail?.rendered_prompt ?? "— sem prompt renderizado registrado —")
         : (detail?.raw_output ?? stringify(detail?.parsed_output))
 
+  // Proveniência (migration 20261085): quando a run tem segments/summary, as
+  // abas Prompt e Entrada mostram a versão marcada por origem. Ausente (runs
+  // anteriores, agentes ainda não migrados) → o texto plano de sempre.
+  const segments = detail?.prompt_segments ?? null
+  const summary = detail?.input_summary ?? null
+  const showProvPrompt = tab === "prompt" && hasDetail && (segments?.length ?? 0) > 0
+  const showProvInput = tab === "input" && hasDetail && (summary?.length ?? 0) > 0
+
   const copyJson = () => {
     const payload = hasDetail
       ? stringify({
           input_vars: detail?.input_vars ?? null,
+          input_summary: detail?.input_summary ?? null,
           rendered_prompt: detail?.rendered_prompt ?? null,
+          prompt_segments: detail?.prompt_segments ?? null,
           raw_output: detail?.raw_output ?? null,
           parsed_output: detail?.parsed_output ?? null,
         })
@@ -631,7 +645,25 @@ export function NodeRunPanel({
             />
           </>
         )}
-        <CodeBlock text={bodyText} />
+        {showProvPrompt && <PromptProvenanceView segments={segments!} />}
+        {showProvInput && (
+          <>
+            <InputSummaryView items={summary!} />
+            <div
+              style={{
+                margin: "14px 0 6px",
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: C.g400,
+                fontFamily: F.sans,
+                letterSpacing: "0.08em",
+              }}
+            >
+              INPUT_VARS (cru)
+            </div>
+          </>
+        )}
+        {!showProvPrompt && <CodeBlock text={bodyText} />}
         {run.status === "pulado" && (
           <div style={{ marginTop: 10, fontSize: 11.5, color: C.g400, fontFamily: F.sans }}>
             Nó pulado nesta execução — sem saída registrada.

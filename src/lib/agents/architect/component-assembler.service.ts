@@ -69,6 +69,14 @@ import {
 } from "./llm-invoke"
 import { renderImageTemplate } from "../image/template-renderer"
 import {
+  buildInterpolatedSegments,
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type PromptSegment,
+  type SegmentOrigin,
+} from "../shared/prompt-provenance"
+import {
   loadCuradorMemory,
   logCuradorChoice,
   renderCuradorMemory,
@@ -497,8 +505,15 @@ export function variantIsFillable(v: EmailComponentVariant): boolean {
   })
 }
 
-/** Carrega as variantes ativas agrupadas por block_type. */
-async function loadActiveVariantsByType(): Promise<{
+/**
+ * Carrega as variantes ativas agrupadas por block_type.
+ *
+ * Exportada porque a resolução do segmento `catalogo` (a UI do Estúdio pede
+ * o catálogo de ~120k que não viaja na run) TEM de usar exatamente o mesmo
+ * pool desta função — reimplementar o filtro de elegibilidade lá faria o
+ * sha8 divergir e o painel acusar "biblioteca mudou" sem ter mudado.
+ */
+export async function loadActiveVariantsByType(): Promise<{
   /** Todas as elegíveis, em ordem de chegada (o catálogo reordena). */
   all: EmailComponentVariant[]
   byType: Map<string, EmailComponentVariant[]>
@@ -600,6 +615,37 @@ function clampPromptText(v: string | null | undefined, ausente: string): string 
   if (!t) return ausente
   if (t.length <= PROMPT_TEXT_MAX) return t
   return `${t.slice(0, PROMPT_TEXT_MAX)}\n(… truncado)`
+}
+
+// ── Proveniência (plano telemetria 26/08): origem de cada var do prompt ──
+// Compartilhadas entre Curador e Montador (os templates repetem as vars).
+
+const LOJA = { cls: "loja" as const, rotulo: "Dados da loja — client_stores" }
+
+function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin> {
+  return {
+    brand_name: LOJA,
+    nicho: LOJA,
+    posicionamento: LOJA,
+    persona: LOJA,
+    tom_voz: LOJA,
+    outline_objective: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+    // Com o Estruturador 'on', o guidance É o fio narrativo dele.
+    outline_guidance: estruturadorOn
+      ? { cls: "upstream", rotulo: "Fio narrativo — SAÍDA do Estruturador" }
+      : { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+    outline_tone_hint: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+    intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
+    intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
+    estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — resumoParaCurador" },
+    briefing_marca: { cls: "loja", rotulo: "Perfil da marca — store_briefings" },
+    top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+    blocks_json: estruturadorOn
+      ? { cls: "upstream", rotulo: "Sequência do email — decidida pelo Estruturador" }
+      : { cls: "sistema", rotulo: "Sequência do email — derivada do outline por código" },
+    memoria: { cls: "sistema", rotulo: "Memória do Curador — escolhas anteriores (código)" },
+    finalists_json: { cls: "upstream", rotulo: "Finalistas — SAÍDA do Curador + schemas da biblioteca" },
+  }
 }
 
 /**
@@ -733,20 +779,73 @@ export async function assembleStoreReference(
   // fora do rendered_prompt de propósito (é o catálogo cacheável,
   // reconstruível por conteúdo via buildCatalog + sha); o prompt de user —
   // loja, perfil, sequência, intenções — NÃO era reconstruível sem isso.
-  const chooserUserPrompt = renderImageTemplate(
-    chooserConfig.user_template,
-    chooserVars,
-  )
-  const chooserSystemSha8 = crypto
-    .createHash("sha256")
-    .update(interpolateSystem(chooserConfig.system_prompt, { catalogo: catalog.json }))
-    .digest("hex")
-    .slice(0, 8)
   const catalogSha8 = crypto
     .createHash("sha256")
     .update(catalog.json)
     .digest("hex")
     .slice(0, 8)
+  const chooserSystemResolvido = interpolateSystem(chooserConfig.system_prompt, {
+    catalogo: catalog.json,
+  })
+  const chooserSystemSha8 = crypto
+    .createHash("sha256")
+    .update(chooserSystemResolvido)
+    .digest("hex")
+    .slice(0, 8)
+
+  const estruturadorOn = Boolean(input.estruturadorDecisao?.trim())
+  const origins = editorialOrigins(estruturadorOn)
+
+  // Proveniência: user via helper (fail-open p/ template custom com {{#}});
+  // system = [regras agente] + [catálogo por ref+sha8] + [regras agente] —
+  // os ~120k do catálogo NÃO viajam no segmento, a UI resolve sob demanda.
+  const segChooserUser = buildSegmentedPrompt(
+    chooserConfig.user_template,
+    chooserVars,
+    origins,
+    { parte: "user" },
+  )
+  const chooserUserPrompt = segChooserUser.segments
+    ? segChooserUser.prompt
+    : renderImageTemplate(chooserConfig.user_template, chooserVars)
+  const segChooserSystem = buildInterpolatedSegments(
+    chooserConfig.system_prompt,
+    { catalogo: catalog.json },
+    {
+      catalogo: {
+        cls: "biblioteca",
+        rotulo: `Catálogo da biblioteca — ${catalog.total} variantes (buildCatalog)`,
+        ref: "catalogo",
+        sha8: catalogSha8,
+      },
+    },
+    { parte: "system" },
+  )
+  const chooserPromptSegments = concatSegments(
+    segChooserSystem.prompt === chooserSystemResolvido
+      ? segChooserSystem.segments
+      : null,
+    segChooserUser.segments,
+  )
+  const chooserInputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${fieldOrMissing(input.nicho)}` },
+    { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · ${input.structure.length} posições` },
+    { rotulo: "Catálogo da biblioteca", cls: "biblioteca", valor: `${catalog.total} variantes · ${catalog.types.length} tipos · sha8 ${catalogSha8}` },
+    { rotulo: "Outline", cls: "curadoria", valor: input.outlineObjective || "(sem objetivo)" },
+    {
+      rotulo: "Sequência do email",
+      cls: estruturadorOn ? "upstream" : "sistema",
+      valor: estruturadorOn
+        ? "decidida pelo Estruturador (papéis por posição)"
+        : "derivada do outline por código",
+    },
+    { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
+    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
+    { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida (resumoParaCurador)" : "(sem decisão nesta geração)" },
+    { rotulo: "Perfil da marca", cls: "loja", valor: `${input.briefingJson.length.toLocaleString("pt-BR")} chars` },
+    { rotulo: "Top produtos", cls: "loja", valor: input.topProductNames.join("; ") || "(sem produtos)" },
+    { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
+  ]
   const chooserInputVars = {
     sections: input.structure.length,
     catalog_variants: catalog.total,
@@ -769,6 +868,9 @@ export async function assembleStoreReference(
     agentConfigId: chooserRow?.id,
     model: chooserConfig.model,
     inputVars: chooserInputVars,
+    renderedPrompt: chooserUserPrompt,
+    promptSegments: chooserPromptSegments,
+    inputSummary: chooserInputSummary,
   })
 
   // Retry 1x. Sem o score do pré-filtro não existe mais fallback determinístico
@@ -864,6 +966,8 @@ export async function assembleStoreReference(
       errorMessage: chooserError ?? "curador_sem_escolhas",
       inputVars: chooserInputVars,
       renderedPrompt: chooserUserPrompt,
+      promptSegments: chooserPromptSegments,
+      inputSummary: chooserInputSummary,
       rawOutput: chooserRaw.slice(0, 8000),
       parsedOutput: chooserTelemetry,
       tokensInput: chooserTokensIn,
@@ -902,22 +1006,6 @@ export async function assembleStoreReference(
     labels: input.structure.map((st, i) => st.label ?? sections[i]),
   })
 
-  const t1 = Date.now()
-  const asmRunId = await startGenerationRun({
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    emailId: input.emailId ?? undefined,
-    flowId: input.flowId ?? undefined,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: asmRow?.id,
-    model: asmConfig.model,
-    inputVars: {
-      positions: rankingByBlock.size,
-      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
-    },
-  })
-
   const asmVars: Record<string, string> = {
     brand_name: input.brandName,
     nicho: fieldOrMissing(input.nicho),
@@ -951,8 +1039,68 @@ export async function assembleStoreReference(
     memoria: renderCuradorMemory(memory),
     finalists_json: finalistsJson,
   }
-  // Mesma auditoria do Curador: o prompt REAL do Montador fica na run.
-  const asmUserPrompt = renderImageTemplate(asmConfig.user_template, asmVars)
+  // Mesma auditoria do Curador: o prompt REAL do Montador fica na run,
+  // agora segmentado por origem (o system dele não tem var — é 100% agente).
+  const segAsmUser = buildSegmentedPrompt(
+    asmConfig.user_template,
+    asmVars,
+    origins,
+    { parte: "user" },
+  )
+  const asmUserPrompt = segAsmUser.segments
+    ? segAsmUser.prompt
+    : renderImageTemplate(asmConfig.user_template, asmVars)
+  const asmPromptSegments = concatSegments(
+    [
+      {
+        cls: "agente" as const,
+        rotulo: "Template do agente",
+        texto: asmConfig.system_prompt,
+        chars: asmConfig.system_prompt.length,
+        parte: "system" as const,
+      },
+    ],
+    segAsmUser.segments,
+  )
+  const asmInputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${fieldOrMissing(input.nicho)}` },
+    { rotulo: "Posições com finalistas", cls: "upstream", valor: `${rankingByBlock.size} (ranking do Curador)` },
+    {
+      rotulo: "Finalistas + schemas",
+      cls: "upstream",
+      valor: `${finalistsJson.length.toLocaleString("pt-BR")} chars — SAÍDA do Curador + output_schema da biblioteca`,
+    },
+    { rotulo: "Outline", cls: "curadoria", valor: input.outlineObjective || "(sem objetivo)" },
+    { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
+    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
+    {
+      rotulo: "Decisão do Estruturador",
+      cls: "upstream",
+      valor: estruturadorOn ? "servida (papéis por posição + fio)" : "(sem decisão nesta geração)",
+    },
+    { rotulo: "Top produtos", cls: "loja", valor: input.topProductNames.join("; ") || "(sem produtos)" },
+    { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
+  ]
+
+  const t1 = Date.now()
+  const asmRunId = await startGenerationRun({
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    model: asmConfig.model,
+    inputVars: {
+      positions: rankingByBlock.size,
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+    },
+    renderedPrompt: asmUserPrompt,
+    promptSegments: asmPromptSegments,
+    inputSummary: asmInputSummary,
+  })
+
 
   let asmRaw = ""
   let asmTokensIn = 0
@@ -1024,6 +1172,8 @@ export async function assembleStoreReference(
     model: chooserConfig.model,
     inputVars: chooserInputVars,
     renderedPrompt: chooserUserPrompt,
+    promptSegments: chooserPromptSegments,
+    inputSummary: chooserInputSummary,
     rawOutput: chooserRaw.slice(0, 8000),
     parsedOutput: chooserTelemetry,
     tokensInput: chooserTokensIn,
@@ -1130,6 +1280,8 @@ export async function assembleStoreReference(
       estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
     },
     renderedPrompt: asmUserPrompt,
+    promptSegments: asmPromptSegments,
+    inputSummary: asmInputSummary,
     rawOutput: asmRaw.slice(0, 8000),
     parsedOutput: {
       degraded: Boolean(asmError) || decisions.malformed,

@@ -63,7 +63,9 @@ import {
   CuratorFailedError,
 } from "./component-assembler.service"
 import {
+  missingProvenance,
   missingTelemetryKeys,
+  PROVENANCE_CONTRACT,
   TELEMETRY_CONTRACT,
 } from "../shared/telemetry-contract"
 
@@ -703,6 +705,57 @@ describe("contrato de telemetria", () => {
     const parsed = parsedOf("assembler") as Record<string, unknown>
     expect(missingTelemetryKeys("assembler", parsed)).toEqual([])
     expect(parsed.degraded).toBe(true)
+  })
+
+  // ── Proveniência (migration 20261085) ──
+  // O prompt do Curador não existiu até 26/08 e ninguém percebeu. Agora a
+  // ausência dos segmentos por origem falha aqui.
+  const runOf = (agent: string) =>
+    (finishGenerationRun.mock.calls.find(
+      (c) => (c[1] as { agent?: string }).agent === agent,
+    )?.[1] as
+      | { promptSegments?: unknown; inputSummary?: unknown }
+      | undefined) ?? {}
+
+  const provOf = (agent: string) => {
+    const r = runOf(agent)
+    return {
+      prompt_segments: r.promptSegments,
+      input_summary: r.inputSummary,
+    }
+  }
+
+  it("Curador e Montador gravam prompt segmentado + Entrada estruturada", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    expect(missingProvenance("assembler_chooser", provOf("assembler_chooser"))).toEqual([])
+    expect(missingProvenance("assembler", provOf("assembler"))).toEqual([])
+  })
+
+  it("o catálogo entra como ref+sha8, não como 120k de texto na run", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const segs = (runOf("assembler_chooser").promptSegments ?? []) as Array<
+      Record<string, unknown>
+    >
+    const cat = segs.find((sg) => sg.ref === "catalogo")
+    expect(cat, "segmento do catálogo ausente").toBeTruthy()
+    expect(cat!.texto).toBeUndefined()
+    expect(String(cat!.sha8)).toHaveLength(8)
+    expect(cat!.cls).toBe("biblioteca")
+  })
+
+  it("Curador falhando grava a proveniência do mesmo jeito", async () => {
+    invokeAgent.mockReset()
+    invokeAgent.mockResolvedValue({ raw: "sem json", tokensInput: 1, tokensOutput: 1 })
+    await expect(assembleStoreReference(baseInput)).rejects.toThrow()
+    expect(missingProvenance("assembler_chooser", provOf("assembler_chooser"))).toEqual([])
+  })
+
+  it("cada agente do contrato de proveniência tem um motivo escrito", () => {
+    for (const [agent, req] of Object.entries(PROVENANCE_CONTRACT)) {
+      expect(req.motivo.length, `${agent} sem motivo`).toBeGreaterThan(20)
+    }
   })
 
   it("cada chave do contrato tem um motivo escrito", () => {

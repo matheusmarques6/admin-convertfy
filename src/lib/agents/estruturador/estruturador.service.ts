@@ -34,6 +34,15 @@ import {
   extractJson,
   type AgentInvokeConfig,
 } from "../architect/llm-invoke"
+import { renderImageTemplate } from "../image/template-renderer"
+import {
+  buildInterpolatedSegments,
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type PromptSegment,
+  type SegmentOrigin,
+} from "../shared/prompt-provenance"
 import { fieldOrMissing } from "../architect/store-context"
 import {
   buildSystemVars,
@@ -55,6 +64,37 @@ const MAX_ATTEMPTS = 2
 const HISTORICO_N = 2
 
 export type EstruturadorMode = "off" | "shadow" | "on"
+
+// ── Proveniência (plano telemetria 26/08): origem de cada var do prompt ──
+
+const SYSTEM_ORIGINS: Record<string, SegmentOrigin> = {
+  intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents (_flow)" },
+  progressao: { cls: "vault", rotulo: "Progressão observada — email_intents (progressao)" },
+  referencias: { cls: "vault", rotulo: "Referências de estrutura — email_structure_refs" },
+  aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
+}
+
+const USER_ORIGINS: Record<string, SegmentOrigin> = {
+  brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  nicho: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  posicionamento: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  persona: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  produtos_count: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+  top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+  pesquisa: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
+  flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
+  intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
+  capacidade_biblioteca: { cls: "sistema", rotulo: "Capacidade da biblioteca — contagem por código" },
+  estruturas_proibidas: { cls: "sistema", rotulo: "Anti-repetição — runs anteriores deste email" },
+}
+
+function resumo(v: string | null | undefined, max = 240): string {
+  const t = (v ?? "").trim()
+  if (!t) return "(vazio)"
+  return t.length <= max ? t : `${t.slice(0, max)}…`
+}
 
 export interface RunEstruturadorInput {
   storeId: string
@@ -231,6 +271,19 @@ export async function runEstruturador(
   )
   const systemSha8 = crypto.createHash("sha256").update(systemResolvido).digest("hex").slice(0, 8)
 
+  // Proveniência do SYSTEM: regras = agente, material do vault = vault. O
+  // guard byte-igual protege o caso patológico (valor de var contendo outro
+  // placeholder, onde o replaceAll sequencial divergiria) — divergiu, os
+  // segments saem null e a run degrada pro comportamento atual.
+  const sysSeg = buildInterpolatedSegments(
+    config.system_prompt,
+    systemVars,
+    SYSTEM_ORIGINS,
+    { parte: "system" },
+  )
+  const systemSegments: PromptSegment[] | null =
+    sysSeg.prompt === systemResolvido ? sysSeg.segments : null
+
   const capacidadeTexto = Object.entries(capacidade.porCategoria)
     .map(([k, n]) => `${k}: ${n}`).join(" · ") +
     ` · produtos da loja: ${capacidade.produtosDaLoja}`
@@ -254,6 +307,25 @@ export async function runEstruturador(
     estruturas_proibidas: proibidasTexto,
   }
 
+  // Entrada estruturada (aba Entrada do Estúdio) — o que o agente recebeu,
+  // com origem. Complementa (não substitui) o input_vars auditável.
+  const inputSummary: InputSummaryItem[] = [
+    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${input.nicho || "(sem nicho)"}` },
+    { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
+    { rotulo: "Pesquisa & Diagnóstico", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars servidos` },
+    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: resumo(intencaoEmail) },
+    { rotulo: "Referências servidas (vault)", cls: "vault", valor: carga.refsServidas.join(", ") },
+    { rotulo: "Aprendizados servidos (vault)", cls: "vault", valor: carga.aprendizadosServidos.join(", ") || "(nenhum)" },
+    { rotulo: "Commit do vault", cls: "vault", valor: carga.vaultCommitSha ?? "(desconhecido)" },
+    { rotulo: "Capacidade da biblioteca", cls: "sistema", valor: capacidadeTexto },
+    { rotulo: "Sequências proibidas (anti-repetição)", cls: "sistema", valor: proibidas.length ? proibidasTexto : "(nenhuma — primeira geração)" },
+  ]
+
+  // Segmentos base (1ª tentativa) — no retry as vars mudam e os segments são
+  // reconstruídos no loop; aqui é o que a live view mostra enquanto roda.
+  const segUserBase = buildSegmentedPrompt(config.user_template, userVars, USER_ORIGINS, { parte: "user" })
+  const basePromptSegments = concatSegments(systemSegments, segUserBase.segments)
+
   const runId = await startGenerationRun({
     storeId: input.storeId,
     flowId: input.flowId ?? undefined,
@@ -272,6 +344,11 @@ export async function runEstruturador(
       produtos_da_loja: capacidade.produtosDaLoja,
       proibidas_count: proibidas.length,
     },
+    renderedPrompt: segUserBase.segments
+      ? segUserBase.prompt
+      : renderImageTemplate(config.user_template, userVars),
+    promptSegments: basePromptSegments,
+    inputSummary,
   })
 
   let raw = ""
@@ -280,6 +357,7 @@ export async function runEstruturador(
   let costUsd = 0
   let ultimoErro: string | null = null
   let userPromptFinal = ""
+  let promptSegmentsFinal: PromptSegment[] | null = basePromptSegments
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -293,7 +371,13 @@ export async function runEstruturador(
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
       costUsd += res.costUsd
-      userPromptFinal = JSON.stringify(vars) // auditável; o template é o da config
+      // O prompt REAL desta tentativa (era JSON.stringify(vars) — 26/08),
+      // segmentado por origem. Template custom com {{#if}} → fail-open.
+      const segUser = buildSegmentedPrompt(config.user_template, vars, USER_ORIGINS, { parte: "user" })
+      userPromptFinal = segUser.segments
+        ? segUser.prompt
+        : renderImageTemplate(config.user_template, vars)
+      promptSegmentsFinal = concatSegments(systemSegments, segUser.segments)
 
       const parsed = extractJson(res.raw)
       const validado = validarOutput({
@@ -326,6 +410,8 @@ export async function runEstruturador(
             system_sha8: systemSha8,
           },
           renderedPrompt: userPromptFinal,
+          promptSegments: promptSegmentsFinal,
+          inputSummary,
           rawOutput: raw.slice(0, 16000),
           parsedOutput: {
             ...validado.saida,
@@ -378,6 +464,8 @@ export async function runEstruturador(
       system_sha8: systemSha8,
     },
     renderedPrompt: userPromptFinal || undefined,
+    promptSegments: promptSegmentsFinal,
+    inputSummary,
     rawOutput: raw.slice(0, 16000) || undefined,
     tokensInput: tokensIn,
     tokensOutput: tokensOut,

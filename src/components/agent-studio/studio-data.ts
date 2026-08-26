@@ -6,6 +6,10 @@
  *   - GET /api/admin/agents/prompts          (PromptsPayload)
  */
 
+import type {
+  InputSummaryItem,
+  PromptSegment,
+} from "@/lib/agents/shared/prompt-provenance"
 import type { PipelineAgentKey } from "@/lib/agents/agent-visual"
 import type { ExecutionAgentRun } from "@/lib/agents/studio-graph"
 
@@ -92,6 +96,9 @@ export interface RunDetailPayload {
   status: string
   input_vars: unknown
   rendered_prompt: string | null
+  // Proveniência (migration 20261085) — null nas runs anteriores.
+  prompt_segments: PromptSegment[] | null
+  input_summary: InputSummaryItem[] | null
   raw_output: string | null
   parsed_output: unknown
   error_message: string | null

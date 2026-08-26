@@ -12,6 +12,10 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { GenerationRunAgent, GenerationRunStatus } from "@/types/email-generation"
+import type {
+  InputSummaryItem,
+  PromptSegment,
+} from "../shared/prompt-provenance"
 
 const log = logger.child("GenTelemetry")
 
@@ -27,6 +31,10 @@ export interface LogGenerationRunParams {
   model?: string
   inputVars?: Record<string, unknown>
   renderedPrompt?: string
+  // Proveniência (migration 20261085): o prompt segmentado por origem e a
+  // Entrada estruturada, capturados na montagem — ver shared/prompt-provenance.
+  promptSegments?: PromptSegment[] | null
+  inputSummary?: InputSummaryItem[] | null
   rawOutput?: string
   parsedOutput?: Record<string, unknown>
   tokensInput?: number
@@ -161,6 +169,8 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     model: params.model ?? null,
     input_vars: params.inputVars ?? null,
     rendered_prompt: params.renderedPrompt ?? null,
+    prompt_segments: params.promptSegments ?? null,
+    input_summary: params.inputSummary ?? null,
     raw_output: params.rawOutput ?? null,
     parsed_output: params.parsedOutput ?? null,
     tokens_input: params.tokensInput ?? 0,
@@ -226,6 +236,10 @@ export async function finishGenerationRun(
       agent_config_id: params.agentConfigId ?? undefined,
       input_vars: params.inputVars ?? undefined,
       rendered_prompt: params.renderedPrompt ?? undefined,
+      // `?? undefined` DE PROPÓSITO: undefined é omitido pelo supabase-js e
+      // preserva o que o start gravou (?? null aqui apagaria os segments).
+      prompt_segments: params.promptSegments ?? undefined,
+      input_summary: params.inputSummary ?? undefined,
       raw_output: params.rawOutput ?? undefined,
       parsed_output: params.parsedOutput ?? undefined,
       tokens_input: params.tokensInput ?? 0,
@@ -262,6 +276,8 @@ export async function updateGenerationRun(
     .update({
       status: update.status,
       raw_output: update.rawOutput ?? undefined,
+      prompt_segments: update.promptSegments ?? undefined,
+      input_summary: update.inputSummary ?? undefined,
       parsed_output: update.parsedOutput ?? undefined,
       tokens_input: update.tokensInput ?? undefined,
       tokens_output: update.tokensOutput ?? undefined,

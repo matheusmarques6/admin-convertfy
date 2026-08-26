@@ -331,6 +331,10 @@ export interface EmailGenerationRun {
   status: GenerationRunStatus
   input_vars: Record<string, unknown> | null
   rendered_prompt: string | null
+  // Proveniência (migration 20261085) — ver shared/prompt-provenance.ts.
+  // Opcionais: selects antigos não trazem as colunas.
+  prompt_segments?: Record<string, unknown>[] | null
+  input_summary?: Record<string, unknown>[] | null
   raw_output: string | null
   parsed_output: Record<string, unknown> | null
   model: string | null

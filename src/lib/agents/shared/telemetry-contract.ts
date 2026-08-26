@@ -93,3 +93,67 @@ export function missingTelemetryKeys(
   const rec = parsedOutput as Record<string, unknown>
   return required.filter((k) => !(k in rec) || rec[k] === undefined)
 }
+
+// ── Contrato de PROVENIÊNCIA (migration 20261085) ─────────────────────
+//
+// Mesma lógica do contrato acima, aplicada às COLUNAS novas: `prompt_segments`
+// (o prompt marcado por origem) e `input_summary` (a Entrada estruturada).
+// A run pode ficar verde sem elas — foi exatamente assim que o prompt do
+// Curador não existiu até 26/08. Aqui a ausência vira falha de teste.
+//
+// `prompt: false` = o agente legitimamente não tem prompt naquela rota (o
+// blueprint determinístico é código puro); a Entrada, essa, todo mundo tem.
+
+export interface ProvenanceRequirement {
+  prompt: boolean
+  input: boolean
+  motivo: string
+}
+
+export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
+  estruturador: {
+    prompt: true,
+    input: true,
+    motivo: "a decisão editorial mora aqui: sem o material do vault marcado como vault não há como auditar de onde veio a estrutura",
+  },
+  assembler_chooser: {
+    prompt: true,
+    input: true,
+    motivo: "o catálogo entra por ref+sha8 e o resto do prompt precisa dizer o que é loja, outline e decisão do Estruturador",
+  },
+  assembler: {
+    prompt: true,
+    input: true,
+    motivo: "a escolha final se justifica pelos finalistas (upstream) cruzados com marca e papel — o prompt opaco não mostrava isso",
+  },
+  subject: {
+    prompt: true,
+    input: true,
+    motivo: "run que até 26/08 não gravava prompt nenhum; é a única contribuição criativa da rota determinística",
+  },
+  blueprint: {
+    prompt: false,
+    input: true,
+    motivo: "a rota determinística não tem prompt (é código); a Entrada é o que explica de onde vieram slots, papéis e fio",
+  },
+}
+
+/**
+ * O que falta de proveniência numa run. Vazio = contrato cumprido.
+ * Agente fora do contrato devolve vazio (ainda não migrado — PR 3).
+ */
+export function missingProvenance(
+  agent: string,
+  run: { prompt_segments?: unknown; input_summary?: unknown },
+): string[] {
+  const req = PROVENANCE_CONTRACT[agent]
+  if (!req) return []
+  const out: string[] = []
+  if (req.prompt && !(Array.isArray(run.prompt_segments) && run.prompt_segments.length > 0)) {
+    out.push("prompt_segments")
+  }
+  if (req.input && !(Array.isArray(run.input_summary) && run.input_summary.length > 0)) {
+    out.push("input_summary")
+  }
+  return out
+}

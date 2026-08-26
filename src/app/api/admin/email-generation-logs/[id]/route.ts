@@ -52,7 +52,7 @@ export async function GET(
       .select(
         // rendered_prompt = o input EXATO do modelo ("o que entrou") — sem
         // ele o drawer só mostrava input_vars (metadados) e raw_output.
-        "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, error_stack, input_vars, rendered_prompt, raw_output, parsed_output, store_id, email_id, flow_id, triggered_by",
+        "id, created_at, batch_id, agent, model, status, tokens_input, tokens_output, cost_cents, duration_ms, retry_count, error_message, error_stack, input_vars, rendered_prompt, prompt_segments, input_summary, raw_output, parsed_output, store_id, email_id, flow_id, triggered_by",
       )
       .eq("id", id)
       .maybeSingle()
@@ -134,6 +134,11 @@ export async function GET(
       // Selecionado desde a criação da rota mas nunca devolvido — a aba
       // "Prompt" do Estúdio de Agentes lê daqui o input exato do modelo.
       rendered_prompt: r.rendered_prompt,
+      // Proveniência (migration 20261085): o prompt segmentado por origem e a
+      // Entrada estruturada. null nas runs anteriores — a UI cai no texto
+      // plano / no JSON de input_vars.
+      prompt_segments: r.prompt_segments,
+      input_summary: r.input_summary,
       raw_output: r.raw_output,
       parsed_output: r.parsed_output,
       store_id: r.store_id,
