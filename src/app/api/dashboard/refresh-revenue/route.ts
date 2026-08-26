@@ -128,7 +128,57 @@ interface StoreRow {
 }
 
 const PERIOD_DAYS: Record<string, number> = {
-  today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90,
+  today: 1, yesterday: 1, "7d": 7, "15d": 15, "30d": 30, "90d": 90, "12m": 365,
+}
+
+/**
+ * Grava a falha de sync da loja em store_revenue_summary — sem isso o
+ * dashboard fica cego: 24 lojas com chave Klaviyo inválida apareciam só
+ * no log da Vercel e a tela dizia "4 de 62 lojas" sem nenhum porquê.
+ * UPDATE só de status/erro (a receita boa do último sync fica intacta,
+ * inclusive fetched_at — a idade do DADO é a do dado, não da tentativa);
+ * loja sem linha nenhuma ganha uma linha zerada marcada 'error' pra
+ * entrar na contagem e na auditoria.
+ */
+async function markStoreSyncError(
+  supabase: SupabaseClient,
+  store: StoreRow,
+  period: string,
+  errorMsg: string,
+): Promise<void> {
+  try {
+    const syncError = errorMsg.slice(0, 500)
+    const { data: updated } = await supabase
+      .from("store_revenue_summary")
+      .update({ sync_status: "error", sync_error: syncError })
+      .eq("store_id", store.id)
+      .eq("period_label", period)
+      .select("store_id")
+
+    if (updated && updated.length > 0) return
+    if (!store.org_id) return // org_id é NOT NULL na tabela — sem org não há linha
+
+    const custom = parseCustomPeriodLabel(period)
+    const now = new Date()
+    const periodEnd = custom ? new Date(`${custom.endDate}T23:59:59.999Z`) : now
+    const periodStart = custom
+      ? new Date(`${custom.startDate}T00:00:00.000Z`)
+      : new Date(now.getTime() - (PERIOD_DAYS[period] ?? 30) * 86_400_000)
+
+    await supabase.from("store_revenue_summary").insert({
+      store_id: store.id,
+      period_label: period,
+      org_id: store.org_id,
+      period_start: periodStart.toISOString(),
+      period_end: periodEnd.toISOString(),
+      sync_status: "error",
+      sync_error: syncError,
+      expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    })
+  } catch (err) {
+    // Marcar o erro nunca pode derrubar o loop de refresh
+    log.warn(`[RefreshRevenue] markStoreSyncError falhou para ${store.store_name}: ${err instanceof Error ? err.message : err}`)
+  }
 }
 
 async function refreshStoreForPeriod(
@@ -331,6 +381,7 @@ export async function POST(request: NextRequest) {
         } else {
           errorCount++
           log.warn(`[RefreshRevenue] Error: ${store.store_name}/${period}: ${result.error}`)
+          await markStoreSyncError(adminClient, store as StoreRow, period, result.error || "Sync failed")
         }
 
         // Small delay between stores to respect Klaviyo rate limits

@@ -34,6 +34,10 @@ interface StoreRevenue {
   attributedRevenueBRL: number
   campaignRevenueBRL: number
   flowRevenueBRL: number
+  /** Estado do último sync desta loja ("ok" | "partial" | "error" | "pending") */
+  syncStatus: string
+  /** Mensagem crua do erro de sync (ex.: chave Klaviyo inválida) */
+  syncError: string | null
 }
 
 interface TotalRevenueResponse {
@@ -50,6 +54,15 @@ interface TotalRevenueResponse {
   lastFetchedAt: string | null
   cachedAt: string
   dataStatus?: DataStatus
+  /**
+   * Lojas cujo ÚLTIMO sync falhou (chave inválida, sem permissão, etc.).
+   * O motivo ficava só no log da Vercel — a tela dizia "4 de 62 lojas"
+   * sem explicar as outras 58. Agora o dashboard mostra quem e por quê.
+   */
+  syncIssues: {
+    count: number
+    stores: Array<{ storeId: string; storeName: string; clientName: string; error: string }>
+  }
 }
 
 type EnhancedTotalRevenueResponse = TotalRevenueResponse & DataStatusMeta & {
@@ -70,6 +83,7 @@ async function buildStoreBreakdown(rows: Array<{
   store_total_revenue?: number | string | null
   currency?: string | null
   sync_status: string
+  sync_error?: string | null
   fetched_at: string | null
   client_stores: unknown
 }>): Promise<StoreRevenue[]> {
@@ -115,6 +129,8 @@ async function buildStoreBreakdown(rows: Array<{
       attributedRevenueBRL: attributedBRL,
       campaignRevenueBRL: campaignBRL,
       flowRevenueBRL: flowBRL,
+      syncStatus: s.sync_status || "pending",
+      syncError: s.sync_error ?? null,
     }
   }))
   return results
@@ -142,6 +158,17 @@ function buildResponse(
     (s) => s.sync_status === "error" || s.sync_status === "partial"
   )
 
+  // 'error' = sem dado novo; 'partial' com sync_error = último sync falhou
+  // mas a receita anterior foi preservada. Os dois merecem aparecer.
+  const issueStores = storeBreakdown
+    .filter((s) => s.syncStatus === "error" || (s.syncStatus === "partial" && s.syncError))
+    .map((s) => ({
+      storeId: s.storeId,
+      storeName: s.storeName,
+      clientName: s.clientName,
+      error: s.syncError || "Erro de sincronização",
+    }))
+
   const lastFetchedAt = meta.lastFetchedAt ?? rows.reduce((oldest: string | null, s) => {
     if (!s.fetched_at) return oldest
     if (!oldest) return s.fetched_at
@@ -166,6 +193,7 @@ function buildResponse(
     source: meta.source,
     dataAge: meta.dataAge,
     isStale: meta.isStale,
+    syncIssues: { count: issueStores.length, stores: issueStores },
   }
 }
 
@@ -192,6 +220,7 @@ function emptyResponse(
     source: meta.source,
     dataAge: meta.dataAge,
     isStale: meta.isStale,
+    syncIssues: { count: 0, stores: [] },
   }
 }
 
@@ -260,6 +289,7 @@ async function handleGet(request: NextRequest) {
         store_total_revenue,
         currency,
         sync_status,
+        sync_error,
         fetched_at,
         client_stores!inner(id, store_name, client_id, clients(name))
       `
@@ -271,6 +301,7 @@ async function handleGet(request: NextRequest) {
         store_total_revenue,
         currency,
         sync_status,
+        sync_error,
         fetched_at,
         client_stores!inner(id, store_name, client_id, clients(name))
       `
@@ -323,15 +354,18 @@ async function handleGet(request: NextRequest) {
       return response
     }
 
-    // Calculate data age from oldest fetched_at
-    const oldestFetchedAt = rows.reduce((oldest: string | null, s) => {
+    // Calculate data age from oldest fetched_at — SÓ de linhas não-erro.
+    // Linha de erro zerada com fetched_at recente (cron/refresh marcando a
+    // falha) deixaria a tela "ready" mostrando R$ 0 como se fosse fresco.
+    const freshnessRows = rows.filter((s) => s.sync_status !== "error")
+    const oldestFetchedAt = freshnessRows.reduce((oldest: string | null, s) => {
       if (!s.fetched_at) return oldest
       if (!oldest) return s.fetched_at
       return new Date(s.fetched_at) < new Date(oldest) ? s.fetched_at : oldest
     }, null)
 
     const dataAgeMs = oldestFetchedAt ? Date.now() - new Date(oldestFetchedAt).getTime() : Infinity
-    const dataAgeMinutes = Math.round(dataAgeMs / 60_000)
+    const dataAgeMinutes = oldestFetchedAt ? Math.round(dataAgeMs / 60_000) : -1
     const isStale = dataAgeMs > ADMIN_STALENESS_MS
 
     // Touch pattern: renew expires_at for valid rows that are expired

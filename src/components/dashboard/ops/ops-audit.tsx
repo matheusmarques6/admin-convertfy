@@ -35,6 +35,9 @@ interface StoreRevenueRow {
   attributedRevenueBRL: number
   campaignRevenueBRL: number
   flowRevenueBRL: number
+  /** Último sync da loja ("ok" | "partial" | "error" | "pending") */
+  syncStatus?: string
+  syncError?: string | null
 }
 
 interface TotalRevenueAudit {
@@ -329,7 +332,7 @@ export function AuditDialog({
       return
     }
     const csv = toCsv(
-      ["Loja", "Cliente", "Moeda", "Faturamento BRL", "Campanhas BRL", "Automações BRL", "Atribuída BRL", "Taxa %"],
+      ["Loja", "Cliente", "Moeda", "Faturamento BRL", "Campanhas BRL", "Automações BRL", "Atribuída BRL", "Taxa %", "Status sync", "Erro sync"],
       view.rows.map((r) => [
         r.storeName,
         r.clientName,
@@ -339,6 +342,8 @@ export function AuditDialog({
         csvNumber(r.flowRevenueBRL),
         csvNumber(r.attributedRevenueBRL),
         csvNumber(r.totalRevenueBRL > 0 ? (r.attributedRevenueBRL / r.totalRevenueBRL) * 100 : 0),
+        r.syncStatus ?? "",
+        r.syncError ?? "",
       ]),
     )
     downloadCsv(`auditoria-${mode}.csv`, csv)
@@ -436,9 +441,21 @@ export function AuditDialog({
                 {view.rows.map((r, i) => {
                   const last = i === view.rows.length - 1
                   const taxa = r.totalRevenueBRL > 0 ? (r.attributedRevenueBRL / r.totalRevenueBRL) * 100 : null
+                  const syncBroken =
+                    r.syncStatus === "error" || (r.syncStatus === "partial" && r.syncError)
                   return (
                     <tr key={r.storeId}>
-                      <Td last={last} className="font-medium text-[var(--ops-title)]">{r.storeName}</Td>
+                      <Td last={last} className="font-medium text-[var(--ops-title)]">
+                        {r.storeName}
+                        {syncBroken && (
+                          <span
+                            className="ml-1.5 align-middle rounded-full px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.04em] text-[var(--ops-neg)] bg-[var(--ops-neg)]/10 cursor-help"
+                            title={r.syncError || "Último sync falhou — valor pode estar zerado ou velho"}
+                          >
+                            sync com erro
+                          </span>
+                        )}
+                      </Td>
                       <Td last={last} className="text-[var(--ops-sec)]">{r.clientName}</Td>
                       <Td right last={last} className="text-[var(--ops-mut)]">{r.currency}</Td>
                       {mode === "taxa" || mode === "faturamento" ? (

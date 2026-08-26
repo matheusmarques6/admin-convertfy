@@ -69,6 +69,31 @@ interface TotalRevenueData {
   /** "ready" | "stale" | "empty" | "syncing" — postura do cache do período. */
   dataStatus?: string
   isStale?: boolean
+  isRefreshing?: boolean
+  lastFetchedAt?: string | null
+  /** Lojas cujo último sync FALHOU (chave inválida etc.) — antes só no log da Vercel. */
+  syncIssues?: {
+    count: number
+    stores: Array<{ storeId: string; storeName: string; clientName: string; error: string }>
+  }
+}
+
+/**
+ * Traduz o erro cru do sync (gravado em store_revenue_summary.sync_error)
+ * pra uma frase acionável — "Invalid key: 401 authentication_failed"
+ * não diz ao operador O QUE fazer; "atualize a API key da loja" diz.
+ */
+function friendlySyncError(raw: string): string {
+  const msg = raw.replace(/^\[INVALID_KEY\]\s*/i, "")
+  if (/invalid key|authentication_failed|API key (is )?invalid|401/i.test(msg))
+    return "Chave Klaviyo inválida — atualize a API key no cadastro da loja"
+  if (/no api key|no omnisend api key/i.test(msg)) return "Sem API key cadastrada"
+  if (/permission denied|missing scopes/i.test(msg))
+    return "API key sem permissão (scopes de relatório faltando)"
+  if (/rate limit/i.test(msg)) return "Rate limit da plataforma — resincroniza sozinho depois"
+  if (/no placed order/i.test(msg)) return "Métrica Placed Order não encontrada na conta"
+  if (/retroativo/i.test(msg)) return msg
+  return msg.length > 120 ? `${msg.slice(0, 117)}…` : msg
 }
 
 interface KpiSeriesData {
@@ -217,6 +242,15 @@ export function OpsDashboard({ userName }: { userName: string }) {
             </div>
           </div>
           <div className="flex-1" />
+          <SyncStatusChip
+            syncing={isRefreshing || revenue?.isRefreshing === true || revenue?.dataStatus === "syncing"}
+            stale={needsSync}
+            lastFetchedAt={revenue?.lastFetchedAt ?? null}
+            storesWithRevenue={revenue?.storesWithRevenue}
+            storesCount={revenue?.storesCount}
+            issues={revenue?.syncIssues?.count ?? 0}
+            onSync={() => void triggerRefresh()}
+          />
           <DateControl value={period} onChange={setPeriod} />
         </div>
 
@@ -254,6 +288,34 @@ export function OpsDashboard({ userName }: { userName: string }) {
               </>
             )}
           </div>
+        )}
+
+        {/* Lojas que FALHAM no sync — o motivo ficava só no log da Vercel */}
+        {revenue?.syncIssues != null && revenue.syncIssues.count > 0 && (
+          <details className="rounded-[10px] border border-[var(--ops-neg)]/30 bg-[var(--ops-neg)]/[0.06] px-4 py-2.5 text-[12.5px]">
+            <summary className="cursor-pointer select-none text-[var(--ops-neg)] font-medium list-none flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-current shrink-0" />
+              <span className="flex-1">
+                {revenue.syncIssues.count === 1
+                  ? "1 loja não sincroniza"
+                  : `${revenue.syncIssues.count} lojas não sincronizam`}{" "}
+                — os números delas não entram nos cards. Clique para ver o motivo de cada uma.
+              </span>
+              <span className="text-[10.5px] uppercase tracking-[0.05em] opacity-70">detalhes</span>
+            </summary>
+            <ul className="mt-2.5 grid gap-1 sm:grid-cols-2 text-[var(--ops-sec)]">
+              {revenue.syncIssues.stores.map((s) => (
+                <li key={s.storeId} className="flex gap-1.5 min-w-0">
+                  <span className="font-medium text-[var(--ops-text)] shrink-0">{s.storeName}:</span>
+                  <span className="truncate" title={s.error}>{friendlySyncError(s.error)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 text-[11px] text-[var(--ops-mut)]">
+              Corrija a credencial em Lojas → editar loja. Depois de salvar, clique em
+              &ldquo;Sincronizar agora&rdquo; que a loja volta a contar.
+            </div>
+          </details>
         )}
 
         {/* ── Receita (cards clicáveis → auditoria loja a loja) ── */}
@@ -467,6 +529,109 @@ export function OpsDashboard({ userName }: { userName: string }) {
         onClose={() => setAudit(null)}
       />
     </div>
+  )
+}
+
+// ── Chip de status da sincronização ─────────────────────────────────
+// Sempre visível ao lado do seletor de data — o banner detalhado só
+// aparece durante o refresh; o chip responde "e agora, tá atualizado?"
+// o tempo todo. Estados: sincronizando (âmbar girando) → desatualizado
+// (âmbar clicável) → atualizado (verde, idade do dado no rótulo).
+
+function timeAgoPtBR(iso: string, now: number): string {
+  const ms = now - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return "agora"
+  const min = Math.floor(ms / 60_000)
+  if (min < 1) return "agora"
+  if (min < 60) return `há ${min} min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `há ${h}h`
+  const d = Math.floor(h / 24)
+  return d === 1 ? "há 1 dia" : `há ${d} dias`
+}
+
+function SyncStatusChip({
+  syncing,
+  stale,
+  lastFetchedAt,
+  storesWithRevenue,
+  storesCount,
+  issues = 0,
+  onSync,
+}: {
+  syncing: boolean
+  stale: boolean
+  lastFetchedAt: string | null
+  storesWithRevenue?: number
+  storesCount?: number
+  /** Lojas com erro de sync — vira sufixo "· N com erro" no estado verde. */
+  issues?: number
+  onSync: () => void
+}) {
+  // Relógio de 30s pra "há X min" não congelar na aba aberta.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const progresso =
+    storesWithRevenue != null && storesCount != null && storesCount > 0
+      ? `${storesWithRevenue}/${storesCount} lojas`
+      : null
+
+  const base =
+    "inline-flex items-center gap-2 h-8 px-3 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors"
+
+  if (syncing) {
+    return (
+      <span
+        className={cn(base, "border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] text-[var(--ops-warn)]")}
+        title={progresso ? `Sincronizando com Klaviyo/Omnisend — ${progresso} com dado até agora` : "Sincronizando com Klaviyo/Omnisend"}
+        aria-live="polite"
+      >
+        <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
+        Sincronizando…{progresso ? ` ${progresso}` : ""}
+      </span>
+    )
+  }
+
+  if (stale) {
+    return (
+      <button
+        onClick={onSync}
+        className={cn(
+          base,
+          "border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] text-[var(--ops-warn)] cursor-pointer hover:brightness-95 dark:hover:brightness-110",
+        )}
+        title="O cache deste período está incompleto ou velho — clique para sincronizar agora"
+      >
+        <span className="w-2 h-2 rounded-full bg-current shrink-0" />
+        Desatualizado — sincronizar
+      </button>
+    )
+  }
+
+  return (
+    <button
+      onClick={onSync}
+      className={cn(
+        base,
+        "border-[var(--ops-border)] bg-[var(--ops-card)] text-[var(--ops-sec)] cursor-pointer hover:border-[var(--ops-accent)]",
+      )}
+      title={`Dados do cache${progresso ? ` — ${progresso} com receita` : ""}${issues > 0 ? `. ${issues} loja(s) com erro de sync — veja o aviso vermelho.` : ""}. Clique para sincronizar de novo.`}
+    >
+      <span
+        className={cn(
+          "w-2 h-2 rounded-full shrink-0",
+          issues > 0 ? "bg-[var(--ops-warn)]" : "bg-[var(--ops-pos)]",
+        )}
+      />
+      {lastFetchedAt ? `Atualizado ${timeAgoPtBR(lastFetchedAt, now)}` : "Atualizado"}
+      {issues > 0 && (
+        <span className="text-[var(--ops-neg)] font-semibold">· {issues} com erro</span>
+      )}
+    </button>
   )
 }
 
