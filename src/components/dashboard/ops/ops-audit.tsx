@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import { toCsv, downloadCsv, csvNumber } from "@/lib/services/crm-csv"
-import { Th, Td, fmtBRLFull, fmtPct, CollectingState } from "./primitives"
+import { Th, Td, fmtBRLFull, fmtPct, fmtInt, CollectingState } from "./primitives"
 
 export type AuditMode =
   | "atribuida"
@@ -75,6 +75,176 @@ async function fetchJson<T>(url: string): Promise<T> {
   const body = await res.json().catch(() => null)
   if (!res.ok) throw new Error((body && body.error) || `Erro ${res.status}`)
   return body as T
+}
+
+// ── Auditoria da Performance do Email ───────────────────────────────
+
+interface EmailStoreRow {
+  storeId: string
+  storeName: string
+  clientName: string
+  recipients: number
+  delivered: number
+  opened: number
+  clicked: number
+  conversions: number
+  unsubscribed: number
+  openRate: number
+  clickRate: number
+  ctor: number
+  placedOrderRate: number
+  deliveryRate: number
+  unsubRate: number
+}
+
+interface EmailPerfAudit {
+  metrics: { openRate: number }
+  storeBreakdown?: EmailStoreRow[]
+}
+
+export function EmailAuditDialog({
+  q,
+  cardOpenRate,
+  onClose,
+}: {
+  q: string
+  /** Open rate do card — conferência da agregação ponderada. */
+  cardOpenRate: number | null
+  onClose: () => void
+}) {
+  const { data, error } = useSWR<EmailPerfAudit>(
+    `/api/dashboard/email-performance?${q}`,
+    fetchJson,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  )
+  const rows = data?.storeBreakdown ?? []
+
+  // Recalcula as taxas globais A PARTIR DAS LINHAS (ponderadas por
+  // volume) — é a prova de que a lista compõe exatamente o card.
+  const sums = useMemo(() => {
+    const s = { recipients: 0, delivered: 0, opened: 0, clicked: 0, conversions: 0, unsubscribed: 0 }
+    for (const r of rows) {
+      s.recipients += r.recipients
+      s.delivered += r.delivered
+      s.opened += r.opened
+      s.clicked += r.clicked
+      s.conversions += r.conversions
+      s.unsubscribed += r.unsubscribed
+    }
+    return { ...s, openRate: s.delivered > 0 ? (s.opened / s.delivered) * 100 : 0 }
+  }, [rows])
+
+  const matches = cardOpenRate != null && rows.length > 0
+    ? Math.abs(sums.openRate - cardOpenRate) <= 0.15
+    : null
+
+  const exportCsv = () => {
+    const csv = toCsv(
+      ["Loja", "Cliente", "Envios", "Entregues", "Abertos", "Cliques", "Conversões", "Open %", "Click %", "CTOR %", "Placed Order %", "Deliverability %", "Unsub %"],
+      rows.map((r) => [
+        r.storeName, r.clientName, r.recipients, r.delivered, r.opened, r.clicked, r.conversions,
+        csvNumber(r.openRate), csvNumber(r.clickRate), csvNumber(r.ctor),
+        csvNumber(r.placedOrderRate), csvNumber(r.deliveryRate), csvNumber(r.unsubRate),
+      ]),
+    )
+    downloadCsv("auditoria-performance-email.csv", csv)
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[1040px] p-0 gap-0 overflow-hidden bg-[var(--ops-card)] border-[var(--ops-border)]">
+        <div className="px-5 pt-4 pb-3 border-b border-[var(--ops-border)]">
+          <div className="flex items-center gap-3">
+            <DialogTitle className="text-[15px] font-semibold text-[var(--ops-title)]">
+              Auditoria · Performance do Email
+            </DialogTitle>
+            <div className="flex-1" />
+            <button
+              onClick={exportCsv}
+              className="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[var(--ops-border)] text-[11.5px] font-medium text-[var(--ops-text)] hover:bg-[var(--ops-hover)]"
+            >
+              <Icon icon={Download} customSize={13} /> CSV
+            </button>
+          </div>
+          <p className="mt-1 text-[11.5px] text-[var(--ops-sec)]">
+            Campanhas + automações por loja no período (mesmas linhas do card). As taxas globais são
+            ponderadas por volume — some entregues/abertos das linhas e refaça a conta.
+          </p>
+          {rows.length > 0 && (
+            <div className="mt-2 flex items-center gap-2.5 text-[12px] tabular-nums flex-wrap">
+              <span className="text-[var(--ops-text)]">
+                Σ linhas: {fmtInt(sums.delivered)} entregues · {fmtInt(sums.opened)} abertos → open rate{" "}
+                <strong className="text-[var(--ops-title)]">{fmtPct(sums.openRate)}</strong>
+              </span>
+              {matches != null && (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
+                    matches
+                      ? "text-[var(--ops-pos)] bg-[var(--ops-pos)]/10"
+                      : "text-[var(--ops-neg)] bg-[var(--ops-neg)]/10",
+                  )}
+                >
+                  {matches ? "✓ confere com o card" : "≠ diverge do card — investigar"}
+                </span>
+              )}
+              <span className="text-[var(--ops-mut)] text-[11px]">{rows.length} lojas</span>
+            </div>
+          )}
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto">
+          {error ? (
+            <CollectingState label={`Erro ao carregar: ${String(error.message || error)}`} />
+          ) : !data ? (
+            <CollectingState label="Carregando o detalhamento por loja…" />
+          ) : rows.length === 0 ? (
+            <CollectingState label="Rota ainda sem storeBreakdown — confirme o deploy da API." />
+          ) : (
+            <table className="w-full border-collapse min-w-[900px]">
+              <thead className="sticky top-0 bg-[var(--ops-card)] z-10">
+                <tr>
+                  <Th>Loja</Th>
+                  <Th>Cliente</Th>
+                  <Th right>Entregues</Th>
+                  <Th right>Abertos</Th>
+                  <Th right>Cliques</Th>
+                  <Th right>Conv.</Th>
+                  <Th right>Open</Th>
+                  <Th right>Click</Th>
+                  <Th right>CTOR</Th>
+                  <Th right>Placed</Th>
+                  <Th right>Deliv.</Th>
+                  <Th right>Unsub</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const last = i === rows.length - 1
+                  return (
+                    <tr key={r.storeId}>
+                      <Td last={last} className="font-medium text-[var(--ops-title)]">{r.storeName}</Td>
+                      <Td last={last} className="text-[var(--ops-sec)]">{r.clientName}</Td>
+                      <Td right last={last}>{fmtInt(r.delivered)}</Td>
+                      <Td right last={last}>{fmtInt(r.opened)}</Td>
+                      <Td right last={last}>{fmtInt(r.clicked)}</Td>
+                      <Td right last={last}>{fmtInt(r.conversions)}</Td>
+                      <Td right last={last} className="font-semibold text-[var(--ops-title)]">{fmtPct(r.openRate)}</Td>
+                      <Td right last={last}>{fmtPct(r.clickRate, 2)}</Td>
+                      <Td right last={last}>{fmtPct(r.ctor)}</Td>
+                      <Td right last={last}>{fmtPct(r.placedOrderRate, 2)}</Td>
+                      <Td right last={last}>{fmtPct(r.deliveryRate)}</Td>
+                      <Td right last={last}>{fmtPct(r.unsubRate, 2)}</Td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 export function AuditDialog({

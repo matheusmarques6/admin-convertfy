@@ -6,9 +6,11 @@
  * (SWR) e mostra estado vazio explícito quando não há dado.
  */
 
+import { useState } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import { Spark } from "./charts"
+import { EmailAuditDialog } from "./ops-audit"
 import {
   CollectingState,
   DeltaText,
@@ -121,6 +123,7 @@ export function EmailPerfCard({
   openRateSpark?: number[]
 }) {
   const { data } = useSWR<EmailPerfData>(`/api/dashboard/email-performance?${q}`, fetchJson, SWR_OPTS)
+  const [auditOpen, setAuditOpen] = useState(false)
 
   const tiles: Array<[string, string, number | null | undefined, boolean]> = data
     ? [
@@ -143,7 +146,25 @@ export function EmailPerfCard({
     : []
 
   return (
-    <OpsCard title="Performance do Email" hint={data ? `${fmtCompactInt(data.totals.recipients)} envios no período` : undefined}>
+    <OpsCard
+      title="Performance do Email"
+      hint={data ? `${fmtCompactInt(data.totals.recipients)} envios no período` : undefined}
+      right={
+        <button
+          onClick={() => setAuditOpen(true)}
+          className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]"
+        >
+          Auditar
+        </button>
+      }
+    >
+      {auditOpen && (
+        <EmailAuditDialog
+          q={q}
+          cardOpenRate={data?.metrics.openRate ?? null}
+          onClose={() => setAuditOpen(false)}
+        />
+      )}
       {!data ? (
         <CollectingState label="Carregando métricas de email…" />
       ) : (

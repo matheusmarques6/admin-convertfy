@@ -41,15 +41,27 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("end"),
     )
 
-    const [revenueRows, campaignRows, flowRows] = await Promise.all([
+    const [revenueRows, campaignRows, flowRows, storesQ] = await Promise.all([
       getUnifiedRevenue(supabase, orgId, [period]),
       getUnifiedCampaigns(supabase, orgId, period),
       getUnifiedFlows(supabase, orgId, period, undefined, false),
+      supabase
+        .from("client_stores")
+        .select("id, store_name, clients(name)")
+        .eq("org_id", orgId)
+        .limit(1000),
     ])
+    const storeNames = new Map<string, { store: string; client: string }>(
+      (storesQ.data ?? []).map((s) => {
+        const client = Array.isArray(s.clients) ? s.clients[0] : s.clients
+        return [s.id as string, { store: s.store_name as string, client: (client as { name?: string } | null)?.name || "—" }]
+      }),
+    )
 
     // Agrega tudo (campaigns + flows do periodo)
     const allRows = [
       ...campaignRows.map((c) => ({
+        store_id: c.store_id,
         recipients: c.recipients,
         delivered: c.delivered,
         opened: c.opened,
@@ -60,6 +72,7 @@ export async function GET(request: NextRequest) {
         revenue: c.conversion_value,
       })),
       ...flowRows.map((f) => ({
+        store_id: f.store_id,
         recipients: f.recipients,
         delivered: f.delivered,
         opened: f.opened,
@@ -70,6 +83,54 @@ export async function GET(request: NextRequest) {
         revenue: f.conversion_value,
       })),
     ]
+
+    // Breakdown por loja (auditoria, ago/2026): MESMAS linhas que compõem
+    // as taxas globais do card, agrupadas por store — quem audita soma as
+    // linhas e chega exatamente no total do card.
+    interface StoreAcc {
+      recipients: number
+      delivered: number
+      opened: number
+      clicked: number
+      bounced: number
+      unsubscribed: number
+      conversions: number
+      revenue: number
+    }
+    const byStore = new Map<string, StoreAcc>()
+    for (const r of allRows) {
+      const acc = byStore.get(r.store_id) ?? {
+        recipients: 0, delivered: 0, opened: 0, clicked: 0,
+        bounced: 0, unsubscribed: 0, conversions: 0, revenue: 0,
+      }
+      acc.recipients += r.recipients
+      acc.delivered += r.delivered
+      acc.opened += r.opened
+      acc.clicked += r.clicked
+      acc.bounced += r.bounced
+      acc.unsubscribed += r.unsubscribed
+      acc.conversions += r.conversions
+      acc.revenue += r.revenue
+      byStore.set(r.store_id, acc)
+    }
+    const r2 = (v: number) => Math.round(v * 100) / 100
+    const storeBreakdown = [...byStore.entries()]
+      .map(([storeId, a]) => {
+        const names = storeNames.get(storeId)
+        return {
+          storeId,
+          storeName: names?.store ?? "—",
+          clientName: names?.client ?? "—",
+          ...a,
+          openRate: a.delivered > 0 ? r2((a.opened / a.delivered) * 100) : 0,
+          clickRate: a.delivered > 0 ? r2((a.clicked / a.delivered) * 100) : 0,
+          ctor: a.opened > 0 ? r2((a.clicked / a.opened) * 100) : 0,
+          placedOrderRate: a.delivered > 0 ? r2((a.conversions / a.delivered) * 100) : 0,
+          deliveryRate: a.recipients > 0 ? r2((a.delivered / a.recipients) * 100) : 0,
+          unsubRate: a.delivered > 0 ? r2((a.unsubscribed / a.delivered) * 100) : 0,
+        }
+      })
+      .sort((a, b) => b.delivered - a.delivered)
 
     const totalRecipients = allRows.reduce((s, r) => s + r.recipients, 0)
     const totalDelivered = allRows.reduce((s, r) => s + r.delivered, 0)
@@ -131,6 +192,7 @@ export async function GET(request: NextRequest) {
         totalLeads,
         engagedLeads,
       },
+      storeBreakdown,
     })
   } catch (error) {
     log.error("EmailPerf error:", error)
