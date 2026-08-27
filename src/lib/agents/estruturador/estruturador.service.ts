@@ -259,7 +259,11 @@ export async function runEstruturador(
   const config: AgentInvokeConfig = {
     model: cfgRow?.model || DEFAULT_MODEL,
     temperature: cfgRow?.temperature ?? 0.4,
-    max_tokens: cfgRow?.max_tokens ?? 4096,
+    // 4096 truncava: o contrato pede papel + referência + adaptação +
+    // porquê por posição, mais diagnóstico, fio, fontes e descartes — tudo
+    // prosa. A 1ª tentativa da Innova bateu o teto exato (4.096) e veio
+    // cortada no meio do JSON.
+    max_tokens: cfgRow?.max_tokens ?? 8192,
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_ESTRUTURADOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_ESTRUTURADOR_USER,
   }
@@ -379,7 +383,25 @@ export async function runEstruturador(
         : renderImageTemplate(config.user_template, vars)
       promptSegmentsFinal = concatSegments(systemSegments, segUser.segments)
 
-      const parsed = extractJson(res.raw)
+      // `extractJson` devolve STRING — o objeto só existe depois do parse.
+      // Sem ele, o validador recebia texto, reprovava no primeiro teste
+      // (`typeof !== "object"`) e o agente falhava em 100% das runs, com a
+      // mensagem "output não é um objeto JSON" acusando o modelo por um erro
+      // nosso. `ValidacaoInput.output` é `unknown`, então o compilador não
+      // pegou. Todos os outros agentes fazem `JSON.parse(extractJson(raw))`.
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(extractJson(res.raw))
+      } catch {
+        // Teto de saída batido = resposta cortada no meio do JSON. Dizer
+        // isso em vez de "JSON inválido" é a diferença entre ajustar o
+        // `max_tokens` e caçar um bug que não existe.
+        throw new Error(
+          res.tokensOutput >= config.max_tokens
+            ? `resposta truncada no teto de ${config.max_tokens} tokens de saída — o JSON veio incompleto`
+            : "resposta não é JSON válido",
+        )
+      }
       const validado = validarOutput({
         output: parsed,
         refsServidas: carga.refsServidas,

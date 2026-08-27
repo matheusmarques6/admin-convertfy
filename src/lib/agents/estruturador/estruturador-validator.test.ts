@@ -174,3 +174,21 @@ describe("prompt — embrulho de slugs", () => {
     expect(v.referencias).toBe("(nenhum)")
   })
 })
+
+// O bug que manteve o Estruturador reprovando 100% das runs desde que
+// nasceu: o serviço passava ao validador o retorno de `extractJson`, que é
+// STRING, e não o objeto. Como `ValidacaoInput.output` é `unknown`, o
+// compilador não pegou — e o primeiro teste do validador (`typeof !==
+// "object"`) reprovava sempre, com uma mensagem que culpava o modelo.
+describe("validarOutput — a entrada tem de ser objeto, não texto", () => {
+  it("string de JSON (saída crua do extractJson) é reprovada", () => {
+    const r = valida(JSON.stringify(outputValido()))
+    expect(r.ok).toBe(false)
+    expect(r.errosFatais).toContain("output não é um objeto JSON")
+  })
+
+  it("o MESMO conteúdo, já parseado, passa", () => {
+    const r = valida(JSON.parse(JSON.stringify(outputValido())))
+    expect(r.ok).toBe(true)
+  })
+})
