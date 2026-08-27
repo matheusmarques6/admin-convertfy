@@ -81,6 +81,11 @@ export interface CampoMergeLog {
   para: string | null
   /** true = âncora costurada através de `<br>`/wrapper inline. */
   costurado?: boolean
+  /**
+   * Quantas cópias da frase foram escritas (regra 5 — arte que repete o
+   * texto). Ausente quando é 1, que é o caso normal.
+   */
+  ocorrencias?: number
 }
 
 export interface CopyMergeReport {
@@ -297,6 +302,9 @@ export function copyMergeByExample(
       desfecho: a.desfecho,
       ...(a.motivo ? { motivo: a.motivo } : {}),
       ...(a.costurado ? { costurado: true } : {}),
+      ...(a.extraRanges?.length
+        ? { ocorrencias: a.extraRanges.length + 1 }
+        : {}),
       de: a.de,
       para: null,
     }
@@ -319,6 +327,11 @@ export function copyMergeByExample(
       } else {
         const replacement = neutralizeAngles(e.value)
         splices.push({ ...a.range, replacement, entryIdx: i })
+        // Frase repetida pela arte e um único campo dono (regra 5): escreve
+        // em todas as cópias, senão o email sai metade traduzido.
+        for (const extra of a.extraRanges ?? []) {
+          splices.push({ ...extra, replacement, entryIdx: i })
+        }
         // Espelho MSO: mesma frase dentro de conditional comment.
         const de = html.slice(a.range.start, a.range.end)
         for (const m of msoMirrorSplices(html, de, replacement)) {

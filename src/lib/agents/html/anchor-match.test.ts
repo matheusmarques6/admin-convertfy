@@ -152,6 +152,51 @@ describe("assignTextAnchors — desempates", () => {
     expect(out[1].range!.start).toBeLessThan(out[2].range!.start)
   })
 
+  it("campo único com 14 ocorrências (fita repetida) → ancora em todas", () => {
+    // Caso real da variante `body 2`: a fita diagonal repete o nome da
+    // campanha 7× por faixa, 2 faixas. Uma loja sem Black Friday recebia o
+    // email escrito Black Friday porque o merge desistia.
+    const fita = Array(7).fill("<b>Black Friday</b>").join(" &middot; ")
+    const html = `<td><span>${fita}</span></td><td><span>${fita}</span></td>`
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("ribbon_text", "Black Friday")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].extraRanges).toHaveLength(13)
+  })
+
+  it("irmãos continuam ambíguos — só o campo ÚNICO ganha a repetição", () => {
+    // A regra nova não pode vazar para a regra 4: com dois campos de valores
+    // distintos disputando os mesmos lugares, chutar escreveria a copy de um
+    // na frase do outro (review 8: dois cta_label p/ 4 "Shop Now").
+    const html = Array(4).fill("<td>Shop Now</td>").join("")
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [
+      field("review_1_cta_label", "Shop Now"),
+      field("review_3_cta_label", "Shop Now"),
+    ])
+    for (const a of out) {
+      expect(a.desfecho).toBe("ambiguo")
+      expect(a.motivo).toBe("ocorrencias_excedem_campos")
+      expect(a.extraRanges).toBeUndefined()
+    }
+  })
+
+  it("example mais longo leva o range antes; o curto não reivindica o contido", () => {
+    // A regra nova reivindica TODAS as ocorrências livres — precisa continuar
+    // respeitando o que um example mais longo já tomou.
+    const html = "<td>Use code CODE10 for 10% off</td><td>Use code</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [
+      field("longo", "Use code CODE10 for 10% off"),
+      field("curto", "Use code"),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].extraRanges).toBeUndefined()
+    // Sobrou exatamente 1 ocorrência livre de "Use code" → ancora simples.
+    expect(out[1].desfecho).toBe("ancorado_exemplo")
+    expect(out[1].extraRanges).toBeUndefined()
+  })
+
   it("3 ocorrências para 2 irmãos → todos ambíguos (nunca chutar)", () => {
     const html = ["<td>Name.</td>", "<td>Name.</td>", "<td>Name.</td>"].join("\n")
     const index = buildTextIndex(html)
@@ -179,12 +224,18 @@ describe("assignTextAnchors — desempates", () => {
     }
   })
 
-  it("campo ÚNICO com 2 ocorrências livres → ambíguo", () => {
+  it("campo ÚNICO com 2 ocorrências livres → ancora nas DUAS", () => {
+    // A repetição é da ARTE (mesmo CTA no topo e no rodapé) e o campo é um
+    // só: escrever em uma deixaria a outra com o texto do template.
     const html = "<td>Shop now</td><td>Shop now</td>"
     const index = buildTextIndex(html)
     const out = assignTextAnchors(index, [field("cta_label", "Shop now")])
-    expect(out[0].desfecho).toBe("ambiguo")
-    expect(out[0].motivo).toBe("ocorrencias_excedem_campos")
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].motivo).toBeUndefined()
+    expect(out[0].range).not.toBeNull()
+    expect(out[0].extraRanges).toHaveLength(1)
+    // Ordem de documento: o extra vem depois da âncora principal.
+    expect(out[0].extraRanges![0].start).toBeGreaterThan(out[0].range!.start)
   })
 
   it("example ausente do HTML → sem_lugar:nao_encontrado", () => {
@@ -308,13 +359,14 @@ describe("costura através de <br> e wrappers inline", () => {
     expect(out[0].costurado).toBeUndefined()
   })
 
-  it("ambiguidade continua valendo com runs: 2 ocorrências costuradas p/ 1 campo", () => {
+  it("campo único com 2 runs costurados → ancora nos dois, marcando costurado", () => {
     const html =
       "<td>Product<br>Name 1</td><td>Product<br>Name 1</td>"
     const index = buildTextIndex(html)
     const out = assignTextAnchors(index, [field("k", "Product Name 1")])
-    expect(out[0].desfecho).toBe("ambiguo")
-    expect(out[0].motivo).toBe("ocorrencias_excedem_campos")
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].extraRanges).toHaveLength(1)
+    expect(out[0].costurado).toBe(true)
   })
 
   it("irmãos idênticos com runs: ordem de ocorrência × declaração", () => {

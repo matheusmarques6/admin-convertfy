@@ -18,7 +18,13 @@
  *   4. irmãos com example IDÊNTICO ("Name." em review_1/2/3): nº de
  *      ocorrências livres === nº de campos → ordem de ocorrência × ordem de
  *      declaração; sobrando ocorrência → todos ambíguos (nunca chutar).
- *   5. campo único com 2+ ocorrências livres → ambíguo.
+ *   5. campo único com 2+ ocorrências livres → escreve em TODAS. A frase
+ *      repetida é a MESMA arte repetida de propósito (a fita "Black Friday"
+ *      ×16 da `body 2`, o CTA que aparece no topo e no rodapé), e o campo é
+ *      um só: escolher uma ocorrência deixaria o resto com o texto do
+ *      template — metade em pt-BR, metade no exemplo em inglês. É o mesmo
+ *      contrato do `set_text` do Integrador (todas as ocorrências).
+ *      Ambiguidade de verdade é só a da regra 4, com irmãos disputando.
  *
  * A frase casa em UM nó de texto OU num RUN costurado de nós irmãos
  * separados só por `<br>`/wrappers inline (ver STITCH_GAP_RE) — o caso
@@ -369,6 +375,11 @@ export interface AnchorAssignment {
   field: AnchorField
   /** Range no source original — só quando ancorado. */
   range: Range | null
+  /**
+   * Demais ocorrências da MESMA frase, quando o campo é único e a arte
+   * repete o texto (regra 5). Recebem o mesmo replacement do `range`.
+   */
+  extraRanges?: Range[]
   desfecho: AnchorDesfecho
   motivo?: AnchorMotivo
   /** Trecho original que será substituído (trunc 120) — só quando ancorado. */
@@ -473,7 +484,29 @@ export function assignTextAnchors(
       continue
     }
     if (free.length > memberIdxs.length) {
-      // Mais lugares que campos — chutar escreveria a copy na frase errada.
+      // Campo ÚNICO com a frase repetida: a repetição é da ARTE (fita
+      // "Black Friday" ×16, CTA no topo e no rodapé) e todas as cópias são
+      // o mesmo campo — escreve em todas. Deixar as demais com a frase do
+      // template é pior que trocar: o email sairia metade traduzido.
+      if (memberIdxs.length === 1) {
+        const idx = memberIdxs[0]
+        for (const o of free) claimed.push({ start: o.start, end: o.end })
+        const [first, ...rest] = free
+        results[idx] = {
+          field: fields[idx],
+          range: { start: first.start, end: first.end },
+          ...(rest.length > 0
+            ? { extraRanges: rest.map((o) => ({ start: o.start, end: o.end })) }
+            : {}),
+          desfecho: "ancorado_exemplo",
+          motivo: undefined,
+          de: null,
+          ...(free.some((o) => o.costurado) ? { costurado: true } : {}),
+        }
+        continue
+      }
+      // Irmãos disputando os mesmos lugares: aí sim é ambiguidade — chutar
+      // escreveria a copy de um campo na frase do outro.
       fail("ocorrencias_excedem_campos")
       continue
     }
