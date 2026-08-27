@@ -123,7 +123,7 @@ Restrições de construção:
 - Se uma seção CENTRAL da referência não está na capacidade (ex.: offer), RE-PROJETE o papel dela numa seção construível — preservando o MECANISMO, não só as palavras. Se o papel da seção original depende de isolamento visual (bloco destacado que funciona como interrupção), a re-projeção só vale numa variante que preserve esse isolamento. Prazo e cupom soltos num parágrafo não re-projetam o bloco: destroem o dispositivo. Se nenhuma variante preserva o mecanismo, registre em "descartes" e NÃO force.
 - "text_only" só é válido quando a intenção deste email ou sua referência pedem QUEBRA DE FORMATO — é dispositivo de encerramento cujo valor depende de todos os toques desenhados que vieram antes. NUNCA use "text_only" como saída para capacidade insuficiente: um flow que quebra o formato cedo não tem como quebrá-lo no fim.
 - NUNCA indique posição que exige mais produtos do que a loja tem.
-- NUNCA repita nenhuma sequência de <estruturas_proibidas>.
+- Cada email deste flow precisa de composição PRÓPRIA: NUNCA repita a sequência de outro email listado em <estruturas_dos_outros_emails>. Repetir a estrutura que VOCÊ já decidiu para ESTE mesmo email numa geração anterior é legítimo — se ela continua sendo a certa, mantenha-a.
 - "referencia" e os slugs de "aprendizados_aplicados" usam EXATAMENTE os slugs dos embrulhos — nunca invente um identificador.
 - Em "descartes", tudo que VOCÊ decidiu não emitir leva "origem": "modelo".
 
@@ -154,9 +154,9 @@ export const DEFAULT_ESTRUTURADOR_USER = `<loja>
 {{capacidade_biblioteca}}
 </capacidade_da_biblioteca>
 
-<estruturas_proibidas>
-{{estruturas_proibidas}}
-</estruturas_proibidas>
+<estruturas_dos_outros_emails>
+{{estruturas_dos_outros_emails}}
+</estruturas_dos_outros_emails>
 
 <orientacao_do_coo>
 {{orientacao_coo}}

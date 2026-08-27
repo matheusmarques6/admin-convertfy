@@ -41,6 +41,17 @@ interface GeneratedItem {
     match: "loja" | "global" | "nenhum"
     html: string | null
   }
+  /**
+   * O que aconteceu com o Estruturador na última geração deste email.
+   * Sem isto, "montado na estrutura genérica do outline" só existia como
+   * nó vermelho no Estúdio e log de servidor — quem abre o email pronto
+   * não tinha como saber.
+   */
+  estruturador?: {
+    status: string
+    erro: string | null
+    quando: string | null
+  }
 }
 
 export async function GET(
@@ -53,7 +64,7 @@ export async function GET(
     await requireAuth(sb)
     const admin = createAdminClient()
 
-    const [bpRes, refRes, globalRes] = await Promise.all([
+    const [bpRes, refRes, globalRes, estRes] = await Promise.all([
       admin
         .from("store_email_blueprints")
         .select(
@@ -72,6 +83,17 @@ export async function GET(
         .from("email_reference_templates")
         .select("flow_type, email_number, html")
         .eq("is_active", true),
+      // Última run do Estruturador por email desta loja. Ordenada desc: a
+      // primeira linha de cada (flow, número) é a vigente.
+      admin
+        .from("email_generation_runs")
+        .select(
+          "status, error_message, created_at, email:email_flow_emails!inner(number, flow:email_flows!inner(flow_type))",
+        )
+        .eq("agent", "estruturador")
+        .eq("store_id", storeId)
+        .order("created_at", { ascending: false })
+        .limit(200),
     ])
     if (bpRes.error) throw bpRes.error
     if (refRes.error) throw refRes.error
@@ -98,6 +120,26 @@ export async function GET(
       map.set(k, cur)
     }
 
+    // Estruturador por email — a primeira linha de cada chave é a vigente.
+    const estMap = new Map<string, GeneratedItem["estruturador"]>()
+    for (const r of ((estRes.data ?? []) as unknown as Array<{
+      status: string
+      error_message: string | null
+      created_at: string
+      email?: { number?: number; flow?: { flow_type?: string } | null } | null
+    }>)) {
+      const flowType = r.email?.flow?.flow_type
+      const numero = r.email?.number
+      if (!flowType || numero == null) continue
+      const k = `${flowType}:${numero}`
+      if (estMap.has(k)) continue
+      estMap.set(k, {
+        status: r.status,
+        erro: r.error_message ?? null,
+        quando: r.created_at ?? null,
+      })
+    }
+
     // Espelha a resolução do build-vars: loja > global > nenhum.
     const globalMap = new Map<string, string>()
     for (const g of (globalRes.data as Array<{
@@ -116,6 +158,8 @@ export async function GET(
         : globalHtml
           ? { match: "global", html: globalHtml }
           : { match: "nenhum", html: null }
+      const est = estMap.get(`${item.flow_type}:${item.email_number}`)
+      if (est) item.estruturador = est
     }
 
     const items = Array.from(map.values()).sort((a, b) =>

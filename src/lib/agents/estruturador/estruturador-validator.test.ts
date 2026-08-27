@@ -131,28 +131,53 @@ describe("removíveis — origem: validador", () => {
   })
 })
 
-describe("anti-repetição em código", () => {
-  it("sequência idêntica a uma proibida é fatal", () => {
+// A regra mudou de alvo em 27/08: era "não repita as suas próprias runs
+// anteriores DESTE email" — o que punia convergência e, na Innova, reprovou
+// duas vezes a estrutura que o agente insistia ser a certa. Agora protege o
+// que ninguém checava: dois emails do MESMO flow com a mesma composição.
+describe("variedade entre os emails do flow", () => {
+  const irma = (rotulo: string, seq: string[]) => ({ rotulo, seq })
+
+  it("sequência idêntica à de outro email do flow é fatal", () => {
     const o = outputValido()
     const r = valida(o, {
-      sequenciasProibidas: [["hero", "body", "reviews", "products", "footer"]],
+      sequenciasProibidas: [
+        irma("welcome #2", ["hero", "body", "reviews", "products", "footer"]),
+      ],
     })
     expect(r.ok).toBe(false)
-    expect(r.errosFatais.join(" ")).toContain("repete uma estrutura recente")
+    // O rótulo do irmão vai na mensagem: é ela que volta ao modelo no retry,
+    // e "é a mesma do welcome #2" é acionável — "repete uma estrutura
+    // recente" só manda embaralhar.
+    expect(r.errosFatais.join(" ")).toContain("é a mesma do welcome #2")
+    expect(r.errosFatais.join(" ")).toContain("composição própria")
   })
 
   it("a comparação é PÓS-filtro: header removido não descola a sequência", () => {
     const o = outputValido()
     o.estrutura.unshift({ section: "header", papel: "x", referencia: REFS[0], porque: "y" })
     const r = valida(o, {
-      sequenciasProibidas: [["hero", "body", "reviews", "products", "footer"]],
+      sequenciasProibidas: [
+        irma("welcome #2", ["hero", "body", "reviews", "products", "footer"]),
+      ],
     })
     expect(r.ok).toBe(false) // ainda colide — o header não conta
   })
 
   it("sequência diferente passa", () => {
     const o = outputValido()
-    const r = valida(o, { sequenciasProibidas: [["hero", "products", "footer"]] })
+    const r = valida(o, {
+      sequenciasProibidas: [irma("welcome #2", ["hero", "products", "footer"])],
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  // O caso Innova (27/08): o agente propôs a MESMA estrutura da geração
+  // anterior deste mesmo email, duas vezes. Isso é convergência, não erro —
+  // e a lista de irmãs simplesmente não carrega o próprio email.
+  it("repetir a estrutura do próprio email em nova geração passa", () => {
+    const o = outputValido()
+    const r = valida(o, { sequenciasProibidas: [] })
     expect(r.ok).toBe(true)
   })
 })

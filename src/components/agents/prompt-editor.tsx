@@ -41,7 +41,10 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "email_number", desc: "Número do email no flow" },
     { key: "intencao_email", desc: "Intenção deste email (vault)" },
     { key: "capacidade_biblioteca", desc: "Categorias construíveis + produtos" },
-    { key: "estruturas_proibidas", desc: "Sequências recentes proibidas" },
+    {
+      key: "estruturas_dos_outros_emails",
+      desc: "Estruturas vigentes dos outros emails do flow (variedade)",
+    },
   ],
   copy: [
     { key: "brand_name", desc: "Nome da loja/marca" },

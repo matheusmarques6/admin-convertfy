@@ -43,6 +43,19 @@ import {
 import type { AssemblySlot } from "./component-assembler.service"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
 
+/**
+ * Por que a estrutura deste email é (ou não é) a do Estruturador.
+ * `desconhecido` cobre blueprint gerado por rota que não informa (regen
+ * manual antiga) — nunca é usado para afirmar que rodou.
+ */
+export type EstruturadorStatus =
+  | "consumido"
+  | "desligado"
+  | "sem_material"
+  | "falhou"
+  | "text_only"
+  | "desconhecido"
+
 const log = logger.child("BlueprintGenerator")
 
 // Os 19 block_types canônicos. Espelha o CHECK de email_blocks /
@@ -282,6 +295,13 @@ export interface GenerateBlueprintInput {
   // antes do upsert. O fio persiste no blueprint (fio_narrativo).
   papeisPorPosicao?: string[] | null
   fioNarrativo?: string | null
+  /**
+   * O que aconteceu com o Estruturador nesta geração. Sem isto, "email
+   * montado na estrutura genérica do outline" só existia como log de
+   * servidor: quem abria o email pronto não tinha como saber que a
+   * estrutura adaptativa não rodou (e por quê).
+   */
+  estruturadorStatus?: EstruturadorStatus | null
 }
 
 export interface GenerateBlueprintResult {
@@ -730,6 +750,10 @@ async function generateDeterministicBlueprint(
       blueprint_route: "slots",
       // Fase 3: papéis do Estruturador aplicados no purpose dos blocos.
       estruturador_consumido: consumiuEstruturador,
+      // E, quando NÃO foram, por quê — é o que a tela mostra.
+      estruturador_status:
+        input.estruturadorStatus ??
+        (consumiuEstruturador ? "consumido" : "desconhecido"),
       // Campos cujo example/token não é encontrável no HTML da variante —
       // erro de CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
       schema_anchor_issues: anchorIssues,
@@ -975,6 +999,10 @@ async function generateLlmBlueprint(
       skeleton_used: false,
       // Fase 3: papéis do Estruturador aplicados no purpose dos blocos.
       estruturador_consumido: consumiuEstruturador,
+      // E, quando NÃO foram, por quê — é o que a tela mostra.
+      estruturador_status:
+        input.estruturadorStatus ??
+        (consumiuEstruturador ? "consumido" : "desconhecido"),
       // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,

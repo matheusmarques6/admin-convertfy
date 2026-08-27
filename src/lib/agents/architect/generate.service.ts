@@ -40,6 +40,7 @@ import {
   assembleStoreReference,
   type ReferenceSource,
 } from "./component-assembler.service"
+import type { EstruturadorStatus } from "./blueprint-generator.service"
 
 const log = logger.child("ArchitectGenerate")
 
@@ -337,6 +338,11 @@ export async function generateBlueprintAndReference(
   // SUBSTITUI o outline abaixo. Falha/sem_material NUNCA derruba a geração —
   // fallback documentado é o outline, com log.
   let estruturadorOutput: EstruturadorOutput | null = null
+  // Por que a estrutura é (ou não é) a do Estruturador — desce até o
+  // blueprint e daí até a tela. Modo 'shadow' NÃO consome de propósito: a
+  // estrutura é a do outline e a marca precisa dizer isso.
+  let estruturadorStatus: EstruturadorStatus =
+    estruturadorMode === "on" ? "falhou" : "desligado"
   if (estruturadorMode === "off") {
     // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
     // nas telas (mapa e aba Teste): sem run nenhuma, a linha dele fica
@@ -392,9 +398,13 @@ export async function generateBlueprintAndReference(
             flowType: input.flowType,
             emailNumber: input.emailNumber,
           })
+          estruturadorStatus = "text_only"
         } else if (r.status === "ok" && r.output) {
           estruturadorOutput = r.output
+          estruturadorStatus = "consumido"
         } else {
+          estruturadorStatus =
+            r.status === "sem_material" ? "sem_material" : "falhou"
           log.warn("estruturador.on_fallback_outline", {
             storeId: input.storeId,
             flowType: input.flowType,
@@ -513,6 +523,7 @@ export async function generateBlueprintAndReference(
     // (é como a decisão chega à copy do n8n) e o fio persiste no blueprint.
     papeisPorPosicao: posicoes ? posicoes.map((p) => p.papel) : null,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? null,
+    estruturadorStatus,
   })
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.

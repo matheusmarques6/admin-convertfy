@@ -267,6 +267,23 @@ export function MontadorEscolhasView({ output }: { output: unknown }) {
   )
 }
 
+/** Por que este email não usou a estrutura do Estruturador. */
+function estruturadorAusente(status: unknown): string {
+  const base = "estrutura do outline genérico"
+  switch (status) {
+    case "desligado":
+      return `${base} — Estruturador desligado`
+    case "sem_material":
+      return `${base} — sem material no vault para este flow`
+    case "falhou":
+      return `${base} — o Estruturador falhou`
+    case "text_only":
+      return `${base} — text_only não é consumido nesta versão`
+    default:
+      return `${base} — sem papéis do Estruturador`
+  }
+}
+
 // ── Blueprint: os blocos decididos ──────────────────────────────────────
 
 export function BlueprintBlocosView({ output }: { output: unknown }) {
@@ -283,8 +300,13 @@ export function BlueprintBlocosView({ output }: { output: unknown }) {
           tone={o.blueprint_path === "deterministic" ? "pos" : "warn"}
         />
         <OutPill text={`${blocos.length} bloco(s)`} tone="neut" />
-        {o.estruturador_consumido === true && (
+        {o.estruturador_consumido === true ? (
           <OutPill text="papéis do Estruturador aplicados" tone="info" />
+        ) : (
+          // O contrário do "aplicados" não existia: email montado na
+          // estrutura genérica do outline saía sem marca nenhuma, e o motivo
+          // só vivia no log de servidor.
+          <OutPill text={estruturadorAusente(o.estruturador_status)} tone="warn" />
         )}
         {Number(o.schema_anchor_issue_count ?? 0) > 0 && (
           <OutPill

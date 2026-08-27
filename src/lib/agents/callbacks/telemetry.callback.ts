@@ -248,6 +248,14 @@ export async function finishGenerationRun(
       duration_ms: params.durationMs ?? 0,
       error_message: params.errorMessage ?? undefined,
       error_stack: params.errorStack ?? undefined,
+      // Faltava: o UPDATE nunca gravava retry_count, então toda run aberta
+      // por startGenerationRun ficava com o 0 do insert. A run do
+      // Estruturador que falhou em 27/08 aparecia com "0 tentativas" tendo
+      // gasto 47k tokens de entrada em duas — o número que responderia
+      // "ele tentou de novo?" era justamente o que não existia.
+      // `?? undefined` pelo mesmo motivo dos campos acima: omitir preserva
+      // o que o start gravou, `?? 0` apagaria.
+      retry_count: params.retryCount ?? undefined,
     })
     .eq("id", runId)
 

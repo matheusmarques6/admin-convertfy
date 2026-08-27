@@ -14,7 +14,8 @@
  * Regras (spec + lotes 1-2 do review): categorias construíveis apenas;
  * header/cta REJEITADOS (absorvidos por design); referencia+porque
  * obrigatórios (fatal); slugs ∈ servidos (fatal — anti-alucinação,
- * executável porque os embrulhos viajam); dedup vs proibidas (fatal);
+ * executável porque os embrulhos viajam); dedup vs os OUTROS emails do flow
+ * (fatal — repetir a si mesmo é legítimo, ver `sequenciasProibidas`);
  * product_slots; text_only nunca por escassez.
  */
 
@@ -31,13 +32,30 @@ export interface CapacidadeBiblioteca {
   produtosDaLoja: number
 }
 
+/**
+ * Estrutura VIGENTE de outro email do mesmo flow desta loja.
+ *
+ * O rótulo (`welcome #2`) viaja junto de propósito: a mensagem de reprovação
+ * volta ao modelo no retry, e "é a mesma do welcome #2" é acionável — "repete
+ * uma estrutura recente" só manda embaralhar.
+ */
+export interface EstruturaIrma {
+  rotulo: string
+  seq: string[]
+}
+
 export interface ValidacaoInput {
   output: unknown
   refsServidas: string[]
   aprendizadosServidos: string[]
   capacidade: CapacidadeBiblioteca
-  /** Sequências (arrays de section) já emitidas — proibidas de repetir. */
-  sequenciasProibidas: string[][]
+  /**
+   * Estruturas dos OUTROS emails deste flow — cada email precisa de
+   * composição própria. Repetir a estrutura que o próprio email já recebeu
+   * numa geração anterior é legítimo e NÃO entra aqui: era assim até 27/08 e
+   * transformava convergência em erro fatal.
+   */
+  sequenciasProibidas: EstruturaIrma[]
 }
 
 export interface ValidacaoResultado {
@@ -137,14 +155,17 @@ export function validarOutput(input: ValidacaoInput): ValidacaoResultado {
     }
   }
 
-  // ── Dedup vs sequências proibidas (fatal — anti-repetição em código) ──
+  // ── Dedup vs os outros emails do flow (fatal — variedade em código) ──
   const seq = limpa.map((p) => p.section)
-  if (input.sequenciasProibidas.some((prev) => sameSequence(prev, seq))) {
+  const colisao = input.sequenciasProibidas.find((irma) =>
+    sameSequence(irma.seq, seq),
+  )
+  if (colisao) {
     return {
       ok: false,
       removidasPeloValidador: removidas,
       errosFatais: [
-        `a sequência [${seq.join(", ")}] repete uma estrutura recente desta loja — varie a composição`,
+        `a sequência [${seq.join(", ")}] é a mesma do ${colisao.rotulo} desta loja — cada email do flow precisa de composição própria`,
       ],
     }
   }

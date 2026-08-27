@@ -37,6 +37,11 @@ interface GeneratedItem {
     match: "loja" | "global" | "nenhum"
     html?: string | null
   }
+  estruturador?: {
+    status: string
+    erro: string | null
+    quando: string | null
+  }
 }
 
 function SourceBadge({ source }: { source?: string }) {
@@ -77,6 +82,36 @@ function ConsumedBadge({
   return (
     <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${cfg.cls}`}>
       {cfg.label}
+    </span>
+  )
+}
+
+/**
+ * A estrutura deste email veio do Estruturador ou do outline genérico?
+ *
+ * Sem isto o email montado sem o agente adaptativo saía sem marca nenhuma:
+ * o nó vermelho ficava no Estúdio e o motivo, no log de servidor.
+ */
+function EstruturaBadge({
+  est,
+}: {
+  est?: { status: string; erro: string | null }
+}) {
+  if (!est) return null
+  const ok = est.status === "success"
+  const label = ok
+    ? "estrutura: Estruturador ✓"
+    : `estrutura: outline genérico ⚠${est.erro ? ` — ${est.erro}` : ""}`
+  return (
+    <span
+      title={est.erro ?? undefined}
+      className={`ml-2 inline-block max-w-full truncate align-bottom rounded-full px-1.5 py-0.5 text-[10px] ${
+        ok
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+          : "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+      }`}
+    >
+      {label}
     </span>
   )
 }
@@ -235,6 +270,7 @@ export function GeneratedInspector({
                 <h4 className="mb-2 text-[13px] font-semibold">
                   Blueprint
                   <SourceBadge source={selected.blueprint?.source} />
+                  <EstruturaBadge est={selected.estruturador} />
                 </h4>
                 {selected.blueprint?.objective && (
                   <p className="mb-1 text-[12px] text-slate-600 dark:text-white/60">

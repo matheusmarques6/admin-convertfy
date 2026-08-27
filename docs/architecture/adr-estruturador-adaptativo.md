@@ -80,9 +80,17 @@ Mais o contexto de runtime:
    realmente funciona" + "garantia vitalícia como destrava").
 7. **Capacidade da biblioteca**: categorias com variantes preenchíveis +
    product_slots × produtos da loja. Restrição dura.
-8. **Histórico desta loja**: estruturas já emitidas para este flow×email
-   (runs anteriores do Estruturador) — exclusão de repetição EM CÓDIGO
-   (filtradas antes do prompt), nunca como sugestão.
+8. **Estruturas dos OUTROS emails deste flow** (revisto em 27/08): a
+   estrutura VIGENTE de cada irmão — exclusão de repetição EM CÓDIGO, nunca
+   como sugestão. Cada email do flow precisa de composição própria.
+
+   Era o histórico do PRÓPRIO email (N=2 runs anteriores), e isso punia
+   convergência: a lista de proibidas era feita das melhores respostas do
+   agente. Caso real (Innova, welcome #1): a estrutura foi reprovada duas
+   vezes por repetir a da geração anterior — o agente insistiu, o código
+   descartou, e o fallback foi o outline GENÉRICO, que é a estrutura mais
+   repetida que existe. Repetir a si mesmo passou a ser legítimo (vira a
+   flag `_validador.repetiu_geracao_anterior`, informação, não erro).
 
 ### A decisão que o agente toma (formalizada)
 
@@ -282,8 +290,9 @@ a resolver no Obsidian antes/durante a janela de shadow):
   (abandoned_cart, win_back…) — sem material o Estruturador devolve
   `sem_material` e o pipeline segue no outline.
 
-(Do review original, o item "anti-repetição N=2" já foi absorvido no código
-— `HISTORICO_N` no estruturador.service.)
+(Do review original, o item "anti-repetição N=2" foi absorvido no código e
+depois REVISTO em 27/08: `HISTORICO_N` não existe mais — a comparação é com
+a estrutura vigente de cada OUTRO email do flow, uma por irmão.)
 
 ## Ciclo de feedback (decisão 9)
 
@@ -320,12 +329,14 @@ prompt — settings (`estruturador_mode`), config do agente, as 3 tabelas do
 vault (filtradas por flow + `_global` por `aplica_a`), `client_stores` +
 `store_briefings` + `store_top_products` (contexto/objeção dominante — já
 lidos pela fase 1 hoje), `email_component_variants` (capacidade: preenchíveis
-por categoria + product_slots) e `email_generation_runs` (últimas N=2 runs do
-próprio Estruturador deste loja×flow×email → `estruturas_proibidas`).
+por categoria + product_slots) e `email_generation_runs` (a run bem-sucedida
+mais recente de cada OUTRO email deste flow → `estruturas_dos_outros_emails`;
+mais a do próprio email, só para a flag de convergência).
 Escrita: UMA run `agent='estruturador'` — aberta `running` antes do LLM,
 fechada com `email_id`/`flow_id` (passo 1), `input_vars` auditável
 (`refs_servidas[]`, `aprendizados_servidos[]`, `vault_commit_sha`,
-capacidade, proibidas, campos ausentes da loja, modo), `rendered_prompt`
+capacidade, `outros_emails_count`, campos ausentes da loja, modo),
+`rendered_prompt`
 (user completo + `system_sha8` — o system de ~15-20k tokens é reconstruível
 por `vault_commit_sha`; lição da fase 1 sem prompt logado), `parsed_output`
 (embasamento completo + relatório do validador: retry, posições removidas,

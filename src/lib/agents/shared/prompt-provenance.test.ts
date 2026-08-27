@@ -39,6 +39,10 @@ const ORIGINS = {
   pesquisa: { cls: "loja" as const, rotulo: "Pesquisa" },
   intencao_email: { cls: "vault" as const, rotulo: "Intenção do email" },
   estruturador_decisao: { cls: "upstream" as const, rotulo: "Estruturador" },
+  estruturas_dos_outros_emails: {
+    cls: "sistema" as const,
+    rotulo: "Anti-repetição",
+  },
 }
 
 describe("buildSegmentedPrompt", () => {
@@ -56,7 +60,7 @@ describe("buildSegmentedPrompt", () => {
       email_number: "1",
       intencao_email: "Lembrar sem pressionar; prova antes de oferta.",
       capacidade_biblioteca: "hero: 8 · text: 6 · produtos da loja: 5",
-      estruturas_proibidas: "(nenhuma — primeira geração)",
+      estruturas_dos_outros_emails: "- welcome #2: [hero, body, footer]",
     }
     const { prompt, segments } = buildSegmentedPrompt(
       DEFAULT_ESTRUTURADOR_USER,
