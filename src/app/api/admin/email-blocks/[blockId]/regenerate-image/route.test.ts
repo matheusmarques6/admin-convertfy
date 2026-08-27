@@ -67,6 +67,15 @@ vi.mock("@/lib/agents/image/resolve-block-prompt.service", () => ({
 }))
 
 const generateEmailImageMock = vi.fn()
+/** Faz o gerador chamar o `onFinalBuffer`, como o real faz antes do upload. */
+async function gerarMedindo(url: string) {
+  generateEmailImageMock.mockImplementationOnce(
+    async (_p: string, _s: string, opts: { onFinalBuffer?: (b: Buffer) => Promise<void> }) => {
+      await opts.onFinalBuffer?.(Buffer.from("imagem-final"))
+      return url
+    },
+  )
+}
 vi.mock("@/lib/agents/chains/image.chain", () => ({
   generateEmailImage: (...args: unknown[]) => generateEmailImageMock(...args),
   // A rota importa a constante para rotular o modelo na telemetria; sem ela
@@ -74,6 +83,13 @@ vi.mock("@/lib/agents/chains/image.chain", () => ({
   OPENROUTER_IMAGE_MODEL: "google/gemini-3.1-flash-image",
   DEFAULT_IMAGE_PROMPT_TEMPLATE: "prompt template",
   renderImagePrompt: (t: string) => t,
+}))
+
+const measureOverlayLuminanceMock = vi.fn()
+vi.mock("@/lib/agents/image/overlay-luminance", () => ({
+  measureOverlayLuminance: (...args: unknown[]) =>
+    measureOverlayLuminanceMock(...args),
+  overlayIsLight: (lum: number | null) => lum != null && lum >= 0.55,
 }))
 
 const logGenerationRunMock = vi.fn().mockResolvedValue("run-1")
@@ -96,6 +112,7 @@ function baseResolution(overrides: Record<string, unknown> = {}) {
     flowId: "flow-1",
     topProductImageUrl: "https://supabase.test/p.jpg",
     overlayReserveBottom: true,
+    overlay: { side: "top", fraction: 0.43 },
     blockType: "hero",
     blockLabel: "Hero block",
     blockContent: { image_url: "old.jpg", headline: "Welcome" },
@@ -118,6 +135,17 @@ function makeRequest(): Request {
   return new Request(
     `http://localhost/api/admin/email-blocks/${MOCK_BLOCK_ID}/regenerate-image`,
     { method: "POST", headers: { "Content-Type": "application/json" } },
+  )
+}
+
+function makeRequestComSlot(fieldKey: string): Request {
+  return new Request(
+    `http://localhost/api/admin/email-blocks/${MOCK_BLOCK_ID}/regenerate-image`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ field_key: fieldKey }),
+    },
   )
 }
 
@@ -268,5 +296,67 @@ describe("POST /regenerate-image", () => {
       (i: { rotulo: string }) => i.rotulo === "Modo",
     )
     expect(modo.valor).toContain("a foto do produto não abriu")
+  })
+  // O valor antigo descreve a foto antiga. Antes desta correção a
+  // regeneração manual REESCREVIA o slot sem a chave, e a hero perdia a
+  // única informação que diz se ela aguenta texto branco por cima.
+  it("mede a faixa de overlay da imagem nova e grava no slot", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(
+      baseResolution({
+        blockContent: {
+          images: { hero_image: { url: "old.jpg", alt: "", overlay_luminance: 0.11 } },
+        },
+      }),
+    )
+    await gerarMedindo("https://cdn.test/nova.jpg")
+    measureOverlayLuminanceMock.mockResolvedValueOnce(0.7231)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequestComSlot("hero_image") as any, ctx())
+
+    // Mediu com a MESMA régua do prompt (43% de cima), não com um default.
+    expect(measureOverlayLuminanceMock).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      0.43,
+      "top",
+    )
+    const update = updateCalls.find((c) => c.table === "email_blocks")!
+    const images = (update.data.content as { images: Record<string, { overlay_luminance?: number }> })
+      .images
+    expect(images.hero_image.overlay_luminance).toBe(0.7231)
+
+    const run = logGenerationRunMock.mock.calls[0][0]
+    expect(run.parsedOutput.overlayLuminance).toBe(0.7231)
+    expect(run.parsedOutput.overlayLight).toBe(true)
+  })
+
+  it("medição falhou → slot SEM a chave (o valor antigo não é herdado)", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(
+      baseResolution({
+        blockContent: {
+          images: { hero_image: { url: "old.jpg", alt: "", overlay_luminance: 0.11 } },
+        },
+      }),
+    )
+    await gerarMedindo("https://cdn.test/nova.jpg")
+    measureOverlayLuminanceMock.mockResolvedValueOnce(null)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequestComSlot("hero_image") as any, ctx())
+
+    const update = updateCalls.find((c) => c.table === "email_blocks")!
+    const images = (update.data.content as { images: Record<string, object> }).images
+    expect(images.hero_image).not.toHaveProperty("overlay_luminance")
+  })
+
+  it("slot sem overlay no cadastro → nem mede", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(baseResolution({ overlay: null }))
+    generateEmailImageMock.mockResolvedValueOnce("https://cdn.test/i.jpg")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequest() as any, ctx())
+
+    expect(generateEmailImageMock.mock.calls[0][2].onFinalBuffer).toBeUndefined()
+    expect(measureOverlayLuminanceMock).not.toHaveBeenCalled()
   })
 })

@@ -42,6 +42,10 @@ import {
   OPENROUTER_IMAGE_MODEL,
 } from "@/lib/agents/chains/image.chain"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
+import {
+  measureOverlayLuminance,
+  overlayIsLight,
+} from "@/lib/agents/image/overlay-luminance"
 
 const log = logger.child("RegenerateImageAPI")
 
@@ -80,6 +84,13 @@ function regenInputSummary(r: BlockPromptResolution): InputSummaryItem[] {
       cls: "loja",
       valor: r.topProductImageUrl ?? "(sem foto de produto)",
     },
+    {
+      rotulo: "Faixa de overlay",
+      cls: "biblioteca",
+      valor: r.overlay
+        ? `${Math.round(r.overlay.fraction * 100)}% ${r.overlay.side === "top" ? "de cima" : "de baixo"} (o cadastro do campo pede texto sobreposto)`
+        : "sem texto sobreposto",
+    },
   ]
 }
 
@@ -109,6 +120,13 @@ export async function POST(
 
     // 1. Resolve prompt + contexto (carrega bloco, valida existencia)
     resolution = await resolveBlockPrompt(blockId, fieldKey)
+    // A MESMA régua que ditou a instrução de overlay ao modelo — medir com
+    // outra auditaria a faixa errada.
+    const overlaySpec = resolution.overlay
+    // Caixa em vez de `let`: o valor é escrito dentro do `onFinalBuffer` e
+    // o compilador não enxerga essa atribuição — numa variável simples ele
+    // estreitaria o tipo para `null` e o uso lá embaixo não compilaria.
+    const medida: { luminancia: number | null } = { luminancia: null }
 
     // Rate limit POR SLOT quando há slot: o carimbo do bloco bloquearia as
     // outras 7 fotos por 30s só porque uma foi regerada.
@@ -162,11 +180,35 @@ export async function POST(
         // surtia efeito na regeneração manual.
         systemPrompt: resolution.systemPrompt ?? undefined,
         model: resolution.model || undefined,
+        // Slot que recebe texto por cima: mede a faixa no buffer final,
+        // antes do upload. Sem isto a regeneração manual apagava a
+        // `overlay_luminance` do slot e a correção de texto claro sobre
+        // foto clara deixava de rodar para aquela hero — em silêncio.
+        ...(overlaySpec != null
+          ? {
+              onFinalBuffer: async (buf: Buffer) => {
+                medida.luminancia = await measureOverlayLuminance(
+                  buf,
+                  overlaySpec.fraction,
+                  overlaySpec.side,
+                )
+                log.info("regenerate.overlay_luminance", {
+                  blockId,
+                  fieldKey,
+                  side: overlaySpec.side,
+                  fraction: overlaySpec.fraction,
+                  luminance: medida.luminancia,
+                  light: overlayIsLight(medida.luminancia),
+                })
+              },
+            }
+          : {}),
       },
     )
     const durationMs = Date.now() - t0
 
     // 4. Persiste no bloco (merge preservando outros campos)
+    const luminancia = medida.luminancia
     const generatedAt = new Date().toISOString()
     const promptSnapshot = resolution.prompt.slice(0, PROMPT_SNAPSHOT_LIMIT)
     const altText =
@@ -175,11 +217,25 @@ export async function POST(
       undefined
     const existingImages =
       (resolution.blockContent.images as
-        | Record<string, { url: string; alt?: string; generated_at?: string }>
+        | Record<
+            string,
+            {
+              url: string
+              alt?: string
+              generated_at?: string
+              overlay_luminance?: number
+            }
+          >
         | undefined) ?? {}
     // Com slot, grava NO SLOT e só espelha em `image_url` quando ele é a
     // imagem principal do bloco — sobrescrever o espelho com uma miniatura
     // trocaria a foto do preview do designer.
+    //
+    // A `overlay_luminance` do slot é REESCRITA, nunca herdada: o valor
+    // antigo descreve a foto antiga, e mantê-lo faria a correção de texto
+    // decidir sobre uma imagem que não existe mais. Medição ausente (slot
+    // sem overlay, ou `sharp` falhou) grava o slot SEM a chave — "não sei"
+    // é diferente de "aguenta branco", e o consumidor trata assim.
     const images = fieldKey
       ? {
           ...existingImages,
@@ -187,6 +243,9 @@ export async function POST(
             url: imageUrl,
             alt: altText ?? "",
             generated_at: generatedAt,
+            ...(luminancia != null
+              ? { overlay_luminance: Number(luminancia.toFixed(4)) }
+              : {}),
           },
         }
       : existingImages
@@ -238,9 +297,16 @@ export async function POST(
       parsedOutput: {
         blockId,
         imageUrl,
+        fieldKey,
         trigger: "manual_block_regen",
         aspect: resolution.aspect,
         mode: resolution.mode,
+        // Só em slot com overlay: é o que diz se a foto nova aguenta o
+        // texto branco por cima. O veredito sai daqui e não da UI — o
+        // corte (`overlayIsLight`) mora junto do `sharp`, que não vai para
+        // o browser, e duas réguas responderiam diferente à mesma pergunta.
+        overlayLuminance: luminancia,
+        overlayLight: luminancia != null ? overlayIsLight(luminancia) : null,
       },
     }).catch((err) => {
       // Telemetria nao deve quebrar resposta de sucesso

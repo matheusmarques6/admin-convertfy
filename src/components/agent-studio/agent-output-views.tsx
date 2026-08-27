@@ -418,6 +418,19 @@ export function ImageGeradaView({ output }: { output: unknown }) {
         {typeof o.role === "string" && <OutPill text={String(o.role)} tone="neut" />}
         {o.kind === "testimonial_avatar" && <OutPill text="avatar de depoimento" tone="neut" />}
         {typeof o.trigger === "string" && <OutPill text={String(o.trigger)} tone="neut" />}
+        {/* Faixa que recebe texto por cima. O veredito vem PRONTO da run
+            (`overlayLight`): o corte mora ao lado do `sharp`, no servidor,
+            e reimplementá-lo aqui criaria uma segunda régua. */}
+        {typeof o.overlayLuminance === "number" && (
+          <OutPill
+            text={
+              o.overlayLight === true
+                ? `overlay claro (${o.overlayLuminance.toFixed(2)}) — texto corrigido`
+                : `overlay escuro (${o.overlayLuminance.toFixed(2)})`
+            }
+            tone={o.overlayLight === true ? "warn" : "neut"}
+          />
+        )}
       </div>
       {/* A imagem em si: era uma URL perdida no meio do JSON. */}
       <a href={url} target="_blank" rel="noreferrer">

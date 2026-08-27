@@ -153,12 +153,18 @@ A guarda da URL passou a rodar também no preview: custa um HEAD (≤5s) e é o
 que faz o preview mostrar o rebaixamento para `text2img` quando a foto do
 produto não abre, em vez de prometer uma foto que não vai.
 
+A luminância do overlay entrou na mesma varredura. A regeneração manual não
+media a faixa que recebe texto por cima e, pior que herdar um valor velho,
+REESCREVIA o slot sem a chave: a hero perdia a única informação que diz se a
+foto aguenta texto branco, e a correção parava de rodar para ela em silêncio.
+Agora a rota mede com a MESMA régua que ditou a instrução ao modelo (o
+`overlaySpec` do cadastro do campo, exposto na resolução) e grava; medição
+ausente deixa o slot SEM a chave, porque "não sei" é diferente de "aguenta
+branco". O veredito (`overlayLight`) sai no `parsed_output` junto do número —
+o corte mora ao lado do `sharp`, no servidor, e a UI só exibe.
+
 ## Pendências conhecidas
 
-- A regeneração manual não mede a luminância do overlay
-  (`measureOverlayLuminance` via `onFinalBuffer`): numa hero regerada à mão o
-  valor persistido segue o da imagem antiga. É pós-processamento, não
-  montagem de prompt — outro assunto.
 - A view da lista (`v_email_generation_logs`) não expõe as colunas novas —
   **de propósito**: payloads só no drill-down por id.
 - O agente de **QA** segue fora do fluxo (`EMAIL_QA_ENABLED != 'true'`), por

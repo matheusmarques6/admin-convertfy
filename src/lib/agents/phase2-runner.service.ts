@@ -1591,6 +1591,13 @@ export async function runPhase2Image(
             fieldKey,
             groupKey: slot?.groupKey ?? null,
             role: slot?.role ?? null,
+            // Só em slot com overlay: é o que diz se a foto aguenta o texto
+            // branco por cima, e a única chance de auditar essa decisão
+            // depois — o valor persistido no bloco é sobrescrito na próxima
+            // geração. O veredito acompanha o número: o corte mora junto do
+            // `sharp` e não pode ser reimplementado no browser.
+            overlayLuminance: overlayLum,
+            overlayLight: overlayLum != null ? overlayIsLight(overlayLum) : null,
           },
         })
         return {

@@ -43,7 +43,10 @@ import {
   isAspectKey,
   type AspectKey,
 } from "@/lib/agents/image/aspect-ratio"
-import { overlaySpec } from "@/lib/agents/image/overlay-luminance"
+import {
+  overlaySpec,
+  type OverlaySpec,
+} from "@/lib/agents/image/overlay-luminance"
 import {
   resolveImageMode,
   resolveImageAppendices,
@@ -125,6 +128,13 @@ export interface BlockPromptResolution {
   topProductImageUrl: string | null
   /** Pro `aspectInstructionForPrompt` ja foi rodado, mas o caller precisa pra log. */
   overlayReserveBottom: boolean
+  /**
+   * A faixa que recebe texto por cima (lado + fração), lida do cadastro do
+   * campo. O caller PRECISA dela para medir a luminância da imagem nova: é
+   * a MESMA régua que dita a instrução ao modelo, então gerar com uma e
+   * auditar com outra seria medir a faixa errada. null = imagem sem overlay.
+   */
+  overlay: OverlaySpec | null
   /** Tipo do bloco — pro caller validar que eh image-bearing antes de regerar. */
   blockType: string
   /** Label do bloco — pro caller usar como alt-text fallback. */
@@ -167,15 +177,12 @@ function truncateVarsForDebug(
  * - `NotFoundError` se bloco/email/store nao existem.
  * - Re-throws em erros de DB (caller envolve com errorResponse).
  *
- * ⚠️ SYNC CONTRACT WITH phase2-runner.service.ts: a logica de
- * resolucao (aspect + mode + fallback description + render final
- * do prompt) deve ficar identica a do bloco AE-12/AE-13 em
- * `phase2-runner.service.ts` (~L427-516). Esta funcao existe pra
- * suportar a UI (AE-16) sem chamar OpenRouter, mas precisa produzir
- * o MESMO prompt que o phase2-runner produz quando regenerar o
- * mesmo bloco. Refatorar um sem o outro = preview na UI divergir
- * do batch run (bug silencioso). Idealmente extrair pra helper
- * compartilhado.
+ * O "idealmente extrair pra helper compartilhado" que este bloco pedia
+ * desde o AE-16 foi feito: aspecto, modo, guarda da URL, direção
+ * fotográfica e apêndices vêm todos de funções que o `phase2-runner`
+ * também chama (lista no topo do arquivo). O que sobra aqui é hidratar o
+ * contexto a partir do `blockId` — que é o que a UI precisa e o runner já
+ * tem em mãos.
  */
 export async function resolveBlockPrompt(
   blockId: string,
@@ -475,6 +482,7 @@ export async function resolveBlockPrompt(
     flowId,
     topProductImageUrl,
     overlayReserveBottom,
+    overlay,
     blockType: (blk.block_type as string) ?? "",
     blockLabel: (blk.label as string | null) ?? null,
     blockContent,
