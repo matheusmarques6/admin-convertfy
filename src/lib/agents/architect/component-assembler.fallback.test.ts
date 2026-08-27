@@ -820,3 +820,54 @@ describe("findDroppedImageTags (self-check da concatenação)", () => {
     expect(findDroppedImageTags("<p>sem imagem</p>", "<p>out</p>")).toEqual([])
   })
 })
+
+// Incidente Innova (27/08): o Curador escolheu duas variantes `offer` para
+// uma posição de `body`; o parser descartou as duas por "tipo errado" e a
+// posição ficou VAZIA — o email saiu sem o bloco. A escolha cruzada é
+// legítima: o outline propõe a forma, o Curador decide.
+describe("Curador escolhe variante de outra seção", () => {
+  it("a posição adota a forma da variante — e não fica vazia", async () => {
+    h.variants = [
+      variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
+      variant("off1", "offer", "<div>{{OFFER_HEADLINE}}</div>"),
+    ]
+    // A ÚNICA escolha da posição é de outra seção (era o caso que perdia
+    // o bloco).
+    invokeAgent.mockResolvedValueOnce(rank("off1"))
+    invokeAgent.mockResolvedValueOnce(pick([0, "off1"]))
+
+    await assembleStoreReference(baseInput)
+
+    const row = h.upsertSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(row.slot_map).toEqual([
+      {
+        block_index: 0,
+        section: "offer", // a forma da VARIANTE, não a do outline ("hero")
+        label: "Hero", // o papel da posição continua o mesmo
+        variant_id: "off1",
+        variant_name: "offer off1",
+        assembled: true,
+      },
+    ])
+  })
+
+  it("a troca de forma fica na telemetria", async () => {
+    h.variants = [
+      variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
+      variant("off1", "offer", "<div>{{OFFER_HEADLINE}}</div>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(rank("off1"))
+    invokeAgent.mockResolvedValueOnce(pick([0, "off1"]))
+
+    await assembleStoreReference(baseInput)
+
+    const run = finishGenerationRun.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((r) => r.agent === "assembler_chooser")
+    const parsed = run?.parsedOutput as Record<string, unknown>
+    expect(parsed.retyped_positions).toEqual([
+      { block_index: 0, variant_id: "off1", from: "hero", to: "offer" },
+    ])
+    expect(parsed.empty_blocks).toEqual([])
+  })
+})

@@ -90,16 +90,29 @@ describe("parseCuratorRanking", () => {
   })
 
   // O catálogo vai INTEIRO no prompt: nada impede o modelo de indicar
-  // variante de outra seção para a posição.
-  it("id do tipo errado para a posição → descartado e registrado", () => {
+  // variante de outra seção para a posição — e a escolha VALE. Descartá-la
+  // deixava a posição vazia quando era a única, e o email saía sem o bloco
+  // (incidente Innova, 27/08: duas `offer` escolhidas para uma posição de
+  // `body`, as duas jogadas fora, posição perdida).
+  it("id de outra seção é ACEITO e a troca de forma fica registrada", () => {
     const raw = JSON.stringify([
       { block_index: 0, escolhas: [{ variant_id: "b1" }, { variant_id: "h1" }] },
     ])
     const r = parse(raw)
-    expect(r.wrongTypeIds).toEqual([
-      { block_index: 0, variant_id: "b1", type: "body" },
+    expect(r.retypedChoices).toEqual([
+      { block_index: 0, variant_id: "b1", from: "hero", to: "body" },
     ])
-    expect(rankingIds(r)[0]).toEqual(["h1"])
+    expect(rankingIds(r)[0]).toEqual(["b1", "h1"])
+    expect(r.emptyBlocks).not.toContain(0)
+  })
+
+  it("posição SÓ com escolha de outra seção não fica vazia", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, escolhas: [{ variant_id: "b1" }] },
+    ])
+    const r = parse(raw)
+    expect(rankingIds(r)[0]).toEqual(["b1"])
+    expect(r.emptyBlocks).not.toContain(0)
   })
 
   it("block_index fora da estrutura → ignorado e registrado", () => {

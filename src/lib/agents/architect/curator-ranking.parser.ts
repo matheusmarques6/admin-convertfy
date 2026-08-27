@@ -31,8 +31,24 @@ export interface ParsedRanking {
   byBlock: Map<number, RankedChoice[]>
   /** Ids que não existem no catálogo. */
   invalidIds: string[]
-  /** Ids cujo `block_type` não é a seção daquela posição. */
-  wrongTypeIds: Array<{ block_index: number; variant_id: string; type: string }>
+  /**
+   * Posições em que o Curador escolheu variante de OUTRA seção — e a
+   * posição adotou a forma dela.
+   *
+   * Isto já foi descarte (`wrongTypeIds`): o catálogo vai INTEIRO no
+   * prompt, o modelo apontava para fora da seção proposta e o id era
+   * jogado fora. Quando a posição só tinha escolhas assim, ela ficava
+   * VAZIA e o email saía sem o bloco — sem ninguém repor. Mas a escolha é
+   * legítima: o outline e o Estruturador propõem a forma, quem decide é o
+   * Curador. Hoje a escolha vale e a seção da posição passa a ser a da
+   * variante (ver `AssemblySlot` no component-assembler).
+   */
+  retypedChoices: Array<{
+    block_index: number
+    variant_id: string
+    from: string
+    to: string
+  }>
   /** `block_index` fora da estrutura do email. */
   unknownBlocks: number[]
   /** Ids repetidos na mesma posição (só o primeiro vale). */
@@ -63,7 +79,7 @@ export function parseCuratorRanking(
   const out: ParsedRanking = {
     byBlock: new Map(),
     invalidIds: [],
-    wrongTypeIds: [],
+    retypedChoices: [],
     unknownBlocks: [],
     duplicateIds: [],
     emptyBlocks: [],
@@ -115,11 +131,16 @@ export function parseCuratorRanking(
         out.invalidIds.push(id)
         continue
       }
-      // O catálogo vai INTEIRO no prompt, então nada impede o modelo de
-      // indicar variante de outra seção. Descarta e registra.
+      // O catálogo vai INTEIRO no prompt e o modelo pode indicar variante
+      // de outra seção. A escolha VALE — a posição adota a forma dela — e
+      // fica registrada para a decisão ser legível depois.
       if (type.toLowerCase() !== section.toLowerCase()) {
-        out.wrongTypeIds.push({ block_index: blockIndex, variant_id: id, type })
-        continue
+        out.retypedChoices.push({
+          block_index: blockIndex,
+          variant_id: id,
+          from: section,
+          to: type,
+        })
       }
       seen.add(id)
       const motivo = choiceMotivo(c)

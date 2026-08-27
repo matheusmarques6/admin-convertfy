@@ -976,7 +976,7 @@ export async function assembleStoreReference(
     // Validações do parser (o catálogo vai inteiro, então o modelo pode
     // indicar id inexistente ou de outra seção).
     invalid_ids: ranking?.invalidIds ?? [],
-    wrong_type_ids: ranking?.wrongTypeIds ?? [],
+    retyped_positions: ranking?.retypedChoices ?? [],
     unknown_blocks: ranking?.unknownBlocks ?? [],
     duplicate_ids: ranking?.duplicateIds ?? [],
     // Posições sem nenhum finalista válido → saem do email (selo nos logs).
@@ -1177,7 +1177,14 @@ export async function assembleStoreReference(
     const id = chosenById.get(i)
     const variant = id ? byId.get(id) : undefined
     if (!variant) return { kind: "missing", section, label }
-    return { kind: "variant", variant, section, label }
+    // A seção sai da VARIANTE, não do outline. O outline e o Estruturador
+    // propõem a forma; quem decide é o Curador, e a posição adota a forma
+    // escolhida. Manter a seção proposta faria o marcador do documento
+    // (`cfy:block:{i}:{section}`), o slot_map, o blueprint e o
+    // `email_blocks.block_type` dizerem "body" com um `offer` dentro. O
+    // `label` continua sendo o da posição: papel e forma são coisas
+    // diferentes.
+    return { kind: "variant", variant, section: variant.block_type, label }
   })
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))

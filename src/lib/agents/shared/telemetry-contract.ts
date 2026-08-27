@@ -41,7 +41,7 @@ export const TELEMETRY_CONTRACT: Record<
     ranking: "o ranking completo por posição — insumo do Montador e única forma de auditar a curadoria depois",
     motivos: "a tese do Curador para a 1ª indicação de cada posição",
     invalid_ids: "ids que não existem no catálogo (o modelo inventou)",
-    wrong_type_ids: "ids de outra seção — risco criado por mandar o catálogo inteiro",
+    retyped_positions: "posições em que o Curador escolheu variante de outra seção e a posição adotou a forma dela — foi descarte até 27/08, e o descarte esvaziava a posição",
     empty_blocks: "posições sem finalista válido: saem do email e viram selo",
     candidates_excluded_unfillable: "variantes ativas impreenchíveis pelo pipeline (sem schema ou sem âncora de example/token no HTML) — pressão de curadoria",
     ranking_detalhado: "o mesmo ranking COM o nome da variante, a seção e o papel de cada posição: `ranking` só guarda UUID, e ninguém audita curadoria lendo uma lista de ids",

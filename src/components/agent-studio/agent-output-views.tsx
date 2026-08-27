@@ -97,6 +97,15 @@ export function CuradorRankingView({ output }: { output: unknown }) {
       ? excluidas
       : Object.values(excluidas ?? {}).reduce((n, arr) => n + arr.length, 0)
 
+  const retipadas = asArray<{ block_index?: number; from?: string; to?: string }>(
+    o.retyped_positions,
+  )
+  const formaPorPosicao = new Map(
+    retipadas
+      .filter((r) => typeof r.block_index === "number")
+      .map((r) => [r.block_index as number, `${r.from ?? "?"} → ${r.to ?? "?"}`]),
+  )
+
   return (
     <OutCard>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
@@ -114,6 +123,15 @@ export function CuradorRankingView({ output }: { output: unknown }) {
         {nExcluidas > 0 && (
           <OutPill text={`${nExcluidas} variante(s) impreenchível(is)`} tone="warn" />
         )}
+        {/* Escolha de outra seção: a posição adotou a forma da variante.
+            Antes isso era descarte silencioso — e quando era a única
+            escolha da posição, o bloco sumia do email. */}
+        {retipadas.length > 0 && (
+          <OutPill
+            text={`${retipadas.length} posição(ões) com forma trocada`}
+            tone="info"
+          />
+        )}
       </div>
 
       <OutSection title="Ranking por posição">
@@ -121,6 +139,14 @@ export function CuradorRankingView({ output }: { output: unknown }) {
           {posicoes.map((p, i) => (
             <OutItem key={p.block_index ?? i}>
               <PosicaoHead index={p.block_index} section={p.section} label={p.label} />
+              {formaPorPosicao.has(p.block_index as number) && (
+                <div style={{ marginTop: 4 }}>
+                  <OutPill
+                    text={`forma trocada: ${formaPorPosicao.get(p.block_index as number)}`}
+                    tone="info"
+                  />
+                </div>
+              )}
               <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>
                 {asArray<RankingOpcao>(p.opcoes).map((op, j) => (
                   <div key={op.variant_id ?? j} style={{ ...OUT_BODY }}>
