@@ -23,6 +23,10 @@ import { Copy as CopyIcon, ThumbsDown, ThumbsUp } from "lucide-react"
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
 import {
+  rotuloEscopo,
+  type EscopoOrientacao,
+} from "@/lib/agents/estruturador/orientacoes"
+import {
   CodeBlock,
   OUT_BODY,
   OUT_LABEL,
@@ -200,6 +204,164 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
   )
 }
 
+interface OrientacaoRow {
+  id: string
+  escopo: EscopoOrientacao
+  texto: string
+}
+
+/**
+ * Orientações do COO — o outro lado do 👍/👎.
+ *
+ * O feedback acima julga UMA decisão e vira rascunho de aprendizado (o
+ * caminho do vault, curado). Isto aqui instrui as PRÓXIMAS gerações e vale
+ * na hora: o texto é servido em `<orientacao_do_coo>`, acima dos
+ * aprendizados na precedência do prompt. A UI precisa deixar a diferença
+ * óbvia, senão viram a mesma caixa com dois significados.
+ */
+export function EstruturadorOrientacoes({
+  runId,
+  flowType,
+  emailNumber,
+}: {
+  runId: string
+  flowType: string | null
+  emailNumber: number
+}) {
+  const qs = new URLSearchParams()
+  if (flowType) qs.set("flow_type", flowType)
+  if (flowType) qs.set("email_number", String(emailNumber))
+  const { data, mutate } = useSWR<{
+    global: OrientacaoRow | null
+    flow: OrientacaoRow | null
+    email: OrientacaoRow | null
+  }>(`/api/admin/agents/estruturador-orientacoes?${qs.toString()}`, fetcher)
+
+  // Rascunho local por escopo: o campo mostra o que está gravado até o COO
+  // digitar, e aí passa a mostrar o que ele digitou (sem o SWR sobrescrever
+  // no meio da frase quando revalida).
+  const [rascunho, setRascunho] = useState<Partial<Record<EscopoOrientacao, string>>>({})
+  const [salvando, setSalvando] = useState<EscopoOrientacao | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvo, setSalvo] = useState<EscopoOrientacao | null>(null)
+
+  const gravado = (escopo: EscopoOrientacao) =>
+    (escopo === "global" ? data?.global : escopo === "flow" ? data?.flow : data?.email)
+      ?.texto ?? ""
+
+  const valor = (escopo: EscopoOrientacao) => rascunho[escopo] ?? gravado(escopo)
+  const sujo = (escopo: EscopoOrientacao) =>
+    rascunho[escopo] !== undefined && rascunho[escopo] !== gravado(escopo)
+
+  const salvar = async (escopo: EscopoOrientacao) => {
+    setSalvando(escopo)
+    setErro(null)
+    setSalvo(null)
+    try {
+      const res = await fetch("/api/admin/agents/estruturador-orientacoes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          escopo,
+          flow_type: escopo === "global" ? null : flowType,
+          email_number: escopo === "email" ? emailNumber : null,
+          texto: valor(escopo),
+          origem_run_id: runId,
+        }),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(j?.error ?? `HTTP ${res.status}`)
+      }
+      setRascunho((r) => ({ ...r, [escopo]: undefined }))
+      setSalvo(escopo)
+      void mutate()
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar")
+    } finally {
+      setSalvando(null)
+    }
+  }
+
+  const campo = (escopo: EscopoOrientacao, dica: string) => {
+    // Sem flow não dá para escopar por flow/email — só a geral faz sentido.
+    if (escopo !== "global" && !flowType) return null
+    return (
+      <div key={escopo} style={{ marginBottom: 10 }}>
+        <div style={{ ...label, marginBottom: 3 }}>
+          {rotuloEscopo(escopo, flowType, emailNumber)}
+        </div>
+        <textarea
+          value={valor(escopo)}
+          onChange={(e) =>
+            setRascunho((r) => ({ ...r, [escopo]: e.target.value }))
+          }
+          placeholder={dica}
+          rows={2}
+          maxLength={4000}
+          style={{
+            width: "100%",
+            resize: "vertical",
+            borderRadius: 7,
+            border: `1px solid ${C.border}`,
+            padding: "7px 10px",
+            fontSize: 12,
+            fontFamily: F.sans,
+            color: C.g900,
+            background: C.white,
+          }}
+        />
+        {sujo(escopo) && (
+          <div style={{ marginTop: 5 }}>
+            <StudioBtn
+              onClick={() => void salvar(escopo)}
+              disabled={salvando != null}
+              style={{ height: 26 }}
+            >
+              {salvando === escopo ? "Salvando…" : "Salvar"}
+            </StudioBtn>
+          </div>
+        )}
+        {salvo === escopo && !sujo(escopo) && (
+          <div style={{ ...body, color: "#065F46", marginTop: 4 }}>
+            Salvo — vale a partir da próxima geração.
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${C.border}`,
+        borderRadius: 8,
+        padding: "12px 14px",
+        background: C.g50,
+      }}
+    >
+      <div style={{ ...label, marginBottom: 3 }}>
+        Orientações para as próximas gerações
+      </div>
+      <div style={{ ...body, color: C.g500, marginBottom: 10 }}>
+        Vale imediatamente, em <strong>todas as lojas</strong> — não passa
+        pelo vault. Nenhum campo é obrigatório.
+      </div>
+
+      {campo("email", "Ex.: sempre entregue o cupom no hero.")}
+      {campo("flow", "Ex.: nunca abra com desconto.")}
+      {campo("global", "Ex.: depoimento nunca fecha o email.")}
+
+      {erro && (
+        <div style={{ fontSize: 11.5, color: "#991B1B", fontFamily: F.sans }}>
+          {erro}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function EstruturadorFeedback({
   runId,
   output,
@@ -313,7 +475,11 @@ export function EstruturadorFeedback({
         background: C.g50,
       }}
     >
-      <div style={{ ...label, marginBottom: 8 }}>Feedback do COO</div>
+      <div style={{ ...label, marginBottom: 3 }}>Sobre ESTA decisão</div>
+      <div style={{ ...body, color: C.g500, marginBottom: 8 }}>
+        Julga a run que está aberta e alimenta o rascunho de aprendizado do
+        vault. Para instruir as próximas gerações, use o bloco acima.
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         {fbBtn("up")}

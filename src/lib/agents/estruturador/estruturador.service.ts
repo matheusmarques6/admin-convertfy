@@ -55,6 +55,11 @@ import {
   validarOutput,
   type CapacidadeBiblioteca,
 } from "./estruturador-validator"
+import {
+  aplicaveis,
+  montarBlocoOrientacoes,
+  type Orientacao,
+} from "./orientacoes"
 
 const log = logger.child("Estruturador")
 
@@ -88,6 +93,10 @@ const USER_ORIGINS: Record<string, SegmentOrigin> = {
   intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
   capacidade_biblioteca: { cls: "sistema", rotulo: "Capacidade da biblioteca — contagem por código" },
   estruturas_proibidas: { cls: "sistema", rotulo: "Anti-repetição — runs anteriores deste email" },
+  // Diretriz viva do COO (migration 20261086) — NÃO é vault: o vault é o
+  // corpus curado, isto é instrução direta e de efeito imediato. Sem esta
+  // linha o guard de recomposição derruba os segmentos da run inteira.
+  orientacao_coo: { cls: "curadoria", rotulo: "Orientação do COO — estruturador_orientacoes" },
 }
 
 function resumo(v: string | null | undefined, max = 240): string {
@@ -182,6 +191,33 @@ async function loadMaterial(flowType: string): Promise<{
   }
 }
 
+/**
+ * Orientações do COO (migration 20261086).
+ *
+ * Query própria, e não dentro do `loadMaterial`: aquele devolve `null` em
+ * bloco quando não há REFERÊNCIA nenhuma, e a orientação não tem nada a
+ * ver com o vault estar completo — ela é justamente o caminho que NÃO
+ * passa pelo Obsidian. (O agente só chega aqui com material, porque sem
+ * candidata não há estrutura a decidir; a separação é de responsabilidade,
+ * não de ordem.)
+ *
+ * Fail-open: erro aqui devolve lista vazia. O bloco sai com o texto de
+ * vazio e a geração segue — perder uma diretriz é ruim, derrubar a
+ * estrutura por causa dela é pior.
+ */
+async function loadOrientacoes(): Promise<Orientacao[]> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from("estruturador_orientacoes")
+    .select("escopo, flow_type, email_number, texto")
+    .eq("is_active", true)
+  if (error) {
+    log.warn("estruturador.orientacoes_load_failed", { error: error.message })
+    return []
+  }
+  return (data ?? []) as Orientacao[]
+}
+
 async function loadIntencaoDoEmail(flowType: string, emailNumber: number): Promise<string | null> {
   const admin = createAdminClient()
   const { data } = await admin.from("email_intents")
@@ -242,7 +278,10 @@ export async function runEstruturador(
     log.info("estruturador.sem_material", { flowType: input.flowType, storeId: input.storeId })
     return { output: null, runId: null, status: "sem_material" }
   }
-  const intencaoEmail = await loadIntencaoDoEmail(input.flowType, input.emailNumber)
+  const [intencaoEmail, orientacoes] = await Promise.all([
+    loadIntencaoDoEmail(input.flowType, input.emailNumber),
+    loadOrientacoes(),
+  ])
   if (!intencaoEmail) {
     log.info("estruturador.sem_intencao_do_email", {
       flowType: input.flowType, emailNumber: input.emailNumber,
@@ -309,6 +348,9 @@ export async function runEstruturador(
     intencao_email: intencaoEmail,
     capacidade_biblioteca: capacidadeTexto,
     estruturas_proibidas: proibidasTexto,
+    orientacao_coo: montarBlocoOrientacoes(
+      aplicaveis(orientacoes, input.flowType, input.emailNumber),
+    ),
   }
 
   // Entrada estruturada (aba Entrada do Estúdio) — o que o agente recebeu,

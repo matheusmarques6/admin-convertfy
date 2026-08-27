@@ -28,7 +28,11 @@ import {
 } from "@/lib/agents/studio-graph"
 import { FlowCanvas, type Positions } from "./flow-canvas"
 import { CodeBlock, Spinner, StudioBtn, fmtTok, usd3 } from "./studio-atoms"
-import { EstruturadorEmbasamento, EstruturadorFeedback } from "./estruturador-panel"
+import {
+  EstruturadorEmbasamento,
+  EstruturadorFeedback,
+  EstruturadorOrientacoes,
+} from "./estruturador-panel"
 import { AgentOutputView } from "./agent-output-views"
 import {
   InputSummaryView,
@@ -636,6 +640,14 @@ export function NodeRunPanel({
         {tab === "output" && n.agent === "estruturador" && run.runId && (
           <>
             <EstruturadorEmbasamento output={detail?.parsed_output} />
+            {/* Primeiro o que instrui as PRÓXIMAS gerações (efeito
+                imediato), depois o julgamento DESTA run (vira rascunho de
+                aprendizado do vault). São coisas diferentes. */}
+            <EstruturadorOrientacoes
+              runId={run.runId}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+            />
             <EstruturadorFeedback
               runId={run.runId}
               output={detail?.parsed_output}

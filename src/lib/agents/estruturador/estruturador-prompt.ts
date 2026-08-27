@@ -105,9 +105,10 @@ Sua decisão é uma TRADUÇÃO, não uma invenção: qual é a objeção dominan
 
 Precedência, sem exceção:
 1. As regras de <intencao_do_flow> são INVIOLÁVEIS. Não se adaptam por loja.
-2. <aprendizados> CORRIGEM as referências: quando um aprendizado aponta erro numa referência, você aplica a referência já corrigida.
-3. As referências são candidatas a adaptar — não gabaritos a copiar.
-4. Sua preferência entra só onde as camadas acima calam.
+2. <orientacao_do_coo> é instrução direta de quem responde pelo método: vale sobre aprendizados, referências e sua preferência. Só não vence a regra do flow.
+3. <aprendizados> CORRIGEM as referências: quando um aprendizado aponta erro numa referência, você aplica a referência já corrigida.
+4. As referências são candidatas a adaptar — não gabaritos a copiar.
+5. Sua preferência entra só onde as camadas acima calam.
 
 Como decidir:
 - DIAGNÓSTICO: identifique na pesquisa da loja a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar.
@@ -156,5 +157,9 @@ export const DEFAULT_ESTRUTURADOR_USER = `<loja>
 <estruturas_proibidas>
 {{estruturas_proibidas}}
 </estruturas_proibidas>
+
+<orientacao_do_coo>
+{{orientacao_coo}}
+</orientacao_do_coo>
 
 Monte a estrutura deste email para esta loja. Responda APENAS o JSON.`
