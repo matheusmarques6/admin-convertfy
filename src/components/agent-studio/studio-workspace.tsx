@@ -25,6 +25,11 @@ import { EditorTab } from "./editor-tab"
 import { ExecutionsTab } from "./execs-tab"
 import { OverviewTab } from "./overview-tab"
 import { StudioTestTab } from "./test-tab"
+// A aba Conhecimento vivia SÓ no hub de Geração de Emails, e o Estúdio não
+// linkava para lá: quem opera o pipeline daqui não tinha como ver o material
+// que alimenta o Estruturador, nem que o sync estava quebrado. Mesmo
+// componente, sem cópia — o hub continua com a aba dele.
+import { VaultTab } from "@/components/email-generation/vault-tab"
 import { AgentChip, StudioBtn, StudioSpinStyle } from "./studio-atoms"
 import type { PromptsPayload } from "./studio-data"
 
@@ -35,6 +40,7 @@ const TABS = [
   { key: "editor", label: "Editor" },
   { key: "execs", label: "Execuções" },
   { key: "test", label: "Teste" },
+  { key: "vault", label: "Conhecimento" },
 ] as const
 
 type TabKey = (typeof TABS)[number]["key"]
@@ -47,7 +53,13 @@ const POS_LS_KEY = "cf-agent-studio-positions"
 // vizinho. Regra e testes em `@/lib/agents/studio-layout`.
 
 function isTabKey(v: string | null | undefined): v is TabKey {
-  return v === "overview" || v === "editor" || v === "execs" || v === "test"
+  return (
+    v === "overview" ||
+    v === "editor" ||
+    v === "execs" ||
+    v === "test" ||
+    v === "vault"
+  )
 }
 
 function HistoryDrawer({
@@ -466,6 +478,16 @@ export function StudioWorkspace() {
       )}
       {tab === "execs" && <ExecutionsTab positions={positions} />}
       {tab === "test" && <StudioTestTab positions={positions} />}
+      {/* O VaultTab é escrito para o hub, que dá o scroll e o respiro à
+          volta. Aqui a casca é a mesma da Visão Geral, para o conteúdo não
+          nascer colado no topo nem sem rolagem. */}
+      {tab === "vault" && (
+        <div style={{ flex: 1, overflowY: "auto", background: "#F6F7F9" }}>
+          <div style={{ maxWidth: 1480, margin: "0 auto", padding: "22px 28px 40px" }}>
+            <VaultTab />
+          </div>
+        </div>
+      )}
       {historyOpen && (
         <HistoryDrawer
           prompts={prompts}
