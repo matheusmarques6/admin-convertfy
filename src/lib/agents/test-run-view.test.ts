@@ -4,7 +4,8 @@ import { STUDIO_NODES } from "./studio-graph"
 import {
   TEST_AGENT_LABELS,
   TEST_BASE_AGENT_KEYS,
-  canRecoverAfterTimeout,
+  canRecoverAfterInterrupt,
+  isNetworkFailure,
   computeStale,
   errText,
   expectedSteps,
@@ -85,9 +86,62 @@ describe("recovery pós-timeout (incidente Luxe Lift 27/07)", () => {
   })
 
   it("recovery só vale no fullPipeline (claim grava o batch antes da fase 1)", () => {
-    expect(canRecoverAfterTimeout("__timeout__: x", true)).toBe(true)
-    expect(canRecoverAfterTimeout("__timeout__: x", false)).toBe(false)
-    expect(canRecoverAfterTimeout("outro erro", true)).toBe(false)
+    const t = new Error("x")
+    expect(canRecoverAfterInterrupt(t, "__timeout__: x", true)).toBe(true)
+    expect(canRecoverAfterInterrupt(t, "__timeout__: x", false)).toBe(false)
+    expect(canRecoverAfterInterrupt(t, "outro erro", true)).toBe(false)
+  })
+})
+
+// O fetch morre na REDE e nenhuma resposta HTTP chega: era o irmão do 504
+// tratado ao contrário dele — "Erro na geração: Failed to fetch" numa
+// geração que terminou em `ready` com 73k de HTML (Innova, 27/08).
+describe("isNetworkFailure", () => {
+  it("reconhece a queda de conexão em cada navegador", () => {
+    expect(isNetworkFailure(new TypeError("Failed to fetch"))).toBe(true)
+    expect(
+      isNetworkFailure(
+        new TypeError("NetworkError when attempting to fetch resource."),
+      ),
+    ).toBe(true)
+    expect(isNetworkFailure(new TypeError("Load failed"))).toBe(true)
+  })
+
+  // A checagem de TIPO é o que separa "não falei com o servidor" de "o
+  // servidor relatou uma falha": resposta HTTP nunca vira TypeError.
+  it("erro que NÃO é TypeError não conta, mesmo com a mesma mensagem", () => {
+    expect(isNetworkFailure(new Error("Failed to fetch"))).toBe(false)
+    expect(isNetworkFailure("Failed to fetch")).toBe(false)
+    expect(isNetworkFailure(null)).toBe(false)
+  })
+
+  it("TypeError de outra natureza não conta", () => {
+    expect(isNetworkFailure(new TypeError("x.map is not a function"))).toBe(
+      false,
+    )
+  })
+})
+
+describe("canRecoverAfterInterrupt", () => {
+  const rede = new TypeError("Failed to fetch")
+  const servidor = new Error("Falha na fase 1 (Architect): boom")
+
+  it("timeout do gateway E queda de rede recuperam no fullPipeline", () => {
+    expect(canRecoverAfterInterrupt(rede, "Failed to fetch", true)).toBe(true)
+    expect(canRecoverAfterInterrupt(servidor, "__timeout__: x", true)).toBe(true)
+  })
+
+  it("nenhum dos dois recupera fora do fullPipeline", () => {
+    expect(canRecoverAfterInterrupt(rede, "Failed to fetch", false)).toBe(false)
+    expect(canRecoverAfterInterrupt(servidor, "__timeout__: x", false)).toBe(
+      false,
+    )
+  })
+
+  it("erro relatado pelo servidor nunca recupera", () => {
+    expect(
+      canRecoverAfterInterrupt(servidor, servidor.message, true),
+    ).toBe(false)
   })
 })
 

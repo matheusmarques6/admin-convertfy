@@ -16,7 +16,9 @@ import { useCallback, useEffect, useState } from "react"
 import useSWR from "swr"
 
 import {
-  canRecoverAfterTimeout,
+  canRecoverAfterInterrupt,
+  isNetworkFailure,
+  isTimeoutMarker,
   computeStale,
   errText,
   expectedSteps,
@@ -243,13 +245,24 @@ export function useTestGeneration() {
       // o fallback .data cobre wrappers de proxy/versões antigas.
       const json = (await res.json()) as Record<string, unknown>
       const root = (json.data ?? json) as {
-        emails?: Array<{ id: string; generation_batch_id: string | null }>
+        emails?: Array<{
+          id: string
+          generation_batch_id: string | null
+          auto_phase2_relaxed?: boolean | null
+        }>
       }
       const emails = root.emails ?? []
-      return (
-        emails.find((e) => e.id === selectedEmailId)?.generation_batch_id ??
-        null
-      )
+      const alvo = emails.find((e) => e.id === selectedEmailId)
+      // O batch sozinho NÃO prova que esta geração começou: quando a rede
+      // cai na IDA, a requisição nem chega ao servidor e o email ainda
+      // carrega o batch da geração ANTERIOR — acompanhá-lo faria a tela
+      // anunciar "pronto" para algo que nunca rodou.
+      //
+      // `auto_phase2_relaxed` é gravado pelo claim na MESMA operação que o
+      // batch, antes da fase 1 (test-generation.service): ele é a prova de
+      // que o servidor pegou o trabalho.
+      if (alvo?.auto_phase2_relaxed !== true) return null
+      return alvo.generation_batch_id ?? null
     } catch {
       return null
     }
@@ -358,23 +371,27 @@ export function useTestGeneration() {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro desconhecido"
-        // Timeout do gateway ≠ geração morta: no teste completo a fase 1 é
-        // síncrona (~4-5min) e o TRABALHO CONTINUA no servidor depois do
+        // Conexão interrompida ≠ geração morta: no teste completo a fase 1
+        // é síncrona (~4-5min) e o TRABALHO CONTINUA no servidor depois do
         // corte. Reclicar aqui abria um pipeline duplicado (incidente Luxe
-        // Lift 27/07). SÓ o marcador __timeout__ conta — casar "timed out"
-        // no texto de um erro do SERVIDOR mascararia falha real. O recovery
-        // só vale no fullPipeline: é o único caminho cujo claim grava o
-        // batch ANTES da fase 1.
-        if (canRecoverAfterTimeout(msg, fullPipeline)) {
+        // Lift 27/07). Duas interrupções contam — o marcador __timeout__
+        // (o gateway respondeu 504) e a queda de rede (o fetch LANÇOU, sem
+        // resposta nenhuma). Erro RELATADO pelo servidor nunca entra aqui:
+        // casar texto de erro do servidor mascararia falha real. E o
+        // recovery só vale no fullPipeline, o único caminho cujo claim
+        // grava o batch ANTES da fase 1.
+        if (canRecoverAfterInterrupt(err, msg, fullPipeline)) {
           const recovered = await recoverBatchIdAfterTimeout()
           if (recovered) {
             setBatchId(recovered)
             setPollInterval(2000)
             setResult({
               status: "running",
-              message:
-                "A conexão expirou (300s), mas a geração CONTINUA no servidor. " +
-                "Acompanhando pelo batch persistido — não reclique.",
+              message: isTimeoutMarker(msg)
+                ? "A conexão expirou (300s), mas a geração CONTINUA no servidor. " +
+                  "Acompanhando pelo batch persistido — não reclique."
+                : "A conexão caiu, mas a geração CONTINUA no servidor. " +
+                  "Acompanhando pelo batch persistido — não reclique.",
               batchId: recovered,
               emailId: selectedEmailId ?? undefined,
             })
@@ -383,9 +400,14 @@ export function useTestGeneration() {
         }
         setResult({
           status: "error",
-          error: msg.startsWith("__timeout__")
+          // Sem batch recuperado a mensagem tem de dizer o que fazer. Com
+          // queda de rede há dois desfechos possíveis, e o operador não
+          // tem como distingui-los sozinho a partir de "Failed to fetch".
+          error: isTimeoutMarker(msg)
             ? "Timeout: a conexão expirou (300s), mas a geração pode seguir rodando no servidor. Verifique em /admin/settings/email-generation-logs antes de re-testar."
-            : msg,
+            : isNetworkFailure(err)
+              ? "A conexão com o servidor caiu. Se a geração chegou a começar, ela continua rodando — confira em Execuções antes de re-testar."
+              : msg,
         })
       } finally {
         setGenerating(false)

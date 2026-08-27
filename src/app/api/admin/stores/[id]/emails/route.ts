@@ -91,7 +91,7 @@ export async function GET(
       .from("email_flow_emails")
       .select(
         `id, flow_id, number, name, status, subject, preheader, html,
-         generation_batch_id, copy_started_at, copy_ready_at,
+         generation_batch_id, auto_phase2_relaxed, copy_started_at, copy_ready_at,
          rendering_started_at, qa_started_at, ready_at, failed_at,
          failure_reason, qa_issues, total_cost_cents, attempts,
          blocks:email_blocks(id, email_id, block_type, position, label, content, applied, applied_at, applied_by, created_at)`,

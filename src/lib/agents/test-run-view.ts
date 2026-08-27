@@ -181,15 +181,50 @@ export function isTimeoutMarker(msg: string): boolean {
 }
 
 /**
- * Recovery pós-timeout SÓ vale no fullPipeline: é o único caminho cujo
+ * O `fetch` morreu na REDE — nenhuma resposta HTTP chegou.
+ *
+ * Irmão do 504 e, até 27/08, tratado ao contrário dele: o marcador
+ * `__timeout__` só nasce quando o gateway RESPONDE algo que não é JSON
+ * (ver o `catch` do parse). Quando a conexão cai, o `fetch` LANÇA e aquele
+ * trecho nunca roda — o operador via "Erro na geração: Failed to fetch"
+ * numa geração que terminou em `ready` com 73k de HTML.
+ *
+ * O teste é `TypeError` E a mensagem: erro com resposta HTTP nunca é
+ * `TypeError`, então a checagem de tipo é o que impede de confundir isto
+ * com falha REAL relatada pelo servidor — a mesma cautela que o comentário
+ * do `canRecoverAfterInterrupt` registra. A lista de mensagens cobre os
+ * textos que cada navegador usa para a mesma coisa.
+ */
+const NETWORK_FAILURE_MESSAGES = [
+  "failed to fetch", // Chrome/Edge
+  "networkerror when attempting to fetch resource", // Firefox
+  "load failed", // Safari
+  "network error",
+  "network request failed",
+]
+
+export function isNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof TypeError)) return false
+  const msg = (err.message ?? "").toLowerCase()
+  return NETWORK_FAILURE_MESSAGES.some((m) => msg.includes(m))
+}
+
+/**
+ * Recovery pós-interrupção SÓ vale no fullPipeline: é o único caminho cujo
  * claim grava o batch ANTES da fase 1 — nos demais, o batch do email
  * ainda é o de uma geração antiga.
+ *
+ * Duas interrupções, mesmo desfecho no servidor (o trabalho continua):
+ * o gateway cortar depois de 300s (`__timeout__`) e a conexão cair sem
+ * resposta nenhuma. O que NÃO entra aqui é erro que o servidor relatou —
+ * casar texto de erro do servidor mascararia falha real.
  */
-export function canRecoverAfterTimeout(
+export function canRecoverAfterInterrupt(
+  err: unknown,
   msg: string,
   fullPipeline: boolean,
 ): boolean {
-  return isTimeoutMarker(msg) && fullPipeline
+  return fullPipeline && (isTimeoutMarker(msg) || isNetworkFailure(err))
 }
 
 /**
