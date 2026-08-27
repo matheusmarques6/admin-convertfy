@@ -401,14 +401,10 @@ export function TestTab() {
               runs: typeof allRuns,
               agent: string,
             ) => {
-              // O fluxo n8n grava o run como `copy_dispatch` (o dispatch da
-              // copy), não `copy`. Casa os dois no step "Copy" pra ele não
-              // ficar eterno em "pending" no teste "Geração completa".
-              const agentRuns = runs.filter(
-                (r) =>
-                  r.agent === agent ||
-                  (agent === "copy" && r.agent === "copy_dispatch"),
-              )
+              // `copy_dispatch` tem step PRÓPRIO (o que ENVIAMOS ao n8n),
+              // separado do `copy` (o que voltou). Dobrar um no outro
+              // escondia o payload atrás do retorno.
+              const agentRuns = runs.filter((r) => r.agent === agent)
               const latestRun = agentRuns[agentRuns.length - 1]
               const status = latestRun?.status ?? "pending"
               return (
@@ -460,11 +456,7 @@ export function TestTab() {
             // dinamicamente quando têm run no batch — sem linha fantasma.
             const BASE_AGENT_KEYS: string[] = [...TEST_BASE_AGENT_KEYS]
             const keysFor = (runs: typeof allRuns): string[] => {
-              const present = new Set(
-                runs.map((r) =>
-                  r.agent === "copy_dispatch" ? "copy" : r.agent,
-                ),
-              )
+              const present = new Set(runs.map((r) => r.agent))
               const extras = Array.from(present).filter(
                 (a) => !BASE_AGENT_KEYS.includes(a),
               )
@@ -520,12 +512,7 @@ export function TestTab() {
                               cadeia de formatação — sem linha fantasma). */}
                           {keysFor(batchRuns)
                             .filter((agent) =>
-                              batchRuns.some(
-                                (r) =>
-                                  r.agent === agent ||
-                                  (agent === "copy" &&
-                                    r.agent === "copy_dispatch"),
-                              ),
+                              batchRuns.some((r) => r.agent === agent),
                             )
                             .map((agent) => renderAgentRow(batchRuns, agent))}
                         </div>

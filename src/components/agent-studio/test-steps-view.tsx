@@ -74,10 +74,9 @@ export function TestStepsView({ t }: { t: TestGeneration }) {
   )
 
   const renderAgentRow = (runs: typeof allRuns, agent: string) => {
-    // O fluxo n8n grava `copy_dispatch` — casa no step "Copy".
-    const agentRuns = runs.filter(
-      (r) => r.agent === agent || (agent === "copy" && r.agent === "copy_dispatch"),
-    )
+    // `copy_dispatch` tem step PRÓPRIO desde que o Dispatch virou nó do
+    // mapa: dobrá-lo no "Copy" escondia o payload enviado atrás do retorno.
+    const agentRuns = runs.filter((r) => r.agent === agent)
     const latestRun = agentRuns[agentRuns.length - 1]
     const status = latestRun?.status ?? "pending"
     return (
@@ -159,9 +158,7 @@ export function TestStepsView({ t }: { t: TestGeneration }) {
 
   const BASE: string[] = [...TEST_BASE_AGENT_KEYS]
   const keysFor = (runs: typeof allRuns): string[] => {
-    const present = new Set(
-      runs.map((r) => (r.agent === "copy_dispatch" ? "copy" : r.agent)),
-    )
+    const present = new Set(runs.map((r) => r.agent))
     const extras = Array.from(present).filter((a) => !BASE.includes(a))
     return [...BASE, ...extras]
   }
@@ -228,13 +225,7 @@ export function TestStepsView({ t }: { t: TestGeneration }) {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {keysFor(batchRuns)
-                      .filter((agent) =>
-                        batchRuns.some(
-                          (r) =>
-                            r.agent === agent ||
-                            (agent === "copy" && r.agent === "copy_dispatch"),
-                        ),
-                      )
+                      .filter((agent) => batchRuns.some((r) => r.agent === agent))
                       .map((agent) => renderAgentRow(batchRuns, agent))}
                   </div>
                 </div>

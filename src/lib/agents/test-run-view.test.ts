@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
+import { STUDIO_NODES } from "./studio-graph"
 import {
+  TEST_AGENT_LABELS,
+  TEST_BASE_AGENT_KEYS,
   canRecoverAfterTimeout,
   computeStale,
   errText,
@@ -35,11 +38,14 @@ describe("expectedSteps", () => {
     expect(p2[0]).toBe("image")
     expect(p2).not.toContain("assembler")
     const full = expectedSteps("full").map((s) => s.agent)
-    expect(full.slice(0, 5)).toEqual([
+    expect(full.slice(0, 8)).toEqual([
+      "estruturador",
       "assembler_chooser",
       "assembler",
       "blueprint",
+      "subject",
       "seed",
+      "copy_dispatch",
       "copy",
     ])
     expect(full).toContain("color_format")
@@ -214,5 +220,30 @@ describe("runHeaderLabel", () => {
     expect(
       runHeaderLabel({ resultStatus: null, pollStatus: null, emailStatus: null, hasRun: false }),
     ).toBeNull()
+  })
+})
+
+// A lista de steps do teste é mantida em paralelo ao mapa do Estúdio, e foi
+// isso que deixou o Estruturador e o Dispatch invisíveis nesta tela mesmo
+// depois de entrarem no grafo. A checagem é de MÃO ÚNICA de propósito: a
+// lista pode ter passos que não são nós do mapa (`seed`, os legados
+// html/refiner), o inverso é que é esquecimento.
+describe("sincronia com o mapa do Estúdio", () => {
+  const doGrafo = STUDIO_NODES.filter((n) => n.type === "agent").map(
+    (n) => n.agent as string,
+  )
+
+  it("todo agente do mapa tem rótulo na aba Teste", () => {
+    const semRotulo = doGrafo.filter((a) => !TEST_AGENT_LABELS[a])
+    expect(semRotulo, `sem rótulo em TEST_AGENT_LABELS: ${semRotulo.join(", ")}`).toEqual([])
+  })
+
+  it("todo agente do mapa aparece na lista de steps", () => {
+    const base: string[] = [...TEST_BASE_AGENT_KEYS]
+    // `qavision` é a run de QA com visão (`agent='qa'` + `is_qa_vision`),
+    // não um step próprio: no teste ele aparece dentro do QA.
+    const esperado = doGrafo.filter((a) => a !== "qavision")
+    const fora = esperado.filter((a) => !base.includes(a))
+    expect(fora, `fora de TEST_BASE_AGENT_KEYS: ${fora.join(", ")}`).toEqual([])
   })
 })

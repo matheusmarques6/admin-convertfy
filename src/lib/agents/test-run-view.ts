@@ -23,11 +23,13 @@ export type TestRunMode = "default" | "phase2" | "full"
 
 /** Labels PT-BR dos agentes nas listas de teste. */
 export const TEST_AGENT_LABELS: Record<string, string> = {
+  estruturador: "Estruturador",
   assembler_chooser: "Curador",
   assembler: "Montador",
   blueprint: "Blueprint (estrutura)",
   subject: "Assunto",
   seed: "Seed Blocos",
+  copy_dispatch: "Dispatch (envio ao n8n)",
   copy: "Copy (n8n)",
   image: "Imagem (IA)",
   hero_section: "Hero Section",
@@ -37,16 +39,29 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   image_format: "Formatação de Imagem",
   color_format: "Cores & Botões",
   qa: "QA",
+  qavision: "QA Vision",
   html: "HTML (legado)",
   refiner: "Refinador (legado)",
 }
 
 /** Ordem canônica exibida nas listas (extras aparecem quando têm run). */
 export const TEST_BASE_AGENT_KEYS = [
+  // O Estruturador roda ANTES do Curador quando ligado; em 'off' a linha
+  // aparece pendente e a run nunca chega — que é a verdade, e melhor do que
+  // o agente não existir na tela.
+  "estruturador",
   "assembler_chooser",
   "assembler",
   "blueprint",
+  // O Assunto roda em TODA geração (é a contribuição criativa da rota
+  // determinística do blueprint) e estava tratado como "extra que aparece
+  // se tiver run" — junto dos legados html/refiner. Com a lista em branco,
+  // antes da primeira run, ele simplesmente não existia na tela.
+  "subject",
   "seed",
+  // Dois passos, não um: o Dispatch é o que ENVIAMOS ao n8n e o Copy é o
+  // que voltou. Colapsá-los escondia o payload atrás do retorno.
+  "copy_dispatch",
   "copy",
   "image",
   "hero_section",
@@ -73,10 +88,13 @@ export function expectedSteps(mode: TestRunMode): RunStep[] {
   )
   if (mode === "phase2") return phase2
   return [
+    { agent: "estruturador", status: "pending" },
     { agent: "assembler_chooser", status: "pending" },
     { agent: "assembler", status: "pending" },
     { agent: "blueprint", status: "pending" },
+    { agent: "subject", status: "pending" },
     { agent: "seed", status: "pending" },
+    { agent: "copy_dispatch", status: "pending" },
     { agent: "copy", status: "pending" },
     ...phase2,
   ]

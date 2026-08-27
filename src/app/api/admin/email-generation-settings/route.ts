@@ -3,14 +3,25 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("EmailGenerationSettings")
 
 export const dynamic = "force-dynamic"
 
+/**
+ * A org NÃO vem do cliente.
+ *
+ * A tela mandava um `org_id` constante e sintético
+ * (`00000000-…-0001`) enquanto o pipeline lê a settings pela org REAL da
+ * loja (`client_stores.org_id`). Resultado: tudo que era salvo aqui —
+ * blueprint_mode, merge_verifier_mode, max_blocks_per_email, default_model,
+ * qa_vision_enabled, câmbio, alerta de custo — ia para uma linha que
+ * ninguém lia. A tabela vazia era a prova. Resolver no servidor, pelo
+ * usuário autenticado, também impede gravar settings de outra org.
+ */
 const patchSchema = z.object({
-  org_id: z.string().uuid(),
   auto_trigger: z.boolean().optional(),
   max_parallel: z.number().int().min(1).max(10).optional(),
   generate_images: z.boolean().optional(),
@@ -41,14 +52,7 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
     await assertCanManagePrompts(admin, user.id)
 
-    const orgId = request.nextUrl.searchParams.get("org_id")
-    if (!orgId) {
-      return errorResponse(
-        request,
-        new Error("org_id is required"),
-        "settings-get-missing-org",
-      )
-    }
+    const orgId = await resolveOrgId(user.id)
 
     const { data, error } = await admin
       .from("email_generation_settings")
@@ -73,15 +77,14 @@ export async function PATCH(request: NextRequest) {
     await assertCanManagePrompts(admin, user.id)
 
     const body = await request.json()
-    const parsed = patchSchema.parse(body)
-
-    const { org_id, ...fields } = parsed
+    const fields = patchSchema.parse(body)
+    const orgId = await resolveOrgId(user.id)
 
     const { data, error } = await admin
       .from("email_generation_settings")
       .upsert(
         {
-          org_id,
+          org_id: orgId,
           ...fields,
           updated_at: new Date().toISOString(),
           updated_by: user.id,

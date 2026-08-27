@@ -282,6 +282,11 @@ export interface EmailGenerationSettings {
   // quando o relatório do copy_merge acusa algo (default); 'always' = toda
   // geração; 'off' = fila mecânica decide (kill-switch sem deploy).
   merge_verifier_mode: "always" | "on_flag" | "off"
+  // Estruturador: 'off' = nem roda; 'shadow' = roda e grava o embasamento
+  // sem alterar o pipeline; 'on' = a decisão dele passa a mandar na escolha
+  // do Curador — e o reuso da arquitetura é desligado (a estrutura é
+  // decidida a cada geração).
+  estruturador_mode: "off" | "shadow" | "on"
   updated_at: string
   updated_by: string | null
 }

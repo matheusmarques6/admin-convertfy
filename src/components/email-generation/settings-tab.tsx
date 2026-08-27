@@ -27,7 +27,10 @@ import {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-const ORG_ID = "00000000-0000-0000-0000-000000000001"
+// A org sai do usuário autenticado, no servidor. Aqui havia um UUID
+// sintético fixo que não pertence a nenhuma organização — o pipeline lê a
+// settings pela org REAL da loja, então nada salvo nesta tela chegava a ser
+// lido. Ver o comentário na rota.
 
 /** "5,45" | "5.45" | "" → número ou null (inválido → null). */
 function parseDecimal(s: string): number | null {
@@ -81,7 +84,7 @@ export function SettingsTab() {
   const { data, mutate, isLoading } = useSWR<{
     settings?: EmailGenerationSettings | null
     data?: { settings?: EmailGenerationSettings | null }
-  }>(`/api/admin/email-generation-settings?org_id=${ORG_ID}`, fetcher)
+  }>("/api/admin/email-generation-settings", fetcher)
   const settings = data?.settings ?? data?.data?.settings ?? null
 
   const [saving, setSaving] = useState(false)
@@ -106,6 +109,8 @@ export function SettingsTab() {
     blueprint_mode: form.blueprint_mode ?? settings?.blueprint_mode ?? "auto",
     merge_verifier_mode:
       form.merge_verifier_mode ?? settings?.merge_verifier_mode ?? "on_flag",
+    estruturador_mode:
+      form.estruturador_mode ?? settings?.estruturador_mode ?? "off",
     refiner_enabled: form.refiner_enabled ?? settings?.refiner_enabled ?? true,
     max_blocks_per_email:
       form.max_blocks_per_email ?? settings?.max_blocks_per_email ?? 9,
@@ -127,7 +132,7 @@ export function SettingsTab() {
   const save = async () => {
     setSaving(true)
     try {
-      const payload: Record<string, unknown> = { org_id: ORG_ID, ...form }
+      const payload: Record<string, unknown> = { ...form }
       if (rateText !== null) payload.usd_brl_rate = parseDecimal(rateText)
       if (alertText !== null) payload.cost_alert_usd = parseDecimal(alertText)
       const res = await fetch("/api/admin/email-generation-settings", {
@@ -243,6 +248,27 @@ export function SettingsTab() {
                     { value: "auto", label: "Auto (híbrido)" },
                     { value: "llm", label: "Sempre LLM" },
                     { value: "deterministic", label: "Sempre determinístico" },
+                  ]}
+                />
+              </div>
+            </SettingRow>
+            <SettingRow
+              title="Estruturador"
+              sub="Decide a estrutura editorial do email antes do Curador. Observar = roda e grava o embasamento sem mudar nada; Decidir = a estrutura dele manda na escolha das variantes (e a arquitetura passa a ser refeita a cada geração, em vez de reaproveitada)"
+            >
+              <div style={{ width: 170, flexShrink: 0 }}>
+                <EGSelect
+                  value={merged.estruturador_mode}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      estruturador_mode: v as "off" | "shadow" | "on",
+                    }))
+                  }
+                  options={[
+                    { value: "off", label: "Desligado" },
+                    { value: "shadow", label: "Observar (shadow)" },
+                    { value: "on", label: "Decidir (on)" },
                   ]}
                 />
               </div>
