@@ -101,8 +101,10 @@ const baseInput = {
   tomVoz: "",
   mood: "",
   persona: "",
-  briefingJson: "{}",
-  topProductNames: [],
+  perfilMarca: "{}",
+  objecoes: "(não cadastradas — não presuma objeção)",
+  vocabulario: "(não cadastrado)",
+  topProducts: [] as Array<{ name: string; price: number | string; image_url: string; url?: string }>,
   outlineObjective: "",
   outlineGuidance: "",
   outlineToneHint: "",
@@ -251,8 +253,11 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     invokeAgent.mockResolvedValueOnce(CHOICE_V1)
     await assembleStoreReference({
       ...baseInput,
-      briefingJson: '{"nicho":"PERFIL-MARCA"}',
-      topProductNames: ["Produto A", "Produto B"],
+      perfilMarca: '{"nicho":"PERFIL-MARCA"}',
+      topProducts: [
+        { name: "Produto A", price: "199", image_url: "", url: "https://loja.com/products/a" },
+        { name: "Produto B", price: "", image_url: "" },
+      ],
     })
     const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
     expect(systemVars.catalogo).toContain("GUIDANCE-COPY")
@@ -265,6 +270,11 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     expect(chooserVars.briefing_marca).toContain("PERFIL-MARCA")
     expect(chooserVars.top_products).toContain("1. Produto A")
     expect(chooserVars.top_products).toContain("2. Produto B")
+    // O link é o dado que faltava (27/08): o Curador cruza product_slots com
+    // produto que tem para onde apontar.
+    expect(chooserVars.top_products).toContain("https://loja.com/products/a")
+    // Produto sem preço/link não ganha separador vazio ("2. Produto B — —").
+    expect(chooserVars.top_products.endsWith("2. Produto B")).toBe(true)
   })
 
   // CM-2: o passo B nao pode mais "falhar" (nao ha LLM). O caminho de
@@ -743,6 +753,34 @@ describe("contrato de telemetria", () => {
     expect(cat!.texto).toBeUndefined()
     expect(String(cat!.sha8)).toHaveLength(8)
     expect(cat!.cls).toBe("biblioteca")
+  })
+
+  // 27/08: os quatro blocos da loja. Var no template sem entrada em
+  // `editorialOrigins` derruba os SEGMENTOS DA RUN INTEIRA no guard de
+  // recomposição — a marcação some sem erro nenhum. Este teste é o que
+  // avisa, e de quebra prova que o Curador recebeu marca, objeções,
+  // vocabulário e o link do produto.
+  it("marca, objeções, vocabulário e produtos chegam marcados como loja", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference({
+      ...baseInput,
+      perfilMarca: "PERFIL-DA-MARCA",
+      objecoes: "- desconfia de anúncio bonito",
+      vocabulario: "Usar: sem risco\nEvitar: jornada",
+      topProducts: [
+        { name: "EnergySave Pro", price: 199, image_url: "", url: "https://innovabay.site/products/energysave" },
+      ],
+    })
+    const segs = (runOf("assembler_chooser").promptSegments ?? []) as Array<
+      Record<string, unknown>
+    >
+    // Segmentos nulos = guard reprovou; aqui já seria [] e o find falharia.
+    const daLoja = segs.filter((sg) => sg.cls === "loja")
+    const texto = daLoja.map((sg) => String(sg.texto ?? "")).join("\n")
+    expect(texto).toContain("PERFIL-DA-MARCA")
+    expect(texto).toContain("desconfia de anúncio bonito")
+    expect(texto).toContain("Evitar: jornada")
+    expect(texto).toContain("https://innovabay.site/products/energysave")
   })
 
   it("Curador falhando grava a proveniência do mesmo jeito", async () => {

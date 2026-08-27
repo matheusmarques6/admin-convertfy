@@ -42,7 +42,8 @@ import {
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { buildCatalog, buildTypeIndex } from "./catalog-builder"
-import { fieldOrMissing } from "./store-context"
+import { fieldOrMissing, renderTopProducts } from "./store-context"
+import type { TopProduct } from "@/types/email-workspace"
 import {
   parseCuratorRanking,
   rankingIds,
@@ -179,7 +180,9 @@ Regras de seleção:
 - Respeite quando_nao_usar: se o contexto do email casa com um "quando NÃO usar", a variante está fora, não em último lugar.
 - Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
-- Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado.
+- <objecoes> é o que trava a compra desta loja. A variante escolhida precisa ter ANATOMIA para responder à objeção que este email enfrenta (prova social, FAQ, garantia, comparativo, demonstração). Bloco bonito que não responde a nenhuma objeção perde para o que responde.
+- <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
+- Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
 - Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
 - Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
@@ -224,6 +227,14 @@ export const DEFAULT_CHOOSER_USER = `<store>
 <perfil_marca>
 {{briefing_marca}}
 </perfil_marca>
+
+<objecoes>
+{{objecoes}}
+</objecoes>
+
+<vocabulario>
+{{vocabulario}}
+</vocabulario>
 
 <top_products>
 {{top_products}}
@@ -460,11 +471,19 @@ export interface AssembleReferenceInput {
   tomVoz: string
   mood: string
   persona: string
-  // Briefing da marca (JSON serializado) — ancora as escolhas no briefing.
-  briefingJson: string
-  // Top 5 produtos da loja (títulos, rank asc) — o Curador cruza com
-  // product_slots dos candidatos. Vazio quando a loja não tem produtos.
-  topProductNames: string[]
+  // Perfil da marca já resolvido pelo chamador (briefing curado quando
+  // existe, senão a Pesquisa & Diagnóstico SEM o review de anúncios). O nome
+  // antigo era `briefingJson` e mentia: desde o fallback de ago/2026 isto
+  // raramente é JSON de briefing.
+  perfilMarca: string
+  // Objeções do cliente ideal, já renderizadas (`resolveObjecoes`).
+  objecoes: string
+  // Vocabulário literal da marca, já renderizado (`resolveVocabulario`).
+  vocabulario: string
+  // Top 5 produtos da loja (rank asc), com preço e link quando existem — o
+  // Curador cruza com product_slots dos candidatos. Vazio quando a loja não
+  // tem produtos cadastrados.
+  topProducts: TopProduct[]
   // Diretriz de alto nível do outline (estrutura geral): objetivo + guidance + tom.
   outlineObjective: string
   outlineGuidance: string
@@ -646,6 +665,35 @@ function clampPromptText(v: string | null | undefined, ausente: string): string 
   return `${t.slice(0, PROMPT_TEXT_MAX)}\n(… truncado)`
 }
 
+// ── Resumos da aba "Entrada" do Estúdio ────────────────────────────────
+// O painel mostra O QUE o agente recebeu, não o conteúdo inteiro: dizer
+// "5 objeções" ou "22 usar / 28 evitar" é o que deixa "não recebeu nada"
+// distinguível de "recebeu e ignorou" sem abrir o prompt.
+
+function resumoObjecoes(bloco: string): string {
+  const n = bloco.split("\n").filter((l) => l.trim().startsWith("- ")).length
+  return n > 0 ? `${n} objeções` : "(não cadastradas)"
+}
+
+function resumoVocabulario(bloco: string): string {
+  const conta = (prefixo: string): number => {
+    const linha = bloco.split("\n").find((l) => l.startsWith(prefixo))
+    if (!linha) return 0
+    return linha.slice(prefixo.length).split(",").filter((w) => w.trim()).length
+  }
+  const usar = conta("Usar: ")
+  const evitar = conta("Evitar: ")
+  return usar + evitar > 0
+    ? `${usar} usar / ${evitar} evitar`
+    : "(não cadastrado)"
+}
+
+function resumoProdutos(produtos: ReadonlyArray<TopProduct>): string {
+  if (produtos.length === 0) return "(sem produtos)"
+  const comLink = produtos.filter((p) => p.url?.trim()).length
+  return `${produtos.map((p) => p.name).join("; ")} — ${comLink}/${produtos.length} com link`
+}
+
 // ── Proveniência (plano telemetria 26/08): origem de cada var do prompt ──
 // Compartilhadas entre Curador e Montador (os templates repetem as vars).
 
@@ -667,8 +715,22 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
     intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
     intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
     estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — resumoParaCurador" },
-    briefing_marca: { cls: "loja", rotulo: "Perfil da marca — store_briefings" },
-    top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+    briefing_marca: {
+      cls: "loja",
+      rotulo: "Perfil da marca — store_briefings ou Pesquisa (sem o review de anúncios)",
+    },
+    objecoes: {
+      cls: "loja",
+      rotulo: "Objeções do cliente ideal — client_stores.icp_frictions",
+    },
+    vocabulario: {
+      cls: "loja",
+      rotulo: "Vocabulário literal — client_stores.tone_use_words / tone_avoid_words",
+    },
+    top_products: {
+      cls: "loja",
+      rotulo: "Produtos da loja — store_top_products (nome, preço e link)",
+    },
     blocks_json: estruturadorOn
       ? { cls: "upstream", rotulo: "Sequência do email — decidida pelo Estruturador" }
       : { cls: "sistema", rotulo: "Sequência do email — derivada do outline por código" },
@@ -777,15 +839,17 @@ export async function assembleStoreReference(
       input.estruturadorDecisao,
       "(sem decisão do Estruturador nesta geração — siga o outline)",
     ),
-    // Perfil da marca (store_briefings.marca) — ancora a escolha na
-    // identidade, não só no objetivo do email.
-    briefing_marca: input.briefingJson,
-    // Top 5 produtos — cruza com product_slots (não indicar bloco de 4
-    // produtos em loja com 2).
-    top_products:
-      input.topProductNames.length > 0
-        ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
-        : "(sem produtos cadastrados)",
+    // Perfil da marca — ancora a escolha na identidade, não só no objetivo
+    // do email.
+    briefing_marca: input.perfilMarca,
+    // Objeções e vocabulário em blocos PRÓPRIOS (27/08). Os dois já viajavam
+    // dentro do perfil, enterrados em "O que a faz hesitar" e "Vocabulário ·
+    // Usar/Evitar" — dado presente que ninguém usava como critério.
+    objecoes: input.objecoes,
+    vocabulario: input.vocabulario,
+    // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
+    // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
+    top_products: renderTopProducts(input.topProducts),
     blocks_json: blocksJson,
     memoria: renderCuradorMemory(memory),
   }
@@ -871,8 +935,10 @@ export async function assembleStoreReference(
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida (resumoParaCurador)" : "(sem decisão nesta geração)" },
-    { rotulo: "Perfil da marca", cls: "loja", valor: `${input.briefingJson.length.toLocaleString("pt-BR")} chars` },
-    { rotulo: "Top produtos", cls: "loja", valor: input.topProductNames.join("; ") || "(sem produtos)" },
+    { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
+    { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
+    { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
+    { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },
     { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
   ]
   const chooserInputVars = {
@@ -1068,10 +1134,7 @@ export async function assembleStoreReference(
       input.estruturadorDecisao,
       "(sem decisão do Estruturador nesta geração — siga o outline)",
     ),
-    top_products:
-      input.topProductNames.length > 0
-        ? input.topProductNames.map((t, i) => `${i + 1}. ${t}`).join("\n")
-        : "(sem produtos cadastrados)",
+    top_products: renderTopProducts(input.topProducts),
     // Mesma memória que o Curador recebeu — carregada uma vez, sem query
     // nova. É insumo da razão de HISTÓRICO da escolha final.
     memoria: renderCuradorMemory(memory),
@@ -1116,7 +1179,7 @@ export async function assembleStoreReference(
       cls: "upstream",
       valor: estruturadorOn ? "servida (papéis por posição + fio)" : "(sem decisão nesta geração)",
     },
-    { rotulo: "Top produtos", cls: "loja", valor: input.topProductNames.join("; ") || "(sem produtos)" },
+    { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },
     { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
   ]
 

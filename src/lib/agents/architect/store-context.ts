@@ -142,3 +142,85 @@ export function missingStoreFields(input: {
     .filter(([, v]) => !str(v))
     .map(([k]) => k)
 }
+
+// ── Blocos nomeados do Curador (27/08) ──────────────────────────────────
+//
+// Objeções, vocabulário e produtos JÁ viajavam até o Curador — enterrados.
+// As objeções eram cinco linhas sob "O que a faz hesitar" dentro de
+// "## 03 · Cliente Ideal"; o vocabulário, duas linhas dentro de "## 04 ·
+// Tom de Comunicação"; tudo isso dentro de um `<perfil_marca>` de 13.823
+// chars que ainda carregava 5.538 de auditoria de mídia paga. Os produtos
+// chegavam só como nomes, sem link, porque a consulta pedia só o título.
+//
+// Nomear cada coisa no prompt é o que transforma dado presente em critério
+// usado. As funções abaixo montam esses blocos — sem deduzir nada e
+// declarando ausência, que são as duas regras deste módulo.
+
+/** Lista `- item` a partir de um array de texto, ignorando vazios. */
+function bullets(items: readonly (string | null | undefined)[] | null | undefined): string[] {
+  return (items ?? []).map((v) => str(v)).filter(Boolean).map((v) => `- ${v}`)
+}
+
+/**
+ * Objeções do cliente ideal (`client_stores.icp_frictions`) para
+ * `<objecoes>`. É o que a variante escolhida precisa ter anatomia para
+ * responder — prova social, FAQ, garantia, comparativo.
+ */
+export function resolveObjecoes(
+  pesquisa: { icp_frictions?: string[] | null } | null | undefined,
+): string {
+  const linhas = bullets(pesquisa?.icp_frictions)
+  return linhas.length > 0
+    ? linhas.join("\n")
+    : "(não cadastradas — não presuma objeção)"
+}
+
+/**
+ * Vocabulário literal da marca (`tone_use_words` / `tone_avoid_words`) para
+ * `<vocabulario>`.
+ *
+ * LITERAL: nada é reordenado, truncado ou traduzido. A lista de "evitar" é
+ * uma proibição — cortá-la em N palavras deixaria passar exatamente a que
+ * ficou de fora, e o Curador não teria como saber que a lista foi cortada.
+ */
+export function resolveVocabulario(
+  pesquisa: {
+    tone_use_words?: string[] | null
+    tone_avoid_words?: string[] | null
+  } | null | undefined,
+): string {
+  const usar = (pesquisa?.tone_use_words ?? []).map(str).filter(Boolean)
+  const evitar = (pesquisa?.tone_avoid_words ?? []).map(str).filter(Boolean)
+  const linhas: string[] = []
+  if (usar.length) linhas.push(`Usar: ${usar.join(", ")}`)
+  if (evitar.length) linhas.push(`Evitar: ${evitar.join(", ")}`)
+  return linhas.length > 0 ? linhas.join("\n") : "(não cadastrado)"
+}
+
+/**
+ * Bloco `<top_products>`: nome, preço e LINK de cada produto.
+ *
+ * O link é o que faltava — e é ele que fecha a regra de viabilidade: slot
+ * de produto sem produto para apontar é variante inviável, não é variante
+ * "com campo vazio". Preço e link ausentes são omitidos por produto (em vez
+ * de virarem "—" ou "undefined", que o modelo leria como valor).
+ */
+export function renderTopProducts(
+  produtos: ReadonlyArray<{
+    name: string
+    price?: number | string | null
+    url?: string | null
+  }> | null | undefined,
+): string {
+  const linhas = (produtos ?? [])
+    .map((p) => {
+      const nome = str(p?.name)
+      if (!nome) return ""
+      const preco = str(p?.price)
+      const url = str(p?.url)
+      return [nome, preco, url].filter(Boolean).join(" — ")
+    })
+    .filter(Boolean)
+    .map((linha, i) => `${i + 1}. ${linha}`)
+  return linhas.length > 0 ? linhas.join("\n") : "(sem produtos cadastrados)"
+}

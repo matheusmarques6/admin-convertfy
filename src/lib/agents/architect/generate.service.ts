@@ -15,10 +15,13 @@ import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing
 import {
   missingStoreFields,
   resolveBrandProfile,
+  resolveObjecoes,
   resolvePersonaText,
+  resolveVocabulario,
   type IcpDemographics,
   type IcpPersona,
 } from "./store-context"
+import { mapTopProductRow, type TopProductRow } from "../top-products"
 import { mapTomVozToMood } from "../image/mood-mapping"
 import { isTextOnlyEmail } from "./blueprint-loader"
 import { loadGlobalReferenceTemplate } from "../reference-template"
@@ -208,9 +211,12 @@ export async function generateBlueprintAndReference(
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Colunas completas (era só `title`): o Curador precisa do LINK do
+    // produto, e ele se monta com `handle` + `store_url`. O dado sempre
+    // esteve na tabela — a consulta é que o descartava.
     admin
       .from("store_top_products")
-      .select("title")
+      .select("rank, title, price, currency, handle, external_id, image_url")
       .eq("store_id", input.storeId)
       .order("rank", { ascending: true })
       .limit(5),
@@ -250,7 +256,7 @@ export async function generateBlueprintAndReference(
   const marca =
     ((briefingRes.data as { marca?: BriefingMarca } | null)?.marca ??
       {}) as BriefingMarca
-  const products = (productsRes.data as Array<{ title: string }> | null) ?? []
+  const productRows = (productsRes.data as TopProductRow[] | null) ?? []
   const outline = (outlineRes.data as EmailOutlineTemplate | null) ?? null
   const brand = brandRes.data as {
     font_heading?: string | null
@@ -283,10 +289,21 @@ export async function generateBlueprintAndReference(
     (store.tone_description as string) ||
     (store.tom_de_voz as string) ||
     ""
-  const topProductNames = products.map((p) => p.title).filter(Boolean)
+  // Mesmo mapeamento de `loadTopProducts` (fonte única do shape canônico).
+  const topProducts = productRows.map((p) =>
+    mapTopProductRow(p, (store.store_url as string | null) ?? null),
+  )
+  const topProductNames = topProducts.map((p) => p.name).filter(Boolean)
   const mood = mapTomVozToMood(tomVoz)
   // Pesquisa & Diagnóstico (5 pilares) serializada — fonte rica p/ os agentes.
   const pesquisa = pesquisaToFullText(store as PesquisaFields)
+  // O Curador recebe a MESMA pesquisa sem a seção 05 (Review dos Anúncios):
+  // auditoria de mídia paga era 5.538 dos 13.823 chars de <perfil_marca> e
+  // não diz nada sobre qual variante serve ao email. O Estruturador segue
+  // com o dossiê inteiro — ele decide arco, não componente.
+  const pesquisaSemAds = pesquisaToFullText(store as PesquisaFields, {
+    incluirAds: false,
+  })
 
   // Perfil da marca do Curador: briefing curado quando existe, senão a
   // PESQUISA. Sem esse fallback, loja sem `store_briefings` mandava o
@@ -295,7 +312,7 @@ export async function generateBlueprintAndReference(
   // Luxe Lift inteira (ago/2026).
   const brandProfile = resolveBrandProfile({
     marca: marca as Record<string, unknown>,
-    pesquisa,
+    pesquisa: pesquisaSemAds,
   })
   const missingFields = missingStoreFields({
     nicho,
@@ -441,8 +458,13 @@ export async function generateBlueprintAndReference(
     tomVoz,
     mood,
     persona,
-    briefingJson: brandProfile.text,
-    topProductNames,
+    perfilMarca: brandProfile.text,
+    // Objeções e vocabulário em blocos próprios (27/08): já viajavam dentro
+    // do perfil, sem rótulo, e o Curador não tinha como saber que aquelas
+    // linhas eram critério de veto.
+    objecoes: resolveObjecoes(store as PesquisaFields),
+    vocabulario: resolveVocabulario(store as PesquisaFields),
+    topProducts,
     outlineObjective: outline?.objective ?? "",
     // Com Estruturador consumido, o fio narrativo dele guia o Montador no
     // lugar da diretriz genérica do outline (os papéis já vão por bloco via

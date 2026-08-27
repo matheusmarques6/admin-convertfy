@@ -3,8 +3,11 @@ import {
   MISSING_FIELD,
   fieldOrMissing,
   missingStoreFields,
+  renderTopProducts,
   resolveBrandProfile,
+  resolveObjecoes,
   resolvePersonaText,
+  resolveVocabulario,
 } from "./store-context"
 
 // Dados reais da Innova Bay nova (ago/2026) — a loja que expôs o bug.
@@ -141,5 +144,88 @@ describe("missingStoreFields", () => {
         tomVoz: "afetivo",
       }),
     ).toEqual([])
+  })
+})
+
+// ── Blocos nomeados do Curador (27/08) ──────────────────────────────────
+// Dados reais da Innova Bay nova: 5 objeções, 22 palavras a usar, 28 a
+// evitar, 5 produtos com handle.
+
+const OBJECOES_INNOVA = [
+  "Desconfiança de que produtos baratos vendidos online não funcionam como mostram nos anúncios.",
+  "Medo de comprar e não conseguir instalar sozinho.",
+]
+
+describe("resolveObjecoes", () => {
+  it("uma objeção por linha, com marcador", () => {
+    expect(resolveObjecoes({ icp_frictions: OBJECOES_INNOVA })).toBe(
+      `- ${OBJECOES_INNOVA[0]}\n- ${OBJECOES_INNOVA[1]}`,
+    )
+  })
+
+  it("descarta item vazio sem deixar bullet órfão", () => {
+    expect(resolveObjecoes({ icp_frictions: ["", "  ", "real"] })).toBe("- real")
+  })
+
+  // Regra do módulo: ausência é DECLARADA. Bloco vazio faria o modelo
+  // inventar a objeção que "provavelmente" trava a compra desta loja.
+  it("sem objeções → ausência declarada, nunca vazio", () => {
+    expect(resolveObjecoes({ icp_frictions: [] })).toContain("não presuma")
+    expect(resolveObjecoes({})).toContain("não presuma")
+    expect(resolveObjecoes(null)).toContain("não presuma")
+  })
+})
+
+describe("resolveVocabulario", () => {
+  const vocab = {
+    tone_use_words: ["garantia vitalícia", "sem risco", "resultado real"],
+    tone_avoid_words: ["jornada", "imersão", "ecossistema", "sinergia"],
+  }
+
+  // LITERAL: a lista de "evitar" é proibição. Truncar deixaria passar
+  // exatamente a palavra cortada, e ninguém saberia que houve corte.
+  it("preserva ordem e conteúdo das duas listas, sem truncar", () => {
+    const r = resolveVocabulario(vocab)
+    expect(r).toBe(
+      "Usar: garantia vitalícia, sem risco, resultado real\n" +
+        "Evitar: jornada, imersão, ecossistema, sinergia",
+    )
+  })
+
+  it("só uma das listas cadastrada → só ela aparece", () => {
+    expect(resolveVocabulario({ tone_avoid_words: ["jargão"] })).toBe(
+      "Evitar: jargão",
+    )
+  })
+
+  it("nenhuma → ausência declarada", () => {
+    expect(resolveVocabulario({ tone_use_words: [], tone_avoid_words: [] })).toBe(
+      "(não cadastrado)",
+    )
+    expect(resolveVocabulario(undefined)).toBe("(não cadastrado)")
+  })
+})
+
+describe("renderTopProducts", () => {
+  it("numera com nome, preço e link", () => {
+    expect(
+      renderTopProducts([
+        { name: "EnergySave Pro", price: 199, url: "https://innovabay.site/products/energysave" },
+      ]),
+    ).toBe("1. EnergySave Pro — 199 — https://innovabay.site/products/energysave")
+  })
+
+  // Produto sem link não vira "Nome — undefined": o modelo leria o
+  // separador vazio como valor e trataria o slot como endereçável.
+  it("preço ou link ausente somem, sem separador vazio", () => {
+    expect(renderTopProducts([{ name: "Só nome" }])).toBe("1. Só nome")
+    expect(renderTopProducts([{ name: "Sem link", price: "89,90" }])).toBe(
+      "1. Sem link — 89,90",
+    )
+  })
+
+  it("sem produtos → ausência declarada", () => {
+    expect(renderTopProducts([])).toBe("(sem produtos cadastrados)")
+    expect(renderTopProducts(null)).toBe("(sem produtos cadastrados)")
   })
 })

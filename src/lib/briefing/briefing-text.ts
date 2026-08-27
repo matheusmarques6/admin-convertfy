@@ -258,12 +258,28 @@ function cleanList(arr: unknown): string[] {
   return arr.map((v) => str(v)).filter((v) => v !== "")
 }
 
+/** Opções de recorte do dossiê. */
+export interface PesquisaTextOptions {
+  /**
+   * Inclui "## 05 · Review dos Anúncios". Default `true`.
+   *
+   * O Curador de componentes pede `false`: a auditoria de mídia paga é o
+   * MAIOR pedaço do dossiê (5.538 de 13.823 chars na Innova Bay) e não diz
+   * nada sobre qual variante serve ao email — disputava espaço com marca,
+   * objeções e vocabulário dentro do mesmo bloco.
+   */
+  incluirAds?: boolean
+}
+
 /**
  * Converte os campos "Pesquisa & Diagnóstico" (client_stores) no mesmo
  * documento textual de 5 seções exibido na aba Content. Campos/seções vazios
  * são omitidos; se tudo estiver vazio retorna "" (preserva o empty state).
  */
-export function pesquisaToFullText(store: PesquisaFields): string {
+export function pesquisaToFullText(
+  store: PesquisaFields,
+  opts?: PesquisaTextOptions,
+): string {
   const blocks: string[] = []
 
   // ── 01 · Perfil da Marca ──────────────────────────────────────────────
@@ -353,7 +369,7 @@ export function pesquisaToFullText(store: PesquisaFields): string {
   }
 
   // ── 05 · Review dos Anúncios ──────────────────────────────────────────
-  {
+  if (opts?.incluirAds !== false) {
     const lines: string[] = []
     const hasScore = store.ads_score != null || !!store.ads_sub_scores
     if (hasScore) {

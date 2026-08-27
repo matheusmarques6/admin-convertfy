@@ -28,14 +28,31 @@ interface TopProductTableRow {
   image_url: string | null
 }
 
-/** Mapeia uma linha de `store_top_products` para o shape canônico. */
-function mapTableRow(p: TopProductTableRow, storeUrl: string | null): TopProduct {
+/** Colunas mínimas para montar um `TopProduct` a partir da tabela viva. */
+export type TopProductRow = TopProductTableRow
+
+/**
+ * Mapeia uma linha de `store_top_products` para o shape canônico.
+ *
+ * Exportada porque o Architect monta os produtos a partir da MESMA query,
+ * dentro do `Promise.all` que já carrega a loja — duplicar o mapeamento lá
+ * era como o link do produto se perdia num caminho e não no outro.
+ *
+ * A barra final da `store_url` é aparada: a URL cadastrada da loja costuma
+ * terminar em `/` (`https://innovabay.site/`) e a concatenação crua gerava
+ * `https://innovabay.site//products/...` — link que já saía assim na copy.
+ */
+export function mapTopProductRow(
+  p: TopProductRow,
+  storeUrl: string | null,
+): TopProduct {
+  const base = storeUrl?.trim().replace(/\/+$/, "") || ""
   return {
     id: p.external_id ?? undefined,
     name: p.title,
     price: p.price ?? "",
     image_url: p.image_url ?? "",
-    url: p.handle && storeUrl ? `${storeUrl}/products/${p.handle}` : undefined,
+    url: p.handle && base ? `${base}/products/${p.handle}` : undefined,
   }
 }
 
@@ -61,7 +78,7 @@ export async function loadTopProducts(
     .limit(5)
 
   if (rows && rows.length > 0) {
-    return (rows as TopProductTableRow[]).map((p) => mapTableRow(p, storeUrl))
+    return (rows as TopProductTableRow[]).map((p) => mapTopProductRow(p, storeUrl))
   }
 
   // 2. Fallback: snapshot estático em store_brand_identity (já canônico).
