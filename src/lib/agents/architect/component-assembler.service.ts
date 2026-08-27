@@ -272,6 +272,8 @@ Como decidir:
 - Razão de CONJUNTO: duas posições ficariam com a mesma variante, ou com variantes de linguagem visual idêntica (mesma faixa, mesma anatomia); o email ficaria monótono ou desequilibrado na densidade; abertura e fechamento não conversam.
 - Razão de VIABILIDADE: o schema do 1º exige dado que esta loja não tem (campo obrigatório de cupom sem oferta no contexto, mais slots de produto do que <top_products>) e o 2º ou o 3º resolve.
 - Razão de HISTÓRICO: <memoria> mostra que a 1ª indicação já ocupou posição equivalente no email anterior desta loja, ou vem se repetindo em outras lojas, e existe finalista igualmente adequada.
+- Razão de MARCA: o 1º choca com <perfil_marca> (anatomia que esta marca não usa) ou com <vocabulario> (a orientacao_copy dele exige o registro que a marca proíbe), e um finalista resolve.
+- Razão de OBJEÇÃO: <objecoes> é o que trava a compra desta loja. O Curador rankeou cada posição ISOLADA — só você vê o email inteiro, e portanto só você percebe quando NENHUMA posição responde à objeção que este email enfrenta. Nesse caso, troque a posição onde a troca custa menos ao arco por um finalista que responda (prova social, FAQ, garantia, comparativo, demonstração). Uma resposta bem colocada basta: não transforme o email inteiro em quebra de objeção.
 - Toda posição que tem finalistas recebe uma escolha. Descartar posição é decisão do sistema, não sua — nunca devolva posição em branco.
 - Nunca escolha um variant_id que não esteja entre os finalistas daquela posição.
 
@@ -304,6 +306,18 @@ export const DEFAULT_ASSEMBLER_USER = `<store>
 <decisao_do_estruturador>
 {{estruturador_decisao}}
 </decisao_do_estruturador>
+
+<perfil_marca>
+{{briefing_marca}}
+</perfil_marca>
+
+<objecoes>
+{{objecoes}}
+</objecoes>
+
+<vocabulario>
+{{vocabulario}}
+</vocabulario>
 
 <top_products>
 {{top_products}}
@@ -1134,6 +1148,13 @@ export async function assembleStoreReference(
       input.estruturadorDecisao,
       "(sem decisão do Estruturador nesta geração — siga o outline)",
     ),
+    // Os mesmos blocos da loja que o Curador recebeu (27/08). A escolha
+    // FINAL é onde marca e objeção se decidem de verdade: o Curador rankeia
+    // posição a posição, isolada; só o Montador vê se o email INTEIRO
+    // responde à objeção e se a composição soa como esta marca.
+    briefing_marca: input.perfilMarca,
+    objecoes: input.objecoes,
+    vocabulario: input.vocabulario,
     top_products: renderTopProducts(input.topProducts),
     // Mesma memória que o Curador recebeu — carregada uma vez, sem query
     // nova. É insumo da razão de HISTÓRICO da escolha final.
@@ -1179,6 +1200,9 @@ export async function assembleStoreReference(
       cls: "upstream",
       valor: estruturadorOn ? "servida (papéis por posição + fio)" : "(sem decisão nesta geração)",
     },
+    { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
+    { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
+    { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
     { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },
     { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
   ]

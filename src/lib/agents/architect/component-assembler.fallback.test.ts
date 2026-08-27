@@ -771,16 +771,25 @@ describe("contrato de telemetria", () => {
         { name: "EnergySave Pro", price: 199, image_url: "", url: "https://innovabay.site/products/energysave" },
       ],
     })
-    const segs = (runOf("assembler_chooser").promptSegments ?? []) as Array<
-      Record<string, unknown>
-    >
     // Segmentos nulos = guard reprovou; aqui já seria [] e o find falharia.
-    const daLoja = segs.filter((sg) => sg.cls === "loja")
-    const texto = daLoja.map((sg) => String(sg.texto ?? "")).join("\n")
-    expect(texto).toContain("PERFIL-DA-MARCA")
-    expect(texto).toContain("desconfia de anúncio bonito")
-    expect(texto).toContain("Evitar: jornada")
-    expect(texto).toContain("https://innovabay.site/products/energysave")
+    const daLoja = (agent: string) =>
+      ((runOf(agent).promptSegments ?? []) as Array<Record<string, unknown>>)
+        .filter((sg) => sg.cls === "loja")
+        .map((sg) => String(sg.texto ?? ""))
+        .join("\n")
+
+    // O Montador recebe os mesmos quatro: é nele que a escolha FINAL se
+    // decide, e é o único que vê o email inteiro para julgar se alguma
+    // posição responde à objeção.
+    for (const agent of ["assembler_chooser", "assembler"]) {
+      const texto = daLoja(agent)
+      expect(texto, `${agent} sem perfil da marca`).toContain("PERFIL-DA-MARCA")
+      expect(texto, `${agent} sem objeções`).toContain("desconfia de anúncio bonito")
+      expect(texto, `${agent} sem vocabulário`).toContain("Evitar: jornada")
+      expect(texto, `${agent} sem link de produto`).toContain(
+        "https://innovabay.site/products/energysave",
+      )
+    }
   })
 
   it("Curador falhando grava a proveniência do mesmo jeito", async () => {
