@@ -26,6 +26,7 @@
 import { after } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import type { InputSummaryItem } from "./shared/prompt-provenance"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -333,6 +334,22 @@ export async function runCopyChainInProcess(
 
     const inputVars = buildInputVars(ctx, flowType, emailNumber, blocks)
 
+    // Proveniência (migration 20261085): este fallback é LLM de verdade
+    // (LangChain) e não gravava prompt nenhum — quando a copy do n8n falha e
+    // ele assume, era o único trecho do pipeline sem rastro do que entrou.
+    // O template é LangChain (`{var}` de chave única), montado no
+    // `createCopyChain`.
+    const fallbackInputSummary: InputSummaryItem[] = [
+      { rotulo: "Origem", cls: "sistema", valor: "fallback in-process (a copy do n8n não voltou)" },
+      { rotulo: "Email", cls: "sistema", valor: `${flowType} #${emailNumber}` },
+      { rotulo: "Blocos a preencher", cls: "upstream", valor: `${blocks.length} bloco(s)` },
+      {
+        rotulo: "Contexto da loja",
+        cls: "loja",
+        valor: `${Object.keys(inputVars).length} variáveis de contexto`,
+      },
+    ]
+
     const chain = createCopyChain({
       model,
       temperature,
@@ -361,6 +378,8 @@ export async function runCopyChainInProcess(
         agent: "copy",
         status: "error",
         model,
+        renderedPrompt: `${systemPrompt}\n\n${JSON.stringify(inputVars, null, 2)}`,
+        inputSummary: fallbackInputSummary,
         rawOutput: rawOutput.slice(0, 2000),
         durationMs: chainDuration,
         errorMessage: "parse_failed",
@@ -433,6 +452,8 @@ export async function runCopyChainInProcess(
       agentConfigId: cfg?.id,
       status: "success",
       model,
+      renderedPrompt: `${systemPrompt}\n\n${JSON.stringify(inputVars, null, 2)}`,
+      inputSummary: fallbackInputSummary,
       rawOutput: rawOutput.slice(0, 2000),
       parsedOutput: {
         subject: parsed.subject,

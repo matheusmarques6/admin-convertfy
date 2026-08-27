@@ -21,7 +21,10 @@
  * Puro (zero I/O) — testável.
  */
 
-import type { PromptSegment } from "../shared/prompt-provenance"
+import type {
+  InputSummaryItem,
+  PromptSegment,
+} from "../shared/prompt-provenance"
 
 export interface StepUsage {
   tokensInput: number
@@ -35,6 +38,8 @@ export interface StepUsage {
    * de ver se o que entrou estava certo e o modelo é que errou.
    */
   promptSegments?: PromptSegment[] | null
+  /** A Entrada estruturada do step — vale no erro tanto quanto no sucesso. */
+  inputSummary?: InputSummaryItem[] | null
 }
 
 const KEY = "__cfyStepUsage"
@@ -78,6 +83,9 @@ export function usageOf(err: unknown): StepUsage | null {
     // some em silêncio — o modo de falha que esta função já teve de campo.
     ...(Array.isArray(rec.promptSegments)
       ? { promptSegments: rec.promptSegments as PromptSegment[] }
+      : {}),
+    ...(Array.isArray(rec.inputSummary)
+      ? { inputSummary: rec.inputSummary as InputSummaryItem[] }
       : {}),
   }
 }

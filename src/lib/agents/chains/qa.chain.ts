@@ -1002,6 +1002,10 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       issues_count: issues.length,
       issues_by_severity: issuesBySeverity,
       vision_ran: visionRan,
+      // As issues em si. Iam só para `email_flow_emails.qa_issues`, o que
+      // deixava a run com o número e sem o motivo — para saber POR QUE o
+      // email reprovou era preciso abrir outra tabela.
+      issues: issues.slice(0, 40),
     },
   }).catch(() => {})
 

@@ -183,6 +183,8 @@ Mecânica comum aos 4 steps: config própria em `email_agent_configs` (seed
 ## Telemetria e custo
 
 - Cada run em `email_generation_runs`: agente, modelo, status, `rendered_prompt`, `raw_output`, `parsed_output`, tokens in/out, `cost_cents` (real via OpenRouter), `duration_ms`, `retry_count`.
+- **Proveniência** (migration 20261085): `prompt_segments` guarda o MESMO prompt cortado por origem — template do agente · loja · biblioteca · saída de agente anterior · curadoria · vault · derivado por código — e `input_summary` guarda a Entrada estruturada. A marcação nasce na montagem (quem monta a var declara de onde ela veio) e cada call site confere a **recomposição byte-igual** antes de gravar: divergiu, grava o prompt sem marcação em vez de mentir. Segmento grande (o catálogo do Curador, ~120k) vira `{ref, sha8}` e a UI resolve por `GET /api/admin/agents/prompt-segment`.
+- **Estúdio de Agentes** (`/admin/agents`, abas Execuções e Teste): drill-down por nó com **Entrada** (itens com chip de origem), **Prompt** (blocos coloridos por proveniência, SYSTEM separado de USER) e **Saída** legível por agente — ranking do Curador, escolhas do Montador, blocos do Blueprint, assunto, embasamento do Estruturador, campo a campo dos merges, relatório da hero, a imagem gerada e o veredito do QA. Runs antigas caem no texto plano.
 - `email_flow_emails.total_cost_cents` = soma dos runs do email (rollup automático).
 - Página **/admin/settings/email-generation-logs**: resumo por agente, linha sintética **"Montagem HTML"** (soma da cadeia + legados), participação no custo, drawer por run com Prompt renderizado / Output bruto / Output parseado.
 - Por batch: `GET /api/admin/stores/[id]/generation-status/[batchId]` (totalCost/totalDuration/tokens).

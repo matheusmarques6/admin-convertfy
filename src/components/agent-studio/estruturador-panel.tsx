@@ -26,6 +26,8 @@ import {
   CodeBlock,
   OUT_BODY,
   OUT_LABEL,
+  OutCard,
+  OutItem,
   OutPill,
   OutSection,
   StudioBtn,
@@ -80,9 +82,7 @@ interface FeedbackRow {
 const label = OUT_LABEL
 const body = OUT_BODY
 const Sec = OutSection
-const Pill = ({ text, tone }: { text: string; tone: "neut" | "warn" | "info" }) => (
-  <OutPill text={text} tone={tone} />
-)
+const Pill = OutPill
 
 export function EstruturadorEmbasamento({ output }: { output: unknown }) {
   const o = (output ?? {}) as EmbasamentoView
@@ -94,15 +94,7 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
     : []
 
   return (
-    <div
-      style={{
-        marginBottom: 12,
-        border: `1px solid ${C.border}`,
-        borderRadius: 8,
-        padding: "12px 14px",
-        background: C.white,
-      }}
-    >
+    <OutCard>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
         {o._validador?.shadow === true && <Pill text="shadow — não consumido" tone="warn" />}
         {o._validador?.shadow === false && <Pill text="consumido pelo pipeline" tone="info" />}
@@ -130,15 +122,7 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
         <Sec title={`Estrutura (${estrutura.length} posições)`}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {estrutura.map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  border: `1px solid ${C.g100}`,
-                  borderRadius: 7,
-                  padding: "8px 10px",
-                  background: C.g50,
-                }}
-              >
+              <OutItem key={i}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span style={{ ...body, fontWeight: 700, ...TNUM }}>{i + 1}.</span>
                   <span style={{ ...body, fontWeight: 700 }}>{p.section ?? "?"}</span>
@@ -155,7 +139,7 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
                     <strong>Porquê:</strong> {p.porque}
                   </div>
                 )}
-              </div>
+              </OutItem>
             ))}
           </div>
         </Sec>
@@ -212,7 +196,7 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
           </div>
         </Sec>
       )}
-    </div>
+    </OutCard>
   )
 }
 

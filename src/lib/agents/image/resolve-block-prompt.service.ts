@@ -16,6 +16,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildImagePromptVars } from "@/lib/agents/email-generation.service"
+import { buildImagePromptWithSegments } from "@/lib/agents/image/prompt-vars-builder"
+import type { PromptSegment } from "@/lib/agents/shared/prompt-provenance"
 import { loadTopProducts } from "@/lib/agents/top-products"
 import { loadEffectiveBlueprint } from "@/lib/agents/architect/blueprint-loader"
 import {
@@ -74,6 +76,12 @@ export function buildImageAlt(
 export interface BlockPromptResolution {
   /** Prompt final renderizado (master + aspect appendix + fallback desc se aplicavel). */
   prompt: string
+  /**
+   * O mesmo prompt marcado por ORIGEM (migration 20261085) — quem grava a
+   * run (regenerate manual, estúdio) passa adiante. null quando o corte não
+   * reproduz o prompt.
+   */
+  promptSegments: PromptSegment[] | null
   /** Vars UPPERCASE que entraram no template, truncadas pra 200 chars cada (debug-only). */
   vars: Record<string, string>
   /** Aspect ratio resolvido (blueprint > matriz > default). */
@@ -369,30 +377,41 @@ export async function resolveBlockPrompt(
   })
 
   // ── 7. Render do template (DB-config se existe, fallback hardcoded) ─
-  const basePrompt = imageConfig
-    ? renderImageTemplate(imageConfig.user_template, promptVars)
-    : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
-
   const geometryInstruction = customDims
     ? dimsInstructionForPrompt(customDims.width, customDims.height, overlay)
     : aspectInstructionForPrompt(aspect, overlay)
-  let prompt = `${basePrompt}\n\n${geometryInstruction}`
 
-  // Se caiu em fallback text2img + temos top product, adicionar
-  // descricao rica (mesma logica do phase2-runner).
-  if (
+  // A montagem (template + geometria + apêndices) e a segmentação por
+  // origem vivem em `buildImagePromptWithSegments` — a MESMA função que o
+  // phase2-runner usa. Era aqui que o "SYNC CONTRACT" do cabeçalho pedia
+  // atenção manual; agora há um caminho só.
+  const fallbackDescription =
     (modeSource === "fallback_text2img_disabled" ||
       modeSource === "fallback_text2img_no_product") &&
     topProducts[0]?.name
-  ) {
-    prompt += `\n\n${productRefDescriptionFallback({
-      productName: topProducts[0].name,
-      productImageUrl: topProductImageUrl,
-    })}`
-  }
+      ? productRefDescriptionFallback({
+          productName: topProducts[0].name,
+          productImageUrl: topProductImageUrl,
+        })
+      : null
+
+  const montado = buildImagePromptWithSegments({
+    template: imageConfig?.user_template ?? DEFAULT_IMAGE_PROMPT_TEMPLATE,
+    vars: promptVars,
+    fromConfig: Boolean(imageConfig),
+    geometry: geometryInstruction,
+    fallbackDescription,
+    // NOTA: o phase2-runner acrescenta AQUI a instrução de fidelidade ao
+    // produto anexado (`productRefFidelityInstruction`) em modo product_ref;
+    // este caminho nunca a aplicou. A divergência é anterior a esta
+    // refatoração e mudá-la altera o prompt da regeneração manual — fica
+    // registrada, não corrigida de lado.
+  })
+  const prompt = montado.prompt
 
   return {
     prompt,
+    promptSegments: montado.segments,
     vars: truncateVarsForDebug(promptVars),
     aspect,
     mode,

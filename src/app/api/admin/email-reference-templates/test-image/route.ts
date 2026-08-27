@@ -15,7 +15,18 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { buildImagePromptVars } from "@/lib/agents/email-generation.service"
-import { generateEmailImage, renderImagePrompt } from "@/lib/agents/chains/image.chain"
+import {
+  generateEmailImage,
+  renderImagePrompt,
+  OPENROUTER_IMAGE_MODEL,
+} from "@/lib/agents/chains/image.chain"
+import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
+import {
+  buildSegmentedPrompt,
+  type InputSummaryItem,
+} from "@/lib/agents/shared/prompt-provenance"
+import { IMAGE_VAR_ORIGINS } from "@/lib/agents/image/prompt-vars-builder"
+import { randomUUID } from "crypto"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -35,7 +46,7 @@ const bodySchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     const body = await request.json()
@@ -80,17 +91,79 @@ export async function POST(request: NextRequest) {
     })
 
     const rendered = renderImagePrompt(image_prompt, vars)
+    // O prompt de teste é digitado na aba Referências e usa o dialeto de
+    // chave única (`{VAR}`), como o template in-code.
+    const seg = buildSegmentedPrompt(image_prompt, vars, IMAGE_VAR_ORIGINS, {
+      parte: "user",
+      dialeto: "single",
+    })
+    const promptSegments =
+      seg.segments && seg.prompt === rendered ? seg.segments : null
+    const inputSummary: InputSummaryItem[] = [
+      { rotulo: "Origem", cls: "sistema", valor: "teste de prompt na aba Referências" },
+      {
+        rotulo: "Prompt digitado",
+        cls: "agente",
+        valor: `${image_prompt.length.toLocaleString("pt-BR")} chars`,
+      },
+      {
+        rotulo: "Contexto da loja",
+        cls: "loja",
+        valor: `${(storeRes.data as { store_name?: string }).store_name ?? store_id}${brand ? " · identidade visual" : ""}`,
+      },
+      {
+        rotulo: "Produtos",
+        cls: "loja",
+        valor: `${topProducts.length} produto(s) no contexto`,
+      },
+    ]
     log.info("test-image.start", { store_id, prompt_length: rendered.length })
 
-    const url = await generateEmailImage(rendered, store_id)
+    const t0 = Date.now()
+    try {
+      const url = await generateEmailImage(rendered, store_id)
+      log.info("test-image.done", { store_id, url })
 
-    log.info("test-image.done", { store_id, url })
+      // Esta rota gera imagem PAGA. Até ago/2026 não gravava run nenhuma —
+      // o custo aparecia no provedor e não no relatório por agente.
+      await logGenerationRun({
+        storeId: store_id,
+        batchId: randomUUID(),
+        triggeredBy: user.id,
+        agent: "image",
+        status: "success",
+        model: OPENROUTER_IMAGE_MODEL,
+        renderedPrompt: rendered,
+        promptSegments,
+        inputSummary,
+        inputVars: vars,
+        durationMs: Date.now() - t0,
+        parsedOutput: { imageUrl: url, trigger: "reference_template_test" },
+      }).catch(() => {})
 
-    return successResponse(request, {
-      url,
-      rendered_prompt: rendered,
-      vars_used: vars,
-    })
+      return successResponse(request, {
+        url,
+        rendered_prompt: rendered,
+        vars_used: vars,
+      })
+    } catch (err) {
+      await logGenerationRun({
+        storeId: store_id,
+        batchId: randomUUID(),
+        triggeredBy: user.id,
+        agent: "image",
+        status: "error",
+        model: OPENROUTER_IMAGE_MODEL,
+        errorMessage:
+          err instanceof Error ? err.message.slice(0, 500) : String(err),
+        renderedPrompt: rendered,
+        promptSegments,
+        inputSummary,
+        durationMs: Date.now() - t0,
+        parsedOutput: { trigger: "reference_template_test" },
+      }).catch(() => {})
+      throw err
+    }
   } catch (error) {
     log.error("test-image.error", error)
     return errorResponse(request, error, "test-image")

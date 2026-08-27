@@ -129,13 +129,41 @@ describe("buildSegmentedPrompt", () => {
     expect(recompose(segments!, { catalogo })).toBe(prompt)
   })
 
-  it("fail-open: template com block helper devolve segments null", () => {
-    const { segments } = buildSegmentedPrompt(
-      "{{#if x}}a{{/if}}",
-      { x: "1" },
-      {},
-    )
-    expect(segments).toBeNull()
+  // Antes o block helper caía em fail-open (sem marcação nenhuma). Agora o
+  // bloco é resolvido pela MESMA função do renderer antes do corte — foi o
+  // que destravou o prompt do campaign_image, cheio de `{{#if}}`.
+  it("resolve {{#if}} LIGADO e recompõe byte-igual", () => {
+    const tpl = "Antes.{{#if INCLUDE_X}} X={{X}}.{{/if}} Depois."
+    const vars = { INCLUDE_X: "true", X: "valor" }
+    const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
+      X: { cls: "loja", rotulo: "Loja" },
+    })
+    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).toContain("X=valor")
+    expect(recompose(segments!)).toBe(prompt)
+    expect(segments!.find((s) => s.texto === "valor")?.cls).toBe("loja")
+  })
+
+  it("resolve {{#if}} DESLIGADO — o bloco some, a recomposição bate", () => {
+    const tpl = "Antes.{{#if INCLUDE_X}} X={{X}}.{{/if}} Depois."
+    const vars = { INCLUDE_X: "", X: "valor" }
+    const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
+      X: { cls: "loja", rotulo: "Loja" },
+    })
+    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).not.toContain("valor")
+    expect(recompose(segments!)).toBe(prompt)
+  })
+
+  it("resolve {{#case}}/{{#when}} e marca o ramo escolhido", () => {
+    const tpl = `{{#case flow_type}}{{#when "welcome"}}Boas-vindas de {{brand}}.{{/when}}{{#when "upsell"}}Upsell.{{/when}}{{/case}}`
+    const vars = { flow_type: "welcome", brand: "Innova" }
+    const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
+      brand: { cls: "loja", rotulo: "Loja" },
+    })
+    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).toBe("Boas-vindas de Innova.")
+    expect(recompose(segments!)).toBe(prompt)
   })
 
   it("funde literais adjacentes separados por var vazia", () => {

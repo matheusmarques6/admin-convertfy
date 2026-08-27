@@ -33,6 +33,24 @@ import {
   finishGenerationRun,
   startGenerationRun,
 } from "@/lib/agents/callbacks/telemetry.callback"
+import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
+import {
+  buildSegmentedPrompt,
+  concatSegments,
+  type InputSummaryItem,
+  type SegmentOrigin,
+} from "@/lib/agents/shared/prompt-provenance"
+
+/** Origem de cada var do prompt de teste de variante. */
+const COMPONENT_TEST_ORIGINS: Record<string, SegmentOrigin> = {
+  variant_name: { cls: "biblioteca", rotulo: "Variante — email_component_variants" },
+  section: { cls: "biblioteca", rotulo: "Tipo de seção da variante" },
+  when_use: { cls: "biblioteca", rotulo: "Quando usar — cadastro da variante" },
+  copy_guidance: { cls: "biblioteca", rotulo: "Orientação de copy — cadastro da variante" },
+  output_schema_json: { cls: "biblioteca", rotulo: "output_schema da variante" },
+  store_context: { cls: "loja", rotulo: "Contexto da loja — client_stores" },
+  briefing: { cls: "sistema", rotulo: "Briefing digitado no teste" },
+}
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 
 const log = logger.child("ComponentTest")
@@ -171,6 +189,54 @@ export async function POST(
       briefing: parsed.briefing,
     }
 
+    // Proveniência (migration 20261085): esta run nunca gravou prompt
+    // nenhum — o render acontecia dentro do `invokeAgent` e ficava só lá.
+    const segUser = buildSegmentedPrompt(
+      config.user_template,
+      vars,
+      COMPONENT_TEST_ORIGINS,
+      { parte: "user" },
+    )
+    const renderedUser = renderImageTemplate(config.user_template, vars)
+    const renderedPrompt = renderedUser
+    const promptSegments =
+      segUser.segments && segUser.prompt === renderedUser
+        ? concatSegments(
+            [
+              {
+                cls: "agente" as const,
+                rotulo: "Template do agente",
+                texto: config.system_prompt,
+                chars: config.system_prompt.length,
+                parte: "system" as const,
+              },
+            ],
+            segUser.segments,
+          )
+        : null
+    const inputSummary: InputSummaryItem[] = [
+      {
+        rotulo: "Variante testada",
+        cls: "biblioteca",
+        valor: `${variant.name} (${sectionLabel})`,
+      },
+      {
+        rotulo: "Contrato de campos",
+        cls: "biblioteca",
+        valor: `${schema.length} campo(s) do output_schema`,
+      },
+      {
+        rotulo: "Contexto da loja",
+        cls: "loja",
+        valor: storeContext ? "servido" : "(sem loja selecionada)",
+      },
+      {
+        rotulo: "Briefing informado no teste",
+        cls: "sistema",
+        valor: parsed.briefing || "(vazio)",
+      },
+    ]
+
     // Telemetria só quando há loja (store_id é NOT NULL em email_generation_runs).
     let runId = ""
     if (parsed.store_id) {
@@ -182,6 +248,9 @@ export async function POST(
         agentConfigId: cfgRow?.id,
         model: config.model,
         inputVars: { variant_id: id, briefing: parsed.briefing },
+        renderedPrompt,
+        promptSegments,
+        inputSummary,
       })
     }
 
@@ -211,6 +280,9 @@ export async function POST(
           agent: "component_test",
           agentConfigId: cfgRow?.id,
           status: "success",
+          renderedPrompt,
+          promptSegments,
+          inputSummary,
           model: config.model,
           inputVars: { variant_id: id, briefing: parsed.briefing },
           rawOutput: res.raw.slice(0, 8000),
@@ -240,6 +312,9 @@ export async function POST(
           agent: "component_test",
           agentConfigId: cfgRow?.id,
           status: "error",
+          renderedPrompt,
+          promptSegments,
+          inputSummary,
           model: config.model,
           errorMessage: err instanceof Error ? err.message : String(err),
           durationMs: Date.now() - t0,

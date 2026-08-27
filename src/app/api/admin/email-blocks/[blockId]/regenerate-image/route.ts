@@ -32,7 +32,11 @@ import {
 import { corsHeaders } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { randomUUID } from "crypto"
-import { resolveBlockPrompt } from "@/lib/agents/image/resolve-block-prompt.service"
+import {
+  resolveBlockPrompt,
+  type BlockPromptResolution,
+} from "@/lib/agents/image/resolve-block-prompt.service"
+import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import {
   generateEmailImage,
   OPENROUTER_IMAGE_MODEL,
@@ -47,12 +51,41 @@ const RATE_LIMIT_WINDOW_MS = 30_000
 const PROMPT_SNAPSHOT_LIMIT = 2_000
 const IMAGE_MODEL_LABEL = OPENROUTER_IMAGE_MODEL
 
+/** A Entrada estruturada da regeneração manual — o que entrou nesta imagem. */
+function regenInputSummary(r: BlockPromptResolution): InputSummaryItem[] {
+  return [
+    {
+      rotulo: "Bloco",
+      cls: "upstream",
+      valor: `${r.blockType}${r.blockLabel ? ` — ${r.blockLabel}` : ""}`,
+    },
+    { rotulo: "Disparo", cls: "sistema", valor: "regeneração manual pelo workspace" },
+    {
+      rotulo: "Modo",
+      cls: "sistema",
+      valor: r.mode === "product_ref" ? "foto real do produto anexada" : "text2img",
+    },
+    { rotulo: "Proporção", cls: "sistema", valor: r.aspect },
+    {
+      rotulo: "Produto de referência",
+      cls: "loja",
+      valor: r.topProductImageUrl ?? "(sem foto de produto)",
+    },
+  ]
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ blockId: string }> },
 ) {
+  // Fora do try: o catch precisa deles para registrar a FALHA da geração —
+  // até aqui um erro do modelo não deixava rastro nenhum na telemetria.
+  let resolution: BlockPromptResolution | null = null
+  let blockIdForLog = ""
+  const tStart = Date.now()
   try {
     const { blockId } = await context.params
+    blockIdForLog = blockId
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
@@ -66,7 +99,7 @@ export async function POST(
         : null
 
     // 1. Resolve prompt + contexto (carrega bloco, valida existencia)
-    const resolution = await resolveBlockPrompt(blockId, fieldKey)
+    resolution = await resolveBlockPrompt(blockId, fieldKey)
 
     // Rate limit POR SLOT quando há slot: o carimbo do bloco bloquearia as
     // outras 7 fotos por 30s só porque uma foi regerada.
@@ -175,7 +208,12 @@ export async function POST(
       agent: "image",
       status: "success",
       model: IMAGE_MODEL_LABEL,
-      renderedPrompt: promptSnapshot,
+      // O prompt INTEIRO na run. O snapshot de 2.000 chars continua indo
+      // para `email_blocks.image_last_prompt` (outro consumidor, com outro
+      // limite) — mas a telemetria não tem por que guardar meio prompt.
+      renderedPrompt: resolution.prompt,
+      promptSegments: resolution.promptSegments,
+      inputSummary: regenInputSummary(resolution),
       durationMs,
       parsedOutput: {
         blockId,
@@ -198,6 +236,26 @@ export async function POST(
     })
   } catch (error) {
     log.error("regenerate-image error", { error })
+    // A falha vira run: sem isto, uma regeneração que quebra no modelo
+    // some — o custo aparece no provedor e não no relatório.
+    if (resolution) {
+      await logGenerationRun({
+        storeId: resolution.storeId,
+        flowId: resolution.flowId ?? undefined,
+        emailId: resolution.emailId,
+        batchId: randomUUID(),
+        agent: "image",
+        status: "error",
+        model: IMAGE_MODEL_LABEL,
+        errorMessage:
+          error instanceof Error ? error.message.slice(0, 500) : String(error),
+        renderedPrompt: resolution.prompt,
+        promptSegments: resolution.promptSegments,
+        inputSummary: regenInputSummary(resolution),
+        durationMs: Date.now() - tStart,
+        parsedOutput: { blockId: blockIdForLog, trigger: "manual_block_regen" },
+      }).catch(() => {})
+    }
     return errorResponse(request, error, "regenerate-image")
   }
 }

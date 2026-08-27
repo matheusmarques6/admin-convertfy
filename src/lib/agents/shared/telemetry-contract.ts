@@ -191,6 +191,17 @@ export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
     input: true,
     motivo: "casamento mecânico campo↔token: a Entrada diz quais imagens e quais tokens entraram na conta",
   },
+  // ── Fora do pipeline de email ──
+  campaign_image: {
+    prompt: true,
+    input: true,
+    motivo: "o prompt vive no banco e é gated por `{{#if INCLUDE_*}}`: sem marcação não se sabe quais campos de contexto o operador ligou naquela geração",
+  },
+  component_test: {
+    prompt: true,
+    input: true,
+    motivo: "teste ad-hoc de variante que nunca gravou prompt: o resultado só é julgável ao lado do que a variante prometeu (schema, quando_usar, orientação)",
+  },
 }
 
 /**

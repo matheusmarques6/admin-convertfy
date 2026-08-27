@@ -138,7 +138,25 @@ export function renderImageTemplate(
   template: string,
   vars: Record<string, VarValue>,
 ): string {
-  const afterCase = resolveCaseBlocks(template, vars)
-  const afterIf = resolveIfBlocks(afterCase, vars)
-  return resolveSimpleVars(afterIf, vars)
+  return resolveSimpleVars(resolveBlockHelpers(template, vars), vars)
+}
+
+/**
+ * Só os passos ESTRUTURAIS (`{{#case}}` e `{{#if}}`), sem substituir as vars.
+ *
+ * Existe para a segmentação por proveniência
+ * (`shared/prompt-provenance.ts`): o cortador sabe cortar `{{var}}`, mas não
+ * sabe executar condicional. Pré-resolvendo os blocos com a MESMA função que
+ * o render usa, o template vira plano e o corte volta a ser exato — o trecho
+ * que sobreviveu ao condicional é template, e é assim que ele é marcado.
+ *
+ * A ordem aqui é a do render (case → if) porque é dela que o resultado
+ * depende; qualquer divergência apareceria no guard de recomposição do call
+ * site, que compara o prompt segmentado com o enviado.
+ */
+export function resolveBlockHelpers(
+  template: string,
+  vars: Record<string, VarValue>,
+): string {
+  return resolveIfBlocks(resolveCaseBlocks(template, vars), vars)
 }

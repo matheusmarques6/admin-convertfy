@@ -36,7 +36,13 @@ import { deriveCenario } from "./cenario-derivation"
 import { resolveNeutro } from "./neutro-resolution"
 import { deriveLogoStyle } from "./logo-style"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
-import type { SegmentOrigin } from "../shared/prompt-provenance"
+import {
+  buildSegmentedPrompt,
+  type PromptSegment,
+  type SegmentOrigin,
+} from "../shared/prompt-provenance"
+import { renderImageTemplate } from "./template-renderer"
+import { renderImagePrompt } from "../chains/image.chain"
 import { deriveColorRoles } from "@/lib/agents/html/color-roles"
 import { deriveShotArchetype } from "./shot-archetype"
 import { buildImageSlots } from "./build-image-slots"
@@ -394,4 +400,83 @@ export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   image_overlay_reserve_bottom: IMG_CODIGO,
   product_ref: IMG_CODIGO,
   INSTRUCAO_ADICIONAL: { cls: "loja", rotulo: "Instrução do operador no bloco" },
+}
+
+/**
+ * O prompt de imagem montado E segmentado, num lugar só.
+ *
+ * A montagem é sempre a mesma — template renderizado + geometria + os
+ * apêndices condicionais — e vivia duplicada entre o `phase2-runner` e o
+ * `resolve-block-prompt.service` (que declara um "SYNC CONTRACT" no
+ * cabeçalho justamente por isso). Duplicar a segmentação também seria o
+ * terceiro lugar a sair de sincronia.
+ *
+ * Dois dialetos: config do banco usa `{{var}}` (renderImageTemplate, com
+ * `{{#if}}`/`{{#case}}`), o default in-code usa `{var}` (renderImagePrompt).
+ * `fromConfig` decide qual.
+ *
+ * O guard é a recomposição: os segmentos só saem quando reproduzem o prompt
+ * final byte a byte — senão `segments: null` e a run grava o texto puro.
+ */
+export function buildImagePromptWithSegments(input: {
+  template: string
+  vars: Record<string, string>
+  /** true = template veio de email_agent_configs (dialeto `{{var}}`). */
+  fromConfig: boolean
+  /** Instrução de proporção/dimensões calculada pelo código. */
+  geometry: string
+  /** Descrição do produto quando o anexo não pôde ir (fallback text2img). */
+  fallbackDescription?: string | null
+  /** Instrução de fidelidade ao produto anexado (modo product_ref). */
+  fidelity?: string | null
+}): { prompt: string; segments: PromptSegment[] | null } {
+  const base = input.fromConfig
+    ? renderImageTemplate(input.template, input.vars)
+    : renderImagePrompt(input.template, input.vars)
+
+  const seg = buildSegmentedPrompt(input.template, input.vars, IMAGE_VAR_ORIGINS, {
+    parte: "user",
+    dialeto: input.fromConfig ? "double" : "single",
+  })
+
+  const apendices: PromptSegment[] = []
+  let prompt = `${base}\n\n${input.geometry}`
+  apendices.push({
+    cls: "sistema",
+    rotulo: "Geometria — proporção/dimensões calculadas pelo código",
+    texto: `\n\n${input.geometry}`,
+    chars: input.geometry.length + 2,
+    parte: "user",
+  })
+
+  if (input.fallbackDescription) {
+    prompt += `\n\n${input.fallbackDescription}`
+    apendices.push({
+      cls: "sistema",
+      rotulo: "Descrição do produto — fallback text2img (o anexo não pôde ir)",
+      texto: `\n\n${input.fallbackDescription}`,
+      chars: input.fallbackDescription.length + 2,
+      parte: "user",
+    })
+  }
+
+  if (input.fidelity) {
+    prompt += `\n\n${input.fidelity}`
+    apendices.push({
+      cls: "agente",
+      rotulo: "Fidelidade ao produto anexado — instrução in-code",
+      texto: `\n\n${input.fidelity}`,
+      chars: input.fidelity.length + 2,
+      parte: "user",
+    })
+  }
+
+  const candidato =
+    seg.segments && seg.prompt === base ? [...seg.segments, ...apendices] : null
+  const segments =
+    candidato && candidato.map((sg) => sg.texto ?? "").join("") === prompt
+      ? candidato
+      : null
+
+  return { prompt, segments }
 }

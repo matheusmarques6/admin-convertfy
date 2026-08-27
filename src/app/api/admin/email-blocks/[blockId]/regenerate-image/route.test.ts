@@ -69,6 +69,11 @@ vi.mock("@/lib/agents/image/resolve-block-prompt.service", () => ({
 const generateEmailImageMock = vi.fn()
 vi.mock("@/lib/agents/chains/image.chain", () => ({
   generateEmailImage: (...args: unknown[]) => generateEmailImageMock(...args),
+  // A rota importa a constante para rotular o modelo na telemetria; sem ela
+  // no mock, os 5 testes deste arquivo quebravam na importação.
+  OPENROUTER_IMAGE_MODEL: "google/gemini-3.1-flash-image",
+  DEFAULT_IMAGE_PROMPT_TEMPLATE: "prompt template",
+  renderImagePrompt: (t: string) => t,
 }))
 
 const logGenerationRunMock = vi.fn().mockResolvedValue("run-1")

@@ -1834,6 +1834,43 @@ copy_ready → rendering → image_done → qa_running → ready/failed`. A cade
 
 ---
 
+## Proveniência do prompt (migration 20261085, ago/2026)
+
+Toda run de agente grava, além do `rendered_prompt`, o MESMO prompt **cortado
+por origem** (`prompt_segments`) e a Entrada estruturada (`input_summary`). O
+Estúdio (`/admin/agents`) renderiza direto disso: blocos coloridos por
+classe — `agente` (template) · `loja` · `biblioteca` · `upstream` (saída de
+agente anterior) · `curadoria` · `vault` · `sistema` (derivado por código).
+
+**Regra ao escrever ou mexer num agente**: a origem é declarada AO LADO de
+quem monta a var — `HERO_VAR_ORIGINS`/`TEXT_FORMAT_VAR_ORIGINS`/
+`COLOR_FORMAT_VAR_ORIGINS` em `html/format-context.ts`, `IMAGE_VAR_ORIGINS`
+em `image/prompt-vars-builder.ts`, e assim por diante. Quem sabe de onde o
+valor veio é o builder, não o chain; re-derivar depois é o modo de falha que
+isto elimina (foi preciso reconstruir os prompts das runs de 24/08 à mão).
+
+**O guard é a recomposição, não a confiança**: `buildSegmentedPrompt`
+(`shared/prompt-provenance.ts`) devolve `{prompt, segments}`, e o call site
+compara `segments` com o prompt REALMENTE enviado antes de gravar. Divergiu →
+grava sem marcação. Isso cobre os três dialetos de template que convivem:
+`{{var}}` (renderImageTemplate, com `{{#if}}`/`{{#case}}` pré-resolvidos por
+`resolveBlockHelpers`), `{var}` (renderImagePrompt, prompt de imagem in-code)
+e o renderer próprio do `qa.chain`.
+
+**Armadilhas**: (a) campo novo no `finishGenerationRun` usa `?? undefined` —
+`?? null` apagaria o que o start gravou; (b) o `usageOf`
+(`chains/step-usage.ts`), que resgata dados de um erro, **copia campo a
+campo**: o que não for copiado atravessa o guard e some; (c) segmento acima
+de ~16k vira `{ref, sha8}` (só o catálogo do Curador hoje) e a UI resolve por
+`GET /api/admin/agents/prompt-segment`, conferindo o hash.
+
+Contrato em `shared/telemetry-contract.ts` (`PROVENANCE_CONTRACT` +
+`missingProvenance`): perder a proveniência vira falha de teste, não run
+verde. Documentação:
+`docs/architecture/plano-telemetria-proveniencia.md`.
+
+---
+
 ## Hub de Geração de Emails (redesign jul/2026 — maquete EG)
 
 O hub `/admin/settings/email-generation` (8 abas) foi redesenhado conforme a

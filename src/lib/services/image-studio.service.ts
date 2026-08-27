@@ -18,6 +18,11 @@ import { NotFoundError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { generateEmailImage, type RefImage } from "@/lib/agents/chains/image.chain"
 import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
+import {
+  buildSegmentedPrompt,
+  type InputSummaryItem,
+} from "@/lib/agents/shared/prompt-provenance"
+import { IMAGE_VAR_ORIGINS } from "@/lib/agents/image/prompt-vars-builder"
 import { buildImagePromptVars } from "@/lib/agents/image/prompt-vars-builder"
 import { loadTopProducts } from "@/lib/agents/top-products"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
@@ -820,6 +825,21 @@ async function generateOneImage(
 
     const prompt = renderImageTemplate(config.user_template, finalVars)
 
+    // Proveniência (migration 20261085): o template deste agente vive no
+    // banco e é cheio de `{{#if INCLUDE_*}}` — os blocos são resolvidos
+    // antes do corte, e o guard confere que os segmentos reproduzem o
+    // prompt enviado.
+    const segPrompt = buildSegmentedPrompt(
+      config.user_template,
+      finalVars,
+      IMAGE_VAR_ORIGINS,
+      { parte: "user" },
+    )
+    const promptSegments =
+      segPrompt.segments && segPrompt.prompt === prompt
+        ? segPrompt.segments
+        : null
+
     t0 = Date.now()
     runId = await safeLogRun({
       storeId,
@@ -841,6 +861,34 @@ async function generateOneImage(
         mode,
         refs_sent: refs.map((r) => ({ label: r.label, url: r.url })),
       },
+      promptSegments,
+      inputSummary: [
+        { rotulo: "Origem", cls: "sistema", valor: "Estúdio de Imagens" },
+        { rotulo: "Formato", cls: "sistema", valor: String(batch.format) },
+        {
+          rotulo: "Modo",
+          cls: "sistema",
+          valor: mode === "product_ref" ? "com referência anexada" : "text2img",
+        },
+        {
+          rotulo: "Referências enviadas",
+          cls: "loja",
+          valor: refs.length > 0
+            ? refs.map((r) => r.label).join(", ")
+            : "(nenhuma)",
+        },
+        {
+          rotulo: "Contexto textual (opt-in)",
+          cls: "loja",
+          valor: [
+            INCLUDE_NICHO ? "nicho" : null,
+            INCLUDE_PUBLICO ? "público" : null,
+            INCLUDE_TOM ? "tom de voz" : null,
+            INCLUDE_MOEDA ? "moeda/idioma" : null,
+            INCLUDE_HEADLINE ? "headline" : null,
+          ].filter(Boolean).join(", ") || "(nenhum campo ligado)",
+        },
+      ] as InputSummaryItem[],
       renderedPrompt: prompt,
     })
 

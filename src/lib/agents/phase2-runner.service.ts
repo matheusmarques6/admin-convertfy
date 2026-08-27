@@ -152,7 +152,7 @@ import {
   resolveCostCents,
 } from "./callbacks/telemetry.callback"
 import { buildImagePromptVars } from "./email-generation.service"
-import { IMAGE_VAR_ORIGINS } from "./image/prompt-vars-builder"
+import { buildImagePromptWithSegments } from "./image/prompt-vars-builder"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
 import { runSlotWithRetry } from "./image/retry-slot"
 import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
@@ -803,6 +803,27 @@ export async function reuseImagesFromPreviousRuns(
  *   - `failed`: erro fatal (context_load_failed, image_failed)
  *   - `skipped`: status nao estava em `copy_ready` (idempotente)
  */
+/**
+ * Segmentos do prompt de avatar. O texto é in-code; o nome do autor vem da
+ * copy do n8n — separar os dois é o que diz, num avatar estranho, se o
+ * problema é o template ou o dado.
+ */
+function avatarSegments(prompt: string, author: string): PromptSegment[] | null {
+  const i = author ? prompt.indexOf(author) : -1
+  if (i < 0) {
+    return [
+      { cls: "agente", rotulo: "Template do avatar (in-code)", texto: prompt, chars: prompt.length, parte: "user" },
+    ]
+  }
+  const antes = prompt.slice(0, i)
+  const depois = prompt.slice(i + author.length)
+  return [
+    ...(antes ? [{ cls: "agente" as const, rotulo: "Template do avatar (in-code)", texto: antes, chars: antes.length, parte: "user" as const }] : []),
+    { cls: "upstream", rotulo: "Autor do depoimento — copy do n8n", texto: author, chars: author.length, parte: "user" },
+    ...(depois ? [{ cls: "agente" as const, rotulo: "Template do avatar (in-code)", texto: depois, chars: depois.length, parte: "user" as const }] : []),
+  ]
+}
+
 export async function runPhase2Image(
   params: RunPhase2Params,
 ): Promise<{ status: "image_done" | "failed" | "skipped" }> {
@@ -1048,6 +1069,19 @@ export async function runPhase2Image(
             model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
+            // O prompt do avatar é 100% in-code (`renderAvatarPrompt`), com
+            // o nome do autor interpolado — um segmento de agente e um da
+            // copy que veio do n8n.
+            promptSegments: avatarSegments(prompt, author),
+            inputSummary: [
+              {
+                rotulo: "Bloco",
+                cls: "upstream",
+                valor: `depoimento #${idx + 1} de ${(blk.label as string) ?? "testimonials"}`,
+              },
+              { rotulo: "Autor do depoimento", cls: "upstream", valor: author },
+              { rotulo: "Marca", cls: "loja", valor: brandName },
+            ] as InputSummaryItem[],
             tokensInput: imgMeta.tokensInput,
             tokensOutput: imgMeta.tokensOutput,
             costCents: imgMeta.costCents,
@@ -1078,6 +1112,19 @@ export async function runPhase2Image(
             model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
+            // O prompt do avatar é 100% in-code (`renderAvatarPrompt`), com
+            // o nome do autor interpolado — um segmento de agente e um da
+            // copy que veio do n8n.
+            promptSegments: avatarSegments(prompt, author),
+            inputSummary: [
+              {
+                rotulo: "Bloco",
+                cls: "upstream",
+                valor: `depoimento #${idx + 1} de ${(blk.label as string) ?? "testimonials"}`,
+              },
+              { rotulo: "Autor do depoimento", cls: "upstream", valor: author },
+              { rotulo: "Marca", cls: "loja", valor: brandName },
+            ] as InputSummaryItem[],
             errorMessage: msg,
             tokensInput: imgMeta.tokensInput,
             tokensOutput: imgMeta.tokensOutput,
@@ -1167,9 +1214,6 @@ export async function runPhase2Image(
       // Declarados fora do try pra o catch tambem registrar o input no run.
       let promptVars: Record<string, string> | undefined
       let promptWithAspect = ""
-      // Segmentos do template; os apêndices (geometria, fallback, fidelidade)
-      // entram depois, com a origem de cada um.
-      let promptPartes: PromptSegment[] | null = null
       let promptSegments: PromptSegment[] | null = null
       // Run 'running' aberto antes da chamada de imagem (live view).
       let imgRunId = ""
@@ -1370,24 +1414,6 @@ export async function runPhase2Image(
         // hardcoded com o renderImagePrompt legacy (compat retroativa).
         const imageTemplate =
           ctx.imageConfig?.user_template ?? DEFAULT_IMAGE_PROMPT_TEMPLATE
-        const prompt = ctx.imageConfig
-          ? renderImageTemplate(ctx.imageConfig.user_template, promptVars)
-          : renderImagePrompt(DEFAULT_IMAGE_PROMPT_TEMPLATE, promptVars)
-
-        // Proveniência: o template de imagem existe em DOIS dialetos — o do
-        // banco usa `{{var}}` (renderImageTemplate) e o in-code usa `{var}`
-        // (renderImagePrompt). Cortar com a regex errada é justamente o que
-        // o guard de recomposição abaixo pega.
-        const segTemplate = buildSegmentedPrompt(
-          imageTemplate,
-          promptVars,
-          IMAGE_VAR_ORIGINS,
-          { parte: "user", dialeto: ctx.imageConfig ? "double" : "single" },
-        )
-        promptPartes =
-          segTemplate.segments && segTemplate.prompt === prompt
-            ? segTemplate.segments
-            : null
 
         // Dims declaradas no schema vencem o aspect tipado também na
         // instrução de composição (o modelo compõe pro frame exato).
@@ -1398,66 +1424,37 @@ export async function runPhase2Image(
               overlay,
             )
           : aspectInstructionForPrompt(aspect, overlay)
-        promptWithAspect = `${prompt}\n\n${geometryInstruction}`
-        const apendices: PromptSegment[] = [
-          {
-            cls: "sistema",
-            rotulo: "Geometria — proporção/dimensões calculadas pelo código",
-            texto: `\n\n${geometryInstruction}`,
-            chars: geometryInstruction.length + 2,
-            parte: "user",
-          },
-        ]
-
-        // Se caimos no fallback E o slot esperava product_ref, adiciona
-        // descricao textual rica do produto pra compensar a perda visual.
-        // Vale mesmo quando flag esta off (fallback_text2img_disabled) ou
-        // quando o produto nao tem imagem (fallback_text2img_no_product):
-        // o modelo ainda pode "evocar" o produto via texto detalhado.
-        if (
+        // O prompt de imagem é montado e segmentado num lugar só
+        // (`buildImagePromptWithSegments`) — a mesma função que o
+        // resolve-block-prompt e a regeneração manual usam, para os três
+        // caminhos não saírem de sincronia.
+        const fallbackDescription =
           (modeSource === "fallback_text2img_disabled" ||
             modeSource === "fallback_text2img_no_product" ||
             modeSource === "fallback_text2img_unreachable") &&
           ctx.topProducts[0]?.name
-        ) {
-          const fallbackDesc = productRefDescriptionFallback({
-            productName: ctx.topProducts[0].name,
-            productImageUrl: topProductImageUrl,
-          })
-          promptWithAspect += `\n\n${fallbackDesc}`
-          apendices.push({
-            cls: "sistema",
-            rotulo: "Descrição do produto — fallback text2img (o anexo não pôde ir)",
-            texto: `\n\n${fallbackDesc}`,
-            chars: fallbackDesc.length + 2,
-            parte: "user",
-          })
-        }
-
-        // Em product_ref a foto real vai anexada. Sem instrução explícita o
-        // modelo a lê como referência de ESTILO e devolve um produto
-        // parecido — outro rótulo, outro formato. A foto é o produto.
-        if (mode === "product_ref" && ctx.topProducts[0]?.name) {
-          const fidelity = productRefFidelityInstruction({
-            productName: ctx.topProducts[0].name,
-          })
-          promptWithAspect += `\n\n${fidelity}`
-          apendices.push({
-            cls: "agente",
-            rotulo: "Fidelidade ao produto anexado — instrução in-code",
-            texto: `\n\n${fidelity}`,
-            chars: fidelity.length + 2,
-            parte: "user",
-          })
-        }
-
-        // Guard final: os segmentos têm de reproduzir o prompt enviado.
-        const candidato = concatSegments(promptPartes, apendices)
-        promptSegments =
-          candidato &&
-          candidato.map((sg) => sg.texto ?? "").join("") === promptWithAspect
-            ? candidato
+            ? productRefDescriptionFallback({
+                productName: ctx.topProducts[0].name,
+                productImageUrl: topProductImageUrl,
+              })
             : null
+        const fidelity =
+          mode === "product_ref" && ctx.topProducts[0]?.name
+            ? productRefFidelityInstruction({
+                productName: ctx.topProducts[0].name,
+              })
+            : null
+
+        const montado = buildImagePromptWithSegments({
+          template: imageTemplate,
+          vars: promptVars,
+          fromConfig: Boolean(ctx.imageConfig),
+          geometry: geometryInstruction,
+          fallbackDescription,
+          fidelity,
+        })
+        promptWithAspect = montado.prompt
+        promptSegments = montado.segments
 
         imgRunId = await startGenerationRun({
           storeId,
@@ -2202,6 +2199,9 @@ async function executeFormatStep<T>(p: {
         durationMs: Date.now() - t0,
         errorMessage: lastError,
         retryCount: priorErrors,
+        // A Entrada do step vale no erro tanto quanto no sucesso — é ela que
+        // diz se o agente recebeu o que deveria antes de falhar.
+        ...(usage?.inputSummary ? { inputSummary: usage.inputSummary } : {}),
         ...(raw ? { rawOutput: raw } : {}),
         ...(usage
           ? {

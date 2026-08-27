@@ -1,4 +1,8 @@
-# Plano — Telemetria e UI de Proveniência no Estúdio
+# Telemetria e UI de Proveniência no Estúdio — **IMPLEMENTADO**
+
+> **Status (27/08/2026)**: os 4 PRs foram entregues. Este documento deixou
+> de ser plano e passou a descrever o que existe. O que mudou de rota está
+> na seção "O que o caminho ensinou", no fim.
 
 **Objetivo**: o drill-down do Estúdio (abas Execuções e Teste) mostra, para
 CADA nó de CADA geração real, exatamente o que os artifacts "Anatomia de uma
@@ -65,14 +69,14 @@ subject/messaging. Padrão: componente por agente lendo `parsed_output`
 
 **U4 — Aba Teste**: usa o MESMO `NodeRunPanel` — herda tudo sem trabalho.
 
-## Entregas (PRs pequenos, cada um utilizável sozinho)
+## Entregas (todas concluídas)
 
-| PR | Conteúdo | Critério de aceite |
-|----|----------|--------------------|
-| 1 | T1 + T2 + T4.1 + U1 | Geração nova → Prompt segmentado no Estúdio p/ Estruturador, Curador e Montador; byte-igual ao prompt enviado (teste de recomposição) |
-| 2 | T4.2 + U2 + U3 (chooser/assembler/blueprint/subject) | Entrada estruturada + saídas legíveis na fase 1 inteira |
-| 3 | T3 + T4.3 | Fase 2 segmentada; catálogo por ref+sha8 |
-| 4 | T4.4 + U3 (restante) + varredura de paridade | Toda run nova, de todo agente, com as 3 abas na qualidade do ensaio |
+| PR | Commit | O que entregou |
+|----|--------|----------------|
+| 1 | `88952e8` | Helper + migration 20261085 + callback + fase 1 inteira segmentada + `PromptProvenanceView` no Estúdio + endpoint de `ref` |
+| 2 | `5dbcdf0` | Dispatch com identidade (batch/email) + nó próprio "Dispatch" no grafo + callback de copy com batch e chars por bloco + saídas legíveis da fase 1 |
+| 3 | `8dfad7e` | Fase 2 inteira: 3 chains + imagem por partes + **QA gravando prompt pela primeira vez** + determinísticos com Entrada |
+| 4 | — | Paridade (campaign_image, component_test, imagem manual, avatares, teste de referência, fallback de copy), views de hero/imagem/QA, contrato e esta documentação |
 
 **Guard-rails**: telemetria NUNCA bloqueia geração (todo write de segmento é
 best-effort, mesmo padrão das runs); `prompt_segments` ausente nunca quebra a
@@ -82,3 +86,59 @@ migrado (é a prova de que a marcação não mente).
 *Criado em 26/08/2026 — decorrência direta dos artifacts "Anatomia de uma
 Geração" (runs de 24/08 sem prompt persistido) e "Ensaio de Geração" (o
 alvo de qualidade).*
+
+---
+
+## O que o caminho ensinou (mudanças de rota)
+
+O plano previa fail-open sempre que o corte fosse difícil. Na prática, três
+coisas mudaram o desenho:
+
+1. **O guard virou a recomposição, não o formato do template.** Cada call
+   site compara os segmentos com o prompt REALMENTE enviado e só grava a
+   marcação quando batem. A invariante passou a ser verificada a cada run em
+   produção, não só nos testes — e é o que torna seguro cortar prompts de
+   renderers diferentes.
+2. **Três dialetos, não um.** `{{var}}` (renderImageTemplate), `{var}`
+   (renderImagePrompt, no prompt de imagem in-code) e o renderer próprio do
+   QA, mais estrito. O helper ganhou o parâmetro `dialeto`; o guard cobre o
+   resto.
+3. **Block helper deixou de ser fail-open.** `{{#if}}`/`{{#case}}` são
+   pré-resolvidos pela MESMA função do renderer (`resolveBlockHelpers`) antes
+   do corte — sem isso o `campaign_image`, cujo prompt no banco é gated por
+   `{{#if INCLUDE_*}}`, nunca teria proveniência. O trecho que sobrevive ao
+   condicional é template, e sai marcado como tal.
+
+E um caso que virou decisão de produto: o template do agente de **hero** era
+o único da fase 2 com condicional. Em vez de deixá-lo opaco, o `{{#if}}` saiu
+do template e a seção passa a ser montada no código
+(`heroDesignSystemBlock`) — com teste provando que o texto enviado ao modelo
+é byte-idêntico, com e sem `design_system`.
+
+## Gaps fechados no caminho (que não estavam no plano)
+
+- O **QA** nunca gravou prompt nenhum — o `userPrompt` existia montado a uma
+  linha do `startGenerationRun`.
+- O **`text_format`** era o único chain sem `withUsage`: erro de parse
+  fechava a run com 0 token, $0 e sem prompt.
+- O **dispatch** não tinha email/flow/batch — o payload ficava gravado e
+  inalcançável pelas duas abas do Estúdio.
+- A **regeneração manual de imagem** gravava o prompt truncado em 2.000
+  chars e não registrava falha nenhuma.
+- O **teste de prompt da aba Referências** gerava imagem paga sem gravar run.
+- O `usageOf` (`chains/step-usage.ts`) **valida e copia campo a campo**:
+  campo novo que não seja copiado explicitamente atravessa o guard e some.
+
+## Pendências conhecidas
+
+- `resolve-block-prompt.service` **não** aplica
+  `productRefFidelityInstruction`, que o `phase2-runner` aplica: a imagem
+  regenerada manualmente recebe um prompt diferente da gerada pelo pipeline.
+  Divergência anterior a este épico; corrigi-la muda um prompt de produção.
+- A view da lista (`v_email_generation_logs`) não expõe as colunas novas —
+  **de propósito**: payloads só no drill-down por id.
+- O agente de **QA** segue fora do fluxo (`EMAIL_QA_ENABLED != 'true'`), por
+  decisão de produto anterior. A telemetria dele está pronta para quando
+  religarem.
+
+*Criado em 26/08/2026 como plano; concluído em 27/08/2026.*

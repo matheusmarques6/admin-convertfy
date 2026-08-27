@@ -336,6 +336,169 @@ export function AssuntoView({ output }: { output: unknown }) {
   )
 }
 
+// ── Fase 2: hero, imagem e QA ───────────────────────────────────────────
+
+interface HeroReportView {
+  imagem?: string
+  campos_vazios?: string[]
+  linhas_removidas?: string[]
+  logo?: string
+}
+
+/** Hero: o que o agente declara ter feito com a região. */
+export function HeroSectionView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const rep = (o.hero_report ?? null) as HeroReportView | null
+  if (!rep && o.graft_status == null) return null
+
+  const grafted = o.graft_status === "grafted"
+  const vazios = asArray<string>(rep?.campos_vazios)
+  const removidas = asArray<string>(rep?.linhas_removidas)
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        <OutPill
+          text={grafted ? "variante enxertada por código" : `enxerto: ${o.graft_status ?? "?"}`}
+          tone={grafted ? "pos" : "warn"}
+        />
+        {o.hero_source === "library" && <OutPill text="região da biblioteca" tone="info" />}
+        {o.variant_mismatch === true && (
+          <OutPill text="blueprint × slot_map divergiram" tone="warn" />
+        )}
+        {o.hero_report_missing === true && (
+          <OutPill text="sem relatório do agente" tone="warn" />
+        )}
+      </div>
+
+      {rep && (
+        <OutSection title="O que o agente declara">
+          <div style={{ ...OUT_BODY, display: "flex", flexDirection: "column", gap: 3 }}>
+            <div>
+              <strong>Imagem:</strong> {rep.imagem ?? "—"}
+              {rep.logo ? ` · Logo: ${rep.logo}` : ""}
+            </div>
+            {/* O que ele REMOVEU é o que costuma explicar uma hero estranha. */}
+            <div>
+              <strong>Linhas removidas:</strong>{" "}
+              {removidas.length > 0 ? removidas.join(", ") : "nenhuma"}
+            </div>
+            <div>
+              <strong>Campos sem copy:</strong>{" "}
+              {vazios.length > 0 ? vazios.join(", ") : "nenhum"}
+            </div>
+          </div>
+        </OutSection>
+      )}
+
+      {o.rendered_reference != null && (
+        <OutSection title="Exemplo de acabamento">
+          <div style={{ ...OUT_BODY, color: C.g500 }}>
+            {(() => {
+              const rr = o.rendered_reference as Record<string, unknown>
+              return `${rr.used ? "usado" : "não usado"} — ${String(rr.reason ?? "sem motivo")}${rr.stale ? " (desatualizado)" : ""}`
+            })()}
+          </div>
+        </OutSection>
+      )}
+    </OutCard>
+  )
+}
+
+/** Imagem: a imagem gerada, não a URL. */
+export function ImageGeradaView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const url = typeof o.imageUrl === "string" ? o.imageUrl : null
+  if (!url) return null
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {typeof o.fieldKey === "string" && <OutPill text={o.fieldKey} tone="info" />}
+        {typeof o.role === "string" && <OutPill text={String(o.role)} tone="neut" />}
+        {o.kind === "testimonial_avatar" && <OutPill text="avatar de depoimento" tone="neut" />}
+        {typeof o.trigger === "string" && <OutPill text={String(o.trigger)} tone="neut" />}
+      </div>
+      {/* A imagem em si: era uma URL perdida no meio do JSON. */}
+      <a href={url} target="_blank" rel="noreferrer">
+        <img
+          src={url}
+          alt=""
+          style={{
+            width: "100%",
+            maxHeight: 320,
+            objectFit: "contain",
+            borderRadius: 7,
+            border: `1px solid ${C.border}`,
+            background: C.g50,
+            display: "block",
+          }}
+        />
+      </a>
+      <div style={{ ...OUT_BODY, color: C.g400, marginTop: 6, wordBreak: "break-all" }}>
+        {url}
+      </div>
+    </OutCard>
+  )
+}
+
+interface QaIssueView {
+  type?: string
+  severity?: string
+  message?: string
+  location?: string
+}
+
+/** QA: o veredito e o que reprovou. */
+export function QaView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  if (o.passed == null && o.issues_count == null) return null
+  const sev = (o.issues_by_severity ?? {}) as Record<string, number>
+  const issues = asArray<QaIssueView>(o.issues)
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        <OutPill
+          text={o.passed === true ? "aprovado" : "reprovado"}
+          tone={o.passed === true ? "pos" : "warn"}
+        />
+        {(sev.high ?? 0) > 0 && <OutPill text={`${sev.high} alta`} tone="warn" />}
+        {(sev.medium ?? 0) > 0 && <OutPill text={`${sev.medium} média`} tone="neut" />}
+        {(sev.low ?? 0) > 0 && <OutPill text={`${sev.low} baixa`} tone="neut" />}
+        {o.vision_ran === true && <OutPill text="visão rodou" tone="info" />}
+        {o.deterministic_only === true && (
+          <OutPill text="só checagens determinísticas" tone="neut" />
+        )}
+      </div>
+
+      {issues.length > 0 && (
+        <OutSection title={`Achados (${issues.length})`}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {issues.map((iss, i) => (
+              <OutItem key={i}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <OutPill
+                    text={iss.severity ?? "?"}
+                    tone={iss.severity === "high" ? "warn" : "neut"}
+                  />
+                  <span style={{ ...OUT_BODY, fontWeight: 600 }}>{iss.type ?? "?"}</span>
+                </div>
+                <div style={{ ...OUT_BODY, marginTop: 3 }}>{iss.message ?? "—"}</div>
+                {iss.location && (
+                  <div style={{ ...OUT_BODY, color: C.g500, marginTop: 2 }}>
+                    {iss.location}
+                  </div>
+                )}
+              </OutItem>
+            ))}
+          </div>
+        </OutSection>
+      )}
+    </OutCard>
+  )
+}
+
 /** Roteia a view legível pelo agente do nó. null = sem view própria. */
 export function AgentOutputView({
   agent,
@@ -353,6 +516,13 @@ export function AgentOutputView({
       return <BlueprintBlocosView output={output} />
     case "subject":
       return <AssuntoView output={output} />
+    case "hero_section":
+      return <HeroSectionView output={output} />
+    case "image":
+      return <ImageGeradaView output={output} />
+    case "qa":
+    case "qavision":
+      return <QaView output={output} />
     default:
       return null
   }

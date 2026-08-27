@@ -37,13 +37,24 @@ vi.mock("@/lib/agents/image/template-renderer", async () => {
   const actual = await vi.importActual<
     typeof import("@/lib/agents/image/template-renderer")
   >("@/lib/agents/image/template-renderer")
-  return { renderImageTemplate: actual.renderImageTemplate }
+  // `resolveBlockHelpers` entra porque o cortador de proveniência o usa para
+  // pré-resolver os `{{#if}}` deste template antes de segmentar.
+  return {
+    renderImageTemplate: actual.renderImageTemplate,
+    resolveBlockHelpers: actual.resolveBlockHelpers,
+  }
 })
 // buildImagePromptVars é mockado (puxa derivers pesados); devolve um bag
 // realista de vars-base pra resolver os fallbacks de loja do opt-in.
 const buildImagePromptVarsMock = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/agents/image/prompt-vars-builder", () => ({
   buildImagePromptVars: buildImagePromptVarsMock,
+  // Tabela de origens usada na segmentação do prompt (a real é pura).
+  IMAGE_VAR_ORIGINS: {
+    MARCA: { cls: "loja", rotulo: "Loja" },
+    NICHO: { cls: "loja", rotulo: "Loja" },
+    PUBLICO: { cls: "loja", rotulo: "Loja" },
+  },
 }))
 
 /**

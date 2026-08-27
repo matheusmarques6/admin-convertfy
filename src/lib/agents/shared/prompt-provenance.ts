@@ -15,6 +15,8 @@
  * Puro (zero I/O) — client-safe: a UI importa os tipos e as cores.
  */
 
+import { resolveBlockHelpers } from "../image/template-renderer"
+
 /** As 7 classes de proveniência (cores idênticas às dos artifacts). */
 export type ProvClass =
   | "agente" // template do agente (in-code ou config da aba Agentes)
@@ -65,10 +67,11 @@ export interface SegmentedPromptResult {
   /** O prompt renderizado — byte-igual ao render de produção. */
   prompt: string
   /**
-   * Segmentos na ordem. `null` quando o template usa block helpers
-   * (`{{#if}}`/`{{#case}}`) — fail-open: o call site grava só o prompt,
-   * como hoje (fase 1 é toda plain-var; isto é a rede para config
-   * customizada na aba Agentes).
+   * Segmentos na ordem. `null` só quando o corte é impossível — hoje,
+   * nenhum caso conhecido: os block helpers são pré-resolvidos pela MESMA
+   * função do renderer. O call site sempre confere a recomposição antes de
+   * gravar, então um `null` aqui e uma divergência lá dão no mesmo:
+   * a run guarda o prompt como texto, sem marcação.
    */
   segments: PromptSegment[] | null
 }
@@ -151,9 +154,9 @@ function pushSegment(
  * - origem com `ref` → segmento `{ref, sha8, chars}` sem texto (o prompt
  *   recomposto ainda carrega o texto — só o SEGMENTO não duplica).
  *
- * Template com block helper → fail-open (`segments: null`), com o prompt
- * renderizado pelo renderer REAL — o call site degrada para o comportamento
- * atual (grava só rendered_prompt).
+ * Template com `{{#if}}`/`{{#case}}`: os blocos são resolvidos ANTES do
+ * corte, pela mesma função do renderer (`resolveBlockHelpers`) — o trecho
+ * que sobreviveu ao condicional é template, e sai marcado como `agente`.
  */
 export function buildSegmentedPrompt(
   template: string,
@@ -162,14 +165,19 @@ export function buildSegmentedPrompt(
   opts?: { parte?: "system" | "user"; dialeto?: VarDialeto },
 ): SegmentedPromptResult {
   const dialeto = opts?.dialeto ?? "double"
-  // Block helper só existe no dialeto `{{}}`; no `{}` não há sintaxe de
-  // bloco nenhuma (o renderer de imagem só substitui).
-  if (dialeto === "double" && template.includes("{{#")) {
-    // Import tardio impossível num módulo síncrono client-safe — replicar o
-    // renderer aqui criaria um segundo renderer a divergir. O call site que
-    // cair aqui usa o render que JÁ fazia; este módulo só sinaliza.
-    return { prompt: "", segments: null }
-  }
+  // Block helper (`{{#if}}`/`{{#case}}`) só existe no dialeto `{{}}` — no
+  // `{}` o renderer de imagem apenas substitui.
+  //
+  // Resolvidos ANTES do corte, pela MESMA função do renderer de produção:
+  // o cortador sabe substituir vars, não executar condicional. Depois deste
+  // passo o template é plano e o corte é exato; o trecho que sobreviveu ao
+  // condicional É template, e sai marcado como tal. Era aqui que o
+  // `campaign_image` (prompt do banco cheio de `{{#if}}`) ficava sem
+  // proveniência nenhuma.
+  const plano =
+    dialeto === "double" && template.includes("{{#")
+      ? resolveBlockHelpers(template, vars)
+      : template
 
   const parte = opts?.parte
   const segments: PromptSegment[] = []
@@ -179,8 +187,8 @@ export function buildSegmentedPrompt(
   const re = dialeto === "single" ? SINGLE_VAR_RE : SIMPLE_VAR_RE
   re.lastIndex = 0
   let m: RegExpExecArray | null
-  while ((m = re.exec(template)) !== null) {
-    const literal = template.slice(cursor, m.index)
+  while ((m = re.exec(plano)) !== null) {
+    const literal = plano.slice(cursor, m.index)
     if (literal) {
       prompt += literal
       pushSegment(segments, { cls: "agente", rotulo: ROTULO_TEMPLATE, texto: literal, parte })
@@ -210,7 +218,7 @@ export function buildSegmentedPrompt(
     cursor = m.index + m[0].length
   }
   re.lastIndex = 0
-  const tail = template.slice(cursor)
+  const tail = plano.slice(cursor)
   if (tail) {
     prompt += tail
     pushSegment(segments, { cls: "agente", rotulo: ROTULO_TEMPLATE, texto: tail, parte })
