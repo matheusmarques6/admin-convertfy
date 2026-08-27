@@ -34,6 +34,8 @@ import {
 import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
 import { ScaledEmailFrame } from "@/components/emails/scaled-email-frame"
+import { annotateRegionsForEditing } from "@/lib/agents/html/block-regions"
+import { buildQaBlockViews } from "@/lib/agents/html/qa-views"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
 import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
@@ -491,10 +493,79 @@ export function EmailDetailView({
       .filter((b): b is EmailBlock => Boolean(b))
   }, [editing, blocks, draftOrder, draftRemoved])
 
+  /**
+   * Mapa índice-da-região ↔ id-do-bloco.
+   *
+   * Reusa `buildQaBlockViews` — o MESMO casamento sequencial por tipo que a
+   * rota de revisão e o QA fazem. Um mapeamento próprio aqui seria o
+   * caminho para a tela mover um bloco e o servidor mover outro.
+   */
+  const mapaRegioes = useMemo(() => {
+    const marcado = email?.html_marked
+    if (!marcado) return null
+    const views = buildQaBlockViews(
+      marcado,
+      blocks.map((b) => ({
+        id: b.id,
+        position: b.position,
+        block_type: b.block_type,
+      })),
+    )
+    const blocoPorRegiao = new Map<number, string>()
+    const regiaoPorBloco = new Map<string, number>()
+    for (const v of views) {
+      if (!v.block_id) continue
+      blocoPorRegiao.set(v.indice, v.block_id)
+      regiaoPorBloco.set(v.block_id, v.indice)
+    }
+    return { blocoPorRegiao, regiaoPorBloco }
+  }, [email?.html_marked, blocks])
+
+  /** O email é editável no preview? Sem documento marcado, não. */
+  const previewEditavel = editing && Boolean(email?.html_marked) && Boolean(mapaRegioes)
+
+  /**
+   * HTML do preview. Em edição vem do documento MARCADO e anotado — é o que
+   * dá endereço a cada região. Fora do modo, exatamente o de hoje.
+   */
+  const htmlDoPreview = useMemo(() => {
+    if (!email) return ""
+    if (previewEditavel && email.html_marked) {
+      return annotateRegionsForEditing(email.html_marked)
+    }
+    return email.html || renderEmailHtml(email, blocks)
+  }, [email, blocks, previewEditavel])
+
   const estruturaAlterada =
     editing &&
     (draftRemoved.length > 0 ||
       draftOrder.some((id, i) => blocks[i]?.id !== id))
+
+  /** Arrasto no preview → a mesma `draftOrder` que o painel usa. */
+  const reordenarPelaRegiao = (novaOrdemDeRegioes: number[]) => {
+    if (!mapaRegioes) return
+    const ids = novaOrdemDeRegioes
+      .map((i) => mapaRegioes.blocoPorRegiao.get(i))
+      .filter((id): id is string => Boolean(id))
+    // Blocos sem região (slot que o Montador pulou) não aparecem no email e
+    // não podem sumir da ordem: entram no fim, preservando a partição que a
+    // rota exige.
+    const semRegiao = draftOrder.filter((id) => !ids.includes(id))
+    setDraftOrder([...ids, ...semRegiao])
+  }
+
+  const removerPelaRegiao = (indice: number) => {
+    const id = mapaRegioes?.blocoPorRegiao.get(indice)
+    if (!id) return
+    setDraftRemoved((r) => (r.includes(id) ? r : [...r, id]))
+  }
+
+  /** Nome do bloco no chip do preview. */
+  const rotuloDaRegiao = (indice: number) => {
+    const id = mapaRegioes?.blocoPorRegiao.get(indice)
+    const bloco = blocks.find((b) => b.id === id)
+    return bloco?.label || bloco?.block_type || `bloco ${indice + 1}`
+  }
 
   const salvarRevisao = async (payload: {
     justificativa: string
@@ -869,8 +940,17 @@ export function EmailDetailView({
           {viewMode === "render" && (
             <EmailRenderPreview
               email={email}
-              html={email.html || renderEmailHtml(email, blocks)}
+              html={htmlDoPreview}
               width={width}
+              editable={previewEditavel}
+              avisoSemDocumento={
+                editing && !email.html_marked
+                  ? "Este email foi gerado antes da edição de estrutura, então não dá para arrastar aqui. Reordene pelo painel à direita: a nova ordem e a justificativa ficam salvas e valem a partir da próxima geração."
+                  : null
+              }
+              rotuloDaRegiao={rotuloDaRegiao}
+              onReorder={reordenarPelaRegiao}
+              onRemove={removerPelaRegiao}
               onEditSubject={(v) => patchEmail({ subject: v || null })}
               onEditPreheader={(v) => patchEmail({ preheader: v || null })}
               onEditFromName={(v) => patchEmail({ from_name: v || null })}
@@ -2312,6 +2392,11 @@ function EmailRenderPreview({
   email,
   html,
   width,
+  editable = false,
+  avisoSemDocumento,
+  rotuloDaRegiao,
+  onReorder,
+  onRemove,
   onEditSubject,
   onEditPreheader,
   onEditFromName,
@@ -2321,6 +2406,12 @@ function EmailRenderPreview({
   email: EmailFlowEmail
   html: string
   width: number
+  editable?: boolean
+  /** Por que o email não é arrastável, quando não é. */
+  avisoSemDocumento?: string | null
+  rotuloDaRegiao?: (indice: number) => string
+  onReorder?: (novaOrdem: number[]) => void
+  onRemove?: (indice: number) => void
   onEditSubject: (v: string) => Promise<void>
   onEditPreheader: (v: string) => Promise<void>
   onEditFromName: (v: string) => Promise<void>
@@ -2390,7 +2481,48 @@ function EmailRenderPreview({
       </div>
 
       <SectionLabel>Corpo do e-mail</SectionLabel>
-      <ScaledEmailFrame html={html} baseWidth={width} />
+      {editable && (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "8px 12px",
+            background: "var(--crm-blue-50)",
+            border: "1px solid var(--crm-blue-100)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--crm-brand-hover)",
+            lineHeight: 1.5,
+          }}
+        >
+          <b>Arraste os blocos aqui no email</b> para mudar a ordem — passe o
+          mouse para ver o nome de cada um, e use o ✕ do rótulo para tirar um
+          do email. Nada é salvo até você confirmar no painel.
+        </div>
+      )}
+      {avisoSemDocumento && (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "8px 12px",
+            background: "var(--crm-amber-50, #fffbeb)",
+            border: "1px solid var(--crm-amber-100, #fde68a)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--crm-gray-700)",
+            lineHeight: 1.5,
+          }}
+        >
+          {avisoSemDocumento}
+        </div>
+      )}
+      <ScaledEmailFrame
+        html={html}
+        baseWidth={width}
+        editable={editable}
+        rotuloDaRegiao={rotuloDaRegiao}
+        onReorder={onReorder}
+        onRemove={onRemove}
+      />
     </div>
   )
 }
@@ -3177,32 +3309,30 @@ function BlockCard({
       {/* Header */}
       <div
         className="flex items-center justify-between"
-        style={{ padding: "10px 14px", cursor: "pointer" }}
+        {...(editing && dragHandleProps ? dragHandleProps : {})}
+        style={{
+          padding: "10px 14px",
+          cursor: editing ? "grab" : "pointer",
+          ...(editing
+            ? { background: "var(--crm-gray-50)", borderBottom: "1px dashed var(--crm-border)" }
+            : {}),
+        }}
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex items-center gap-2 min-w-0">
-          {editing && dragHandleProps && (
+          {editing && (
             <span
-              {...dragHandleProps}
-              onClick={(e) => e.stopPropagation()}
               title="Arraste pra reordenar"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 14,
-                color: "var(--crm-gray-300)",
-                cursor: "grab",
+                width: 16,
+                color: "var(--crm-gray-500)",
                 flexShrink: 0,
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.color = "var(--crm-gray-500)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.color = "var(--crm-gray-300)")
-              }
             >
-              <GripVertical className="h-3 w-3" />
+              <GripVertical className="h-4 w-4" />
             </span>
           )}
           <span

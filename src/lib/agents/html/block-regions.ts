@@ -216,3 +216,88 @@ export function renumberMarkers(html: string): string {
 export function sequenceOf(html: string): string[] {
   return parseBlockRegions(html).map((r) => r.section)
 }
+
+// ── Edição no próprio email (27/08) ─────────────────────────────────────
+//
+// O preview do email é um iframe com `sandbox="allow-same-origin"` (scripts
+// bloqueados de propósito — emails não rodam JS). O componente PAI acessa
+// `contentDocument` e conduz o arrasto de lá, então cada região precisa de
+// um endereço no DOM: é o `data-cfy-idx`.
+
+/** Atributo que liga um elemento do preview à sua região. */
+export const REGION_ATTR = "data-cfy-idx"
+
+/**
+ * Injeta `data-cfy-idx="{indice}"` na tag de abertura de cada região.
+ *
+ * Só na CÓPIA que vai para o preview em modo de edição — o documento salvo
+ * nunca carrega o atributo (e `stripSlotAttributes`, no post-process, já
+ * limpa qualquer `data-cfy-*` que sobre num documento persistido).
+ *
+ * Região cuja primeira tag não é um elemento (comentário solto, texto) fica
+ * sem atributo e simplesmente não arrasta — recusar é melhor que anotar o
+ * nó errado e mover o bloco errado.
+ */
+export function annotateRegionsForEditing(html: string): string {
+  const regions = parseBlockRegions(html)
+  if (regions.length === 0) return html
+
+  let out = ""
+  let cursor = 0
+  for (const r of regions) {
+    out += html.slice(cursor, r.inicio)
+    out += anotar(r.html, r.indice)
+    cursor = r.fim
+  }
+  return out + html.slice(cursor)
+}
+
+/** Primeira tag de abertura DEPOIS do marcador start. */
+const PRIMEIRA_TAG = /(<!--\s*cfy:block:\d+:[A-Za-z0-9_-]+:start\s*-->\s*<)([a-zA-Z][a-zA-Z0-9]*)/
+
+function anotar(regionHtml: string, indice: number): string {
+  return regionHtml.replace(
+    PRIMEIRA_TAG,
+    (_m, prefixo: string, tag: string) =>
+      `${prefixo}${tag} ${REGION_ATTR}="${indice}"`,
+  )
+}
+
+/**
+ * Posição de inserção durante o arrasto.
+ *
+ * `meios` são as coordenadas Y do MEIO de cada linha, em ordem de
+ * documento; devolve o índice da posição onde o bloco deve entrar (0..n).
+ * Puro para a mecânica do arrasto ser testável sem DOM.
+ *
+ * A comparação é com o meio, e não com o topo: com o topo, arrastar para
+ * baixo só "engata" depois de passar a linha inteira, e um bloco alto (uma
+ * hero de 600px) fica impossível de posicionar.
+ */
+export function resolveDropTarget(meios: number[], ponteiroY: number): number {
+  let alvo = 0
+  for (const meio of meios) {
+    if (ponteiroY < meio) break
+    alvo++
+  }
+  return alvo
+}
+
+/**
+ * Aplica um movimento de `de` para `para` numa lista de índices — a mesma
+ * conta que o preview faz no DOM, para o estado do React não divergir do
+ * que a pessoa viu acontecer.
+ *
+ * `para` é a posição de inserção ANTES da remoção (o que `resolveDropTarget`
+ * devolve), então mover para baixo desconta um. Errar isso desloca o bloco
+ * uma posição a mais e é o bug clássico deste tipo de lista.
+ */
+export function moverIndice<T>(lista: T[], de: number, para: number): T[] {
+  if (de < 0 || de >= lista.length) return [...lista]
+  const destino = para > de ? para - 1 : para
+  if (destino === de) return [...lista]
+  const copia = [...lista]
+  const [item] = copia.splice(de, 1)
+  copia.splice(Math.max(0, Math.min(destino, copia.length)), 0, item)
+  return copia
+}
