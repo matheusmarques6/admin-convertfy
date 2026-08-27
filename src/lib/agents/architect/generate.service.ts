@@ -26,6 +26,7 @@ import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
+import { logGenerationRun } from "../callbacks/telemetry.callback"
 import {
   estruturaParaPosicoes,
   resumoParaCurador,
@@ -319,7 +320,33 @@ export async function generateBlueprintAndReference(
   // SUBSTITUI o outline abaixo. Falha/sem_material NUNCA derruba a geração —
   // fallback documentado é o outline, com log.
   let estruturadorOutput: EstruturadorOutput | null = null
-  if (estruturadorMode !== "off") {
+  if (estruturadorMode === "off") {
+    // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
+    // nas telas (mapa e aba Teste): sem run nenhuma, a linha dele fica
+    // "pendente" para sempre e parece travada — quando a verdade é que o
+    // agente está desligado. O backend diz o que aconteceu; a UI só exibe.
+    await logGenerationRun({
+      storeId: input.storeId,
+      flowId: flowId ?? undefined,
+      emailId: emailId ?? undefined,
+      triggeredBy: input.triggeredBy,
+      batchId: input.batchId,
+      agent: "estruturador",
+      status: "skipped",
+      model: "desligado",
+      inputSummary: [
+        {
+          rotulo: "Modo",
+          cls: "sistema",
+          valor:
+            "desligado em Configurações → Estruturador (a estrutura vem da Estrutura geral)",
+        },
+      ],
+      parsedOutput: { skip_reason: "estruturador_mode_off" },
+      costCents: 0,
+      durationMs: 0,
+    }).catch(() => {})
+  } else {
     try {
       const r = await runEstruturador({
         storeId: input.storeId,
