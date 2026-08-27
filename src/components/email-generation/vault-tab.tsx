@@ -181,6 +181,31 @@ export function VaultTab() {
         )}
       </EGCard>
 
+      {/* O sync FALHOU — a resposta a "configurei e não veio nada".
+          Sem este bloco, 40 falhas seguidas do cron apareciam na tela como
+          "Nenhum material sincronizado ainda. Rode a primeira sincronização",
+          que manda o operador tentar de novo o que nunca vai funcionar. */}
+      {lastRun?.error && (
+        <EGCard>
+          <EGSecTitle
+            icon={<AlertTriangle size={14} color={C.neg} />}
+            title={`O último sync falhou (via ${lastRun.trigger}, ${fmtWhen(lastRun.created_at)})`}
+          />
+          <div
+            style={{
+              marginTop: 8,
+              fontFamily: F.mono,
+              fontSize: 12,
+              color: C.g700,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {lastRun.error}
+          </div>
+        </EGCard>
+      )}
+
       {/* Notas puladas do último sync — a resposta a "editei e não valeu" */}
       {skippedRecent.length > 0 && (
         <EGCard>
@@ -201,8 +226,10 @@ export function VaultTab() {
 
       {/* Material ativo por flow */}
       {flows.length === 0 ? (
-        <EGNotice tone="neut">
-          Nenhum material sincronizado ainda. Rode a primeira sincronização.
+        <EGNotice tone={lastRun?.error ? "neg" : "neut"}>
+          {lastRun?.error
+            ? "Nenhum material disponível: o sync está falhando (o motivo está acima). Enquanto isso o Estruturador não tem do que se alimentar."
+            : "Nenhum material sincronizado ainda. Rode a primeira sincronização."}
         </EGNotice>
       ) : (
         flows.map((flow) => {
