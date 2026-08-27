@@ -20,7 +20,7 @@ import { ChevronRight, Clock, X } from "lucide-react"
 
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
-import { defaultPositions, type Positions } from "./flow-canvas"
+import { restoreLayout, serializeLayout, type Positions } from "./flow-canvas"
 import { EditorTab } from "./editor-tab"
 import { ExecutionsTab } from "./execs-tab"
 import { OverviewTab } from "./overview-tab"
@@ -41,6 +41,10 @@ type TabKey = (typeof TABS)[number]["key"]
 
 const TAB_LS_KEY = "cf-agent-studio-tab"
 const POS_LS_KEY = "cf-agent-studio-positions"
+
+// O layout salvo carrega a assinatura do mapa em que foi feito: sem ela,
+// acrescentar um agente ao pipeline fazia o nó novo nascer embaixo do
+// vizinho. Regra e testes em `@/lib/agents/studio-layout`.
 
 function isTabKey(v: string | null | undefined): v is TabKey {
   return v === "overview" || v === "editor" || v === "execs" || v === "test"
@@ -398,29 +402,11 @@ export function StudioWorkspace() {
     [router],
   )
 
-  const [positions, setPositions] = useState<Positions>(() => {
-    const base = defaultPositions()
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem(POS_LS_KEY)
-        if (stored) {
-          const parsed = JSON.parse(stored) as Positions
-          for (const k of Object.keys(base)) {
-            if (
-              parsed[k] &&
-              typeof parsed[k].x === "number" &&
-              typeof parsed[k].y === "number"
-            ) {
-              base[k] = parsed[k]
-            }
-          }
-        }
-      } catch {
-        /* posição corrompida → layout padrão */
-      }
-    }
-    return base
-  })
+  const [positions, setPositions] = useState<Positions>(() =>
+    restoreLayout(
+      typeof window !== "undefined" ? localStorage.getItem(POS_LS_KEY) : null,
+    ),
+  )
 
   const onMove = useCallback((key: string, x: number, y: number) => {
     setPositions((p) => ({ ...p, [key]: { x, y } }))
@@ -430,7 +416,7 @@ export function StudioWorkspace() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(POS_LS_KEY, JSON.stringify(positions))
+        localStorage.setItem(POS_LS_KEY, serializeLayout(positions))
       } catch {
         /* noop */
       }

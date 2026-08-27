@@ -50,11 +50,17 @@ const NODE_ICON: Record<string, typeof Zap> = {
   check: CheckCheck,
 }
 
-export type Positions = Record<string, { x: number; y: number }>
-
-export function defaultPositions(): Positions {
-  return Object.fromEntries(STUDIO_NODES.map((n) => [n.key, { x: n.x, y: n.y }]))
-}
+// O layout (padrão, assinatura e resgate do que está salvo) vive num
+// módulo puro — `@/lib/agents/studio-layout` — para ser testável fora do
+// React. Reexportado aqui porque as abas já importavam daqui.
+export {
+  defaultPositions,
+  layoutSignature,
+  restoreLayout,
+  serializeLayout,
+} from "@/lib/agents/studio-layout"
+export type { Positions } from "@/lib/agents/studio-layout"
+import type { Positions } from "@/lib/agents/studio-layout"
 
 function RunPill({ run }: { run: NodeRun | null }) {
   if (!run) return null
