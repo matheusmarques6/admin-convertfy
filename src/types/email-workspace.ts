@@ -175,6 +175,17 @@ export interface EmailFlowEmail {
   // HTML do agente HTML ANTES do Refinador (o Refinador sobrescreve `html`).
   // Alimenta o compare de 3 vias (Montador / HTML agent / Refinador).
   html_pre_refiner?: string | null
+  /**
+   * O MESMO documento de `html`, com os marcadores `<!-- cfy:block:… -->`
+   * preservados (migration 20261087). É o que torna a região de cada bloco
+   * endereçável depois da geração — a edição manual de estrutura reordena e
+   * remove regiões daqui e re-deriva `html` sem os marcadores.
+   *
+   * `null` = email gerado antes desta função, ou HTML trocado por fora
+   * (colado do builder). Nesse caso a edição de estrutura salva a ordem e a
+   * revisão, mas NÃO mexe no HTML — e a tela avisa.
+   */
+  html_marked?: string | null
   delay_hours: number | null
   status: EmailStatus
   progress_percent: number

@@ -2368,6 +2368,14 @@ async function runFormattingChain(p: {
     }).catch(() => {})
   }
 
+  // O strip dos marcadores deixou de ser ETAPA da cadeia e virou fronteira
+  // de SAÍDA (27/08): `html` — a coluna que todo mundo lê e que vira o email
+  // do cliente — sai sempre limpa, e `html_marked` guarda o mesmo documento
+  // com os `cfy:block`, que é o que torna a região de cada bloco
+  // endereçável depois que a geração terminou (edição manual de estrutura).
+  //
+  // Sem isto, reordenar um bloco na tela só mexia no contrato de copy: o
+  // HTML final não tinha mais âncora nenhuma e o email não mudava.
   const persistStage = async (
     html: string,
     stageVal: "hero" | "text" | "image" | null,
@@ -2376,7 +2384,8 @@ async function runFormattingChain(p: {
     await admin
       .from("email_flow_emails")
       .update({
-        html,
+        html: stripCfyBlockMarkers(html),
+        html_marked: html,
         html_pipeline_stage: stageVal,
         updated_at: new Date().toISOString(),
         ...(extra ?? {}),
@@ -3103,14 +3112,16 @@ async function runFormattingChain(p: {
     // &nbsp; do GLM removida, placeholders {{}} órfãos e tokens de
     // atributo crus limpos, lang da loja. O color_format recebe o
     // documento já apresentável.
+    // `stripCfyBlockMarkers` NÃO entra aqui: os marcadores seguem no
+    // documento até a fronteira de saída (persistStage). O STEP 4 abaixo é
+    // seguro com eles — o agente de cores não recebe o documento, recebe
+    // `color_inventory_json` e devolve ops aplicadas por código.
     currentHtml = enforceLangAttribute(
       stripUnresolvedAttrTokens(
         stripUnresolvedPlaceholders(
           stripNbspIndentation(
             stripSlotAttributes(
-              stripCfyBlockMarkers(
-                stripAgentProtocolBlocks(stripSentinels(currentHtml)),
-              ),
+              stripAgentProtocolBlocks(stripSentinels(currentHtml)),
             ),
           ),
         ),
@@ -3118,8 +3129,11 @@ async function runFormattingChain(p: {
       fmtCtx.locale,
     )
     // Snapshot pré-polimento (compare de 3 vias na UI) — semântica da
-    // coluna preservada: "HTML antes do último retoque visual".
-    await persistStage(currentHtml, "image", { html_pre_refiner: currentHtml })
+    // coluna preservada: "HTML antes do último retoque visual". Limpo, como
+    // toda coluna que a UI mostra.
+    await persistStage(currentHtml, "image", {
+      html_pre_refiner: stripCfyBlockMarkers(currentHtml),
+    })
     stage = "image"
   }
 
@@ -3385,7 +3399,11 @@ export async function runPhase2HtmlQa(
     log.warn("phase2.html_qa.out_of_budget", { emailId })
     return { status: "skipped" }
   }
-  const finalHtml = fmtResult.html
+  // O QA e os checks determinísticos julgam o EMAIL, não o andaime: o
+  // documento chega da cadeia com os marcadores de bloco (a fronteira de
+  // saída é o persistStage), e aqui eles saem. As views por bloco vêm
+  // separadas, extraídas do documento marcado.
+  const finalHtml = stripCfyBlockMarkers(fmtResult.html)
 
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,

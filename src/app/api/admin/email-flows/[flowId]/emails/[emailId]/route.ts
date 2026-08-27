@@ -117,7 +117,15 @@ export async function PATCH(
 
     const { error } = await admin
       .from("email_flow_emails")
-      .update(parsed)
+      .update({
+        ...parsed,
+        // HTML trocado por fora (colado do builder) invalida o documento
+        // MARCADO: as regiões `cfy:block` daquele outro documento não
+        // descrevem mais este email, e uma edição de estrutura em cima
+        // delas sobrescreveria o HTML que acabou de ser colado. Zerar faz
+        // a edição de estrutura degradar com aviso, que é a verdade.
+        ...(parsed.html !== undefined ? { html_marked: null } : {}),
+      })
       .eq("id", emailId)
 
     if (error) throw error
