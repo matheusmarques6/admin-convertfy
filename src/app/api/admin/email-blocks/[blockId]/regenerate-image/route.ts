@@ -49,7 +49,16 @@ export const dynamic = "force-dynamic"
 
 const RATE_LIMIT_WINDOW_MS = 30_000
 const PROMPT_SNAPSHOT_LIMIT = 2_000
-const IMAGE_MODEL_LABEL = OPENROUTER_IMAGE_MODEL
+
+/** Por que o modo é esse — o que interessa é o rebaixamento, e o motivo. */
+const MODE_SOURCE_LABEL: Record<BlockPromptResolution["modeSource"], string> = {
+  blueprint: "definido no blueprint",
+  matrix: "matriz do flow/email",
+  default: "padrão (há foto de produto)",
+  fallback_text2img_no_product: "rebaixado: a loja não tem foto de produto",
+  fallback_text2img_disabled: "rebaixado: multimodal desligado no ambiente",
+  fallback_text2img_unreachable: "rebaixado: a foto do produto não abriu",
+}
 
 /** A Entrada estruturada da regeneração manual — o que entrou nesta imagem. */
 function regenInputSummary(r: BlockPromptResolution): InputSummaryItem[] {
@@ -63,9 +72,9 @@ function regenInputSummary(r: BlockPromptResolution): InputSummaryItem[] {
     {
       rotulo: "Modo",
       cls: "sistema",
-      valor: r.mode === "product_ref" ? "foto real do produto anexada" : "text2img",
+      valor: `${r.mode === "product_ref" ? "foto real do produto anexada" : "text2img"} (${MODE_SOURCE_LABEL[r.modeSource]})`,
     },
-    { rotulo: "Proporção", cls: "sistema", valor: r.aspect },
+    { rotulo: "Proporção", cls: "sistema", valor: r.customDims ? `${r.customDims.width}×${r.customDims.height} (schema)` : r.aspect },
     {
       rotulo: "Produto de referência",
       cls: "loja",
@@ -138,12 +147,21 @@ export async function POST(
       resolution.storeId,
       {
         aspect: resolution.aspect,
+        // Dims declaradas no schema vencem o aspect tipado no resize. Sem
+        // isto o prompt pedia "componha para WxH" e o arquivo saía no
+        // aspect — a instrução e o resultado discordavam.
+        customDims: resolution.customDims,
         overlayReserveBottom: resolution.overlayReserveBottom,
         mode: resolution.mode,
         referenceImageUrl:
           resolution.mode === "product_ref" && resolution.topProductImageUrl
             ? resolution.topProductImageUrl
             : undefined,
+        // Master Prompt v2 Part A e o modelo da config: o pipeline manda os
+        // dois e este caminho mandava nenhum — trocar o modelo por SQL não
+        // surtia efeito na regeneração manual.
+        systemPrompt: resolution.systemPrompt ?? undefined,
+        model: resolution.model || undefined,
       },
     )
     const durationMs = Date.now() - t0
@@ -207,7 +225,9 @@ export async function POST(
       batchId: randomUUID(),
       agent: "image",
       status: "success",
-      model: IMAGE_MODEL_LABEL,
+      // O modelo REALMENTE usado, não a constante: com config no banco a
+      // regeneração roda em outro modelo e o relatório dizia o default.
+      model: resolution.model || OPENROUTER_IMAGE_MODEL,
       // O prompt INTEIRO na run. O snapshot de 2.000 chars continua indo
       // para `email_blocks.image_last_prompt` (outro consumidor, com outro
       // limite) — mas a telemetria não tem por que guardar meio prompt.
@@ -246,7 +266,7 @@ export async function POST(
         batchId: randomUUID(),
         agent: "image",
         status: "error",
-        model: IMAGE_MODEL_LABEL,
+        model: resolution.model || OPENROUTER_IMAGE_MODEL,
         errorMessage:
           error instanceof Error ? error.message.slice(0, 500) : String(error),
         renderedPrompt: resolution.prompt,

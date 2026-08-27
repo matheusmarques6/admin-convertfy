@@ -87,6 +87,10 @@ function baseResolution(overrides: Record<string, unknown> = {}) {
     vars: { MARCA: "Loja" },
     aspect: "4:5",
     mode: "product_ref",
+    modeSource: "blueprint",
+    customDims: { width: 1080, height: 1350 },
+    systemPrompt: "Master Prompt v2 — Part A",
+    model: "openai/gpt-5.4-image-2",
     storeId: MOCK_STORE_ID,
     emailId: MOCK_EMAIL_ID,
     flowId: "flow-1",
@@ -205,5 +209,64 @@ describe("POST /regenerate-image", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = await POST(makeRequest() as any, ctx())
     expect(res.status).toBe(200)
+  })
+  // Paridade com o pipeline: por muito tempo esta rota chamava o modelo sem
+  // system prompt, sem o modelo da config e sem as dims do schema — a imagem
+  // regerada à mão não era a que o pipeline geraria.
+  it("repassa systemPrompt, model e customDims ao gerador", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(baseResolution())
+    generateEmailImageMock.mockResolvedValueOnce("https://cdn.test/i.jpg")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequest() as any, ctx())
+
+    const opts = generateEmailImageMock.mock.calls[0][2]
+    expect(opts.systemPrompt).toBe("Master Prompt v2 — Part A")
+    expect(opts.model).toBe("openai/gpt-5.4-image-2")
+    expect(opts.customDims).toEqual({ width: 1080, height: 1350 })
+    expect(opts.referenceImageUrl).toBe("https://supabase.test/p.jpg")
+  })
+
+  it("telemetria rotula o modelo da config, não a constante", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(baseResolution())
+    generateEmailImageMock.mockResolvedValueOnce("https://cdn.test/i.jpg")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequest() as any, ctx())
+
+    expect(logGenerationRunMock.mock.calls[0][0].model).toBe(
+      "openai/gpt-5.4-image-2",
+    )
+  })
+
+  it("sem modelo na config cai no default do OpenRouter", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(baseResolution({ model: null }))
+    generateEmailImageMock.mockResolvedValueOnce("https://cdn.test/i.jpg")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequest() as any, ctx())
+
+    expect(generateEmailImageMock.mock.calls[0][2].model).toBeUndefined()
+    expect(logGenerationRunMock.mock.calls[0][0].model).toBe(
+      "google/gemini-3.1-flash-image",
+    )
+  })
+
+  it("a Entrada da telemetria diz POR QUE o modo caiu para text2img", async () => {
+    resolveBlockPromptMock.mockResolvedValueOnce(
+      baseResolution({
+        mode: "text2img",
+        modeSource: "fallback_text2img_unreachable",
+      }),
+    )
+    generateEmailImageMock.mockResolvedValueOnce("https://cdn.test/i.jpg")
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await POST(makeRequest() as any, ctx())
+
+    const modo = logGenerationRunMock.mock.calls[0][0].inputSummary.find(
+      (i: { rotulo: string }) => i.rotulo === "Modo",
+    )
+    expect(modo.valor).toContain("a foto do produto não abriu")
   })
 })

@@ -129,16 +129,41 @@ do template e a seção passa a ser montada no código
 - O `usageOf` (`chains/step-usage.ts`) **valida e copia campo a campo**:
   campo novo que não seja copiado explicitamente atravessa o guard e some.
 
+## Desdobramento: a paridade do prompt de imagem (27/08)
+
+A pendência registrada ao fechar o épico — o `resolve-block-prompt.service`
+não aplicava `productRefFidelityInstruction` — não estava sozinha. O
+cabeçalho daquele arquivo declarava um "SYNC CONTRACT" com o `phase2-runner`
+("qualquer mudança naquele runner deve ser refletida aqui"), e a vigilância
+por comentário havia falhado em **cinco** pontos: a instrução de fidelidade
+ao produto anexado, a direção fotográfica da variante (`PHOTO_DIRECTION` saía
+VAZIA), a guarda da URL da foto do produto, e `systemPrompt`/`model`/
+`customDims` — carregados no arquivo e nunca usados. Regenerar a imagem de um
+bloco não reproduzia a imagem que o pipeline geraria, e o `PromptPreviewModal`
+mostrava um prompt que não era o enviado.
+
+A correção não copiou o que faltava: cada peça virou **um lugar só** que os
+dois caminhos chamam — `resolveImageAppendices` (decide quais apêndices
+entram; a cópia manual desconhecia o fallback `unreachable`) e
+`loadPhotoDirections` (era privada dentro do runner). Somadas às que já
+existiam (`buildImagePromptVars`, `resolveImageMode`, `isUsableProductImage`,
+`buildImagePromptWithSegments`), o contrato deixou de ser um comentário.
+
+A guarda da URL passou a rodar também no preview: custa um HEAD (≤5s) e é o
+que faz o preview mostrar o rebaixamento para `text2img` quando a foto do
+produto não abre, em vez de prometer uma foto que não vai.
+
 ## Pendências conhecidas
 
-- `resolve-block-prompt.service` **não** aplica
-  `productRefFidelityInstruction`, que o `phase2-runner` aplica: a imagem
-  regenerada manualmente recebe um prompt diferente da gerada pelo pipeline.
-  Divergência anterior a este épico; corrigi-la muda um prompt de produção.
+- A regeneração manual não mede a luminância do overlay
+  (`measureOverlayLuminance` via `onFinalBuffer`): numa hero regerada à mão o
+  valor persistido segue o da imagem antiga. É pós-processamento, não
+  montagem de prompt — outro assunto.
 - A view da lista (`v_email_generation_logs`) não expõe as colunas novas —
   **de propósito**: payloads só no drill-down por id.
 - O agente de **QA** segue fora do fluxo (`EMAIL_QA_ENABLED != 'true'`), por
   decisão de produto anterior. A telemetria dele está pronta para quando
   religarem.
 
-*Criado em 26/08/2026 como plano; concluído em 27/08/2026.*
+*Criado em 26/08/2026 como plano; concluído em 27/08/2026, com a paridade
+do prompt de imagem fechada no mesmo dia.*

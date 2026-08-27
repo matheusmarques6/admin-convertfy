@@ -61,10 +61,10 @@ import {
 } from "./image/aspect-ratio"
 import {
   resolveImageMode,
-  productRefDescriptionFallback,
-  productRefFidelityInstruction,
+  resolveImageAppendices,
 } from "./image/mode-resolution"
 import { isUsableProductImage } from "./image/product-image-guard"
+import { loadPhotoDirections } from "./image/photo-directions"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
@@ -1425,25 +1425,16 @@ export async function runPhase2Image(
             )
           : aspectInstructionForPrompt(aspect, overlay)
         // O prompt de imagem é montado e segmentado num lugar só
-        // (`buildImagePromptWithSegments`) — a mesma função que o
+        // (`buildImagePromptWithSegments`) e os apêndices são decididos em
+        // outro (`resolveImageAppendices`) — as mesmas funções que o
         // resolve-block-prompt e a regeneração manual usam, para os três
         // caminhos não saírem de sincronia.
-        const fallbackDescription =
-          (modeSource === "fallback_text2img_disabled" ||
-            modeSource === "fallback_text2img_no_product" ||
-            modeSource === "fallback_text2img_unreachable") &&
-          ctx.topProducts[0]?.name
-            ? productRefDescriptionFallback({
-                productName: ctx.topProducts[0].name,
-                productImageUrl: topProductImageUrl,
-              })
-            : null
-        const fidelity =
-          mode === "product_ref" && ctx.topProducts[0]?.name
-            ? productRefFidelityInstruction({
-                productName: ctx.topProducts[0].name,
-              })
-            : null
+        const { fidelity, fallbackDescription } = resolveImageAppendices({
+          mode,
+          modeSource,
+          productName: ctx.topProducts[0]?.name,
+          productImageUrl: topProductImageUrl,
+        })
 
         const montado = buildImagePromptWithSegments({
           template: imageTemplate,
@@ -3614,50 +3605,3 @@ export async function runPhase2InBackground(
 }
 
 
-/**
- * Direção fotográfica das variantes casadas aos blocos do blueprint,
- * indexada por `variant_id`.
- *
- * Uma query por email em vez de uma por bloco: os blocos de um email
- * costumam repetir variantes (dois blocos de produto da mesma grade), e a
- * direção é o mesmo texto. Blueprint ausente, legado (sem `variant_id`) ou
- * nenhuma direção escrita → mapa vazio, e o prompt de imagem fica idêntico
- * ao de antes.
- */
-async function loadPhotoDirections(
-  admin: SupabaseClient,
-  blocks: Array<{ variant_id?: string | null }> | undefined,
-): Promise<Record<string, string>> {
-  const ids = [
-    ...new Set(
-      (blocks ?? [])
-        .map((b) => (b.variant_id ?? "").trim())
-        .filter((id): id is string => id.length > 0),
-    ),
-  ]
-  if (ids.length === 0) return {}
-
-  const { data, error } = await admin
-    .from("email_component_variants")
-    .select("id, photo_direction")
-    .in("id", ids)
-  if (error) {
-    // Sem direção o agente compõe como sempre compôs — não é motivo para
-    // derrubar a geração da imagem.
-    log.warn("phase2.image.photo_direction_load_failed", {
-      error: error.message,
-      ids: ids.length,
-    })
-    return {}
-  }
-
-  const out: Record<string, string> = {}
-  for (const row of (data ?? []) as Array<{
-    id: string
-    photo_direction: string | null
-  }>) {
-    const text = (row.photo_direction ?? "").trim()
-    if (text) out[row.id] = text
-  }
-  return out
-}

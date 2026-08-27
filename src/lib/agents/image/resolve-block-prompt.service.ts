@@ -8,8 +8,17 @@
  * → blueprint) e produzir o prompt final renderizado mais a metadata
  * (mode, aspect, etc) necessaria pra um chamada ao `generateEmailImage`.
  *
- * Espelha a logica do `phase2-runner.service.ts` (~L390..L516) — qualquer
- * mudança naquele runner deve ser refletida aqui (mesmo prompt produzido).
+ * Produz o MESMO prompt que o `phase2-runner.service.ts` produziria para o
+ * bloco. Isso já foi um "SYNC CONTRACT" por comentário — "qualquer mudança
+ * naquele runner deve ser refletida aqui" — e a vigilância manual falhou em
+ * cinco pontos: a instrução de fidelidade ao produto nunca foi aplicada, a
+ * direção fotográfica da variante nunca foi carregada, a guarda da URL do
+ * produto não rodava, e `systemPrompt`/`model`/`customDims` eram carregados
+ * e jogados fora. O que os dois caminhos compartilham hoje é CÓDIGO:
+ * `buildImagePromptVars`, `resolveImageMode`, `isUsableProductImage`,
+ * `loadPhotoDirections`, `resolveImageAppendices` e
+ * `buildImagePromptWithSegments`. Ao acrescentar algo ao prompt de imagem,
+ * acrescente numa dessas — não aqui e lá.
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -37,9 +46,12 @@ import {
 import { overlaySpec } from "@/lib/agents/image/overlay-luminance"
 import {
   resolveImageMode,
-  productRefDescriptionFallback,
+  resolveImageAppendices,
   type ImageMode,
+  type ImageModeSource,
 } from "@/lib/agents/image/mode-resolution"
+import { isUsableProductImage } from "@/lib/agents/image/product-image-guard"
+import { loadPhotoDirections } from "@/lib/agents/image/photo-directions"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -88,6 +100,22 @@ export interface BlockPromptResolution {
   aspect: AspectKey
   /** Mode resolvido (product_ref/text2img, ja com fallbacks aplicados). */
   mode: ImageMode
+  /**
+   * POR QUE o modo é esse. Interessa quando é um `fallback_text2img_*`: o
+   * preview e a Entrada da telemetria explicam ao operador que a foto do
+   * produto não pôde ir, em vez de só mostrar "text2img".
+   */
+  modeSource: ImageModeSource
+  /**
+   * Dimensões declaradas no schema, quando existem. Vencem o `aspect` no
+   * resize — o caller PRECISA repassá-las a `generateEmailImage`, senão o
+   * prompt pede WxH e o arquivo sai no aspect tipado.
+   */
+  customDims: { width: number; height: number } | null
+  /** Master Prompt v2 Part A (`email_agent_configs.system_prompt`). */
+  systemPrompt: string | null
+  /** Modelo configurado no banco — null cai no OPENROUTER_IMAGE_MODEL. */
+  model: string | null
   /** Para o endpoint regenerate. */
   storeId: string
   /** Para o endpoint regenerate (eh o pai do bloco, via email_blocks.email_id -> emails.flow_id). */
@@ -345,7 +373,7 @@ export async function resolveBlockPrompt(
 
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
   const topProductImageUrl = topProducts[0]?.image_url ?? null
-  const { mode, source: modeSource } = resolveImageMode({
+  let { mode, source: modeSource } = resolveImageMode({
     blueprintMode: blueprint?.image_mode ?? null,
     flowType,
     emailNumber,
@@ -353,10 +381,39 @@ export async function resolveBlockPrompt(
     multimodalEnabled,
   })
 
+  // ── Guarda de integração (product_ref) — mesma do phase2-runner ────────
+  // A foto do produto tem de ser baixável E ser imagem. URL 403/404/HTML
+  // (asset removido, CDN restrito) faria o modelo cair em imagem genérica
+  // sem avisar. Reprovou → text2img + a descrição textual do produto.
+  // Roda também aqui, e não só no pipeline, para o preview do prompt
+  // mostrar o que será REALMENTE enviado — inclusive o rebaixamento.
+  if (mode === "product_ref" && topProductImageUrl) {
+    const check = await isUsableProductImage(topProductImageUrl)
+    if (!check.usable) {
+      log.warn("resolve.image.product_ref_url_unusable", {
+        blockId,
+        reason: check.reason,
+        status: check.status,
+        contentType: check.contentType,
+      })
+      mode = "text2img"
+      modeSource = "fallback_text2img_unreachable"
+    }
+  }
+
+  // Direção fotográfica das variantes do blueprint (migration 20261060).
+  // Sem isto a var PHOTO_DIRECTION saía vazia neste caminho e a imagem
+  // regerada à mão perdia a direção de arte da biblioteca.
+  const photoDirectionByVariant = await loadPhotoDirections(
+    admin,
+    blueprint?.blocks as Array<{ variant_id?: string | null }> | undefined,
+  )
+
   // ── 6. buildImagePromptVars (com INSTRUCAO_ADICIONAL do bloco + ctx v2) ─
   const promptVars = buildImagePromptVars({
     // Um slot por chamada — mesmo contrato do phase2-runner.
     fieldKey,
+    photoDirectionByVariant,
     brand,
     briefing,
     topProducts,
@@ -381,19 +438,17 @@ export async function resolveBlockPrompt(
     ? dimsInstructionForPrompt(customDims.width, customDims.height, overlay)
     : aspectInstructionForPrompt(aspect, overlay)
 
-  // A montagem (template + geometria + apêndices) e a segmentação por
-  // origem vivem em `buildImagePromptWithSegments` — a MESMA função que o
-  // phase2-runner usa. Era aqui que o "SYNC CONTRACT" do cabeçalho pedia
-  // atenção manual; agora há um caminho só.
-  const fallbackDescription =
-    (modeSource === "fallback_text2img_disabled" ||
-      modeSource === "fallback_text2img_no_product") &&
-    topProducts[0]?.name
-      ? productRefDescriptionFallback({
-          productName: topProducts[0].name,
-          productImageUrl: topProductImageUrl,
-        })
-      : null
+  // A montagem (template + geometria + apêndices) e a DECISÃO de quais
+  // apêndices entram vivem em `buildImagePromptWithSegments` e
+  // `resolveImageAppendices` — as MESMAS funções que o phase2-runner usa.
+  // Era aqui que o "SYNC CONTRACT" do cabeçalho pedia atenção manual (e a
+  // perdeu: a fidelidade nunca era aplicada); agora há um caminho só.
+  const { fidelity, fallbackDescription } = resolveImageAppendices({
+    mode,
+    modeSource,
+    productName: topProducts[0]?.name,
+    productImageUrl: topProductImageUrl,
+  })
 
   const montado = buildImagePromptWithSegments({
     template: imageConfig?.user_template ?? DEFAULT_IMAGE_PROMPT_TEMPLATE,
@@ -401,11 +456,7 @@ export async function resolveBlockPrompt(
     fromConfig: Boolean(imageConfig),
     geometry: geometryInstruction,
     fallbackDescription,
-    // NOTA: o phase2-runner acrescenta AQUI a instrução de fidelidade ao
-    // produto anexado (`productRefFidelityInstruction`) em modo product_ref;
-    // este caminho nunca a aplicou. A divergência é anterior a esta
-    // refatoração e mudá-la altera o prompt da regeneração manual — fica
-    // registrada, não corrigida de lado.
+    fidelity,
   })
   const prompt = montado.prompt
 
@@ -415,6 +466,10 @@ export async function resolveBlockPrompt(
     vars: truncateVarsForDebug(promptVars),
     aspect,
     mode,
+    modeSource,
+    customDims,
+    systemPrompt: imageConfig?.system_prompt ?? null,
+    model: imageConfig?.model ?? null,
     storeId,
     emailId,
     flowId,

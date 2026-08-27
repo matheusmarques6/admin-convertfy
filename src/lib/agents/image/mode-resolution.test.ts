@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   resolveImageMode,
+  resolveImageAppendices,
   productRefDescriptionFallback,
   productRefFidelityInstruction,
 } from "./mode-resolution"
@@ -242,5 +243,54 @@ describe("productRefDescriptionFallback", () => {
     })
     expect(out).toContain("Tenis branco")
     expect(out).not.toContain("style guide image at")
+  })
+})
+
+describe("resolveImageAppendices", () => {
+  const produto = { productName: "EnergySave Pro", productImageUrl: "https://cdn/p.jpg" }
+
+  it("product_ref → só a fidelidade", () => {
+    const out = resolveImageAppendices({
+      mode: "product_ref",
+      modeSource: "blueprint",
+      ...produto,
+    })
+    expect(out.fidelity).toContain("EnergySave Pro")
+    expect(out.fidelity).toContain("CFY_PRODUCT_FIDELITY")
+    expect(out.fallbackDescription).toBeNull()
+  })
+
+  // A divergência que motivou o helper: o `resolve-block-prompt` conhecia
+  // dois dos três fallbacks e nunca aplicava a fidelidade.
+  it.each([
+    "fallback_text2img_disabled",
+    "fallback_text2img_no_product",
+    "fallback_text2img_unreachable",
+  ] as const)("%s → só a descrição textual", (modeSource) => {
+    const out = resolveImageAppendices({ mode: "text2img", modeSource, ...produto })
+    expect(out.fidelity).toBeNull()
+    expect(out.fallbackDescription).toContain("EnergySave Pro")
+  })
+
+  it("text2img escolhido de propósito (sem rebaixamento) → nenhum apêndice", () => {
+    const out = resolveImageAppendices({
+      mode: "text2img",
+      modeSource: "matrix",
+      ...produto,
+    })
+    expect(out).toEqual({ fidelity: null, fallbackDescription: null })
+  })
+
+  it("sem nome de produto → nenhum apêndice (as duas frases se apoiam nele)", () => {
+    expect(
+      resolveImageAppendices({ mode: "product_ref", modeSource: "default" }),
+    ).toEqual({ fidelity: null, fallbackDescription: null })
+    expect(
+      resolveImageAppendices({
+        mode: "text2img",
+        modeSource: "fallback_text2img_unreachable",
+        productName: "   ",
+      }),
+    ).toEqual({ fidelity: null, fallbackDescription: null })
   })
 })

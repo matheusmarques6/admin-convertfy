@@ -134,3 +134,45 @@ export function productRefDescriptionFallback(input: {
     : ""
   return `Featured product reference: "${input.productName}"${url}. Match material, color and proportions of this exact product closely; do not invent a different SKU.`
 }
+
+/**
+ * QUAIS apêndices o prompt de imagem recebe, dado o modo resolvido.
+ *
+ * A montagem do prompt já vive num lugar só (`buildImagePromptWithSegments`);
+ * a DECISÃO de quais apêndices entram vivia em dois — o `phase2-runner` e o
+ * `resolve-block-prompt.service` — e as duas cópias divergiram: a manual
+ * nunca aplicou a fidelidade e desconhecia o fallback `unreachable`. Imagem
+ * regenerada à mão saía de um prompt diferente da gerada pelo pipeline.
+ *
+ * As duas instruções são MUTUAMENTE EXCLUSIVAS por construção: a fidelidade
+ * fala da foto anexada (só existe em `product_ref`) e a descrição textual
+ * compensa a foto que NÃO pôde ir (só existe nos fallbacks para text2img).
+ */
+export function resolveImageAppendices(input: {
+  mode: ImageMode
+  modeSource: ImageModeSource
+  productName?: string | null
+  productImageUrl?: string | null
+}): { fidelity: string | null; fallbackDescription: string | null } {
+  const productName = (input.productName ?? "").trim()
+  // Sem nome de produto não há o que instruir: as duas frases se apoiam nele.
+  if (!productName) return { fidelity: null, fallbackDescription: null }
+
+  const caiuPorFallback =
+    input.modeSource === "fallback_text2img_disabled" ||
+    input.modeSource === "fallback_text2img_no_product" ||
+    input.modeSource === "fallback_text2img_unreachable"
+
+  return {
+    fidelity:
+      input.mode === "product_ref"
+        ? productRefFidelityInstruction({ productName })
+        : null,
+    fallbackDescription: caiuPorFallback
+      ? productRefDescriptionFallback({
+          productName,
+          productImageUrl: input.productImageUrl,
+        })
+      : null,
+  }
+}
