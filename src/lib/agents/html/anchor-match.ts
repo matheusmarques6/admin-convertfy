@@ -75,6 +75,19 @@ const NAMED_ENTITIES: Record<string, string> = {
   ecirc: "ê",
   ocirc: "ô",
   acirc: "â",
+  // Símbolos de ficha de produto e separador de fita. `times` é o caso real
+  // da `offer 2` ("24&times; 6oz Patties" no HTML × "24× 6oz Patties" no
+  // schema): sem ela a entidade fica literal e o campo perde a âncora.
+  times: "×",
+  divide: "÷",
+  middot: "·",
+  bull: "•",
+  deg: "°",
+  euro: "€",
+  pound: "£",
+  frac12: "½",
+  frac14: "¼",
+  frac34: "¾",
 }
 
 const ENTITY_RE = /^&(?:#x([0-9a-f]+)|#(\d+)|([a-z][a-z0-9]*));/i

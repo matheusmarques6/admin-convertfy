@@ -41,6 +41,15 @@ describe("normalizeForMatch", () => {
     expect(normalizeForMatch("a&nbsp;&nbsp;b")).toBe("a b")
   })
 
+  it("símbolos de ficha de produto: &times; casa com o × do schema", () => {
+    // Caso real da `offer 2`: o HTML traz "24&times; 6oz Patties" e o schema
+    // "24× 6oz Patties". Sem a entidade na tabela o campo perdia a âncora.
+    expect(normalizeForMatch("24&times; 6oz Patties")).toBe("24× 6oz patties")
+    expect(normalizeForMatch("A &middot; B")).toBe("a · b")
+    expect(normalizeForMatch("30&deg;C")).toBe("30°c")
+    expect(normalizeForMatch("&frac12; off")).toBe("½ off")
+  })
+
   it("entidade desconhecida fica literal (não vira lixo silencioso)", () => {
     expect(normalizeForMatch("x &zzz; y")).toBe("x &zzz; y")
   })
