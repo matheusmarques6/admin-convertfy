@@ -27,7 +27,6 @@ import {
   Loader2,
   Plus,
   Send,
-  Sparkles,
   Square,
   Tag as TagIcon,
   Trash2,
@@ -49,7 +48,6 @@ import type {
   ProductsBlockContent,
   TextBlockContent,
 } from "@/types/email-workspace"
-import { GenerationProgressDrawer } from "./generation-progress-drawer"
 import { BlockImageInstructionField } from "./block-image-instruction-field"
 
 const fetcher = async (url: string) => {
@@ -319,12 +317,32 @@ export function EmailDetailView({
     }
   }
 
+  /**
+   * Reordena o RASCUNHO (modo de edição). A ordem só chega ao servidor no
+   * salvar, junto da justificativa: a mudança de estrutura sem o porquê é
+   * exatamente o que a próxima geração desfaz.
+   */
+  const moverNoRascunho = (de: number, para: number) => {
+    const visiveis = blocosVisiveis.map((b) => b.id)
+    if (para < 0 || para >= visiveis.length || de === para) return
+    const nova = [...visiveis]
+    const [movido] = nova.splice(de, 1)
+    nova.splice(para, 0, movido)
+    // Os removidos continuam no draftOrder (a rota precisa da partição
+    // completa); só não aparecem na tela.
+    setDraftOrder([...nova, ...draftRemoved])
+  }
+
   const moveBlock = async (blockId: string, direction: "up" | "down") => {
-    const idx = blocks.findIndex((b) => b.id === blockId)
+    const visiveis = blocosVisiveis.map((b) => b.id)
+    const idx = visiveis.indexOf(blockId)
     if (idx === -1) return
+    if (editing) {
+      moverNoRascunho(idx, direction === "up" ? idx - 1 : idx + 1)
+      return
+    }
     const targetIdx = direction === "up" ? idx - 1 : idx + 1
     if (targetIdx < 0 || targetIdx >= blocks.length) return
-
     const newOrder = [...blocks]
     ;[newOrder[idx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[idx]]
     await reorderBlocks(newOrder)
@@ -333,7 +351,10 @@ export function EmailDetailView({
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return
     if (result.destination.index === result.source.index) return
-
+    if (editing) {
+      moverNoRascunho(result.source.index, result.destination.index)
+      return
+    }
     const newOrder = [...blocks]
     const [moved] = newOrder.splice(result.source.index, 1)
     newOrder.splice(result.destination.index, 0, moved)
@@ -436,50 +457,91 @@ export function EmailDetailView({
   const [confirmDeleteEmail, setConfirmDeleteEmail] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [sendTestOpen, setSendTestOpen] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
+  // ── Modo de edição da ESTRUTURA (27/08) ──────────────────────────────
+  // Reordenar e remover viram uma edição LOCAL: nada vai ao servidor antes
+  // do salvar, e o salvar exige a justificativa que os agentes vão ler na
+  // próxima geração. Fora do modo, a estrutura não se mexe por acidente —
+  // antes um arrastar sem querer já reordenava e persistia calado.
+  const [editing, setEditing] = useState(false)
+  const [draftOrder, setDraftOrder] = useState<string[]>([])
+  const [draftRemoved, setDraftRemoved] = useState<string[]>([])
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [savingReview, setSavingReview] = useState(false)
 
-  const generateWithAI = async () => {
-    if (generating) return
-    setGenerating(true)
-    toast.toast({ title: "Gerando email com IA...", description: "Isso pode levar alguns segundos." })
+  const entrarNaEdicao = () => {
+    setDraftOrder(blocks.map((b) => b.id))
+    setDraftRemoved([])
+    setEditing(true)
+  }
+  const sairDaEdicao = () => {
+    setEditing(false)
+    setDraftOrder([])
+    setDraftRemoved([])
+    setSaveOpen(false)
+  }
+
+  // Os blocos como a tela deve mostrá-los: no modo de edição, a ordem do
+  // rascunho (sem os marcados para remoção); fora dele, o que veio da API.
+  const blocosVisiveis = useMemo(() => {
+    if (!editing) return blocks
+    const porId = new Map(blocks.map((b) => [b.id, b]))
+    return draftOrder
+      .filter((id) => !draftRemoved.includes(id))
+      .map((id) => porId.get(id))
+      .filter((b): b is EmailBlock => Boolean(b))
+  }, [editing, blocks, draftOrder, draftRemoved])
+
+  const estruturaAlterada =
+    editing &&
+    (draftRemoved.length > 0 ||
+      draftOrder.some((id, i) => blocks[i]?.id !== id))
+
+  const salvarRevisao = async (payload: {
+    justificativa: string
+    alcance: "este_email" | "todo_email_do_flow"
+    leitores: { estruturador: boolean; curador: boolean; montador: boolean }
+  }) => {
+    setSavingReview(true)
     try {
       const res = await fetch(
-        `/api/admin/stores/${storeId}/generate-email`,
+        `/api/admin/emails/${emailId}/structure-review`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            flowId: flow.id,
-            emailId,
-            flowType: flow.flow_type,
-            emailNumber: email?.number ?? 1,
+            ordem: draftOrder.filter((id) => !draftRemoved.includes(id)),
+            removidos: draftRemoved,
+            ...payload,
           }),
         },
       )
-      const json = await res.json()
-      if (!res.ok || json?.status === "error") {
-        throw new Error(json?.error || json?.data?.error || `Falha na geração (HTTP ${res.status})`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.error?.message || json?.error || "Falha ao salvar")
       }
-      const returnedBatchId = json?.data?.batchId ?? json?.batchId ?? null
-      if (returnedBatchId) {
-        setActiveBatchId(returnedBatchId)
-      } else {
-        toast.toast({
-          title: "Email gerado com sucesso!",
-          description: "Blocos, copy e HTML foram gerados pela IA.",
-        })
-        await mutate()
-        onEmailUpdated()
-      }
+      await mutate()
+      onEmailUpdated()
+      sairDaEdicao()
+      // A resposta diz o que REALMENTE aconteceu com o HTML: email gerado
+      // antes da 20261087 (ou com HTML colado por fora) não tem documento
+      // marcado, e a nova ordem só vale na próxima geração. Dizer "salvo" e
+      // deixar o preview igual seria mentir.
+      toast.toast({
+        title: json?.html_atualizado
+          ? "Estrutura salva — o email já está na ordem nova"
+          : "Ordem e revisão salvas",
+        description: json?.html_atualizado
+          ? "A justificativa vai para os agentes na próxima geração deste email."
+          : "Este email foi gerado antes da edição de estrutura, então o HTML atual não mudou — a ordem nova vale a partir da próxima geração.",
+      })
     } catch (e) {
       toast.toast({
         variant: "destructive",
-        title: "Erro na geração",
+        title: "Erro ao salvar a revisão",
         description: (e as Error).message,
       })
     } finally {
-      setGenerating(false)
+      setSavingReview(false)
     }
   }
 
@@ -662,31 +724,33 @@ export function EmailDetailView({
             )}
           </div>
           <button
-            onClick={generateWithAI}
-            disabled={generating}
-            title="Gerar email com IA"
+            onClick={editing ? sairDaEdicao : entrarNaEdicao}
+            title={
+              editing
+                ? "Sair do modo de edição (descarta o que não foi salvo)"
+                : "Editar a estrutura: reordenar e remover blocos"
+            }
             style={{
               height: 28,
               padding: "0 10px",
               display: "inline-flex",
               alignItems: "center",
               gap: 5,
-              background: generating ? "var(--crm-gray-100)" : "var(--crm-gray-900)",
-              color: generating ? "var(--crm-gray-400)" : "#fff",
-              border: 0,
+              background: editing ? "var(--crm-gray-100)" : "var(--crm-gray-900)",
+              color: editing ? "var(--crm-gray-700)" : "#fff",
+              border: editing ? "1px solid var(--crm-border)" : 0,
               borderRadius: 6,
               fontSize: 11,
               fontWeight: 600,
-              cursor: generating ? "default" : "pointer",
-              opacity: generating ? 0.7 : 1,
+              cursor: "pointer",
             }}
           >
-            {generating ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+            {editing ? (
+              <ChevronLeft className="h-3 w-3" />
             ) : (
-              <Sparkles className="h-3 w-3" />
+              <LayoutGrid className="h-3 w-3" />
             )}
-            {generating ? "Gerando..." : "Gerar com IA"}
+            {editing ? "Sair da edição" : "Editar"}
           </button>
           <button
             onClick={() => setSendTestOpen(true)}
@@ -937,7 +1001,14 @@ export function EmailDetailView({
               lineHeight: 1.5,
             }}
           >
-            {activeTab === "struct" ? (
+            {activeTab === "struct" && editing ? (
+              <>
+                <b>Modo de edição.</b> Arraste para reordenar e use a lixeira
+                para remover. Nada é salvo até você confirmar — e no salvar
+                você escreve <b>por quê</b>, que é o que os agentes leem na
+                próxima geração deste email.
+              </>
+            ) : activeTab === "struct" ? (
               <>
                 Copie cada item pro builder de email, depois marque o bloco como{" "}
                 <b>Aplicado</b>. Os conteúdos já estão prontos para uso — só
@@ -969,11 +1040,12 @@ export function EmailDetailView({
                           transition: "background 120ms ease",
                         }}
                       >
-                        {blocks.map((block, idx) => (
+                        {blocosVisiveis.map((block, idx) => (
                           <Draggable
                             key={block.id}
                             draggableId={block.id}
                             index={idx}
+                            isDragDisabled={!editing}
                           >
                             {(draggableProvided, draggableSnapshot) => (
                               <div
@@ -990,14 +1062,21 @@ export function EmailDetailView({
                                 <BlockCard
                                   block={block}
                                   isFirst={idx === 0}
-                                  isLast={idx === blocks.length - 1}
+                                  isLast={idx === blocosVisiveis.length - 1}
+                                  editing={editing}
                                   dragHandleProps={draggableProvided.dragHandleProps}
                                   onToggleApplied={(applied) =>
                                     patchBlock(block.id, { applied })
                                   }
                                   onCopy={copyToClipboard}
                                   onPatch={(update) => patchBlock(block.id, update)}
-                                  onDelete={() => deleteBlock(block.id)}
+                                  onDelete={async () => {
+                                    if (editing) {
+                                      setDraftRemoved((r) => [...r, block.id])
+                                      return
+                                    }
+                                    await deleteBlock(block.id)
+                                  }}
                                   onMoveUp={() => moveBlock(block.id, "up")}
                                   onMoveDown={() => moveBlock(block.id, "down")}
                                   onRefresh={async () => {
@@ -1074,11 +1153,29 @@ export function EmailDetailView({
               background: "var(--crm-gray-0)",
             }}
           >
-            <EmailStatusActions
-              status={email.status}
-              canAdvance={blocksApplied >= blocksTotal && blocksTotal > 0}
-              onUpdateStatus={(s) => patchEmail({ status: s })}
-            />
+            {editing ? (
+              <div className="flex gap-2">
+                <SecondaryBtn
+                  onClick={async () => sairDaEdicao()}
+                  icon={<ChevronLeft className="h-3 w-3" />}
+                >
+                  Cancelar
+                </SecondaryBtn>
+                <PrimaryBtn
+                  disabled={!estruturaAlterada}
+                  onClick={async () => setSaveOpen(true)}
+                  icon={<Check className="h-3 w-3" />}
+                >
+                  Salvar alterações
+                </PrimaryBtn>
+              </div>
+            ) : (
+              <EmailStatusActions
+                status={email.status}
+                canAdvance={blocksApplied >= blocksTotal && blocksTotal > 0}
+                onUpdateStatus={(s) => patchEmail({ status: s })}
+              />
+            )}
             <span
               className="crm-tnum"
               style={{
@@ -1087,10 +1184,15 @@ export function EmailDetailView({
                 textAlign: "center",
               }}
             >
-              {blocksApplied}/{blocksTotal} blocos aplicados ·{" "}
-              {qaTotal > 0
-                ? `${Math.round((qaDone / qaTotal) * 100)}% do checklist QA`
-                : "sem QA"}
+              {editing
+                ? estruturaAlterada
+                  ? `${blocosVisiveis.length} bloco(s) · ${draftRemoved.length} removido(s) — nada salvo ainda`
+                  : "Arraste um bloco ou remova um para habilitar o salvar"
+                : `${blocksApplied}/${blocksTotal} blocos aplicados · ${
+                    qaTotal > 0
+                      ? `${Math.round((qaDone / qaTotal) * 100)}% do checklist QA`
+                      : "sem QA"
+                  }`}
             </span>
           </div>
         </aside>
@@ -1222,18 +1324,245 @@ export function EmailDetailView({
         />
       )}
 
-      {activeBatchId && (
-        <GenerationProgressDrawer
-          batchId={activeBatchId}
-          storeId={storeId}
-          onClose={() => setActiveBatchId(null)}
-          onComplete={async () => {
-            await mutate()
-            onEmailUpdated()
-          }}
+      {saveOpen && (
+        <SalvarRevisaoDialog
+          antes={blocks.map((b) => b.label || b.block_type)}
+          depois={blocosVisiveis.map((b) => b.label || b.block_type)}
+          removidos={blocks
+            .filter((b) => draftRemoved.includes(b.id))
+            .map((b) => b.label || b.block_type)}
+          flowType={flow.flow_type}
+          emailNumber={email?.number ?? 1}
+          saving={savingReview}
+          onCancel={() => setSaveOpen(false)}
+          onSave={salvarRevisao}
         />
       )}
     </>
+  )
+}
+
+/**
+ * Diálogo de salvar a revisão de estrutura (migration 20261088).
+ *
+ * A justificativa é obrigatória de propósito: sem ela a correção some na
+ * próxima geração, porque o agente refaz a estrutura sem saber que alguém
+ * discordou. O diff aparece na tela para o texto ser escrito olhando o que
+ * de fato mudou, e não de memória.
+ */
+function SalvarRevisaoDialog({
+  antes,
+  depois,
+  removidos,
+  flowType,
+  emailNumber,
+  saving,
+  onCancel,
+  onSave,
+}: {
+  antes: string[]
+  depois: string[]
+  removidos: string[]
+  flowType: string
+  emailNumber: number
+  saving: boolean
+  onCancel: () => void
+  onSave: (p: {
+    justificativa: string
+    alcance: "este_email" | "todo_email_do_flow"
+    leitores: { estruturador: boolean; curador: boolean; montador: boolean }
+  }) => Promise<void>
+}) {
+  const [justificativa, setJustificativa] = useState("")
+  const [alcance, setAlcance] = useState<"este_email" | "todo_email_do_flow">(
+    "este_email",
+  )
+  const [curador, setCurador] = useState(false)
+  const [montador, setMontador] = useState(true)
+
+  const podeSalvar = justificativa.trim().length > 0 && !saving
+
+  const label = {
+    display: "block",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--crm-gray-700)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.04em",
+    marginBottom: 6,
+    marginTop: 14,
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.4)" }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 540,
+          maxWidth: "94vw",
+          maxHeight: "88vh",
+          overflowY: "auto",
+          background: "var(--crm-gray-0)",
+          border: "1px solid var(--crm-border)",
+          borderRadius: 10,
+          padding: 20,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: "var(--crm-gray-900)",
+            marginBottom: 6,
+          }}
+        >
+          Salvar a nova estrutura
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--crm-gray-500)",
+            marginBottom: 4,
+            lineHeight: 1.5,
+          }}
+        >
+          A ordem vale agora. A justificativa vai para os agentes na próxima
+          geração deste email — é o que impede a correção de ser desfeita.
+        </div>
+
+        <div style={label}>O que mudou</div>
+        <div
+          style={{
+            fontSize: 12,
+            lineHeight: 1.7,
+            background: "var(--crm-gray-50)",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 6,
+            padding: "10px 12px",
+            color: "var(--crm-gray-700)",
+          }}
+        >
+          <div style={{ color: "var(--crm-gray-500)" }}>
+            {antes.join(" · ")}
+          </div>
+          <div style={{ fontWeight: 600 }}>→ {depois.join(" · ")}</div>
+          {removidos.length > 0 && (
+            <div style={{ marginTop: 4, textDecoration: "line-through", color: "var(--crm-gray-500)" }}>
+              removido: {removidos.join(", ")}
+            </div>
+          )}
+        </div>
+
+        <div style={label}>Por que você mudou?</div>
+        <textarea
+          value={justificativa}
+          onChange={(e) => setJustificativa(e.target.value)}
+          rows={3}
+          autoFocus
+          placeholder="Ex.: o cético precisa da prova antes da vitrine — reviews sobe para antes da oferta."
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            border: "1px solid var(--crm-border)",
+            borderRadius: 6,
+            fontSize: 13,
+            resize: "vertical",
+            fontFamily: "inherit",
+          }}
+        />
+
+        <div style={label}>Vale para</div>
+        {(
+          [
+            ["este_email", `Só este email desta loja (${flowType} #${emailNumber})`],
+            ["todo_email_do_flow", `Todo ${flowType} #${emailNumber}, em qualquer loja`],
+          ] as const
+        ).map(([v, txt]) => (
+          <label
+            key={v}
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 12,
+              color: "var(--crm-gray-700)",
+              marginBottom: 4,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="radio"
+              checked={alcance === v}
+              onChange={() => setAlcance(v)}
+            />
+            {txt}
+          </label>
+        ))}
+
+        <div style={label}>Quem lê</div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--crm-gray-500)",
+            marginBottom: 6,
+            lineHeight: 1.5,
+          }}
+        >
+          O Estruturador sempre recebe — a ordem é o trabalho dele. Marque os
+          outros quando o motivo também falar de escolha de bloco.
+        </div>
+        {(
+          [
+            ["Curador (escolhe as variantes)", curador, setCurador],
+            ["Montador (fecha a composição)", montador, setMontador],
+          ] as const
+        ).map(([txt, val, set]) => (
+          <label
+            key={txt}
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 12,
+              color: "var(--crm-gray-700)",
+              marginBottom: 4,
+              cursor: "pointer",
+            }}
+          >
+            <input type="checkbox" checked={val} onChange={(e) => set(e.target.checked)} />
+            {txt}
+          </label>
+        ))}
+
+        <div className="flex justify-end gap-2" style={{ marginTop: 18 }}>
+          <SecondaryBtn onClick={async () => onCancel()}>Cancelar</SecondaryBtn>
+          <PrimaryBtn
+            disabled={!podeSalvar}
+            onClick={async () =>
+              onSave({
+                justificativa: justificativa.trim(),
+                alcance,
+                leitores: { estruturador: true, curador, montador },
+              })
+            }
+            icon={
+              saving ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )
+            }
+          >
+            {saving ? "Salvando..." : "Salvar revisão"}
+          </PrimaryBtn>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -2806,6 +3135,7 @@ function BlockCard({
   block,
   isFirst,
   isLast,
+  editing = false,
   dragHandleProps,
   onToggleApplied,
   onCopy,
@@ -2818,6 +3148,8 @@ function BlockCard({
   block: EmailBlock
   isFirst: boolean
   isLast: boolean
+  /** Modo de edição da estrutura: alça e lixeira só agem aqui. */
+  editing?: boolean
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement> | null | undefined
   onToggleApplied: (applied: boolean) => Promise<void>
   onCopy: (text: string, label?: string) => void
@@ -2829,7 +3161,6 @@ function BlockCard({
   onRefresh?: () => Promise<void>
 }) {
   const [expanded, setExpanded] = useState(block.applied === false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const Icon = BLOCK_TYPE_ICON[block.block_type] ?? FileImage
   const content = block.content as Record<string, unknown>
 
@@ -2850,7 +3181,7 @@ function BlockCard({
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex items-center gap-2 min-w-0">
-          {dragHandleProps && (
+          {editing && dragHandleProps && (
             <span
               {...dragHandleProps}
               onClick={(e) => e.stopPropagation()}
@@ -2947,62 +3278,34 @@ function BlockCard({
         >
           <div className="flex items-center justify-between gap-2" style={{ paddingTop: 8 }}>
             <div className="flex items-center gap-1">
-              <IconBtn
-                title="Mover para cima"
-                onClick={onMoveUp}
-                disabled={isFirst}
-              >
-                <ChevronUp className="h-3 w-3" />
-              </IconBtn>
-              <IconBtn
-                title="Mover para baixo"
-                onClick={onMoveDown}
-                disabled={isLast}
-              >
-                <ChevronDown className="h-3 w-3" />
-              </IconBtn>
-              {confirmDelete ? (
-                <div className="inline-flex items-center gap-1">
-                  <button
-                    onClick={async () => {
-                      setConfirmDelete(false)
-                      await onDelete()
-                    }}
-                    style={{
-                      height: 24,
-                      padding: "0 8px",
-                      background: "var(--crm-neg)",
-                      color: "#fff",
-                      border: 0,
-                      borderRadius: 4,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+              {/* Mover só no modo de edição, junto da alça: fora dele a
+                  estrutura não muda sem justificativa — era o caminho que
+                  reordenava e persistia sem ninguém explicar por quê. */}
+              {editing && (
+                <>
+                  <IconBtn
+                    title="Mover para cima"
+                    onClick={onMoveUp}
+                    disabled={isFirst}
                   >
-                    Confirmar remoção
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete(false)}
-                    style={{
-                      height: 24,
-                      padding: "0 8px",
-                      background: "transparent",
-                      color: "var(--crm-gray-600)",
-                      border: "1px solid var(--crm-border)",
-                      borderRadius: 4,
-                      fontSize: 11,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
+                    <ChevronUp className="h-3 w-3" />
+                  </IconBtn>
+                  <IconBtn
+                    title="Mover para baixo"
+                    onClick={onMoveDown}
+                    disabled={isLast}
                   >
-                    Cancelar
-                  </button>
-                </div>
-              ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  </IconBtn>
+                </>
+              )}
+              {/* No modo de edição a remoção é REVERSÍVEL (some ao salvar,
+                  Cancelar desfaz) e o diálogo de salvar mostra o que sai —
+                  o confirma-aqui virou redundante. */}
+              {editing && (
                 <IconBtn
-                  title="Remover bloco"
-                  onClick={() => setConfirmDelete(true)}
+                  title="Tirar do email (some ao salvar; Cancelar desfaz)"
+                  onClick={() => void onDelete()}
                 >
                   <Trash2 className="h-3 w-3" />
                 </IconBtn>
