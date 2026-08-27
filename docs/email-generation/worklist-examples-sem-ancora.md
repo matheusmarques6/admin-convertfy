@@ -4,6 +4,19 @@
 no HTML. São **62 campos** de 269 — a copy é gerada, paga, e jogada fora na
 entrega.
 
+**A maior parte não é erro de cadastro.** Dos 62 campos:
+
+| Onde está o defeito | Campos |
+|---|---|
+| **Reconhecimento** — campo único com N ocorrências (regra 5) | **36** |
+| Cadastro — frase inexistente | 15 (3 suspeitos de falso-positivo) |
+| Cadastro — example curto demais | 6 |
+| Cadastro — example gravado como array JSON | 2 |
+| Ambiguidade real — 2 campos disputando 4 lugares | 2 |
+
+Corrigir a regra 5 do merge resolve **36 campos de uma vez**, sem tocar em
+nenhum cadastro.
+
 ## Como o endereçamento funciona
 
 `src/lib/agents/html/copy-merge.ts` ancora cada campo pela **frase do `example`
@@ -28,13 +41,45 @@ o merge casa por ordem de declaração. Tudo isso está OK e foi descontado.
 
 ---
 
-## Categoria AMBÍGUO — 41 campos, 22 variantes
+## Categoria AMBÍGUO — 38 campos, 22 variantes
 
-A frase existe e o cadastro está **certo**, mas ela aparece mais vezes do que os
-campos que a reivindicam. O merge não chuta e descarta todos.
+**Isto é defeito de RECONHECIMENTO, não de cadastro.** O `example` é a frase
+literal do HTML; o que o merge não sabe fazer é lidar com repetição intencional
+da arte.
 
-**Não sai por cadastro.** Ou as frases ficam distintas no HTML da variante, ou o
-merge ganha desempate por posição.
+Caso canônico — `ribbon_text` da `body 2`:
+
+```
+example cadastrado: "Black Friday"
+observação do curador: "Nome da campanha, repetido 7× na fita alternando peso"
+HTML: duas fitas diagonais, 7 repetições cada, algumas dentro de <b>
+```
+
+O cadastro está impecável e até documenta a repetição. O merge encontra 16
+ocorrências para 1 campo e cai na **regra 5** de `anchor-match.ts`:
+
+```js
+// anchor-match.ts:477
+if (free.length > memberIdxs.length) {
+  // Mais lugares que campos — chutar escreveria a copy na frase errada.
+  fail("ocorrencias_excedem_campos")
+}
+```
+
+Resultado: a loja recebe um email escrito "Black Friday" mesmo sem campanha de
+Black Friday.
+
+**36 dos 38 campos desta seção têm esse mesmo perfil** (campo único, N
+ocorrências). Para um campo único cuja frase se repete idêntica, a leitura certa
+não é ambiguidade — é **substituir todas as ocorrências**, que é o que o
+`set_text` do Integrador já faz (migration 20261042). Trocar metade e deixar a
+outra metade com o texto do template é pior do que trocar tudo.
+
+Só **1 grupo** é ambiguidade real: `review 8`, `review_1_cta_label +
+review_3_cta_label` — 2 campos com valores distintos para 4 ocorrências de
+"Shop Now".
+
+**Correção: no merge, não no cadastro.**
 
 | Variante | Campo | example | ocorrências |
 |---|---|---|---|
@@ -133,6 +178,23 @@ nunca casa com array serializado — erro de tipo no cadastro.
   mesmo defeito nas duas. Provável duplicata na biblioteca.
 - **"welcome - hero sectiion 8"** — typo no nome da variante ("sectiion").
 - **"offer 4 "** — espaço sobrando no fim do nome.
+
+## A correção da regra 5
+
+Em `assignTextAnchors` (`anchor-match.ts:477`), quando `memberIdxs.length === 1`
+e há N ocorrências livres, ancorar em **todas** em vez de falhar. O
+`copy-merge` já empurra splices para uma lista (`applySplices`), então é
+emitir um splice por ocorrência com o mesmo `replacement`.
+
+Escopo: `AnchorAssignment` ganha os ranges extras (aditivo, não quebra
+consumidor), a regra passa a distinguir campo único de irmãos, e a telemetria
+registra quantas ocorrências foram escritas.
+
+Risco a decidir: se a mesma frase aparece em dois lugares semanticamente
+diferentes e só um é campo, os dois passam a ser trocados. Na prática isso é
+melhor que o estado atual — hoje nenhum dos dois é trocado, e o email sai com o
+texto do template. O precedente da casa é o `set_text` do Integrador, que já
+substitui todas as ocorrências.
 
 ## Sugestão de guarda
 
