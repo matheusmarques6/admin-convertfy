@@ -251,6 +251,45 @@ describe("runHeaderLabel", () => {
     ).toBe("Gerando email…")
   })
 
+  // O caso da Innova (27/08): o email falhou com `hero_failed`, a cadeia
+  // morreu antes de abrir uma run e a tela mostrou "Erro na geração" com um
+  // aviso de brand tolerante embaixo — que não tinha relação com a causa.
+  it("erro carrega o motivo traduzido quando o email diz por que falhou", () => {
+    expect(
+      runHeaderLabel({
+        resultStatus: null,
+        pollStatus: "error",
+        emailStatus: "failed",
+        hasRun: true,
+        failureReason: "hero_failed",
+      }),
+    ).toBe("Erro na geração — Falha ao montar a hero section")
+  })
+
+  it("motivo desconhecido vai CRU (o código é mais útil que uma frase vaga)", () => {
+    expect(
+      runHeaderLabel({
+        resultStatus: "error",
+        pollStatus: null,
+        emailStatus: null,
+        hasRun: true,
+        failureReason: "motivo_inedito_xyz",
+      }),
+    ).toBe("Erro na geração — motivo_inedito_xyz")
+  })
+
+  it("sem motivo, o texto de sempre", () => {
+    expect(
+      runHeaderLabel({
+        resultStatus: "error",
+        pollStatus: null,
+        emailStatus: null,
+        hasRun: true,
+        failureReason: "   ",
+      }),
+    ).toBe("Erro na geração")
+  })
+
   it("terminais vencem tudo", () => {
     expect(
       runHeaderLabel({

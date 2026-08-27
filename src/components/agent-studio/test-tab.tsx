@@ -138,6 +138,7 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
     pollStatus: t.statusInfo?.status ?? null,
     emailStatus: t.statusInfo?.email_status ?? null,
     hasRun: t.hasRun,
+    failureReason: t.statusInfo?.email_failure_reason ?? null,
   })
 
   return (

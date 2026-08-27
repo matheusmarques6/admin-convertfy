@@ -304,26 +304,10 @@ export function getStatusLabel(status: EmailStatus): StatusLabel {
   }
 }
 
-const FAILURE_REASON_LABELS: Record<string, string> = {
-  superseded_by_redo: "Substituido por novo batch",
-  superseded: "Substituido por geracao mais nova",
-  timeout_phase2: "Timeout na fase de render (HTML/imagem)",
-  copy_timeout: "Timeout na geracao da copy",
-  copy_invalid_output: "Copy gerada nao validou no schema",
-  rendering_failed: "Falha ao renderizar HTML/imagem",
-  html_failed: "Falha ao gerar o HTML",
-  // Cadeia de formatação (split do HTML agent): reason aponta o agente exato.
-  hero_failed: "Falha ao montar a hero section",
-  text_format_failed: "Falha ao formatar a copy no HTML",
-  image_format_failed: "Falha ao posicionar as imagens no HTML",
-  qa_failed: "QA reprovou (issues criticas)",
-  qa_timeout: "Timeout no QA",
-  max_attempts_exceeded: "Numero maximo de tentativas excedido",
-  brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",
-  store_data_incomplete: "Loja sem dados pra gerar (nicho e/ou produtos)",
-}
+// Traduções dos motivos de falha: módulo puro compartilhado com o Estúdio
+// (a aba Teste também precisa dizer POR QUE falhou). Reexportado aqui para
+// os importadores históricos deste hook seguirem funcionando.
+export {
+  translateFailureReason,
+} from "@/lib/email-workspace/failure-reason"
 
-export function translateFailureReason(reason: string | null | undefined): string {
-  if (!reason) return "Erro nao identificado"
-  return FAILURE_REASON_LABELS[reason] ?? reason
-}

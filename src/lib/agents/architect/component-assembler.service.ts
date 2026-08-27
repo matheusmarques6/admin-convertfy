@@ -43,6 +43,7 @@ import {
 } from "../callbacks/telemetry.callback"
 import { buildCatalog, buildTypeIndex } from "./catalog-builder"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
+import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
 import {
   montarBlocoRevisao,
@@ -194,6 +195,7 @@ Regras de seleção:
   - <email_anterior_desta_loja>: as variantes escolhidas no email ANTERIOR do MESMO flow desta loja. Busque COERÊNCIA visual — mesma linguagem de layout — sem copiar cegamente: cada email tem seu objetivo.
   - <mesmo_email_em_outras_lojas>: as variantes que ESTE mesmo email recebeu em OUTRAS lojas recentes. Busque VARIEDADE quando houver alternativa igualmente adequada à marca e ao objetivo.
   - Adequação à marca e ao objetivo SEMPRE vence a memória.
+- HERO É ÚNICA: no máximo UMA posição do email pode receber variante da seção "hero" — é a abertura, e o email só tem uma. Para as demais posições, indique variantes de outra forma, mesmo que a anatomia da hero pareça servir.
 - Duas posições do mesmo tipo (dois blocos de corpo, por exemplo) podem receber as mesmas indicações. Rankeie cada posição pelo mérito dela: quem garante variedade dentro do email é a etapa seguinte, não você.
 - Se a descrição estiver vazia, decida pelo nome e pelos demais metadados.
 - Não invente variant_id: use apenas ids presentes em <biblioteca>.
@@ -282,6 +284,7 @@ Como decidir:
 - Razão de HISTÓRICO: <memoria> mostra que a 1ª indicação já ocupou posição equivalente no email anterior desta loja, ou vem se repetindo em outras lojas, e existe finalista igualmente adequada.
 - Razão de MARCA: o 1º choca com <perfil_marca> (anatomia que esta marca não usa) ou com <vocabulario> (a orientacao_copy dele exige o registro que a marca proíbe), e um finalista resolve.
 - Razão de OBJEÇÃO: <objecoes> é o que trava a compra desta loja. O Curador rankeou cada posição ISOLADA — só você vê o email inteiro, e portanto só você percebe quando NENHUMA posição responde à objeção que este email enfrenta. Nesse caso, troque a posição onde a troca custa menos ao arco por um finalista que responda (prova social, FAQ, garantia, comparativo, demonstração). Uma resposta bem colocada basta: não transforme o email inteiro em quebra de objeção.
+- HERO É ÚNICA: no máximo UMA posição do email pode ficar com variante da seção "hero" — é a abertura. Se dois finalistas de posições diferentes forem heroes, deixe a hero na posição cujo papel É a abertura e escolha outra forma para a outra; o código desfaz isso de qualquer jeito, e desfazer cega custa o bloco.
 - Toda posição que tem finalistas recebe uma escolha. Descartar posição é decisão do sistema, não sua — nunca devolva posição em branco.
 - Nunca escolha um variant_id que não esteja entre os finalistas daquela posição.
 
@@ -1282,7 +1285,37 @@ export async function assembleStoreReference(
   // composição válida, avaliada posição por posição. Erro do Montador degrada
   // para o rank 1, nunca derruba o email.
   decisions = parseAssemblerChoices({ raw: asmRaw, ranking: rankingByBlock })
-  const chosenById = decisionMap(decisions)
+  const escolhidoPorPosicao = decisionMap(decisions)
+
+  // ── Uma hero por email ──────────────────────────────────────────────
+  // A posição adota a forma da variante escolhida (27/08) — menos quando a
+  // forma é `hero`: o documento marca cada bloco com ela, e o localizador
+  // recusa por ambiguidade com duas heroes, derrubando a geração inteira
+  // (Innova, welcome #1: o Montador pôs "hero section 10" na posição do
+  // body). A regra é na ESCOLHA, não no localizador — que segue como
+  // última defesa.
+  const heroUnica = garantirHeroUnica(
+    sections.map((papel, i) => ({
+      index: i,
+      papel,
+      escolhido: escolhidoPorPosicao.get(i) ?? null,
+      finalistas: (rankingByBlock.get(i) ?? []).map((c) => c.variant_id),
+    })),
+    (id) => byId.get(id)?.block_type,
+  )
+  const chosenById = new Map(
+    heroUnica.escolhas
+      .filter((e) => e.variant_id != null)
+      .map((e) => [e.index, e.variant_id as string]),
+  )
+  if (heroUnica.trocas.length > 0) {
+    log.warn("assembler.hero_duplicada", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      trocas: heroUnica.trocas,
+    })
+  }
 
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
@@ -1464,6 +1497,19 @@ export async function assembleStoreReference(
         variant_name: byId.get(d.variant_id)?.name ?? null,
         section: sections[d.block_index] ?? null,
         label: input.structure[d.block_index]?.label ?? null,
+      })),
+      // Uma hero por email: o que a regra trocou depois da escolha do
+      // Montador. Lista vazia = a regra não precisou agir. Sem isto, a
+      // troca vira silêncio — e foi o silêncio da colisão que fez a
+      // geração da Innova aparecer só como um email quebrado.
+      heroes_desambiguados: heroUnica.trocas.map((t) => ({
+        block_index: t.index,
+        papel: t.papel,
+        de: t.de,
+        de_nome: byId.get(t.de)?.name ?? null,
+        para: t.para,
+        para_nome: t.para ? (byId.get(t.para)?.name ?? null) : null,
+        motivo: t.motivo,
       })),
       forced_rank1: decisions.forcedRank1,
       missing_motivo: decisions.missingMotivo,

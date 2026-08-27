@@ -454,6 +454,60 @@ describe("Curador — retry e falha", () => {
     expect(res.html).not.toContain("{{FOOTER_TAGLINE}}")
   })
 
+  // O incidente da Innova (27/08): o Estruturador pediu hero · body e o
+  // Montador pôs uma variante de HERO na posição do body. O documento saiu
+  // com dois marcadores `hero`, o localizador recusou por ambiguidade e a
+  // geração inteira morreu em `hero_failed`, sem run nenhuma para explicar.
+  it("duas heroes: a posição de papel hero fica, a outra desce o ranking", async () => {
+    h.variants = [
+      variant("h1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("h2", "hero", "<tr><td>{{HERO_EYEBROW}}</td></tr>"),
+      variant("b1", "body", "<tr><td>{{BODY_TEXT}}</td></tr>"),
+    ]
+    // Curador rankeia: h1 na hero; na posição do body, h2 na frente de b1.
+    invokeAgent.mockResolvedValueOnce({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "h1" }] },
+        { block_index: 1, escolhas: [{ variant_id: "h2" }, { variant_id: "b1" }] },
+      ]),
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    // Montador confirma os dois — inclusive a hero na posição do body.
+    invokeAgent.mockResolvedValueOnce(pick([0, "h1"], [1, "h2"]))
+
+    const res = await assembleStoreReference({
+      ...baseInput,
+      structure: [
+        { section: "hero", label: "Hero" },
+        { section: "body", label: "Pivô" },
+      ],
+    })
+
+    // UM marcador de hero no documento — é o que o localizador exige.
+    expect((res.html ?? "").match(/cfy:block:\d+:hero:start/g)).toHaveLength(1)
+    // A posição do body ficou com a variante de body, não com a 2ª hero.
+    expect(res.variantIds).toEqual(["h1", "b1"])
+    expect(res.html).toContain("{{BODY_TEXT}}")
+    expect(res.html).not.toContain("{{HERO_EYEBROW}}")
+
+    // E a troca não acontece em silêncio.
+    const parsed = (
+      finishGenerationRun.mock.calls.find(
+        (c) => (c[1] as { agent?: string }).agent === "assembler",
+      )![1] as { parsedOutput: Record<string, unknown> }
+    ).parsedOutput
+    const trocas = parsed.heroes_desambiguados as Array<Record<string, unknown>>
+    expect(trocas).toHaveLength(1)
+    expect(trocas[0]).toMatchObject({
+      block_index: 1,
+      papel: "body",
+      de: "h2",
+      para: "b1",
+      motivo: "forma_hero_duplicada",
+    })
+  })
+
   it("indicação de outra seção é descartada (catálogo vai inteiro)", async () => {
     h.variants = [
       variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),

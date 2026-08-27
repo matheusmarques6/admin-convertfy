@@ -66,6 +66,8 @@ export interface TestStatusInfo {
   status?: string
   currentBatchId?: string
   email_status?: string | null
+  /** POR QUE falhou (hero_failed, qa_failed…) — o header traduz. */
+  email_failure_reason?: string | null
   html_pipeline_stage?: string | null
   email_updated_at?: string | null
   runs?: TestStatusRun[]

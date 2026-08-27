@@ -10,6 +10,8 @@
  *   - computeStale: aviso de geração travada (>90s sem atividade in-flight).
  */
 
+import { translateFailureReason } from "@/lib/email-workspace/failure-reason"
+
 export interface RunStep {
   agent: string
   status: "pending" | "success" | "error" | "skipped" | "running"
@@ -274,10 +276,23 @@ export function runHeaderLabel(opts: {
   pollStatus: string | null | undefined
   emailStatus: string | null | undefined
   hasRun: boolean
+  /**
+   * `email_flow_emails.failure_reason` — POR QUE falhou. Sem isto o header
+   * dizia só "Erro na geração": o `hero_failed` da Innova (27/08) chegou ao
+   * operador como um título vermelho sozinho, com um aviso de brand
+   * tolerante embaixo que nada tinha a ver com a causa. E a falha nem
+   * deixava run para consultar — o step morre antes de abrir uma.
+   */
+  failureReason?: string | null
 }): string | null {
   const { resultStatus, pollStatus, emailStatus, hasRun } = opts
   if (pollStatus === "done" || resultStatus === "done") return "Geração concluída"
-  if (pollStatus === "error" || resultStatus === "error") return "Erro na geração"
+  if (pollStatus === "error" || resultStatus === "error") {
+    const motivo = opts.failureReason?.trim()
+    return motivo
+      ? `Erro na geração — ${translateFailureReason(motivo)}`
+      : "Erro na geração"
+  }
   const progressed =
     emailStatus != null &&
     ["copy_ready", "image_done", "rendering", "qa_running"].includes(emailStatus)
