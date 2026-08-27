@@ -69,8 +69,19 @@ recebe camadas com precedência.
 | Estruturas validadas | `estruturas/{flow}/*.md` | CANDIDATAS A ADAPTAR. A chave de indexação real é a OBJEÇÃO que a estrutura ataca ("quando usar"), não o nicho da amostra — o nicho é só a renderização |
 | Aprendizados | `aprendizados/{flow}/` + `_global/` | CAMADA DE CORREÇÃO que VENCE a estrutura: uma estrutura `aprovada` pode carregar ressalva apontando erro próprio (caso real: prova-de-terceiro-antes-do-cta corrige a posição 7 da avelmore-inspecao-antecipada). O agente aplica a estrutura JÁ corrigida |
 
-**Precedência:** regras do `_flow` > aprendizados > estrutura de referência >
-preferência própria do agente.
+**Precedência:** regras do `_flow` > **revisão humana** > orientação do COO >
+aprendizados > estrutura de referência > preferência própria do agente.
+
+A **revisão humana** (migration 20261088) entrou em 27/08: quando o operador
+reordena ou remove blocos na tela do email e escreve por quê, aquilo vira
+`<revisao_humana>` no prompt da próxima geração daquele email — com o DIFF
+(ordem anterior → nova), não só o resultado. É sinal FORTE, não trava: o
+agente pode divergir, mas a divergência é registrada em
+`parsed_output._validador.revisao_humana` (`ordem_pedida` × `ordem_entregue`
+× `seguida`). Alcance escolhido ao salvar: só aquele email daquela loja, ou
+todo email #N do flow. Leitores escolhidos ao salvar: o Estruturador é o dono
+da ordem e vem marcado; Curador e Montador entram quando o motivo também fala
+de escolha de variante ou de composição.
 
 Mais o contexto de runtime:
 

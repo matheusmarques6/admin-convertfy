@@ -41,6 +41,7 @@ import {
   type ReferenceSource,
 } from "./component-assembler.service"
 import type { EstruturadorStatus } from "./blueprint-generator.service"
+import { loadRevisoesAplicaveis } from "../shared/load-revisoes"
 
 const log = logger.child("ArchitectGenerate")
 
@@ -331,6 +332,24 @@ export async function generateBlueprintAndReference(
     })
   }
 
+  // Revisões humanas de estrutura deste email (migration 20261088):
+  // carregadas UMA vez e servidas aos três agentes, cada um recebendo só o
+  // que o operador marcou para ele. Fail-open no loader — correção
+  // editorial nunca derruba a geração.
+  const revisoes = await loadRevisoesAplicaveis(
+    input.storeId,
+    input.flowType,
+    input.emailNumber,
+  )
+  if (revisoes.length > 0) {
+    log.info("architect.revisao_humana_servida", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      revisoes: revisoes.length,
+    })
+  }
+
   // ── Estruturador (ADR adr-estruturador-adaptativo) ──
   // Roda quando o modo não é 'off': decide a estrutura adaptada e grava a
   // run com o embasamento completo. Em 'shadow' o resultado NÃO altera o
@@ -387,6 +406,7 @@ export async function generateBlueprintAndReference(
         persona,
         pesquisa,
         topProductNames,
+        revisoes,
       })
       if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
@@ -474,6 +494,7 @@ export async function generateBlueprintAndReference(
     // linhas eram critério de veto.
     objecoes: resolveObjecoes(store as PesquisaFields),
     vocabulario: resolveVocabulario(store as PesquisaFields),
+    revisoes,
     topProducts,
     outlineObjective: outline?.objective ?? "",
     // Com Estruturador consumido, o fio narrativo dele guia o Montador no

@@ -792,6 +792,33 @@ describe("contrato de telemetria", () => {
     }
   })
 
+  // A revisão é do operador e ele escolhe quem lê: ordem é trabalho do
+  // Estruturador, e nem toda correção de ordem diz algo sobre variante.
+  it("revisão humana só chega a quem foi marcado", async () => {
+    const revisao = {
+      alcance: "este_email" as const,
+      flow_type: "welcome",
+      email_number: 1,
+      ordem_anterior: ["hero", "offer"],
+      ordem_nova: ["hero", "reviews"],
+      blocos_removidos: [],
+      justificativa: "PROVA-ANTES-DA-VITRINE",
+      para_estruturador: true,
+      para_curador: false,
+      para_montador: true,
+    }
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference({ ...baseInput, revisoes: [revisao] })
+
+    const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
+    const asmVars = invokeAgent.mock.calls[1][1] as Record<string, string>
+    expect(chooserVars.revisao_humana).not.toContain("PROVA-ANTES-DA-VITRINE")
+    expect(asmVars.revisao_humana).toContain("PROVA-ANTES-DA-VITRINE")
+    // O diff viaja junto: só a ordem final leria como preferência estética.
+    expect(asmVars.revisao_humana).toContain("[hero, offer]")
+    expect(asmVars.revisao_humana).toContain("[hero, reviews]")
+  })
+
   it("Curador falhando grava a proveniência do mesmo jeito", async () => {
     invokeAgent.mockReset()
     invokeAgent.mockResolvedValue({ raw: "sem json", tokensInput: 1, tokensOutput: 1 })

@@ -45,6 +45,10 @@ import { buildCatalog, buildTypeIndex } from "./catalog-builder"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import type { TopProduct } from "@/types/email-workspace"
 import {
+  montarBlocoRevisao,
+  type RevisaoHumana,
+} from "../shared/revisao-humana"
+import {
   parseCuratorRanking,
   rankingIds,
   type ParsedRanking,
@@ -224,6 +228,10 @@ export const DEFAULT_CHOOSER_USER = `<store>
 {{estruturador_decisao}}
 </decisao_do_estruturador>
 
+<revisao_humana>
+{{revisao_humana}}
+</revisao_humana>
+
 <perfil_marca>
 {{briefing_marca}}
 </perfil_marca>
@@ -306,6 +314,10 @@ export const DEFAULT_ASSEMBLER_USER = `<store>
 <decisao_do_estruturador>
 {{estruturador_decisao}}
 </decisao_do_estruturador>
+
+<revisao_humana>
+{{revisao_humana}}
+</revisao_humana>
 
 <perfil_marca>
 {{briefing_marca}}
@@ -490,6 +502,13 @@ export interface AssembleReferenceInput {
   // antigo era `briefingJson` e mentia: desde o fallback de ago/2026 isto
   // raramente é JSON de briefing.
   perfilMarca: string
+  /**
+   * Revisões humanas de estrutura aplicáveis (migration 20261088). O Curador
+   * e o Montador só recebem as que o operador MARCOU para eles — a ordem é
+   * trabalho do Estruturador, e nem toda correção de ordem diz algo sobre
+   * escolha de variante.
+   */
+  revisoes?: RevisaoHumana[]
   // Objeções do cliente ideal, já renderizadas (`resolveObjecoes`).
   objecoes: string
   // Vocabulário literal da marca, já renderizado (`resolveVocabulario`).
@@ -737,6 +756,10 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       cls: "loja",
       rotulo: "Objeções do cliente ideal — client_stores.icp_frictions",
     },
+    revisao_humana: {
+      cls: "curadoria",
+      rotulo: "Revisão humana da estrutura — email_structure_reviews",
+    },
     vocabulario: {
       cls: "loja",
       rotulo: "Vocabulário literal — client_stores.tone_use_words / tone_avoid_words",
@@ -861,6 +884,7 @@ export async function assembleStoreReference(
     // Usar/Evitar" — dado presente que ninguém usava como critério.
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
+    revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "curador"),
     // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
     // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
     top_products: renderTopProducts(input.topProducts),
@@ -1155,6 +1179,7 @@ export async function assembleStoreReference(
     briefing_marca: input.perfilMarca,
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
+    revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "montador"),
     top_products: renderTopProducts(input.topProducts),
     // Mesma memória que o Curador recebeu — carregada uma vez, sem query
     // nova. É insumo da razão de HISTÓRICO da escolha final.

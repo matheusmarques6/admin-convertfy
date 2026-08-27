@@ -22,6 +22,15 @@ describe("proveniência do Estruturador", () => {
     expect(semOrigem, `sem entrada em USER_ORIGINS: ${semOrigem.join(", ")}`).toEqual([])
   })
 
+  // Sinal mais forte do prompt depois da regra do flow: se a var sumir do
+  // template ou do mapa, a correção humana deixa de chegar ao agente sem
+  // nenhum erro em lugar nenhum.
+  it("a revisão humana chega marcada como curadoria", () => {
+    expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{revisao_humana}}")
+    expect(USER_ORIGINS.revisao_humana.cls).toBe("curadoria")
+    expect(USER_ORIGINS.revisao_humana.rotulo).toContain("email_structure_reviews")
+  })
+
   it("a var da anti-repetição diz que é dos OUTROS emails", () => {
     expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{estruturas_dos_outros_emails}}")
     expect(USER_ORIGINS.estruturas_dos_outros_emails.cls).toBe("sistema")

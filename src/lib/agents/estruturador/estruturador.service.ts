@@ -61,6 +61,10 @@ import {
   montarBlocoOrientacoes,
   type Orientacao,
 } from "./orientacoes"
+import {
+  montarBlocoRevisao,
+  type RevisaoHumana,
+} from "../shared/revisao-humana"
 
 const log = logger.child("Estruturador")
 
@@ -99,6 +103,12 @@ export const USER_ORIGINS: Record<string, SegmentOrigin> = {
   // corpus curado, isto é instrução direta e de efeito imediato. Sem esta
   // linha o guard de recomposição derruba os segmentos da run inteira.
   orientacao_coo: { cls: "curadoria", rotulo: "Orientação do COO — estruturador_orientacoes" },
+  // Correção humana DESTE email (reordenou/removeu na tela e explicou).
+  // Curadoria, não dado da loja: quem escreveu foi uma pessoa revisando.
+  revisao_humana: {
+    cls: "curadoria",
+    rotulo: "Revisão humana da estrutura — email_structure_reviews",
+  },
 }
 
 function resumo(v: string | null | undefined, max = 240): string {
@@ -124,6 +134,12 @@ export interface RunEstruturadorInput {
   persona: string
   pesquisa: string
   topProductNames: string[]
+  /**
+   * Revisões humanas de estrutura aplicáveis (migration 20261088), já
+   * carregadas pelo caller — o Curador e o Montador recebem as MESMAS,
+   * então a query roda uma vez por geração.
+   */
+  revisoes?: RevisaoHumana[]
 }
 
 export interface RunEstruturadorResult {
@@ -425,6 +441,7 @@ export async function runEstruturador(
     orientacao_coo: montarBlocoOrientacoes(
       aplicaveis(orientacoes, input.flowType, input.emailNumber),
     ),
+    revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "estruturador"),
   }
 
   // Entrada estruturada (aba Entrada do Estúdio) — o que o agente recebeu,
@@ -439,6 +456,14 @@ export async function runEstruturador(
     { rotulo: "Commit do vault", cls: "vault", valor: carga.vaultCommitSha ?? "(desconhecido)" },
     { rotulo: "Capacidade da biblioteca", cls: "sistema", valor: capacidadeTexto },
     { rotulo: "Estruturas dos outros emails do flow", cls: "sistema", valor: irmasTexto },
+    {
+      rotulo: "Revisão humana da estrutura",
+      cls: "curadoria",
+      valor:
+        (input.revisoes ?? []).length > 0
+          ? `${(input.revisoes ?? []).length} revisão(ões) aplicável(is)`
+          : "(nenhuma)",
+    },
   ]
 
   // Segmentos base (1ª tentativa) — no retry as vars mudam e os segments são
@@ -557,6 +582,29 @@ export async function runEstruturador(
               retry_count: attempt - 1,
               posicoes_removidas: validado.removidasPeloValidador.length,
               shadow: input.mode !== "on",
+              // A revisão humana é sinal FORTE, não trava: o agente pode
+              // divergir. O que não pode é a divergência passar batida —
+              // sem isto, "ele ignorou o que escrevi" só se descobre
+              // comparando a sequência à mão, geração a geração.
+              revisao_humana: (() => {
+                const rev = (input.revisoes ?? []).filter(
+                  (r) => r.para_estruturador !== false,
+                )
+                if (rev.length === 0) return { havia: false, seguida: null }
+                // A mais específica manda: é a que fala deste email.
+                const alvo =
+                  rev.find((r) => r.alcance === "este_email") ?? rev[0]
+                const seq = validado.saida!.estrutura.map((p) => p.section)
+                return {
+                  havia: true,
+                  alcance: alvo.alcance,
+                  ordem_pedida: alvo.ordem_nova,
+                  ordem_entregue: seq,
+                  seguida:
+                    alvo.ordem_nova.length === seq.length &&
+                    alvo.ordem_nova.every((sec, i) => sec === seq[i]),
+                }
+              })(),
               // Convergência, não erro: mesma estrutura da geração anterior
               // DESTE email. Até 27/08 isto era motivo de reprovação.
               repetiu_geracao_anterior:

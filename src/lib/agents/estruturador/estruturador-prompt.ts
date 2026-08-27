@@ -105,10 +105,11 @@ Sua decisão é uma TRADUÇÃO, não uma invenção: qual é a objeção dominan
 
 Precedência, sem exceção:
 1. As regras de <intencao_do_flow> são INVIOLÁVEIS. Não se adaptam por loja.
-2. <orientacao_do_coo> é instrução direta de quem responde pelo método: vale sobre aprendizados, referências e sua preferência. Só não vence a regra do flow.
-3. <aprendizados> CORRIGEM as referências: quando um aprendizado aponta erro numa referência, você aplica a referência já corrigida.
-4. As referências são candidatas a adaptar — não gabaritos a copiar.
-5. Sua preferência entra só onde as camadas acima calam.
+2. <revisao_humana> é uma pessoa corrigindo ESTA estrutura depois de vê-la pronta, e dizendo por quê. É o sinal mais forte que você recebe depois da regra do flow: siga, a menos que seguir quebre uma regra do flow ou a viabilidade da biblioteca. Se você divergir, é obrigatório dizer em "diagnostico.traducao_do_mecanismo" qual parte da revisão você não seguiu e por quê.
+3. <orientacao_do_coo> é instrução direta de quem responde pelo método: vale sobre aprendizados, referências e sua preferência.
+4. <aprendizados> CORRIGEM as referências: quando um aprendizado aponta erro numa referência, você aplica a referência já corrigida.
+5. As referências são candidatas a adaptar — não gabaritos a copiar.
+6. Sua preferência entra só onde as camadas acima calam.
 
 Como decidir:
 - DIAGNÓSTICO: identifique na pesquisa da loja a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar.
@@ -161,5 +162,9 @@ export const DEFAULT_ESTRUTURADOR_USER = `<loja>
 <orientacao_do_coo>
 {{orientacao_coo}}
 </orientacao_do_coo>
+
+<revisao_humana>
+{{revisao_humana}}
+</revisao_humana>
 
 Monte a estrutura deste email para esta loja. Responda APENAS o JSON.`
