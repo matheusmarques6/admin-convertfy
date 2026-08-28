@@ -128,11 +128,43 @@ export interface CopyMergeResult {
   anchors: MergeAnchor[]
 }
 
+/** Bloco que trouxe copy e não trouxe contrato — erro, não modo de operação. */
+export interface BlocoSemContrato {
+  block_id: string | null
+  position: number | null
+  block_type: string | null
+  /** Chaves que o n8n preencheu e que não têm onde ser escritas. */
+  keys_na_copy: string[]
+}
+
+export interface MergeBlocksFromContext {
+  blocks: MergeBlock[]
+  blocos_sem_contrato: BlocoSemContrato[]
+}
+
 /**
- * Adaptador: email_blocks × blueprint blocks → MergeBlock[]. Mesma
- * convenção do dispatch/QA: position 1-based → índice position-1, guardada
- * pela igualdade de type (estrutura divergente → bloco fica sem fields e
- * os campos dele não são escritos — fail-open).
+ * Adaptador: email_blocks × blueprint blocks → MergeBlock[].
+ *
+ * **O contrato vem da LINHA do bloco** (`email_blocks.fields`, migration
+ * 20261065 — "o bloco É o schema"). É a mesma fonte que o dispatch
+ * (`resolveBlockSchemas`) envia ao n8n e que o callback usa para auditar a
+ * copy que volta; o merge era o único que discordava.
+ *
+ * O que ele fazia até 28/08: ignorava a linha e re-derivava do blueprint
+ * por `blueprintBlocks[position-1]`, guardado pela igualdade de `type`.
+ * Bastava o tipo divergir para o bloco ficar sem fields — em silêncio.
+ *
+ * E o tipo divergia sozinho: `sanitizeBlockType` degradava para 'text'
+ * todo tipo fora do CHECK, e 'offer' ficou fora dele até a migration
+ * 20261090. Resultado no Welcome 1 da InnovaBay: os dois blocos de oferta
+ * chegaram como 'text', não casaram com o 'offer' do blueprint, e os 12
+ * campos de copy do n8n nunca foram escritos. O email de uma loja de
+ * medidor de energia saiu falando de bolsas de couro europeias — o texto
+ * de exemplo da variante — e o run reportou 31 de 31 mergeados.
+ *
+ * O blueprint permanece como FALLBACK para linhas anteriores à 20261065,
+ * que nasceram sem `fields`; ali o casamento antigo (índice + tipo) segue
+ * valendo, porque é tudo que existe.
  */
 export function mergeBlocksFromContext(
   blocks:
@@ -141,6 +173,7 @@ export function mergeBlocksFromContext(
         position: number
         block_type: string
         content: Record<string, unknown> | null
+        fields?: MergeField[] | null
       }>
     | null
     | undefined,
@@ -148,21 +181,48 @@ export function mergeBlocksFromContext(
     | Array<{ type: string; fields?: MergeField[] | null }>
     | null
     | undefined,
-): MergeBlock[] {
-  return (blocks ?? []).map((b) => {
+): MergeBlocksFromContext {
+  const semContrato: BlocoSemContrato[] = []
+  const out = (blocks ?? []).map((b) => {
+    // 1ª fonte: a própria linha.
+    const daLinha = Array.isArray(b.fields) ? b.fields : []
+    // 2ª fonte: blueprint por índice+tipo — só para linha sem contrato.
     const byIndex = (i: number) => {
       const cand = blueprintBlocks?.[i]
       return cand && cand.type === b.block_type ? cand : null
     }
-    const matched = byIndex(b.position - 1) ?? byIndex(b.position)
+    const doBlueprint =
+      daLinha.length > 0
+        ? []
+        : ((byIndex(b.position - 1) ?? byIndex(b.position))?.fields ?? [])
+    const fields = daLinha.length > 0 ? daLinha : doBlueprint
+
+    const content = b.content ?? {}
+    if (fields.length === 0) {
+      // Bloco sem contrato E sem copy é bloco estrutural — não é erro.
+      // Com copy, é: existe texto para escrever e nenhum endereço.
+      const keys = Object.keys(content).filter(
+        (k) => copyValueOf(content, k) !== null,
+      )
+      if (keys.length > 0) {
+        semContrato.push({
+          block_id: b.id ?? null,
+          position: b.position ?? null,
+          block_type: b.block_type ?? null,
+          keys_na_copy: keys,
+        })
+      }
+    }
+
     return {
-      fields: Array.isArray(matched?.fields) ? matched.fields : [],
-      content: b.content ?? {},
+      fields,
+      content,
       block_id: b.id ?? null,
       block_type: b.block_type ?? null,
       position: b.position ?? null,
     }
   })
+  return { blocks: out, blocos_sem_contrato: semContrato }
 }
 
 const truncate = (s: string, max = 120): string =>

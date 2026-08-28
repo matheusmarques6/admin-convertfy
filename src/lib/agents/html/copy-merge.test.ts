@@ -179,21 +179,89 @@ describe("copyMergeByExample", () => {
 })
 
 describe("mergeBlocksFromContext", () => {
-  it("casa position-1 guardado por type; estrutura divergente fica sem fields", () => {
-    const blocks = [
-      { id: "b1", position: 1, block_type: "hero", content: { x: "1" } },
-      { id: "b2", position: 2, block_type: "cta", content: null },
-    ]
-    const bp = [
-      { type: "hero", fields: [{ key: "h", type: "text_short" }] },
-      { type: "beneficios", fields: [{ key: "z", type: "text_short" }] },
-    ]
-    const out = mergeBlocksFromContext(blocks, bp)
-    expect(out[0].fields).toHaveLength(1)
-    expect(out[0].block_id).toBe("b1")
-    expect(out[0].block_type).toBe("hero")
-    // position 2 = bp[1] type beneficios ≠ cta → sem fields (fail-open).
-    expect(out[1].fields).toHaveLength(0)
+  const campo = (key: string) => ({ key, type: "text_short" as const })
+
+  it("o contrato vem da LINHA do bloco", () => {
+    const out = mergeBlocksFromContext(
+      [
+        {
+          id: "b1",
+          position: 1,
+          block_type: "hero",
+          content: { h: "oi" },
+          fields: [campo("h"), campo("sub")],
+        },
+      ],
+      // Blueprint com contrato DIFERENTE: a linha manda.
+      [{ type: "hero", fields: [campo("outro")] }],
+    )
+    expect(out.blocks[0].fields.map((f) => f.key)).toEqual(["h", "sub"])
+    expect(out.blocos_sem_contrato).toEqual([])
+  })
+
+  // O bug do Welcome 1 da InnovaBay (28/08): 'offer' fora do CHECK fazia o
+  // bloco nascer 'text', o tipo não batia com o do blueprint e os campos
+  // sumiam calados. Com o contrato na linha, o tipo não decide mais nada.
+  it("block_type divergente do blueprint não perde mais o contrato", () => {
+    const out = mergeBlocksFromContext(
+      [
+        {
+          id: "b2",
+          position: 2,
+          block_type: "text", // degradado por sanitizeBlockType
+          content: { manifesto_headline: "Does it work?" },
+          fields: [campo("manifesto_headline")],
+        },
+      ],
+      [{ type: "hero", fields: [] }, { type: "offer", fields: [campo("z")] }],
+    )
+    expect(out.blocks[0].fields.map((f) => f.key)).toEqual(["manifesto_headline"])
+    expect(out.blocos_sem_contrato).toEqual([])
+  })
+
+  it("linha sem contrato cai no blueprint por position-1 + type (legado)", () => {
+    const out = mergeBlocksFromContext(
+      [{ id: "b1", position: 1, block_type: "hero", content: { h: "1" } }],
+      [{ type: "hero", fields: [campo("h")] }],
+    )
+    expect(out.blocks[0].fields).toHaveLength(1)
+    expect(out.blocks[0].block_id).toBe("b1")
+    expect(out.blocos_sem_contrato).toEqual([])
+  })
+
+  // Antes isto era `fields: []` e ponto — o fail-open MUDO que entregou o
+  // texto de exemplo da variante ao cliente. Agora tem nome e sai no run.
+  it("bloco COM copy e sem contrato em nenhuma fonte é reportado", () => {
+    const out = mergeBlocksFromContext(
+      [
+        {
+          id: "b2",
+          position: 2,
+          block_type: "cta",
+          content: { z: "copy que não tem onde entrar", vazio: "  " },
+        },
+      ],
+      [{ type: "hero", fields: [] }, { type: "beneficios", fields: [campo("z")] }],
+    )
+    expect(out.blocks[0].fields).toHaveLength(0)
+    expect(out.blocos_sem_contrato).toEqual([
+      {
+        block_id: "b2",
+        position: 2,
+        block_type: "cta",
+        // `vazio` é só espaço — não conta como copy a colocar.
+        keys_na_copy: ["z"],
+      },
+    ])
+  })
+
+  // Bloco estrutural (divider/spacer) não tem copy nem contrato: não é erro.
+  it("bloco sem contrato e SEM copy não é reportado", () => {
+    const out = mergeBlocksFromContext(
+      [{ id: "b3", position: 1, block_type: "divider", content: null }],
+      [],
+    )
+    expect(out.blocos_sem_contrato).toEqual([])
   })
 })
 

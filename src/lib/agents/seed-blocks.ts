@@ -14,22 +14,35 @@ import { logger } from "@/lib/logger"
 import { DEFAULT_BLUEPRINTS, type BlueprintBlockDef } from "./email-blueprint"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
+import { COMPONENT_CATEGORY_KEYS } from "./shared/component-categories"
 
 const log = logger.child("SeedBlocks")
 
 /**
- * Vocabulário aceito pelo CHECK de email_blocks.block_type (migration
- * 20261074 — legado + tipos da biblioteca de componentes). Manter em
- * sincronia com a constraint: um INSERT com tipo fora daqui violaria o
- * CHECK e, no reconcile (DELETE antes do INSERT), zeraria os blocos do
- * email — incidente Luxe Lift ago/2026 (blueprint com 'reviews'/'body'
- * numa era em que o CHECK não os conhecia).
+ * Vocabulário aceito pelo CHECK de email_blocks.block_type (migrations
+ * 20261074 + 20261090). Manter em sincronia com a constraint: um INSERT
+ * com tipo fora daqui violaria o CHECK e, no reconcile (DELETE antes do
+ * INSERT), zeraria os blocos do email — incidente Luxe Lift ago/2026
+ * (blueprint com 'reviews'/'body' numa era em que o CHECK não os conhecia).
+ *
+ * As 8 categorias da biblioteca entram por DERIVAÇÃO, não copiadas à mão.
+ * A lista escrita a dedo já custou duas vezes: a 20261074 acrescentou
+ * 'body' e 'reviews' e esqueceu 'offer', e por isso todo bloco de oferta
+ * nasceu com block_type='text' — o que fez o merge não achar o contrato e
+ * o email da InnovaBay sair com o texto de exemplo da variante (bolsas de
+ * couro numa loja de medidor de energia), sem um único sinal de erro.
+ * Categoria nova na biblioteca passa a entrar sozinha aqui.
  */
-const ALLOWED_BLOCK_TYPES = new Set([
-  "hero", "text", "coupon", "products", "footer", "image", "cta",
-  "divider", "spacer", "social", "header", "headline", "features",
-  "social_proof", "testimonials", "urgency", "comparison", "story",
-  "letter", "body", "reviews",
+const LEGACY_BLOCK_TYPES = [
+  // Tipos técnicos do blueprint que NÃO são categorias da biblioteca.
+  "text", "coupon", "image", "divider", "spacer", "social", "headline",
+  "features", "social_proof", "testimonials", "urgency", "comparison",
+  "story", "letter",
+] as const
+
+const ALLOWED_BLOCK_TYPES = new Set<string>([
+  ...COMPONENT_CATEGORY_KEYS,
+  ...LEGACY_BLOCK_TYPES,
 ])
 
 /**

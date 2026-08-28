@@ -23,6 +23,10 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   hero_failed: "Falha ao montar a hero section",
   text_format_failed: "Falha ao formatar a copy no HTML",
   image_format_failed: "Falha ao posicionar as imagens no HTML",
+  // O bloco tem copy do n8n e nenhum contrato que diga onde escrevê-la.
+  // Reprovar é escolha: antes o email saía com o texto de exemplo da
+  // variante, e ninguém percebia.
+  merge_sem_contrato: "Bloco com copy e sem contrato — a copy nao tem onde entrar",
   qa_failed: "QA reprovou (issues criticas)",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",

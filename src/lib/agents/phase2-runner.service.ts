@@ -2268,8 +2268,12 @@ async function runFormattingChain(p: {
   } = p
   const ids = { storeId, flowId, emailId, triggeredBy, batchId }
 
-  const failStep = async (agent: FormatAgent, lastError: string) => {
-    const reason = FMT_FAILURE_REASON[agent]
+  /**
+   * Marca o email como falho por um motivo qualquer. Extraído do `failStep`
+   * porque o `copy_merge` também precisa reprovar (bloco com copy e sem
+   * contrato) e ele não é um `FormatAgent` — não tem chain nem retry.
+   */
+  const failEmail = async (reason: string, agent: string, lastError: string) => {
     log.error("phase2.fmt.step_failed", { emailId, agent, reason, lastError })
     await markEmailFailed(emailId, reason)
     await safeNotifyEmailFailed(storeId, emailId, reason, batchId || null)
@@ -2283,6 +2287,9 @@ async function runFormattingChain(p: {
       await checkBatchTerminal(storeId, batchId).catch(() => {})
     }
   }
+
+  const failStep = async (agent: FormatAgent, lastError: string) =>
+    failEmail(FMT_FAILURE_REASON[agent], agent, lastError)
 
   // ── Contexto compartilhado da cadeia (queries 1x) ──────────────────
   let fmtCtx: FormatChainContext
@@ -2493,17 +2500,19 @@ async function runFormattingChain(p: {
   // `mergeBlocks`/`textFieldsTotal` são computados SEMPRE (resume incluso):
   // a decisão de pular o text_format depende de saber se o blueprint tem
   // campos de texto, mesmo quando o merge já rodou numa invocação anterior.
-  const mergeBlocks = mergeBlocksFromContext(
-    fmtCtx.blocks as Array<{
-      id?: string
-      position: number
-      block_type: string
-      content: Record<string, unknown> | null
-    }>,
-    fmtCtx.blueprint?.blocks as
-      | Array<{ type: string; fields?: MergeField[] | null }>
-      | undefined,
-  )
+  const { blocks: mergeBlocks, blocos_sem_contrato: blocosSemContrato } =
+    mergeBlocksFromContext(
+      fmtCtx.blocks as Array<{
+        id?: string
+        position: number
+        block_type: string
+        content: Record<string, unknown> | null
+        fields?: MergeField[] | null
+      }>,
+      fmtCtx.blueprint?.blocks as
+        | Array<{ type: string; fields?: MergeField[] | null }>
+        | undefined,
+    )
   const textFieldsTotal = mergeBlocks.reduce(
     (n, b) =>
       n + b.fields.filter((f) => deriveFieldNature(f) === "copy").length,
@@ -2514,6 +2523,35 @@ async function runFormattingChain(p: {
   /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
   let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
     []
+
+  // Bloco com copy do n8n e SEM contrato: existe texto para escrever e
+  // nenhum endereço. Até 28/08 isso era fail-open MUDO — o bloco seguia
+  // sem fields, os campos nunca viravam slot e o email era entregue com o
+  // texto de exemplo da variante (a InnovaBay, que vende medidor de
+  // energia, saiu falando de bolsas de couro europeias). Reprovar é pior
+  // para o operador e MUITO melhor para o cliente: um email interrompido
+  // se vê; um email com a copy da biblioteca passa direto.
+  if (blocosSemContrato.length > 0) {
+    const resumo = blocosSemContrato
+      .map((b) => `#${b.position} ${b.block_type} (${b.keys_na_copy.length} campo(s))`)
+      .join(", ")
+    log.error("phase2.fmt.merge_sem_contrato", {
+      emailId,
+      blocos: blocosSemContrato,
+      hint: "email_blocks.fields vazio com content preenchido — reseed do email ou blueprint regerado sem contrato",
+    })
+    await logGenerationRun({
+      ...ids,
+      agent: "copy_merge",
+      status: "error",
+      model: "deterministic",
+      errorMessage: `blocos com copy e sem contrato: ${resumo}`,
+      parsedOutput: { blocos_sem_contrato: blocosSemContrato },
+      costCents: 0,
+    }).catch(() => {})
+    await failEmail("merge_sem_contrato", "copy_merge", resumo)
+    return { status: "failed" }
+  }
 
   if (stage === null) {
     const mergeInput = fmtCtx.referenceHtml
@@ -2545,15 +2583,23 @@ async function runFormattingChain(p: {
     // Guard anti-colapso: maioria dos campos sem lugar = biblioteca com
     // examples podres (cadastro divergiu do HTML), não "copy faltando".
     // Fail-open por decisão — registra alto e claro, nunca derruba.
-    const collapsed =
-      merge.report.slots_total >= 10 &&
-      merge.report.sem_lugar.length / merge.report.slots_total > 0.6
+    // Campos que não chegaram a virar slot contam como perda: sem isso o
+    // denominador encolhe junto com o numerador e o guard fica cego —
+    // foi o que deixou passar o 31/31 do Welcome 1 da InnovaBay.
+    const perdidosSemContrato = blocosSemContrato.reduce(
+      (n, b) => n + b.keys_na_copy.length,
+      0,
+    )
+    const denominador = merge.report.slots_total + perdidosSemContrato
+    const perdidos = merge.report.sem_lugar.length + perdidosSemContrato
+    const collapsed = denominador >= 10 && perdidos / denominador > 0.6
     if (collapsed) {
       log.error("phase2.fmt.merge_anchor_collapse", {
         emailId,
         slots_total: merge.report.slots_total,
         merged: merge.report.merged,
         sem_lugar: merge.report.sem_lugar.length,
+        sem_contrato: perdidosSemContrato,
         hint: "examples do schema não batem com o HTML — revisar o cadastro das variantes",
       })
     }
@@ -2598,6 +2644,9 @@ async function runFormattingChain(p: {
         estruturais_left: structural.cleaned,
         skipped: merge.report.skipped,
         hero_values: merge.report.hero_values,
+        // Sempre presente, mesmo vazio: é o contador que prova que a
+        // checagem rodou. Ausência de campo não é ausência de problema.
+        blocos_sem_contrato: blocosSemContrato,
         anchor_collapse: collapsed,
         output_html_len: structural.html.length,
         output_sha8: sha8(structural.html),

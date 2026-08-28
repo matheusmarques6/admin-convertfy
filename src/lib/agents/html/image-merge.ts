@@ -82,22 +82,44 @@ function inRange(offset: number, range: Range | null): boolean {
 }
 
 /**
- * Mapa bloco → índice do marcador cfy:block, pela MESMA convenção
- * sequencial do qa-views: n-ésimo marcador do tipo T casa com o n-ésimo
- * bloco de block_type T.
+ * Mapa bloco → índice do marcador cfy:block.
+ *
+ * Casa pela ORDEM DO DOCUMENTO: o n-ésimo marcador é o n-ésimo bloco. Os
+ * dois vêm do mesmo blueprint, na mesma ordem, e o marcador é escrito na
+ * montagem — a posição é a informação confiável.
+ *
+ * Até 28/08 casava por `block_type === m.tipo` (n-ésimo marcador do tipo T
+ * ↔ n-ésimo bloco do tipo T), e isso quebra quando o tipo gravado no banco
+ * diverge da forma da variante: `sanitizeBlockType` degradava para 'text'
+ * todo tipo fora do CHECK, e 'offer' ficou fora dele até a migration
+ * 20261090. Para um bloco de oferta com imagem gerada, `matches` saía
+ * VAZIO e a imagem simplesmente não entrava — o mesmo mecanismo que fez a
+ * copy sumir no `copy_merge`.
+ *
+ * O tipo continua servindo de DESEMPATE, não de guarda: quando as duas
+ * listas têm tamanhos diferentes (bloco estrutural sem marcador, por
+ * exemplo), a contagem por tipo desfaz o desalinhamento.
  */
 function markerIndiceByBlock(
   html: string,
   blocks: MergeBlock[],
 ): Map<MergeBlock, number> {
   const markers = locateBlockRegions(html)
-  const nthSeen = new Map<string, number>()
   const out = new Map<MergeBlock, number>()
+
+  // Caminho normal: mesma quantidade → é a mesma lista, na mesma ordem.
+  if (markers.length === blocks.length) {
+    markers.forEach((m, i) => out.set(blocks[i], m.indice))
+    return out
+  }
+
+  // Desalinhado: cai na contagem por tipo (comportamento antigo), e o que
+  // sobrar sem par fica de fora — melhor não casar que casar errado.
+  const nthSeen = new Map<string, number>()
   for (const m of markers) {
     const nth = nthSeen.get(m.tipo) ?? 0
     nthSeen.set(m.tipo, nth + 1)
-    const matches = blocks.filter((b) => b.block_type === m.tipo)
-    const block = matches[nth]
+    const block = blocks.filter((b) => b.block_type === m.tipo)[nth]
     if (block) out.set(block, m.indice)
   }
   return out

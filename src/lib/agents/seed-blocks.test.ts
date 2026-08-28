@@ -242,13 +242,36 @@ describe("reconcileBlocksAdditive", () => {
 // ── sanitizeBlockType (CHECK do banco × vocabulário da biblioteca) ───────
 
 import { sanitizeBlockType } from "./seed-blocks"
+import { COMPONENT_CATEGORY_KEYS } from "./shared/component-categories"
 
 describe("sanitizeBlockType", () => {
+  // A INVARIANTE. Este é o teste que faltava: a lista era escrita à mão e
+  // já esqueceu categoria duas vezes. A 20261074 acrescentou 'body' e
+  // 'reviews' (Luxe Lift) e deixou 'offer' de fora — todo bloco de oferta
+  // passou a nascer 'text', o merge não achou o contrato pelo tipo e o
+  // email da InnovaBay saiu com o texto de exemplo da variante, sem um
+  // único sinal. Categoria que a biblioteca oferece TEM de sobreviver.
+  it("toda categoria da biblioteca sobrevive ao sanitizador", () => {
+    const degradadas = COMPONENT_CATEGORY_KEYS.filter(
+      (k) => sanitizeBlockType(k, "e1") !== k,
+    )
+    expect(degradadas, `categorias virando 'text': ${degradadas.join(", ")}`).toEqual([])
+  })
+
   it("aceita o vocabulário da biblioteca (incidente Luxe Lift: reviews/body)", () => {
     expect(sanitizeBlockType("reviews", "e1")).toBe("reviews")
     expect(sanitizeBlockType("body", "e1")).toBe("body")
     expect(sanitizeBlockType("hero", "e1")).toBe("hero")
     expect(sanitizeBlockType("products", "e1")).toBe("products")
+    // A que faltava (28/08).
+    expect(sanitizeBlockType("offer", "e1")).toBe("offer")
+  })
+
+  // Os técnicos do blueprint não são categorias e também não podem cair.
+  it("mantém os tipos legados do blueprint", () => {
+    for (const t of ["text", "coupon", "image", "divider", "spacer", "letter"]) {
+      expect(sanitizeBlockType(t, "e1")).toBe(t)
+    }
   })
 
   it("tipo desconhecido degrada pra 'text' — nunca derruba o INSERT", () => {

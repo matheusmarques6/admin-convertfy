@@ -304,3 +304,61 @@ describe("imageMerge — N imagens por bloco", () => {
     expect(r.report.merged).toBe(1)
   })
 })
+
+// ── Casamento bloco ↔ marcador (28/08) ──────────────────────────────────
+//
+// Até aqui o mapa casava por `block_type === m.tipo`. `sanitizeBlockType`
+// degrada para 'text' todo tipo fora do CHECK, e 'offer' ficou fora dele
+// até a migration 20261090 — para um bloco de oferta com imagem, o filtro
+// por tipo saía vazio e a imagem não entrava. Mesmo mecanismo que fez a
+// copy sumir no copy_merge.
+
+describe("imageMerge — bloco ↔ marcador", () => {
+  const doc = (t1: string, t2: string, s1 = "hero", s2 = "offer") =>
+    [
+      `<!-- cfy:block:0:${s1}:start -->`,
+      `<table><tr><td><img src="${t1}" alt="ALT_1"></td></tr></table>`,
+      `<!-- cfy:block:0:${s1}:end -->`,
+      `<!-- cfy:block:1:${s2}:start -->`,
+      `<table><tr><td><img src="${t2}" alt="ALT_2"></td></tr></table>`,
+      `<!-- cfy:block:1:${s2}:end -->`,
+    ].join("\n")
+
+  it("block_type degradado para 'text' ainda recebe a imagem", () => {
+    const r = run(
+      doc("URL_DA_IMAGEM_1", "URL_DA_IMAGEM_2"),
+      [
+        block({ block_id: "b1", block_type: "hero", position: 1, fields: [imageField("hero_img")] }),
+        // O que o banco guardou antes da 20261090: 'offer' virou 'text'.
+        block({ block_id: "b2", block_type: "text", position: 2, fields: [imageField("offer_img")] }),
+      ],
+      [
+        { block_type: "hero", field_key: "hero_img", url: "https://cdn/hero.png", position: 1 },
+        // O imageMap carrega o tipo DEGRADADO, como o banco guardou.
+        { block_type: "text", field_key: "offer_img", url: "https://cdn/offer.png", position: 2 },
+      ],
+    )
+    expect(r.html).toContain("https://cdn/hero.png")
+    expect(r.html).toContain("https://cdn/offer.png")
+    expect(r.report.merged).toBe(2)
+  })
+
+  // Duas regiões da MESMA section no documento — não havia teste nenhum,
+  // e é exatamente a forma do Welcome 1 da InnovaBay (offer × 2).
+  it("duas regiões da mesma section não trocam de bloco", () => {
+    const r = run(
+      doc("URL_DA_IMAGEM_1", "URL_DA_IMAGEM_2", "offer", "offer"),
+      [
+        block({ block_id: "b1", block_type: "text", position: 1, fields: [imageField("a")] }),
+        block({ block_id: "b2", block_type: "text", position: 2, fields: [imageField("b")] }),
+      ],
+      [
+        { block_type: "text", field_key: "a", url: "https://cdn/primeira.png", position: 1 },
+        { block_type: "text", field_key: "b", url: "https://cdn/segunda.png", position: 2 },
+      ],
+    )
+    // A ordem do documento manda: primeira região = primeiro bloco.
+    expect(r.html.indexOf("primeira.png")).toBeGreaterThan(-1)
+    expect(r.html.indexOf("primeira.png")).toBeLessThan(r.html.indexOf("segunda.png"))
+  })
+})
