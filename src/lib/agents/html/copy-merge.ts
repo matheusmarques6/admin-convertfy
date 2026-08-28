@@ -497,30 +497,119 @@ function attributeText(fragment: string): string {
   return normalizeForMatch(partes.join(" "))
 }
 
+/**
+ * Quarta forma, o SEPARADOR (28/08). O merge aplicou `Use code: WELCOME10 —
+ * valid at checkout`; o agente destacou o código e trocou o travessão por
+ * uma quebra de linha — que é exatamente o que um travessão faz na tela:
+ *
+ *   Use code: <strong style="font-weight:900;">WELCOME10</strong><br>valid at checkout
+ *
+ * A frase está inteira e legível. Mas o `<br>` vira espaço no strip e o `—`
+ * do valor não tem par, então a comparação caractere a caractere falha.
+ * Trocar um separador por outro é decisão de LAYOUT, e layout é a alçada do
+ * agente — o que o guard mede é a sobrevivência do texto.
+ *
+ * Local ao guard de propósito: `normalizeForMatch` é compartilhado com a
+ * ancoragem do merge, onde a pontuação distingue frases de verdade.
+ */
+const SEPARADORES_RE = /[—–\-|·•]+/g
+
+function semSeparadores(s: string): string {
+  return s.replace(SEPARADORES_RE, " ").replace(/\s+/g, " ").trim()
+}
+
+/** É campo de logo? A marca vira `<img>` por ordem do prompt da hero. */
+export function isLogoKey(key: string): boolean {
+  const k = key.trim().toLowerCase()
+  return k === "logo" || k.startsWith("logo_") || k.endsWith("_logo")
+}
+
+/**
+ * Caminho da URL sem query string. As URLs do storage são ASSINADAS: o
+ * token muda a cada leitura, e comparar a URL inteira nunca casaria.
+ */
+function caminhoDaUrl(url: string): string {
+  const semQuery = url.split("?")[0].trim().toLowerCase()
+  return semQuery.length > 0 ? semQuery : url.trim().toLowerCase()
+}
+
+/** `src` de cada `<img>` do fragmento. */
+const IMG_SRC_RE = /<img\b[^>]*\bsrc\s*=\s*"([^"]*)"/gi
+
+function fragmentoTemLogo(fragment: string, logoSrcs: string[]): boolean {
+  const alvos = logoSrcs
+    .map(caminhoDaUrl)
+    .filter((c) => c.length > 0)
+  if (alvos.length === 0) return false
+  for (const m of fragment.matchAll(IMG_SRC_RE)) {
+    const src = caminhoDaUrl(m[1])
+    if (alvos.some((a) => a === src)) return true
+  }
+  return false
+}
+
+export interface HeroCopyGuardOpts {
+  /** Valores de campos de LOGO aplicados na hero (ver `isLogoKey`). */
+  logoValues?: string[]
+  /** URLs do logo da loja (claro/escuro) que o pipeline injeta no prompt. */
+  logoSrcs?: string[]
+}
+
 export function heroCopyPreserved(
   heroValues: string[],
   fragment: string,
-): { ok: boolean; missing: string[]; viaAtributo: string[] } {
+  opts: HeroCopyGuardOpts = {},
+): {
+  ok: boolean
+  missing: string[]
+  viaAtributo: string[]
+  viaLogo: string[]
+} {
   const spaced = normalizeForMatch(fragment.replace(/<[^>]*>/g, " "))
   const glued = normalizeForMatch(fragment.replace(/<[^>]*>/g, ""))
   const attrs = attributeText(fragment)
+  const spacedSemSep = semSeparadores(spaced)
+
+  const logoNorm = new Set(
+    (opts.logoValues ?? []).map((v) => normalizeForMatch(v)),
+  )
+  // Calculado UMA vez: a varredura dos <img> não depende do valor.
+  const temLogo =
+    logoNorm.size > 0 && fragmentoTemLogo(fragment, opts.logoSrcs ?? [])
 
   const missing: string[] = []
   // Salvos SÓ pelo atributo. Sem esta lista a correção vira silêncio e
   // ninguém sabe com que frequência o agente converte copy em imagem.
   const viaAtributo: string[] = []
+  /**
+   * Salvos por terem virado o `<img>` do logo REAL da loja — o que o prompt
+   * manda fazer com o wordmark. Não é o mesmo que `viaAtributo`: ali a
+   * string sobrevive no `alt`; aqui ela deixa de existir como texto, e o
+   * que se verifica é que o logo entrou no lugar dela.
+   */
+  const viaLogo: string[] = []
 
   for (const v of heroValues) {
     const norm = normalizeForMatch(v)
     if (norm.length < 4) continue
     if (spaced.includes(norm) || glued.includes(norm)) continue
+    // Separador trocado (travessão → <br>, hífen → pipe…): o texto está lá.
+    if (semSeparadores(norm) && spacedSemSep.includes(semSeparadores(norm))) {
+      continue
+    }
     if (attrs.includes(norm)) {
       viaAtributo.push(v)
       continue
     }
+    // O wordmark virou o logo da loja. Exige o `<img>` do logo REAL: uma
+    // imagem qualquer não salva, e apagar a marca sem pôr o logo reprova.
+    if (temLogo && logoNorm.has(norm)) {
+      viaLogo.push(v)
+      continue
+    }
     missing.push(v)
   }
-  return { ok: missing.length === 0, missing, viaAtributo }
+  return { ok: missing.length === 0, missing, viaAtributo, viaLogo }
 }
 
 // ── Estruturais — posse do CÓDIGO, nunca do LLM ────────────────────────

@@ -9,6 +9,7 @@ import {
   applyStructuralFills,
   copyMergeByExample,
   heroCopyPreserved,
+  isLogoKey,
   mergeBlocksFromContext,
   type MergeBlock,
 } from "./copy-merge"
@@ -357,6 +358,116 @@ describe("heroCopyPreserved", () => {
     )
     expect(r.ok).toBe(true)
     expect(r.viaAtributo).toEqual([])
+  })
+
+  // ── Separador trocado (InnovaBay, 28/08) ──────────────────────────────
+  //
+  // O merge aplicou "Use code: WELCOME10 — valid at checkout"; o agente
+  // destacou o código e trocou o travessão por uma quebra de linha, que é
+  // o que um travessão faz na tela. O guard reprovou e, somado a um 402 do
+  // OpenRouter na 1ª tentativa, matou o email.
+
+  it("travessão trocado por <br> passa — o texto está inteiro", () => {
+    const r = heroCopyPreserved(
+      ["Use code: WELCOME10 — valid at checkout"],
+      '<td style="font-weight:400;">Use code: <strong style="font-weight:900;">WELCOME10</strong><br>valid at checkout</td>',
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it("hífen, pipe e bullet contam como o mesmo separador", () => {
+    const passa = (fragmento: string) =>
+      heroCopyPreserved(["Frete grátis - hoje"], fragmento).ok
+    expect(passa("<td>Frete grátis | hoje</td>")).toBe(true)
+    expect(passa("<td>Frete grátis • hoje</td>")).toBe(true)
+    expect(passa("<td>Frete grátis<br>hoje</td>")).toBe(true)
+  })
+
+  // O afrouxamento tem limite: trocar o separador é layout, sumir com
+  // metade da frase não é.
+  it("metade da frase removida continua reprovando", () => {
+    const r = heroCopyPreserved(
+      ["Use code: WELCOME10 — valid at checkout"],
+      "<td>Use code: WELCOME10</td>",
+    )
+    expect(r.ok).toBe(false)
+    expect(r.missing).toHaveLength(1)
+  })
+
+  // ── Wordmark virado <img> do logo REAL (InnovaBay, 28/08) ─────────────
+  //
+  // A defesa pelo `alt` (23/08) exige a string exata. Aqui a copy do campo
+  // `logo` é "InnovaBay" e o alt traz o nome da loja, "Innova Bay nova" —
+  // grafias diferentes. O agente pôs o logo certo e foi reprovado.
+
+  const LOGO = "https://cdn.supabase.co/storage/v1/object/sign/brand/logo-Black.png"
+  const imgLogo = (url = LOGO, alt = "Innova Bay nova") =>
+    `<tr><td><img src="${url}" alt="${alt}" width="136" /></td></tr>`
+
+  it("wordmark virado logo REAL passa e entra em viaLogo", () => {
+    const r = heroCopyPreserved(["InnovaBay"], imgLogo(), {
+      logoValues: ["InnovaBay"],
+      logoSrcs: [LOGO],
+    })
+    expect(r.ok).toBe(true)
+    expect(r.viaLogo).toEqual(["InnovaBay"])
+    expect(r.viaAtributo).toEqual([])
+  })
+
+  it("a URL do logo é assinada: token diferente ainda casa", () => {
+    const r = heroCopyPreserved(["InnovaBay"], imgLogo(`${LOGO}?token=abc123`), {
+      logoValues: ["InnovaBay"],
+      logoSrcs: [`${LOGO}?token=ZZZ_outro_token`],
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  // O guard verifica que o LOGO entrou — não aceita imagem qualquer.
+  it("imagem que não é o logo da loja NÃO salva", () => {
+    const r = heroCopyPreserved(
+      ["InnovaBay"],
+      imgLogo("https://cdn/foto-do-produto.png", "produto"),
+      { logoValues: ["InnovaBay"], logoSrcs: [LOGO] },
+    )
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(["InnovaBay"])
+  })
+
+  it("marca apagada sem pôr o logo continua reprovando", () => {
+    const r = heroCopyPreserved(["InnovaBay"], "<tr><td></td></tr>", {
+      logoValues: ["InnovaBay"],
+      logoSrcs: [LOGO],
+    })
+    expect(r.ok).toBe(false)
+  })
+
+  // Só o campo de logo ganha esse passe: outro valor não vira imagem.
+  it("valor que não é de logo não é salvo pelo <img>", () => {
+    const r = heroCopyPreserved(["InnovaBay", "SHOP 10% OFF"], imgLogo(), {
+      logoValues: ["InnovaBay"],
+      logoSrcs: [LOGO],
+    })
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual(["SHOP 10% OFF"])
+    expect(r.viaLogo).toEqual(["InnovaBay"])
+  })
+
+  it("sem o 3º parâmetro o comportamento é o de antes", () => {
+    expect(heroCopyPreserved(["InnovaBay"], imgLogo()).ok).toBe(false)
+  })
+})
+
+describe("isLogoKey", () => {
+  it("reconhece as formas do campo de logo", () => {
+    expect(isLogoKey("logo")).toBe(true)
+    expect(isLogoKey("LOGO")).toBe(true)
+    expect(isLogoKey("logo_light")).toBe(true)
+    expect(isLogoKey("brand_logo")).toBe(true)
+  })
+
+  it("não confunde com copy que só menciona a palavra", () => {
+    expect(isLogoKey("logotipo_headline")).toBe(false)
+    expect(isLogoKey("headline")).toBe(false)
   })
 })
 

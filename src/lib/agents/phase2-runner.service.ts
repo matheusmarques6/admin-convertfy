@@ -106,6 +106,7 @@ import {
 import {
   copyMergeByExample,
   heroCopyPreserved,
+  isLogoKey,
   mergeBlocksFromContext,
   applyStructuralFills,
   type MergeField,
@@ -2520,6 +2521,13 @@ async function runFormattingChain(p: {
   )
   /** Valores que o merge aplicou DENTRO da hero — insumo do guard do STEP 1. */
   let heroValues: string[] = []
+  /**
+   * Valores da hero que vieram de campo de LOGO. O prompt manda trocar o
+   * wordmark em texto pelo `<img>` do logo real, então a string some do
+   * texto por ORDEM nossa — o guard precisa saber quais são para aceitar a
+   * imagem no lugar (ver heroCopyPreserved).
+   */
+  let heroLogoValues: string[] = []
   /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
   let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
     []
@@ -2658,6 +2666,9 @@ async function runFormattingChain(p: {
 
     fmtCtx.referenceHtml = structural.html
     heroValues = merge.report.hero_values
+    heroLogoValues = merge.anchors
+      .filter((a) => a.applied && a.inHero && isLogoKey(a.key) && a.value)
+      .map((a) => a.value as string)
 
     // Escopo da hero: blocos com âncora aplicada dentro das sentinelas +
     // o bloco type='hero' (variante composta engole vizinhos). O agente
@@ -2781,7 +2792,13 @@ async function runFormattingChain(p: {
         // Guard D1: a região chegou com a copy do merge APLICADA — o
         // fragmento tem de devolvê-la inteira (re-espaçar passa; sumir com
         // o texto derruba a tentativa e o retry cobra de novo).
-        const preserved = heroCopyPreserved(heroValues, r.output)
+        const preserved = heroCopyPreserved(heroValues, r.output, {
+          logoValues: heroLogoValues,
+          logoSrcs: [
+            /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoLight)?.[1] ?? "",
+            /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoDark)?.[1] ?? "",
+          ].filter(Boolean),
+        })
         if (!preserved.ok) {
           faltantesAnteriores = preserved.missing
           // O output CRU e o consumo vão grudados no erro: a chamada foi
@@ -2789,10 +2806,15 @@ async function runFormattingChain(p: {
           // painel mostra 0 token, $0 e as abas "Prompt"/"Saída" vazias —
           // foi assim que o falso positivo de markup na frase (21/08)
           // sobreviveu a quatro tentativas sem deixar rastro nenhum.
+          // O que SOBREVIVEU entra na mensagem junto do que faltou: sem
+          // isso, "hero_copy_lost: InnovaBay" não distingue um agente que
+          // apagou a marca de um que a trocou pelo logo (28/08).
+          const salvos =
+            preserved.viaAtributo.length + preserved.viaLogo.length
           const err = new Error(
             `guard: hero_copy_lost: ${preserved.missing
               .map((m) => m.slice(0, 60))
-              .join(" | ")}`,
+              .join(" | ")}${salvos > 0 ? ` (${salvos} salvo(s) por alt/logo)` : ""}`,
           ) as Error & { raw?: string }
           err.raw = r.rawOutput
           throw attachUsage(err, {
@@ -2806,6 +2828,15 @@ async function runFormattingChain(p: {
           log.warn("phase2.fmt.hero_copy_via_alt", {
             emailId,
             valores: preserved.viaAtributo,
+          })
+        }
+        // Wordmark que virou o `<img>` do logo — comportamento MANDADO pelo
+        // prompt. Registrado para se saber com que frequência acontece: é o
+        // número que diz se o guard segue calibrado ou virou ruído.
+        if (preserved.viaLogo.length > 0) {
+          log.warn("phase2.fmt.hero_copy_via_logo", {
+            emailId,
+            valores: preserved.viaLogo,
           })
         }
         const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
@@ -2868,6 +2899,12 @@ async function runFormattingChain(p: {
             // impede a permissão de virar silêncio.
             ...(preserved.viaAtributo.length > 0
               ? { hero_copy_via_alt: preserved.viaAtributo }
+              : {}),
+            // Wordmark que virou o `<img>` do logo REAL da loja. Mesma
+            // razão do de cima: o guard deixou passar por VERIFICAR que o
+            // logo entrou, e esse número tem de ser consultável.
+            ...(preserved.viaLogo.length > 0
+              ? { hero_copy_via_logo: preserved.viaLogo }
               : {}),
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
