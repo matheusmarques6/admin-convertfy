@@ -129,6 +129,21 @@ Devolver:
 { "block_id": "uuid", "content": { "hero_headline": "…", "hero_cta_2_label": "…" } }
 ```
 
+> **`max_caracteres` é o tamanho da CAIXA, não uma sugestão.** Ele sai do
+> `output_schema` da variante e, quando a geometria do slot permite medir,
+> é apertado pela largura real do elemento (`html/fit-budget.ts`). Passar
+> dele faz a frase vazar por cima do layout no email entregue.
+>
+> Entre 20 e 27/08 **todo** run de copy voltou com estouro (74 campos em
+> 27/08, 56 em 24/08, 37 em 23/08) — no Welcome 1 da Innova, `panel_1_copy`
+> veio com 217 num campo de 130 e `review_2_body` com 249 num de 190.
+> Desde a migration 20261089 o admin **corrige**: o agente `copy_fit`
+> reescreve os campos fora do limite antes da fase 2, e o run `copy` guarda
+> o antes em `desvios_pre_fit`. Isso é rede de segurança, não licença — o
+> encurtador custa uma chamada a mais por email, reescreve texto que o
+> copywriter não revisou e não conserta campo que voltou VAZIO. O número a
+> zerar continua sendo o de `desvios_pre_fit`.
+
 Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em
 `schema.campos`.
 

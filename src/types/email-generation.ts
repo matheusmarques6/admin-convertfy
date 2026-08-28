@@ -177,6 +177,10 @@ export type AgentType =
   | "text_format"
   | "image_format"
   | "color_format"
+  // copy_fit: encurta a copy que o n8n devolveu acima do max_len do slot
+  //   (migration 20261089). Roda no callback, antes da fase 2; a saída é
+  //   proposta — quem aceita é o código (`aceitarReescrita`).
+  | "copy_fit"
   // component_tagger e merge_verifier morreram em 20/08 (merge por
   // example): saíram do union — runs históricas renderizam pelo
   // AGENT_VISUAL legado, e config órfã no banco não é lida.
@@ -323,6 +327,8 @@ export type GenerationRunAgent =
   // Merge determinístico de copy (por EXAMPLE desde 20/08): estágio de
   // CÓDIGO, sem LLM; run próprio pra metrificação campo a campo.
   | "copy_merge"
+  // copy_fit: encurtador da copy acima do limite (migration 20261089).
+  | "copy_fit"
 
 export interface EmailGenerationRun {
   id: string

@@ -39,6 +39,12 @@ import { buildQaBlockViews } from "@/lib/agents/html/qa-views"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
 import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
+import {
+  limiteDoCampo,
+  resumoDeEstouros,
+  type BlocoComContrato,
+} from "@/lib/email-workspace/copy-fit"
+import type { BlueprintBlockField } from "@/types/email-generation"
 import type {
   BlockType,
   EmailBlock,
@@ -126,6 +132,16 @@ export function EmailDetailView({
   const [width, setWidth] = useState<number>(600)
 
   const isTextOnly = !!email?.text_only
+
+  // Copy acima do limite da caixa. Sai dos PRÓPRIOS blocos (`fields` +
+  // `content`, que a rota já devolve), então não há requisição a mais e o
+  // número acompanha o que a pessoa acabou de digitar na aba Copy — não é
+  // um retrato do run. Até 28/08 o estouro só aparecia no email
+  // renderizado, com a frase vazando da caixa.
+  const estouros = useMemo(
+    () => resumoDeEstouros(blocks as BlocoComContrato[]),
+    [blocks],
+  )
 
   // Aba "Ref": busca lazy (só quando a aba abre) da arquitetura gerada pelo
   // Montador para esta loja. Reusa o endpoint de inspeção /generated.
@@ -748,6 +764,30 @@ export function EmailDetailView({
                 }}
               >
                 Somente texto
+              </span>
+            )}
+            {estouros.length > 0 && (
+              <span
+                title={`Copy acima do limite do slot — a frase vaza da caixa no email:\n${estouros
+                  .map((e) => `• ${e.key} (${e.type}): ${e.length}/${e.max_len}`)
+                  .join("\n")}`}
+                style={{
+                  fontSize: 9,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  padding: "2px 6px",
+                  borderRadius: 3,
+                  background: "var(--crm-amber-50, #FFFBEB)",
+                  color: "#92400E",
+                  border: "1px solid var(--crm-amber-100, #FDE68A)",
+                  flexShrink: 0,
+                }}
+              >
+                {estouros.length}{" "}
+                {estouros.length === 1
+                  ? "campo acima do limite"
+                  : "campos acima do limite"}
               </span>
             )}
           </div>
@@ -2645,6 +2685,7 @@ export function EmailCopyView({
                   >
                     <div className="flex-1 min-w-0">
                       <div
+                        className="flex items-center gap-2"
                         style={{
                           fontSize: 10,
                           color: "var(--crm-gray-500)",
@@ -2654,7 +2695,20 @@ export function EmailCopyView({
                           marginBottom: 4,
                         }}
                       >
-                        {f.label}
+                        <span>{f.label}</span>
+                        {/* Limite do slot no HTML: o cadastro da variante
+                            (`fields[].max_len`) é o mesmo número que vai no
+                            payload do n8n. Passar dele faz a frase vazar da
+                            caixa — e até 28/08 isso só aparecia no email
+                            renderizado. */}
+                        <CopyFieldCounter
+                          max={limiteDoCampo(
+                            (sec.block as unknown as { fields?: BlueprintBlockField[] })
+                              .fields,
+                            f.key,
+                          )}
+                          length={f.value.trim().length}
+                        />
                       </div>
                       <div style={{ fontSize: 13, color: "var(--crm-gray-900)", whiteSpace: "pre-wrap" }}>
                         {f.value}
@@ -2676,6 +2730,33 @@ export function EmailCopyView({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * `217/130` do lado do rótulo — vermelho quando estoura.
+ *
+ * Vale também para o que a PESSOA escreve: o limite é a geometria da caixa,
+ * não uma regra sobre o n8n.
+ */
+function CopyFieldCounter({ max, length }: { max: number | null; length: number }) {
+  if (max == null || length === 0) return null
+  const estourou = length > max
+  return (
+    <span
+      title={
+        estourou
+          ? `Acima do limite do slot (${max} caracteres) — o texto vaza da caixa no email`
+          : `Limite do slot: ${max} caracteres`
+      }
+      style={{
+        fontVariantNumeric: "tabular-nums",
+        fontWeight: 600,
+        color: estourou ? "#B91C1C" : "var(--crm-gray-400)",
+      }}
+    >
+      {length}/{max}
+    </span>
   )
 }
 

@@ -144,6 +144,15 @@ vi.mock("@/lib/agents/phase2-runner.service", () => ({
   checkBatchTerminal: (...a: unknown[]) => checkBatchTerminalMock(...a),
 }))
 
+// Encurtador de copy (migration 20261089): o chain tem teste próprio; aqui
+// interessa só se a rota o chama, regrava o bloco e guarda o antes/depois.
+const runCopyFitMock = vi.fn()
+const loadCopyFitModeMock = vi.fn()
+vi.mock("@/lib/agents/chains/copy-fit.chain", () => ({
+  runCopyFit: (...a: unknown[]) => runCopyFitMock(...a),
+  loadCopyFitMode: (...a: unknown[]) => loadCopyFitModeMock(...a),
+}))
+
 vi.stubEnv("N8N_WEBHOOK_SECRET", "test-secret")
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +163,10 @@ beforeEach(async () => {
   resetState()
   isTextOnlyEmailMock.mockReset().mockResolvedValue(false)
   checkBatchTerminalMock.mockReset().mockResolvedValue(undefined)
+  loadCopyFitModeMock.mockReset().mockResolvedValue("on")
+  runCopyFitMock
+    .mockReset()
+    .mockResolvedValue({ aceitas: [], de_para: [], rodou: false })
   const mod = await import("./route")
   POST = mod.POST
 })
@@ -601,6 +614,156 @@ describe("POST /api/webhooks/n8n/email-copy — contrato de copy", () => {
       { position: 0, type: "coupon", esperados: 0, recebidos: 1, no_contrato: 0 },
     ])
     expect(c.taxa_pct).toBe(0)
+  })
+})
+
+// ── Encurtador de copy (migration 20261089) ─────────────────────────────
+//
+// Até 28/08 o estouro do limite era medido e ignorado: `log.warn` +
+// `parsed_output.desvios` que ninguém lia, e a frase longa vazava da caixa
+// no email. Estes testes cobrem a rota, não o chain (que tem os seus).
+describe("POST /api/webhooks/n8n/email-copy — encurtador", () => {
+  const LONGO = "x".repeat(190)
+  const campoLongo = (key: string, max: number) => ({
+    key,
+    label: key,
+    type: "text_long",
+    max_len: max,
+    min_len: null,
+    required: false,
+    example: "",
+    guidance: "",
+    source: "schema",
+  })
+
+  function runCopy() {
+    return insertCalls.find(
+      (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
+    )!.data.parsed_output as Record<string, unknown>
+  }
+
+  function blocoQueEstoura() {
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: { section_body_1: LONGO },
+        block_type: "body",
+        fields: [campoLongo("section_body_1", 120)],
+      },
+    ]
+  }
+
+  const envio = () =>
+    makeRequest(
+      validBody({
+        blocks: [{ block_id: MOCK_BLOCK_ID, content: { section_body_1: LONGO } }],
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) as any
+
+  it("campo acima do limite: chama o encurtador e regrava o bloco", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({
+      aceitas: [
+        {
+          id: "0.section_body_1",
+          position: 0,
+          block_id: MOCK_BLOCK_ID,
+          key: "section_body_1",
+          texto: "y".repeat(100),
+        },
+      ],
+      de_para: [],
+      rodou: true,
+    })
+
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+
+    const alvos = (runCopyFitMock.mock.calls[0][0] as { alvos: unknown[] }).alvos
+    expect(alvos).toHaveLength(1)
+
+    // A regravação é um UPDATE a mais em email_blocks, com a copy que cabe.
+    const regravacao = updateCalls
+      .filter((c) => c.table === "email_blocks")
+      .at(-1)
+    expect(
+      (regravacao?.data.content as Record<string, unknown>).section_body_1,
+    ).toBe("y".repeat(100))
+  })
+
+  // O número que diz se o n8n está respeitando o contrato não pode sumir só
+  // porque a correção deu certo.
+  it("o run `copy` guarda o antes (desvios_pre_fit) e o depois", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({
+      aceitas: [
+        {
+          id: "0.section_body_1",
+          position: 0,
+          block_id: MOCK_BLOCK_ID,
+          key: "section_body_1",
+          texto: "y".repeat(100),
+        },
+      ],
+      de_para: [],
+      rodou: true,
+    })
+
+    await POST(envio())
+    const out = runCopy()
+    expect(out.copy_fit).toMatchObject({ alvos: 1, corrigidos: 1, mantidos: 0 })
+    expect(
+      (out.desvios_pre_fit as Array<Record<string, unknown>>).map((d) => d.kind),
+    ).toEqual(["max_len"])
+    // Corrigido → sai da lista de desvios vigentes.
+    expect(out.desvios).toBeUndefined()
+  })
+
+  it("reescrita recusada mantém o desvio à vista", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({ aceitas: [], de_para: [], rodou: true })
+
+    await POST(envio())
+    const out = runCopy()
+    expect(out.copy_fit).toMatchObject({ corrigidos: 0, mantidos: 1 })
+    expect(
+      (out.desvios as Array<Record<string, unknown>>).map((d) => d.kind),
+    ).toEqual(["max_len"])
+  })
+
+  it("kill-switch em `off`: não chama o encurtador e o desvio segue visível", async () => {
+    blocoQueEstoura()
+    loadCopyFitModeMock.mockResolvedValue("off")
+
+    await POST(envio())
+    expect(runCopyFitMock).not.toHaveBeenCalled()
+    const out = runCopy()
+    expect(out.copy_fit).toBeUndefined()
+    expect(
+      (out.desvios as Array<Record<string, unknown>>).map((d) => d.kind),
+    ).toEqual(["max_len"])
+  })
+
+  it("copy dentro do limite não aciona nada", async () => {
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: { section_body_1: "curto" },
+        block_type: "body",
+        fields: [campoLongo("section_body_1", 120)],
+      },
+    ]
+    await POST(
+      makeRequest(
+        validBody({
+          blocks: [{ block_id: MOCK_BLOCK_ID, content: { section_body_1: "curto" } }],
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ) as any,
+    )
+    expect(loadCopyFitModeMock).not.toHaveBeenCalled()
+    expect(runCopyFitMock).not.toHaveBeenCalled()
   })
 })
 /* eslint-enable @typescript-eslint/no-explicit-any */

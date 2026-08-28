@@ -30,6 +30,12 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { findFieldDeviations } from "@/lib/email-workspace/copy-spec"
+import {
+  alvosDeEncurtamento,
+  aplicarReescritas,
+  type BlocoComContrato,
+} from "@/lib/email-workspace/copy-fit"
+import { runCopyFit, loadCopyFitMode } from "@/lib/agents/chains/copy-fit.chain"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
@@ -163,10 +169,18 @@ export async function POST(request: NextRequest) {
     // que o HTML Agent receba o nome real no payload.
     const { data: store } = await admin
       .from("client_stores")
-      .select("store_name")
+      // org_id: kill-switch do encurtador (email_generation_settings é por org).
+      // tom de voz: entrada do encurtador — reescrever sem ele troca a voz da
+      // marca junto com o tamanho. Mesma cascata do resto do pipeline
+      // (architect/generate.service:291).
+      .select("store_name, org_id, tone_description, tom_de_voz")
       .eq("id", body.store_id)
       .maybeSingle()
     const brandName = (store?.store_name as string | undefined) || "Loja"
+    const tomVoz =
+      ((store?.tone_description as string | null) ??
+        (store?.tom_de_voz as string | null)) ||
+      ""
 
     // 1.4) Copy STALE: o payload ecoa o batch do dispatch que a originou.
     // Se o email já está numa geração MAIS NOVA (generation_batch_id
@@ -521,6 +535,99 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 3.6) Encurtador (migration 20261089). A auditoria acima só MEDIA: até
+    // 28/08 o estouro virava `log.warn` + `parsed_output.desvios` e nada lia
+    // o campo — a frase longa seguia pelo copy_merge e vazava da caixa no
+    // email. Aqui ela passa a ser corrigida na fonte: `email_blocks.content`
+    // é o registro da copy, então tudo a jusante (merge, tela, QA, export)
+    // vê o texto que cabe, e o original fica no de_para do run `copy_fit`.
+    //
+    // INLINE de propósito, não em `after()`: a fase 2 sai por dois caminhos
+    // (o after() do modo relaxado e o disparo diferido pelo cron/front), e só
+    // esperando aqui os dois enxergam a copy já ajustada.
+    const desviosPreFit = copyDeviations.length > 0 ? [...copyDeviations] : []
+    let copyFitResumo: Record<string, unknown> | null = null
+    const alvos = alvosDeEncurtamento(
+      (emailBlocksOrdered ?? []) as BlocoComContrato[],
+    )
+    if (alvos.length > 0) {
+      const modo = await loadCopyFitMode(store?.org_id as string | null)
+      if (modo === "off") {
+        log.info("email_copy.copy_fit_off", {
+          email_id: body.email_id,
+          alvos: alvos.length,
+        })
+      } else {
+        const fit = await runCopyFit({
+          storeId: body.store_id,
+          batchId: currentBatchId ?? "",
+          emailId: body.email_id,
+          flowId: email.flow_id as string,
+          brandName,
+          tomVoz,
+          alvos,
+        })
+        // Regrava só os blocos tocados; o resto do content passa intacto.
+        const porBloco = new Map<string, Array<{ key: string; texto: string }>>()
+        for (const a of fit.aceitas) {
+          if (!a.block_id) continue
+          const lista = porBloco.get(a.block_id) ?? []
+          lista.push({ key: a.key, texto: a.texto })
+          porBloco.set(a.block_id, lista)
+        }
+        let blocosRegravados = 0
+        for (const [blockId, reescritas] of porBloco) {
+          const atual = (emailBlocksOrdered ?? []).find(
+            (r) => (r as { id: string }).id === blockId,
+          ) as { content?: Record<string, unknown> | null } | undefined
+          // Parte do content atual do BANCO, não do payload: a gravação de
+          // cima já resolveu tokens de marca e desembrulhou o envelope.
+          const { data: fresco } = await admin
+            .from("email_blocks")
+            .select("content")
+            .eq("id", blockId)
+            .maybeSingle()
+          const base =
+            (fresco?.content as Record<string, unknown> | null) ??
+            atual?.content ??
+            {}
+          const { error: fitErr } = await admin
+            .from("email_blocks")
+            .update({ content: aplicarReescritas(base, reescritas) })
+            .eq("id", blockId)
+          if (fitErr) {
+            log.warn("email_copy.copy_fit.update_failed", {
+              email_id: body.email_id,
+              block_id: blockId,
+              error: fitErr.message,
+            })
+            continue
+          }
+          blocosRegravados++
+        }
+        // Os desvios do run `copy` passam a refletir o estado FINAL: o que
+        // sobrou acima do limite é o que ainda precisa de olho humano.
+        const corrigidos = new Set(
+          fit.aceitas.map((a) => `${a.position}.${a.key}`),
+        )
+        for (let i = copyDeviations.length - 1; i >= 0; i--) {
+          const d = copyDeviations[i]
+          if (
+            d.kind === "max_len" &&
+            corrigidos.has(`${d.position}.${String(d.key)}`)
+          ) {
+            copyDeviations.splice(i, 1)
+          }
+        }
+        copyFitResumo = {
+          alvos: alvos.length,
+          corrigidos: fit.aceitas.length,
+          mantidos: alvos.length - fit.aceitas.length,
+          blocos_regravados: blocosRegravados,
+        }
+      }
+    }
+
     // 4) Telemetria
     //
     // Entrada estruturada: o que VOLTOU do n8n, com origem. A copy é do
@@ -611,6 +718,12 @@ export async function POST(request: NextRequest) {
           : {}),
         ...(copyDeviations.length > 0
           ? { desvios: copyDeviations.slice(0, 60) }
+          : {}),
+        // O que o n8n entregou, antes do encurtador — é este número que diz
+        // se o flow está respeitando o contrato, e ele não pode sumir só
+        // porque a correção deu certo.
+        ...(copyFitResumo
+          ? { copy_fit: copyFitResumo, desvios_pre_fit: desviosPreFit.slice(0, 60) }
           : {}),
       },
     })

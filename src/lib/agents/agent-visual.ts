@@ -17,6 +17,7 @@ export type PipelineAgentKey =
   // Cadeia de formatação (split do HTML agent, migration 20261039).
   | "hero_section"
   | "copy_merge"
+  | "copy_fit"
   | "merge_verifier"
   | "text_format"
   | "image_format"
@@ -113,6 +114,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     color: "#0F766E",
     bg: "#F0FDFA",
     border: "#99F6E4",
+    kind: "texto",
+  },
+  copy_fit: {
+    name: "Encurtador de Copy",
+    desc: "Reescreve os campos que o n8n devolveu acima do limite da caixa — só eles, e o código decide se a reescrita entra",
+    color: "#B45309",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
     kind: "texto",
   },
   // LEGADO (20/08): o merge por example matou a fila de exceção e o
@@ -219,6 +228,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "image",
   "hero_section",
   "copy_merge",
+  "copy_fit",
   "merge_verifier",
   "text_format",
   "image_format",

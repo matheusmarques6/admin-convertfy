@@ -65,6 +65,8 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "text_format",
   "image_format",
   "color_format",
+  // Encurtador de copy (migration 20261089).
+  "copy_fit",
   // Taguedor de Variantes (migration 20261040).
   // Verificador de merge (7b, migration 20261043).
 ]
@@ -172,6 +174,7 @@ export async function listPrompts(opts: {
     text_format: { active: null, history: [] },
     image_format: { active: null, history: [] },
     color_format: { active: null, history: [] },
+    copy_fit: { active: null, history: [] },
   }
 
   for (const row of rows) {

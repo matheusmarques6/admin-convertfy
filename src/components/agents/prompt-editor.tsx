@@ -287,6 +287,12 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "email_name", desc: "Nome do email" },
     { key: "subject", desc: "Subject do email" },
   ],
+  copy_fit: [
+    { key: "brand_name", desc: "Nome da loja/marca" },
+    { key: "tom_voz", desc: "Tom de voz da loja" },
+    { key: "contrato_json", desc: "Contrato dos campos que estouraram (label, max/min, orientação)" },
+    { key: "copy_atual_json", desc: "A copy acima do limite, com o tamanho de agora" },
+  ],
 }
 
 const MODEL_OPTIONS_TEXT = [

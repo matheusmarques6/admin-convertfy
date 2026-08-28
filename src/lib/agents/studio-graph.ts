@@ -59,6 +59,10 @@ export const STUDIO_NODES: StudioNode[] = [
   // ninguém conseguia abrir (a run não tinha email/flow/batch).
   { key: "copy_dispatch", type: "agent", agent: "copy_dispatch", icon: "send", x: 1324, y: 452 },
   { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1580, y: 452 },
+  // Encurtador (migration 20261089): roda no CALLBACK, entre a copy voltar e
+  // a fase 2 começar. Fica na linha de cima porque é condicional — só existe
+  // run quando algum campo passou do limite da caixa.
+  { key: "copy_fit", type: "agent", agent: "copy_fit", icon: "check", x: 1580, y: 308 },
   // ── Fase 2: montagem (por email) — merge por example ANTES da hero ──
   { key: "image", type: "agent", agent: "image", icon: "file", x: 1836, y: 308 },
   { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1836, y: 452 },
@@ -85,6 +89,8 @@ export const STUDIO_EDGES: Array<[string, string]> = [
   ["blueprint", "copy_dispatch"],
   ["subject", "copy_dispatch"],
   ["copy_dispatch", "copy"],
+  ["copy", "copy_fit"],
+  ["copy_fit", "copy_merge"],
   ["copy", "image"],
   ["copy", "copy_merge"],
   ["image", "copy_merge"],

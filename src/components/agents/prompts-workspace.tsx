@@ -21,6 +21,7 @@ import {
   Mail,
   Sparkles,
   Palette,
+  Scissors,
   Tags,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -52,6 +53,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   text_format: "Formatação de Texto",
   image_format: "Formatação de Imagem",
   color_format: "Cores & Botões",
+  copy_fit: "Encurtador de Copy",
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
@@ -74,6 +76,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   text_format: Type,
   image_format: ImageIcon,
   color_format: Palette,
+  copy_fit: Scissors,
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())

@@ -560,6 +560,242 @@ export function QaView({ output }: { output: unknown }) {
   )
 }
 
+// ── Copy do n8n: adesão ao contrato e o que estourou ────────────────────
+//
+// O agente `copy` não tinha view: caía no `default` do switch e virava JSON
+// cru. Foi assim que 74 campos acima do limite num único dia (27/08)
+// passaram sem ninguém ver — o dado estava em `parsed_output.desvios` desde
+// sempre, sem leitor.
+
+interface DesvioView {
+  position?: number
+  type?: string
+  key?: string
+  kind?: string
+  length?: number
+  max_len?: number
+}
+
+const ROTULO_DE_DESVIO: Record<string, string> = {
+  max_len: "acima do limite",
+  missing: "não veio",
+  required_empty: "obrigatório vazio",
+  unknown_key: "fora do contrato",
+  sem_contrato: "bloco sem contrato",
+}
+
+export function CopyContratoView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const contrato = (o.contrato ?? null) as Record<string, unknown> | null
+  // `desvios_pre_fit` é o que o n8n entregou; `desvios` é o que sobrou
+  // depois do encurtador. Sem encurtador, os dois são a mesma coisa.
+  const vigentes = asArray<DesvioView>(o.desvios)
+  const antesDoFit = asArray<DesvioView>(o.desvios_pre_fit)
+  const fit = (o.copy_fit ?? null) as Record<string, unknown> | null
+  if (!contrato && vigentes.length === 0 && antesDoFit.length === 0) return null
+
+  const doN8n = antesDoFit.length > 0 ? antesDoFit : vigentes
+  const estourosOriginais = doN8n.filter((d) => d.kind === "max_len")
+  const estourosVigentes = vigentes.filter((d) => d.kind === "max_len")
+  const taxa = contrato?.taxa_pct
+  const porKind = new Map<string, number>()
+  for (const d of vigentes) {
+    const k = d.kind ?? "?"
+    porKind.set(k, (porKind.get(k) ?? 0) + 1)
+  }
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        <OutPill
+          text={`${o.blocks_written ?? "?"}/${o.blocks_total ?? "?"} bloco(s) gravado(s)`}
+          tone="pos"
+        />
+        {typeof taxa === "number" && (
+          <OutPill
+            text={`${taxa}% das chaves no contrato`}
+            tone={taxa === 100 ? "pos" : taxa === 0 ? "warn" : "info"}
+          />
+        )}
+        <OutPill
+          text={
+            estourosVigentes.length === 0
+              ? estourosOriginais.length === 0
+                ? "tudo dentro do limite"
+                : `${estourosOriginais.length} estouro(s) corrigido(s)`
+              : `${estourosVigentes.length} campo(s) acima do limite`
+          }
+          tone={estourosVigentes.length === 0 ? "pos" : "warn"}
+        />
+        {fit && (
+          <OutPill
+            text={`encurtador: ${fit.corrigidos ?? 0} corrigido(s), ${fit.mantidos ?? 0} mantido(s)`}
+            tone="info"
+          />
+        )}
+      </div>
+
+      {estourosOriginais.length > 0 && (
+        <OutSection
+          title={
+            fit
+              ? "O que o n8n entregou acima do limite"
+              : "Campos acima do limite"
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {estourosOriginais.map((d, i) => {
+              const aindaFora = estourosVigentes.some(
+                (v) => v.position === d.position && v.key === d.key,
+              )
+              return (
+                <OutItem key={`${d.position}-${d.key}-${i}`}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ ...OUT_BODY, fontWeight: 600 }}>{d.key}</span>
+                    <span style={{ ...OUT_BODY, color: C.g400 }}>
+                      {d.type ?? "?"} · posição {d.position ?? "?"}
+                    </span>
+                    <span
+                      style={{
+                        ...OUT_BODY,
+                        ...TNUM,
+                        marginLeft: "auto",
+                        fontWeight: 600,
+                        color: aindaFora ? "#B91C1C" : C.g400,
+                      }}
+                    >
+                      {d.length ?? "?"}/{d.max_len ?? "?"}
+                    </span>
+                    {fit && (
+                      <OutPill
+                        text={aindaFora ? "não coube" : "encurtado"}
+                        tone={aindaFora ? "warn" : "pos"}
+                      />
+                    )}
+                  </div>
+                </OutItem>
+              )
+            })}
+          </div>
+        </OutSection>
+      )}
+
+      {porKind.size > 0 && (
+        <OutSection title="Outros desvios do contrato">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[...porKind.entries()]
+              .filter(([k]) => k !== "max_len")
+              .map(([k, n]) => (
+                <OutPill key={k} text={`${n} ${ROTULO_DE_DESVIO[k] ?? k}`} tone="warn" />
+              ))}
+          </div>
+        </OutSection>
+      )}
+    </OutCard>
+  )
+}
+
+// ── Encurtador: o antes e o depois, campo a campo ───────────────────────
+
+interface DeParaView {
+  position?: number
+  key?: string
+  antes?: string
+  antes_len?: number
+  depois?: string | null
+  depois_len?: number | null
+  max?: number
+  aceito?: boolean
+  motivo?: string
+}
+
+const MOTIVO_DE_RECUSA: Record<string, string> = {
+  ainda_acima_do_limite: "a reescrita continuou acima do limite",
+  vazio: "veio vazia",
+  identico: "devolveu a mesma frase",
+  cresceu: "ficou maior que a original",
+  abaixo_do_minimo: "ficou abaixo do mínimo do campo",
+  sem_resposta: "o agente não respondeu por este campo",
+}
+
+export function CopyFitView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const dePara = asArray<DeParaView>(o.de_para)
+  if (dePara.length === 0 && o.alvos == null) return null
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        <OutPill text={`${o.alvos ?? dePara.length} campo(s) acima do limite`} tone="warn" />
+        <OutPill text={`${o.corrigidos ?? 0} encurtado(s)`} tone="pos" />
+        {Number(o.mantidos ?? 0) > 0 && (
+          <OutPill text={`${o.mantidos} mantido(s) como estava(m)`} tone="warn" />
+        )}
+        {Number(o.tentativas ?? 0) > 1 && (
+          <OutPill text={`${o.tentativas} passadas`} tone="info" />
+        )}
+      </div>
+
+      {dePara.length > 0 && (
+        <OutSection title="Antes → depois">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {dePara.map((d, i) => (
+              <OutItem key={`${d.position}-${d.key}-${i}`}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginBottom: 4,
+                  }}
+                >
+                  <span style={{ ...OUT_BODY, fontWeight: 600 }}>{d.key}</span>
+                  <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
+                    {d.antes_len ?? "?"} → {d.depois_len ?? "—"} (máx {d.max ?? "?"})
+                  </span>
+                  <span style={{ marginLeft: "auto" }}>
+                    <OutPill
+                      text={d.aceito ? "aplicado" : "recusado"}
+                      tone={d.aceito ? "pos" : "warn"}
+                    />
+                  </span>
+                </div>
+                <div style={{ ...OUT_BODY, color: C.g400, fontFamily: F.sans }}>
+                  {d.antes}
+                </div>
+                {d.aceito ? (
+                  <div style={{ ...OUT_BODY, fontFamily: F.sans, marginTop: 4 }}>
+                    {d.depois}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      ...OUT_BODY,
+                      color: "#92400E",
+                      fontFamily: F.sans,
+                      marginTop: 4,
+                    }}
+                  >
+                    {MOTIVO_DE_RECUSA[d.motivo ?? ""] ?? d.motivo ?? "recusada"}
+                  </div>
+                )}
+              </OutItem>
+            ))}
+          </div>
+        </OutSection>
+      )}
+    </OutCard>
+  )
+}
+
 /** Roteia a view legível pelo agente do nó. null = sem view própria. */
 export function AgentOutputView({
   agent,
@@ -577,6 +813,10 @@ export function AgentOutputView({
       return <BlueprintBlocosView output={output} />
     case "subject":
       return <AssuntoView output={output} />
+    case "copy":
+      return <CopyContratoView output={output} />
+    case "copy_fit":
+      return <CopyFitView output={output} />
     case "hero_section":
       return <HeroSectionView output={output} />
     case "image":

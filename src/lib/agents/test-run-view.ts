@@ -33,6 +33,10 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   seed: "Seed Blocos",
   copy_dispatch: "Dispatch (envio ao n8n)",
   copy: "Copy (n8n)",
+  // Condicional: só existe run quando algum campo voltou acima do limite.
+  // Por isso fica FORA de TEST_BASE_AGENT_KEYS — uma linha pendente que
+  // nunca chega mentiria sobre o pipeline.
+  copy_fit: "Encurtador de Copy",
   image: "Imagem (IA)",
   hero_section: "Hero Section",
   copy_merge: "Merge de Copy (código)",
@@ -73,6 +77,20 @@ export const TEST_BASE_AGENT_KEYS = [
   "color_format",
   "qa",
 ] as const
+
+/**
+ * Agentes do mapa que NÃO entram na linha base: eles só existem quando uma
+ * condição acontece, e uma linha "pendente" que nunca chega mente sobre o
+ * pipeline tanto quanto a ausência do agente mentiria.
+ *
+ * - `qavision`: é a run de QA com visão (`agent='qa'` + `is_qa_vision`),
+ *   não um step próprio — aparece dentro do QA.
+ * - `copy_fit`: só roda quando algum campo voltou do n8n acima do limite
+ *   da caixa (migration 20261089).
+ *
+ * Ambos aparecem na lista quando TÊM run, como qualquer extra.
+ */
+export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit"] as const
 
 const PHASE2_STEP_KEYS = [
   "image",

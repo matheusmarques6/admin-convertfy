@@ -4,6 +4,7 @@ import { STUDIO_NODES } from "./studio-graph"
 import {
   TEST_AGENT_LABELS,
   TEST_BASE_AGENT_KEYS,
+  TEST_CONDITIONAL_AGENT_KEYS,
   canRecoverAfterInterrupt,
   isNetworkFailure,
   computeStale,
@@ -333,9 +334,10 @@ describe("sincronia com o mapa do Estúdio", () => {
 
   it("todo agente do mapa aparece na lista de steps", () => {
     const base: string[] = [...TEST_BASE_AGENT_KEYS]
-    // `qavision` é a run de QA com visão (`agent='qa'` + `is_qa_vision`),
-    // não um step próprio: no teste ele aparece dentro do QA.
-    const esperado = doGrafo.filter((a) => a !== "qavision")
+    // Os condicionais ficam fora por desenho (ver
+    // TEST_CONDITIONAL_AGENT_KEYS): eles aparecem quando TÊM run.
+    const condicionais: string[] = [...TEST_CONDITIONAL_AGENT_KEYS]
+    const esperado = doGrafo.filter((a) => !condicionais.includes(a))
     const fora = esperado.filter((a) => !base.includes(a))
     expect(fora, `fora de TEST_BASE_AGENT_KEYS: ${fora.join(", ")}`).toEqual([])
   })
