@@ -162,7 +162,53 @@ export interface SeedDefaultFlowsResult {
 }
 
 /**
- * Cria os 7 flows + 38 emails default para uma loja. Idempotente:
+ * A régua vigente de um fluxo: o que a tela "Arquitetura dos Emails" gravou
+ * em `email_flow_templates`, caindo em `DEFAULT_EMAILS` quando a tabela não
+ * responde.
+ *
+ * O fallback não é decoração: sem ele, uma migration não aplicada faria a
+ * loja nova nascer SEM e-mail nenhum — falha silenciosa, e a pior possível
+ * neste caminho. Só a régua ATIVA entra; um e-mail removido na tela não é
+ * semeado para lojas novas, e as antigas seguem intocadas.
+ */
+export async function loadFlowRuler(
+  admin: SupabaseClient,
+): Promise<Record<string, DefaultEmailDef[]>> {
+  try {
+    const { data, error } = await admin
+      .from("email_flow_templates")
+      .select("flow_type, email_number, name, delay_hours")
+      .eq("is_active", true)
+      .order("flow_type")
+      .order("email_number", { ascending: true })
+    if (error) throw error
+
+    const rows = (data ?? []) as Array<{
+      flow_type: string
+      email_number: number
+      name: string
+      delay_hours: number
+    }>
+    if (rows.length === 0) return DEFAULT_EMAILS
+
+    const byFlow: Record<string, DefaultEmailDef[]> = {}
+    for (const r of rows) {
+      ;(byFlow[r.flow_type] ??= []).push({
+        number: r.email_number,
+        name: r.name,
+        delay_hours: r.delay_hours,
+      })
+    }
+    // Fluxo ausente da tabela mantém o default — nunca fica sem e-mail
+    // porque alguém ainda não abriu aquele fluxo na tela.
+    return { ...DEFAULT_EMAILS, ...byFlow }
+  } catch {
+    return DEFAULT_EMAILS
+  }
+}
+
+/**
+ * Cria os 7 flows + os emails da régua vigente para uma loja. Idempotente:
  * - Flows existentes (mesmo flow_type) são ignorados.
  * - Emails existentes (mesmo number dentro do flow) são ignorados.
  *
@@ -201,12 +247,13 @@ export async function seedDefaultFlows(
     }
   }
 
-  // 2. Garante emails default em todos os flows (idempotente)
+  // 2. Garante os emails da régua vigente em todos os flows (idempotente)
+  const ruler = await loadFlowRuler(admin)
   let emailsCreated = 0
   for (const flow of DEFAULT_FLOWS) {
     const flowId = existingByType.get(flow.flow_type)
     if (!flowId) continue
-    const defaults = DEFAULT_EMAILS[flow.flow_type]
+    const defaults = ruler[flow.flow_type]
     if (!defaults || defaults.length === 0) continue
 
     const { data: existingEmails, error: emailFetchErr } = await admin

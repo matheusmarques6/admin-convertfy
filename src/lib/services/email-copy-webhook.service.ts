@@ -12,7 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { createAdminClient } from "@/lib/supabase/server"
-import { DEFAULT_EMAILS, type FlowTypeKey } from "@/lib/services/flow-seed.service"
+import { loadFlowRuler, type FlowTypeKey } from "@/lib/services/flow-seed.service"
 import { logger } from "@/lib/logger"
 import {
   ensureBlocksSeeded,
@@ -356,6 +356,10 @@ async function seedMissingEmails(
   if (error) throw error
   const withEmails = new Set((existing ?? []).map((e) => e.flow_id as string))
 
+  // Mesma régua da tela "Arquitetura dos Emails" que o seed de loja nova
+  // usa — as duas portas de entrada não podem semear réguas diferentes.
+  const ruler = await loadFlowRuler(admin)
+
   const rows: Array<{
     flow_id: string
     number: number
@@ -365,7 +369,7 @@ async function seedMissingEmails(
   }> = []
   for (const flow of flows) {
     if (withEmails.has(flow.id)) continue
-    const defaults = DEFAULT_EMAILS[flow.flow_type as FlowTypeKey]
+    const defaults = ruler[flow.flow_type as FlowTypeKey]
     if (!defaults) continue
     for (const e of defaults) {
       rows.push({
