@@ -1,0 +1,55 @@
+-- =============================================================
+-- Wipe da tabela de blocos — 29/08/2026 (JÁ EXECUTADO em produção)
+--
+-- Zera a SEQUÊNCIA de blocos das 34 linhas para que ela seja re-curada do
+-- zero na aba "Arquitetura dos Emails". Nada mais é apagado: intenção,
+-- diretriz, restrições, assunto, tom, cupom, "somente texto" e a régua
+-- (email_flow_templates) continuam como estavam.
+--
+-- Por que DUAS colunas e não uma: a tela monta a sequência de
+-- `email_blueprints.blocks` e, quando essa está vazia, cai em
+-- `email_outline_templates.suggested_blocks` (mergeBlocks, em
+-- src/lib/email-architecture/merge.ts). Zerar só a primeira faria a tabela
+-- se repovoar sozinha com as categorias do outline, sem o "o que entra
+-- nele" — não é wipe, é meia limpeza.
+--
+-- Por que é seguro:
+--   · Nenhuma FK aponta para as duas tabelas — o UPDATE não cascateia.
+--   · `resolveStoreOrGlobalBlockDefs` (agents/seed-blocks.ts) guarda com
+--     `bp.blocks.length > 0`: com a coluna vazia o seed cai em
+--     DEFAULT_BLUEPRINTS, que cobre os 34 e-mails no código. Loja nova
+--     continua nascendo com blocos.
+--   · `resolveStructure` (architect/outline-sections.ts) cai em
+--     FALLBACK_SECTIONS com suggested_blocks vazia, e com
+--     estruturador_mode='on' a estrutura vem do vault na maioria das runs.
+--
+-- O que se perde até a re-curação: o `purpose` por bloco, que alimenta o
+-- "o que entra nele" enviado por bloco ao n8n
+-- (email-copy-webhook.service.ts → blueprintBlocksByKey). Vale para lojas
+-- sem `store_email_blueprints` próprio; as que têm seguem com o blueprint
+-- da loja.
+-- =============================================================
+
+UPDATE email_blueprints        SET blocks = '[]'::jsonb           WHERE jsonb_array_length(blocks) > 0;
+UPDATE email_outline_templates SET suggested_blocks = '[]'::jsonb WHERE jsonb_array_length(suggested_blocks) > 0;
+
+-- Estado depois de rodar (conferido em 29/08):
+--   email_blueprints        → 34 linhas, 0 com blocos, 34 com intenção,
+--                             34 com assunto, 5 somente-texto
+--   email_outline_templates → 34 linhas, 0 com suggested_blocks,
+--                             34 com diretriz, 24 com cupom
+--   email_flow_templates    → 34 e-mails ativos nos 7 fluxos (intocada)
+
+-- ── Como reverter ──────────────────────────────────────────────
+-- As sequências originais estão em DOIS lugares. Pelo espelho no banco:
+--
+--   UPDATE email_blueprints b SET blocks = k.blocks
+--     FROM email_blueprints_bkp_20260829 k WHERE k.id = b.id;
+--   UPDATE email_outline_templates o SET suggested_blocks = k.suggested_blocks
+--     FROM email_outline_templates_bkp_20260829 k WHERE k.id = o.id;
+--
+-- Ou, fora do banco, por
+-- `supabase/migrations/BACKUP_arquitetura_emails_20260829.sql` (68 tuplas).
+-- Atenção: aquele arquivo usa `ON CONFLICT (id) DO NOTHING`, então restaura
+-- linha APAGADA, não linha alterada — para desfazer este wipe use os dois
+-- UPDATE acima.
