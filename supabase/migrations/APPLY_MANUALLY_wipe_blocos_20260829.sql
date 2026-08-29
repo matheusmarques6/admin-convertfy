@@ -1,4 +1,16 @@
 -- =============================================================
+-- ⚠️  REVERTIDO — NÃO RODE ESTE ARQUIVO.
+--
+-- Executado por engano em 29/08/2026: zerou os BLOCOS quando o que devia
+-- sair era o TEXTO editorial. Desfeito no mesmo dia pelas tabelas espelho,
+-- com divergência ZERO contra o backup (34 linhas / 249 blocos e 32 linhas /
+-- 205 suggested_blocks de volta).
+--
+-- O wipe que valeu está em `APPLY_MANUALLY_wipe_texto_20260829.sql`.
+-- Este fica no repo como registro do que foi rodado e desfeito.
+-- =============================================================
+
+-- =============================================================
 -- Wipe da tabela de blocos — 29/08/2026 (JÁ EXECUTADO em produção)
 --
 -- Zera a SEQUÊNCIA de blocos das 34 linhas para que ela seja re-curada do
