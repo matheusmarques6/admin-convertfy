@@ -15,6 +15,7 @@
 
 import { useState } from "react"
 import { Check, Clock, X } from "lucide-react"
+import { HERDADO } from "@/lib/email-architecture/merge"
 import { C, F } from "../ui/eg-theme"
 
 type GuideKey = "intent" | "should" | "should_not"
@@ -192,6 +193,24 @@ export function ArchGuides({ intent, should, shouldNot, onChange }: Props) {
                 >
                   {g.hint}
                 </span>
+                {raw.includes(HERDADO) && (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: C.warn,
+                      background: C.warnBg,
+                      border: `1px solid ${C.warnBorder}`,
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      fontFamily: F.sans,
+                    }}
+                  >
+                    As linhas marcadas com <b>{HERDADO.trim()}</b> vinham da
+                    outra tela e diziam algo diferente do que estava aqui.
+                    Aparecem para você decidir — aproveite ou apague. Ao salvar,
+                    as duas fontes passam a dizer o mesmo.
+                  </span>
+                )}
               </div>
             )}
           </div>

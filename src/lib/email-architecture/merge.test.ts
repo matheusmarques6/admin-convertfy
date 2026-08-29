@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   categoryOfBlockType,
   delayLabel,
+  HERDADO,
   guidesToText,
   mergeBlocks,
   mergeRows,
@@ -210,6 +211,8 @@ describe("mergeRows", () => {
       [
         bp("welcome", 1, {
           objective: "Apresentar a marca",
+          // Fontes já convergidas: a divergência tem testes próprios abaixo.
+          messaging: "Mostrar o produto\nReforçar o frete",
           subject_hint: "Bem-vindo!",
           text_only: false,
           blocks: [{ type: "hero", label: "Hero", purpose: "Banner" }],
@@ -217,6 +220,7 @@ describe("mergeRows", () => {
       ],
       [
         ol("welcome", 1, {
+          objective: "Apresentar a marca",
           guidance: "Mostrar o produto\nReforçar o frete",
           restrictions: "Não oferecer desconto",
           coupon_code: "BEMVINDO10",
@@ -253,20 +257,66 @@ describe("mergeRows", () => {
     expect(row.intent).toBe("Do outline")
   })
 
-  it('"deve": guidance vence, messaging é o fallback', () => {
-    const [comGuidance] = mergeRows(
+  it('"deve": guidance na frente, messaging herdado atrás', () => {
+    // Os dois existem e divergem em 27 das 34 linhas: mostrar os dois é o
+    // que impede o primeiro salvamento de apagar texto curado em silêncio.
+    const [ambos] = mergeRows(
       [ft("welcome", 1)],
-      [bp("welcome", 1, { messaging: "Da messaging" })],
-      [ol("welcome", 1, { guidance: "Da guidance" })],
+      [bp("welcome", 1, { messaging: "Da messaging", objective: "Mesma" })],
+      [ol("welcome", 1, { guidance: "Da guidance", objective: "Mesma" })],
     )
-    expect(comGuidance.should).toEqual(["Da guidance"])
+    expect(ambos.should).toEqual(["Da guidance", `${HERDADO}Da messaging`])
+  })
 
+  it('"deve": iguais não duplicam', () => {
+    const [row] = mergeRows(
+      [ft("welcome", 1)],
+      [bp("welcome", 1, { messaging: "Mesmo texto", objective: "X" })],
+      [ol("welcome", 1, { guidance: "Mesmo texto", objective: "X" })],
+    )
+    expect(row.should).toEqual(["Mesmo texto"])
+  })
+
+  it('"deve": messaging é o fallback quando não há guidance', () => {
     const [semGuidance] = mergeRows(
       [ft("welcome", 1)],
-      [bp("welcome", 1, { messaging: "Da messaging" })],
-      [ol("welcome", 1, { guidance: null })],
+      [bp("welcome", 1, { messaging: "Da messaging", objective: "X" })],
+      [ol("welcome", 1, { guidance: null, objective: "X" })],
     )
     expect(semGuidance.should).toEqual(["Da messaging"])
+  })
+
+  it("a intenção perdedora vira diretriz marcada, não some", () => {
+    const [row] = mergeRows(
+      [ft("welcome", 1)],
+      [bp("welcome", 1, { objective: "Do blueprint", messaging: "M" })],
+      [ol("welcome", 1, { objective: "Do outline", guidance: "M" })],
+    )
+    expect(row.intent).toBe("Do blueprint")
+    expect(row.should).toContain(`${HERDADO}Do outline`)
+  })
+
+  it("um salvamento faz as duas fontes convergirem", () => {
+    const flowTemplates = [ft("welcome", 1)]
+    const blueprints = [
+      bp("welcome", 1, { objective: "Do blueprint", messaging: "Da messaging" }),
+    ]
+    const outlines = [
+      ol("welcome", 1, { objective: "Do outline", guidance: "Da guidance" }),
+    ]
+    const [antes] = mergeRows(flowTemplates, blueprints, outlines)
+    // 1 diretriz + 1 messaging herdada + 1 intenção herdada
+    expect(antes.should).toHaveLength(3)
+
+    const s = splitRow(antes)
+    const [depois] = mergeRows(
+      [{ ...flowTemplates[0], ...s.flowTemplate }],
+      [{ ...blueprints[0], ...s.blueprint }],
+      [{ ...outlines[0], ...s.outline }],
+    )
+    // Nada mais é herdado: as tabelas passaram a dizer a mesma coisa.
+    expect(depois.should).toEqual(antes.should)
+    expect(depois.intent).toBe(antes.intent)
   })
 
   it("e-mail fora da régua ainda aparece, para poder ser removido", () => {

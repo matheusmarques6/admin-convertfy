@@ -16,13 +16,17 @@
  * confiável para elas): saem em `outline_extras` para a tela avisar e o
  * curador decidir. Blueprint vazio → o outline vira a sequência.
  *
- * Intenção: blueprint.objective, caindo para outline.objective. É a mesma
+ * Intenção: blueprint.objective, caindo para outline.objective — a mesma
  * ordem que `email-copy-webhook.service` já usa no payload de copy
- * (`bp?.objective ?? outline?.objective`).
+ * (`bp?.objective ?? outline?.objective`). Quando os dois existem e diferem
+ * (27 das 34 linhas hoje), o texto perdedor não some: vira uma linha de
+ * `should`, marcada, para o curador decidir. Descartar em silêncio o que
+ * alguém escreveu seria repetir o defeito que esta tela veio corrigir.
  *
- * "O e-mail deve": outline.guidance, caindo para blueprint.messaging. Os dois
- * são prosa hoje e viram UMA linha; quem re-curar quebra em diretrizes. O
- * split devolve o mesmo texto para os dois campos — a partir daí não divergem
+ * "O e-mail deve": outline.guidance e blueprint.messaging, nessa ordem,
+ * SOMADOS quando diferem (outras 27 linhas). São prosa hoje e cada bloco
+ * vira uma linha; quem re-curar quebra em diretrizes e apaga o que sobra. O
+ * split devolve um texto só para os dois campos — daí em diante não divergem
  * mais.
  *
  * Tipo do bloco: a categoria da biblioteca É um `block_type` válido desde a
@@ -145,6 +149,48 @@ export function mergeBlocks(
   return { blocks, outlineExtras }
 }
 
+/** Prefixo do texto que veio da outra tabela e não coube na intenção. */
+export const HERDADO = "[da Estrutura geral] "
+
+/** A intenção efetiva: blueprint primeiro, como no payload de copy. */
+function pickIntent(
+  bpObjective: string | undefined,
+  olObjective: string | undefined,
+): string {
+  return bpObjective?.trim() || olObjective?.trim() || ""
+}
+
+/**
+ * As diretrizes visíveis, somando o que as duas tabelas guardam de diferente.
+ *
+ * Hoje `guidance` e `messaging` divergem em 27 das 34 linhas, e a intenção
+ * também. Escolher uma e calar a outra faria o primeiro salvamento apagar
+ * texto curado sem ninguém ver — então o perdedor entra como diretriz
+ * marcada com `HERDADO`, visível e apagável num clique.
+ */
+function buildShould(
+  guidance: string | null | undefined,
+  messaging: string | undefined,
+  bpObjective: string | undefined,
+  olObjective: string | undefined,
+): string[] {
+  const g = textToGuides(guidance ?? null)
+  const m = textToGuides(messaging ?? null)
+  const base = g.length > 0 ? g : m
+  const extra = g.length > 0 && m.length > 0 && guidance?.trim() !== messaging?.trim() ? m : []
+
+  // Intenção sobrescrita: só quando as duas existem e discordam.
+  const bpO = bpObjective?.trim() ?? ""
+  const olO = olObjective?.trim() ?? ""
+  const intentPerdida = bpO && olO && bpO !== olO ? [olO] : []
+
+  return [
+    ...base,
+    ...extra.map((l) => `${HERDADO}${l}`),
+    ...intentPerdida.map((l) => `${HERDADO}${l}`),
+  ]
+}
+
 /**
  * Junta régua + blueprint + outline nas linhas que a tela edita.
  *
@@ -189,8 +235,8 @@ export function mergeRows(
       name: ft?.name ?? `${flowType} ${emailNumber}`,
       delay_hours: ft?.delay_hours ?? 0,
       is_active: ft?.is_active ?? ol?.is_active ?? true,
-      intent: bp?.objective?.trim() || ol?.objective?.trim() || "",
-      should: textToGuides(ol?.guidance ?? bp?.messaging ?? null),
+      intent: pickIntent(bp?.objective, ol?.objective),
+      should: buildShould(ol?.guidance, bp?.messaging, bp?.objective, ol?.objective),
       should_not: textToGuides(ol?.restrictions ?? null),
       blocks,
       outline_extras: outlineExtras,
