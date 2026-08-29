@@ -12,11 +12,9 @@ import { useState, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Mail } from "lucide-react"
 import type { ListPromptsResult } from "@/lib/services/prompt-management.service"
-import type { BlueprintRow } from "@/lib/email-blueprints/types"
 import { PromptsWorkspace } from "@/components/agents/prompts-workspace"
-import { BlueprintsWorkspace } from "@/components/email-blueprints/blueprints-workspace"
+import { ArchitectureTab } from "@/components/email-generation/architecture-tab"
 import { ComponentsWorkspace } from "@/components/email-components/components-workspace"
-import { OutlinesWorkspace } from "@/components/email-outlines/outlines-workspace"
 import { GeneratedTab } from "@/components/email-generation/generated-tab"
 import { SettingsTab } from "@/components/email-generation/settings-tab"
 import { ReferencesTab } from "@/components/email-generation/references-tab"
@@ -27,8 +25,7 @@ import { C, F } from "@/components/email-generation/ui/eg-theme"
 const TABS = [
   "agents",
   "vault",
-  "blueprints",
-  "outlines",
+  "architecture",
   "components",
   "generated",
   "settings",
@@ -40,8 +37,7 @@ type Tab = (typeof TABS)[number]
 const TAB_LABELS: Record<Tab, string> = {
   agents: "Agentes",
   vault: "Conhecimento",
-  blueprints: "Blueprints",
-  outlines: "Estrutura geral",
+  architecture: "Arquitetura dos Emails",
   components: "Componentes",
   generated: "Geradas",
   settings: "Configurações",
@@ -49,19 +45,29 @@ const TAB_LABELS: Record<Tab, string> = {
   test: "Testar",
 }
 
-function parseTab(value: string | null | undefined): Tab {
-  return TABS.includes(value as Tab) ? (value as Tab) : "agents"
+/**
+ * "blueprints" e "outlines" viravam duas abas que editavam o mesmo e-mail;
+ * agora resolvem para a Arquitetura. O alias fica porque há link salvo e os
+ * redirects de `/admin/email-blueprints` e `/admin/outlines` apontam para cá.
+ */
+const TAB_ALIASES: Record<string, Tab> = {
+  blueprints: "architecture",
+  outlines: "architecture",
+}
+
+export function parseTab(value: string | null | undefined): Tab {
+  if (!value) return "agents"
+  if (TABS.includes(value as Tab)) return value as Tab
+  return TAB_ALIASES[value] ?? "agents"
 }
 
 interface WorkspaceProps {
   prompts: ListPromptsResult
-  blueprints: BlueprintRow[]
-  initialTab?: Tab
+  initialTab?: string
 }
 
 export function EmailGenerationWorkspace({
   prompts,
-  blueprints,
   initialTab,
 }: WorkspaceProps) {
   const router = useRouter()
@@ -109,7 +115,7 @@ export function EmailGenerationWorkspace({
             fontFamily: F.sans,
           }}
         >
-          Prompts dos agentes, blueprints de estrutura, configurações e
+          Prompts dos agentes, arquitetura dos e-mails, configurações e
           referências do pipeline AE.
         </div>
         <div
@@ -152,8 +158,7 @@ export function EmailGenerationWorkspace({
 
       {tab === "agents" && <PromptsWorkspace initial={prompts} />}
       {tab === "vault" && <VaultTab />}
-      {tab === "blueprints" && <BlueprintsWorkspace initial={blueprints} />}
-      {tab === "outlines" && <OutlinesWorkspace />}
+      {tab === "architecture" && <ArchitectureTab />}
       {tab === "components" && <ComponentsWorkspace />}
       {tab === "generated" && <GeneratedTab />}
       {tab === "settings" && <SettingsTab />}

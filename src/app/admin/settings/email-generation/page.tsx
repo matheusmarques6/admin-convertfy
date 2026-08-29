@@ -3,10 +3,12 @@
  *
  * Página única de gestão do pipeline AE. Substitui (e absorve via redirect):
  *   - `/admin/agents/prompts` (mesmos componentes, agora aba Agentes)
- *   - `/admin/email-blueprints` (idem, aba Blueprints)
+ *   - `/admin/email-blueprints` e `/admin/outlines` (as duas viraram a aba
+ *     "Arquitetura dos Emails", que carrega os próprios dados pela rota
+ *     `/api/admin/email-architecture` — daí não haver mais pré-fetch de
+ *     blueprints aqui)
  *
  * Auth gate idêntico a `/admin/agents/prompts` (canManagePrompts: admin/owner OR tag 'dev').
- * Pré-fetch paralelo de prompts + blueprints; passa initials pro client workspace.
  */
 import { redirect } from "next/navigation"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
@@ -15,7 +17,6 @@ import {
   canManagePrompts,
   listPrompts,
 } from "@/lib/services/prompt-management.service"
-import { listBlueprintsWithDefaults } from "@/lib/services/blueprint-management.service"
 import { EmailGenerationWorkspace } from "@/components/email-generation/email-generation-workspace"
 
 export const dynamic = "force-dynamic"
@@ -49,30 +50,12 @@ export default async function EmailGenerationSettingsPage({
   }
   if (!canManagePrompts(actor)) redirect(ROUTES.ADMIN.DASHBOARD)
 
-  const [prompts, blueprints] = await Promise.all([
-    listPrompts({ truncatePreview: true }),
-    listBlueprintsWithDefaults(),
-  ])
+  const prompts = await listPrompts({ truncatePreview: true })
 
   const sp = await searchParams
-  const initialTab = sp?.tab
 
-  return (
-    <EmailGenerationWorkspace
-      prompts={prompts}
-      blueprints={blueprints}
-      initialTab={
-        initialTab === "agents" ||
-        initialTab === "blueprints" ||
-        initialTab === "outlines" ||
-        initialTab === "components" ||
-        initialTab === "generated" ||
-        initialTab === "settings" ||
-        initialTab === "references" ||
-        initialTab === "test"
-          ? initialTab
-          : undefined
-      }
-    />
-  )
+  // A validação da aba é do `parseTab` do workspace, que também resolve os
+  // aliases legados (`blueprints`/`outlines` → `architecture`). Repetir a
+  // lista aqui era como a aba "vault" ficava inalcançável por URL.
+  return <EmailGenerationWorkspace prompts={prompts} initialTab={sp?.tab} />
 }

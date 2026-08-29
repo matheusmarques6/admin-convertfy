@@ -70,7 +70,7 @@ export async function PATCH(request: NextRequest) {
     const def = DEFAULT_BLUEPRINTS[flow_type]?.[email_number]
     if (!def) {
       throw new AppError(
-        `Sem blueprint default para ${flow_type} #${email_number} — crie o blueprint na aba Blueprints antes de marcar como somente texto.`,
+        `Sem blueprint default para ${flow_type} #${email_number} — salve a arquitetura deste e-mail (aba "Arquitetura dos Emails") antes de marcar como somente texto.`,
         422,
       )
     }

@@ -128,7 +128,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   {
     key: "email-generation",
     title: "Geração de Emails",
-    description: "Blueprints, prompts dos agentes e configurações de geração",
+    description: "Arquitetura dos e-mails, prompts dos agentes e configurações de geração",
     icon: Wand2,
     href: "/admin/settings/email-generation",
     adminOnly: true,
