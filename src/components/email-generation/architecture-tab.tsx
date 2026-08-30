@@ -30,6 +30,7 @@ import type {
 import { delayLabel, textToGuides } from "@/lib/email-architecture/merge"
 import { C, F } from "./ui/eg-theme"
 import { EGBtn, EGNotice } from "./ui/eg-atoms"
+import { EstruturadorOrientacoes } from "@/components/agent-studio/estruturador-panel"
 import { ArchGuides } from "./architecture/arch-guides"
 import { ArchBlocks, shortCategoryLabel } from "./architecture/arch-blocks"
 import { CategoryIcon } from "./architecture/category-icon"
@@ -460,6 +461,25 @@ export function ArchitectureTab() {
               </EGBtn>
             </div>
           </div>
+
+          {/* ── Especificações do fluxo inteiro ──
+              Vale para TODOS os e-mails deste fluxo, então mora acima da
+              régua, não dentro do e-mail selecionado. É o escopo `flow` de
+              `estruturador_orientacoes` — a mesma linha que o Estúdio edita
+              no detalhe de uma run; aqui só está no lugar onde o fluxo é
+              desenhado, em vez de atrás de uma execução. Salva SOZINHA, no
+              próprio botão: não entra no "Salvar sequência". */}
+          {flowType && (
+            <EstruturadorOrientacoes
+              flowType={flowType}
+              emailNumber={activeNumber ?? 1}
+              escopos={["flow"]}
+              titulo={`Especificações de ${flow?.label ?? flowType}`}
+              rotulos={{
+                flow: "Vale para todos os e-mails deste fluxo, em qualquer loja",
+              }}
+            />
+          )}
 
           {/* ── Régua de e-mails ── */}
           <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>

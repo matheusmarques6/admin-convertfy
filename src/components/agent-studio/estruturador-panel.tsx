@@ -218,15 +218,30 @@ interface OrientacaoRow {
  * na hora: o texto é servido em `<orientacao_do_coo>`, acima dos
  * aprendizados na precedência do prompt. A UI precisa deixar a diferença
  * óbvia, senão viram a mesma caixa com dois significados.
+ *
+ * Serve dois lugares. No Estúdio (`execs-tab`) nasce de uma RUN e mostra os
+ * três escopos. Na aba Arquitetura nasce do fluxo em edição, sem run — daí
+ * `runId` opcional (alimenta só `origem_run_id`, que a rota já aceita nulo)
+ * e `escopos`, que recorta quais campos aparecem. Um editor só: escrever a
+ * mesma diretriz em dois componentes diferentes é como as telas antigas
+ * divergiram.
  */
 export function EstruturadorOrientacoes({
   runId,
   flowType,
   emailNumber,
+  escopos = ["email", "flow", "global"],
+  titulo = "Orientações para as próximas gerações",
+  rotulos,
 }: {
-  runId: string
+  runId?: string | null
   flowType: string | null
   emailNumber: number
+  /** Quais escopos editar aqui. Ordem fixa: e-mail → flow → global. */
+  escopos?: ReadonlyArray<EscopoOrientacao>
+  titulo?: string
+  /** Sobrescreve o rótulo de um escopo com o vocabulário da tela. */
+  rotulos?: Partial<Record<EscopoOrientacao, string>>
 }) {
   const qs = new URLSearchParams()
   if (flowType) qs.set("flow_type", flowType)
@@ -266,7 +281,7 @@ export function EstruturadorOrientacoes({
           flow_type: escopo === "global" ? null : flowType,
           email_number: escopo === "email" ? emailNumber : null,
           texto: valor(escopo),
-          origem_run_id: runId,
+          origem_run_id: runId ?? null,
         }),
       })
       if (!res.ok) {
@@ -284,12 +299,13 @@ export function EstruturadorOrientacoes({
   }
 
   const campo = (escopo: EscopoOrientacao, dica: string) => {
+    if (!escopos.includes(escopo)) return null
     // Sem flow não dá para escopar por flow/email — só a geral faz sentido.
     if (escopo !== "global" && !flowType) return null
     return (
       <div key={escopo} style={{ marginBottom: 10 }}>
         <div style={{ ...label, marginBottom: 3 }}>
-          {rotuloEscopo(escopo, flowType, emailNumber)}
+          {rotulos?.[escopo] ?? rotuloEscopo(escopo, flowType, emailNumber)}
         </div>
         <textarea
           value={valor(escopo)}
@@ -341,9 +357,7 @@ export function EstruturadorOrientacoes({
         background: C.g50,
       }}
     >
-      <div style={{ ...label, marginBottom: 3 }}>
-        Orientações para as próximas gerações
-      </div>
+      <div style={{ ...label, marginBottom: 3 }}>{titulo}</div>
       <div style={{ ...body, color: C.g500, marginBottom: 10 }}>
         Vale imediatamente, em <strong>todas as lojas</strong> — não passa
         pelo vault. Nenhum campo é obrigatório.
