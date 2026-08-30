@@ -21,8 +21,10 @@ import useSWR from "swr"
 import {
   ClipboardList,
   Copy as CopyIcon,
+  Target,
   ThumbsDown,
   ThumbsUp,
+  TrendingUp,
 } from "lucide-react"
 
 import {
@@ -34,6 +36,7 @@ import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-dra
 import {
   rotuloEscopo,
   type EscopoOrientacao,
+  type KindOrientacao,
 } from "@/lib/agents/estruturador/orientacoes"
 import {
   CodeBlock,
@@ -216,7 +219,82 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
 interface OrientacaoRow {
   id: string
   escopo: EscopoOrientacao
+  kind?: KindOrientacao | null
   texto: string
+}
+
+/**
+ * Um campo editável = escopo + kind. Só o `flow` se divide em dois.
+ *
+ * Não é invenção da tela: o pipeline JÁ trata as duas coisas como variáveis
+ * de prompt independentes (`intencao_flow` e `progressao`, montadas em
+ * estruturador.service.ts a partir do vault). Quem escreve sobre um fluxo
+ * escreve as duas — o arco e a escada — e elas não cabem numa caixa só.
+ */
+export type CampoOrientacao =
+  | "global"
+  | "flow"
+  | "flow:intencao"
+  | "flow:progressao"
+  | "email"
+
+interface OrientacoesResponse {
+  global: OrientacaoRow | null
+  flow: OrientacaoRow | null
+  flow_intencao: OrientacaoRow | null
+  flow_progressao: OrientacaoRow | null
+  email: OrientacaoRow | null
+  /** `false` = fluxo sem `email_structure_refs`. Ver o aviso no topo. */
+  tem_material_vault: boolean | null
+}
+
+type ChaveResposta = Exclude<keyof OrientacoesResponse, "tem_material_vault">
+
+const DEF: Record<
+  CampoOrientacao,
+  {
+    escopo: EscopoOrientacao
+    kind: KindOrientacao
+    chave: ChaveResposta
+    icon: typeof ClipboardList
+    dica: string
+  }
+> = {
+  email: {
+    escopo: "email",
+    kind: "geral",
+    chave: "email",
+    icon: ClipboardList,
+    dica: "Ex.: sempre entregue o cupom no hero.",
+  },
+  flow: {
+    escopo: "flow",
+    kind: "geral",
+    chave: "flow",
+    icon: ClipboardList,
+    dica: "Ex.: nunca abra com desconto.",
+  },
+  "flow:intencao": {
+    escopo: "flow",
+    kind: "intencao",
+    chave: "flow_intencao",
+    icon: Target,
+    dica: "O arco do fluxo: o que ele precisa provocar, do primeiro ao último e-mail.",
+  },
+  "flow:progressao": {
+    escopo: "flow",
+    kind: "progressao",
+    chave: "flow_progressao",
+    icon: TrendingUp,
+    dica: "Como a forma muda de e-mail para e-mail — urgência, tamanho, prova, oferta.",
+  },
+  global: {
+    escopo: "global",
+    kind: "geral",
+    chave: "global",
+    icon: ClipboardList,
+    dica: "Ex.: depoimento nunca fecha o email.",
+  },
 }
 
 /**
@@ -231,15 +309,15 @@ interface OrientacaoRow {
  * Serve dois lugares. No Estúdio (`execs-tab`) nasce de uma RUN e mostra os
  * três escopos. Na aba Arquitetura nasce do fluxo em edição, sem run — daí
  * `runId` opcional (alimenta só `origem_run_id`, que a rota já aceita nulo)
- * e `escopos`, que recorta quais campos aparecem. Um editor só: escrever a
- * mesma diretriz em dois componentes diferentes é como as telas antigas
+ * e `campos`, que recorta o que aparece. Um editor só: escrever a mesma
+ * diretriz em dois componentes diferentes é como as telas antigas
  * divergiram.
  */
 export function EstruturadorOrientacoes({
   runId,
   flowType,
   emailNumber,
-  escopos = ["email", "flow", "global"],
+  campos = ["email", "flow", "flow:intencao", "flow:progressao", "global"],
   titulo = "Orientações para as próximas gerações",
   rotulos,
   colapsavel = false,
@@ -247,11 +325,17 @@ export function EstruturadorOrientacoes({
   runId?: string | null
   flowType: string | null
   emailNumber: number
-  /** Quais escopos editar aqui. Ordem fixa: e-mail → flow → global. */
-  escopos?: ReadonlyArray<EscopoOrientacao>
+  /**
+   * Quais campos editar aqui, na ordem em que aparecem. São coisas
+   * diferentes e nenhum é apelido do outro: `flow` é a REGRA que vale em
+   * todo e-mail do fluxo ("nunca abra com desconto"), `flow:intencao` é o
+   * arco e `flow:progressao` é a escada. A aba Arquitetura pede só os dois
+   * últimos — lá se desenha o fluxo, não se escreve regra de método.
+   */
+  campos?: ReadonlyArray<CampoOrientacao>
   titulo?: string
-  /** Sobrescreve o rótulo de um escopo com o vocabulário da tela. */
-  rotulos?: Partial<Record<EscopoOrientacao, string>>
+  /** Sobrescreve o rótulo de um campo com o vocabulário da tela. */
+  rotulos?: Partial<Record<CampoOrientacao, string>>
   /**
    * Recolhe cada campo atrás de uma linha de acordeão com o resumo do que
    * está escrito. O campo cresce até 520px; aberto por padrão entre o título
@@ -262,31 +346,29 @@ export function EstruturadorOrientacoes({
   const qs = new URLSearchParams()
   if (flowType) qs.set("flow_type", flowType)
   if (flowType) qs.set("email_number", String(emailNumber))
-  const { data, mutate } = useSWR<{
-    global: OrientacaoRow | null
-    flow: OrientacaoRow | null
-    email: OrientacaoRow | null
-  }>(`/api/admin/agents/estruturador-orientacoes?${qs.toString()}`, fetcher)
+  const { data, mutate } = useSWR<OrientacoesResponse>(
+    `/api/admin/agents/estruturador-orientacoes?${qs.toString()}`,
+    fetcher,
+  )
 
-  // Rascunho local por escopo: o campo mostra o que está gravado até o COO
-  // digitar, e aí passa a mostrar o que ele digitou (sem o SWR sobrescrever
-  // no meio da frase quando revalida).
-  const [rascunho, setRascunho] = useState<Partial<Record<EscopoOrientacao, string>>>({})
-  const [salvando, setSalvando] = useState<EscopoOrientacao | null>(null)
+  // Rascunho local por campo: mostra o que está gravado até o COO digitar,
+  // e aí passa a mostrar o que ele digitou (sem o SWR sobrescrever no meio
+  // da frase quando revalida).
+  const [rascunho, setRascunho] = useState<Partial<Record<CampoOrientacao, string>>>({})
+  const [salvando, setSalvando] = useState<CampoOrientacao | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [salvo, setSalvo] = useState<EscopoOrientacao | null>(null)
-  const [aberto, setAberto] = useState<EscopoOrientacao | null>(null)
+  const [salvo, setSalvo] = useState<CampoOrientacao | null>(null)
+  const [aberto, setAberto] = useState<CampoOrientacao | null>(null)
 
-  const gravado = (escopo: EscopoOrientacao) =>
-    (escopo === "global" ? data?.global : escopo === "flow" ? data?.flow : data?.email)
-      ?.texto ?? ""
+  const gravado = (campo: CampoOrientacao) => data?.[DEF[campo].chave]?.texto ?? ""
 
-  const valor = (escopo: EscopoOrientacao) => rascunho[escopo] ?? gravado(escopo)
-  const sujo = (escopo: EscopoOrientacao) =>
-    rascunho[escopo] !== undefined && rascunho[escopo] !== gravado(escopo)
+  const valor = (campo: CampoOrientacao) => rascunho[campo] ?? gravado(campo)
+  const sujo = (campo: CampoOrientacao) =>
+    rascunho[campo] !== undefined && rascunho[campo] !== gravado(campo)
 
-  const salvar = async (escopo: EscopoOrientacao) => {
-    setSalvando(escopo)
+  const salvar = async (campo: CampoOrientacao) => {
+    const { escopo, kind } = DEF[campo]
+    setSalvando(campo)
     setErro(null)
     setSalvo(null)
     try {
@@ -295,9 +377,10 @@ export function EstruturadorOrientacoes({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           escopo,
+          kind,
           flow_type: escopo === "global" ? null : flowType,
           email_number: escopo === "email" ? emailNumber : null,
-          texto: valor(escopo),
+          texto: valor(campo),
           origem_run_id: runId ?? null,
         }),
       })
@@ -305,8 +388,8 @@ export function EstruturadorOrientacoes({
         const j = (await res.json().catch(() => null)) as { error?: string } | null
         throw new Error(j?.error ?? `HTTP ${res.status}`)
       }
-      setRascunho((r) => ({ ...r, [escopo]: undefined }))
-      setSalvo(escopo)
+      setRascunho((r) => ({ ...r, [campo]: undefined }))
+      setSalvo(campo)
       void mutate()
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar")
@@ -316,32 +399,35 @@ export function EstruturadorOrientacoes({
   }
 
   /** Primeira linha do que está escrito — o resumo da linha fechada. */
-  const resumo = (escopo: EscopoOrientacao) => {
-    const linha = valor(escopo).split("\n").map((l) => l.trim()).find(Boolean)
+  const resumo = (campo: CampoOrientacao) => {
+    const linha = valor(campo).split("\n").map((l) => l.trim()).find(Boolean)
     if (!linha) return "Não definido"
     return linha.length > 54 ? `${linha.slice(0, 54)}…` : linha
   }
 
-  const campo = (escopo: EscopoOrientacao, dica: string) => {
-    if (!escopos.includes(escopo)) return null
-    // Sem flow não dá para escopar por flow/email — só a geral faz sentido.
-    if (escopo !== "global" && !flowType) return null
+  // Sem flow não dá para escopar por flow/email — só a geral faz sentido.
+  const visiveis = campos.filter(
+    (c) => DEF[c].escopo === "global" || Boolean(flowType),
+  )
 
-    const rotulo = rotulos?.[escopo] ?? rotuloEscopo(escopo, flowType, emailNumber)
-    const corpo = miolo(escopo, dica)
+  const campo = (chave: CampoOrientacao, primeiro: boolean) => {
+    const { escopo, kind, icon: Icon } = DEF[chave]
+    const rotulo =
+      rotulos?.[chave] ?? rotuloEscopo(escopo, flowType, emailNumber, kind)
+    const corpo = miolo(chave)
 
     if (colapsavel) {
-      const isOpen = aberto === escopo
+      const isOpen = aberto === chave
       return (
-        <div key={escopo}>
+        <div key={chave}>
           <EGAccordionRow
-            icon={<ClipboardList size={16} color={C.brand} style={{ flex: "0 0 16px" }} />}
+            icon={<Icon size={16} color={C.brand} style={{ flex: "0 0 16px" }} />}
             label={rotulo}
-            status={resumo(escopo)}
-            filled={valor(escopo).trim().length > 0}
+            status={resumo(chave)}
+            filled={valor(chave).trim().length > 0}
             open={isOpen}
-            first
-            onToggle={() => setAberto(isOpen ? null : escopo)}
+            first={primeiro}
+            onToggle={() => setAberto(isOpen ? null : chave)}
           />
           {isOpen && (
             <div style={{ padding: "0 14px 14px", background: C.g50 }}>{corpo}</div>
@@ -351,7 +437,7 @@ export function EstruturadorOrientacoes({
     }
 
     return (
-      <div key={escopo} style={{ marginBottom: 10 }}>
+      <div key={chave} style={{ marginBottom: 10 }}>
         <div style={{ ...label, marginBottom: 3 }}>{rotulo}</div>
         {corpo}
       </div>
@@ -359,14 +445,14 @@ export function EstruturadorOrientacoes({
   }
 
   /** O campo em si — igual nos dois modos, só a moldura muda. */
-  const miolo = (escopo: EscopoOrientacao, dica: string) => (
+  const miolo = (chave: CampoOrientacao) => (
     <>
         {/* Aceita 4000 caracteres: altura fixa de 2 linhas escondia quase
             tudo o que cabe aqui. Cresce até o teto do átomo e depois rola. */}
         <EGTextarea
-          value={valor(escopo)}
-          onChange={(v) => setRascunho((r) => ({ ...r, [escopo]: v }))}
-          placeholder={dica}
+          value={valor(chave)}
+          onChange={(v) => setRascunho((r) => ({ ...r, [chave]: v }))}
+          placeholder={DEF[chave].dica}
           minRows={6}
           maxLength={4000}
           style={{
@@ -379,18 +465,18 @@ export function EstruturadorOrientacoes({
             background: C.white,
           }}
         />
-        {sujo(escopo) && (
+        {sujo(chave) && (
           <div style={{ marginTop: 5 }}>
             <StudioBtn
-              onClick={() => void salvar(escopo)}
+              onClick={() => void salvar(chave)}
               disabled={salvando != null}
               style={{ height: 26 }}
             >
-              {salvando === escopo ? "Salvando…" : "Salvar"}
+              {salvando === chave ? "Salvando…" : "Salvar"}
             </StudioBtn>
           </div>
         )}
-        {salvo === escopo && !sujo(escopo) && (
+        {salvo === chave && !sujo(chave) && (
           <div style={{ ...body, color: "#065F46", marginTop: 4 }}>
             Salvo — vale a partir da próxima geração.
           </div>
@@ -398,11 +484,37 @@ export function EstruturadorOrientacoes({
     </>
   )
 
-  const campos = (
+  /**
+   * O limite que precisa aparecer ANTES de alguém escrever: `carregarMaterial`
+   * corta em `refs.length === 0`, então um fluxo sem referência de estrutura
+   * no vault nem chega a montar o prompt do Estruturador — a orientação não
+   * é ignorada, ela nunca é lida.
+   */
+  const semMaterial = Boolean(flowType) && data?.tem_material_vault === false
+  const aviso = semMaterial ? (
+    <div
+      style={{
+        fontSize: 11.5,
+        lineHeight: 1.5,
+        color: C.warn,
+        background: C.warnBg,
+        border: `1px solid ${C.warnBorder}`,
+        borderRadius: 6,
+        padding: "8px 10px",
+        fontFamily: F.sans,
+      }}
+    >
+      Este fluxo ainda não tem referência de estrutura no vault. Sem ela o
+      Estruturador não roda aqui (devolve <code>sem_material</code> e a
+      geração cai no outline), então <strong>nada do que estiver escrito
+      abaixo chega a uma geração</strong> — o texto fica gravado e passa a
+      valer no dia em que o fluxo ganhar referência.
+    </div>
+  ) : null
+
+  const lista = (
     <>
-      {campo("email", "Ex.: sempre entregue o cupom no hero.")}
-      {campo("flow", "Ex.: nunca abra com desconto.")}
-      {campo("global", "Ex.: depoimento nunca fecha o email.")}
+      {visiveis.map((c, i) => campo(c, i === 0))}
       {erro && (
         <div style={{ fontSize: 11.5, color: "#991B1B", fontFamily: F.sans }}>
           {erro}
@@ -415,15 +527,18 @@ export function EstruturadorOrientacoes({
   // título e descrição em cima dela seria dizer a mesma coisa duas vezes.
   if (colapsavel) {
     return (
-      <div
-        style={{
-          border: `1px solid ${C.border}`,
-          borderRadius: 8,
-          overflow: "hidden",
-          background: C.white,
-        }}
-      >
-        {campos}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {aviso}
+        <div
+          style={{
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            overflow: "hidden",
+            background: C.white,
+          }}
+        >
+          {lista}
+        </div>
       </div>
     )
   }
@@ -443,7 +558,8 @@ export function EstruturadorOrientacoes({
         Vale imediatamente, em <strong>todas as lojas</strong> — não passa
         pelo vault. Nenhum campo é obrigatório.
       </div>
-      {campos}
+      {aviso && <div style={{ marginBottom: 10 }}>{aviso}</div>}
+      {lista}
     </div>
   )
 }

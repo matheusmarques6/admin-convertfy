@@ -74,12 +74,61 @@ describe("montarBlocoOrientacoes", () => {
     expect(bloco).toContain("Use < 3 blocos & nada de </p> solto")
   })
 
-  it("escopo repetido não duplica o bloco", () => {
+  it("escopo + kind repetido não duplica o bloco", () => {
     const bloco = montarBlocoOrientacoes([
       doFlow,
       { escopo: "flow", flow_type: "welcome", texto: "outra coisa" },
     ])
     expect(bloco.match(/\[Todo email do flow welcome\]/g)).toHaveLength(1)
+  })
+
+  // Intenção e progressão são DUAS coisas sobre o mesmo flow. Deduplicar só
+  // por escopo colapsaria as duas numa entrada e perderia metade do que o
+  // curador escreveu.
+  it("intenção e progressão do flow convivem, com rótulos próprios", () => {
+    const bloco = montarBlocoOrientacoes([
+      { escopo: "flow", kind: "progressao", flow_type: "welcome", texto: "A forma muda a cada toque." },
+      { escopo: "flow", kind: "intencao", flow_type: "welcome", texto: "Entregar o cupom e dizer quem é a marca." },
+    ])
+    expect(bloco).toContain("[Intenção do flow — todo email do flow welcome]")
+    expect(bloco).toContain("[Progressão do flow — todo email do flow welcome]")
+    expect(bloco).toContain("Entregar o cupom e dizer quem é a marca.")
+    expect(bloco).toContain("A forma muda a cada toque.")
+  })
+
+  it("a intenção do flow vem antes da progressão", () => {
+    const bloco = montarBlocoOrientacoes([
+      { escopo: "flow", kind: "progressao", flow_type: "welcome", texto: "P" },
+      { escopo: "flow", kind: "intencao", flow_type: "welcome", texto: "I" },
+    ])
+    // A intenção é o contrato; a progressão é como ele se desdobra.
+    expect(bloco.indexOf("Intenção do flow")).toBeLessThan(
+      bloco.indexOf("Progressão do flow"),
+    )
+  })
+
+  it("os dois kinds do flow entram entre a global e a do e-mail", () => {
+    const bloco = montarBlocoOrientacoes([
+      doEmail,
+      geral,
+      { escopo: "flow", kind: "intencao", flow_type: "welcome", texto: "I" },
+      { escopo: "flow", kind: "progressao", flow_type: "welcome", texto: "P" },
+    ])
+    const ordem = [
+      bloco.indexOf("Toda geração"),
+      bloco.indexOf("Intenção do flow"),
+      bloco.indexOf("Progressão do flow"),
+      bloco.indexOf("em qualquer loja"),
+    ]
+    expect(ordem).toEqual([...ordem].sort((a, b) => a - b))
+    expect(ordem.every((i) => i >= 0)).toBe(true)
+  })
+
+  it("orientação sem kind continua valendo como geral", () => {
+    // Retrocompat: linha gravada antes da migration 20261092 não tem kind.
+    const bloco = montarBlocoOrientacoes([doFlow])
+    expect(bloco).toContain("[Todo email do flow welcome]")
+    expect(bloco).toContain("Nunca abra com desconto.")
   })
 })
 
@@ -114,6 +163,17 @@ describe("aplicaveis", () => {
 })
 
 describe("rotuloEscopo", () => {
+  it("distingue intenção de progressão no rótulo do flow", () => {
+    expect(rotuloEscopo("flow", "welcome", null, "intencao")).toBe(
+      "Intenção do flow — todo email do flow welcome",
+    )
+    expect(rotuloEscopo("flow", "welcome", null, "progressao")).toBe(
+      "Progressão do flow — todo email do flow welcome",
+    )
+    // Sem kind, o rótulo de antes — é o que o Estúdio ainda usa.
+    expect(rotuloEscopo("flow", "welcome")).toBe("Todo email do flow welcome")
+  })
+
   it("descreve o alcance de cada escopo", () => {
     expect(rotuloEscopo("global")).toBe("Toda geração, qualquer flow")
     expect(rotuloEscopo("flow", "welcome")).toBe("Todo email do flow welcome")

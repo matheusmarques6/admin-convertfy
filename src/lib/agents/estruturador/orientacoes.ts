@@ -13,8 +13,18 @@
 
 export type EscopoOrientacao = "email" | "flow" | "global"
 
+/**
+ * Que tipo de orientação é. No escopo `flow` são DUAS coisas independentes,
+ * e o pipeline já as trata separado: o Estruturador recebe `intencao_flow` e
+ * `progressao` como variáveis de prompt distintas. O vocabulário é o mesmo
+ * de `email_intents.kind` de propósito — o vault guarda o curado, isto é o
+ * editável. `geral` nos escopos que não se dividem (global e por e-mail).
+ */
+export type KindOrientacao = "geral" | "intencao" | "progressao"
+
 export interface Orientacao {
   escopo: EscopoOrientacao
+  kind?: KindOrientacao
   flow_type?: string | null
   email_number?: number | null
   texto: string
@@ -32,14 +42,31 @@ export function rotuloEscopo(
   escopo: EscopoOrientacao,
   flowType?: string | null,
   emailNumber?: number | null,
+  kind: KindOrientacao = "geral",
 ): string {
   if (escopo === "global") return "Toda geração, qualquer flow"
-  if (escopo === "flow") return `Todo email do flow ${flowType ?? "?"}`
+  if (escopo === "flow") {
+    const alcance = `todo email do flow ${flowType ?? "?"}`
+    if (kind === "intencao") return `Intenção do flow — ${alcance}`
+    if (kind === "progressao") return `Progressão do flow — ${alcance}`
+    return `Todo email do flow ${flowType ?? "?"}`
+  }
   return `Todo ${flowType ?? "?"} #${emailNumber ?? "?"}, em qualquer loja`
 }
 
-/** Da mais ampla para a mais específica — a ordem em que entram no prompt. */
-const ORDEM: EscopoOrientacao[] = ["global", "flow", "email"]
+/**
+ * Da mais ampla para a mais específica — a ordem em que entram no prompt.
+ * O flow entra em duas passagens (intenção e progressão) porque são dois
+ * textos distintos, e a intenção vem antes: ela é o contrato, a progressão
+ * é como ele se desdobra.
+ */
+const ORDEM: Array<{ escopo: EscopoOrientacao; kind: KindOrientacao }> = [
+  { escopo: "global", kind: "geral" },
+  { escopo: "flow", kind: "geral" },
+  { escopo: "flow", kind: "intencao" },
+  { escopo: "flow", kind: "progressao" },
+  { escopo: "email", kind: "geral" },
+]
 
 /**
  * Monta o conteúdo de `<orientacao_do_coo>`.
@@ -48,24 +75,30 @@ const ORDEM: EscopoOrientacao[] = ["global", "flow", "email"]
  * o modelo tende a dar mais peso quando duas se contradizem — e é também a
  * que o COO escreveu sabendo mais sobre o caso.
  *
- * Filtra vazias (o COO não precisa preencher os três) e ignora escopo
- * repetido: o UNIQUE do banco já garante um por escopo, mas o módulo não
- * depende disso para não emitir bloco duplicado.
+ * Filtra vazias (o COO não precisa preencher todas) e ignora o par
+ * escopo+kind repetido: o UNIQUE do banco já garante um de cada, mas o
+ * módulo não depende disso para não emitir bloco duplicado. Deduplicar só
+ * por escopo colapsaria a intenção e a progressão do flow numa entrada só.
  */
 export function montarBlocoOrientacoes(
   orientacoes: ReadonlyArray<Orientacao>,
 ): string {
-  const vistos = new Set<EscopoOrientacao>()
+  const vistos = new Set<string>()
   const linhas: string[] = []
 
-  for (const escopo of ORDEM) {
+  for (const { escopo, kind } of ORDEM) {
+    const chave = `${escopo}:${kind}`
+    if (vistos.has(chave)) continue
     const o = orientacoes.find(
-      (x) => x.escopo === escopo && (x.texto ?? "").trim().length > 0,
+      (x) =>
+        x.escopo === escopo &&
+        (x.kind ?? "geral") === kind &&
+        (x.texto ?? "").trim().length > 0,
     )
-    if (!o || vistos.has(escopo)) continue
-    vistos.add(escopo)
+    if (!o) continue
+    vistos.add(chave)
     linhas.push(
-      `[${rotuloEscopo(escopo, o.flow_type, o.email_number)}]\n${o.texto.trim()}`,
+      `[${rotuloEscopo(escopo, o.flow_type, o.email_number, kind)}]\n${o.texto.trim()}`,
     )
   }
 

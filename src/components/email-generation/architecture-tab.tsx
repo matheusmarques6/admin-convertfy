@@ -468,15 +468,22 @@ export function ArchitectureTab() {
               `estruturador_orientacoes` — a mesma linha que o Estúdio edita
               no detalhe de uma run; aqui só está no lugar onde o fluxo é
               desenhado, em vez de atrás de uma execução. Salva SOZINHA, no
-              próprio botão: não entra no "Salvar sequência". */}
+              próprio botão: não entra no "Salvar sequência".
+
+              São DOIS textos porque o pipeline já lê dois: `intencao_flow`
+              (o arco) e `progressao` (como a forma muda de e-mail para
+              e-mail) chegam ao Estruturador como variáveis distintas. Num
+              campo só, a régua de toques e o arco brigavam pela mesma
+              caixa. */}
           {flowType && (
             <EstruturadorOrientacoes
               flowType={flowType}
               emailNumber={activeNumber ?? 1}
-              escopos={["flow"]}
+              campos={["flow:intencao", "flow:progressao"]}
               colapsavel
               rotulos={{
-                flow: `Especificações de ${flow?.label ?? flowType}`,
+                "flow:intencao": `Intenção de ${flow?.label ?? flowType}`,
+                "flow:progressao": `Progressão de ${flow?.label ?? flowType}`,
               }}
             />
           )}
