@@ -18,25 +18,18 @@
  * A tela antiga oferecia 18 tipos técnicos; o que o pipeline consome de fato
  * são estas 8.
  *
- * O popover de direção de arte veio do `blueprint-blocks-editor` que esta
- * tela substitui: `image_brief` não tem outro editor no admin, e some com
- * ele se não for portado.
+ * O botão de imagem por bloco também SAIU. Ele acumulava três gestos num
+ * ícone só (1º clique liga `needs_image`, 2º abre a direção de arte, Alt+
+ * clique desliga) — indescobrível. `needs_image` e `image_brief` seguem no
+ * dado, atravessando merge→split como o `purpose`, e o bloco novo herda a
+ * regra do seed pelo `add()` abaixo. Se voltarem a precisar de edição, que
+ * seja num painel próprio, não num ícone de três estados.
  */
 
-import { useState } from "react"
-import { ArrowDown, ArrowUp, Image as ImageIcon, Trash2 } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import type { ArchBlock } from "@/lib/email-architecture/types"
 import { C, F } from "../ui/eg-theme"
-import { EGBtn } from "../ui/eg-atoms"
 import { CATEGORY_ICON, CategoryIcon } from "./category-icon"
 
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
@@ -80,9 +73,6 @@ interface Props {
 }
 
 export function ArchBlocks({ blocks, onChange, extras }: Props) {
-  const [editing, setEditing] = useState<number | null>(null)
-  const [draft, setDraft] = useState("")
-
   const patch = (idx: number, p: Partial<ArchBlock>) =>
     onChange(blocks.map((b, i) => (i === idx ? { ...b, ...p } : b)))
 
@@ -103,22 +93,14 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
         category,
         label: shortCategoryLabel(category),
         purpose: "",
-        needs_image: false,
+        // Espelha a regra do seed (`def.needs_image ?? def.type === "hero"`).
+        // Gravar `false` cru num hero desligaria a imagem para sempre: o `??`
+        // do seed não cobre `false`, e não há mais toggle na tela.
+        needs_image: category === "hero",
         image_brief: null,
         legacy_type: null,
       },
     ])
-
-  const openArt = (idx: number) => {
-    setDraft(blocks[idx].image_brief ?? "")
-    setEditing(idx)
-  }
-
-  const applyArt = () => {
-    if (editing == null) return
-    patch(editing, { image_brief: draft.trim() || null })
-    setEditing(null)
-  }
 
   return (
     <div
@@ -213,26 +195,6 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
               style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}
             >
               <IconBtn
-                title={
-                  b.needs_image
-                    ? "Bloco com imagem gerada — editar a direção de arte"
-                    : "Marcar que este bloco leva imagem gerada"
-                }
-                active={b.needs_image}
-                onClick={() =>
-                  b.needs_image
-                    ? openArt(idx)
-                    : patch(idx, { needs_image: true })
-                }
-                onAltClick={
-                  b.needs_image
-                    ? () => patch(idx, { needs_image: false, image_brief: null })
-                    : undefined
-                }
-              >
-                <ImageIcon size={15} />
-              </IconBtn>
-              <IconBtn
                 title="Subir"
                 disabled={idx === 0}
                 onClick={() => move(idx, -1)}
@@ -323,33 +285,6 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
         </div>
       )}
 
-      <Dialog
-        open={editing !== null}
-        onOpenChange={(open) => !open && setEditing(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Direção de arte do bloco</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={6}
-            autoFocus
-            placeholder="Descreva a imagem deste bloco. Ex: Fachada de loja física com vitrine que sugere o nicho; placa em branco para o logo."
-          />
-          <p style={{ fontSize: 11, color: C.g400, fontFamily: F.sans }}>
-            Aplica ao bloco. Salve a sequência para persistir. Clique com Alt no
-            ícone da imagem para desmarcar o bloco.
-          </p>
-          <DialogFooter>
-            <EGBtn onClick={() => setEditing(null)}>Cancelar</EGBtn>
-            <EGBtn variant="dark" onClick={applyArt}>
-              Aplicar
-            </EGBtn>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -357,26 +292,22 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
 function IconBtn({
   children,
   onClick,
-  onAltClick,
   disabled,
   title,
   danger,
-  active,
 }: {
   children: React.ReactNode
   onClick: () => void
-  onAltClick?: () => void
   disabled?: boolean
   title?: string
   danger?: boolean
-  active?: boolean
 }) {
   return (
     <button
       type="button"
       title={title}
       disabled={disabled}
-      onClick={(e) => (e.altKey && onAltClick ? onAltClick() : onClick())}
+      onClick={onClick}
       style={{
         width: 26,
         height: 26,
@@ -385,8 +316,8 @@ function IconBtn({
         justifyContent: "center",
         borderRadius: 6,
         border: "none",
-        background: active ? C.blue50 : "transparent",
-        color: danger ? C.neg : active ? C.brand : C.g500,
+        background: "transparent",
+        color: danger ? C.neg : C.g500,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.3 : 1,
       }}

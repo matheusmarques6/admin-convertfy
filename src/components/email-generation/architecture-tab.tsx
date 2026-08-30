@@ -9,9 +9,14 @@
  * divergiam em 14 das 34 linhas. Tudo passa por
  * `/api/admin/email-architecture`, o único ponto de escrita.
  *
- * Fiel à maquete "Régua da sequência": seletor de fluxo com o gatilho,
- * régua de e-mails, os três guias em acordeão, a tabela de blocos com paleta
- * e o esquema do e-mail à direita.
+ * Estrutura: seletor de fluxo com o gatilho, régua de e-mails, os três guias
+ * em acordeão, a tabela de blocos com paleta e o esquema do e-mail à direita.
+ *
+ * O título "Régua da sequência" com subtítulo, que a maquete trazia no topo,
+ * SAIU: era o terceiro nível de cabeçalho para uma tela só — acima já estão o
+ * "Geração de Emails" da página e o nome da aba —, e o subtítulo descrevia a
+ * coluna "o que cada um precisa dizer", que também saiu. O nome do fluxo, no
+ * cabeçalho do card, é o título de verdade daqui.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -268,27 +273,6 @@ export function ArchitectureTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ fontSize: 12, color: C.g500, fontFamily: F.sans }}>
-          Email / Arquitetura
-        </div>
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
-            color: C.g900,
-            fontFamily: F.sans,
-          }}
-        >
-          Régua da sequência
-        </div>
-        <div style={{ fontSize: 13, color: C.g500, fontFamily: F.sans }}>
-          Quantos e-mails cada fluxo tem, o que cada um precisa dizer e a
-          sequência de blocos. Vale para lojas geradas a partir de agora.
-        </div>
-      </div>
-
       <div
         style={{
           background: C.white,
