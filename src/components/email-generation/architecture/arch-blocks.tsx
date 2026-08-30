@@ -1,8 +1,17 @@
 "use client"
 
 /**
- * Tabela de blocos do e-mail (Nº · Tipo · O que entra nele · ordem) + a
- * paleta das 8 categorias, conforme a maquete "Régua da sequência".
+ * Tabela de blocos do e-mail (Nº · Tipo · ordem) + a paleta das 8 categorias.
+ *
+ * A maquete previa uma coluna "O que entra nele" (o `purpose` de cada bloco);
+ * ela SAIU de propósito. Os três guias do topo — Intenção, O e-mail deve, O
+ * e-mail não deve — já dão a direção editorial do e-mail inteiro, e repeti-la
+ * por bloco obrigava a reescrever a mesma coisa fatiada em 6 a 16 linhas.
+ * Aqui se desenha a SEQUÊNCIA; o que ela diz vem de cima.
+ *
+ * O `purpose` continua existindo no dado e chegando ao n8n: `mergeBlocks` o
+ * carrega para dentro do `ArchBlock` e `splitRow` o grava de volta, então ele
+ * atravessa a edição sem ser tocado. Sem UI, mas sem perda.
  *
  * O vocabulário é o das categorias da biblioteca — o mesmo que o Curador e o
  * Estruturador falam, e um `block_type` válido desde a migration 20261090.
@@ -49,7 +58,7 @@ const SHORT_LABEL: Record<string, string> = {
 export const shortCategoryLabel = (key: string) =>
   SHORT_LABEL[key] ?? CATEGORY_LABEL[key] ?? key
 
-const GRID = "40px 168px minmax(0,1fr) 118px"
+const GRID = "40px minmax(0,1fr) 118px"
 
 const th: React.CSSProperties = {
   fontSize: 11,
@@ -130,7 +139,6 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
       >
         <span style={th}>Nº</span>
         <span style={th}>Tipo de bloco</span>
-        <span style={th}>O que entra nele</span>
         <span style={{ ...th, textAlign: "right" }}>Ordem</span>
       </div>
 
@@ -191,7 +199,6 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
                   fontFamily: F.sans,
                   cursor: "pointer",
                   outline: "none",
-                  maxWidth: 128,
                 }}
               >
                 {COMPONENT_CATEGORIES.map((c) => (
@@ -201,22 +208,6 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
                 ))}
               </select>
             </span>
-
-            <input
-              value={b.purpose}
-              onChange={(e) => patch(idx, { purpose: e.target.value })}
-              placeholder="O que este bloco precisa dizer"
-              style={{
-                border: "none",
-                background: "transparent",
-                fontSize: 13,
-                color: C.g700,
-                fontFamily: F.sans,
-                outline: "none",
-                width: "100%",
-                paddingRight: 12,
-              }}
-            />
 
             <span
               style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}
