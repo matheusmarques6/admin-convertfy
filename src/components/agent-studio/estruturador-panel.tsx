@@ -18,8 +18,17 @@
 
 import { useMemo, useState } from "react"
 import useSWR from "swr"
-import { Copy as CopyIcon, ThumbsDown, ThumbsUp } from "lucide-react"
+import {
+  ClipboardList,
+  Copy as CopyIcon,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react"
 
+import {
+  EGAccordionRow,
+  EGTextarea,
+} from "@/components/email-generation/ui/eg-atoms"
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
 import {
@@ -233,6 +242,7 @@ export function EstruturadorOrientacoes({
   escopos = ["email", "flow", "global"],
   titulo = "Orientações para as próximas gerações",
   rotulos,
+  colapsavel = false,
 }: {
   runId?: string | null
   flowType: string | null
@@ -242,6 +252,12 @@ export function EstruturadorOrientacoes({
   titulo?: string
   /** Sobrescreve o rótulo de um escopo com o vocabulário da tela. */
   rotulos?: Partial<Record<EscopoOrientacao, string>>
+  /**
+   * Recolhe cada campo atrás de uma linha de acordeão com o resumo do que
+   * está escrito. O campo cresce até 520px; aberto por padrão entre o título
+   * do fluxo e a régua, ele empurraria a régua para fora da tela.
+   */
+  colapsavel?: boolean
 }) {
   const qs = new URLSearchParams()
   if (flowType) qs.set("flow_type", flowType)
@@ -259,6 +275,7 @@ export function EstruturadorOrientacoes({
   const [salvando, setSalvando] = useState<EscopoOrientacao | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [salvo, setSalvo] = useState<EscopoOrientacao | null>(null)
+  const [aberto, setAberto] = useState<EscopoOrientacao | null>(null)
 
   const gravado = (escopo: EscopoOrientacao) =>
     (escopo === "global" ? data?.global : escopo === "flow" ? data?.flow : data?.email)
@@ -298,26 +315,61 @@ export function EstruturadorOrientacoes({
     }
   }
 
+  /** Primeira linha do que está escrito — o resumo da linha fechada. */
+  const resumo = (escopo: EscopoOrientacao) => {
+    const linha = valor(escopo).split("\n").map((l) => l.trim()).find(Boolean)
+    if (!linha) return "Não definido"
+    return linha.length > 54 ? `${linha.slice(0, 54)}…` : linha
+  }
+
   const campo = (escopo: EscopoOrientacao, dica: string) => {
     if (!escopos.includes(escopo)) return null
     // Sem flow não dá para escopar por flow/email — só a geral faz sentido.
     if (escopo !== "global" && !flowType) return null
+
+    const rotulo = rotulos?.[escopo] ?? rotuloEscopo(escopo, flowType, emailNumber)
+    const corpo = miolo(escopo, dica)
+
+    if (colapsavel) {
+      const isOpen = aberto === escopo
+      return (
+        <div key={escopo}>
+          <EGAccordionRow
+            icon={<ClipboardList size={16} color={C.brand} style={{ flex: "0 0 16px" }} />}
+            label={rotulo}
+            status={resumo(escopo)}
+            filled={valor(escopo).trim().length > 0}
+            open={isOpen}
+            first
+            onToggle={() => setAberto(isOpen ? null : escopo)}
+          />
+          {isOpen && (
+            <div style={{ padding: "0 14px 14px", background: C.g50 }}>{corpo}</div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div key={escopo} style={{ marginBottom: 10 }}>
-        <div style={{ ...label, marginBottom: 3 }}>
-          {rotulos?.[escopo] ?? rotuloEscopo(escopo, flowType, emailNumber)}
-        </div>
-        <textarea
+        <div style={{ ...label, marginBottom: 3 }}>{rotulo}</div>
+        {corpo}
+      </div>
+    )
+  }
+
+  /** O campo em si — igual nos dois modos, só a moldura muda. */
+  const miolo = (escopo: EscopoOrientacao, dica: string) => (
+    <>
+        {/* Aceita 4000 caracteres: altura fixa de 2 linhas escondia quase
+            tudo o que cabe aqui. Cresce até o teto do átomo e depois rola. */}
+        <EGTextarea
           value={valor(escopo)}
-          onChange={(e) =>
-            setRascunho((r) => ({ ...r, [escopo]: e.target.value }))
-          }
+          onChange={(v) => setRascunho((r) => ({ ...r, [escopo]: v }))}
           placeholder={dica}
-          rows={2}
+          minRows={6}
           maxLength={4000}
           style={{
-            width: "100%",
-            resize: "vertical",
             borderRadius: 7,
             border: `1px solid ${C.border}`,
             padding: "7px 10px",
@@ -343,6 +395,35 @@ export function EstruturadorOrientacoes({
             Salvo — vale a partir da próxima geração.
           </div>
         )}
+    </>
+  )
+
+  const campos = (
+    <>
+      {campo("email", "Ex.: sempre entregue o cupom no hero.")}
+      {campo("flow", "Ex.: nunca abra com desconto.")}
+      {campo("global", "Ex.: depoimento nunca fecha o email.")}
+      {erro && (
+        <div style={{ fontSize: 11.5, color: "#991B1B", fontFamily: F.sans }}>
+          {erro}
+        </div>
+      )}
+    </>
+  )
+
+  // No modo recolhido a própria linha do acordeão é o cabeçalho — repetir
+  // título e descrição em cima dela seria dizer a mesma coisa duas vezes.
+  if (colapsavel) {
+    return (
+      <div
+        style={{
+          border: `1px solid ${C.border}`,
+          borderRadius: 8,
+          overflow: "hidden",
+          background: C.white,
+        }}
+      >
+        {campos}
       </div>
     )
   }
@@ -362,16 +443,7 @@ export function EstruturadorOrientacoes({
         Vale imediatamente, em <strong>todas as lojas</strong> — não passa
         pelo vault. Nenhum campo é obrigatório.
       </div>
-
-      {campo("email", "Ex.: sempre entregue o cupom no hero.")}
-      {campo("flow", "Ex.: nunca abra com desconto.")}
-      {campo("global", "Ex.: depoimento nunca fecha o email.")}
-
-      {erro && (
-        <div style={{ fontSize: 11.5, color: "#991B1B", fontFamily: F.sans }}>
-          {erro}
-        </div>
-      )}
+      {campos}
     </div>
   )
 }

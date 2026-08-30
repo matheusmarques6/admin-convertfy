@@ -16,6 +16,7 @@
 import { useState } from "react"
 import { Check, Clock, X } from "lucide-react"
 import { HERDADO } from "@/lib/email-architecture/merge"
+import { EGAccordionRow, EGTextarea } from "../ui/eg-atoms"
 import { C, F } from "../ui/eg-theme"
 
 type GuideKey = "intent" | "should" | "should_not"
@@ -122,42 +123,17 @@ export function ArchGuides({ intent, should, shouldNot, onChange }: Props) {
 
         return (
           <div key={g.key}>
-            <button
-              type="button"
-              onClick={() => setOpen(isOpen ? null : g.key)}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "12px 14px",
-                border: "none",
-                borderTop: i === 0 ? "none" : `1px solid rgba(0,0,0,0.06)`,
-                background: isOpen ? C.g50 : C.white,
-                cursor: "pointer",
-                textAlign: "left",
-                fontFamily: F.sans,
-              }}
-            >
-              <Icon size={16} color={g.iconColor} style={{ flex: "0 0 16px" }} />
-              <span style={{ fontSize: 13, fontWeight: 500, color: C.g900 }}>
-                {g.label}
-              </span>
-              <span
-                style={{
-                  marginLeft: "auto",
-                  fontSize: 12,
-                  color: lines.length ? C.g500 : C.g400,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: 420,
-                }}
-              >
-                {status}
-              </span>
-              <Chevron open={isOpen} />
-            </button>
+            <EGAccordionRow
+              icon={
+                <Icon size={16} color={g.iconColor} style={{ flex: "0 0 16px" }} />
+              }
+              label={g.label}
+              status={status}
+              filled={lines.length > 0}
+              open={isOpen}
+              first={i === 0}
+              onToggle={() => setOpen(isOpen ? null : g.key)}
+            />
 
             {isOpen && (
               <div
@@ -169,15 +145,15 @@ export function ArchGuides({ intent, should, shouldNot, onChange }: Props) {
                   gap: 6,
                 }}
               >
-                <textarea
-                  rows={g.rows}
+                {/* Cresce com o conteúdo: são estes campos que recebem a
+                    re-curação inteira do texto, e altura fixa cortaria a
+                    frase de quem está escrevendo. */}
+                <EGTextarea
+                  minRows={g.rows}
                   value={raw}
-                  onChange={(e) => setValue(g.key, e.target.value)}
+                  onChange={(v) => setValue(g.key, v)}
                   placeholder={g.placeholder}
                   style={{
-                    width: "100%",
-                    resize: "vertical",
-                    padding: "10px 12px",
                     border: `1px solid ${C.border}`,
                     borderRadius: 6,
                     fontSize: 13,
@@ -185,7 +161,6 @@ export function ArchGuides({ intent, should, shouldNot, onChange }: Props) {
                     color: C.g900,
                     background: C.white,
                     fontFamily: F.sans,
-                    outline: "none",
                   }}
                 />
                 <span
@@ -217,24 +192,5 @@ export function ArchGuides({ intent, should, shouldNot, onChange }: Props) {
         )
       })}
     </div>
-  )
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={C.g400}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flex: "0 0 16px" }}
-      aria-hidden
-    >
-      <path d={open ? "M8 14l4-4 4 4" : "M8 10l4 4 4-4"} />
-    </svg>
   )
 }

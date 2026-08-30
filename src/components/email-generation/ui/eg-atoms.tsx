@@ -6,7 +6,15 @@
  * light-only (precedente: logs-workspace).
  */
 
-import { type ReactNode, type CSSProperties, type SyntheticEvent, useState } from "react"
+import {
+  type ReactNode,
+  type CSSProperties,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { ChevronDown, Check, Maximize2, Minimize2 } from "lucide-react"
 import { C, F, TNUM, egInputStyle } from "./eg-theme"
 
@@ -199,11 +207,31 @@ export function EGInput({
   )
 }
 
+/**
+ * Textarea que CRESCE com o conteúdo.
+ *
+ * Era `rows` fixo com `resize: "vertical"` — quem escrevia texto longo via a
+ * frase cortada e tinha de arrastar a alça para ler o que digitou. O defeito
+ * apareceu três vezes na aba Arquitetura antes de ser corrigido aqui, e a
+ * razão é sempre a mesma: cada campo novo chuta o próprio `rows`.
+ *
+ * O crescimento é o mesmo do composer do inbox
+ * (`crm/inbox/composer.tsx`), que tinha a lógica inline e por isso nunca foi
+ * reusada. Aqui é DEFAULT, não opção: um flag que é preciso lembrar de ligar
+ * seria a mesma armadilha com outro nome.
+ *
+ * `minRows` é a altura inicial; passando de `maxHeight` rola por dentro, em
+ * vez de esticar a página sem fim (o campo de orientação aceita 4000 chars).
+ * `resize` continua livre — crescer sozinho não impede ajustar à mão.
+ */
 export function EGTextarea({
   value,
   onChange,
   placeholder,
-  rows = 3,
+  rows,
+  minRows = 3,
+  maxHeight = 520,
+  maxLength,
   mono,
   disabled,
   style,
@@ -211,21 +239,46 @@ export function EGTextarea({
   value: string
   onChange?: (value: string) => void
   placeholder?: string
+  /** @deprecated use `minRows` — mantido para os call sites existentes. */
   rows?: number
+  minRows?: number
+  maxHeight?: number
+  /** Teto de caracteres. Espelhe o limite da rota: barrar aqui é melhor
+   *  que deixar digitar e devolver 400 no save. */
+  maxLength?: number
   mono?: boolean
   disabled?: boolean
   style?: CSSProperties
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  // "auto" antes de medir: sem isso o scrollHeight nunca DIMINUI, e o campo
+  // fica grande para sempre depois de um texto longo apagado.
+  const grow = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+  }, [maxHeight])
+
+  // No valor, não só no onChange: cobre carga inicial e troca de contexto
+  // (mudar de e-mail na régua remonta o valor sem passar por digitação).
+  useEffect(grow, [value, grow])
+
   return (
     <textarea
+      ref={ref}
       value={value}
       placeholder={placeholder}
-      rows={rows}
+      rows={rows ?? minRows}
+      maxLength={maxLength}
       disabled={disabled}
       onChange={(e) => onChange?.(e.target.value)}
       style={{
         ...egInputStyle,
         height: "auto",
+        maxHeight,
+        overflowY: "auto",
         padding: "9px 11px",
         lineHeight: 1.5,
         resize: "vertical",
@@ -817,5 +870,91 @@ export function EGNotice({
     >
       {children}
     </div>
+  )
+}
+
+/**
+ * A linha clicável de um acordeão: ícone, rótulo, resumo à direita e o
+ * chevron. Extraída porque o bloco de especificações do fluxo, acima da
+ * régua, precisa da MESMA linguagem — dois acordeões desenhados separados
+ * viram dois acordeões parecidos e nunca iguais.
+ *
+ * O resumo fechado não é enfeite: é ele que mantém a descoberta de um campo
+ * que passa a ficar escondido por padrão.
+ */
+export function EGAccordionRow({
+  icon,
+  label,
+  status,
+  filled,
+  open,
+  onToggle,
+  first,
+}: {
+  icon: React.ReactNode
+  label: string
+  status: string
+  /** Preenchido → resumo em cinza legível; vazio → cinza apagado. */
+  filled: boolean
+  open: boolean
+  onToggle: () => void
+  first?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "12px 14px",
+        border: "none",
+        borderTop: first ? "none" : `1px solid rgba(0,0,0,0.06)`,
+        background: open ? C.g50 : C.white,
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: F.sans,
+      }}
+    >
+      {icon}
+      <span style={{ fontSize: 13, fontWeight: 500, color: C.g900 }}>
+        {label}
+      </span>
+      <span
+        style={{
+          marginLeft: "auto",
+          fontSize: 12,
+          color: filled ? C.g500 : C.g400,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: 420,
+        }}
+      >
+        {status}
+      </span>
+      <Chevron open={open} />
+    </button>
+  )
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={C.g400}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flex: "0 0 16px" }}
+      aria-hidden
+    >
+      <path d={open ? "M8 14l4-4 4 4" : "M8 10l4 4 4-4"} />
+    </svg>
   )
 }

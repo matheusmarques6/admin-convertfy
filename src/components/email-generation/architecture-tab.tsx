@@ -474,9 +474,9 @@ export function ArchitectureTab() {
               flowType={flowType}
               emailNumber={activeNumber ?? 1}
               escopos={["flow"]}
-              titulo={`Especificações de ${flow?.label ?? flowType}`}
+              colapsavel
               rotulos={{
-                flow: "Vale para todos os e-mails deste fluxo, em qualquer loja",
+                flow: `Especificações de ${flow?.label ?? flowType}`,
               }}
             />
           )}
