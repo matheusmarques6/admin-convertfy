@@ -25,12 +25,17 @@ São **sete causas distintas**, não ruído aleatório. A leitura que importa:
 | 5 | `tutorial_pages` 406 no upsert idempotente | 8 | Nenhuma (esperado) |
 | 6 | `avatar_url` aponta para `.png`; o arquivo é `.jpg` | 3 | Baixa |
 | 7 | Realtime `Disconnecting broadcast changes handler` | 1 | Nenhuma |
+| 8 | Cron de saúde do WhatsApp morto (`crm_channels.name`) | — ¹ | **Alta** |
 | | **Total** | **183** | |
+
+¹ O achado 8 não está no CSV do Supabase: apareceu nos logs de runtime da Vercel (31/08),
+a ~288 falhas/dia. Entrou aqui por ser o mesmo tipo de causa — coluna que não existe.
 
 **Estado em 31/08/2026:** os achados 2, 3 e 4 estão corrigidos no código; o 1 teve a
 correção de código aplicada (o erro deixou de ser engolido) mas **depende da migration** para
 voltar a funcionar; 5 e 7 não têm o que corrigir; 6 aguarda um `UPDATE`. Cada seção abaixo abre
-com o seu estado.
+com o seu estado. O **achado 8**, acrescentado em 31/08 a partir dos logs da Vercel, também
+está corrigido.
 
 Contagem bruta por rota, como sai do CSV:
 
@@ -54,6 +59,9 @@ Contagem bruta por rota, como sai do CSV:
 > **Estado (31/08):** código corrigido — **falta a migration**. O claim agora lê o `error`, então
 > enquanto o SQL não for aplicado o cron devolve **500 por minuto** em vez de `200 {idle:true}`.
 > A importação só volta a funcionar depois da migration.
+> **Confirmado em produção** nos logs da Vercel de 31/08 18:30–18:33: `busca de job pendente
+> falhou`, código **`PGRST205`** ("Could not find the table … in the schema cache") — é assim
+> que tabela ausente chega pelo PostgREST, e não como `42P01`.
 
 **120 de 183 eventos (65%)** · `404 GET /rest/v1/crm_history_import_jobs`, duas por minuto:
 uma com `status=eq.pending`, outra com `status=eq.running&last_progress_at=lt.…`
@@ -355,6 +363,60 @@ sincronizar `profiles.avatar_url` e `client_portal_users.avatar_url`.
 
 Desconexão normal de canal realtime (aba fechada, navegação, reconexão). Não é erro. Está no
 catálogo para não virar caça-fantasma na próxima leitura de log.
+
+---
+
+## 8. O cron que avisa "o WhatsApp caiu" nunca rodou
+
+> **Estado (31/08):** **corrigido**. Achado nos logs de runtime da Vercel, fora do CSV do
+> Supabase — o erro é do lado da aplicação, não do PostgREST.
+
+`~288 falhas/dia` · `42703` · `column crm_channels.name does not exist` em
+`/api/cron/whatsapp-connection-health`
+
+### O quê
+`src/app/api/cron/whatsapp-connection-health/route.ts:56` pedia
+`.select("id, name, external_id, config")`. A coluna é **`display_name`** — assim desde
+`20260508_crm_phase4_messaging.sql`, quando `crm_channels` nasceu. O `if (error) throw error` da
+linha seguinte abortava o cron inteiro antes de checar qualquer canal.
+
+### Por quê
+Outlier de nomenclatura: é o **único** lugar do código que pedia `crm_channels.name`. Os outros
+30+ selects da tabela usam `display_name`, incluindo o cron irmão `instagram-snapshot/route.ts`.
+O arquivo nasceu já com o nome errado, então o cron **nunca funcionou** — e como ele só falhava
+para si mesmo (500 na própria rota), nada no produto denunciou a ausência.
+
+### Como resolver
+`.select("id, display_name, external_id, config")`, o tipo local `ChannelRow` com
+`display_name: string`, e os quatro usos de `channel.name` (duas mensagens de `problems`, dois
+`log.warn`) apontando para `display_name`. Nenhuma lógica dependia do campo — ele só compõe texto.
+
+Alinhar com `display_name` em vez de mascarar com alias `name:display_name`: manter o nome errado
+vivo é o que produz o próximo caso deste tipo.
+
+### Implicações
+- Esse cron é quem chama `notifyChannelDisconnected` e `clearChannelAlerts`: **abre o alerta no
+  sino quando a instância do WhatsApp cai e limpa quando volta**. Com ele morto, ninguém era
+  avisado de queda de número — e havia **1 canal WhatsApp ativo** em produção.
+- Também deixava de corrigir o `connection_state` no `config` do canal, então o estado exibido
+  podia ficar preso em "open" com a instância fora do ar (o caso "instância zumbi" que o próprio
+  cabeçalho do arquivo diz existir para cobrir).
+- Roda a cada 5 minutos (`4-59/5 * * * *`): ~288 execuções/dia, todas 500 — mais ruído somando ao
+  do achado 1 na mesma janela de monitoria.
+
+### O estado real, conferido no banco em 31/08
+
+O único canal WhatsApp ativo — **"Convertfy Number"** (`d46ac406-…`) — está com
+`connection_state: "close"` e `disconnected_at: 2026-08-04T17:07`. **O número está desconectado
+há quase quatro semanas**, e o `updated_at` do canal é dessa mesma data: o cron nunca mais tocou
+nele, como se espera de um cron que morria na primeira query.
+
+**Consertar o cron não vai fazer aparecer um alerta novo**, e é importante saber disso antes de
+concluir que a correção falhou. O canal tem **11 notificações não lidas** de 31/07 (uma por
+membro da org), e `notifyChannelDisconnected` deduplica por "no máximo 1 alerta ABERTO por
+canal": enquanto essas não forem lidas, nenhuma nova é criada. O que volta a funcionar de
+imediato é a correção do `connection_state` no `config` e o `clearChannelAlerts` quando o número
+reconectar — e o alerta para a **próxima** queda, depois que as pendentes forem lidas.
 
 ---
 

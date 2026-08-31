@@ -33,7 +33,11 @@ export const maxDuration = 120
 
 type ChannelRow = {
   id: string
-  name: string | null
+  // A coluna é `display_name` (assim desde 20260508_crm_phase4_messaging).
+  // Com `name`, o select estourava 42703 e o cron inteiro morria antes de
+  // checar qualquer canal — nenhum alerta de queda saiu desde que o arquivo
+  // nasceu.
+  display_name: string
   external_id: string
   config: Record<string, unknown> | null
 }
@@ -53,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     const { data: channels, error } = await admin
       .from("crm_channels")
-      .select("id, name, external_id, config")
+      .select("id, display_name, external_id, config")
       .eq("type", "whatsapp")
       .eq("provider", "evolution")
       .eq("is_active", true)
@@ -81,8 +85,8 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         unreachable++
         const detail = err instanceof Error ? err.message : String(err)
-        problems.push(`${channel.name || channel.external_id} (inacessível)`)
-        log.warn("connectionState falhou no health check", { channelId: channel.id, channelName: channel.name, detail })
+        problems.push(`${channel.display_name || channel.external_id} (inacessível)`)
+        log.warn("connectionState falhou no health check", { channelId: channel.id, channelName: channel.display_name, detail })
         await notifyChannelDisconnected(admin, { channelId: channel.id, kind: "unreachable", detail })
         continue
       }
@@ -126,8 +130,8 @@ export async function GET(request: NextRequest) {
         kind,
         detail: live === "unknown" ? "estado desconhecido" : null,
       })
-      problems.push(`${channel.name || channel.external_id} (${live})`)
-      log.warn("instância não operante no health check", { channelId: channel.id, channelName: channel.name, state: live })
+      problems.push(`${channel.display_name || channel.external_id} (${live})`)
+      log.warn("instância não operante no health check", { channelId: channel.id, channelName: channel.display_name, state: live })
     }
 
     if (unhealthy > 0 || unreachable > 0) {

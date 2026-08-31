@@ -91,7 +91,9 @@ function assertQueryOk(error: PostgrestError | null, contexto: string): void {
   const dica = semTabela
     ? " — a migration 20261065_whatsapp_history_import.sql não foi aplicada neste banco"
     : ""
-  log.error(`${contexto} falhou`, { code: error.code, message: error.message })
+  // A dica vai TAMBÉM no log: é o log da Vercel que alguém abre ao ver o
+  // cron vermelho, e sem ela a linha diz só "Could not find the table".
+  log.error(`${contexto} falhou${dica}`, { code: error.code, message: error.message })
   throw new Error(`${contexto}: ${error.message}${dica}`)
 }
 

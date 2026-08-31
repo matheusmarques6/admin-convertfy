@@ -29,18 +29,25 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
 /**
+ * Tabela ausente: 42P01 vem do Postgres, PGRST205 do schema cache do
+ * PostgREST — na prática a produção devolve o segundo, então reconhecer só
+ * o primeiro deixaria o caso legado fora do silêncio pretendido.
+ */
+const TABELA_AUSENTE = new Set(["42P01", "PGRST205"])
+
+/**
  * Lista vazia é a degradação certa para tabela ausente em ambiente legado —
  * e a errada para query inválida. Foi assim que o `created_at` inexistente
  * em crm_health_history escondeu 8.343 linhas de histórico de saúde: o erro
- * virava `[]` e a tela dizia "sem dados". 42P01 continua silencioso; todo o
- * resto passa a aparecer no log.
+ * virava `[]` e a tela dizia "sem dados". Tabela ausente continua silenciosa;
+ * todo o resto passa a aparecer no log.
  */
 function rowsOrEmpty<T>(
   res: { data: T[] | null; error: PostgrestError | null },
   contexto: string,
 ): T[] {
   if (!res.error) return res.data ?? []
-  if (res.error.code !== "42P01") {
+  if (!TABELA_AUSENTE.has(res.error.code)) {
     log.warn(`${contexto} falhou`, { code: res.error.code, message: res.error.message })
   }
   return []
