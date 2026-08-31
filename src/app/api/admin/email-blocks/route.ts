@@ -146,16 +146,24 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Aplica nova posição (1..N)
-    const updates = parsed.order.map((id, idx) =>
-      admin
-        .from("email_blocks")
-        .update({ position: idx + 1 })
-        .eq("id", id),
-    )
-    const results = await Promise.all(updates)
-    const firstError = results.find((r) => r.error)?.error
-    if (firstError) throw firstError
+    // Aplica a nova ordem numa transação (migration 20261091).
+    //
+    // Era um Promise.all de UPDATEs de `position`, um por bloco. Como
+    // `email_blocks` tem UNIQUE (email_id, position), mover um bloco para
+    // uma posição que o vizinho ainda ocupa viola a constraint — e em
+    // PARALELO a ordem dos updates é indeterminada, então falhava de forma
+    // aleatória e podia parar no meio, deixando o email com a numeração pela
+    // metade. A função renumera em duas passadas e reverte tudo se algo der
+    // errado. Mesma implementação da tela de edição do email.
+    const { error: rpcErr } = await admin.rpc("aplicar_estrutura_email", {
+      p_email_id: parsed.email_id,
+      p_ordem: parsed.order,
+      p_removidos: [],
+      p_html: null,
+      p_html_marked: null,
+      p_revisao: null,
+    })
+    if (rpcErr) throw rpcErr
 
     return successResponse(request, { ok: true })
   } catch (error) {

@@ -181,6 +181,7 @@ export async function POST(
     // mapeamentos para a mesma coisa é como um deles fica errado sem ninguém
     // perceber.
     let htmlAtualizado = false
+    let htmlNovo: string | null = null
     let blocosSemRegiao: string[] = []
     if (email.html_marked) {
       try {
@@ -211,15 +212,11 @@ export async function POST(
         }
         doc = renumberMarkers(doc)
 
-        const { error: htmlErr } = await admin
-          .from("email_flow_emails")
-          .update({
-            html_marked: doc,
-            html: stripCfyBlockMarkers(doc),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", emailId)
-        if (htmlErr) throw htmlErr
+        // NÃO grava aqui. O documento vai junto com as posições e a revisão,
+        // na mesma transação (ver a chamada da RPC abaixo). Gravar antes era
+        // o que deixava o email com duas verdades quando a renumeração
+        // estourava — incidente 28/08.
+        htmlNovo = doc
         htmlAtualizado = true
       } catch (err) {
         // Documento que não pode ser editado com segurança não vira
@@ -236,61 +233,53 @@ export async function POST(
       }
     }
 
-    // ── 2. Blocos ──────────────────────────────────────────────────────
-    if (body.removidos.length > 0) {
-      const { error } = await admin
-        .from("email_blocks")
-        .delete()
-        .in("id", body.removidos)
-      if (error) throw error
-    }
-    for (let i = 0; i < body.ordem.length; i++) {
-      const { error } = await admin
-        .from("email_blocks")
-        .update({ position: i + 1 })
-        .eq("id", body.ordem[i])
-      if (error) throw error
-    }
-
-    // ── 3. Revisão ─────────────────────────────────────────────────────
-    // Uma ativa por alvo: a anterior é DESATIVADA, não apagada — o histórico
-    // de quem pediu o quê sobrevive e o prompt não cresce sem controle.
+    // ── 2 + 3. Blocos, documento e revisão — TUDO numa transação ───────
+    //
+    // Uma chamada só. Até 28/08 isto era um `for` de UPDATEs de `position`
+    // e, como `email_blocks` tem UNIQUE (email_id, position), mover o 2º
+    // bloco para a 1ª posição colidia com o 1º, que ainda estava lá: QUALQUER
+    // troca de ordem falhava com "Registro duplicado". E o HTML já tinha sido
+    // gravado, então o email ficava com o documento na ordem nova e os blocos
+    // na antiga.
+    //
+    // A função renumera em duas passadas (faixa +1000), grava o documento por
+    // último e insere a revisão desativando a anterior do alvo. Ou tudo muda,
+    // ou nada muda.
     const storeId =
       body.alcance === "este_email" ? email.flow.store_id : null
-    let desativa = admin
-      .from("email_structure_reviews")
-      .update({ is_active: false })
-      .eq("is_active", true)
-      .eq("alcance", body.alcance)
-      .eq("flow_type", email.flow.flow_type)
-      .eq("email_number", email.number)
-    desativa =
-      storeId == null
-        ? desativa.is("store_id", null)
-        : desativa.eq("store_id", storeId)
-    const { error: desErr } = await desativa
-    if (desErr) throw desErr
 
-    const { data: revisao, error: insErr } = await admin
+    const { data: rpcData, error: rpcErr } = await admin.rpc(
+      "aplicar_estrutura_email",
+      {
+        p_email_id: emailId,
+        p_ordem: body.ordem,
+        p_removidos: body.removidos,
+        p_html: htmlNovo ? stripCfyBlockMarkers(htmlNovo) : null,
+        p_html_marked: htmlNovo,
+        p_revisao: {
+          alcance: body.alcance,
+          store_id: storeId,
+          flow_type: email.flow.flow_type,
+          email_number: email.number,
+          ordem_anterior: ordemAnterior,
+          ordem_nova: ordemNova,
+          blocos_removidos: removidosTipos,
+          justificativa: body.justificativa,
+          para_estruturador: body.leitores.estruturador,
+          para_curador: body.leitores.curador,
+          para_montador: body.leitores.montador,
+          created_by: user.id,
+        },
+      },
+    )
+    if (rpcErr) throw rpcErr
+    const revisaoId = (rpcData as { revisao_id?: string } | null)?.revisao_id
+
+    const { data: revisao } = await admin
       .from("email_structure_reviews")
-      .insert({
-        alcance: body.alcance,
-        store_id: storeId,
-        flow_type: email.flow.flow_type,
-        email_number: email.number,
-        email_id: emailId,
-        ordem_anterior: ordemAnterior,
-        ordem_nova: ordemNova,
-        blocos_removidos: removidosTipos,
-        justificativa: body.justificativa,
-        para_estruturador: body.leitores.estruturador,
-        para_curador: body.leitores.curador,
-        para_montador: body.leitores.montador,
-        created_by: user.id,
-      })
       .select("*")
-      .single()
-    if (insErr) throw insErr
+      .eq("id", revisaoId ?? "")
+      .maybeSingle()
 
     log.info("structure_review.salva", {
       emailId,

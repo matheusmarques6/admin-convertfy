@@ -1,11 +1,22 @@
 /**
  * POST /api/admin/emails/[emailId]/structure-review
  *
- * A rota faz três coisas que precisam acontecer juntas: aplica a ordem nos
- * blocos, move as REGIÕES dentro do HTML marcado e grava a revisão. O que
- * este teste protege é o que quebraria em silêncio: partição inválida
- * passando batido, HTML saindo com marcador para o cliente, e revisão nova
- * empilhando em cima da anterior em vez de substituí-la.
+ * A rota faz três coisas que precisam acontecer JUNTAS: aplica a ordem nos
+ * blocos, move as REGIÕES dentro do HTML marcado e grava a revisão. Desde
+ * 28/08 as três vão numa transação só, pela RPC `aplicar_estrutura_email`
+ * (migration 20261091).
+ *
+ * O motivo é um incidente: a rota renumerava `position` um bloco por vez e
+ * `email_blocks` tem UNIQUE (email_id, position) — mover o 2º bloco para a
+ * 1ª posição colidia com o 1º, e QUALQUER troca falhava com "Registro
+ * duplicado". Pior, o HTML era gravado ANTES, então o email ficava com o
+ * documento na ordem nova e os blocos na antiga.
+ *
+ * Estes testes rodam contra um mock em memória, que NÃO tem índice único —
+ * é justamente por isso que o bug passou verde aqui. Então o que se cobra
+ * agora é o CONTRATO com o banco: uma chamada de RPC, com os argumentos
+ * certos, e nenhum UPDATE solto de posição ou de HTML. Que a transação
+ * funciona sob o UNIQUE é coisa que só o Postgres prova (ver a migration).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -37,7 +48,14 @@ const h = vi.hoisted(() => ({
   updates: [] as Array<{ table: string; payload: Record<string, unknown> }>,
   deletes: [] as Array<{ table: string; ids: string[] }>,
   desativacoes: 0,
+  rpcs: [] as Array<{ fn: string; args: Record<string, unknown> }>,
 }))
+
+/** Argumentos da única chamada de RPC que a rota deve fazer. */
+function argsDaRpc(): Record<string, unknown> {
+  expect(h.rpcs.map((r) => r.fn)).toEqual(["aplicar_estrutura_email"])
+  return h.rpcs[0].args
+}
 
 vi.mock("@/lib/supabase/server", () => {
   // Builder encadeável: cada método devolve `this` e o `then` resolve o que
@@ -78,6 +96,18 @@ vi.mock("@/lib/supabase/server", () => {
       },
     }),
     createAdminClient: vi.fn(() => ({
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        h.rpcs.push({ fn, args })
+        return Promise.resolve({
+          data: {
+            blocos: (args.p_ordem as string[]).length,
+            removidos: (args.p_removidos as string[]).length,
+            html_atualizado: args.p_html_marked != null,
+            revisao_id: "rev-1",
+          },
+          error: null,
+        })
+      },
       from: (table: string) => ({
         select: () => builder(table, "select"),
         update: (payload: Record<string, unknown>) => builder(table, "update", payload),
@@ -104,6 +134,7 @@ beforeEach(async () => {
   h.deletes = []
   h.reviews = []
   h.desativacoes = 0
+  h.rpcs = []
   h.blocos = [
     { id: B.hero, position: 1, block_type: "hero" },
     { id: B.body, position: 2, block_type: "body" },
@@ -146,9 +177,9 @@ describe("POST structure-review", () => {
     expect(json.html_atualizado).toBe(true)
     expect(json.ordem).toEqual(["hero", "body", "reviews", "offer"])
 
-    const upd = h.updates.find((u) => u.table === "email_flow_emails")!
-    const marcado = String(upd.payload.html_marked)
-    const limpo = String(upd.payload.html)
+    const args = argsDaRpc()
+    const marcado = String(args.p_html_marked)
+    const limpo = String(args.p_html)
     // A ordem mudou no documento…
     expect(marcado.indexOf("<tr><td>reviews")).toBeLessThan(
       marcado.indexOf("<tr><td>offer"),
@@ -168,9 +199,11 @@ describe("POST structure-review", () => {
       ctx(),
     )
     expect(res.status).toBe(200)
-    const upd = h.updates.find((u) => u.table === "email_flow_emails")!
-    expect(String(upd.payload.html)).not.toContain("<tr><td>offer")
-    expect(h.deletes.find((d) => d.table === "email_blocks")?.ids).toEqual([B.offer])
+    const args = argsDaRpc()
+    expect(String(args.p_html)).not.toContain("<tr><td>offer")
+    // A remoção vai NA transação, não como um delete solto antes dela.
+    expect(args.p_removidos).toEqual([B.offer])
+    expect(h.deletes.filter((d) => d.table === "email_blocks")).toEqual([])
   })
 
   // Lista parcial deixaria bloco fora da renumeração e a posição viraria um
@@ -213,25 +246,30 @@ describe("POST structure-review", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.html_atualizado).toBe(false)
-    expect(h.reviews).toHaveLength(1)
-    expect(h.updates.some((u) => u.table === "email_flow_emails")).toBe(false)
+    // A revisão salva mesmo assim, e o documento vai NULL: a função sabe
+    // que "não mexer" é diferente de "gravar vazio".
+    const args = argsDaRpc()
+    expect(args.p_html).toBeNull()
+    expect(args.p_html_marked).toBeNull()
+    expect((args.p_revisao as Record<string, unknown>).justificativa).toBeTruthy()
   })
 
-  it("grava o diff das duas ordens, os leitores e desativa a anterior", async () => {
+  it("manda o diff das duas ordens e os leitores para a transação", async () => {
     await POST(req(baseBody), ctx())
-    expect(h.desativacoes).toBe(1)
-    const rev = h.reviews[0]
+    const rev = argsDaRpc().p_revisao as Record<string, unknown>
     expect(rev.ordem_anterior).toEqual(["hero", "body", "offer", "reviews"])
     expect(rev.ordem_nova).toEqual(["hero", "body", "reviews", "offer"])
     expect(rev.para_estruturador).toBe(true)
     expect(rev.para_montador).toBe(true)
     expect(rev.para_curador).toBe(false)
     expect(rev.store_id).toBe("loja-a")
+    // A desativação da anterior é da função, não da rota.
+    expect(h.desativacoes).toBe(0)
   })
 
-  it("alcance do flow grava sem loja (vale para qualquer uma)", async () => {
+  it("alcance do flow vai sem loja (vale para qualquer uma)", async () => {
     await POST(req({ ...baseBody, alcance: "todo_email_do_flow" }), ctx())
-    expect(h.reviews[0].store_id).toBeNull()
+    expect((argsDaRpc().p_revisao as Record<string, unknown>).store_id).toBeNull()
   })
 
   // Documento que não pode ser editado com segurança não vira documento
@@ -247,6 +285,34 @@ describe("POST structure-review", () => {
     const res = await POST(req(baseBody), ctx())
     expect(res.status).toBe(200)
     expect((await res.json()).html_atualizado).toBe(false)
-    expect(h.reviews).toHaveLength(1)
+    // A ordem e a revisão seguem; só o documento fica de fora.
+    const args = argsDaRpc()
+    expect(args.p_html_marked).toBeNull()
+    expect(args.p_ordem).toEqual(baseBody.ordem)
+  })
+
+  // ── Contrato com o banco (28/08) ──────────────────────────────────────
+  //
+  // O mock não tem UNIQUE (email_id, position), então nenhum teste daqui
+  // consegue reproduzir o "Registro duplicado". O que dá para cobrar é que
+  // a rota não volte a escrever posição a posição — que era a causa.
+
+  it("uma transação só: nenhum UPDATE solto de posição ou de HTML", async () => {
+    await POST(req(baseBody), ctx())
+    argsDaRpc() // exige exatamente uma chamada, e da função certa
+    expect(h.updates.filter((u) => u.table === "email_blocks")).toEqual([])
+    expect(h.updates.filter((u) => u.table === "email_flow_emails")).toEqual([])
+    expect(h.updates.filter((u) => u.table === "email_structure_reviews")).toEqual([])
+  })
+
+  it("a ordem enviada é a ordem completa dos blocos que ficam", async () => {
+    await POST(
+      req({ ...baseBody, ordem: [B.reviews, B.hero, B.body], removidos: [B.offer] }),
+      ctx(),
+    )
+    const args = argsDaRpc()
+    expect(args.p_ordem).toEqual([B.reviews, B.hero, B.body])
+    expect(args.p_removidos).toEqual([B.offer])
+    expect(args.p_email_id).toBe(EMAIL_ID)
   })
 })
