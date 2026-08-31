@@ -28,6 +28,10 @@ import {
 } from "@/lib/api/errors"
 import { canManagePrompts } from "@/lib/services/prompt-management.service"
 import { buildCatalog } from "@/lib/agents/architect/catalog-builder"
+import {
+  buildCatalogVaultExtras,
+  loadCuradorVaultKnowledge,
+} from "@/lib/agents/architect/curador-vault"
 import { loadActiveVariantsByType } from "@/lib/agents/architect/component-assembler.service"
 import { logger } from "@/lib/logger"
 
@@ -59,8 +63,20 @@ export async function GET(request: NextRequest) {
       throw new ValidationError("Segmento desconhecido. Refs suportados: catalogo")
     }
 
+    // O catálogo do Curador pode incluir os eixos do vault de componentes
+    // (curador_vault_mode='on', 31/08). A run não diz qual dos dois mundos
+    // gerou o sha8 — reconstrói SEM extras primeiro (modo off/shadow, o
+    // vivo de hoje) e, se o sha8 da run não bater, tenta COM extras antes
+    // de declarar stale.
     const { all: eligible } = await loadActiveVariantsByType()
-    const catalog = buildCatalog(eligible)
+    let catalog = buildCatalog(eligible)
+    const sha8Of = (s: string) =>
+      crypto.createHash("sha256").update(s).digest("hex").slice(0, 8)
+    if (sha8 && sha8Of(catalog.json) !== sha8) {
+      const vault = await loadCuradorVaultKnowledge()
+      const comExtras = buildCatalog(eligible, buildCatalogVaultExtras(vault, eligible))
+      if (sha8Of(comExtras.json) === sha8) catalog = comExtras
+    }
     const currentSha8 = crypto
       .createHash("sha256")
       .update(catalog.json)

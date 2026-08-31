@@ -190,3 +190,93 @@ describe("parseVaultFile — ponta a ponta", () => {
     expect(isApproved(r.note!.frontmatter)).toBe(false)
   })
 })
+
+// ── Vault de componentes (Curador, 31/08) ─────────────────────────────────
+
+import { docVariantId, isDocActive } from "./vault-parser"
+
+describe("classifyPath — componentes/**", () => {
+  it("notas de topo têm categoria pelo nome do arquivo", () => {
+    expect(classifyPath("componentes/_protocolo-de-selecao.md")).toEqual({
+      tipo: "componente_doc", flowType: null, slug: "_protocolo-de-selecao", docKind: "protocolo", docGrupo: null,
+    })
+    expect(classifyPath("componentes/_catalogo.md")?.docKind).toBe("catalogo")
+    expect(classifyPath("componentes/_parametros-da-loja.md")?.docKind).toBe("parametros")
+    // Nota nova na raiz sincroniza como 'outro' em vez de sumir.
+    expect(classifyPath("componentes/_nota-nova.md")?.docKind).toBe("outro")
+  })
+
+  it("secoes/requisitos/convivencia/lacunas em profundidade 3", () => {
+    const secao = classifyPath("componentes/secoes/_hero.md")
+    expect(secao?.docKind).toBe("secao")
+    expect(secao?.docGrupo).toBe("hero")
+    expect(classifyPath("componentes/requisitos/cupom-ativo.md")?.docKind).toBe("requisito")
+    expect(classifyPath("componentes/convivencia/prova-social-nao-duplica-na-peca.md")?.docKind).toBe("convivencia")
+    expect(classifyPath("componentes/lacunas/cta-sem-variante.md")?.docKind).toBe("lacuna")
+  })
+
+  it("variantes e eixos em profundidade 4, com grupo do caminho", () => {
+    const v = classifyPath("componentes/variantes/hero/hero-3-cupom-de-captacao.md")
+    expect(v?.docKind).toBe("variante")
+    expect(v?.docGrupo).toBe("hero")
+    const e = classifyPath("componentes/eixos/momento/welcome-1.md")
+    expect(e?.docKind).toBe("eixo")
+    expect(e?.docGrupo).toBe("momento")
+  })
+
+  it("fora do padrão continua null (_html não é .md; profundidade errada)", () => {
+    expect(classifyPath("componentes/_html/hero-3.html")).toBeNull()
+    expect(classifyPath("componentes/x/y/z/w.md")).toBeNull()
+    expect(classifyPath("componentes/desconhecida/nota.md")).toBeNull()
+  })
+})
+
+describe("componente_doc — parse, ativação e variant_id", () => {
+  const VARIANTE_MD = `---
+tipo: componente
+slug: hero-3-cupom-de-captacao
+secao: hero
+nome_no_banco: "welcome - hero section 3"
+variant_id: d9e34a1f-7bc7-47e8-9081-53600b104dd2
+ativa: true
+momento: [welcome-1]
+exige: [cupom-ativo, foto-estudio-fundo-claro]
+peso: { altura_px: 949, classe: medio, fonte: medido }
+status: aprovada
+---
+
+## Descrição curta
+
+Entrega o cupom de captação. Ver [[_protocolo-de-selecao]].
+`
+
+  it("parseia nota de variante com docKind/docGrupo e frontmatter máquina", () => {
+    const r = parseVaultFile("componentes/variantes/hero/hero-3-cupom-de-captacao.md", VARIANTE_MD)
+    expect(r.skipped).toBeNull()
+    expect(r.note?.tipo).toBe("componente_doc")
+    expect(r.note?.docKind).toBe("variante")
+    expect(r.note?.docGrupo).toBe("hero")
+    expect(r.note?.frontmatter.momento).toEqual(["welcome-1"])
+    expect(r.note?.frontmatter.exige).toEqual(["cupom-ativo", "foto-estudio-fundo-claro"])
+    expect(r.note?.body).toContain("_protocolo-de-selecao")
+    expect(docVariantId(r.note!.frontmatter)).toBe("d9e34a1f-7bc7-47e8-9081-53600b104dd2")
+  })
+
+  it("variant_id fora do formato UUID vira null (nunca quebra o insert)", () => {
+    expect(docVariantId({ variant_id: "não-é-uuid" })).toBeNull()
+    expect(docVariantId({})).toBeNull()
+  })
+
+  it("ativação: aprovada sempre; catálogo gerado também; lacuna aberta nunca", () => {
+    expect(isDocActive("variante", { status: "aprovada" })).toBe(true)
+    expect(isDocActive("catalogo", { status: "gerado" })).toBe(true)
+    expect(isDocActive("variante", { status: "gerado" })).toBe(false)
+    expect(isDocActive("lacuna", { status: "aberta" })).toBe(false)
+  })
+
+  it("sem status → skipped (contrato mínimo vale para componentes também)", () => {
+    const r = parseVaultFile("componentes/requisitos/x.md", "---\ntipo: requisito\n---\ncorpo")
+    expect(r.note).toBeNull()
+    expect(r.skipped?.motivo).toContain("status")
+  })
+})

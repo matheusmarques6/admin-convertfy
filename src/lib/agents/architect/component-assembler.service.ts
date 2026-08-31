@@ -42,6 +42,20 @@ import {
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { buildCatalog, buildTypeIndex } from "./catalog-builder"
+import {
+  buildCatalogVaultExtras,
+  buildConvivenciaBlock,
+  buildEstruturasRefResumo,
+  buildMomentoBlock,
+  buildProtocoloBlock,
+  buildRequisitosGlossario,
+  buildSecaoNotasBlock,
+  emptyCuradorVaultKnowledge,
+  loadCuradorVaultKnowledge,
+  loadCuradorVaultMode,
+  loadEstruturaRefsResumo,
+  momentoDoEmail,
+} from "./curador-vault"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
@@ -174,10 +188,34 @@ export const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de emai
 
 Você decide pelo nome, pela descrição e pelos metadados de cada variante. Você NÃO recebe o HTML delas.
 
+<protocolo_de_selecao>
+Protocolo canônico de seleção (vault de componentes). Quando presente, ele é a LEI do processo: ELIMINAR ANTES DE RANKEAR, na ordem dos passos. As regras desta mensagem o complementam; em conflito, o protocolo vence.
+{{protocolo}}
+</protocolo_de_selecao>
+
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`exige\`, \`peso\` e \`convivencia\`.
 {{catalogo}}
 </biblioteca>
+
+<convivencia>
+Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.convivencia\` de cada variante cita os slugs abaixo:
+{{convivencias}}
+</convivencia>
+
+<requisitos>
+Glossário dos requisitos de \`vault.exige\` (vault) — cada um é ELIMINATÓRIO quando a loja não tem o ativo:
+{{requisitos}}
+</requisitos>
+
+Como usar os eixos do vault (variantes com campo \`vault\`):
+- momento é FILTRO, nunca ranking: se <momento> do email casa com \`vault.momento_vetado\`, a variante está FORA; se \`vault.momento\` é lista NÃO vazia que não inclui <momento>, está fora; lista vazia não elimina (a variante não discrimina por momento).
+- \`vault.exige\` é eliminatório: cruze cada requisito com o que a loja comprovadamente tem (<perfil_marca>, <top_products>, cupom/oferta no contexto do email). Sem evidência do ativo, a variante não é pior — é IMPOSSÍVEL. Na dúvida entre duas adequadas, prefira a que exige menos.
+- Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com a objeção-alvo deste email (da intenção/decisão servidas ou de <objecoes>); eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
+- \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
+- \`vault.convivencia\`: respeite as regras de <convivencia> contra as variantes que você indica nas OUTRAS posições da mesma peça (ex.: prova social não duplica; grade de produtos não convive com review-vitrine).
+- Empate total entre duplicatas de cadastro (mesmos eixos, mesmo exige): vence o MENOR número no slug.
+- Variante SEM campo \`vault\`: decida pelos metadados do banco (quando_usar/quando_nao_usar/objectives/tones) como sempre.
 
 Regras de seleção:
 - Para cada block_index da sequência, escolha SOMENTE entre variantes cujo tipo de seção é o daquela posição.
@@ -249,6 +287,20 @@ export const DEFAULT_CHOOSER_USER = `<store>
 <top_products>
 {{top_products}}
 </top_products>
+
+<momento>
+{{momento}}
+</momento>
+
+<estruturas_de_referencia>
+Referências concretas catalogadas para este flow (passo 2 do protocolo — quando alguma cobre este email, ela orienta papel e desempate):
+{{estruturas_ref}}
+</estruturas_de_referencia>
+
+<notas_de_secao>
+Notas de seção do vault para as seções DESTE email — cobertura e CHAVE DE DESEMPATE (passo 9 do protocolo):
+{{secoes_notas}}
+</notas_de_secao>
 
 <memoria>
 {{memoria}}
@@ -776,6 +828,10 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       : { cls: "sistema", rotulo: "Sequência do email — derivada do outline por código" },
     memoria: { cls: "sistema", rotulo: "Memória do Curador — escolhas anteriores (código)" },
     finalists_json: { cls: "upstream", rotulo: "Finalistas — SAÍDA do Curador + schemas da biblioteca" },
+    // Cérebro do vault de componentes (31/08).
+    momento: { cls: "sistema", rotulo: "Momento do email — derivado de flow_type/número (código) + nota do eixo (vault)" },
+    estruturas_ref: { cls: "vault", rotulo: "Estruturas de referência do flow — email_structure_refs" },
+    secoes_notas: { cls: "vault", rotulo: "Notas de seção — email_vault_docs (componentes/secoes)" },
   }
 }
 
@@ -791,10 +847,26 @@ export async function assembleStoreReference(
   const { all: eligible, byType: poolByType, excludedUntagged } =
     await loadActiveVariantsByType()
 
+  // Cérebro do vault de componentes (31/08): protocolo de seleção, eixos
+  // por variante, notas de seção, convivência e requisitos — sincronizados
+  // em email_vault_docs. O call VIVO só os recebe no modo 'on' do rollout
+  // (curador_vault_mode); em 'off'/'shadow' as vars declaram ausência e o
+  // comportamento vivo é o de sempre (o shadow roda em call paralelo).
+  // Fail-open em tudo: sem sync/tabela/coluna, degrada para 'off'.
+  const curadorVaultMode = await loadCuradorVaultMode(input.storeId)
+  const vault =
+    curadorVaultMode === "on"
+      ? await loadCuradorVaultKnowledge()
+      : emptyCuradorVaultKnowledge()
+  const vaultExtras = buildCatalogVaultExtras(vault, eligible)
+  const estruturasRef =
+    curadorVaultMode === "on" ? await loadEstruturaRefsResumo(input.flowType) : []
+
   // Catálogo COMPLETO (todas as seções) em ordem estável — vai no system
   // prompt para ser cacheado, e cache é endereçado por conteúdo: filtrar por
-  // email ou embaralhar por loja mataria o cache (story CM-3).
-  const catalog = buildCatalog(eligible)
+  // email ou embaralhar por loja mataria o cache (story CM-3). Os extras do
+  // vault entram POR variante (mesma ordem estável — continua cacheável).
+  const catalog = buildCatalog(eligible, vaultExtras)
   const typeIndex = buildTypeIndex(eligible)
 
   const blocksJson = JSON.stringify(
@@ -893,6 +965,20 @@ export async function assembleStoreReference(
     top_products: renderTopProducts(input.topProducts),
     blocks_json: blocksJson,
     memoria: renderCuradorMemory(memory),
+    // Cérebro do vault (31/08): momento deste email (filtro do passo 5),
+    // estruturas de referência do flow (passo 2) e notas de seção com a
+    // chave de desempate (passo 9). Ausência sempre DECLARADA.
+    momento: buildMomentoBlock(vault, input.flowType, input.emailNumber),
+    estruturas_ref: buildEstruturasRefResumo(estruturasRef),
+    secoes_notas: buildSecaoNotasBlock(vault, sections),
+  }
+
+  // Blocos de SYSTEM do vault — conteúdo idêntico entre lojas (cacheável),
+  // interpolados junto com o catálogo.
+  const vaultSystemVars = {
+    protocolo: buildProtocoloBlock(vault),
+    convivencias: buildConvivenciaBlock(vault),
+    requisitos: buildRequisitosGlossario(vault),
   }
 
   // Guard: o system é editável na aba Agentes. Sem o catálogo o Curador
@@ -920,6 +1006,7 @@ export async function assembleStoreReference(
     .slice(0, 8)
   const chooserSystemResolvido = interpolateSystem(chooserConfig.system_prompt, {
     catalogo: catalog.json,
+    ...vaultSystemVars,
   })
   const chooserSystemSha8 = crypto
     .createHash("sha256")
@@ -944,14 +1031,17 @@ export async function assembleStoreReference(
     : renderImageTemplate(chooserConfig.user_template, chooserVars)
   const segChooserSystem = buildInterpolatedSegments(
     chooserConfig.system_prompt,
-    { catalogo: catalog.json },
+    { catalogo: catalog.json, ...vaultSystemVars },
     {
       catalogo: {
         cls: "biblioteca",
-        rotulo: `Catálogo da biblioteca — ${catalog.total} variantes (buildCatalog)`,
+        rotulo: `Catálogo da biblioteca — ${catalog.total} variantes (buildCatalog${vaultExtras.size > 0 ? ` + eixos do vault em ${vaultExtras.size}` : ""})`,
         ref: "catalogo",
         sha8: catalogSha8,
       },
+      protocolo: { cls: "vault", rotulo: "Protocolo de seleção — email_vault_docs (componentes)" },
+      convivencias: { cls: "vault", rotulo: "Regras de convivência — email_vault_docs (componentes)" },
+      requisitos: { cls: "vault", rotulo: "Glossário de requisitos exige — email_vault_docs (componentes)" },
     },
     { parte: "system" },
   )
@@ -981,6 +1071,24 @@ export async function assembleStoreReference(
     { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
     { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },
     { rotulo: "Memória do Curador", cls: "sistema", valor: renderCuradorMemory(memory).slice(0, 200) },
+    {
+      rotulo: "Vault de componentes",
+      cls: "vault",
+      valor:
+        vault.total > 0
+          ? `modo ${curadorVaultMode} · protocolo ${vault.protocolo ? "servido" : "AUSENTE"} · eixos em ${vaultExtras.size}/${catalog.total} variantes · ${vault.secoes.size} notas de seção · ${vault.requisitos.length} requisitos · ${vault.convivencias.length} convivências`
+          : `modo ${curadorVaultMode} — call vivo pelos metadados do banco`,
+    },
+    {
+      rotulo: "Momento do email",
+      cls: "sistema",
+      valor: momentoDoEmail(input.flowType, input.emailNumber) ?? `(não mapeado p/ ${input.flowType})`,
+    },
+    {
+      rotulo: "Estruturas de referência",
+      cls: "vault",
+      valor: estruturasRef.length > 0 ? `${estruturasRef.length} do flow ${input.flowType}` : "(nenhuma catalogada)",
+    },
   ]
   const chooserInputVars = {
     sections: input.structure.length,
@@ -991,6 +1099,14 @@ export async function assembleStoreReference(
     has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
     has_intencao_email: Boolean(input.intencaoEmail?.trim()),
     estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+    // Cérebro do vault (31/08).
+    curador_vault_mode: curadorVaultMode,
+    vault_docs_total: vault.total,
+    vault_protocolo: Boolean(vault.protocolo),
+    vault_variantes_com_eixos: vaultExtras.size,
+    vault_secoes_notas: vault.secoes.size,
+    momento: momentoDoEmail(input.flowType, input.emailNumber),
+    estruturas_ref: estruturasRef.length,
   }
 
   // Run 'running' visível na live view enquanto o LLM roda.

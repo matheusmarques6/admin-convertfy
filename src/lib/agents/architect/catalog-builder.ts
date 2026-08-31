@@ -22,6 +22,31 @@
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 
+/**
+ * Extras do VAULT de componentes para uma variante (curador-vault, 31/08):
+ * eixos de decisão do protocolo + prosa de julgamento curada. Opcionais —
+ * variante sem nota no vault sai do catálogo exatamente como antes.
+ */
+export interface CatalogVaultExtra {
+  /** Slug da nota no vault (identificador dos wikilinks). */
+  slug: string
+  descricao_curta?: string
+  quando_usar?: string
+  quando_nao_usar?: string
+  momento?: string[]
+  momento_vetado?: string[]
+  objecao?: string[]
+  registro?: string[]
+  registro_vetado?: string[]
+  paleta?: string[]
+  papel_na_peca?: string[]
+  exige?: string[]
+  /** "medio · 949px" (classe · altura). */
+  peso?: string | null
+  convivencia?: string[]
+  itens?: string | null
+}
+
 /** Entrada do catálogo — o que o Curador vê de cada variante. */
 export interface CatalogEntry {
   variant_id: string
@@ -35,6 +60,21 @@ export interface CatalogEntry {
   product_slots: number
   orientacao_copy: string
   notas_implementacao: string
+  /** Presente quando a variante tem nota no vault de componentes. */
+  vault?: {
+    slug: string
+    momento: string[]
+    momento_vetado: string[]
+    objecao: string[]
+    registro: string[]
+    registro_vetado: string[]
+    paleta: string[]
+    papel_na_peca: string[]
+    exige: string[]
+    peso: string | null
+    convivencia: string[]
+    itens: string | null
+  }
 }
 
 export interface CatalogSection {
@@ -62,6 +102,7 @@ export interface BuildCatalogResult {
  */
 export function buildCatalog(
   variants: EmailComponentVariant[],
+  vaultExtras?: Map<string, CatalogVaultExtra>,
 ): BuildCatalogResult {
   const byType = new Map<string, EmailComponentVariant[]>()
   for (const v of variants) {
@@ -75,7 +116,7 @@ export function buildCatalog(
     section,
     variantes: [...(byType.get(section) ?? [])]
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map(toEntry),
+      .map((v) => toEntry(v, vaultExtras?.get(v.id))),
   }))
 
   return {
@@ -86,13 +127,16 @@ export function buildCatalog(
   }
 }
 
-function toEntry(v: EmailComponentVariant): CatalogEntry {
-  return {
+function toEntry(v: EmailComponentVariant, extra?: CatalogVaultExtra): CatalogEntry {
+  const entry: CatalogEntry = {
     variant_id: v.id,
     name: v.name,
-    description: v.description ?? "",
-    quando_usar: v.when_use ?? "",
-    quando_nao_usar: v.when_not_use ?? "",
+    // A prosa do vault, quando existe, VENCE o cadastro do banco: é o
+    // julgamento curado (descrição curta, quando usar/não usar) escrito
+    // para o protocolo de seleção. Sem nota, o cadastro segue valendo.
+    description: extra?.descricao_curta || v.description || "",
+    quando_usar: extra?.quando_usar || v.when_use || "",
+    quando_nao_usar: extra?.quando_nao_usar || v.when_not_use || "",
     objectives: v.objectives ?? [],
     tones: v.tones ?? [],
     density: v.density ?? null,
@@ -100,6 +144,23 @@ function toEntry(v: EmailComponentVariant): CatalogEntry {
     orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
   }
+  if (extra) {
+    entry.vault = {
+      slug: extra.slug,
+      momento: extra.momento ?? [],
+      momento_vetado: extra.momento_vetado ?? [],
+      objecao: extra.objecao ?? [],
+      registro: extra.registro ?? [],
+      registro_vetado: extra.registro_vetado ?? [],
+      paleta: extra.paleta ?? [],
+      papel_na_peca: extra.papel_na_peca ?? [],
+      exige: extra.exige ?? [],
+      peso: extra.peso ?? null,
+      convivencia: extra.convivencia ?? [],
+      itens: extra.itens ?? null,
+    }
+  }
+  return entry
 }
 
 /**

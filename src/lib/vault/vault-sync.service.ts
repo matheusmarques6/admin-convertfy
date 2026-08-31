@@ -23,7 +23,9 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import {
+  docVariantId,
   isApproved,
+  isDocActive,
   parseVaultFile,
   normalizeSecoes,
   type ParsedNote,
@@ -229,7 +231,12 @@ export async function syncVault(opts: {
 
     // 4. Upserts por tipo.
     let upserted = 0
-    const seen = { intents: new Set<string>(), refs: new Set<string>(), learnings: new Set<string>() }
+    const seen = {
+      intents: new Set<string>(),
+      refs: new Set<string>(),
+      learnings: new Set<string>(),
+      docs: new Set<string>(),
+    }
 
     for (const n of notes) {
       const fm = n.frontmatter
@@ -244,7 +251,25 @@ export async function syncVault(opts: {
         updated_at: new Date().toISOString(),
       }
 
-      if (n.tipo === "intencao" || n.tipo === "progressao") {
+      if (n.tipo === "componente_doc") {
+        // Vault de componentes (Curador, 31/08) — tabela própria, ativação
+        // própria (isDocActive: catálogo gerado também serve; lacuna nunca).
+        const kind = n.docKind ?? "outro"
+        seen.docs.add(`${kind} ${n.slug}`)
+        const { error } = await admin.from("email_vault_docs").upsert(
+          {
+            kind,
+            grupo: n.docGrupo ?? null,
+            slug: n.slug,
+            variant_id: docVariantId(fm),
+            ...base,
+            is_active: isDocActive(kind, fm),
+          },
+          { onConflict: "kind,slug" },
+        )
+        if (error) skipped.push({ path: n.filePath, motivo: `upsert falhou: ${error.message}` })
+        else upserted++
+      } else if (n.tipo === "intencao" || n.tipo === "progressao") {
         const flow = n.flowType as string
         seen.intents.add(`${flow} ${n.slug}`)
         const { error } = await admin.from("email_intents").upsert(
@@ -332,6 +357,28 @@ export async function syncVault(opts: {
     await deactivate("email_intents", seen.intents)
     await deactivate("email_structure_refs", seen.refs)
     await deactivate("email_learnings", seen.learnings, true)
+
+    // email_vault_docs tem chave (kind, slug) — varredura própria. Tabela
+    // ausente (migration 20261093 não aplicada) degrada com warn: o sync das
+    // demais tabelas nunca pode parar por causa do vault de componentes.
+    {
+      const { data, error } = await admin
+        .from("email_vault_docs")
+        .select("id, kind, slug")
+        .eq("is_active", true)
+      if (error) {
+        log.warn("sync.vault_docs_sweep_skipped", { error: error.message })
+      } else {
+        const stale = (data ?? []).filter((r) => !seen.docs.has(`${r.kind} ${r.slug}`))
+        for (const r of stale) {
+          const { error: e } = await admin
+            .from("email_vault_docs")
+            .update({ is_active: false, updated_at: new Date().toISOString() })
+            .eq("id", r.id)
+          if (!e) deactivated++
+        }
+      }
+    }
 
     // 6. Estado.
     await admin.from("vault_sync_state").upsert({

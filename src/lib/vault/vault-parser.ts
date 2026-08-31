@@ -20,11 +20,35 @@
  * em `skipped_invalid` com o motivo (fail-open, regra da casa).
  */
 
-export type VaultNoteTipo = "intencao" | "progressao" | "estrutura" | "aprendizado"
+export type VaultNoteTipo =
+  | "intencao"
+  | "progressao"
+  | "estrutura"
+  | "aprendizado"
+  | "componente_doc"
+
+/**
+ * Categoria das notas de `componentes/**` (vault do Curador, 31/08).
+ * Espelha a árvore do Obsidian; 'outro' cobre nota nova na raiz antes de o
+ * código conhecê-la (sincroniza, não some).
+ */
+export type VaultDocKind =
+  | "protocolo"
+  | "catalogo"
+  | "inventario"
+  | "parametros"
+  | "casos"
+  | "secao"
+  | "variante"
+  | "eixo"
+  | "requisito"
+  | "convivencia"
+  | "lacuna"
+  | "outro"
 
 export interface ParsedNote {
   tipo: VaultNoteTipo
-  /** Flow do caminho; null para aprendizados `_global`. */
+  /** Flow do caminho; null para aprendizados `_global` e componentes. */
   flowType: string | null
   /** Nome do arquivo sem extensão — o identificador canônico. */
   slug: string
@@ -32,6 +56,10 @@ export interface ParsedNote {
   frontmatter: Record<string, unknown>
   /** Corpo com wikilinks resolvidos. */
   body: string
+  /** Só componente_doc: categoria da nota. */
+  docKind?: VaultDocKind
+  /** Só componente_doc: subgrupo (seção da variante/nota, eixo). */
+  docGrupo?: string | null
 }
 
 export interface SkippedNote {
@@ -99,15 +127,70 @@ export interface ClassifiedPath {
   tipo: VaultNoteTipo
   flowType: string | null
   slug: string
+  docKind?: VaultDocKind
+  docGrupo?: string | null
+}
+
+/** `componentes/<arquivo>.md` → categoria (as notas de topo têm nome fixo). */
+const COMPONENTES_ROOT_KIND: Record<string, VaultDocKind> = {
+  "_protocolo-de-selecao": "protocolo",
+  _catalogo: "catalogo",
+  _inventario: "inventario",
+  "_parametros-da-loja": "parametros",
+  "_casos-de-teste": "casos",
 }
 
 /**
  * Classifica um caminho relativo à BASE do vault
  * (`intencoes/{flow}/{n|_flow|_progressao}.md`, `estruturas/{flow}/{slug}.md`,
- * `aprendizados/{flow|_global}/{slug}.md`). Fora do padrão → null.
+ * `aprendizados/{flow|_global}/{slug}.md`, `componentes/**`). Fora do
+ * padrão → null.
  */
 export function classifyPath(relPath: string): ClassifiedPath | null {
-  const parts = relPath.split("/")
+  const allParts = relPath.split("/")
+  const lastFile = allParts[allParts.length - 1]
+  if (!lastFile || !lastFile.endsWith(".md")) return null
+
+  // ── Vault de componentes (Curador, 31/08) ─────────────────────────────
+  // componentes/<arquivo>.md · componentes/<categoria>/<slug>.md ·
+  // componentes/{variantes|eixos}/<grupo>/<slug>.md. `_html/` fica fora
+  // por não ser .md (o HTML canônico já vive no banco).
+  if (allParts[0] === "componentes") {
+    const slug = lastFile.slice(0, -3)
+    if (allParts.length === 2) {
+      return {
+        tipo: "componente_doc",
+        flowType: null,
+        slug,
+        docKind: COMPONENTES_ROOT_KIND[slug] ?? "outro",
+        docGrupo: null,
+      }
+    }
+    if (allParts.length === 3) {
+      const dir = allParts[1]
+      if (dir === "secoes")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "secao", docGrupo: slug.replace(/^_/, "") }
+      if (dir === "requisitos")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "requisito", docGrupo: null }
+      if (dir === "convivencia")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "convivencia", docGrupo: null }
+      if (dir === "lacunas")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "lacuna", docGrupo: null }
+      return null
+    }
+    if (allParts.length === 4) {
+      const dir = allParts[1]
+      const grupo = allParts[2]
+      if (dir === "variantes")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "variante", docGrupo: grupo }
+      if (dir === "eixos")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "eixo", docGrupo: grupo }
+      return null
+    }
+    return null
+  }
+
+  const parts = allParts
   if (parts.length !== 3) return null
   const [dir, flow, file] = parts
   if (!file.endsWith(".md")) return null
@@ -225,6 +308,9 @@ export function validateNote(
     if (str(fm.escopo) === "cross-flow" && !Array.isArray(fm.aplica_a))
       errs.push("aprendizado cross-flow sem `aplica_a`")
   }
+  // componente_doc: deliberadamente permissivo — o vault de componentes tem
+  // frontmatters heterogêneos por categoria (variante ≠ eixo ≠ lacuna) e o
+  // corpo é conhecimento livre. Só o `status` (checado acima) é contrato.
   return errs
 }
 
@@ -255,6 +341,9 @@ export function parseVaultFile(relPath: string, content: string): ParseResult {
       filePath: relPath,
       frontmatter: data,
       body: resolveWikilinks(body),
+      ...(cls.tipo === "componente_doc"
+        ? { docKind: cls.docKind ?? "outro", docGrupo: cls.docGrupo ?? null }
+        : {}),
     },
     skipped: null,
   }
@@ -263,4 +352,23 @@ export function parseVaultFile(relPath: string, content: string): ParseResult {
 /** `status: aprovada` é o único que ativa a nota para o runtime. */
 export function isApproved(fm: Record<string, unknown>): boolean {
   return str(fm.status) === "aprovada"
+}
+
+/**
+ * Ativação das notas de componentes: `aprovada` como as demais, com uma
+ * exceção — `_catalogo.md` é GERADO por script (`status: gerado`) e é
+ * legítimo servi-lo assim. Lacunas são cidadãs de primeira classe do vault
+ * (`status: aberta`) mas NÃO entram no runtime: são worklist humana.
+ */
+export function isDocActive(kind: VaultDocKind, fm: Record<string, unknown>): boolean {
+  if (isApproved(fm)) return true
+  return kind === "catalogo" && str(fm.status) === "gerado"
+}
+
+/** `variant_id` do frontmatter quando é um UUID plausível; senão null. */
+export function docVariantId(fm: Record<string, unknown>): string | null {
+  const v = typeof fm.variant_id === "string" ? fm.variant_id.trim() : ""
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+    ? v.toLowerCase()
+    : null
 }
