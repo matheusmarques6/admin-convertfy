@@ -299,6 +299,88 @@ const DESFECHO_TONE: Record<string, { c: string; bg: string; b: string }> = {
   sem_lugar: { c: "#991B1B", bg: "#FEF2F2", b: "#FECACA" },
 }
 
+interface TextoOrfaoRow {
+  texto?: string
+  suspeito?: boolean
+}
+
+/**
+ * Texto do documento que NENHUM campo do schema endereça.
+ *
+ * O contrapeso da tabela acima: ela mostra o que foi escrito, esta mostra o
+ * que ninguém tinha autorização para escrever. Em 28/08 o Welcome 1 da
+ * InnovaBay fechou 56/56 mergeados e mesmo assim saiu com "SELO 1 / OFF 1"
+ * nos cards — o selo era texto fixo da variante, fora do output_schema, e
+ * por isso nunca entrou no payload do n8n. Suspeito = vocabulário de
+ * exemplo da biblioteca; o resto é texto fixo, que também vai como está.
+ */
+function TextoOrfaoBox({
+  trechos,
+  total,
+}: {
+  trechos: TextoOrfaoRow[]
+  total?: number
+}) {
+  if (trechos.length === 0) return null
+  const suspeitos = trechos.filter((t) => t.suspeito)
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        border: `1px solid ${suspeitos.length > 0 ? C.warnBorder : C.border}`,
+        background: suspeitos.length > 0 ? C.warnBg : C.g50,
+        borderRadius: 8,
+        padding: "10px 12px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          color: C.g400,
+          marginBottom: 6,
+        }}
+      >
+        Texto que nenhum campo escreve
+        {typeof total === "number" && total > trechos.length
+          ? ` — ${trechos.length} de ${total}`
+          : ""}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {trechos.map((t, i) => (
+          <span
+            key={i}
+            style={{
+              fontFamily: F.mono,
+              fontSize: 11,
+              padding: "2px 6px",
+              borderRadius: 4,
+              border: `1px solid ${t.suspeito ? C.warnBorder : C.border}`,
+              background: C.white,
+              color: t.suspeito ? C.warn : C.g500,
+              maxWidth: 280,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t.texto ?? ""}
+          </span>
+        ))}
+      </div>
+      {suspeitos.length > 0 && (
+        <div style={{ fontSize: 11, color: C.warn, marginTop: 8 }}>
+          {suspeitos.length} com cara de exemplo da biblioteca — cadastrar o
+          campo no output_schema da variante (aba Componentes). Sem contrato,
+          o trecho não vai ao n8n e ninguém escreve ali.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CopyMergeFieldTable({ campos }: { campos: CampoMergeRow[] }) {
   if (campos.length === 0) return null
   const cell: React.CSSProperties = {
@@ -624,6 +706,26 @@ export function NodeRunPanel({
           borderTop: `1px solid ${C.border}`,
         }}
       >
+        {tab === "output" &&
+          n.agent === "copy_merge" &&
+          Array.isArray(
+            (detail?.parsed_output as { texto_orfao?: unknown } | null)
+              ?.texto_orfao,
+          ) && (
+            <TextoOrfaoBox
+              trechos={
+                (
+                  detail?.parsed_output as {
+                    texto_orfao: TextoOrfaoRow[]
+                  }
+                ).texto_orfao
+              }
+              total={
+                (detail?.parsed_output as { texto_orfao_total?: number })
+                  ?.texto_orfao_total
+              }
+            />
+          )}
         {tab === "output" &&
           (n.agent === "copy_merge" || n.agent === "image_format") &&
           Array.isArray(

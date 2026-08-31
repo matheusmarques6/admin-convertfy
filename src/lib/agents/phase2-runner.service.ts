@@ -2612,6 +2612,21 @@ async function runFormattingChain(p: {
       })
     }
 
+    // Texto do HTML que nenhum campo endereça. `suspeito` = vocabulário de
+    // exemplo da biblioteca, e isso é erro de CADASTRO: sem campo no schema,
+    // o trecho não vai ao n8n, não volta como copy e nenhum agente tem
+    // alçada para tocá-lo — sai no email como está (os selos "SELO n /
+    // OFF n" da InnovaBay, 28/08). Fail-open, mas nunca mais em silêncio.
+    const orfaosSuspeitos = merge.report.texto_orfao.filter((t) => t.suspeito)
+    if (orfaosSuspeitos.length > 0) {
+      log.warn("phase2.fmt.texto_de_exemplo_no_documento", {
+        emailId,
+        total: orfaosSuspeitos.length,
+        trechos: orfaosSuspeitos.slice(0, 10).map((t) => t.texto),
+        hint: "cadastrar o campo no output_schema da variante (aba Componentes) — sem contrato ninguém escreve ali",
+      })
+    }
+
     await logGenerationRun({
       ...ids,
       agent: "copy_merge",
@@ -2656,6 +2671,11 @@ async function runFormattingChain(p: {
         // checagem rodou. Ausência de campo não é ausência de problema.
         blocos_sem_contrato: blocosSemContrato,
         anchor_collapse: collapsed,
+        // Teto de 40 para não estourar o parsed_output num rodapé prolixo;
+        // o contador total continua exato.
+        texto_orfao: merge.report.texto_orfao.slice(0, 40),
+        texto_orfao_total: merge.report.texto_orfao.length,
+        texto_orfao_suspeito: orfaosSuspeitos.length,
         output_html_len: structural.html.length,
         output_sha8: sha8(structural.html),
         output_html: htmlSnapshot(structural.html),

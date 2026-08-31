@@ -18,6 +18,7 @@ import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { normalizeOutputKey } from "@/lib/agents/shared/component-dimensions"
 import {
   auditImageAnchors,
+  auditOrphanText,
   auditSchemaAnchors,
 } from "@/lib/email-workspace/schema-example-coherence"
 import { toast } from "@/lib/hooks/use-toast"
@@ -33,6 +34,90 @@ import { VariantEditor, type VariantDraft } from "./variant-editor"
 import { VariantTestCard } from "./variant-test-card"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
+
+/**
+ * "Texto que nenhum campo escreve" — a auditoria INVERSA, ao vivo.
+ *
+ * A outra auditoria pergunta se todo campo do schema acha seu lugar no HTML.
+ * Esta pergunta o contrário, e é a que faltava: em 28/08 a variante
+ * "produtos 5" tinha os 17 campos ancorando perfeitamente e três selos
+ * escritos à mão no HTML ("SELO 1 / OFF 1") que nenhum campo endereçava —
+ * sem contrato, o trecho não vai ao n8n, não volta como copy e nenhum agente
+ * tem alçada para tocá-lo: sai no email do cliente como está.
+ *
+ * Descobrir aqui custa zero; descobrir no email custou uma geração paga.
+ */
+function TextoOrfaoPanel({ draft }: { draft: VariantDraft }) {
+  const { trechos } = useMemo(
+    () => auditOrphanText(draft.html || "", draft.output_schema),
+    [draft.html, draft.output_schema],
+  )
+  const suspeitos = trechos.filter((t) => t.suspeito)
+  if (trechos.length === 0) return null
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${suspeitos.length > 0 ? C.warnBorder : C.border}`,
+        background: suspeitos.length > 0 ? C.warnBg : C.g25,
+        borderRadius: 6,
+        padding: "10px 12px",
+        marginBottom: 12,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: F.sans,
+          fontSize: 12,
+          fontWeight: 600,
+          color: C.g800,
+          marginBottom: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        Texto que nenhum campo escreve
+        <EGBadge tone={suspeitos.length > 0 ? "warn" : "neut"}>
+          {trechos.length}
+        </EGBadge>
+      </div>
+      <div style={{ fontFamily: F.sans, fontSize: 11.5, color: C.g500, marginBottom: 8, lineHeight: 1.45 }}>
+        Sai no email exatamente como está no HTML — o n8n nem fica sabendo que
+        existe. Em <b>âmbar</b>, texto com cara de exemplo da biblioteca:
+        cadastre um campo no schema com esse trecho no <i>example</i>.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {trechos.slice(0, 30).map((t, i) => (
+          <span
+            key={`${t.range.start}-${i}`}
+            title={t.suspeito ? "Parece texto de exemplo da biblioteca" : "Texto fixo — confirme se é proposital"}
+            style={{
+              fontFamily: F.mono,
+              fontSize: 11,
+              padding: "2px 6px",
+              borderRadius: 4,
+              border: `1px solid ${t.suspeito ? C.warnBorder : C.border}`,
+              background: t.suspeito ? C.white : C.g50,
+              color: t.suspeito ? C.warn : C.g500,
+              maxWidth: 260,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t.texto}
+          </span>
+        ))}
+        {trechos.length > 30 && (
+          <span style={{ fontFamily: F.sans, fontSize: 11.5, color: C.g500 }}>
+            +{trechos.length - 30}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const csvToArr = (s: string): string[] =>
   s
@@ -255,6 +340,21 @@ export function ComponentsWorkspace() {
           `${imageAudit.missing.length} slot(s) de imagem sem token casável: ${imageAudit.missing.map((m) => m.key).join(", ")}`,
         )
       }
+      // A direção inversa: texto no HTML que nenhum campo endereça. Só o
+      // SUSPEITO grita (rodapé tem texto fixo legítimo, e cobrar por ele
+      // faria o aviso virar ruído até ninguém mais ler).
+      const orfaos = auditOrphanText(
+        payload.html,
+        payload.output_schema,
+      ).trechos.filter((t) => t.suspeito)
+      if (orfaos.length > 0) {
+        parts.push(
+          `${orfaos.length} trecho(s) de exemplo que nenhum campo escreve: ${orfaos
+            .slice(0, 4)
+            .map((t) => `"${t.texto}"`)
+            .join(", ")}`,
+        )
+      }
       if (parts.length > 0) {
         toast({
           variant: "destructive",
@@ -460,6 +560,8 @@ export function ComponentsWorkspace() {
               </EGBtn>
             </div>
           </div>
+
+          <TextoOrfaoPanel draft={draft} />
 
           <VariantEditor
             draft={draft}

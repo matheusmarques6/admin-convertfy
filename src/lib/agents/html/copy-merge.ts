@@ -25,9 +25,10 @@ import {
   assignTextAnchors,
   buildTextIndex,
   normalizeForMatch,
+  orphanTextFragments,
   withOriginalSlices,
 } from "./anchor-match"
-import type { AnchorField } from "./anchor-match"
+import type { AnchorField, OrphanTextFragment } from "./anchor-match"
 import { isStructuralToken } from "./attr-token-vocabulary"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
@@ -105,6 +106,17 @@ export interface CopyMergeReport {
   skipped: Array<{ block_id: string | null; key: string; reason: string }>
   /** Valores aplicados DENTRO das sentinelas cfy:hero — insumo do guard. */
   hero_values: string[]
+  /**
+   * Texto visível do documento que NENHUM campo endereça — o que vai ao
+   * cliente exatamente como está no HTML da variante. `suspeito` marca o
+   * vocabulário de exemplo da biblioteca ("SELO 1", "Lorem ipsum"): é erro
+   * de CADASTRO, não de geração, e antes de 28/08 não aparecia em lugar
+   * nenhum (o email da Innova Bay saiu com três selos "SELO n / OFF n" e o
+   * run reportou 56/56 mergeados, porque o selo nunca esteve no contrato).
+   * Fail-open: telemetria, nunca bloqueio — rodapé tem texto fixo legítimo
+   * e reprovar aqui reprovaria quase todo email.
+   */
+  texto_orfao: OrphanTextFragment[]
 }
 
 /** Estado completo por campo — insumo do runner (hero_pending), não do banco. */
@@ -432,6 +444,15 @@ export function copyMergeByExample(
     .filter((a) => a.applied && a.inHero && a.value)
     .map((a) => a.value as string)
 
+  // Sobre o html ORIGINAL (pré-splice): é nele que os ranges das âncoras
+  // valem, e é nele que o texto de exemplo da variante ainda está inteiro.
+  const claimed: Range[] = []
+  for (const a of assignments) {
+    if (a.range) claimed.push(a.range)
+    for (const extra of a.extraRanges ?? []) claimed.push(extra)
+  }
+  const textoOrfao = orphanTextFragments(html, claimed)
+
   return {
     html: res.html,
     report: {
@@ -443,6 +464,7 @@ export function copyMergeByExample(
       ambiguos,
       skipped,
       hero_values: heroValues,
+      texto_orfao: textoOrfao,
     },
     anchors,
   }

@@ -562,3 +562,122 @@ export function withOriginalSlices(
       : a,
   )
 }
+
+// ── Texto que ninguém reivindicou ──────────────────────────────────────
+
+export interface OrphanTextFragment {
+  /** Trecho visível, whitespace colapsado. */
+  texto: string
+  range: Range
+  /**
+   * Bate com o vocabulário de EXEMPLO da biblioteca. Não é opinião sobre o
+   * texto: é a marca de que aquilo é recheio de mockup e vai ao cliente
+   * exatamente como está.
+   */
+  suspeito: boolean
+}
+
+/**
+ * Vocabulário de exemplo da biblioteca — cada entrada saiu de uma variante
+ * ATIVA real (inventário de 28/08), não de palpite sobre o que "parece"
+ * placeholder.
+ */
+const EXEMPLO_RE: RegExp[] = [
+  /\bselo\s*\d/i,
+  /\boff\s*\d\b/i,
+  /\blorem ipsum\b/i,
+  /\bproduct\s+name\b/i,
+  /\bproduct\s+\d\s+feature\b/i,
+  /\bsection\s+(title|copy)\b/i,
+  /\bcta\s*\d/i,
+  /\bfeature\s*\d/i,
+  /\bverified\s+buyer\b/i,
+  /\bname\.\s*\d/i,
+  /X{4,}/,
+  /_AQUI\b/i,
+  /\bplaceholder\b/i,
+  /\b(logo|texto|imagem)\s+here\b/i,
+]
+
+export function pareceExemplo(texto: string): boolean {
+  return EXEMPLO_RE.some((re) => re.test(texto))
+}
+
+/**
+ * Token da PLATAFORMA, não texto de alguém: `NOME_DA_MARCA`,
+ * `URL_DO_LOGO_AQUI`, `TEXTO_DE_PREHEADER_AQUI`. Fica fora da lista porque
+ * quem resolve não é o schema — é o `applyStructuralFills`, o Montador (que
+ * escreve o próprio preheader) ou o render-checks, que já reclama de link
+ * sem destino. Listá-los faria 14 das 42 variantes ativas acenderem um
+ * alerta que ninguém precisa agir — e alerta que se ignora não é alerta.
+ */
+function ehTokenDePlataforma(texto: string): boolean {
+  return /^[A-Z][A-Z0-9_]*$/.test(texto)
+}
+
+/**
+ * Tem letra ou dígito? Mesma régua do `rowHasFilledCopy`: entidades caem
+ * ANTES do teste — `&#9733;&#9733;&#9733;` (as estrelas do review) tem
+ * dígitos no source e passaria por copy sem isso. Pontuação, `+` de bullet
+ * e aspas decorativas são moldura, não texto que alguém escreveria.
+ */
+function temConteudo(texto: string): boolean {
+  return /[\p{L}\p{N}]/u.test(texto.replace(/&[#a-z0-9]+;/gi, " "))
+}
+
+/**
+ * O texto VISÍVEL que sobra depois de tirar tudo que os campos reivindicaram.
+ *
+ * A pergunta inversa do `assignTextAnchors`, e a que faltava no sistema. Em
+ * 28/08 a variante "produtos 5" tinha os 17 campos ancorando perfeitamente
+ * (o run reportou 56/56) e três selos escritos à mão no HTML —
+ * "SELO 1<br>OFF 1" — que nenhum campo endereçava. Sem contrato, o selo não
+ * entra no payload do n8n, não volta como copy, não é ancorado aqui e
+ * nenhum agente de formatação tem alçada para tocar: atravessa o pipeline
+ * inteiro e chega ao cliente como recheio de mockup.
+ *
+ * `claimed` são os ranges já reivindicados (range + extraRanges das
+ * atribuições). Usar os ranges DO PRÓPRIO merge é o ponto: o que ele não
+ * reivindicou é exatamente o que a geração não escreveria.
+ *
+ * Texto fixo legítimo (endereço, aviso legal do rodapé) sai na lista SEM a
+ * marca de suspeito — ele também vai como está, e quem cadastra merece ver.
+ */
+export function orphanTextFragments(
+  html: string,
+  claimed: Range[],
+): OrphanTextFragment[] {
+  const ordenados = [...claimed].sort((a, b) => a.start - b.start)
+  const out: OrphanTextFragment[] = []
+
+  for (const node of textNodes(html)) {
+    // Fatia o nó nos vãos entre os ranges reivindicados que caem dentro dele.
+    let cursor = node.range.start
+    const pedacos: Range[] = []
+    for (const c of ordenados) {
+      if (c.end <= node.range.start) continue
+      if (c.start >= node.range.end) break
+      if (c.start > cursor) pedacos.push({ start: cursor, end: c.start })
+      cursor = Math.max(cursor, c.end)
+    }
+    if (cursor < node.range.end) {
+      pedacos.push({ start: cursor, end: node.range.end })
+    }
+
+    for (const p of pedacos) {
+      const texto = html.slice(p.start, p.end).replace(/\s+/g, " ").trim()
+      if (!texto || !temConteudo(texto)) continue
+      if (ehTokenDePlataforma(texto)) continue
+      out.push({ texto, range: p, suspeito: pareceExemplo(texto) })
+    }
+  }
+
+  // Suspeitos primeiro; depois ordem de documento (estável entre renders).
+  return out.sort((a, b) =>
+    a.suspeito === b.suspeito
+      ? a.range.start - b.range.start
+      : a.suspeito
+        ? -1
+        : 1,
+  )
+}
