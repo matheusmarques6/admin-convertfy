@@ -55,6 +55,9 @@ next-env.d.ts
 .cache/
 .eslintcache
 
+# isolated agent worktrees
+.worktrees/
+
 # logs
 logs/
 
