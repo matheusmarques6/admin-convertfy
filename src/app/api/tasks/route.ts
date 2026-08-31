@@ -21,7 +21,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const adminClient = createAdminClient()
     const searchParams = request.nextUrl.searchParams

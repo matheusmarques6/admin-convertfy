@@ -21,7 +21,7 @@ const ANTHROPIC_VERSION = "2023-06-01"
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 const MAX_PAUSE_TURN_RETRIES = 3
 
-function useOpenRouter(): boolean {
+function shouldUseOpenRouter(): boolean {
   return !!process.env.OPENROUTER_API_KEY
 }
 
@@ -190,7 +190,7 @@ export async function callAnthropicJson(params: {
   const t0 = Date.now()
   const temperature = params.temperature ?? 0.7
 
-  if (useOpenRouter()) {
+  if (shouldUseOpenRouter()) {
     // Adiciona instrução de JSON conforme schema no system prompt — a API
     // OpenAI-compatible não tem structured outputs com schema livre.
     const systemWithSchema = `${params.system}\n\nOUTPUT JSON SCHEMA (follow strictly):\n${JSON.stringify(
@@ -278,7 +278,7 @@ export async function callAnthropicWithWebSearch(params: {
   const t0 = Date.now()
   const temperature = params.temperature ?? 0.7
 
-  if (useOpenRouter()) {
+  if (shouldUseOpenRouter()) {
     // :online suffix do OpenRouter ativa web search (via Exa internamente).
     // maxSearches não é configurável aqui — usa default do OpenRouter (5).
     try {

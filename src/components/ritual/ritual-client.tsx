@@ -183,7 +183,7 @@ export function RitualClient() {
 
   const activeSession = sessions.find((s) => s.status === "in_progress")
 
-  const { data: pipelineData, error: pipelineError, mutate: mutatePipeline } = useSWR<{
+  const { data: pipelineData, mutate: mutatePipeline } = useSWR<{
     success?: boolean
     by_stage?: Record<number, PipelineState[]>
     health_counts?: Record<HealthState, number>

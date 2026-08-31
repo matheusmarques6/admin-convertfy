@@ -132,6 +132,12 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }))
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: (tableName: string) => buildQuery(tableName),
+  }),
+}))
+
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     from: (tableName: string) => buildQuery(tableName),

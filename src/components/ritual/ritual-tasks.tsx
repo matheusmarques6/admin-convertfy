@@ -81,44 +81,6 @@ interface TaskBlock {
   tasks: TaskItem[]
 }
 
-const MOCK_BLOCKS: TaskBlock[] = [
-  {
-    storeId: "s03", storeName: "Garauto", state: "attention",
-    summary: "Atacar primeiro o welcome flow (52% do problema) com A/B de subject.",
-    tasks: [
-      { id: "t01", title: "Lançar A/B de subject no welcome flow", ownerName: "Mariana Costa", ownerRole: "Designer", dueDate: "Ter 20/05", priority: "high", origin: '"Vamos no A/B de subject primeiro..."', approved: true, discarded: false },
-      { id: "t02", title: "Refresh visual do header (nova cor + CTA)", ownerName: "Mariana Costa", ownerRole: "Designer", dueDate: "Qui 22/05", priority: "med", origin: '"Refresh do header agenda pra semana que vem..."', approved: true, discarded: false },
-      { id: "t03", title: "Ajustar gatilho do cart abandoned pra 30min", ownerName: "Pedro Ramos", ownerRole: "Ops", dueDate: "Seg 19/05", priority: "high", origin: '"O gatilho de 4h tá matando recuperação..."', approved: true, discarded: false },
-      { id: "t04", title: "Avaliar segmentação engaged vs novos no welcome", ownerName: "Jean Carlos", ownerRole: "Estrategista", dueDate: "Qua 21/05", priority: "low", origin: '"Vale a pena segmentar entre engaged e novo..."', approved: true, discarded: false },
-    ],
-  },
-  {
-    storeId: "s01", storeName: "Salvini Labs", state: "risk",
-    summary: "Limpar lista quente (1.8k inativos) pra proteger reputação.",
-    tasks: [
-      { id: "t05", title: "Limpar 1.847 contatos inativos da lista quente", ownerName: "Pedro Ramos", ownerRole: "Ops", dueDate: "Seg 19/05", priority: "high", origin: '"Tem que limpar antes do provedor marcar como spam..."', approved: true, discarded: false },
-      { id: "t06", title: "Pausar fluxo de reativação até nova lista", ownerName: "Pedro Ramos", ownerRole: "Ops", dueDate: "Hoje", priority: "high", origin: '"Pausa o reativação agora..."', approved: true, discarded: false },
-      { id: "t07", title: "Replanejar pacote de campanhas da semana", ownerName: "Jean Carlos", ownerRole: "Estrategista", dueDate: "Qua 21/05", priority: "med", origin: '"Jean repensa o pacote da semana..."', approved: true, discarded: false },
-    ],
-  },
-  {
-    storeId: "s02", storeName: "Donaris Joias", state: "renewal",
-    summary: "Preparar proposta de renovação 12m com desconto em 2 entregáveis extras.",
-    tasks: [
-      { id: "t08", title: "Montar proposta de renovação 12m + 2 extras", ownerName: "Jean Carlos", ownerRole: "Estrategista", dueDate: "Seg 19/05", priority: "high", origin: '"Monta a proposta com 2 extras de cortesia..."', approved: true, discarded: false },
-      { id: "t09", title: "Agendar call de renovação com Camila", ownerName: "Ryan Fernando", ownerRole: "CS", dueDate: "Hoje", priority: "high", origin: '"Já agenda pra terça, sem deixar a coisa esfriar..."', approved: true, discarded: false },
-    ],
-  },
-  {
-    storeId: "s04", storeName: "Dr. Groot", state: "rampup",
-    summary: "Solicitação aberta: cliente quer trocar template do welcome.",
-    tasks: [
-      { id: "t10", title: "Mockup novo template do welcome (4 versões)", ownerName: "Mariana Costa", ownerRole: "Designer", dueDate: "Ter 20/05", priority: "med", origin: '"Faz uns 4 mockups pra Helena escolher..."', approved: true, discarded: false },
-      { id: "t11", title: "Call com Helena pra apresentar mockups", ownerName: "Jean Carlos", ownerRole: "Estrategista", dueDate: "Qua 21/05", priority: "med", origin: '"Quarta a Helena vê os mockups..."', approved: true, discarded: false },
-    ],
-  },
-]
-
 export function RitualTasksClient({ sessionId }: { sessionId?: string }) {
   const router = useRouter()
   const [blocks, setBlocks] = useState<TaskBlock[]>([])

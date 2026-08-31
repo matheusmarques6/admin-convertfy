@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
 
     const week = request.nextUrl.searchParams.get("week") ?? thisMonday()
 
-    const { data: states, error } = await admin
+    const { data: states } = await admin
       .from("weekly_pipeline_states")
       .select("id, health_state, health_score, flag_reason, flagged_at, flagged_by")
       .eq("week_start", week)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import Image from "next/image"
 import {
   Check,
   CheckCircle2,
@@ -1747,6 +1748,7 @@ function TrustIconCardEdit({
       </button>
       <div
         style={{
+          position: "relative",
           aspectRatio: "1 / 1",
           background: "var(--crm-gray-50)",
           display: "flex",
@@ -1757,13 +1759,14 @@ function TrustIconCardEdit({
         }}
       >
         {icon.image_url ? (
-          <img
+          <Image
             src={icon.image_url}
             alt=""
+            fill
+            unoptimized
             style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
               objectFit: "contain",
+              padding: 12,
               display: "block",
             }}
           />
@@ -1816,19 +1819,21 @@ function TrustIconCard({ icon }: { icon: TrustIcon }) {
         borderRadius: 8,
         overflow: "hidden",
         aspectRatio: "1 / 1",
+        position: "relative",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: 12,
       }}
     >
-      <img
+      <Image
         src={icon.image_url}
         alt=""
+        fill
+        unoptimized
         style={{
-          maxWidth: "100%",
-          maxHeight: "100%",
           objectFit: "contain",
+          padding: 12,
           display: "block",
         }}
       />

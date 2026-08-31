@@ -334,9 +334,9 @@ describe("finishTaskOnEmailReady", () => {
 })
 
 describe("approveTaskOnEmailApproved", () => {
-  it("piloto 1:1: task review → completed", async () => {
+  it("piloto 1:1 upsell → completed", async () => {
     const { approveTaskOnEmailApproved } = await import("./email-task-sync.service")
-    seedFlow({ id: "f1", storeId: "s1", flowType: "post_purchase" })
+    seedFlow({ id: "f1", storeId: "s1", flowType: "upsell" })
     seedEmail({ id: "e1", flowId: "f1", number: 1, status: "approved" })
     seedTask({ id: "t1", slug: "preview_email_pos_compra", status: "review", storeId: "s1" })
     await approveTaskOnEmailApproved({ flowId: "f1", emailId: "e1" })
