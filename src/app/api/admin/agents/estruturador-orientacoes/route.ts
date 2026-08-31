@@ -36,6 +36,7 @@ import {
 } from "@/lib/api/errors"
 import { canManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
+import { LIMITE_ORIENTACAO } from "@/lib/agents/estruturador/orientacoes"
 import type {
   EscopoOrientacao,
   KindOrientacao,
@@ -132,8 +133,10 @@ const putSchema = z.object({
   kind: z.enum(["geral", "intencao", "progressao"]).default("geral"),
   flow_type: z.string().trim().min(1).optional().nullable(),
   email_number: z.number().int().positive().optional().nullable(),
-  // Vazio é legítimo: é como se desativa.
-  texto: z.string().max(4000),
+  // Vazio é legítimo: é como se desativa. O teto vem do módulo puro — a
+  // UI serve o MESMO número no contador, e um número por lugar é como os
+  // dois divergem.
+  texto: z.string().max(LIMITE_ORIENTACAO),
   origem_run_id: z.string().uuid().optional().nullable(),
 })
 

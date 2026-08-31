@@ -221,8 +221,15 @@ export function EGInput({
  * seria a mesma armadilha com outro nome.
  *
  * `minRows` é a altura inicial; passando de `maxHeight` rola por dentro, em
- * vez de esticar a página sem fim (o campo de orientação aceita 4000 chars).
- * `resize` continua livre — crescer sozinho não impede ajustar à mão.
+ * vez de esticar a página sem fim. `resize` continua livre — crescer sozinho
+ * não impede ajustar à mão.
+ *
+ * Sobre teto de caracteres, o defeito seguinte da mesma família: `maxLength`
+ * nativo trunca uma COLAGEM em silêncio — sem evento, sem marca, sem erro.
+ * Quem cola um documento perde o fim dele e só descobre relendo. Para campo
+ * de texto longo use `limite`, que deixa o texto entrar inteiro e mostra o
+ * quanto passou; `maxLength` fica para campo curto, onde cortar não perde
+ * frase.
  */
 export function EGTextarea({
   value,
@@ -232,6 +239,7 @@ export function EGTextarea({
   minRows = 3,
   maxHeight = 520,
   maxLength,
+  limite,
   mono,
   disabled,
   style,
@@ -243,9 +251,19 @@ export function EGTextarea({
   rows?: number
   minRows?: number
   maxHeight?: number
-  /** Teto de caracteres. Espelhe o limite da rota: barrar aqui é melhor
-   *  que deixar digitar e devolver 400 no save. */
+  /** Teto DURO, do jeito nativo: trunca colagem sem avisar. Só para campo
+   *  curto — em texto longo use `limite`. */
   maxLength?: number
+  /**
+   * Teto ANUNCIADO: o texto entra inteiro e um contador aparece perto do
+   * limite (90%), ficando vermelho quando passa. Nada é apagado — quem
+   * salva é que decide o que cortar. Mesmo desenho do composer do inbox
+   * (`crm/inbox/composer.tsx`), que é onde a regra nasceu.
+   *
+   * O call site desabilita o próprio botão de salvar comparando
+   * `value.length > limite` — o átomo mostra, ele decide.
+   */
+  limite?: number
   mono?: boolean
   disabled?: boolean
   style?: CSSProperties
@@ -265,7 +283,12 @@ export function EGTextarea({
   // (mudar de e-mail na régua remonta o valor sem passar por digitação).
   useEffect(grow, [value, grow])
 
-  return (
+  const excedeu = limite != null && value.length > limite
+  // Só a partir de 90%: contador o tempo todo vira ruído em campo que
+  // quase nunca chega perto do teto.
+  const mostraContador = limite != null && value.length > limite * 0.9
+
+  const campo = (
     <textarea
       ref={ref}
       value={value}
@@ -285,8 +308,34 @@ export function EGTextarea({
         ...(mono ? { fontFamily: F.mono, fontSize: 12 } : {}),
         ...(disabled ? { opacity: 0.6, cursor: "not-allowed" } : {}),
         ...style,
+        ...(excedeu ? { borderColor: C.neg } : {}),
       }}
     />
+  )
+
+  // Sem `limite` sai o textarea PELADO, como sempre saiu: embrulhar por
+  // padrão mudaria o layout dos call sites que o põem dentro de um flex.
+  if (limite == null) return campo
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {campo}
+      {mostraContador && (
+        <span
+          style={{
+            alignSelf: "flex-end",
+            fontSize: 11,
+            fontFamily: F.sans,
+            color: excedeu ? C.neg : C.g400,
+            fontWeight: excedeu ? 600 : 400,
+          }}
+        >
+          {value.length.toLocaleString("pt-BR")}/{limite.toLocaleString("pt-BR")}
+          {excedeu &&
+            ` — corte ${(value.length - limite).toLocaleString("pt-BR")} para salvar`}
+        </span>
+      )}
+    </div>
   )
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
+  LIMITE_ORIENTACAO,
   SEM_ORIENTACAO,
   aplicaveis,
   montarBlocoOrientacoes,
@@ -180,5 +181,24 @@ describe("rotuloEscopo", () => {
     expect(rotuloEscopo("email", "welcome", 1)).toBe(
       "Todo welcome #1, em qualquer loja",
     )
+  })
+})
+
+describe("LIMITE_ORIENTACAO", () => {
+  it("cabe o documento inteiro de uma régua", () => {
+    // O teto anterior (4000) era o limite de MENSAGEM do WhatsApp, copiado
+    // de outra tela; cortava uma especificação de fluxo no meio da frase.
+    expect(LIMITE_ORIENTACAO).toBeGreaterThanOrEqual(50_000)
+  })
+
+  it("o bloco entrega o texto longo inteiro, sem truncar", () => {
+    // Se algum dia alguém puser um `slice` aqui "para caber no prompt", o
+    // fim da orientação sumiria calado — que é exatamente o defeito que a
+    // UI acabou de perder.
+    const longo = "L".repeat(LIMITE_ORIENTACAO)
+    const bloco = montarBlocoOrientacoes([
+      { escopo: "flow", kind: "intencao", flow_type: "welcome", texto: longo },
+    ])
+    expect(bloco).toContain(longo)
   })
 })

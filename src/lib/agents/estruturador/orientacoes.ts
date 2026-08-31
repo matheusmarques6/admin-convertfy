@@ -34,6 +34,24 @@ export interface Orientacao {
 export const SEM_ORIENTACAO = "(nenhuma orientação registrada)"
 
 /**
+ * Teto de caracteres de UMA orientação. Mora aqui porque a rota e a UI
+ * precisam do mesmo número: quando ele existia duplicado nos dois (4000,
+ * copiado do limite de mensagem do WhatsApp em `crm/inbox/composer.tsx`),
+ * a UI cortava a colagem em silêncio e a rota nunca chegava a reclamar.
+ *
+ * O limite é do PROMPT, não do banco: `texto` é `text` puro, sem CHECK. Os
+ * dois campos de flow cheios acrescentam ~25k tokens ao prompt de cada
+ * e-mail daquele flow — caro o suficiente para ter teto, alto o suficiente
+ * para caber o documento inteiro de uma régua.
+ *
+ * Quem serve este número na tela NUNCA deve truncar com ele: `maxLength`
+ * nativo come uma colagem sem avisar. O contador do `EGTextarea` mostra o
+ * excesso e o save espera — o texto fica na tela até quem escreveu decidir
+ * o que cortar.
+ */
+export const LIMITE_ORIENTACAO = 50_000
+
+/**
  * Rótulo humano de um escopo. Usado no prompt (para o agente saber o
  * alcance do que está lendo) e na UI (para o COO saber o que está
  * escrevendo) — mesma frase nos dois lados, de propósito.

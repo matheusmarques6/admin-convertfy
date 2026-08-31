@@ -34,6 +34,7 @@ import {
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
 import {
+  LIMITE_ORIENTACAO,
   rotuloEscopo,
   type EscopoOrientacao,
   type KindOrientacao,
@@ -445,16 +446,22 @@ export function EstruturadorOrientacoes({
   }
 
   /** O campo em si — igual nos dois modos, só a moldura muda. */
-  const miolo = (chave: CampoOrientacao) => (
+  const miolo = (chave: CampoOrientacao) => {
+    // O teto é ANUNCIADO, não aplicado: aqui se cola documento inteiro, e
+    // `maxLength` comeria o fim da colagem sem dizer nada (foi o que
+    // aconteceu com 4000 — número que era o limite de mensagem do WhatsApp).
+    const excedeu = valor(chave).length > LIMITE_ORIENTACAO
+
+    return (
     <>
-        {/* Aceita 4000 caracteres: altura fixa de 2 linhas escondia quase
-            tudo o que cabe aqui. Cresce até o teto do átomo e depois rola. */}
+        {/* Cresce até o teto do átomo e depois rola por dentro: altura fixa
+            de 2 linhas escondia quase tudo o que cabe aqui. */}
         <EGTextarea
           value={valor(chave)}
           onChange={(v) => setRascunho((r) => ({ ...r, [chave]: v }))}
           placeholder={DEF[chave].dica}
           minRows={6}
-          maxLength={4000}
+          limite={LIMITE_ORIENTACAO}
           style={{
             borderRadius: 7,
             border: `1px solid ${C.border}`,
@@ -469,7 +476,12 @@ export function EstruturadorOrientacoes({
           <div style={{ marginTop: 5 }}>
             <StudioBtn
               onClick={() => void salvar(chave)}
-              disabled={salvando != null}
+              disabled={salvando != null || excedeu}
+              title={
+                excedeu
+                  ? `Passou do limite de ${LIMITE_ORIENTACAO.toLocaleString("pt-BR")} caracteres — corte o excesso para salvar. Nada foi apagado.`
+                  : undefined
+              }
               style={{ height: 26 }}
             >
               {salvando === chave ? "Salvando…" : "Salvar"}
@@ -482,7 +494,8 @@ export function EstruturadorOrientacoes({
           </div>
         )}
     </>
-  )
+    )
+  }
 
   /**
    * O limite que precisa aparecer ANTES de alguém escrever: `carregarMaterial`
@@ -564,6 +577,9 @@ export function EstruturadorOrientacoes({
   )
 }
 
+/** Teto do `comentario` na rota de feedback (`z.string().max(4000)`). */
+const LIMITE_COMENTARIO = 4000
+
 export function EstruturadorFeedback({
   runId,
   output,
@@ -638,6 +654,10 @@ export function EstruturadorFeedback({
     setDraft({ path: d.path, markdown: d.markdown })
   }
 
+  // O comentário viaja junto do 👍/👎: acima do teto a rota devolveria 400,
+  // então o botão espera em vez de perder o texto.
+  const comentarioLongo = comentario.length > LIMITE_COMENTARIO
+
   const fbBtn = (rating: "up" | "down") => {
     const on = meu?.rating === rating
     const Icon = rating === "up" ? ThumbsUp : ThumbsDown
@@ -645,7 +665,12 @@ export function EstruturadorFeedback({
     return (
       <button
         onClick={() => void enviar(rating)}
-        disabled={enviando != null}
+        disabled={enviando != null || comentarioLongo}
+        title={
+          comentarioLongo
+            ? `O comentário passou de ${LIMITE_COMENTARIO.toLocaleString("pt-BR")} caracteres — corte o excesso para enviar.`
+            : undefined
+        }
         style={{
           display: "flex",
           alignItems: "center",
@@ -687,29 +712,31 @@ export function EstruturadorFeedback({
         {fbBtn("up")}
         {fbBtn("down")}
       </div>
-      <textarea
-        value={comentario}
-        onChange={(e) => setComentario(e.target.value)}
-        placeholder={
-          meu?.comentario
-            ? `Seu comentário atual: ${meu.comentario}`
-            : "O que estava certo/errado nesta decisão? (vai junto do 👍/👎)"
-        }
-        rows={2}
-        maxLength={4000}
-        style={{
-          width: "100%",
-          resize: "vertical",
-          borderRadius: 7,
-          border: `1px solid ${C.border}`,
-          padding: "7px 10px",
-          fontSize: 12,
-          fontFamily: F.sans,
-          color: C.g900,
-          background: C.white,
-          marginBottom: 8,
-        }}
-      />
+      {/* `limite` e não `maxLength`: o teto de 4000 é da rota de feedback, e
+          o atributo nativo comeria uma colagem longa sem avisar — o mesmo
+          defeito que engoliu a especificação de fluxo no bloco acima. */}
+      <div style={{ marginBottom: 8 }}>
+        <EGTextarea
+          value={comentario}
+          onChange={setComentario}
+          placeholder={
+            meu?.comentario
+              ? `Seu comentário atual: ${meu.comentario}`
+              : "O que estava certo/errado nesta decisão? (vai junto do 👍/👎)"
+          }
+          minRows={2}
+          limite={LIMITE_COMENTARIO}
+          style={{
+            borderRadius: 7,
+            border: `1px solid ${C.border}`,
+            padding: "7px 10px",
+            fontSize: 12,
+            fontFamily: F.sans,
+            color: C.g900,
+            background: C.white,
+          }}
+        />
+      </div>
       {erro && (
         <div style={{ fontSize: 11.5, color: "#991B1B", fontFamily: F.sans, marginBottom: 8 }}>
           {erro}
