@@ -13,7 +13,7 @@
  * Ver docs/crm/whatsapp-history-sync-plano.md.
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js"
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js"
 import { createEvolutionClient, type EvolutionAPI } from "@/lib/whatsapp/evolution-api"
 import { getEvolutionRuntimeConfig } from "@/lib/whatsapp/evolution-settings"
 import { handleEvolutionMessage } from "@/lib/whatsapp/evolution-processor"
@@ -74,6 +74,28 @@ const JOB_COLUMNS =
 const STALE_MS = 360_000
 
 /**
+ * Erro de query no caminho do job NUNCA pode virar "não há nada a fazer".
+ *
+ * Era exatamente o que acontecia: os selects descartavam o `error`, então
+ * a tabela ausente (migration 20261065_whatsapp_history_import.sql não
+ * aplicada) chegava como `data: null`, indistinguível de fila vazia, e o
+ * cron respondia 200 {idle:true} de minuto em minuto — meses de silêncio
+ * com a importação de histórico morta. Agora o erro sobe: o cron devolve
+ * 500 e o alerta aparece.
+ */
+function assertQueryOk(error: PostgrestError | null, contexto: string): void {
+  if (!error) return
+  // 42P01 = relação inexistente (Postgres); PGRST205 = tabela fora do
+  // schema cache do PostgREST. Os dois significam "faltou migration".
+  const semTabela = error.code === "42P01" || error.code === "PGRST205"
+  const dica = semTabela
+    ? " — a migration 20261065_whatsapp_history_import.sql não foi aplicada neste banco"
+    : ""
+  log.error(`${contexto} falhou`, { code: error.code, message: error.message })
+  throw new Error(`${contexto}: ${error.message}${dica}`)
+}
+
+/**
  * Claim atômico. O cron dispara a cada minuto e uma execução dura
  * minutos: sem isto, várias pegariam o mesmo job e avançariam o cursor
  * por cima uma da outra. O UPDATE condicional resolve — quem perde a
@@ -95,7 +117,9 @@ async function tryClaim(
   // do UPDATE — é o que impede dois crons de assumirem o mesmo órfão.
   if (expected === "running") q = q.lt("last_progress_at", staleIso)
 
-  const { data } = await q.select(JOB_COLUMNS).maybeSingle<HistoryImportJob>()
+  const { data, error } = await q.select(JOB_COLUMNS).maybeSingle<HistoryImportJob>()
+  assertQueryOk(error, "claim do job")
+  // Zero linhas aqui é legítimo: outro cron ganhou a corrida.
   return data ?? null
 }
 
@@ -103,20 +127,21 @@ async function tryClaim(
 export async function claimNextJob(admin: SupabaseClient): Promise<HistoryImportJob | null> {
   const staleIso = new Date(Date.now() - STALE_MS).toISOString()
 
-  const { data: pending } = await admin
+  const { data: pending, error: pendingErr } = await admin
     .from("crm_history_import_jobs")
     .select("id")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle<{ id: string }>()
+  assertQueryOk(pendingErr, "busca de job pendente")
 
   if (pending) {
     const claimed = await tryClaim(admin, pending.id, "pending", staleIso)
     if (claimed) return claimed
   }
 
-  const { data: orphan } = await admin
+  const { data: orphan, error: orphanErr } = await admin
     .from("crm_history_import_jobs")
     .select("id")
     .eq("status", "running")
@@ -124,6 +149,7 @@ export async function claimNextJob(admin: SupabaseClient): Promise<HistoryImport
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle<{ id: string }>()
+  assertQueryOk(orphanErr, "busca de job órfão")
 
   if (orphan) {
     const claimed = await tryClaim(admin, orphan.id, "running", staleIso)
@@ -137,11 +163,14 @@ export async function claimNextJob(admin: SupabaseClient): Promise<HistoryImport
 }
 
 async function loadChannel(admin: SupabaseClient, channelId: string): Promise<ChannelRow | null> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("crm_channels")
     .select("id, org_id, external_id, config")
     .eq("id", channelId)
     .maybeSingle<ChannelRow>()
+  // Sem isto, uma falha de leitura (RLS, timeout) vira "canal não existe" e
+  // o job morre com a mensagem errada.
+  assertQueryOk(error, "leitura do canal")
   return data ?? null
 }
 
@@ -261,7 +290,7 @@ export async function runImportJob(
 
     // O update devolve o status atual: se o operador pausou ou cancelou
     // no meio, o worker para aqui em vez de terminar a fatia inteira.
-    const { data: current } = await admin
+    const { data: current, error: cursorErr } = await admin
       .from("crm_history_import_jobs")
       .update({
         cursor_chat_index: chatIndex,
@@ -274,6 +303,10 @@ export async function runImportJob(
       .eq("id", job.id)
       .select("status")
       .maybeSingle<{ status: HistoryImportJob["status"] }>()
+    // Cursor que não persiste faz a fatia inteira ser reprocessada no próximo
+    // ciclo: melhor abortar aqui e deixar o watchdog retomar do último ponto
+    // salvo do que seguir gravando mensagens sem registrar progresso.
+    assertQueryOk(cursorErr, "gravação do cursor")
 
     if (current && current.status !== "running") {
       log.info("job interrompido pelo operador", { jobId: job.id, status: current.status })

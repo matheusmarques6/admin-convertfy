@@ -11,6 +11,7 @@
  */
 
 import { NextRequest } from "next/server"
+import type { PostgrestError } from "@supabase/supabase-js"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
@@ -20,9 +21,30 @@ import { GET as getEmailPlatformReport } from "@/app/api/integrations/email-plat
 import { GET as getEmailPlatformCampaigns } from "@/app/api/integrations/email-platform/campaigns/route"
 import { GET as getEmailPlatformFlows } from "@/app/api/integrations/email-platform/flows/route"
 import { GET as getStoreBriefing } from "@/app/api/onboarding/store-briefing/route"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("StoreOverview")
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
+
+/**
+ * Lista vazia é a degradação certa para tabela ausente em ambiente legado —
+ * e a errada para query inválida. Foi assim que o `created_at` inexistente
+ * em crm_health_history escondeu 8.343 linhas de histórico de saúde: o erro
+ * virava `[]` e a tela dizia "sem dados". 42P01 continua silencioso; todo o
+ * resto passa a aparecer no log.
+ */
+function rowsOrEmpty<T>(
+  res: { data: T[] | null; error: PostgrestError | null },
+  contexto: string,
+): T[] {
+  if (!res.error) return res.data ?? []
+  if (res.error.code !== "42P01") {
+    log.warn(`${contexto} falhou`, { code: res.error.code, message: res.error.message })
+  }
+  return []
+}
 
 async function invokeJson(
   handler: (request: NextRequest) => Promise<Response> | Response,
@@ -69,9 +91,11 @@ async function handleGet(
         .single(),
       admin
         .from("crm_health_history")
-        .select("health_score, components, created_at")
+        // A coluna é `computed_at`; o alias mantém `created_at` no contrato
+        // que StoreOverviewHealthRow e a aba de Visão consomem.
+        .select("health_score, components, created_at:computed_at")
         .eq("store_id", storeId)
-        .order("created_at", { ascending: false })
+        .order("computed_at", { ascending: false })
         .limit(2),
       admin
         .from("store_activity")
@@ -123,9 +147,9 @@ async function handleGet(
       status,
       connected: { emailPlatform: emailPlatformConnected, shopify: shopifyConnected },
       store: storeRes.data,
-      healthHistory: healthRes.error ? [] : (healthRes.data ?? []),
-      activity: activityRes.error ? [] : (activityRes.data ?? []),
-      events: eventsRes.error ? [] : (eventsRes.data ?? []),
+      healthHistory: rowsOrEmpty(healthRes, "crm_health_history"),
+      activity: rowsOrEmpty(activityRes, "store_activity"),
+      events: rowsOrEmpty(eventsRes, "cs_events"),
       briefing,
       report,
       campaigns,

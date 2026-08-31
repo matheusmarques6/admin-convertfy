@@ -15,6 +15,7 @@ import {
   getOnboardingStageAccess,
 } from "@/lib/permissions/onboarding-stage-access"
 import { listCampaignDesignProjectGroups } from "@/lib/services/campaign-central/campaign-design-board.service"
+import { logger } from "@/lib/logger"
 
 // Re-sync dos templates de coluna: delegado a ensureOnboardingBootstrapForRead
 // (checagem barata + re-sync em background com TTL próprio no service).
@@ -24,6 +25,8 @@ import { listCampaignDesignProjectGroups } from "@/lib/services/campaign-central
 // optimistic update e sobrescrito por dados antigos (bug 'inicia e pausa').
 export const dynamic = "force-dynamic"
 export const revalidate = 0
+
+const log = logger.child("Productivity")
 
 // ── GET: Fetch all productivity data for the current user ──
 
@@ -131,9 +134,15 @@ async function handleGet(request: NextRequest) {
         .eq("org_id", orgId),
 
       // Comments on tasks
+      //
+      // Sem embed de `profiles`: productivity_comments guarda o autor em
+      // `user_id` e NÃO tem FK pra profiles, então o PostgREST não consegue
+      // inferir a relação e recusava a query inteira (PGRST200). O resultado
+      // caía no `|| []` abaixo — comentário gravado no banco e invisível na
+      // tela. Os autores são resolvidos logo depois, numa query própria.
       supabase
         .from("productivity_comments")
-        .select("*, profiles(name, avatar_url)")
+        .select("*")
         .eq("org_id", orgId)
         .order("created_at", { ascending: true }),
     ])
@@ -591,14 +600,46 @@ async function handleGet(request: NextRequest) {
     })
 
     // Map comments by task_id
-    const comments = (commentsRes.data || []).map((c: Record<string, unknown>) => {
-      const profile = c.profiles as Record<string, unknown> | null
+    //
+    // O autor é resolvido aqui porque o embed de profiles não existe (sem FK
+    // em user_id). Os membros da org já vieram no lote acima e cobrem o caso
+    // normal; só quem comentou e não é mais membro exige a query extra.
+    const commentRows = (commentsRes.data || []) as Record<string, unknown>[]
+    const authorNames = new Map<string, string>()
+    for (const m of members) {
+      if (typeof m.id === "string") authorNames.set(m.id, String(m.name))
+    }
+    const missingAuthors = [
+      ...new Set(
+        commentRows
+          .map((c) => c.user_id)
+          .filter((id): id is string => typeof id === "string" && !authorNames.has(id)),
+      ),
+    ]
+    if (missingAuthors.length > 0) {
+      const { data: authors, error: authorsErr } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", missingAuthors)
+      if (authorsErr) {
+        log.warn("autores de comentário não resolvidos", {
+          code: authorsErr.code,
+          message: authorsErr.message,
+        })
+      }
+      for (const a of authors || []) {
+        authorNames.set(String(a.id), String(a.name || "?"))
+      }
+    }
+
+    const comments = commentRows.map((c) => {
+      const userName = authorNames.get(String(c.user_id)) || "?"
       return {
         id: c.id,
         task_id: c.task_id,
         text: c.text,
-        user_name: profile?.name || "?",
-        user_initials: String(profile?.name || "?").split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase(),
+        user_name: userName,
+        user_initials: userName.split(" ").map((w: string) => w[0]).join("").substring(0, 2).toUpperCase(),
         created_at: c.created_at,
       }
     })

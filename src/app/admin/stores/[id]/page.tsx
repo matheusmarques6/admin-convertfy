@@ -111,11 +111,15 @@ async function getStore(id: string, userId: string) {
   const [integrationStatus, onboardingDataRes, onboardingRes, briefingRes, revenueSummary] =
     await Promise.all([
       fetchIntegrationStatus(),
+      // maybeSingle nas três: loja sem formulário preenchido, sem onboarding
+      // em andamento ou sem briefing `current` é estado normal do negócio.
+      // Com .single(), cada uma dessas ausências virava um 406 no log do
+      // Supabase — ruído que ensinava a ignorar a classe inteira de erro.
       adminClient
         .from("store_onboarding_data")
         .select("is_complete, filled_at")
         .eq("store_id", id)
-        .single(),
+        .maybeSingle(),
       adminClient
         .from("onboardings")
         .select(
@@ -125,14 +129,14 @@ async function getStore(id: string, userId: string) {
         .eq("status", "in_progress")
         .order("last_column_change_at", { ascending: false })
         .limit(1)
-        .single(),
+        .maybeSingle(),
       adminClient
         .from("store_briefings")
         .select("id")
         .eq("store_id", id)
         .eq("status", "current")
         .limit(1)
-        .single(),
+        .maybeSingle(),
       fetchRevenueWithRetry(),
     ])
 

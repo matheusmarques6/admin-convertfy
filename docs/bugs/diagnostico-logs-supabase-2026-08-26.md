@@ -27,6 +27,11 @@ São **sete causas distintas**, não ruído aleatório. A leitura que importa:
 | 7 | Realtime `Disconnecting broadcast changes handler` | 1 | Nenhuma |
 | | **Total** | **183** | |
 
+**Estado em 31/08/2026:** os achados 2, 3 e 4 estão corrigidos no código; o 1 teve a
+correção de código aplicada (o erro deixou de ser engolido) mas **depende da migration** para
+voltar a funcionar; 5 e 7 não têm o que corrigir; 6 aguarda um `UPDATE`. Cada seção abaixo abre
+com o seu estado.
+
 Contagem bruta por rota, como sai do CSV:
 
 | Status | Método | Rota | Eventos |
@@ -45,6 +50,10 @@ Contagem bruta por rota, como sai do CSV:
 ---
 
 ## 1. Importação de histórico do WhatsApp está morta — e o cron reporta sucesso
+
+> **Estado (31/08):** código corrigido — **falta a migration**. O claim agora lê o `error`, então
+> enquanto o SQL não for aplicado o cron devolve **500 por minuto** em vez de `200 {idle:true}`.
+> A importação só volta a funcionar depois da migration.
 
 **120 de 183 eventos (65%)** · `404 GET /rest/v1/crm_history_import_jobs`, duas por minuto:
 uma com `status=eq.pending`, outra com `status=eq.running&last_progress_at=lt.…`
@@ -107,6 +116,10 @@ if (error) { log.error("claim falhou", { error }); throw error }
 ---
 
 ## 2. Histórico de saúde do cliente nunca aparece — a coluna do `order` não existe
+
+> **Estado (31/08):** **corrigido**. As duas rotas usam `created_at:computed_at` e ordenam por
+> `computed_at`; o fallback silencioso ficou restrito a `42P01` e o resto vai para `log.warn`.
+> Conferido contra o banco: a loja `826a6f7f-…` devolve as duas linhas no formato que a UI espera.
 
 **10 eventos:** 5 × `400 GET /rest/v1/crm_health_history` + 5 × erro Postgres `42703`
 `column crm_health_history.created_at does not exist`
@@ -174,6 +187,10 @@ falhar visivelmente.
 
 ## 3. Comentários de produtividade nunca carregam — embed sem FK
 
+> **Estado (31/08):** **corrigido sem tocar no banco**. O embed saiu; os autores vêm do mapa de
+> membros já carregado, com query extra só para quem não é mais membro. A FK continua sendo a
+> modelagem correta, mas deixou de ser necessária para os comentários aparecerem.
+
 **6 eventos** · `400 GET /rest/v1/productivity_comments?select=*,profiles(name,avatar_url)`
 
 ### O quê
@@ -226,6 +243,8 @@ explicitamente como faz `/api/crm/deals/[id]/files`
 
 ## 4. `.single()` onde a ausência é normal
 
+> **Estado (31/08):** **corrigido**. As três consultas passaram a `.maybeSingle()`.
+
 **35 eventos** · `store_onboarding_data` (17), `store_briefings` (17), `onboardings` (1) — todos
 `406`
 
@@ -257,6 +276,8 @@ Trocar as três por `.maybeSingle()`. O resto do código não muda: ele já lê 
 ---
 
 ## 5. `tutorial_pages` 406 — esperado, não mexer
+
+> **Estado (31/08):** **nada a fazer**, por decisão. Segue gerando 406 — é o comportamento certo.
 
 **8 eventos** · `406 POST /rest/v1/tutorial_pages?on_conflict=org_id,slug&select=id`
 
@@ -291,6 +312,9 @@ no alerta — não mudar o código.
 
 ## 6. Avatar quebrado — o perfil aponta para `.png`, o arquivo é `.jpg`
 
+> **Estado (31/08):** **pendente de SQL** (um `UPDATE`). Sem impacto visual: o componente usa
+> `AvatarFallback` do shadcn, que já cai nas iniciais quando a imagem falha.
+
 **3 eventos** · 1 × `400 GET /storage/v1/object/public/avatars/62decdad-…/avatar.png` +
 2 linhas de log do storage (`/object/info/public/…`)
 
@@ -324,6 +348,8 @@ sincronizar `profiles.avatar_url` e `client_portal_users.avatar_url`.
 ---
 
 ## 7. Realtime — `Disconnecting broadcast changes handler in the step : :streaming`
+
+> **Estado (31/08):** **nada a fazer**.
 
 **1 evento**, `warning`, status 200.
 

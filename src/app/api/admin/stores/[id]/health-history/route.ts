@@ -13,6 +13,9 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("StoreHealthHistory")
 
 export const dynamic = "force-dynamic"
 
@@ -34,14 +37,22 @@ export async function GET(
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("crm_health_history")
-      .select("health_score, components, created_at")
+      // A coluna é `computed_at`; o alias mantém `created_at` no contrato
+      // que HealthHistoryRow consome na sidebar de Saúde.
+      .select("health_score, components, created_at:computed_at")
       .eq("store_id", storeId)
-      .order("created_at", { ascending: false })
+      .order("computed_at", { ascending: false })
       .limit(limit)
 
     if (error) {
-      // Se a tabela nao existe ainda em ambientes legados, devolve vazio
-      // ao inves de 500 pra UI nao quebrar.
+      // Tabela ausente em ambiente legado (42P01) degrada em silêncio pra UI
+      // não quebrar. Qualquer outro erro também devolve vazio — a sidebar não
+      // é crítica —, mas agora aparece no log: foi um `created_at` inexistente
+      // escondido por este mesmo fallback que manteve o histórico de saúde
+      // invisível com 8.343 linhas no banco.
+      if (error.code !== "42P01") {
+        log.warn("crm_health_history falhou", { code: error.code, message: error.message })
+      }
       return successResponse(request, { history: [] })
     }
 
