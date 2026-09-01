@@ -11,7 +11,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
-import { getCsPipeline } from "@/lib/cs-pipelines"
+import { clearCsPipelineCache, getCsPipeline } from "@/lib/cs-pipelines"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CsPipelinesSync")
@@ -167,19 +167,30 @@ export async function syncCallToDeal(args: CallSyncInput): Promise<void> {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Stages automaticos (gerenciados por health_score) vs manuais (CSM decide).
- * order 1-3 (Saudavel/Atencao/Risco) e order 6 (Churn p/ is_active=false)
- * sao auto-movidos pelo cron. Order 4 (Em recuperacao) e 5 (Churn iminente)
- * sao manuais — o sync NAO mexe neles.
+ * Régua do auto-manage por SEMÂNTICA, não por `order` fixo: as 3
+ * primeiras etapas ABERTAS são a faixa do health score (Saudável ≥80 /
+ * Atenção ≥60 / Risco <60); a etapa `lost` é o churn de loja inativa;
+ * as demais abertas (Em recuperação, Churn iminente, novas do editor)
+ * são MANUAIS. A régua antiga por número de order quebrava assim que a
+ * org inseria/reordenava etapas (ex.: a "Pausada" entra antes do Churn
+ * e renumera tudo).
  */
-const CARTEIRA_AUTO_ORDERS = new Set([1, 2, 3, 6])
+type CarteiraStage = { id: string; name: string; order: number; stage_type: string | null }
 
-function mapScoreToOrder(score: number | null, isActive: boolean): number {
-  if (!isActive) return 6 // Churn
+function carteiraTargets(stages: CarteiraStage[]) {
+  const open = stages
+    .filter((s) => (s.stage_type ?? "open") === "open")
+    .sort((a, b) => a.order - b.order)
+  const auto = open.slice(0, 3)
+  const lost = stages.find((s) => s.stage_type === "lost") ?? null
+  return { auto, autoIds: new Set(auto.map((s) => s.id)), lost }
+}
+
+function stageForScore(score: number | null, auto: CarteiraStage[]): CarteiraStage | null {
+  if (auto.length === 0) return null
   const s = score ?? 50
-  if (s >= 80) return 1 // Saudavel
-  if (s >= 60) return 2 // Atencao
-  return 3 // Risco
+  const idx = s >= 80 ? 0 : s >= 60 ? 1 : 2
+  return auto[Math.min(idx, auto.length - 1)]
 }
 
 /**
@@ -208,9 +219,11 @@ export async function syncCarteiraDeal(args: {
       .maybeSingle()
     if (!store) return
 
-    const targetOrder = mapScoreToOrder(args.healthScore, store.is_active ?? true)
-    const targetStage = pipeline.stages.find((s) => s.order === targetOrder)
+    const { auto, autoIds, lost } = carteiraTargets(pipeline.stages)
+    const isActive = store.is_active ?? true
+    const targetStage = isActive ? stageForScore(args.healthScore, auto) : lost
     if (!targetStage) return
+    const targetIsChurn = !isActive
 
     // Existe deal pra essa store?
     const { data: existing } = await admin
@@ -233,12 +246,12 @@ export async function syncCarteiraDeal(args: {
       if (cf.manual_stage === true) return
 
       // Stage terminal (churn = lost) ou de pausa (archived) nunca é
-      // desfeita pelo sync — a régua por `order` quebrava assim que a
-      // org renomeava/reordenava etapas no editor.
+      // desfeita pelo sync.
       if (currentStage?.stage_type === "lost" || currentStage?.stage_type === "archived") return
 
-      // Se o deal esta em stage MANUAL (4 ou 5), nao mexe
-      if (currentOrder && !CARTEIRA_AUTO_ORDERS.has(currentOrder)) return
+      // Stage aberta MANUAL (Em recuperação, Churn iminente, novas) —
+      // não mexe. Exceção: loja INATIVA vai pro churn de onde estiver.
+      if (currentStage && !autoIds.has(currentStage.id) && isActive) return
 
       // Mesma stage? Atualiza so o custom_fields
       if (existing.stage_id === targetStage.id) {
@@ -260,7 +273,7 @@ export async function syncCarteiraDeal(args: {
         .from("deals")
         .update({
           stage_id: targetStage.id,
-          status: (targetOrder === 6 ? "lost" : "open") as "lost" | "open",
+          status: (targetIsChurn ? "lost" : "open") as "lost" | "open",
           custom_fields: {
             ...((existing.custom_fields as Record<string, unknown> | null) ?? {}),
             health_score: args.healthScore,
@@ -278,7 +291,7 @@ export async function syncCarteiraDeal(args: {
       pipeline_id: pipeline.id,
       stage_id: targetStage.id,
       title: store.store_name,
-      status: targetOrder === 6 ? "lost" : "open",
+      status: targetIsChurn ? "lost" : "open",
       source: "carteira_sync",
       store_id: args.storeId,
       client_id: store.client_id,
@@ -296,6 +309,166 @@ export async function syncCarteiraDeal(args: {
       storeId: args.storeId,
       err: err instanceof Error ? err.message : String(err),
     })
+  }
+}
+
+/**
+ * Higieniza as etapas da carteira pro estado do design (idempotente,
+ * chamado pelo GET do board):
+ * - conserta os acentos do seed 20260507 (só nomes EXATOS do seed —
+ *   etapa renomeada pelo usuário nunca é tocada);
+ * - garante a etapa "Pausada" (archived) antes do Churn — o design a
+ *   tem como coluna permanente e o seed não a criou. Os orders das
+ *   etapas seguintes são renumerados (a régua do sync é semântica,
+ *   então renumerar é seguro).
+ */
+const SEED_ACCENT_FIXES: Record<string, string> = {
+  Saudavel: "Saudável",
+  Atencao: "Atenção",
+  "Em recuperacao": "Em recuperação",
+}
+
+export async function ensureCarteiraStages(pipelineId: string): Promise<void> {
+  try {
+    const admin = createAdminClient()
+
+    const [{ data: pipe }, { data: stagesData }] = await Promise.all([
+      admin.from("pipelines").select("id, name").eq("id", pipelineId).maybeSingle(),
+      admin
+        .from("pipeline_stages")
+        .select("id, name, \"order\", stage_type")
+        .eq("pipeline_id", pipelineId)
+        .order("order", { ascending: true }),
+    ])
+    if (!pipe) return
+    const stages = (stagesData ?? []) as CarteiraStage[]
+
+    let changed = false
+
+    // 1) Acentos do seed (e do nome da pipeline)
+    if (pipe.name === "Gestao de Carteira") {
+      await admin.from("pipelines").update({ name: "Gestão de Carteira" }).eq("id", pipelineId)
+      changed = true
+    }
+    for (const s of stages) {
+      const fixed = SEED_ACCENT_FIXES[s.name]
+      if (fixed) {
+        await admin.from("pipeline_stages").update({ name: fixed }).eq("id", s.id)
+        changed = true
+      }
+    }
+
+    // 2) Etapa de pausa
+    const hasPause = stages.some(
+      (s) => s.stage_type === "archived" || /pausad/i.test(s.name),
+    )
+    if (!hasPause) {
+      const lost = stages.find((s) => s.stage_type === "lost")
+      const pauseOrder = lost ? lost.order : Math.max(0, ...stages.map((s) => s.order)) + 1
+      if (lost) {
+        // Abre espaço: tudo a partir do churn desce uma posição
+        // (de trás pra frente, por causa do UNIQUE de order).
+        for (const s of [...stages]
+          .filter((x) => x.order >= pauseOrder)
+          .sort((a, b) => b.order - a.order)) {
+          await admin.from("pipeline_stages").update({ order: s.order + 1 }).eq("id", s.id)
+        }
+      }
+      await admin.from("pipeline_stages").insert({
+        pipeline_id: pipelineId,
+        name: "Pausada",
+        color: "#6B7280",
+        order: pauseOrder,
+        stage_type: "archived",
+        description: "Fora da carteira ativa — motivo registrado no negócio",
+      })
+      changed = true
+    }
+
+    if (changed) clearCsPipelineCache()
+  } catch (err) {
+    log.warn("ensureCarteiraStages falhou", {
+      err: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+/**
+ * Garante 1 deal na carteira pra cada loja ATIVA da org que ainda não
+ * tem (a mesma régua de score do cron). Lojas inativas SEM deal ficam
+ * de fora — semear churn histórico só encheria a coluna de ruído; a
+ * loja que desativar DEPOIS de entrar na carteira é movida pro churn
+ * pelo cron. Idempotente e barato quando não falta ninguém (2 selects).
+ */
+export async function ensureCarteiraDeals(orgId: string, pipelineId: string): Promise<number> {
+  try {
+    const admin = createAdminClient()
+    const { data: stagesData } = await admin
+      .from("pipeline_stages")
+      .select("id, name, \"order\", stage_type")
+      .eq("pipeline_id", pipelineId)
+      .order("order", { ascending: true })
+    const stages = (stagesData ?? []) as CarteiraStage[]
+
+    const { auto } = carteiraTargets(stages)
+    if (auto.length === 0) return 0
+
+    const { data: stores } = await admin
+      .from("client_stores")
+      .select("id, client_id, store_name, mrr_cents, is_active, health_score, client:clients(owner_id)")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+    if (!stores || stores.length === 0) return 0
+
+    // Quem já tem deal (em lotes — .in() com centenas de ids estoura URL)
+    const have = new Set<string>()
+    for (let i = 0; i < stores.length; i += 150) {
+      const slice = stores.slice(i, i + 150).map((s) => s.id)
+      const { data: existing } = await admin
+        .from("deals")
+        .select("store_id")
+        .eq("pipeline_id", pipelineId)
+        .in("store_id", slice)
+      for (const d of existing ?? []) if (d.store_id) have.add(d.store_id)
+    }
+
+    const missing = stores.filter((s) => !have.has(s.id))
+    if (missing.length === 0) return 0
+
+    const nowIso = new Date().toISOString()
+    const rows = missing.map((s) => {
+      const stage = stageForScore((s.health_score as number | null) ?? null, auto) ?? auto[0]
+      const owner = Array.isArray(s.client) ? s.client[0] : s.client
+      return {
+        pipeline_id: pipelineId,
+        stage_id: stage.id,
+        title: s.store_name as string,
+        status: "open" as const,
+        source: "carteira_sync",
+        store_id: s.id as string,
+        client_id: s.client_id as string | null,
+        owner_id: owner?.owner_id ?? null,
+        currency: "BRL",
+        value: ((s.mrr_cents as number | null) ?? 0) / 100,
+        custom_fields: {
+          health_score: (s.health_score as number | null) ?? null,
+          auto_managed: true,
+          last_sync: nowIso,
+        },
+      }
+    })
+
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await admin.from("deals").insert(rows.slice(i, i + 200))
+      if (error) throw error
+    }
+    log.info("ensureCarteiraDeals criou deals", { org_id: orgId, created: rows.length })
+    return rows.length
+  } catch (err) {
+    log.warn("ensureCarteiraDeals falhou", {
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return 0
   }
 }
 

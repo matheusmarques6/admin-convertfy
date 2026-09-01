@@ -20,6 +20,10 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getCsPipeline } from "@/lib/cs-pipelines"
+import {
+  ensureCarteiraDeals,
+  ensureCarteiraStages,
+} from "@/lib/services/cs-pipelines-sync.service"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import {
@@ -89,6 +93,13 @@ async function handleGet(request: NextRequest) {
       // Seed 20260507 não rodou nesta base — a UI mostra o aviso.
       return successResponse(request, { pipeline: null, stages: [], cards: [] })
     }
+
+    // Auto-cura ANTES de ler: etapas no estado do design (acentos do
+    // seed + coluna "Pausada") e 1 deal por loja ativa da org — sem
+    // isso o board nasce vazio até o cron de health rodar. Idempotente
+    // e barato quando não há nada a fazer.
+    await ensureCarteiraStages(pipeline.id)
+    await ensureCarteiraDeals(orgId, pipeline.id)
 
     const now = Date.now()
 
