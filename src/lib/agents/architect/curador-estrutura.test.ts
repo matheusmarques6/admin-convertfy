@@ -186,3 +186,37 @@ describe("resumoDaDivergencia", () => {
     expect(resumo.detalhe).toContain("esperava 6, veio 2")
   })
 })
+
+// ── O contrato do modo `on`, medido no módulo puro ──────────────────────
+//
+// O caso da Innova Bay em número: a arquitetura tem 6 posições, o agente
+// devolveu 4. Depois do guard, o que segue para o blueprint tem de ter 6
+// papéis (dois vazios) e a sequência intacta — é isso que impede o email de
+// sair sem Oferta porque a biblioteca não tem uma Oferta de boas-vindas.
+describe("o que o pipeline recebe depois do guard", () => {
+  it("papeis[] tem sempre o tamanho da arquitetura", () => {
+    const r = conformarEstrutura(ARQ, [
+      { section: "hero", papel: "a" },
+      { section: "reviews", papel: "b" },
+      { section: "products", papel: "c" },
+      { section: "footer", papel: "d" },
+    ])
+    expect(r.papeis).toHaveLength(6)
+    expect(r.papeis.filter((p) => p).length).toBe(4)
+    // Índice a índice: é assim que `aplicarEstruturadorNoBlueprint` casa o
+    // papel com o bloco. Desalinhar aqui daria a diretiva de copy errada
+    // para o bloco errado.
+    expect(r.papeis[1]).toBe("")
+    expect(r.papeis[2]).toBe("")
+  })
+
+  it("papel vazio não vira purpose: o bloco fica com a forma da variante", () => {
+    const r = conformarEstrutura([{ section: "hero" }, { section: "offer" }], [
+      { section: "hero", papel: "abre com o cupom" },
+    ])
+    // O consumidor (aplicarEstruturadorNoBlueprint) ignora papel vazio e
+    // preserva o purpose que já existia — por isso o "" tem de chegar como
+    // string vazia, nunca como texto genérico.
+    expect(r.papeis).toEqual(["abre com o cupom", ""])
+  })
+})

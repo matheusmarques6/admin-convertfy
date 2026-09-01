@@ -62,6 +62,7 @@ import {
   measureProtocolViolations,
   rank1ByBlock,
   runCuradorShadow,
+  type CuradorVaultResultado,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { garantirHeroUnica } from "./hero-unica"
@@ -633,6 +634,15 @@ export interface AssembleReferenceResult {
   // builder determinístico de blueprint NO MESMO RUN. Não confundir com
   // variantIds (que pula os missing e por isso não casa com a estrutura).
   slots: AssemblySlot[]
+  /**
+   * Curador do vault (modo `on`): papel de cada posição, alinhado à
+   * ESTRUTURA de entrada (índice a índice, `""` onde não veio), e o fio
+   * narrativo. `null` quando o Curador vigente é o antigo — aí o consumidor
+   * segue no que já fazia. É por aqui que a decisão editorial do Curador
+   * chega ao `purpose` de cada bloco.
+   */
+  papeisPorPosicao: string[] | null
+  fioNarrativo: string | null
 }
 
 /**
@@ -914,6 +924,8 @@ export async function assembleStoreReference(
         section,
         label: input.structure[i]?.label ?? section,
       })),
+      papeisPorPosicao: null,
+      fioNarrativo: null,
     }
   }
 
@@ -1127,8 +1139,53 @@ export async function assembleStoreReference(
     estruturas_ref: estruturasRef.length,
   }
 
-  // Run 'running' visível na live view enquanto o LLM roda.
-  const chooserRunId = await startGenerationRun({
+  // ── Modo `on`: o Curador do vault É o call vigente ──────────────────
+  //
+  // Sonnet + protocolo do vault, no lugar do kimi — não além dele. Dando
+  // certo, o call do kimi abaixo nem acontece: um run por email, e o nó do
+  // Estúdio deixa de ter dois candidatos (era isso que fazia a tela mostrar
+  // o shadow descartado e esconder o que decidiu o email).
+  //
+  // Falhou (JSON ilegível, nenhuma escolha, erro)? Devolve null e o caminho
+  // do kimi roda como sempre, com retry e fail-closed. O custo dobra só
+  // nesse caso — que é exatamente quando vale pagar.
+  let vaultResultado: CuradorVaultResultado | null = null
+  if (curadorVaultMode === "on") {
+    const [aprendizadosOn, usageCountsOn] = await Promise.all([
+      loadAprendizadosResumo(input.flowType),
+      loadVariantUsageCounts(),
+    ])
+    vaultResultado = await runCuradorShadow({
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      batchId: input.batchId,
+      triggeredBy: input.triggeredBy,
+      emailId: input.emailId,
+      flowId: input.flowId,
+      baseVars: chooserVars,
+      origins,
+      vault: vaultKnowledge,
+      extras: vaultExtras,
+      catalogComExtras: catalog,
+      estruturasRef: estruturasRefAll,
+      aprendizados: aprendizadosOn,
+      usageCounts: usageCountsOn,
+      typeIndex,
+      liveSections: sections,
+      // Sem call vivo não há com o que comparar — a comparação era da fase
+      // de ensaio.
+      liveViolations: [],
+      liveRank1: new Map(),
+      modo: "on",
+    })
+  }
+
+  // Run 'running' visível na live view enquanto o LLM roda. Só quando o
+  // caminho do kimi vai de fato rodar.
+  const chooserRunId = vaultResultado
+    ? ""
+    : await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     emailId: input.emailId ?? undefined,
@@ -1149,11 +1206,15 @@ export async function assembleStoreReference(
   let chooserTokensIn = 0
   let chooserTokensOut = 0
   let chooserCostUsd = 0
-  let ranking: ParsedRanking | null = null
+  let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
 
-  for (let attempt = 1; attempt <= CHOOSER_MAX_ATTEMPTS; attempt++) {
+  for (
+    let attempt = 1;
+    !vaultResultado && attempt <= CHOOSER_MAX_ATTEMPTS;
+    attempt++
+  ) {
     attempts = attempt
     try {
       const res = await invokeAgent(chooserConfig, chooserVars, {
@@ -1259,7 +1320,8 @@ export async function assembleStoreReference(
   // Montador: mandá-lo decidir sobre um ranking vazio seria pagar um LLM
   // para não decidir nada.
   if (rankingByBlock.size === 0) {
-    await finishGenerationRun(chooserRunId, {
+    if (chooserRunId) {
+      await finishGenerationRun(chooserRunId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
       emailId: input.emailId ?? undefined,
@@ -1282,10 +1344,11 @@ export async function assembleStoreReference(
         model: chooserConfig.model,
         tokensInput: chooserTokensIn,
         tokensOutput: chooserTokensOut,
-        costUsd: chooserCostUsd,
-      }),
-      durationMs: Date.now() - t0,
-    })
+          costUsd: chooserCostUsd,
+        }),
+        durationMs: Date.now() - t0,
+      })
+    }
     throw new CuratorFailedError(
       chooserError === "json_malformado" || chooserError === null
         ? "curador_sem_escolhas"
@@ -1550,7 +1613,9 @@ export async function assembleStoreReference(
     choices: choiceEntries,
   })
 
-  await finishGenerationRun(chooserRunId, {
+  // Com o Curador do vault vigente, quem fechou o run foi ele.
+  if (chooserRunId) {
+    await finishGenerationRun(chooserRunId, {
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     emailId: input.emailId ?? undefined,
@@ -1575,7 +1640,8 @@ export async function assembleStoreReference(
       costUsd: chooserCostUsd,
     }),
     durationMs: Date.now() - t0,
-  })
+    })
+  }
 
   // ── PASSO B — Montagem por CÓDIGO (story CM-2) ─────────────────────
   // O documento é a concatenação dos HTMLs canônicos das variantes
@@ -1751,7 +1817,17 @@ export async function assembleStoreReference(
   })
 
 
-  return { html, variantIds, source, slots }
+  return {
+    html,
+    variantIds,
+    source,
+    slots,
+    // Só existem quando o Curador do vault foi o vigente (modo `on`) e
+    // devolveu algo aproveitável. No fallback para o kimi seguem null e o
+    // consumidor não muda de comportamento.
+    papeisPorPosicao: vaultResultado?.papeis ?? null,
+    fioNarrativo: vaultResultado?.fioNarrativo ?? null,
+  }
 }
 
 async function upsertStoreReference(

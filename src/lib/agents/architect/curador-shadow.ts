@@ -31,7 +31,12 @@ import {
   type EstruturaRefResumo,
 } from "./curador-vault"
 import { interpolateSystem, invokeAgent, type AgentInvokeConfig } from "./llm-invoke"
-import { parseCuratorRanking, type RankedChoice } from "./curator-ranking.parser"
+import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
+import {
+  conformarEstrutura,
+  resumoDaDivergencia,
+  type EstruturaConformada,
+} from "./curador-estrutura"
 import {
   buildInterpolatedSegments,
   buildSegmentedPrompt,
@@ -390,15 +395,45 @@ export interface CuradorShadowParams {
   usageCounts: Map<string, number>
   /** variant_id → block_type (validação das escolhas). */
   typeIndex: Map<string, string>
-  /** Seções da sequência do VIVO (fallback quando a estrutura não vem). */
+  /**
+   * Seções da ARQUITETURA deste email (a sequência da aba, que o Curador
+   * recebe e não altera). Continua servindo de base de comparação no shadow.
+   */
   liveSections: string[]
+  /**
+   * `on` = este call É o Curador: a saída volta para o pipeline. `shadow` =
+   * ensaio em paralelo ao kimi, nada é consumido. Default shadow para o call
+   * site antigo não mudar de comportamento por omissão.
+   */
+  modo?: "shadow" | "on"
   /** Violações medidas sobre o rank-1 do Curador VIVO (comparação). */
   liveViolations: ProtocolViolation[]
   liveRank1: Map<number, string>
 }
 
-/** Roda o shadow completo. Nunca lança. */
-export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
+/**
+ * O que o pipeline consome quando o modo é `on`. `null` = não deu para usar
+ * (JSON ilegível, escolhas malformadas ou erro) — o caller decide o fallback.
+ */
+export interface CuradorVaultResultado {
+  /** Papéis alinhados à ARQUITETURA, índice a índice. `""` onde não veio. */
+  papeis: string[]
+  fioNarrativo: string
+  ranking: ParsedRanking
+  conformidade: EstruturaConformada
+}
+
+/**
+ * Roda o Curador do vault. Nunca lança.
+ *
+ * Em `shadow` devolve `null` sempre (a saída é descartada por definição). Em
+ * `on` devolve o resultado já CONFORMADO à arquitetura — a sequência da aba
+ * vence, e os papéis vêm alinhados a ela.
+ */
+export async function runCuradorShadow(
+  p: CuradorShadowParams,
+): Promise<CuradorVaultResultado | null> {
+  const modo = p.modo ?? "shadow"
   const t0 = Date.now()
   let runId = ""
   try {
@@ -452,7 +487,14 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       segUser.segments,
     )
     const inputSummary: InputSummaryItem[] = [
-      { rotulo: "Shadow do Curador", cls: "sistema", valor: `${CURADOR_SHADOW_MODEL} · contrato ampliado (fase 1 do plano) — saída NÃO consumida` },
+      {
+        rotulo: modo === "on" ? "Curador (vault)" : "Shadow do Curador",
+        cls: "sistema",
+        valor:
+          modo === "on"
+            ? `${CURADOR_SHADOW_MODEL} · protocolo do vault · saída CONSUMIDA pelo pipeline`
+            : `${CURADOR_SHADOW_MODEL} · contrato ampliado (ensaio) — saída NÃO consumida`,
+      },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
       { rotulo: "Catálogo + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
@@ -469,9 +511,9 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       agent: "assembler_chooser",
       model: config.model,
       inputVars: {
-        shadow: true,
+        shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
-        curador_vault_mode: "shadow",
+        curador_vault_mode: modo,
         catalog_sha8: catalogSha8,
         vault_docs: p.vault.total,
         momento,
@@ -483,7 +525,15 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
 
     const res = await invokeAgent(config, vars, systemVars)
     const parsed = parseCuradorVaultOutput(res.raw)
-    const sections = (parsed?.estrutura.length ? parsed.estrutura.map((e) => e.section) : p.liveSections)
+    // A sequência é a da ARQUITETURA, sempre. O guard casa os papéis contra
+    // ela e registra o que o agente tentou mudar; o `block_index` das
+    // escolhas passa a se referir a esta lista, não à que ele devolveu.
+    const conformidade = conformarEstrutura(
+      p.liveSections.map((section) => ({ section })),
+      parsed?.estrutura ?? [],
+    )
+    const divergencia = resumoDaDivergencia(conformidade)
+    const sections = p.liveSections
     const ranking = parsed
       ? parseCuratorRanking({
           raw: parsed.escolhasRaw,
@@ -530,15 +580,19 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
           : undefined,
       rawOutput: res.raw.slice(0, 8000),
       parsedOutput: {
-        shadow: true,
+        shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
-        curador_vault_mode: "shadow",
-        estrutura: parsed?.estrutura ?? [],
-        estrutura_adaptada: Boolean(
-          parsed?.estrutura.length &&
-            (parsed.estrutura.length !== p.liveSections.length ||
-              parsed.estrutura.some((e, i) => e.section !== p.liveSections[i])),
-        ),
+        curador_vault_mode: modo,
+        // A estrutura VIGENTE (a da arquitetura, com os papéis casados) e,
+        // separada, a que ele devolveu. Guardar as duas é o que permite ver
+        // se ele obedeceu sem ter de reler o raw_output.
+        estrutura: conformidade.posicoes,
+        estrutura_devolvida: parsed?.estrutura ?? [],
+        estrutura_conforme: conformidade.conforme,
+        estrutura_divergente: divergencia,
+        // Nome antigo, mantido para as runs da janela de shadow continuarem
+        // comparáveis no mesmo gráfico.
+        estrutura_adaptada: !conformidade.conforme,
         fio_narrativo: parsed?.fioNarrativo ?? "",
         positions_ranked: ranking?.byBlock.size ?? 0,
         // O output JUSTIFICADO: traço da decisão por posição + motivo por
@@ -555,6 +609,15 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
           })),
         })),
         empty_blocks: ranking?.emptyBlocks ?? [],
+        // Com a sequência fixa, seção sem candidata elegível não some mais —
+        // ela fica na peça e cai no template global. Nomear a lacuna aqui é
+        // o que impede o bloco de chegar ao cliente com o texto do template
+        // sem ninguém saber por quê.
+        posicoes_sem_variante: (ranking?.emptyBlocks ?? []).map((b) => ({
+          block_index: b,
+          section: sectionByBlock.get(b) ?? "",
+          justificativa: parsed?.justificativas?.[b] ?? "",
+        })),
         invalid_ids: ranking?.invalidIds ?? [],
         protocol_violations: violations,
         live_violations: p.liveViolations,
@@ -574,7 +637,7 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       }),
       durationMs: Date.now() - t0,
     })
-    log.info("shadow.done", {
+    log.info(modo === "on" ? "curador_vault.done" : "shadow.done", {
       storeId: p.storeId,
       flowType: p.flowType,
       emailNumber: p.emailNumber,
@@ -583,6 +646,35 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       liveViolations: p.liveViolations.length,
       agreementPct: comparaveis > 0 ? Math.round((iguais / comparaveis) * 100) : null,
     })
+
+    // A tentativa de mexer na sequência é ALTA: o guard já a desarmou, mas
+    // ela diz que o prompt parou de ser obedecido — e é assim que se
+    // descobre antes de virar email torto.
+    if (divergencia) {
+      log.warn("curador_vault.estrutura_divergente", {
+        storeId: p.storeId,
+        flowType: p.flowType,
+        emailNumber: p.emailNumber,
+        modo,
+        motivos: divergencia.motivos,
+        detalhe: divergencia.detalhe,
+      })
+    }
+
+    // Shadow devolve null por definição: a saída existe só como telemetria.
+    if (modo !== "on") return null
+    // Ranking vazio conta como falha: o caller cai no caminho do kimi, que
+    // tem retry e fail-closed próprios. Devolver um ranking sem posição
+    // levaria o assembler ao CuratorFailedError sem ter tentado o fallback.
+    if (!parsed || !ranking || ranking.malformed || ranking.byBlock.size === 0) {
+      return null
+    }
+    return {
+      papeis: conformidade.papeis,
+      fioNarrativo: parsed.fioNarrativo,
+      ranking,
+      conformidade,
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn("shadow.failed", { storeId: p.storeId, flowType: p.flowType, emailNumber: p.emailNumber, error: msg })
@@ -594,9 +686,10 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
         status: "error",
         model: CURADOR_SHADOW_MODEL,
         errorMessage: `shadow: ${msg}`,
-        parsedOutput: { shadow: true, curador_vault_mode: "shadow" },
+        parsedOutput: { shadow: modo === "shadow", curador_vault_mode: modo },
         durationMs: Date.now() - t0,
       }).catch(() => {})
     }
+    return null
   }
 }

@@ -474,7 +474,13 @@ export async function generateBlueprintAndReference(
     // clampada, sem desalinhamento de índice com o blueprint.
     if (posicoes) posicoes = structure as PosicaoEstruturada[]
   }
-  const { html, source, slots } = await assembleStoreReference({
+  const {
+    html,
+    source,
+    slots,
+    papeisPorPosicao: papeisDoCurador,
+    fioNarrativo: fioDoCurador,
+  } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
     emailNumber: input.emailNumber,
@@ -501,6 +507,8 @@ export async function generateBlueprintAndReference(
     // lugar da diretriz genérica do outline (os papéis já vão por bloco via
     // structure.label).
     outlineGuidance:
+      // O fio do Curador não entra aqui: ele nasce DENTRO do assemble, no
+      // mesmo call, e o Montador já o recebeu pelo papel de cada posição.
       estruturadorOutput?.fio_narrativo ?? outline?.guidance ?? "",
     outlineToneHint: outline?.tone_hint ?? "",
     // "O e-mail não deve": estava no dado e na tela da Arquitetura, e parava
@@ -546,8 +554,15 @@ export async function generateBlueprintAndReference(
     blueprintMode,
     // Fase 3: papel narrativo por posição sobrescreve o purpose dos blocos
     // (é como a decisão chega à copy do n8n) e o fio persiste no blueprint.
-    papeisPorPosicao: posicoes ? posicoes.map((p) => p.papel) : null,
-    fioNarrativo: estruturadorOutput?.fio_narrativo ?? null,
+    // Origem do papel/fio, nesta ordem: Estruturador (hoje desligado) →
+    // Curador do vault no modo `on`. O CONSUMIDOR é o mesmo dos dois lados
+    // (`aplicarEstruturadorNoBlueprint` prepende o papel e preserva o
+    // copy_guidance da variante embaixo como "Forma (variante)"): muda a
+    // origem, não o encanamento.
+    papeisPorPosicao: posicoes
+      ? posicoes.map((p) => p.papel)
+      : (papeisDoCurador?.some((x) => x.trim()) ? papeisDoCurador : null),
+    fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,
   })
 
