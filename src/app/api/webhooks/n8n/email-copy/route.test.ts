@@ -39,6 +39,8 @@ let mockEmail: MockEmail | null = {
 }
 
 const updateCalls: Array<{ table: string; data: Record<string, unknown> }> = []
+/** Eventos de `log.error` — o guard de divergência é assertado por aqui. */
+const errorLogs: string[] = []
 const insertCalls: Array<{ table: string; data: Record<string, unknown> }> = []
 /** Linhas de email_blocks vistas pelo callback (contrato de copy da linha). */
 let mockBlocks: Array<Record<string, unknown>> = []
@@ -53,6 +55,7 @@ function resetState() {
     flow: { store_id: MOCK_STORE_ID, flow_type: "welcome" },
   }
   updateCalls.length = 0
+  errorLogs.length = 0
   insertCalls.length = 0
   mockBlocks = []
 }
@@ -71,17 +74,36 @@ function buildQuery(table: string): any {
   }
   self.single = self.maybeSingle
   self.then = (resolve: (v: { data: unknown; error: null }) => void) => {
-    resolve({ data: table === "email_blocks" ? mockBlocks : [], error: null })
+    // CÓPIA, como um banco de verdade: quem leu antes não enxerga a escrita
+    // de depois. Devolver a referência fazia o snapshot em memória "se
+    // atualizar" sozinho e escondia exatamente o bug do encurtador.
+    const linhas =
+      table === "email_blocks"
+        ? mockBlocks.map((b) => JSON.parse(JSON.stringify(b)))
+        : []
+    resolve({ data: linhas, error: null })
   }
   self.update = (data: Record<string, unknown>) => {
     updateCalls.push({ table, data })
+    // O UPDATE de email_blocks APLICA em mockBlocks. Sem isto o mock não
+    // consegue expressar leitura-após-escrita, e foi essa cegueira que
+    // deixou o encurtador passar verde no teste e morto na produção
+    // (01/09): ele lia a linha antes de a copy ser gravada, e o mock
+    // devolvia a mesma lista dos dois lados.
+    let alvo: Record<string, unknown> | undefined
     const updateChain: any = {
-      eq: () => updateChain,
+      eq: (col: string, val: unknown) => {
+        if (table === "email_blocks" && col === "id") {
+          alvo = mockBlocks.find((b) => b.id === val)
+          if (alvo) Object.assign(alvo, data)
+        }
+        return updateChain
+      },
       in: () => updateChain,
       not: () => updateChain,
       select: () => ({
         then: (resolve: (v: { data: unknown; error: null }) => void) =>
-          resolve({ data: [], error: null }),
+          resolve({ data: alvo ? [{ id: alvo.id }] : [], error: null }),
       }),
       then: (resolve: (v: { data: null; error: null }) => void) =>
         resolve({ data: null, error: null }),
@@ -117,7 +139,9 @@ vi.mock("@/lib/logger", () => ({
     child: () => ({
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn(),
+      error: (evt: string) => {
+        errorLogs.push(evt)
+      },
       debug: vi.fn(),
     }),
   },
@@ -642,11 +666,16 @@ describe("POST /api/webhooks/n8n/email-copy — encurtador", () => {
     )!.data.parsed_output as Record<string, unknown>
   }
 
+  // O bloco como o banco REALMENTE está quando o callback chega: com o
+  // contrato, sem a copy. A copy longa vem no payload do `envio()` e é
+  // gravada pelo próprio callback. O fixture antigo já trazia o texto no
+  // content — um estado que a produção nunca tem naquele ponto — e por
+  // isso o teste ficava verde com o encurtador morto (01/09).
   function blocoQueEstoura() {
     mockBlocks = [
       {
         id: MOCK_BLOCK_ID,
-        content: { section_body_1: LONGO },
+        content: {},
         block_type: "body",
         fields: [campoLongo("section_body_1", 120)],
       },
@@ -660,6 +689,21 @@ describe("POST /api/webhooks/n8n/email-copy — encurtador", () => {
       }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) as any
+
+  // O guard da divergência é REDE contra a regressão do 01/09 (encurtador
+  // lendo a linha antes da escrita). No caminho normal ele tem de ficar
+  // quieto: alarme que dispara à toa deixa de ser lido — foi assim que o
+  // `retyped_positions` do Curador passou semanas sem ninguém olhar.
+  it("no caminho normal o guard de divergência não dispara", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({ aceitas: [], de_para: [], rodou: true })
+
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+    // O encurtador VIU o alvo — é o que o fix garante.
+    expect(runCopyFitMock).toHaveBeenCalled()
+    expect(errorLogs.some((l) => l.includes("alvos_divergentes"))).toBe(false)
+  })
 
   it("campo acima do limite: chama o encurtador e regrava o bloco", async () => {
     blocoQueEstoura()

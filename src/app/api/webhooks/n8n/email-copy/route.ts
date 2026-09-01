@@ -547,9 +547,44 @@ export async function POST(request: NextRequest) {
     // esperando aqui os dois enxergam a copy já ajustada.
     const desviosPreFit = copyDeviations.length > 0 ? [...copyDeviations] : []
     let copyFitResumo: Record<string, unknown> | null = null
+
+    // RELEITURA, depois da gravação do passo 3. `emailBlocksOrdered` é o
+    // snapshot lido no passo 2.5, ANTES de a copy chegar — e
+    // `alvosDeEncurtamento` mede o `content` da LINHA. Passando o snapshot
+    // velho, a primeira geração de um email (content vazio) devolvia ZERO
+    // alvos e o encurtador nunca era chamado: em 01/09 a auditoria mediu
+    // seis campos acima do limite e não houve um único run `copy_fit`.
+    // A auditoria mede o PAYLOAD; o encurtador mede a LINHA. Só relendo as
+    // duas medidas falam da mesma copy.
+    const { data: blocosAposCopy } = await admin
+      .from("email_blocks")
+      .select("id, content, block_type, fields, position")
+      .eq("email_id", body.email_id)
+      .order("position", { ascending: true })
     const alvos = alvosDeEncurtamento(
-      (emailBlocksOrdered ?? []) as BlocoComContrato[],
+      (blocosAposCopy ?? []) as BlocoComContrato[],
     )
+    // Rede contra a regressão: as duas medidas passaram a olhar a mesma
+    // copy, então discordarem é sintoma de leitura fora de hora outra vez.
+    //
+    // Só vale com CONTRATO na linha — bloco sem `fields` não é auditado
+    // (a auditoria pula) nem tem como virar alvo: aí as duas medidas
+    // concordam em zero e não há divergência nenhuma.
+    const blocosComContrato = ((blocosAposCopy ?? []) as BlocoComContrato[]).filter(
+      (b) => (b.fields ?? []).length > 0,
+    ).length
+    if (
+      alvos.length === 0 &&
+      blocosComContrato > 0 &&
+      copyDeviations.some((d) => d.kind === "max_len")
+    ) {
+      log.error("email_copy.copy_fit.alvos_divergentes", {
+        email_id: body.email_id,
+        desvios_max_len: copyDeviations.filter((d) => d.kind === "max_len").length,
+        blocos_relidos: (blocosAposCopy ?? []).length,
+        hint: "auditoria viu estouro e o encurtador não viu alvo — conferir `fields` na linha do bloco",
+      })
+    }
     if (alvos.length > 0) {
       const modo = await loadCopyFitMode(store?.org_id as string | null)
       if (modo === "off") {
@@ -577,20 +612,14 @@ export async function POST(request: NextRequest) {
         }
         let blocosRegravados = 0
         for (const [blockId, reescritas] of porBloco) {
-          const atual = (emailBlocksOrdered ?? []).find(
+          // Parte do content já GRAVADO (a releitura acima), não do
+          // payload: a gravação do passo 3 resolveu tokens de marca e
+          // desembrulhou o envelope. Antes havia um select por bloco aqui
+          // — um N+1 que só existia porque a lista em memória estava velha.
+          const atual = (blocosAposCopy ?? []).find(
             (r) => (r as { id: string }).id === blockId,
           ) as { content?: Record<string, unknown> | null } | undefined
-          // Parte do content atual do BANCO, não do payload: a gravação de
-          // cima já resolveu tokens de marca e desembrulhou o envelope.
-          const { data: fresco } = await admin
-            .from("email_blocks")
-            .select("content")
-            .eq("id", blockId)
-            .maybeSingle()
-          const base =
-            (fresco?.content as Record<string, unknown> | null) ??
-            atual?.content ??
-            {}
+          const base = atual?.content ?? {}
           const { error: fitErr } = await admin
             .from("email_blocks")
             .update({ content: aplicarReescritas(base, reescritas) })
