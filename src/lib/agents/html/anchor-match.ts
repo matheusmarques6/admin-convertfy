@@ -40,6 +40,14 @@ import { textNodes, type Range } from "./dom-locator"
 
 const MIN_EXAMPLE_LEN = 4
 
+/**
+ * Piso absoluto do example curto. Abaixo disso ("-", "1", "R$") não há
+ * frase: é ruído, e nenhuma fronteira salva.
+ */
+const MIN_EXAMPLE_CURTO = 2
+
+const ALFANUM = /[\p{L}\p{N}]/u
+
 // ── Normalização ───────────────────────────────────────────────────────
 
 /**
@@ -333,6 +341,7 @@ export interface PhraseOccurrence extends Range {
 export function findPhraseOccurrencesDetailed(
   index: TextIndex,
   example: string,
+  opts: { fronteira?: boolean } = {},
 ): PhraseOccurrence[] {
   const phrase = normalizeForMatch(example)
   if (!phrase) return []
@@ -342,6 +351,17 @@ export function findPhraseOccurrencesDetailed(
     while (true) {
       const at = p.norm.indexOf(phrase, from)
       if (at < 0) break
+      // Fronteira de palavra: exigida para example CURTO, onde a
+      // substring é perigosa — "$64" dentro de "$640", "CTA" dentro de
+      // "CTAS". Letra ou dígito colado antes/depois reprova a ocorrência.
+      if (opts.fronteira) {
+        const antes = at > 0 ? p.norm[at - 1] : ""
+        const depois = p.norm[at + phrase.length] ?? ""
+        if (ALFANUM.test(antes) || ALFANUM.test(depois)) {
+          from = at + 1
+          continue
+        }
+      }
       const occ: PhraseOccurrence = {
         start: p.starts[at],
         end: p.ends[at + phrase.length - 1],
@@ -446,7 +466,15 @@ export function assignTextAnchors(
       return
     }
     const norm = normalizeForMatch(f.example)
-    if (norm.length < MIN_EXAMPLE_LEN) {
+    // Example CURTO não é mais descarte automático. O mínimo de 4 nasceu
+    // quando a busca varria o DOCUMENTO inteiro ("OFF" casava em 6
+    // lugares); desde o escopo por bloco (01/09) a busca é local, e o
+    // corte passou a custar caro: no welcome #1 da Innova ele perdeu o
+    // label do botão (example "CTA") e os DOIS preços (examples "$64" e
+    // "$59"), que saíram no email com os valores do template — preço
+    // falso para o cliente. Abaixo, o curto ancora sob condições
+    // estritas: fronteira de palavra e ocorrência ÚNICA.
+    if (norm.length < MIN_EXAMPLE_CURTO) {
       results[idx] = {
         field: f,
         range: null,
@@ -469,11 +497,30 @@ export function assignTextAnchors(
 
   for (const norm of ordered) {
     const memberIdxs = groups.get(norm)!
+    const curto = norm.length < MIN_EXAMPLE_LEN
     const occurrences = findPhraseOccurrencesDetailed(
       index,
       fields[memberIdxs[0]].example,
+      curto ? { fronteira: true } : {},
     )
     const free = occurrences.filter((o) => !claimed.some((c) => intersects(o, c)))
+
+    // Curto só ancora quando não há dúvida NENHUMA: um campo, um lugar.
+    // Nada de regra 5 (escrever em todas as cópias) — repetir uma frase de
+    // três letras pelo documento é exatamente o risco que o mínimo existia
+    // para evitar.
+    if (curto && (memberIdxs.length > 1 || free.length !== 1)) {
+      for (const idx of memberIdxs) {
+        results[idx] = {
+          field: fields[idx],
+          range: null,
+          desfecho: free.length > 1 ? "ambiguo" : "sem_lugar",
+          motivo: "frase_curta",
+          de: null,
+        }
+      }
+      continue
+    }
 
     const fail = (motivo: AnchorMotivo) => {
       for (const idx of memberIdxs) {

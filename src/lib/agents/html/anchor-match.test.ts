@@ -255,10 +255,51 @@ describe("assignTextAnchors — desempates", () => {
     expect(out[0].motivo).toBe("nao_encontrado")
   })
 
-  it("example normalizado com menos de 4 chars → frase_curta ('OFF' casaria em 6 lugares)", () => {
-    const html = "<td>OFF</td>"
+  // O mínimo de 4 nasceu quando a busca varria o DOCUMENTO inteiro ("OFF"
+  // casava em 6 lugares). Desde o escopo por bloco (01/09) a busca é local,
+  // e o corte passou a custar caro: no welcome #1 da Innova perdeu o label
+  // do botão (example "CTA") e os DOIS preços ("$64", "$59") — o email saiu
+  // com o preço do TEMPLATE. Curto agora ancora, sob condições estritas.
+  it("example curto com ocorrência ÚNICA ancora", () => {
+    const html = "<td>CTA</td>"
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("cta_label", "CTA")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+  })
+
+  it("example curto com 2+ ocorrências continua recusado", () => {
+    const html = "<td>OFF</td><td>OFF</td>"
     const index = buildTextIndex(html)
     const out = assignTextAnchors(index, [field("badge", "OFF")])
+    expect(out[0].desfecho).toBe("ambiguo")
+    expect(out[0].motivo).toBe("frase_curta")
+  })
+
+  // A razão de o mínimo existir: substring dentro de palavra maior.
+  it("example curto NÃO casa no meio de palavra/número", () => {
+    const index = buildTextIndex("<td>$640</td><td>CTAS</td>")
+    const precos = assignTextAnchors(index, [field("price_old", "$64")])
+    expect(precos[0].desfecho).toBe("sem_lugar")
+    const cta = assignTextAnchors(index, [field("cta_label", "CTA")])
+    expect(cta[0].desfecho).toBe("sem_lugar")
+  })
+
+  // Preço do incidente: "$64" isolado ancora; o valor real entra no lugar.
+  it("preço curto do template é substituível", () => {
+    const index = buildTextIndex("<td>De $64 por $59</td>")
+    const out = assignTextAnchors(index, [
+      field("price_old", "$64"),
+      field("price_new", "$59"),
+    ])
+    expect(out.map((o) => o.desfecho)).toEqual([
+      "ancorado_exemplo",
+      "ancorado_exemplo",
+    ])
+  })
+
+  it("example de 1 caractere segue fora — não é frase", () => {
+    const index = buildTextIndex("<td>-</td>")
+    const out = assignTextAnchors(index, [field("sep", "-")])
     expect(out[0].desfecho).toBe("sem_lugar")
     expect(out[0].motivo).toBe("frase_curta")
   })
