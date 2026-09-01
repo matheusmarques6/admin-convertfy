@@ -15,7 +15,9 @@ estrutura, protocolo vira system prompt".*
 > **shadow LIGADO** na org (`curador_vault_mode='shadow'`) — começa a rodar
 > no deploy desse commit, em toda execução da fase 1 do Architect.
 > ⏳ Fase 2 (goldens + métricas) aguarda as primeiras runs shadow.
-> ⏳ Fase 3 (flip) aguarda o verde da fase 2.
+> ✅ Fase 3 (flip) implementada em 01/09 **com uma inversão de desenho** —
+> ver a seção reescrita abaixo. A migration `20261101` existe; ligar
+> (`curador_vault_mode='on'`) é o gesto operacional.
 
 ## Decisão de desenho (a tese)
 
@@ -126,27 +128,58 @@ Inclui neste passo (baratos e necessários à comparação):
   - custo/latência por call (com prompt caching, o system cresce ~30-40k
     chars sobre os ~120k — custo marginal pequeno).
 
-### Fase 3 — Flip (verde nas métricas → um call só)
+### Fase 3 — Flip (um call só) — REESCRITA em 01/09
 
-1. Migration do flip: `assembler_chooser.model = 'anthropic/claude-sonnet-4.6'`
-   (T 0.2 mantém) + `curador_vault_mode='on'`.
-2. **Wiring do contrato ampliado** (o único ponto de código não-trivial —
-   os consumidores já existem, muda a ORIGEM):
-   - a **sequência** decidida pelo Curador substitui
-     `resolveStructure(outline)` como `structure` da montagem (mesmo shape
-     `PosicaoEstruturada`);
+> **A inversão.** O desenho original dizia que a sequência decidida pelo
+> Curador SUBSTITUIRIA a do outline. Decisão do dono do produto em 01/09: o
+> contrário. A arquitetura de cada email é desenhada por uma pessoa na aba
+> Arquitetura, e o Curador **a segue**. Ele atribui o papel de cada posição e
+> escolhe as variantes — a sequência não é assunto dele.
+>
+> O que motivou: no Welcome 1 da Innova Bay o shadow cortou `offer` e `body` e
+> devolveu 4 posições onde havia 6 (`estrutura_adaptada: true`). Obedecendo ao
+> prompt, aliás — ele dizia "Você PODE adaptar a sequência" e a estrutura
+> chegava numa tag chamada `<sequencia_sugerida>`. A justificativa dele expõe
+> a causa real: *"Nenhuma variante de offer sobrevive ao passo 5 para
+> welcome-1"*. A biblioteca não tem uma Oferta de boas-vindas, e cortar era a
+> saída que o prompt autorizava. Com a sequência fixa, a lacuna aparece em vez
+> de virar bloco removido em silêncio.
+
+1. Migration `20261101`: `curador_vault_mode='on'`. O `model` do
+   `assembler_chooser` **não muda** — ele passa a valer só para o caminho de
+   fallback (kimi); o Curador do vault usa `CURADOR_SHADOW_MODEL`.
+2. **Prompt + guard** (o coração da inversão):
+   - passo 1 reescrito: a sequência de `<estrutura_do_email>` é FIXA; a
+     tarefa é o papel de cada posição, cruzando a intenção do email com a
+     posição da seção no arco;
+   - chave de saída passa de `estrutura` para `papeis` (o nome dizia que ele
+     decidia, e ele decidia);
+   - `conformarEstrutura` (`curador-estrutura.ts`, puro, 14 testes) casa o que
+     voltou contra a arquitetura e **a de entrada vence sempre**; o desvio vira
+     `estrutura_divergente` + `log.warn`;
+   - var nova `{{outline_restricoes}}` — o "O e-mail não deve" da aba, que
+     existia no dado e nunca chegava a agente nenhum.
+3. **Um call, não dois**: em `on` o Curador do vault roda no LUGAR do kimi.
+   Falhou (JSON ilegível, ranking vazio, erro) → devolve `null` e o kimi roda
+   como sempre. Custo do caminho feliz: 28,19 ¢ contra os 42,50 ¢ dos dois
+   calls de antes.
+4. **Wiring** (os consumidores já existem, muda a ORIGEM):
+   - a **sequência** continua vindo de `resolveStructure(outline)` — o Curador
+     não a toca;
    - `fio_narrativo` do Curador → `outline_guidance` do Montador e
      `store_email_blueprints.fio_narrativo`;
    - `papel_por_posicao` do Curador → 1ª linha do `purpose` por bloco
      (`aplicarEstruturadorNoBlueprint` reusado — muda só a fonte);
    - Montador, Blueprint determinístico, seed e fase 2 seguem intocados no
      formato.
-3. Parser do output ampliado com fallback: estrutura ausente/ilegível no
-   JSON → sequência do outline (comportamento atual), rankings seguem
-   valendo; estrutura válida → consumida. `CuratorFailedError` continua
-   fail-closed para ranking inutilizável.
-4. Estúdio: nó Estruturador passa a aparecer `pulado` (já é a verdade);
-   painel do Curador ganha estrutura/fio no drill-down.
+5. **A lacuna vira sinal**: posição sem variante elegível não some mais da
+   peça — fica e cai no template global. `posicoes_sem_variante[]` no run,
+   `log.error` e vermelho na view. Sem isso a virada trocaria "ele mudou minha
+   estrutura" por "meu bloco veio com lorem ipsum", que é pior por ser mudo.
+6. Estúdio: a `CuradorRankingView` passa a ler os DOIS formatos
+   (`ranking_detalhado` do kimi e `ranking_justificado` do vault — ler só o
+   primeiro era o motivo de a tela devolver JSON cru), e ganha conformidade,
+   papéis, fio e as lacunas. A Entrada do vault recebe os itens do vivo.
 
 ### Rollback
 

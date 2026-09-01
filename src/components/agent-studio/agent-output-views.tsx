@@ -83,10 +83,58 @@ function PosicaoHead({
 
 // ── Curador: o ranking por posição ──────────────────────────────────────
 
+/** Uma posição no formato do Curador do vault (ranking justificado). */
+interface PosicaoJustificada {
+  block_index?: number
+  section?: string
+  justificativa?: string
+  escolhas?: Array<{
+    rank?: number
+    variant_id?: string
+    variante?: string
+    motivo?: string
+  }>
+}
+
 export function CuradorRankingView({ output }: { output: unknown }) {
   const o = (output ?? {}) as Record<string, unknown>
-  const posicoes = asArray<RankingPosicao>(o.ranking_detalhado)
-  if (posicoes.length === 0) return null
+  // Dois formatos convivem: `ranking_detalhado` é o do Curador antigo
+  // (kimi, metadados do banco) e `ranking_justificado` é o do Curador do
+  // vault, que traz o TRAÇO da decisão por posição. Ler só o primeiro era o
+  // motivo de a tela devolver JSON cru quando o segundo aparecia.
+  const justificado = asArray<PosicaoJustificada>(o.ranking_justificado)
+  const posicoes: RankingPosicao[] =
+    asArray<RankingPosicao>(o.ranking_detalhado).length > 0
+      ? asArray<RankingPosicao>(o.ranking_detalhado)
+      : justificado.map((p) => ({
+          block_index: p.block_index,
+          section: p.section,
+          opcoes: (p.escolhas ?? []).map((e, i) => ({
+            rank: e.rank ?? i + 1,
+            variant_id: e.variant_id,
+            name: e.variante ?? e.variant_id,
+            motivo: e.motivo,
+          })),
+        }))
+  const justificativaPorPosicao = new Map(
+    justificado
+      .filter((p) => typeof p.block_index === "number" && p.justificativa)
+      .map((p) => [p.block_index as number, p.justificativa as string]),
+  )
+  const estrutura = asArray<{ section?: string; papel?: string }>(o.estrutura)
+  const semVariante = asArray<{
+    block_index?: number
+    section?: string
+    justificativa?: string
+  }>(o.posicoes_sem_variante)
+  const divergente = o.estrutura_divergente as
+    | { total?: number; detalhe?: string }
+    | null
+    | undefined
+  const modo = typeof o.curador_vault_mode === "string" ? o.curador_vault_mode : null
+  const ehShadow = o.shadow === true
+
+  if (posicoes.length === 0 && estrutura.length === 0) return null
 
   const excluidas = o.candidates_excluded_unfillable as
     | Record<string, string[]>
@@ -109,8 +157,31 @@ export function CuradorRankingView({ output }: { output: unknown }) {
   return (
     <OutCard>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        {modo === "on" && !ehShadow && (
+          <OutPill text="Curador do vault — protocolo" tone="pos" />
+        )}
+        {ehShadow && <OutPill text="shadow — saída NÃO consumida" tone="warn" />}
         <OutPill text={`${o.catalog_variants ?? "?"} variantes no catálogo`} tone="neut" />
         <OutPill text={`${posicoes.length} posições rankeadas`} tone="info" />
+        {/* A pergunta que a virada existe para responder: ele seguiu a
+            arquitetura? Vale mesmo quando seguiu — silêncio aqui seria a
+            mesma ambiguidade de antes. */}
+        {estrutura.length > 0 && (
+          <OutPill
+            text={
+              divergente
+                ? `estrutura ALTERADA — ${divergente.total} desvio(s), corrigidos`
+                : "seguiu a arquitetura do email"
+            }
+            tone={divergente ? "warn" : "pos"}
+          />
+        )}
+        {semVariante.length > 0 && (
+          <OutPill
+            text={`${semVariante.length} posição(ões) sem variante na biblioteca`}
+            tone="warn"
+          />
+        )}
         {Number(o.attempts ?? 1) > 1 && (
           <OutPill text={`${o.attempts} tentativas`} tone="warn" />
         )}
@@ -134,6 +205,84 @@ export function CuradorRankingView({ output }: { output: unknown }) {
         )}
       </div>
 
+      {divergente?.detalhe && (
+        <OutSection title="O que ele tentou mudar na sequência (e foi desarmado)">
+          <div style={{ ...OUT_BODY, color: "#92400E", fontFamily: F.sans }}>
+            {divergente.detalhe}
+          </div>
+          <div style={{ ...OUT_BODY, color: C.g500, marginTop: 4 }}>
+            A sequência que valeu é a da aba Arquitetura. Isto é sinal sobre o
+            prompt, não sobre o email.
+          </div>
+        </OutSection>
+      )}
+
+      {semVariante.length > 0 && (
+        <OutSection title="Posições que a biblioteca não cobre">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {semVariante.map((p, i) => (
+              <OutItem key={p.block_index ?? i}>
+                <div
+                  style={{
+                    ...OUT_BODY,
+                    fontWeight: 700,
+                    color: "#B91C1C",
+                  }}
+                >
+                  {(p.block_index ?? i) + 1}. {p.section ?? "?"} — sem variante elegível
+                </div>
+                {p.justificativa && (
+                  <div style={{ ...OUT_BODY, color: C.g500, marginTop: 3, fontFamily: F.sans }}>
+                    {p.justificativa}
+                  </div>
+                )}
+              </OutItem>
+            ))}
+          </div>
+          {/* Com a sequência fixa, a posição não some mais: ela fica e cai no
+              template global. Sem este aviso, o bloco chega ao cliente com o
+              texto do template e ninguém sabe por quê. */}
+          <div style={{ ...OUT_BODY, color: C.g500, marginTop: 6 }}>
+            Estas posições ficam na peça e caem no bloco do template global —
+            cadastrar a variante na aba Componentes é o que fecha a lacuna.
+          </div>
+        </OutSection>
+      )}
+
+      {estrutura.some((e) => (e.papel ?? "").trim()) && (
+        <OutSection title="Papel de cada posição">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {estrutura.map((e, i) => (
+              <OutItem key={i}>
+                <PosicaoHead index={i} section={e.section} label={null} />
+                <div
+                  style={{
+                    ...OUT_BODY,
+                    fontFamily: F.sans,
+                    marginTop: 3,
+                    color: (e.papel ?? "").trim() ? C.g900 : "#92400E",
+                  }}
+                >
+                  {(e.papel ?? "").trim() ||
+                    "sem papel — o bloco fica com a orientação da variante"}
+                </div>
+              </OutItem>
+            ))}
+          </div>
+          <div style={{ ...OUT_BODY, color: C.g500, marginTop: 6 }}>
+            É o que vira o <code>purpose</code> de cada bloco e desce até a copy.
+          </div>
+        </OutSection>
+      )}
+
+      {typeof o.fio_narrativo === "string" && o.fio_narrativo.trim() && (
+        <OutSection title="Fio narrativo">
+          <div style={{ ...OUT_BODY, fontFamily: F.sans }}>
+            {o.fio_narrativo as string}
+          </div>
+        </OutSection>
+      )}
+
       <OutSection title="Ranking por posição">
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {posicoes.map((p, i) => (
@@ -145,6 +294,18 @@ export function CuradorRankingView({ output }: { output: unknown }) {
                     text={`forma trocada: ${formaPorPosicao.get(p.block_index as number)}`}
                     tone="info"
                   />
+                </div>
+              )}
+              {justificativaPorPosicao.has(p.block_index as number) && (
+                <div
+                  style={{
+                    ...OUT_BODY,
+                    color: C.g500,
+                    fontFamily: F.sans,
+                    marginTop: 4,
+                  }}
+                >
+                  {justificativaPorPosicao.get(p.block_index as number)}
                 </div>
               )}
               <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>

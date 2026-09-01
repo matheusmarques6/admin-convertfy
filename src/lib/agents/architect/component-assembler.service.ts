@@ -1177,6 +1177,7 @@ export async function assembleStoreReference(
       // de ensaio.
       liveViolations: [],
       liveRank1: new Map(),
+      baseInputSummary: chooserInputSummary,
       modo: "on",
     })
   }

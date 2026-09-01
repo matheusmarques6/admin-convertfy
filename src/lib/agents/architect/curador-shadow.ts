@@ -408,6 +408,12 @@ export interface CuradorShadowParams {
   modo?: "shadow" | "on"
   /** Violações medidas sobre o rank-1 do Curador VIVO (comparação). */
   liveViolations: ProtocolViolation[]
+  /**
+   * Itens de Entrada do call vivo (loja, outline, intenções, perfil…). O
+   * shadow montava só os 6 itens próprios e a aba Entrada do Estúdio ficava
+   * pobre justamente no call que virou o vigente.
+   */
+  baseInputSummary?: InputSummaryItem[]
   liveRank1: Map<number, string>
 }
 
@@ -500,6 +506,7 @@ export async function runCuradorShadow(
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
       { rotulo: "Estruturas de referência", cls: "vault", valor: `${p.estruturasRef.length} do flow` },
+      ...(p.baseInputSummary ?? []),
     ]
 
     runId = await startGenerationRun({
