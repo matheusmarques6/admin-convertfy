@@ -5,7 +5,7 @@
  * + 409 (batch in progress) + 502 (n8n dispatch failed).
  */
 
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest"
 
 const MOCK_USER_ID = "user-uuid-1"
 const MOCK_STORE_ID = "store-uuid-1"
@@ -183,11 +183,13 @@ afterAll(() => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let POST: (req: any, ctx: { params: Promise<{ id: string }> }) => Promise<Response>
 
-beforeEach(async () => {
+beforeAll(async () => {
+  ;({ POST } = await import("./route"))
+})
+
+beforeEach(() => {
   vi.clearAllMocks()
   resetState()
-  const mod = await import("./route")
-  POST = mod.POST
 })
 
 function makeRequest(body: Record<string, unknown> = {}): Request {

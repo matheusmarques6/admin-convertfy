@@ -14,7 +14,7 @@
  * after() (fire-and-forget no test), createAdminClient.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
 
 // ── State shared entre handler e mocks ─────────────────────────
 interface UpdateCall {
@@ -321,14 +321,16 @@ vi.stubGlobal("fetch", fetchSpy)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let GET: (req: any) => Promise<Response>
 
-beforeEach(async () => {
+beforeAll(async () => {
+  ;({ GET } = await import("./route"))
+})
+
+beforeEach(() => {
   vi.clearAllMocks()
   resetState()
   consumeSpy.mockClear()
   fallbackSpy.mockClear()
   fetchSpy.mockClear()
-  const mod = await import("./route")
-  GET = mod.GET
 })
 
 function authedRequest() {
