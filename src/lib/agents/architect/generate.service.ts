@@ -503,6 +503,10 @@ export async function generateBlueprintAndReference(
     outlineGuidance:
       estruturadorOutput?.fio_narrativo ?? outline?.guidance ?? "",
     outlineToneHint: outline?.tone_hint ?? "",
+    // "O e-mail não deve": estava no dado e na tela da Arquitetura, e parava
+    // ali. Quem escreve a direção editorial de cada bloco precisa saber o
+    // que o email não pode fazer.
+    outlineRestricoes: outline?.restrictions ?? "",
     referenceTemplateHtml: refTemplateHtml ?? "",
     structure,
     defaultModel,

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 
 import {
   DEFAULT_CHOOSER_VAULT_SYSTEM,
+  DEFAULT_CHOOSER_VAULT_USER,
   measureProtocolViolations,
   parseCuradorVaultOutput,
   rank1ByBlock,
@@ -117,12 +118,38 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     expect(bloco).toContain("MENOS usada")
   })
 
-  it("o system do contrato ampliado carrega protocolo, estrutura e zero-elegíveis", () => {
+  it("o system carrega protocolo, papéis e zero-elegíveis", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("{{protocolo}}")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("{{catalogo}}")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fio_narrativo")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain('"estrutura"')
+    // O contrato virou `papeis`: ele nomeia o papel de cada posição, não
+    // decide a sequência. O nome antigo saiu junto com a permissão.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain('"papeis"')
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("escolhas: []")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("O VAULT VENCE")
+  })
+
+  // Em 01/09 o prompt dizia "Você PODE adaptar a sequência" e o agente cortou
+  // Oferta e Body de um Welcome 1 de 6 blocos. O texto é a primeira barreira
+  // (a segunda é o `conformarEstrutura`); estas asserções existem para que
+  // ninguém devolva a permissão sem perceber.
+  it("o system PROÍBE mexer na sequência", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("é FIXA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
+      "Não remova, não acrescente, não reordene",
+    )
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("PODE adaptar")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Decida a estrutura")
+    // Seção sem candidata continua na peça — a lacuna vira sinal, não corte.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO AUTORIZA remover")
+  })
+
+  it("o user manda os três guias da aba Arquitetura, inclusive o NÃO DEVE", () => {
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{intencao_email}}")
+    // A var que faltava: as restrições existiam no dado e na tela, e nunca
+    // chegavam ao agente que escreve a direção editorial de cada bloco.
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{outline_restricoes}}")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<estrutura_do_email>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).not.toContain("sequencia_sugerida")
   })
 })

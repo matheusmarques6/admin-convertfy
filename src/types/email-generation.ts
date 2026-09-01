@@ -512,6 +512,12 @@ export interface EmailOutlineTemplate {
   email_number: number
   objective: string
   guidance: string | null
+  /**
+   * "O e-mail não deve" da aba Arquitetura — uma restrição por linha.
+   * Existe na tabela desde que a aba passou a editá-la; faltava no tipo, e
+   * por isso nunca chegou a agente nenhum.
+   */
+  restrictions: string | null
   suggested_blocks: string[]
   tone_hint: string | null
   /**

@@ -583,6 +583,8 @@ export interface AssembleReferenceInput {
   outlineObjective: string
   outlineGuidance: string
   outlineToneHint: string
+  /** "O e-mail não deve" da aba Arquitetura (uma restrição por linha). */
+  outlineRestricoes?: string
   // Template de referência curado global (email_reference_templates) p/ este
   // flow×email — guia de estrutura/estilo para a escolha das variantes (NÃO é
   // copiado). "" quando não há curado. Independe do papel de fallback que a
@@ -807,6 +809,10 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       ? { cls: "upstream", rotulo: "Fio narrativo — SAÍDA do Estruturador" }
       : { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
     outline_tone_hint: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
+    outline_restricoes: {
+      cls: "curadoria",
+      rotulo: "O e-mail NÃO deve — aba Arquitetura",
+    },
     intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
     intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
     estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — resumoParaCurador" },
@@ -947,6 +953,7 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    outline_restricoes: (input.outlineRestricoes ?? "").trim() || "(sem restrições declaradas)",
     // Contrato editorial do vault. Ausência é DECLARADA (não string vazia):
     // instrui o modelo a ignorar o critério em vez de alucinar intenção.
     intencao_flow: clampPromptText(
@@ -1352,6 +1359,7 @@ export async function assembleStoreReference(
     outline_objective: input.outlineObjective,
     outline_guidance: input.outlineGuidance,
     outline_tone_hint: input.outlineToneHint,
+    outline_restricoes: (input.outlineRestricoes ?? "").trim() || "(sem restrições declaradas)",
     // Mesmos critérios editoriais do Curador (26/08): a escolha FINAL também
     // precisa entender O QUE cada posição faz no arco e por quê — sem isso o
     // Montador desempata por estética contra a decisão do Estruturador.

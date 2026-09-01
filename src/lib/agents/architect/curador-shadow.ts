@@ -80,9 +80,9 @@ Glossário dos requisitos de \`vault.exige\` — cada um é ELIMINATÓRIO quando
 </requisitos>
 
 Como decidir, na ordem:
-1. ESTRUTURA: parta de <sequencia_sugerida> e da intenção deste email (passos 1-2 do protocolo: intenção decide a objeção-alvo e o papel de cada posição; estrutura de referência, quando cobre este email, decide ordem e papéis). Você PODE adaptar a sequência — trocar/remover/reordenar seções — desde que toda seção usada tenha variante elegível na biblioteca e o arco sirva à intenção. Nunca emita header nem cta como seções próprias (são absorvidas). Cada posição recebe um papel de UMA frase e o email inteiro recebe um fio_narrativo curto (como as posições se ligam).
+1. PAPEL DE CADA POSIÇÃO: a sequência de <estrutura_do_email> é FIXA — foi desenhada por uma pessoa na aba Arquitetura. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Sua tarefa é dizer por que cada posição existe: cruze <intencao_do_email> (a intenção, o que o email DEVE e o que NÃO DEVE) com a posição da seção no arco e escreva um papel de UMA frase para cada uma, na ordem em que elas vêm. O email inteiro recebe também um fio_narrativo curto (como as posições se ligam). Se uma posição lhe parecer errada para este email, o papel é o lugar de dizer isso — nunca a remoção.
 2. SELEÇÃO por posição, seguindo os passos 3-9 do protocolo: elimine por ativa/schema (já filtrados do catálogo), por \`exige\` contra o que a loja comprovadamente tem (<perfil_marca>, <top_products>, cupom/oferta no contexto — sem evidência do ativo a variante é IMPOSSÍVEL, não pior), por momento (veto e declaração positiva contra <momento>), por capacidade (product_slots × produtos com link). Rankeie os sobreviventes por objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas → menor número no slug (ou a menos usada em <memoria>, quando a contagem existir).
-3. Zero candidata sobrevivendo numa seção NÃO é erro: declare a posição com \`escolhas: []\` e a \`justificativa\` explicando a lacuna (quem caiu, em que passo, contra qual campo) — o sistema cai no template global e a lacuna vira sinal.
+3. Zero candidata sobrevivendo numa seção NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` explicando a lacuna (quem caiu, em que passo, contra qual campo) — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra; <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
 
@@ -92,13 +92,13 @@ O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catá
 
 Responda APENAS o objeto JSON, sem markdown:
 
-{"estrutura":[{"section":"hero","papel":"..."},{"section":"reviews","papel":"..."}],
+{"papeis":[{"block_index":0,"section":"hero","papel":"..."},{"block_index":1,"section":"offer","papel":"..."}],
  "fio_narrativo":"...",
  "escolhas":[{"block_index":0,
    "justificativa":"eliminadas hero-4 (exige foto-de-campanha-propria, ausente) e hero-5 (exige foto-com-pessoas); entre as 3 restantes, objecao decidiu: só hero-3 declara preco-valor, o alvo deste toque.",
    "escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"...","motivo":"..."}]}]}
 
-- \`estrutura\` na ordem final do email; \`block_index\` das escolhas refere-se a ESSA estrutura (0-based).
+- \`papeis\` traz UM item por posição de <estrutura_do_email>, na mesma ordem e com o mesmo \`block_index\` (0-based); \`escolhas\` usa esses mesmos índices.
 - A ORDEM dentro de \`escolhas\` é a preferência.`
 
 export const DEFAULT_CHOOSER_VAULT_USER = `<store>
@@ -115,13 +115,16 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 - tom sugerido: {{outline_tone_hint}}
 </outline>
 
-<intencao>
+<intencao_do_email>
 [do flow]
 {{intencao_flow}}
 
 [deste email]
 {{intencao_email}}
-</intencao>
+
+[o email NÃO DEVE — restrições da aba Arquitetura]
+{{outline_restricoes}}
+</intencao_do_email>
 
 <momento>
 {{momento}}
@@ -163,17 +166,22 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 {{memoria}}
 </memoria>
 
-<sequencia_sugerida>
+<estrutura_do_email>
+Sequência desenhada por uma pessoa na aba Arquitetura deste email. É FIXA:
+não remova, não acrescente, não reordene. Cada posição existe por uma razão
+— sua tarefa é dizer QUAL, a partir de <intencao_do_email>.
 {{blocks_json}}
-</sequencia_sugerida>
+</estrutura_do_email>
 
-Decida a estrutura final e selecione as até ${SHADOW_TOP_N} variantes por posição. Responda APENAS o objeto JSON.`
+Atribua o papel de cada posição, escreva o fio narrativo e selecione as até ${SHADOW_TOP_N} variantes por posição. A sequência não se discute. Responda APENAS o objeto JSON.`
 
 // ── Parser do contrato ampliado (puro) ──────────────────────────────────
 
 export interface EstruturaDecidida {
   section: string
   papel: string
+  /** Posição declarada pelo agente. Confirmada pelo `conformarEstrutura`. */
+  block_index?: number | null
 }
 
 export interface CuradorVaultOutput {
@@ -198,8 +206,17 @@ export function parseCuradorVaultOutput(raw: string): CuradorVaultOutput | null 
   if (start < 0 || end <= start) return null
   try {
     const obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>
-    const estrutura = Array.isArray(obj.estrutura)
-      ? obj.estrutura
+    // `papeis` é o contrato novo (a sequência é dada, ele só nomeia o papel
+    // de cada posição); `estrutura` é o nome antigo, quando ele ainda
+    // decidia a sequência. Ler os dois mantém as runs históricas legíveis e
+    // não quebra se o modelo devolver o nome velho.
+    const cru = Array.isArray(obj.papeis)
+      ? obj.papeis
+      : Array.isArray(obj.estrutura)
+        ? obj.estrutura
+        : null
+    const estrutura = cru
+      ? cru
           .filter(
             (e): e is Record<string, unknown> =>
               !!e && typeof e === "object" && typeof (e as Record<string, unknown>).section === "string",
@@ -207,6 +224,8 @@ export function parseCuradorVaultOutput(raw: string): CuradorVaultOutput | null 
           .map((e) => ({
             section: String(e.section).trim(),
             papel: typeof e.papel === "string" ? e.papel.trim() : "",
+            block_index:
+              typeof e.block_index === "number" ? e.block_index : null,
           }))
           .filter((e) => e.section.length > 0)
       : []
