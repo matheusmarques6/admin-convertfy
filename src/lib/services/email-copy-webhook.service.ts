@@ -24,6 +24,7 @@ import {
 } from "@/lib/agents/architect/blueprint-loader"
 import { DEFAULT_BLUEPRINTS } from "@/lib/agents/email-blueprint"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
+import { buildCopyLanguageDirective } from "@/lib/i18n/copy-language-directive"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import type {
@@ -935,6 +936,23 @@ export async function dispatchEmailCopyWebhook(
     })
   }
 
+  // A ORDEM de idioma (01/09). O campo `language` sozinho perdia para o
+  // contexto: a pesquisa inteira vai em PT-BR — e `tone.use_words` é uma
+  // lista de frases em português, `tone.do` são exemplos inteiros da voz —,
+  // então a copy da Innova Bay (loja `en`) voltou misturada dentro do mesmo
+  // bloco, com "Menos de R$ 70" numa loja que vende em USD.
+  //
+  // A moeda sai dos PRODUTOS da loja, não do idioma: derivar BRL de "pt-BR"
+  // erraria em loja brasileira que vende em dólar, e a pesquisa é
+  // justamente a fonte contaminada.
+  const storeCurrency =
+    topProductsTable.find((p) => (p.currency ?? "").trim())?.currency ?? null
+  const languageDirective = buildCopyLanguageDirective({
+    code: resolvedLang.code,
+    label: resolvedLang.label,
+    currency: storeCurrency,
+  })
+
   // ── Cupom padrão do email (Estrutura geral) ──────────────────────────
   // Grava o código de cupom (único, global) do outline no bloco `coupon`
   // quando ainda está VAZIO (respeita código já preenchido — manual ou por
@@ -1040,6 +1058,11 @@ export async function dispatchEmailCopyWebhook(
     trigger_source: options.triggerSource,
     // Chave aditiva: contexto livre do operador (teste). null fora do teste.
     test_context: options.testContext?.trim() || null,
+    // A ordem de idioma/moeda, no TOPO. Repetida em `store.language_directive`
+    // e no cabeçalho de `pesquisa_diagnostico` de propósito: o flow do n8n
+    // monta o prompt a partir de campos escolhidos, e a instrução tem de
+    // estar em algum deles para chegar ao modelo. Custa ~600 caracteres.
+    language_directive: languageDirective,
     callback: {
       url: `${getAppUrl()}/api/webhooks/n8n/email-copy`,
       secret: process.env.N8N_WEBHOOK_SECRET ?? "",
@@ -1055,6 +1078,8 @@ export async function dispatchEmailCopyWebhook(
       // 'form_other' (formulário de onboarding) ou 'default' (ninguém escolheu
       // — pt-BR assumido). Permite o n8n/debug detectar fallback silencioso.
       language_source: resolvedLang.source,
+      // A ordem por extenso, ao lado do código que ela explica.
+      language_directive: languageDirective,
       language_form_raw:
         (onboardingRow?.form_responses?.store_language as string | undefined) ?? null,
       language_form_other_raw:
@@ -1142,7 +1167,12 @@ export async function dispatchEmailCopyWebhook(
         }
       : null,
     // Pesquisa & Diagnóstico (5 pilares) serializada — contexto rico p/ a copy.
-    pesquisa_diagnostico: pesquisaToFullText(store as PesquisaFields),
+    // Prefixado com a ordem de idioma: este blob é o "contexto rico p/ a
+    // copy" e o candidato mais provável a já estar dentro do prompt do n8n
+    // hoje. Prefixar aqui faz a instrução chegar ao modelo mesmo antes de o
+    // flow passar a ler `language_directive`. O `pesquisaToFullText` NÃO
+    // muda — ele é compartilhado com o Montador, o briefing e a fase 2.
+    pesquisa_diagnostico: `${languageDirective}\n\n${pesquisaToFullText(store as PesquisaFields)}`,
     top_products: topProductsTable.map((p) => ({
       name: p.title,
       price: p.price,

@@ -1492,3 +1492,71 @@ describe("dispatchEmailCopyWebhook — identidade e Entrada da run", () => {
     expect(run?.email_id).toBeNull()
   })
 })
+
+// ── A ordem de idioma no payload (01/09) ────────────────────────────────
+//
+// A copy da Innova Bay (loja `en`) voltou misturada dentro do MESMO bloco —
+// headline em inglês, corpo em português com "Menos de R$ 70" numa loja que
+// vende em USD — mesmo com o payload carregando `language: "en"` e
+// `language_source: "store"`. O campo estava certo; ele é que perdia para
+// ~15 KB de pesquisa em PT-BR, incluindo `tone.use_words` (lista de frases
+// em português) e `tone.do` (exemplos inteiros da voz).
+describe("dispatchEmailCopyWebhook — ordem de idioma", () => {
+  function payload(): Record<string, unknown> {
+    return JSON.parse(fetchMock.mock.calls[0][1].body as string)
+  }
+
+  async function despachar() {
+    h.tables.email_flow_emails = [
+      { id: "e1", flow_id: "flow1", number: 1, status: "draft" },
+    ]
+    await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: true,
+    })
+  }
+
+  it("loja gringa: ordem em inglês, moeda dos produtos e a pesquisa desarmada", async () => {
+    h.tables.client_stores[0].language = "en"
+    h.tables.store_top_products = [
+      { store_id: "store1", title: "EnergySave Pro", price: 39.9, currency: "USD", rank: 1 },
+    ]
+    await despachar()
+    const p = payload()
+    const store = p.store as Record<string, unknown>
+
+    const ordem = String(p.language_directive)
+    expect(ordem).toContain("Write every word of this email in English (en)")
+    expect(ordem).toContain("this store sells in USD")
+    // O que o campo `language` sozinho não dizia: a pesquisa é referência
+    // sobre a VOZ, não texto para copiar.
+    expect(ordem).toContain("reference about the voice")
+
+    // Nos três lugares: o flow do n8n monta o prompt a partir de campos
+    // escolhidos, e a instrução precisa estar em algum deles.
+    expect(store.language_directive).toBe(ordem)
+    expect(String(p.pesquisa_diagnostico).startsWith(ordem)).toBe(true)
+
+    // Os campos antigos seguem intactos — nada de contrato quebrado.
+    expect(store.language).toBe("en")
+    expect(store.language_source).toBe("store")
+  })
+
+  it("loja pt-BR: ordem em português, sem o parágrafo do conflito", async () => {
+    h.tables.client_stores[0].language = "pt-BR"
+    await despachar()
+    const ordem = String(payload().language_directive)
+    expect(ordem).toContain("IDIOMA — INEGOCIÁVEL")
+    expect(ordem).not.toContain("reference about the voice")
+  })
+
+  it("sem produtos cadastrados, aponta os produtos em vez de inventar moeda", async () => {
+    h.tables.client_stores[0].language = "en"
+    h.tables.store_top_products = []
+    await despachar()
+    const ordem = String(payload().language_directive)
+    expect(ordem).toContain("currency of the store's own products")
+    expect(ordem).not.toContain("this store sells in")
+  })
+})

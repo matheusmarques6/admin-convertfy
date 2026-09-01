@@ -163,6 +163,58 @@ Sem `headline`, sem `cta`, sem nenhuma chave que não esteja em
 - O payload inteiro fica em `email_generation_runs.input_vars.payload` do run
   `copy_dispatch` (esqueleto acima de 1 MB).
 
+## `language_directive` (set/2026) — a ordem de idioma e moeda
+
+Campo de texto pronto, presente em **três lugares do mesmo payload**:
+
+| onde | por quê |
+|---|---|
+| `language_directive` (raiz) | contrato explícito, primeiro campo depois de `test_context` |
+| `store.language_directive` | ao lado do `language`/`language_label` que ele explica |
+| início de `pesquisa_diagnostico` | o blob é o "contexto rico p/ a copy" e o candidato mais provável a já estar dentro do prompt hoje — prefixar faz a ordem chegar ao modelo **antes** de o flow passar a ler os outros dois |
+
+### Por que existe
+
+Em 01/09 a copy da Innova Bay (loja `en`, americana) voltou **misturada dentro
+do mesmo bloco**:
+
+| campo | voltou |
+|---|---|
+| `offer_headline` | "Does it work on my car?" |
+| `offer_cta_label` | "SEE HOW IT WORKS" |
+| `offer_body` | "Plug-and-play, compatível com OBD2… Menos de **R$ 70**." |
+
+O payload estava certo: `language: "en"`, `language_source: "store"`, sem
+fallback. O que derrubou foi o material em volta. A pesquisa da loja
+(`brand`, `icp`, `tone`, `story`, `pesquisa_diagnostico`, `ads_review`) é
+gerada em **PT-BR**, porque os agentes de pesquisa rodam no n8n em português
+para o time interno. E a parte dela que o copywriter é instruído a imitar é
+justamente a mais contaminante: `tone.use_words` é uma lista de frases em
+português ("garantia vitalícia", "veja como funciona") e `tone.do` são quatro
+frases-exemplo inteiras da voz desejada. Um campo dizendo "en" contra ~15 KB
+de exemplos em português.
+
+A moeda entra pelo mesmo caminho: a pesquisa descreve uma loja que vende em
+USD dizendo "ticket médio abaixo de R$ 100", e o `R$` atravessa para a copy.
+Por isso a ordem nomeia a moeda vinda de `top_products[].currency` — a real,
+não uma derivada do idioma.
+
+### O que o flow do n8n tem de fazer
+
+Incluir `language_directive` no prompt do copywriter, uma vez, de preferência
+no topo. Enquanto isso não acontece, o prefixo em `pesquisa_diagnostico`
+cobre — mas ler o campo direto é mais claro.
+
+A ordem sai **em inglês** para loja não-lusófona (é a língua em que os modelos
+seguem instrução com mais confiabilidade; escrevê-la em português repetiria o
+erro que ela corrige) e **em português** para loja pt-BR, onde não há
+conflito. Nenhum campo antigo mudou: `language`, `language_label`,
+`language_source` e os `*_raw` seguem exatamente como estavam.
+
+Montagem em `src/lib/i18n/copy-language-directive.ts` (puro, com testes).
+
+---
+
 ## O shape de `fields` (v2 — histórico)
 
 > Substituído por `blocks[].schema` na v3. Continua sendo o shape gravado em
