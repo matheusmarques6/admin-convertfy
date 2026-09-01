@@ -4,3 +4,4 @@
  * abas dedicadas do modulo Customer Success.
  */
 export const CADENCIAS_PIPELINE_NAME = "Cadencias CS"
+export const CARTEIRA_PIPELINE_NAME = "Gestao de Carteira"

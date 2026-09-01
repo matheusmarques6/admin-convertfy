@@ -226,6 +226,17 @@ export async function syncCarteiraDeal(args: {
       const currentStage = pipeline.stages.find((s) => s.id === existing.stage_id)
       const currentOrder = currentStage?.order
 
+      // Movimento MANUAL do CSM (board da Gestão de Carteira) é
+      // soberano: o cron não desfaz pausa/churn/estágio escolhido à
+      // mão. "Reativar loja" limpa a flag e o auto-manage volta.
+      const cf = (existing.custom_fields as Record<string, unknown> | null) ?? {}
+      if (cf.manual_stage === true) return
+
+      // Stage terminal (churn = lost) ou de pausa (archived) nunca é
+      // desfeita pelo sync — a régua por `order` quebrava assim que a
+      // org renomeava/reordenava etapas no editor.
+      if (currentStage?.stage_type === "lost" || currentStage?.stage_type === "archived") return
+
       // Se o deal esta em stage MANUAL (4 ou 5), nao mexe
       if (currentOrder && !CARTEIRA_AUTO_ORDERS.has(currentOrder)) return
 

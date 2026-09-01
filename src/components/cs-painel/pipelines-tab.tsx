@@ -5,7 +5,8 @@ import useSWR from "swr"
 import { ChevronRight, Layers, Plus, Search } from "lucide-react"
 import { NewPipelineDialog } from "@/components/crm/new-pipeline-dialog"
 import { PipelineBoard } from "./pipeline-board"
-import { CADENCIAS_PIPELINE_NAME } from "./constants"
+import { CarteiraBoard } from "./carteira-board"
+import { CADENCIAS_PIPELINE_NAME, CARTEIRA_PIPELINE_NAME } from "./constants"
 
 /**
  * Aba "Pipelines CS" do modulo Customer Success — porta do prototipo
@@ -47,8 +48,13 @@ export function PipelinesTab() {
   const [openPipe, setOpenPipe] = useState<PipelineSummary | null>(null)
   const [newDialogOpen, setNewDialogOpen] = useState(false)
 
-  // Detalhe: board no design do prototipo, ligado aos dados reais
+  // Detalhe: board no design do prototipo, ligado aos dados reais.
+  // A "Gestao de Carteira" tem board proprio (kanban de LOJAS por etapa
+  // de saude, nao de deals genericos).
   if (openPipe) {
+    if (openPipe.name === CARTEIRA_PIPELINE_NAME) {
+      return <CarteiraBoard onBack={() => setOpenPipe(null)} />
+    }
     return <PipelineBoard pipelineId={openPipe.id} onBack={() => setOpenPipe(null)} />
   }
 
