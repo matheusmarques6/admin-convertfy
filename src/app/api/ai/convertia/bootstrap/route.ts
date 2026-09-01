@@ -34,7 +34,10 @@ async function handleGet(request: NextRequest) {
         .select("id, title, context, last_message_at, created_at")
         .eq("user_id", user.id)
         .contains("context", { source: "convertia", workspace })
-        .order("last_message_at", { ascending: false })
+        // nullsFirst:false — conversa sem resposta ainda (last_message_at
+        // null) não pode flutuar acima das recentes
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
         .limit(50),
       admin
         .from("client_stores")

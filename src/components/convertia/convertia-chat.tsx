@@ -30,6 +30,7 @@ import {
   RotateCcw,
   Sparkles,
   ThumbsUp,
+  Trash2,
   Activity,
   Workflow,
 } from "lucide-react"
@@ -244,6 +245,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [manage, setManage] = useState<ManageKind | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Rail fechada por padrão em tela estreita (o toggle continua no header)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) setRailOpen(false)
+  }, [])
 
   const stores = useMemo(() => boot?.stores ?? [], [boot])
   const skills = useMemo(
@@ -336,6 +343,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
   // ── Abrir conversa existente ─────────────────────────────────────
   const openConversation = async (c: Conversation) => {
+    abortRef.current?.abort()
     setConvId(c.id)
     setConvTitle(c.title)
     setMessages([])
@@ -367,11 +375,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     setInput("")
   }
 
+  const deleteConversation = async (c: Conversation) => {
+    if (!window.confirm(`Excluir a conversa "${c.title}"?`)) return
+    await fetch(`/api/ai/conversations/${c.id}`, { method: "DELETE" }).catch(() => {})
+    if (c.id === convId) novaConversa()
+    void mutateBoot()
+  }
+
   // ── Envio (streaming SSE) ────────────────────────────────────────
   const send = async (text?: string) => {
     const message = (text ?? input).trim()
     if (!message || sending) return
     setInput("")
+    if (inputRef.current) inputRef.current.style.height = "auto"
     setSending(true)
     const userMsg: UiMessage = {
       id: `u-${Date.now()}`,
@@ -576,6 +592,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         }}
       >
         <textarea
+          ref={inputRef}
           autoFocus={autoFocus}
           rows={1}
           value={input}
@@ -830,17 +847,26 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 {items.map((c) => {
                   const on = c.id === convId
                   return (
-                    <button
-                      key={c.id}
-                      onClick={() => void openConversation(c)}
-                      className="block w-full truncate rounded-[7px] px-2 py-[6.5px] text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
-                      style={{
-                        background: on ? "rgba(17,24,39,0.05)" : undefined,
-                        color: on ? "var(--ops-title)" : "var(--ops-sec)",
-                      }}
-                    >
-                      {c.title}
-                    </button>
+                    <div key={c.id} className="group relative">
+                      <button
+                        onClick={() => void openConversation(c)}
+                        className="block w-full truncate rounded-[7px] px-2 py-[6.5px] pr-6 text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+                        style={{
+                          background: on ? "rgba(17,24,39,0.05)" : undefined,
+                          color: on ? "var(--ops-title)" : "var(--ops-sec)",
+                        }}
+                      >
+                        {c.title}
+                      </button>
+                      <button
+                        title="Excluir conversa"
+                        onClick={() => void deleteConversation(c)}
+                        className="absolute right-1 top-1/2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] hover:bg-black/[0.06] group-hover:flex dark:hover:bg-white/[0.08]"
+                        style={{ color: "var(--ops-mut)" }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   )
                 })}
               </div>

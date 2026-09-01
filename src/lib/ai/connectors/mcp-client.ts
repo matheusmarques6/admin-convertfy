@@ -91,22 +91,37 @@ export class McpSession {
       const ctype = resp.headers.get("content-type") ?? ""
       let parsed: JsonRpcResponse | null = null
       if (ctype.includes("text/event-stream")) {
-        // stream de UMA resposta: pega o primeiro frame data com id
-        const text = await resp.text()
-        for (const line of text.split("\n")) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith("data:")) continue
-          const payload = trimmed.slice(5).trim()
-          if (!payload) continue
-          try {
-            const j = JSON.parse(payload) as JsonRpcResponse & { id?: unknown }
-            if (j.result !== undefined || j.error !== undefined) {
-              parsed = j
-              break
+        // Stream de UMA resposta. Lido INCREMENTALMENTE: alguns
+        // servidores mantêm o SSE aberto depois de responder — um
+        // resp.text() esperaria o timeout inteiro. Paramos (e
+        // cancelamos o stream) no primeiro frame com result/error.
+        const reader = resp.body?.getReader()
+        if (reader) {
+          const decoder = new TextDecoder()
+          let buffer = ""
+          outer: for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() ?? ""
+            for (const line of lines) {
+              const trimmed = line.trim()
+              if (!trimmed.startsWith("data:")) continue
+              const payload = trimmed.slice(5).trim()
+              if (!payload) continue
+              try {
+                const j = JSON.parse(payload) as JsonRpcResponse & { id?: unknown }
+                if (j.result !== undefined || j.error !== undefined) {
+                  parsed = j
+                  break outer
+                }
+              } catch {
+                /* frame parcial */
+              }
             }
-          } catch {
-            /* frame parcial */
           }
+          await reader.cancel().catch(() => {})
         }
       } else {
         parsed = (await resp.json().catch(() => null)) as JsonRpcResponse | null
