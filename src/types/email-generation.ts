@@ -203,6 +203,12 @@ export type QaIssueType =
   // Nasceu do botão que saiu #FFFFFF sobre #FAF5F3 (1,05:1) sem nenhum
   // aviso em lugar nenhum do pipeline.
   | "contraste_baixo"
+  // Copy da hero que o guard reprovou e que seguiu assim mesmo (última
+  // tentativa). Antes de 01/09 isso matava o email: cinco gerações
+  // inteiras foram para o lixo por falso positivo do critério contíguo.
+  // Agora o email existe e o problema fica marcado na tela — se um dia
+  // for perda REAL, o operador vê em vez de receber "failed" sem email.
+  | "hero_copy_perdida"
   // ── Epic AE-15: Image niche-adaptive QA cascade ───────
   // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
   // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:

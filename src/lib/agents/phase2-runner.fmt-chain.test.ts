@@ -825,7 +825,11 @@ describe("merge por example — caso-mestre", () => {
     expect(html).not.toContain("{{")
   })
 
-  it("guard da hero: fragmento que perdeu a copy do merge derruba o step (hero_failed)", async () => {
+  // Contrato NOVO (01/09): a 1ª reprovação cobra do agente no retry; a 2ª
+  // ACEITA e marca. O guard derrubou 5 gerações inteiras por falso
+  // positivo sem nunca ter pego uma perda real — email com uma linha
+  // faltando, marcado em vermelho, é melhor que nenhum email.
+  it("guard da hero: 1ª reprovação cobra retry, 2ª aceita com issue na tela", async () => {
     setupExampleCase()
     // O agente "reescreveu" a headline — o valor aplicado pelo merge sumiu.
     invokeHeroChain.mockResolvedValue({
@@ -835,13 +839,18 @@ describe("merge por example — caso-mestre", () => {
       mode: "fragment",
     })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("failed")
-    expect(email().failure_reason).toBe("hero_failed")
+    expect(res.status).toBe("ready")
+
     const rs = runsOf("hero_section")
     expect(rs).toHaveLength(2)
-    expect(
-      rs.every((r) => String(r.error_message ?? "").includes("hero_copy_lost")),
-    ).toBe(true)
+    // Primeira tentativa: erro de verdade, com o motivo — é o que faz o
+    // retry existir e o que fica no Estúdio para depuração.
+    expect(String(rs[0].error_message ?? "")).toContain("hero_copy_lost")
+    // Segunda: aceita, registrada no run e visível na aba QA do email.
+    expect(rs[1].status).toBe("success")
+    expect((rs[1].parsed_output as Row).hero_copy_perdida).toBeTruthy()
+    const issues = (email().qa_issues ?? []) as Array<Record<string, unknown>>
+    expect(issues.some((i) => i.type === "hero_copy_perdida")).toBe(true)
   })
 
   it("guard da hero: wordmark trocado pelo logo passa — a marca fica no alt", async () => {

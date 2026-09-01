@@ -2095,7 +2095,12 @@ async function executeFormatStep<T>(p: {
   routeT0: number
   budgetMs: number
   inputHtml: string
-  attempt: () => Promise<StepAttemptResult<T>>
+  /**
+   * `tentativa` = índice desta tentativa (0 = primeira, 1 = a última antes
+   * de o step falhar). Só a hero usa: o guard de copy cobra na primeira e
+   * ACEITA na última, em vez de matar o email inteiro.
+   */
+  attempt: (tentativa: number) => Promise<StepAttemptResult<T>>
 }): Promise<StepOutcome<T>> {
   const admin = createAdminClient()
   const { storeId, flowId, emailId, triggeredBy, batchId } = p.ids
@@ -2136,7 +2141,7 @@ async function executeFormatStep<T>(p: {
     })
 
     try {
-      const r = await p.attempt()
+      const r = await p.attempt(priorErrors)
       await finishGenerationRun(runId, {
         storeId,
         flowId,
@@ -2251,7 +2256,13 @@ async function runFormattingChain(p: {
   routeT0: number
   budgetMs: number
 }): Promise<
-  | { status: "ok"; html: string; qaViews: QaBlockView[] }
+  | {
+      status: "ok"
+      html: string
+      qaViews: QaBlockView[]
+      /** Copy da hero que o guard reprovou e que seguiu assim mesmo. */
+      heroCopyAceita: string[]
+    }
   | { status: "failed" }
   | { status: "out_of_budget" }
 > {
@@ -2528,6 +2539,12 @@ async function runFormattingChain(p: {
    * imagem no lugar (ver heroCopyPreserved).
    */
   let heroLogoValues: string[] = []
+  /**
+   * Valores que o guard reprovou na ÚLTIMA tentativa e que seguiram assim
+   * mesmo. Vira issue na aba QA do email — o operador precisa ver, e o
+   * email precisa existir para ele ver.
+   */
+  let heroCopyAceita: string[] = []
   /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
   let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
     []
@@ -2795,7 +2812,7 @@ async function runFormattingChain(p: {
       routeT0,
       budgetMs,
       inputHtml: fmtCtx.referenceHtml,
-      attempt: async () => {
+      attempt: async (tentativa) => {
         const r = await invokeHeroChain({
           config,
           vars,
@@ -2819,7 +2836,24 @@ async function runFormattingChain(p: {
             /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoDark)?.[1] ?? "",
           ].filter(Boolean),
         })
-        if (!preserved.ok) {
+        // ÚLTIMA tentativa: aceita e grita, em vez de matar o email.
+        //
+        // O critério contíguo reprovou cinco formas de agente fazendo o
+        // certo e derrubou 5 gerações inteiras (US$ 4,00, 70 runs no lixo)
+        // sem nunca ter pego uma perda real. Com o critério novo
+        // (frasePreservada) isto deve deixar de acontecer — mas se
+        // acontecer, "email com uma linha faltando, marcado em vermelho na
+        // tela" é melhor que "nenhum email e o dinheiro gasto". A primeira
+        // tentativa CONTINUA lançando: o retry cobra do agente.
+        if (!preserved.ok && tentativa >= 1) {
+          heroCopyAceita = preserved.missing
+          log.error("phase2.fmt.hero_copy_lost_aceito", {
+            emailId,
+            valores: preserved.missing,
+            hint: "fragmento aceito na última tentativa — a issue vai para a aba QA do email",
+          })
+        }
+        if (!preserved.ok && tentativa < 1) {
           faltantesAnteriores = preserved.missing
           // O output CRU e o consumo vão grudados no erro: a chamada foi
           // PAGA e este é o run que mais precisa ser depurado. Sem isso o
@@ -2925,6 +2959,9 @@ async function runFormattingChain(p: {
             // logo entrou, e esse número tem de ser consultável.
             ...(preserved.viaLogo.length > 0
               ? { hero_copy_via_logo: preserved.viaLogo }
+              : {}),
+            ...(heroCopyAceita.length > 0
+              ? { hero_copy_perdida: heroCopyAceita }
               : {}),
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
@@ -3397,7 +3434,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews }
+  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita }
 }
 
 
@@ -3511,6 +3548,16 @@ export async function runPhase2HtmlQa(
   // separadas, extraídas do documento marcado.
   const finalHtml = stripCfyBlockMarkers(fmtResult.html)
 
+  // Copy da hero aceita apesar do guard (última tentativa). Vai para a aba
+  // QA do email, que é onde o operador olha — e o email EXISTE para ele
+  // olhar, que é a diferença em relação ao comportamento antigo.
+  const heroCopyIssues: QaIssue[] = fmtResult.heroCopyAceita.map((valor) => ({
+    type: "hero_copy_perdida" as const,
+    severity: "high" as const,
+    message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. Confira a hero antes de aprovar.`,
+    location: "hero",
+  }))
+
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem qa_failed. As checagens DETERMINISTICAS (computeRenderChecks — sem
@@ -3546,7 +3593,11 @@ export async function runPhase2HtmlQa(
         fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
       })),
     )
-    const renderIssues = [...computeRenderChecks(finalHtml), ...schemaIssues]
+    const renderIssues = [
+      ...heroCopyIssues,
+      ...computeRenderChecks(finalHtml),
+      ...schemaIssues,
+    ]
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -3691,7 +3742,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: qaResult.issues,
+        qa_issues: [...heroCopyIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -3708,7 +3759,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: qaResult.issues,
+      qa_issues: [...heroCopyIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)

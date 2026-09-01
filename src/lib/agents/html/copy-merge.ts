@@ -540,6 +540,61 @@ function semSeparadores(s: string): string {
   return s.replace(SEPARADORES_RE, " ").replace(/\s+/g, " ").trim()
 }
 
+/**
+ * Marcação markdown de ênfase. A copy do n8n volta com `**10% off**`
+ * literal (visto no run de 01/09), e basta o agente renderizar isso como
+ * `<strong>` para os asteriscos sumirem do fragmento — a frase continua
+ * inteira na tela e o guard reprovaria por causa de dois asteriscos.
+ */
+const MARCACAO_RE = /(\*{1,3}|_{2,3})/g
+
+function semMarcacao(s: string): string {
+  return s.replace(MARCACAO_RE, "").replace(/\s+/g, " ").trim()
+}
+
+/**
+ * A frase sobreviveu no texto? Não é mais "está aí como bloco contíguo".
+ *
+ * O critério contíguo reprovou CINCO formas de agente fazendo o certo, cada
+ * uma tratada com um remendo próprio depois de queimar uma geração:
+ * markup no meio (`Enjoy <strong>15%</strong> off`), wordmark virando o
+ * `<img>` do logo, travessão virando `<br>` — e, em 01/09, a duplicação
+ * MSO. O botão à prova de bala se escreve DUAS vezes (bloco VML do Outlook
+ * + bloco dos demais clientes); sem as tags os dois viram texto colado e
+ * `Use code WELCOME10 for 10% off your first order` chega como
+ * `Use code WELCOME10 WELCOME10 for 10% off your first order`. Na tela o
+ * cliente lê a frase uma vez só, certa. O guard matava o email.
+ *
+ * Então a pergunta passa a ser: as palavras da frase estão TODAS aí, na
+ * MESMA ORDEM, dentro de uma janela plausível?
+ *
+ * A janela é o que impede o guard de virar enfeite: palavras espalhadas
+ * pelo documento inteiro não são a frase. Teto de 2× o número de palavras
+ * porque a duplicação MSO, no pior caso, dobra os tokens da região — e
+ * dobrado ainda é a mesma frase; o triplo já é outra coisa.
+ */
+export function frasePreservada(valorNorm: string, textoNorm: string): boolean {
+  if (!valorNorm) return true
+  if (textoNorm.includes(valorNorm)) return true
+
+  const palavras = valorNorm.split(" ").filter(Boolean)
+  if (palavras.length < 2) return false // 1 palavra: ou está, ou não está
+  const tokens = textoNorm.split(" ").filter(Boolean)
+  const janelaMax = palavras.length * 2
+
+  for (let inicio = 0; inicio < tokens.length; inicio++) {
+    if (tokens[inicio] !== palavras[0]) continue
+    let p = 1
+    let t = inicio + 1
+    while (p < palavras.length && t < tokens.length && t - inicio < janelaMax) {
+      if (tokens[t] === palavras[p]) p++
+      t++
+    }
+    if (p === palavras.length) return true
+  }
+  return false
+}
+
 /** É campo de logo? A marca vira `<img>` por ordem do prompt da hero. */
 export function isLogoKey(key: string): boolean {
   const k = key.trim().toLowerCase()
@@ -591,6 +646,9 @@ export function heroCopyPreserved(
   const glued = normalizeForMatch(fragment.replace(/<[^>]*>/g, ""))
   const attrs = attributeText(fragment)
   const spacedSemSep = semSeparadores(spaced)
+  // Sem marcação markdown dos DOIS lados: o valor chega com `**10% off**`
+  // do n8n e o agente renderiza como <strong>.
+  const spacedSemMarca = semMarcacao(spaced)
 
   const logoNorm = new Set(
     (opts.logoValues ?? []).map((v) => normalizeForMatch(v)),
@@ -614,12 +672,16 @@ export function heroCopyPreserved(
   for (const v of heroValues) {
     const norm = normalizeForMatch(v)
     if (norm.length < 4) continue
-    if (spaced.includes(norm) || glued.includes(norm)) continue
+    // Palavras presentes e NA ORDEM, dentro da janela — não mais substring
+    // contígua (ver frasePreservada).
+    if (frasePreservada(norm, spaced) || frasePreservada(norm, glued)) continue
     // Separador trocado (travessão → <br>, hífen → pipe…): o texto está lá.
-    if (semSeparadores(norm) && spacedSemSep.includes(semSeparadores(norm))) {
-      continue
-    }
-    if (attrs.includes(norm)) {
+    const normSemSep = semSeparadores(norm)
+    if (normSemSep && frasePreservada(normSemSep, spacedSemSep)) continue
+    // Markdown do n8n virando markup de verdade.
+    const normSemMarca = semMarcacao(norm)
+    if (normSemMarca && frasePreservada(normSemMarca, spacedSemMarca)) continue
+    if (frasePreservada(norm, attrs)) {
       viaAtributo.push(v)
       continue
     }

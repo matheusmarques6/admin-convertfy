@@ -284,6 +284,53 @@ describe("heroCopyPreserved", () => {
     expect(r.ok).toBe(true)
   })
 
+  // O incidente de 01/09, com os bytes do run. O botão à prova de bala se
+  // escreve DUAS vezes (VML do Outlook + demais clientes); sem as tags os
+  // dois viram texto colado e o código aparece duplicado no meio da frase.
+  // Na tela o cliente lê uma vez só, certa — e o guard matava o email.
+  it("duplicação MSO do botão passa — o código repetido não é perda", () => {
+    const r = heroCopyPreserved(
+      ["Use code WELCOME10 for 10% off your first order"],
+      `<td>
+         <!--[if mso]>
+         <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml">
+           <center>Use code <b>WELCOME10</b></center>
+         </v:roundrect>
+         <![endif]-->
+         <!--[if !mso]><!-- -->
+         <span class="pill">WELCOME10</span> for 10% off your first order
+         <!--<![endif]-->
+       </td>`,
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  // A copy do n8n volta com markdown literal e o agente renderiza como
+  // markup. Sexta forma da mesma falsa acusação, vista no run de 01/09.
+  it("markdown do n8n virando <strong> passa", () => {
+    const r = heroCopyPreserved(
+      ["You signed up — here's your reward: **10% off** your first order"],
+      `<td>You signed up — here&rsquo;s your reward:
+         <strong>10% off</strong> your first order</td>`,
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  // O contrapeso: sem isto o critério novo viraria enfeite. As palavras
+  // existem no documento, espalhadas — a frase não está lá.
+  it("palavras espalhadas pelo documento NÃO salvam frase apagada", () => {
+    const r = heroCopyPreserved(
+      ["Use code WELCOME10 for 10% off your first order"],
+      `<td>Use our app</td>
+       <td>${"filler word ".repeat(30)}</td>
+       <td>code WELCOME10 expires soon</td>
+       <td>${"more filler ".repeat(30)}</td>
+       <td>for 10% off on your next order</td>`,
+    )
+    expect(r.ok).toBe(false)
+    expect(r.missing).toHaveLength(1)
+  })
+
   it("bold/cor DENTRO da frase passa — é o trabalho do agente, não perda", () => {
     // Incidente Luxe Lift 21/08: guidance do coupon_line manda "valor da
     // oferta em bold e na cor de acento". O agente obedeceu e o guard, que
