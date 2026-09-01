@@ -89,29 +89,65 @@ describe("parseCuratorRanking", () => {
     expect(rankingIds(r)[0]).toEqual(["h1"])
   })
 
-  // O catálogo vai INTEIRO no prompt: nada impede o modelo de indicar
-  // variante de outra seção para a posição — e a escolha VALE. Descartá-la
-  // deixava a posição vazia quando era a única, e o email saía sem o bloco
-  // (incidente Innova, 27/08: duas `offer` escolhidas para uma posição de
-  // `body`, as duas jogadas fora, posição perdida).
-  it("id de outra seção é ACEITO e a troca de forma fica registrada", () => {
+  // O papel manda na forma (01/09). Antes a escolha de outra seção era
+  // aceita SEMPRE, e o welcome #1 da Innova saiu com dois blocos de produto
+  // seguidos: a posição `body` recebeu "produtos 2" no rank 1 tendo duas
+  // variantes de body nos ranks 2 e 3. Havendo opção da seção, a de fora sai
+  // do ranking — e fica registrada como recusada.
+  it("com opção da seção, o id de outra seção é RECUSADO", () => {
     const raw = JSON.stringify([
       { block_index: 0, escolhas: [{ variant_id: "b1" }, { variant_id: "h1" }] },
     ])
     const r = parse(raw)
+    expect(rankingIds(r)[0]).toEqual(["h1"])
     expect(r.retypedChoices).toEqual([
-      { block_index: 0, variant_id: "b1", from: "hero", to: "body" },
+      { block_index: 0, variant_id: "b1", from: "hero", to: "body", aceito: false },
     ])
-    expect(rankingIds(r)[0]).toEqual(["b1", "h1"])
     expect(r.emptyBlocks).not.toContain(0)
   })
 
-  it("posição SÓ com escolha de outra seção não fica vazia", () => {
+  // O caso REAL, com os ids do run de 01/09 03:41 (welcome #1 da Innova):
+  // a posição de papel `body` veio com "produtos 2" no rank 1 e duas
+  // variantes de body em seguida. O resultado tem de ser `body 3`.
+  it("caso Innova: papel body com produtos no rank 1 resolve para body", () => {
+    const secoes = ["hero", "offer", "body", "products", "reviews", "footer"]
+    const tipos = new Map<string, string>([
+      ["8ef65206", "products"], // produtos 2 - Three Ingredients
+      ["4e9726d1", "body"], //     body 3 - bridge features cards
+      ["63736c6c", "body"], //     body 4 - bridge fundo cards
+    ])
+    const raw = JSON.stringify([
+      {
+        block_index: 2,
+        escolhas: [
+          { variant_id: "8ef65206", motivo: "marcadores com provas verificáveis" },
+          { variant_id: "4e9726d1" },
+          { variant_id: "63736c6c" },
+        ],
+      },
+    ])
+    const r = parseCuratorRanking({ raw, sections: secoes, typeIndex: tipos })
+    expect(rankingIds(r)[2]).toEqual(["4e9726d1", "63736c6c"])
+    expect(r.retypedChoices).toEqual([
+      {
+        block_index: 2,
+        variant_id: "8ef65206",
+        from: "body",
+        to: "products",
+        aceito: false,
+      },
+    ])
+  })
+
+  // A exceção que a regra antiga existia para cobrir: sem NENHUM finalista
+  // da seção, o de fora entra — posição vazia significa email sem o bloco.
+  it("posição SÓ com escolha de outra seção não fica vazia (último recurso)", () => {
     const raw = JSON.stringify([
       { block_index: 0, escolhas: [{ variant_id: "b1" }] },
     ])
     const r = parse(raw)
     expect(rankingIds(r)[0]).toEqual(["b1"])
+    expect(r.retypedChoices[0].aceito).toBe(true)
     expect(r.emptyBlocks).not.toContain(0)
   })
 

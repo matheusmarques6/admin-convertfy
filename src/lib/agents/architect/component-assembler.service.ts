@@ -1220,6 +1220,33 @@ export async function assembleStoreReference(
     candidates_excluded_unfillable: excludedUntagged,
   }
 
+  // O modelo apontou para fora da seção proposta. Dois sinais diferentes,
+  // e só um deles é problema de biblioteca:
+  //   recusada → havia variante da seção; o papel venceu (o que se quer).
+  //              Número alto aqui é sinal sobre o PROMPT do Curador.
+  //   aceita   → não havia NENHUMA variante elegível daquela categoria e a
+  //              posição teria ficado vazia. Lacuna de cadastro.
+  const foraDaSecao = ranking?.retypedChoices ?? []
+  const recusadas = foraDaSecao.filter((r) => !r.aceito)
+  const aceitasPorFalta = foraDaSecao.filter((r) => r.aceito)
+  if (recusadas.length > 0) {
+    log.warn("assembler.escolha_fora_da_secao", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      recusadas,
+    })
+  }
+  if (aceitasPorFalta.length > 0) {
+    log.error("assembler.secao_sem_variante", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      posicoes: aceitasPorFalta,
+      hint: "nenhuma variante elegível da categoria pedida — cadastrar na aba Componentes",
+    })
+  }
+
   // Nenhuma posição recebeu finalista depois do retry → não há o que
   // escolher. Falha explícita, sem gravar arquitetura e sem invocar o
   // Montador: mandá-lo decidir sobre um ranking vazio seria pagar um LLM

@@ -491,21 +491,19 @@ describe("Curador — retry e falha", () => {
     expect(res.html).toContain("{{BODY_TEXT}}")
     expect(res.html).not.toContain("{{HERO_EYEBROW}}")
 
-    // E a troca não acontece em silêncio.
-    const parsed = (
+    // E a troca não acontece em silêncio. Desde 01/09 ela é resolvida ANTES,
+    // no parser do ranking: a hero indicada para a posição de body é
+    // rebaixada por haver `b1` na lista, e o registro sai em
+    // `retyped_positions` do Curador. O `garantirHeroUnica` continua como
+    // última defesa — aqui ele não precisa agir.
+    const doCurador = (
       finishGenerationRun.mock.calls.find(
-        (c) => (c[1] as { agent?: string }).agent === "assembler",
+        (c) => (c[1] as { agent?: string }).agent === "assembler_chooser",
       )![1] as { parsedOutput: Record<string, unknown> }
     ).parsedOutput
-    const trocas = parsed.heroes_desambiguados as Array<Record<string, unknown>>
-    expect(trocas).toHaveLength(1)
-    expect(trocas[0]).toMatchObject({
-      block_index: 1,
-      papel: "body",
-      de: "h2",
-      para: "b1",
-      motivo: "forma_hero_duplicada",
-    })
+    expect(doCurador.retyped_positions).toEqual([
+      { block_index: 1, variant_id: "h2", from: "body", to: "hero", aceito: false },
+    ])
   })
 
   it("indicação de outra seção é descartada (catálogo vai inteiro)", async () => {
@@ -979,6 +977,29 @@ describe("Curador escolhe variante de outra seção", () => {
     ])
   })
 
+  // Sem alternativa da seção, a troca vale (aceito: true). COM alternativa,
+  // o papel vence e a de fora fica registrada como recusada — é o caso que
+  // fez o welcome #1 da Innova sair com dois blocos de produto seguidos.
+  it("havendo variante da seção, a de fora é recusada e registrada", async () => {
+    h.variants = [
+      variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
+      variant("off1", "offer", "<div>{{OFFER_HEADLINE}}</div>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(rank("off1", "v1"))
+    invokeAgent.mockResolvedValueOnce(pick([0, "v1"]))
+
+    const res = await assembleStoreReference(baseInput)
+
+    expect(res.variantIds).toEqual(["v1"])
+    const run = finishGenerationRun.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((r) => r.agent === "assembler_chooser")
+    const parsed = run?.parsedOutput as Record<string, unknown>
+    expect(parsed.retyped_positions).toEqual([
+      { block_index: 0, variant_id: "off1", from: "hero", to: "offer", aceito: false },
+    ])
+  })
+
   it("a troca de forma fica na telemetria", async () => {
     h.variants = [
       variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
@@ -993,8 +1014,10 @@ describe("Curador escolhe variante de outra seção", () => {
       .map((c) => c[1] as Record<string, unknown>)
       .find((r) => r.agent === "assembler_chooser")
     const parsed = run?.parsedOutput as Record<string, unknown>
+    // Não havia NENHUMA variante de hero: a de offer entra por último
+    // recurso (`aceito: true`) — a posição vazia seria o email sem o bloco.
     expect(parsed.retyped_positions).toEqual([
-      { block_index: 0, variant_id: "off1", from: "hero", to: "offer" },
+      { block_index: 0, variant_id: "off1", from: "hero", to: "offer", aceito: true },
     ])
     expect(parsed.empty_blocks).toEqual([])
   })

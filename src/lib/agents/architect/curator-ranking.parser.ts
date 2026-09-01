@@ -32,22 +32,28 @@ export interface ParsedRanking {
   /** Ids que não existem no catálogo. */
   invalidIds: string[]
   /**
-   * Posições em que o Curador escolheu variante de OUTRA seção — e a
-   * posição adotou a forma dela.
+   * Posições em que o Curador apontou variante de OUTRA seção.
    *
-   * Isto já foi descarte (`wrongTypeIds`): o catálogo vai INTEIRO no
-   * prompt, o modelo apontava para fora da seção proposta e o id era
-   * jogado fora. Quando a posição só tinha escolhas assim, ela ficava
-   * VAZIA e o email saía sem o bloco — sem ninguém repor. Mas a escolha é
-   * legítima: o outline e o Estruturador propõem a forma, quem decide é o
-   * Curador. Hoje a escolha vale e a seção da posição passa a ser a da
-   * variante (ver `AssemblySlot` no component-assembler).
+   * A história em três atos. (1) Era descarte puro (`wrongTypeIds`): o
+   * catálogo vai INTEIRO no prompt, o modelo apontava para fora e o id ia
+   * fora — quando era a única escolha da posição, ela ficava VAZIA e o
+   * email saía sem o bloco (Innova, 27/08). (2) Virou aceite SEMPRE, e aí
+   * o papel perdeu para a forma: em 01/09 a posição `body` do welcome #1
+   * recebeu "produtos 2" no rank 1 tendo `body 3` e `body 4` nos ranks 2 e
+   * 3, e o email saiu com dois blocos de produto seguidos. (3) Hoje é
+   * ÚLTIMO RECURSO: vale só quando a posição não tem nenhum finalista da
+   * própria seção.
+   *
+   * `aceito` distingue os dois: `false` = recusada porque havia opção da
+   * seção (sinal sobre o PROMPT do Curador); `true` = entrou por não haver
+   * nenhuma (sinal sobre a BIBLIOTECA — falta variante da categoria).
    */
   retypedChoices: Array<{
     block_index: number
     variant_id: string
     from: string
     to: string
+    aceito: boolean
   }>
   /** `block_index` fora da estrutura do email. */
   unknownBlocks: number[]
@@ -115,7 +121,12 @@ export function parseCuratorRanking(
     if (out.byBlock.has(blockIndex)) continue
 
     const rawChoices = Array.isArray(rec.escolhas) ? rec.escolhas : []
-    const valid: RankedChoice[] = []
+    // Duas listas: quem é da seção pedida e quem não é. O catálogo vai
+    // INTEIRO no prompt, então o modelo PODE apontar para fora — mas a
+    // posição tem um papel, e o papel manda na forma.
+    const daSecao: RankedChoice[] = []
+    const foraDaSecao: RankedChoice[] = []
+    const foraIds: Array<{ id: string; to: string }> = []
     const seen = new Set<string>()
 
     for (const c of rawChoices) {
@@ -131,23 +142,34 @@ export function parseCuratorRanking(
         out.invalidIds.push(id)
         continue
       }
-      // O catálogo vai INTEIRO no prompt e o modelo pode indicar variante
-      // de outra seção. A escolha VALE — a posição adota a forma dela — e
-      // fica registrada para a decisão ser legível depois.
-      if (type.toLowerCase() !== section.toLowerCase()) {
-        out.retypedChoices.push({
-          block_index: blockIndex,
-          variant_id: id,
-          from: section,
-          to: type,
-        })
-      }
       seen.add(id)
       const motivo = choiceMotivo(c)
-      valid.push(motivo ? { variant_id: id, motivo } : { variant_id: id })
-      if (valid.length >= maxPerBlock) break
+      const escolha: RankedChoice = motivo ? { variant_id: id, motivo } : { variant_id: id }
+
+      if (type.toLowerCase() === section.toLowerCase()) daSecao.push(escolha)
+      else {
+        foraDaSecao.push(escolha)
+        foraIds.push({ id, to: type })
+      }
     }
 
+    // O papel vence: havendo QUALQUER finalista da seção, os de fora saem
+    // do ranking. Sem nenhum, os de fora entram — é a razão de a regra
+    // antiga existir (posição vazia = email sem o bloco) e ela sobrevive
+    // como exceção, não como norma.
+    const vence = daSecao.length > 0 ? daSecao : foraDaSecao
+    const aceitouFora = daSecao.length === 0 && foraDaSecao.length > 0
+    for (const f of foraIds) {
+      out.retypedChoices.push({
+        block_index: blockIndex,
+        variant_id: f.id,
+        from: section,
+        to: f.to,
+        aceito: aceitouFora,
+      })
+    }
+
+    const valid = vence.slice(0, maxPerBlock)
     if (valid.length > 0) out.byBlock.set(blockIndex, valid)
   }
 
