@@ -53,7 +53,14 @@ const log = logger.child("CopyFit")
 
 // Fallback usado só se email_agent_configs não tiver row ativa para
 // agent_type='copy_fit' (a migration 20261089 semeia a versão canônica).
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+//
+// Forma SLASH de propósito: o `invokeAgent` roteia pelo id — sem "/" vai no
+// SDK da Anthropic, com "/" vai no OpenRouter. O default nasceu
+// 'claude-haiku-4-5-20251001' e foi o ÚNICO agente ativo do pipeline fora
+// do OpenRouter; quando a conta direta da Anthropic zerou, o encurtador
+// morreu com 400 "credit balance is too low" e o fail-open engoliu. Mesmo
+// modelo, mesmo preço (normalizeModelKey tira o vendor), outro caminho.
+const DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
 const DEFAULT_SYSTEM = `Você encurta copy de email de e-commerce que passou do limite da caixa onde ela será exibida.
 

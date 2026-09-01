@@ -40,6 +40,9 @@ describe("computeCostCents (preço por token, sub-centavo preservado)", () => {
   it("Haiku via OpenRouter cobra 1/Mtok, NÃO o preço de Sonnet", () => {
     // Antes: forma slash caía no default 3/15 → cobrava 300 (3× a mais).
     expect(computeCostCents("anthropic/claude-haiku-4-5", 1_000_000, 0)).toBe(100)
+    // O id EXATO que o copy_fit passou a usar (migration 20261098) — a
+    // troca de provedor não pode reescrever o custo do agente.
+    expect(computeCostCents("anthropic/claude-haiku-4.5", 1_000_000, 0)).toBe(100)
   })
   it("preserva sub-centavo (etapa barata não vira $0.000)", () => {
     // Sonnet, 1000 tokens input → $0.003 → 0,3 centavo (não zero).
