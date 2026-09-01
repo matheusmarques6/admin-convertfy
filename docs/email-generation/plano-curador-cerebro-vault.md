@@ -4,6 +4,19 @@
 recomendado pelo agente do vault (All-for-Eficiencia): "Curador absorve a
 estrutura, protocolo vira system prompt".*
 
+> **Status da execução (01/09, pós-aprovação):**
+> ✅ Fase 0 aplicada em produção — migration 20261093 (Estruturador `off` na
+> org, que estava `on`; alavanca `curador_vault_mode`; tabela
+> `email_vault_docs`). O vault-sync novo ingeriu `componentes/**` sozinho no
+> primeiro cron pós-deploy (223 arquivos, 222 upserts, 1 skip = `_INDEX.md`;
+> **44/44 variantes casadas por `variant_id`**; protocolo + 8 notas de seção
+> ativos).
+> ✅ Fase 1 implementada e pushada (`curador-shadow.ts`, commit `48295f9`) e
+> **shadow LIGADO** na org (`curador_vault_mode='shadow'`) — começa a rodar
+> no deploy desse commit, em toda execução da fase 1 do Architect.
+> ⏳ Fase 2 (goldens + métricas) aguarda as primeiras runs shadow.
+> ⏳ Fase 3 (flip) aguarda o verde da fase 2.
+
 ## Decisão de desenho (a tese)
 
 **Não recriar o Estruturador em outro lugar.** Um único call do Curador
