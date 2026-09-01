@@ -395,3 +395,55 @@
   --ops-accent: #7C90F2;
   --ops-on-accent: #0C0F16;
 }
+
+/* ── ConvertIA — markdown das respostas (tabelas do design v3) ────── */
+.convertia-md p { margin: 0 0 12px; }
+.convertia-md p:last-child { margin-bottom: 0; }
+.convertia-md ul, .convertia-md ol { margin: 0 0 12px; padding-left: 20px; }
+.convertia-md li { margin: 3px 0; }
+.convertia-md strong { font-weight: 600; }
+.convertia-md code {
+  font-size: 12px;
+  background: rgba(17, 24, 39, 0.05);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.dark .convertia-md code { background: rgba(255, 255, 255, 0.08); }
+.convertia-md pre {
+  overflow-x: auto;
+  background: rgba(17, 24, 39, 0.04);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+.dark .convertia-md pre { background: rgba(255, 255, 255, 0.05); }
+.convertia-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 14px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.convertia-md th {
+  text-align: left;
+  padding: 8px 10px 8px 2px;
+  font-size: 10.5px;
+  font-weight: 550;
+  color: var(--ops-mut);
+  border-bottom: 1px solid var(--ops-border);
+}
+.convertia-md td {
+  padding: 9px 10px 9px 2px;
+  font-size: 12.5px;
+  color: var(--ops-title);
+  border-bottom: 1px solid var(--ops-border);
+  line-height: 1.55;
+  vertical-align: top;
+}
+.convertia-md tr:last-child td { border-bottom: none; }
+.convertia-md h1, .convertia-md h2, .convertia-md h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 16px 0 6px;
+}
+.convertia-md a { color: #4E62D8; }
+.convertia-md hr { border: 0; border-top: 1px solid var(--ops-border); margin: 14px 0; }

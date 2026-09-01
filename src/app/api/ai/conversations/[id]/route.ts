@@ -33,11 +33,26 @@ export async function GET(
       .maybeSingle()
     if (!conv) throw new AppError("Conversa nao encontrada", 404)
 
-    const { data: messages } = await admin
+    // meta (fontes/uso da ConvertIA) chegou na migration 20261090 —
+    // retry sem a coluna quando ela ainda não existe na base.
+    let messages = null as Array<Record<string, unknown>> | null
+    const withMeta = await admin
       .from("ai_chat_messages")
-      .select("id, role, content, created_at")
+      .select("id, role, content, meta, created_at")
       .eq("conversation_id", id)
+      .in("role", ["user", "assistant"])
       .order("created_at", { ascending: true })
+    if (withMeta.error && withMeta.error.code === "42703") {
+      const legacy = await admin
+        .from("ai_chat_messages")
+        .select("id, role, content, created_at")
+        .eq("conversation_id", id)
+        .order("created_at", { ascending: true })
+      messages = legacy.data
+    } else {
+      if (withMeta.error) throw withMeta.error
+      messages = withMeta.data
+    }
 
     return successResponse(request, {
       conversation: conv,

@@ -25,8 +25,10 @@ export type NavItemId =
   | "comercial.agenda"
   | "comercial.funil"
   | "comercial.reports"
+  | "comercial.ia"
   // Operacional
   | "ops.dashboard"
+  | "ops.ia"
   | "ops.clients"
   | "ops.stores"
   | "ops.health"
@@ -59,6 +61,8 @@ export type NavItemId =
 
 const ALL_ITEMS: NavItemId[] = [
   "comercial.dashboard",
+  "comercial.ia",
+  "ops.ia",
   "comercial.pipelines",
   "comercial.leads",
   "comercial.produtos",
@@ -106,6 +110,8 @@ const ALL_ITEMS: NavItemId[] = [
 const BYPASS_ROLES: OrgRole[] = ["admin", "dev"]
 
 const COO_ITEMS = new Set<NavItemId>([
+  "comercial.ia",
+  "ops.ia",
   "comercial.inbox",
   "comercial.canais",
   "comercial.instagram",
@@ -137,6 +143,8 @@ const COO_ITEMS = new Set<NavItemId>([
 ])
 
 const SUPORTE_ITEMS = new Set<NavItemId>([
+  "comercial.ia",
+  "ops.ia",
   "comercial.dashboard",
   "comercial.pipelines",
   "comercial.leads",

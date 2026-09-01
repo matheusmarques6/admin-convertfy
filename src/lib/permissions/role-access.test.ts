@@ -33,8 +33,10 @@ const MATRIX: Matrix = {
   "comercial.agenda":       { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.funil":        { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
   "comercial.reports":      { admin: true, dev: true, coo: false, suporte: true,  designer: false, implementacao: false },
+  "comercial.ia":           { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   // Operacional
   "ops.dashboard":          { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
+  "ops.ia":                 { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.clients":            { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "ops.stores":             { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.health":             { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },

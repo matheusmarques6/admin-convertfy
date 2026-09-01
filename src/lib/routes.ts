@@ -98,12 +98,14 @@ export const ROUTES = {
       PRODUTOS: "/admin/comercial/produtos",
       FUNIL: "/admin/comercial/funil",
       REPORTS: "/admin/comercial/reports",
+      IA: "/admin/comercial/ia",
     },
 
     // ── OPERACIONAL (pos-venda / cs / ops) ──────────────────────────────
     OPERACIONAL: {
       ROOT: "/admin/operacional",
       DASHBOARD: "/admin/operacional/dashboard",
+      IA: "/admin/operacional/ia",
       PIPELINES: "/admin/operacional/pipelines",
       PIPELINES_ADMIN: "/admin/operacional/pipelines/admin",
       PIPELINE_DETAIL: (id: string) => `/admin/operacional/pipelines/${id}` as const,

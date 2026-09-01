@@ -31,6 +31,7 @@ export type AiUsageFeature =
   | "ai_generate_subjects"
   | "ai_generate_ad_copy"
   | "briefing_generation"
+  | "convertia"
 
 export type AiProvider = "anthropic" | "openrouter" | "openai"
 
@@ -42,6 +43,12 @@ export type AiProvider = "anthropic" | "openrouter" | "openai"
 const PRICING: Record<string, { input: number; output: number }> = {
   // Anthropic
   "claude-opus-4-8": { input: 15.0, output: 75.0 },
+  "anthropic/claude-opus-4.8": { input: 15.0, output: 75.0 },
+  "anthropic/claude-sonnet-4.6": { input: 3.0, output: 15.0 },
+  // Moonshot (ConvertIA)
+  "moonshotai/kimi-k3": { input: 0.6, output: 2.5 },
+  // Google (ConvertIA)
+  "google/gemini-2.5-pro": { input: 1.25, output: 10.0 },
   "claude-opus-4-7": { input: 15.0, output: 75.0 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
   "claude-sonnet-4-5": { input: 3.0, output: 15.0 },

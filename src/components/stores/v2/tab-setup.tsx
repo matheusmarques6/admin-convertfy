@@ -25,6 +25,7 @@
 
 import { Check, Zap, Link2, Paperclip } from "lucide-react"
 import { IntegrationsPanel } from "@/components/stores/integrations-panel"
+import { StoreMcpPanel } from "@/components/stores/store-mcp-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { useStoreOverview } from "@/lib/hooks/use-store-overview"
@@ -78,6 +79,13 @@ export function TabSetup({ storeId }: { storeId: string }) {
           }
         >
           <IntegrationsPanel storeId={storeId} storeUrl={data.store_url} />
+        </Section>
+
+        <Section
+          title="MCP da loja"
+          subtitle="O que a ConvertIA consulta e executa nesta loja — conectores das credenciais acima + servidores MCP próprios"
+        >
+          <StoreMcpPanel storeId={storeId} status={status} />
         </Section>
 
         <Section

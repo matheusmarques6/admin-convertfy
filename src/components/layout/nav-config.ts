@@ -76,6 +76,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     label: "",
     items: [
       { id: "comercial.dashboard", name: "Dashboard", href: ROUTES.ADMIN.COMERCIAL.DASHBOARD, icon: LayoutDashboard },
+      { id: "comercial.ia", name: "Assistente IA", href: ROUTES.ADMIN.COMERCIAL.IA, icon: Sparkles },
     ],
   },
   {
@@ -117,6 +118,7 @@ export const OPERACIONAL_NAV: NavGroup[] = [
     label: "",
     items: [
       { id: "ops.dashboard", name: "Dashboard", href: ROUTES.ADMIN.OPERACIONAL.DASHBOARD, icon: LayoutDashboard },
+      { id: "ops.ia", name: "Assistente IA", href: ROUTES.ADMIN.OPERACIONAL.IA, icon: Sparkles },
     ],
   },
   {
