@@ -208,14 +208,21 @@ export interface EstouroNaTela {
 export function resumoDeEstouros(
   blocos: ReadonlyArray<BlocoComContrato>,
 ): EstouroNaTela[] {
-  return alvosDeEncurtamento(blocos).map((a) => ({
-    position: a.position,
-    type: a.type,
-    key: a.key,
-    label: a.label,
-    length: a.texto.length,
-    max_len: a.max,
-  }))
+  // SÓ quem passou do limite. `alvosDeEncurtamento` passou a incluir também
+  // o campo que entrou por travessão — e esse cabe na caixa. Sem o filtro, a
+  // pílula da tela do email diria "acima do limite" para uma frase que não
+  // está, e o número que serve para decidir o que precisa de olho humano
+  // viraria ruído.
+  return alvosDeEncurtamento(blocos)
+    .filter((a) => a.motivos.includes("max_len"))
+    .map((a) => ({
+      position: a.position,
+      type: a.type,
+      key: a.key,
+      label: a.label,
+      length: a.texto.length,
+      max_len: a.max,
+    }))
 }
 
 /**

@@ -635,6 +635,35 @@ export function CopyContratoView({ output }: { output: unknown }) {
         )}
       </div>
 
+      {/* O encurtador falhou e a geração seguiu (fail-open). O run PRÓPRIO
+          dele é o lugar natural desse dado — e é justamente o que some
+          quando a telemetria falha. Aqui a resposta sempre existe. */}
+      {fit && typeof fit.erro === "string" && (
+        <OutSection title="O encurtador não completou">
+          <div style={{ ...OUT_BODY, color: "#92400E", fontFamily: F.sans }}>
+            {fit.erro}
+          </div>
+        </OutSection>
+      )}
+      {fit &&
+        fit.recusas != null &&
+        typeof fit.recusas === "object" &&
+        Object.keys(fit.recusas as Record<string, number>).length > 0 && (
+          <OutSection title="Por que as reescritas foram recusadas">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {Object.entries(fit.recusas as Record<string, number>).map(
+                ([motivo, n]) => (
+                  <OutPill
+                    key={motivo}
+                    text={`${n}× ${MOTIVO_DE_RECUSA[motivo] ?? motivo}`}
+                    tone="warn"
+                  />
+                ),
+              )}
+            </div>
+          </OutSection>
+        )}
+
       {estourosOriginais.length > 0 && (
         <OutSection
           title={
@@ -714,6 +743,10 @@ interface DeParaView {
   max?: number
   aceito?: boolean
   motivo?: string
+  /** "max_len" | "travessao" — um campo pode ter os dois. */
+  motivos?: string[]
+  tracos_antes?: number
+  tracos_depois?: number
 }
 
 const MOTIVO_DE_RECUSA: Record<string, string> = {
@@ -723,6 +756,7 @@ const MOTIVO_DE_RECUSA: Record<string, string> = {
   cresceu: "ficou maior que a original",
   abaixo_do_minimo: "ficou abaixo do mínimo do campo",
   sem_resposta: "o agente não respondeu por este campo",
+  traco_permaneceu: "a reescrita manteve o travessão",
 }
 
 export function CopyFitView({ output }: { output: unknown }) {
@@ -730,13 +764,40 @@ export function CopyFitView({ output }: { output: unknown }) {
   const dePara = asArray<DeParaView>(o.de_para)
   if (dePara.length === 0 && o.alvos == null) return null
 
+  // O agente tem DOIS motivos para pegar um campo: estouro do limite e
+  // travessão. Chamar todo alvo de "acima do limite" era mentira para o
+  // segundo — e o número que diz se ele cumpriu (`travessoes_depois`)
+  // existia no JSON sem nenhum leitor.
+  const total = Number(o.alvos ?? dePara.length)
+  const comTravessao = Number(o.com_travessao ?? 0)
+  const porEstouro = total - comTravessao
+  const antes = o.travessoes_antes
+  const depois = o.travessoes_depois
+  const mediuTravessao = typeof antes === "number" && typeof depois === "number"
+
   return (
     <OutCard>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-        <OutPill text={`${o.alvos ?? dePara.length} campo(s) acima do limite`} tone="warn" />
-        <OutPill text={`${o.corrigidos ?? 0} encurtado(s)`} tone="pos" />
+        <OutPill text={`${total} campo(s) a corrigir`} tone="warn" />
+        {comTravessao > 0 && (
+          <OutPill
+            text={
+              porEstouro > 0
+                ? `${porEstouro} por estouro · ${comTravessao} por travessão`
+                : `${comTravessao} por travessão`
+            }
+            tone="info"
+          />
+        )}
+        <OutPill text={`${o.corrigidos ?? 0} reescrito(s)`} tone="pos" />
         {Number(o.mantidos ?? 0) > 0 && (
           <OutPill text={`${o.mantidos} mantido(s) como estava(m)`} tone="warn" />
+        )}
+        {mediuTravessao && (
+          <OutPill
+            text={`travessões ${antes} → ${depois}`}
+            tone={depois === 0 ? "pos" : "warn"}
+          />
         )}
         {Number(o.tentativas ?? 0) > 1 && (
           <OutPill text={`${o.tentativas} passadas`} tone="info" />
@@ -746,7 +807,13 @@ export function CopyFitView({ output }: { output: unknown }) {
       {dePara.length > 0 && (
         <OutSection title="Antes → depois">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {dePara.map((d, i) => (
+            {dePara.map((d, i) => {
+              // Snapshot antigo não tem `motivos` — trata como estouro, que
+              // era o único motivo que existia até 01/09.
+              const motivos = d.motivos ?? ["max_len"]
+              const porEstouroAqui = motivos.includes("max_len")
+              const porTraco = motivos.includes("travessao")
+              return (
               <OutItem key={`${d.position}-${d.key}-${i}`}>
                 <div
                   style={{
@@ -758,9 +825,18 @@ export function CopyFitView({ output }: { output: unknown }) {
                   }}
                 >
                   <span style={{ ...OUT_BODY, fontWeight: 600 }}>{d.key}</span>
-                  <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
-                    {d.antes_len ?? "?"} → {d.depois_len ?? "—"} (máx {d.max ?? "?"})
-                  </span>
+                  {/* Alvo só de travessão não tem estouro para mostrar: o
+                      "máx ?" ali não significava nada. */}
+                  {porEstouroAqui && (
+                    <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
+                      {d.antes_len ?? "?"} → {d.depois_len ?? "—"} (máx {d.max ?? "?"})
+                    </span>
+                  )}
+                  {porTraco && (
+                    <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
+                      travessões {d.tracos_antes ?? "?"} → {d.tracos_depois ?? "?"}
+                    </span>
+                  )}
                   <span style={{ marginLeft: "auto" }}>
                     <OutPill
                       text={d.aceito ? "aplicado" : "recusado"}
@@ -788,7 +864,8 @@ export function CopyFitView({ output }: { output: unknown }) {
                   </div>
                 )}
               </OutItem>
-            ))}
+              )
+            })}
           </div>
         </OutSection>
       )}

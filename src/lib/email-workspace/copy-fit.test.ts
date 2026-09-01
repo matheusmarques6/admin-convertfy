@@ -168,6 +168,33 @@ describe("resumoDeEstouros", () => {
       resumoDeEstouros([{ ...BODY, content: { section_body_1: "curto" } }]),
     ).toEqual([])
   })
+
+  // Regressão: `alvosDeEncurtamento` passou a incluir o campo que entrou só
+  // por travessão, e a tela do email mapeava esse retorno direto. Um campo
+  // que CABE na caixa apareceria na pílula "acima do limite".
+  it("travessão dentro do limite não conta como estouro", () => {
+    expect(
+      resumoDeEstouros([
+        { ...BODY, content: { section_body_1: "curto — mas cabe" } },
+      ]),
+    ).toEqual([])
+  })
+
+  it("campo com os dois problemas continua aparecendo (o estouro é real)", () => {
+    const texto = `${"x".repeat(150)} — fim`
+    expect(
+      resumoDeEstouros([{ ...BODY, content: { section_body_1: texto } }]),
+    ).toEqual([
+      {
+        position: 1,
+        type: "body",
+        key: "section_body_1",
+        label: "Corpo da seção",
+        length: texto.length,
+        max_len: 120,
+      },
+    ])
+  })
 })
 
 describe("limiteDoCampo", () => {

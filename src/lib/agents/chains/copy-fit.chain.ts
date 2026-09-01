@@ -284,10 +284,20 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   const inputSummary: InputSummaryItem[] = [
     { rotulo: "Loja", cls: "loja", valor: input.brandName || "(sem nome)" },
     {
-      rotulo: "Campos acima do limite",
+      // "acima do limite" era mentira para o alvo que entrou por travessão
+      // e cabe na caixa. O motivo vai junto de cada campo.
+      rotulo: "Campos a corrigir",
       cls: "upstream",
       valor: input.alvos
-        .map((a) => `${a.key} ${a.texto.length}/${a.max}`)
+        .map((a) => {
+          const tamanho = a.motivos.includes("max_len")
+            ? ` ${a.texto.length}/${a.max}`
+            : ""
+          const traco = a.motivos.includes("travessao")
+            ? ` ${a.tracos} travessão(ões)`
+            : ""
+          return `${a.key}${tamanho}${traco}`
+        })
         .join(" · "),
     },
     {
