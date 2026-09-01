@@ -28,7 +28,12 @@ import {
   orphanTextFragments,
   withOriginalSlices,
 } from "./anchor-match"
-import type { AnchorField, OrphanTextFragment } from "./anchor-match"
+import type {
+  AnchorAssignment,
+  AnchorField,
+  OrphanTextFragment,
+} from "./anchor-match"
+import { scopeBlocks } from "./block-scope"
 import { isStructuralToken } from "./attr-token-vocabulary"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
@@ -117,6 +122,14 @@ export interface CopyMergeReport {
    * e reprovar aqui reprovaria quase todo email.
    */
   texto_orfao: OrphanTextFragment[]
+  /**
+   * "por_bloco" = cada campo ancorou dentro da região do próprio bloco
+   * (marcadores cfy:block presentes). "global" = documento sem marcadores,
+   * comportamento anterior a 01/09.
+   */
+  escopo: "por_bloco" | "global"
+  /** Blocos que caíram no índice global porque o escopo não ancorou nada. */
+  escopo_degradado: string[]
 }
 
 /** Estado completo por campo — insumo do runner (hero_pending), não do banco. */
@@ -339,11 +352,58 @@ export function copyMergeByExample(
     value: e.value ?? "",
   }))
 
-  const index = buildTextIndex(html)
-  const assignments = withOriginalSlices(
-    html,
-    assignTextAnchors(index, anchorFields),
-  )
+  // ── 1b. Cada campo ancora DENTRO do seu bloco ──────────────────────
+  //
+  // Até 01/09 havia UM índice para o documento inteiro, e qualquer campo
+  // podia escrever em qualquer lugar. O botão do segundo produto saiu
+  // "1 SEE HOW IT WORKS" por causa disso: o `cta_label` do bloco 3
+  // (example "SHOP NOW") achou duas ocorrências livres — a sua e o miolo
+  // do "1 SHOP NOW", que é do bloco 4 e não tinha campo nenhum — e a
+  // regra 5 do anchor-match escreveu nas duas, trocando só o pedaço
+  // "SHOP NOW" e deixando o "1 " na frente. A regra 5 é para a arte que
+  // repete a MESMA frase de propósito; nunca para cruzar bloco.
+  //
+  // As regras de desempate seguem idênticas — só o palco encolheu.
+  const globalIndex = buildTextIndex(html)
+  const scopes = scopeBlocks(html, blocks)
+
+  const idxPorBloco = new Map<MergeBlock, number[]>()
+  entries.forEach((e, i) => {
+    const lista = idxPorBloco.get(e.block)
+    if (lista) lista.push(i)
+    else idxPorBloco.set(e.block, [i])
+  })
+
+  const brutas = new Array<AnchorAssignment>(entries.length)
+  /** Blocos que caíram no índice global — marcador torto, não silêncio. */
+  const escopoDegradado: string[] = []
+
+  for (const [block, idxs] of idxPorBloco) {
+    const campos = idxs.map((i) => anchorFields[i])
+    const scope = scopes.get(block)
+    let res: AnchorAssignment[] | null = null
+
+    if (scope) {
+      res = assignTextAnchors(buildTextIndex(html, scope.range), campos)
+      // FAIL-OPEN: escopo que não ancora NADA e global que ancoraria é
+      // marcador desalinhado, não copy inexistente. Perder a copy do
+      // bloco inteiro em silêncio seria pior que o bug que isto conserta.
+      if (!res.some((a) => a.range)) {
+        const global = assignTextAnchors(globalIndex, campos)
+        if (global.some((a) => a.range)) {
+          escopoDegradado.push(block.block_id ?? block.block_type ?? "?")
+          res = global
+        }
+      }
+    }
+    if (!res) res = assignTextAnchors(globalIndex, campos)
+
+    idxs.forEach((i, k) => {
+      brutas[i] = res![k]
+    })
+  }
+
+  const assignments = withOriginalSlices(html, brutas)
 
   // ── 2. Splices + relatório campo a campo ───────────────────────────
   const campos: CampoMergeLog[] = []
@@ -465,6 +525,8 @@ export function copyMergeByExample(
       skipped,
       hero_values: heroValues,
       texto_orfao: textoOrfao,
+      escopo: scopes.size > 0 ? "por_bloco" : "global",
+      escopo_degradado: escopoDegradado,
     },
     anchors,
   }
@@ -835,6 +897,42 @@ export function applyStructuralFills(
     }
     splices.push({ start, end: start + m[0].length, replacement: value })
     filled.push({ token: tag, para: truncate(value) })
+  }
+
+  // ── Token de plataforma que ninguém preencheu ──────────────────────
+  //
+  // `TEXTO_DE_PREHEADER_AQUI` está na arte de 14 das 42 variantes ativas e
+  // não é campo de ninguém: o preheader de verdade é o do topo, escrito
+  // pelo Montador. Enquanto as âncoras varriam o documento inteiro, ele
+  // era sobrescrito POR ACIDENTE (um campo da hero com esse example
+  // escrevia em todas as ocorrências). Com o merge por bloco isso acabou —
+  // e o literal ficaria num <div> oculto no meio do email.
+  //
+  // Some o token, nunca a linha: preservação > limpeza, como o resto deste
+  // módulo.
+  //
+  // A régua é o SUFIXO `_AQUI`, a convenção real da biblioteca para
+  // "preencha isto" (TEXTO_DE_PREHEADER_AQUI, URL_DO_CTA_AQUI,
+  // URL_DO_LOGO_AQUI). "Qualquer palavra em SCREAMING_SNAKE" foi tentado e
+  // é armadilha: `<td>WELCOME10</td>` — o código do cupom escrito pelo
+  // merge — casa com esse formato, e a limpeza apagaria a copy que acabou
+  // de ser aplicada.
+  const TOKEN_SOZINHO = /^[A-Z][A-Z0-9_]*_AQUI$/
+  const jaEditado = (r: Range) =>
+    splices.some((sp) => sp.start < r.end && r.start < sp.end)
+  for (const node of textNodes(html)) {
+    if (inRange(node.range.start, hero)) continue
+    if (jaEditado(node.range)) continue
+    const texto = node.text.trim()
+    if (!TOKEN_SOZINHO.test(texto)) continue
+    if (isStructuralToken(texto)) continue // esses têm valor próprio acima
+    const at = node.text.indexOf(texto)
+    splices.push({
+      start: node.range.start + at,
+      end: node.range.start + at + texto.length,
+      replacement: "",
+    })
+    cleanedSet.add(texto)
   }
 
   const res = applySplices(html, splices)

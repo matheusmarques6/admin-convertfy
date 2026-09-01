@@ -2690,6 +2690,11 @@ async function runFormattingChain(p: {
         anchor_collapse: collapsed,
         // Teto de 40 para não estourar o parsed_output num rodapé prolixo;
         // o contador total continua exato.
+        // Cada campo ancorou dentro do próprio bloco? "global" só quando
+        // o documento não tem marcadores (legado). `escopo_degradado` é o
+        // bloco cujo marcador não bateu — sinal de montagem torta.
+        escopo: merge.report.escopo,
+        escopo_degradado: merge.report.escopo_degradado,
         texto_orfao: merge.report.texto_orfao.slice(0, 40),
         texto_orfao_total: merge.report.texto_orfao.length,
         texto_orfao_suspeito: orfaosSuspeitos.length,

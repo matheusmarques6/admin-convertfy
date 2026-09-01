@@ -36,6 +36,88 @@ const block = (
 })
 
 describe("copyMergeByExample", () => {
+  // ── Escopo por bloco (incidente 01/09) ───────────────────────────────
+  //
+  // O botão do segundo produto saiu "1 SEE HOW IT WORKS". Causa: o
+  // `cta_label` do bloco 3 (example "SHOP NOW") achou duas ocorrências
+  // livres — a sua e o miolo do "1 SHOP NOW", que é do bloco 4 e não tem
+  // campo nenhum — e a regra 5 escreveu nas duas, deixando o "1 " na
+  // frente. Um campo não pode escrever fora do próprio bloco.
+  const doisProdutos = [
+    "<!-- cfy:block:0:products:start -->",
+    "<table><tr><td>SHOP NOW</td></tr></table>",
+    "<!-- cfy:block:0:products:end -->",
+    "<!-- cfy:block:1:products:start -->",
+    "<table><tr><td>1 SHOP NOW</td></tr><tr><td>2 SHOP NOW</td></tr></table>",
+    "<!-- cfy:block:1:products:end -->",
+  ].join("\n")
+
+  it("campo de um bloco NÃO escreve dentro de outro bloco", () => {
+    const r = copyMergeByExample(doisProdutos, [
+      block([{ key: "cta_label", example: "SHOP NOW" }], {
+        cta_label: "SEE HOW IT WORKS",
+      }, { block_id: "b3", block_type: "products" }),
+      block([{ key: "product_cta_label", example: "2 SHOP NOW" }], {
+        product_cta_label: "SEE DETAILS",
+      }, { block_id: "b4", block_type: "products" }),
+    ])
+    expect(r.html).toContain("<td>SEE HOW IT WORKS</td>")
+    expect(r.html).toContain("<td>SEE DETAILS</td>")
+    // O que o bug produzia:
+    expect(r.html).not.toContain("1 SEE HOW IT WORKS")
+    // O "1 SHOP NOW" fica INTACTO — é texto sem dono, e sem dono ninguém
+    // escreve. Ele aparece na auditoria de texto órfão, não no email.
+    expect(r.html).toContain("<td>1 SHOP NOW</td>")
+    expect(r.report.escopo).toBe("por_bloco")
+    expect(r.report.escopo_degradado).toEqual([])
+  })
+
+  // A regra 5 continua viva DENTRO do bloco: a fita repetida de propósito
+  // (o "Black Friday" ×16 da body 2) tem um campo só e todas as cópias.
+  it("frase repetida dentro do MESMO bloco continua sendo escrita em todas", () => {
+    const html = [
+      "<!-- cfy:block:0:body:start -->",
+      "<table><tr><td>Black Friday</td></tr><tr><td>Black Friday</td></tr></table>",
+      "<!-- cfy:block:0:body:end -->",
+    ].join("\n")
+    const r = copyMergeByExample(html, [
+      block([{ key: "fita", example: "Black Friday" }], { fita: "Semana do Cliente" }, {
+        block_id: "b1",
+        block_type: "body",
+      }),
+    ])
+    expect(r.html.match(/Semana do Cliente/g)).toHaveLength(2)
+    expect(r.report.campos[0].ocorrencias).toBe(2)
+  })
+
+  it("documento sem marcadores cai no índice global (legado)", () => {
+    const r = copyMergeByExample("<td>SHOP NOW</td>", [
+      block([{ key: "cta_label", example: "SHOP NOW" }], { cta_label: "Ver ofertas" }, {
+        block_id: "b1",
+      }),
+    ])
+    expect(r.html).toContain("Ver ofertas")
+    expect(r.report.escopo).toBe("global")
+  })
+
+  // Marcador desalinhado não pode apagar a copy do bloco em silêncio: se o
+  // escopo não ancora nada e o global ancoraria, volta ao global e AVISA.
+  it("bloco cujo escopo não acha nada degrada para global e registra", () => {
+    const html = [
+      "<!-- cfy:block:0:hero:start -->",
+      "<td>nada aqui</td>",
+      "<!-- cfy:block:0:hero:end -->",
+      "<td>Shop the collection</td>",
+    ].join("\n")
+    const r = copyMergeByExample(html, [
+      block([{ key: "cta_label", example: "Shop the collection" }], {
+        cta_label: "Ver ofertas",
+      }, { block_id: "b1", block_type: "hero" }),
+    ])
+    expect(r.html).toContain("Ver ofertas")
+    expect(r.report.escopo_degradado).toEqual(["b1"])
+  })
+
   it("troca a frase do example pelo valor do n8n, por splice, no lugar exato", () => {
     const html = [
       "<table><tr>",
@@ -625,5 +707,28 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.html).toContain('<td><img src="https://cdn/l.png" alt="Loja"></td>')
     expect(r.html).toContain("{{PREHEADER}}")
     expect(r.cleaned).toContain("PREHEADER")
+  })
+})
+
+describe("applyStructuralFills — token de plataforma sem dono", () => {
+  // Com o merge por bloco, o preheader da arte de outro bloco deixou de
+  // ser sobrescrito por acidente. Ele não pode ficar literal no email.
+  it("esvazia o token que sobrou, sem remover a linha", () => {
+    const html =
+      '<div style="display:none;">TEXTO_DE_PREHEADER_AQUI</div><td>Oi</td>'
+    const r = applyStructuralFills(html, { brandName: "InnovaBay" })
+    expect(r.html).not.toContain("TEXTO_DE_PREHEADER_AQUI")
+    expect(r.html).toContain('<div style="display:none;"></div>')
+    expect(r.html).toContain("<td>Oi</td>")
+    expect(r.cleaned).toContain("TEXTO_DE_PREHEADER_AQUI")
+  })
+
+  // A armadilha: "qualquer palavra em SCREAMING_SNAKE" apagaria o código
+  // do cupom que o merge acabou de escrever. A régua é o sufixo _AQUI.
+  it("NÃO apaga copy em caixa alta — o cupom fica", () => {
+    const html = "<div>WELCOME10</div>"
+    const r = applyStructuralFills(html, { brandName: "InnovaBay" })
+    expect(r.html).toContain("WELCOME10")
+    expect(r.cleaned).not.toContain("WELCOME10")
   })
 })
