@@ -140,11 +140,12 @@ function CsAvatar({ name, size = 30 }: { name: string; size?: number }) {
 
 // ── Board ───────────────────────────────────────────────────────────
 
-export function CarteiraBoard({ onBack }: { onBack: () => void }) {
-  const { data, error, isLoading, mutate } = useSWR<CarteiraPayload>("/api/crm/carteira", fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 15_000,
-  })
+export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onBack: () => void }) {
+  const { data, error, isLoading, mutate } = useSWR<CarteiraPayload>(
+    pipelineId ? `/api/crm/carteira?pipeline_id=${pipelineId}` : "/api/crm/carteira",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 15_000 },
+  )
 
   const [sel, setSel] = useState<string | null>(null) // deal_id do drawer
   const [menuId, setMenuId] = useState<string | null>(null)
@@ -337,8 +338,14 @@ export function CarteiraBoard({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-220px)] min-w-0" style={{ fontFamily: "inherit" }}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    // Sangra o padding do corpo do shell (px-4 md:px-7 pt-5 pb-12) pra
+    // ocupar a área inteira como no protótipo — o drawer encosta na
+    // borda direita e desce até o fim.
+    <div
+      className="-mx-4 md:-mx-7 -mt-5 -mb-12 flex min-h-[calc(100dvh-96px)] min-w-0"
+      style={{ fontFamily: "inherit" }}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-3.5 md:px-7">
         {/* Header da pipeline */}
         <div className="flex shrink-0 items-start gap-3 pb-3.5">
           <div className="min-w-0 flex-1">

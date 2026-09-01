@@ -40,9 +40,24 @@ let cacheExpiresAt = 0
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 min
 
+/** Compara nomes ignorando acento, caixa e espaços nas pontas. */
+function normalizeName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
 /**
  * Resolve pipeline_id (+ stages) de um pipeline CS canonico.
  * Retorna null se nao foi seedado ainda. Cache em memoria de 5min.
+ *
+ * O match e por nome NORMALIZADO na lista de pipelines cs — o `.eq()`
+ * exato com `.maybeSingle()` falhava em silencio quando o nome em
+ * producao tinha acento ("Gestão de Carteira") ou quando o seed rodou
+ * duas vezes (maybeSingle com 2+ linhas devolve erro, nao dado). Com
+ * duplicata, vence a mais antiga — deterministico entre execucoes.
  */
 export async function getCsPipeline(
   key: CsPipelineKey,
@@ -51,12 +66,14 @@ export async function getCsPipeline(
   if (now < cacheExpiresAt && cache[key]) return cache[key] ?? null
 
   const admin = createAdminClient()
-  const { data: pipeline } = await admin
+  const { data: pipelines } = await admin
     .from("pipelines")
-    .select("id, name")
-    .eq("name", WELL_KNOWN_NAMES[key])
+    .select("id, name, created_at")
     .eq("scope", "cs")
-    .maybeSingle()
+    .order("created_at", { ascending: true })
+
+  const wanted = normalizeName(WELL_KNOWN_NAMES[key])
+  const pipeline = (pipelines ?? []).find((p) => normalizeName(p.name) === wanted)
 
   if (!pipeline) return null
 

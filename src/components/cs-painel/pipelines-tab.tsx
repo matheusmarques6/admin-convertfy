@@ -6,7 +6,7 @@ import { ChevronRight, Layers, Plus, Search } from "lucide-react"
 import { NewPipelineDialog } from "@/components/crm/new-pipeline-dialog"
 import { PipelineBoard } from "./pipeline-board"
 import { CarteiraBoard } from "./carteira-board"
-import { CADENCIAS_PIPELINE_NAME, CARTEIRA_PIPELINE_NAME } from "./constants"
+import { CADENCIAS_PIPELINE_NAME, isCarteiraPipeline } from "./constants"
 
 /**
  * Aba "Pipelines CS" do modulo Customer Success — porta do prototipo
@@ -52,8 +52,8 @@ export function PipelinesTab() {
   // A "Gestao de Carteira" tem board proprio (kanban de LOJAS por etapa
   // de saude, nao de deals genericos).
   if (openPipe) {
-    if (openPipe.name === CARTEIRA_PIPELINE_NAME) {
-      return <CarteiraBoard onBack={() => setOpenPipe(null)} />
+    if (isCarteiraPipeline(openPipe.name)) {
+      return <CarteiraBoard pipelineId={openPipe.id} onBack={() => setOpenPipe(null)} />
     }
     return <PipelineBoard pipelineId={openPipe.id} onBack={() => setOpenPipe(null)} />
   }

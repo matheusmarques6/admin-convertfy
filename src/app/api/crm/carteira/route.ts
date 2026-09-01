@@ -70,7 +70,21 @@ async function handleGet(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
 
-    const pipeline = await getCsPipeline("carteira")
+    // O board manda o id da pipeline que o usuário CLICOU no grid —
+    // caminho direto, imune a variação de nome/duplicata. O lookup por
+    // nome fica de fallback (deep-links sem id).
+    const pipelineIdParam = request.nextUrl.searchParams.get("pipeline_id")
+    let pipeline: { id: string; name: string } | null = null
+    if (pipelineIdParam) {
+      const { data: p } = await admin
+        .from("pipelines")
+        .select("id, name, scope")
+        .eq("id", pipelineIdParam)
+        .eq("scope", "cs")
+        .maybeSingle()
+      if (p) pipeline = { id: p.id, name: p.name }
+    }
+    if (!pipeline) pipeline = await getCsPipeline("carteira")
     if (!pipeline) {
       // Seed 20260507 não rodou nesta base — a UI mostra o aviso.
       return successResponse(request, { pipeline: null, stages: [], cards: [] })
