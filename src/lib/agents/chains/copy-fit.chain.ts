@@ -162,6 +162,14 @@ export interface CopyFitResult {
   de_para: DePara[]
   /** Nenhum alvo, modo desligado ou falha — o callback não regrava nada. */
   rodou: boolean
+  /**
+   * A mensagem do erro quando o fail-open engoliu um. O callback a copia
+   * para o `parsed_output` do run `copy`: o run PRÓPRIO do copy_fit é o
+   * lugar natural desse dado, mas ele é justamente o que some quando a
+   * telemetria falha — e foi assim que quatro dias de `corrigidos: 0`
+   * passaram sem explicação. Dois lugares, uma verdade.
+   */
+  erro?: string
 }
 
 const VAZIO: CopyFitResult = { aceitas: [], de_para: [], rodou: false }
@@ -475,6 +483,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       aceitas: [...aceitas.values()],
       de_para: [],
       rodou: aceitas.size > 0,
+      erro: msg,
     }
   }
 }

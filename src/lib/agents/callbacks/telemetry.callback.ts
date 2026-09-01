@@ -189,11 +189,29 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     .single()
 
   if (error) {
-    log.error("telemetry.insert_failed", {
-      agent: params.agent,
-      emailId: params.emailId,
-      error: error.message,
-    })
+    // 23514 = check_violation. Na prática só há um jeito de cair aqui: o
+    // `agent` não está no CHECK da tabela. É um buraco caro e MUDO — o
+    // `copy_fit` passou de 28/08 a 01/09 sem gravar um único run (prompt,
+    // raw_output, de_para, tokens, custo: tudo perdido) porque a migration
+    // que o criou não abriu o CHECK, e a linha de log dizia só
+    // "insert_failed". Nomear a causa é o que transforma quatro dias de
+    // "o agente não aparece na UI" em uma migration de dois minutos.
+    const checkViolation = (error as { code?: string }).code === "23514"
+    log.error(
+      checkViolation
+        ? "telemetry.insert_failed.agent_fora_do_check"
+        : "telemetry.insert_failed",
+      {
+        agent: params.agent,
+        emailId: params.emailId,
+        error: error.message,
+        ...(checkViolation
+          ? {
+              hint: `'${params.agent}' não está em email_generation_runs_agent_check — o run inteiro é descartado (e some do Estúdio) até uma migration adicionar o valor`,
+            }
+          : {}),
+      },
+    )
     // Não lance erro — telemetria não deve bloquear a geração
     return ""
   }

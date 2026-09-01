@@ -776,6 +776,62 @@ describe("POST /api/webhooks/n8n/email-copy — encurtador", () => {
     ).toEqual(["max_len"])
   })
 
+  // Entre 28/08 e 01/09 o resumo dizia `corrigidos: 0` em toda geração e não
+  // havia onde ler o motivo: o run próprio do copy_fit não era gravado
+  // (agente fora do CHECK). O desfecho passa a caber no run `copy`, que
+  // sempre existe.
+  it("o run `copy` diz POR QUE nada foi corrigido: erro e recusas", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({
+      aceitas: [],
+      de_para: [],
+      rodou: false,
+      erro: "ANTHROPIC_API_KEY nao configurada",
+    })
+
+    await POST(envio())
+    const out = runCopy()
+    expect(out.copy_fit).toMatchObject({
+      corrigidos: 0,
+      rodou: false,
+      erro: "ANTHROPIC_API_KEY nao configurada",
+    })
+  })
+
+  it("o run `copy` agrega a recusa campo a campo", async () => {
+    blocoQueEstoura()
+    runCopyFitMock.mockResolvedValue({
+      aceitas: [],
+      de_para: [
+        {
+          id: "0.section_body_1",
+          position: 0,
+          key: "section_body_1",
+          antes: "x".repeat(200),
+          antes_len: 200,
+          depois: null,
+          depois_len: null,
+          max: 120,
+          aceito: false,
+          motivos: ["max_len"],
+          tracos_antes: 0,
+          tracos_depois: 0,
+          motivo: "ainda_acima_do_limite",
+        },
+      ],
+      rodou: true,
+    })
+
+    await POST(envio())
+    const out = runCopy()
+    expect(out.copy_fit).toMatchObject({
+      rodou: true,
+      recusas: { ainda_acima_do_limite: 1 },
+    })
+    // Sem erro, a chave nem aparece — resumo limpo quando não há o que dizer.
+    expect((out.copy_fit as Record<string, unknown>).erro).toBeUndefined()
+  })
+
   it("kill-switch em `off`: não chama o encurtador e o desvio segue visível", async () => {
     blocoQueEstoura()
     loadCopyFitModeMock.mockResolvedValue("off")

@@ -653,11 +653,26 @@ export async function POST(request: NextRequest) {
             copyDeviations.splice(i, 1)
           }
         }
+        // O DESFECHO, não só a contagem. Entre 28/08 e 01/09 este resumo
+        // dizia `corrigidos: 0` em toda geração e não havia como saber por
+        // quê: o run próprio do `copy_fit` — onde moram o raw_output e o
+        // motivo campo a campo — não era gravado (agente fora do CHECK,
+        // migration 20261096). `erro` e `recusas` fazem a resposta caber
+        // aqui também, que é o run que sempre existe.
+        const recusas: Record<string, number> = {}
+        for (const d of fit.de_para) {
+          if (d.aceito) continue
+          const m = d.motivo ?? "sem_resposta"
+          recusas[m] = (recusas[m] ?? 0) + 1
+        }
         copyFitResumo = {
           alvos: alvos.length,
           corrigidos: fit.aceitas.length,
           mantidos: alvos.length - fit.aceitas.length,
           blocos_regravados: blocosRegravados,
+          rodou: fit.rodou,
+          ...(fit.erro ? { erro: fit.erro } : {}),
+          ...(Object.keys(recusas).length > 0 ? { recusas } : {}),
         }
       }
     }
