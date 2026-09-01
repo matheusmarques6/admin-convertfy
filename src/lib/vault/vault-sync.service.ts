@@ -26,6 +26,7 @@ import {
   docVariantId,
   isApproved,
   isDocActive,
+  isVaultHousekeeping,
   parseVaultFile,
   normalizeSecoes,
   type ParsedNote,
@@ -43,6 +44,13 @@ export interface VaultSyncResult {
   upserted: number
   deactivated: number
   skipped: SkippedNote[]
+  /**
+   * Faxina do vault (`_INDEX.md`, `.obsidian/`, templates): sai do lote
+   * ANTES do download e NUNCA vira alerta — não é nota que falhou, é
+   * arquivo que nunca seria nota. Contado para responder "por que N
+   * arquivos e M notas?" sem acender aviso à toa.
+   */
+  ignored: string[]
   durationMs: number
   error?: string
 }
@@ -170,6 +178,7 @@ export async function syncVault(opts: {
       upserted: r.upserted,
       deactivated: r.deactivated,
       skipped_invalid: r.skipped,
+      ignored: r.ignored,
       duration_ms: durationMs,
       error: r.error ?? null,
     }).then(({ error }) => {
@@ -180,7 +189,7 @@ export async function syncVault(opts: {
 
   if ("error" in cfg) {
     log.error("sync.config_missing", { error: cfg.error })
-    return finish({ status: "error", commitSha: null, filesTotal: 0, upserted: 0, deactivated: 0, skipped: [], error: cfg.error })
+    return finish({ status: "error", commitSha: null, filesTotal: 0, upserted: 0, deactivated: 0, skipped: [], ignored: [], error: cfg.error })
   }
 
   try {
@@ -191,7 +200,7 @@ export async function syncVault(opts: {
     const { data: state } = await admin
       .from("vault_sync_state").select("last_commit_sha").eq("id", "default").maybeSingle()
     if (!opts.force && state?.last_commit_sha === sha) {
-      return finish({ status: "noop", commitSha: sha, filesTotal: 0, upserted: 0, deactivated: 0, skipped: [] })
+      return finish({ status: "noop", commitSha: sha, filesTotal: 0, upserted: 0, deactivated: 0, skipped: [], ignored: [] })
     }
 
     // 2. Árvore recursiva → arquivos .md sob a base.
@@ -201,9 +210,20 @@ export async function syncVault(opts: {
     if (tree.truncated) log.warn("sync.tree_truncated", { repo: cfg.repo })
 
     const prefix = `${cfg.basePath}/`
-    const files = tree.tree.filter(
+    const mdFiles = tree.tree.filter(
       (e) => e.type === "blob" && e.path.startsWith(prefix) && e.path.endsWith(".md"),
     )
+    // Faxina sai ANTES do download: economiza uma requisição ao GitHub por
+    // arquivo e, principalmente, não vira "nota pulada" na tela.
+    const ignored: string[] = []
+    const files = mdFiles.filter((e) => {
+      const rel = e.path.slice(prefix.length)
+      if (isVaultHousekeeping(rel)) {
+        ignored.push(rel)
+        return false
+      }
+      return true
+    })
 
     // 3. Baixa e parseia cada arquivo (concorrência limitada).
     const notes: ParsedNote[] = []
@@ -393,7 +413,7 @@ export async function syncVault(opts: {
       trigger: opts.trigger, sha: sha.slice(0, 8),
       files: files.length, upserted, deactivated, skipped: skipped.length,
     })
-    return finish({ status: "synced", commitSha: sha, filesTotal: files.length, upserted, deactivated, skipped })
+    return finish({ status: "synced", commitSha: sha, filesTotal: files.length, upserted, deactivated, skipped, ignored })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // 401/403/404 do GitHub não dizem nada sozinhos — sonda e explica.
@@ -404,7 +424,7 @@ export async function syncVault(opts: {
     log.error("sync.failed", { trigger: opts.trigger, error: msg, diagnostico: detalhe })
     return finish({
       status: "error", commitSha: null, filesTotal: 0, upserted: 0, deactivated: 0,
-      skipped: [], error: `${msg}${detalhe}`,
+      skipped: [], ignored: [], error: `${msg}${detalhe}`,
     })
   }
 }

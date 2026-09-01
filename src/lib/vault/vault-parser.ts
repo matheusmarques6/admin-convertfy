@@ -141,6 +141,32 @@ const COMPONENTES_ROOT_KIND: Record<string, VaultDocKind> = {
 }
 
 /**
+ * Faxina do vault: arquivo que ESTRUTURALMENTE não é área de nota.
+ *
+ * O `_INDEX.md` é o MOC do Obsidian — navegação, nunca foi para ser nota —
+ * e caía em `skipped_invalid` com "caminho fora do padrão do vault" toda
+ * vez, aparecendo no card "Notas puladas" da aba Conhecimento. Esse card
+ * responde a "editei uma nota e não valeu": listar ali um arquivo que
+ * nunca seria nota treina a pessoa a ignorar o card, e aviso que se ignora
+ * não é aviso.
+ *
+ * Só o que é inequivocamente faxina entra aqui. Caminho errado DENTRO das
+ * três pastas de nota (`estruturas/x.md` sem a pasta do flow,
+ * `estruturas/welcome/sub/x.md`) e pasta com nome errado (`intencao/`, no
+ * singular) continuam sendo reportados — é exatamente para eles que o card
+ * existe.
+ */
+export function isVaultHousekeeping(relPath: string): boolean {
+  const parts = relPath.split("/")
+  // Raiz da base: _INDEX.md, README.md. Nota de verdade sempre mora em
+  // {pasta}/{flow}/{arquivo}.
+  if (parts.length === 1) return true
+  const topo = parts[0].toLowerCase()
+  if (topo.startsWith(".")) return true // .obsidian/, .trash/
+  return topo === "templates" || topo === "_templates"
+}
+
+/**
  * Classifica um caminho relativo à BASE do vault
  * (`intencoes/{flow}/{n|_flow|_progressao}.md`, `estruturas/{flow}/{slug}.md`,
  * `aprendizados/{flow|_global}/{slug}.md`, `componentes/**`). Fora do

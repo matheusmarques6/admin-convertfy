@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   classifyPath,
+  isVaultHousekeeping,
   isApproved,
   normalizeSecoes,
   parseFrontmatter,
@@ -90,6 +91,33 @@ describe("classifyPath", () => {
     expect(classifyPath("README.md")).toBeNull()
     expect(classifyPath("estruturas/welcome/sub/x.md")).toBeNull()
     expect(classifyPath("estruturas/welcome/x.txt")).toBeNull()
+  })
+})
+
+describe("isVaultHousekeeping", () => {
+  // O card "Notas puladas" existe para "editei e não valeu". O índice do
+  // Obsidian nunca seria nota — listá-lo lá treina a ignorar o card.
+  it("arquivo na raiz da base é faxina", () => {
+    expect(isVaultHousekeeping("_INDEX.md")).toBe(true)
+    expect(isVaultHousekeeping("README.md")).toBe(true)
+  })
+
+  it("pasta oculta e templates são faxina", () => {
+    expect(isVaultHousekeeping(".obsidian/app.json")).toBe(true)
+    expect(isVaultHousekeeping("Templates/nota.md")).toBe(true)
+    expect(isVaultHousekeeping("_templates/nota.md")).toBe(true)
+  })
+
+  // Estes são erro de ARQUIVAMENTO — o motivo de o card existir.
+  it("caminho errado dentro das pastas de nota NÃO é faxina", () => {
+    expect(isVaultHousekeeping("estruturas/x.md")).toBe(false)
+    expect(isVaultHousekeeping("estruturas/welcome/sub/x.md")).toBe(false)
+    expect(isVaultHousekeeping("intencao/welcome/1.md")).toBe(false)
+  })
+
+  it("nota válida nunca é faxina", () => {
+    expect(isVaultHousekeeping("intencoes/welcome/1.md")).toBe(false)
+    expect(isVaultHousekeeping("aprendizados/_global/x.md")).toBe(false)
   })
 })
 

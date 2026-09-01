@@ -31,6 +31,8 @@ interface SyncRun {
   upserted: number
   deactivated: number
   skipped_invalid: Array<{ path: string; motivo: string }>
+  /** Faxina do vault (índice, .obsidian/, templates) — nunca é alerta. */
+  ignored?: string[] | null
   duration_ms: number
   error: string | null
   created_at: string
@@ -134,6 +136,7 @@ export function VaultTab() {
 
   const lastRun = data?.runs?.[0]
   const skippedRecent = lastRun?.skipped_invalid ?? []
+  const ignoredRecent = lastRun?.ignored ?? []
 
   if (error) {
     return <EGNotice tone="neg">Erro ao carregar o conhecimento: {error}</EGNotice>
@@ -167,6 +170,21 @@ export function VaultTab() {
                 {data.state?.last_commit_sha ? ` · commit ${data.state.last_commit_sha.slice(0, 8)}` : ""}
                 {lastRun ? ` · via ${lastRun.trigger}` : ""}
               </div>
+              {/* Faxina do vault: contada, nunca alertada. O `_INDEX.md`
+                  aparecia como "nota pulada" — e alerta que não pede ação
+                  ensina a ignorar o card que existe para pedir ação. */}
+              {ignoredRecent.length > 0 && (
+                <div
+                  style={{ fontSize: 11.5, color: C.g400, marginTop: 2 }}
+                  title={ignoredRecent.join("\n")}
+                >
+                  {ignoredRecent.length}{" "}
+                  {ignoredRecent.length === 1
+                    ? "arquivo ignorado"
+                    : "arquivos ignorados"}{" "}
+                  (índice, templates)
+                </div>
+              )}
             </div>
           </div>
           <EGBtn variant="dark" onClick={onSync} disabled={syncing}>
