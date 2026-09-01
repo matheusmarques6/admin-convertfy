@@ -2,11 +2,33 @@
  * Monta o bloco IMAGE_SLOTS do prompt do agente de imagem: uma seção
  * estruturada POR campo type=image do bloco, com o que vem do schema
  * (nome/especificidade/exemplo/formato), o comentário do slot (slot_note) e
- * a copy REAL do próprio grupo (por prefixo do key: product_1_image →
+ * as ÁREAS DE TEXTO do próprio grupo (por prefixo do key: product_1_image →
  * product_1_name / product_1_cta …).
  *
- * A copy só existe pós-n8n, então o `content` (copy gerada) é resolvido no
- * phase2 e passado aqui. Puro — testável.
+ * ── Por que as áreas são forma, e não a copy ──────────────────────────
+ *
+ * Até 01/09 este bloco mandava a copy REAL, entre aspas:
+ *
+ *     copy_do_grupo:
+ *     - hero_headline: "STOP WASTING, START SAVING ENERGY AND MONEY"
+ *     - ps_line: "P.S. Discount code INNOVA10 expires August 31st."
+ *
+ * E o modelo desenhou exatamente isso dentro do PNG — headline, selos e o
+ * cupom com data de validade —, apesar de a proibição de texto estar
+ * escrita TRÊS vezes no prompt (topo e fim do system, mais o
+ * `UNIVERSAL RESTRICTIONS` do user), ela própria uma resposta ao mesmo
+ * incidente na Luxe Lift, quando saiu "SHOK NOW" queimado na arte.
+ *
+ * Pedir a um modelo de imagem que leia uma headline e não a desenhe é a
+ * instrução que já falhou duas vezes. Então a headline não vai mais: o que
+ * vai é a FORMA da área (papel e tamanho), que é o que a var servia para —
+ * compor deixando o espaço certo, na proporção certa — sem uma única frase
+ * copiável. `image_spec`, `example`, `slot_note` e `formato` seguem
+ * intactos: são direção de arte, não copy.
+ *
+ * O `content` (copy gerada, pós-n8n) continua entrando porque é ele que diz
+ * QUAIS áreas existem de fato e QUE TAMANHO cada uma tem. Nenhum valor dele
+ * aparece na saída — há teste para isso. Puro — testável.
  */
 
 import type { BlueprintBlockField } from "@/types/email-generation"
@@ -57,13 +79,32 @@ function copyValue(v: unknown): string | null {
   return null
 }
 
+// Keys que marcam botão. O modelo compõe diferente quando sabe que ali vai
+// um retângulo clicável, e não uma linha de texto solta.
+const CTA_HINTS = ["cta", "button", "btn", "_label"]
+
 /**
- * Copy dos campos irmãos do MESMO grupo do slot (por prefixo). Usa os
- * `fields` do bloco pra saber quais keys são copy (text/number) e lê os
- * valores do `content`. Prefixo vazio (key genérico "image") → todos os
- * campos de copy do bloco.
+ * O PAPEL da área, derivado do contrato — nunca do texto. Sem limiar por
+ * tamanho: "título acima de 30 caracteres" seria uma régua inventada, e o
+ * número de caracteres já acompanha a linha.
  */
-function groupCopy(
+function formaDaArea(f: BlueprintBlockField): string {
+  if (f.type === "number") return "número curto"
+  if (f.type === "text_long") return "parágrafo"
+  const k = f.key.toLowerCase()
+  if (CTA_HINTS.some((h) => k.includes(h))) return "rótulo de botão"
+  return "linha de texto"
+}
+
+/**
+ * Áreas de texto dos campos irmãos do MESMO grupo do slot (por prefixo).
+ * Usa os `fields` do bloco pra saber quais keys são copy (text/number) e o
+ * `content` pra saber quais existem de fato e que tamanho têm — o VALOR em
+ * si nunca sai daqui. Prefixo vazio (key genérico "image") → todos os
+ * campos de copy do bloco; foi por esse caminho que o "P.S. Discount code
+ * INNOVA10 expires August 31st." chegou ao modelo e virou carimbo.
+ */
+function areasDeTexto(
   imageField: BlueprintBlockField,
   fields: BlueprintBlockField[],
   content: Record<string, unknown>,
@@ -76,7 +117,8 @@ function groupCopy(
     }
     if (prefix && !f.key.toLowerCase().startsWith(`${prefix}_`)) continue
     const val = copyValue(content[f.key])
-    if (val) out.push([f.key, val])
+    if (!val) continue
+    out.push([f.key, `${formaDaArea(f)}, ~${val.length} caracteres`])
   }
   return out
 }
@@ -108,7 +150,7 @@ export function buildImageSlots(
     const example = (f.example ?? "").trim()
     const formato = formatoLine(f)
     const note = (f.slot_note ?? "").trim()
-    const grupo = groupCopy(f, list, cont)
+    const grupo = areasDeTexto(f, list, cont)
 
     const lines: string[] = [`<slot_imagem tag="${tag}">`, `campo: ${f.key}`]
     if (spec) lines.push(`especificidade: ${spec}`)
@@ -116,8 +158,10 @@ export function buildImageSlots(
     if (formato) lines.push(`formato: ${formato}`)
     if (note) lines.push(`comentario: ${note}`)
     if (grupo.length > 0) {
-      lines.push("copy_do_grupo:")
-      for (const [k, v] of grupo) lines.push(`- ${k}: "${v}"`)
+      lines.push(
+        "areas_de_texto (o HTML escreve estes textos POR CIMA da imagem — deixe estas regiões limpas, sem desenhar nada nelas):",
+      )
+      for (const [k, v] of grupo) lines.push(`- ${k}: ${v}`)
     }
     lines.push("</slot_imagem>")
     return lines.join("\n")

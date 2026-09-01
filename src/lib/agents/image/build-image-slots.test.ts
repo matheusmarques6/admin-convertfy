@@ -44,7 +44,7 @@ describe("buildImageSlots", () => {
     ).toBe("")
   })
 
-  it("hero: schema + formato por dims + slot_note + copy do grupo (prefixo hero)", () => {
+  it("hero: schema + formato por dims + slot_note + áreas do grupo (prefixo hero)", () => {
     const fields = [
       f({ key: "hero_headline", type: "text_short" }),
       f({ key: "hero_body", type: "text_long" }),
@@ -69,9 +69,12 @@ describe("buildImageSlots", () => {
     expect(out).toContain("exemplo: close no rosto")
     expect(out).toContain("formato: 600x700px · proporção 6:7")
     expect(out).toContain("comentario: luz natural difusa")
-    expect(out).toContain("copy_do_grupo:")
-    expect(out).toContain('- hero_headline: "Bem-vinda ao seu glow"')
-    expect(out).toContain('- hero_body: "Sua rotina começa aqui."')
+    expect(out).toContain("areas_de_texto")
+    // A FORMA da área, nunca a frase.
+    expect(out).toContain("- hero_headline: linha de texto, ~21 caracteres")
+    expect(out).toContain("- hero_body: parágrafo, ~23 caracteres")
+    expect(out).not.toContain("Bem-vinda ao seu glow")
+    expect(out).not.toContain("Sua rotina começa aqui.")
   })
 
   it("multi-imagem: cada slot pega só a copy do SEU grupo (product_1 vs product_2)", () => {
@@ -90,10 +93,11 @@ describe("buildImageSlots", () => {
     const out = buildImageSlots(fields, content)
     const s1 = out.slice(out.indexOf("PRODUCT_1_IMAGE"), out.indexOf("PRODUCT_2_IMAGE"))
     const s2 = out.slice(out.indexOf("PRODUCT_2_IMAGE"))
-    expect(s1).toContain('- product_1_name: "Sérum"')
-    expect(s1).toContain('- product_1_cta: "Comprar"')
+    expect(s1).toContain("- product_1_name: linha de texto, ~5 caracteres")
+    // `_cta` no key → o modelo sabe que ali vai um botão, não uma frase.
+    expect(s1).toContain("- product_1_cta: rótulo de botão, ~7 caracteres")
     expect(s1).not.toContain("product_2")
-    expect(s2).toContain('- product_2_name: "Creme"')
+    expect(s2).toContain("- product_2_name: linha de texto, ~5 caracteres")
     expect(s2).not.toContain("product_1")
   })
 
@@ -119,10 +123,10 @@ describe("buildImageSlots", () => {
       f({ key: "image", type: "image" }),
     ]
     const out = buildImageSlots(fields, { headline: "Olá" })
-    expect(out).toContain('- headline: "Olá"')
+    expect(out).toContain("- headline: linha de texto, ~3 caracteres")
   })
 
-  it("campos de copy vazios são omitidos; sem grupo não imprime copy_do_grupo", () => {
+  it("campos de copy vazios são omitidos; sem grupo não imprime areas_de_texto", () => {
     const out = buildImageSlots(
       [
         f({ key: "hero_headline", type: "text_short" }),
@@ -130,6 +134,38 @@ describe("buildImageSlots", () => {
       ],
       { hero_headline: "  " },
     )
-    expect(out).not.toContain("copy_do_grupo:")
+    expect(out).not.toContain("areas_de_texto")
+  })
+
+  // A INVARIANTE deste módulo desde 01/09: o prompt do gerador de imagem não
+  // carrega uma única frase da copy. A regra "não escreva texto" já estava
+  // no prompt três vezes e o modelo desenhou a headline, os selos e o cupom
+  // assim mesmo — o que muda o resultado é não mandar o material.
+  it("nenhum valor do content aparece na saída", () => {
+    const fields = [
+      f({ key: "headline", type: "text_short" }),
+      f({ key: "body", type: "text_long" }),
+      f({ key: "ps_line", type: "text_short" }),
+      f({ key: "image", type: "image", image_spec: "loja iluminada" }),
+    ]
+    const content = {
+      headline: "STOP WASTING, START SAVING ENERGY AND MONEY",
+      body: "Fair question — and the most common one we get.",
+      ps_line: "P.S. Discount code INNOVA10 expires August 31st.",
+    }
+    const out = buildImageSlots(fields, content)
+
+    for (const valor of Object.values(content)) {
+      expect(out).not.toContain(valor)
+      // Nem em pedaços: uma palavra distintiva já basta para o modelo
+      // desenhar. "INNOVA10" foi o cupom que saiu carimbado na arte.
+      for (const palavra of valor.split(/\s+/).filter((w) => w.length > 5)) {
+        expect(out).not.toContain(palavra)
+      }
+    }
+    // O que SOBRA é a direção de arte e a forma das áreas.
+    expect(out).toContain("especificidade: loja iluminada")
+    expect(out).toContain("- headline: linha de texto, ~43 caracteres")
+    expect(out).toContain("- ps_line: linha de texto")
   })
 })

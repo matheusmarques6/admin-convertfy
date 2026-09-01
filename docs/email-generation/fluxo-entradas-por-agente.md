@@ -311,7 +311,7 @@ Gera as fotos via OpenRouter (chat completions com saída de imagem). Cada campo
 
 | Entrada | Origem | Classe |
 |---|---|---|
-| `IMAGE_SLOTS` | schema da variante filtrado pelo slot: tag, especificidade (`image_spec/guidance`), exemplo, formato (WxH/aspect), `slot_note` (comentário do designer no HTML) + `copy_do_grupo` (valores reais de `email_blocks.content`) | biblioteca |
+| `IMAGE_SLOTS` | schema da variante filtrado pelo slot: tag, especificidade (`image_spec/guidance`), exemplo, formato (WxH/aspect), `slot_note` (comentário do designer no HTML) + `areas_de_texto` (papel e tamanho de cada campo de copy do grupo — desde 01/09 a copy LITERAL não vai mais: o modelo desenhava a headline e o cupom no PNG) | biblioteca |
 | `PHOTO_DIRECTION` | `email_component_variants.photo_direction` — brief primário do fotógrafo | biblioteca |
 | `EMAIL_OBJETIVO` / `EMAIL_IDEIA` / `EMAIL_ASSUNTO` | blueprint efetivo (`objective`, `fio_narrativo ?? messaging`, `subject_hint`) | upstream |
 | `IMAGE_BRIEF` | blueprint (só quando `IMAGE_SLOTS` vazio — legado) | upstream |

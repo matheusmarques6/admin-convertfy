@@ -1400,7 +1400,8 @@ export async function runPhase2Image(
           blockType: (blk.block_type as string) ?? undefined,
           blockLabel: (blk.label as string) ?? undefined,
           blockPosition: (blk.position as number) ?? undefined,
-          // Copy real do bloco → copy_do_grupo dos slots em IMAGE_SLOTS.
+          // Copy real do bloco → mede as areas_de_texto dos slots em
+          // IMAGE_SLOTS (o texto não sai daqui; só o papel e o tamanho).
           blockContent:
             (blk.content as Record<string, unknown> | null) ?? undefined,
           imageOverlayReserveBottom: reserveBottom,

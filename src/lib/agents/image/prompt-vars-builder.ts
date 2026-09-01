@@ -83,7 +83,8 @@ export interface ImagePromptVarsInput {
   aspect?: AspectKey
   mode?: ImageMode
   // Copy REAL do bloco (email_blocks.content) — resolvida no phase2. Alimenta
-  // a `copy_do_grupo` de cada slot em IMAGE_SLOTS. Ausente → sem copy no slot.
+  // as `areas_de_texto` de cada slot em IMAGE_SLOTS — só a FORMA (papel e
+  // tamanho); o texto em si não vai ao modelo. Ausente → sem áreas no slot.
   blockContent?: Record<string, unknown> | null
   /**
    * Direção fotográfica por `variant_id` (migration 20261060). O bloco do
@@ -222,8 +223,8 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   ).trim()
 
   // Um slot por chamada: filtra o schema do bloco para o campo alvo. A
-  // `copy_do_grupo` do buildImageSlots continua vindo do content INTEIRO do
-  // bloco, então o slot isolado não perde o contexto de copy dos irmãos.
+  // as `areas_de_texto` do buildImageSlots continuam vindo do content
+  // INTEIRO do bloco, então o slot isolado não perde o contexto dos irmãos.
   const slotFields = input.fieldKey
     ? (bpBlock?.fields ?? []).filter(
         (f) => (f as { key?: string }).key === input.fieldKey,
