@@ -14,6 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { syncCarteiraDeal } from "./cs-pipelines-sync.service"
+import { getStoreHealthRules } from "./store-health-rules.service"
 import { getUnifiedRevenue } from "./unified-metrics.service"
 
 const log = logger.child("CrmHealthService")
@@ -249,9 +250,11 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
     tickets: ticketsTracked,
     nps: store.nps_last_score != null,
   }
-  const weights: Record<keyof HealthComponents, number> = {
-    email: 0.35, revenue: 0.30, tickets: 0.20, nps: 0.15,
-  }
+  // Pesos EDITÁVEIS (painel "Regras do score" da Gestão de Carteira,
+  // persistidos em settings.store_health_rules). A escala é % relativo
+  // — a renormalização por weightSum abaixo torna a soma irrelevante.
+  const rules = await getStoreHealthRules()
+  const weights: Record<keyof HealthComponents, number> = rules.weights
   let weightSum = 0
   let weighted = 0
   for (const k of ["email", "revenue", "tickets", "nps"] as const) {
@@ -276,11 +279,11 @@ export async function computeStoreHealth(storeId: string, orgId: string): Promis
     })
   }
 
-  // Auto-cria store_alert health_critical quando score cai pra <50 e
-  // nao ha alerta ativo pra essa loja ainda. Idempotente (dedup por
-  // store_id+type+status='active').
-  if (score != null && score < 50) {
-    await maybeCreateHealthAlert(storeId, score, components)
+  // Auto-cria store_alert health_critical quando o score cai abaixo do
+  // limite configurado (default 50) e nao ha alerta ativo pra essa loja
+  // ainda. Idempotente (dedup por store_id+type+status='active').
+  if (score != null && score < rules.alert_threshold) {
+    await maybeCreateHealthAlert(storeId, score, components, rules.alert_critical)
   }
 
   // Sincroniza com o pipeline "Gestao de Carteira" (state-board CS):
@@ -312,6 +315,7 @@ async function maybeCreateHealthAlert(
   storeId: string,
   score: number,
   components: HealthComponents,
+  criticalBelow: number,
 ): Promise<void> {
   const admin = createAdminClient()
 
@@ -341,7 +345,7 @@ async function maybeCreateHealthAlert(
     .map(([k, v]) => `${k}:${v}`)
     .join(" · ")
 
-  const severity = score < 30 ? "critical" : "warning"
+  const severity = score < criticalBelow ? "critical" : "warning"
 
   const { error } = await admin.from("store_alerts").insert({
     store_id: storeId,

@@ -12,6 +12,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { clearCsPipelineCache, getCsPipeline } from "@/lib/cs-pipelines"
+import { getStoreHealthRules } from "./store-health-rules.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CsPipelinesSync")
@@ -186,10 +187,14 @@ function carteiraTargets(stages: CarteiraStage[]) {
   return { auto, autoIds: new Set(auto.map((s) => s.id)), lost }
 }
 
-function stageForScore(score: number | null, auto: CarteiraStage[]): CarteiraStage | null {
+function stageForScore(
+  score: number | null,
+  auto: CarteiraStage[],
+  thresholds: { healthy: number; attention: number },
+): CarteiraStage | null {
   if (auto.length === 0) return null
   const s = score ?? 50
-  const idx = s >= 80 ? 0 : s >= 60 ? 1 : 2
+  const idx = s >= thresholds.healthy ? 0 : s >= thresholds.attention ? 1 : 2
   return auto[Math.min(idx, auto.length - 1)]
 }
 
@@ -221,7 +226,10 @@ export async function syncCarteiraDeal(args: {
 
     const { auto, autoIds, lost } = carteiraTargets(pipeline.stages)
     const isActive = store.is_active ?? true
-    const targetStage = isActive ? stageForScore(args.healthScore, auto) : lost
+    const rules = await getStoreHealthRules()
+    const targetStage = isActive
+      ? stageForScore(args.healthScore, auto, rules.stage_thresholds)
+      : lost
     if (!targetStage) return
     const targetIsChurn = !isActive
 
@@ -436,8 +444,11 @@ export async function ensureCarteiraDeals(orgId: string, pipelineId: string): Pr
     if (missing.length === 0) return 0
 
     const nowIso = new Date().toISOString()
+    const rules = await getStoreHealthRules()
     const rows = missing.map((s) => {
-      const stage = stageForScore((s.health_score as number | null) ?? null, auto) ?? auto[0]
+      const stage =
+        stageForScore((s.health_score as number | null) ?? null, auto, rules.stage_thresholds) ??
+        auto[0]
       const owner = Array.isArray(s.client) ? s.client[0] : s.client
       return {
         pipeline_id: pipelineId,

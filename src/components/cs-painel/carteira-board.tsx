@@ -18,9 +18,10 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import useSWR from "swr"
-import { Settings2, X } from "lucide-react"
+import { Settings2, SlidersHorizontal, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
+import { ScoreRulesDialog } from "./score-rules-dialog"
 import {
   pctTone,
   type MensalidadeMes,
@@ -156,6 +157,7 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   const [callData, setCallData] = useState("")
   const [callNota, setCallNota] = useState("")
   const [editCols, setEditCols] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -373,13 +375,22 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
               Cada loja vive em uma etapa — o estado da conta. Pausar tira a loja da carteira ativa e registra o motivo.
             </div>
           </div>
-          <button
-            onClick={() => setEditCols(true)}
-            className="mt-3.5 inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[8px] border px-3 text-[11.5px] font-medium"
-            style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
-          >
-            <Settings2 className="h-[13px] w-[13px]" /> Editar etapas
-          </button>
+          <div className="mt-3.5 flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setRulesOpen(true)}
+              className="inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border px-3 text-[11.5px] font-medium"
+              style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
+            >
+              <SlidersHorizontal className="h-[13px] w-[13px]" /> Regras do score
+            </button>
+            <button
+              onClick={() => setEditCols(true)}
+              className="inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border px-3 text-[11.5px] font-medium"
+              style={{ borderColor: "var(--ops-border)", background: "var(--ops-card)", color: "var(--ops-sec)" }}
+            >
+              <Settings2 className="h-[13px] w-[13px]" /> Editar etapas
+            </button>
+          </div>
         </div>
 
         {actionError && (
@@ -575,6 +586,15 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             </ModalBtn>
           </div>
         </Modal>
+      )}
+
+      {/* Regras do score */}
+      {rulesOpen && (
+        <ScoreRulesDialog
+          stages={stages}
+          onClose={() => setRulesOpen(false)}
+          onChanged={() => void mutate()}
+        />
       )}
 
       {/* Editor de etapas */}
@@ -840,6 +860,9 @@ function CarteiraDrawer({
         </div>
       )}
 
+      {/* Por que este score (componentes do último cálculo) */}
+      <DrawerHealth storeId={c.store_id} score={c.health_score} />
+
       {/* Resultado 30d */}
       <div className="mt-[18px]">
         {secTitle("Resultado · 30d")}
@@ -1039,6 +1062,81 @@ function CarteiraDrawer({
   )
 }
 
+// ── Saúde no drawer (por que este score) ────────────────────────────
+
+const HEALTH_COMPONENT_LABELS: Array<[key: string, label: string]> = [
+  ["email", "Email"],
+  ["revenue", "Receita"],
+  ["tickets", "Tickets"],
+  ["nps", "NPS"],
+]
+
+/**
+ * Componentes do último cálculo do score (crm_health_history) — o
+ * "por quê" do número que posiciona a loja na carteira. Regras e
+ * fórmulas completas ficam no painel "Regras do score" do header.
+ */
+function DrawerHealth({ storeId, score }: { storeId: string; score: number | null }) {
+  const { data } = useSWR<{ history: Array<{ health_score: number; components: Record<string, number>; created_at: string }> }>(
+    `/api/admin/stores/${storeId}/health-history?limit=1`,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false },
+  )
+  const last = data?.history?.[0]
+  const tone = (v: number) =>
+    v >= 70 ? "var(--ops-pos)" : v >= 50 ? "var(--ops-warn)" : "var(--ops-neg)"
+
+  return (
+    <div className="mt-[18px]">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[9.5px] font-[650] uppercase tracking-[0.08em]" style={{ color: "var(--ops-mut)" }}>
+          Saúde
+        </div>
+        {score != null && (
+          <span className="text-[12px] font-[650]" style={{ color: tone(score), ...TNUM }}>
+            {score}/100
+          </span>
+        )}
+      </div>
+      {last ? (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {HEALTH_COMPONENT_LABELS.map(([key, label]) => {
+            const v = last.components?.[key]
+            if (typeof v !== "number") return null
+            return (
+              <div key={key} className="flex items-center gap-2">
+                <span className="w-[52px] text-[10.5px]" style={{ color: "var(--ops-sec)" }}>
+                  {label}
+                </span>
+                <span
+                  className="h-[4px] flex-1 overflow-hidden rounded-[2px]"
+                  style={{ background: "var(--ops-track, rgba(0,0,0,0.08))" }}
+                >
+                  <span
+                    className="block h-full rounded-[2px]"
+                    style={{ width: `${Math.min(100, Math.max(0, v))}%`, background: tone(v) }}
+                  />
+                </span>
+                <span className="w-[24px] text-right text-[10.5px] font-semibold" style={{ color: tone(v), ...TNUM }}>
+                  {v}
+                </span>
+              </div>
+            )
+          })}
+          <div className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+            calculado em {new Date(last.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+            {" · "}componente sem dado fica fora da média
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px] leading-[1.5]" style={{ color: "var(--ops-mut)" }}>
+          Sem cálculo ainda — roda no cron diário, ou use “Regras do score → Recalcular agora”.
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Editor de etapas ────────────────────────────────────────────────
 
 function StageEditor({
@@ -1225,7 +1323,7 @@ function EditorBtn({
 
 // ── Primitivas de modal ─────────────────────────────────────────────
 
-function Modal({ children, onClose, width }: { children: React.ReactNode; onClose: () => void; width: number }) {
+export function Modal({ children, onClose, width }: { children: React.ReactNode; onClose: () => void; width: number }) {
   return (
     <div
       onClick={onClose}
@@ -1245,7 +1343,7 @@ function Modal({ children, onClose, width }: { children: React.ReactNode; onClos
   )
 }
 
-function ModalBtn({
+export function ModalBtn({
   children,
   onClick,
   primary,
