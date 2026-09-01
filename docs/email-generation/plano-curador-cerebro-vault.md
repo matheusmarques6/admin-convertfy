@@ -56,6 +56,21 @@ uso** (eliminar antes de rankear; ranking lexicográfico `objecao → registro �
 paleta → papel_na_peca` com degradação). Sonnet-4.6 segue procedimento por
 texto com folga; kimi-k3 era o motivo de manter a tarefa rasa.
 
+**`exige` foi REMOVIDO do prompt (01/09).** O campo eliminava candidata antes
+do ranking, e os 52 requisitos do vault têm `verificavel_hoje: false` — o
+próprio vault declara que nenhum deles é conferível hoje, então toda
+eliminação era dedução do modelo sobre um ativo invisível ("canto-livre-para-
+selo incerto mas razoável", "eliminada por ausência de evidência"). No
+Welcome 1 da Innova Bay isso matou 2 das 3 variantes de body e deixou UMA
+candidata de nove; a regra "sobreviveu, tem de sair escolhida" fez o resto. A
+correção não foi uma emenda pedindo para o campo não eliminar — mandar o dado
+e depois pedir para ignorá-lo é o mesmo erro que traduziu o email no mesmo
+dia. `exige` saiu de `buildCatalogVaultExtras`, do catálogo e dos dois
+prompts (vault e legado), e `buildRequisitosGlossario` foi removida. Hoje só
+eliminam: variante inativa/sem schema, `momento_vetado` e capacidade
+(`product_slots` × produtos com link). Os docs `kind='requisito'` continuam
+em `email_vault_docs`, apenas não são servidos.
+
 **Precedência declarada:** onde o eixo/prosa do vault contradiz a tag do banco,
 **o vault vence** (lacuna `tags-do-banco-contradizem-a-prosa` já documentada;
 a filosofia da casa já é "dado curado vence o LLM").

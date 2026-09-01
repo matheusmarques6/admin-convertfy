@@ -295,13 +295,30 @@ Condicional, roda **inline no callback** (passo 3.6): recebe **só os campos com
 | `idioma` | voltou em língua diferente da da loja | 20261099 |
 
 O `idioma` existe porque a ordem de idioma **vai** no payload do n8n em três
-lugares (raiz, `store` e prefixando `pesquisa_diagnostico`) e o flow **não a
-aplica**: na Innova Bay, loja `en`, a copy voltou em português dentro do
-mesmo bloco. O detector (`lib/email-workspace/idioma-copy.ts`, puro) é
+lugares (raiz, `store` e prefixando `pesquisa_diagnostico`) e o flow nem
+sempre a aplica. O detector (`lib/email-workspace/idioma-copy.ts`, puro) é
 conservador — rótulo curto, cupom e frase ambígua saem como `indefinido` e
 NÃO viram alvo, porque falso positivo aqui reescreveria copy correta. O
 desvio vira número em `parsed_output.idioma` do run `copy` **mesmo com o
 encurtador desligado**: é a medida do que o flow ignora.
+
+**O idioma da loja é declaração GLOBAL, não marca por campo** (incidente
+01/09, migration 20261100). A primeira versão marcava só o campo divergente
+(`reescrever_no_idioma`) e dizia no prompt "por padrão mantenha o mesmo
+idioma; a ÚNICA exceção é…". Num prompt inteiro em português, essa
+construção condicional ensinou o modelo a trocar de língua: o n8n mandou o
+Welcome 1 da Innova Bay **em inglês**, os 14 campos entraram por tamanho e
+travessão e voltaram **todos em português**. Agora o `{{idioma_alvo}}` abre o
+user template e vale para todo campo.
+
+**O guard vale em TODO alvo**, não só nos de idioma — foi essa assimetria que
+deixou as 14 traduções passarem (não estavam vazias, não eram idênticas,
+encurtaram, não tinham traço). `aceitarReescrita` recusa com
+`mudou_de_idioma` qualquer reescrita cuja língua fuja da da loja, mais a
+regra do acento que aparece do nada (`introduziuAcentoEstrangeiro`) para o
+campo curto onde o detector se cala: "Vehicle Diagnostics" → "Diagnóstico".
+Contagem em `traducoes_recusadas`; os pares reais do incidente são teste de
+regressão em `copy-fit.test.ts`.
 
 **Modelo**: `anthropic/claude-haiku-4.5` (OpenRouter desde 20261098) · T 0.4 · max 1500.
 
@@ -311,7 +328,7 @@ encurtador desligado**: é a medida do que o flow ignora.
 | `tom_voz` | `client_stores.tone_description ?? tom_de_voz` | loja |
 | `contrato_json` | `email_blocks.fields` (label, max/min, orientação — do output_schema da variante; max já medido na caixa por `fitBudgets`/`measureSlot`) | curadoria |
 | `copy_atual_json` | textos do n8n com problema (`email_blocks.content`), com `travessoes_agora`/`idioma_agora` | upstream |
-| `reescrever_no_idioma` (no contrato) | `client_stores.language` via `resolveStoreLanguage` | loja |
+| `idioma_alvo` | `client_stores.language` via `resolveStoreLanguage` — declaração global no topo do template | loja |
 
 ---
 

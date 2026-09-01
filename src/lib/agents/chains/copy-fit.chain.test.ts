@@ -286,12 +286,51 @@ describe("runCopyFit", () => {
     idioma_esperado: "en",
   }
 
-  it("o contrato pede o idioma da loja pelo nome", async () => {
+  // O idioma é UMA declaração no topo, igual para todo campo. A marca por
+  // campo (`reescrever_no_idioma` + "por padrão mantenha o mesmo idioma, a
+  // única exceção é…") foi o que ensinou o modelo a traduzir os 14 campos
+  // em 01/09 — ela não volta.
+  it("o idioma da loja é declaração global, não marca por campo", async () => {
     invokeMock.mockResolvedValue(respostaLLM({}))
     await runCopyFit(entrada([alvo(ALVO_IDIOMA)]))
     const vars = invokeMock.mock.calls[0][1] as Record<string, string>
-    expect(vars.contrato_json).toContain('"reescrever_no_idioma": "en (Inglês)"')
+    expect(vars.idioma_alvo).toBe("en (Inglês)")
+    expect(vars.contrato_json).not.toContain("reescrever_no_idioma")
+    expect(vars.contrato_json).toContain('"traduzir_para_o_idioma_da_loja": true')
     expect(vars.copy_atual_json).toContain('"idioma_agora": "pt"')
+  })
+
+  it("o campo que só estourou não recebe marca de idioma nenhuma", async () => {
+    invokeMock.mockResolvedValue(respostaLLM({}))
+    await runCopyFit(entrada([alvo({ idioma_esperado: "en" })]))
+    const vars = invokeMock.mock.calls[0][1] as Record<string, string>
+    expect(vars.idioma_alvo).toBe("en (Inglês)")
+    expect(vars.contrato_json).not.toContain("traduzir_para_o_idioma_da_loja")
+  })
+
+  // O guard universal, medido no chain: o modelo devolve tradução para um
+  // alvo de TAMANHO e o código recusa — a copy original fica.
+  it("tradução num alvo de tamanho é recusada e contada", async () => {
+    invokeMock.mockResolvedValue(
+      respostaLLM({
+        "1.section_body_1": "Todos com garantia vitalícia e avaliações reais de quem comprou.",
+      }),
+    )
+    const r = await runCopyFit(
+      entrada([
+        alvo({
+          texto:
+            "Each one ships with a lifetime guarantee and real buyer reviews. No guessing required.",
+          max: 76,
+          idioma_esperado: "en",
+        }),
+      ]),
+    )
+    expect(r.aceitas).toEqual([])
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.traducoes_recusadas).toBe(1)
+    const dePara = (parsed.de_para as Array<Record<string, unknown>>)[0]
+    expect(dePara.motivo).toBe("mudou_de_idioma")
   })
 
   it("aceita a versão em inglês e registra o antes/depois do idioma", async () => {

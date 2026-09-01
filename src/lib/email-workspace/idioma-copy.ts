@@ -130,6 +130,43 @@ export function familiaDoIdioma(code: string | null | undefined): "pt" | "en" | 
 }
 
 /**
+ * Letras acentuadas que o inglês não usa em palavra nativa. Não é uma
+ * "lista do português": `ñ` é espanhol e `ü` é alemão — para uma loja `en`,
+ * qualquer uma delas aparecendo do nada é troca de língua do mesmo jeito.
+ */
+const DIACRITICOS = /[áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/
+
+/**
+ * A reescrita INTRODUZIU acento onde o original não tinha, numa loja cujo
+ * idioma não usa acento?
+ *
+ * Existe por causa do campo curto, onde `detectarIdioma` se cala de
+ * propósito: "OBD CarScan Pro / Vehicle Diagnostics" virou "OBD CarScan Pro
+ * / Diagnóstico" e "Lifetime guarantee, no expiration" virou "Garantia
+ * vitalícia, sem prazo" — três palavras cada, evidência de menos para o
+ * detector e evidência de sobra para um humano.
+ *
+ * A comparação é contra o ORIGINAL, nunca contra um alfabeto fixo: nome de
+ * marca acentuado ("Café Blend") que já estava lá continua passando, porque
+ * o acento não é novo.
+ */
+export function introduziuAcentoEstrangeiro(
+  original: unknown,
+  novo: unknown,
+  idiomaDaLoja: string | null | undefined,
+): boolean {
+  if (familiaDoIdioma(idiomaDaLoja) !== "en") return false
+  const a = typeof original === "string" ? original : ""
+  const b = typeof novo === "string" ? novo : ""
+  if (!DIACRITICOS.test(b)) return false
+  const jaTinha = new Set(a.match(new RegExp(DIACRITICOS, "g")) ?? [])
+  for (const ch of b.match(new RegExp(DIACRITICOS, "g")) ?? []) {
+    if (!jaTinha.has(ch)) return true
+  }
+  return false
+}
+
+/**
  * O campo está no idioma errado? `false` sempre que o detector não se
  * pronuncia — a dúvida nunca vira reescrita.
  */

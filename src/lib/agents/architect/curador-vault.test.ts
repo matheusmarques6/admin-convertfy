@@ -6,7 +6,6 @@ import {
   buildEstruturasRefResumo,
   buildMomentoBlock,
   buildProtocoloBlock,
-  buildRequisitosGlossario,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
   extractVariantSections,
@@ -158,7 +157,9 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     const hero = extras.get("d9e34a1f-7bc7-47e8-9081-53600b104dd2")
     expect(hero?.slug).toBe("hero-3-cupom-de-captacao")
     expect(hero?.momento).toEqual(["welcome-1"])
-    expect(hero?.exige).toEqual(["cupom-ativo"])
+    // `exige` não é mais lido do frontmatter (01/09): o campo eliminava
+    // candidata sobre requisito que o próprio vault declara não verificável.
+    expect(hero).not.toHaveProperty("exige")
     expect(hero?.peso).toBe("medio · 949px")
     expect(hero?.quando_nao_usar).toContain("Sem cupom")
     expect(extras.get("id-faq")?.slug).toBe("body-7-faq")
@@ -194,8 +195,6 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     expect(buildProtocoloBlock(emptyCuradorVaultKnowledge())).toContain("não sincronizado")
     expect(buildConvivenciaBlock(k)).toContain("prova-social-nao-duplica-na-peca")
     expect(buildConvivenciaBlock(emptyCuradorVaultKnowledge())).toContain("nenhuma regra")
-    expect(buildRequisitosGlossario(k)).toContain("- cupom-ativo: Existe um cupom ativo")
-    expect(buildRequisitosGlossario(emptyCuradorVaultKnowledge())).toContain("não sincronizado")
   })
 
   it("bloco de momento traz o valor + a nota do eixo quando existe", () => {

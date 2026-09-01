@@ -40,7 +40,6 @@ export interface CatalogVaultExtra {
   registro_vetado?: string[]
   paleta?: string[]
   papel_na_peca?: string[]
-  exige?: string[]
   /** "medio · 949px" (classe · altura). */
   peso?: string | null
   convivencia?: string[]
@@ -145,7 +144,6 @@ export interface CatalogEntry {
     registro_vetado: string[]
     paleta: string[]
     papel_na_peca: string[]
-    exige: string[]
     peso: string | null
     convivencia: string[]
     itens: string | null
@@ -269,7 +267,6 @@ function toEntry(
       registro_vetado: extra.registro_vetado ?? [],
       paleta: extra.paleta ?? [],
       papel_na_peca: extra.papel_na_peca ?? [],
-      exige: extra.exige ?? [],
       peso: extra.peso ?? null,
       convivencia: extra.convivencia ?? [],
       itens: extra.itens ?? null,

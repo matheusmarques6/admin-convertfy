@@ -230,3 +230,42 @@ describe("buildCatalog — divergência vault × banco", () => {
     expect(r.divergentes.map((d) => d.variant_id)).toEqual(["id-4", "id-3"])
   })
 })
+
+// ── `exige` fora (01/09) ────────────────────────────────────────────────
+//
+// O campo elimina candidata antes do ranking, e os 52 requisitos do vault
+// têm `verificavel_hoje: false` — ninguém consegue conferir nenhum deles,
+// então toda eliminação era dedução do modelo sobre um ativo invisível. No
+// Welcome 1 da Innova Bay matou 2 das 3 variantes de body e deixou UMA
+// candidata de nove. A correção não foi pedir para o modelo ignorar o
+// campo: o campo saiu do catálogo.
+describe("buildCatalog — nenhum requisito de ativo viaja", () => {
+  const extras = new Map<string, CatalogVaultExtra>([
+    [
+      "id-1",
+      {
+        slug: "body-3-pitch-de-gift-card",
+        momento: ["gift-card"],
+        // Vem do frontmatter do vault e tem de morrer aqui.
+        exige: ["gift-card-digital", "foto-com-pessoas"],
+        peso: "medio · 900px",
+      } as CatalogVaultExtra,
+    ],
+  ])
+
+  it("a entrada do catálogo não tem `exige`", () => {
+    const r = buildCatalog([v("id-1", "body", "body 3")], extras)
+    const entrada = r.sections[0].variantes[0]
+    expect(entrada.vault).toBeDefined()
+    expect(entrada.vault).not.toHaveProperty("exige")
+    // Os eixos que DECIDEM continuam inteiros.
+    expect(entrada.vault?.momento).toEqual(["gift-card"])
+    expect(entrada.vault?.peso).toBe("medio · 900px")
+  })
+
+  it("o JSON servido ao Curador não contém o requisito nem a palavra", () => {
+    const r = buildCatalog([v("id-1", "body", "body 3")], extras)
+    expect(r.json).not.toContain("exige")
+    expect(r.json).not.toContain("gift-card-digital")
+  })
+})

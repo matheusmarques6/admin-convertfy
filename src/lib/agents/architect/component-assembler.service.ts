@@ -48,7 +48,6 @@ import {
   buildEstruturasRefResumo,
   buildMomentoBlock,
   buildProtocoloBlock,
-  buildRequisitosGlossario,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
   loadAprendizadosResumo,
@@ -202,7 +201,7 @@ Protocolo canônico de seleção (vault de componentes). Quando presente, ele é
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`exige\`, \`peso\` e \`convivencia\`.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\`.
 {{catalogo}}
 </biblioteca>
 
@@ -211,18 +210,13 @@ Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.
 {{convivencias}}
 </convivencia>
 
-<requisitos>
-Glossário dos requisitos de \`vault.exige\` (vault) — cada um é ELIMINATÓRIO quando a loja não tem o ativo:
-{{requisitos}}
-</requisitos>
-
 Como usar os eixos do vault (variantes com campo \`vault\`):
-- momento é FILTRO, nunca ranking: se <momento> do email casa com \`vault.momento_vetado\`, a variante está FORA; se \`vault.momento\` é lista NÃO vazia que não inclui <momento>, está fora; lista vazia não elimina (a variante não discrimina por momento).
-- \`vault.exige\` é eliminatório: cruze cada requisito com o que a loja comprovadamente tem (<perfil_marca>, <top_products>, cupom/oferta no contexto do email). Sem evidência do ativo, a variante não é pior — é IMPOSSÍVEL. Na dúvida entre duas adequadas, prefira a que exige menos.
+- momento SÓ elimina por VETO: se <momento> do email está em \`vault.momento_vetado\`, a variante está FORA. Declarar outro momento NÃO elimina — \`vault.momento\` diz onde a variante brilha, não onde ela é permitida. Ele é o PRIMEIRO eixo do ranking, nesta ordem: 1º quem declara o momento pedido, 2º quem tem lista vazia, 3º quem declara outros momentos.
+- Material que a variante pede (foto, tipografia, tipo de campanha) NÃO elimina ninguém: a imagem é gerada depois. Adequação de material entra no ranking, nunca no corte.
 - Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com a objeção-alvo deste email (da intenção/decisão servidas ou de <objecoes>); eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
 - \`vault.convivencia\`: respeite as regras de <convivencia> contra as variantes que você indica nas OUTRAS posições da mesma peça (ex.: prova social não duplica; grade de produtos não convive com review-vitrine).
-- Empate total entre duplicatas de cadastro (mesmos eixos, mesmo exige): vence o MENOR número no slug.
+- Empate total entre duplicatas de cadastro (mesmos eixos): vence o MENOR número no slug.
 - Variante SEM campo \`vault\`: decida pelos metadados do banco (quando_usar/quando_nao_usar/objectives/tones) como sempre.
 
 Regras de seleção:
@@ -871,7 +865,7 @@ export async function assembleStoreReference(
     await loadActiveVariantsByType()
 
   // Cérebro do vault de componentes (31/08): protocolo de seleção, eixos
-  // por variante, notas de seção, convivência e requisitos — sincronizados
+  // por variante, notas de seção e convivência — sincronizados
   // em email_vault_docs. O call VIVO só os recebe no modo 'on' do rollout
   // (curador_vault_mode); em 'off'/'shadow' as vars declaram ausência e o
   // comportamento vivo é o de sempre (o shadow roda em call paralelo).
@@ -1008,7 +1002,6 @@ export async function assembleStoreReference(
   const vaultSystemVars = {
     protocolo: buildProtocoloBlock(vault),
     convivencias: buildConvivenciaBlock(vault),
-    requisitos: buildRequisitosGlossario(vault),
   }
 
   // Guard: o system é editável na aba Agentes. Sem o catálogo o Curador
@@ -1071,7 +1064,6 @@ export async function assembleStoreReference(
       },
       protocolo: { cls: "vault", rotulo: "Protocolo de seleção — email_vault_docs (componentes)" },
       convivencias: { cls: "vault", rotulo: "Regras de convivência — email_vault_docs (componentes)" },
-      requisitos: { cls: "vault", rotulo: "Glossário de requisitos exige — email_vault_docs (componentes)" },
     },
     { parte: "system" },
   )
@@ -1106,7 +1098,7 @@ export async function assembleStoreReference(
       cls: "vault",
       valor:
         vault.total > 0
-          ? `modo ${curadorVaultMode} · protocolo ${vault.protocolo ? "servido" : "AUSENTE"} · eixos em ${vaultExtras.size}/${catalog.total} variantes · ${vault.secoes.size} notas de seção · ${vault.requisitos.length} requisitos · ${vault.convivencias.length} convivências`
+          ? `modo ${curadorVaultMode} · protocolo ${vault.protocolo ? "servido" : "AUSENTE"} · eixos em ${vaultExtras.size}/${catalog.total} variantes · ${vault.secoes.size} notas de seção · ${vault.convivencias.length} convivências`
           : `modo ${curadorVaultMode} — call vivo pelos metadados do banco`,
     },
     {

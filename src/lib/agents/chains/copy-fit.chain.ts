@@ -78,7 +78,7 @@ const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que
 REGRAS
 - Reescreva CADA campo recebido para caber em max_caracteres. O limite é o tamanho real do slot no HTML: passar dele faz o texto vazar da caixa.
 - Preserve a MENSAGEM: o argumento central, os números, os nomes de produto e a chamada para ação continuam. Corte redundância, adjetivo decorativo e frase de apoio — nunca o fato.
-- IDIOMA: por padrão mantenha o MESMO IDIOMA do texto original. A ÚNICA exceção é o campo marcado com reescrever_no_idioma — esse tem de voltar inteiro naquele idioma, sem uma palavra na língua antiga. Não é tradução literal: reescreva a mensagem como um copywriter nativo escreveria, preservando o argumento, os números, os códigos de cupom e os nomes de produto. Campo com reescrever_no_idioma pode mudar de tamanho para mais ou para menos, desde que caiba em max_caracteres.
+- IDIOMA: escreva SEMPRE no idioma declarado em IDIOMA DA LOJA. NUNCA traduza para outro idioma — nem para o idioma em que estas instruções estão escritas. O campo que já está no idioma da loja continua com as palavras dele; você só encurta ou tira o traço. O campo que chegou em outro idioma é reescrito no idioma da loja, preservando o argumento, os números, os códigos de cupom e os nomes de produto — esse pode mudar de tamanho para mais ou para menos, desde que caiba em max_caracteres.
 - Mantenha o mesmo tom do texto original.
 - Não use reticências nem corte a frase no meio: entregue frase inteira e bem terminada.
 - Não invente informação que não esteja no texto original.
@@ -92,6 +92,7 @@ Responda APENAS JSON, sem comentário nem cerca de código:
 Use exatamente os \`id\` recebidos, um por campo. Não inclua campo que você não reescreveu.`
 
 const DEFAULT_USER = `LOJA: {{brand_name}} — TOM DE VOZ: {{tom_voz}}
+IDIOMA DA LOJA: {{idioma_alvo}} — toda a copy deste email é escrita neste idioma.
 
 CONTRATO DOS CAMPOS (label, limite e orientação de cada um):
 {{contrato_json}}
@@ -111,6 +112,7 @@ Devolva o JSON agora.`
 const COPY_FIT_ORIGINS: Record<string, SegmentOrigin> = {
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
+  idioma_alvo: { cls: "loja", rotulo: "Idioma da loja — client_stores.language" },
   contrato_json: {
     cls: "curadoria",
     rotulo: "Contrato do bloco — output_schema da variante",
@@ -208,9 +210,13 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       // ignorar a chave.
       remover_travessao: a.motivos.includes("travessao") || undefined,
       encurtar: a.motivos.includes("max_len") || undefined,
-      reescrever_no_idioma: a.motivos.includes("idioma")
-        ? nomeDoIdioma(a.idioma_esperado)
-        : undefined,
+      // O idioma NÃO é marca por campo. Era, até 01/09: o contrato trazia
+      // `reescrever_no_idioma` só nos campos divergentes e o prompt dizia
+      // "por padrão mantenha o mesmo idioma; a única exceção é…". Essa
+      // construção condicional ensinou o modelo a trocar de língua, e ele
+      // trocou nos 14 campos — inclusive nos 14 que não tinham a marca.
+      // Agora o idioma é UMA declaração no topo, igual para todo campo.
+      traduzir_para_o_idioma_da_loja: a.motivos.includes("idioma") || undefined,
       orientacao: a.orientacao || undefined,
     })),
     null,
@@ -293,6 +299,9 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   const vars: Record<string, string> = {
     brand_name: input.brandName,
     tom_voz: input.tomVoz,
+    idioma_alvo:
+      nomeDoIdioma(input.alvos.find((a) => a.idioma_esperado)?.idioma_esperado) ||
+      "(não configurado — mantenha o idioma de cada texto)",
     contrato_json: contratoDe(input.alvos),
     copy_atual_json: copyAtualDe(input.alvos),
   }
@@ -481,6 +490,11 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         idioma_errado_depois: de_para.filter(
           (d) => d.idioma_depois && d.idioma_depois !== "indefinido" && !d.aceito,
         ).length,
+        // O número do incidente de 01/09: quantas vezes o modelo tentou
+        // devolver o campo em outra língua e o CÓDIGO barrou. Se voltar a
+        // subir, é o prompt que está escorregando de novo.
+        traducoes_recusadas: de_para.filter((d) => d.motivo === "mudou_de_idioma")
+          .length,
         de_para,
       },
       tokensInput,

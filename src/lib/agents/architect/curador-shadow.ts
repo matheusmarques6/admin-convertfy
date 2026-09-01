@@ -22,7 +22,6 @@ import {
   buildEstruturasRefResumo,
   buildMomentoBlock,
   buildProtocoloBlock,
-  buildRequisitosGlossario,
   buildSecaoNotasBlock,
   momentoDoEmail,
   renderUsageCounts,
@@ -80,8 +79,8 @@ Fora isso, o protocolo vale integralmente.
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`exige\`, \`peso\` e \`convivencia\` — onde o vault contradisser os metadados do banco, O VAULT VENCE.
-EXCEÇÃO: variante com \`description_no_banco\` é uma em que as duas fontes descrevem PEÇAS DIFERENTES — \`description\` é a prosa do vault e \`description_no_banco\` é o cadastro da linha cujo HTML será REALMENTE montado. Aí o vault não vence: as duas valem como dúvida. Só escolha essa variante se ela servir à posição nas DUAS leituras, e diga na \`justificativa\` sobre qual delas você decidiu. Preferindo-a mesmo assim, prefira a leitura do banco — é o HTML dele que vai para o email.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\` — onde o vault contradisser os metadados do banco, O VAULT VENCE.
+EXCEÇÃO: variante com \`description_no_banco\` é uma em que as duas fontes descrevem PEÇAS DIFERENTES — \`description\` é a prosa do vault e \`description_no_banco\` é o cadastro da linha cujo HTML será REALMENTE montado. Aí o vault não vence, e o que vale para decidir é o BANCO: é o HTML dele que vai para o email. Ela NÃO é eliminada por isso; em empate com outra candidata da mesma posição, fica ATRÁS. Escolhendo-a, diga na \`justificativa\` sobre qual das duas descrições você decidiu.
 {{catalogo}}
 </biblioteca>
 
@@ -90,21 +89,16 @@ Regras de coexistência entre variantes na MESMA peça:
 {{convivencias}}
 </convivencia>
 
-<requisitos>
-Glossário dos requisitos de \`vault.exige\` — cada um é ELIMINATÓRIO quando a loja não tem o ativo:
-{{requisitos}}
-</requisitos>
-
 Como decidir, na ordem:
 1. PAPEL DE CADA POSIÇÃO: a sequência de <estrutura_do_email> é FIXA — foi desenhada por uma pessoa na aba Arquitetura. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Sua tarefa é dizer por que cada posição existe: cruze <intencao_do_email> (a intenção, o que o email DEVE e o que NÃO DEVE) com a posição da seção no arco e escreva um papel de UMA frase para cada uma, na ordem em que elas vêm. O email inteiro recebe também um fio_narrativo curto (como as posições se ligam). Se uma posição lhe parecer errada para este email, o papel é o lugar de dizer isso — nunca a remoção.
-2. SELEÇÃO por posição, seguindo os passos 3-9 do protocolo COM a EMENDA-MOMENTO-01: elimine por ativa/schema (já filtrados do catálogo), por \`exige\` contra o que a loja comprovadamente tem (<perfil_marca>, <top_products>, cupom/oferta no contexto — sem evidência do ativo a variante é IMPOSSÍVEL, não pior), por momento SOMENTE quando <momento> estiver em \`momento_vetado\` (declarar outro momento NÃO elimina), por capacidade (product_slots × produtos com link). Rankeie os sobreviventes por momento → objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas → menor número no slug (ou a menos usada em <memoria>, quando a contagem existir).
+2. SELEÇÃO por posição, seguindo os passos 3-9 do protocolo COM a EMENDA-MOMENTO-01: elimine por ativa/schema (já filtrados do catálogo), por momento SOMENTE quando <momento> estiver em \`momento_vetado\` (declarar outro momento NÃO elimina), e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Essa é a lista COMPLETA do que elimina. Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Rankeie os sobreviventes por momento → objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas → menor número no slug (ou a menos usada em <memoria>, quando a contagem existir).
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra; <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
 
 O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
-- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — quem foi eliminado e em que passo (exige/momento/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
+- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — quem foi eliminado e em que passo (momento vetado/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
 - TODA escolha rankeada leva \`motivo\` (uma frase curta): na 1ª, por que ela venceu; nas demais, por que ficam atrás da anterior.
 
 Responda APENAS o objeto JSON, sem markdown:
@@ -112,7 +106,7 @@ Responda APENAS o objeto JSON, sem markdown:
 {"papeis":[{"block_index":0,"section":"hero","papel":"..."},{"block_index":1,"section":"offer","papel":"..."}],
  "fio_narrativo":"...",
  "escolhas":[{"block_index":0,
-   "justificativa":"eliminadas hero-4 (exige foto-de-campanha-propria, ausente) e hero-5 (exige foto-com-pessoas); entre as 3 restantes, objecao decidiu: só hero-3 declara preco-valor, o alvo deste toque.",
+   "justificativa":"5 candidatas; nenhuma veta welcome-1. objecao decidiu: só hero-3 declara preco-valor, o alvo deste toque; hero-4 e hero-5 ficam atrás por registro (premium-editorial contra o popular desta marca).",
    "escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"...","motivo":"..."}]}]}
 
 - \`papeis\` traz UM item por posição de <estrutura_do_email>, na mesma ordem e com o mesmo \`block_index\` (0-based); \`escolhas\` usa esses mesmos índices.
@@ -475,7 +469,6 @@ export async function runCuradorShadow(
     const systemVars = {
       protocolo: buildProtocoloBlock(p.vault),
       convivencias: buildConvivenciaBlock(p.vault),
-      requisitos: buildRequisitosGlossario(p.vault),
       catalogo: p.catalogComExtras.json,
     }
 
@@ -498,7 +491,6 @@ export async function runCuradorShadow(
       },
       protocolo: { cls: "vault", rotulo: "Protocolo de seleção — email_vault_docs" },
       convivencias: { cls: "vault", rotulo: "Regras de convivência — email_vault_docs" },
-      requisitos: { cls: "vault", rotulo: "Glossário de requisitos — email_vault_docs" },
     }, { parte: "system" })
     const promptSegments = concatSegments(
       segSystem.prompt === systemResolvido ? segSystem.segments : null,

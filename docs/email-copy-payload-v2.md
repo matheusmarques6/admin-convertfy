@@ -210,11 +210,18 @@ noite saíram com a diretiva na raiz, no `store` e prefixando o
 campo novo nem o prefixo no blob de pesquisa foram usados.
 
 Enquanto isso não muda, quem conserta é o **`copy_fit`** (motivo `idioma`,
-migration 20261099): o campo em língua errada é reescrito no idioma da loja
-antes do merge, e a reescrita que voltar errada é RECUSADA pelo código. Ou
-seja: o email sai certo sem depender do flow, e `parsed_output.idioma` do run
-`copy` conta, geração a geração, quantos campos o flow entregou fora do
-idioma pedido.
+migrations 20261099 + 20261100): o campo em língua errada é reescrito no
+idioma da loja antes do merge, e a reescrita que voltar errada é RECUSADA
+pelo código. `parsed_output.idioma` do run `copy` conta, geração a geração,
+quantos campos o flow entregou fora do idioma pedido.
+
+> **O tiro pela culatra (01/09).** A primeira versão marcava o idioma por
+> CAMPO e o prompt dizia "por padrão mantenha o mesmo idioma; a ÚNICA exceção
+> é o campo marcado". Nessa mesma noite o n8n mandou o email **em inglês** e o
+> encurtador devolveu os 14 campos **em português** — a construção condicional
+> introduziu a ideia de trocar de língua, e o guard só valia para os alvos de
+> idioma. Corrigido na 20261100: o idioma vira declaração global e o guard
+> passa a recusar troca de língua em qualquer alvo (`mudou_de_idioma`).
 
 A ordem sai **em inglês** para loja não-lusófona (é a língua em que os modelos
 seguem instrução com mais confiabilidade; escrevê-la em português repetiria o

@@ -24,7 +24,11 @@
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { deriveFieldNature } from "@/lib/agents/shared/component-dimensions"
 import { findFieldDeviations } from "./copy-spec"
-import { idiomaDivergente, type IdiomaDetectado } from "./idioma-copy"
+import {
+  idiomaDivergente,
+  introduziuAcentoEstrangeiro,
+  type IdiomaDetectado,
+} from "./idioma-copy"
 
 /** Bloco como ele vem do banco — só o que a medida precisa. */
 export interface BlocoComContrato {
@@ -131,11 +135,13 @@ export function alvosDeEncurtamento(
         min: f.min_len ?? null,
         motivos,
         tracos,
-        ...(idioma.divergente
-          ? {
-              idioma_detectado: idioma.detectado,
-              idioma_esperado: (idiomaDaLoja ?? "").trim(),
-            }
+        // O idioma da loja viaja em TODO alvo, não só nos de idioma: é ele
+        // que o guard usa para recusar a reescrita que trocou de língua —
+        // e a troca aconteceu justamente nos alvos de tamanho e travessão
+        // (01/09, 14 campos ingleses devolvidos em português).
+        idioma_detectado: idioma.detectado,
+        ...((idiomaDaLoja ?? "").trim()
+          ? { idioma_esperado: (idiomaDaLoja ?? "").trim() }
           : {}),
       })
     }
@@ -153,6 +159,8 @@ export type MotivoDeRecusa =
   | "traco_permaneceu"
   /** Alvo de idioma cuja reescrita voltou no idioma errado. */
   | "idioma_permaneceu"
+  /** A reescrita TROCOU a língua de um campo que já estava certo. */
+  | "mudou_de_idioma"
 
 export interface VeredictoDeReescrita {
   ok: boolean
@@ -177,7 +185,10 @@ export function aceitarReescrita(
     max: number
     min?: number | null
     motivos?: MotivoDeAlvo[]
-    /** Idioma da loja — cobrado só quando o motivo `idioma` está na lista. */
+    /**
+     * Idioma da loja. Cobrado em TODO alvo: a reescrita nunca pode trocar a
+     * língua do campo, tenha ela entrado por tamanho, travessão ou idioma.
+     */
     idiomaEsperado?: string | null
   },
 ): VeredictoDeReescrita {
@@ -190,12 +201,30 @@ export function aceitarReescrita(
   if (motivos.includes("travessao") && contarTracos(texto) > 0) {
     return { ok: false, motivo: "traco_permaneceu" }
   }
-  // Traduziu para o idioma errado (ou não traduziu). O detector só reprova
-  // quando se pronuncia: reescrita curta demais para ter veredicto passa —
-  // o mesmo conservadorismo que decide quem VIRA alvo decide quem sai.
-  if (motivos.includes("idioma")) {
+  // GUARD DE IDIOMA — vale em TODO alvo, não só nos de idioma.
+  //
+  // Em 01/09 ele valia só para o alvo de idioma, e foi por aí que o desastre
+  // passou: o n8n mandou a copy em INGLÊS, os 14 campos entraram por tamanho
+  // e travessão, o encurtador devolveu tudo em português e nenhuma das
+  // checagens acima viu problema — não estava vazio, não era idêntico,
+  // encurtou, não tinha traço. O email inteiro saiu traduzido.
+  //
+  // A regra vale nas duas direções: para o alvo de idioma é o pedido que não
+  // foi cumprido; para os outros é uma troca que ninguém pediu.
+  if ((limites.idiomaEsperado ?? "").trim()) {
     const veredicto = idiomaDivergente(texto, limites.idiomaEsperado)
-    if (veredicto.divergente) return { ok: false, motivo: "idioma_permaneceu" }
+    if (veredicto.divergente) {
+      return {
+        ok: false,
+        motivo: motivos.includes("idioma") ? "idioma_permaneceu" : "mudou_de_idioma",
+      }
+    }
+    // O detector se cala em texto curto (por construção). O acento que
+    // APARECEU do nada, numa loja cujo idioma não usa acento, denuncia a
+    // troca onde ele não consegue: "Vehicle Diagnostics" → "Diagnóstico".
+    if (introduziuAcentoEstrangeiro(original, texto, limites.idiomaEsperado)) {
+      return { ok: false, motivo: "mudou_de_idioma" }
+    }
   }
   if (limites.max > 0 && texto.length > limites.max) {
     return { ok: false, motivo: "ainda_acima_do_limite" }

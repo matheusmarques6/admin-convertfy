@@ -5,10 +5,9 @@
  * O vault (`All-for-Eficiencia/Admin Convertfy/Emails/componentes/**`,
  * sincronizado pelo vault-sync em `email_vault_docs`) carrega o protocolo
  * de seleção em 9 passos, uma nota de julgamento por variante (com os
- * eixos momento/objecao/registro/paleta/papel-na-peca + exige/peso/
+ * eixos momento/objecao/registro/paleta/papel-na-peca + peso/
  * convivencia amarrados por `variant_id` ao banco), notas de seção com a
- * chave de desempate, o glossário de requisitos e as regras de
- * convivência. Este módulo:
+ * chave de desempate e as regras de convivência. Este módulo:
  *
  *   - carrega as notas ativas (fail-open TOTAL: tabela ausente, sync nunca
  *     rodado ou erro → conhecimento vazio e o Curador segue exatamente
@@ -16,10 +15,9 @@
  *   - funde os eixos das notas de variante no catálogo do system
  *     (`buildCatalogVaultExtras` → `buildCatalog(…, extras)`), casando por
  *     `variant_id` e, na falta dele, por `nome_no_banco`;
- *   - monta os blocos de prompt: `{{protocolo}}`/`{{convivencias}}`/
- *     `{{requisitos}}` no SYSTEM (conteúdo idêntico entre lojas —
- *     cacheável) e `{{momento}}`/`{{secoes_notas}}`/`{{estruturas_ref}}`
- *     no USER.
+ *   - monta os blocos de prompt: `{{protocolo}}`/`{{convivencias}}` no
+ *     SYSTEM (conteúdo idêntico entre lojas — cacheável) e
+ *     `{{momento}}`/`{{secoes_notas}}`/`{{estruturas_ref}}` no USER.
  *
  * Builders são PUROS (testáveis); só os `load*` tocam o banco.
  */
@@ -244,7 +242,6 @@ export function buildCatalogVaultExtras(
       registro_vetado: strArr(fm.registro_vetado),
       paleta: strArr(fm.paleta),
       papel_na_peca: strArr(fm.papel_na_peca),
-      exige: strArr(fm.exige),
       peso: parsePesoRaw(fm.peso),
       convivencia: strArr(fm.convivencia),
       itens: typeof fm.itens === "string" ? fm.itens : null,
@@ -269,22 +266,25 @@ export function buildConvivenciaBlock(k: CuradorVaultKnowledge): string {
     .join("\n\n")
 }
 
-/** Primeiro parágrafo de prosa da nota (pulando headings e vazio). */
-function firstParagraph(body: string): string {
-  for (const block of body.split(/\n{2,}/)) {
-    const t = block.trim()
-    if (!t || t.startsWith("#")) continue
-    return t.replace(/\s+/g, " ")
-  }
-  return ""
-}
-
-export function buildRequisitosGlossario(k: CuradorVaultKnowledge): string {
-  if (k.requisitos.length === 0) return "(glossário de requisitos não sincronizado)"
-  return k.requisitos
-    .map((d) => `- ${d.slug}: ${clamp(firstParagraph(d.body_md), 240)}`)
-    .join("\n")
-}
+/*
+ * `buildRequisitosGlossario` foi REMOVIDA em 01/09, junto com o campo
+ * `exige` do catálogo.
+ *
+ * O glossário servia 52 requisitos ao Curador com a frase "cada um é
+ * ELIMINATÓRIO quando a loja não tem o ativo" — e os 52 têm
+ * `verificavel_hoje: false` no próprio vault. Ninguém consegue conferir
+ * nenhum deles, então toda eliminação por requisito era dedução do modelo
+ * sobre um ativo invisível. No Welcome 1 da Innova Bay isso matou 2 das 3
+ * variantes de body ("motivo-sazonal", "gift-card-digital"), deixou UMA
+ * candidata de nove e a regra "sobreviveu, tem de sair escolhida" fez o
+ * resto.
+ *
+ * A correção não foi uma emenda pedindo para o campo não eliminar — mandar
+ * o dado e depois pedir para ignorá-lo é o mesmo erro que traduziu o email
+ * no mesmo dia. O campo saiu. Os documentos `kind='requisito'` continuam
+ * em `email_vault_docs` (o vault é do Obsidian e não muda), apenas não são
+ * mais servidos a nenhum agente.
+ */
 
 // ── Blocos de USER (por email) ──────────────────────────────────────────
 

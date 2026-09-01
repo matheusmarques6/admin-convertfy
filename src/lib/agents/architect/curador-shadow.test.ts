@@ -188,3 +188,25 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     expect(DEFAULT_CHOOSER_VAULT_USER).not.toContain("sequencia_sugerida")
   })
 })
+
+// ── O prompt não pede eliminação por ativo (01/09) ─────────────────────
+describe("prompt do Curador — nada elimina por requisito de ativo", () => {
+  it("o system não tem bloco de requisitos nem a palavra `exige`", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("<requisitos>")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("{{requisitos}}")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("exige")
+  })
+
+  it("a lista de eliminação é fechada e material não está nela", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Essa é a lista COMPLETA do que elimina")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("não elimina ninguém")
+  })
+
+  // A variante cuja descrição do vault contradiz a do banco fica ATRÁS em
+  // empate — nunca fora. Condicionar a escolha ("só se servir nas duas
+  // leituras") era inerte contra "sobreviveu, tem de sair escolhida".
+  it("divergência vault × banco rebaixa, não elimina", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO é eliminada por isso")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fica ATRÁS")
+  })
+})

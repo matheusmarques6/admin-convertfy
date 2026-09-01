@@ -6,6 +6,7 @@ import {
   limiteDoCampo,
   resumoDeEstouros,
   type BlocoComContrato,
+  type MotivoDeAlvo,
 } from "./copy-fit"
 import type { BlueprintBlockField } from "@/types/email-generation"
 
@@ -392,5 +393,119 @@ describe("aceitarReescrita — idioma", () => {
         motivos: ["idioma"],
       }).motivo,
     ).toBe("ainda_acima_do_limite")
+  })
+})
+
+// ── O desastre de 01/09, campo a campo ─────────────────────────────────
+//
+// O n8n devolveu a copy do Welcome 1 EM INGLÊS. Os 14 campos entraram no
+// encurtador por tamanho e travessão — nenhum por idioma, porque não havia
+// português nenhum — e ele devolveu TODOS em português. O guard de idioma
+// valia só para o alvo de idioma, então nada barrou: não estava vazio, não
+// era idêntico, encurtou, não tinha traço.
+//
+// Estes são os pares REAIS do `de_para` daquele run. Cada um tem de ser
+// recusado agora.
+describe("aceitarReescrita — a tradução que ninguém pediu", () => {
+  const loja = { max: 400, idiomaEsperado: "en", motivos: ["max_len"] as MotivoDeAlvo[] }
+
+  const PARES: Array<[string, string, string]> = [
+    [
+      "review_1_quote",
+      "I tested the EnergySave Pro for a full month at home. My bill dropped noticeably. Plugged it in before bed on a Tuesday and forgot about it.",
+      '"Testei um mês em casa. A conta caiu. Pluguei antes de dormir e esqueci, tão fácil foi."',
+    ],
+    [
+      "review_2_quote",
+      "My check engine light came on the day before a road trip. Used the CarScan Pro in the driveway, found the code in two minutes and fixed it myself.",
+      '"Luz de alerta acendeu antes de uma viagem. Usei o CarScan, achei o código em dois minutos, consertei sozinho."',
+    ],
+    [
+      "header_subtitle",
+      "Each one ships with a lifetime guarantee and real buyer reviews. No guessing required.",
+      "Todos com garantia vitalícia e avaliações reais de quem comprou.",
+    ],
+    [
+      "section_intro",
+      "PRACTICAL PRODUCTS THAT DO WHAT THEY SAY — FOR YOUR HOME, YOUR CAR, YOUR WALLET.",
+      "PRODUTOS QUE FUNCIONAM DE VERDADE, PARA SUA CASA, SEU CARRO, SUA CARTEIRA.",
+    ],
+    [
+      "section_intro_cta",
+      "STILL NOT SURE? READ WHAT BUYERS SAY.",
+      "VEJA O QUE QUEM COMPROU DIZ",
+    ],
+    [
+      "closing_copy",
+      "Real proof, zero risk — that's the difference.",
+      "Prova real, sem risco. Essa é a diferença.",
+    ],
+  ]
+
+  it.each(PARES)("%s: a tradução é recusada", (_k, antes, depois) => {
+    expect(aceitarReescrita(antes, depois, loja).motivo).toBe("mudou_de_idioma")
+  })
+
+  // Estes dois são curtos demais para o detector opinar — quem os pega é o
+  // acento que apareceu do nada numa loja de idioma sem acento.
+  it("campo curto: o acento novo denuncia a troca", () => {
+    expect(
+      aceitarReescrita(
+        "OBD CarScan Pro\nVehicle Diagnostics",
+        "OBD CarScan Pro\nDiagnóstico",
+        { ...loja, max: 34 },
+      ).motivo,
+    ).toBe("mudou_de_idioma")
+    expect(
+      aceitarReescrita("Lifetime guarantee — no expiration", "Garantia vitalícia, sem prazo", {
+        max: 34,
+        idiomaEsperado: "en",
+        motivos: ["travessao"],
+      }).motivo,
+    ).toBe("mudou_de_idioma")
+  })
+
+  // Nome de marca que JÁ tinha acento não é troca de língua.
+  it("acento que já estava no original continua passando", () => {
+    expect(
+      aceitarReescrita(
+        "Shop the Café Blend today and get free shipping on your first order",
+        "Shop the Café Blend and get free shipping today",
+        loja,
+      ),
+    ).toEqual({ ok: true })
+  })
+
+  // O trabalho normal do encurtador não pode ser afetado.
+  it("encurtar em inglês numa loja en continua sendo aceito", () => {
+    expect(
+      aceitarReescrita(
+        "Each one ships with a lifetime guarantee and real buyer reviews. No guessing required.",
+        "Each one ships with a lifetime guarantee and real buyer reviews.",
+        loja,
+      ),
+    ).toEqual({ ok: true })
+  })
+
+  // Loja brasileira: encurtar em português é o certo, não pode virar recusa.
+  it("loja pt-BR encurtando em português é aceito", () => {
+    expect(
+      aceitarReescrita(
+        "Todos os produtos com garantia vitalícia e avaliações reais de quem comprou de verdade.",
+        "Todos com garantia vitalícia e avaliações reais de quem comprou.",
+        { max: 400, idiomaEsperado: "pt-BR", motivos: ["max_len"] },
+      ),
+    ).toEqual({ ok: true })
+  })
+
+  // Sem idioma da loja o guard não existe — comportamento anterior intacto.
+  it("sem idioma configurado nada é recusado por língua", () => {
+    expect(
+      aceitarReescrita(
+        "Each one ships with a lifetime guarantee and real buyer reviews. No guessing required.",
+        "Todos com garantia vitalícia e avaliações reais de quem comprou.",
+        { max: 400, motivos: ["max_len"] },
+      ),
+    ).toEqual({ ok: true })
   })
 })
