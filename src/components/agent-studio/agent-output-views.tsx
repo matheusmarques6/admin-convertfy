@@ -131,6 +131,17 @@ export function CuradorRankingView({ output }: { output: unknown }) {
     | { total?: number; detalhe?: string }
     | null
     | undefined
+  // Variantes em que a prosa do vault e o cadastro do banco descrevem
+  // peças diferentes. O catálogo passou a servir as duas descrições; aqui a
+  // contradição vira linha visível, com o slug para consertar no Obsidian.
+  const catalogoDivergente = asArray<{
+    slug?: string
+    variant_id?: string
+    name?: string
+    vault?: string
+    banco?: string
+    similaridade?: number
+  }>(o.catalogo_divergente)
   const modo = typeof o.curador_vault_mode === "string" ? o.curador_vault_mode : null
   const ehShadow = o.shadow === true
 
@@ -203,7 +214,43 @@ export function CuradorRankingView({ output }: { output: unknown }) {
             tone="info"
           />
         )}
+        {catalogoDivergente.length > 0 && (
+          <OutPill
+            text={`${catalogoDivergente.length} variante(s) com vault × banco divergentes`}
+            tone="warn"
+          />
+        )}
       </div>
+
+      {catalogoDivergente.length > 0 && (
+        <OutSection title="Vault e banco descrevem peças diferentes">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {catalogoDivergente.map((d, i) => (
+              <OutItem key={d.variant_id ?? i}>
+                <div style={{ ...OUT_BODY, fontWeight: 700, color: "#B91C1C" }}>
+                  {d.slug ?? "?"} → {d.name ?? d.variant_id ?? "?"}
+                  {typeof d.similaridade === "number" && (
+                    <span style={{ ...TNUM, fontWeight: 400, color: C.g500 }}>
+                      {" "}· semelhança {d.similaridade}
+                    </span>
+                  )}
+                </div>
+                <div style={{ ...OUT_BODY, color: C.g500, marginTop: 3, fontFamily: F.sans }}>
+                  <b>vault:</b> {d.vault}
+                </div>
+                <div style={{ ...OUT_BODY, color: C.g500, marginTop: 2, fontFamily: F.sans }}>
+                  <b>banco:</b> {d.banco}
+                </div>
+              </OutItem>
+            ))}
+          </div>
+          <div style={{ ...OUT_BODY, color: C.g500, marginTop: 6 }}>
+            O HTML montado é o da linha do BANCO. As duas descrições vão no
+            catálogo para o Curador não decidir sobre uma peça e receber
+            outra — o conserto é o `variant_id` da nota no Obsidian.
+          </div>
+        </OutSection>
+      )}
 
       {divergente?.detalhe && (
         <OutSection title="O que ele tentou mudar na sequência (e foi desarmado)">
@@ -904,10 +951,12 @@ interface DeParaView {
   max?: number
   aceito?: boolean
   motivo?: string
-  /** "max_len" | "travessao" — um campo pode ter os dois. */
+  /** "max_len" | "travessao" | "idioma" — um campo pode ter mais de um. */
   motivos?: string[]
   tracos_antes?: number
   tracos_depois?: number
+  idioma_antes?: string
+  idioma_depois?: string
 }
 
 const MOTIVO_DE_RECUSA: Record<string, string> = {
@@ -918,6 +967,7 @@ const MOTIVO_DE_RECUSA: Record<string, string> = {
   abaixo_do_minimo: "ficou abaixo do mínimo do campo",
   sem_resposta: "o agente não respondeu por este campo",
   traco_permaneceu: "a reescrita manteve o travessão",
+  idioma_permaneceu: "a reescrita voltou no idioma errado",
 }
 
 export function CopyFitView({ output }: { output: unknown }) {
@@ -931,7 +981,19 @@ export function CopyFitView({ output }: { output: unknown }) {
   // existia no JSON sem nenhum leitor.
   const total = Number(o.alvos ?? dePara.length)
   const comTravessao = Number(o.com_travessao ?? 0)
-  const porEstouro = total - comTravessao
+  // O terceiro motivo (01/09): o campo voltou do n8n na língua errada. A
+  // ordem de idioma VAI no payload — este número é o tamanho do que o flow
+  // ignora, e `idioma_errado_depois` diz quanto ficou sem conserto.
+  const comIdioma = Number(o.com_idioma_errado ?? 0)
+  const idiomaEsperado = typeof o.idioma_esperado === "string" ? o.idioma_esperado : ""
+  const idiomaErradoDepois = Number(o.idioma_errado_depois ?? 0)
+  // Um campo pode ter mais de um motivo (estourou E tem traço), então isto
+  // NÃO é uma partição: cada número conta quantos campos têm aquele motivo.
+  // Contar por subtração dava negativo assim que o terceiro motivo entrou.
+  const porEstouro =
+    dePara.length > 0
+      ? dePara.filter((d) => (d.motivos ?? ["max_len"]).includes("max_len")).length
+      : Math.max(0, total - comTravessao - comIdioma)
   const antes = o.travessoes_antes
   const depois = o.travessoes_depois
   const mediuTravessao = typeof antes === "number" && typeof depois === "number"
@@ -940,13 +1002,15 @@ export function CopyFitView({ output }: { output: unknown }) {
     <OutCard>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
         <OutPill text={`${total} campo(s) a corrigir`} tone="warn" />
-        {comTravessao > 0 && (
+        {(comTravessao > 0 || comIdioma > 0) && (
           <OutPill
-            text={
-              porEstouro > 0
-                ? `${porEstouro} por estouro · ${comTravessao} por travessão`
-                : `${comTravessao} por travessão`
-            }
+            text={[
+              porEstouro > 0 ? `${porEstouro} por estouro` : "",
+              comTravessao > 0 ? `${comTravessao} por travessão` : "",
+              comIdioma > 0 ? `${comIdioma} por idioma` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             tone="info"
           />
         )}
@@ -959,6 +1023,22 @@ export function CopyFitView({ output }: { output: unknown }) {
             text={`travessões ${antes} → ${depois}`}
             tone={depois === 0 ? "pos" : "warn"}
           />
+        )}
+        {comIdioma > 0 && (
+          <>
+            <OutPill
+              text={`${comIdioma} em outra língua${idiomaEsperado ? ` (loja ${idiomaEsperado})` : ""}`}
+              tone="warn"
+            />
+            <OutPill
+              text={
+                idiomaErradoDepois === 0
+                  ? "idioma corrigido"
+                  : `${idiomaErradoDepois} ainda na língua errada`
+              }
+              tone={idiomaErradoDepois === 0 ? "pos" : "warn"}
+            />
+          </>
         )}
         {Number(o.tentativas ?? 0) > 1 && (
           <OutPill text={`${o.tentativas} passadas`} tone="info" />
@@ -974,6 +1054,7 @@ export function CopyFitView({ output }: { output: unknown }) {
               const motivos = d.motivos ?? ["max_len"]
               const porEstouroAqui = motivos.includes("max_len")
               const porTraco = motivos.includes("travessao")
+              const porIdioma = motivos.includes("idioma")
               return (
               <OutItem key={`${d.position}-${d.key}-${i}`}>
                 <div
@@ -996,6 +1077,11 @@ export function CopyFitView({ output }: { output: unknown }) {
                   {porTraco && (
                     <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
                       travessões {d.tracos_antes ?? "?"} → {d.tracos_depois ?? "?"}
+                    </span>
+                  )}
+                  {porIdioma && (
+                    <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
+                      idioma {d.idioma_antes ?? "?"} → {d.idioma_depois ?? "?"}
                     </span>
                   )}
                   <span style={{ marginLeft: "auto" }}>

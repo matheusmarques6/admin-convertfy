@@ -202,8 +202,19 @@ não uma derivada do idioma.
 ### O que o flow do n8n tem de fazer
 
 Incluir `language_directive` no prompt do copywriter, uma vez, de preferência
-no topo. Enquanto isso não acontece, o prefixo em `pesquisa_diagnostico`
-cobre — mas ler o campo direto é mais claro.
+no topo.
+
+**Medido em 01/09: ele não faz.** Os dois runs de `copy_dispatch` daquela
+noite saíram com a diretiva na raiz, no `store` e prefixando o
+`pesquisa_diagnostico` — e a copy voltou em português numa loja `en`. Nem o
+campo novo nem o prefixo no blob de pesquisa foram usados.
+
+Enquanto isso não muda, quem conserta é o **`copy_fit`** (motivo `idioma`,
+migration 20261099): o campo em língua errada é reescrito no idioma da loja
+antes do merge, e a reescrita que voltar errada é RECUSADA pelo código. Ou
+seja: o email sai certo sem depender do flow, e `parsed_output.idioma` do run
+`copy` conta, geração a geração, quantos campos o flow entregou fora do
+idioma pedido.
 
 A ordem sai **em inglês** para loja não-lusófona (é a língua em que os modelos
 seguem instrução com mais confiabilidade; escrevê-la em português repetiria o

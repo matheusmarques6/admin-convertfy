@@ -36,6 +36,7 @@ import {
   type BlocoComContrato,
 } from "@/lib/email-workspace/copy-fit"
 import { runCopyFit, loadCopyFitMode } from "@/lib/agents/chains/copy-fit.chain"
+import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
@@ -173,7 +174,11 @@ export async function POST(request: NextRequest) {
       // tom de voz: entrada do encurtador — reescrever sem ele troca a voz da
       // marca junto com o tamanho. Mesma cascata do resto do pipeline
       // (architect/generate.service:291).
-      .select("store_name, org_id, tone_description, tom_de_voz")
+      // language: o idioma que o encurtador cobra. A coluna é a mesma que
+      // o dispatch já sincroniza do formulário antes de montar o payload
+      // (`email_copy.webhook.language_synced`), então ler daqui vê a mesma
+      // verdade que foi mandada ao n8n — e ignorada por ele.
+      .select("store_name, org_id, tone_description, tom_de_voz, language")
       .eq("id", body.store_id)
       .maybeSingle()
     const brandName = (store?.store_name as string | undefined) || "Loja"
@@ -561,14 +566,38 @@ export async function POST(request: NextRequest) {
       .select("id, content, block_type, fields, position")
       .eq("email_id", body.email_id)
       .order("position", { ascending: true })
+    // O idioma da loja. `resolveStoreLanguage` sem form_responses devolve a
+    // coluna com source 'store' — é o mesmo valor que foi para o payload.
+    // Vazio (loja sem idioma) desliga a checagem: sem alvo de idioma o
+    // encurtador se comporta exatamente como antes.
+    const idiomaDaLoja =
+      resolveStoreLanguage(null, (store?.language as string | null) ?? null).code
     const alvos = alvosDeEncurtamento(
       (blocosAposCopy ?? []) as BlocoComContrato[],
+      { idiomaDaLoja },
     )
     // O "antes" do travessão, medido aqui e não no chain: quando o
     // encurtador está desligado pelo kill-switch o run `copy_fit` não
     // existe, e sem isto o número sumiria justamente no cenário em que se
     // quer saber quanto traço o n8n está mandando.
     const travessoesPreFit = alvos.reduce((n, a) => n + a.tracos, 0)
+    // Quantos campos voltaram do n8n na língua errada — medido AQUI, e não
+    // no chain, pelo mesmo motivo do travessão: com o kill-switch desligado
+    // o run `copy_fit` não existe, e este é o número que diz quanto da
+    // ordem de idioma o flow está ignorando.
+    const idiomaErradoPreFit = alvos.filter((a) =>
+      a.motivos.includes("idioma"),
+    ).length
+    if (idiomaErradoPreFit > 0) {
+      log.warn("email_copy.idioma_divergente", {
+        email_id: body.email_id,
+        idioma_da_loja: idiomaDaLoja,
+        campos: alvos
+          .filter((a) => a.motivos.includes("idioma"))
+          .map((a) => `${a.key}:${a.idioma_detectado}`),
+        hint: "a ordem de idioma vai no payload e o n8n não a aplica — o encurtador reescreve do nosso lado",
+      })
+    }
     // Rede contra a regressão: as duas medidas passaram a olhar a mesma
     // copy, então discordarem é sintoma de leitura fora de hora outra vez.
     //
@@ -668,6 +697,9 @@ export async function POST(request: NextRequest) {
         copyFitResumo = {
           alvos: alvos.length,
           corrigidos: fit.aceitas.length,
+          ...(idiomaErradoPreFit > 0
+            ? { idioma_errado: idiomaErradoPreFit, idioma_da_loja: idiomaDaLoja }
+            : {}),
           mantidos: alvos.length - fit.aceitas.length,
           blocos_regravados: blocosRegravados,
           rodou: fit.rodou,
@@ -729,6 +761,14 @@ export async function POST(request: NextRequest) {
               .join(" · "),
       },
       {
+        rotulo: "Idioma",
+        cls: "sistema",
+        valor:
+          idiomaErradoPreFit > 0
+            ? `loja ${idiomaDaLoja} — ${idiomaErradoPreFit} campo(s) vieram em outra língua`
+            : `loja ${idiomaDaLoja} — nenhum desvio detectado`,
+      },
+      {
         rotulo: "Batch da geração",
         cls: "sistema",
         valor: currentBatchId ?? "(sem batch)",
@@ -776,6 +816,26 @@ export async function POST(request: NextRequest) {
               copy_fit: copyFitResumo,
               desvios_pre_fit: desviosPreFit.slice(0, 60),
               travessoes_pre_fit: travessoesPreFit,
+            }
+          : {}),
+        // O desvio de IDIOMA fica fora do bloco acima de propósito: ele
+        // mede o que o n8n entregou, e tem de aparecer mesmo com o
+        // encurtador desligado — é a evidência de que a ordem de idioma vai
+        // no payload e não é aplicada.
+        ...(idiomaErradoPreFit > 0
+          ? {
+              idioma: {
+                da_loja: idiomaDaLoja,
+                campos_errados: idiomaErradoPreFit,
+                campos: alvos
+                  .filter((a) => a.motivos.includes("idioma"))
+                  .slice(0, 30)
+                  .map((a) => ({
+                    position: a.position,
+                    key: a.key,
+                    detectado: a.idioma_detectado ?? null,
+                  })),
+              },
             }
           : {}),
       },

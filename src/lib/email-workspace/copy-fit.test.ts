@@ -299,3 +299,98 @@ describe("travessão como motivo de alvo", () => {
     expect(v).toEqual({ ok: false, motivo: "cresceu" })
   })
 })
+
+// ── Idioma (01/09) ──────────────────────────────────────────────────────
+//
+// A loja é `en`, a ordem de idioma saiu no payload nos três lugares, e o
+// n8n devolveu português dentro do mesmo bloco. O campo abaixo é o real.
+const OFERTA_EM_PT = "Use code WELCOME10 na compra. Sem mínimo, sem expiração."
+
+const OFFER: BlocoComContrato = {
+  id: "b-offer",
+  position: 0,
+  block_type: "offer",
+  fields: [
+    campo({ key: "offer_body", label: "Corpo da oferta", max_len: 200 }),
+    campo({ key: "offer_cta_label", label: "CTA", max_len: 24, type: "text_short" }),
+  ],
+  content: { offer_body: OFERTA_EM_PT, offer_cta_label: "SHOP NOW" },
+}
+
+describe("alvosDeEncurtamento — motivo idioma", () => {
+  it("loja en com campo em português: vira alvo, com o que o detector viu", () => {
+    const alvos = alvosDeEncurtamento([OFFER], { idiomaDaLoja: "en" })
+    expect(alvos).toHaveLength(1)
+    expect(alvos[0].key).toBe("offer_body")
+    expect(alvos[0].motivos).toEqual(["idioma"])
+    expect(alvos[0].idioma_detectado).toBe("pt")
+    expect(alvos[0].idioma_esperado).toBe("en")
+  })
+
+  // O CTA cabe, não tem traço e é curto demais para o detector opinar —
+  // é exatamente o campo que um falso positivo estragaria.
+  it("rótulo curto nunca entra por idioma", () => {
+    const alvos = alvosDeEncurtamento([OFFER], { idiomaDaLoja: "en" })
+    expect(alvos.map((a) => a.key)).not.toContain("offer_cta_label")
+  })
+
+  it("loja pt-BR com a mesma copy: nenhum alvo", () => {
+    expect(alvosDeEncurtamento([OFFER], { idiomaDaLoja: "pt-BR" })).toEqual([])
+  })
+
+  it("sem idioma da loja o comportamento é o de antes", () => {
+    expect(alvosDeEncurtamento([OFFER])).toEqual([])
+  })
+
+  it("idioma soma com os outros motivos no mesmo campo", () => {
+    const alvos = alvosDeEncurtamento(
+      [
+        {
+          ...OFFER,
+          content: { offer_body: `${OFERTA_EM_PT} Garantia vitalícia — sem risco.` },
+        },
+      ],
+      { idiomaDaLoja: "en" },
+    )
+    expect(alvos[0].motivos).toEqual(["travessao", "idioma"])
+  })
+})
+
+describe("aceitarReescrita — idioma", () => {
+  const limites = { max: 200, motivos: ["idioma"] as const, idiomaEsperado: "en" }
+
+  it("aceita a versão no idioma da loja", () => {
+    expect(
+      aceitarReescrita(OFERTA_EM_PT, "Use code WELCOME10 at checkout. No minimum, no expiration.", {
+        ...limites,
+        motivos: ["idioma"],
+      }),
+    ).toEqual({ ok: true })
+  })
+
+  it("recusa a reescrita que voltou em português", () => {
+    expect(
+      aceitarReescrita(OFERTA_EM_PT, "Use o código WELCOME10 na sua compra. Sem valor mínimo.", {
+        ...limites,
+        motivos: ["idioma"],
+      }).motivo,
+    ).toBe("idioma_permaneceu")
+  })
+
+  // Verter para outra língua muda o tamanho nos dois sentidos — só o alvo
+  // que entrou por ESTOURO é proibido de crescer.
+  it("alvo só de idioma pode crescer, respeitando o max", () => {
+    expect(
+      aceitarReescrita("Frete grátis acima de R$ 200 em todo o site hoje", "Free shipping on every order over $40 across the entire store today", {
+        ...limites,
+        motivos: ["idioma"],
+      }),
+    ).toEqual({ ok: true })
+    expect(
+      aceitarReescrita("Frete grátis acima de R$ 200 em todo o site hoje", "y".repeat(210), {
+        ...limites,
+        motivos: ["idioma"],
+      }).motivo,
+    ).toBe("ainda_acima_do_limite")
+  })
+})

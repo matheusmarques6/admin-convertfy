@@ -1,5 +1,5 @@
 /**
- * copy_fit — encurta a copy que o n8n devolveu acima do limite da caixa.
+ * copy_fit — conserta a copy que o n8n devolveu: tamanho, travessão e idioma.
  *
  * Por que existe: os limites vão no payload (`schema.campos.*.max_caracteres`,
  * 40 de 40 campos no batch cc71e995) e o n8n não os respeita — entre 20 e
@@ -7,9 +7,15 @@
  * gravava em `parsed_output.desvios`, "observabilidade apenas", e nada lia.
  * A frase longa seguia pelo `copy_merge` até vazar da caixa no email.
  *
- * O que este agente faz: recebe SÓ os campos que estouraram, com o limite e
- * a orientação de cada um, e devolve a versão que cabe. Não vê o HTML, não
- * escreve no documento, não toca em campo que estava dentro do limite.
+ * O que este agente faz: recebe SÓ os campos com problema, com o limite e a
+ * orientação de cada um, e devolve a versão corrigida. Não vê o HTML, não
+ * escreve no documento, não toca em campo que já estava certo.
+ *
+ * O terceiro motivo é o IDIOMA (01/09). A ordem de idioma sai no payload do
+ * n8n em três lugares, em inglês, e a copy da Innova Bay — loja `en` —
+ * voltou em português dentro do mesmo bloco. O flow não referencia os
+ * campos novos: pedir mais alto seria repetir o que já falhou, então a
+ * correção passou para cá, onde o veredicto é do código.
  *
  * Quem decide o que entra é o CÓDIGO: cada reescrita passa por
  * `aceitarReescrita` (`email-workspace/copy-fit.ts`) — vazio, ainda longo,
@@ -30,6 +36,11 @@ import {
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
 } from "@/lib/email-workspace/copy-fit"
+import {
+  detectarIdioma,
+  type IdiomaDetectado,
+} from "@/lib/email-workspace/idioma-copy"
+import { languageCodeToLabel } from "@/lib/i18n/store-language"
 import {
   resolveCostCents,
   finishGenerationRun,
@@ -62,12 +73,13 @@ const log = logger.child("CopyFit")
 // modelo, mesmo preço (normalizeModelKey tira o vendor), outro caminho.
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
-const DEFAULT_SYSTEM = `Você encurta copy de email de e-commerce que passou do limite da caixa onde ela será exibida.
+const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão e reescreve no idioma da loja o campo que voltou na língua errada.
 
 REGRAS
 - Reescreva CADA campo recebido para caber em max_caracteres. O limite é o tamanho real do slot no HTML: passar dele faz o texto vazar da caixa.
 - Preserve a MENSAGEM: o argumento central, os números, os nomes de produto e a chamada para ação continuam. Corte redundância, adjetivo decorativo e frase de apoio — nunca o fato.
-- Mantenha o MESMO IDIOMA e o mesmo tom do texto original.
+- IDIOMA: por padrão mantenha o MESMO IDIOMA do texto original. A ÚNICA exceção é o campo marcado com reescrever_no_idioma — esse tem de voltar inteiro naquele idioma, sem uma palavra na língua antiga. Não é tradução literal: reescreva a mensagem como um copywriter nativo escreveria, preservando o argumento, os números, os códigos de cupom e os nomes de produto. Campo com reescrever_no_idioma pode mudar de tamanho para mais ou para menos, desde que caiba em max_caracteres.
+- Mantenha o mesmo tom do texto original.
 - Não use reticências nem corte a frase no meio: entregue frase inteira e bem terminada.
 - Não invente informação que não esteja no texto original.
 - Respeite min_caracteres quando existir.
@@ -156,11 +168,14 @@ export interface DePara {
   depois_len: number | null
   max: number
   aceito: boolean
-  /** Por que o campo entrou na lista (estouro, travessão, ou os dois). */
+  /** Por que o campo entrou na lista (estouro, travessão, idioma). */
   motivos: MotivoDeAlvo[]
   tracos_antes: number
   /** No texto que fica: o reescrito quando aceito, o original quando não. */
   tracos_depois: number
+  /** Só nos alvos de idioma: o que o detector viu antes e no texto que fica. */
+  idioma_antes?: IdiomaDetectado
+  idioma_depois?: IdiomaDetectado
   motivo?: MotivoDeRecusa | "sem_resposta"
 }
 
@@ -193,11 +208,22 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       // ignorar a chave.
       remover_travessao: a.motivos.includes("travessao") || undefined,
       encurtar: a.motivos.includes("max_len") || undefined,
+      reescrever_no_idioma: a.motivos.includes("idioma")
+        ? nomeDoIdioma(a.idioma_esperado)
+        : undefined,
       orientacao: a.orientacao || undefined,
     })),
     null,
     2,
   )
+}
+
+/** `"en"` → `"en (Inglês)"`. Sem rótulo canônico devolve o código cru. */
+function nomeDoIdioma(code: string | null | undefined): string {
+  const c = (code ?? "").trim()
+  if (!c) return ""
+  const label = languageCodeToLabel(c)
+  return label ? `${c} (${label})` : c
 }
 
 function copyAtualDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
@@ -206,6 +232,7 @@ function copyAtualDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       id: a.id,
       caracteres_agora: a.texto.length,
       travessoes_agora: a.tracos || undefined,
+      idioma_agora: a.idioma_detectado || undefined,
       texto: a.texto,
     })),
     null,
@@ -303,7 +330,10 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           const traco = a.motivos.includes("travessao")
             ? ` ${a.tracos} travessão(ões)`
             : ""
-          return `${a.key}${tamanho}${traco}`
+          const idioma = a.motivos.includes("idioma")
+            ? ` idioma ${a.idioma_detectado}→${a.idioma_esperado}`
+            : ""
+          return `${a.key}${tamanho}${traco}${idioma}`
         })
         .join(" · "),
     },
@@ -368,6 +398,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           max: alvo.max,
           min: alvo.min,
           motivos: alvo.motivos,
+          idiomaEsperado: alvo.idioma_esperado,
         })
         if (veredicto.ok) {
           motivos.delete(alvo.id)
@@ -403,6 +434,12 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         // Aceito sem traço é o esperado; recusado, o texto que fica é o
         // original, e o número tem de refletir o que o cliente vai ler.
         tracos_depois: ok ? contarTracos(ok.texto) : a.tracos,
+        ...(a.motivos.includes("idioma")
+          ? {
+              idioma_antes: a.idioma_detectado ?? detectarIdioma(a.texto),
+              idioma_depois: ok ? detectarIdioma(ok.texto) : a.idioma_detectado,
+            }
+          : {}),
         ...(ok ? {} : { motivo: motivos.get(a.id) ?? "sem_resposta" }),
       }
     })
@@ -434,6 +471,16 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           .length,
         travessoes_antes: de_para.reduce((n, d) => n + d.tracos_antes, 0),
         travessoes_depois: de_para.reduce((n, d) => n + d.tracos_depois, 0),
+        // Idioma: quantos campos voltaram do n8n na língua errada e quantos
+        // AINDA estão errados no texto que o cliente vai ler. O primeiro
+        // número é a medida do que o flow ignora; o segundo, a do que
+        // conseguimos corrigir sem ele.
+        com_idioma_errado: input.alvos.filter((a) => a.motivos.includes("idioma"))
+          .length,
+        idioma_esperado: input.alvos.find((a) => a.idioma_esperado)?.idioma_esperado ?? null,
+        idioma_errado_depois: de_para.filter(
+          (d) => d.idioma_depois && d.idioma_depois !== "indefinido" && !d.aceito,
+        ).length,
         de_para,
       },
       tokensInput,

@@ -267,4 +267,63 @@ describe("runCopyFit", () => {
     expect(classes).toContain("curadoria")
     expect(classes).toContain("upstream")
   })
+
+  // ── Idioma (01/09) ────────────────────────────────────────────────────
+  const ALVO_IDIOMA = {
+    id: "0.offer_body",
+    position: 0,
+    block_id: "b-offer",
+    type: "offer",
+    key: "offer_body",
+    label: "Corpo da oferta",
+    orientacao: "",
+    texto: "Use code WELCOME10 na compra. Sem mínimo, sem expiração.",
+    max: 200,
+    min: null,
+    motivos: ["idioma"] as const,
+    tracos: 0,
+    idioma_detectado: "pt" as const,
+    idioma_esperado: "en",
+  }
+
+  it("o contrato pede o idioma da loja pelo nome", async () => {
+    invokeMock.mockResolvedValue(respostaLLM({}))
+    await runCopyFit(entrada([alvo(ALVO_IDIOMA)]))
+    const vars = invokeMock.mock.calls[0][1] as Record<string, string>
+    expect(vars.contrato_json).toContain('"reescrever_no_idioma": "en (Inglês)"')
+    expect(vars.copy_atual_json).toContain('"idioma_agora": "pt"')
+  })
+
+  it("aceita a versão em inglês e registra o antes/depois do idioma", async () => {
+    invokeMock.mockResolvedValue(
+      respostaLLM({
+        "0.offer_body": "Use the code WELCOME10 and get your first order with no minimum.",
+      }),
+    )
+    const r = await runCopyFit(entrada([alvo(ALVO_IDIOMA)]))
+    expect(r.aceitas).toHaveLength(1)
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.com_idioma_errado).toBe(1)
+    expect(parsed.idioma_esperado).toBe("en")
+    expect(parsed.idioma_errado_depois).toBe(0)
+    const dePara = (parsed.de_para as Array<Record<string, unknown>>)[0]
+    expect(dePara.idioma_antes).toBe("pt")
+    expect(dePara.idioma_depois).toBe("en")
+  })
+
+  it("reescrita que volta em português é recusada — a copy original fica", async () => {
+    invokeMock.mockResolvedValue(
+      respostaLLM({
+        "0.offer_body": "Use o código WELCOME10 na sua compra. Sem valor mínimo.",
+      }),
+    )
+    const r = await runCopyFit(entrada([alvo(ALVO_IDIOMA)]))
+    expect(r.aceitas).toEqual([])
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    const dePara = (parsed.de_para as Array<Record<string, unknown>>)[0]
+    expect(dePara.motivo).toBe("idioma_permaneceu")
+    expect(dePara.idioma_depois).toBe("pt")
+    expect(parsed.idioma_errado_depois).toBe(1)
+  })
+
 })

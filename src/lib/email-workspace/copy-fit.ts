@@ -24,6 +24,7 @@
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { deriveFieldNature } from "@/lib/agents/shared/component-dimensions"
 import { findFieldDeviations } from "./copy-spec"
+import { idiomaDivergente, type IdiomaDetectado } from "./idioma-copy"
 
 /** Bloco como ele vem do banco — só o que a medida precisa. */
 export interface BlocoComContrato {
@@ -46,8 +47,15 @@ export function contarTracos(texto: string): number {
   return (texto.match(TRACOS_RE) ?? []).length
 }
 
-/** Por que o campo entrou na lista. Um campo pode ter os dois motivos. */
-export type MotivoDeAlvo = "max_len" | "travessao"
+/**
+ * Por que o campo entrou na lista. Um campo pode ter mais de um motivo.
+ *
+ * `idioma` é o terceiro (01/09): a ordem de idioma sai no payload do n8n,
+ * em três lugares, e volta copy em português numa loja `en`. O flow não
+ * referencia os campos novos — então a correção passou a ser nossa, no
+ * agente que já reescreve campo e cujo veredicto é do código.
+ */
+export type MotivoDeAlvo = "max_len" | "travessao" | "idioma"
 
 /** Um campo a corrigir, endereçado para o prompt e para a tela. */
 export interface AlvoDeEncurtamento {
@@ -66,6 +74,10 @@ export interface AlvoDeEncurtamento {
   motivos: MotivoDeAlvo[]
   /** Quantos travessões/meias-riscas o texto tem agora. */
   tracos: number
+  /** Só quando o motivo `idioma` está presente: o que o detector viu. */
+  idioma_detectado?: IdiomaDetectado
+  /** O idioma da loja (`client_stores.language`), como está gravado. */
+  idioma_esperado?: string
 }
 
 /**
@@ -79,7 +91,9 @@ export interface AlvoDeEncurtamento {
  */
 export function alvosDeEncurtamento(
   blocos: ReadonlyArray<BlocoComContrato>,
+  opts?: { idiomaDaLoja?: string | null },
 ): AlvoDeEncurtamento[] {
+  const idiomaDaLoja = opts?.idiomaDaLoja ?? null
   const out: AlvoDeEncurtamento[] = []
   blocos.forEach((b, i) => {
     const fields = b.fields ?? []
@@ -98,9 +112,11 @@ export function alvosDeEncurtamento(
       if (!texto) continue
       const max = estouroPorChave.get(f.key)
       const tracos = contarTracos(texto)
+      const idioma = idiomaDivergente(texto, idiomaDaLoja)
       const motivos: MotivoDeAlvo[] = []
       if (max != null) motivos.push("max_len")
       if (tracos > 0) motivos.push("travessao")
+      if (idioma.divergente) motivos.push("idioma")
       if (motivos.length === 0) continue
       out.push({
         id: `${position}.${f.key}`,
@@ -115,6 +131,12 @@ export function alvosDeEncurtamento(
         min: f.min_len ?? null,
         motivos,
         tracos,
+        ...(idioma.divergente
+          ? {
+              idioma_detectado: idioma.detectado,
+              idioma_esperado: (idiomaDaLoja ?? "").trim(),
+            }
+          : {}),
       })
     }
   })
@@ -129,6 +151,8 @@ export type MotivoDeRecusa =
   | "identico"
   /** Alvo de travessão cuja reescrita ainda tem travessão. */
   | "traco_permaneceu"
+  /** Alvo de idioma cuja reescrita voltou no idioma errado. */
+  | "idioma_permaneceu"
 
 export interface VeredictoDeReescrita {
   ok: boolean
@@ -149,7 +173,13 @@ export interface VeredictoDeReescrita {
 export function aceitarReescrita(
   original: string,
   novo: unknown,
-  limites: { max: number; min?: number | null; motivos?: MotivoDeAlvo[] },
+  limites: {
+    max: number
+    min?: number | null
+    motivos?: MotivoDeAlvo[]
+    /** Idioma da loja — cobrado só quando o motivo `idioma` está na lista. */
+    idiomaEsperado?: string | null
+  },
 ): VeredictoDeReescrita {
   const motivos = limites.motivos ?? ["max_len"]
   const texto = typeof novo === "string" ? novo.trim() : ""
@@ -160,13 +190,22 @@ export function aceitarReescrita(
   if (motivos.includes("travessao") && contarTracos(texto) > 0) {
     return { ok: false, motivo: "traco_permaneceu" }
   }
+  // Traduziu para o idioma errado (ou não traduziu). O detector só reprova
+  // quando se pronuncia: reescrita curta demais para ter veredicto passa —
+  // o mesmo conservadorismo que decide quem VIRA alvo decide quem sai.
+  if (motivos.includes("idioma")) {
+    const veredicto = idiomaDivergente(texto, limites.idiomaEsperado)
+    if (veredicto.divergente) return { ok: false, motivo: "idioma_permaneceu" }
+  }
   if (limites.max > 0 && texto.length > limites.max) {
     return { ok: false, motivo: "ainda_acima_do_limite" }
   }
   // "Nunca crescer" só vale para quem entrou por ESTOURO — aí encurtar é o
   // pedido, e texto maior nunca é a correção. Para o alvo que entrou só
-  // por travessão, crescer é legítimo: trocar "back — but" por "back, and
-  // then" custa caracteres, e o teto do `max` acima continua valendo.
+  // por travessão ou por IDIOMA, crescer é legítimo: trocar "back — but"
+  // por "back, and then" custa caracteres, e verter uma frase para outra
+  // língua muda o tamanho nos dois sentidos. O teto do `max` acima
+  // continua valendo nos dois casos.
   if (
     motivos.includes("max_len") &&
     texto.length > original.trim().length

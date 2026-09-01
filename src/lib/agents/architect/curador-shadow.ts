@@ -81,6 +81,7 @@ Fora isso, o protocolo vale integralmente.
 
 <biblioteca>
 Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`exige\`, \`peso\` e \`convivencia\` — onde o vault contradisser os metadados do banco, O VAULT VENCE.
+EXCEÇÃO: variante com \`description_no_banco\` é uma em que as duas fontes descrevem PEÇAS DIFERENTES — \`description\` é a prosa do vault e \`description_no_banco\` é o cadastro da linha cujo HTML será REALMENTE montado. Aí o vault não vence: as duas valem como dúvida. Só escolha essa variante se ela servir à posição nas DUAS leituras, e diga na \`justificativa\` sobre qual delas você decidiu. Preferindo-a mesmo assim, prefira a leitura do banco — é o HTML dele que vai para o email.
 {{catalogo}}
 </biblioteca>
 
@@ -514,6 +515,18 @@ export async function runCuradorShadow(
       },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
       { rotulo: "Catálogo + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
+      ...(p.catalogComExtras.divergentes.length > 0
+        ? [
+            {
+              rotulo: "Vault × banco",
+              cls: "biblioteca" as const,
+              valor: `${p.catalogComExtras.divergentes.length} variante(s) em que a prosa do vault descreve outra peça: ${p.catalogComExtras.divergentes
+                .slice(0, 5)
+                .map((d) => d.slug)
+                .join(", ")}`,
+            },
+          ]
+        : []),
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
       { rotulo: "Estruturas de referência", cls: "vault", valor: `${p.estruturasRef.length} do flow` },
@@ -637,6 +650,13 @@ export async function runCuradorShadow(
           justificativa: parsed?.justificativas?.[b] ?? "",
         })),
         invalid_ids: ranking?.invalidIds ?? [],
+        // A contradição que era SILENCIOSA: `toEntry` sobrepõe a prosa do
+        // vault ao cadastro do banco e o prompt diz que o vault vence. Onde
+        // as duas descrevem peças diferentes, o Curador decidia sobre uma e
+        // o pipeline montava a outra. Agora as duas viajam no catálogo e o
+        // par fica registrado aqui, com o slug e o id para consertar no
+        // Obsidian.
+        catalogo_divergente: p.catalogComExtras.divergentes,
         protocol_violations: violations,
         live_violations: p.liveViolations,
         live_rank1_agreement: {
@@ -668,6 +688,17 @@ export async function runCuradorShadow(
     // A tentativa de mexer na sequência é ALTA: o guard já a desarmou, mas
     // ela diz que o prompt parou de ser obedecido — e é assim que se
     // descobre antes de virar email torto.
+    if (p.catalogComExtras.divergentes.length > 0) {
+      log.warn("curador_vault.catalogo_divergente", {
+        storeId: p.storeId,
+        total: p.catalogComExtras.divergentes.length,
+        variantes: p.catalogComExtras.divergentes
+          .slice(0, 10)
+          .map((d) => `${d.slug}:${d.similaridade}`),
+        hint: "o doc do vault e a linha do banco descrevem peças diferentes — conferir o variant_id da nota no Obsidian",
+      })
+    }
+
     if (divergencia) {
       log.warn("curador_vault.estrutura_divergente", {
         storeId: p.storeId,

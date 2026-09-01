@@ -85,7 +85,7 @@ flowchart LR
 | blueprint (rota LLM) | `moonshotai/kimi-k3` | 0.4 | 8192 | rota determinística grava `model='deterministic'` |
 | subject | `anthropic/claude-sonnet-4.6` | 0.7 | 400 | mini‑LLM da rota determinística |
 | copy (fallback in-process) | `claude-opus-4-7` | 1.0 | 20480 | a copy de produção roda no **n8n** (modelo externo) |
-| copy_fit | `claude-haiku-4-5-20251001` | 0.4 | 1500 | encurtador condicional |
+| copy_fit | `anthropic/claude-haiku-4.5` | 0.4 | 1500 | encurtador condicional (tamanho, travessão, idioma) |
 | image | `google/gemini-3.1-flash-image` | — | — | temperatura não é enviada; sempre OpenRouter |
 | hero_section | `anthropic/claude-sonnet-4.6` | 0.3 | 16384 | espelho visual troca p/ `hero_vision_model` |
 | text_format | `moonshotai/kimi-k3` | 0.3 | 65536 | quase sempre **pulado** (merge por example) |
@@ -284,16 +284,34 @@ A copy é gerada por **LLM externo** (modelo do flow do n8n; ecoado em `meta.mod
 
 ## 7 · Encurtador (`copy_fit`)
 
-Condicional, roda **inline no callback** (passo 3.6): recebe **só os campos que estouraram `max_len`** e propõe reescritas; quem aceita é o **código** (`aceitarReescrita` recusa vazio/idêntico/ainda-acima/cresceu/abaixo-do-mínimo). Máx 2 passadas; **fail-open** total. Kill-switch por org: `email_generation_settings.copy_fit_mode`.
+Condicional, roda **inline no callback** (passo 3.6): recebe **só os campos com problema** e propõe reescritas; quem aceita é o **código** (`aceitarReescrita` recusa vazio/idêntico/ainda-acima/cresceu/abaixo-do-mínimo/traço-permaneceu/idioma-permaneceu). Máx 2 passadas; **fail-open** total. Kill-switch por org: `email_generation_settings.copy_fit_mode`.
 
-**Modelo**: `claude-haiku-4-5-20251001` · T 0.4 · max 1500.
+**Três motivos de alvo** (`MotivoDeAlvo`, um campo pode ter mais de um):
+
+| Motivo | Entra quando | Migration |
+|---|---|---|
+| `max_len` | passou do limite da caixa | 20261089 |
+| `travessao` | tem `—` ou `–` (entra mesmo cabendo) | 20261095 |
+| `idioma` | voltou em língua diferente da da loja | 20261099 |
+
+O `idioma` existe porque a ordem de idioma **vai** no payload do n8n em três
+lugares (raiz, `store` e prefixando `pesquisa_diagnostico`) e o flow **não a
+aplica**: na Innova Bay, loja `en`, a copy voltou em português dentro do
+mesmo bloco. O detector (`lib/email-workspace/idioma-copy.ts`, puro) é
+conservador — rótulo curto, cupom e frase ambígua saem como `indefinido` e
+NÃO viram alvo, porque falso positivo aqui reescreveria copy correta. O
+desvio vira número em `parsed_output.idioma` do run `copy` **mesmo com o
+encurtador desligado**: é a medida do que o flow ignora.
+
+**Modelo**: `anthropic/claude-haiku-4.5` (OpenRouter desde 20261098) · T 0.4 · max 1500.
 
 | Entrada | Origem | Classe (declarada em `COPY_FIT_ORIGINS`) |
 |---|---|---|
 | `brand_name` | `client_stores.store_name` | loja |
 | `tom_voz` | `client_stores.tone_description ?? tom_de_voz` | loja |
 | `contrato_json` | `email_blocks.fields` (label, max/min, orientação — do output_schema da variante; max já medido na caixa por `fitBudgets`/`measureSlot`) | curadoria |
-| `copy_atual_json` | textos do n8n acima do limite (`email_blocks.content`) | upstream |
+| `copy_atual_json` | textos do n8n com problema (`email_blocks.content`), com `travessoes_agora`/`idioma_agora` | upstream |
+| `reescrever_no_idioma` (no contrato) | `client_stores.language` via `resolveStoreLanguage` | loja |
 
 ---
 

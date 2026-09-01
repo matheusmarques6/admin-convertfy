@@ -44,6 +44,8 @@ const errorLogs: string[] = []
 const insertCalls: Array<{ table: string; data: Record<string, unknown> }> = []
 /** Linhas de email_blocks vistas pelo callback (contrato de copy da linha). */
 let mockBlocks: Array<Record<string, unknown>> = []
+/** Linha de client_stores — o `language` é o que o encurtador cobra. */
+let mockStore: Record<string, unknown> | null = null
 
 function resetState() {
   mockEmail = {
@@ -58,6 +60,7 @@ function resetState() {
   errorLogs.length = 0
   insertCalls.length = 0
   mockBlocks = []
+  mockStore = null
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -69,6 +72,9 @@ function buildQuery(table: string): any {
   self.maybeSingle = () => {
     if (table === "email_flow_emails") {
       return Promise.resolve({ data: mockEmail, error: null })
+    }
+    if (table === "client_stores") {
+      return Promise.resolve({ data: mockStore, error: null })
     }
     return Promise.resolve({ data: null, error: null })
   }
@@ -867,3 +873,80 @@ describe("POST /api/webhooks/n8n/email-copy — encurtador", () => {
   })
 })
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+// ── Idioma (01/09) ──────────────────────────────────────────────────────
+//
+// A ordem de idioma sai no payload do n8n em três lugares e a copy volta em
+// português numa loja `en`. O flow ignora — a correção é nossa, no
+// encurtador, e o desvio tem de virar número mesmo quando ele está off.
+describe("POST /api/webhooks/n8n/email-copy — idioma", () => {
+  const EM_PT = "Use code WELCOME10 na compra. Sem mínimo, sem expiração."
+  const campo = {
+    key: "offer_body",
+    label: "Corpo da oferta",
+    type: "text_long",
+    max_len: 200,
+    min_len: null,
+    required: false,
+    example: "",
+    guidance: "",
+    source: "schema",
+  }
+
+  function runCopy() {
+    return insertCalls.find(
+      (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
+    )!.data.parsed_output as Record<string, unknown>
+  }
+
+  const envio = () =>
+    makeRequest(
+      validBody({
+        blocks: [{ block_id: MOCK_BLOCK_ID, content: { offer_body: EM_PT } }],
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) as any
+
+  beforeEach(() => {
+    mockBlocks = [
+      { id: MOCK_BLOCK_ID, content: {}, block_type: "offer", fields: [campo] },
+    ]
+    runCopyFitMock.mockResolvedValue({ aceitas: [], de_para: [], rodou: true })
+  })
+
+  it("loja en com copy em português: o campo vira alvo de idioma", async () => {
+    mockStore = { store_name: "Innova Bay", language: "en" }
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+
+    const alvos = (
+      runCopyFitMock.mock.calls[0][0] as {
+        alvos: Array<{ key: string; motivos: string[]; idioma_esperado?: string }>
+      }
+    ).alvos
+    expect(alvos).toHaveLength(1)
+    expect(alvos[0].motivos).toEqual(["idioma"])
+    expect(alvos[0].idioma_esperado).toBe("en")
+
+    // O run `copy` guarda a evidência: a ordem foi mandada e não foi usada.
+    expect(runCopy().idioma).toMatchObject({ da_loja: "en", campos_errados: 1 })
+  })
+
+  it("loja pt-BR com a mesma copy: nenhum alvo, nenhum bloco de idioma", async () => {
+    mockStore = { store_name: "Innova Bay", language: "pt-BR" }
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+    expect(runCopyFitMock).not.toHaveBeenCalled()
+    expect(runCopy().idioma).toBeUndefined()
+  })
+
+  // O encurtador desligado não pode apagar a medida — é justamente o
+  // cenário em que se quer saber quanto o flow está ignorando.
+  it("com o kill-switch off o desvio continua no run", async () => {
+    mockStore = { store_name: "Innova Bay", language: "en" }
+    loadCopyFitModeMock.mockResolvedValue("off")
+    await POST(envio())
+    expect(runCopyFitMock).not.toHaveBeenCalled()
+    expect(runCopy().idioma).toMatchObject({ campos_errados: 1 })
+  })
+})
