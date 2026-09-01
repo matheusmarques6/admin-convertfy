@@ -272,6 +272,10 @@ vi.mock("./html/format-context", () => ({
   })),
   buildImageFormatVars: vi.fn(() => ({})),
   buildColorFormatVars: vi.fn(() => ({})),
+  // Vars exigidas pelo schema que o builder não montou — o runner lê isto
+  // depois de montar as vars e grava na telemetria do run. Sem drift no
+  // mock, a lista é vazia.
+  takeContractDrift: vi.fn(() => []),
 }))
 
 import { runPhase2HtmlQa } from "./phase2-runner.service"

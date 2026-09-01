@@ -99,6 +99,7 @@ import {
   buildHeroVars,
   buildTextFormatVars,
   buildColorFormatVars,
+  takeContractDrift,
   type FormatChainContext,
   type HeroVariantData,
   type HeroVariantSource,
@@ -3302,6 +3303,12 @@ async function runFormattingChain(p: {
       ).join(", "),
       pesquisaFullText: pesquisaToFullText(storeRaw as PesquisaFields),
     })
+    // Var exigida pelo schema que o builder não montou. Em produção isso só
+    // virava log.warn — e foi assim que `color_surface`/`color_surface_strong`
+    // ficaram fora do prompt sem ninguém ver, deixando o agente sem destino
+    // legal para painel e o email metade na cor do template. Aqui vira
+    // telemetria do run, ao lado do brand_share que denuncia o efeito.
+    const contractDrift = takeContractDrift("color_format")
 
     const outcome = await executeFormatStep<{
       html: string
@@ -3367,6 +3374,9 @@ async function runFormattingChain(p: {
           rawOutput: r.rawOutput,
           parsed: {
             ops_applied: applied.applied,
+            ...(contractDrift.length > 0
+              ? { contract_drift: contractDrift }
+              : {}),
             // OPS não medem conformidade: 11 ops que trocam 1 ocorrência
             // cada contavam igual a 11 que trocariam 30, e foi assim que a
             // Luxe Lift saiu com "11 aplicadas" e o email fora da marca.

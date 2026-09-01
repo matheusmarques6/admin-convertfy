@@ -376,6 +376,28 @@ export async function resolveHeroVariant(
 
 // ── Builders de vars por agente ────────────────────────────────────
 
+/**
+ * Vars que o schema exige e o builder não produziu, por agente.
+ *
+ * Em produção o drift do contrato só virava `log.warn` — e foi assim que
+ * `color_surface`/`color_surface_strong` ficaram meses fora do prompt de
+ * cores sem ninguém notar: a var era exigida pelo schema, declarada na
+ * proveniência, e o builder simplesmente não a montava. O registro aqui é
+ * lido pelo runner e vai para a telemetria do run, onde alguém vê.
+ *
+ * Não lança em produção de propósito: derrubar a geração por causa de uma
+ * var faltando é pior que gerar degradado — mas degradar em silêncio, que
+ * era o que acontecia, é pior que os dois.
+ */
+const contractDrift = new Map<string, string[]>()
+
+/** Campos ausentes registrados desde a última leitura (e limpa o registro). */
+export function takeContractDrift(agent: string): string[] {
+  const missing = contractDrift.get(agent) ?? []
+  contractDrift.delete(agent)
+  return missing
+}
+
 function validateVars(
   schema: ZodTypeAny,
   vars: Record<string, string>,
@@ -386,10 +408,15 @@ function validateVars(
   } else {
     const result = schema.safeParse(vars)
     if (!result.success) {
+      const missing = result.error.issues.map((i) => i.path.join("."))
+      contractDrift.set(agent, missing)
       log.warn("contract.drift", {
         agent,
+        campos: missing.slice(0, 10),
         issues: result.error.issues.slice(0, 5),
       })
+    } else {
+      contractDrift.delete(agent)
     }
   }
   return vars
@@ -696,16 +723,18 @@ export function buildColorFormatVars(
     tones: extras.tones,
     color_inventory_json: JSON.stringify(inventory, null, 2),
     brand_colors: serializeBrandColors(extras.brand),
-    // Papéis resolvidos — o agente precisa saber qual cor vai ONDE, não só
-    // quais cores a marca tem. É o que a hero sempre recebeu.
-    color_bg: ctx.roles.bg,
-    color_text: ctx.roles.text,
-    color_heading: ctx.roles.heading,
-    color_button_bg: ctx.roles.button_bg,
-    color_button_text: ctx.roles.button_text,
-    color_accent: ctx.roles.accent,
-    font_heading: ctx.fontHeading,
-    font_body: ctx.fontBody,
+    // Papéis resolvidos via `identityVars` — o MESMO helper da hero, e não
+    // uma segunda lista escrita à mão.
+    //
+    // A lista manual que estava aqui trazia seis dos oito papéis: faltavam
+    // `color_surface` e `color_surface_strong`. O prompt chegava com
+    // <surface></surface> vazio, e como ele manda painel ir para esses dois
+    // papéis e proíbe cor fora de <color_roles>, o agente ficava sem destino
+    // legal para QUALQUER painel — os cinzas da biblioteca (600px, 598px,
+    // 351px de largura) passavam intactos e o email saía metade na cor do
+    // template. Medido: brand_share entre 0,27 e 0,53 em 15 gerações
+    // seguidas, enquanto a hero — que usa este helper — saía certa.
+    ...identityVars(ctx),
     pesquisa_full_text: extras.pesquisaFullText,
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",

@@ -26,7 +26,11 @@ São **sete causas distintas**, não ruído aleatório. A leitura que importa:
 | 6 | `avatar_url` aponta para `.png`; o arquivo é `.jpg` | 3 | Baixa |
 | 7 | Realtime `Disconnecting broadcast changes handler` | 1 | Nenhuma |
 | 8 | Cron de saúde do WhatsApp morto (`crm_channels.name`) | — ¹ | **Alta** |
+| 9 | Metade das cores fica com a paleta do template (`color_format`) | — ² | **Alta** |
 | | **Total** | **183** | |
+
+² O achado 9 não veio de log nenhum: nada falhava. Saiu de uma peça gerada e da telemetria
+em `email_generation_runs`.
 
 ¹ O achado 8 não está no CSV do Supabase: apareceu nos logs de runtime da Vercel (31/08),
 a ~288 falhas/dia. Entrou aqui por ser o mesmo tipo de causa — coluna que não existe.
@@ -417,6 +421,62 @@ membro da org), e `notifyChannelDisconnected` deduplica por "no máximo 1 alerta
 canal": enquanto essas não forem lidas, nenhuma nova é criada. O que volta a funcionar de
 imediato é a correção do `connection_state` no `config` e o `clearChannelAlerts` quando o número
 reconectar — e o alerta para a **próxima** queda, depois que as pendentes forem lidas.
+
+---
+
+## 9. Metade das cores do email fica com a paleta do template
+
+> **Estado (31/08):** **corrigido**. Achado a partir de uma peça gerada, não de log — nada
+> falhava: 29 runs de `color_format`, todos `success`, zero erro.
+
+`brand_share` 0,27–0,53 em 15 gerações seguidas · agente `color_format`
+
+### O quê
+O email sai com a hero e os CTAs na cor da marca e **todo o resto na cor do template** — fundos,
+painéis e ícones cinza. A métrica que o próprio pipeline grava em `email_generation_runs`
+(`parsed_output.recolor_summary.brand_share`, a fração das ocorrências de cor que o recolor
+alcançou) ficou entre **0,27 e 0,53** nas 15 últimas gerações. Nunca passou de ~50%.
+
+### Por quê
+`buildColorFormatVars` (`src/lib/agents/html/format-context.ts`) montava os papéis de cor numa
+lista escrita à mão e trazia **seis dos oito**: faltavam `color_surface` e `color_surface_strong`.
+`buildHeroVars` não tem o problema porque reusa o helper `identityVars(ctx)` — é exatamente por
+isso que a hero saía certa e o resto não.
+
+A validação não pegou: `validateVars` faz `schema.parse` fora de produção, mas **em produção usa
+`safeParse` e apenas `log.warn("contract.drift")`**, seguindo com as vars incompletas. O
+`ColorFormatPromptVarsSchema` exige as duas, e o comentário ali documenta que elas nasceram para
+resolver o incidente Luxe Lift de 23–24/08. A var foi criada, exigida no schema, declarada na
+proveniência — e nunca ligada ao builder.
+
+Com os papéis vazios, as regras do prompt fecham o caminho: "Panels go to `<surface>`, or to
+`<surface_strong>`" + "NEVER introduce a color outside `<color_roles>`" + "Empty roles → emit no
+ops at all". Sem destino legal, o agente não emite op para painel nenhum — e o prompt classifica
+isso como decisão legítima.
+
+**No último email** (16 cores no inventário, 7 ops, `brand_share` 0,408) ficaram intocadas
+exatamente as cores com `dentro_de`, isto é, os painéis: `#E1DEDE` cobrindo 600px (a largura
+inteira da peça), `#B1B3B6` (598px), `#F2F2F2` (351px), `#E8E8E8` (292px), `#EFEFEF` (241px) e
+`#8B8B8B` (os três círculos "ICON 1/2/3"). O agente mexeu só nos pretos e quase-brancos — os que
+mapeiam para papéis não vazios.
+
+### Como resolver
+1. `buildColorFormatVars` passa a reusar `identityVars(ctx)` em vez da segunda lista à mão. Não
+   basta somar as duas linhas que faltavam: foi a **duplicação** que produziu o bug.
+2. Teste de contrato (`format-context.contract.test.ts`) comparando, para cada agente, as chaves
+   exigidas pelo schema com as que o builder produz. Verificado red/green: com a lista manual de
+   volta, ele falha nomeando `color_surface` e `color_surface_strong`.
+3. `contract.drift` deixa de morrer no log — `takeContractDrift` devolve os campos ausentes e o
+   runner os grava em `parsed_output.contract_drift`, ao lado do `brand_share`.
+
+### Implicações
+- **Os emails já gerados continuam errados.** A correção age na geração; as peças existentes
+  precisam ser regeradas.
+- **`brand_share` agora tem leitura:** ~0,4 era sintoma, não linha de base. Depois da correção,
+  esse número é o teste de que o painel voltou a receber cor — vale acompanhá-lo por geração.
+- `ImageFormatPromptVarsSchema` existe em `contract.ts` mas **não é usado por builder nenhum** —
+  o `image_format` não valida vars. Fica anotado; o teste de contrato cobre os três builders que
+  existem de fato.
 
 ---
 
