@@ -3,7 +3,7 @@ import path from "node:path"
 
 test("casts stale template age after the RPC that it replaces", () => {
   const sql = fs.readFileSync(
-    path.join(process.cwd(), "supabase/migrations/20261096_fix_stale_pending_templates_age_type.sql"),
+    path.join(process.cwd(), "supabase/migrations/20261100_fix_stale_pending_templates_age_type.sql"),
     "utf8"
   )
 

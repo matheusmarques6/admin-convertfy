@@ -3,7 +3,7 @@ import path from "node:path"
 
 test("keeps the dashboard cache RLS reconciliation at the end of the migration sequence", () => {
   const sql = fs.readFileSync(
-    path.join(process.cwd(), "supabase/migrations/20261095_dashboard_cache_org_id_reconcile.sql"),
+    path.join(process.cwd(), "supabase/migrations/20261099_dashboard_cache_org_id_reconcile.sql"),
     "utf8"
   )
 
