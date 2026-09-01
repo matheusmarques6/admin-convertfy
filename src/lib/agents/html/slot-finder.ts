@@ -85,7 +85,14 @@ export function blockIndexesInRange(html: string, range: Range): number[] {
 export interface AttrSlot {
   /** O token cru ("URL_DA_IMAGEM_1"). */
   token: string
-  attr: "src" | "alt" | "href"
+  /**
+   * Onde o token mora. `background` e `css-url` são as duas formas de
+   * IMAGEM DE FUNDO em email: `<td background="TOKEN">` (o que o Outlook
+   * lê) e `style="background-image:url('TOKEN')"` (o que os demais leem).
+   * Sem elas, uma arte de fundo tinha só a ocorrência do `<v:fill src>`
+   * reconhecida — a foto aparecia no Outlook e em mais lugar nenhum.
+   */
+  attr: "src" | "alt" | "href" | "background" | "css-url"
   /** Range do VALOR (entre as aspas) no source original. */
   valueRange: Range
   /** Range do elemento dono (a <img>/<a>) — null em comentário MSO. */
@@ -104,7 +111,19 @@ export interface AttrSlot {
   synthetic?: boolean
 }
 
-const ATTR_RE = /\b(src|alt|href)\s*=\s*"([^"]*)"/gi
+const ATTR_RE = /\b(src|alt|href|background)\s*=\s*"([^"]*)"/gi
+
+/**
+ * `url('TOKEN')` do CSS inline. Aspas simples, duplas ou nenhuma — as três
+ * formas aparecem na biblioteca. O grupo 2 é o token; o offset dele dentro
+ * do match é calculado no laço (o prefixo `url(` + aspa varia).
+ */
+const CSS_URL_RE = /url\(\s*(['"]?)([A-Z][A-Z0-9_]*)\1\s*\)/g
+
+/** Onde uma URL de imagem pode ser escrita. */
+export function isImageAttr(attr: AttrSlot["attr"]): boolean {
+  return attr === "src" || attr === "background" || attr === "css-url"
+}
 
 /**
  * Todos os slots de token do documento, em ordem de aparição. Arte fixa
@@ -139,6 +158,30 @@ export function findAttrSlots(html: string): AttrSlot[] {
       inMso,
     })
   }
+  // Imagem de fundo declarada no CSS inline. Mesma régua de vocabulário
+  // do atributo: só token, nunca URL real nem data:.
+  for (const m of html.matchAll(CSS_URL_RE)) {
+    const token = m[2]
+    if (!isAttrToken(token)) continue
+    const matchStart = m.index ?? 0
+    const valueStart = matchStart + m[0].indexOf(token)
+    const valueRange: Range = { start: valueStart, end: valueStart + token.length }
+    const inMso = comments.some(
+      (c) => matchStart >= c.start && matchStart < c.end,
+    )
+    const block = blocks.find(
+      (b) => matchStart >= b.range.start && matchStart < b.range.end,
+    )
+    out.push({
+      token,
+      attr: "css-url",
+      valueRange,
+      imgRange: inMso ? null : (elementLookup(matchStart)?.range ?? null),
+      blockIndice: block?.indice ?? null,
+      inMso,
+    })
+  }
+
   // Ordem de DOCUMENTO: `assignImageSlots` usa "o candidato mais cedo"
   // como 2º critério, e um sintético jogado no fim faria a foto do
   // produto 2 cair no card do 1 numa variante que mistura os dois tipos.
@@ -182,7 +225,7 @@ function slotsFromBase64Placeholder(
 ): AttrSlot[] {
   const out: AttrSlot[] = []
   const jaTemSrc = new Set(
-    slots.filter((s) => s.attr === "src").map((s) => s.token),
+    slots.filter((s) => isImageAttr(s.attr)).map((s) => s.token),
   )
   for (const alt of slots) {
     if (alt.attr !== "alt" || !alt.imgRange) continue
@@ -323,7 +366,7 @@ export function assignImageSlots(
   // Grupos por token, restritos a src casável, na ordem da 1ª aparição.
   const groupsByToken = new Map<string, AttrSlot[]>()
   for (const s of slots) {
-    if (s.attr !== "src" || isStructuralToken(s.token)) continue
+    if (!isImageAttr(s.attr) || isStructuralToken(s.token)) continue
     const g = groupsByToken.get(s.token)
     if (g) g.push(s)
     else groupsByToken.set(s.token, [s])

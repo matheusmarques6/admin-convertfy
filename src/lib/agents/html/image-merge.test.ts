@@ -362,3 +362,54 @@ describe("imageMerge — bloco ↔ marcador", () => {
     expect(r.html.indexOf("primeira.png")).toBeLessThan(r.html.indexOf("segunda.png"))
   })
 })
+
+describe("imagem de FUNDO — as três formas do mesmo token", () => {
+  // Bytes da variante "produtos 2" (8ef65206). A foto de fundo se declara
+  // três vezes: `background=` (Outlook), `background-image:url()` (todos os
+  // outros) e `<v:fill src=>` (VML). Até 01/09 só a do VML era reconhecida:
+  // a foto aparecia no Outlook e o email chegava com fundo branco e os
+  // marcadores flutuando em Gmail/Apple Mail — foi o que o cliente viu.
+  const fundo = [
+    "<!-- cfy:block:0:products:start -->",
+    '<tr><td background="URL_DA_FOTO"',
+    "    style=\"background-color:#FFFFFF;background-image:url('URL_DA_FOTO');background-size:cover;\">",
+    '  <!--[if gte mso 9]>',
+    '  <v:rect><v:fill type="frame" src="URL_DA_FOTO" color="#FFFFFF" /></v:rect>',
+    "  <![endif]-->",
+    "</td></tr>",
+    "<!-- cfy:block:0:products:end -->",
+  ].join("\n")
+
+  it("escreve a URL nas TRÊS ocorrências", () => {
+    const r = imageMerge({
+      html: fundo,
+      blocks: [
+        {
+          block_id: "b1",
+          block_type: "products",
+          position: 1,
+          content: {},
+          fields: [
+            {
+              key: "product_center_shot",
+              example: "",
+              type: "image",
+              nature: "imagem_gerada",
+            },
+          ],
+        },
+      ],
+      imageMap: [
+        {
+          block_type: "products",
+          position: 1,
+          field_key: "product_center_shot",
+          url: "https://cdn/foto.png",
+        },
+      ],
+    })
+    expect(r.html).not.toContain("URL_DA_FOTO")
+    expect(r.html.match(/https:\/\/cdn\/foto\.png/g)).toHaveLength(3)
+    expect(r.report.merged).toBe(1)
+  })
+})

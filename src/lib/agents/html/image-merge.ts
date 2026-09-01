@@ -35,6 +35,7 @@ import { extractHeroBySentinels } from "./hero-locator"
 import {
   assignImageSlots,
   findAttrSlots,
+  isImageAttr,
   type AttrSlot,
   type ImageField,
 } from "./slot-finder"
@@ -204,7 +205,7 @@ export function imageMerge(input: ImageMergeInput): {
   const otherImageTokenInRow = (row: Range, token: string): boolean =>
     allSlots.some(
       (s) =>
-        s.attr === "src" &&
+        isImageAttr(s.attr) &&
         s.token !== token &&
         s.valueRange.start >= row.start &&
         s.valueRange.start < row.end,
