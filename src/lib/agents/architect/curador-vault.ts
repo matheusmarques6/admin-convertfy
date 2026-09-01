@@ -364,6 +364,94 @@ export function buildEstruturasRefResumo(refs: EstruturaRefResumo[]): string {
     .join("\n")
 }
 
+// ── Aprendizados (fase 1 — user do shadow/flip) ─────────────────────────
+
+export interface AprendizadoResumo {
+  slug: string
+  body: string
+}
+
+export function buildAprendizadosBlock(aprendizados: AprendizadoResumo[]): string {
+  if (aprendizados.length === 0) return "(nenhum aprendizado catalogado para este flow)"
+  return aprendizados
+    .slice(0, 25)
+    .map((a) => `— ${a.slug}:\n${clamp(a.body, 1_200)}`)
+    .join("\n\n")
+}
+
+/** email_learnings do flow + globais com `aplica_a` (fail-open → []). */
+export async function loadAprendizadosResumo(flowType: string): Promise<AprendizadoResumo[]> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("email_learnings")
+      .select("slug, body_md, flow_type, aplica_a")
+      .eq("is_active", true)
+      .or(`flow_type.eq.${flowType},flow_type.is.null`)
+      .order("slug")
+    if (error) {
+      log.warn("aprendizados_load_failed", { flowType, error: error.message })
+      return []
+    }
+    return (data ?? [])
+      .filter((r) => {
+        if (r.flow_type === flowType) return true
+        const aplica = Array.isArray(r.aplica_a) ? (r.aplica_a as string[]) : []
+        return aplica.length === 0 || aplica.includes(flowType)
+      })
+      .map((r) => ({ slug: r.slug as string, body: (r.body_md as string) ?? "" }))
+  } catch (err) {
+    log.warn("aprendizados_load_threw", { flowType, error: err instanceof Error ? err.message : String(err) })
+    return []
+  }
+}
+
+// ── Contagem de uso por variante (desempate por menor uso) ──────────────
+
+/**
+ * Contagem agregada de escolhas por variant_id sobre as últimas linhas de
+ * email_generation_choices (fail-open → mapa vazio). Aproximação suficiente
+ * para rotação de criativo — o objetivo é "menos usada primeiro", não BI.
+ */
+export async function loadVariantUsageCounts(limitRows = 500): Promise<Map<string, number>> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("email_generation_choices")
+      .select("choices")
+      .order("created_at", { ascending: false })
+      .limit(limitRows)
+    if (error) {
+      log.warn("usage_load_failed", { error: error.message })
+      return new Map()
+    }
+    const counts = new Map<string, number>()
+    for (const row of data ?? []) {
+      const choices = Array.isArray(row.choices) ? row.choices : []
+      for (const c of choices as Array<{ variant_id?: string }>) {
+        if (c?.variant_id) counts.set(c.variant_id, (counts.get(c.variant_id) ?? 0) + 1)
+      }
+    }
+    return counts
+  } catch (err) {
+    log.warn("usage_load_threw", { error: err instanceof Error ? err.message : String(err) })
+    return new Map()
+  }
+}
+
+/** Bloco `<uso_por_variante>` da memória — slug do vault quando existir. */
+export function renderUsageCounts(
+  counts: Map<string, number>,
+  extras?: Map<string, { slug: string }>,
+): string {
+  if (counts.size === 0) return "<uso_por_variante>\n(sem histórico de uso ainda)\n</uso_por_variante>"
+  const linhas = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 60)
+    .map(([id, n]) => `- ${extras?.get(id)?.slug ?? id}: ${n}×`)
+  return `<uso_por_variante>\nPeças já montadas por variante (desempate: a MENOS usada vence em empate total):\n${linhas.join("\n")}\n</uso_por_variante>`
+}
+
 /** Carrega as referências ativas do flow (fail-open → lista vazia). */
 export async function loadEstruturaRefsResumo(flowType: string): Promise<EstruturaRefResumo[]> {
   try {

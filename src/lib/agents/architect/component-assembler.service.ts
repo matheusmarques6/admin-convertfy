@@ -51,11 +51,18 @@ import {
   buildRequisitosGlossario,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
+  loadAprendizadosResumo,
   loadCuradorVaultKnowledge,
   loadCuradorVaultMode,
   loadEstruturaRefsResumo,
+  loadVariantUsageCounts,
   momentoDoEmail,
 } from "./curador-vault"
+import {
+  measureProtocolViolations,
+  rank1ByBlock,
+  runCuradorShadow,
+} from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
@@ -854,13 +861,17 @@ export async function assembleStoreReference(
   // comportamento vivo é o de sempre (o shadow roda em call paralelo).
   // Fail-open em tudo: sem sync/tabela/coluna, degrada para 'off'.
   const curadorVaultMode = await loadCuradorVaultMode(input.storeId)
-  const vault =
-    curadorVaultMode === "on"
+  // Conhecimento carregado em shadow E on (o shadow precisa dele); as vars
+  // do call VIVO só o recebem em 'on'.
+  const vaultKnowledge =
+    curadorVaultMode !== "off"
       ? await loadCuradorVaultKnowledge()
       : emptyCuradorVaultKnowledge()
+  const estruturasRefAll =
+    curadorVaultMode !== "off" ? await loadEstruturaRefsResumo(input.flowType) : []
+  const vault = curadorVaultMode === "on" ? vaultKnowledge : emptyCuradorVaultKnowledge()
   const vaultExtras = buildCatalogVaultExtras(vault, eligible)
-  const estruturasRef =
-    curadorVaultMode === "on" ? await loadEstruturaRefsResumo(input.flowType) : []
+  const estruturasRef = curadorVaultMode === "on" ? estruturasRefAll : []
 
   // Catálogo COMPLETO (todas as seções) em ordem estável — vai no system
   // prompt para ser cacheado, e cache é endereçado por conteúdo: filtrar por
@@ -1248,6 +1259,44 @@ export async function assembleStoreReference(
     )
   }
 
+  // ── Fase 1 do plano curador-cerebro-vault: SHADOW do Curador. Sonnet +
+  // protocolo do vault, no contrato ampliado, em paralelo ao vivo — a run
+  // é gravada (parsed_output.shadow=true) e NADA é consumido. Awaited de
+  // propósito (promise solta morre com o serverless); falha nunca propaga.
+  if (curadorVaultMode === "shadow") {
+    const shadowExtras = buildCatalogVaultExtras(vaultKnowledge, eligible)
+    const [aprendizados, usageCounts] = await Promise.all([
+      loadAprendizadosResumo(input.flowType),
+      loadVariantUsageCounts(),
+    ])
+    const liveRank1 = rank1ByBlock(rankingByBlock)
+    await runCuradorShadow({
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      batchId: input.batchId,
+      triggeredBy: input.triggeredBy,
+      emailId: input.emailId,
+      flowId: input.flowId,
+      baseVars: chooserVars,
+      origins,
+      vault: vaultKnowledge,
+      extras: shadowExtras,
+      catalogComExtras: buildCatalog(eligible, shadowExtras),
+      estruturasRef: estruturasRefAll,
+      aprendizados,
+      usageCounts,
+      typeIndex,
+      liveSections: sections,
+      liveViolations: measureProtocolViolations({
+        rank1ByBlock: liveRank1,
+        extras: shadowExtras,
+        momento: momentoDoEmail(input.flowType, input.emailNumber),
+        sectionByBlock: new Map(sections.map((s, i) => [i, s])),
+      }),
+      liveRank1,
+    })
+  }
 
   // ── PASSO B — Montador: escolhe 1 entre os finalistas de CADA posição,
   // vendo o email inteiro de uma vez (story CM-4).
