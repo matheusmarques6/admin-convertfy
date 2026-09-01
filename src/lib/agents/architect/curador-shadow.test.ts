@@ -144,6 +144,41 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO AUTORIZA remover")
   })
 
+  // 01/09: o primeiro e-mail com o protocolo de fato ligado saiu com 2 de 6
+  // posições. Em `reviews`, ZERO das 7 variantes vetavam welcome-1 — as 7
+  // caíram só por declararem outro momento. `momento` diz onde a variante
+  // brilha, não onde ela é permitida.
+  it("momento NÃO elimina — só o veto elimina", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("EMENDA-MOMENTO-01")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
+      "por momento SOMENTE quando <momento> estiver em `momento_vetado`",
+    )
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("declarar outro momento NÃO elimina")
+    // E entra no ranking, como primeiro eixo.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
+      "momento → objecao → registro → paleta → papel_na_peca",
+    )
+  })
+
+  // O protocolo é a LEI do prompt ("em conflito, o protocolo vence") e vive
+  // num vault externo. Sem a ressalva NOMEADA, o passo 5 continuaria valendo
+  // e o modelo continuaria eliminando.
+  it("a ressalva de precedência é explícita e diz o que suspende", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("COM UMA ÚNICA EXCEÇÃO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ESSA PARTE ESTÁ SUSPENSA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Fora isso, o protocolo vale integralmente")
+  })
+
+  // No `body` ele tinha 4 sobreviventes e devolveu `escolhas: []` porque
+  // nenhum eixo as separava — abstenção onde o passo 9 manda desempatar.
+  it("proíbe devolver lista vazia com sobreviventes", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("SOBREVIVEU, TEM DE SAIR ESCOLHIDA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
+      '"Nenhum eixo as separa" NUNCA justifica devolver lista vazia',
+    )
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Empate total não é lacuna")
+  })
+
   it("o user manda os três guias da aba Arquitetura, inclusive o NÃO DEVE", () => {
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{intencao_email}}")
     // A var que faltava: as restrições existiam no dado e na tela, e nunca
