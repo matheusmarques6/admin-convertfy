@@ -34,7 +34,22 @@ export interface BlocoComContrato {
   fields?: BlueprintBlockField[] | null
 }
 
-/** Um campo que estourou o limite, endereçado para o prompt e para a tela. */
+/**
+ * Travessão e meia-risca — a pontuação que a copy do n8n usa para emendar
+ * frase ("ready to send it back — but…"). O HÍFEN fica de fora de
+ * propósito: `OBD-II`, `zero-risk` e `e-mail` são palavras, não pontuação,
+ * e há um caso desses no próprio email que originou esta regra.
+ */
+const TRACOS_RE = /[—–]/g
+
+export function contarTracos(texto: string): number {
+  return (texto.match(TRACOS_RE) ?? []).length
+}
+
+/** Por que o campo entrou na lista. Um campo pode ter os dois motivos. */
+export type MotivoDeAlvo = "max_len" | "travessao"
+
+/** Um campo a corrigir, endereçado para o prompt e para a tela. */
 export interface AlvoDeEncurtamento {
   /** `{position}.{key}` — a chave que o LLM devolve. Única no email. */
   id: string
@@ -47,14 +62,20 @@ export interface AlvoDeEncurtamento {
   texto: string
   max: number
   min: number | null
+  /** Estourou o limite, tem travessão, ou os dois. Nunca vazio. */
+  motivos: MotivoDeAlvo[]
+  /** Quantos travessões/meias-riscas o texto tem agora. */
+  tracos: number
 }
 
 /**
- * Os campos a encurtar, na ordem dos blocos.
+ * Os campos a corrigir, na ordem dos blocos.
  *
- * Só `kind: "max_len"`. `missing`/`required_empty` ficam de fora de
- * propósito: encurtador não inventa copy que não veio — isso é problema do
- * flow do n8n, e mascará-lo aqui esconderia o campo que sumiu.
+ * Dois motivos: passou do `max_len` (só `kind: "max_len"` —
+ * `missing`/`required_empty` ficam de fora de propósito, porque encurtador
+ * não inventa copy que não veio) e TRAVESSÃO no texto, que entra mesmo
+ * quando o campo cabe no limite: o traço é do jeito que o modelo escreve,
+ * não do tamanho da frase.
  */
 export function alvosDeEncurtamento(
   blocos: ReadonlyArray<BlocoComContrato>,
@@ -64,23 +85,36 @@ export function alvosDeEncurtamento(
     const fields = b.fields ?? []
     if (fields.length === 0) return
     const position = typeof b.position === "number" ? b.position : i
-    const porChave = new Map(fields.map((f) => [f.key, f]))
-    for (const d of findFieldDeviations(b.content, fields)) {
-      if (d.kind !== "max_len") continue
-      const f = porChave.get(d.key)
-      const texto = String(b.content?.[d.key] ?? "").trim()
-      if (!f || !texto) continue
+    // Estouros indexados por chave: a varredura agora é sobre os CAMPOS
+    // (todo campo de copy pode ter traço), não sobre a lista de desvios.
+    const estouroPorChave = new Map(
+      findFieldDeviations(b.content, fields)
+        .filter((d) => d.kind === "max_len")
+        .map((d) => [d.key, d.max_len]),
+    )
+    for (const f of fields) {
+      if (deriveFieldNature(f) !== "copy") continue
+      const texto = String(b.content?.[f.key] ?? "").trim()
+      if (!texto) continue
+      const max = estouroPorChave.get(f.key)
+      const tracos = contarTracos(texto)
+      const motivos: MotivoDeAlvo[] = []
+      if (max != null) motivos.push("max_len")
+      if (tracos > 0) motivos.push("travessao")
+      if (motivos.length === 0) continue
       out.push({
-        id: `${position}.${d.key}`,
+        id: `${position}.${f.key}`,
         position,
         block_id: b.id ?? null,
         type: b.block_type ?? "",
-        key: d.key,
-        label: f.label || d.key,
+        key: f.key,
+        label: f.label || f.key,
         orientacao: f.guidance || "",
         texto,
-        max: d.max_len,
+        max: max ?? f.max_len,
         min: f.min_len ?? null,
+        motivos,
+        tracos,
       })
     }
   })
@@ -93,6 +127,8 @@ export type MotivoDeRecusa =
   | "abaixo_do_minimo"
   | "cresceu"
   | "identico"
+  /** Alvo de travessão cuja reescrita ainda tem travessão. */
+  | "traco_permaneceu"
 
 export interface VeredictoDeReescrita {
   ok: boolean
@@ -113,17 +149,30 @@ export interface VeredictoDeReescrita {
 export function aceitarReescrita(
   original: string,
   novo: unknown,
-  limites: { max: number; min?: number | null },
+  limites: { max: number; min?: number | null; motivos?: MotivoDeAlvo[] },
 ): VeredictoDeReescrita {
+  const motivos = limites.motivos ?? ["max_len"]
   const texto = typeof novo === "string" ? novo.trim() : ""
   if (!texto) return { ok: false, motivo: "vazio" }
   if (texto === original.trim()) return { ok: false, motivo: "identico" }
+  // Pediu para tirar o traço e o traço continua lá: o agente não fez o
+  // trabalho. Vale mesmo que o texto tenha encurtado.
+  if (motivos.includes("travessao") && contarTracos(texto) > 0) {
+    return { ok: false, motivo: "traco_permaneceu" }
+  }
   if (limites.max > 0 && texto.length > limites.max) {
     return { ok: false, motivo: "ainda_acima_do_limite" }
   }
-  // Encurtar é encurtar: texto maior que o que entrou nunca é a correção
-  // pedida, mesmo que por acaso caiba num limite mal cadastrado.
-  if (texto.length > original.trim().length) return { ok: false, motivo: "cresceu" }
+  // "Nunca crescer" só vale para quem entrou por ESTOURO — aí encurtar é o
+  // pedido, e texto maior nunca é a correção. Para o alvo que entrou só
+  // por travessão, crescer é legítimo: trocar "back — but" por "back, and
+  // then" custa caracteres, e o teto do `max` acima continua valendo.
+  if (
+    motivos.includes("max_len") &&
+    texto.length > original.trim().length
+  ) {
+    return { ok: false, motivo: "cresceu" }
+  }
   if (limites.min != null && limites.min > 0 && texto.length < limites.min) {
     return { ok: false, motivo: "abaixo_do_minimo" }
   }

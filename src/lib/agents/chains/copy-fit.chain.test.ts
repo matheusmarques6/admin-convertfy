@@ -43,6 +43,8 @@ function alvo(over: Partial<AlvoDeEncurtamento> = {}): AlvoDeEncurtamento {
     texto: "x".repeat(190),
     max: 120,
     min: null,
+    motivos: ["max_len"],
+    tracos: 0,
     ...over,
   }
 }
@@ -187,6 +189,57 @@ describe("runCopyFit", () => {
     expect(r.aceitas.map((a) => a.id)).toEqual(["1.section_body_1"])
     expect(r.rodou).toBe(true)
     expect(respostaComResultado().status).toBe("error")
+  })
+
+  // O traço é motivo de alvo desde 01/09: campo que cabe no limite mas
+  // volta com "—" entra na lista, e a reescrita que MANTÉM o traço é
+  // recusada — a 2ª passada cobra de novo.
+  it("reescrita que mantém o travessão é recusada e volta na retentativa", async () => {
+    const comTraco = alvo({
+      id: "1.body",
+      key: "body",
+      texto: "Funciona — e sem risco.",
+      max: 120,
+      motivos: ["travessao"],
+      tracos: 1,
+    })
+    invokeMock
+      .mockResolvedValueOnce(respostaLLM({ "1.body": "Funciona — sem risco." }))
+      .mockResolvedValueOnce(respostaLLM({ "1.body": "Funciona, e é sem risco." }))
+
+    const r = await runCopyFit(entrada([comTraco]))
+
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    expect(r.aceitas[0].texto).toBe("Funciona, e é sem risco.")
+    const out = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(out).toMatchObject({
+      com_travessao: 1,
+      travessoes_antes: 1,
+      travessoes_depois: 0,
+    })
+  })
+
+  // O número que prova o trabalho: recusado até o fim, o traço CONTINUA no
+  // texto que o cliente lê — e o `depois` tem de dizer isso.
+  it("traço que sobrevive às duas passadas conta em travessoes_depois", async () => {
+    invokeMock.mockResolvedValue(respostaLLM({ "1.body": "Ainda — com traço." }))
+    const r = await runCopyFit(
+      entrada([
+        alvo({
+          id: "1.body",
+          key: "body",
+          texto: "Funciona — e sem risco.",
+          max: 120,
+          motivos: ["travessao"],
+          tracos: 1,
+        }),
+      ]),
+    )
+    expect(r.aceitas).toEqual([])
+    const out = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(out).toMatchObject({ travessoes_antes: 1, travessoes_depois: 1 })
+    const dePara = (out.de_para as Array<Record<string, unknown>>)[0]
+    expect(dePara.motivo).toBe("traco_permaneceu")
   })
 
   // Sem entrada no mapa de origens o guard de recomposição zera os segmentos

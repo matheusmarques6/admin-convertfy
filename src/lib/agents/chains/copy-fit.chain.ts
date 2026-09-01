@@ -25,6 +25,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import {
   aceitarReescrita,
+  contarTracos,
+  type MotivoDeAlvo,
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
 } from "@/lib/email-workspace/copy-fit"
@@ -62,6 +64,8 @@ REGRAS
 - Não use reticências nem corte a frase no meio: entregue frase inteira e bem terminada.
 - Não invente informação que não esteja no texto original.
 - Respeite min_caracteres quando existir.
+- TRAVESSÃO: campo marcado com remover_travessao tem de voltar SEM travessão (—) e SEM meia-risca (–). Não troque o traço por hífen nem por reticências: use vírgula, ponto ou uma conjunção, o que soar natural NO IDIOMA DO TEXTO. Hífen DENTRO de palavra (OBD-II, e-mail, zero-risk) é parte da palavra: não mexa.
+- Campo com remover_travessao e sem encurtar pode ficar um pouco maior que o original, desde que caiba em max_caracteres — tirar o traço às vezes custa uma conjunção.
 
 SAÍDA
 Responda APENAS JSON, sem comentário nem cerca de código:
@@ -145,6 +149,11 @@ export interface DePara {
   depois_len: number | null
   max: number
   aceito: boolean
+  /** Por que o campo entrou na lista (estouro, travessão, ou os dois). */
+  motivos: MotivoDeAlvo[]
+  tracos_antes: number
+  /** No texto que fica: o reescrito quando aceito, o original quando não. */
+  tracos_depois: number
   motivo?: MotivoDeRecusa | "sem_resposta"
 }
 
@@ -165,6 +174,10 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       campo: a.label,
       max_caracteres: a.max,
       min_caracteres: a.min,
+      // Só quando é o caso: um `false` em todo campo ensinaria o modelo a
+      // ignorar a chave.
+      remover_travessao: a.motivos.includes("travessao") || undefined,
+      encurtar: a.motivos.includes("max_len") || undefined,
       orientacao: a.orientacao || undefined,
     })),
     null,
@@ -177,6 +190,7 @@ function copyAtualDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
     alvos.map((a) => ({
       id: a.id,
       caracteres_agora: a.texto.length,
+      travessoes_agora: a.tracos || undefined,
       texto: a.texto,
     })),
     null,
@@ -328,6 +342,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         const veredicto = aceitarReescrita(alvo.texto, proposta, {
           max: alvo.max,
           min: alvo.min,
+          motivos: alvo.motivos,
         })
         if (veredicto.ok) {
           motivos.delete(alvo.id)
@@ -358,6 +373,11 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         depois_len: ok ? ok.texto.length : null,
         max: a.max,
         aceito: Boolean(ok),
+        motivos: a.motivos,
+        tracos_antes: a.tracos,
+        // Aceito sem traço é o esperado; recusado, o texto que fica é o
+        // original, e o número tem de refletir o que o cliente vai ler.
+        tracos_depois: ok ? contarTracos(ok.texto) : a.tracos,
         ...(ok ? {} : { motivo: motivos.get(a.id) ?? "sem_resposta" }),
       }
     })
@@ -382,6 +402,13 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         corrigidos: aceitas.size,
         mantidos: input.alvos.length - aceitas.size,
         tentativas,
+        // Travessão: quantos alvos entraram por ele e quantos sobraram no
+        // texto que o cliente vai ler. `depois > 0` é o número que diz se o
+        // agente está cumprindo — sem ele a regra viraria fé.
+        com_travessao: input.alvos.filter((a) => a.motivos.includes("travessao"))
+          .length,
+        travessoes_antes: de_para.reduce((n, d) => n + d.tracos_antes, 0),
+        travessoes_depois: de_para.reduce((n, d) => n + d.tracos_depois, 0),
         de_para,
       },
       tokensInput,

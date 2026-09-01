@@ -564,6 +564,11 @@ export async function POST(request: NextRequest) {
     const alvos = alvosDeEncurtamento(
       (blocosAposCopy ?? []) as BlocoComContrato[],
     )
+    // O "antes" do travessão, medido aqui e não no chain: quando o
+    // encurtador está desligado pelo kill-switch o run `copy_fit` não
+    // existe, e sem isto o número sumiria justamente no cenário em que se
+    // quer saber quanto traço o n8n está mandando.
+    const travessoesPreFit = alvos.reduce((n, a) => n + a.tracos, 0)
     // Rede contra a regressão: as duas medidas passaram a olhar a mesma
     // copy, então discordarem é sintoma de leitura fora de hora outra vez.
     //
@@ -752,7 +757,11 @@ export async function POST(request: NextRequest) {
         // se o flow está respeitando o contrato, e ele não pode sumir só
         // porque a correção deu certo.
         ...(copyFitResumo
-          ? { copy_fit: copyFitResumo, desvios_pre_fit: desviosPreFit.slice(0, 60) }
+          ? {
+              copy_fit: copyFitResumo,
+              desvios_pre_fit: desviosPreFit.slice(0, 60),
+              travessoes_pre_fit: travessoesPreFit,
+            }
           : {}),
       },
     })

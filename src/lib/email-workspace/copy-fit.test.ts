@@ -182,3 +182,93 @@ describe("limiteDoCampo", () => {
     expect(limiteDoCampo(null, "section_body_1")).toBeNull()
   })
 })
+
+describe("travessão como motivo de alvo", () => {
+  const campo = (key: string, max: number) => ({
+    key,
+    label: key,
+    type: "text_long" as const,
+    max_len: max,
+    min_len: null,
+    required: false,
+    example: "",
+    guidance: "",
+    source: "schema" as const,
+  })
+
+  it("campo DENTRO do limite mas com travessão vira alvo", () => {
+    const alvos = alvosDeEncurtamento([
+      {
+        id: "b1",
+        position: 0,
+        block_type: "body",
+        content: { texto: "Funciona — e sem risco." },
+        fields: [campo("texto", 120)],
+      },
+    ])
+    expect(alvos).toHaveLength(1)
+    expect(alvos[0].motivos).toEqual(["travessao"])
+    expect(alvos[0].tracos).toBe(1)
+  })
+
+  // O hífen é parte da palavra. Tocar nele quebraria o nome do produto.
+  it("hífen dentro de palavra NÃO vira alvo", () => {
+    const alvos = alvosDeEncurtamento([
+      {
+        id: "b1",
+        position: 0,
+        block_type: "body",
+        content: { texto: "Compatível com OBD-II e e-mail de suporte." },
+        fields: [campo("texto", 120)],
+      },
+    ])
+    expect(alvos).toEqual([])
+  })
+
+  it("estouro + travessão traz os dois motivos", () => {
+    const alvos = alvosDeEncurtamento([
+      {
+        id: "b1",
+        position: 0,
+        block_type: "body",
+        content: { texto: `Longo — demais. ${"x".repeat(120)}` },
+        fields: [campo("texto", 40)],
+      },
+    ])
+    expect(alvos[0].motivos).toEqual(["max_len", "travessao"])
+  })
+
+  it("reescrita que mantém o traço é recusada", () => {
+    const v = aceitarReescrita("Funciona — e sem risco.", "Funciona — sem risco.", {
+      max: 120,
+      motivos: ["travessao"],
+    })
+    expect(v).toEqual({ ok: false, motivo: "traco_permaneceu" })
+  })
+
+  // Tirar o traço custa caracteres: para o alvo que entrou SÓ por traço,
+  // crescer é legítimo — o teto do max continua valendo.
+  it("alvo só-de-traço pode crescer se couber no max", () => {
+    const v = aceitarReescrita("Funciona — sem risco.", "Funciona, e é sem risco.", {
+      max: 120,
+      motivos: ["travessao"],
+    })
+    expect(v.ok).toBe(true)
+  })
+
+  it("alvo só-de-traço que passa do max continua recusado", () => {
+    const v = aceitarReescrita("Funciona — sem risco.", "y".repeat(200), {
+      max: 120,
+      motivos: ["travessao"],
+    })
+    expect(v).toEqual({ ok: false, motivo: "ainda_acima_do_limite" })
+  })
+
+  it("alvo de estouro que cresce continua em cresceu", () => {
+    const v = aceitarReescrita("x".repeat(50), "y".repeat(60), {
+      max: 120,
+      motivos: ["max_len"],
+    })
+    expect(v).toEqual({ ok: false, motivo: "cresceu" })
+  })
+})
