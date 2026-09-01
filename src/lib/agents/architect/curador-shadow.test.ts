@@ -13,21 +13,33 @@ import type { RankedChoice } from "./curator-ranking.parser"
 const OUTPUT = `Aqui está:
 {"estrutura":[{"section":"hero","papel":"entrega o cupom"},{"section":"reviews","papel":"prova de terceiro"}],
  "fio_narrativo":"cupom abre, prova fecha",
- "escolhas":[{"block_index":0,"escolhas":[{"variant_id":"a","motivo":"bate momento e objeção"}]},{"block_index":1,"escolhas":[{"variant_id":"b"}]}]}`
+ "escolhas":[{"block_index":0,"justificativa":"hero-5 caiu no exige (foto-com-pessoas ausente); objecao decidiu.","escolhas":[{"variant_id":"a","motivo":"bate momento e objeção"},{"variant_id":"c","motivo":"empata em objecao, perde em papel"}]},{"block_index":1,"escolhas":[{"variant_id":"b"}]}]}`
 
 describe("parseCuradorVaultOutput", () => {
-  it("extrai estrutura, fio e re-serializa as escolhas", () => {
+  it("extrai estrutura, fio, justificativas e re-serializa as escolhas", () => {
     const p = parseCuradorVaultOutput(OUTPUT)
     expect(p?.estrutura.map((e) => e.section)).toEqual(["hero", "reviews"])
     expect(p?.estrutura[0].papel).toContain("cupom")
     expect(p?.fioNarrativo).toBe("cupom abre, prova fecha")
     expect(JSON.parse(p!.escolhasRaw)).toHaveLength(2)
+    expect(p?.justificativas[0]).toContain("exige")
+    expect(p?.justificativas[1]).toBeUndefined()
+    expect(p?.escolhasDetalhadas[0].escolhas.map((o) => o.motivo)).toEqual([
+      "bate momento e objeção",
+      "empata em objecao, perde em papel",
+    ])
   })
   it("JSON ilegível → null; campos ausentes degradam para vazios", () => {
     expect(parseCuradorVaultOutput("prosa sem json")).toBeNull()
     const p = parseCuradorVaultOutput('{"escolhas":[]}')
     expect(p?.estrutura).toEqual([])
     expect(p?.fioNarrativo).toBe("")
+    expect(p?.escolhasDetalhadas).toEqual([])
+  })
+  it("o system exige justificativa por posição e motivo em todo rank", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("OUTPUT SAI JUSTIFICADO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("TODA escolha rankeada leva `motivo`")
   })
 })
 

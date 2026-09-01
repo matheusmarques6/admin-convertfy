@@ -82,18 +82,24 @@ Glossário dos requisitos de \`vault.exige\` — cada um é ELIMINATÓRIO quando
 Como decidir, na ordem:
 1. ESTRUTURA: parta de <sequencia_sugerida> e da intenção deste email (passos 1-2 do protocolo: intenção decide a objeção-alvo e o papel de cada posição; estrutura de referência, quando cobre este email, decide ordem e papéis). Você PODE adaptar a sequência — trocar/remover/reordenar seções — desde que toda seção usada tenha variante elegível na biblioteca e o arco sirva à intenção. Nunca emita header nem cta como seções próprias (são absorvidas). Cada posição recebe um papel de UMA frase e o email inteiro recebe um fio_narrativo curto (como as posições se ligam).
 2. SELEÇÃO por posição, seguindo os passos 3-9 do protocolo: elimine por ativa/schema (já filtrados do catálogo), por \`exige\` contra o que a loja comprovadamente tem (<perfil_marca>, <top_products>, cupom/oferta no contexto — sem evidência do ativo a variante é IMPOSSÍVEL, não pior), por momento (veto e declaração positiva contra <momento>), por capacidade (product_slots × produtos com link). Rankeie os sobreviventes por objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas → menor número no slug (ou a menos usada em <memoria>, quando a contagem existir).
-3. Zero candidata sobrevivendo numa seção NÃO é erro: declare a posição com \`escolhas: []\` e siga — o sistema cai no template global e a lacuna vira sinal.
+3. Zero candidata sobrevivendo numa seção NÃO é erro: declare a posição com \`escolhas: []\` e a \`justificativa\` explicando a lacuna (quem caiu, em que passo, contra qual campo) — o sistema cai no template global e a lacuna vira sinal.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra; <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
+
+O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
+- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — quem foi eliminado e em que passo (exige/momento/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
+- TODA escolha rankeada leva \`motivo\` (uma frase curta): na 1ª, por que ela venceu; nas demais, por que ficam atrás da anterior.
 
 Responda APENAS o objeto JSON, sem markdown:
 
 {"estrutura":[{"section":"hero","papel":"..."},{"section":"reviews","papel":"..."}],
  "fio_narrativo":"...",
- "escolhas":[{"block_index":0,"escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"..."}]}]}
+ "escolhas":[{"block_index":0,
+   "justificativa":"eliminadas hero-4 (exige foto-de-campanha-propria, ausente) e hero-5 (exige foto-com-pessoas); entre as 3 restantes, objecao decidiu: só hero-3 declara preco-valor, o alvo deste toque.",
+   "escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"...","motivo":"..."}]}]}
 
 - \`estrutura\` na ordem final do email; \`block_index\` das escolhas refere-se a ESSA estrutura (0-based).
-- Só a 1ª escolha de cada posição leva \`motivo\` (máx 20 palavras); a ORDEM é a preferência.`
+- A ORDEM dentro de \`escolhas\` é a preferência.`
 
 export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 - marca: {{brand_name}}
@@ -175,6 +181,14 @@ export interface CuradorVaultOutput {
   fioNarrativo: string
   /** O array `escolhas` re-serializado — alimenta o parseCuratorRanking. */
   escolhasRaw: string
+  /** block_index → traço da decisão (o output justificado). */
+  justificativas: Record<number, string>
+  /** Escolhas com motivo por rank, para a telemetria legível. */
+  escolhasDetalhadas: Array<{
+    block_index: number
+    justificativa: string
+    escolhas: Array<{ variant_id: string; motivo: string }>
+  }>
 }
 
 /** Extrai o objeto do contrato ampliado; tolerante a fences/prosa. */
@@ -197,10 +211,35 @@ export function parseCuradorVaultOutput(raw: string): CuradorVaultOutput | null 
           .filter((e) => e.section.length > 0)
       : []
     const escolhas = Array.isArray(obj.escolhas) ? obj.escolhas : []
+    const justificativas: Record<number, string> = {}
+    const escolhasDetalhadas: CuradorVaultOutput["escolhasDetalhadas"] = []
+    for (const e of escolhas) {
+      if (!e || typeof e !== "object") continue
+      const rec = e as Record<string, unknown>
+      if (typeof rec.block_index !== "number") continue
+      const just = typeof rec.justificativa === "string" ? rec.justificativa.trim() : ""
+      if (just) justificativas[rec.block_index] = just
+      const opts = Array.isArray(rec.escolhas) ? rec.escolhas : []
+      escolhasDetalhadas.push({
+        block_index: rec.block_index,
+        justificativa: just,
+        escolhas: opts
+          .filter(
+            (o): o is Record<string, unknown> =>
+              !!o && typeof o === "object" && typeof (o as Record<string, unknown>).variant_id === "string",
+          )
+          .map((o) => ({
+            variant_id: String(o.variant_id),
+            motivo: typeof o.motivo === "string" ? o.motivo.trim() : "",
+          })),
+      })
+    }
     return {
       estrutura,
       fioNarrativo: typeof obj.fio_narrativo === "string" ? obj.fio_narrativo.trim() : "",
       escolhasRaw: JSON.stringify(escolhas),
+      justificativas,
+      escolhasDetalhadas,
     }
   } catch {
     return null
@@ -412,6 +451,7 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       model: config.model,
       inputVars: {
         shadow: true,
+        shadow_contract: "v2-justificado",
         curador_vault_mode: "shadow",
         catalog_sha8: catalogSha8,
         vault_docs: p.vault.total,
@@ -472,6 +512,7 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
       rawOutput: res.raw.slice(0, 8000),
       parsedOutput: {
         shadow: true,
+        shadow_contract: "v2-justificado",
         curador_vault_mode: "shadow",
         estrutura: parsed?.estrutura ?? [],
         estrutura_adaptada: Boolean(
@@ -481,6 +522,19 @@ export async function runCuradorShadow(p: CuradorShadowParams): Promise<void> {
         ),
         fio_narrativo: parsed?.fioNarrativo ?? "",
         positions_ranked: ranking?.byBlock.size ?? 0,
+        // O output JUSTIFICADO: traço da decisão por posição + motivo por
+        // rank, com o slug do vault no lugar do UUID (auditável sem cruzar).
+        ranking_justificado: (parsed?.escolhasDetalhadas ?? []).map((b) => ({
+          block_index: b.block_index,
+          section: sectionByBlock.get(b.block_index) ?? "",
+          justificativa: b.justificativa,
+          escolhas: b.escolhas.map((o, idx) => ({
+            rank: idx + 1,
+            variant_id: o.variant_id,
+            variante: p.extras.get(o.variant_id)?.slug ?? o.variant_id,
+            motivo: o.motivo,
+          })),
+        })),
         empty_blocks: ranking?.emptyBlocks ?? [],
         invalid_ids: ranking?.invalidIds ?? [],
         protocol_violations: violations,
