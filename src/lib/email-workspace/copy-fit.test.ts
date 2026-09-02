@@ -7,6 +7,7 @@ import {
   resumoDeEstouros,
   type BlocoComContrato,
   type MotivoDeAlvo,
+  encurtarPorFrase,
 } from "./copy-fit"
 import type { BlueprintBlockField } from "@/types/email-generation"
 
@@ -507,5 +508,66 @@ describe("aceitarReescrita — a tradução que ninguém pediu", () => {
         { max: 400, motivos: ["max_len"] },
       ),
     ).toEqual({ ok: true })
+  })
+})
+
+// ── Plano B: o código corta (02/09) ────────────────────────────────────
+//
+// Os textos são os que o Haiku não conseguiu encaixar em duas passadas no
+// batch cdc700e7. Cada um tem de sair ≤ max, terminado em pontuação e sem
+// travessão — e sem uma palavra que não estivesse no original.
+describe("encurtarPorFrase", () => {
+  const REAIS: Array<[string, number]> = [
+    [
+      "I plugged the EnergySave Pro into the living room circuit and ran it for a month alongside my utility bill. My bill dropped $31 compared to last year, same month. I changed nothing else. The device flagged the A/C compressor as the main draw and I adjusted the schedule.",
+      200,
+    ],
+    [
+      "I was skeptical about the FuelSaver Pro. I drove the same commute for three weeks before and three weeks after installing it. My average MPG went from 26.4 to 29.1 on the same route. I checked the OBD readout every morning. The data is consistent. Not magic — just a measurable difference.",
+      200,
+    ],
+    [
+      "Plugs directly into any standard outlet. Reads your home's energy draw in real time and identifies which devices are pulling the most wattage, so you act on numbers instead of guesses.",
+      130,
+    ],
+    [
+      "Customers who tested InnovaBay devices at home tracked their usage before and after and came back with numbers. Here is what two of them reported after 30 days. If you see the same pattern, great. If not, lifetime guarantee.",
+      156,
+    ],
+    [
+      "Apply [DISCOUNT_CODE] at checkout and get 10% off your first order. Works on everything in the store — EnergySave Pro, OBD CarScan Pro, FuelSaver Pro. No minimum, no catch. If you buy and it does not deliver, the lifetime guarantee covers you.",
+      180,
+    ],
+  ]
+
+  it.each(REAIS)("cabe, termina em pontuação e não tem travessão: %s", (texto, max) => {
+    const r = encurtarPorFrase(texto, max)!
+    expect(r).not.toBeNull()
+    expect(r.length).toBeLessThanOrEqual(max)
+    expect(r).toMatch(/[.!?]$/)
+    expect(r).not.toMatch(/[—–]/)
+    // Só removeu do fim: o resultado (sem o traço trocado) é prefixo do original.
+    const semTraco = texto.replace(/\s*[—–]\s*/g, ", ")
+    expect(semTraco.startsWith(r.replace(/\.$/, ""))).toBe(true)
+  })
+
+  it("texto que já cabe volta inteiro, só sem o travessão", () => {
+    expect(encurtarPorFrase("Not magic — just a measurable difference.", 200)).toBe(
+      "Not magic, just a measurable difference.",
+    )
+  })
+
+  it("sem frase inteira cai na vírgula; sem vírgula, na palavra", () => {
+    expect(encurtarPorFrase("Reads energy draw in real time, identifies devices, flags waste", 40)).toBe(
+      "Reads energy draw in real time.",
+    )
+    expect(encurtarPorFrase("Reads energy draw in real time every day", 22)).toBe(
+      "Reads energy draw in.",
+    )
+  })
+
+  it("nada cabe → null (nunca devolve palavra cortada ao meio)", () => {
+    expect(encurtarPorFrase("Supercalifragilistic", 5)).toBeNull()
+    expect(encurtarPorFrase("abc", 0)).toBeNull()
   })
 })

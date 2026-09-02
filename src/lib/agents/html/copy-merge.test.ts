@@ -62,12 +62,13 @@ describe("copyMergeByExample", () => {
       }, { block_id: "b4", block_type: "products" }),
     ])
     expect(r.html).toContain("<td>SEE HOW IT WORKS</td>")
-    expect(r.html).toContain("<td>SEE DETAILS</td>")
     // O que o bug produzia:
     expect(r.html).not.toContain("1 SEE HOW IT WORKS")
-    // O "1 SHOP NOW" fica INTACTO — é texto sem dono, e sem dono ninguém
-    // escreve. Ele aparece na auditoria de texto órfão, não no email.
-    expect(r.html).toContain("<td>1 SHOP NOW</td>")
+    // O campo do bloco 4 (example "2 SHOP NOW") é DONO dos dois botões da
+    // arte: "1 SHOP NOW" e "2 SHOP NOW" são a mesma frase com enumerador
+    // (02/09). Os dois recebem o valor, e a numeração some com o exemplo.
+    expect((r.html.match(/<td>SEE DETAILS<\/td>/g) ?? []).length).toBe(2)
+    expect(r.html).not.toContain("SHOP NOW")
     expect(r.report.escopo).toBe("por_bloco")
     expect(r.report.escopo_degradado).toEqual([])
   })
@@ -207,7 +208,7 @@ describe("copyMergeByExample", () => {
     expect(r.report.campos[0].para).toBeNull()
   })
 
-  it("campo ancorado SEM valor do n8n fica registrado como copy_ausente e a frase sobrevive", () => {
+  it("campo ancorado SEM valor do n8n: frase apresentável sobrevive como copy_ausente", () => {
     const html = "<table><tr><td>Original phrase stays</td></tr></table>"
     const r = copyMergeByExample(html, [
       block([{ key: "headline", example: "Original phrase stays" }], {}),
@@ -218,6 +219,26 @@ describe("copyMergeByExample", () => {
       motivo: "copy_ausente",
       para: null,
     })
+    expect(r.report.exemplos_limpos).toEqual([])
+  })
+
+  // 02/09, body-4: o n8n pulou o `column_b_item_6` e "[13] dolor sit amet,
+  // consectetur adipiscing" foi para o cliente com o marcador.
+  it("campo SEM valor cujo exemplo é placeholder da arte é ESVAZIADO", () => {
+    const html =
+      '<table><tr><td><span class="mark">[13]</span> dolor sit amet, consectetur adipiscing</td></tr></table>'
+    const r = copyMergeByExample(html, [
+      block([{ key: "column_b_item_6", example: "[13] dolor sit amet, consectetur adipiscing" }], {}),
+    ])
+    expect(r.html).not.toContain("dolor sit amet")
+    expect(r.html).not.toContain("[13]")
+    expect(r.report.campos[0]).toMatchObject({
+      desfecho: "ancorado_exemplo",
+      motivo: "copy_ausente_limpo",
+      para: "",
+    })
+    expect(r.report.exemplos_limpos).toHaveLength(1)
+    expect(r.report.exemplos_limpos[0].key).toBe("column_b_item_6")
   })
 
   it("irmãos idênticos + espelho MSO: o espelho no comentário também é preenchido", () => {

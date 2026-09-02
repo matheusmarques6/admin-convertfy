@@ -338,19 +338,41 @@ export interface PhraseOccurrence extends Range {
  * projeções com o MESMO range — dedup por (start,end), preferindo a forma
  * não-costurada.
  */
+/** `"2 SHOP NOW"` → `"SHOP NOW"`; sem enumerador devolve a frase como está. */
+const ENUMERADOR_RE = /^\d{1,2}\s+/
+
 export function findPhraseOccurrencesDetailed(
   index: TextIndex,
   example: string,
-  opts: { fronteira?: boolean } = {},
+  opts: { fronteira?: boolean; enumerador?: boolean } = {},
 ): PhraseOccurrence[] {
-  const phrase = normalizeForMatch(example)
+  // Enumerador da ARTE (02/09, products-7): a variante tem dois botões,
+  // "1 SHOP NOW" e "2 SHOP NOW", e UM campo cujo example é "2 SHOP NOW". A
+  // busca literal achava só o segundo; o primeiro ia para o cliente com o
+  // número na frente. Com `enumerador`, a frase procurada é a SEM número e
+  // cada ocorrência é estendida para trás para engolir o "1 " / "2 " que a
+  // precede — a numeração some junto com o exemplo.
+  const comEnumerador = opts.enumerador === true && ENUMERADOR_RE.test(example.trim())
+  const phrase = normalizeForMatch(comEnumerador ? example.trim().replace(ENUMERADOR_RE, "") : example)
   if (!phrase) return []
   const byRange = new Map<string, PhraseOccurrence>()
   for (const p of index.projections) {
     let from = 0
     while (true) {
-      const at = p.norm.indexOf(phrase, from)
+      let at = p.norm.indexOf(phrase, from)
       if (at < 0) break
+      let startIdx = at
+      if (comEnumerador) {
+        // "... 1 shop now": volta sobre o espaço e os dígitos imediatamente
+        // antes; só vale se antes dos dígitos houver fronteira.
+        let k = at
+        while (k > 0 && p.norm[k - 1] === " ") k--
+        const fimDigitos = k
+        while (k > 0 && /\d/.test(p.norm[k - 1])) k--
+        const digitos = fimDigitos - k
+        const fronteiraOk = k === 0 || !ALFANUM.test(p.norm[k - 1])
+        if (digitos >= 1 && digitos <= 2 && fimDigitos < at && fronteiraOk) startIdx = k
+      }
       // Fronteira de palavra: exigida para example CURTO, onde a
       // substring é perigosa — "$64" dentro de "$640", "CTA" dentro de
       // "CTAS". Letra ou dígito colado antes/depois reprova a ocorrência.
@@ -363,16 +385,17 @@ export function findPhraseOccurrencesDetailed(
         }
       }
       const occ: PhraseOccurrence = {
-        start: p.starts[at],
+        start: p.starts[startIdx],
         end: p.ends[at + phrase.length - 1],
         costurado:
           p.joints != null &&
-          p.joints.some((j) => j > at && j < at + phrase.length - 1),
+          p.joints.some((j) => j > startIdx && j < at + phrase.length - 1),
       }
       const key = `${occ.start}-${occ.end}`
       const prev = byRange.get(key)
       if (!prev || (prev.costurado && !occ.costurado)) byRange.set(key, occ)
       from = at + 1
+      at = -1
     }
   }
   return Array.from(byRange.values()).sort((a, b) => a.start - b.start)
@@ -501,7 +524,7 @@ export function assignTextAnchors(
     const occurrences = findPhraseOccurrencesDetailed(
       index,
       fields[memberIdxs[0]].example,
-      curto ? { fronteira: true } : {},
+      curto ? { fronteira: true } : { enumerador: memberIdxs.length === 1 },
     )
     const free = occurrences.filter((o) => !claimed.some((c) => intersects(o, c)))
 
@@ -630,6 +653,10 @@ export interface OrphanTextFragment {
  * placeholder.
  */
 const EXEMPLO_RE: RegExp[] = [
+  // "[13] dolor sit amet, consectetur adipiscing" — body-4, 02/09: o campo
+  // veio sem copy e o lorem da arte foi para o cliente com o marcador.
+  /\blorem\b|\bipsum\b|\bdolor sit amet\b|\bconsectetur\b|\badipiscing\b/i,
+  /^\s*\[\d{1,2}\]/,
   /\bselo\s*\d/i,
   /\boff\s*\d\b/i,
   /\blorem ipsum\b/i,

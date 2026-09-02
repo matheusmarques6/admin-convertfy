@@ -187,3 +187,16 @@ segue sendo o caso mais delicado (inalterado).
 2. **Fase B** — Inventário de cores + input por slot na imagem.
 3. **Fase C** — Corte do input da hero (region + variante).
 4. **Fase D** — QA reforçado como único leitor do documento completo.
+
+## Copy ausente e enumerador da arte (02/09)
+
+- **`copy_ausente`**: campo ancorado sem valor do n8n. Frase de exemplo
+  apresentável fica (regra antiga). Frase que `pareceExemplo` — lorem,
+  `dolor sit amet`, marcador `[13]`, `SELO 1` — é **esvaziada**
+  (`motivo: copy_ausente_limpo`, `report.exemplos_limpos[]`). Caso real:
+  body-4, `column_b_item_6` pulado pelo n8n, "[13] dolor sit amet…" foi ao
+  cliente.
+- **Enumerador**: campo ÚNICO cujo example começa com número (`"2 SHOP
+  NOW"`) ancora também as ocorrências com OUTRO número (`"1 SHOP NOW"`) e o
+  range engole o enumerador — a arte de products-7 tem dois botões e um
+  campo. `findPhraseOccurrencesDetailed(…, { enumerador: true })`.

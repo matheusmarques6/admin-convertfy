@@ -27,6 +27,7 @@ import {
   normalizeForMatch,
   orphanTextFragments,
   withOriginalSlices,
+  pareceExemplo,
 } from "./anchor-match"
 import type {
   AnchorAssignment,
@@ -122,6 +123,12 @@ export interface CopyMergeReport {
    * e reprovar aqui reprovaria quase todo email.
    */
   texto_orfao: OrphanTextFragment[]
+  /**
+   * Campos SEM copy do n8n cujo exemplo era placeholder da arte e foi
+   * esvaziado (02/09). Cada um é um campo que o flow deixou de devolver —
+   * a cobrança é do n8n; o cliente não vê lorem.
+   */
+  exemplos_limpos: Array<{ block_id: string | null; key: string; de: string }>
   /**
    * "por_bloco" = cada campo ancorou dentro da região do próprio bloco
    * (marcadores cfy:block presentes). "global" = documento sem marcadores,
@@ -409,6 +416,7 @@ export function copyMergeByExample(
   const campos: CampoMergeLog[] = []
   const anchors: MergeAnchor[] = []
   const semLugar: CopyMergeReport["sem_lugar"] = []
+  const exemplosLimpos: Array<{ block_id: string | null; key: string; de: string }> = []
   const ambiguos: string[] = []
   const skipped: CopyMergeReport["skipped"] = []
   const splices: Array<Splice & { entryIdx: number }> = []
@@ -447,10 +455,30 @@ export function copyMergeByExample(
       ambiguos.push(e.field.key)
     } else if (a.range) {
       if (e.value == null) {
-        // Ancorado mas o n8n não mandou valor: a frase de exemplo fica no
-        // documento (ela É copy apresentável da biblioteca) — só registra.
-        campo.motivo = "copy_ausente"
-        anchor.motivo = "copy_ausente"
+        // Ancorado mas o n8n não mandou valor. Frase de exemplo que PARECE
+        // copy fica (é apresentável — "Verified Buyer", um preço). Frase que
+        // é placeholder da arte ("[13] dolor sit amet…", "SELO 1", "Lorem
+        // ipsum") é ESVAZIADA: em 02/09 o body-4 foi ao cliente com lorem e
+        // marcador porque o n8n pulou o `column_b_item_6` e este ramo
+        // deixava tudo como estava.
+        const exemplo = html.slice(a.range.start, a.range.end)
+        if (pareceExemplo(normalizeForMatch(exemplo))) {
+          splices.push({ ...a.range, replacement: "", entryIdx: i })
+          for (const extra of a.extraRanges ?? []) {
+            splices.push({ ...extra, replacement: "", entryIdx: i })
+          }
+          for (const m of msoMirrorSplices(html, exemplo, "")) {
+            splices.push({ ...m, entryIdx: i })
+          }
+          campo.motivo = "copy_ausente_limpo"
+          anchor.motivo = "copy_ausente_limpo"
+          campo.para = ""
+          anchor.applied = true
+          exemplosLimpos.push({ block_id: blockId, key: e.field.key, de: truncate(exemplo) })
+        } else {
+          campo.motivo = "copy_ausente"
+          anchor.motivo = "copy_ausente"
+        }
       } else if (looksLikeMarkup(e.value)) {
         // Valor que é marcação escreveria a tag ESCAPADA na tela (caso do
         // logo virado texto `&lt;img ...&gt;` na Luxe Lift) — recusa.
@@ -525,6 +553,7 @@ export function copyMergeByExample(
       skipped,
       hero_values: heroValues,
       texto_orfao: textoOrfao,
+      exemplos_limpos: exemplosLimpos,
       escopo: scopes.size > 0 ? "por_bloco" : "global",
       escopo_degradado: escopoDegradado,
     },

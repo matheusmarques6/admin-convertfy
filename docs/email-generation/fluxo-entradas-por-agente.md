@@ -278,7 +278,7 @@ Monta e POSTa o **payload v3** ("o bloco É o schema") pro n8n. Timeout 15s (fir
 
 ## 6 · Copy (n8n) + callback
 
-A copy é gerada por **LLM externo** (modelo do flow do n8n; ecoado em `meta.model`). O callback `/api/webhooks/n8n/email-copy` (por email) valida (secret timing-safe, anti-spoof store↔email, anti-stale por `dispatch_batch_id`, idempotência por status), **desembrulha** envelopes (`normalizeCopyEnvelope`), resolve tokens de marca (`{{BRAND_NAME}}` → nome real), grava `subject/preheader` em `email_flow_emails` e `content` por `block_id` em `email_blocks`, audita contra o contrato (`findFieldDeviations` — observabilidade, **nunca rejeita**) e marca `copy_ready` (ou `ready` se text_only). A fase 2 fica **diferida ao GATE 2**.
+A copy é gerada por **LLM externo** (modelo do flow do n8n; ecoado em `meta.model`). O callback `/api/webhooks/n8n/email-copy` (por email) valida (secret timing-safe, anti-spoof store↔email, anti-stale por `dispatch_batch_id`, idempotência por status), **desembrulha** envelopes (`normalizeCopyEnvelope`), resolve tokens de marca (`{{BRAND_NAME}}` → nome real) e **tokens de cupom** (`[DISCOUNT_CODE]`, `[COUPON]`, `{{COUPON_CODE}}`… → `email_outline_templates.coupon_code` do email, a mesma fonte que o dispatch manda; sem código o token fica e vira `log.error` + `parsed_output.cupom.placeholder_sem_codigo` — 02/09: o payload levou `BEMVINDO10` e a hero voltou com `[DISCOUNT_CODE]`), grava `subject/preheader` em `email_flow_emails` e `content` por `block_id` em `email_blocks`, audita contra o contrato (`findFieldDeviations` — observabilidade, **nunca rejeita**) e marca `copy_ready` (ou `ready` se text_only). A fase 2 fica **diferida ao GATE 2**.
 
 **Fallback in-process** (`copy-chain-fallback` + `copy.chain`): só quando o watchdog claima email travado >15min. Modelo ativo `claude-opus-4-7` (LangChain/Anthropic). Prompt bem mais pobre: `store_briefings.marca` (slogan/tom/persona/diferencial/posicionamento), restrições, top products, objective/messaging do blueprint efetivo e `blocks_json` **sem fields** — sem pesquisa, sem schema.
 
@@ -319,6 +319,17 @@ regra do acento que aparece do nada (`introduziuAcentoEstrangeiro`) para o
 campo curto onde o detector se cala: "Vehicle Diagnostics" → "Diagnóstico".
 Contagem em `traducoes_recusadas`; os pares reais do incidente são teste de
 regressão em `copy-fit.test.ts`.
+
+**Plano B em código (02/09).** No batch cdc700e7 o Haiku errou o teto em 6
+de 9 campos nas DUAS passadas (~250 caracteres para `max 200`); o guard
+recusou e o original, com travessão, foi ao cliente. Agora: (a) o contrato
+leva `alvo_caracteres = floor(max × 0.85)` — o modelo mira abaixo do teto;
+(b) o que ele ainda não coube, o código corta com `encurtarPorFrase`
+(última fronteira de frase que cabe → vírgula → palavra; `—`/`–` viram
+vírgula antes do corte), passando pelo MESMO guard da proposta do modelo.
+Alvo só de idioma não recebe corte mecânico. `de_para[].motivo =
+"fallback_codigo"` e `corrigidos_pelo_codigo` no run — se este número
+dominar, o modelo não está fazendo o trabalho dele.
 
 **Modelo**: `anthropic/claude-haiku-4.5` (OpenRouter desde 20261098) · T 0.4 · max 1500.
 

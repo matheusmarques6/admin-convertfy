@@ -69,7 +69,10 @@ dia. `exige` saiu de `buildCatalogVaultExtras`, do catálogo e dos dois
 prompts (vault e legado), e `buildRequisitosGlossario` foi removida. Hoje só
 eliminam: variante inativa/sem schema, `momento_vetado` e capacidade
 (`product_slots` × produtos com link). Os docs `kind='requisito'` continuam
-em `email_vault_docs`, apenas não são servidos.
+em `email_vault_docs`, apenas não são servidos. As **notas de seção** ainda
+citavam o conceito ("Chave de decisão: momento → exige → objeção", coluna
+"Exige" nas tabelas — 12 ocorrências no prompt de 02/09): `semExige()` tira
+linhas e coluna antes de servir (`buildSecaoNotasBlock`).
 
 **Precedência declarada:** onde o eixo/prosa do vault contradiz a tag do banco,
 **o vault vence** (lacuna `tags-do-banco-contradizem-a-prosa` já documentada;

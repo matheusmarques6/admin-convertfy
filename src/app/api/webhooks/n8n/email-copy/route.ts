@@ -42,6 +42,7 @@ import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
+import { couponTokenKeys, resolveCouponTokens } from "@/lib/agents/html/coupon-tokens"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 import {
   checkBatchTerminal,
@@ -163,6 +164,25 @@ export async function POST(request: NextRequest) {
     const textOnly = flowType
       ? await isTextOnlyEmail(admin, flowType, emailNumber)
       : false
+
+    // O cupom deste email — a MESMA fonte que o dispatch manda ao n8n
+    // (`email_outline_templates.coupon_code`). Em 02/09 o payload levou
+    // "BEMVINDO10" e a copy voltou com "[DISCOUNT_CODE]" na hero e na
+    // oferta: o flow escreveu um placeholder e ninguém aqui o resolvia.
+    let couponCode: string | null = null
+    if (flowType) {
+      const { data: outline } = await admin
+        .from("email_outline_templates")
+        .select("coupon_code")
+        .eq("flow_type", flowType)
+        .eq("email_number", emailNumber)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle()
+      couponCode = ((outline as { coupon_code?: string | null } | null)?.coupon_code ?? "").trim() || null
+    }
+    let couponTokensResolvidos = 0
+    const couponSemCodigo: string[] = []
 
     // Busca store_name pra sanitizar tokens de brand que o n8n entrega
     // nao-resolvidos (ex: headline: "Bem-vindo {{BRAND_NAME}}!"). A
@@ -380,7 +400,18 @@ export async function POST(request: NextRequest) {
           keys: envelope.unwrapped.length,
         })
       }
-      const cleaned = resolveBrandTokens(flattened, brandName) as Record<string, unknown>
+      const semMarca = resolveBrandTokens(flattened, brandName) as Record<string, unknown>
+      // Token de cupom ([DISCOUNT_CODE], [COUPON], {{COUPON_CODE}}…) vira o
+      // código real. Sem código no outline o token FICA e é denunciado —
+      // sumir com ele deixaria "Use code  at checkout".
+      const tokensDeCupom = couponTokenKeys(semMarca)
+      const cleaned = (couponCode
+        ? resolveCouponTokens(semMarca, couponCode)
+        : semMarca) as Record<string, unknown>
+      if (tokensDeCupom.length > 0) {
+        if (couponCode) couponTokensResolvidos += tokensDeCupom.length
+        else couponSemCodigo.push(...tokensDeCupom.map((k) => `${i}.${k}`))
+      }
       // Compara com o achatado, não com o cru: desembrulhar não é sanitizar.
       if (JSON.stringify(cleaned) !== JSON.stringify(flattened)) blocksSanitized++
 
@@ -537,6 +568,16 @@ export async function POST(request: NextRequest) {
         email_id: body.email_id,
         keys_recebidas: keysRecebidas,
         por_bloco: contratoPorBloco,
+      })
+    }
+
+    if (couponSemCodigo.length > 0) {
+      log.error("email_copy.coupon_placeholder_sem_codigo", {
+        email_id: body.email_id,
+        flow_type: flowType,
+        email_number: emailNumber,
+        campos: couponSemCodigo,
+        hint: "a copy trouxe token de cupom e o outline deste email não tem coupon_code — o placeholder vai para o cliente",
       })
     }
 
@@ -761,6 +802,17 @@ export async function POST(request: NextRequest) {
               .join(" · "),
       },
       {
+        rotulo: "Cupom",
+        cls: "sistema",
+        valor: couponSemCodigo.length > 0
+          ? `SEM código no outline — ${couponSemCodigo.length} token(s) de cupom ficaram na copy: ${couponSemCodigo.join(", ")}`
+          : couponTokensResolvidos > 0
+            ? `${couponTokensResolvidos} token(s) de cupom resolvidos para ${couponCode}`
+            : couponCode
+              ? `${couponCode} (nenhum token na copy)`
+              : "sem cupom neste email",
+      },
+      {
         rotulo: "Idioma",
         cls: "sistema",
         valor:
@@ -822,6 +874,17 @@ export async function POST(request: NextRequest) {
         // mede o que o n8n entregou, e tem de aparecer mesmo com o
         // encurtador desligado — é a evidência de que a ordem de idioma vai
         // no payload e não é aplicada.
+        ...(couponTokensResolvidos > 0 || couponSemCodigo.length > 0
+          ? {
+              cupom: {
+                codigo: couponCode,
+                tokens_resolvidos: couponTokensResolvidos,
+                ...(couponSemCodigo.length > 0
+                  ? { placeholder_sem_codigo: couponSemCodigo }
+                  : {}),
+              },
+            }
+          : {}),
         ...(idiomaErradoPreFit > 0
           ? {
               idioma: {

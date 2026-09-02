@@ -46,6 +46,8 @@ const insertCalls: Array<{ table: string; data: Record<string, unknown> }> = []
 let mockBlocks: Array<Record<string, unknown>> = []
 /** Linha de client_stores — o `language` é o que o encurtador cobra. */
 let mockStore: Record<string, unknown> | null = null
+/** Linha de email_outline_templates — o cupom que resolve o placeholder. */
+let mockOutline: Record<string, unknown> | null = null
 
 function resetState() {
   mockEmail = {
@@ -61,6 +63,7 @@ function resetState() {
   insertCalls.length = 0
   mockBlocks = []
   mockStore = null
+  mockOutline = null
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -75,6 +78,9 @@ function buildQuery(table: string): any {
     }
     if (table === "client_stores") {
       return Promise.resolve({ data: mockStore, error: null })
+    }
+    if (table === "email_outline_templates") {
+      return Promise.resolve({ data: mockOutline, error: null })
     }
     return Promise.resolve({ data: null, error: null })
   }
@@ -948,5 +954,69 @@ describe("POST /api/webhooks/n8n/email-copy — idioma", () => {
     await POST(envio())
     expect(runCopyFitMock).not.toHaveBeenCalled()
     expect(runCopy().idioma).toMatchObject({ campos_errados: 1 })
+  })
+})
+
+// ── Cupom (02/09) ───────────────────────────────────────────────────────
+//
+// O payload levou `coupon_code: "BEMVINDO10"` e a copy voltou com
+// "[DISCOUNT_CODE]" na hero e na oferta. O callback resolvia {{BRAND_NAME}}
+// e não conhecia token de cupom; o colchete foi para o cliente.
+describe("POST /api/webhooks/n8n/email-copy — cupom", () => {
+  const campo = {
+    key: "coupon_line",
+    label: "Linha do cupom",
+    type: "text_short",
+    max_len: 60,
+    min_len: null,
+    required: false,
+    example: "",
+    guidance: "",
+    source: "schema",
+  }
+  function runCopy() {
+    return insertCalls.find(
+      (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
+    )!.data.parsed_output as Record<string, unknown>
+  }
+  const envio = () =>
+    makeRequest(
+      validBody({
+        blocks: [
+          {
+            block_id: MOCK_BLOCK_ID,
+            content: { coupon_line: "Use code [DISCOUNT_CODE] at checkout." },
+          },
+        ],
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) as any
+
+  beforeEach(() => {
+    mockBlocks = [{ id: MOCK_BLOCK_ID, content: {}, block_type: "hero", fields: [campo] }]
+    runCopyFitMock.mockResolvedValue({ aceitas: [], de_para: [], rodou: true })
+  })
+
+  it("o placeholder vira o código do outline antes de gravar", async () => {
+    mockOutline = { coupon_code: "BEMVINDO10" }
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+    const gravado = updateCalls.find((c) => c.table === "email_blocks")!
+    expect((gravado.data.content as Record<string, unknown>).coupon_line).toBe(
+      "Use code BEMVINDO10 at checkout.",
+    )
+    expect(runCopy().cupom).toMatchObject({ codigo: "BEMVINDO10", tokens_resolvidos: 1 })
+  })
+
+  it("sem código no outline o token fica e é denunciado", async () => {
+    mockOutline = null
+    const res = await POST(envio())
+    expect(res.status).toBe(200)
+    const gravado = updateCalls.find((c) => c.table === "email_blocks")!
+    expect((gravado.data.content as Record<string, unknown>).coupon_line).toBe(
+      "Use code [DISCOUNT_CODE] at checkout.",
+    )
+    expect(errorLogs).toContain("email_copy.coupon_placeholder_sem_codigo")
+    expect(runCopy().cupom).toMatchObject({ placeholder_sem_codigo: ["0.coupon_line"] })
   })
 })

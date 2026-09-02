@@ -7,6 +7,7 @@ import {
   buildMomentoBlock,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
+  semExige,
   emptyCuradorVaultKnowledge,
   extractVariantSections,
   indexVaultDocs,
@@ -226,5 +227,45 @@ describe("buildEstruturasRefResumo", () => {
   })
   it("vazio é declarado", () => {
     expect(buildEstruturasRefResumo([])).toContain("nenhuma estrutura")
+  })
+})
+
+// ── `exige` fora das notas de seção (02/09) ─────────────────────────────
+describe("semExige", () => {
+  // Trecho real da nota `_hero` do vault, como chegou ao prompt em 02/09.
+  const NOTA = [
+    "# Chave de decisão",
+    "",
+    "Ordem de leitura, na ordem real do protocolo: momento (filtro) → exige",
+    "(requisito duro, inclui o ativo fotográfico) → objeção (1º eixo de",
+    "ranking) → registro (2º eixo).",
+    "",
+    "| Variante | Momento | Exige | Objeção | Registro |",
+    "|---|---|---|---|---|",
+    "| hero-3 | welcome-1 | cupom-ativo | preco-valor | — |",
+    "| hero-6 | welcome-1 | foto-monocromatica | preco-valor | bold |",
+    "",
+    "**Como ler:** hero-3/4/5/6 **exigem** cupom ativo.",
+    "hero-7 veta cupom de fato (as duas coisas não convivem na mesma peça).",
+  ].join("\n")
+
+  it("some a palavra, a coluna e as linhas que a citam; o resto fica", () => {
+    const r = semExige(NOTA)
+    expect(r).not.toMatch(/exig/i)
+    expect(r).toContain("| hero-3 | welcome-1 | preco-valor | — |")
+    expect(r).toContain("| hero-6 | welcome-1 | preco-valor | bold |")
+    expect(r).toContain("|---|---|---|---|")
+    expect(r).toContain("hero-7 veta cupom de fato")
+    expect(r).toContain("# Chave de decisão")
+  })
+
+  it("nota sem a palavra passa intacta", () => {
+    expect(semExige("chave de desempate da hero")).toBe("chave de desempate da hero")
+  })
+
+  it("buildSecaoNotasBlock serve a nota já limpa", () => {
+    const k = emptyCuradorVaultKnowledge()
+    k.secoes.set("hero", { slug: "_hero", kind: "secao", body_md: NOTA } as never)
+    expect(buildSecaoNotasBlock(k, ["hero"])).not.toMatch(/exig/i)
   })
 })

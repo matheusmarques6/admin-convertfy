@@ -10,6 +10,7 @@ import {
   assignTextAnchors,
   buildTextIndex,
   findPhraseOccurrences,
+  pareceExemplo,
   normalizeForMatch,
   withOriginalSlices,
   type AnchorField,
@@ -440,5 +441,37 @@ describe("costura através de <br> e wrappers inline", () => {
     )
     expect(out[0].desfecho).toBe("ancorado_exemplo")
     expect(out[0].de).toBe("THREE<br>INGREDIENTS.<br>ZERO FILLERS.")
+  })
+})
+
+// ── Enumerador da arte (02/09) ──────────────────────────────────────────
+describe("findPhraseOccurrencesDetailed — enumerador", () => {
+  const html = "<table><tr><td>1 SHOP NOW</td></tr><tr><td>2 SHOP NOW</td></tr><tr><td>Shop now and save</td></tr></table>"
+  it("com enumerador, '2 SHOP NOW' acha os dois botões e engole o número", () => {
+    const index = buildTextIndex(html)
+    const occ = findPhraseOccurrencesDetailed(index, "2 SHOP NOW", { enumerador: true })
+    expect(occ).toHaveLength(3)
+    expect(html.slice(occ[0].start, occ[0].end)).toBe("1 SHOP NOW")
+    expect(html.slice(occ[1].start, occ[1].end)).toBe("2 SHOP NOW")
+  })
+  it("sem a opção o comportamento é o literal de antes", () => {
+    const index = buildTextIndex(html)
+    const occ = findPhraseOccurrencesDetailed(index, "2 SHOP NOW")
+    expect(occ).toHaveLength(1)
+    expect(html.slice(occ[0].start, occ[0].end)).toBe("2 SHOP NOW")
+  })
+  it("example sem enumerador não é afetado pela opção", () => {
+    const index = buildTextIndex(html)
+    const occ = findPhraseOccurrencesDetailed(index, "SHOP NOW", { enumerador: true })
+    expect(occ).toHaveLength(3)
+    expect(html.slice(occ[0].start, occ[0].end)).toBe("SHOP NOW")
+  })
+})
+
+describe("pareceExemplo — lorem e marcador", () => {
+  it("lorem e '[n]' são exemplo; frase real não", () => {
+    expect(pareceExemplo("[13] dolor sit amet, consectetur adipiscing")).toBe(true)
+    expect(pareceExemplo("lorem ipsum")).toBe(true)
+    expect(pareceExemplo("Lifetime guarantee on every device")).toBe(false)
   })
 })

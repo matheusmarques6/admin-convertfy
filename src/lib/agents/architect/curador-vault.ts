@@ -324,6 +324,57 @@ export function buildMomentoBlock(
   return `${momento}\n\n${clamp(nota.body_md, 1_800)}`
 }
 
+/**
+ * Tira de uma nota do vault tudo que fala de `exige`.
+ *
+ * O campo saiu do catálogo e dos dois prompts em 01/09, mas as notas de
+ * SEÇÃO — prosa do Obsidian servida em `{{secoes_notas}}` — continuavam
+ * ensinando o conceito: "Chave de decisão: momento (filtro) → exige
+ * (requisito duro) → objeção", tabelas com coluna "Exige". Em 02/09 a
+ * palavra apareceu 12 vezes no prompt do Curador, todas vindas daqui, e a
+ * justificativa dele ainda dizia "nenhuma elimina por exige". Não eliminou
+ * ninguém — mas o vault não é editável deste lado, e o que chega ao modelo
+ * é o que ele obedece.
+ *
+ * Regras, puras: linha de prosa/bullet que cita `exige` sai inteira; em
+ * tabela markdown, a COLUNA cujo cabeçalho cita `exige` sai de todas as
+ * linhas. Linha que sobra vazia some.
+ */
+export function semExige(md: string): string {
+  const linhas = md.split("\n")
+  const out: string[] = []
+  let colunaExige: number | null = null
+  let dentroDeTabela = false
+  const ehLinhaDeTabela = (l: string) => /^\s*\|.*\|\s*$/.test(l)
+  const cita = (t: string) => /\bexig(e|em|ência|encia)\b/i.test(t)
+
+  for (const linha of linhas) {
+    if (ehLinhaDeTabela(linha)) {
+      const celulas = linha.trim().slice(1, -1).split("|")
+      if (!dentroDeTabela) {
+        // Cabeçalho: descobre a coluna a remover.
+        dentroDeTabela = true
+        colunaExige = celulas.findIndex((c) => cita(c))
+      }
+      if (colunaExige != null && colunaExige >= 0) {
+        celulas.splice(colunaExige, 1)
+        if (celulas.length === 0) continue
+        out.push(`|${celulas.join("|")}|`)
+      } else if (cita(linha)) {
+        continue
+      } else {
+        out.push(linha)
+      }
+      continue
+    }
+    dentroDeTabela = false
+    colunaExige = null
+    if (cita(linha)) continue
+    out.push(linha)
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+}
+
 export function buildSecaoNotasBlock(
   k: CuradorVaultKnowledge,
   sections: string[],
@@ -333,7 +384,7 @@ export function buildSecaoNotasBlock(
   for (const s of distintas) {
     const nota = k.secoes.get(s)
     if (!nota) continue
-    blocos.push(`## Seção ${s}\n${clamp(nota.body_md, 5_000)}`)
+    blocos.push(`## Seção ${s}\n${clamp(semExige(nota.body_md), 5_000)}`)
   }
   if (blocos.length === 0) {
     return "(sem notas de seção no vault para as seções deste email)"

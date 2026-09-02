@@ -247,6 +247,52 @@ export function aceitarReescrita(
   return { ok: true }
 }
 
+/**
+ * Plano B do encurtador — quando o modelo falha, o CÓDIGO corta.
+ *
+ * Em 02/09 (Innova Bay, batch cdc700e7) o Haiku errou o alvo em 6 de 9
+ * campos, nas DUAS passadas: devolvia ~250 caracteres para `max 200`, ~150
+ * para `max 130`. O guard recusou (certo) e o texto original ficou no email
+ * (errado) — 289 caracteres com travessão numa caixa de 200. O código só
+ * sabia dizer não.
+ *
+ * Aqui ele diz o que fica: corta na última fronteira de FRASE que cabe;
+ * sem frase inteira, na última vírgula; sem vírgula, na última palavra, com
+ * ponto final. Travessão vira vírgula ANTES do corte, que é exatamente o
+ * que o prompt pede ao modelo. Determinístico, sem chamada.
+ *
+ * Nunca inventa: só remove do fim. Se nem uma palavra cabe, devolve null.
+ */
+export function encurtarPorFrase(texto: string, max: number): string | null {
+  const semTraco = texto
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+  if (max <= 0) return null
+  if (semTraco.length <= max) return semTraco
+
+  const janela = semTraco.slice(0, max)
+  // 1) última fronteira de frase dentro da janela (. ! ? seguidos de espaço
+  //    ou no fim). O corte fica DEPOIS da pontuação.
+  const frase = Math.max(
+    janela.lastIndexOf(". "),
+    janela.lastIndexOf("! "),
+    janela.lastIndexOf("? "),
+    /[.!?]$/.test(janela) ? janela.length - 1 : -1,
+  )
+  if (frase > 0) return janela.slice(0, frase + 1).trim()
+  // 2) última vírgula — fecha com ponto.
+  const virgula = janela.lastIndexOf(", ")
+  if (virgula > 0) return `${janela.slice(0, virgula).trim()}.`
+  // 3) última palavra inteira — fecha com ponto (se couber).
+  const espaco = janela.lastIndexOf(" ")
+  if (espaco > 0) {
+    const corte = janela.slice(0, espaco).trim().replace(/[,;:]$/, "")
+    return corte.length + 1 <= max ? `${corte}.` : corte
+  }
+  return null
+}
+
 /** Aplica só as reescritas aceitas — o resto do content passa intacto. */
 export function aplicarReescritas(
   content: Record<string, unknown> | null | undefined,
