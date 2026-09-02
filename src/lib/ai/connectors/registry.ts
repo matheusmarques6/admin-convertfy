@@ -96,6 +96,15 @@ export async function resolveConnectors(args: ResolveArgs): Promise<ResolvedConn
         authToken: s.auth_token ? safeDecrypt(s.auth_token) : null,
         headers: (s.headers as Record<string, string> | null) ?? {},
         allowWrite: s.allow_write === true,
+        // OAuth (ex.: MCP oficial da Omnisend): envelope renovado
+        // automaticamente — persiste o refresh pro próximo uso.
+        onTokensRefreshed: async (envelopeJson) => {
+          const { encrypt } = await import("@/lib/crypto")
+          await args.admin
+            .from("ai_mcp_servers")
+            .update({ auth_token: encrypt(envelopeJson), updated_at: new Date().toISOString() })
+            .eq("id", s.id)
+        },
       }
       const connector = await buildMcpConnector(cfg)
       if (connector) out.push(connector)

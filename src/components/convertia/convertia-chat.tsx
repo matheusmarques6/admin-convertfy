@@ -252,6 +252,27 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (typeof window !== "undefined" && window.innerWidth < 768) setRailOpen(false)
   }, [])
 
+  // Retorno do fluxo OAuth de MCP (?mcp_connected / ?mcp_error)
+  const [oauthNotice, setOauthNotice] = useState<{ ok: boolean; text: string } | null>(null)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const connected = params.get("mcp_connected")
+    const errorMsg = params.get("mcp_error")
+    if (connected) {
+      const tools = params.get("mcp_tools")
+      setOauthNotice({
+        ok: true,
+        text: `${connected} conectado via OAuth${tools ? ` — ${tools} tools disponíveis` : ""}. Ligue-o no menu Conectores · MCP.`,
+      })
+    } else if (errorMsg) {
+      setOauthNotice({ ok: false, text: errorMsg })
+    }
+    if (connected || errorMsg) {
+      window.history.replaceState({}, "", window.location.pathname)
+    }
+  }, [])
+
   const stores = useMemo(() => boot?.stores ?? [], [boot])
   const skills = useMemo(
     () => (boot?.skills ?? []).filter((s) => s.is_active),
@@ -311,13 +332,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     return [...builtin, ...mcps]
   }, [ws, store, boot, storeId])
 
-  // default: liga tudo que está disponível
+  // Default: TUDO que está disponível nasce ligado. A disponibilidade
+  // chega em ondas (bootstrap → loja selecionada), então um conector
+  // que FICOU disponível liga sozinho — exceto se o usuário já mexeu
+  // nele nesta sessão (escolha manual é soberana). Sem o touchedRef,
+  // a primeira renderização (loja ainda não carregada) gravava false e
+  // os conectores da loja nunca religavam — só "Métricas" ficava ativa.
+  const touchedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     setConnOn((prev) => {
       const next = { ...prev }
       for (const c of connectorEntries) {
-        if (!(c.key in next)) next[c.key] = c.available
         if (!c.available) next[c.key] = false
+        else if (!touchedRef.current.has(c.key)) next[c.key] = true
       }
       return next
     })
@@ -687,7 +714,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       sub: c.sub,
                       on: Boolean(connOn[c.key] && c.available),
                       disabled: !c.available,
-                      onClick: () => setConnOn((s) => ({ ...s, [c.key]: !s[c.key] })),
+                      onClick: () => {
+                        touchedRef.current.add(c.key)
+                        setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
+                      },
                     }),
                   )}
                   <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
@@ -877,6 +907,22 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
       {/* Coluna principal */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {oauthNotice && (
+          <div
+            className="mx-4 mt-3 flex items-center gap-2 rounded-[8px] border px-3 py-2 text-[11.5px]"
+            style={
+              oauthNotice.ok
+                ? { borderColor: "var(--ops-pos)", color: "var(--ops-pos)" }
+                : { borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }
+            }
+            role="status"
+          >
+            <span className="min-w-0 flex-1">{oauthNotice.text}</span>
+            <button onClick={() => setOauthNotice(null)} aria-label="Fechar">
+              ×
+            </button>
+          </div>
+        )}
         <div className="flex h-[50px] shrink-0 items-center gap-[9px] px-4">
           <button
             title="Histórico"

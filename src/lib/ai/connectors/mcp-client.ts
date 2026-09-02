@@ -16,6 +16,11 @@
  */
 
 import { logger } from "@/lib/logger"
+import {
+  parseOAuthEnvelope,
+  refreshEnvelope,
+  type McpOAuthEnvelope,
+} from "./mcp-oauth"
 
 const log = logger.child("McpClient")
 
@@ -26,10 +31,16 @@ export interface McpServerConfig {
   id: string
   name: string
   url: string
-  /** Bearer token (já descriptografado). */
+  /**
+   * Auth descriptografada: Bearer token cru OU envelope OAuth
+   * ({"type":"oauth",...} — ver mcp-oauth.ts). O envelope é detectado
+   * automaticamente e renovado quando expira.
+   */
   authToken?: string | null
   headers?: Record<string, string>
   allowWrite: boolean
+  /** Persiste o envelope renovado (JSON em claro — quem chama criptografa). */
+  onTokensRefreshed?: (envelopeJson: string) => Promise<void>
 }
 
 export interface McpToolInfo {
@@ -48,14 +59,35 @@ export class McpSession {
   private sessionId: string | null = null
   private nextId = 1
   private initialized = false
+  private oauth: McpOAuthEnvelope | null
 
-  constructor(private cfg: McpServerConfig) {}
+  constructor(private cfg: McpServerConfig) {
+    this.oauth = parseOAuthEnvelope(cfg.authToken)
+  }
 
-  private headers(): Record<string, string> {
+  /** Token vigente — renova o envelope OAuth quando falta <60s. */
+  private async bearer(): Promise<string | null> {
+    if (!this.oauth) return this.cfg.authToken ?? null
+    if (this.oauth.expires_at && this.oauth.expires_at - 60_000 < Date.now()) {
+      const renewed = await refreshEnvelope(this.oauth, this.cfg.url)
+      if (renewed) {
+        this.oauth = renewed
+        await this.cfg.onTokensRefreshed?.(JSON.stringify(renewed)).catch(() => {})
+      } else {
+        throw new Error(
+          `MCP ${this.cfg.name}: sessão OAuth expirada — reautorize a conexão.`,
+        )
+      }
+    }
+    return this.oauth.access_token
+  }
+
+  private async headers(): Promise<Record<string, string>> {
+    const token = await this.bearer()
     return {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
-      ...(this.cfg.authToken ? { Authorization: `Bearer ${this.cfg.authToken}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(this.cfg.headers ?? {}),
       ...(this.sessionId ? { "Mcp-Session-Id": this.sessionId } : {}),
     }
@@ -71,7 +103,7 @@ export class McpSession {
 
       const resp = await fetch(this.cfg.url, {
         method: "POST",
-        headers: this.headers(),
+        headers: await this.headers(),
         body: JSON.stringify(body),
         signal: controller.signal,
       })

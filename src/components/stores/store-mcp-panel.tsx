@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import { Copy, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { startMcpOAuth } from "@/components/convertia/convertia-manage"
 
 const HAIR = "var(--crm-border, rgba(0,0,0,0.08))"
 const BRAND = "#4E62D8"
@@ -186,13 +187,36 @@ export function StoreMcpPanel({
       )}
 
       {!adding ? (
-        <button
-          onClick={() => setAdding({ name: "", url: "", auth_token: "", allow_write: false })}
-          className="mt-2.5 inline-flex h-[30px] items-center gap-1.5 rounded-[6px] border border-dashed px-3 text-[12px] font-medium"
-          style={{ borderColor: HAIR, color: "var(--crm-gray-500, #6B7280)" }}
-        >
-          <Plus className="h-3.5 w-3.5" /> Adicionar servidor MCP desta loja
-        </button>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          <button
+            onClick={async () => {
+              setBusy(true)
+              const e = await startMcpOAuth({
+                name: "Omnisend (MCP oficial)",
+                url: "https://mcp.omnisend.com/mcp",
+                store_id: storeId,
+                allow_write: true,
+              })
+              if (e) {
+                setErr(e)
+                setBusy(false)
+              }
+            }}
+            disabled={busy}
+            className="inline-flex h-[30px] items-center rounded-[6px] px-3 text-[12px] font-semibold text-white disabled:opacity-60"
+            style={{ background: "#5C6AC4" }}
+            title="Autoriza via OAuth na conta Omnisend DESTA loja — selecione permissões de escrita na tela deles"
+          >
+            {busy ? "Redirecionando…" : "Conectar Omnisend (OAuth)"}
+          </button>
+          <button
+            onClick={() => setAdding({ name: "", url: "", auth_token: "", allow_write: false })}
+            className="inline-flex h-[30px] items-center gap-1.5 rounded-[6px] border border-dashed px-3 text-[12px] font-medium"
+            style={{ borderColor: HAIR, color: "var(--crm-gray-500, #6B7280)" }}
+          >
+            <Plus className="h-3.5 w-3.5" /> Adicionar servidor MCP desta loja
+          </button>
+        </div>
       ) : (
         <div className="mt-2.5 rounded-[8px] border p-3" style={{ borderColor: HAIR }}>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

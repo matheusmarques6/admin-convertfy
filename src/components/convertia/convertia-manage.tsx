@@ -304,6 +304,34 @@ const OBSIDIAN_PRESET = {
   hint: "Exponha seu vault via um servidor MCP do Obsidian (ex.: obsidian-mcp + Local REST API) atrás de HTTPS público — um túnel (Cloudflare Tunnel/ngrok) resolve — e cole a URL do endpoint MCP aqui.",
 }
 
+const OMNISEND_MCP_URL = "https://mcp.omnisend.com/mcp"
+
+/** Inicia o fluxo OAuth de um servidor MCP e redireciona pro login. */
+export async function startMcpOAuth(args: {
+  name: string
+  url: string
+  store_id?: string | null
+  allow_write?: boolean
+}): Promise<string | null> {
+  const res = await fetch("/api/ai/mcp-oauth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: args.name,
+      url: args.url,
+      store_id: args.store_id ?? null,
+      allow_write: args.allow_write ?? true,
+      return_to: window.location.pathname,
+    }),
+  })
+  const body = (await res.json().catch(() => ({}))) as { authorize_url?: string; error?: string }
+  if (!res.ok || !body.authorize_url) {
+    return body.error ?? "Não foi possível iniciar a autorização OAuth."
+  }
+  window.location.href = body.authorize_url
+  return null
+}
+
 function McpDialog({
   stores,
   onClose,
@@ -438,7 +466,27 @@ function McpDialog({
               </div>
             )}
           </div>
-          <div className="mt-3.5 flex gap-2">
+          <div className="mt-3.5 flex flex-wrap gap-2">
+            <button
+              onClick={async () => {
+                setBusy(true)
+                const e = await startMcpOAuth({
+                  name: "Omnisend (MCP oficial)",
+                  url: OMNISEND_MCP_URL,
+                  allow_write: true,
+                })
+                if (e) {
+                  setErr(e)
+                  setBusy(false)
+                }
+              }}
+              disabled={busy}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-semibold text-white disabled:opacity-60"
+              style={{ background: "#5C6AC4" }}
+              title="Autoriza via OAuth na sua conta Omnisend — escolha permissões de escrita na tela deles para criar/editar automações, campanhas e popups"
+            >
+              {busy ? "Redirecionando…" : "Conectar Omnisend (OAuth)"}
+            </button>
             <button
               onClick={() => setAdding({ name: "", url: "", auth_token: "", store_id: null, allow_write: false })}
               className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
@@ -462,6 +510,10 @@ function McpDialog({
             >
               <span className="text-[13px]">💎</span> Conectar Obsidian
             </button>
+          </div>
+          <div className="mt-1.5 text-[10px] leading-[1.5]" style={{ color: "var(--ops-mut)" }}>
+            Omnisend multi-marca: conecte de novo trocando a URL para
+            https://mcp.omnisend.com/v2/mcp?brand=&lt;marca&gt; via &ldquo;Adicionar servidor&rdquo; + OAuth.
           </div>
         </>
       )}
@@ -496,7 +548,29 @@ function McpDialog({
             <input type="checkbox" checked={adding.allow_write} onChange={(e) => setAdding({ ...adding, allow_write: e.target.checked })} />
             Permitir execução (tools de escrita) — sem isso, só tools marcadas como leitura entram
           </label>
-          <div className="mt-3.5 flex justify-end gap-2">
+          <div className="mt-3.5 flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setBusy(true)
+                const e = await startMcpOAuth({
+                  name: adding.name,
+                  url: adding.url,
+                  store_id: adding.store_id,
+                  allow_write: adding.allow_write,
+                })
+                if (e) {
+                  setErr(e)
+                  setBusy(false)
+                }
+              }}
+              disabled={busy || !adding.name || !adding.url}
+              className="h-[31px] rounded-[8px] border px-3 text-[12px] font-medium disabled:opacity-50"
+              style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+              title="Para servidores que autenticam por OAuth (login na plataforma) em vez de token fixo"
+            >
+              Autorizar via OAuth
+            </button>
+            <span className="flex-1" />
             <button onClick={() => setAdding(null)} className="h-[31px] rounded-[8px] border px-3 text-[12px] font-medium" style={{ borderColor: HAIR, color: "var(--ops-text)" }}>
               Cancelar
             </button>
@@ -506,7 +580,7 @@ function McpDialog({
               className="h-[31px] rounded-[8px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-50"
               style={{ background: BRAND }}
             >
-              {busy ? "Conectando…" : "Conectar e testar"}
+              {busy ? "Conectando…" : "Conectar com token"}
             </button>
           </div>
         </div>
