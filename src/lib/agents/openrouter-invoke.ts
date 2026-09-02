@@ -129,6 +129,34 @@ export interface ParsedBody {
    * token — é o valor exato que o OpenRouter cobra (igual ao image.chain).
    */
   costUsd: number
+  /**
+   * `choices[0].finish_reason` cru ("stop" | "length" | ...). Só presente
+   * quando o provider mandou. `"length"` com texto vazio é a assinatura do
+   * orçamento de `max_tokens` consumido pelo raciocínio (run copy_fit
+   * 5d7396b5, 02/09: 1500/1500 tokens de saída e zero de resposta).
+   */
+  finishReason?: string
+  /** `usage.completion_tokens_details.reasoning_tokens`, quando o provider reporta. */
+  reasoningTokens?: number
+}
+
+type UsageBody = {
+  prompt_tokens?: number
+  completion_tokens?: number
+  cost?: number
+  completion_tokens_details?: { reasoning_tokens?: number }
+}
+
+/** Campos opcionais do ParsedBody — só entram quando existem no body. */
+function usageExtras(
+  finishReason: string | undefined,
+  usage: UsageBody | undefined,
+): Pick<ParsedBody, "finishReason" | "reasoningTokens"> {
+  const reasoning = usage?.completion_tokens_details?.reasoning_tokens
+  return {
+    ...(typeof finishReason === "string" ? { finishReason } : {}),
+    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+  }
 }
 
 /**
@@ -185,7 +213,7 @@ export function parseOpenRouterBody(
       message?: { content?: string }
       finish_reason?: string
     }>
-    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
+    usage?: UsageBody
   }
 
   // Caso non-streaming clássico com finish_reason:"error" no choice.
@@ -205,6 +233,7 @@ export function parseOpenRouterBody(
     tokensInput: typed.usage?.prompt_tokens ?? 0,
     tokensOutput: typed.usage?.completion_tokens ?? 0,
     costUsd: typed.usage?.cost ?? 0,
+    ...usageExtras(typed.choices?.[0]?.finish_reason, typed.usage),
   }
 }
 
@@ -217,7 +246,8 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
   const lines = body.split(/\r?\n/)
   const frames: unknown[] = []
   let lastErrorMsg = ""
-  let usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | undefined
+  let usage: UsageBody | undefined
+  let finishReason: string | undefined
 
   for (const raw of lines) {
     const line = raw.trimStart()
@@ -239,11 +269,13 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
         message?: { content?: string }
         finish_reason?: string
       }>
-      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
+      usage?: UsageBody
       error?: { message?: string; metadata?: { error_type?: string } }
     }
 
     if (f.usage) usage = f.usage
+    const fr = f.choices?.find((c) => typeof c.finish_reason === "string")?.finish_reason
+    if (fr) finishReason = fr
     if (f.error) {
       lastErrorMsg = f.error.message ?? ""
       throw new OpenRouterMidStreamError({
@@ -303,6 +335,7 @@ function parseSseBody(body: string, ctx: { status: number; ms: number }): Parsed
     tokensInput: usage?.prompt_tokens ?? 0,
     tokensOutput: usage?.completion_tokens ?? 0,
     costUsd: usage?.cost ?? 0,
+    ...usageExtras(finishReason, usage),
   }
 }
 

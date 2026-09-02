@@ -85,7 +85,7 @@ flowchart LR
 | blueprint (rota LLM) | `moonshotai/kimi-k3` | 0.4 | 8192 | rota determinística grava `model='deterministic'` |
 | subject | `anthropic/claude-sonnet-4.6` | 0.7 | 400 | mini‑LLM da rota determinística |
 | copy (fallback in-process) | `claude-opus-4-7` | 1.0 | 20480 | a copy de produção roda no **n8n** (modelo externo) |
-| copy_fit | `openai/gpt-5.4-mini` | 0.4 | 1500 | encurtador condicional (tamanho, travessão, idioma, item ausente) |
+| copy_fit | `openai/gpt-5.4-mini` | — (reasoning `low`) | 6000 | encurtador condicional (tamanho, travessão, idioma, item ausente) |
 | image | `google/gemini-3.1-flash-image` | — | — | temperatura não é enviada; sempre OpenRouter |
 | hero_section | `anthropic/claude-sonnet-4.6` | 0.3 | 16384 | espelho visual troca p/ `hero_vision_model` |
 | text_format | `moonshotai/kimi-k3` | 0.3 | 65536 | quase sempre **pulado** (merge por example) |
@@ -287,6 +287,8 @@ A copy é gerada por **LLM externo** (modelo do flow do n8n; ecoado em `meta.mod
 ## 7 · Encurtador (`copy_fit`)
 
 Condicional, roda **inline no callback** (passo 3.6): recebe **só os campos com problema** e propõe reescritas; quem aceita é o **código** (`aceitarReescrita` recusa vazio/idêntico/ainda-acima/cresceu/abaixo-do-mínimo/traço-permaneceu/idioma-permaneceu). Máx 2 passadas; **fail-open** total. Kill-switch por org: `email_generation_settings.copy_fit_mode`.
+
+**Modelo de raciocínio (02/09)**: GPT-5.4 mini pensa antes de responder e o `max_tokens` cobre as duas coisas. A primeira run nele (5d7396b5) herdou 1500 tokens e esforço `medium`: gastou tudo pensando, devolveu texto vazio e o run registrou "Unexpected end of JSON input". Agora o chain pede `reasoning: {effort: "low"}` (`AgentInvokeConfig.reasoning`, só para modelos `gpt-5*`), o teto é 6000 (migration 20261105) e resposta vazia vira erro nomeado com `finish_reason`/`tokens_saida`/`reasoning_tokens` (`motivoDaSaidaVazia`) — a mesma mensagem chega ao `erro` do run `copy`.
 
 **Três motivos de alvo** (`MotivoDeAlvo`, um campo pode ter mais de um):
 

@@ -483,3 +483,65 @@ describe("runCopyFit — item de lista ausente", () => {
     expect(parsed.mantidos).toBe(1)
   })
 })
+
+// ── Resposta vazia = orçamento consumido pelo raciocínio (run 5d7396b5) ──
+
+describe("saída vazia do modelo de raciocínio", () => {
+  it("raw vazio com tokens_saida = max_tokens → erro NOMEADO, fail-open mantém a copy", async () => {
+    invokeMock.mockResolvedValueOnce({
+      raw: "",
+      tokensInput: 3117,
+      tokensOutput: 6000,
+      costUsd: 0.0091,
+      finishReason: "length",
+      reasoningTokens: 6000,
+    })
+    const r = await runCopyFit(entrada([alvo()]))
+    expect(r.rodou).toBe(false)
+    expect(r.aceitas).toEqual([])
+    expect(r.erro).toContain("max_tokens (6000) consumido pelo raciocínio")
+    expect(r.erro).toContain("finish_reason=length")
+    expect(r.erro).toContain("tokens_saida=6000/6000")
+    expect(r.erro).toContain("reasoning_tokens=6000")
+    expect(r.erro).not.toContain("Unexpected end of JSON input")
+
+    const fim = respostaComResultado()
+    expect(fim.status).toBe("error")
+    expect(fim.errorMessage).toBe(r.erro)
+    // Uma tentativa só: sem resposta não há o que retentar com o mesmo orçamento.
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("raw vazio SEM orçamento cheio: erro nomeado sem culpar o raciocínio", async () => {
+    invokeMock.mockResolvedValueOnce({
+      raw: "",
+      tokensInput: 100,
+      tokensOutput: 3,
+      costUsd: 0,
+      finishReason: "stop",
+    })
+    const r = await runCopyFit(entrada([alvo()]))
+    expect(r.erro).toMatch(/^Saída vazia do modelo \(finish_reason=stop, tokens_saida=3\/6000\)$/)
+  })
+
+  it("o encurtador pede reasoning low ao invoke (config do banco ou default)", async () => {
+    invokeMock.mockResolvedValueOnce(respostaLLM({ "1.section_body_1": "x".repeat(100) }))
+    await runCopyFit(entrada([alvo()]))
+    const cfg = invokeMock.mock.calls[0][0] as { reasoning?: unknown; max_tokens: number }
+    expect(cfg.reasoning).toEqual({ effort: "low" })
+    expect(cfg.max_tokens).toBe(6000)
+
+    loadConfigMock.mockResolvedValueOnce({
+      id: "cfg-1",
+      model: "openai/gpt-5.4-mini",
+      temperature: 0.4,
+      max_tokens: 1500,
+      system_prompt: "s",
+      user_template: "u {{contrato_json}} {{copy_atual_json}}",
+    })
+    invokeMock.mockResolvedValueOnce(respostaLLM({ "1.section_body_1": "x".repeat(100) }))
+    await runCopyFit(entrada([alvo()]))
+    const cfgBanco = invokeMock.mock.calls[1][0] as { reasoning?: unknown }
+    expect(cfgBanco.reasoning).toEqual({ effort: "low" })
+  })
+})

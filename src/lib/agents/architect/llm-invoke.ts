@@ -38,6 +38,14 @@ export interface AgentInvokeConfig {
   max_tokens: number
   system_prompt: string
   user_template: string
+  /**
+   * Esforço de raciocínio para modelos de reasoning (GPT-5.x). Omitido →
+   * `medium` (o ajuste do Curador). O `max_tokens` desses modelos cobre
+   * pensamento + resposta: agente com orçamento curto e tarefa mecânica
+   * (encurtador) pede `low`, senão o modelo gasta tudo pensando e a
+   * resposta volta vazia (run copy_fit 5d7396b5, 02/09).
+   */
+  reasoning?: { effort: "low" | "medium" | "high" }
 }
 
 /**
@@ -98,6 +106,14 @@ export interface InvokeResult {
    * cai na estimativa por token em resolveCostCents).
    */
   costUsd: number
+  /**
+   * Por que o modelo parou: `"stop"`/`"end_turn"` é o normal; `"length"`/
+   * `"max_tokens"` diz que o orçamento acabou — com `raw` vazio, foi o
+   * raciocínio que consumiu tudo. Ausente quando o provider não informa.
+   */
+  finishReason?: string
+  /** Tokens de raciocínio cobrados como saída, quando o provider reporta. */
+  reasoningTokens?: number
 }
 
 /**
@@ -205,6 +221,7 @@ async function invokeViaAnthropic(
     tokensInput: res.usage.input_tokens,
     tokensOutput: res.usage.output_tokens,
     costUsd: 0, // Anthropic-direto não passa pelo accounting do OpenRouter.
+    ...(res.stop_reason ? { finishReason: res.stop_reason } : {}),
   }
 }
 
@@ -276,11 +293,12 @@ async function callOnceArchitect(
     if (modelSupportsTemperature(config.model)) {
       body.temperature = config.temperature
     }
-    // Reasoning models (GPT-5.x): fixa o esforço em 'medium' (≈50% do
+    // Reasoning models (GPT-5.x): esforço da config ou 'medium' (≈50% do
     // max_tokens p/ reasoning) — mais qualidade de arquitetura que 'low'
     // (~20%), custo ainda bem abaixo do Opus. 'high'/'xhigh' encarecem mais.
+    // O agente escolhe (`config.reasoning`): o encurtador roda em 'low'.
     if (isReasoningModel(config.model)) {
-      body.reasoning = { effort: "medium" }
+      body.reasoning = config.reasoning ?? { effort: "medium" }
     } else if (
       /kimi|glm/i.test(config.model) &&
       process.env.FORMAT_OPS_REASONING !== "on"
@@ -332,12 +350,21 @@ async function callOnceArchitect(
       ms,
       tokensIn: parsed.tokensInput,
       tokensOut: parsed.tokensOutput,
+      finishReason: parsed.finishReason ?? null,
+      reasoningTokens: parsed.reasoningTokens ?? null,
+      // Resposta vazia com orçamento cheio: o sinal que faltou na run
+      // 5d7396b5 — a telemetria só via "Unexpected end of JSON input".
+      emptyText: parsed.text === "",
     })
     return {
       raw: parsed.text,
       tokensInput: parsed.tokensInput,
       tokensOutput: parsed.tokensOutput,
       costUsd: parsed.costUsd,
+      ...(parsed.finishReason ? { finishReason: parsed.finishReason } : {}),
+      ...(typeof parsed.reasoningTokens === "number"
+        ? { reasoningTokens: parsed.reasoningTokens }
+        : {}),
     }
   } catch (e) {
     if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {

@@ -364,3 +364,57 @@ describe("isOpenRouterModel", () => {
     expect(isOpenRouterModel("claude-opus-4-8")).toBe(false)
   })
 })
+
+// ── finish_reason + reasoning_tokens (run copy_fit 5d7396b5, 02/09) ────
+
+describe("parseOpenRouterBody — orçamento consumido pelo raciocínio", () => {
+  const ctx = { status: 200, ms: 100 }
+
+  it("JSON: expõe finish_reason e reasoning_tokens; texto vazio NÃO é erro", () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "" }, finish_reason: "length" }],
+      usage: {
+        prompt_tokens: 3117,
+        completion_tokens: 1500,
+        cost: 0.0091,
+        completion_tokens_details: { reasoning_tokens: 1500 },
+      },
+    })
+    const out = parseOpenRouterBody(body, ctx)
+    expect(out).toEqual({
+      text: "",
+      tokensInput: 3117,
+      tokensOutput: 1500,
+      costUsd: 0.0091,
+      finishReason: "length",
+      reasoningTokens: 1500,
+    })
+  })
+
+  it("sem os campos no body, as chaves ficam ausentes (toEqual dos testes antigos)", () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+      usage: { prompt_tokens: 1, completion_tokens: 2 },
+    })
+    const out = parseOpenRouterBody(body, ctx)
+    expect("finishReason" in out).toBe(false)
+    expect("reasoningTokens" in out).toBe(false)
+  })
+
+  it("SSE: pega o finish_reason do último frame e o usage com reasoning_tokens", () => {
+    const body = [
+      ": OPENROUTER PROCESSING",
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '{"campos":' } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "{}}" }, finish_reason: "stop" }] })}`,
+      `data: ${JSON.stringify({
+        choices: [],
+        usage: { prompt_tokens: 10, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 30 } },
+      })}`,
+      "data: [DONE]",
+    ].join("\n")
+    const out = parseOpenRouterBody(body, ctx)
+    expect(out.text).toBe('{"campos":{}}')
+    expect(out.finishReason).toBe("stop")
+    expect(out.reasoningTokens).toBe(30)
+  })
+})

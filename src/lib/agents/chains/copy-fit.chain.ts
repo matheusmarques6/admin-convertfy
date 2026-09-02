@@ -51,6 +51,7 @@ import {
   loadActiveAgentConfig,
   extractJson,
   type AgentInvokeConfig,
+  type InvokeResult,
 } from "../architect/llm-invoke"
 import { renderImageTemplate } from "../image/template-renderer"
 import {
@@ -75,6 +76,16 @@ const log = logger.child("CopyFit")
 // mantinha a mensagem, mas devolvia ~177 chars para max 130 em DUAS
 // passadas — e o corte por código que cobria isso foi removido.
 const DEFAULT_MODEL = "openai/gpt-5.4-mini"
+
+// GPT-5.4 mini é modelo de RACIOCÍNIO: o `max_tokens` cobre pensamento +
+// resposta. A primeira run nele (5d7396b5, 02/09) herdou os 1500 do Haiku
+// e o esforço 'medium' do Curador: gastou 1500/1500 pensando, devolveu
+// texto VAZIO e o erro na tela foi "Unexpected end of JSON input". Aqui a
+// tarefa é mecânica (reescrever N frases dentro de um limite): esforço
+// 'low' e orçamento com folga — 13 campos precisam de ~800 tokens de
+// resposta. A migration 20261105 sobe a linha ativa para 6000.
+const DEFAULT_MAX_TOKENS = 6000
+const REASONING: AgentInvokeConfig["reasoning"] = { effort: "low" }
 
 const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
 
@@ -259,9 +270,35 @@ function copyAtualDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
   )
 }
 
+/**
+ * Resposta VAZIA não é JSON torto: é orçamento consumido. Antes deste guard
+ * o `JSON.parse("")` virava "Unexpected end of JSON input" no run — mensagem
+ * que descreve o sintoma e esconde a causa. A mensagem aqui vai para o
+ * `error_message` do run copy_fit e para o `erro` que o callback copia no
+ * run `copy`: é o texto que a tela mostra.
+ */
+export function motivoDaSaidaVazia(
+  res: Pick<InvokeResult, "tokensOutput" | "finishReason" | "reasoningTokens">,
+  maxTokens: number,
+): string {
+  const orcamentoCheio =
+    res.tokensOutput >= maxTokens || res.finishReason === "length"
+  const detalhes = [
+    `finish_reason=${res.finishReason ?? "?"}`,
+    `tokens_saida=${res.tokensOutput}/${maxTokens}`,
+    ...(typeof res.reasoningTokens === "number"
+      ? [`reasoning_tokens=${res.reasoningTokens}`]
+      : []),
+  ].join(", ")
+  return orcamentoCheio
+    ? `Saída vazia do modelo: max_tokens (${maxTokens}) consumido pelo raciocínio antes da resposta (${detalhes})`
+    : `Saída vazia do modelo (${detalhes})`
+}
+
 /** `{"campos":{"0.headline":"..."}}` → Map. Formato torto → Map vazio. */
-function parseCampos(raw: string): Map<string, unknown> {
+function parseCampos(raw: string, res: InvokeResult, maxTokens: number): Map<string, unknown> {
   const out = new Map<string, unknown>()
+  if (raw.trim() === "") throw new Error(motivoDaSaidaVazia(res, maxTokens))
   const json = JSON.parse(extractJson(raw)) as Record<string, unknown>
   const campos = json?.campos
   if (campos && typeof campos === "object" && !Array.isArray(campos)) {
@@ -300,13 +337,15 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         max_tokens: cfgRow.max_tokens,
         system_prompt: cfgRow.system_prompt,
         user_template: cfgRow.user_template,
+        reasoning: REASONING,
       }
     : {
         model: DEFAULT_MODEL,
         temperature: 0.4,
-        max_tokens: 1500,
+        max_tokens: DEFAULT_MAX_TOKENS,
         system_prompt: DEFAULT_SYSTEM,
         user_template: DEFAULT_USER,
+        reasoning: REASONING,
       }
 
   const vars: Record<string, string> = {
@@ -413,7 +452,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       tokensOutput += res.tokensOutput ?? 0
       custoUsd += res.costUsd ?? 0
       raw = res.raw
-      const campos = parseCampos(res.raw)
+      const campos = parseCampos(res.raw, res, config.max_tokens)
 
       const aindaFora: AlvoDeEncurtamento[] = []
       for (const alvo of pendentes) {
