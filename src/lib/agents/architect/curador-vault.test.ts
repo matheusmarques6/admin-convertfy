@@ -121,6 +121,7 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
         exige: ["cupom-ativo"],
         peso: "{ altura_px: 949, classe: medio, fonte: medido }",
         convivencia: [],
+        product_slots: 0,
       },
       body_md: VARIANTE_BODY,
     }),
@@ -163,6 +164,9 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     expect(hero).not.toHaveProperty("exige")
     expect(hero?.peso).toBe("medio · 949px")
     expect(hero?.quando_nao_usar).toContain("Sem cupom")
+    // Capacidade vem do frontmatter (02/09): 0 é declaração, não ausência.
+    expect(hero?.product_slots).toBe(0)
+    expect(extras.get("id-faq")?.product_slots).toBeNull()
     expect(extras.get("id-faq")?.slug).toBe("body-7-faq")
     expect(extras.has("id-sem-nota")).toBe(false)
   })

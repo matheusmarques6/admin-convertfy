@@ -44,6 +44,8 @@ export interface CatalogVaultExtra {
   peso?: string | null
   convivencia?: string[]
   itens?: string | null
+  /** `product_slots` do frontmatter — a capacidade vem do vault, não do banco. */
+  product_slots?: number | null
 }
 
 /**
@@ -115,25 +117,29 @@ export interface DivergenciaDeCatalogo {
   similaridade: number
 }
 
-/** Entrada do catálogo — o que o Curador vê de cada variante. */
+/**
+ * Entrada do catálogo — o que o Curador vê de cada variante.
+ *
+ * Enxugada em 02/09: `objectives`/`tones`/`density` (dimensões do
+ * pré-filtro que morreu no CM-3), `product_slots` do banco e
+ * `orientacao_copy` SAÍRAM. O Curador decide pela prosa (descrição, quando
+ * usar/não usar), pelas notas de implementação e pelos eixos do vault; a
+ * capacidade de produtos vem do vault (`vault.product_slots` + `vault.itens`).
+ * A orientação de copy é insumo do Montador e do n8n, não de quem escolhe.
+ *
+ * `description_no_banco` também saiu (02/09): mandar as DUAS descrições ao
+ * modelo era pedir para ele arbitrar uma contradição de cadastro. Onde vault
+ * e banco descrevem peças diferentes, quem conserta é a FONTE (a nota no
+ * Obsidian ou a linha do banco); o par continua registrado em `divergentes`
+ * para a telemetria e o Estúdio apontarem o que precisa ser corrigido.
+ */
 export interface CatalogEntry {
   variant_id: string
   name: string
   description: string
   quando_usar: string
   quando_nao_usar: string
-  objectives: string[]
-  tones: string[]
-  density: string | null
-  product_slots: number
-  orientacao_copy: string
   notas_implementacao: string
-  /**
-   * A descrição do BANCO, servida junto quando ela contradiz a do vault. O
-   * HTML que será montado é o da linha do banco: com as duas à vista, o
-   * Curador não decide sobre uma peça e recebe outra.
-   */
-  description_no_banco?: string
   /** Presente quando a variante tem nota no vault de componentes. */
   vault?: {
     slug: string
@@ -147,6 +153,8 @@ export interface CatalogEntry {
     peso: string | null
     convivencia: string[]
     itens: string | null
+    /** Slots de produto declarados na nota do vault (capacidade). */
+    product_slots: number | null
   }
 }
 
@@ -172,9 +180,12 @@ export interface BuildCatalogResult {
    * contradisser os metadados do banco, O VAULT VENCE". O Curador então
    * raciocina sobre a prosa do vault, escolhe o `variant_id`, e o que é
    * montado é o HTML da linha do banco — que pode ser outra peça
-   * (`body-4-tutorial-de-uso`, 01/09: o vault descreve um tutorial em
-   * passos, o id aponta para um comparativo contra a concorrência). Nada
-   * em lugar nenhum registrava a contradição.
+   * (`body-4-tutorial-de-uso`, 01/09: o vault descrevia um tutorial em
+   * passos, o id apontava para um comparativo contra a concorrência).
+   *
+   * O par NÃO vai ao modelo (02/09): é sinal para uma PESSOA corrigir a
+   * fonte — `log.warn`, `parsed_output.catalogo_divergente` e o item
+   * "Vault × banco" na Entrada do Estúdio.
    */
   divergentes: DivergenciaDeCatalogo[]
 }
@@ -249,13 +260,7 @@ function toEntry(
     description: extra?.descricao_curta || v.description || "",
     quando_usar: extra?.quando_usar || v.when_use || "",
     quando_nao_usar: extra?.quando_nao_usar || v.when_not_use || "",
-    objectives: v.objectives ?? [],
-    tones: v.tones ?? [],
-    density: v.density ?? null,
-    product_slots: v.product_slots ?? 0,
-    orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
-    ...(divergente ? { description_no_banco: descBanco } : {}),
   }
   if (extra) {
     entry.vault = {
@@ -270,6 +275,7 @@ function toEntry(
       peso: extra.peso ?? null,
       convivencia: extra.convivencia ?? [],
       itens: extra.itens ?? null,
+      product_slots: extra.product_slots ?? null,
     }
   }
   return entry

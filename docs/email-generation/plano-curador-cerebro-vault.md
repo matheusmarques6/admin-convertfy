@@ -83,11 +83,16 @@ que será montado, e o HTML vem da linha do BANCO. Quando as duas descrições
 falam de peças diferentes, "o vault vence" faz o Curador decidir sobre uma
 peça e o pipeline montar outra — foi o caso de `body-4-tutorial-de-uso`, cujo
 doc descreve um tutorial em passos numerados e cujo id, no banco, é um
-comparativo contra a concorrência. Agora `buildCatalog` mede as duas
-(`similaridadeDeDescricao`), serve **as duas** na entrada quando divergem
-(`description` do vault + `description_no_banco`) e registra o par em
-`parsed_output.catalogo_divergente` do run, com linha vermelha no Estúdio. O
-prompt manda escolher a variante só se ela servir nas duas leituras.
+comparativo contra a concorrência. `buildCatalog` mede as duas
+(`similaridadeDeDescricao`) e registra o par em
+`parsed_output.catalogo_divergente` do run, com linha vermelha no Estúdio.
+
+**Revisado em 02/09**: o par NÃO vai mais ao modelo (`description_no_banco`
+saiu do catálogo e a EXCEÇÃO saiu do prompt). Mandar as duas descrições era
+pedir ao Curador para arbitrar um erro de cadastro; a correção é na FONTE.
+O caso real foi resolvido no vault: a nota virou
+`body-4-comparativo-em-duas-colunas`, com prosa e eixos da peça que o HTML
+realmente é. A telemetria continua sendo o que aponta o próximo caso.
 
 O código **não julga** qual está certa: na biblioteca real, "mesma peça com
 outro vocabulário" (`body-3`, gift card × vale-presente) deu 0,286 e "outra

@@ -202,7 +202,7 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 
 | Entrada | Origem | Classe |
 |---|---|---|
-| `{{catalogo}}` (system) | `buildCatalog` sobre `email_component_variants` ativas e **preenchíveis** (`variantIsFillable`): name, description, quando_usar/não_usar, objectives, tones, density, product_slots, orientação de copy, notas | biblioteca |
+| `{{catalogo}}` (system) | `buildCatalog` sobre `email_component_variants` ativas e **preenchíveis** (`variantIsFillable`): name, description, quando_usar/não_usar, notas de implementação + objeto `vault` (eixos, peso, convivência, itens, product_slots). Desde 02/09 SEM objectives/tones/density, product_slots do banco, orientação de copy e `description_no_banco` | biblioteca + vault |
 | `blocks_json` (sequência) | posições do Estruturador (modo on) **ou** `resolveStructure(email_outline_templates.suggested_blocks)` + `clampStructure` | upstream / sistema |
 | `estruturador_decisao` | `resumoParaCurador` — só em modo `on` validado | upstream |
 | `outline_objective` / `tone_hint` | `email_outline_templates` | curadoria |

@@ -202,11 +202,23 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("não elimina ninguém")
   })
 
-  // A variante cuja descrição do vault contradiz a do banco fica ATRÁS em
-  // empate — nunca fora. Condicionar a escolha ("só se servir nas duas
-  // leituras") era inerte contra "sobreviveu, tem de sair escolhida".
-  it("divergência vault × banco rebaixa, não elimina", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO é eliminada por isso")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fica ATRÁS")
+  // 02/09: a divergência vault × banco NÃO chega ao modelo. Servir as duas
+  // descrições e pedir para ele decidir "sobre qual leitura" era passar
+  // adiante um erro de cadastro; quem corrige é a fonte (a nota no
+  // Obsidian — foi o caso do body-4 — ou a linha do banco). O par segue na
+  // telemetria (`catalogo_divergente`) para uma pessoa agir.
+  it("divergência vault × banco não entra no prompt", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("description_no_banco")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("fica ATRÁS")
+    // A regra que sobrou é a de sempre: o vault vence o cadastro.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("O VAULT VENCE")
+  })
+
+  // O catálogo perdeu objectives/tones/density, product_slots do banco e
+  // orientacao_copy (02/09); a capacidade passou a ser lida do vault.
+  it("a capacidade é cobrada do vault, não do banco", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("vault.product_slots")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("orientacao_copy")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("objectives")
   })
 })

@@ -231,7 +231,7 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     expect(catalogos[0]).toBe(catalogos[1])
   })
 
-  it("catálogo leva orientacao_copy/notas; schema fica FORA (é do Montador)", async () => {
+  it("catálogo leva notas de implementação; orientação de copy e schema ficam FORA (são do Montador)", async () => {
     h.variants = [
       {
         ...variant("v1", "hero", "<div>{{HERO_HEADLINE}}</div>"),
@@ -260,7 +260,9 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
       ],
     })
     const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
-    expect(systemVars.catalogo).toContain("GUIDANCE-COPY")
+    // 02/09: a orientação de copy saiu do Curador — quem escreve copy é o
+    // n8n, e quem decide viabilidade de dados é o Montador.
+    expect(systemVars.catalogo).not.toContain("GUIDANCE-COPY")
     expect(systemVars.catalogo).toContain("NOTAS-LAYOUT")
     // CM-3: o output_schema saiu do Curador — é insumo exclusivo do Montador.
     expect(systemVars.catalogo).not.toContain('"headline"')

@@ -171,6 +171,16 @@ const strArr = (v: unknown): string[] =>
  * como STRING crua (o frontmatter simples não parseia objeto inline) —
  * extrai classe e altura por regex.
  */
+/**
+ * `product_slots` do frontmatter. O parser simples entrega número ou string
+ * ("0", "3"); qualquer coisa que não seja inteiro >= 0 vira null (ausente),
+ * nunca 0 — zero é uma declaração ("não pede produto"), não um default.
+ */
+export function parseProductSlots(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.trim()) : NaN
+  return Number.isInteger(n) && n >= 0 ? n : null
+}
+
 export function parsePesoRaw(v: unknown): string | null {
   if (typeof v !== "string") return null
   const classe = v.match(/classe:\s*([a-z-]+)/i)?.[1]
@@ -245,6 +255,7 @@ export function buildCatalogVaultExtras(
       peso: parsePesoRaw(fm.peso),
       convivencia: strArr(fm.convivencia),
       itens: typeof fm.itens === "string" ? fm.itens : null,
+      product_slots: parseProductSlots(fm.product_slots),
     })
   }
   return out

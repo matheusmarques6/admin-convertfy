@@ -1552,6 +1552,24 @@ Reativar e, desativado, o Excluir genérico.
 
 ---
 
+## Catálogo do Curador enxuto + divergência vault × banco (02/09/2026)
+
+O catálogo (`buildCatalog`, system do Curador) leva por variante SÓ
+`variant_id`, `name`, `description`, `quando_usar`, `quando_nao_usar`,
+`notas_implementacao` (= `long_description`, editada em Componentes →
+"Descrição detalhada") e o objeto `vault` (eixos + `peso`, `convivencia`,
+`itens`, `product_slots` do frontmatter). `objectives`/`tones`/`density`,
+`product_slots` do banco e `orientacao_copy` saíram — o Curador decide pela
+prosa e pelos eixos; copy é do Montador/n8n. **Divergência vault × banco
+não vai ao modelo**: `description_no_banco` e a EXCEÇÃO do prompt saíram;
+o par segue em `parsed_output.catalogo_divergente` + Estúdio para uma
+PESSOA corrigir a fonte. Caso real: `body-4-tutorial-de-uso` descrevia um
+tutorial que não existe (o HTML no vault e no banco é um comparativo em
+duas colunas) — renomeada no vault para
+`body-4-comparativo-em-duas-colunas` com prosa/eixos da peça real.
+Auditoria de uma run inteira do Curador (o que chega, de onde, como):
+`docs/email-generation/curador-ultima-execucao-2026-09-02.md`.
+
 ## Fechamento → operacional em um gesto + painel Instagram (ago/2026)
 
 **Cadeia won → pós-venda**: mover pra Ganho (drag, quick-win, tabela E

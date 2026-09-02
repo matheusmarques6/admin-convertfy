@@ -78,13 +78,54 @@ describe("buildCatalog", () => {
       description: "hero com faixa",
       quando_usar: "quando a marca é premium",
       quando_nao_usar: "quando não há imagem",
-      objectives: ["Promoção"],
-      tones: ["Premium"],
-      density: "rich",
-      product_slots: 3,
-      orientacao_copy: "headline curta",
       notas_implementacao: "usa VML no Outlook",
     })
+  })
+
+  // 02/09: objectives/tones/density (dimensões do pré-filtro morto),
+  // product_slots do banco e a orientação de copy saíram do catálogo. O
+  // Curador decide pela prosa e pelos eixos do vault; a capacidade vem do
+  // vault (`vault.product_slots`/`vault.itens`); a orientação de copy é do
+  // Montador e do n8n.
+  it("NÃO leva objectives/tones/density, product_slots do banco nem orientação de copy", () => {
+    const r = buildCatalog([
+      v("1", "hero", "H", {
+        objectives: ["Promoção"],
+        tones: ["Premium"],
+        density: "rich",
+        product_slots: 3,
+        copy_guidance: "GUIDANCE-COPY",
+      }),
+    ])
+    for (const campo of ["objectives", "tones", "density", "product_slots", "orientacao_copy"]) {
+      expect(r.json).not.toContain(`"${campo}"`)
+    }
+    expect(r.json).not.toContain("Promoção")
+    expect(r.json).not.toContain("GUIDANCE-COPY")
+  })
+
+  it("a capacidade viaja no objeto vault, vinda do frontmatter", () => {
+    const extras = new Map<string, CatalogVaultExtra>([
+      ["1", { slug: "products-5-tres-com-selo", product_slots: 3, itens: "{ min: 3, max: 3 }" }],
+      ["2", { slug: "hero-3-cupom", product_slots: 0 }],
+      ["3", { slug: "body-sem-declaracao" }],
+    ])
+    const r = buildCatalog(
+      [
+        v("1", "products", "P", { product_slots: 9 }),
+        v("2", "hero", "H", { product_slots: 9 }),
+        v("3", "body", "B", { product_slots: 9 }),
+      ],
+      extras,
+    )
+    const por = new Map(r.sections.flatMap((s) => s.variantes).map((e) => [e.variant_id, e]))
+    expect(por.get("1")?.vault?.product_slots).toBe(3)
+    expect(por.get("1")?.vault?.itens).toBe("{ min: 3, max: 3 }")
+    // Zero é declaração ("não pede produto"), não ausência.
+    expect(por.get("2")?.vault?.product_slots).toBe(0)
+    // Sem declaração no vault → null; o 9 do banco NÃO vaza.
+    expect(por.get("3")?.vault?.product_slots).toBeNull()
+    expect(r.json).not.toContain('"product_slots": 9')
   })
 
   // O schema é insumo exclusivo do Montador (CM-4): mandá-lo aqui dobraria o
@@ -108,20 +149,14 @@ describe("buildCatalog", () => {
     expect(JSON.parse(r.json)).toEqual([])
   })
 
-  it("texto ausente vira string vazia; só density admite null", () => {
+  it("texto ausente vira string vazia", () => {
     const r = buildCatalog([v("1", "hero", "H")])
     expect(r.json).not.toContain("undefined")
     const e = r.sections[0].variantes[0]
     expect(e.description).toBe("")
     expect(e.quando_usar).toBe("")
     expect(e.quando_nao_usar).toBe("")
-    expect(e.orientacao_copy).toBe("")
     expect(e.notas_implementacao).toBe("")
-    expect(e.objectives).toEqual([])
-    expect(e.product_slots).toBe(0)
-    // `density` é tri-estado no cadastro (minimal/balanced/rich ou não
-    // definida) — null aqui é informação, não campo faltando.
-    expect(e.density).toBeNull()
   })
 })
 
@@ -174,33 +209,39 @@ describe("similaridadeDeDescricao", () => {
 })
 
 describe("buildCatalog — divergência vault × banco", () => {
-  it("serve as DUAS descrições e registra o par", () => {
+  // 02/09: o par NÃO vai mais ao modelo. Pedir ao Curador para arbitrar
+  // qual das duas descrições vale era passar adiante um erro de cadastro;
+  // quem conserta é a fonte (a nota no Obsidian — foi o caso do body-4 —
+  // ou a linha do banco). O registro em `divergentes` continua, porque é
+  // ele que diz a uma pessoa o que precisa ser corrigido.
+  it("registra o par para a telemetria e serve UMA descrição ao modelo", () => {
     const r = buildCatalog(
       [v("id-4", "body", "body 4 - bridge fundo cards", { description: BANCO_BODY4 })],
       extra("id-4", "body-4-tutorial-de-uso", VAULT_BODY4),
     )
     const entrada = r.sections[0].variantes[0]
-    // A prosa do vault continua vencendo o campo `description` (é o
-    // julgamento curado); o cadastro do banco viaja JUNTO, marcado.
+    // A prosa do vault segue vencendo o campo `description`.
     expect(entrada.description).toBe(VAULT_BODY4)
-    expect(entrada.description_no_banco).toBe(BANCO_BODY4)
+    expect(entrada).not.toHaveProperty("description_no_banco")
+    expect(r.json).not.toContain("description_no_banco")
+    expect(r.json).not.toContain(BANCO_BODY4)
     expect(r.divergentes).toHaveLength(1)
     expect(r.divergentes[0]).toMatchObject({
       variant_id: "id-4",
       slug: "body-4-tutorial-de-uso",
       name: "body 4 - bridge fundo cards",
+      vault: VAULT_BODY4,
+      banco: BANCO_BODY4,
     })
-    expect(r.json).toContain("description_no_banco")
   })
 
-  it("descrições que combinam não viram divergência nem poluem o catálogo", () => {
+  it("descrições que combinam não viram divergência", () => {
     const iguais = "Bloco de diferenciação para quando o cliente já entendeu a categoria e está decidindo entre marcas."
     const r = buildCatalog(
       [v("id-5", "body", "body 5", { description: iguais })],
       extra("id-5", "body-5-comparacao-nos-vs-eles", iguais),
     )
     expect(r.divergentes).toEqual([])
-    expect(r.sections[0].variantes[0].description_no_banco).toBeUndefined()
   })
 
   it("um dos lados vazio não é contradição", () => {

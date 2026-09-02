@@ -118,17 +118,26 @@ resolvido sob demanda pelo Estúdio em `GET /api/admin/agents/prompt-segment`
 
 ### 3.1 O que há dentro do catálogo (segmento 3)
 
-Cada entrada (`CatalogEntry`, `catalog-builder.ts`) leva, por variante:
-`variant_id`, `name`, `description`, `quando_usar`, `quando_nao_usar`,
-`objectives[]`, `tones[]`, `density`, `product_slots`, `orientacao_copy`
-(`copy_guidance`), `notas_implementacao` (`long_description`) e, quando a
-variante tem nota no vault, `vault: {slug, momento[], momento_vetado[],
-objecao[], registro[], registro_vetado[], paleta[], papel_na_peca[], peso,
-convivencia[], itens}`. Onde a prosa do vault existe ela **vence** a do
-banco (`description`/`quando_usar`/`quando_nao_usar`); quando as duas
-descrevem peças diferentes (Dice < 0,5), a do banco entra também como
-`description_no_banco`. Nesta run: **2 divergentes** —
-`body-4-tutorial-de-uso` e `body-3-pitch-de-gift-card`.
+Cada entrada (`CatalogEntry`, `catalog-builder.ts`) levava, NESTA run, por
+variante: `variant_id`, `name`, `description`, `quando_usar`,
+`quando_nao_usar`, `objectives[]`, `tones[]`, `density`, `product_slots`,
+`orientacao_copy` (`copy_guidance`), `notas_implementacao`
+(`long_description`) e, quando a variante tem nota no vault, `vault: {slug,
+momento[], momento_vetado[], objecao[], registro[], registro_vetado[],
+paleta[], papel_na_peca[], peso, convivencia[], itens}`. Onde a prosa do
+vault existe ela **vence** a do banco (`description`/`quando_usar`/
+`quando_nao_usar`); quando as duas descreviam peças diferentes (Dice <
+0,5), a do banco entrava também como `description_no_banco`. Nesta run:
+**2 divergentes** — `body-4-tutorial-de-uso` e `body-3-pitch-de-gift-card`.
+
+> **Mudado depois desta run (02/09, mesmo dia):** `objectives`, `tones`,
+> `density`, `product_slots` do banco, `orientacao_copy` e
+> `description_no_banco` SAÍRAM do catálogo. A capacidade passou a vir do
+> vault (`vault.product_slots` + `vault.itens`) e a divergência vault ×
+> banco ficou só na telemetria — foi corrigida na fonte: a nota
+> `body-4-tutorial-de-uso` virou `body-4-comparativo-em-duas-colunas`
+> (o HTML sempre foi o comparativo; `body-3` era a mesma peça com outro
+> vocabulário, falso positivo).
 
 O HTML e o `output_schema` **NÃO** entram no catálogo (decisão CM-3).
 

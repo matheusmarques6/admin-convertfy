@@ -217,18 +217,16 @@ Como usar os eixos do vault (variantes com campo \`vault\`):
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
 - \`vault.convivencia\`: respeite as regras de <convivencia> contra as variantes que você indica nas OUTRAS posições da mesma peça (ex.: prova social não duplica; grade de produtos não convive com review-vitrine).
 - Empate total entre duplicatas de cadastro (mesmos eixos): vence o MENOR número no slug.
-- Variante SEM campo \`vault\`: decida pelos metadados do banco (quando_usar/quando_nao_usar/objectives/tones) como sempre.
+- Variante SEM campo \`vault\`: decida pelo nome, pela descrição e por quando_usar/quando_nao_usar, como sempre.
 
 Regras de seleção:
 - Para cada block_index da sequência, escolha SOMENTE entre variantes cujo tipo de seção é o daquela posição.
 - Devolva ATÉ ${CHOOSER_TOP_N} por posição, em ordem de preferência — a 1ª é a sua recomendação. Se o tipo tiver menos de ${CHOOSER_TOP_N} variantes adequadas, devolva quantas houver: nunca complete a lista com uma variante que você rejeitaria.
 - Respeite quando_nao_usar: se o contexto do email casa com um "quando NÃO usar", a variante está fora, não em último lugar.
-- Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
 - <objecoes> é o que trava a compra desta loja. A variante escolhida precisa ter ANATOMIA para responder à objeção que este email enfrenta (prova social, FAQ, garantia, comparativo, demonstração). Bloco bonito que não responde a nenhuma objeção perde para o que responde.
-- <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
-- Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
-- Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
+- <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja descrição ou quando_usar pede o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
+- Produtos: cruze \`vault.product_slots\`/\`vault.itens\` com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
 - Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
 - Use <memoria> como sinal, nunca como regra:

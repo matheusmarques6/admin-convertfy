@@ -84,10 +84,9 @@ Regras de seleção:
   do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na
   MARCA, não só no objetivo do email.
-- Produtos: cruze product_slots com <top_products>. NUNCA indique variante
-  que exige mais produtos do que a loja tem cadastrado.
-- Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a
-  loja não tem (campo de cupom sem oferta no contexto) fica fora.
+- Produtos: cruze `vault.product_slots`/`vault.itens` com <top_products>.
+  NUNCA indique variante que exige mais produtos do que a loja tem
+  cadastrado.
 - Use <memoria> como sinal, nunca como regra:
   - <email_anterior_desta_loja>: as variantes escolhidas no email ANTERIOR
     do MESMO flow desta loja. Busque COERÊNCIA visual — mesma linguagem de
@@ -151,8 +150,16 @@ APENAS o array JSON.
 
 Uma entrada por variante ativa e elegível, agrupada por `block_type`.
 Campos: `variant_id`, `name`, `description`, `quando_usar`,
-`quando_nao_usar`, `objectives`, `tones`, `density`, `product_slots`,
-`orientacao_copy`, `notas_implementacao`.
+`quando_nao_usar`, `notas_implementacao` e, quando há nota no vault, o
+objeto `vault` (eixos do protocolo + `peso`, `convivencia`, `itens`,
+`product_slots`).
+
+**Enxugado em 02/09/2026**: `objectives`/`tones`/`density` (dimensões do
+pré-filtro morto), `product_slots` do banco e `orientacao_copy` saíram — a
+capacidade vem do vault e a orientação de copy é do Montador/n8n.
+`description_no_banco` também saiu: divergência vault × banco não vai ao
+modelo, vai à telemetria (`catalogo_divergente`) para ser corrigida na
+fonte.
 
 **Sem `campos_copy`** — o `output_schema` sai do Curador e passa a ser
 exclusividade do Montador.
