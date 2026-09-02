@@ -13,8 +13,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
 import {
   ArrowUp,
   BarChart3,
@@ -25,7 +23,9 @@ import {
   FileText,
   Filter,
   Briefcase,
+  ImageIcon,
   PanelLeft,
+  Paperclip,
   Plus,
   RotateCcw,
   Sparkles,
@@ -34,6 +34,7 @@ import {
   Activity,
   Workflow,
 } from "lucide-react"
+import { ConvertiaMarkdown } from "./convertia-markdown"
 import {
   CONVERTIA_DEFAULT_MODEL,
   CONVERTIA_MODELS,
@@ -118,13 +119,30 @@ export interface Source {
   summary: string | null
   write: boolean
 }
+interface UiAttachment {
+  name: string
+  mime: string
+  kind: "image" | "text"
+  data_url?: string
+  text?: string
+}
+
 interface UiMessage {
   id: string
   role: "user" | "assistant"
   content: string
   sources: Source[]
+  attachments?: Array<{ name: string; kind: "image" | "text" }>
   streaming?: boolean
   pendingTools?: number
+}
+
+/** Bolha do usuário mostra só o que foi digitado — os anexos viram chips. */
+function displayUserContent(content: string): string {
+  return content
+    .replace(/\n\n\[Arquivo anexado: [^\]]+\]\n```[\s\S]*?```/g, "")
+    .replace(/\n\n\[Imagem anexada: [^\]]+\]/g, "")
+    .trim()
 }
 
 const fetcher = async (url: string) => {
@@ -243,6 +261,9 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [skillOn, setSkillOn] = useState<Record<string, boolean>>({})
   const [sending, setSending] = useState(false)
   const [manage, setManage] = useState<ManageKind | null>(null)
+  const [attachments, setAttachments] = useState<UiAttachment[]>([])
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -362,6 +383,60 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const nSkills = skills.filter((s) => skillOn[s.id]).length
   const mSel = resolveConvertiaModel(model)
 
+  // ── Anexos: imagem (multimodal) + arquivos de texto como referência ─
+  // ref espelho pro loop async não perder adds concorrentes
+  const attachmentsRef = useRef<UiAttachment[]>([])
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    setAttachError(null)
+    for (const file of Array.from(files)) {
+      if (attachmentsRef.current.length >= 3) {
+        setAttachError("Máximo de 3 anexos por mensagem.")
+        break
+      }
+      const isImage = file.type.startsWith("image/")
+      const isText =
+        /\.(html?|txt|md|csv|json|xml)$/i.test(file.name) ||
+        /^(text\/|application\/(json|xml))/.test(file.type)
+      if (!isImage && !isText) {
+        setAttachError(`"${file.name}": só imagens ou arquivos de texto (html, csv, md, txt, json).`)
+        continue
+      }
+      if (isImage && file.size > 2 * 1024 * 1024) {
+        setAttachError(`"${file.name}": imagem acima de 2MB.`)
+        continue
+      }
+      if (!isImage && file.size > 300 * 1024) {
+        setAttachError(`"${file.name}": arquivo de texto acima de 300KB.`)
+        continue
+      }
+      const att: UiAttachment | null = await new Promise<UiAttachment>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onerror = () => reject(new Error("leitura falhou"))
+        if (isImage) {
+          reader.onload = () =>
+            resolve({
+              name: file.name || "imagem.png",
+              mime: file.type,
+              kind: "image",
+              data_url: String(reader.result),
+            })
+          reader.readAsDataURL(file)
+        } else {
+          reader.onload = () =>
+            resolve({ name: file.name, mime: file.type || "text/plain", kind: "text", text: String(reader.result) })
+          reader.readAsText(file)
+        }
+      }).catch(() => null)
+      if (att) {
+        attachmentsRef.current = [...attachmentsRef.current, att]
+        setAttachments(attachmentsRef.current)
+      }
+    }
+  }, [])
+  useEffect(() => {
+    attachmentsRef.current = attachments
+  }, [attachments])
+
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -379,13 +454,25 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
     try {
       const body = await fetcher(`/api/ai/conversations/${c.id}`)
-      const msgs = ((body as { messages?: Array<{ id: string; role: string; content: string; meta?: { sources?: Source[] } }> }).messages ?? [])
+      const msgs = ((body as {
+        messages?: Array<{
+          id: string
+          role: string
+          content: string
+          meta?: {
+            sources?: Source[]
+            attachments?: Array<{ name: string; kind: "image" | "text" }>
+          } | null
+        }>
+      }).messages ?? [])
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
           id: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
-          sources: m.meta?.sources ?? [],
+          sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
+          attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
+            ?.attachments,
         }))
       setMessages(msgs)
       scrollToBottom()
@@ -413,7 +500,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const send = async (text?: string) => {
     const message = (text ?? input).trim()
     if (!message || sending) return
+    const atts = attachments
     setInput("")
+    setAttachments([])
+    setAttachError(null)
     if (inputRef.current) inputRef.current.style.height = "auto"
     setSending(true)
     const userMsg: UiMessage = {
@@ -421,6 +511,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       role: "user",
       content: message,
       sources: [],
+      attachments: atts.map((a) => ({ name: a.name, kind: a.kind })),
     }
     const draft: UiMessage = {
       id: `a-${Date.now()}`,
@@ -450,6 +541,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           store_id: storeId ?? null,
           connectors: activeConns.map((c) => c.key),
           skills: skills.filter((s) => skillOn[s.id]).map((s) => s.id),
+          attachments: atts.map((a) => ({
+            name: a.name,
+            mime: a.mime,
+            ...(a.kind === "image" ? { data_url: a.data_url } : { text: a.text }),
+          })),
         }),
         signal: controller.signal,
       })
@@ -618,6 +714,32 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             : "0 2px 12px rgba(17,24,39,0.06)",
         }}
       >
+        {(attachments.length > 0 || attachError) && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            {attachments.map((a, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 rounded-[8px] border px-2 py-1 text-[10.5px]"
+                style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+              >
+                {a.kind === "image" ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                <span className="max-w-[160px] truncate">{a.name}</span>
+                <button
+                  aria-label={`Remover ${a.name}`}
+                  onClick={() => setAttachments((s) => s.filter((_, j) => j !== i))}
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {attachError && (
+              <span className="text-[10.5px]" style={{ color: "var(--ops-neg)" }}>
+                {attachError}
+              </span>
+            )}
+          </div>
+        )}
         <textarea
           ref={inputRef}
           autoFocus={autoFocus}
@@ -625,6 +747,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           value={input}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
+          onPaste={(e) => {
+            const imgs = Array.from(e.clipboardData?.items ?? [])
+              .filter((it) => it.type.startsWith("image/"))
+              .map((it) => it.getAsFile())
+              .filter((f): f is File => f !== null)
+            if (imgs.length > 0) {
+              e.preventDefault()
+              void addFiles(imgs)
+            }
+          }}
           onChange={(e) => {
             setInput(e.target.value)
             e.target.style.height = "auto"
@@ -781,6 +913,26 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 true,
               )}
           </div>
+          {/* Anexar */}
+          <button
+            title="Anexar imagem ou arquivo (html, csv, md, txt, json)"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            style={{ color: "var(--ops-mut)" }}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.html,.htm,.txt,.md,.csv,.json,.xml"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) void addFiles(e.target.files)
+              e.target.value = ""
+            }}
+          />
           <span className="flex-1" />
           {/* Modelo */}
           <div className="relative">
@@ -988,11 +1140,31 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 {messages.map((m) =>
                   m.role === "user" ? (
                     <div key={m.id} className="mb-7 flex justify-end">
-                      <div
-                        className="max-w-[80%] whitespace-pre-wrap rounded-[16px] px-[15px] py-2.5 text-[13.5px] leading-[1.6] dark:bg-white/[0.065]"
-                        style={{ background: "#F1F2F5", color: "var(--ops-title)" }}
-                      >
-                        {m.content}
+                      <div className="flex max-w-[80%] flex-col items-end gap-1.5">
+                        {(m.attachments?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            {m.attachments!.map((a, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1.5 rounded-[8px] border px-2 py-1 text-[10.5px]"
+                                style={{ borderColor: "var(--ops-border)", color: "var(--ops-sec)" }}
+                              >
+                                {a.kind === "image" ? (
+                                  <ImageIcon className="h-3 w-3" />
+                                ) : (
+                                  <FileText className="h-3 w-3" />
+                                )}
+                                {a.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div
+                          className="whitespace-pre-wrap rounded-[16px] px-[15px] py-2.5 text-[13.5px] leading-[1.6] dark:bg-white/[0.065]"
+                          style={{ background: "#F1F2F5", color: "var(--ops-title)" }}
+                        >
+                          {displayUserContent(m.content)}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -1091,7 +1263,10 @@ function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () =>
           </>
         )}
         <div className="convertia-md text-[14px] leading-[1.75]" style={{ color: "var(--ops-title)" }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || (msg.streaming ? "…" : "")}</ReactMarkdown>
+          <ConvertiaMarkdown
+            content={msg.content || (msg.streaming ? "…" : "")}
+            streaming={msg.streaming === true}
+          />
         </div>
         {!msg.streaming && msg.content && (
           <div className="mt-4 flex items-center gap-1">
