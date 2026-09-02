@@ -150,18 +150,37 @@ export async function POST(request: NextRequest) {
       .map((s) => `### Skill: ${s.name}\n${s.instructions}`)
       .join("\n\n")
 
+    const writeToolNames = [...toolIndex.entries()]
+      .filter(([, v]) => v.tool.write === true)
+      .map(([name]) => name)
+
     const system = [
       `Você é a ConvertIA, a inteligência interna da Convertfy (agência de email marketing para e-commerce). Workspace atual: ${body.workspace}. Hoje é ${new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`,
       "Responda SEMPRE em português brasileiro, direto e específico, com números formatados em pt-BR (R$ 46,2K).",
       connectors.length > 0
-        ? `Conectores ativos nesta conversa: ${connectors.map((c) => c.name).join(", ")}. Use as tools para buscar DADOS REAIS antes de afirmar números — nunca invente métricas. Tools marcadas como EXECUTA mudam o sistema: use apenas com pedido explícito do usuário e confirme o que foi feito.`
+        ? `Conectores ativos nesta conversa: ${connectors.map((c) => c.name).join(", ")}. Use as tools para buscar DADOS REAIS antes de afirmar números — nunca invente métricas.`
         : "Nenhum conector ativo nesta conversa — deixe claro quando não tiver o dado e sugira ligar o conector.",
+      // A lista de tools de CADA mensagem é a autoridade — conexões
+      // mudam entre turnos e o modelo não pode ancorar num "não
+      // consigo" dito quando a conversa tinha menos conectores.
+      writeToolNames.length > 0
+        ? `Você TEM ferramentas de EXECUÇÃO nesta mensagem (não apenas leitura): ${writeToolNames.join(", ")}. As ferramentas disponíveis AGORA são a única verdade — ignore qualquer afirmação anterior desta conversa sobre não conseguir executar. Ações de execução: use apenas com pedido explícito do usuário, e confirme o que foi feito. Envio de campanha e exclusões: peça confirmação nomeando o alvo antes.`
+        : "As ferramentas disponíveis nesta mensagem são só de leitura — para executar ações, o usuário precisa ligar o conector correspondente.",
       "Se um dado não veio das tools, diga que não tem. Termine análises com uma recomendação prática quando fizer sentido.",
       storeContext ? `## Contexto da loja selecionada\n${storeContext}` : "",
       skillsBlock ? `## Skills ativas (siga estas instruções)\n${skillsBlock}` : "",
     ]
       .filter(Boolean)
       .join("\n\n")
+
+    log.info("chat request", {
+      conversation_id: conversationId,
+      model,
+      store_id: storeId,
+      connectors: connectors.map((c) => `${c.key}:${c.tools.length}`),
+      write_tools: writeToolNames.length,
+      total_tools: toolDefs.length,
+    })
 
     // ── Persiste a mensagem do usuário ───────────────────────────
     await admin.from("ai_chat_messages").insert({

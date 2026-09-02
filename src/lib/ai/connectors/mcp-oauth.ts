@@ -27,6 +27,8 @@ export interface McpOAuthEnvelope {
   expires_at?: number
   token_endpoint: string
   client_id: string
+  /** Presente quando o AS exigiu cliente confidencial no registro. */
+  client_secret?: string
 }
 
 export interface AuthServerMeta {
@@ -133,27 +135,66 @@ export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta
   )
 }
 
-/** Registro dinâmico (RFC 7591). Devolve o client_id público. */
+/**
+ * Registro dinâmico (RFC 7591). Tenta cliente público (auth "none",
+ * PKCE) e cai pra confidencial ("client_secret_post") quando o AS
+ * recusa — alguns exigem secret mesmo com PKCE. O erro carrega status
+ * + corpo da resposta do AS para o diagnóstico não ser cego.
+ */
 export async function registerClient(
   registrationEndpoint: string,
   redirectUri: string,
-): Promise<string> {
-  const meta = await fetchJson(registrationEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_name: "Convertfy ConvertIA",
-      redirect_uris: [redirectUri],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "none",
-    }),
-  })
-  const clientId = meta?.client_id
-  if (typeof clientId !== "string" || !clientId) {
-    throw new Error("Registro dinâmico de cliente falhou no authorization server.")
+  scopes?: string[],
+): Promise<{ clientId: string; clientSecret?: string }> {
+  const base = {
+    client_name: "Convertfy ConvertIA",
+    client_uri: "https://app.convertfy.me",
+    redirect_uris: [redirectUri],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    ...(scopes && scopes.length > 0 ? { scope: scopes.join(" ") } : {}),
   }
-  return clientId
+
+  const attempts: string[] = []
+  for (const method of ["none", "client_secret_post"] as const) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
+    try {
+      const resp = await fetch(registrationEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...base, token_endpoint_auth_method: method }),
+        signal: controller.signal,
+      })
+      const bodyText = await resp.text().catch(() => "")
+      if (resp.ok) {
+        let meta: Record<string, unknown> = {}
+        try {
+          meta = JSON.parse(bodyText) as Record<string, unknown>
+        } catch {
+          /* segue */
+        }
+        if (typeof meta.client_id === "string" && meta.client_id) {
+          return {
+            clientId: meta.client_id,
+            clientSecret:
+              typeof meta.client_secret === "string" && meta.client_secret
+                ? meta.client_secret
+                : undefined,
+          }
+        }
+        attempts.push(`${method}: 2xx sem client_id (${bodyText.slice(0, 120)})`)
+      } else {
+        attempts.push(`${method}: HTTP ${resp.status} ${bodyText.slice(0, 160)}`)
+      }
+    } catch (err) {
+      attempts.push(`${method}: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  log.error("registro dinâmico falhou", { endpoint: registrationEndpoint, attempts })
+  throw new Error(`Registro de cliente recusado pelo authorization server — ${attempts.join(" | ")}`)
 }
 
 export function makePkce(): { verifier: string; challenge: string } {
@@ -213,6 +254,7 @@ async function tokenRequest(
 export async function exchangeCode(args: {
   tokenEndpoint: string
   clientId: string
+  clientSecret?: string
   code: string
   redirectUri: string
   verifier: string
@@ -221,6 +263,7 @@ export async function exchangeCode(args: {
   const t = await tokenRequest(args.tokenEndpoint, {
     grant_type: "authorization_code",
     client_id: args.clientId,
+    ...(args.clientSecret ? { client_secret: args.clientSecret } : {}),
     code: args.code,
     redirect_uri: args.redirectUri,
     code_verifier: args.verifier,
@@ -238,6 +281,7 @@ export async function exchangeCode(args: {
     expires_at: t.expires_in ? Date.now() + t.expires_in * 1000 : undefined,
     token_endpoint: args.tokenEndpoint,
     client_id: args.clientId,
+    ...(args.clientSecret ? { client_secret: args.clientSecret } : {}),
   }
 }
 
@@ -250,6 +294,7 @@ export async function refreshEnvelope(
   const t = await tokenRequest(env.token_endpoint, {
     grant_type: "refresh_token",
     client_id: env.client_id,
+    ...(env.client_secret ? { client_secret: env.client_secret } : {}),
     refresh_token: env.refresh_token,
     resource,
   })
