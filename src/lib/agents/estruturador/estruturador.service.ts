@@ -140,6 +140,12 @@ export interface RunEstruturadorInput {
    * então a query roda uma vez por geração.
    */
   revisoes?: RevisaoHumana[]
+  /**
+   * Intenção POR BLOCO escrita na aba Arquitetura (ordem fixa). Entra no
+   * <intencao_do_email> como contrato por posição: o papel que o agente
+   * escrever para a posição tem de servir a ela.
+   */
+  intencoesPorBloco?: Array<{ section: string; intencao: string }>
 }
 
 export interface RunEstruturadorResult {
@@ -353,6 +359,21 @@ async function loadEstruturasDosOutrosEmails(
     }))
 }
 
+/**
+ * Anexa as intenções por bloco (Arquitetura) à intenção do email. Sem
+ * var nova no prompt: o agente já lê <intencao_do_email> como contrato, e
+ * a lista por posição é a parte dele que a pessoa escreveu bloco a bloco.
+ */
+export function comIntencoesPorBloco(
+  intencaoEmail: string,
+  intencoes: ReadonlyArray<{ section: string; intencao: string }> | null | undefined,
+): string {
+  const lista = (intencoes ?? []).filter((i) => i.intencao.trim())
+  if (lista.length === 0) return intencaoEmail
+  const linhas = lista.map((i, n) => `${n + 1}. ${i.section} — ${i.intencao.trim()}`)
+  return `${intencaoEmail.trim()}\n\nIntenções por bloco (escritas na Arquitetura, ordem fixa — o papel de cada posição tem de servir à intenção dela):\n${linhas.join("\n")}`
+}
+
 // ── Run ─────────────────────────────────────────────────────────────────
 
 export async function runEstruturador(
@@ -435,7 +456,7 @@ export async function runEstruturador(
     pesquisa: input.pesquisa || "(sem pesquisa)",
     flow_type: input.flowType,
     email_number: String(input.emailNumber),
-    intencao_email: intencaoEmail,
+    intencao_email: comIntencoesPorBloco(intencaoEmail, input.intencoesPorBloco),
     capacidade_biblioteca: capacidadeTexto,
     estruturas_dos_outros_emails: irmasTexto,
     orientacao_coo: montarBlocoOrientacoes(

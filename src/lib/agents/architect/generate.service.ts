@@ -23,7 +23,9 @@ import {
 } from "./store-context"
 import { mapTopProductRow, type TopProductRow } from "../top-products"
 import { mapTomVozToMood } from "../image/mood-mapping"
-import { isTextOnlyEmail } from "./blueprint-loader"
+import { isTextOnlyEmail,
+  loadGlobalBlueprintBlocks,
+} from "./blueprint-loader"
 import { loadGlobalReferenceTemplate } from "../reference-template"
 import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service"
 import { resolveStructure, clampStructure } from "./outline-sections"
@@ -31,6 +33,7 @@ import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
 import { logGenerationRun } from "../callbacks/telemetry.callback"
 import {
+  combinarIntencaoComPapel,
   estruturaParaPosicoes,
   resumoParaCurador,
   type PosicaoEstruturada,
@@ -200,7 +203,7 @@ export async function generateBlueprintAndReference(
   const emailId = emailRow?.id ?? null
   const flowId = emailRow?.flow_id ?? null
 
-  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes, intentsRes] = await Promise.all([
+  const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes, intentsRes, blocosGlobais] = await Promise.all([
     admin
       .from("client_stores")
       .select("*")
@@ -252,6 +255,10 @@ export async function generateBlueprintAndReference(
       .select("slug, email_number, body_md")
       .eq("flow_type", input.flowType)
       .eq("is_active", true),
+    // Intenção POR BLOCO escrita na aba Arquitetura
+    // (`email_blueprints.blocks[].purpose`). Ancora cada posição da
+    // structure: Curador, blueprint e, por ele, copy e imagem.
+    loadGlobalBlueprintBlocks(admin, input.flowType, input.emailNumber),
   ])
 
   const store = (storeRes.data ?? {}) as Record<string, unknown>
@@ -275,6 +282,13 @@ export async function generateBlueprintAndReference(
     intents.find((i) => i.slug === "_flow")?.body_md ?? null
   const intencaoEmail =
     intents.find((i) => i.email_number === input.emailNumber)?.body_md ?? null
+  // Estrutura do outline COM as intenções da Arquitetura anexadas. Serve de
+  // base ao Estruturador (que as recebe como contrato por posição) e é a
+  // structure quando ele não roda.
+  const structureBase = resolveStructure(outline, blocosGlobais)
+  const intencoesPorBloco = structureBase
+    .filter((s) => (s.intencao ?? "").trim())
+    .map((s) => ({ section: s.section, intencao: (s.intencao ?? "").trim() }))
 
   const brandName = (store.store_name as string) || "Loja"
   const nicho = marca.nicho || (store.niche as string) || ""
@@ -409,6 +423,7 @@ export async function generateBlueprintAndReference(
         pesquisa,
         topProductNames,
         revisoes,
+        intencoesPorBloco,
       })
       if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
@@ -459,8 +474,8 @@ export async function generateBlueprintAndReference(
       sequencia: posicoes.map((p) => p.section),
     })
   }
-  let structure: Array<{ section: string; label: string }> =
-    posicoes ?? resolveStructure(outline)
+  let structure: Array<{ section: string; label: string; intencao?: string | null }> =
+    posicoes ?? structureBase
   if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
     log.info("architect.structure_clamped", {
       storeId: input.storeId,
@@ -535,6 +550,34 @@ export async function generateBlueprintAndReference(
         : null,
   })
 
+  // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
+  // do blueprint; o papel do agente (Estruturador ou Curador do vault) entra
+  // embaixo como detalhe. Sem agente, a intenção sozinha já ancora a
+  // posição — antes `papeisPorPosicao` saía null e o purpose virava só o
+  // copy_guidance da variante, e a intenção que a pessoa escreveu morria
+  // aqui. Quando a structure veio do Estruturador, as intenções são as da
+  // base por posição (mesma ordem da Arquitetura).
+  const intencoesPorPosicao = structure.map(
+    (s, i) => (s.intencao ?? structureBase[i]?.intencao ?? "").trim() || null,
+  )
+  const papeisDoAgente: Array<string | null> = posicoes
+    ? posicoes.map((p) => p.papel)
+    : (papeisDoCurador ?? []).map((x) => x || null)
+  const papeisCombinados = intencoesPorPosicao.map((intencao, i) =>
+    combinarIntencaoComPapel(intencao, papeisDoAgente[i] ?? null),
+  )
+  const papeisFinais = papeisCombinados.some((x) => x)
+    ? papeisCombinados.map((x) => x ?? "")
+    : null
+  if (intencoesPorPosicao.some(Boolean)) {
+    log.info("architect.intencoes_por_bloco", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      posicoes: intencoesPorPosicao.map((x, i) => (x ? i : -1)).filter((i) => i >= 0),
+    })
+  }
+
   // Passo 2 — Blueprint: extrai a estrutura do HTML montado.
   const { source: blueprintSource } = await generateStoreBlueprint({
     storeId: input.storeId,
@@ -563,9 +606,8 @@ export async function generateBlueprintAndReference(
     // (`aplicarEstruturadorNoBlueprint` prepende o papel e preserva o
     // copy_guidance da variante embaixo como "Forma (variante)"): muda a
     // origem, não o encanamento.
-    papeisPorPosicao: posicoes
-      ? posicoes.map((p) => p.papel)
-      : (papeisDoCurador?.some((x) => x.trim()) ? papeisDoCurador : null),
+    papeisPorPosicao: papeisFinais,
+    intencoesHumanas: intencoesPorPosicao.filter(Boolean).length,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,
   })

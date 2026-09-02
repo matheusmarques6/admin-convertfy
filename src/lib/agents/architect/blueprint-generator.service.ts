@@ -294,6 +294,8 @@ export interface GenerateBlueprintInput {
   // reference): sobrescreve o purpose do bloco correspondente nas DUAS rotas
   // antes do upsert. O fio persiste no blueprint (fio_narrativo).
   papeisPorPosicao?: string[] | null
+  /** Posições cujo papel começa pela intenção humana da Arquitetura (02/09). */
+  intencoesHumanas?: number
   fioNarrativo?: string | null
   /**
    * O que aconteceu com o Estruturador nesta geração. Sem isto, "email
@@ -645,8 +647,8 @@ async function generateDeterministicBlueprint(
       rotulo: "Papéis por posição",
       cls: "upstream",
       valor: (input.papeisPorPosicao?.length ?? 0) > 0
-        ? `${input.papeisPorPosicao!.length} papéis do Estruturador`
-        : "(sem Estruturador nesta geração)",
+        ? `${input.papeisPorPosicao!.length} papéis (${input.intencoesHumanas ?? 0} com intenção da Arquitetura na 1ª linha)`
+        : "(sem papel por posição nesta geração)",
     },
     {
       rotulo: "Fio narrativo",

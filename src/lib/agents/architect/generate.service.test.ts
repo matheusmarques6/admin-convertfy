@@ -88,6 +88,7 @@ vi.mock("./outline-sections", () => ({
 
 // Flag "somente texto": controlada pelo teste (default false).
 vi.mock("./blueprint-loader", () => ({
+  loadGlobalBlueprintBlocks: () => Promise.resolve([]),
   isTextOnlyEmail: () => Promise.resolve(h.textOnly),
 }))
 

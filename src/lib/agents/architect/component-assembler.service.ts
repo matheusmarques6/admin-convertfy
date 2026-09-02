@@ -230,6 +230,7 @@ Regras de seleção:
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
 - Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
+- Posição de <sequencia_do_email> com \`intencao\` foi escrita pela pessoa na aba Arquitetura: ela É o papel daquela posição. Rankeie por ela ANTES da intenção geral do email — variante cuja anatomia não entrega a intenção da posição fica atrás, mesmo que sirva ao email como um todo.
 - Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
 - Use <memoria> como sinal, nunca como regra:
   - <email_anterior_desta_loja>: as variantes escolhidas no email ANTERIOR do MESMO flow desta loja. Busque COERÊNCIA visual — mesma linguagem de layout — sem copiar cegamente: cada email tem seu objetivo.
@@ -619,6 +620,25 @@ export interface AssembleReferenceInput {
 // "llm" = legado: reference gravada pelo Montador LLM antes do CM-2.
 export type ReferenceSource = "llm" | "code" | "global" | "none" | "store"
 
+/**
+ * A <sequencia_do_email> que os dois Curadores leem. `componente` é o
+ * rótulo por posição (papel do Estruturador, intenção humana truncada ou
+ * rótulo do outline); `intencao` só aparece quando a pessoa a escreveu na
+ * Arquitetura — é a âncora da posição. Puro, exportado para teste.
+ */
+export function sequenciaParaJson(
+  structure: ReadonlyArray<{ section: string; label: string; intencao?: string | null }>,
+): string {
+  return JSON.stringify(
+    structure.map((s, i) => ({
+      block_index: i,
+      section: s.section,
+      componente: s.label,
+      ...((s.intencao ?? "").trim() ? { intencao: (s.intencao ?? "").trim() } : {}),
+    })),
+  )
+}
+
 export interface AssembleReferenceResult {
   html: string | null
   variantIds: string[]
@@ -892,13 +912,8 @@ export async function assembleStoreReference(
   const catalog = buildCatalog(eligible, vaultExtras)
   const typeIndex = buildTypeIndex(eligible)
 
-  const blocksJson = JSON.stringify(
-    input.structure.map((s, i) => ({
-      block_index: i,
-      section: s.section,
-      componente: s.label,
-    })),
-  )
+  const blocksJson = sequenciaParaJson(input.structure)
+  const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
   const t0 = Date.now()
 
@@ -1089,6 +1104,7 @@ export async function assembleStoreReference(
     },
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
+    { rotulo: "Intenções por bloco (Arquitetura)", cls: "curadoria", valor: `${intencoesHumanas} de ${input.structure.length} posições` },
     { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida (resumoParaCurador)" : "(sem decisão nesta geração)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
     { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
@@ -1122,6 +1138,9 @@ export async function assembleStoreReference(
     // Critérios editoriais servidos nesta run (auditoria do Estúdio).
     has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
     has_intencao_email: Boolean(input.intencaoEmail?.trim()),
+    // Posições com intenção escrita na Arquitetura (02/09) — a âncora que
+    // o papel do Curador tem de servir.
+    intencoes_humanas: intencoesHumanas,
     estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
     // Cérebro do vault (31/08).
     curador_vault_mode: curadorVaultMode,

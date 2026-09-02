@@ -1,17 +1,22 @@
 "use client"
 
 /**
- * Tabela de blocos do e-mail (Nº · Tipo · ordem) + a paleta das 8 categorias.
+ * Tabela de blocos do e-mail (Nº · Tipo · ordem · intenção) + a paleta das 8
+ * categorias.
  *
- * A maquete previa uma coluna "O que entra nele" (o `purpose` de cada bloco);
- * ela SAIU de propósito. Os três guias do topo — Intenção, O e-mail deve, O
- * e-mail não deve — já dão a direção editorial do e-mail inteiro, e repeti-la
- * por bloco obrigava a reescrever a mesma coisa fatiada em 6 a 16 linhas.
- * Aqui se desenha a SEQUÊNCIA; o que ela diz vem de cima.
+ * A INTENÇÃO POR BLOCO (o `purpose`) voltou em 02/09 a pedido do owner. Ela
+ * havia saído da maquete porque os três guias do topo (Intenção, O e-mail
+ * deve, O e-mail não deve) dão a direção do e-mail inteiro — mas sem o campo
+ * ninguém dizia o que UMA posição específica precisa fazer, e quem decidia
+ * era o Curador (ou o Estruturador), inventando o papel de cada bloco a
+ * partir da intenção geral. Agora a pessoa escreve; o agente detalha.
  *
- * O `purpose` continua existindo no dado e chegando ao n8n: `mergeBlocks` o
- * carrega para dentro do `ArchBlock` e `splitRow` o grava de volta, então ele
- * atravessa a edição sem ser tocado. Sem UI, mas sem perda.
+ * É opcional por bloco (vazio = o Curador decide, como antes). Quando
+ * preenchida, é a ÂNCORA da posição: vira o `componente` que o Curador lê,
+ * a 1ª linha do purpose do blueprint e, por ele, chega à copy do n8n e ao
+ * agente de imagem (`resolveStructure` + `combinarIntencaoComPapel`).
+ * `mergeBlocks` a carrega para dentro do `ArchBlock` e `splitRow` a grava
+ * de volta em `email_blueprints.blocks[].purpose` — nada de rota nova.
  *
  * O vocabulário é o das categorias da biblioteca — o mesmo que o Curador e o
  * Estruturador falam, e um `block_type` válido desde a migration 20261090.
@@ -70,6 +75,63 @@ interface Props {
   onChange: (next: ArchBlock[]) => void
   /** Categorias que a Estrutura geral listava e a sequência não tem. */
   extras: string[]
+}
+
+const INTENCAO_MAX = 600
+
+/**
+ * Campo de intenção da posição. Uma linha vazia é discreta; com texto
+ * cresce até 4 linhas. O contador só aparece perto do teto.
+ */
+function IntencaoDoBloco({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (next: string) => void
+}) {
+  const linhas = Math.min(4, Math.max(1, value.split("\n").length + (value.length > 110 ? 1 : 0)))
+  return (
+    <div style={{ padding: "0 14px 8px 54px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <textarea
+        value={value}
+        rows={linhas}
+        maxLength={INTENCAO_MAX}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Intenção deste bloco — o que ele precisa fazer neste e-mail (vazio: o Curador decide)"
+        aria-label="Intenção deste bloco"
+        style={{
+          width: "100%",
+          resize: "none",
+          border: `1px solid ${value.trim() ? C.border : "transparent"}`,
+          borderRadius: 6,
+          padding: "5px 8px",
+          fontSize: 12.5,
+          lineHeight: "17px",
+          color: C.g900,
+          background: value.trim() ? C.white : "transparent",
+          fontFamily: F.sans,
+          outline: "none",
+          boxSizing: "border-box",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.border = `1px solid ${C.border}`
+          e.currentTarget.style.background = C.white
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.value.trim()) {
+            e.currentTarget.style.border = "1px solid transparent"
+            e.currentTarget.style.background = "transparent"
+          }
+        }}
+      />
+      {value.length > INTENCAO_MAX - 80 && (
+        <span style={{ fontSize: 11, color: C.g400, fontFamily: F.sans, alignSelf: "flex-end" }}>
+          {value.length}/{INTENCAO_MAX}
+        </span>
+      )}
+    </div>
+  )
 }
 
 export function ArchBlocks({ blocks, onChange, extras }: Props) {
@@ -141,12 +203,14 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
         blocks.map((b, idx) => (
           <div
             key={b.id}
+            style={{ borderBottom: `1px solid rgba(0,0,0,0.06)` }}
+          >
+          <div
             style={{
               display: "grid",
               gridTemplateColumns: GRID,
               alignItems: "center",
-              padding: "7px 14px",
-              borderBottom: `1px solid rgba(0,0,0,0.06)`,
+              padding: "7px 14px 4px 14px",
             }}
           >
             <span
@@ -216,6 +280,11 @@ export function ArchBlocks({ blocks, onChange, extras }: Props) {
                 <Trash2 size={15} />
               </IconBtn>
             </span>
+          </div>
+          <IntencaoDoBloco
+            value={b.purpose}
+            onChange={(purpose) => patch(idx, { purpose })}
+          />
           </div>
         ))
       )}

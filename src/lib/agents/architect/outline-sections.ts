@@ -21,6 +21,61 @@ export interface OutlineSection {
   section: string
   /** Rótulo original do outline (preserva a intenção: "USP icons", "Grade"...). */
   label: string
+  /**
+   * Intenção do bloco escrita pela pessoa na aba Arquitetura
+   * (`email_blueprints.blocks[].purpose`). É a âncora da posição: vira o
+   * `componente` que o Curador lê, a 1ª linha do purpose do blueprint e,
+   * por ele, chega ao n8n e ao agente de imagem. null = ninguém escreveu.
+   */
+  intencao?: string | null
+}
+
+/** Bloco do blueprint GLOBAL (a linha que a Arquitetura edita). */
+export interface BlocoGlobalDeIntencao {
+  type: string
+  purpose?: string | null
+}
+
+const INTENCAO_LABEL_MAX = 90
+
+function truncarIntencao(s: string): string {
+  const t = s.trim().replace(/\s+/g, " ")
+  if (t.length <= INTENCAO_LABEL_MAX) return t
+  return `${t.slice(0, INTENCAO_LABEL_MAX - 1).trimEnd()}…`
+}
+
+/**
+ * Casa as intenções do blueprint global com as posições resolvidas do
+ * outline. `splitRow` grava `suggested_blocks` e `blocks` da MESMA lista,
+ * então o caso normal é índice a índice (mesmo tamanho); listas de tamanho
+ * diferente (edição parcial, outline antigo) casam pela 1ª ocorrência
+ * ainda livre da mesma categoria — nunca chuta.
+ */
+export function anexarIntencoes(
+  posicoes: OutlineSection[],
+  blocosGlobais: ReadonlyArray<BlocoGlobalDeIntencao> | null | undefined,
+): OutlineSection[] {
+  const blocos = blocosGlobais ?? []
+  if (blocos.length === 0) return posicoes
+  const porIndice = blocos.length === posicoes.length
+  const usados = new Set<number>()
+  return posicoes.map((p, i) => {
+    let idx = -1
+    if (porIndice) {
+      const cat = categoryForOutlineItem(blocos[i].type ?? "")
+      if (cat === p.section) idx = i
+    }
+    if (idx < 0) {
+      idx = blocos.findIndex(
+        (b, j) => !usados.has(j) && categoryForOutlineItem(b.type ?? "") === p.section,
+      )
+    }
+    if (idx < 0) return p
+    usados.add(idx)
+    const intencao = (blocos[idx].purpose ?? "").trim()
+    if (!intencao) return p
+    return { ...p, intencao, label: truncarIntencao(intencao) }
+  })
 }
 
 /** Mapeia um rótulo humano de bloco → categoria, por palavra-chave. */
@@ -74,13 +129,14 @@ export function categoryForOutlineItem(item: string): string | null {
  */
 export function resolveStructure(
   outline: EmailOutlineTemplate | null,
+  blocosGlobais?: ReadonlyArray<BlocoGlobalDeIntencao> | null,
 ): OutlineSection[] {
   const out: OutlineSection[] = []
   for (const item of outline?.suggested_blocks ?? []) {
     const section = categoryForOutlineItem(item)
     if (section) out.push({ section, label: item.trim() })
   }
-  if (out.length > 0) return out
+  if (out.length > 0) return anexarIntencoes(out, blocosGlobais)
   return FALLBACK_SECTIONS.map((s) => ({ section: s, label: s }))
 }
 

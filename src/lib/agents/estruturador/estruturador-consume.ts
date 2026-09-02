@@ -111,3 +111,23 @@ export function aplicarEstruturadorNoBlueprint<
     }),
   }
 }
+
+/**
+ * Intenção HUMANA do bloco (aba Arquitetura) × papel do agente (Estruturador
+ * ou Curador do vault). A intenção é a âncora: vem PRIMEIRO no purpose do
+ * blueprint — é a 1ª linha que o n8n lê como `bloco.purpose` e o agente de
+ * imagem como `blueprint_purpose`. O papel do agente entra embaixo, como
+ * detalhe ("Papel (Curador): …"); sem agente, só a intenção; sem intenção,
+ * só o papel (comportamento de antes). `null` quando não há nada.
+ */
+export function combinarIntencaoComPapel(
+  intencao: string | null | undefined,
+  papelAgente: string | null | undefined,
+): string | null {
+  const i = (intencao ?? "").trim()
+  const p = (papelAgente ?? "").trim()
+  if (i && p) return `${i}\n\nPapel (Curador): ${p}`
+  if (i) return i
+  if (p) return p
+  return null
+}

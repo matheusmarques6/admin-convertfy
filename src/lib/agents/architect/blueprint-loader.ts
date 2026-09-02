@@ -66,6 +66,36 @@ export async function loadEffectiveBlueprint(
 }
 
 /**
+ * Só os `blocks` do blueprint GLOBAL (`email_blueprints`) — a linha que a
+ * aba Arquitetura edita. É de onde sai a INTENÇÃO por bloco
+ * (`blocks[].purpose`) que ancora cada posição da structure. Best-effort:
+ * erro ou ausência devolvem lista vazia (a geração segue sem intenções).
+ */
+export async function loadGlobalBlueprintBlocks(
+  admin: SupabaseClient,
+  flowType: string,
+  emailNumber: number,
+): Promise<Array<{ type: string; purpose?: string | null }>> {
+  const { data, error } = await admin
+    .from("email_blueprints")
+    .select("blocks")
+    .eq("flow_type", flowType)
+    .eq("email_number", emailNumber)
+    .maybeSingle()
+  if (error) {
+    log.warn("loadGlobalBlueprintBlocks.failed", { flowType, emailNumber, error: error.message })
+    return []
+  }
+  const blocks = (data as { blocks?: unknown } | null)?.blocks
+  return Array.isArray(blocks)
+    ? (blocks as Array<{ type?: string; purpose?: string | null }>).map((b) => ({
+        type: String(b.type ?? ""),
+        purpose: b.purpose ?? null,
+      }))
+    : []
+}
+
+/**
  * Variante batch da cascata: pra multiplos flow_types ao mesmo tempo.
  *
  * Retorna um Map cuja chave e `${flow_type}__${email_number}`. Aplica a

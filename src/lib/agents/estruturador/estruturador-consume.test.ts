@@ -143,3 +143,19 @@ describe("aplicarEstruturadorNoBlueprint", () => {
     expect(r.fio_narrativo).toBeNull()
   })
 })
+
+// ── Intenção humana (Arquitetura) × papel do agente (02/09) ─────────────
+import { combinarIntencaoComPapel } from "./estruturador-consume"
+
+describe("combinarIntencaoComPapel", () => {
+  it("intenção vem PRIMEIRO; o papel do agente entra embaixo como detalhe", () => {
+    expect(
+      combinarIntencaoComPapel("Atacar a objeção 'funciona?'", "Provar o mecanismo com a tese técnica."),
+    ).toBe("Atacar a objeção 'funciona?'\n\nPapel (Curador): Provar o mecanismo com a tese técnica.")
+  })
+  it("sem agente fica só a intenção; sem intenção fica só o papel; nada → null", () => {
+    expect(combinarIntencaoComPapel("  só a intenção ", null)).toBe("só a intenção")
+    expect(combinarIntencaoComPapel("", "papel do agente")).toBe("papel do agente")
+    expect(combinarIntencaoComPapel(null, "   ")).toBeNull()
+  })
+})

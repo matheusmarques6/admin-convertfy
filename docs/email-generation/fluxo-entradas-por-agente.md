@@ -203,7 +203,7 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 | Entrada | Origem | Classe |
 |---|---|---|
 | `{{catalogo}}` (system) | `buildCatalog` sobre `email_component_variants` ativas e **preenchíveis** (`variantIsFillable`): name, description, quando_usar/não_usar, objectives, tones, density, product_slots, orientação de copy, notas | biblioteca |
-| `blocks_json` (sequência) | posições do Estruturador (modo on) **ou** `resolveStructure(email_outline_templates.suggested_blocks)` + `clampStructure` | upstream / sistema |
+| `blocks_json` (sequência) | posições do Estruturador (modo on) **ou** `resolveStructure(email_outline_templates.suggested_blocks, email_blueprints.blocks)` + `clampStructure`; posição com **`intencao`** = purpose escrito na aba Arquitetura (`anexarIntencoes`) | upstream / sistema / curadoria |
 | `estruturador_decisao` | `resumoParaCurador` — só em modo `on` validado | upstream |
 | `outline_objective` / `tone_hint` | `email_outline_templates` | curadoria |
 | `outline_guidance` | `fio_narrativo` do Estruturador (on) **ou** `email_outline_templates.guidance` | upstream / curadoria |
@@ -212,6 +212,8 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 | `briefing_marca` | `resolveBrandProfile` (**sem** o review de Ads) | loja |
 | `objecoes` / `vocabulario` / `top_products` / brand_name / nicho / posicionamento / persona / tom_voz | store-context (client_stores / store_briefings / store_top_products) | loja |
 | `memoria` | `email_generation_choices` — email N‑1 da mesma loja (coerência) + mesmo email em até 3 lojas do org (variedade) | sistema |
+
+**Intenção por bloco (02/09)**: a aba Arquitetura ganhou o campo "Intenção deste bloco" (`ArchBlock.purpose` → `email_blueprints.blocks[].purpose`). `resolveStructure` anexa cada intenção à posição (índice a índice; tamanhos diferentes casam pela 1ª ocorrência livre da categoria), o rótulo (`componente`) vira a intenção truncada e o JSON leva `intencao`. Os dois Curadores têm a regra "a intenção É o papel da posição; rankeie por ela antes da intenção do email"; o Estruturador (modo on) a recebe dentro de `<intencao_do_email>` (`comIntencoesPorBloco`). No blueprint, `combinarIntencaoComPapel` (estruturador-consume) põe a intenção na 1ª linha do `purpose` e o papel do agente embaixo ("Papel (Curador): …") — **mesmo sem agente** (antes `papeisPorPosicao` saía null e o purpose virava só o `copy_guidance`). Por esse purpose a intenção chega ao n8n (`bloco.purpose` + `schema.diretriz`) e ao agente de imagem (`blueprint_purpose`). Telemetria: `intencoes_humanas` no run do Curador + "Intenções por bloco (Arquitetura): N de M" na Entrada.
 
 **Saída**: ranking por posição (em memória → Montador) + memória em `email_generation_choices`. O catálogo (~120k chars) viaja na telemetria como `{ref:'catalogo', sha8}` — a UI resolve sob demanda.
 
