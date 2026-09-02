@@ -18,6 +18,7 @@ import {
   EGSelect,
   EGTextarea,
 } from "@/components/email-generation/ui/eg-atoms"
+import { EMAIL_WIDTH } from "@/lib/email-workspace/email-width"
 import { mergeExamplesIntoHtml } from "./variant-editor"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -270,7 +271,11 @@ export function VariantTestCard({
                     overflow: "hidden",
                   }}
                 >
-                  <EGRenderFrame html={mergedHtml} minHeight={300} />
+                  <EGRenderFrame
+                    html={mergedHtml}
+                    minHeight={300}
+                    emailWidth={EMAIL_WIDTH}
+                  />
                 </div>
               </div>
             )}

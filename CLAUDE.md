@@ -2191,5 +2191,40 @@ deploy; rollback = reverter o admin.
 
 ---
 
-*Última atualização: Julho 2026*
+## Largura canônica de 600px nos componentes (set/2026)
+
+Todo bloco da biblioteca (`email_component_variants`) **declara o container
+em 600px** — é o que o Montador, o enxerto da hero e o preview assumem. As
+variantes são documentos HTML completos (`<!DOCTYPE>` + calha `width="100%"`
++ container `width="600"` com `width/min-width/max-width:600px`); uma nasceu
+em 598 e o bloco saía mais estreito que os vizinhos no email final.
+
+**Preview em Email / Componentes** (`EGRenderFrame` com `emailWidth`):
+o documento do iframe é montado por `buildEmailPreviewDoc`
+(`lib/email-workspace/email-preview-doc.ts`, puro) — documento completo vai
+como está; `<tr>` entra no tbody de uma tabela de 600; `<table>`/outro entra
+em `<tr><td>`. Viewport EXATAMENTE 600px (o antigo era a largura da coluna,
+~470px, e cortava o bloco); a coluna direita do editor foi de 540 → 640px
+para caber sem escala, e o frame escala por `transform` quando a coluna é
+menor. **Media queries mobile são neutralizadas no preview**
+(`max-width:Npx` → `0px` só no prelúdio): a 600px `@media (max-width:600px)`
+dispararia e mostraria a versão celular empilhada.
+
+**Normalização** (`lib/email-workspace/email-width.ts`, puro, 23 testes):
+`enforceEmailWidth` só toca `<table>` cuja largura numérica está PERTO de
+600 (560–640 — a assinatura de "container que errou o número"); colunas
+internas (350, 200…) e `width="100%"` ficam intactas. Raiz `<table>` de
+fragmento sem largura ganha `width="600"`; raiz `<tr>` não tem onde
+declarar. Idempotente. Aplicada (a) no salvar — POST/PATCH de
+`/api/admin/components` normalizam ANTES do hash CM-6; (b) no editor, aviso
+"Bloco fora de 600px" + botão "Fixar agora" (`auditEmailWidth`); (c) na
+varredura `GET/POST /api/admin/components/normalize-width` (botão "Largura
+600px na biblioteca" → dialog com prévia de/para por variante → aplicar).
+A varredura **preserva o hash do renderizado quando ele estava em dia** com
+o html antigo (senão 25 exemplos virariam "desatualizados" sem mudar de
+significado) e normaliza também `html_tagged`.
+
+---
+
+*Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

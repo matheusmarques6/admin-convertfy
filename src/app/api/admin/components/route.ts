@@ -14,6 +14,7 @@ import { assertCanManagePrompts } from "@/lib/services/prompt-management.service
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
+import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
 const log = logger.child("EmailComponents")
 
@@ -93,7 +94,10 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient()
     await assertCanManagePrompts(admin, user.id)
 
-    const parsed = postSchema.parse(await request.json())
+    const raw = postSchema.parse(await request.json())
+    // Largura canônica: todo bloco entra na biblioteca com o container em
+    // 600px (ver email-width.ts). O hash abaixo é do html JÁ normalizado.
+    const parsed = { ...raw, html: enforceEmailWidth(raw.html).html }
     // CM-6: hash do `html` que originou o exemplo renderizado. Sem ele não
     // há como saber se o exemplo ainda descreve a variante — o `updated_at`
     // da linha se move por qualquer edição.

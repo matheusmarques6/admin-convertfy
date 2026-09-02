@@ -17,6 +17,7 @@ import {
 } from "react"
 import { ChevronDown, Check, Maximize2, Minimize2 } from "lucide-react"
 import { C, F, TNUM, egInputStyle } from "./eg-theme"
+import { buildEmailPreviewDoc } from "@/lib/email-workspace/email-preview-doc"
 
 // ── Card com título de seção ──────────────────────────────────────
 export function EGCard({
@@ -818,19 +819,51 @@ export function EGRenderFrame({
   html,
   minHeight = 260,
   collapsedMax,
+  emailWidth,
 }: {
   html: string | null | undefined
   minHeight?: number
   /** Teto da altura recolhida antes de oferecer "Expandir". Default: minHeight. */
   collapsedMax?: number
+  /**
+   * Modo EMAIL: o documento é montado por `buildEmailPreviewDoc` (bloco
+   * embrulhado numa tabela desta largura, media queries mobile
+   * neutralizadas) e o iframe tem viewport EXATAMENTE desta largura — o
+   * bloco aparece no tamanho real do email. Se a coluna for mais estreita,
+   * o iframe é escalado (transform) para caber sem scroll lateral.
+   * Sem a prop, comportamento livre de antes (iframe na largura da coluna).
+   */
+  emailWidth?: number
 }) {
   const [contentH, setContentH] = useState<number | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [avail, setAvail] = useState<number | null>(null)
 
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0}body{background:#F3F4F6;padding:16px;font-family:Arial,Helvetica,sans-serif}</style></head><body>${
-    html ||
-    '<div style="color:#9CA3AF;text-align:center;padding:40px;font-family:Arial">Sem HTML para renderizar</div>'
-  }</body></html>`
+  const emailMode = typeof emailWidth === "number" && emailWidth > 0
+  const doc = emailMode
+    ? buildEmailPreviewDoc(html, { width: emailWidth })
+    : `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0}body{background:#F3F4F6;padding:16px;font-family:Arial,Helvetica,sans-serif}</style></head><body>${
+        html ||
+        '<div style="color:#9CA3AF;text-align:center;padding:40px;font-family:Arial">Sem HTML para renderizar</div>'
+      }</body></html>`
+
+  // Largura disponível da coluna — só importa no modo email, para escalar.
+  useEffect(() => {
+    if (!emailMode) return
+    const el = hostRef.current
+    if (!el) return
+    setAvail(el.clientWidth)
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setAvail(e.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [emailMode])
+
+  const viewport = emailMode ? (emailWidth as number) : null
+  const scale =
+    viewport && avail && avail > 0 && avail < viewport ? avail / viewport : 1
 
   // Teto recolhido: nunca menor que minHeight.
   const cap = Math.max(minHeight, collapsedMax ?? minHeight)
@@ -845,29 +878,55 @@ export function EGRenderFrame({
   const handleLoad = (e: SyntheticEvent<HTMLIFrameElement>) => {
     try {
       const d = e.currentTarget.contentDocument
-      const h = d?.body?.scrollHeight
+      const h = Math.max(
+        d?.body?.scrollHeight ?? 0,
+        d?.documentElement?.scrollHeight ?? 0,
+      )
       if (h && Number.isFinite(h)) setContentH(h + 4)
     } catch {
       /* cross-origin improvável em srcDoc same-origin — ignora */
     }
   }
 
+  const iframe = (
+    <iframe
+      title="render"
+      srcDoc={doc}
+      sandbox="allow-same-origin"
+      onLoad={handleLoad}
+      scrolling={!overflows || expanded ? "no" : "auto"}
+      style={{
+        width: viewport ?? "100%",
+        height: frameH,
+        border: "none",
+        display: "block",
+        background: "#F3F4F6",
+        ...(viewport
+          ? { transform: `scale(${scale})`, transformOrigin: "top left" }
+          : {}),
+      }}
+    />
+  )
+
   return (
-    <div style={{ position: "relative" }}>
-      <iframe
-        title="render"
-        srcDoc={doc}
-        sandbox="allow-same-origin"
-        onLoad={handleLoad}
-        scrolling={!overflows || expanded ? "no" : "auto"}
-        style={{
-          width: "100%",
-          height: frameH,
-          border: "none",
-          display: "block",
-          background: "#F3F4F6",
-        }}
-      />
+    <div ref={hostRef} style={{ position: "relative", width: "100%" }}>
+      {viewport ? (
+        // Caixa na largura/altura ESCALADAS: o iframe segue com o viewport
+        // real (600) e só é encolhido visualmente quando a coluna é menor.
+        <div
+          style={{
+            width: viewport * scale,
+            height: frameH * scale,
+            margin: "0 auto",
+            overflow: "hidden",
+            background: "#F3F4F6",
+          }}
+        >
+          {iframe}
+        </div>
+      ) : (
+        iframe
+      )}
       {overflows && (
         <button
           type="button"

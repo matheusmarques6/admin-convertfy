@@ -30,12 +30,18 @@ import {
   EGCheck,
   EGInput,
   EGLabel,
+  EGNotice,
   EGRenderFrame,
   EGSelect,
   EGTextarea,
   EGToggle,
 } from "@/components/email-generation/ui/eg-atoms"
 import { OutputSchemaEditor } from "./output-schema-editor"
+import {
+  auditEmailWidth,
+  EMAIL_WIDTH,
+  enforceEmailWidth,
+} from "@/lib/email-workspace/email-width"
 
 /** Rascunho editável de variante (strings vazias no lugar de null). */
 export interface VariantDraft {
@@ -213,12 +219,18 @@ export function VariantEditor({
     () => mergeExamplesIntoHtml(draft.html, draft.output_schema),
     [draft.html, draft.output_schema],
   )
+  // Largura canônica: o bloco tem de declarar 600px (é o que o Montador e o
+  // enxerto assumem). O salvar normaliza sozinho; o aviso existe para o
+  // operador VER o que vai mudar — e corrigir antes, se preferir.
+  const widthAudit = useMemo(() => auditEmailWidth(draft.html), [draft.html])
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(0,1fr) 540px",
+        // 640 = 600px do email + 2×20px de padding do card: o preview cabe
+        // no tamanho real sem escala.
+        gridTemplateColumns: "minmax(0,1fr) 640px",
         gap: 20,
         alignItems: "start",
       }}
@@ -593,7 +605,11 @@ export function VariantEditor({
                   overflow: "hidden",
                 }}
               >
-                <EGRenderFrame html={mergedHtml} minHeight={480} />
+                <EGRenderFrame
+                  html={mergedHtml}
+                  minHeight={480}
+                  emailWidth={EMAIL_WIDTH}
+                />
               </div>
               <div
                 style={{
@@ -603,8 +619,37 @@ export function VariantEditor({
                   marginTop: 10,
                 }}
               >
-                Preview usando os exemplos definidos em cada campo do schema.
+                Preview a {EMAIL_WIDTH}px (largura real do email) usando os
+                exemplos definidos em cada campo do schema.
               </div>
+              {draft.html.trim() && !widthAudit.ok && (
+                <div style={{ marginTop: 10 }}>
+                  <EGNotice tone="warn">
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span>
+                        <strong>Bloco fora de {EMAIL_WIDTH}px.</strong>{" "}
+                        {widthAudit.reason} Ao salvar, a largura é fixada
+                        automaticamente.
+                      </span>
+                      <EGBtn
+                        onClick={() =>
+                          set({ html: enforceEmailWidth(draft.html).html })
+                        }
+                      >
+                        Fixar em {EMAIL_WIDTH}px agora
+                      </EGBtn>
+                    </div>
+                  </EGNotice>
+                </div>
+              )}
             </>
           )}
           {pv === "html" && (
@@ -696,6 +741,7 @@ export function VariantEditor({
                     html={draft.rendered_html}
                     minHeight={editRendered ? 360 : 520}
                     collapsedMax={editRendered ? 520 : 720}
+                    emailWidth={EMAIL_WIDTH}
                   />
                 </div>
               ) : (

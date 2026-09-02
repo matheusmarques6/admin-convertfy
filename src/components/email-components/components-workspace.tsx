@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Trash2, Check, Plus, Loader2 } from "lucide-react"
+import { Layers, Trash2, Check, Plus, Loader2, Ruler } from "lucide-react"
 import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
@@ -32,6 +32,8 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { VariantEditor, type VariantDraft } from "./variant-editor"
 import { VariantTestCard } from "./variant-test-card"
+import { WidthNormalizeDialog } from "./width-normalize-dialog"
+import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
 
@@ -182,7 +184,9 @@ function payloadFromDraft(draft: VariantDraft) {
   return {
     block_type: draft.block_type,
     name: draft.name,
-    html: draft.html,
+    // Largura canônica de 600px — o servidor normaliza de novo; aqui é
+    // para o draft e a auditoria de âncoras verem o MESMO html que vai gravar.
+    html: enforceEmailWidth(draft.html).html,
     rendered_html: draft.rendered_html.trim() || null,
     description: draft.description.trim() || null,
     long_description: draft.long_description.trim() || null,
@@ -218,15 +222,19 @@ export function ComponentsWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<VariantDraft>(emptyDraft(FIRST_CATEGORY))
   const [saving, setSaving] = useState(false)
+  const [widthDialog, setWidthDialog] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<EmailComponentVariant[]> => {
     setLoading(true)
     try {
       const res = await fetch("/api/admin/components")
       const json = (await res.json()) as { variants?: EmailComponentVariant[] }
-      setVariants(json.variants ?? [])
+      const list = json.variants ?? []
+      setVariants(list)
+      return list
     } catch {
       toast({ variant: "destructive", title: "Falha ao carregar componentes" })
+      return []
     } finally {
       setLoading(false)
     }
@@ -322,6 +330,7 @@ export function ComponentsWorkspace() {
         data?: { variant?: EmailComponentVariant }
       }
       const saved = json.variant ?? json.data?.variant
+      setDraft((d) => (d.html === payload.html ? d : { ...d, html: payload.html }))
       // O EXAMPLE é a âncora (20/08): cada campo de texto é encontrado no
       // HTML pela frase do example, e cada imagem gerada pelo token de
       // atributo — a MESMA régua do merge em produção. Desalinhamento NÃO
@@ -419,8 +428,33 @@ export function ComponentsWorkspace() {
       <div
         style={{
           display: "flex",
+          justifyContent: "flex-end",
+          marginTop: 14,
+        }}
+      >
+        <EGBtn
+          onClick={() => setWidthDialog(true)}
+          title="Prévia e correção da largura de 600px em todas as variantes ativas"
+        >
+          <Ruler size={15} /> Largura 600px na biblioteca
+        </EGBtn>
+      </div>
+      <WidthNormalizeDialog
+        open={widthDialog}
+        onClose={() => setWidthDialog(false)}
+        onApplied={async () => {
+          const list = await load()
+          // Variante aberta pode ter sido normalizada: o draft acompanha.
+          const v = selectedId ? list.find((x) => x.id === selectedId) : null
+          if (v) setDraft(draftFromVariant(v))
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
           gap: 20,
-          marginTop: 18,
+          marginTop: 12,
           alignItems: "flex-start",
         }}
       >

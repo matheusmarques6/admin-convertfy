@@ -10,6 +10,7 @@ import { assertCanManagePrompts } from "@/lib/services/prompt-management.service
 import { logger } from "@/lib/logger"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
+import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
 const log = logger.child("EmailComponent")
 
@@ -51,7 +52,12 @@ export async function PATCH(
     const admin = createAdminClient()
     await assertCanManagePrompts(admin, user.id)
 
-    const parsed = patchSchema.parse(await request.json())
+    const raw = patchSchema.parse(await request.json())
+    // Largura canônica (600px) aplicada ANTES do hash — ver email-width.ts.
+    const parsed =
+      raw.html !== undefined
+        ? { ...raw, html: enforceEmailWidth(raw.html).html }
+        : raw
 
     // CM-6 — o hash só é (re)gravado quando o EXEMPLO muda:
     //
