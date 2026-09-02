@@ -280,7 +280,7 @@ describe("runCopyFit", () => {
     texto: "Use code WELCOME10 na compra. Sem mínimo, sem expiração.",
     max: 200,
     min: null,
-    motivos: ["idioma"] as const,
+    motivos: ["idioma" as const],
     tracos: 0,
     idioma_detectado: "pt" as const,
     idioma_esperado: "en",
