@@ -196,8 +196,70 @@ const criarAtividade: ConnectorTool = {
   },
 }
 
+const criarNegocio: ConnectorTool = {
+  label: "Criar negócio",
+  write: true,
+  def: {
+    type: "function",
+    function: {
+      name: "crm_criar_negocio",
+      description:
+        "EXECUTA: cria um negócio (deal) na 1ª etapa de um pipeline de VENDAS. Passe o nome (ou parte) do pipeline — use crm_resumo_pipelines antes se não souber.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Título do negócio (ex.: 'Loja X — plano Growth')" },
+          pipeline: { type: "string", description: "Nome (ou trecho) do pipeline de vendas" },
+          value: { type: "number", description: "Valor em R$ (opcional)" },
+          notes: { type: "string", description: "Contexto inicial (opcional)" },
+        },
+        required: ["title", "pipeline"],
+      },
+    },
+  },
+  execute: async (args, ctx) => {
+    const title = String(args.title ?? "").slice(0, 200)
+    const pipeQuery = String(args.pipeline ?? "").trim()
+    if (!title || !pipeQuery) return { content: "title e pipeline são obrigatórios." }
+    const { data: pipeline } = await ctx.admin
+      .from("pipelines")
+      .select("id, name, pipeline_stages(id, name, \"order\", stage_type)")
+      .eq("scope", "sales")
+      .eq("is_archived", false)
+      .ilike("name", `%${pipeQuery.replace(/[%,]/g, " ")}%`)
+      .limit(1)
+      .maybeSingle()
+    if (!pipeline) return { content: `Pipeline de vendas contendo "${pipeQuery}" não encontrado.` }
+    const stages = (pipeline.pipeline_stages as Array<{ id: string; order: number; stage_type: string }>) ?? []
+    const first = stages
+      .filter((s) => s.stage_type === "open")
+      .sort((a, b) => a.order - b.order)[0]
+    if (!first) return { content: "Pipeline sem etapa aberta." }
+    const { data: created, error } = await ctx.admin
+      .from("deals")
+      .insert({
+        pipeline_id: pipeline.id,
+        stage_id: first.id,
+        title,
+        status: "open",
+        source: "convertia",
+        owner_id: ctx.userId,
+        currency: "BRL",
+        value: Number(args.value) || 0,
+        notes: typeof args.notes === "string" ? args.notes.slice(0, 4000) : null,
+      })
+      .select("id, title")
+      .single()
+    if (error) throw error
+    return {
+      content: `Negócio "${title}" criado no pipeline "${pipeline.name}" (id ${created.id}).`,
+      summary: "negócio criado",
+    }
+  },
+}
+
 export const CRM_CONNECTOR: ResolvedConnector = {
   key: "crm",
   name: "CRM Convertfy",
-  tools: [resumoPipelines, buscarNegocios, detalheNegocio, criarAtividade],
+  tools: [resumoPipelines, buscarNegocios, detalheNegocio, criarAtividade, criarNegocio],
 }

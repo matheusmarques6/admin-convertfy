@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react"
 import useSWR from "swr"
-import { Plus, RefreshCw, Trash2 } from "lucide-react"
+import { Copy, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react"
 
 const HAIR = "var(--crm-border, rgba(0,0,0,0.08))"
 const BRAND = "#4E62D8"
@@ -101,6 +101,9 @@ export function StoreMcpPanel({
 
   return (
     <div>
+      {/* Servidor MCP DESTA loja (protocolo MCP real, para clientes externos) */}
+      <StoreMcpEndpoint storeId={storeId} />
+
       {/* Built-ins derivados das credenciais */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {BUILTIN.map((b) => {
@@ -216,6 +219,116 @@ export function StoreMcpPanel({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Endpoint MCP da loja (servidor MCP real, protocolo 2025-03-26) ──
+
+function StoreMcpEndpoint({ storeId }: { storeId: string }) {
+  const { data, mutate } = useSWR<{ exists: boolean; created_at: string | null; url: string }>(
+    `/api/ai/store-mcp-token/${storeId}`,
+    fetcher,
+    { revalidateOnFocus: false },
+  )
+  const [freshToken, setFreshToken] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState<"url" | "token" | null>(null)
+
+  const copy = (kind: "url" | "token", value: string) => {
+    void navigator.clipboard.writeText(value)
+    setCopied(kind)
+    setTimeout(() => setCopied(null), 1400)
+  }
+
+  const generate = async () => {
+    if (
+      data?.exists &&
+      !window.confirm("Rotacionar o token? O token atual deixa de funcionar na hora.")
+    )
+      return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/ai/store-mcp-token/${storeId}`, { method: "POST" })
+      const body = (await res.json().catch(() => ({}))) as { token?: string }
+      if (res.ok && body.token) {
+        setFreshToken(body.token)
+        await mutate()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const revoke = async () => {
+    if (!window.confirm("Revogar o token? Clientes MCP conectados perdem o acesso.")) return
+    await fetch(`/api/ai/store-mcp-token/${storeId}`, { method: "DELETE" })
+    setFreshToken(null)
+    await mutate()
+  }
+
+  return (
+    <div className="mb-3 rounded-[8px] border p-3" style={{ borderColor: HAIR }}>
+      <div className="flex items-center gap-2">
+        <KeyRound className="h-3.5 w-3.5" style={{ color: BRAND }} />
+        <span className="text-[12px] font-semibold" style={{ color: "var(--crm-gray-900, #111827)" }}>
+          Servidor MCP desta loja
+        </span>
+        <span className="text-[10.5px]" style={{ color: data?.exists ? "#047857" : "var(--crm-gray-400, #9CA3AF)" }}>
+          {data?.exists ? "token ativo" : "sem token"}
+        </span>
+      </div>
+      <div className="mt-1.5 text-[10.5px] leading-[1.5]" style={{ color: "var(--crm-gray-500, #6B7280)" }}>
+        Endpoint MCP real (streamable HTTP) com as tools desta loja — consulta E execução. Conecte
+        no Claude, Cursor ou qualquer cliente MCP usando a URL + token Bearer.
+      </div>
+      {data?.url && (
+        <div className="mt-2 flex items-center gap-2">
+          <code
+            className="min-w-0 flex-1 truncate rounded-[5px] border px-2 py-1 text-[11px]"
+            style={{ borderColor: HAIR, color: "var(--crm-gray-700, #374151)" }}
+          >
+            {data.url}
+          </code>
+          <button onClick={() => copy("url", data.url)} title="Copiar URL" style={{ color: copied === "url" ? "#047857" : BRAND }}>
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {freshToken && (
+        <div className="mt-2 rounded-[6px] border px-2.5 py-2" style={{ borderColor: "#F59E0B", background: "rgba(251,191,36,0.06)" }}>
+          <div className="text-[10.5px] font-semibold" style={{ color: "#92400E" }}>
+            Token gerado — copie AGORA, ele não será mostrado de novo:
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate text-[11px]" style={{ color: "#92400E" }}>
+              {freshToken}
+            </code>
+            <button onClick={() => copy("token", freshToken)} title="Copiar token" style={{ color: copied === "token" ? "#047857" : "#92400E" }}>
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => void generate()}
+          disabled={busy}
+          className="h-[28px] rounded-[6px] px-3 text-[11.5px] font-semibold text-white disabled:opacity-50"
+          style={{ background: BRAND }}
+        >
+          {data?.exists ? "Rotacionar token" : "Gerar token"}
+        </button>
+        {data?.exists && (
+          <button
+            onClick={() => void revoke()}
+            className="h-[28px] rounded-[6px] border px-3 text-[11.5px] font-medium"
+            style={{ borderColor: HAIR, color: "#B91C1C" }}
+          >
+            Revogar
+          </button>
+        )}
+      </div>
     </div>
   )
 }

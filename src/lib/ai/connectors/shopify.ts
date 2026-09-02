@@ -245,9 +245,268 @@ export function buildShopifyConnector(creds: ShopifyConnCreds): ResolvedConnecto
     },
   }
 
+  // ── Chamada crua à Admin API (base das executivas) ───────────────
+  const adminCall = async (
+    method: "GET" | "POST" | "PUT",
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<{ ok: boolean; status: number; data: unknown }> => {
+    const clean = path.startsWith("/") ? path : `/${path}`
+    const resp = await fetch(`${apiBase(creds.domain)}${clean}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": creds.accessToken,
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    const data = await resp.json().catch(() => ({}))
+    return { ok: resp.ok, status: resp.status, data }
+  }
+
+  const criarProduto: ConnectorTool = {
+    label: "Criar produto",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_criar_produto",
+        description:
+          "EXECUTA: cria um produto na loja Shopify (nasce como DRAFT por segurança — publicar é outra decisão). Título, descrição HTML, preço e SKU.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            body_html: { type: "string", description: "Descrição em HTML (opcional)" },
+            price: { type: "string", description: "Preço da variante única, ex.: '199.90'" },
+            sku: { type: "string" },
+            tags: { type: "string", description: "Tags separadas por vírgula" },
+          },
+          required: ["title", "price"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const r = await adminCall("POST", "/products.json", {
+        product: {
+          title: String(args.title),
+          status: "draft",
+          ...(typeof args.body_html === "string" ? { body_html: args.body_html } : {}),
+          ...(typeof args.tags === "string" ? { tags: args.tags } : {}),
+          variants: [
+            {
+              price: String(args.price),
+              ...(typeof args.sku === "string" ? { sku: args.sku } : {}),
+            },
+          ],
+        },
+      })
+      if (!r.ok) return { content: `Shopify recusou (${r.status}): ${toolJson(r.data, 800)}` }
+      const p = (r.data as { product?: { id: number; title: string } }).product
+      return {
+        content: `Produto criado como rascunho: "${p?.title}" (id ${p?.id}).`,
+        summary: `produto ${p?.id} criado`,
+      }
+    },
+  }
+
+  const atualizarProduto: ConnectorTool = {
+    label: "Atualizar produto",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_atualizar_produto",
+        description:
+          "EXECUTA: atualiza um produto existente (título, status active/draft/archived, tags, descrição). Use shopify_produtos antes para achar o id.",
+        parameters: {
+          type: "object",
+          properties: {
+            product_id: { type: "number" },
+            title: { type: "string" },
+            status: { type: "string", enum: ["active", "draft", "archived"] },
+            tags: { type: "string" },
+            body_html: { type: "string" },
+          },
+          required: ["product_id"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const product: Record<string, unknown> = { id: Number(args.product_id) }
+      for (const k of ["title", "status", "tags", "body_html"] as const) {
+        if (typeof args[k] === "string") product[k] = args[k]
+      }
+      const r = await adminCall("PUT", `/products/${Number(args.product_id)}.json`, { product })
+      if (!r.ok) return { content: `Shopify recusou (${r.status}): ${toolJson(r.data, 800)}` }
+      return { content: "Produto atualizado.", summary: `produto ${args.product_id} atualizado` }
+    },
+  }
+
+  const atualizarPreco: ConnectorTool = {
+    label: "Atualizar preço",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_atualizar_preco",
+        description:
+          "EXECUTA: muda o preço (e opcionalmente o compare_at_price) de uma VARIANTE. O id da variante vem de shopify_produtos.",
+        parameters: {
+          type: "object",
+          properties: {
+            variant_id: { type: "number" },
+            price: { type: "string", description: "Ex.: '149.90'" },
+            compare_at_price: { type: "string", description: "Preço 'de' riscado (opcional)" },
+          },
+          required: ["variant_id", "price"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const r = await adminCall("PUT", `/variants/${Number(args.variant_id)}.json`, {
+        variant: {
+          id: Number(args.variant_id),
+          price: String(args.price),
+          ...(typeof args.compare_at_price === "string"
+            ? { compare_at_price: args.compare_at_price }
+            : {}),
+        },
+      })
+      if (!r.ok) return { content: `Shopify recusou (${r.status}): ${toolJson(r.data, 800)}` }
+      return { content: `Preço da variante atualizado para ${String(args.price)}.`, summary: "preço atualizado" }
+    },
+  }
+
+  const atualizarEstoque: ConnectorTool = {
+    label: "Ajustar estoque",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_atualizar_estoque",
+        description:
+          "EXECUTA: define a quantidade em estoque de uma variante na primeira localização da loja (inventory_levels/set).",
+        parameters: {
+          type: "object",
+          properties: {
+            variant_id: { type: "number" },
+            quantity: { type: "number", description: "Quantidade absoluta (não delta)" },
+          },
+          required: ["variant_id", "quantity"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const v = await adminCall("GET", `/variants/${Number(args.variant_id)}.json`)
+      const invItem = (v.data as { variant?: { inventory_item_id?: number } }).variant
+        ?.inventory_item_id
+      if (!v.ok || !invItem) {
+        return { content: `Variante não encontrada (${v.status}).` }
+      }
+      const locs = await adminCall("GET", "/locations.json")
+      const loc = (locs.data as { locations?: Array<{ id: number; active: boolean }> }).locations?.find(
+        (l) => l.active,
+      )
+      if (!loc) return { content: "Nenhuma localização ativa na loja." }
+      const r = await adminCall("POST", "/inventory_levels/set.json", {
+        location_id: loc.id,
+        inventory_item_id: invItem,
+        available: Math.max(0, Math.round(Number(args.quantity) || 0)),
+      })
+      if (!r.ok) return { content: `Shopify recusou (${r.status}): ${toolJson(r.data, 800)}` }
+      return {
+        content: `Estoque da variante ${args.variant_id} definido em ${args.quantity}.`,
+        summary: "estoque ajustado",
+      }
+    },
+  }
+
+  const tagPedido: ConnectorTool = {
+    label: "Tag em pedido",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_tag_pedido",
+        description:
+          "EXECUTA: substitui as tags de um pedido (útil para marcar prioridade, problema, VIP). O id numérico do pedido vem de shopify_pedidos.",
+        parameters: {
+          type: "object",
+          properties: {
+            order_id: { type: "number" },
+            tags: { type: "string", description: "Tags separadas por vírgula" },
+          },
+          required: ["order_id", "tags"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const r = await adminCall("PUT", `/orders/${Number(args.order_id)}.json`, {
+        order: { id: Number(args.order_id), tags: String(args.tags) },
+      })
+      if (!r.ok) return { content: `Shopify recusou (${r.status}): ${toolJson(r.data, 800)}` }
+      return { content: "Tags do pedido atualizadas.", summary: "pedido taggeado" }
+    },
+  }
+
+  const adminApi: ConnectorTool = {
+    label: "Admin API Shopify (avançada)",
+    write: true,
+    def: {
+      type: "function",
+      function: {
+        name: "shopify_admin_api",
+        description:
+          "EXECUTA: chama qualquer endpoint REST da Shopify Admin API 2024-10 (GET/POST/PUT) com as credenciais da loja — coleções, metafields, fulfillments, webhooks etc. Passe o path relativo (ex.: /custom_collections.json) e o body conforme a doc shopify.dev. Use quando não existir tool específica.",
+        parameters: {
+          type: "object",
+          properties: {
+            method: { type: "string", enum: ["GET", "POST", "PUT"] },
+            path: { type: "string", description: "Ex.: /custom_collections.json" },
+            body: { type: "object" },
+          },
+          required: ["method", "path"],
+        },
+      },
+    },
+    execute: async (args) => {
+      const path = String(args.path ?? "")
+      if (!path.startsWith("/") || path.includes("..")) {
+        return { content: "Path inválido — relativo à Admin API, começando com /." }
+      }
+      const method = ["GET", "POST", "PUT"].includes(String(args.method))
+        ? (args.method as "GET")
+        : "GET"
+      const r = await adminCall(
+        method,
+        path,
+        typeof args.body === "object" && args.body !== null
+          ? (args.body as Record<string, unknown>)
+          : undefined,
+      )
+      return {
+        content: `HTTP ${r.status}\n${toolJson(r.data, 8000)}`,
+        summary: `${method} ${path.slice(0, 40)}`,
+      }
+    },
+  }
+
   return {
     key: "shopify",
     name: "Shopify",
-    tools: [pedidos, metricasLoja, clientes, produtos, criarDesconto],
+    tools: [
+      pedidos,
+      metricasLoja,
+      clientes,
+      produtos,
+      criarDesconto,
+      criarProduto,
+      atualizarProduto,
+      atualizarPreco,
+      atualizarEstoque,
+      tagPedido,
+      adminApi,
+    ],
   }
 }
