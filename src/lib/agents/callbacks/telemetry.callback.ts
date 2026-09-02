@@ -62,6 +62,8 @@ const PRICING_PER_MTOK: Record<string, { input: number; output: number }> = {
   // reasoning. Quando o run vem do OpenRouter, resolveCostCents prefere o custo
   // REAL (usage.cost) — esta tabela é só o fallback por token.
   "gpt-5-4": { input: 2.5, output: 15.0 },
+  // Encurtador (copy_fit) desde 02/09 — OpenRouter $0.75 / $4.50.
+  "gpt-5-4-mini": { input: 0.75, output: 4.5 },
   "gpt-5-4-image-2": { input: 2.5, output: 15.0 },
   // Nano Banana 2 — modelo de imagem padrão (jul/2026). Fallback por
   // token; o custo real do OpenRouter (usage.cost) vence quando presente.

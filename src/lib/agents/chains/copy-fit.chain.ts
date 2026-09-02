@@ -32,7 +32,6 @@ import { logger } from "@/lib/logger"
 import {
   aceitarReescrita,
   contarTracos,
-  encurtarPorFrase,
   type MotivoDeAlvo,
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
@@ -72,7 +71,10 @@ const log = logger.child("CopyFit")
 // do OpenRouter; quando a conta direta da Anthropic zerou, o encurtador
 // morreu com 400 "credit balance is too low" e o fail-open engoliu. Mesmo
 // modelo, mesmo preço (normalizeModelKey tira o vendor), outro caminho.
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
+// GPT-5.4 mini (02/09, escolha do owner): o Haiku 4.5 tirava o travessão e
+// mantinha a mensagem, mas devolvia ~177 chars para max 130 em DUAS
+// passadas — e o corte por código que cobria isso foi removido.
+const DEFAULT_MODEL = "openai/gpt-5.4-mini"
 
 const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
 
@@ -180,7 +182,7 @@ export interface DePara {
   /** Só nos alvos de idioma: o que o detector viu antes e no texto que fica. */
   idioma_antes?: IdiomaDetectado
   idioma_depois?: IdiomaDetectado
-  motivo?: MotivoDeRecusa | "sem_resposta" | "fallback_codigo"
+  motivo?: MotivoDeRecusa | "sem_resposta"
 }
 
 export interface CopyFitResult {
@@ -446,36 +448,11 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       pendentes = aindaFora
     }
 
-    // PLANO B — o código corta o que o modelo não coube (02/09: 6 de 9
-    // campos recusados nas duas passadas e o original, com travessão,
-    // seguiu para o email). Só para alvo de TAMANHO ou TRAVESSÃO: o de
-    // idioma não tem corte mecânico possível. Passa pelo MESMO guard que a
-    // proposta do modelo — o corte também tem de caber, respeitar o mínimo
-    // e não trocar de língua.
-    const pelosCodigo = new Set<string>()
-    for (const alvo of pendentes) {
-      // Idioma não tem corte mecânico; item AUSENTE não tem texto para
-      // cortar — se o modelo não criou, o merge remove o item limpo.
-      if (alvo.motivos.includes("idioma") || alvo.motivos.includes("ausente")) continue
-      const corte = encurtarPorFrase(alvo.texto, alvo.max)
-      if (corte == null) continue
-      const veredicto = aceitarReescrita(alvo.texto, corte, {
-        max: alvo.max,
-        min: alvo.min,
-        motivos: alvo.motivos,
-        idiomaEsperado: alvo.idioma_esperado,
-      })
-      if (!veredicto.ok) continue
-      aceitas.set(alvo.id, {
-        id: alvo.id,
-        position: alvo.position,
-        block_id: alvo.block_id,
-        key: alvo.key,
-        texto: corte,
-      })
-      motivos.delete(alvo.id)
-      pelosCodigo.add(alvo.id)
-    }
+    // SEM plano B (02/09): o corte por código ("decepa na última frase que
+    // cabe") mandou "Plugs directly into any standard outlet." ao cliente
+    // no lugar de um parágrafo inteiro — 6 de 8 campos perderam o
+    // argumento. Campo que o modelo não acertou em duas passadas fica
+    // como veio do n8n, contado em `mantidos` com o motivo da recusa.
 
     const de_para: DePara[] = input.alvos.map((a) => {
       const ok = aceitas.get(a.id)
@@ -500,11 +477,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
               idioma_depois: ok ? detectarIdioma(ok.texto) : a.idioma_detectado,
             }
           : {}),
-        ...(ok
-          ? pelosCodigo.has(a.id)
-            ? { motivo: "fallback_codigo" as const }
-            : {}
-          : { motivo: motivos.get(a.id) ?? "sem_resposta" }),
+        ...(ok ? {} : { motivo: motivos.get(a.id) ?? "sem_resposta" }),
       }
     })
 
@@ -528,9 +501,6 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         corrigidos: aceitas.size,
         mantidos: input.alvos.length - aceitas.size,
         tentativas,
-        // Quantos o CÓDIGO cortou depois de o modelo falhar duas vezes. Se
-        // este número dominar, o modelo não está fazendo o trabalho dele.
-        corrigidos_pelo_codigo: pelosCodigo.size,
         // Travessão: quantos alvos entraram por ele e quantos sobraram no
         // texto que o cliente vai ler. `depois > 0` é o número que diz se o
         // agente está cumprindo — sem ele a regra viraria fé.
@@ -575,7 +545,6 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       emailId: input.emailId,
       alvos: input.alvos.length,
       corrigidos: aceitas.size,
-      pelo_codigo: pelosCodigo.size,
       mantidos: input.alvos.length - aceitas.size,
     })
     return { aceitas: [...aceitas.values()], de_para, rodou: true }

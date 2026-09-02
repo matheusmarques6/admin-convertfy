@@ -970,7 +970,6 @@ const MOTIVO_DE_RECUSA: Record<string, string> = {
   traco_permaneceu: "a reescrita manteve o travessão",
   idioma_permaneceu: "a reescrita voltou no idioma errado",
   mudou_de_idioma: "a reescrita trocou a língua do campo",
-  fallback_codigo: "o modelo não coube em duas passadas; o código cortou na frase",
 }
 
 export function CopyFitView({ output }: { output: unknown }) {
@@ -990,9 +989,6 @@ export function CopyFitView({ output }: { output: unknown }) {
   const comIdioma = Number(o.com_idioma_errado ?? 0)
   const idiomaEsperado = typeof o.idioma_esperado === "string" ? o.idioma_esperado : ""
   const idiomaErradoDepois = Number(o.idioma_errado_depois ?? 0)
-  // Plano B (02/09): quantos o CÓDIGO cortou depois de o modelo errar o
-  // teto duas vezes. Número alto = o modelo não está fazendo o trabalho.
-  const peloCodigo = Number(o.corrigidos_pelo_codigo ?? 0)
   const traducoesRecusadas = Number(o.traducoes_recusadas ?? 0)
   // Item de lista que o gerador pulou (02/09): quantos entraram e quantos
   // o modelo criou. O resto sai do email pelo merge.
@@ -1026,9 +1022,6 @@ export function CopyFitView({ output }: { output: unknown }) {
           />
         )}
         <OutPill text={`${o.corrigidos ?? 0} reescrito(s)`} tone="pos" />
-        {peloCodigo > 0 && (
-          <OutPill text={`${peloCodigo} cortado(s) pelo código`} tone="info" />
-        )}
         {traducoesRecusadas > 0 && (
           <OutPill text={`${traducoesRecusadas} tradução(ões) recusada(s)`} tone="warn" />
         )}
@@ -1117,14 +1110,12 @@ export function CopyFitView({ output }: { output: unknown }) {
                     <OutPill
                       text={
                         d.aceito
-                          ? d.motivo === "fallback_codigo"
-                            ? "cortado pelo código"
-                            : porAusente
-                              ? "criado"
-                              : "aplicado"
+                          ? porAusente
+                            ? "criado"
+                            : "aplicado"
                           : "recusado"
                       }
-                      tone={d.aceito ? (d.motivo === "fallback_codigo" ? "info" : "pos") : "warn"}
+                      tone={d.aceito ? "pos" : "warn"}
                     />
                   </span>
                 </div>

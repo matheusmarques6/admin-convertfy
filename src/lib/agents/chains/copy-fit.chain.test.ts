@@ -219,11 +219,10 @@ describe("runCopyFit", () => {
     })
   })
 
-  // O número que prova o trabalho: recusado até o fim, o traço CONTINUA no
-  // texto que o cliente lê — e o `depois` tem de dizer isso.
-  // Até 02/09 o traço que o modelo não tirava ficava no email. Agora o
-  // código tira (vírgula) e o campo sai marcado como corte do código.
-  it("traço que sobrevive às duas passadas é tirado pelo código", async () => {
+  // Sem corte por código (02/09): o traço que sobrevive às duas passadas
+  // fica como veio do n8n, contado em `mantidos` com o motivo — o código
+  // não toca no texto.
+  it("traço que sobrevive às duas passadas mantém o original e registra o motivo", async () => {
     invokeMock.mockResolvedValue(respostaLLM({ "1.body": "Ainda — com traço." }))
     const r = await runCopyFit(
       entrada([
@@ -238,15 +237,17 @@ describe("runCopyFit", () => {
       ]),
     )
     expect(invokeMock).toHaveBeenCalledTimes(2)
-    expect(r.aceitas.map((a) => a.texto)).toEqual(["Funciona, e sem risco."])
+    expect(r.aceitas).toEqual([])
     const out = respostaComResultado().parsedOutput as Record<string, unknown>
     expect(out).toMatchObject({
+      corrigidos: 0,
+      mantidos: 1,
       travessoes_antes: 1,
-      travessoes_depois: 0,
-      corrigidos_pelo_codigo: 1,
+      travessoes_depois: 1,
     })
+    expect(out).not.toHaveProperty("corrigidos_pelo_codigo")
     const dePara = (out.de_para as Array<Record<string, unknown>>)[0]
-    expect(dePara.motivo).toBe("fallback_codigo")
+    expect(dePara).toMatchObject({ aceito: false, motivo: "traco_permaneceu" })
   })
 
   // Sem entrada no mapa de origens o guard de recomposição zera os segmentos
@@ -333,14 +334,14 @@ describe("runCopyFit", () => {
         }),
       ]),
     )
-    // A tradução foi recusada nas duas passadas (contada), e o código
-    // cortou o ORIGINAL em inglês — a copy do cliente nunca vira português.
-    expect(r.aceitas).toHaveLength(1)
-    expect(r.aceitas[0].texto).toBe("Each one ships with a lifetime guarantee and real buyer reviews.")
+    // A tradução foi recusada nas duas passadas (contada) e o ORIGINAL em
+    // inglês fica — a copy do cliente nunca vira português, e o código não
+    // corta nada.
+    expect(r.aceitas).toEqual([])
     const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
     expect(parsed.traducoes_recusadas).toBe(2)
     const dePara = (parsed.de_para as Array<Record<string, unknown>>)[0]
-    expect(dePara.motivo).toBe("fallback_codigo")
+    expect(dePara).toMatchObject({ aceito: false, motivo: "mudou_de_idioma" })
   })
 
   it("aceita a versão em inglês e registra o antes/depois do idioma", async () => {
@@ -376,14 +377,15 @@ describe("runCopyFit", () => {
   })
 
 
-  // ── Plano B (02/09) ───────────────────────────────────────────────────
+  // ── Sem plano B (02/09) ──────────────────────────────────────────────
   //
-  // O modelo devolve 250 caracteres para max 200, nas duas passadas. Antes
-  // o campo ficava como veio (289 chars com travessão). Agora o código corta
-  // na frase e o resultado é marcado como `fallback_codigo`.
-  it("modelo erra o teto duas vezes → o código corta na frase", async () => {
+  // O modelo devolve 250 caracteres para max 200, nas duas passadas. O
+  // corte por código que cobria isso decepava o parágrafo na última frase
+  // que cabia ("Plugs directly into any standard outlet.") — foi removido.
+  // O campo fica como veio, com o motivo da recusa.
+  it("modelo erra o teto duas vezes → original mantido, motivo registrado", async () => {
     const original =
-      "I was skeptical about the FuelSaver Pro. I drove the same commute for three weeks before and three weeks after installing it. My average MPG went from 26.4 to 29.1 on the same route. I checked the OBD readout every morning. The data is consistent. Not magic — just a measurable difference."
+      "I was skeptical about the FuelSaver Pro. I drove the same commute for three weeks before and three weeks after installing it. My average MPG went from 26.4 to 29.1 on the same route. Not magic — just a measurable difference."
     invokeMock.mockResolvedValue(
       respostaLLM({ "5.review_2_quote": "x".repeat(250) }),
     )
@@ -402,17 +404,17 @@ describe("runCopyFit", () => {
       ]),
     )
     expect(invokeMock).toHaveBeenCalledTimes(2)
-    expect(r.aceitas).toHaveLength(1)
-    const texto = r.aceitas[0].texto
-    expect(texto.length).toBeLessThanOrEqual(200)
-    expect(texto).not.toContain("—")
-    expect(texto).toMatch(/[.!?]$/)
+    expect(r.aceitas).toEqual([])
     const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
-    expect(parsed.corrigidos).toBe(1)
-    expect(parsed.corrigidos_pelo_codigo).toBe(1)
+    expect(parsed.corrigidos).toBe(0)
+    expect(parsed.mantidos).toBe(1)
     const dePara = (parsed.de_para as Array<Record<string, unknown>>)[0]
-    expect(dePara.aceito).toBe(true)
-    expect(dePara.motivo).toBe("fallback_codigo")
+    expect(dePara).toMatchObject({
+      aceito: false,
+      motivo: "ainda_acima_do_limite",
+      antes: original,
+      depois: null,
+    })
   })
 
   it("o contrato pede alvo abaixo do teto", async () => {
@@ -437,7 +439,7 @@ describe("runCopyFit", () => {
     )
     expect(r.aceitas).toEqual([])
     const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
-    expect(parsed.corrigidos_pelo_codigo).toBe(0)
+    expect(parsed.mantidos).toBe(1)
   })
 
 })
@@ -478,6 +480,6 @@ describe("runCopyFit — item de lista ausente", () => {
     expect(r.de_para[0]).toMatchObject({ aceito: false, motivo: "igual_a_irmao" })
     const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
     expect(parsed.ausentes_preenchidos).toBe(0)
-    expect(parsed.corrigidos_pelo_codigo).toBe(0)
+    expect(parsed.mantidos).toBe(1)
   })
 })

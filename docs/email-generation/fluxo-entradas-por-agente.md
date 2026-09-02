@@ -85,7 +85,7 @@ flowchart LR
 | blueprint (rota LLM) | `moonshotai/kimi-k3` | 0.4 | 8192 | rota determinística grava `model='deterministic'` |
 | subject | `anthropic/claude-sonnet-4.6` | 0.7 | 400 | mini‑LLM da rota determinística |
 | copy (fallback in-process) | `claude-opus-4-7` | 1.0 | 20480 | a copy de produção roda no **n8n** (modelo externo) |
-| copy_fit | `anthropic/claude-haiku-4.5` | 0.4 | 1500 | encurtador condicional (tamanho, travessão, idioma) |
+| copy_fit | `openai/gpt-5.4-mini` | 0.4 | 1500 | encurtador condicional (tamanho, travessão, idioma, item ausente) |
 | image | `google/gemini-3.1-flash-image` | — | — | temperatura não é enviada; sempre OpenRouter |
 | hero_section | `anthropic/claude-sonnet-4.6` | 0.3 | 16384 | espelho visual troca p/ `hero_vision_model` |
 | text_format | `moonshotai/kimi-k3` | 0.3 | 65536 | quase sempre **pulado** (merge por example) |
@@ -320,18 +320,23 @@ campo curto onde o detector se cala: "Vehicle Diagnostics" → "Diagnóstico".
 Contagem em `traducoes_recusadas`; os pares reais do incidente são teste de
 regressão em `copy-fit.test.ts`.
 
-**Plano B em código (02/09).** No batch cdc700e7 o Haiku errou o teto em 6
-de 9 campos nas DUAS passadas (~250 caracteres para `max 200`); o guard
-recusou e o original, com travessão, foi ao cliente. Agora: (a) o contrato
-leva `alvo_caracteres = floor(max × 0.85)` — o modelo mira abaixo do teto;
-(b) o que ele ainda não coube, o código corta com `encurtarPorFrase`
-(última fronteira de frase que cabe → vírgula → palavra; `—`/`–` viram
-vírgula antes do corte), passando pelo MESMO guard da proposta do modelo.
-Alvo só de idioma não recebe corte mecânico. `de_para[].motivo =
-"fallback_codigo"` e `corrigidos_pelo_codigo` no run — se este número
-dominar, o modelo não está fazendo o trabalho dele.
+**Sem plano B em código (02/09, revisado no mesmo dia).** Houve um corte
+por código (`encurtarPorFrase`: última frase que cabe, `—`→vírgula) para o
+campo que o modelo não coube em duas passadas. No Welcome 1 da Innova Bay
+ele decepou 6 de 8 campos no primeiro ponto ("Plugs directly into any
+standard outlet." no lugar do parágrafo). **Removido a pedido do owner**:
+o código não mexe em travessão nem corta frase. Campo recusado duas vezes
+fica como veio do n8n, contado em `mantidos` com o motivo (`de_para[].motivo`
+= `ainda_acima_do_limite`, `traco_permaneceu`…). O contrato segue com
+`alvo_caracteres = floor(max × 0.85)`.
 
-**Modelo**: `anthropic/claude-haiku-4.5` (OpenRouter desde 20261098) · T 0.4 · max 1500.
+**Item ausente (02/09)**: item de lista (`_item_N`) vazio com ≥ 2 irmãos
+preenchidos vira alvo `ausente`; o contrato leva `criar_item_da_lista` +
+`itens_irmaos`; guard `igual_a_irmao` + idioma + max. Não criado → o merge
+remove badge + linha (`itens_removidos`).
+
+**Modelo**: `openai/gpt-5.4-mini` (OpenRouter, migration 20261104 — o Haiku
+4.5 devolvia ~177 chars para max 130 nas duas passadas) · T 0.4 · max 1500.
 
 | Entrada | Origem | Classe (declarada em `COPY_FIT_ORIGINS`) |
 |---|---|---|
