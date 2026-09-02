@@ -19,6 +19,7 @@ import {
   executeOmnisendTool,
 } from "@/lib/integrations/omnisend/ritual-tools"
 import { omnisendRequest } from "@/lib/integrations/omnisend/client"
+import { searchOmnisendOperations } from "@/lib/integrations/omnisend/operation-catalog"
 import { toolJson, type ConnectorTool, type ResolvedConnector } from "./types"
 
 function writeTool(
@@ -69,7 +70,44 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
     return res
   }
 
+  // O "search" do padrão MCP da Omnisend: descobre a operação no
+  // catálogo embutido, executa via omnisend_operacao. É o que permite
+  // "criar popup", "criar workflow" etc. sem uma tool por endpoint.
+  const catalogo: ConnectorTool = {
+    label: "Catálogo de operações",
+    def: {
+      type: "function",
+      function: {
+        name: "omnisend_catalogo",
+        description:
+          "Lista TODAS as operações da API pública do Omnisend (o mesmo catálogo do MCP oficial): automações/workflows, campanhas, formulários/popups, segmentos, contatos, templates, analytics. Filtre por texto e/ou ação. Fluxo: 1) descubra a operação aqui; 2) execute com omnisend_operacao (method + path com {params} preenchidos + body conforme api-docs.omnisend.com).",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Texto livre (ex.: 'popup', 'workflow')" },
+            action: { type: "string", enum: ["query", "create", "update", "delete"] },
+          },
+          required: [],
+        },
+      },
+    },
+    execute: async (args) => {
+      const ops = searchOmnisendOperations(
+        typeof args.query === "string" ? args.query : undefined,
+        typeof args.action === "string" ? args.action : undefined,
+      )
+      return {
+        content: toolJson(
+          ops.map((o) => ({ acao: o.a, method: o.m, path: o.p, descricao: o.s })),
+          12_000,
+        ),
+        summary: `${ops.length} operações`,
+      }
+    },
+  }
+
   const writeTools: ConnectorTool[] = [
+    catalogo,
     writeTool(
       "omnisend_upsert_contato",
       "Criar/atualizar contato",
@@ -220,13 +258,13 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
     ),
     writeTool(
       "omnisend_operacao",
-      "Operação Omnisend (avançada)",
-      "EXECUTA: chama QUALQUER operação da API pública do Omnisend (api-docs.omnisend.com) — criar segmento (POST /api/segments), formulários, templates, produtos etc. Passe method, path (começando com /api/ ou /v3/) e body JSON conforme a documentação. Use quando não existir tool específica.",
+      "Operação Omnisend (executar do catálogo)",
+      "EXECUTA: o 'execute' do padrão MCP — chama QUALQUER operação da API pública do Omnisend. Descubra a operação com omnisend_catalogo, preencha os {params} do path e monte o body conforme api-docs.omnisend.com. Cobre criar/editar automações (workflows), popups/formulários, campanhas, segmentos etc. Operações destrutivas (DELETE, enviar campanha) só com pedido explícito do usuário.",
       {
         type: "object",
         properties: {
-          method: { type: "string", enum: ["GET", "POST", "PATCH", "PUT"] },
-          path: { type: "string", description: "Ex.: /api/segments" },
+          method: { type: "string", enum: ["GET", "POST", "PATCH", "PUT", "DELETE"] },
+          path: { type: "string", description: "Ex.: /api/segments (do omnisend_catalogo)" },
           body: { type: "object", description: "Corpo JSON da requisição (quando aplicável)" },
         },
         required: ["method", "path"],
@@ -236,7 +274,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         if (!/^\/(api|v3|v5)\//.test(path)) {
           return { content: "Path inválido — precisa começar com /api/, /v3/ ou /v5/." }
         }
-        const method = ["GET", "POST", "PATCH", "PUT"].includes(String(args.method))
+        const method = ["GET", "POST", "PATCH", "PUT", "DELETE"].includes(String(args.method))
           ? (args.method as "GET")
           : "GET"
         const res = await call(

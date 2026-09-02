@@ -168,7 +168,7 @@ export async function omnisendRequest<T>(
   apiKey: string,
   endpoint: string,
   options?: {
-    method?: "GET" | "POST" | "PATCH" | "PUT"
+    method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
     body?: Record<string, unknown>
     logTag?: string
     /** Override da versao da Omnisend API — util para /api/analytics/statistics
