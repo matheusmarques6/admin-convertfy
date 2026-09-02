@@ -989,11 +989,15 @@ export async function assembleStoreReference(
       input.intencaoEmail,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    // Decisão do Estruturador (só no modo 'on' com run válida).
-    estruturador_decisao: clampPromptText(
-      input.estruturadorDecisao,
+    // Decisão do Estruturador (só no modo 'on' com run ok). SEM o clamp de
+    // 4000 do clampPromptText: é a saída COMPLETA em JSON (~10k chars na
+    // Innova) e cortá-la a 4000 deixaria o Curador sem as posições finais,
+    // o fio e os descartes — exatamente o que o owner pediu que chegasse
+    // inteiro (02/09). O teto de segurança (24k) já vive em
+    // `decisaoCompletaParaCurador`.
+    estruturador_decisao:
+      input.estruturadorDecisao?.trim() ||
       "(sem decisão do Estruturador nesta geração — siga o outline)",
-    ),
     // Perfil da marca — ancora a escolha na identidade, não só no objetivo
     // do email.
     briefing_marca: input.perfilMarca,
@@ -1456,10 +1460,9 @@ export async function assembleStoreReference(
       input.intencaoEmail,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    estruturador_decisao: clampPromptText(
-      input.estruturadorDecisao,
+    estruturador_decisao:
+      input.estruturadorDecisao?.trim() ||
       "(sem decisão do Estruturador nesta geração — siga o outline)",
-    ),
     // Os mesmos blocos da loja que o Curador recebeu (27/08). A escolha
     // FINAL é onde marca e objeção se decidem de verdade: o Curador rankeia
     // posição a posição, isolada; só o Montador vê se o email INTEIRO
