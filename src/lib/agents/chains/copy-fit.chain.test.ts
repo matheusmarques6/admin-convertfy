@@ -441,3 +441,43 @@ describe("runCopyFit", () => {
   })
 
 })
+
+describe("runCopyFit — item de lista ausente", () => {
+  const ausente = (): AlvoDeEncurtamento =>
+    alvo({
+      id: "2.column_b_item_6",
+      position: 2,
+      key: "column_b_item_6",
+      label: "column_b_item_6",
+      texto: "",
+      max: 48,
+      motivos: ["ausente"],
+      irmaos: ["Limited or no return window", "Generic ratings with no context"],
+    })
+
+  it("o contrato leva criar_item_da_lista + itens_irmaos e o item criado é aceito", async () => {
+    invokeMock.mockResolvedValue(respostaLLM({ "2.column_b_item_6": "Hidden fees at checkout" }))
+    const r = await runCopyFit(entrada([ausente()]))
+    const vars = invokeMock.mock.calls[0][1] as Record<string, string>
+    expect(vars.contrato_json).toContain('"criar_item_da_lista": true')
+    expect(vars.contrato_json).toContain("Limited or no return window")
+    expect(r.aceitas).toEqual([
+      expect.objectContaining({ key: "column_b_item_6", texto: "Hidden fees at checkout" }),
+    ])
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.com_ausente).toBe(1)
+    expect(parsed.ausentes_preenchidos).toBe(1)
+  })
+
+  it("item que repete um irmão é recusado nas duas passadas e o código NÃO inventa", async () => {
+    invokeMock.mockResolvedValue(
+      respostaLLM({ "2.column_b_item_6": "Limited or no return window" }),
+    )
+    const r = await runCopyFit(entrada([ausente()]))
+    expect(r.aceitas).toEqual([])
+    expect(r.de_para[0]).toMatchObject({ aceito: false, motivo: "igual_a_irmao" })
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.ausentes_preenchidos).toBe(0)
+    expect(parsed.corrigidos_pelo_codigo).toBe(0)
+  })
+})

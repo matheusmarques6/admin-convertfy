@@ -585,3 +585,27 @@ Hero do mesmo email (02/09, tarde):
   `IMAGE_SLOTS` de cada slot agora traz `outras_imagens_deste_bloco` com a
   primeira frase da "Ideia" dos irmãos e o pedido de ser diferente. É
   pedido, não garantia.
+
+## Body 4 "Why Innovabay" — marca `[N]` e item ausente (02/09, 2ª rodada)
+
+Welcome 1, batch `f576a00f`:
+
+- **Texto a 14px e "espaçamento enorme"**: cada item da variante é
+  `<span class="mark" style="font-size:14px;">[2]</span> dolor sit amet,`.
+  O merge ancorava o example inteiro num run costurado e o splice trocava
+  o trecho por texto puro — o `</span>` sumia e a copy caía DENTRO do span
+  de 14px (11 itens a 14px, títulos de coluna a 15px em vez de 30px). Os
+  paddings da biblioteca são para texto de 20px. `replacementCosturado`
+  (`html/anchor-match.ts`) preserva toda tag de elemento do vão, derruba
+  só `<br>`/`<wbr>` e põe a copy no segmento de maior participação
+  (`tags_mantidas` no campo do run `copy_merge`).
+- **Item 6 sem texto**: o n8n não devolveu `column_b_item_6` (run `copy`
+  `kind: missing`; contrato `required:false`). Duas camadas: (1) o
+  encurtador ganha o motivo **`ausente`** — item vazio de lista
+  (`_item_N`) com ≥ 2 irmãos preenchidos vira alvo com `irmaos[]`;
+  contrato `criar_item_da_lista` + `itens_irmaos`; regra no system prompt
+  (migration 20261103); guard `igual_a_irmao` além de idioma/tamanho; sem
+  corte de código. (2) Se ainda faltar, o merge remove o item INTEIRO —
+  linha do texto + badge numerado acima — e transfere o `padding-bottom`
+  ao item anterior (`itens_removidos` no run, motivo `item_removido`).
+

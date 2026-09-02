@@ -28,6 +28,7 @@ import {
   orphanTextFragments,
   withOriginalSlices,
   pareceExemplo,
+  replacementCosturado,
 } from "./anchor-match"
 import type {
   AnchorAssignment,
@@ -40,7 +41,9 @@ import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
   applySplices,
   commentRanges,
+  enclosingRow,
   textNodes,
+  visibleTextOf,
   type Range,
   type Splice,
 } from "./dom-locator"
@@ -89,6 +92,12 @@ export interface CampoMergeLog {
   /** true = âncora costurada através de `<br>`/wrapper inline. */
   costurado?: boolean
   /**
+   * Tags de elemento do vão costurado PRESERVADAS no splice (02/09). Antes
+   * o splice as levava junto — o `</span>` da marca `[N]` sumia e a copy
+   * caía dentro do span de 14px.
+   */
+  tags_mantidas?: number
+  /**
    * Quantas cópias da frase foram escritas (regra 5 — arte que repete o
    * texto). Ausente quando é 1, que é o caso normal.
    */
@@ -129,6 +138,19 @@ export interface CopyMergeReport {
    * a cobrança é do n8n; o cliente não vê lorem.
    */
   exemplos_limpos: Array<{ block_id: string | null; key: string; de: string }>
+  /**
+   * Itens de LISTA (`_item_N`) sem copy do n8n removidos INTEIROS: a linha
+   * do texto e, quando existe, a linha do badge numerado logo acima
+   * (02/09: o "6" da coluna "Others" foi ao cliente sozinho). O
+   * `padding-bottom` da linha removida passa ao item anterior para o painel
+   * fechar com o mesmo respiro.
+   */
+  itens_removidos: Array<{
+    block_id: string | null
+    key: string
+    badge: boolean
+    padding_transferido: number | null
+  }>
   /**
    * "por_bloco" = cada campo ancorou dentro da região do próprio bloco
    * (marcadores cfy:block presentes). "global" = documento sem marcadores,
@@ -317,6 +339,121 @@ function msoMirrorSplices(
   return out
 }
 
+// ── Item de lista órfão: sai inteiro ───────────────────────────────────
+
+const ITEM_KEY_RE = /_item_(\d+)$/i
+const SO_NUMERO_RE = /^\d{1,2}$/
+
+/**
+ * `<tr>` imediatamente anterior ao offset (pulando whitespace e
+ * comentários). Resolve pela árvore (`enclosingRow` no `>` do `</tr>`
+ * anterior), porque o badge é uma tabela ANINHADA — procurar `<tr` para
+ * trás acharia a linha de dentro, não a irmã.
+ */
+function previousRow(html: string, before: number): Range | null {
+  let k = before - 1
+  while (k >= 0) {
+    if (/\s/.test(html[k])) {
+      k--
+      continue
+    }
+    if (html[k] === ">" && html.slice(Math.max(0, k - 2), k + 1) === "-->") {
+      const s = html.lastIndexOf("<!--", k)
+      if (s < 0) return null
+      k = s - 1
+      continue
+    }
+    break
+  }
+  if (k < 0) return null
+  if (!/<\/tr\s*>$/i.test(html.slice(Math.max(0, k - 8), k + 1))) return null
+  const row = enclosingRow(html, k - 1)
+  return row && row.end === k + 1 ? row : null
+}
+
+interface PaddingSlot {
+  /** Range do VALOR de `padding:` (dentro do style do primeiro td). */
+  start: number
+  end: number
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+/** `padding:` do primeiro `<td>` da linha, em px. null quando não é px puro. */
+function paddingSlotOf(html: string, row: Range): PaddingSlot | null {
+  const region = html.slice(row.start, row.end)
+  const td = /<td\b[^>]*>/i.exec(region)
+  if (!td) return null
+  const style = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(td[0])
+  if (!style) return null
+  const m = /(^|;)\s*padding\s*:\s*([^;"']+)/i.exec(style[2])
+  if (!m) return null
+  const valor = m[2]
+  const partes = valor.trim().split(/\s+/)
+  const px = partes.map((p) => {
+    const n = /^(\d+(?:\.\d+)?)(px)?$/i.exec(p)
+    return n ? Number(n[1]) : NaN
+  })
+  if (px.length < 1 || px.length > 4 || px.some((n) => Number.isNaN(n))) return null
+  const [a, b = a, c = a, d = b] = px
+  const top = a
+  const right = b
+  const bottom = px.length >= 3 ? c : a
+  const left = px.length === 4 ? d : b
+  // Offset absoluto do valor: início do td no doc + início do style + índice.
+  const tdStart = row.start + (td.index ?? 0)
+  const styleStart = tdStart + (style.index ?? 0) + style[0].indexOf(style[2])
+  const valorRel = m.index + m[0].indexOf(valor)
+  const start = styleStart + valorRel
+  return { start, end: start + valor.length, top, right, bottom, left }
+}
+
+/**
+ * Remove o item de lista que ficou SEM copy: a `<tr>` do texto e o badge
+ * numerado logo acima (a `<tr>` anterior cujo texto visível é só 1–2
+ * dígitos). O `padding-bottom` da linha removida vai para a linha de texto
+ * do item anterior quando ela está em 0 — é o respiro que fecha o painel.
+ *
+ * Só quando a linha não tem outro texto visível além do exemplo: linha
+ * com copy de outro campo nunca é removida.
+ */
+function itemOrfao(
+  html: string,
+  range: Range,
+  key: string,
+): { splices: Splice[]; badge: boolean; padding_transferido: number | null } | null {
+  if (!ITEM_KEY_RE.test(key)) return null
+  const row = enclosingRow(html, range.start)
+  if (!row) return null
+  const textoExemplo = visibleTextOf(html, range)
+  if (!textoExemplo || visibleTextOf(html, row) !== textoExemplo) return null
+
+  const splices: Splice[] = [{ ...row, replacement: "" }]
+  let badge = false
+  let paddingTransferido: number | null = null
+  const prev = previousRow(html, row.start)
+  if (prev && SO_NUMERO_RE.test(visibleTextOf(html, prev))) {
+    badge = true
+    splices.push({ ...prev, replacement: "" })
+    const anterior = previousRow(html, prev.start)
+    if (anterior) {
+      const removida = paddingSlotOf(html, row)
+      const alvo = paddingSlotOf(html, anterior)
+      if (removida && removida.bottom > 0 && alvo && alvo.bottom === 0) {
+        splices.push({
+          start: alvo.start,
+          end: alvo.end,
+          replacement: `${alvo.top}px ${alvo.right}px ${removida.bottom}px ${alvo.left}px`,
+        })
+        paddingTransferido = removida.bottom
+      }
+    }
+  }
+  return { splices, badge, padding_transferido: paddingTransferido }
+}
+
 /**
  * Monta e aplica o merge por example. Todos os campos de texto entram no
  * casamento (mesmo sem valor — irmãos com example idêntico precisam do
@@ -417,6 +554,7 @@ export function copyMergeByExample(
   const anchors: MergeAnchor[] = []
   const semLugar: CopyMergeReport["sem_lugar"] = []
   const exemplosLimpos: Array<{ block_id: string | null; key: string; de: string }> = []
+  const itensRemovidos: CopyMergeReport["itens_removidos"] = []
   const ambiguos: string[] = []
   const skipped: CopyMergeReport["skipped"] = []
   const splices: Array<Splice & { entryIdx: number }> = []
@@ -463,15 +601,39 @@ export function copyMergeByExample(
         // deixava tudo como estava.
         const exemplo = html.slice(a.range.start, a.range.end)
         if (pareceExemplo(normalizeForMatch(exemplo))) {
-          splices.push({ ...a.range, replacement: "", entryIdx: i })
-          for (const extra of a.extraRanges ?? []) {
-            splices.push({ ...extra, replacement: "", entryIdx: i })
+          // Vazio COM as tags do vão (02/09): esvaziar é trocar texto, e a
+          // marca `[N]` fica como span vazio — nunca some o `</span>`.
+          const vazio = replacementCosturado(exemplo, "")
+          // Item de lista sem copy sai INTEIRO (badge + linha) — o "6"
+          // sozinho da coluna "Others" foi ao cliente por este ramo só
+          // esvaziar o texto.
+          const removido = itemOrfao(html, a.range, e.field.key)
+          if (removido) {
+            for (const r of removido.splices) splices.push({ ...r, entryIdx: i })
+            itensRemovidos.push({
+              block_id: blockId,
+              key: e.field.key,
+              badge: removido.badge,
+              padding_transferido: removido.padding_transferido,
+            })
+            campo.motivo = "item_removido"
+            anchor.motivo = "item_removido"
+          } else {
+            splices.push({ ...a.range, replacement: vazio.texto, entryIdx: i })
+            campo.motivo = "copy_ausente_limpo"
+            anchor.motivo = "copy_ausente_limpo"
           }
-          for (const m of msoMirrorSplices(html, exemplo, "")) {
+          for (const extra of a.extraRanges ?? []) {
+            splices.push({
+              ...extra,
+              replacement: replacementCosturado(html.slice(extra.start, extra.end), "").texto,
+              entryIdx: i,
+            })
+          }
+          for (const m of msoMirrorSplices(html, exemplo, vazio.texto)) {
             splices.push({ ...m, entryIdx: i })
           }
-          campo.motivo = "copy_ausente_limpo"
-          anchor.motivo = "copy_ausente_limpo"
+          if (vazio.tags_mantidas > 0) campo.tags_mantidas = vazio.tags_mantidas
           campo.para = ""
           anchor.applied = true
           exemplosLimpos.push({ block_id: blockId, key: e.field.key, de: truncate(exemplo) })
@@ -485,18 +647,27 @@ export function copyMergeByExample(
         campo.motivo = "value_is_html"
         skipped.push({ block_id: blockId, key: e.field.key, reason: "value_is_html" })
       } else {
-        const replacement = neutralizeAngles(e.value)
-        splices.push({ ...a.range, replacement, entryIdx: i })
+        const valor = neutralizeAngles(e.value)
+        // Âncora costurada: as tags do vão FICAM e a copy entra no segmento
+        // principal (02/09 — o `</span>` da marca `[N]` sumia e 11 itens do
+        // body-4 saíram a 14px dentro do span da marca).
+        const de = html.slice(a.range.start, a.range.end)
+        const principal = replacementCosturado(de, valor)
+        splices.push({ ...a.range, replacement: principal.texto, entryIdx: i })
         // Frase repetida pela arte e um único campo dono (regra 5): escreve
         // em todas as cópias, senão o email sai metade traduzido.
         for (const extra of a.extraRanges ?? []) {
-          splices.push({ ...extra, replacement, entryIdx: i })
+          splices.push({
+            ...extra,
+            replacement: replacementCosturado(html.slice(extra.start, extra.end), valor).texto,
+            entryIdx: i,
+          })
         }
         // Espelho MSO: mesma frase dentro de conditional comment.
-        const de = html.slice(a.range.start, a.range.end)
-        for (const m of msoMirrorSplices(html, de, replacement)) {
+        for (const m of msoMirrorSplices(html, de, principal.texto)) {
           splices.push({ ...m, entryIdx: i })
         }
+        if (principal.tags_mantidas > 0) campo.tags_mantidas = principal.tags_mantidas
         opsBuilt++
         campo.para = truncate(e.value)
         anchor.applied = true // confirmado abaixo se o splice sobreviver
@@ -554,6 +725,7 @@ export function copyMergeByExample(
       hero_values: heroValues,
       texto_orfao: textoOrfao,
       exemplos_limpos: exemplosLimpos,
+      itens_removidos: itensRemovidos,
       escopo: scopes.size > 0 ? "por_bloco" : "global",
       escopo_degradado: escopoDegradado,
     },

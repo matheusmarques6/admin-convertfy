@@ -759,3 +759,59 @@ export function orphanTextFragments(
         : 1,
   )
 }
+
+// ── Replacement de âncora costurada — tags balanceadas ─────────────────
+
+/** Tags que podem sumir no splice: quebra de linha, não elemento. */
+const VOID_INLINE_RE = /^<\/?(?:br|wbr)\b/i
+
+/**
+ * O que escrever no lugar de um range COSTURADO.
+ *
+ * O range de uma âncora costurada é contíguo no source e atravessa as tags
+ * do vão. Até 02/09 o splice trocava o trecho inteiro por texto puro — e
+ * levava as tags junto. No body-4 da Innova Bay o example é
+ * `<span class="mark" style="font-size:14px;">[2]</span> dolor sit amet,`:
+ * o `</span>` sumiu, a copy caiu DENTRO do span de 14px e 11 itens saíram
+ * a 14px em vez de 20px (os títulos das colunas a 15px em vez de 30px). O
+ * "espaçamento enorme" que o cliente viu era texto pequeno numa linha
+ * desenhada para texto grande.
+ *
+ * Regra: toda tag de ELEMENTO do trecho fica (o original era balanceado;
+ * tirar só texto mantém o balanço); `<br>`/`<wbr>` caem, como antes
+ * ("Title<br>Here" segue virando "WHY INNOVABAY"). A copy entra no segmento
+ * de texto de MAIOR participação no example (empate → o último) e os
+ * demais segmentos ficam vazios. Trecho sem tag devolve a copy como está.
+ */
+export function replacementCosturado(
+  raw: string,
+  copy: string,
+): { texto: string; tags_mantidas: number } {
+  if (!/<[^>]+>/.test(raw)) return { texto: copy, tags_mantidas: 0 }
+  const tokens = raw.split(/(<[^>]+>)/)
+  const out: string[] = []
+  const textIdx: number[] = []
+  let tagsMantidas = 0
+  tokens.forEach((t, i) => {
+    if (i % 2 === 1) {
+      if (VOID_INLINE_RE.test(t)) return
+      out.push(t)
+      tagsMantidas++
+      return
+    }
+    textIdx.push(out.length)
+    out.push(t)
+  })
+  if (textIdx.length === 0) return { texto: copy, tags_mantidas: tagsMantidas }
+  let main = textIdx[textIdx.length - 1]
+  let best = -1
+  for (const idx of textIdx) {
+    const len = normalizeForMatch(out[idx]).length
+    if (len >= best) {
+      best = len
+      main = idx
+    }
+  }
+  for (const idx of textIdx) out[idx] = idx === main ? copy : ""
+  return { texto: out.join(""), tags_mantidas: tagsMantidas }
+}

@@ -478,3 +478,40 @@ describe("pareceExemplo — lorem e marcador", () => {
     expect(pareceExemplo("Click the link below to track your order")).toBe(false)
   })
 })
+
+// ── Replacement costurado com as tags balanceadas (02/09, body-4) ────────
+import { replacementCosturado } from "./anchor-match"
+
+describe("replacementCosturado", () => {
+  it("marca [N] da biblioteca: o </span> fica e a copy cai FORA do span", () => {
+    const raw = '[2]</span> dolor sit amet,'
+    const r = replacementCosturado(raw, "Lifetime guarantee on every order")
+    expect(r.texto).toBe("</span>Lifetime guarantee on every order")
+    expect(r.tags_mantidas).toBe(1)
+  })
+
+  it("título de coluna [7]</span> TITLE → copy depois do span", () => {
+    expect(replacementCosturado("[7]</span> TITLE", "OTHERS").texto).toBe("</span>OTHERS")
+  })
+
+  it("wrapper inteiro no vão fica balanceado", () => {
+    const raw = 'Use code <strong style="font-weight:700;">CODECODE</strong> for XXXX% off'
+    const r = replacementCosturado(raw, "Use code WELCOME10 for 10% off")
+    expect(r.texto).toBe('<strong style="font-weight:700;"></strong>Use code WELCOME10 for 10% off')
+    expect(r.tags_mantidas).toBe(2)
+  })
+
+  it("<br> continua caindo (Title<br>Here → WHY INNOVABAY)", () => {
+    const r = replacementCosturado("Title<br>Here", "WHY INNOVABAY")
+    expect(r.texto).toBe("WHY INNOVABAY")
+    expect(r.tags_mantidas).toBe(0)
+  })
+
+  it("trecho sem tag devolve a copy como está; vazio esvazia mantendo as tags", () => {
+    expect(replacementCosturado("Shop Now", "SHOP 10% OFF")).toEqual({
+      texto: "SHOP 10% OFF",
+      tags_mantidas: 0,
+    })
+    expect(replacementCosturado("[13]</span> dolor sit amet", "").texto).toBe("</span>")
+  })
+})

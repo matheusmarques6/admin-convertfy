@@ -59,7 +59,7 @@ export function contarTracos(texto: string): number {
  * referencia os campos novos — então a correção passou a ser nossa, no
  * agente que já reescreve campo e cujo veredicto é do código.
  */
-export type MotivoDeAlvo = "max_len" | "travessao" | "idioma"
+export type MotivoDeAlvo = "max_len" | "travessao" | "idioma" | "ausente"
 
 /** Um campo a corrigir, endereçado para o prompt e para a tela. */
 export interface AlvoDeEncurtamento {
@@ -82,6 +82,39 @@ export interface AlvoDeEncurtamento {
   idioma_detectado?: IdiomaDetectado
   /** O idioma da loja (`client_stores.language`), como está gravado. */
   idioma_esperado?: string
+  /**
+   * Só no motivo `ausente`: os itens já preenchidos da MESMA lista
+   * (`column_b_item_1..5` para um `column_b_item_6` vazio). É o material
+   * de que o modelo cria o item que faltou — e a régua do guard
+   * `igual_a_irmao`.
+   */
+  irmaos?: string[]
+}
+
+const ITEM_DE_LISTA_RE = /^(.*)_item_(\d+)$/i
+
+/**
+ * Itens preenchidos da lista a que `key` pertence (mesmo prefixo,
+ * `_item_N`), na ordem dos fields. Vazio quando a key não é de lista.
+ */
+export function irmaosDeLista(
+  key: string,
+  fields: ReadonlyArray<BlueprintBlockField>,
+  content: Record<string, unknown> | null | undefined,
+): string[] {
+  const m = ITEM_DE_LISTA_RE.exec(key)
+  if (!m) return []
+  const prefixo = m[1].toLowerCase()
+  const out: string[] = []
+  for (const f of fields) {
+    if (f.key === key) continue
+    const fm = ITEM_DE_LISTA_RE.exec(f.key)
+    if (!fm || fm[1].toLowerCase() !== prefixo) continue
+    if (deriveFieldNature(f) !== "copy") continue
+    const v = String(content?.[f.key] ?? "").trim()
+    if (v) out.push(v)
+  }
+  return out
 }
 
 /**
@@ -113,7 +146,36 @@ export function alvosDeEncurtamento(
     for (const f of fields) {
       if (deriveFieldNature(f) !== "copy") continue
       const texto = String(b.content?.[f.key] ?? "").trim()
-      if (!texto) continue
+      if (!texto) {
+        // ITEM AUSENTE (02/09, body-4): o n8n devolveu 5 dos 6 itens da
+        // coluna "Others" e o badge "6" foi ao cliente sem texto. O
+        // contrato diz `required:false` e o flow ignora as nossas
+        // diretivas — então quem cria o item é o encurtador, a partir dos
+        // irmãos, sob o mesmo guard (idioma, tamanho, não repetir irmão).
+        // Só item de LISTA com ≥ 2 irmãos preenchidos: não é licença para
+        // inventar copy de campo solto.
+        const irmaos = irmaosDeLista(f.key, fields, b.content)
+        if (irmaos.length < 2) continue
+        out.push({
+          id: `${position}.${f.key}`,
+          position,
+          block_id: b.id ?? null,
+          type: b.block_type ?? "",
+          key: f.key,
+          label: f.label || f.key,
+          orientacao: f.guidance || "",
+          texto: "",
+          max: f.max_len,
+          min: f.min_len ?? null,
+          motivos: ["ausente"],
+          tracos: 0,
+          irmaos,
+          ...((idiomaDaLoja ?? "").trim()
+            ? { idioma_esperado: (idiomaDaLoja ?? "").trim() }
+            : {}),
+        })
+        continue
+      }
       const max = estouroPorChave.get(f.key)
       const tracos = contarTracos(texto)
       const idioma = idiomaDivergente(texto, idiomaDaLoja)
@@ -161,6 +223,8 @@ export type MotivoDeRecusa =
   | "idioma_permaneceu"
   /** A reescrita TROCOU a língua de um campo que já estava certo. */
   | "mudou_de_idioma"
+  /** Item criado para a lista repete (ou parafraseia) um irmão. */
+  | "igual_a_irmao"
 
 export interface VeredictoDeReescrita {
   ok: boolean
@@ -190,12 +254,20 @@ export function aceitarReescrita(
      * língua do campo, tenha ela entrado por tamanho, travessão ou idioma.
      */
     idiomaEsperado?: string | null
+    /** Só no motivo `ausente`: o item novo não pode repetir um irmão. */
+    irmaos?: ReadonlyArray<string> | null
   },
 ): VeredictoDeReescrita {
   const motivos = limites.motivos ?? ["max_len"]
   const texto = typeof novo === "string" ? novo.trim() : ""
   if (!texto) return { ok: false, motivo: "vazio" }
   if (texto === original.trim()) return { ok: false, motivo: "identico" }
+  if (motivos.includes("ausente") && limites.irmaos?.length) {
+    const chave = chaveDeComparacao(texto)
+    if (limites.irmaos.some((i) => chaveDeComparacao(i) === chave)) {
+      return { ok: false, motivo: "igual_a_irmao" }
+    }
+  }
   // Pediu para tirar o traço e o traço continua lá: o agente não fez o
   // trabalho. Vale mesmo que o texto tenha encurtado.
   if (motivos.includes("travessao") && contarTracos(texto) > 0) {
@@ -245,6 +317,15 @@ export function aceitarReescrita(
     return { ok: false, motivo: "abaixo_do_minimo" }
   }
   return { ok: true }
+}
+
+/** Minúsculas, sem pontuação final, espaços colapsados — "igual" de gente. */
+function chaveDeComparacao(t: string): string {
+  return t
+    .toLowerCase()
+    .replace(/[.!?,;:]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 /**

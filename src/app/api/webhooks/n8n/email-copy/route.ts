@@ -717,7 +717,7 @@ export async function POST(request: NextRequest) {
         for (let i = copyDeviations.length - 1; i >= 0; i--) {
           const d = copyDeviations[i]
           if (
-            d.kind === "max_len" &&
+            (d.kind === "max_len" || d.kind === "missing") &&
             corrigidos.has(`${d.position}.${String(d.key)}`)
           ) {
             copyDeviations.splice(i, 1)

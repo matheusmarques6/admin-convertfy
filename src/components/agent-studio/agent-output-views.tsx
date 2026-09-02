@@ -960,6 +960,7 @@ interface DeParaView {
 }
 
 const MOTIVO_DE_RECUSA: Record<string, string> = {
+  igual_a_irmao: "o item criado repete um irmão da lista",
   ainda_acima_do_limite: "a reescrita continuou acima do limite",
   vazio: "veio vazia",
   identico: "devolveu a mesma frase",
@@ -993,6 +994,10 @@ export function CopyFitView({ output }: { output: unknown }) {
   // teto duas vezes. Número alto = o modelo não está fazendo o trabalho.
   const peloCodigo = Number(o.corrigidos_pelo_codigo ?? 0)
   const traducoesRecusadas = Number(o.traducoes_recusadas ?? 0)
+  // Item de lista que o gerador pulou (02/09): quantos entraram e quantos
+  // o modelo criou. O resto sai do email pelo merge.
+  const comAusente = Number(o.com_ausente ?? 0)
+  const ausentesPreenchidos = Number(o.ausentes_preenchidos ?? 0)
   // Um campo pode ter mais de um motivo (estourou E tem traço), então isto
   // NÃO é uma partição: cada número conta quantos campos têm aquele motivo.
   // Contar por subtração dava negativo assim que o terceiro motivo entrou.
@@ -1026,6 +1031,12 @@ export function CopyFitView({ output }: { output: unknown }) {
         )}
         {traducoesRecusadas > 0 && (
           <OutPill text={`${traducoesRecusadas} tradução(ões) recusada(s)`} tone="warn" />
+        )}
+        {comAusente > 0 && (
+          <OutPill
+            text={`${ausentesPreenchidos}/${comAusente} item(ns) ausente(s) criado(s)`}
+            tone={ausentesPreenchidos === comAusente ? "pos" : "warn"}
+          />
         )}
         {Number(o.mantidos ?? 0) > 0 && (
           <OutPill text={`${o.mantidos} mantido(s) como estava(m)`} tone="warn" />
@@ -1067,6 +1078,7 @@ export function CopyFitView({ output }: { output: unknown }) {
               const porEstouroAqui = motivos.includes("max_len")
               const porTraco = motivos.includes("travessao")
               const porIdioma = motivos.includes("idioma")
+              const porAusente = motivos.includes("ausente")
               return (
               <OutItem key={`${d.position}-${d.key}-${i}`}>
                 <div
@@ -1096,13 +1108,20 @@ export function CopyFitView({ output }: { output: unknown }) {
                       idioma {d.idioma_antes ?? "?"} → {d.idioma_depois ?? "?"}
                     </span>
                   )}
+                  {porAusente && (
+                    <span style={{ ...OUT_BODY, ...TNUM, color: C.g400 }}>
+                      item ausente → {d.depois_len ?? "—"} (máx {d.max ?? "?"})
+                    </span>
+                  )}
                   <span style={{ marginLeft: "auto" }}>
                     <OutPill
                       text={
                         d.aceito
                           ? d.motivo === "fallback_codigo"
                             ? "cortado pelo código"
-                            : "aplicado"
+                            : porAusente
+                              ? "criado"
+                              : "aplicado"
                           : "recusado"
                       }
                       tone={d.aceito ? (d.motivo === "fallback_codigo" ? "info" : "pos") : "warn"}

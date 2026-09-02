@@ -74,7 +74,7 @@ const log = logger.child("CopyFit")
 // modelo, mesmo preço (normalizeModelKey tira o vendor), outro caminho.
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
-const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão e reescreve no idioma da loja o campo que voltou na língua errada.
+const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
 
 REGRAS
 - Reescreva CADA campo recebido para caber em max_caracteres. O limite é o tamanho real do slot no HTML: passar dele faz o texto vazar da caixa.
@@ -84,6 +84,7 @@ REGRAS
 - Não use reticências nem corte a frase no meio: entregue frase inteira e bem terminada.
 - Não invente informação que não esteja no texto original.
 - Respeite min_caracteres quando existir.
+- ITEM AUSENTE: campo marcado com criar_item_da_lista veio VAZIO do gerador. Escreva UM item novo para a mesma lista, no mesmo idioma, tom, pessoa e tamanho dos itens_irmaos, coerente com a orientacao do campo e com o argumento da lista — sem repetir nem parafrasear nenhum irmão. É a única situação em que você cria texto que não estava no original.
 - TRAVESSÃO: campo marcado com remover_travessao tem de voltar SEM travessão (—) e SEM meia-risca (–). Não troque o traço por hífen nem por reticências: use vírgula, ponto ou uma conjunção, o que soar natural NO IDIOMA DO TEXTO. Hífen DENTRO de palavra (OBD-II, e-mail, zero-risk) é parte da palavra: não mexa.
 - Campo com remover_travessao e sem encurtar pode ficar um pouco maior que o original, desde que caiba em max_caracteres — tirar o traço às vezes custa uma conjunção.
 
@@ -222,6 +223,11 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       // trocou nos 14 campos — inclusive nos 14 que não tinham a marca.
       // Agora o idioma é UMA declaração no topo, igual para todo campo.
       traduzir_para_o_idioma_da_loja: a.motivos.includes("idioma") || undefined,
+      // Item de lista que o gerador NÃO devolveu (02/09): o modelo cria um
+      // a partir dos irmãos. É a única situação em que o encurtador
+      // escreve o que não estava lá — e o guard cobra que não repita.
+      criar_item_da_lista: a.motivos.includes("ausente") || undefined,
+      itens_irmaos: a.motivos.includes("ausente") ? a.irmaos : undefined,
       orientacao: a.orientacao || undefined,
     })),
     null,
@@ -347,7 +353,10 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           const idioma = a.motivos.includes("idioma")
             ? ` idioma ${a.idioma_detectado}→${a.idioma_esperado}`
             : ""
-          return `${a.key}${tamanho}${traco}${idioma}`
+          const ausente = a.motivos.includes("ausente")
+            ? ` ausente (${a.irmaos?.length ?? 0} irmãos)`
+            : ""
+          return `${a.key}${tamanho}${traco}${idioma}${ausente}`
         })
         .join(" · "),
     },
@@ -417,6 +426,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           min: alvo.min,
           motivos: alvo.motivos,
           idiomaEsperado: alvo.idioma_esperado,
+          irmaos: alvo.irmaos,
         })
         if (veredicto.ok) {
           motivos.delete(alvo.id)
@@ -444,7 +454,9 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     // e não trocar de língua.
     const pelosCodigo = new Set<string>()
     for (const alvo of pendentes) {
-      if (alvo.motivos.includes("idioma")) continue
+      // Idioma não tem corte mecânico; item AUSENTE não tem texto para
+      // cortar — se o modelo não criou, o merge remove o item limpo.
+      if (alvo.motivos.includes("idioma") || alvo.motivos.includes("ausente")) continue
       const corte = encurtarPorFrase(alvo.texto, alvo.max)
       if (corte == null) continue
       const veredicto = aceitarReescrita(alvo.texto, corte, {
@@ -540,6 +552,12 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         // devolver o campo em outra língua e o CÓDIGO barrou. Se voltar a
         // subir, é o prompt que está escorregando de novo.
         traducoes_recusadas: traducoesRecusadas,
+        // Itens de lista que o gerador pulou e o modelo criou (02/09). O
+        // que não foi preenchido sai do email pelo merge (badge + linha).
+        com_ausente: input.alvos.filter((a) => a.motivos.includes("ausente")).length,
+        ausentes_preenchidos: de_para.filter(
+          (d) => d.motivos.includes("ausente") && d.aceito,
+        ).length,
         de_para,
       },
       tokensInput,

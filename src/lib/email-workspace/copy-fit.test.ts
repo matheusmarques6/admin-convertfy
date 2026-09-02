@@ -571,3 +571,80 @@ describe("encurtarPorFrase", () => {
     expect(encurtarPorFrase("abc", 0)).toBeNull()
   })
 })
+
+// ── Item de lista ausente (02/09, body-4 coluna "Others") ───────────────
+import { irmaosDeLista } from "./copy-fit"
+
+describe("motivo ausente", () => {
+  const LISTA: BlocoComContrato = {
+    id: "b-body4",
+    position: 2,
+    block_type: "body",
+    fields: [
+      campo({ key: "column_b_title", type: "text_short", max_len: 20 }),
+      campo({ key: "column_b_item_1", type: "text_short", max_len: 48, guidance: "ponto negativo dos concorrentes" }),
+      campo({ key: "column_b_item_2", type: "text_short", max_len: 48 }),
+      campo({ key: "column_b_item_3", type: "text_short", max_len: 48 }),
+      campo({ key: "column_b_item_6", type: "text_short", max_len: 48, guidance: "ponto negativo dos concorrentes" }),
+      campo({ key: "closing_copy", type: "text_long", max_len: 200 }),
+    ],
+    content: {
+      column_b_title: "OTHERS",
+      column_b_item_1: "Limited or no return window",
+      column_b_item_2: "Generic ratings with no context",
+      column_b_item_3: "Vague descriptions, hard to compare",
+    },
+  }
+
+  it("irmaosDeLista: só os itens preenchidos do mesmo prefixo", () => {
+    expect(irmaosDeLista("column_b_item_6", LISTA.fields ?? [], LISTA.content)).toEqual([
+      "Limited or no return window",
+      "Generic ratings with no context",
+      "Vague descriptions, hard to compare",
+    ])
+    expect(irmaosDeLista("closing_copy", LISTA.fields ?? [], LISTA.content)).toEqual([])
+  })
+
+  it("item vazio de lista com ≥2 irmãos vira alvo `ausente` com os irmãos; campo solto vazio não", () => {
+    const alvos = alvosDeEncurtamento([LISTA], { idiomaDaLoja: "en" })
+    expect(alvos.map((a) => a.key)).toEqual(["column_b_item_6"])
+    expect(alvos[0]).toMatchObject({
+      id: "2.column_b_item_6",
+      texto: "",
+      max: 48,
+      motivos: ["ausente"],
+      idioma_esperado: "en",
+      orientacao: "ponto negativo dos concorrentes",
+    })
+    expect(alvos[0].irmaos).toHaveLength(3)
+    // a tela de estouros não muda: ausente não é estouro
+    expect(resumoDeEstouros([LISTA])).toEqual([])
+  })
+
+  it("lista com só um irmão preenchido NÃO cria alvo (sem material)", () => {
+    const pouca: BlocoComContrato = {
+      ...LISTA,
+      content: { column_b_item_1: "Limited or no return window" },
+    }
+    expect(alvosDeEncurtamento([pouca])).toEqual([])
+  })
+
+  it("guard: item criado que repete um irmão é recusado; um novo é aceito", () => {
+    const limites = {
+      max: 48,
+      motivos: ["ausente"] as MotivoDeAlvo[],
+      idiomaEsperado: "en",
+      irmaos: ["Limited or no return window", "Generic ratings with no context"],
+    }
+    expect(aceitarReescrita("", "generic ratings with no context.", limites)).toEqual({
+      ok: false,
+      motivo: "igual_a_irmao",
+    })
+    expect(aceitarReescrita("", "", limites)).toEqual({ ok: false, motivo: "vazio" })
+    expect(aceitarReescrita("", "Hidden fees at checkout", limites)).toEqual({ ok: true })
+    expect(aceitarReescrita("", "x".repeat(60), limites)).toEqual({
+      ok: false,
+      motivo: "ainda_acima_do_limite",
+    })
+  })
+})

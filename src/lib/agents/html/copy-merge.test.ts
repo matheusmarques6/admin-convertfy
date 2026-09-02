@@ -232,11 +232,14 @@ describe("copyMergeByExample", () => {
     ])
     expect(r.html).not.toContain("dolor sit amet")
     expect(r.html).not.toContain("[13]")
+    // Item de LISTA sem copy sai com a linha inteira (02/09, 2ª rodada):
+    // a linha só tinha o exemplo, então é removida — não sobra span vazio.
     expect(r.report.campos[0]).toMatchObject({
       desfecho: "ancorado_exemplo",
-      motivo: "copy_ausente_limpo",
+      motivo: "item_removido",
       para: "",
     })
+    expect(r.html).toBe("<table></table>")
     expect(r.report.exemplos_limpos).toHaveLength(1)
     expect(r.report.exemplos_limpos[0].key).toBe("column_b_item_6")
   })
@@ -751,5 +754,102 @@ describe("applyStructuralFills — token de plataforma sem dono", () => {
     const r = applyStructuralFills(html, { brandName: "InnovaBay" })
     expect(r.html).toContain("WELCOME10")
     expect(r.cleaned).not.toContain("WELCOME10")
+  })
+})
+
+// ── Body 4 "Why Innovabay" (02/09): marca [N] e item órfão ──────────────
+//
+// Linhas REAIS da variante `body 4 - bridge fundo cards` (coluna B, itens
+// 5 e 6). A marca `[N]` é um span de 14px; o texto vive FORA dele a 20px.
+const ITEM_ROW = (n: number, mark: number, padTop: string, padText: string, texto: string) => `
+                      <!-- item ${n} -->
+                      <tr>
+                        <td align="center" style="padding:${padTop} 0 0 0;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:27px;">
+                            <tr><td align="center" height="27" style="width:27px;height:27px;background:#FFFFFF;border-radius:14px;font-family:Arial,Helvetica,sans-serif;font-size:17px;line-height:27px;color:#000000;">${n}</td></tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td align="center" class="txt-blk" style="padding:${padText};font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;font-weight:400;color:#000000;">
+                          <span class="mark" style="font-size:14px;">[${mark}]</span> ${texto}
+                        </td>
+                      </tr>
+`
+const PAINEL_B = (itens: string) => `<table role="presentation" width="272">
+                      <tr>
+                        <td align="center" class="txt-blk" style="padding:18px 26px 0 26px;font-size:30px;line-height:34px;font-weight:700;color:#000000;">
+                          <span class="mark" style="font-size:15px;">[7]</span> TITLE
+                        </td>
+                      </tr>
+${itens}
+                    </table>`
+
+describe("body-4: marca [N] costurada e item órfão", () => {
+  const fields = [
+    { key: "column_b_title", example: "[7] TITLE" },
+    { key: "column_b_item_5", example: "[12] dolor sit amet, consectetur adipiscing" },
+    { key: "column_b_item_6", example: "[13] dolor sit amet, consectetur adipiscing" },
+  ]
+  const html = PAINEL_B(
+    ITEM_ROW(5, 12, "18px", "6px 26px 0 26px", "dolor sit amet, consectetur adipiscing") +
+      ITEM_ROW(6, 13, "45px", "6px 26px 44px 26px", "dolor sit amet, consectetur adipiscing"),
+  )
+
+  it("a copy cai FORA do span da marca — o </span> sobrevive e o texto fica a 20px", () => {
+    const r = copyMergeByExample(html, [
+      block(fields, {
+        column_b_title: "OTHERS",
+        column_b_item_5: "Broad promises without real numbers",
+        column_b_item_6: "Hidden fees at checkout",
+      }),
+    ])
+    const abre = (r.html.match(/<span/g) ?? []).length
+    const fecha = (r.html.match(/<\/span>/g) ?? []).length
+    expect(abre).toBe(3)
+    expect(fecha).toBe(3)
+    expect(r.html).toContain('<span class="mark" style="font-size:15px;"></span>OTHERS')
+    expect(r.html).toContain('<span class="mark" style="font-size:14px;"></span>Broad promises without real numbers')
+    expect(r.html).not.toMatch(/font-size:14px;">Broad/)
+    const campo = r.report.campos.find((c) => c.key === "column_b_item_5")
+    expect(campo).toMatchObject({ costurado: true, tags_mantidas: 1 })
+  })
+
+  it("item 6 sem copy: badge + linha saem, e o 44px de fecho vai para o item 5", () => {
+    const r = copyMergeByExample(html, [
+      block(fields, {
+        column_b_title: "OTHERS",
+        column_b_item_5: "Broad promises without real numbers",
+      }),
+    ])
+    expect(r.html).not.toContain(">6</td>")
+    expect(r.html).not.toContain("[13]")
+    expect(r.html).not.toContain("padding:45px 0 0 0;")
+    // o item 5 continua, agora fechando o painel com o respiro do 6
+    expect(r.html).toContain("Broad promises without real numbers")
+    expect(r.html).toContain("padding:6px 26px 44px 26px;")
+    expect(r.report.itens_removidos).toEqual([
+      { block_id: "blk-1", key: "column_b_item_6", badge: true, padding_transferido: 44 },
+    ])
+    expect(r.report.campos.find((c) => c.key === "column_b_item_6")).toMatchObject({
+      motivo: "item_removido",
+      para: "",
+    })
+    // documento continua balanceado
+    expect((r.html.match(/<tr>/g) ?? []).length).toBe((r.html.match(/<\/tr>/g) ?? []).length)
+  })
+
+  it("campo sem copy que NÃO é item de lista continua só esvaziado", () => {
+    const r = copyMergeByExample(html, [
+      block(fields, {
+        column_b_item_5: "Broad promises without real numbers",
+        column_b_item_6: "Hidden fees at checkout",
+      }),
+    ])
+    expect(r.report.itens_removidos).toEqual([])
+    expect(r.report.campos.find((c) => c.key === "column_b_title")).toMatchObject({
+      motivo: "copy_ausente_limpo",
+    })
+    expect(r.html).toContain('<span class="mark" style="font-size:15px;"></span>')
   })
 })
