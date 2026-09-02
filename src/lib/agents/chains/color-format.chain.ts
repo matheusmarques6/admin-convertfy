@@ -104,6 +104,7 @@ never send a background and the text on it to the same color in the same batch.
 
 <button_rules>
 Buttons/CTAs are your special focus:
+- Every SATURATED color in the inventory that is not a palette role MUST receive an op — leaving it is the same as choosing it. Library example colors (a red list, a blue label) are never "part of the design".
 - A button background outside the palette must become a palette color (role Principal or Destaque). Its label's "contraste_min" in the inventory tells you whether the current pair is already broken; the applier guarantees the label stays readable after your swap.
 - CONSISTENCY: buttons of the same importance share the same colors — if the inventory shows two different button backgrounds with similar counts, unify to the palette role.
 - The hero button IS in scope — recolor applies to the whole document, hero included; color values only, never copy or structure (recolor cannot change structure by design).

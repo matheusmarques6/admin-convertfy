@@ -120,6 +120,8 @@ export interface AssembledStats {
   /** Posições que ficaram FORA do email. */
   skipped: SkippedBlock[]
   fontsNormalized: number
+  /** Declarações de `font-weight` conformadas ao peso da marca (02/09). */
+  weightsNormalized: number
   chars: number
   /**
    * Seções cuja variante não é table-based e foi embrulhada em `<tr><td>`.
@@ -141,7 +143,12 @@ export interface AssembledStats {
 export interface AssembleDocumentInput {
   slots: AssemblySlot[]
   /** Fontes aprovadas da loja. Ausentes → nenhuma normalização. */
-  fonts?: { heading?: string | null; body?: string | null }
+  fonts?: {
+    heading?: string | null
+    body?: string | null
+    headingWeight?: string | null
+    bodyWeight?: string | null
+  }
   lang?: string
 }
 
@@ -221,6 +228,7 @@ export function assembleDocument(
       variants,
       skipped,
       fontsNormalized: normalized.replaced,
+      weightsNormalized: normalized.weightsReplaced,
       chars: normalized.html.length,
       wrappedUnknown,
       unshelled,
@@ -284,7 +292,12 @@ function documentShell(
   rows: string,
   lang: string,
   variantStyles: string[] = [],
-  fonts: { heading?: string | null; body?: string | null } = {},
+  fonts: {
+    heading?: string | null
+    body?: string | null
+    headingWeight?: string | null
+    bodyWeight?: string | null
+  } = {},
 ): string {
   return `<!DOCTYPE html>
 <html lang="${lang}" xmlns="http://www.w3.org/1999/xhtml">

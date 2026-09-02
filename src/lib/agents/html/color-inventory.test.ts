@@ -11,6 +11,8 @@ import {
   applyRecolor,
   canonicalHex,
   isColorLiteral,
+  coresForaDaPaleta,
+  hslDe,
 } from "./color-inventory"
 
 const DOC = [
@@ -303,5 +305,46 @@ describe("área: fundo de container tem largura, borda não", () => {
     expect(declaredWidth('<table width="598" style="max-width:600px">')).toBe(600)
     expect(declaredWidth('<td width="100%">')).toBeNull()
     expect(declaredWidth("<td>")).toBeNull()
+  })
+})
+
+// ── Guard de paleta (02/09) ─────────────────────────────────────────────
+describe("coresForaDaPaleta", () => {
+  const PALETA = {
+    bg: "#FFFFFF", text: "#1F1F1F", heading: "#1F1F1F", button_bg: "#034326",
+    button_text: "#FFFFFF", accent: "#034326", surface: "#F2F2F2", surface_strong: "#E3E3E3",
+  }
+  // O bloco body-4 da Innova Bay como saiu do agente: vermelho de exemplo
+  // nos itens, cinza de painel na paleta, verde da marca nos botões.
+  const HTML = [
+    '<table><tr><td style="background:#F2F2F2">',
+    '<p style="color:#D00000;font-weight:700">INNOVA BAY</p>',
+    '<p style="color:#D00000">Verified results</p>',
+    '<p style="color:#1F1F1F">texto normal</p>',
+    '<td style="border:1px solid #DDDDDD">x</td>',
+    '<a style="background:#034326;color:#FFFFFF">CTA</a>',
+    "</td></tr></table>",
+  ].join("\n")
+
+  it("acha o vermelho de exemplo e manda para o accent; cinza e paleta ficam", () => {
+    const r = coresForaDaPaleta(HTML, PALETA)
+    expect(r).toEqual([
+      { valor: "#D00000", contexto: "color", ocorrencias: 2, para: "#034326" },
+    ])
+  })
+
+  it("fundo saturado fora da paleta vai para surface", () => {
+    const r = coresForaDaPaleta('<td style="background:#2A5BD7">x</td>', PALETA)
+    expect(r[0]).toMatchObject({ valor: "#2A5BD7", contexto: "background", para: "#F2F2F2" })
+  })
+
+  it("neutro fora da paleta não é caso do guard", () => {
+    expect(coresForaDaPaleta('<p style="color:#777777">x</p>', PALETA)).toEqual([])
+    expect(coresForaDaPaleta('<p style="color:#FAFAFA">x</p>', PALETA)).toEqual([])
+  })
+
+  it("hslDe: vermelho puro é saturado; cinza não", () => {
+    expect(hslDe("#D00000").s).toBeGreaterThan(0.9)
+    expect(hslDe("#777777").s).toBe(0)
   })
 })

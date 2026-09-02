@@ -353,3 +353,73 @@ export function applyRecolor(
   }
   return { html: out, replaced }
 }
+
+// ── Guard de paleta (02/09) ─────────────────────────────────────────────
+
+/** Saturação e luminosidade HSL de um hex canônico. */
+export function hslDe(hex: string): { s: number; l: number } {
+  const full = canonicalHex(hex).slice(1)
+  const r = parseInt(full.slice(0, 2), 16) / 255
+  const g = parseInt(full.slice(2, 4), 16) / 255
+  const b = parseInt(full.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (max === min) return { s: 0, l }
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  return { s, l }
+}
+
+export interface CorForaDaPaleta {
+  valor: string
+  /** Papel dominante da cor no documento (o que decide o destino). */
+  contexto: ColorContext
+  ocorrencias: number
+  para: string
+}
+
+/**
+ * Cores SATURADAS que o agente de cor deixou no documento e que não são
+ * papel da paleta.
+ *
+ * Innova Bay, 02/09: o `#D00000` do exemplo da variante body-4 (itens e
+ * títulos das colunas) estava no inventário de 149 ocorrências, o agente
+ * emitiu 15 ops trocando pretos e cinzas pelo verde da marca e não mapeou
+ * o vermelho. Fail-open sem guard: a cor da biblioteca foi ao cliente.
+ *
+ * A régua é conservadora: só cor com saturação alta (s > 0,5) e fora dos
+ * extremos de luminosidade — o vermelho de exemplo, não um cinza de borda
+ * nem um branco quase-branco. Cinza/neutro fora da paleta é escolha de
+ * design que o agente já viu e deixou; vermelho de biblioteca não é.
+ *
+ * Destino por papel: texto → `accent` (uma cor saturada em texto é
+ * ênfase, e ênfase da marca é o accent); fundo → `surface`; borda →
+ * `accent`. O aplicador (`applyOps`) traz a guarda de contraste — texto
+ * que ficar ilegível sobre o fundo é reescrito por ela.
+ */
+export function coresForaDaPaleta(
+  html: string,
+  paleta: { text: string; accent: string; surface: string; heading?: string; bg?: string; button_bg?: string; button_text?: string; surface_strong?: string },
+): CorForaDaPaleta[] {
+  const aprovadas = new Set(
+    [paleta.text, paleta.accent, paleta.surface, paleta.heading, paleta.bg, paleta.button_bg, paleta.button_text, paleta.surface_strong, "#FFFFFF", "#000000"]
+      .filter((c): c is string => typeof c === "string" && isColorLiteral(c))
+      .map(canonicalHex),
+  )
+  const out: CorForaDaPaleta[] = []
+  for (const e of extractColorInventory(html)) {
+    const valor = canonicalHex(e.valor)
+    if (aprovadas.has(valor)) continue
+    const { s, l } = hslDe(valor)
+    if (s <= 0.5 || l < 0.12 || l > 0.9) continue
+    const contexto = (Object.entries(e.contextos).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] ??
+      "outro") as ColorContext
+    if (contexto === "css-var" || contexto === "outro") continue
+    const para =
+      contexto === "background" || contexto === "bgcolor" ? paleta.surface : paleta.accent
+    if (!isColorLiteral(para) || canonicalHex(para) === valor) continue
+    out.push({ valor, contexto, ocorrencias: e.ocorrencias, para: canonicalHex(para) })
+  }
+  return out
+}

@@ -657,6 +657,10 @@ const EXEMPLO_RE: RegExp[] = [
   // veio sem copy e o lorem da arte foi para o cliente com o marcador.
   /\blorem\b|\bipsum\b|\bdolor sit amet\b|\bconsectetur\b|\badipiscing\b/i,
   /^\s*\[\d{1,2}\]/,
+  // "Link Here" ×6 no rodapé (02/09): rótulo de navegação de exemplo sem
+  // campo de copy — cadastro da variante, mas tem de ser visível.
+  /\blink\s+here\b/i,
+  /\blink\s*\d\b/i,
   /\bselo\s*\d/i,
   /\boff\s*\d\b/i,
   /\blorem ipsum\b/i,

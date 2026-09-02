@@ -238,7 +238,7 @@ export async function generateBlueprintAndReference(
     // novo a cada geração, então trocar de fonte não invalida a arquitetura.
     admin
       .from("store_brand_identity")
-      .select("font_heading, font_body")
+      .select("font_heading, font_body, font_heading_weight, font_body_weight")
       .eq("store_id", input.storeId)
       .order("version", { ascending: false })
       .limit(1)
@@ -262,6 +262,8 @@ export async function generateBlueprintAndReference(
   const outline = (outlineRes.data as EmailOutlineTemplate | null) ?? null
   const brand = brandRes.data as {
     font_heading?: string | null
+    font_heading_weight?: string | null
+    font_body_weight?: string | null
     font_body?: string | null
   } | null
   const intents = (intentsRes.data ?? []) as Array<{
@@ -519,6 +521,8 @@ export async function generateBlueprintAndReference(
     structure,
     defaultModel,
     fontHeading: brand?.font_heading ?? null,
+    fontHeadingWeight: brand?.font_heading_weight ?? null,
+    fontBodyWeight: brand?.font_body_weight ?? null,
     fontBody: brand?.font_body ?? null,
     // Contrato editorial do vault + decisão do Estruturador — critérios de
     // escolha do Curador. A decisão só desce quando foi CONSUMIDA (modo on):

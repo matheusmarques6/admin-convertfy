@@ -158,22 +158,77 @@ function looksLikeHeading(ctx: string): boolean {
  */
 export function normalizeFonts(
   html: string,
-  fonts: { heading?: string | null; body?: string | null },
-): { html: string; replaced: number } {
+  fonts: {
+    heading?: string | null
+    body?: string | null
+    /** Peso de título da marca ("black 900", "700", "Bold") — opcional. */
+    headingWeight?: string | null
+    /** Peso de corpo da marca ("Regular 400") — opcional. */
+    bodyWeight?: string | null
+  },
+): { html: string; replaced: number; weightsReplaced: number } {
   const heading = (fonts.heading ?? "").trim()
   const body = (fonts.body ?? "").trim()
-  if (!heading && !body) return { html, replaced: 0 }
+  const headingWeight = pesoNumerico(fonts.headingWeight)
+  const bodyWeight = pesoNumerico(fonts.bodyWeight)
+  if (!heading && !body && !headingWeight && !bodyWeight) {
+    return { html, replaced: 0, weightsReplaced: 0 }
+  }
 
   let replaced = 0
-  const out = html.replace(FONT_FAMILY_RE, (match, stack: string, offset: number) => {
-    const ctx = declarationContext(html, offset)
-    const wanted = looksLikeHeading(ctx) ? heading || body : body || heading
-    if (!wanted) return match
-    void stack // a cadeia antiga não é reaproveitada — ver fallbackChainFor
-    replaced++
-    return `font-family:${quoteIfNeeded(wanted)},${fallbackChainFor(wanted)}`
-  })
-  return { html: out, replaced }
+  let out = html
+  if (heading || body) {
+    out = out.replace(FONT_FAMILY_RE, (match, stack: string, offset: number) => {
+      const ctx = declarationContext(html, offset)
+      const wanted = looksLikeHeading(ctx) ? heading || body : body || heading
+      if (!wanted) return match
+      void stack // a cadeia antiga não é reaproveitada — ver fallbackChainFor
+      replaced++
+      return `font-family:${quoteIfNeeded(wanted)},${fallbackChainFor(wanted)}`
+    })
+  }
+
+  // PESO (02/09): a marca declara título `black 900` e corpo `400`, e o
+  // documento só tinha 400 e 700 — "INNOVA BAY VS OTHERS" saiu em 700. O
+  // peso da marca só viajava como var de PROMPT (hero/text_format), e o
+  // text_format é pulado quando o merge resolve tudo; ninguém escrevia o
+  // 900. Regra por código: declaração pesada (≥ 600 / bold) → peso de
+  // título; leve (400 / normal) → peso de corpo. Sem peso declarado não
+  // se inventa — herdar do container é decisão da variante.
+  let weightsReplaced = 0
+  if (headingWeight || bodyWeight) {
+    out = out.replace(FONT_WEIGHT_RE, (match, valor: string) => {
+      const v = valor.toLowerCase()
+      const pesado = v === "bold" || v === "bolder" || (/^\d+$/.test(v) && Number(v) >= 600)
+      const leve = v === "normal" || v === "regular" || (/^\d+$/.test(v) && Number(v) <= 500)
+      const alvo = pesado ? headingWeight : leve ? bodyWeight : null
+      if (!alvo || alvo === v) return match
+      weightsReplaced++
+      return `font-weight:${alvo}`
+    })
+  }
+  return { html: out, replaced, weightsReplaced }
+}
+
+const FONT_WEIGHT_RE = /font-weight\s*:\s*([a-z]+|\d{3})/gi
+
+/**
+ * "black 900" → "900"; "Regular 400" → "400"; "Bold" → "700"; "700" → "700".
+ * O cadastro de marca guarda o rótulo humano do peso, não o número.
+ */
+export function pesoNumerico(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim().toLowerCase()
+  if (!t) return null
+  const num = /(\d{3})/.exec(t)
+  if (num) return String(Math.min(900, Math.max(100, Number(num[1]))))
+  const nomes: Record<string, string> = {
+    thin: "100", hairline: "100", extralight: "200", "extra light": "200", ultralight: "200",
+    light: "300", regular: "400", normal: "400", book: "400", medium: "500",
+    semibold: "600", "semi bold": "600", demibold: "600", bold: "700",
+    extrabold: "800", "extra bold": "800", ultrabold: "800", black: "900", heavy: "900",
+  }
+  for (const [nome, peso] of Object.entries(nomes)) if (t.includes(nome)) return peso
+  return null
 }
 
 /** Nomes que denunciam uma serifada / monoespaçada de marca. */

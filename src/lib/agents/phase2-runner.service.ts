@@ -136,7 +136,9 @@ import {
 } from "./html/hero-graft"
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { applyOps } from "./html/apply-patches"
-import { colorOccurrenceCount } from "./html/color-inventory"
+import { colorOccurrenceCount,
+  coresForaDaPaleta,
+} from "./html/color-inventory"
 import {
   stripUnresolvedPlaceholders,
   stripUnresolvedAttrTokens,
@@ -2484,6 +2486,8 @@ async function runFormattingChain(p: {
       const fonts = normalizeFonts(graft.html, {
         heading: fmtCtx.fontHeading,
         body: fmtCtx.fontBody,
+        headingWeight: fmtCtx.fontHeadingWeight,
+        bodyWeight: fmtCtx.fontBodyWeight,
       })
       fmtCtx.referenceHtml = fonts.html
       log.info("phase2.fmt.hero_grafted", {
@@ -2493,6 +2497,7 @@ async function runFormattingChain(p: {
         replacedLen: graft.replaced_len,
         variantLen: graft.variant_len,
         fontsNormalized: fonts.replaced,
+        weightsNormalized: fonts.weightsReplaced,
       })
     } else {
       log.warn("phase2.fmt.hero_graft_skipped", {
@@ -3338,15 +3343,50 @@ async function runFormattingChain(p: {
             surface_strong: fmtCtx.roles?.surface_strong ?? "",
           },
         })
+        // GUARD DE PALETA (02/09): cor saturada fora da paleta que o
+        // agente deixou passar é recolorida por CÓDIGO, pelo mesmo
+        // aplicador (guarda de contraste incluída). O `#D00000` do exemplo
+        // da variante body-4 foi ao cliente porque este ramo não existia.
+        const foraDaPaleta = fmtCtx.roles
+          ? coresForaDaPaleta(applied.html, fmtCtx.roles)
+          : []
+        let htmlFinal = applied.html
+        let corrigidasFora = 0
+        if (foraDaPaleta.length > 0) {
+          const guarda = applyOps(
+            applied.html,
+            foraDaPaleta.map((c) => ({
+              action: "recolor" as const,
+              from: c.valor,
+              to: c.para,
+              where: c.contexto,
+            })),
+            {
+              allowHero: true,
+              surfaces: {
+                surface: fmtCtx.roles?.surface ?? "",
+                surface_strong: fmtCtx.roles?.surface_strong ?? "",
+              },
+            },
+          )
+          htmlFinal = guarda.html
+          corrigidasFora = guarda.recoloredOccurrences
+          log.warn("color_format.fora_da_paleta", {
+            emailId,
+            cores: foraDaPaleta.map((c) => `${c.valor}(${c.contexto}×${c.ocorrencias})→${c.para}`),
+            ocorrencias_corrigidas: corrigidasFora,
+          })
+        }
+        const restantesFora = fmtCtx.roles ? coresForaDaPaleta(htmlFinal, fmtCtx.roles) : []
         // Guard: ops replace não podem quebrar a estrutura (um find/replace
         // que engole um </table> corrompe o documento).
         const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
-        if (count(applied.html) !== count(inputHtml)) {
+        if (count(htmlFinal) !== count(inputHtml)) {
           throw new Error("guard: table_count_changed_by_ops")
         }
         return {
           value: {
-            html: applied.html,
+            html: htmlFinal,
             applied: applied.applied,
             skipped: applied.skipped.length,
           },
@@ -3405,6 +3445,11 @@ async function runFormattingChain(p: {
               // reergueu. `0` com painel sumido é o estado que estamos
               // consertando — por isso a contagem é explícita.
               panel_fixes: applied.panelFixes,
+              // Cores saturadas fora da paleta que o agente deixou e o
+              // código recoloriu — a medida do que ele está deixando passar.
+              fora_da_paleta_corrigidas: foraDaPaleta,
+              fora_da_paleta_ocorrencias: corrigidasFora,
+              fora_da_paleta_restantes: restantesFora.map((c) => c.valor),
             },
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,

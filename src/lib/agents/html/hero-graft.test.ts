@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 
-import { graftHeroVariant, normalizeFonts, fallbackChainFor } from "./hero-graft"
+import { graftHeroVariant, normalizeFonts, fallbackChainFor, pesoNumerico } from "./hero-graft"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 
 // Documento no formato que o Montador entrega: tabela container 600px com
@@ -161,6 +161,7 @@ describe("normalizeFonts", () => {
     expect(normalizeFonts(html, { heading: null, body: "" })).toEqual({
       html,
       replaced: 0,
+      weightsReplaced: 0,
     })
   })
 
@@ -232,5 +233,46 @@ describe("variante cadastrada como documento completo", () => {
     const { html } = graftHeroVariant(doc, variantDoc)
     expect(html).toContain("{{BODY_TEXT}}")
     expect(html).toContain("<!-- cfy:block:2:body:start -->")
+  })
+})
+
+// ── Peso da fonte (02/09) ───────────────────────────────────────────────
+describe("normalizeFonts — peso da marca", () => {
+  const html = [
+    '<h2 style="font-family:Arial;font-size:36px;font-weight:700;">INNOVA BAY VS OTHERS</h2>',
+    '<p style="font-family:Arial;font-size:14px;font-weight:400;">Verified results</p>',
+    '<td style="font-weight:bold;">SEE HOW IT WORKS</td>',
+    '<span style="font-size:12px;">sem peso declarado</span>',
+  ].join("\n")
+
+  it("≥600/bold vira o peso de título; 400 vira o de corpo; sem peso não inventa", () => {
+    const r = normalizeFonts(html, {
+      heading: "Montserrat",
+      body: "Montserrat",
+      headingWeight: "black 900",
+      bodyWeight: "Regular 400",
+    })
+    expect(r.html).toContain("font-weight:900;\">INNOVA BAY VS OTHERS")
+    expect(r.html).toContain("font-weight:400;\">Verified results")
+    expect(r.html).toContain("font-weight:900;\">SEE HOW IT WORKS")
+    expect(r.html).toContain('<span style="font-size:12px;">sem peso declarado')
+    // 700→900 e bold→900; o 400 já era 400.
+    expect(r.weightsReplaced).toBe(2)
+  })
+
+  it("sem pesos na marca o comportamento é o de antes", () => {
+    const r = normalizeFonts(html, { heading: "Montserrat", body: "Montserrat" })
+    expect(r.html).toContain("font-weight:700;")
+    expect(r.weightsReplaced).toBe(0)
+  })
+
+  it("pesoNumerico lê o rótulo humano do cadastro", () => {
+    expect(pesoNumerico("black 900")).toBe("900")
+    expect(pesoNumerico("Regular 400")).toBe("400")
+    expect(pesoNumerico("Bold")).toBe("700")
+    expect(pesoNumerico("SemiBold")).toBe("600")
+    expect(pesoNumerico("700")).toBe("700")
+    expect(pesoNumerico("")).toBeNull()
+    expect(pesoNumerico("qualquer coisa")).toBeNull()
   })
 })

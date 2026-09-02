@@ -472,6 +472,9 @@ describe("pareceExemplo — lorem e marcador", () => {
   it("lorem e '[n]' são exemplo; frase real não", () => {
     expect(pareceExemplo("[13] dolor sit amet, consectetur adipiscing")).toBe(true)
     expect(pareceExemplo("lorem ipsum")).toBe(true)
+    expect(pareceExemplo("Link Here")).toBe(true)
+    expect(pareceExemplo("LINK 3")).toBe(true)
     expect(pareceExemplo("Lifetime guarantee on every device")).toBe(false)
+    expect(pareceExemplo("Click the link below to track your order")).toBe(false)
   })
 })

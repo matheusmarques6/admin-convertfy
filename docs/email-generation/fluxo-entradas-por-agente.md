@@ -513,3 +513,35 @@ UI: `/admin/agents/studio` (grafo + drill-down Entrada/Prompt/Saída com blocos 
 - **Nascimento/edição da `store_brand_identity`** (GATE 2) — fonte de todas as vars de identidade da fase 2.
 - **Ferramentas ad-hoc** instrumentadas na mesma telemetria: `component_test`, `component_tagger` (offline), image-studio, rotas de teste.
 - **Pós-`ready`**: workspace do designer e status legados `approved`/`live` (NEVER_TOUCH).
+
+---
+
+## Cores, fotos e peso da fonte — o que o código garante (02/09)
+
+Bloco "Innova Bay vs Others" do Welcome 1, batch `5b778483`:
+
+- **Cor fora da paleta** (`#D00000` do exemplo da variante nos itens e nos
+  títulos das colunas): o agente Cores & Botões emitiu 15 ops e não mapeou
+  o vermelho. Agora, depois do `applyOps`, `coresForaDaPaleta`
+  (`html/color-inventory.ts`) lista toda cor **saturada** (HSL s > 0,5, fora
+  dos extremos de luminosidade) que não é papel da paleta e o código a
+  recolore pelo mesmo aplicador: texto/borda → `accent`, fundo → `surface`.
+  Neutro fora da paleta não entra (é decisão de design que o agente viu).
+  Telemetria em `recolor_summary.fora_da_paleta_{corrigidas,ocorrencias,
+  restantes}` + `log.warn color_format.fora_da_paleta`.
+- **Cotas desenhadas na foto** ("24px", "Ø304px"): a `photo_direction` da
+  variante é ficha de produção e ia inteira ao gerador. `sanitizePhotoDirection`
+  (`image/photo-directions.ts`, nos dois caminhos) remove **só a linha**
+  que é tabela (TAB / pipes) ou cita medida/formato (`px`, `KB`, `Ø`,
+  `544 × 424`, `PNG`, `2x`, `Exportar`). Títulos e seções ficam — decisão
+  do owner. Fail-open: sobrando nada, vai o original.
+- **Peso da fonte**: a marca declara título `black 900` e corpo `400`; o
+  documento só tinha 400/700 porque `font_heading_weight` era só var de
+  prompt e o text_format é pulado quando o merge resolve tudo.
+  `normalizeFonts` (`html/hero-graft.ts`) agora conforma o peso por código
+  (≥ 600/bold → título; ≤ 500/normal → corpo; sem peso declarado não
+  inventa), nos dois call sites (Montador e enxerto da hero).
+  `pesoNumerico` lê o rótulo do cadastro ("black 900" → `900`).
+- **"Link Here"** (×6 no rodapé): entra em `EXEMPLO_RE` e aparece como
+  `texto_orfao` suspeito. Não há campo de copy no rodapé — é cadastro da
+  variante.

@@ -598,6 +598,8 @@ export interface AssembleReferenceInput {
   // sem invalidar a arquitetura persistida.
   fontHeading?: string | null
   fontBody?: string | null
+  fontHeadingWeight?: string | null
+  fontBodyWeight?: string | null
   // ── Contrato editorial do vault (email_intents) — critério do Curador ──
   // Intenção do FLOW (o que a sequência inteira protege) e DESTE email (o
   // que este toque precisa entregar). null = vault sem material — o prompt
@@ -1642,7 +1644,12 @@ export async function assembleStoreReference(
   // remover tag de imagem ou emitir marcador inválido.
   const assembled = assembleDocument({
     slots,
-    fonts: { heading: input.fontHeading, body: input.fontBody },
+    fonts: {
+      heading: input.fontHeading,
+      body: input.fontBody,
+      headingWeight: input.fontHeadingWeight,
+      bodyWeight: input.fontBodyWeight,
+    },
   })
   let html = assembled.html
   const variantIds = chosen.map((v) => v.id)
@@ -1792,6 +1799,7 @@ export async function assembleStoreReference(
       // numa célula e o defeito só aparecia como erro do agente de hero.
       variants_unshelled: assembled.stats.unshelled,
       fonts_normalized: assembled.stats.fontsNormalized,
+      weights_normalized: assembled.stats.weightsNormalized,
       reference_source: source,
       html_chars: html.length,
       // Self-checks da concatenação: os dois têm de ser sempre limpos.
