@@ -210,3 +210,28 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fica ATRÁS")
   })
 })
+
+
+// ── Dieta com o Estruturador ligado (02/09) ─────────────────────────────
+describe("template do Curador do vault — decisão do Estruturador, lacunas e índice", () => {
+  it("o user leva a decisão COMPLETA do Estruturador, as lacunas e o índice do Obsidian", () => {
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<decisao_do_estruturador>\n{{estruturador_decisao}}")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<lacunas_da_biblioteca>\n{{lacunas_biblioteca}}")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<indice_do_vault>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{indice_vault}}")
+    // A decisão vem ANTES da sequência, que é o que ela explica.
+    expect(DEFAULT_CHOOSER_VAULT_USER.indexOf("<decisao_do_estruturador>")).toBeLessThan(
+      DEFAULT_CHOOSER_VAULT_USER.indexOf("<estrutura_do_email>"),
+    )
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("decidida pelo Estruturador")
+  })
+
+  it("o system faz da decisão o critério dominante, não elimina por lacuna e limita as consultas", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("critério DOMINANTE por posição")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`descartes`")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Lacuna NÃO elimina")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("no máximo 4 consultas")
+    // A justificativa por posição continua obrigatória.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
+  })
+})

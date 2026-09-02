@@ -1834,6 +1834,36 @@ copy_ready → rendering → image_done → qa_running → ready/failed`. A cade
 
 ---
 
+## Estruturador religado + Curador do vault com a decisão dele (set/2026, migration 20261106)
+
+Fase 1 do Architect: `Pesquisa → Estruturador → Curador (vault) → Montador →
+Blueprint`. O **Estruturador** (`estruturador.service.ts`, Sonnet 4.6, gate
+`email_generation_settings.estruturador_mode`) decide a SEQUÊNCIA de seções +
+papel/porquê/referência por posição + fio; desligado em 31/08 (20261093) e
+religado em 02/09 com a sequência sendo dele — a aba Arquitetura (intenção
+por bloco) vale só quando ele está `off`. **Sem validador de conteúdo**: o
+que ele devolver vale (`normalizarOutput` garante só `estrutura[]` com
+`section`+`papel`; retry 1× só para JSON ilegível). Entradas: system =
+intenção do flow, progressão, TODAS as `estruturas/{flow}/*.md` e
+aprendizados (vault); user = `<perfil_da_marca>` (dossiê completo com Ads +
+top 5 com preço/link), intenção deste email, `<secoes_disponiveis>` (só
+nomes), estruturas dos outros emails, orientação do COO, revisão humana.
+Ele NÃO recebe variantes, lacunas nem intenções por bloco.
+
+O **Curador do vault** (`curador-shadow.ts`, o vigente) recebe a saída
+COMPLETA do Estruturador em `<decisao_do_estruturador>`
+(`decisaoCompletaParaCurador`, critério dominante por posição; com ela
+`<estruturas_de_referencia>` e `<outline>` são omitidos), as
+`<lacunas_da_biblioteca>` (kind `lacuna`, antes sincronizado e nunca
+servido) e o `<indice_do_vault>` com ferramentas `listar_pasta`/`ler_nota`
+(`curador-vault-tools.ts`, `invokeAgentWithTools` em `llm-invoke.ts`, até 4
+consultas, fail-open). Telemetria do run `assembler_chooser`:
+`estruturador_consumido`, `consultas_ao_vault[]`, `consultou_vault`,
+`voltas`, `fallback_sem_ferramentas`. Risco operacional: com `on` o reuso
+da fase 1 é desligado e a fase 1 chega a ~220 s por email — recomendado
+`DISPATCH_TICK_BUDGET_MS=15000` no ambiente. Mapa completo:
+`docs/email-generation/mapa-estruturador-curador.md`.
+
 ## Proveniência do prompt (migration 20261085, ago/2026)
 
 Toda run de agente grava, além do `rendered_prompt`, o MESMO prompt **cortado

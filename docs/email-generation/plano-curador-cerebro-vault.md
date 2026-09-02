@@ -19,6 +19,15 @@ estrutura, protocolo vira system prompt".*
 > ver a seção reescrita abaixo. A migration `20261101` existe; ligar
 > (`curador_vault_mode='on'`) é o gesto operacional.
 
+> **Reversão parcial (02/09, migration 20261106):** o Estruturador foi
+> RELIGADO por decisão do owner, e a sequência de seções voltou a ser dele.
+> O Curador do vault continua vigente, mas passa a receber a saída completa
+> do Estruturador em `<decisao_do_estruturador>` (critério dominante por
+> posição), as lacunas do vault e o índice de pastas do Obsidian com
+> consulta sob demanda. A tese "não recriar o Estruturador" abaixo fica
+> registrada como histórico. Mapa atual dos dois agentes:
+> `mapa-estruturador-curador.md`.
+
 ## Decisão de desenho (a tese)
 
 **Não recriar o Estruturador em outro lugar.** Um único call do Curador

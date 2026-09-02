@@ -1,11 +1,19 @@
 /**
- * Estruturador — orquestração (fase 2: SHADOW).
+ * Estruturador — orquestração.
  *
  * Roda dentro da fase 1 do pipeline (chamado pelo generate.service quando
  * `estruturador_mode != 'off'`): carrega o material do vault sincronizado,
  * monta o prompt (SYSTEM cacheável por flow, embrulhado por slug), invoca o
- * LLM com retry 1×, valida por código e grava a run completa — que É a
- * persistência do embasamento (não há tabela própria).
+ * LLM (retry 1× só quando o JSON vem ilegível/truncado), normaliza a FORMA
+ * e grava a run completa — que É a persistência do embasamento (não há
+ * tabela própria).
+ *
+ * 02/09 (migration 20261106): religado, com a sequência de seções sendo
+ * DELE. O validador de conteúdo saiu por decisão do owner — nada de
+ * reprovar slug, seção ou sequência repetida: o que ele devolver vale. As
+ * entradas mudaram junto: perfil da marca inteiro (dossiê + top 5 com
+ * preço e link), só os NOMES das seções disponíveis, e sem intenções por
+ * bloco da Arquitetura.
  *
  * Em shadow o resultado NÃO altera o pipeline: a função devolve o output
  * validado (ou null) e o caller decide o que fazer — em 'shadow', nada; em
@@ -43,19 +51,15 @@ import {
   type PromptSegment,
   type SegmentOrigin,
 } from "../shared/prompt-provenance"
-import { fieldOrMissing } from "../architect/store-context"
+import { renderTopProducts } from "../architect/store-context"
 import {
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
   DEFAULT_ESTRUTURADOR_USER,
+  normalizarOutput,
   type EstruturadorOutput,
   type MaterialDoFlow,
 } from "./estruturador-prompt"
-import {
-  validarOutput,
-  type CapacidadeBiblioteca,
-  type EstruturaIrma,
-} from "./estruturador-validator"
 import {
   aplicaveis,
   montarBlocoOrientacoes,
@@ -69,7 +73,21 @@ import {
 const log = logger.child("Estruturador")
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
+// 2ª tentativa só para JSON ilegível/truncado (o erro de parse volta ao
+// modelo). Não há mais reprovação de conteúdo.
 const MAX_ATTEMPTS = 2
+
+/** Seções com variante ativa (contagem por código) + nº de produtos da loja. */
+interface CapacidadeBiblioteca {
+  porCategoria: Record<string, number>
+  produtosDaLoja: number
+}
+
+/** Sequência vigente de um irmão do flow (anti-repetição, informação). */
+interface EstruturaIrma {
+  rotulo: string
+  seq: string[]
+}
 
 export type EstruturadorMode = "off" | "shadow" | "on"
 
@@ -84,17 +102,16 @@ const SYSTEM_ORIGINS: Record<string, SegmentOrigin> = {
 
 export const USER_ORIGINS: Record<string, SegmentOrigin> = {
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
-  nicho: { cls: "loja", rotulo: "Dados da loja — client_stores" },
-  posicionamento: { cls: "loja", rotulo: "Dados da loja — client_stores" },
-  tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
-  persona: { cls: "loja", rotulo: "Dados da loja — client_stores" },
-  produtos_count: { cls: "loja", rotulo: "Produtos da loja — store_products" },
-  top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
-  pesquisa: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
+  // Perfil da marca = o dossiê da Pesquisa & Diagnóstico inteiro (01 Perfil
+  // da Marca · 02 Sobre a loja · 03 Cliente Ideal · 04 Tom de Comunicação ·
+  // 05 Review dos Anúncios). Os campos soltos (nicho/posicionamento/
+  // persona/tom) saíram em 02/09: eram derivados deste mesmo texto.
+  pesquisa: { cls: "loja", rotulo: "Perfil da marca — Pesquisa & Diagnóstico completa (client_stores)" },
+  top_products: { cls: "loja", rotulo: "Top 5 produtos — store_top_products (nome, preço e link)" },
   flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
   email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
   intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
-  capacidade_biblioteca: { cls: "sistema", rotulo: "Capacidade da biblioteca — contagem por código" },
+  secoes_disponiveis: { cls: "sistema", rotulo: "Seções disponíveis — categorias com variante ativa (código)" },
   estruturas_dos_outros_emails: {
     cls: "sistema",
     rotulo: "Anti-repetição — estruturas vigentes dos outros emails do flow",
@@ -128,24 +145,16 @@ export interface RunEstruturadorInput {
   mode: EstruturadorMode
   // Contexto da loja — o generate.service já tem tudo resolvido.
   brandName: string
-  nicho: string
-  posicionamento: string
-  tomVoz: string
-  persona: string
+  /** Dossiê completo da Pesquisa & Diagnóstico (`pesquisaToFullText`, COM Ads). */
   pesquisa: string
-  topProductNames: string[]
+  /** Top 5 produtos com preço e link (mesmo shape de `renderTopProducts`). */
+  topProducts: ReadonlyArray<{ name: string; price?: number | string | null; url?: string | null }>
   /**
    * Revisões humanas de estrutura aplicáveis (migration 20261088), já
    * carregadas pelo caller — o Curador e o Montador recebem as MESMAS,
    * então a query roda uma vez por geração.
    */
   revisoes?: RevisaoHumana[]
-  /**
-   * Intenção POR BLOCO escrita na aba Arquitetura (ordem fixa). Entra no
-   * <intencao_do_email> como contrato por posição: o papel que o agente
-   * escrever para a posição tem de servir a ela.
-   */
-  intencoesPorBloco?: Array<{ section: string; intencao: string }>
 }
 
 export interface RunEstruturadorResult {
@@ -359,21 +368,6 @@ async function loadEstruturasDosOutrosEmails(
     }))
 }
 
-/**
- * Anexa as intenções por bloco (Arquitetura) à intenção do email. Sem
- * var nova no prompt: o agente já lê <intencao_do_email> como contrato, e
- * a lista por posição é a parte dele que a pessoa escreveu bloco a bloco.
- */
-export function comIntencoesPorBloco(
-  intencaoEmail: string,
-  intencoes: ReadonlyArray<{ section: string; intencao: string }> | null | undefined,
-): string {
-  const lista = (intencoes ?? []).filter((i) => i.intencao.trim())
-  if (lista.length === 0) return intencaoEmail
-  const linhas = lista.map((i, n) => `${n + 1}. ${i.section} — ${i.intencao.trim()}`)
-  return `${intencaoEmail.trim()}\n\nIntenções por bloco (escritas na Arquitetura, ordem fixa — o papel de cada posição tem de servir à intenção dela):\n${linhas.join("\n")}`
-}
-
 // ── Run ─────────────────────────────────────────────────────────────────
 
 export async function runEstruturador(
@@ -398,7 +392,7 @@ export async function runEstruturador(
   }
 
   const [capacidade, irmas, minhaAnterior] = await Promise.all([
-    loadCapacidade(input.topProductNames.length),
+    loadCapacidade(input.topProducts.length),
     loadEstruturasDosOutrosEmails(input.flowId ?? null, input.emailId ?? null),
     loadEstruturaVigenteDesteEmail(input.emailId ?? null),
   ])
@@ -436,9 +430,15 @@ export async function runEstruturador(
   const systemSegments: PromptSegment[] | null =
     sysSeg.prompt === systemResolvido ? sysSeg.segments : null
 
-  const capacidadeTexto = Object.entries(capacidade.porCategoria)
-    .map(([k, n]) => `${k}: ${n}`).join(" · ") +
-    ` · produtos da loja: ${capacidade.produtosDaLoja}`
+  // Só os NOMES: o agente precisa saber que seções existem, não quantas
+  // variantes cada uma tem (ele não escolhe variante — o Curador escolhe).
+  const secoesDisponiveis = Object.entries(capacidade.porCategoria)
+    .filter(([, n]) => n > 0)
+    .map(([k]) => k)
+    .sort()
+  const secoesTexto = secoesDisponiveis.length
+    ? secoesDisponiveis.join(", ")
+    : "(nenhuma seção com variante ativa na biblioteca)"
   // Com o rótulo do email: saber QUAL irmão ocupa a sequência é o que
   // permite ao agente se afastar com intenção, em vez de embaralhar.
   const irmasTexto = irmas.length
@@ -447,17 +447,12 @@ export async function runEstruturador(
 
   const userVars: Record<string, string> = {
     brand_name: input.brandName,
-    nicho: fieldOrMissing(input.nicho),
-    posicionamento: fieldOrMissing(input.posicionamento),
-    tom_voz: fieldOrMissing(input.tomVoz),
-    persona: fieldOrMissing(input.persona),
-    produtos_count: String(input.topProductNames.length),
-    top_products: input.topProductNames.join("; ") || "(sem produtos cadastrados)",
+    top_products: renderTopProducts(input.topProducts),
     pesquisa: input.pesquisa || "(sem pesquisa)",
     flow_type: input.flowType,
     email_number: String(input.emailNumber),
-    intencao_email: comIntencoesPorBloco(intencaoEmail, input.intencoesPorBloco),
-    capacidade_biblioteca: capacidadeTexto,
+    intencao_email: intencaoEmail,
+    secoes_disponiveis: secoesTexto,
     estruturas_dos_outros_emails: irmasTexto,
     orientacao_coo: montarBlocoOrientacoes(
       aplicaveis(orientacoes, input.flowType, input.emailNumber),
@@ -468,14 +463,14 @@ export async function runEstruturador(
   // Entrada estruturada (aba Entrada do Estúdio) — o que o agente recebeu,
   // com origem. Complementa (não substitui) o input_vars auditável.
   const inputSummary: InputSummaryItem[] = [
-    { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${input.nicho || "(sem nicho)"}` },
+    { rotulo: "Loja", cls: "loja", valor: input.brandName },
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
-    { rotulo: "Pesquisa & Diagnóstico", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars servidos` },
+    { rotulo: "Perfil da marca", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars do dossiê (com Ads) · ${input.topProducts.length} produto(s)` },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: resumo(intencaoEmail) },
     { rotulo: "Referências servidas (vault)", cls: "vault", valor: carga.refsServidas.join(", ") },
     { rotulo: "Aprendizados servidos (vault)", cls: "vault", valor: carga.aprendizadosServidos.join(", ") || "(nenhum)" },
     { rotulo: "Commit do vault", cls: "vault", valor: carga.vaultCommitSha ?? "(desconhecido)" },
-    { rotulo: "Capacidade da biblioteca", cls: "sistema", valor: capacidadeTexto },
+    { rotulo: "Seções disponíveis", cls: "sistema", valor: secoesTexto },
     { rotulo: "Estruturas dos outros emails do flow", cls: "sistema", valor: irmasTexto },
     {
       rotulo: "Revisão humana da estrutura",
@@ -527,10 +522,10 @@ export async function runEstruturador(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      // No retry, o erro do validador volta para o modelo — mesmo padrão
-      // dos demais agentes (falha explicada converge melhor que repetição).
+      // No retry (só parse ilegível/truncado), o erro volta para o modelo —
+      // mesmo padrão dos demais agentes (falha explicada converge melhor).
       const vars = ultimoErro
-        ? { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\nSEU OUTPUT ANTERIOR FOI REPROVADO: ${ultimoErro}` }
+        ? { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\nSEU OUTPUT ANTERIOR NÃO PÔDE SER LIDO: ${ultimoErro}` }
         : userVars
       const res = await invokeAgent(config, vars, systemVars)
       raw = res.raw
@@ -564,93 +559,87 @@ export async function runEstruturador(
             : "resposta não é JSON válido",
         )
       }
-      const validado = validarOutput({
-        output: parsed,
-        refsServidas: carga.refsServidas,
-        aprendizadosServidos: carga.aprendizadosServidos,
-        capacidade,
-        sequenciasProibidas: irmas,
-      })
+      // Só a FORMA (estrutura[] com section+papel). Sem validador de
+      // conteúdo: o que ele devolver é o que vale (02/09).
+      const saida = normalizarOutput(parsed)
 
-      if (validado.ok && validado.saida) {
-        await finishGenerationRun(runId, {
-          storeId: input.storeId,
-          flowId: input.flowId ?? undefined,
-          emailId: input.emailId ?? undefined,
-          triggeredBy: input.triggeredBy,
-          batchId: input.batchId,
-          agent: "estruturador",
-          agentConfigId: cfgRow?.id,
-          status: "success",
-          model: config.model,
-          inputVars: {
-            modo: input.mode,
-            refs_servidas: carga.refsServidas,
-            aprendizados_servidos: carga.aprendizadosServidos,
-            vault_commit_sha: carga.vaultCommitSha,
-            capacidade: capacidade.porCategoria,
-            produtos_da_loja: capacidade.produtosDaLoja,
-            outros_emails_count: irmas.length,
-            system_sha8: systemSha8,
+      await finishGenerationRun(runId, {
+        storeId: input.storeId,
+        flowId: input.flowId ?? undefined,
+        emailId: input.emailId ?? undefined,
+        triggeredBy: input.triggeredBy,
+        batchId: input.batchId,
+        agent: "estruturador",
+        agentConfigId: cfgRow?.id,
+        status: "success",
+        model: config.model,
+        inputVars: {
+          modo: input.mode,
+          refs_servidas: carga.refsServidas,
+          aprendizados_servidos: carga.aprendizadosServidos,
+          vault_commit_sha: carga.vaultCommitSha,
+          capacidade: capacidade.porCategoria,
+          secoes_disponiveis: secoesDisponiveis,
+          produtos_da_loja: capacidade.produtosDaLoja,
+          outros_emails_count: irmas.length,
+          system_sha8: systemSha8,
+        },
+        renderedPrompt: userPromptFinal,
+        promptSegments: promptSegmentsFinal,
+        inputSummary,
+        rawOutput: raw.slice(0, 16000),
+        parsedOutput: {
+          ...saida,
+          // Informativo (sem validador de conteúdo desde 02/09): o que a
+          // tela usa para dizer se foi consumido, se houve retry de parse,
+          // se a revisão humana foi seguida e se convergiu com a anterior.
+          _validador: {
+            retry_count: attempt - 1,
+            shadow: input.mode !== "on",
+            // A revisão humana é sinal FORTE, não trava: o agente pode
+            // divergir. O que não pode é a divergência passar batida —
+            // sem isto, "ele ignorou o que escrevi" só se descobre
+            // comparando a sequência à mão, geração a geração.
+            revisao_humana: (() => {
+              const rev = (input.revisoes ?? []).filter(
+                (r) => r.para_estruturador !== false,
+              )
+              if (rev.length === 0) return { havia: false, seguida: null }
+              // A mais específica manda: é a que fala deste email.
+              const alvo =
+                rev.find((r) => r.alcance === "este_email") ?? rev[0]
+              const seq = saida.estrutura.map((p) => p.section)
+              return {
+                havia: true,
+                alcance: alvo.alcance,
+                ordem_pedida: alvo.ordem_nova,
+                ordem_entregue: seq,
+                seguida:
+                  alvo.ordem_nova.length === seq.length &&
+                  alvo.ordem_nova.every((sec, i) => sec === seq[i]),
+              }
+            })(),
+            // Convergência, não erro: mesma estrutura da geração anterior
+            // DESTE email.
+            repetiu_geracao_anterior:
+              minhaAnterior != null &&
+              minhaAnterior.length === saida.estrutura.length &&
+              minhaAnterior.every((sec, i) => sec === saida.estrutura[i]?.section),
           },
-          renderedPrompt: userPromptFinal,
-          promptSegments: promptSegmentsFinal,
-          inputSummary,
-          rawOutput: raw.slice(0, 16000),
-          parsedOutput: {
-            ...validado.saida,
-            _validador: {
-              retry_count: attempt - 1,
-              posicoes_removidas: validado.removidasPeloValidador.length,
-              shadow: input.mode !== "on",
-              // A revisão humana é sinal FORTE, não trava: o agente pode
-              // divergir. O que não pode é a divergência passar batida —
-              // sem isto, "ele ignorou o que escrevi" só se descobre
-              // comparando a sequência à mão, geração a geração.
-              revisao_humana: (() => {
-                const rev = (input.revisoes ?? []).filter(
-                  (r) => r.para_estruturador !== false,
-                )
-                if (rev.length === 0) return { havia: false, seguida: null }
-                // A mais específica manda: é a que fala deste email.
-                const alvo =
-                  rev.find((r) => r.alcance === "este_email") ?? rev[0]
-                const seq = validado.saida!.estrutura.map((p) => p.section)
-                return {
-                  havia: true,
-                  alcance: alvo.alcance,
-                  ordem_pedida: alvo.ordem_nova,
-                  ordem_entregue: seq,
-                  seguida:
-                    alvo.ordem_nova.length === seq.length &&
-                    alvo.ordem_nova.every((sec, i) => sec === seq[i]),
-                }
-              })(),
-              // Convergência, não erro: mesma estrutura da geração anterior
-              // DESTE email. Até 27/08 isto era motivo de reprovação.
-              repetiu_geracao_anterior:
-                minhaAnterior != null &&
-                minhaAnterior.length === validado.saida.estrutura.length &&
-                minhaAnterior.every(
-                  (sec, i) => sec === validado.saida!.estrutura[i]?.section,
-                ),
-            },
-          },
-          tokensInput: tokensIn,
-          tokensOutput: tokensOut,
-          costCents: resolveCostCents({
-            model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd,
-          }),
-          durationMs: Date.now() - t0,
-          retryCount: attempt - 1,
-        })
-        log.info("estruturador.ok", {
-          storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
-          modo: input.mode, posicoes: validado.saida.estrutura.length, attempt,
-        })
-        return { output: validado.saida, runId, status: "ok" }
-      }
-      ultimoErro = validado.errosFatais.join("; ")
+        },
+        tokensInput: tokensIn,
+        tokensOutput: tokensOut,
+        costCents: resolveCostCents({
+          model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd,
+        }),
+        durationMs: Date.now() - t0,
+        retryCount: attempt - 1,
+      })
+      log.info("estruturador.ok", {
+        storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
+        modo: input.mode, posicoes: saida.estrutura.length, attempt,
+      })
+      return { output: saida, runId, status: "ok" }
     } catch (err) {
       ultimoErro = err instanceof Error ? err.message : String(err)
     }
@@ -660,7 +649,7 @@ export async function runEstruturador(
     })
   }
 
-  // 2 falhas → run error; o caller segue no outline (fallback documentado).
+  // 2 falhas de parse → run error; o caller segue sem Estruturador (fallback documentado).
   await finishGenerationRun(runId, {
     storeId: input.storeId,
     flowId: input.flowId ?? undefined,

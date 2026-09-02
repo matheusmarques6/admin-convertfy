@@ -17,6 +17,7 @@ import { renderImageTemplate } from "../image/template-renderer"
 import {
   isInsufficientCreditsMessage,
   OpenRouterHttpError,
+  OpenRouterMidStreamError,
   parseOpenRouterBody,
   withOpenRouterRetry,
 } from "../openrouter-invoke"
@@ -390,4 +391,293 @@ export function extractJson(raw: string): string {
   const lastClose = Math.max(s.lastIndexOf("]"), s.lastIndexOf("}"))
   if (lastClose >= 0) s = s.slice(0, lastClose + 1)
   return s.trim()
+}
+
+
+// ── Invocação COM ferramentas (consulta ao vault sob demanda, 02/09) ──────
+
+/** Definição de ferramenta no formato OpenAI/OpenRouter (function calling). */
+export interface ToolSpec {
+  type: "function"
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
+export interface ToolCallLog {
+  ferramenta: string
+  /** Argumento principal (pasta/caminho) — o que ele quis ver. */
+  argumento: string
+  /** Tamanho do que voltou para o modelo. */
+  chars: number
+  ms: number
+  erro?: string
+}
+
+export interface InvokeWithToolsResult extends InvokeResult {
+  consultas: ToolCallLog[]
+  /** Chamadas ao modelo (1 = não usou ferramenta). */
+  voltas: number
+  /** O loop falhou e a resposta veio de uma chamada sem ferramentas. */
+  fallback_sem_ferramentas: boolean
+}
+
+export interface InvokeWithToolsOptions {
+  tools: ToolSpec[]
+  executar: (nome: string, args: Record<string, unknown>) => Promise<string>
+  /** Teto de execuções de ferramenta por run. Default 4. */
+  maxCalls?: number
+}
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool"
+  content: unknown
+  tool_calls?: unknown
+  tool_call_id?: string
+}
+
+interface OpenRouterToolTurn {
+  text: string
+  toolCalls: Array<{ id: string; name: string; args: Record<string, unknown>; argsRaw: string }>
+  assistantMessage: ChatMessage
+  tokensInput: number
+  tokensOutput: number
+  costUsd: number
+  finishReason?: string
+}
+
+/**
+ * Uma volta do chat/completions com `tools`. Erros HTTP/mid-stream seguem a
+ * classificação do `openrouter-invoke` (retryable ou não).
+ */
+async function callOnceWithTools(
+  config: AgentInvokeConfig,
+  messages: ChatMessage[],
+  tools: ToolSpec[],
+  toolChoice: "auto" | "none",
+  apiKey: string,
+): Promise<OpenRouterToolTurn> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), INVOKE_TIMEOUT_MS)
+  const t0 = Date.now()
+  try {
+    const body: Record<string, unknown> = {
+      model: config.model,
+      max_tokens: config.max_tokens,
+      messages,
+      tools,
+      tool_choice: toolChoice,
+    }
+    if (modelSupportsTemperature(config.model)) body.temperature = config.temperature
+    if (isReasoningModel(config.model)) body.reasoning = config.reasoning ?? { effort: "medium" }
+
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://admin.convertfy.com.br",
+        "X-Title": "Convertfy Admin - Architect (tools)",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => "")
+      throw new OpenRouterHttpError({ status: resp.status, snippet: errBody.slice(0, 200) })
+    }
+    const rawBody = await resp.text()
+    const ms = Date.now() - t0
+    if (rawBody.trim() === "") {
+      throw new OpenRouterMidStreamError({ errorType: "midstream_error", status: resp.status, ms, snippet: "empty body" })
+    }
+    let data: {
+      error?: { message?: string; metadata?: { error_type?: string } }
+      choices?: Array<{
+        message?: {
+          content?: string | null
+          tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>
+        }
+        finish_reason?: string
+      }>
+      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
+    }
+    try {
+      data = JSON.parse(rawBody)
+    } catch {
+      throw new OpenRouterMidStreamError({ errorType: "non_json_body", status: resp.status, ms, snippet: rawBody.slice(0, 200) })
+    }
+    if (data.error) {
+      throw new OpenRouterMidStreamError({
+        errorType: data.error.metadata?.error_type ?? "midstream_error",
+        status: resp.status,
+        ms,
+        snippet: (data.error.message ?? "").slice(0, 200),
+      })
+    }
+    const choice = data.choices?.[0]
+    const msg = choice?.message ?? {}
+    const toolCalls = (msg.tool_calls ?? [])
+      .filter((c) => c?.function?.name)
+      .map((c, i) => {
+        const argsRaw = c.function?.arguments ?? "{}"
+        let args: Record<string, unknown> = {}
+        try {
+          const parsed = JSON.parse(argsRaw)
+          if (parsed && typeof parsed === "object") args = parsed as Record<string, unknown>
+        } catch {
+          // argumento ilegível: a ferramenta recebe vazio e responde com erro legível
+        }
+        return { id: c.id ?? `call_${i}`, name: String(c.function?.name), args, argsRaw }
+      })
+    return {
+      text: (typeof msg.content === "string" ? msg.content : "").trim(),
+      toolCalls,
+      assistantMessage: {
+        role: "assistant",
+        content: typeof msg.content === "string" ? msg.content : "",
+        ...(msg.tool_calls?.length ? { tool_calls: msg.tool_calls } : {}),
+      },
+      tokensInput: data.usage?.prompt_tokens ?? 0,
+      tokensOutput: data.usage?.completion_tokens ?? 0,
+      costUsd: data.usage?.cost ?? 0,
+      ...(choice?.finish_reason ? { finishReason: choice.finish_reason } : {}),
+    }
+  } catch (e) {
+    if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") throw new Error("timeout")
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Como `invokeAgent`, mas o modelo pode chamar ferramentas (function
+ * calling) antes de responder — é o que deixa o Curador conferir uma nota
+ * do Obsidian sob demanda. Só o caminho OpenRouter; id sem "/" cai no
+ * `invokeAgent` comum, sem ferramentas.
+ *
+ * Loop: cada volta reenvia o histórico inteiro (o contexto é cobrado de
+ * novo — por isso o teto de chamadas). Atingido o teto, a volta seguinte
+ * vai com `tool_choice: "none"` e o modelo tem de responder. Tokens e custo
+ * somam todas as voltas. Erro no loop é FAIL-OPEN: a resposta vem de uma
+ * chamada normal sem ferramentas, marcada em `fallback_sem_ferramentas`.
+ */
+export async function invokeAgentWithTools(
+  config: AgentInvokeConfig,
+  vars: Record<string, string>,
+  systemVars: Record<string, string> | undefined,
+  opts: InvokeWithToolsOptions,
+): Promise<InvokeWithToolsResult> {
+  const semFerramentas = async (consultas: ToolCallLog[], voltas: number): Promise<InvokeWithToolsResult> => {
+    const r = await invokeAgent(config, vars, systemVars)
+    return { ...r, consultas, voltas: voltas + 1, fallback_sem_ferramentas: true }
+  }
+  if (!config.model.includes("/") || opts.tools.length === 0) {
+    const r = await invokeAgent(config, vars, systemVars)
+    return { ...r, consultas: [], voltas: 1, fallback_sem_ferramentas: false }
+  }
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY nao configurada")
+
+  const maxCalls = Math.max(0, opts.maxCalls ?? 4)
+  const userMessage = renderImageTemplate(config.user_template, vars)
+  const resolved: AgentInvokeConfig = systemVars
+    ? { ...config, system_prompt: interpolateSystem(config.system_prompt, systemVars) }
+    : config
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemContent(resolved) },
+    { role: "user", content: userMessage },
+  ]
+  const consultas: ToolCallLog[] = []
+  let tokensInput = 0
+  let tokensOutput = 0
+  let costUsd = 0
+  let voltas = 0
+  let executadas = 0
+
+  try {
+    // Teto de voltas = chamadas permitidas + a volta final obrigatória; o
+    // +1 cobre o caso em que uma volta devolve várias tool_calls de uma vez.
+    for (let volta = 0; volta < maxCalls + 2; volta++) {
+      const toolChoice: "auto" | "none" = executadas >= maxCalls ? "none" : "auto"
+      const turn = await withOpenRouterRetry(
+        () => callOnceWithTools(resolved, messages, opts.tools, toolChoice, apiKey),
+        {
+          onRetry: (err, n) =>
+            log.warn("openrouter.tools.retry", {
+              model: config.model,
+              attempt: n,
+              message: (err as Error)?.message,
+            }),
+        },
+      )
+      voltas++
+      tokensInput += turn.tokensInput
+      tokensOutput += turn.tokensOutput
+      costUsd += turn.costUsd
+
+      if (turn.toolCalls.length === 0 || toolChoice === "none") {
+        log.info("openrouter.tools.done", {
+          model: config.model,
+          voltas,
+          consultas: consultas.length,
+          tokensIn: tokensInput,
+          tokensOut: tokensOutput,
+        })
+        return {
+          raw: turn.text,
+          tokensInput,
+          tokensOutput,
+          costUsd,
+          ...(turn.finishReason ? { finishReason: turn.finishReason } : {}),
+          consultas,
+          voltas,
+          fallback_sem_ferramentas: false,
+        }
+      }
+
+      messages.push(turn.assistantMessage)
+      for (const call of turn.toolCalls) {
+        const t0 = Date.now()
+        let resultado: string
+        let erro: string | undefined
+        if (executadas >= maxCalls) {
+          resultado = `(limite de ${maxCalls} consultas atingido — responda com o que já tem)`
+          erro = "limite"
+        } else {
+          executadas++
+          try {
+            resultado = await opts.executar(call.name, call.args)
+          } catch (e) {
+            erro = e instanceof Error ? e.message : String(e)
+            resultado = `erro ao consultar: ${erro}`
+          }
+        }
+        const argumento = Object.values(call.args).find((v) => typeof v === "string") as string | undefined
+        consultas.push({
+          ferramenta: call.name,
+          argumento: (argumento ?? call.argsRaw).slice(0, 200),
+          chars: resultado.length,
+          ms: Date.now() - t0,
+          ...(erro ? { erro } : {}),
+        })
+        messages.push({ role: "tool", tool_call_id: call.id, content: resultado })
+      }
+    }
+    // Saiu do for sem resposta final (só acontece com um modelo que insiste
+    // em chamar ferramenta com tool_choice none) — fail-open.
+    log.warn("openrouter.tools.sem_resposta_final", { model: config.model, voltas })
+    return semFerramentas(consultas, voltas)
+  } catch (err) {
+    log.warn("openrouter.tools.failed", {
+      model: config.model,
+      voltas,
+      consultas: consultas.length,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return semFerramentas(consultas, voltas)
+  }
 }

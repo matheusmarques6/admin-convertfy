@@ -144,6 +144,15 @@ export function CuradorRankingView({ output }: { output: unknown }) {
   }>(o.catalogo_divergente)
   const modo = typeof o.curador_vault_mode === "string" ? o.curador_vault_mode : null
   const ehShadow = o.shadow === true
+  // Consultas ao Obsidian sob demanda (02/09): cada chamada de ferramenta,
+  // na ordem. `consultou_vault` false = decidiu só com o prompt.
+  const consultas = asArray<{
+    ferramenta?: string
+    argumento?: string
+    chars?: number
+    ms?: number
+    erro?: string
+  }>(o.consultas_ao_vault)
 
   if (posicoes.length === 0 && estrutura.length === 0) return null
 
@@ -192,6 +201,17 @@ export function CuradorRankingView({ output }: { output: unknown }) {
             text={`${semVariante.length} posição(ões) sem variante na biblioteca`}
             tone="warn"
           />
+        )}
+        {o.estruturador_consumido === true && (
+          <OutPill text="decisão do Estruturador servida" tone="info" />
+        )}
+        {o.consultou_vault === true ? (
+          <OutPill text={`consultou o Obsidian ${consultas.length}×`} tone="info" />
+        ) : (
+          o.consultou_vault === false && <OutPill text="sem consulta ao Obsidian" tone="neut" />
+        )}
+        {o.fallback_sem_ferramentas === true && (
+          <OutPill text="ferramentas falharam — respondeu sem consultar" tone="warn" />
         )}
         {Number(o.attempts ?? 1) > 1 && (
           <OutPill text={`${o.attempts} tentativas`} tone="warn" />
@@ -326,6 +346,24 @@ export function CuradorRankingView({ output }: { output: unknown }) {
         <OutSection title="Fio narrativo">
           <div style={{ ...OUT_BODY, fontFamily: F.sans }}>
             {o.fio_narrativo as string}
+          </div>
+        </OutSection>
+      )}
+
+      {consultas.length > 0 && (
+        <OutSection title="Consultas ao Obsidian (na ordem)">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {consultas.map((c, i) => (
+              <OutItem key={i}>
+                <div style={{ ...OUT_BODY, fontFamily: F.sans }}>
+                  <b>{c.ferramenta ?? "?"}</b> · {c.argumento ?? ""}
+                  <span style={{ ...TNUM, color: C.g500 }}>
+                    {" "}· {Number(c.chars ?? 0).toLocaleString("pt-BR")} chars · {Number(c.ms ?? 0)} ms
+                  </span>
+                  {c.erro && <span style={{ color: "#B91C1C" }}> · {c.erro}</span>}
+                </div>
+              </OutItem>
+            ))}
           </div>
         </OutSection>
       )}

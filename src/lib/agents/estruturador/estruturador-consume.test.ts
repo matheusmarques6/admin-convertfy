@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest"
 import {
   aplicarEstruturadorNoBlueprint,
+  DECISAO_MAX_CHARS,
+  decisaoCompletaParaCurador,
   estruturaParaPosicoes,
-  resumoParaCurador,
 } from "./estruturador-consume"
 import { clampStructure } from "../architect/outline-sections"
 import type { EstruturadorOutput } from "./estruturador-prompt"
@@ -73,32 +74,27 @@ describe("estruturaParaPosicoes", () => {
   })
 })
 
-describe("resumoParaCurador", () => {
-  it("resume diagnóstico + fio + papéis com porquê, na ordem das posições", () => {
+describe("decisaoCompletaParaCurador", () => {
+  it("é o output INTEIRO em JSON: diagnóstico, posições com adaptação/porquê, fio, fontes, aprendizados, descartes", () => {
     const o = output()
-    const pos = estruturaParaPosicoes(o)
-    const r = resumoParaCurador(o, pos)
-    expect(r).toContain("Objeção dominante: Eficácia")
-    expect(r).toContain("Fio narrativo: cupom → razão → saída")
-    expect(r).toContain("1. hero — Entregar o cupom em 3s (porquê: x)")
-    // A adaptação viaja dentro do papel completo.
-    expect(r).toContain("Adaptação: troca a categoria pela rotina noturna")
-  })
-
-  it("usa as posições CLAMPADAS (não o output cru) — ordem/quantidade casam com a sequência", () => {
-    const o = output()
-    const pos = estruturaParaPosicoes(o).slice(0, 2) // simulando clamp
-    const r = resumoParaCurador(o, pos)
-    expect(r).toContain("1. hero")
-    expect(r).toContain("2. body")
-    expect(r).not.toContain("footer")
-  })
-
-  it("aprendizados aplicados entram quando existem", () => {
-    const o = output()
+    o.fontes = [{ ref: "avelmore-inspecao-antecipada", o_que_pegou: "arco", porque: "mecanismo transfere" }]
     o.aprendizados_aplicados = [{ slug: "prova-antes-do-cta", como: "reviews antes da grade" }]
-    const r = resumoParaCurador(o, estruturaParaPosicoes(o))
-    expect(r).toContain("prova-antes-do-cta: reviews antes da grade")
+    o.descartes = [{ section: "cta", papel_na_referencia: "CTA isolado", porque: "competiria com a grade", origem: "modelo" }]
+    const r = decisaoCompletaParaCurador(o)
+    const volta = JSON.parse(r) as typeof o
+    expect(volta).toEqual(o)
+    // Legível para o modelo: JSON indentado, não uma linha só.
+    expect(r).toContain("\n  \"estrutura\": [")
+    expect(r).toContain("troca a categoria pela rotina noturna")
+    expect(r).toContain("competiria com a grade")
+  })
+
+  it("clamp de segurança com marcador quando o output é patológico", () => {
+    const o = output()
+    o.estrutura[0].papel = "x".repeat(DECISAO_MAX_CHARS)
+    const r = decisaoCompletaParaCurador(o)
+    expect(r.length).toBeLessThan(DECISAO_MAX_CHARS + 200)
+    expect(r).toContain("decisão truncada")
   })
 })
 

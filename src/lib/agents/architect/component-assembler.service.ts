@@ -56,7 +56,9 @@ import {
   loadEstruturaRefsResumo,
   loadVariantUsageCounts,
   momentoDoEmail,
+  loadIndiceDoVault,
 } from "./curador-vault"
+import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
   measureProtocolViolations,
   rank1ByBlock,
@@ -607,7 +609,7 @@ export interface AssembleReferenceInput {
   // declara a ausência em vez de mandar string vazia.
   intencaoFlow?: string | null
   intencaoEmail?: string | null
-  // Resumo da decisão do Estruturador (resumoParaCurador) — só chega quando
+  // Decisão do Estruturador (saída completa, JSON) — só chega quando
   // o modo é 'on' e a run validou (em shadow o pipeline não vê a decisão).
   // Papéis na MESMA ordem da structure/<sequencia_do_email>.
   estruturadorDecisao?: string | null
@@ -841,7 +843,7 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
     },
     intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
     intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
-    estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — resumoParaCurador" },
+    estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — saída completa (JSON)" },
     briefing_marca: {
       cls: "loja",
       rotulo: "Perfil da marca — store_briefings ou Pesquisa (sem o review de anúncios)",
@@ -1105,7 +1107,7 @@ export async function assembleStoreReference(
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenções por bloco (Arquitetura)", cls: "curadoria", valor: `${intencoesHumanas} de ${input.structure.length} posições` },
-    { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida (resumoParaCurador)" : "(sem decisão nesta geração)" },
+    { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida — saída completa (diagnóstico, posições, fio, fontes, descartes)" : "(sem decisão nesta geração)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
     { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
     { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
@@ -1164,9 +1166,10 @@ export async function assembleStoreReference(
   // nesse caso — que é exatamente quando vale pagar.
   let vaultResultado: CuradorVaultResultado | null = null
   if (curadorVaultMode === "on") {
-    const [aprendizadosOn, usageCountsOn] = await Promise.all([
+    const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
       loadVariantUsageCounts(),
+      loadIndiceDoVault(),
     ])
     vaultResultado = await runCuradorShadow({
       storeId: input.storeId,
@@ -1186,6 +1189,11 @@ export async function assembleStoreReference(
       usageCounts: usageCountsOn,
       typeIndex,
       liveSections: sections,
+      // 02/09: decisão do Estruturador (saída completa) no template, lacunas
+      // do vault e índice do Obsidian com consulta sob demanda.
+      estruturadorOn,
+      indiceDoVault,
+      ferramentas: { tools: VAULT_TOOLS, executar: executarFerramentaDoVault, maxCalls: 4 },
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
       liveViolations: [],

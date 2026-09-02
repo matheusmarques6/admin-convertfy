@@ -4,7 +4,11 @@ import {
   buildCatalogVaultExtras,
   buildConvivenciaBlock,
   buildEstruturasRefResumo,
+  buildIndiceDoVault,
+  buildLacunasBlock,
   buildMomentoBlock,
+  renderIndiceDoVault,
+  secaoDaLacuna,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   semExige,
@@ -267,5 +271,60 @@ describe("semExige", () => {
     const k = emptyCuradorVaultKnowledge()
     k.secoes.set("hero", { slug: "_hero", kind: "secao", body_md: NOTA } as never)
     expect(buildSecaoNotasBlock(k, ["hero"])).not.toMatch(/exig/i)
+  })
+})
+
+
+// ── Lacunas + índice do Obsidian (02/09) ────────────────────────────────
+describe("lacunas da biblioteca", () => {
+  const k = indexVaultDocs([
+    doc({ kind: "lacuna", slug: "offer-sem-isolamento", body_md: "Não existe offer com bloco destacado." }),
+    doc({ kind: "lacuna", slug: "reviews-sem-foto", frontmatter: { secao: "reviews" }, body_md: "Nenhum review com foto do cliente." }),
+    doc({ kind: "lacuna", slug: "tags-do-banco-contradizem-a-prosa", body_md: "Cadastro e vault divergem." }),
+    doc({ kind: "secao", grupo: "hero", slug: "_hero", body_md: "nota" }),
+  ])
+
+  it("o loader indexa kind='lacuna' (antes o sync gravava e ninguém lia)", () => {
+    expect(k.lacunas.map((d) => d.slug)).toEqual([
+      "offer-sem-isolamento",
+      "reviews-sem-foto",
+      "tags-do-banco-contradizem-a-prosa",
+    ])
+  })
+
+  it("seção da lacuna: frontmatter, senão o slug; sem pista → geral", () => {
+    expect(secaoDaLacuna(k.lacunas[1], ["offer", "reviews"])).toBe("reviews")
+    expect(secaoDaLacuna(k.lacunas[0], ["offer", "reviews"])).toBe("offer")
+    expect(secaoDaLacuna(k.lacunas[2], ["offer", "reviews"])).toBeNull()
+  })
+
+  it("serve só as lacunas das seções do email + as gerais; ausência declarada", () => {
+    const b = buildLacunasBlock(k, ["hero", "offer"])
+    expect(b).toContain("Lacuna · offer · offer-sem-isolamento")
+    expect(b).toContain("Lacuna geral · tags-do-banco-contradizem-a-prosa")
+    expect(b).not.toContain("reviews-sem-foto")
+    expect(buildLacunasBlock(indexVaultDocs([]), ["hero"])).toContain("nenhuma lacuna registrada")
+  })
+})
+
+describe("índice do Obsidian", () => {
+  it("árvore de pastas com contagem, derivada do file_path; raiz e caminho sem pasta ficam fora", () => {
+    const idx = buildIndiceDoVault([
+      "componentes/secoes/_hero.md",
+      "componentes/secoes/_body.md",
+      "componentes/lacunas/offer-sem-isolamento.md",
+      "estruturas/welcome/avelmore-inspecao-antecipada.md",
+      "/estruturas/welcome/medicube-ultima-batida.md",
+      "_INDEX.md",
+    ])
+    expect(idx.pastas).toEqual([
+      { pasta: "componentes/lacunas", notas: 1 },
+      { pasta: "componentes/secoes", notas: 2 },
+      { pasta: "estruturas/welcome", notas: 2 },
+    ])
+    const r = renderIndiceDoVault(idx)
+    expect(r).toContain("- componentes/secoes/ (2 notas)")
+    expect(r).toContain("- componentes/lacunas/ (1 nota)")
+    expect(renderIndiceDoVault({ pastas: [] })).toContain("não sincronizado")
   })
 })
