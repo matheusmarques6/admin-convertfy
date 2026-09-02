@@ -684,6 +684,7 @@ const HTML_CHAIN_KEYS: PipelineAgentKey[] = [
   "text_format",
   "image_format",
   "color_format",
+  "background_fit",
   "html",
   "refiner",
 ]

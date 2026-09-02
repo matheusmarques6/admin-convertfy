@@ -181,6 +181,8 @@ export type AgentType =
   //   (migration 20261089). Roda no callback, antes da fase 2; a saída é
   //   proposta — quem aceita é o código (`aceitarReescrita`).
   | "copy_fit"
+  // background_fit NÃO entra aqui: é estágio de CÓDIGO (sem prompt/config),
+  // como copy_merge — só existe em GenerationRunAgent.
   // component_tagger e merge_verifier morreram em 20/08 (merge por
   // example): saíram do union — runs históricas renderizam pelo
   // AGENT_VISUAL legado, e config órfã no banco não é lida.
@@ -335,6 +337,8 @@ export type GenerationRunAgent =
   | "copy_merge"
   // copy_fit: encurtador da copy acima do limite (migration 20261089).
   | "copy_fit"
+  // background_fit: faixa + foto no tamanho declarado (migration 20261102).
+  | "background_fit"
 
 export interface EmailGenerationRun {
   id: string

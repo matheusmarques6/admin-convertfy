@@ -33,7 +33,25 @@ export const DEFAULT_OVERLAY_FRACTION = 0.45
  * overlay"). Sem menção, a imagem é ilustração e o texto vive fora dela.
  */
 export function hasOverlay(text: string | null | undefined): boolean {
-  return /sobrepost|sobrepõe|overlay/i.test(text ?? "")
+  return /sobrepost|sobrepõe|overlay/i.test(semNegacao(text ?? ""))
+}
+
+/**
+ * "não recebe nenhum texto sobreposto" NÃO é overlay — é a negação dele.
+ *
+ * Cadastro real da `welcome - hero section 5` (`hero_lifestyle_consumo`):
+ * a foto vive abaixo da faixa chapada e o texto nunca a toca. A leitura
+ * pela palavra solta marcou o slot como "com overlay", mediu a luminância
+ * do topo (0,5432) e pediu ao modelo um "topo calmo para o texto" num
+ * lugar onde não há texto. Remove o trecho negado — partícula de negação
+ * seguida de até quatro palavras e da menção — antes do teste positivo,
+ * para que "sobrepostos aos 43% superiores … sem sombra" siga positivo.
+ */
+const NEGACAO_OVERLAY =
+  /\b(n[ãa]o|sem|nenhum[a]?|nunca|jamais)\b(?:\s+\S+){0,4}?\s*(sobrepost\w*|sobrep[õo]e|overlay)/gi
+
+function semNegacao(t: string): string {
+  return t.replace(NEGACAO_OVERLAY, " ")
 }
 
 /**

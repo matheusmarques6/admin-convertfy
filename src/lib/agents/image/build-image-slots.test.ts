@@ -168,4 +168,41 @@ describe("buildImageSlots", () => {
     expect(out).toContain("- headline: linha de texto, ~43 caracteres")
     expect(out).toContain("- ps_line: linha de texto")
   })
+
+  it("fieldKey: só a seção do alvo, com os irmãos em outras_imagens_deste_bloco (hero 5)", () => {
+    const fields = [
+      f({ key: "headline_l1", type: "text_short" }),
+      f({
+        key: "hero_lifestyle_consumo",
+        type: "image",
+        image_spec:
+          "Proporção: 1:1. Slot de 598 × 632px.\nIdeia: pessoa em cena de consumo real, meio corpo, com o produto grande e nítido nas mãos. Ambiente reconhecível.",
+      }),
+      f({
+        key: "main_image_rounded",
+        type: "image",
+        image_spec:
+          "Proporção: 1:1. Slot de 534 × 534px.\nIdeia: produto ou cena secundária em enquadramento quadrado, com o mesmo tratamento de cor da foto principal. Serve como fecho visual.",
+      }),
+      f({ key: "selo", type: "image", nature: "asset_fixo" }),
+    ]
+    const out = buildImageSlots(fields, { headline_l1: "Welcome to" }, {
+      fieldKey: "main_image_rounded",
+    })
+    expect(out).toContain('<slot_imagem tag="MAIN_IMAGE_ROUNDED">')
+    expect(out).not.toContain('<slot_imagem tag="HERO_LIFESTYLE_CONSUMO">')
+    expect(out).toContain("outras_imagens_deste_bloco")
+    expect(out).toContain(
+      "- hero_lifestyle_consumo: pessoa em cena de consumo real, meio corpo, com o produto grande e nítido nas mãos.",
+    )
+    // asset_fixo não é "outra imagem" (não é gerada)
+    expect(out).not.toContain("- selo")
+    // sem fieldKey: todas as seções, sem a lista de irmãos
+    const todos = buildImageSlots(fields, {})
+    expect(todos).toContain('<slot_imagem tag="HERO_LIFESTYLE_CONSUMO">')
+    expect(todos).toContain('<slot_imagem tag="MAIN_IMAGE_ROUNDED">')
+    expect(todos).not.toContain("outras_imagens_deste_bloco")
+    // fieldKey inexistente → vazio (o caller cai no brief legado)
+    expect(buildImageSlots(fields, {}, { fieldKey: "nada" })).toBe("")
+  })
 })

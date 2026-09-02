@@ -114,6 +114,10 @@ import {
   type MergeAnchor,
 } from "./html/copy-merge"
 import { imageMerge } from "./html/image-merge"
+import {
+  defaultBackgroundFitDeps,
+  fitBackgrounds,
+} from "./image/background-fit.service"
 import { fixHeroOverlayText } from "./html/fix-hero-overlay"
 import {
   buildQaBlockViews,
@@ -3492,6 +3496,121 @@ async function runFormattingChain(p: {
         }).catch(() => {})
       }
       await persistStage(currentHtml, null)
+    }
+  }
+
+  // ── STEP 5 — FUNDO NO TAMANHO DECLARADO (código; FAIL-OPEN) ────────
+  // O fundo de um elemento tem de ter o tamanho que ele declara. A
+  // `welcome - hero section 5` põe `background-size:598px 1217px` num td
+  // cujo arquivo, por cadastro, é faixa chapada (585px, cor primária) +
+  // foto de 632px na base — o pipeline gerava a foto certa e o email
+  // client a esticava para o bloco inteiro: o texto caía em cima da
+  // pessoa (Innova Bay, batch 5b778483). Roda DEPOIS do step de cor para
+  // pintar a faixa com a cor que o td JÁ tem — texto e faixa contrastam
+  // por construção — e mesmo quando o step de cor foi pulado.
+  {
+    const bgT0 = Date.now()
+    const inputHtml = currentHtml
+    try {
+      const fit = await fitBackgrounds(
+        {
+          html: inputHtml,
+          blocks: fmtCtx.blocks ?? [],
+          storeId,
+          fallbackColor: fmtCtx.roles?.surface_strong ?? null,
+        },
+        {
+          ...defaultBackgroundFitDeps,
+          // Grava a composição ao lado da URL original — a foto gerada
+          // continua rastreável e um resume enxerga a composta como
+          // "deste email".
+          persistComposed: async (blockId, key, composed) => {
+            const { data: row } = await admin
+              .from("email_blocks")
+              .select("content")
+              .eq("id", blockId)
+              .maybeSingle()
+            const content = ((row?.content as Record<string, unknown> | null) ?? {}) as Record<string, unknown>
+            const images = ((content.images as Record<string, Record<string, unknown>> | undefined) ?? {})
+            images[key] = {
+              ...(images[key] ?? {}),
+              composed: {
+                url: composed.para,
+                width: composed.width,
+                height: composed.height,
+                band_color: composed.band_color,
+                band_height: composed.band_height,
+                side: composed.side,
+              },
+            }
+            await admin
+              .from("email_blocks")
+              .update({ content: { ...content, images } })
+              .eq("id", blockId)
+          },
+        },
+      )
+      if (fit.report.boxes.length > 0) {
+        currentHtml = fit.html
+        if (fit.report.compostos.length > 0) {
+          await persistStage(currentHtml, null)
+          log.info("phase2.fmt.background_fit", {
+            emailId,
+            compostos: fit.report.compostos.map(
+              (c) => `${c.key}: ${c.width}×${c.height} faixa ${c.band_color} ${c.band_height}px (${c.side}) ×${c.replaced}`,
+            ),
+          })
+        }
+        await logGenerationRun({
+          ...ids,
+          agent: "background_fit",
+          status: fit.report.falhas.length > 0 && fit.report.compostos.length === 0 ? "error" : "success",
+          model: "deterministic",
+          inputVars: {
+            input_html_len: inputHtml.length,
+            input_sha8: sha8(inputHtml),
+            boxes: fit.report.boxes,
+          },
+          inputSummary: [
+            {
+              rotulo: "Documento de entrada",
+              cls: "upstream",
+              valor: `${inputHtml.length.toLocaleString("pt-BR")} chars — saída do step de cores (sha8 ${sha8(inputHtml)})`,
+            },
+            {
+              rotulo: "Boxes de fundo",
+              cls: "sistema",
+              valor: `${fit.report.boxes.length} elemento(s) com background e tamanho declarado (background-size / v:rect)`,
+            },
+            {
+              rotulo: "Cor da faixa",
+              cls: "sistema",
+              valor: "background-color do próprio elemento (decidida pelo Cores & Botões); fallback surface_strong",
+            },
+          ] as InputSummaryItem[],
+          parsedOutput: {
+            boxes: fit.report.boxes.length,
+            compostos: fit.report.compostos,
+            sem_ajuste: fit.report.sem_ajuste,
+            falhas: fit.report.falhas,
+            output_html_len: currentHtml.length,
+            output_sha8: sha8(currentHtml),
+            output_html: htmlSnapshot(currentHtml),
+          },
+          errorMessage:
+            fit.report.falhas.length > 0
+              ? fit.report.falhas.map((f) => `${f.key ?? "?"}: ${f.erro}`).join(" | ").slice(0, 500)
+              : undefined,
+          costCents: 0,
+          durationMs: Date.now() - bgT0,
+        }).catch(() => {})
+      }
+    } catch (err) {
+      // FAIL-OPEN: o documento do step anterior segue.
+      log.warn("phase2.fmt.background_fit_fail_open", {
+        emailId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 

@@ -120,6 +120,7 @@ function bucketOf(row: LogRow): PipelineAgentKey {
     row.agent === "text_format" ||
     row.agent === "image_format" ||
     row.agent === "color_format" ||
+    row.agent === "background_fit" ||
     row.agent === "html" ||
     row.agent === "refiner" ||
     row.agent === "qa" ||

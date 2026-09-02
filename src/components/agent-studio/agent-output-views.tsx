@@ -1138,6 +1138,82 @@ export function CopyFitView({ output }: { output: unknown }) {
   )
 }
 
+interface BackgroundCompostoView {
+  key?: string
+  width?: number
+  height?: number
+  band_color?: string
+  band_height?: number
+  side?: string
+  replaced?: number
+  para?: string
+}
+
+/**
+ * Fundo no tamanho declarado: quantos boxes o documento tem, quantos foram
+ * compostos (faixa + foto) e o que ficou sem ajuste ou falhou. A miniatura
+ * do composto é a prova visual — antes disso o defeito só aparecia no
+ * email do cliente.
+ */
+export function BackgroundFitView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  if (o.boxes == null && o.compostos == null) return null
+  const compostos = asArray<BackgroundCompostoView>(o.compostos)
+  const semAjuste = asArray<{ key?: string | null; motivo?: string }>(o.sem_ajuste)
+  const falhas = asArray<{ key?: string | null; erro?: string }>(o.falhas)
+  const boxes = Number(o.boxes ?? 0)
+
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        <OutPill text={`${boxes} box(es) de fundo`} tone="neut" />
+        <OutPill
+          text={`${compostos.length} composto(s)`}
+          tone={compostos.length > 0 ? "pos" : "neut"}
+        />
+        {semAjuste.length > 0 && <OutPill text={`${semAjuste.length} sem ajuste`} tone="neut" />}
+        {falhas.length > 0 && <OutPill text={`${falhas.length} falha(s)`} tone="warn" />}
+      </div>
+      {compostos.map((c, i) => (
+        <OutItem key={`${c.key ?? i}`}>
+          <div style={{ ...OUT_BODY, fontWeight: 700 }}>{c.key ?? "?"}</div>
+          <div style={{ ...OUT_BODY, color: C.g500, ...TNUM }}>
+            {c.width}×{c.height}px · faixa {c.band_color} de {c.band_height}px ({c.side === "top" ? "foto no topo" : "foto na base"}) · URL trocada ×{c.replaced ?? 0}
+          </div>
+          {typeof c.para === "string" && (
+            <a href={c.para} target="_blank" rel="noreferrer">
+              <img
+                src={c.para}
+                alt=""
+                style={{
+                  width: "100%",
+                  maxHeight: 260,
+                  objectFit: "contain",
+                  borderRadius: 7,
+                  border: `1px solid ${C.border}`,
+                  background: C.g50,
+                  display: "block",
+                  marginTop: 6,
+                }}
+              />
+            </a>
+          )}
+        </OutItem>
+      ))}
+      {semAjuste.map((s, i) => (
+        <div key={`s${i}`} style={{ ...OUT_BODY, color: C.g500 }}>
+          {s.key ?? "(url externa)"}: {s.motivo}
+        </div>
+      ))}
+      {falhas.map((f, i) => (
+        <div key={`f${i}`} style={{ ...OUT_BODY, color: "#B45309" }}>
+          {f.key ?? "?"}: {f.erro}
+        </div>
+      ))}
+    </OutCard>
+  )
+}
+
 /** Roteia a view legível pelo agente do nó. null = sem view própria. */
 export function AgentOutputView({
   agent,
@@ -1159,6 +1235,8 @@ export function AgentOutputView({
       return <CopyContratoView output={output} />
     case "copy_fit":
       return <CopyFitView output={output} />
+    case "background_fit":
+      return <BackgroundFitView output={output} />
     case "hero_section":
       return <HeroSectionView output={output} />
     case "image":

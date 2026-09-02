@@ -222,15 +222,14 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
   ).trim()
 
-  // Um slot por chamada: filtra o schema do bloco para o campo alvo. A
-  // as `areas_de_texto` do buildImageSlots continuam vindo do content
-  // INTEIRO do bloco, então o slot isolado não perde o contexto dos irmãos.
-  const slotFields = input.fieldKey
-    ? (bpBlock?.fields ?? []).filter(
-        (f) => (f as { key?: string }).key === input.fieldKey,
-      )
-    : bpBlock?.fields
-  const imageSlots = buildImageSlots(slotFields, input.blockContent)
+  // Um slot por chamada: o buildImageSlots emite só a seção do campo alvo
+  // (`fieldKey`), mas recebe o schema INTEIRO do bloco — as `areas_de_texto`
+  // vêm do content inteiro e os irmãos de imagem entram como
+  // `outras_imagens_deste_bloco` (a segunda foto sabe o que a primeira
+  // mostra).
+  const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent, {
+    fieldKey: input.fieldKey ?? null,
+  })
   const legacyImageBrief =
     bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
 

@@ -37,6 +37,7 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   // Por isso fica FORA de TEST_BASE_AGENT_KEYS — uma linha pendente que
   // nunca chega mentiria sobre o pipeline.
   copy_fit: "Encurtador de Copy",
+  background_fit: "Fundo no Tamanho",
   image: "Imagem (IA)",
   hero_section: "Hero Section",
   copy_merge: "Merge de Copy (código)",
@@ -90,7 +91,9 @@ export const TEST_BASE_AGENT_KEYS = [
  *
  * Ambos aparecem na lista quando TÊM run, como qualquer extra.
  */
-export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit"] as const
+// - `background_fit`: só roda quando o documento tem elemento com
+//   background e tamanho declarado (migration 20261102).
+export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit", "background_fit"] as const
 
 const PHASE2_STEP_KEYS = [
   "image",

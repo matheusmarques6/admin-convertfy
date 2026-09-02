@@ -127,9 +127,32 @@ function areasDeTexto(
  * Bloco IMAGE_SLOTS: uma seção por campo type=image. Vazio ("") quando o
  * bloco não tem campo de imagem (o caller cai no IMAGE_BRIEF legado).
  */
+/**
+ * Primeira frase da "Ideia" do cadastro (ou do spec inteiro) — o resumo de
+ * UMA linha que o slot irmão recebe sobre o outro.
+ */
+function ideiaResumida(f: BlueprintBlockField): string {
+  const spec = (f.image_spec ?? "").trim() || (f.guidance ?? "").trim()
+  const ideia = /ideia\s*:\s*([^\n]+)/i.exec(spec)?.[1] ?? spec
+  const frase = ideia.split(/(?<=[.!?])\s/)[0] ?? ideia
+  return frase.trim().slice(0, 220)
+}
+
+export interface BuildImageSlotsOptions {
+  /**
+   * Um slot por chamada: emite SÓ a seção deste campo, mas diz a ele o que
+   * os irmãos do bloco mostram. Sem isto, `hero_lifestyle_consumo` e
+   * `main_image_rounded` (hero 5) saíram como duas mulheres com o mesmo
+   * produto — cada prompt via só o próprio slot (Innova Bay, 02/09). É
+   * pedido ao modelo, não garantia.
+   */
+  fieldKey?: string | null
+}
+
 export function buildImageSlots(
   fields: BlueprintBlockField[] | null | undefined,
   content: Record<string, unknown> | null | undefined,
+  opts?: BuildImageSlotsOptions,
 ): string {
   const list = Array.isArray(fields) ? fields : []
   const cont = content ?? {}
@@ -137,9 +160,13 @@ export function buildImageSlots(
   // arte da biblioteca e fica intacta (briefá-la induziria o agente a
   // recriá-la). Sem nature no snapshot, type=image deriva imagem_gerada
   // (comportamento antigo preservado).
-  const imageFields = list.filter(
+  const allImageFields = list.filter(
     (f) => f.type === "image" && deriveFieldNature(f) === "imagem_gerada",
   )
+  const fieldKey = opts?.fieldKey ?? null
+  const imageFields = fieldKey
+    ? allImageFields.filter((f) => f.key === fieldKey)
+    : allImageFields
   if (imageFields.length === 0) return ""
 
   const sections = imageFields.map((f) => {
@@ -162,6 +189,13 @@ export function buildImageSlots(
         "areas_de_texto (o HTML escreve estes textos POR CIMA da imagem — deixe estas regiões limpas, sem desenhar nada nelas):",
       )
       for (const [k, v] of grupo) lines.push(`- ${k}: ${v}`)
+    }
+    const irmaos = fieldKey ? allImageFields.filter((o) => o.key !== f.key) : []
+    if (irmaos.length > 0) {
+      lines.push(
+        "outras_imagens_deste_bloco (já existem no mesmo bloco — esta imagem deve ser DIFERENTE delas em cena e enquadramento; se a outra mostra uma pessoa, esta mostra o produto ou o ambiente):",
+      )
+      for (const o of irmaos) lines.push(`- ${o.key}: ${ideiaResumida(o) || "(sem descrição)"}`)
     }
     lines.push("</slot_imagem>")
     return lines.join("\n")

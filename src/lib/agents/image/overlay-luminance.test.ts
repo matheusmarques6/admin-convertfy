@@ -49,6 +49,23 @@ describe("hasOverlay", () => {
     expect(hasOverlay("Ideia: detalhe lateral do mesmo item e cor.")).toBe(false)
     expect(hasOverlay(null)).toBe(false)
   })
+
+  it("overlay NEGADO não é overlay (hero_lifestyle_consumo, hero 5)", () => {
+    expect(
+      hasOverlay(
+        "Onde fica: base do ativo de fundo, abaixo da faixa chapada; não recebe nenhum texto sobreposto.\nNome do ativo: hero_lifestyle_[marca]_welcome.jpg",
+      ),
+    ).toBe(false)
+    expect(hasOverlay("sem texto sobreposto; foto livre")).toBe(false)
+    expect(hasOverlay("Nao recebe overlay.")).toBe(false)
+    // negação de OUTRA coisa não apaga um overlay real
+    expect(
+      hasOverlay("cupom e CTA sobrepostos aos 43% superiores, sem sombra dura"),
+    ).toBe(true)
+    expect(
+      hasOverlay("não usar modelo; headline sobreposta ao topo"),
+    ).toBe(false)
+  })
 })
 
 describe("overlayFraction", () => {

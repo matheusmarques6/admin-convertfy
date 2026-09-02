@@ -6,7 +6,7 @@
  */
 
 import sharp from "sharp"
-import { createAdminClient } from "@/lib/supabase/server"
+import { uploadEmailAsset } from "../image/upload-email-asset"
 import { logger } from "@/lib/logger"
 import {
   getAspectDimensions,
@@ -800,39 +800,14 @@ export async function generateEmailImage(
     }
   }
 
-  // Upload pro Supabase Storage
-  const admin = createAdminClient()
-  const uuid = crypto.randomUUID()
-  const path = `stores/${storeId}/email-assets/${uuid}.png`
-
-  const { error: uploadErr } = await admin.storage
-    .from("onboarding-visual-assets")
-    .upload(path, finalBuffer, {
-      contentType: "image/png",
-      upsert: false,
-    })
-
-  if (uploadErr) {
-    log.error("image.upload.failed", { storeId, path, error: uploadErr.message })
-    throw new Error(`Falha ao fazer upload da imagem: ${uploadErr.message}`)
-  }
-
-  const { data: signedData, error: signErr } = await admin.storage
-    .from("onboarding-visual-assets")
-    .createSignedUrl(path, 365 * 24 * 60 * 60)
-
-  if (signErr || !signedData?.signedUrl) {
-    const { data: publicData } = admin.storage
-      .from("onboarding-visual-assets")
-      .getPublicUrl(path)
-    log.warn("image.signed_url.fallback_public", { storeId, path })
-    return publicData.publicUrl
-  }
+  // Upload pro Supabase Storage — mesmo caminho da composição do fundo
+  // (`image/upload-email-asset.ts`): bucket, prefixo e validade únicos.
+  const { url, path } = await uploadEmailAsset(storeId, finalBuffer)
 
   const durationMs = Date.now() - t0
   log.info("image.generate.done", { storeId, path, durationMs })
 
-  return signedData.signedUrl
+  return url
 }
 
 /**

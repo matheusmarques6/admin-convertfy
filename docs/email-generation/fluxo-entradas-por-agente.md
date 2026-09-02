@@ -441,6 +441,31 @@ O agente **não vê o documento**: recebe o **inventário de cores anotado** (`e
 
 > ⚠️ Drift conhecido: `color_surface`/`color_surface_strong` são declaradas e exigidas pelo template, mas `buildColorFormatVars` não as preenche — chegam vazias ao modelo (`contract.drift` logado); o conserto de painel usa os roles direto por código e não é afetado.
 
+## 13b · Fundo no tamanho declarado (`background_fit`) — código, fail-open
+
+Roda DEPOIS do Cores & Botões (mesmo quando ele foi pulado). Regra: **o
+fundo de um elemento tem o tamanho que o elemento declara**. Para cada
+`<td background="URL">` com `background-size: Wpx Hpx` (ou `v:rect`
+`width/height`) cuja URL é imagem gerada deste email
+(`content.images[key].url`), se a foto é mais baixa que o box, o código
+compõe **faixa chapada + foto** (`image/compose-background.ts`, sharp),
+sobe o PNG (`upload-email-asset.ts`, mesmo bucket da geração) e troca a
+URL nas 3 ocorrências (atributo, `url()`, `v:fill`). Origem: a `welcome -
+hero section 5`, cujo fundo é faixa de 585px na cor primária + foto de
+632px na base — a foto ia inteira e o email client a esticava para 1217px
+(texto em cima da pessoa, Innova Bay 02/09).
+
+| Entrada | Origem | Classe |
+|---|---|---|
+| boxes (`findBackgroundBoxes`) | `background-size`/`v:rect` do documento pós-cor | sistema |
+| cor da faixa | `background-color` do PRÓPRIO td (a que o Cores & Botões decidiu → texto e faixa contrastam por construção); fallback `roles.surface_strong` | sistema |
+| lado da foto (`photoSide`) | guidance + image_spec do campo ("base do ativo de fundo" → base; default base) | biblioteca |
+| foto | `content.images[key].url` (fetch da URL assinada) | upstream |
+
+Saída: `parsed_output.{boxes, compostos[{key,de,para,width,height,band_color,band_height,side,replaced}], sem_ajuste, falhas}`;
+`content.images[key].composed` no bloco (URL original fica). Idempotente:
+foto que já cobre o box → `sem_ajuste`. Falha por box é fail-open.
+
 ---
 
 # QUALIDADE
@@ -545,3 +570,18 @@ Bloco "Innova Bay vs Others" do Welcome 1, batch `5b778483`:
 - **"Link Here"** (×6 no rodapé): entra em `EXEMPLO_RE` e aparece como
   `texto_orfao` suspeito. Não há campo de copy no rodapé — é cadastro da
   variante.
+
+Hero do mesmo email (02/09, tarde):
+
+- **Fundo esticado**: ver §13b (`background_fit`). A composição é
+  aritmética (1217 − 632 = 585) e vira código; o prompt de imagem não
+  muda.
+- **Overlay negado**: `hasOverlay` lia "não recebe nenhum texto sobreposto"
+  como overlay (mediu luminância e pediu "topo calmo" num slot sem texto).
+  Trechos negados (`não|sem|nenhum|nunca` + até 4 palavras + a menção) são
+  removidos antes do teste positivo.
+- **Duas fotos iguais no bloco** (`hero_lifestyle_consumo` e
+  `main_image_rounded` saíram como duas mulheres com o mesmo produto): o
+  `IMAGE_SLOTS` de cada slot agora traz `outras_imagens_deste_bloco` com a
+  primeira frase da "Ideia" dos irmãos e o pedido de ser diferente. É
+  pedido, não garantia.

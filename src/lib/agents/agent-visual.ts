@@ -22,6 +22,7 @@ export type PipelineAgentKey =
   | "text_format"
   | "image_format"
   | "color_format"
+  | "background_fit"
   | "html"
   | "refiner"
   | "qa"
@@ -115,6 +116,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     bg: "#F0FDFA",
     border: "#99F6E4",
     kind: "texto",
+  },
+  background_fit: {
+    name: "Fundo no Tamanho",
+    desc: "Faixa chapada + foto no tamanho que o td declara (background-size) — código, custo zero",
+    color: "#0F766E",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
+    kind: "sistema",
   },
   copy_fit: {
     name: "Encurtador de Copy",
@@ -233,6 +242,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "text_format",
   "image_format",
   "color_format",
+  "background_fit",
   "html",
   "refiner",
   "qa",
