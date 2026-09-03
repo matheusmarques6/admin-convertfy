@@ -17,6 +17,7 @@ import {
   fetchSnapshotSources,
   buildReportSnapshot,
 } from "@/lib/services/report-snapshot.service"
+import { assertStoreInUserOrg } from "@/lib/api/store-org-guard"
 
 export const dynamic = "force-dynamic"
 // fetchSnapshotSources usa timeout de 75s por fetch (paralelo) + chamada
@@ -68,8 +69,10 @@ export async function GET(
   try {
     const { id: storeId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    // service role bypassa RLS — a rota escopa: admin OU loja da org
+    await assertStoreInUserOrg(admin, user.id, storeId)
 
     const { data, error } = await admin
       .from("client_monthly_reports")
@@ -97,6 +100,8 @@ export async function POST(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
+    // gerar/substituir é escrita destrutiva — mesma régua do GET
+    await assertStoreInUserOrg(admin, user.id, storeId)
 
     const raw = await request.json()
     const parsed = createSchema.safeParse(raw)

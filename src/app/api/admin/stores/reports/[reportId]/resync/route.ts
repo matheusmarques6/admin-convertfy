@@ -10,6 +10,7 @@
 
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { assertReportInUserOrg } from "@/lib/api/store-org-guard"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import {
   fetchSnapshotSources,
@@ -26,8 +27,9 @@ export async function POST(
   try {
     const { reportId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertReportInUserOrg(admin, user.id, reportId)
 
     const { data: report, error: fetchErr } = await admin
       .from("client_monthly_reports")
