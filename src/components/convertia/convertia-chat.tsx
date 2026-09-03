@@ -566,7 +566,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         setMessages(msgs)
         scrollToBottom()
       } catch {
+        // Conversa excluída ou compartilhamento desativado — avisa em
+        // vez de deixar um convId órfão com composer ativo (todo envio
+        // daria "Conversa não encontrada").
+        setConvId(null)
+        setConvTitle(null)
         setMessages([])
+        setOauthNotice({
+          ok: false,
+          text: "Não consegui abrir a conversa — ela pode ter sido excluída ou o compartilhamento desativado.",
+        })
       }
     },
     [scrollToBottom],
@@ -645,10 +654,22 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     void mutateBoot()
   }
 
-  // Fixar/desafixar: o PATCH de context é REPLACE total — manda o
-  // context INTEIRO mesclado pra não perder source/workspace/store_id.
+  // Fixar/desafixar: o PATCH de context é REPLACE total — busca o
+  // context FRESCO no GET antes de mesclar (o objeto do rail vem do
+  // bootstrap e pode estar stale: mesclar sobre ele apagaria um
+  // `shared` ligado depois do último refresh, matando o link dos
+  // colegas em silêncio).
   const togglePin = async (c: Conversation) => {
-    const next = { ...(c.context ?? {}), pinned: !isPinned(c) }
+    let ctx: Record<string, unknown> = c.context ?? {}
+    try {
+      const body = (await fetcher(`/api/ai/conversations/${c.id}`)) as {
+        conversation?: { context?: Record<string, unknown> | null }
+      }
+      ctx = body.conversation?.context ?? ctx
+    } catch {
+      /* sem GET, mescla sobre o context do rail mesmo */
+    }
+    const next = { ...ctx, pinned: ctx.pinned !== true }
     await fetch(`/api/ai/conversations/${c.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

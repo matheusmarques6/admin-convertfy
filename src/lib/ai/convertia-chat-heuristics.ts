@@ -30,9 +30,19 @@ const ANALYTICAL_PATTERNS: RegExp[] = [
   /\b(relat[óo]rio|resumo (de|da|do)|balan[çc]o)\b/i,
 ]
 
+/**
+ * Pedido que começa com verbo de criação SEGUIDO de substantivo de
+ * PEÇA (email, copy, assunto…) é produção de conteúdo, não análise —
+ * mesmo citando "campanha" ("escreva um email da campanha de natal").
+ * O verbo sozinho não basta: "faça uma auditoria" é análise.
+ */
+const CREATIVE_LEAD =
+  /^\s*(escrev|redij|redig|cri[ae]|ger[ae]|faç?a|faz|mont[ae]|desenh|traduz|revis[ae]|melhor[ae]|reescrev)\w*\s+(?:o |a |um |uma |esse |essa |este |esta |pra mim )*(e-?mails?|copy|copies|assuntos?|subject|textos?|artes?|banners?|imagens?|fotos?|posts?|legendas?|headlines?|peças?|slogans?|criativos?|templates?|html|páginas?|landing)/i
+
 export function isAnalyticalQuestion(message: string): boolean {
   const m = message.trim()
   if (m.length < 8) return false
+  if (CREATIVE_LEAD.test(m)) return false
   return ANALYTICAL_PATTERNS.some((re) => re.test(m))
 }
 

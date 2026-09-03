@@ -20,6 +20,20 @@ function fmtBRL(v: number): string {
   }).format(v)
 }
 
+/** Formata na MOEDA da loja — loja EUR/USD não pode sair como R$. */
+function fmtMoney(v: number, currency: string | null | undefined): string {
+  const cur = (currency ?? "BRL").toUpperCase()
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(v)
+  } catch {
+    return `${cur} ${Math.round(v).toLocaleString("pt-BR")}`
+  }
+}
+
 function pct(num: number, den: number): string {
   return den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—"
 }
@@ -133,10 +147,12 @@ export async function buildStoreContext(storeId: string): Promise<string> {
         ? ` (${cur.revenue >= prev.revenue ? "+" : ""}${(((cur.revenue - prev.revenue) / prev.revenue) * 100).toFixed(0)}% vs 30d anteriores)`
         : ""
 
+    // Rótulo honesto: a série diária cobre CAMPANHAS — receita de flow
+    // não entra aqui (mesma convenção do dashboard, "campanhas · diário").
     const trendBlock =
       daily.length > 0
-        ? `TENDÊNCIA (30 dias vs 30 anteriores):
-- Receita atribuída: ${fmtBRL(cur.revenue)}${revDelta}
+        ? `TENDÊNCIA (30 dias vs 30 anteriores · campanhas, série diária — flows ficam FORA deste número; para o total do email consulte as tools):
+- Receita atribuída (campanhas): ${fmtMoney(cur.revenue, store.currency)}${revDelta}
 - Open rate: ${pct(cur.opened, cur.delivered)}${deltaPp({ n: cur.opened, d: cur.delivered }, { n: prev.opened, d: prev.delivered })}
 - Click rate: ${pct(cur.clicked, cur.delivered)}${deltaPp({ n: cur.clicked, d: cur.delivered }, { n: prev.clicked, d: prev.delivered })}`
         : "TENDÊNCIA: sem série diária coletada ainda."
@@ -168,21 +184,28 @@ export async function buildStoreContext(storeId: string): Promise<string> {
               const when = c.send_time
                 ? new Date(c.send_time).toLocaleDateString("pt-BR")
                 : "—"
-              return `- ${c.campaign_name ?? c.campaign_id} (${when}): ${c.recipients ?? 0} envios · open ${Number(c.open_rate ?? 0).toFixed(1)}% · ${fmtBRL(Number(c.conversion_value ?? 0))}`
+              return `- ${c.campaign_name ?? c.campaign_id} (${when}): ${c.recipients ?? 0} envios · open ${Number(c.open_rate ?? 0).toFixed(1)}% · ${fmtMoney(Number(c.conversion_value ?? 0), store.currency)}`
             })
             .join("\n")}`
         : "ÚLTIMAS CAMPANHAS: nenhuma nos últimos 30 dias."
 
     // ── Top flows (duas plataformas) ────────────────────────────────
-    const flowRows = [
+    // As tabelas guardam VÁRIAS janelas por flow (7d/15d/30d…) — sem
+    // dedup por nome o mesmo flow saía 2x com valores divergentes.
+    // Fica o MAIOR valor de cada flow, com rótulo de janela honesto.
+    const bestByFlow = new Map<string, number>()
+    for (const f of [
       ...rows<{ flow_name: string; conversion_value: number | string | null }>(flowsOQ),
       ...rows<{ flow_name: string; conversion_value: number | string | null }>(flowsKQ),
-    ]
-      .sort((a, b) => Number(b.conversion_value ?? 0) - Number(a.conversion_value ?? 0))
-      .slice(0, 3)
+    ]) {
+      const v = Number(f.conversion_value ?? 0)
+      if (v > (bestByFlow.get(f.flow_name) ?? -1)) bestByFlow.set(f.flow_name, v)
+    }
     const topFlows =
-      flowRows
-        .map((f) => `${f.flow_name} (${fmtBRL(Number(f.conversion_value ?? 0))})`)
+      [...bestByFlow.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, v]) => `${name} (${fmtMoney(v, store.currency)})`)
         .join(", ") || "nenhum flow com dados"
 
     // ── Alertas ativos ──────────────────────────────────────────────
@@ -215,7 +238,7 @@ export async function buildStoreContext(storeId: string): Promise<string> {
 - Audiência: ${store.target_audience ?? "—"}`,
       trendBlock,
       campaignsBlock,
-      `TOP FLOWS (30d): ${topFlows}`,
+      `TOP FLOWS (maior valor entre as janelas sincronizadas recentes — não somar com a tendência): ${topFlows}`,
       alertsBlock,
     ]
       .filter(Boolean)

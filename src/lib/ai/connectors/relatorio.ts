@@ -61,7 +61,7 @@ export function buildRelatorioConnector(opts: {
       function: {
         name: "gerar_relatorio_loja",
         description:
-          "EXECUTA: gera o relatório mensal OFICIAL da loja selecionada pelo sistema de relatórios da Convertfy (KPIs reais, campanhas, flows — o mesmo da aba Relatório da loja) e devolve os links do editor e do deck apresentável. Use quando o usuário pedir 'gera o relatório da loja', 'relatório de agosto' etc. Sem período informado, usa o mês civil anterior completo. Se já existir relatório do mesmo mês, a tool avisa — só chame de novo com substituir=true depois que o usuário confirmar a substituição.",
+          "EXECUTA: gera o relatório mensal OFICIAL da loja selecionada pelo sistema de relatórios da Convertfy (KPIs reais, campanhas, flows — o mesmo da aba Relatório da loja) e devolve os links do editor e do deck apresentável. Use quando o usuário pedir 'gera o relatório da loja', 'relatório de agosto' etc. Sem período informado, usa o mês civil anterior completo. Esta tool NUNCA substitui relatório existente — se o mês já tem relatório, ela devolve o link dele (substituir é ação manual, na aba Relatório da loja).",
         parameters: {
           type: "object",
           properties: {
@@ -72,11 +72,6 @@ export function buildRelatorioConnector(opts: {
             period_end: {
               type: "string",
               description: "Fim do período, YYYY-MM-DD. Default: último dia do mês anterior.",
-            },
-            substituir: {
-              type: "boolean",
-              description:
-                "true substitui um relatório já existente do mesmo mês. Só use após confirmação explícita do usuário.",
             },
             preencher_com_ia: {
               type: "boolean",
@@ -107,6 +102,10 @@ export function buildRelatorioConnector(opts: {
         return { content: "Período inválido: fim antes do início.", summary: "período inválido" }
       }
 
+      // Substituição NUNCA passa por aqui (sem `replace`): apagar um
+      // relatório já revisado/enviado é destrutivo demais para uma
+      // tool acionável por texto — inclusive por injection em anexo.
+      // O timeout espelha o maxDuration=120 da rota interna (+5s).
       const create = await postJson(
         `${opts.origin}/api/admin/stores/${ctx.storeId}/reports`,
         opts.cookie,
@@ -115,9 +114,8 @@ export function buildRelatorioConnector(opts: {
           period_end: periodEnd,
           tone: "editorial",
           ai_filled: false,
-          ...(args.substituir === true ? { replace: true } : {}),
         },
-        150_000,
+        125_000,
       )
 
       if (create.status === 409) {
@@ -126,7 +124,7 @@ export function buildRelatorioConnector(opts: {
         return {
           content: `Já existe um relatório de ${label} para esta loja${
             existingId ? ` — editor: /admin/stores/relatorios/${existingId} · deck: /print/relatorios/${existingId}` : ""
-          }. Pergunte ao usuário se quer SUBSTITUIR (aí chame de novo com substituir=true) ou usar o existente.`,
+          }. Informe o usuário e aponte os links. Para SUBSTITUIR, é ação manual na aba Relatório da loja — esta tool não substitui.`,
           summary: "já existe",
         }
       }
@@ -148,7 +146,7 @@ export function buildRelatorioConnector(opts: {
             `${opts.origin}/api/admin/stores/reports/${reportId}/ai-fill`,
             opts.cookie,
             {},
-            70_000,
+            65_000,
           )
           aiNote = fill.ok
             ? "Insights de IA preenchidos por slide."
