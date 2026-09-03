@@ -1850,7 +1850,11 @@ top 5 com preço/link), intenção deste email, `<secoes_disponiveis>` (só
 nomes), estruturas dos outros emails, orientação do COO, revisão humana.
 Ele NÃO recebe variantes, lacunas nem intenções por bloco.
 
-O **Curador do vault** (`curador-shadow.ts`, o vigente) recebe a saída
+O **Curador do vault** (`curador-shadow.ts`, o vigente) NÃO decide
+estrutura nem reescreve papel: a função dele é ENCONTRAR na biblioteca os
+blocos cuja anatomia realiza o papel decidido pelo Estruturador em cada
+posição e conversa com o fio ("encaixe primeiro, depois os eixos"; `papeis`
+no output = como a rank-1 realiza o papel). Ele recebe a saída
 COMPLETA do Estruturador em `<decisao_do_estruturador>`
 (`decisaoCompletaParaCurador`, critério dominante por posição; com ela
 `<estruturas_de_referencia>` e `<outline>` são omitidos), as

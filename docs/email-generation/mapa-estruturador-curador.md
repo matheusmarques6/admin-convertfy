@@ -128,6 +128,13 @@ propósito → valem os defaults in-code.
 
 ## 2 · CURADOR do vault (`agent='assembler_chooser'`, `curador-shadow.ts`)
 
+> **Função com o Estruturador ligado (02/09):** o Curador não decide estrutura nem
+> reescreve papel. Recebe a sequência e o papel de cada posição prontos e ENCONTRA
+> na biblioteca os blocos cuja anatomia realiza aquele papel e conversa com o fio
+> — "encaixe primeiro, depois os eixos do protocolo". `papeis` no output passa a
+> ser "como a rank-1 realiza o papel decidido"; só sem decisão (Estruturador
+> falhou) ele deriva o papel da intenção.
+
 **Propósito.** Para cada posição da sequência, escreve o papel (detalhando
 o do Estruturador quando há decisão), o fio narrativo, e rankeia até 3
 variantes da biblioteca com justificativa. Não vê HTML nem `output_schema`.

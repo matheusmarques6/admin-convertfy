@@ -228,6 +228,12 @@ describe("template do Curador do vault — decisão do Estruturador, lacunas e �
 
   it("o system faz da decisão o critério dominante, não elimina por lacuna e limita as consultas", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("critério DOMINANTE por posição")
+    // A função é ENCAIXAR blocos na proposta do Estruturador — não decidir
+    // estrutura nem reescrever papel (owner, 02/09).
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ENCONTRAR NA BIBLIOTECA os blocos")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ENCAIXE PRIMEIRO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Você não decide estrutura, não reescreve papel")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Sua tarefa é dizer por que cada posição existe")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`descartes`")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Lacuna NÃO elimina")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("no máximo 4 consultas")
