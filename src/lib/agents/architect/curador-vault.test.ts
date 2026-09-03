@@ -171,7 +171,7 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     expect(extras.has("id-sem-nota")).toBe(false)
   })
 
-  it("os extras entram no catálogo e a prosa do vault vence o cadastro", () => {
+  it("os eixos do vault entram no catálogo; a prosa do SISTEMA é que vale", () => {
     const extras = buildCatalogVaultExtras(k, [
       { id: "d9e34a1f-7bc7-47e8-9081-53600b104dd2", name: "welcome - hero section 3" },
     ])
@@ -187,8 +187,17 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     const entry = r.sections[0].variantes[0]
     expect(entry.vault?.slug).toBe("hero-3-cupom-de-captacao")
     expect(entry.vault?.momento_vetado).toEqual(["transacional"])
-    expect(entry.quando_nao_usar).toContain("Sem cupom")
-    expect(entry.description).toContain("cupom de captação")
+    // 03/09: o cadastro descreve a peça que será montada e prevalece; a
+    // prosa da nota é apoio e só aparece onde o sistema está vazio.
+    expect(entry.quando_nao_usar).toBe("quando não usar do banco")
+    expect(entry.description).toBe("descrição do banco")
+    // Com o cadastro vazio, a nota preenche a lacuna.
+    const semCadastro = buildCatalog(
+      [{ ...variante, description: null, when_not_use: null } as unknown as EmailComponentVariant],
+      extras,
+    )
+    expect(semCadastro.sections[0].variantes[0].description).toContain("cupom de captação")
+    expect(semCadastro.sections[0].variantes[0].quando_nao_usar).toContain("Sem cupom")
     // Sem extras, o catálogo é byte a byte o de antes (retrocompat).
     const semVault = buildCatalog([variante])
     expect(semVault.sections[0].variantes[0].vault).toBeUndefined()

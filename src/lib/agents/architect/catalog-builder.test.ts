@@ -4,6 +4,7 @@ import type { EmailComponentVariant } from "@/types/email-generation"
 import {
   buildCatalog,
   buildTypeIndex,
+  levantarHigieneDoVault,
   similaridadeDeDescricao,
 } from "./catalog-builder"
 import type { CatalogVaultExtra } from "./catalog-builder"
@@ -173,34 +174,48 @@ describe("similaridadeDeDescricao", () => {
   })
 })
 
-describe("buildCatalog — divergência vault × banco", () => {
-  it("serve as DUAS descrições e registra o par", () => {
+describe("buildCatalog — o sistema prevalece", () => {
+  it("serve a descrição do BANCO e registra o par divergente só para conserto", () => {
     const r = buildCatalog(
       [v("id-4", "body", "body 4 - bridge fundo cards", { description: BANCO_BODY4 })],
       extra("id-4", "body-4-tutorial-de-uso", VAULT_BODY4),
     )
     const entrada = r.sections[0].variantes[0]
-    // A prosa do vault continua vencendo o campo `description` (é o
-    // julgamento curado); o cadastro do banco viaja JUNTO, marcado.
-    expect(entrada.description).toBe(VAULT_BODY4)
-    expect(entrada.description_no_banco).toBe(BANCO_BODY4)
+    // O cadastro descreve a peça que será montada — é o HTML DESTA linha
+    // que vai para o email. A prosa do vault não entra no catálogo, e o
+    // modelo não arbitra entre as duas.
+    expect(entrada.description).toBe(BANCO_BODY4)
+    expect(r.json).not.toContain("description_no_banco")
+    expect(r.json).not.toContain(VAULT_BODY4)
+    // A divergência continua medida: é a nota do Obsidian que está errada.
     expect(r.divergentes).toHaveLength(1)
     expect(r.divergentes[0]).toMatchObject({
       variant_id: "id-4",
       slug: "body-4-tutorial-de-uso",
       name: "body 4 - bridge fundo cards",
+      vault: VAULT_BODY4,
+      banco: BANCO_BODY4,
     })
-    expect(r.json).toContain("description_no_banco")
   })
 
-  it("descrições que combinam não viram divergência nem poluem o catálogo", () => {
+  it("o vault preenche o que o sistema não tem, e só isso", () => {
+    const r = buildCatalog(
+      [v("id-6", "body", "body 6", { description: null, when_use: null })],
+      extra("id-6", "body-6-prova-social", VAULT_BODY4),
+    )
+    const entrada = r.sections[0].variantes[0]
+    expect(entrada.description).toBe(VAULT_BODY4)
+    // Sem os dois lados não há contradição a registrar.
+    expect(r.divergentes).toEqual([])
+  })
+
+  it("descrições que combinam não viram divergência", () => {
     const iguais = "Bloco de diferenciação para quando o cliente já entendeu a categoria e está decidindo entre marcas."
     const r = buildCatalog(
       [v("id-5", "body", "body 5", { description: iguais })],
       extra("id-5", "body-5-comparacao-nos-vs-eles", iguais),
     )
     expect(r.divergentes).toEqual([])
-    expect(r.sections[0].variantes[0].description_no_banco).toBeUndefined()
   })
 
   it("um dos lados vazio não é contradição", () => {
@@ -267,5 +282,56 @@ describe("buildCatalog — nenhum requisito de ativo viaja", () => {
     const r = buildCatalog([v("id-1", "body", "body 3")], extras)
     expect(r.json).not.toContain("exige")
     expect(r.json).not.toContain("gift-card-digital")
+  })
+})
+
+// A lista que substitui o aviso no prompt: o dado errado continua existindo,
+// e é na nota do Obsidian que se corrige.
+describe("levantarHigieneDoVault", () => {
+  const ativas = [
+    { id: "id-1", name: "review 2", block_type: "reviews" },
+    { id: "id-2", name: "hero 3", block_type: "hero" },
+  ]
+
+  it("nota apontando para variante que não está ativa é órfã", () => {
+    const r = levantarHigieneDoVault(
+      [
+        { slug: "reviews-3a", variant_id: "id-1", nome_no_banco: "review 3" },
+        { slug: "body-9-antiga", variant_id: "id-morta", nome_no_banco: "body 9" },
+      ],
+      ativas,
+      [],
+    )
+    expect(r.notas_orfas).toEqual([
+      { slug: "body-9-antiga", variant_id: "id-morta", nome_no_banco: "body 9" },
+    ])
+  })
+
+  it("variante ativa sem nota aparece — o Curador decide sem os eixos dela", () => {
+    const r = levantarHigieneDoVault(
+      [{ slug: "reviews-3a", variant_id: "id-1", nome_no_banco: "review 3" }],
+      ativas,
+      [],
+    )
+    expect(r.variantes_sem_nota).toEqual([
+      { variant_id: "id-2", name: "hero 3", block_type: "hero" },
+    ])
+  })
+
+  it("nota sem variant_id conta como órfã e não cobre ninguém", () => {
+    const r = levantarHigieneDoVault(
+      [{ slug: "solta", variant_id: null, nome_no_banco: null }],
+      ativas,
+      [],
+    )
+    expect(r.notas_orfas).toHaveLength(1)
+    expect(r.variantes_sem_nota).toHaveLength(2)
+  })
+
+  it("repassa as divergências medidas sem recalcular", () => {
+    const d = [
+      { variant_id: "id-1", slug: "reviews-3a", name: "review 2", vault: "a", banco: "b", similaridade: 0.2 },
+    ]
+    expect(levantarHigieneDoVault([], ativas, d).divergentes).toBe(d)
   })
 })

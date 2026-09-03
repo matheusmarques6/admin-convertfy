@@ -68,12 +68,30 @@ interface LearningRow {
   status: string
   is_active: boolean
 }
+/**
+ * Higiene das notas de COMPONENTE (03/09). A geração deixou de arbitrar
+ * entre a nota e o cadastro — o sistema prevalece —, então o descasamento
+ * não afeta mais o email; ele vira trabalho de corrigir a nota no Obsidian.
+ */
+interface HigieneData {
+  divergentes: Array<{
+    variant_id: string
+    slug: string
+    name: string
+    vault: string
+    banco: string
+    similaridade: number
+  }>
+  notas_orfas: Array<{ slug: string; variant_id: string | null; nome_no_banco: string | null }>
+  variantes_sem_nota: Array<{ variant_id: string; name: string; block_type: string }>
+}
 interface VaultData {
   state: SyncState | null
   runs: SyncRun[]
   intents: IntentRow[]
   structure_refs: RefRow[]
   learnings: LearningRow[]
+  higiene?: HigieneData
   configured: boolean
 }
 
@@ -242,6 +260,11 @@ export function VaultTab() {
         </EGCard>
       )}
 
+      {/* Higiene das notas de componente */}
+      {data.higiene && (
+        <HigieneCard higiene={data.higiene} />
+      )}
+
       {/* Material ativo por flow */}
       {flows.length === 0 ? (
         <EGNotice tone={lastRun?.error ? "neg" : "neut"}>
@@ -332,5 +355,91 @@ function MaterialCol({
         ))}
       </div>
     </div>
+  )
+}
+
+
+/**
+ * O que está descasado entre as notas do Obsidian e o cadastro. Não afeta a
+ * geração (o cadastro prevalece desde 03/09) — é a lista do que corrigir na
+ * nota para o Curador voltar a enxergar os eixos da variante certa.
+ */
+function HigieneCard({ higiene }: { higiene: HigieneData }) {
+  const total =
+    higiene.divergentes.length +
+    higiene.notas_orfas.length +
+    higiene.variantes_sem_nota.length
+  return (
+    <EGCard>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <EGSecTitle title="Notas de componente × cadastro" />
+        <EGBadge tone={total === 0 ? "pos" : "warn"}>
+          {total === 0 ? "tudo casado" : `${total} para conferir`}
+        </EGBadge>
+      </div>
+      <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 10 }}>
+        O cadastro do sistema é o que descreve a peça montada e o que o Curador
+        lê. A nota do Obsidian acrescenta os eixos do protocolo — quando ela
+        aponta para outra variante, esses eixos vão para a peça errada.
+      </div>
+
+      {total === 0 ? (
+        <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g400 }}>
+          Toda variante ativa tem nota, e toda nota descreve a peça do cadastro.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {higiene.divergentes.length > 0 && (
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.g700, marginBottom: 6 }}>
+                A nota descreve outra peça ({higiene.divergentes.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {higiene.divergentes.map((d) => (
+                  <div key={d.variant_id} style={{ borderLeft: `2px solid ${C.warn}`, paddingLeft: 8 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 12, color: C.g900 }}>
+                      {d.slug} → {d.name}{" "}
+                      <span style={{ color: C.g400 }}>· semelhança {d.similaridade.toFixed(2)}</span>
+                    </div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginTop: 2 }}>
+                      <b>nota:</b> {d.vault}
+                    </div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500 }}>
+                      <b>cadastro:</b> {d.banco}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {higiene.notas_orfas.length > 0 && (
+            <MaterialCol
+              title={`Nota apontando para variante que não está ativa (${higiene.notas_orfas.length})`}
+              rows={higiene.notas_orfas.map((n) => ({
+                key: n.slug,
+                label: n.slug,
+                sub: n.nome_no_banco ? `declara "${n.nome_no_banco}"` : "sem variant_id",
+                active: false,
+                status: "órfã",
+              }))}
+            />
+          )}
+
+          {higiene.variantes_sem_nota.length > 0 && (
+            <MaterialCol
+              title={`Variante ativa sem nota (${higiene.variantes_sem_nota.length})`}
+              rows={higiene.variantes_sem_nota.map((v) => ({
+                key: v.variant_id,
+                label: v.name,
+                sub: v.block_type,
+                active: false,
+                status: "sem nota",
+              }))}
+            />
+          )}
+        </div>
+      )}
+    </EGCard>
   )
 }

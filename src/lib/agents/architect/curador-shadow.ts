@@ -79,8 +79,7 @@ Você decide pelo protocolo, pelos eixos e pelos metadados. Você NÃO recebe o 
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\` — onde o vault contradisser os metadados do banco, O VAULT VENCE.
-EXCEÇÃO: variante com \`description_no_banco\` é uma em que as duas fontes descrevem PEÇAS DIFERENTES — \`description\` é a prosa do vault e \`description_no_banco\` é o cadastro da linha cujo HTML será REALMENTE montado. Aí o vault não vence, e o que vale para decidir é o BANCO: é o HTML dele que vai para o email. Ela NÃO é eliminada por isso; em empate com outra candidata da mesma posição, fica ATRÁS. Escolhendo-a, diga na \`justificativa\` sobre qual das duas descrições você decidiu.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. \`description\`, \`quando_usar\` e \`quando_nao_usar\` descrevem a peça que será REALMENTE montada — é o cadastro do sistema, e é ele que vale. Variantes com o campo \`vault\` trazem, ALÉM disso, os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\`: o vault acrescenta o que o sistema não tem, nunca o contradiz.
 {{catalogo}}
 </biblioteca>
 

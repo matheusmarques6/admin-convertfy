@@ -129,7 +129,10 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     // decide a sequência. O nome antigo saiu junto com a permissão.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain('"papeis"')
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("escolhas: []")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("O VAULT VENCE")
+    // 03/09: o sistema prevalece. O vault acrescenta o que o cadastro não
+    // tem; nunca o contradiz — e o modelo não arbitra entre os dois.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("O VAULT VENCE")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("é o cadastro do sistema, e é ele que vale")
   })
 
   // Em 01/09 o prompt dizia "Você PODE adaptar a sequência" e o agente cortou
@@ -203,12 +206,16 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("não elimina ninguém")
   })
 
-  // A variante cuja descrição do vault contradiz a do banco fica ATRÁS em
-  // empate — nunca fora. Condicionar a escolha ("só se servir nas duas
-  // leituras") era inerte contra "sobreviveu, tem de sair escolhida".
-  it("divergência vault × banco rebaixa, não elimina", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO é eliminada por isso")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fica ATRÁS")
+  // Até 03/09 o prompt mandava o modelo escolher entre a descrição do vault
+  // e a do banco, rebaixar a variante por isso e explicar a escolha na
+  // justificativa. Divergência de cadastro não é decisão de agente: o
+  // catálogo passou a servir só o sistema, e a lista de notas erradas vai
+  // para a telemetria e para a aba Conhecimento.
+  it("o prompt não arbitra mais entre vault e banco", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("description_no_banco")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("NÃO é eliminada por isso")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("fica ATRÁS")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("nunca o contradiz")
   })
 })
 
