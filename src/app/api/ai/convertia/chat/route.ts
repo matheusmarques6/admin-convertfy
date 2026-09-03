@@ -55,6 +55,16 @@ const MAX_TOOL_ROUNDS = 6
 const DEEP_TOOL_ROUNDS = 12
 const HISTORY_LIMIT = 24
 
+/**
+ * Orçamento de tempo do turno. maxDuration é 300s: se a função for
+ * morta pelo runtime, NADA é persistido e o cliente fica com o texto
+ * órfão na tela. Reservamos ~20s para persistência + telemetria e
+ * fechamos o stream por conta própria antes disso.
+ */
+const ROUTE_BUDGET_MS = 280_000
+/** Abaixo disto não vale começar outra rodada — fecha o que tem. */
+const MIN_ROUND_MS = 20_000
+
 const attachmentSchema = z.object({
   name: z.string().max(140),
   mime: z.string().max(100),
@@ -89,11 +99,15 @@ export async function POST(request: NextRequest) {
     if (!rate.allowed) {
       throw new AppError("Muitas mensagens — aguarde um instante.", 429, "rate-limit")
     }
-    const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
+    const body = bodySchema.parse(await request.json())
 
-    // Guard-rail de custo: limite diário POR USUÁRIO (America/Sao_Paulo)
-    const budget = await getConvertiaBudget(admin, user.id)
+    // Org e guard-rail de custo são independentes — em série custavam
+    // dois round-trips antes do primeiro token.
+    const [orgId, budget] = await Promise.all([
+      resolveOrgId(user.id),
+      getConvertiaBudget(admin, user.id),
+    ])
     if (budget.exceeded) {
       throw new AppError(
         `Limite diário da ConvertIA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}). Volta amanhã — ou peça a um admin para ajustar o limite.`,
@@ -102,36 +116,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = bodySchema.parse(await request.json())
     const modelInfo = resolveConvertiaModel(body.model)
     const model = modelInfo.id
     let storeId = body.store_id ?? null
 
     // A loja da conversa tem de ser da ORG do usuário — sem isso, um
     // UUID de loja alheia no body vazaria o dossiê no system prompt e
-    // deixaria a tool de relatório agir sobre loja de outra org.
-    if (storeId) {
-      const { data: storeRow } = await admin
-        .from("client_stores")
-        .select("id")
-        .eq("id", storeId)
-        .eq("org_id", orgId)
-        .maybeSingle()
-      if (!storeRow) {
-        log.warn("store fora da org no chat", { store_id: storeId, org_id: orgId })
-        storeId = null
-      }
+    // deixaria a tool de relatório agir sobre loja de outra org. A
+    // checagem roda junto com a busca da conversa (independentes).
+    let conversationId = body.conversation_id ?? null
+    let conversationTitle: string | null = null
+
+    const [storeCheck, convRow] = await Promise.all([
+      storeId
+        ? admin
+            .from("client_stores")
+            .select("id")
+            .eq("id", storeId)
+            .eq("org_id", orgId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      conversationId
+        ? admin
+            .from("ai_chat_conversations")
+            .select("id, user_id, title")
+            .eq("id", conversationId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+
+    if (storeId && !storeCheck.data) {
+      log.warn("store fora da org no chat", { store_id: storeId, org_id: orgId })
+      storeId = null
     }
 
     // ── Conversa (cria com o contexto do composer) ────────────────
-    let conversationId = body.conversation_id ?? null
-    let conversationTitle: string | null = null
     if (conversationId) {
-      const { data: conv } = await admin
-        .from("ai_chat_conversations")
-        .select("id, user_id, title")
-        .eq("id", conversationId)
-        .maybeSingle()
+      const conv = convRow.data as { user_id: string; title: string } | null
       if (!conv || conv.user_id !== user.id) {
         throw new AppError("Conversa não encontrada", 404, "not-found")
       }
@@ -369,6 +390,21 @@ export async function POST(request: NextRequest) {
 
         try {
           for (let round = 0; round <= maxRounds; round++) {
+            // Orçamento de tempo: a chamada nunca pode ultrapassar o
+            // que resta do turno, senão o runtime mata a função e o
+            // texto some (não é persistido nem contabilizado).
+            const remainingMs = ROUTE_BUDGET_MS - (Date.now() - started)
+            if (remainingMs < MIN_ROUND_MS) {
+              log.warn("orçamento de tempo esgotado", {
+                conversation_id: conversationId,
+                round,
+                deep: body.deep,
+              })
+              if (fullText) {
+                send({ type: "delta", text: "\n\n_(tempo do turno esgotado — resposta interrompida)_" })
+              }
+              break
+            }
             const holdDeltas = nudgePending
             let held = ""
             const result = await streamOpenRouterChat({
@@ -378,8 +414,9 @@ export async function POST(request: NextRequest) {
               maxTokens: body.deep ? 12288 : 4096,
               // Resposta longa + reasoning não cabe nos 120s default —
               // a rodada final do modo profundo estourava no meio da
-              // análise (texto exibido sumia do histórico persistido)
-              timeoutMs: body.deep ? 240_000 : undefined,
+              // análise (texto exibido sumia do histórico persistido).
+              // Limitado pelo que resta do turno.
+              timeoutMs: Math.min(body.deep ? 240_000 : 120_000, remainingMs),
               // Análise profunda liga o raciocínio estendido nos
               // modelos que aceitam (OpenRouter normaliza o parâmetro)
               reasoning: body.deep && modelInfo.reasoning ? { effort: "medium" } : undefined,
@@ -436,6 +473,25 @@ export async function POST(request: NextRequest) {
               const entry = toolIndex.get(call.function.name)
               let output: string
               let summary: string | null = null
+              // Tool longa (o relatório leva até ~190s) não pode nem
+              // começar sem tempo de turno para terminar E responder.
+              const toolBudgetMs = ROUTE_BUDGET_MS - (Date.now() - started)
+              if (entry && toolBudgetMs < MIN_ROUND_MS) {
+                output =
+                  "Sem tempo neste turno para executar esta ação. Avise o usuário e peça para repetir o pedido isoladamente."
+                summary = "sem tempo"
+                sources.push({
+                  connector: entry.connectorKey,
+                  connector_name: entry.connectorName,
+                  tool: call.function.name,
+                  label: entry.tool.label,
+                  summary,
+                  args_summary: null,
+                  write: entry.tool.write === true,
+                })
+                messages.push({ role: "tool", content: output, tool_call_id: call.id })
+                continue
+              }
               if (!entry) {
                 output = `Tool desconhecida: ${call.function.name}`
               } else {
