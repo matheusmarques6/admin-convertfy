@@ -132,7 +132,8 @@ import {
   defaultBackgroundFitDeps,
   fitBackgrounds,
 } from "./image/background-fit.service"
-import { fixHeroOverlayText } from "./html/fix-hero-overlay"
+import { fixHeroOverlayText, fixDarkOverlayText } from "./html/fix-hero-overlay"
+import { relativeLuminance } from "./html/color-roles"
 import {
   buildQaBlockViews,
   viewsFromBlocksFallback,
@@ -182,6 +183,7 @@ import {
   overlaySpec,
   measureOverlayLuminance,
   overlayIsLight,
+  overlayIsDark,
 } from "./image/overlay-luminance"
 import { loadTopProducts } from "./top-products"
 import {
@@ -3194,6 +3196,8 @@ async function runFormattingChain(p: {
     const imgT0 = Date.now()
     let overlayTextFixed = 0
     let overlaySlotsLight = 0
+    let overlayTextLightened = 0
+    let overlaySlotsDark = 0
     try {
       const im = imageMerge({
         html: inputHtml,
@@ -3221,6 +3225,13 @@ async function runFormattingChain(p: {
       // região do bloco: `review 7` tem TRÊS bandas com overlay e cada
       // uma tem a sua medição — escurecer o bloco inteiro criaria o
       // defeito oposto na banda escura.
+      // Cor clara de destino para o sentido inverso: a paleta já carrega uma
+      // cor de texto sobre fundo escuro (`button_text`). Cair em branco puro
+      // quando a marca tem outro claro seria trocar um defeito por outro.
+      const textoClaro =
+        relativeLuminance(fmtCtx.roles.button_text || "") >= 0.55
+          ? fmtCtx.roles.button_text
+          : "#FFFFFF"
       let mergedHtml = im.html
       for (const blk of fmtCtx.blocks ?? []) {
         const imgs = (blk.content as { images?: unknown } | null)?.images
@@ -3232,15 +3243,27 @@ async function runFormattingChain(p: {
             typeof val?.overlay_luminance === "number"
               ? val.overlay_luminance
               : null
-          if (!overlayIsLight(lum)) continue
-          overlaySlotsLight++
+          const clara = overlayIsLight(lum)
+          const escura = overlayIsDark(lum)
+          // Entre os dois cortes fica a zona morta: faixa de meio-tom não
+          // dispara nenhum dos sentidos (senão a mesma medição oscilaria
+          // entre escurecer e clarear a cada regeneração da foto).
+          if (!clara && !escura) continue
           // URL ausente do documento é no-op: slot declarado dentro de
           // `style` não é preenchido pelo merge (o slot-finder só varre
           // src/alt/href), e corrigir às cegas seria pior.
           const url = typeof val?.url === "string" ? val.url : ""
-          const fix = fixHeroOverlayText(mergedHtml, url, fmtCtx.roles.text)
-          mergedHtml = fix.html
-          overlayTextFixed += fix.fixed
+          if (clara) {
+            overlaySlotsLight++
+            const fix = fixHeroOverlayText(mergedHtml, url, fmtCtx.roles.text)
+            mergedHtml = fix.html
+            overlayTextFixed += fix.fixed
+          } else {
+            overlaySlotsDark++
+            const fix = fixDarkOverlayText(mergedHtml, url, textoClaro)
+            mergedHtml = fix.html
+            overlayTextLightened += fix.fixed
+          }
         }
       }
       if (overlaySlotsLight > 0) {
@@ -3248,6 +3271,13 @@ async function runFormattingChain(p: {
           emailId,
           slots_light: overlaySlotsLight,
           fixed: overlayTextFixed,
+        })
+      }
+      if (overlaySlotsDark > 0) {
+        log.info("phase2.fmt.overlay_text_lightened", {
+          emailId,
+          slots_dark: overlaySlotsDark,
+          lightened: overlayTextLightened,
         })
       }
 
@@ -3286,6 +3316,8 @@ async function runFormattingChain(p: {
           rows_removidas: im.report.rows_removidas,
           overlay_slots_light: overlaySlotsLight,
           overlay_text_fixed: overlayTextFixed,
+          overlay_slots_dark: overlaySlotsDark,
+          overlay_text_lightened: overlayTextLightened,
           output_html_len: mergedHtml.length,
           output_sha8: sha8(mergedHtml),
           output_html: htmlSnapshot(mergedHtml),

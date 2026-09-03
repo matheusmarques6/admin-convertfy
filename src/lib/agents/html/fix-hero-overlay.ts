@@ -1,6 +1,11 @@
 /**
- * fix-hero-overlay — escurece o texto sobreposto quando a FOTO de fundo
- * saiu clara.
+ * fix-hero-overlay — conforma o texto sobreposto à FOTO que saiu.
+ *
+ * Dois sentidos, o mesmo transform: foto clara engole o texto claro (escurece
+ * o texto), foto escura engole o texto escuro (clareia o texto). O segundo
+ * sentido ficou dois meses sem dono — o `color_format`, que viria depois, é
+ * proibido de agir sobre texto em foto ("a legibilidade está resolvida em
+ * outro lugar"), e o outro lugar resolvia metade.
  *
  * Irmão de `fix-dark-canvas.ts`: mesma ideia (uma correção cirúrgica de
  * legibilidade, por código, com o corte 0.55 de luminância), do outro lado
@@ -33,6 +38,11 @@ import { canonicalHex } from "./color-inventory"
 
 /** Acima disto, a cor é "clara" — mesmo corte de fix-dark-canvas. */
 const LIGHT_TEXT_MIN = 0.55
+/**
+ * Abaixo disto, a cor é "escura". Espelha o corte de `overlayIsDark` e deixa
+ * a mesma zona morta: cor de meio-tom não é alvo de nenhum dos dois sentidos.
+ */
+const DARK_TEXT_MAX = 0.2
 
 const HEX = "#(?:[0-9a-f]{6}|[0-9a-f]{3})"
 const TEXT_COLOR_RE = new RegExp(`(^|[^-\\w])color\\s*:\\s*(${HEX})`, "gi")
@@ -54,31 +64,33 @@ export function sameAsset(a: string, b: string): boolean {
 
 export interface FixHeroOverlayResult {
   html: string
-  /** Declarações de texto escurecidas. */
+  /** Declarações de cor de texto trocadas. */
   fixed: number
 }
 
 /**
- * Troca por `darkText` as cores CLARAS de texto cujo fundo efetivo é a
- * imagem `targetUrl`.
+ * O transform, nos dois sentidos: varre as declarações de cor de texto,
+ * aceita as que `aceitaCor` aprova, e troca pela `corDestino` as que pousam
+ * na imagem alvo.
  *
  * URL ausente do documento → devolve o HTML intacto. É o caso do slot cuja
  * URL nunca chegou ao HTML (token de imagem dentro de `style`, que o
  * slot-finder não preenche): não agir é o certo.
  */
-export function fixHeroOverlayText(
+function conformarTextoSobreFoto(
   html: string,
   targetUrl: string,
-  darkText: string,
+  aceitaCor: (luminancia: number) => boolean,
+  corDestino: string,
 ): FixHeroOverlayResult {
-  if (!targetUrl.trim()) return { html, fixed: 0 }
+  if (!targetUrl.trim() || !corDestino.trim()) return { html, fixed: 0 }
 
   const chainAt = buildAncestorChain(html)
   const alvos: Array<{ offset: number; len: number }> = []
 
   for (const m of html.matchAll(TEXT_COLOR_RE)) {
     const offset = (m.index ?? 0) + m[0].length - m[2].length
-    if (relativeLuminance(canonicalHex(m[2])) < LIGHT_TEXT_MIN) continue
+    if (!aceitaCor(relativeLuminance(canonicalHex(m[2])))) continue
     // Só o que pousa NESTA foto. Texto sobre fundo sólido (um botão dentro
     // da hero) tem contraste próprio; texto sobre outra foto tem outra
     // medição.
@@ -94,7 +106,40 @@ export function fixHeroOverlayText(
   // De trás pra frente: cada splice só desloca offsets maiores que ele.
   let out = html
   for (const a of [...alvos].sort((x, y) => y.offset - x.offset)) {
-    out = out.slice(0, a.offset) + darkText + out.slice(a.offset + a.len)
+    out = out.slice(0, a.offset) + corDestino + out.slice(a.offset + a.len)
   }
   return { html: out, fixed: alvos.length }
+}
+
+export function fixHeroOverlayText(
+  html: string,
+  targetUrl: string,
+  darkText: string,
+): FixHeroOverlayResult {
+  return conformarTextoSobreFoto(
+    html,
+    targetUrl,
+    (lum) => lum >= LIGHT_TEXT_MIN,
+    darkText,
+  )
+}
+
+/**
+ * Troca por `lightText` as cores ESCURAS de texto cujo fundo efetivo é a
+ * imagem `targetUrl` — o sentido inverso, para a foto que saiu escura.
+ *
+ * Mesmos escopos do irmão: só o texto que pousa NAQUELA foto, e botão com
+ * fundo sólido próprio sobre a mesma imagem fica intacto.
+ */
+export function fixDarkOverlayText(
+  html: string,
+  targetUrl: string,
+  lightText: string,
+): FixHeroOverlayResult {
+  return conformarTextoSobreFoto(
+    html,
+    targetUrl,
+    (lum) => lum <= DARK_TEXT_MAX,
+    lightText,
+  )
 }

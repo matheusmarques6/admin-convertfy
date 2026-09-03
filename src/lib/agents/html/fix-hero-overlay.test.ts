@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { fixHeroOverlayText, sameAsset } from "./fix-hero-overlay"
+import {
+  fixDarkOverlayText,
+  fixHeroOverlayText,
+  sameAsset,
+} from "./fix-hero-overlay"
 
 const DARK = "#1F1F1F"
 const FOTO = "https://cdn/hero.png"
@@ -92,5 +96,73 @@ describe("fixHeroOverlayText", () => {
       '<span style="color:#FFFFFF;">ok</span></td></tr></table>'
     const r = fixHeroOverlayText(html, FOTO, DARK)
     expect(r.fixed).toBe(0)
+  })
+})
+
+// ── O sentido inverso: foto ESCURA com texto ESCURO ────────────────────
+// Quadrante que ficava sem dono. Das 16 variantes ativas com
+// background-image, todas declaram #000000 em algum ponto — `produtos 5`
+// tem 31 declarações não-brancas sobre foto.
+const CLARO = "#FFFFFF"
+
+/** Mesma estrutura do HERO, mas com o texto escuro da variante. */
+const BLOCO_ESCURO = [
+  `<table><tr><td style="background-image:url('${FOTO}');background-size:598px 1150px;">`,
+  '<table><tr><td style="font-size:40px;color:#000000;">Three Ingredients</td></tr>',
+  '<tr><td style="font-size:18px;color:#0B0A07;">Zero fillers.</td></tr>',
+  '<tr><td style="background:#E4DCD1;"><a style="color:#28100E;">SHOP NOW</a></td></tr>',
+  "</table></td></tr></table>",
+].join("\n")
+
+describe("fixDarkOverlayText", () => {
+  it("clareia o texto escuro que pousa na FOTO", () => {
+    const r = fixDarkOverlayText(BLOCO_ESCURO, FOTO, CLARO)
+    expect(r.fixed).toBe(2)
+    expect(r.html).toContain('font-size:40px;color:#FFFFFF')
+    expect(r.html).toContain('font-size:18px;color:#FFFFFF')
+    expect(r.html).toContain("Three Ingredients")
+  })
+
+  it("NÃO toca no botão com fundo sólido próprio sobre a mesma foto", () => {
+    const r = fixDarkOverlayText(BLOCO_ESCURO, FOTO, CLARO)
+    // O #28100E do rótulo está sobre #E4DCD1 — tem contraste próprio.
+    expect(r.html).toContain('<a style="color:#28100E;">SHOP NOW</a>')
+  })
+
+  it("texto que já é claro fica como está", () => {
+    const r = fixDarkOverlayText(HERO, FOTO, CLARO)
+    expect(r.fixed).toBe(0)
+    expect(r.html).toBe(HERO)
+  })
+
+  it("corrige só a banda ALVO quando o bloco tem várias (review 7)", () => {
+    // Mesma montagem do caso claro: a cadeia de ancestrais precisa da linha
+    // e da tabela para o fundo efetivo resolver por elemento.
+    const banda = (url: string, texto: string) =>
+      `<table><tr><td style="background-image:url('${url}');">` +
+      `<span style="color:#000000;">${texto}</span></td></tr></table>`
+    const doc = [
+      banda("https://cdn/b1.png", "escura"),
+      banda("https://cdn/b2.png", "clara"),
+      banda("https://cdn/b3.png", "clara tambem"),
+    ].join("\n")
+    const r = fixDarkOverlayText(doc, "https://cdn/b1.png", CLARO)
+    expect(r.fixed).toBe(1)
+    expect(r.html).toContain(`<span style="color:${CLARO};">escura</span>`)
+    expect(r.html).toContain('<span style="color:#000000;">clara</span>')
+    expect(r.html).toContain('<span style="color:#000000;">clara tambem</span>')
+  })
+
+  it("cor de meio-tom não é alvo de nenhum dos dois sentidos", () => {
+    const meioTom = `<td style="background-image:url('${FOTO}');"><span style="color:#808080;">meio</span></td>`
+    expect(fixDarkOverlayText(meioTom, FOTO, CLARO).fixed).toBe(0)
+    expect(fixHeroOverlayText(meioTom, FOTO, DARK).fixed).toBe(0)
+  })
+
+  it("URL ausente do documento e cor de destino vazia não alteram nada", () => {
+    expect(fixDarkOverlayText(BLOCO_ESCURO, "https://cdn/outra.png", CLARO).html).toBe(
+      BLOCO_ESCURO,
+    )
+    expect(fixDarkOverlayText(BLOCO_ESCURO, FOTO, "").html).toBe(BLOCO_ESCURO)
   })
 })

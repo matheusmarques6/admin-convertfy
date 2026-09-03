@@ -6,6 +6,8 @@ import {
   overlaySpec,
   measureOverlayLuminance,
   overlayIsLight,
+  overlayIsDark,
+  DARK_OVERLAY_THRESHOLD,
   DEFAULT_OVERLAY_FRACTION,
 } from "./overlay-luminance"
 
@@ -208,5 +210,23 @@ describe("measureOverlayLuminance — lado", () => {
     const topo = await measureOverlayLuminance(buf, 0.45, "top")
     expect(base as number).toBeGreaterThan(0.8)
     expect(topo as number).toBeLessThan(0.1)
+  })
+})
+
+describe("overlayIsDark", () => {
+  it("dispara só na faixa realmente escura", () => {
+    expect(overlayIsDark(0.05)).toBe(true)
+    expect(overlayIsDark(DARK_OVERLAY_THRESHOLD)).toBe(true)
+    expect(overlayIsDark(0.3)).toBe(false)
+    expect(overlayIsDark(null)).toBe(false)
+  })
+
+  it("zona morta: meio-tom não dispara nenhum dos dois sentidos", () => {
+    // Com um corte só, a mesma medição oscilaria entre "escurece o texto" e
+    // "clareia o texto" a cada regeneração da foto.
+    for (const lum of [0.25, 0.4, 0.5]) {
+      expect(overlayIsDark(lum)).toBe(false)
+      expect(overlayIsLight(lum)).toBe(false)
+    }
   })
 })
