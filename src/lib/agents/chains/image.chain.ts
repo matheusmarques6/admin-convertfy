@@ -20,41 +20,30 @@ import {
 
 const log = logger.child("ImageChain")
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `ABSOLUTE RULE — NO TEXT, NO LETTERING, NO LOGO, NO WORDMARK, NO BUTTON, NO BADGE, NO PRICE TAG, NO WATERMARK anywhere in the image. Not a headline, not a product name, not a brand name, not a call to action, not a single legible character. Every word of this brief is DIRECTION for the composition, never something to draw. All copy, the logo and the buttons are placed in HTML on top of your image — text baked into the image renders twice and cannot be edited or translated. If the composition seems to call for a headline, leave that area CLEAN and let the layout breathe there instead.
-
-PHOTOGRAPHIC DIRECTION — THIS IS YOUR PRIMARY BRIEF. It was written for this exact component by the person who designed it, and it governs HOW the photograph is made: light, framing, distance, lens feel, presence and pose of a model, setting, depth, colour treatment, which area stays clean for copy. Shoot to satisfy it. Everything below — niche, positioning, palette, products — is SUPPORTING CONTEXT that fills in what the direction leaves open, never a reason to contradict it. Empty means no direction was written: then compose from the context alone.
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `CFY_PRIMARY_BRIEF — PHOTOGRAPHIC DIRECTION OF THIS COMPONENT. YOUR MAIN SOURCE.
+Written for this exact component by the person who designed it. It decides HOW the photograph is made: setting, light, distance, angle, lens feel, whether a person appears and what they do, depth, colour treatment, and which area stays clean for copy. Shoot to satisfy it. Nothing below may contradict it. Empty means no direction was written: then compose from CFY_THIS_FRAME and CFY_SUPPORT only, and do not invent a scene beyond what the slot brief says.
 {PHOTO_DIRECTION}
 
-BACKDROP COLOUR — NOT NEGOTIABLE. The section this image sits in is painted {BG_COLOR}. When the composition calls for a plain, continuous or studio backdrop, the photograph's background MUST be that exact hex, so photo and section read as ONE CONTINUOUS SURFACE with no visible seam. That continuity is the point of the layout, not a detail.
-If the direction asks for a different backdrop, it still has to be one of the STORE's OWN colours — {primary_colors} {secondary_colors}. Never a neutral you chose yourself: no generic studio grey, no off-white, no colour from outside the brand palette.
-The only thing that overrides this is a direction explicitly asking for a real setting (a room, a street, outdoors) — then shoot the setting.
-
-FRAMING PEOPLE. When a person appears, the frame NEVER cuts the top of the head or crops the face out. Either the head is fully inside the frame, or the crop is a deliberate, recognisable one that starts BELOW the shoulders (a torso/detail shot). A head sliced by the top edge reads as a mistake and ruins the section.
-
-EMAIL IDEA (the overall angle this image supports — compose to reinforce it; do NOT render this text): {EMAIL_IDEIA}
-
-ART DIRECTION — per image slot (schema spec, the designer's slot comment, and the block copy this image accompanies — compose to fit, NEVER render any of this text):
+CFY_THIS_FRAME — THE ONE IMAGE YOU ARE MAKING NOW. Second source, same weight as the direction for this frame.
+One call = one image. The slot below is the field of the component this image fills: what it shows ("especificidade"), where it sits in the piece ("onde_fica"), its exact size, which text areas the HTML will write on top of it, and what the other images of the same block already show. When it says this image is DEPENDENT of another, keep the session and change the frame. NEVER render any of this text.
 {IMAGE_SLOTS}
 {IMAGE_BRIEF}
 
-Create a background banner image for an email marketing block ({block_purpose}).
+CFY_SUPPORT — CONTEXT. Fills in what the direction and the slot leave open; never overrides them.
+Email idea (the angle this image supports; do NOT render this text): {EMAIL_IDEIA}
+Block: "{block_type}" ("{block_label}") of an e-commerce marketing email. Purpose of this block: {blueprint_purpose}
+Brand: {brand_name}. Palette {primary_colors} {secondary_colors}, neutral {NEUTRO}, logo style {LOGO_STYLE}. Audience: {PUBLICO}. Cultural context: {IDIOMA}, currency {MOEDA}.
 
-Brand: {brand_name}
-Niche: {nicho}
-Positioning: {posicionamento}
-Brand colors: {primary_colors}
-Secondary colors: {secondary_colors}
+CFY_BACKDROP — BACKDROP COLOUR, NOT NEGOTIABLE. The section this image sits in is painted {BG_COLOR}. When the direction or the slot calls for a plain, continuous or studio backdrop, the photograph's background MUST be that exact hex, so photo and section read as ONE CONTINUOUS SURFACE with no visible seam. If a different backdrop is asked for, it has to be one of the store's own colours — {primary_colors} {secondary_colors} — never a neutral you chose. A direction asking for a real setting (a room, a street, outdoors) overrides this: shoot the setting.
 
-Top products of the store: {top_products}
+FRAMING PEOPLE. When a person appears, the frame NEVER cuts the top of the head or crops the face out. Either the head is fully inside the frame, or the crop is a deliberate, recognisable one that starts BELOW the shoulders (a torso/detail shot).
 
-Email context: {block_purpose}
+UNIVERSAL RESTRICTIONS:
+- Photographic realism, campaign quality.
+- No text, letters, numbers, logos or watermarks rendered in the image (text is added in the design layer downstream).
+- No distorted faces, no deformed hands, no frame, no watermark.
 
-Requirements:
-- Clean, modern e-commerce aesthetic aligned with the brand mood
-- Show or evoke the niche/products (visual cues, lifestyle, product hints)
-- ZERO text, letters, numbers, logos or buttons rendered in the image (see the absolute rule at the top) — leave clean areas where copy will sit
-- Compose for the block's role in the email ({block_purpose}) — the exact aspect-ratio instruction is appended below
-- Product/lifestyle photography style aligned with brand tone`
+ADDITIONAL BLOCK-SPECIFIC INSTRUCTIONS: {INSTRUCAO_ADICIONAL}`
 
 export function renderImagePrompt(
   template: string,

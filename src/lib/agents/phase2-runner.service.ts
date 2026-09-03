@@ -65,6 +65,7 @@ import {
 } from "./image/mode-resolution"
 import { isUsableProductImage } from "./image/product-image-guard"
 import { loadPhotoDirections } from "./image/photo-directions"
+import { pickProductForField } from "./image/product-for-field"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
@@ -1200,6 +1201,7 @@ export async function runPhase2Image(
       blk: ImageBlockRow,
       slot: SlotWork | null,
       referenceUrl?: string | null,
+      anchorKey?: string | null,
     ): Promise<{
       ok: boolean
       fieldKey: string | null
@@ -1349,7 +1351,13 @@ export async function runPhase2Image(
         // topProductImageUrl vem de brand.top_products[0].image_url,
         // tipicamente uma signed URL Supabase com validade ~365 dias
         // (segura entre as fases copy → image → upload final).
-        const topProductImageUrl = ctx.topProducts[0]?.image_url ?? null
+        // Produto DESTE campo (03/09): `panel_2_*` → 2º produto. Antes toda
+        // geração anexava o 1º, e o painel do CarScan saía com o EnergySave.
+        const { product: productForField } = pickProductForField(
+          ctx.topProducts,
+          fieldKey,
+        )
+        const topProductImageUrl = productForField?.image_url ?? null
         let { mode, source: modeSource } = resolveImageMode({
           blueprintMode: ctx.blueprint?.image_mode ?? null,
           flowType: ctx.flowType,
@@ -1416,6 +1424,8 @@ export async function runPhase2Image(
           photoDirectionByVariant,
           // Um slot por chamada: o prompt carrega só o brief deste campo.
           fieldKey,
+          productForField,
+          anchorKey: anchorKey ?? null,
         })
 
         // Se config existe no DB: renderImageTemplate (handlebars-lite,
@@ -1441,7 +1451,7 @@ export async function runPhase2Image(
         const { fidelity, fallbackDescription } = resolveImageAppendices({
           mode,
           modeSource,
-          productName: ctx.topProducts[0]?.name,
+          productName: productForField?.name,
           productImageUrl: topProductImageUrl,
         })
 
@@ -1489,7 +1499,7 @@ export async function runPhase2Image(
               rotulo: "Produto de referência",
               cls: "loja",
               valor: mode === "product_ref"
-                ? `foto real anexada — ${ctx.topProducts[0]?.name ?? "?"}`
+                ? `foto real anexada — ${productForField?.name ?? "?"}${anchorKey ? ` · âncora ${anchorKey} anexada` : ""}`
                 : `sem anexo (${modeSource})`,
             },
             {
@@ -1511,17 +1521,30 @@ export async function runPhase2Image(
             customDims,
             overlayReserveBottom: reserveBottom,
             mode,
-            referenceImageUrl:
-              mode === "product_ref" && topProductImageUrl
-                ? topProductImageUrl
-                : undefined,
-            // Coerência dentro do grupo: a miniatura nasce DA foto grande.
-            // Vazio quando a âncora falhou — o slot gera sozinho em vez de
-            // cascatear a falha.
-            ...(referenceUrl
+            // Refs ROTULADAS (03/09). Antes a âncora ia com o rótulo
+            // "anchor" e SUBSTITUÍA a foto do produto (referenceImages
+            // supersede referenceImageUrl): a thumb via só a foto grande,
+            // sem instrução, e devolvia um recorte dela. Agora vão as duas,
+            // cada uma dizendo o que é — o produto dá a identidade do objeto,
+            // a âncora dá a sessão; o slot diz o que muda.
+            ...(mode === "product_ref" && topProductImageUrl
               ? {
                   referenceImages: [
-                    { label: "anchor", url: referenceUrl },
+                    {
+                      label: `CFY_REF_PRODUCT — the real product "${productForField?.name ?? ""}": shape, materials, colours, label. Identity only; do not copy its angle or background.`,
+                      url: topProductImageUrl,
+                    },
+                    // Coerência dentro do grupo: a miniatura nasce DA foto
+                    // grande. Ausente quando a âncora falhou — o slot gera
+                    // sozinho em vez de cascatear a falha.
+                    ...(referenceUrl
+                      ? [
+                          {
+                            label: `CFY_REF_ANCHOR — the main photo of this same block${anchorKey ? ` (${anchorKey})` : ""}: same session, same product, same light and colour treatment. This frame MUST differ in angle, distance and framing as the slot brief says — never a crop or a repeat of it.`,
+                            url: referenceUrl,
+                          },
+                        ]
+                      : []),
                   ],
                 }
               : {}),
@@ -1699,6 +1722,7 @@ export async function runPhase2Image(
       Record<string, { url: string; alt: string; overlay_luminance?: number }>
     >()
     const anchorUrlByGroup = new Map<string, string>()
+    const anchorKeyByGroup = new Map<string, string>()
 
     const persistBlock = async (blk: ImageBlockRow): Promise<void> => {
       const images = imagesByBlock.get(blk.id as string)
@@ -1747,7 +1771,10 @@ export async function runPhase2Image(
           : {}),
       }
       imagesByBlock.set(id, acc)
-      if (groupKey) anchorUrlByGroup.set(`${id}:${groupKey}`, r.url)
+      if (groupKey) {
+        anchorUrlByGroup.set(`${id}:${groupKey}`, r.url)
+        if (r.fieldKey) anchorKeyByGroup.set(`${id}:${groupKey}`, r.fieldKey)
+      }
     }
 
     const t0Images = Date.now()
@@ -1776,6 +1803,10 @@ export async function runPhase2Image(
               withReference && item.slot
                 ? anchorUrlByGroup.get(`${item.blk.id}:${item.slot.groupKey}`)
                 : undefined
+            const anchorKey =
+              withReference && item.slot && ref
+                ? anchorKeyByGroup.get(`${item.blk.id}:${item.slot.groupKey}`)
+                : undefined
             try {
               // UMA segunda chance por slot. O retry envolve `runImageSlot`
               // por fora, e não mora dentro dele, de propósito: cada chamada
@@ -1783,7 +1814,7 @@ export async function runPhase2Image(
               // aparecem no Estúdio — a primeira com o erro real. Escondê-lo
               // lá dentro apagaria a tentativa perdida do histórico.
               const { result: r, retried: tentouDeNovo } = await runSlotWithRetry(
-                () => runImageSlot(item.blk, item.slot, ref),
+                () => runImageSlot(item.blk, item.slot, ref, anchorKey),
                 budgetLeft,
               )
               if (tentouDeNovo) {

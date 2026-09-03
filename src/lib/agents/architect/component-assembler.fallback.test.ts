@@ -13,6 +13,15 @@ vi.mock("@/lib/email-workspace/schema-example-coherence", () => ({
   variantIsFillable: () => true,
 }))
 
+// Kill-switch do Montador (migration 20261107). O default dos testes é
+// "on" — o comportamento de sempre (Curador → Montador → montagem); o bloco
+// "Montador desligado" vira a chave.
+const modes = vi.hoisted(() => ({ montador: "on" as "on" | "off" }))
+vi.mock("./curador-vault", async (importActual) => {
+  const actual = await importActual<typeof import("./curador-vault")>()
+  return { ...actual, loadMontadorMode: async () => modes.montador }
+})
+
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: () => ({
     from: (table: string) => {
@@ -50,8 +59,9 @@ vi.mock("./llm-invoke", async (importActual) => {
 })
 
 const finishGenerationRun = vi.fn().mockResolvedValue("run-1")
+const logGenerationRun = vi.fn().mockResolvedValue("")
 vi.mock("../callbacks/telemetry.callback", () => ({
-  logGenerationRun: vi.fn().mockResolvedValue(""),
+  logGenerationRun: (...a: unknown[]) => logGenerationRun(...a),
   startGenerationRun: vi.fn().mockResolvedValue("run-1"),
   finishGenerationRun: (...a: unknown[]) => finishGenerationRun(...a),
   computeCostCents: () => 0,
@@ -139,9 +149,11 @@ const pick = (...pairs: Array<[number, string]>) => ({
 const ASSEMBLER_CONFIRMA = pick([0, "v1"])
 
 beforeEach(() => {
+  modes.montador = "on"
   h.upsertSpy.mockClear()
   invokeAgent.mockReset()
   finishGenerationRun.mockClear()
+  logGenerationRun.mockClear()
   loadActiveAgentConfig.mockReset()
   loadActiveAgentConfig.mockResolvedValue(null)
   // Default: o Montador confirma o rank 1. Testes do Curador usam
@@ -729,6 +741,64 @@ describe("Montador — escolha de conjunto", () => {
 // gera alerta: o email é entregue e o run fica verde. Foi assim que o
 // blocks_skipped sumiu entre o CM-2 e o CM-4. Estes testes fazem a perda
 // virar falha.
+// ── Montador desligado (migration 20261107) ──────────────────────────
+// O owner tirou o agente do caminho: o Curador devolve UMA variante por
+// posição e ela vai direto para a montagem. O passo B não chama LLM, mas a
+// run `assembler` continua existindo (skipped) com as stats da montagem.
+describe("Montador desligado", () => {
+  const skippedRun = () =>
+    logGenerationRun.mock.calls.find(
+      (c) => (c[0] as { agent?: string }).agent === "assembler",
+    )?.[0] as
+      | { status: string; model: string; parsedOutput: Record<string, unknown> }
+      | undefined
+
+  it("só o Curador é invocado; o rank 1 vira o documento", async () => {
+    modes.montador = "off"
+    h.variants = [
+      variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
+      variant("v2", "hero", "<tr><td>{{HERO_SUBHEAD}}</td></tr>"),
+    ]
+    invokeAgent.mockResolvedValueOnce(rank("v2", "v1"))
+    const r = await assembleStoreReference(baseInput)
+    expect(invokeAgent).toHaveBeenCalledTimes(1)
+    expect(r.source).toBe("code")
+    expect(r.variantIds).toEqual(["v2"])
+    expect(h.upsertSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("grava a run do Montador como skipped, com motivo e stats da montagem", async () => {
+    modes.montador = "off"
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    const asmFinish = finishGenerationRun.mock.calls.find(
+      (c) => (c[1] as { agent?: string }).agent === "assembler",
+    )
+    expect(asmFinish).toBeUndefined()
+    const run = skippedRun()
+    expect(run?.status).toBe("skipped")
+    expect(run?.model).toBe("desligado")
+    expect(run?.parsedOutput.skip_reason).toBe("montador_mode_off")
+    expect(run?.parsedOutput.degraded).toBe(false)
+    expect(run?.parsedOutput.desvios).toBe(0)
+    expect(run?.parsedOutput.blocks_assembled).toBe(1)
+    expect(run?.parsedOutput.reference_source).toBe("code")
+    expect(run?.parsedOutput.escolhas).toEqual([
+      expect.objectContaining({ block_index: 0, variant_id: "v1", rank: 1 }),
+    ])
+    // O contrato de chaves vale mesmo sem agente.
+    expect(missingTelemetryKeys("assembler", run!.parsedOutput)).toEqual([])
+  })
+
+  it("ligado, o comportamento é o de sempre (duas invocações)", async () => {
+    modes.montador = "on"
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    await assembleStoreReference(baseInput)
+    expect(invokeAgent).toHaveBeenCalledTimes(2)
+    expect(skippedRun()).toBeUndefined()
+  })
+})
+
 describe("contrato de telemetria", () => {
   const parsedOf = (agent: string) =>
     (

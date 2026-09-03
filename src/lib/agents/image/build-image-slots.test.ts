@@ -205,4 +205,43 @@ describe("buildImageSlots", () => {
     // fieldKey inexistente → vazio (o caller cai no brief legado)
     expect(buildImageSlots(fields, {}, { fieldKey: "nada" })).toBe("")
   })
+
+  // 03/09: as DUAS entram. Antes "Onde fica…" era descartado sempre que o
+  // briefing existia.
+  it("onde_fica: a orientação do campo entra junto com o briefing", () => {
+    const out = buildImageSlots(
+      [
+        f({
+          key: "hero_flatlay_kit",
+          type: "image",
+          image_spec: "Proporção 2:3. Ideia: flat-lay do kit.",
+          guidance: "Onde fica: fundo de todo o e-mail; lockup e headline sobrepostos ao terço superior.",
+        }),
+      ],
+      {},
+    )
+    expect(out).toContain("especificidade: Proporção 2:3. Ideia: flat-lay do kit.")
+    expect(out).toContain("onde_fica: Onde fica: fundo de todo o e-mail; lockup e headline sobrepostos ao terço superior.")
+  })
+
+  it("anchorKey: a thumb dependente recebe o papel no grupo e a ideia da âncora", () => {
+    const out = buildImageSlots(
+      [
+        f({ key: "panel_1_main_photo", type: "image", image_spec: "Ideia: foto principal do painel, produto inteiro." }),
+        f({ key: "panel_1_thumb_a", type: "image", image_spec: "Ideia: detalhe da porta OBD." }),
+      ],
+      {},
+      { fieldKey: "panel_1_thumb_a", anchorKey: "panel_1_main_photo" },
+    )
+    expect(out).toContain("papel_neste_grupo: esta imagem é DEPENDENTE de panel_1_main_photo (foto principal do painel, produto inteiro.)")
+    expect(out).toContain("CFY_REF_ANCHOR")
+    expect(out).toContain("enquadramento, ângulo e distância DIFERENTES")
+    // A âncora não recebe a linha.
+    const ancora = buildImageSlots(
+      [f({ key: "panel_1_main_photo", type: "image", image_spec: "x" })],
+      {},
+      { fieldKey: "panel_1_main_photo", anchorKey: "panel_1_main_photo" },
+    )
+    expect(ancora).not.toContain("papel_neste_grupo")
+  })
 })

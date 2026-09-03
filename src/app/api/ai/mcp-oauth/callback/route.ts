@@ -31,6 +31,7 @@ interface OAuthState {
   allow_write: boolean
   verifier: string
   client_id: string
+  client_secret?: string | null
   token_endpoint: string
   return_to: string
   ts: number
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
     const envelope = await exchangeCode({
       tokenEndpoint: state.token_endpoint,
       clientId: state.client_id,
+      clientSecret: state.client_secret ?? undefined,
       code,
       redirectUri: `${request.nextUrl.origin}/api/ai/mcp-oauth/callback`,
       verifier: state.verifier,

@@ -37,6 +37,7 @@ import type {
 } from "@/types/email-generation"
 
 import {
+  logGenerationRun,
   resolveCostCents,
   finishGenerationRun,
   startGenerationRun,
@@ -56,7 +57,10 @@ import {
   loadEstruturaRefsResumo,
   loadVariantUsageCounts,
   momentoDoEmail,
+  loadIndiceDoVault,
+  loadMontadorMode,
 } from "./curador-vault"
+import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
   measureProtocolViolations,
   rank1ByBlock,
@@ -607,7 +611,7 @@ export interface AssembleReferenceInput {
   // declara a ausência em vez de mandar string vazia.
   intencaoFlow?: string | null
   intencaoEmail?: string | null
-  // Resumo da decisão do Estruturador (resumoParaCurador) — só chega quando
+  // Decisão do Estruturador (saída completa, JSON) — só chega quando
   // o modo é 'on' e a run validou (em shadow o pipeline não vê a decisão).
   // Papéis na MESMA ordem da structure/<sequencia_do_email>.
   estruturadorDecisao?: string | null
@@ -841,7 +845,7 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
     },
     intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
     intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
-    estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — resumoParaCurador" },
+    estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — saída completa (JSON)" },
     briefing_marca: {
       cls: "loja",
       rotulo: "Perfil da marca — store_briefings ou Pesquisa (sem o review de anúncios)",
@@ -987,11 +991,15 @@ export async function assembleStoreReference(
       input.intencaoEmail,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    // Decisão do Estruturador (só no modo 'on' com run válida).
-    estruturador_decisao: clampPromptText(
-      input.estruturadorDecisao,
+    // Decisão do Estruturador (só no modo 'on' com run ok). SEM o clamp de
+    // 4000 do clampPromptText: é a saída COMPLETA em JSON (~10k chars na
+    // Innova) e cortá-la a 4000 deixaria o Curador sem as posições finais,
+    // o fio e os descartes — exatamente o que o owner pediu que chegasse
+    // inteiro (02/09). O teto de segurança (24k) já vive em
+    // `decisaoCompletaParaCurador`.
+    estruturador_decisao:
+      input.estruturadorDecisao?.trim() ||
       "(sem decisão do Estruturador nesta geração — siga o outline)",
-    ),
     // Perfil da marca — ancora a escolha na identidade, não só no objetivo
     // do email.
     briefing_marca: input.perfilMarca,
@@ -1105,7 +1113,7 @@ export async function assembleStoreReference(
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenções por bloco (Arquitetura)", cls: "curadoria", valor: `${intencoesHumanas} de ${input.structure.length} posições` },
-    { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida (resumoParaCurador)" : "(sem decisão nesta geração)" },
+    { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida — saída completa (diagnóstico, posições, fio, fontes, descartes)" : "(sem decisão nesta geração)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
     { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
     { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
@@ -1164,9 +1172,10 @@ export async function assembleStoreReference(
   // nesse caso — que é exatamente quando vale pagar.
   let vaultResultado: CuradorVaultResultado | null = null
   if (curadorVaultMode === "on") {
-    const [aprendizadosOn, usageCountsOn] = await Promise.all([
+    const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
       loadVariantUsageCounts(),
+      loadIndiceDoVault(),
     ])
     vaultResultado = await runCuradorShadow({
       storeId: input.storeId,
@@ -1186,6 +1195,11 @@ export async function assembleStoreReference(
       usageCounts: usageCountsOn,
       typeIndex,
       liveSections: sections,
+      // 02/09: decisão do Estruturador (saída completa) no template, lacunas
+      // do vault e índice do Obsidian com consulta sob demanda.
+      estruturadorOn,
+      indiceDoVault,
+      ferramentas: { tools: VAULT_TOOLS, executar: executarFerramentaDoVault, maxCalls: 4 },
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
       liveViolations: [],
@@ -1411,7 +1425,15 @@ export async function assembleStoreReference(
 
   // ── PASSO B — Montador: escolhe 1 entre os finalistas de CADA posição,
   // vendo o email inteiro de uma vez (story CM-4).
-  const asmRow = await loadActiveAgentConfig("assembler")
+  //
+  // Kill-switch `montador_mode` (migration 20261107). Desligado, o passo B
+  // não chama LLM: a escolha de cada posição é o rank 1 do Curador (que hoje
+  // devolve UMA variante por posição) e o documento vai direto para a
+  // montagem por código. A run `assembler` é gravada como `skipped` com as
+  // stats da montagem — o nó continua existindo no mapa e na aba Teste.
+  const montadorMode = await loadMontadorMode(input.storeId)
+  const montadorOn = montadorMode === "on"
+  const asmRow = montadorOn ? await loadActiveAgentConfig("assembler") : null
   const asmConfig: AgentInvokeConfig = {
     model: asmRow?.model || input.defaultModel || DEFAULT_ASSEMBLER_MODEL,
     temperature: asmRow?.temperature ?? 0.3,
@@ -1448,10 +1470,9 @@ export async function assembleStoreReference(
       input.intencaoEmail,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    estruturador_decisao: clampPromptText(
-      input.estruturadorDecisao,
+    estruturador_decisao:
+      input.estruturadorDecisao?.trim() ||
       "(sem decisão do Estruturador nesta geração — siga o outline)",
-    ),
     // Os mesmos blocos da loja que o Curador recebeu (27/08). A escolha
     // FINAL é onde marca e objeção se decidem de verdade: o Curador rankeia
     // posição a posição, isolada; só o Montador vê se o email INTEIRO
@@ -1513,7 +1534,7 @@ export async function assembleStoreReference(
   ]
 
   const t1 = Date.now()
-  const asmRunId = await startGenerationRun({
+  const asmRunId: string | null = !montadorOn ? null : await startGenerationRun({
     storeId: input.storeId,
     triggeredBy: input.triggeredBy,
     emailId: input.emailId ?? undefined,
@@ -1538,7 +1559,21 @@ export async function assembleStoreReference(
   let asmCostUsd = 0
   let asmError: string | null = null
   let decisions: ParsedAssemblerChoices | null = null
-  try {
+  if (!montadorOn) {
+    // Sem agente: a "resposta" é o rank 1 de cada posição, no mesmo contrato
+    // do Montador, para que o parser (dedup entre posições, telemetria)
+    // continue sendo o único caminho.
+    asmRaw = JSON.stringify(
+      Array.from(rankingByBlock.entries())
+        .filter(([, finalists]) => finalists.length > 0)
+        .sort(([a], [b]) => a - b)
+        .map(([block_index, finalists]) => ({
+          block_index,
+          variant_id: finalists[0].variant_id,
+          rank: 1,
+        })),
+    )
+  } else try {
     const res = await invokeAgent(asmConfig, asmVars)
     asmRaw = res.raw
     asmTokensIn = res.tokensInput
@@ -1737,28 +1772,7 @@ export async function assembleStoreReference(
     })
   }
 
-  await finishGenerationRun(asmRunId, {
-    storeId: input.storeId,
-    triggeredBy: input.triggeredBy,
-    emailId: input.emailId ?? undefined,
-    flowId: input.flowId ?? undefined,
-    batchId: input.batchId,
-    agent: "assembler",
-    agentConfigId: asmRow?.id,
-    // O email é gerado de qualquer forma (fallback para o rank 1); o status
-    // reflete o AGENTE, e `degraded` no parsed_output reflete a COMPOSIÇÃO.
-    status: asmError || decisions.malformed ? "error" : "success",
-    model: asmConfig.model,
-    errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
-    inputVars: {
-      positions: rankingByBlock.size,
-      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
-    },
-    renderedPrompt: asmUserPrompt,
-    promptSegments: asmPromptSegments,
-    inputSummary: asmInputSummary,
-    rawOutput: asmRaw.slice(0, 8000),
-    parsedOutput: {
+  const asmParsedOutput = {
       degraded: Boolean(asmError) || decisions.malformed,
       escolhas: decisions.decisions.map((d) => ({
         block_index: d.block_index,
@@ -1824,7 +1838,30 @@ export async function assembleStoreReference(
       // Self-checks da concatenação: os dois têm de ser sempre limpos.
       marker_selfcheck: markerCheck.status,
       image_tags_dropped: droppedImageTags,
+  }
+
+  if (asmRunId !== null) await finishGenerationRun(asmRunId, {
+    storeId: input.storeId,
+    triggeredBy: input.triggeredBy,
+    emailId: input.emailId ?? undefined,
+    flowId: input.flowId ?? undefined,
+    batchId: input.batchId,
+    agent: "assembler",
+    agentConfigId: asmRow?.id,
+    // O email é gerado de qualquer forma (fallback para o rank 1); o status
+    // reflete o AGENTE, e `degraded` no parsed_output reflete a COMPOSIÇÃO.
+    status: asmError || decisions.malformed ? "error" : "success",
+    model: asmConfig.model,
+    errorMessage: asmError ?? (decisions.malformed ? "json_malformado" : undefined),
+    inputVars: {
+      positions: rankingByBlock.size,
+      estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
     },
+    renderedPrompt: asmUserPrompt,
+    promptSegments: asmPromptSegments,
+    inputSummary: asmInputSummary,
+    rawOutput: asmRaw.slice(0, 8000),
+    parsedOutput: asmParsedOutput,
     tokensInput: asmTokensIn,
     tokensOutput: asmTokensOut,
     costCents: resolveCostCents({
@@ -1835,6 +1872,38 @@ export async function assembleStoreReference(
     }),
     durationMs: asmDurationMs,
   })
+  if (asmRunId === null) {
+    // Montador desligado: mesma run, mesmo contrato de chaves, status
+    // `skipped` — a aba Teste e o Estúdio mostram "desligado" em vez de
+    // "pendente" para sempre. Nenhum prompt foi renderizado para LLM.
+    await logGenerationRun({
+      storeId: input.storeId,
+      triggeredBy: input.triggeredBy,
+      emailId: input.emailId ?? undefined,
+      flowId: input.flowId ?? undefined,
+      batchId: input.batchId,
+      agent: "assembler",
+      status: "skipped",
+      model: "desligado",
+      inputVars: {
+        positions: rankingByBlock.size,
+        estruturador_consumido: Boolean(input.estruturadorDecisao?.trim()),
+        montador_mode: montadorMode,
+      },
+      inputSummary: [
+        {
+          rotulo: "Modo",
+          cls: "sistema",
+          valor:
+            "desligado em Configurações → Montador (a variante escolhida pelo Curador em cada posição vai direto para a montagem por código)",
+        },
+        ...asmInputSummary.slice(1, 3),
+      ],
+      parsedOutput: { skip_reason: "montador_mode_off", ...asmParsedOutput },
+      costCents: 0,
+      durationMs: 0,
+    }).catch(() => {})
+  }
 
 
   return {

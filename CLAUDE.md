@@ -1777,15 +1777,33 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 |---|--------|---------|-----------------|-------|--------|
 | 1 | **Briefing** | `briefing-generation.service.ts` | cascata `claude-sonnet-4-6` → `openai/gpt-5.3-chat` → template | `form_responses` + pesquisa (`pesquisaToFullText`) | `onboardings.briefing` (JSON BriefingContent) |
 | 2 | **Pesquisa & Diagnóstico** | n8n callbacks `/api/webhooks/n8n/{brand,competitors,icp,tone,ads-analyzer}` | n8n + agentes | URL da loja | 5 pilares em `client_stores` (`brand_*`,`store_*`,`icp_*`,`tone_*`,`ads_*`) |
-| 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **`anthropic/claude-opus-4.8`** (OpenRouter) · T=0.3 · max 16384 | briefing+pesquisa+outline+`structure`+`reference_template_html`+biblioteca | HTML de ARQUITETURA → `store_email_references` (só persiste se `usedLlm`) |
+| 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **DESLIGADO** (`montador_mode='off'`, migration 20261107). Ligado: `moonshotai/kimi-k3` · T=0.3 · max 2048 | finalistas do Curador + `output_schema`, perfil, objeções, vocabulário, produtos, memória, decisão do Estruturador | JSON de escolha (1 variante por posição). O HTML é montado por CÓDIGO (`assemble-document.ts`) a partir do rank 1 do Curador → `store_email_references` (`model='code'`, `slot_map`) |
 | 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
-| 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
+| 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | `google/gemini-3.1-flash-image` (config; CLAUDE.md dizia gpt-5.4-image-2, revertido na 20261072) · 90s/chamada · 1 chamada por campo `imagem_gerada` | **direção fotográfica da variante + briefing/onde_fica do campo = fonte principal** (migration 20261108); apoio: fio do Estruturador, papel do bloco, marca. Anexos rotulados: `CFY_REF_PRODUCT` (produto DO CAMPO — `panel_2_*` → 2º produto) e `CFY_REF_ANCHOR` (foto principal do grupo, nas thumbs) | `email_blocks.content.images[campo]` = {url, alt, overlay_luminance} + espelho `image_url`/`image_alt`; status `image_done` |
 | 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `moonshotai/kimi-k3` (swap 20261047) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
 | 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `moonshotai/kimi-k3` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
 | 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `moonshotai/kimi-k3` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
 | 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `moonshotai/kimi-k3` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
 | 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
+
+**Agente de imagem — fonte principal (03/09, migration 20261108)**: o prompt
+saiu de "prompt master de diretor de arte + frase de cena fixa por bloco/flow
++ CENARIO/MOOD derivados por código" para três camadas com peso declarado:
+`CFY_PRIMARY_BRIEF` (direção fotográfica da variante, agora com as MEDIDAS
+apagadas em vez das linhas — "terço superior (0–480px) fora de foco" vira
+"terço superior fora de foco"; tabela de categorias vira "coluna — coluna"),
+`CFY_THIS_FRAME` (o `<slot_imagem>` do campo: `especificidade` + `onde_fica`
++ formato + áreas de texto + `papel_neste_grupo` nas thumbs) e `CFY_SUPPORT`
+(fio, papel do bloco, marca). Sem direção, o template diz para NÃO inventar
+cena. Produto por painel (`pickProductForField`, `image/product-for-field.ts`);
+âncora e produto vão anexados os DOIS, rotulados — antes `referenceImages`
+substituía a foto do produto e a thumb via só a âncora. `CFY_PRODUCT_FIDELITY`
+passou a dizer que a foto dá o objeto e a direção dá a cena (o "ATTACHED
+PHOTO WINS" fazia copiar ângulo e fundo). Alt sem português ("Produto ·
+rótulo"). `MOEDA` = moeda dos produtos, não da coluna da loja. `CENARIO`/
+`MOOD` seguem como vars (o agente `campaign_image` usa), mas o template do
+`image` não as referencia mais.
 
 **Split do HTML agent (migration 20261039, jul/2026 — corte seco)**: o agente
 `html` monolítico e o `refiner` foram DESATIVADOS (configs `is_active=false`,
@@ -1804,7 +1822,17 @@ placeholders + lang rodam UMA vez no fim da cadeia (após 7c). Executor legado
 `generateEmail` + rotas `generate-flow`/`test-generate` removidos. Nos logs, a
 linha sintética "Montagem HTML" soma os 4 agentes + legados.
 
-**Papel-chave**: o Montador (#3) GERA a arquitetura HTML (esqueleto, ordem dos
+**Montador desligado (03/09, migration 20261107)**: desde CM-4 o Montador
+NÃO escreve HTML — escolhia 1 entre as até 3 finalistas do Curador e o
+documento era concatenado por código. Agora o Curador do vault devolve UMA
+variante por posição (`SHADOW_TOP_N = 1`) e ela vai direto para
+`assembleDocument`; o passo B não chama LLM (`loadMontadorMode` →
+kill-switch `email_generation_settings.montador_mode`, aba Configurações)
+e grava a run `assembler` como `skipped` com as stats da montagem. O
+Curador legado do kimi (fallback) segue rankeando até 3 — desligado, o
+rank 1 dele é a escolha.
+
+**Papel-chave (histórico)**: o Montador (#3) GERAVA a arquitetura HTML (esqueleto, ordem dos
 blocos, CSS variables, placeholders `{{HEADLINE}}`) UMA vez por loja×email; a
 cadeia 7a-7d só FINALIZA (hero, copy, imagens, cores) — nunca redesenha.
 
@@ -1833,6 +1861,40 @@ copy_ready → rendering → image_done → qa_running → ready/failed`. A cade
 (`email_generation_runs`) e de `html_pipeline_stage` (não é status).
 
 ---
+
+## Estruturador religado + Curador do vault com a decisão dele (set/2026, migration 20261106)
+
+Fase 1 do Architect: `Pesquisa → Estruturador → Curador (vault) → Montador →
+Blueprint`. O **Estruturador** (`estruturador.service.ts`, Sonnet 4.6, gate
+`email_generation_settings.estruturador_mode`) decide a SEQUÊNCIA de seções +
+papel/porquê/referência por posição + fio; desligado em 31/08 (20261093) e
+religado em 02/09 com a sequência sendo dele — a aba Arquitetura (intenção
+por bloco) vale só quando ele está `off`. **Sem validador de conteúdo**: o
+que ele devolver vale (`normalizarOutput` garante só `estrutura[]` com
+`section`+`papel`; retry 1× só para JSON ilegível). Entradas: system =
+intenção do flow, progressão, TODAS as `estruturas/{flow}/*.md` e
+aprendizados (vault); user = `<perfil_da_marca>` (dossiê completo com Ads +
+top 5 com preço/link), intenção deste email, `<secoes_disponiveis>` (só
+nomes), estruturas dos outros emails, orientação do COO, revisão humana.
+Ele NÃO recebe variantes, lacunas nem intenções por bloco.
+
+O **Curador do vault** (`curador-shadow.ts`, o vigente) NÃO decide
+estrutura nem reescreve papel: a função dele é ENCONTRAR na biblioteca os
+blocos cuja anatomia realiza o papel decidido pelo Estruturador em cada
+posição e conversa com o fio ("encaixe primeiro, depois os eixos"; `papeis`
+no output = como a rank-1 realiza o papel). Ele recebe a saída
+COMPLETA do Estruturador em `<decisao_do_estruturador>`
+(`decisaoCompletaParaCurador`, critério dominante por posição; com ela
+`<estruturas_de_referencia>` e `<outline>` são omitidos), as
+`<lacunas_da_biblioteca>` (kind `lacuna`, antes sincronizado e nunca
+servido) e o `<indice_do_vault>` com ferramentas `listar_pasta`/`ler_nota`
+(`curador-vault-tools.ts`, `invokeAgentWithTools` em `llm-invoke.ts`, até 4
+consultas, fail-open). Telemetria do run `assembler_chooser`:
+`estruturador_consumido`, `consultas_ao_vault[]`, `consultou_vault`,
+`voltas`, `fallback_sem_ferramentas`. Risco operacional: com `on` o reuso
+da fase 1 é desligado e a fase 1 chega a ~220 s por email — recomendado
+`DISPATCH_TICK_BUDGET_MS=15000` no ambiente. Mapa completo:
+`docs/email-generation/mapa-estruturador-curador.md`.
 
 ## Proveniência do prompt (migration 20261085, ago/2026)
 

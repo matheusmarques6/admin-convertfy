@@ -31,6 +31,20 @@ describe("proveniência do Estruturador", () => {
     expect(USER_ORIGINS.revisao_humana.rotulo).toContain("email_structure_reviews")
   })
 
+  // Dieta de 02/09: perfil da marca inteiro (dossiê + top 5), só os nomes
+  // das seções, sem campos soltos nem intenções por bloco.
+  it("o template leva o perfil da marca inteiro e só os NOMES das seções", () => {
+    expect(DEFAULT_ESTRUTURADOR_USER).toContain("<perfil_da_marca>")
+    expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{pesquisa}}")
+    expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{top_products}}")
+    expect(DEFAULT_ESTRUTURADOR_USER).toContain("<secoes_disponiveis>")
+    for (const fora of ["{{nicho}}", "{{posicionamento}}", "{{persona}}", "{{tom_voz}}", "{{produtos_count}}", "{{capacidade_biblioteca}}"]) {
+      expect(DEFAULT_ESTRUTURADOR_USER).not.toContain(fora)
+    }
+    expect(USER_ORIGINS.pesquisa.rotulo).toContain("Perfil da marca")
+    expect(USER_ORIGINS.secoes_disponiveis.cls).toBe("sistema")
+  })
+
   it("a var da anti-repetição diz que é dos OUTROS emails", () => {
     expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{estruturas_dos_outros_emails}}")
     expect(USER_ORIGINS.estruturas_dos_outros_emails.cls).toBe("sistema")

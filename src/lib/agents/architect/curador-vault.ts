@@ -46,6 +46,11 @@ export interface CuradorVaultKnowledge {
   variantes: VaultDocRow[]
   convivencias: VaultDocRow[]
   requisitos: VaultDocRow[]
+  /**
+   * `componentes/lacunas/*.md` — o que a biblioteca NÃO cobre (02/09). Até
+   * então o sync gravava e nenhum agente lia: o loader não pedia o kind.
+   */
+  lacunas: VaultDocRow[]
   /** `${eixo}/${slug}` → nota (ex.: "momento/welcome-1"). */
   eixos: Map<string, VaultDocRow>
   total: number
@@ -85,6 +90,37 @@ export async function loadCuradorVaultMode(storeId: string): Promise<CuradorVaul
   }
 }
 
+export type MontadorMode = "off" | "on"
+
+/**
+ * Kill-switch do Montador (migration 20261107). `off` = o passo B não
+ * chama LLM: a escolha de cada posição é o rank 1 do Curador, e o código
+ * monta o documento. Coluna/linha ausente → `on` (comportamento anterior à
+ * migration), ao contrário do Curador do vault, cujo default é `off`.
+ */
+export async function loadMontadorMode(storeId: string): Promise<MontadorMode> {
+  try {
+    const admin = createAdminClient()
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("org_id")
+      .eq("id", storeId)
+      .maybeSingle()
+    const orgId = (store as { org_id?: string | null } | null)?.org_id
+    if (!orgId) return "on"
+    const { data, error } = await admin
+      .from("email_generation_settings")
+      .select("montador_mode")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    if (error) return "on"
+    const mode = (data as { montador_mode?: string | null } | null)?.montador_mode
+    return mode === "off" ? "off" : "on"
+  } catch {
+    return "on"
+  }
+}
+
 export function emptyCuradorVaultKnowledge(): CuradorVaultKnowledge {
   return {
     protocolo: null,
@@ -92,6 +128,7 @@ export function emptyCuradorVaultKnowledge(): CuradorVaultKnowledge {
     variantes: [],
     convivencias: [],
     requisitos: [],
+    lacunas: [],
     eixos: new Map(),
     total: 0,
   }
@@ -117,6 +154,9 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
       case "requisito":
         k.requisitos.push(r)
         break
+      case "lacuna":
+        k.lacunas.push(r)
+        break
       case "eixo":
         if (r.grupo) k.eixos.set(`${r.grupo}/${r.slug}`, r)
         break
@@ -129,6 +169,7 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
   k.variantes.sort((a, b) => a.slug.localeCompare(b.slug))
   k.convivencias.sort((a, b) => a.slug.localeCompare(b.slug))
   k.requisitos.sort((a, b) => a.slug.localeCompare(b.slug))
+  k.lacunas.sort((a, b) => a.slug.localeCompare(b.slug))
   return k
 }
 
@@ -143,7 +184,7 @@ export async function loadCuradorVaultKnowledge(): Promise<CuradorVaultKnowledge
       .from("email_vault_docs")
       .select("kind, grupo, slug, variant_id, frontmatter, body_md")
       .eq("is_active", true)
-      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo"])
+      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo", "lacuna"])
     if (error) {
       log.warn("load_failed", { error: error.message })
       return emptyCuradorVaultKnowledge()
@@ -390,6 +431,102 @@ export function buildSecaoNotasBlock(
     return "(sem notas de seção no vault para as seções deste email)"
   }
   return blocos.join("\n\n")
+}
+
+// ── Lacunas da biblioteca (02/09) ───────────────────────────────────────
+
+/** A que seção uma nota de lacuna se refere: frontmatter, senão o slug. */
+export function secaoDaLacuna(doc: VaultDocRow, secoesConhecidas: ReadonlyArray<string>): string | null {
+  const fm = doc.frontmatter
+  for (const key of ["secao", "seção", "grupo", "section"]) {
+    const v = fm[key]
+    if (typeof v === "string" && v.trim()) return v.trim().toLowerCase()
+    if (Array.isArray(v) && typeof v[0] === "string") return String(v[0]).trim().toLowerCase()
+  }
+  if (doc.grupo) return doc.grupo.toLowerCase()
+  const slug = doc.slug.toLowerCase()
+  const hit = secoesConhecidas.find((s) => slug === s || slug.startsWith(`${s}-`) || slug.includes(`-${s}-`) || slug.endsWith(`-${s}`))
+  return hit ?? null
+}
+
+/**
+ * Lacunas das seções deste email + as gerais (sem seção). Lacuna não é
+ * veto: o prompt a usa como peso contra e como motivo obrigatório na
+ * justificativa quando a escolhida a carrega.
+ */
+export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]): string {
+  if (k.lacunas.length === 0) return "(nenhuma lacuna registrada no vault)"
+  const pedidas = new Set(sections.map((s) => s.toLowerCase()))
+  const conhecidas = Array.from(new Set(k.lacunas.map((d) => secaoDaLacuna(d, [...pedidas])).filter((x): x is string => !!x)))
+  const todas = Array.from(new Set([...pedidas, ...conhecidas]))
+  const blocos: string[] = []
+  for (const d of k.lacunas) {
+    const secao = secaoDaLacuna(d, todas)
+    if (secao && !pedidas.has(secao)) continue
+    const titulo = secao ? `## Lacuna · ${secao} · ${d.slug}` : `## Lacuna geral · ${d.slug}`
+    blocos.push(`${titulo}\n${clamp(d.body_md, 1_200)}`)
+    if (blocos.length >= 12) break
+  }
+  if (blocos.length === 0) return "(nenhuma lacuna registrada para as seções deste email)"
+  return blocos.join("\n\n")
+}
+
+// ── Índice de pastas do Obsidian (consulta sob demanda, 02/09) ──────────
+
+export interface IndiceDoVault {
+  /** pasta relativa à base do vault → nº de notas sincronizadas. */
+  pastas: Array<{ pasta: string; notas: number }>
+}
+
+/** Árvore de pastas derivada dos `file_path` sincronizados (puro). */
+export function buildIndiceDoVault(paths: ReadonlyArray<string>): IndiceDoVault {
+  const contagem = new Map<string, number>()
+  for (const raw of paths) {
+    const p = (raw ?? "").replace(/^\/+/, "")
+    const partes = p.split("/")
+    if (partes.length < 2) continue
+    const pasta = partes.slice(0, -1).join("/")
+    contagem.set(pasta, (contagem.get(pasta) ?? 0) + 1)
+  }
+  return {
+    pastas: Array.from(contagem.entries())
+      .map(([pasta, notas]) => ({ pasta, notas }))
+      .sort((a, b) => a.pasta.localeCompare(b.pasta)),
+  }
+}
+
+export function renderIndiceDoVault(indice: IndiceDoVault): string {
+  if (indice.pastas.length === 0) return "(vault não sincronizado — nada a consultar)"
+  return indice.pastas.map((p) => `- ${p.pasta}/ (${p.notas} nota${p.notas === 1 ? "" : "s"})`).join("\n")
+}
+
+/**
+ * Carrega o índice das 4 tabelas sincronizadas do vault (todas guardam
+ * `file_path`). Fail-open → índice vazio.
+ */
+export async function loadIndiceDoVault(): Promise<IndiceDoVault> {
+  try {
+    const admin = createAdminClient()
+    const tabelas = ["email_vault_docs", "email_intents", "email_structure_refs", "email_learnings"] as const
+    const resultados = await Promise.all(
+      tabelas.map((t) => admin.from(t).select("file_path").eq("is_active", true)),
+    )
+    const paths: string[] = []
+    for (const r of resultados) {
+      if (r.error) {
+        log.warn("indice_load_failed", { error: r.error.message })
+        continue
+      }
+      for (const row of r.data ?? []) {
+        const fp = (row as { file_path?: string }).file_path
+        if (typeof fp === "string" && fp) paths.push(fp)
+      }
+    }
+    return buildIndiceDoVault(paths)
+  } catch (err) {
+    log.warn("indice_load_threw", { error: err instanceof Error ? err.message : String(err) })
+    return { pastas: [] }
+  }
 }
 
 // ── Estruturas de referência (passo 2 do protocolo) ─────────────────────

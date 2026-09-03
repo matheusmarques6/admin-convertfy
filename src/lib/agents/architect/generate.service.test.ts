@@ -10,6 +10,10 @@ const h = vi.hoisted(() => ({
   reconcileSpy: vi.fn(),
   assembleSpy: vi.fn(),
   blueprintSpy: vi.fn(),
+  // Estruturador (02/09): modo lido de email_generation_settings e a run
+  // mockada — o teste controla a sequência que ele devolve.
+  estruturadorMode: "off" as "off" | "shadow" | "on",
+  estruturadorSpy: vi.fn(),
 }))
 
 vi.mock("@/lib/supabase/server", () => {
@@ -23,6 +27,15 @@ vi.mock("@/lib/supabase/server", () => {
       order: () => chain,
       limit: () => chain,
       maybeSingle: () => {
+        if (table === "client_stores") {
+          return Promise.resolve({ data: { org_id: "org1" }, error: null })
+        }
+        if (table === "email_generation_settings") {
+          return Promise.resolve({
+            data: { estruturador_mode: h.estruturadorMode },
+            error: null,
+          })
+        }
         if (table === "store_email_references") {
           return Promise.resolve({
             data: h.storedRef ? { id: "ref1" } : null,
@@ -55,6 +68,10 @@ vi.mock("@/lib/supabase/server", () => {
     createClient: () => ({}),
   }
 })
+
+vi.mock("../estruturador/estruturador.service", () => ({
+  runEstruturador: (...a: unknown[]) => h.estruturadorSpy(...a),
+}))
 
 vi.mock("./component-assembler.service", () => ({
   assembleStoreReference: (...a: unknown[]) => {
@@ -101,6 +118,8 @@ beforeEach(() => {
   h.textOnly = false
   h.storedRef = false
   h.storedBp = false
+  h.estruturadorMode = "off"
+  h.estruturadorSpy.mockReset()
   h.reconcileSpy.mockReset()
   h.reconcileSpy.mockResolvedValue({
     reconciled: true,
@@ -186,5 +205,72 @@ describe("generateBlueprintAndReference — guard de reuso (sem force)", () => {
     const res = await generateBlueprintAndReference(input)
     expect(res.referenceSource).toBe("llm")
     expect(h.assembleSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe("generateBlueprintAndReference — Estruturador ligado (02/09)", () => {
+  const decisao = {
+    diagnostico: { objecao_dominante: "eficácia", traducao_do_mecanismo: "inspeção → prova" },
+    // Ordem DIFERENTE da Arquitetura de propósito: a sequência é dele.
+    estrutura: [
+      { section: "hero", papel: "Entregar o cupom", referencia: "r1", porque: "p" },
+      { section: "body", papel: "Nomear a objeção", referencia: "r1", adaptacao: "gadget", porque: "p" },
+      { section: "offer", papel: "Remover o risco", referencia: "r1", porque: "p" },
+    ],
+    fio_narrativo: "cupom → objeção → risco",
+    fontes: [],
+    aprendizados_aplicados: [],
+    text_only: false,
+    descartes: [{ section: "cta", papel_na_referencia: "CTA isolado", porque: "competiria", origem: "modelo" }],
+  }
+
+  it("modo on: a sequência é a dele, a decisão COMPLETA vai ao Curador e os papéis ao blueprint; reuso é ignorado", async () => {
+    h.estruturadorMode = "on"
+    h.storedRef = true
+    h.storedBp = true
+    h.estruturadorSpy.mockResolvedValue({ output: decisao, runId: "run-e", status: "ok" })
+
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("llm")
+    // Recebe o perfil inteiro + top produtos, NÃO os campos soltos nem intenções por bloco.
+    const entrada = h.estruturadorSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(entrada).toMatchObject({ mode: "on", flowType: "welcome", emailNumber: 1 })
+    expect(entrada).toHaveProperty("pesquisa")
+    expect(entrada).toHaveProperty("topProducts")
+    expect(entrada).not.toHaveProperty("intencoesPorBloco")
+    expect(entrada).not.toHaveProperty("nicho")
+
+    const asm = h.assembleSpy.mock.calls[0][0] as { structure: Array<{ section: string; label: string }>; estruturadorDecisao: string }
+    expect(asm.structure.map((s) => s.section)).toEqual(["hero", "body", "offer"])
+    expect(asm.structure[1].label).toBe("Nomear a objeção")
+    const servida = JSON.parse(asm.estruturadorDecisao)
+    expect(servida.descartes[0].papel_na_referencia).toBe("CTA isolado")
+    expect(servida.estrutura[1].adaptacao).toBe("gadget")
+
+    const bp = h.blueprintSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(bp.papeisPorPosicao).toEqual([
+      "Entregar o cupom",
+      "Nomear a objeção — Adaptação: gadget",
+      "Remover o risco",
+    ])
+    expect(bp.intencoesHumanas).toBe(0)
+    expect(bp.fioNarrativo).toBe("cupom → objeção → risco")
+    expect(bp.estruturadorStatus).toBe("consumido")
+  })
+
+  it("modo on com falha do Estruturador: segue sem ele (fail-open) e o Curador não recebe decisão", async () => {
+    h.estruturadorMode = "on"
+    h.estruturadorSpy.mockResolvedValue({ output: null, runId: "run-e", status: "falhou" })
+    await generateBlueprintAndReference(input)
+    const asm = h.assembleSpy.mock.calls[0][0] as { estruturadorDecisao: string | null }
+    expect(asm.estruturadorDecisao).toBeNull()
+    const bp = h.blueprintSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(bp.estruturadorStatus).toBe("falhou")
+  })
+
+  it("modo off: não chama o Estruturador", async () => {
+    await generateBlueprintAndReference(input)
+    expect(h.estruturadorSpy).not.toHaveBeenCalled()
   })
 })

@@ -43,6 +43,9 @@ const patchSchema = z.object({
   // Estruturador (fase 2): off = nem roda; shadow = roda e grava o
   // embasamento sem alterar o pipeline; on = consumo (fase 3).
   estruturador_mode: z.enum(["off", "shadow", "on"]).optional(),
+  // Montador (migration 20261107): off = rank 1 do Curador vai direto para
+  // a montagem; on = o agente escolhe entre os finalistas.
+  montador_mode: z.enum(["off", "on"]).optional(),
 })
 
 export async function GET(request: NextRequest) {

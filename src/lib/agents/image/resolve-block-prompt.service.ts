@@ -55,6 +55,7 @@ import {
 } from "@/lib/agents/image/mode-resolution"
 import { isUsableProductImage } from "@/lib/agents/image/product-image-guard"
 import { loadPhotoDirections } from "@/lib/agents/image/photo-directions"
+import { pickProductForField } from "@/lib/agents/image/product-for-field"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -81,10 +82,12 @@ const log = logger.child("ResolveBlockPrompt")
 export function buildImageAlt(
   vars: Record<string, string>,
 ): string {
-  const produtoHeroi = (vars.PRODUTO_HEROI ?? "").trim() || "produto"
-  const cenario = (vars.CENARIO ?? "").trim() || "cena padrao"
-  const mood = (vars.MOOD ?? "").trim() || "neutro"
-  const alt = `${produtoHeroi} em ${cenario}, mood ${mood}`
+  // Sem conectivo em português (03/09): o alt ia para o HTML de loja em
+  // inglês como "EnergySave Pro™ em ambiente clean…, mood relaxed". Agora
+  // é só o que existe em qualquer idioma — produto e rótulo do bloco.
+  const produtoHeroi = (vars.PRODUTO_HEROI ?? "").trim()
+  const rotulo = (vars.block_label ?? "").trim()
+  const alt = [produtoHeroi, rotulo].filter(Boolean).join(" · ")
   return alt.length > 200 ? `${alt.slice(0, 200)}…` : alt
 }
 
@@ -379,7 +382,9 @@ export async function resolveBlockPrompt(
   )
 
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
-  const topProductImageUrl = topProducts[0]?.image_url ?? null
+  // Produto DESTE campo (painel 2 → produto 2), não sempre o primeiro.
+  const { product: productForField } = pickProductForField(topProducts, fieldKey)
+  const topProductImageUrl = productForField?.image_url ?? null
   let { mode, source: modeSource } = resolveImageMode({
     blueprintMode: blueprint?.image_mode ?? null,
     flowType,
@@ -438,6 +443,7 @@ export async function resolveBlockPrompt(
     imageOverlayReserveBottom: overlayReserveBottom,
     aspect,
     mode,
+    productForField,
   })
 
   // ── 7. Render do template (DB-config se existe, fallback hardcoded) ─
@@ -453,7 +459,7 @@ export async function resolveBlockPrompt(
   const { fidelity, fallbackDescription } = resolveImageAppendices({
     mode,
     modeSource,
-    productName: topProducts[0]?.name,
+    productName: productForField?.name,
     productImageUrl: topProductImageUrl,
   })
 

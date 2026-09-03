@@ -52,7 +52,11 @@ export async function POST(request: NextRequest) {
         "validation-error",
       )
     }
-    const clientId = await registerClient(as.registration_endpoint, redirectUri)
+    const { clientId, clientSecret } = await registerClient(
+      as.registration_endpoint,
+      redirectUri,
+      as.scopes_supported,
+    )
     const { verifier, challenge } = makePkce()
 
     // return_to só dentro do admin — nada de open redirect
@@ -70,6 +74,7 @@ export async function POST(request: NextRequest) {
         allow_write: body.allow_write,
         verifier,
         client_id: clientId,
+        client_secret: clientSecret ?? null,
         token_endpoint: as.token_endpoint,
         return_to: returnTo,
         ts: Date.now(),

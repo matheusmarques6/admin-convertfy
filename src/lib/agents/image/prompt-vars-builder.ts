@@ -103,6 +103,17 @@ export interface ImagePromptVarsInput {
    * legado usado pelo preview de prompt e por blocos sem schema.
    */
   fieldKey?: string | null
+  /**
+   * Produto que ESTE campo mostra (03/09). Até então toda geração usava
+   * `topProducts[0]`; o painel 2 da grade saía com a foto do produto 1.
+   * Resolvido pelo caller com `pickProductForField` a partir do key.
+   */
+  productForField?: { name: string; image_url?: string | null } | null
+  /**
+   * Key da âncora do grupo quando este campo é dependente (thumb). Vai ao
+   * slot como `papel_neste_grupo`.
+   */
+  anchorKey?: string | null
 }
 
 /**
@@ -166,9 +177,12 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     override: overrides?.logo_style_override ?? null,
   })
 
-  // Prioridade: override loja > hint do blueprint > top product [0]
+  // Prioridade: override loja > produto DESTE campo > hint do blueprint >
+  // top product [0]. O produto do campo entra antes do hint porque o hint é
+  // do email inteiro e o campo diz qual painel ele é.
   const PRODUTO_HEROI =
     overrides?.produto_heroi_override?.trim() ||
+    input.productForField?.name?.trim() ||
     blueprint?.image_produto_heroi_hint ||
     products[0]?.name ||
     ""
@@ -188,7 +202,12 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     personaToText(marca.persona) ||
     personaToText(input.storeRaw?.icp_persona)
   const IDIOMA = (input.storeRaw.language as string) ?? "pt-BR"
-  const MOEDA = (input.storeRaw.currency as string) ?? "BRL"
+  // Moeda REAL da loja = a dos produtos (store_top_products.currency). A
+  // coluna da loja vinha errada (Innova: EUR numa loja que vende em USD) e
+  // ia ao prompt como "currency hint EUR".
+  const MOEDA =
+    ((products[0] as { currency?: string } | undefined)?.currency ?? "").trim() ||
+    ((input.storeRaw.currency as string) ?? "BRL")
 
   // ── Master Prompt v2 — vars por bloco ────────────────────
   // Resolve o bloco do blueprint DESTE slot. Prioriza a POSIÇÃO (robusto a
@@ -229,6 +248,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // mostra).
   const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent, {
     fieldKey: input.fieldKey ?? null,
+    anchorKey: input.anchorKey ?? null,
   })
   const legacyImageBrief =
     bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
@@ -248,6 +268,10 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // Direção fotográfica da variante deste bloco (COMO fotografar).
     // Vazia quando ninguém escreveu — o template omite a seção inteira.
     PHOTO_DIRECTION: photoDirection,
+    // Boolean-like: o template diz ao modelo que NÃO há direção e que ele
+    // compõe só pelo slot — em vez de inventar cena (03/09: sem frase de
+    // cena por bloco/flow, sem cenário nem mood derivados por código).
+    PHOTO_DIRECTION_AUSENTE: photoDirection ? "" : "true",
     EMAIL_ASSUNTO: blueprint?.subject_hint?.trim() ?? "",
 
     // Perfil da marca (enxuto — tom/persona/diferencial/slogan/restrições
@@ -332,6 +356,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
 export const BOOLEAN_LIKE_VARS = new Set([
   "product_ref",
   "image_overlay_reserve_bottom",
+  "PHOTO_DIRECTION_AUSENTE",
 ])
 
 // ── Proveniência das vars do prompt de imagem (migration 20261085) ──────
@@ -382,6 +407,7 @@ export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   EMAIL_IDEIA: { cls: "upstream", rotulo: "Ideia do email — fio do Estruturador (ou messaging)" },
   // Escrita no cadastro da variante: é a biblioteca dizendo COMO fotografar.
   PHOTO_DIRECTION: { cls: "biblioteca", rotulo: "Direção fotográfica da variante" },
+  PHOTO_DIRECTION_AUSENTE: IMG_CODIGO,
   IMAGE_SLOTS: { cls: "biblioteca", rotulo: "Direção de arte por slot — schema da variante" },
   IMAGE_BRIEF: IMG_BLUEPRINT,
   blueprint_purpose: IMG_BLUEPRINT,

@@ -105,18 +105,19 @@ export function resolveImageMode(input: {
  * ser o produto da loja, nao um primo dele.
  *
  * A direcao fotografica da variante continua mandando na CENA (luz,
- * enquadramento, fundo, pose). Esta instrucao manda no OBJETO.
+ * enquadramento, fundo, pose). Esta instrucao manda no OBJETO — e diz
+ * isso com todas as letras (03/09): a versao anterior fechava com "a foto
+ * anexada VENCE", e o modelo lia como "copie a foto", inclusive o angulo.
  */
 export function productRefFidelityInstruction(input: {
   productName: string
 }): string {
   return [
-    "CFY_PRODUCT_FIDELITY — THE ATTACHED PHOTO IS THE PRODUCT, NOT A MOOD REFERENCE.",
-    `The attached image shows "${input.productName}", the real product sold by this store.`,
-    "Reproduce THAT EXACT product: same shape, same proportions, same materials and finish, same colours, same label and typography, same details. Down to the badge, the port, the seam.",
-    "You may change ONLY the scene around it — lighting, angle, framing, background, staging — as the photographic direction asks.",
-    "You may NOT redesign the product, restyle the packaging, invent a variant, swap the logo, change the wording on the label, or produce a similar item from the same category.",
-    "If the photographic direction describes a product category that does not match the attached photo, the ATTACHED PHOTO WINS: shoot this product, in the scene the direction asks for.",
+    "CFY_PRODUCT_FIDELITY — THE PHOTO LABELLED CFY_REF_PRODUCT IS THE PRODUCT, NOT A MOOD REFERENCE.",
+    `It shows "${input.productName}", the real product sold by this store.`,
+    "The product's IDENTITY comes from that photo: same shape, same proportions, same materials and finish, same colours, same label and typography, same details. Down to the badge, the port, the seam. Never redesign it, restyle the packaging, invent a variant, swap the logo, change the wording on the label, or produce a similar item from the same category.",
+    "EVERYTHING ELSE comes from the photographic direction and the slot brief above — scene, setting, light, angle, distance, framing, whether a person appears and what they do. The reference photo's own angle, background and staging are NOT to be copied: shoot this product the way the direction asks.",
+    "If the direction and the photo disagree about what KIND of product this is, keep the product from the photo and the scene from the direction.",
   ].join("\n")
 }
 

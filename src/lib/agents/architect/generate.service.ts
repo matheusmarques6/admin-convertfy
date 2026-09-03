@@ -35,7 +35,7 @@ import { logGenerationRun } from "../callbacks/telemetry.callback"
 import {
   combinarIntencaoComPapel,
   estruturaParaPosicoes,
-  resumoParaCurador,
+  decisaoCompletaParaCurador,
   type PosicaoEstruturada,
 } from "../estruturador/estruturador-consume"
 import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
@@ -282,13 +282,10 @@ export async function generateBlueprintAndReference(
     intents.find((i) => i.slug === "_flow")?.body_md ?? null
   const intencaoEmail =
     intents.find((i) => i.email_number === input.emailNumber)?.body_md ?? null
-  // Estrutura do outline COM as intenções da Arquitetura anexadas. Serve de
-  // base ao Estruturador (que as recebe como contrato por posição) e é a
-  // structure quando ele não roda.
+  // Estrutura da aba Arquitetura COM as intenções por bloco anexadas. É a
+  // structure quando o Estruturador não roda; quando ele roda (modo on), a
+  // sequência é DELE e esta base não entra (02/09).
   const structureBase = resolveStructure(outline, blocosGlobais)
-  const intencoesPorBloco = structureBase
-    .filter((s) => (s.intencao ?? "").trim())
-    .map((s) => ({ section: s.section, intencao: (s.intencao ?? "").trim() }))
 
   const brandName = (store.store_name as string) || "Loja"
   const nicho = marca.nicho || (store.niche as string) || ""
@@ -416,14 +413,11 @@ export async function generateBlueprintAndReference(
         triggeredBy: input.triggeredBy,
         mode: estruturadorMode,
         brandName,
-        nicho,
-        posicionamento,
-        tomVoz,
-        persona,
+        // Perfil da marca inteiro (dossiê com Ads) + top 5 com preço e link
+        // — dieta definida em 02/09; os campos soltos saíram do prompt dele.
         pesquisa,
-        topProductNames,
+        topProducts,
         revisoes,
-        intencoesPorBloco,
       })
       if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
@@ -544,22 +538,25 @@ export async function generateBlueprintAndReference(
     // em shadow o pipeline não pode ser influenciado por ela.
     intencaoFlow,
     intencaoEmail,
+    // A saída COMPLETA do Estruturador (JSON) — era um resumo até 02/09.
     estruturadorDecisao:
       estruturadorOutput && posicoes
-        ? resumoParaCurador(estruturadorOutput, posicoes)
+        ? decisaoCompletaParaCurador(estruturadorOutput)
         : null,
   })
 
   // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
-  // do blueprint; o papel do agente (Estruturador ou Curador do vault) entra
-  // embaixo como detalhe. Sem agente, a intenção sozinha já ancora a
-  // posição — antes `papeisPorPosicao` saía null e o purpose virava só o
-  // copy_guidance da variante, e a intenção que a pessoa escreveu morria
-  // aqui. Quando a structure veio do Estruturador, as intenções são as da
-  // base por posição (mesma ordem da Arquitetura).
-  const intencoesPorPosicao = structure.map(
-    (s, i) => (s.intencao ?? structureBase[i]?.intencao ?? "").trim() || null,
-  )
+  // do blueprint; o papel do agente (Curador do vault) entra embaixo como
+  // detalhe. Sem agente, a intenção sozinha já ancora a posição — antes
+  // `papeisPorPosicao` saía null e o purpose virava só o copy_guidance da
+  // variante, e a intenção que a pessoa escreveu morria aqui.
+  //
+  // Quando a structure veio do ESTRUTURADOR, as intenções da Arquitetura
+  // NÃO entram (02/09): a sequência é dele, e casá-las por índice com uma
+  // ordem que ele pode ter trocado colocaria a intenção do offer no body.
+  const intencoesPorPosicao: Array<string | null> = posicoes
+    ? structure.map(() => null)
+    : structure.map((s) => (s.intencao ?? "").trim() || null)
   const papeisDoAgente: Array<string | null> = posicoes
     ? posicoes.map((p) => p.papel)
     : (papeisDoCurador ?? []).map((x) => x || null)
@@ -601,8 +598,8 @@ export async function generateBlueprintAndReference(
     blueprintMode,
     // Fase 3: papel narrativo por posição sobrescreve o purpose dos blocos
     // (é como a decisão chega à copy do n8n) e o fio persiste no blueprint.
-    // Origem do papel/fio, nesta ordem: Estruturador (hoje desligado) →
-    // Curador do vault no modo `on`. O CONSUMIDOR é o mesmo dos dois lados
+    // Origem do papel/fio, nesta ordem: Estruturador (religado em 02/09,
+    // migration 20261106) → Curador do vault no modo `on`. O CONSUMIDOR é o mesmo dos dois lados
     // (`aplicarEstruturadorNoBlueprint` prepende o papel e preserva o
     // copy_guidance da variante embaixo como "Forma (variante)"): muda a
     // origem, não o encanamento.

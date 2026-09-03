@@ -108,13 +108,58 @@ const DIRECAO_BODY4 = [
 ].join("\n")
 
 describe("sanitizePhotoDirection", () => {
-  it("tira as linhas de cota e de tabela; nada de px, Ø ou KB chega ao gerador", () => {
+  it("apaga as medidas; nada de px, Ø, KB ou PNG chega ao gerador", () => {
     const r = sanitizePhotoDirection(DIRECAO_BODY4)
     expect(r.texto).not.toMatch(/\d\s*px/i)
     expect(r.texto).not.toMatch(/Ø/)
     expect(r.texto).not.toMatch(/KB|PNG/i)
     expect(r.texto).not.toContain("\t")
-    expect(r.linhas_removidas).toBe(8)
+    expect(r.medidas_removidas).toBeGreaterThan(0)
+  })
+
+  // 03/09: a linha com uma cota DENTRO de uma regra fica — sem o número.
+  // Antes a linha inteira caía e a regra central do componente sumia.
+  it("regra com cota dentro fica, sem a cota", () => {
+    const d = [
+      "Regra crítica: o terço superior (0–480px) tem que estar fora de foco e uniforme, numa cor só.",
+      "Círculo da foto de Ø304px (152px no slot), centralizado horizontalmente, com o topo a 24px da borda superior do quadro.",
+    ].join("\n")
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toContain("Regra crítica: o terço superior tem que estar fora de foco e uniforme, numa cor só.")
+    expect(r.texto).toContain("Círculo da foto de, centralizado horizontalmente, com o topo a da borda superior do quadro.".replace("de,", "de,"))
+    expect(r.texto).not.toMatch(/\d/)
+    expect(r.linhas_removidas).toBe(0)
+    expect(r.medidas_removidas).toBe(2)
+  })
+
+  it("linha que é só ficha de arquivo cai inteira", () => {
+    const d = [
+      "Proporção 2:3 — slot de 598 × 949px, ativo final 1196 × 1898px (2x). JPG q80 ou WebP, < 300 KB, full-bleed.",
+      "Ativo final 544 × 424px (2x)",
+      "Formato\tPNG, < 110 KB",
+      "Composição. Flat-lay em ângulo alto com o kit na metade inferior.",
+      "Montagem final: aplicar máscara circular de Ø304px sobre a foto. Exportar em PNG.",
+    ].join("\n")
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toContain("Composição. Flat-lay em ângulo alto com o kit na metade inferior.")
+    expect(r.texto).not.toMatch(/Ativo final|Formato|Exportar|Montagem final/)
+    expect(r.texto).not.toMatch(/\d\s*px|KB|PNG|JPG|WebP/i)
+    expect(r.linhas_removidas).toBe(4)
+  })
+
+  // A tabela "Adaptação por categoria" é prosa em colunas — fica, como texto.
+  it("tabela de categorias vira 'coluna — coluna' em vez de sumir", () => {
+    const d = [
+      "Adaptação por categoria — o que compõe o flat-lay:",
+      "Categoria\tItens",
+      "Beleza / skincare\tSachês, frascos, pincéis, pinça, aplicadores",
+      "Pet\tSachês, brinquedo, coleira, escova",
+    ].join("\n")
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toContain("Beleza / skincare — Sachês, frascos, pincéis, pinça, aplicadores")
+    expect(r.texto).toContain("Pet — Sachês, brinquedo, coleira, escova")
+    expect(r.texto).not.toContain("\t")
+    expect(r.linhas_removidas).toBe(0)
   })
 
   it("as seções e a prosa da foto ficam intactas", () => {
@@ -127,16 +172,27 @@ describe("sanitizePhotoDirection", () => {
     expect(r).toContain("Prompt para IA (foto da coluna A):")
     expect(r).toContain("Studio photograph of [PRODUTO]")
     expect(r).toContain("Checklist: círculo centralizado")
+    // A regra da construção ficou, sem as cotas.
+    expect(r).toContain("Círculo da foto de")
+    expect(r).toContain("centralizado horizontalmente")
   })
 
   it("direção sem cota passa byte a byte", () => {
     const d = "Still em fundo neutro, luz lateral suave."
-    expect(sanitizePhotoDirection(d)).toEqual({ texto: d, linhas_removidas: 0 })
+    expect(sanitizePhotoDirection(d)).toEqual({
+      texto: d,
+      linhas_removidas: 0,
+      medidas_removidas: 0,
+    })
   })
 
   it("se sobrar nada, devolve o original (fail-open)", () => {
     const d = "Slot\t272 × 212px"
-    expect(sanitizePhotoDirection(d)).toEqual({ texto: d, linhas_removidas: 0 })
+    expect(sanitizePhotoDirection(d)).toEqual({
+      texto: d,
+      linhas_removidas: 0,
+      medidas_removidas: 0,
+    })
   })
 
   it("loadPhotoDirections já entrega a direção limpa", async () => {

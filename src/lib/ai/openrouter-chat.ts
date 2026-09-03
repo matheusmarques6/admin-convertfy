@@ -41,9 +41,14 @@ export interface ChatToolCall {
   function: { name: string; arguments: string }
 }
 
+/** Parte multimodal do turno do usuário (imagens via data URL). */
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+
 export type ChatMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string | ChatContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: ChatToolCall[] }
   | { role: "tool"; content: string; tool_call_id: string }
 

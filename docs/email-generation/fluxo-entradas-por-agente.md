@@ -166,9 +166,9 @@ Guard de **reuso**: sem `force` e com `estruturador_mode != 'on'`, se `store_ema
 
 ## 1 · Estruturador
 
-Decide o **esqueleto** do email (sequência de seções + papel narrativo por posição + fio narrativo + justificativas) traduzindo o material do vault para a objeção dominante da loja. Modos (`email_generation_settings.estruturador_mode`): `off` (default — run `skipped`) · `shadow` (roda e grava run, pipeline segue no outline) · `on` (output validado substitui o outline). A run em `email_generation_runs` **é** a persistência (não há tabela própria).
+Decide o **esqueleto** do email (sequência de seções + papel narrativo por posição + fio narrativo + justificativas) traduzindo o material do vault para a objeção dominante da loja. Modos (`email_generation_settings.estruturador_mode`): `off` (run `skipped`) · `shadow` (roda e grava run, pipeline segue na Arquitetura) · `on` (**vigente desde 02/09, migration 20261106** — a sequência do email é a dele). A run em `email_generation_runs` **é** a persistência (não há tabela própria). Mapa completo dos dois agentes em `mapa-estruturador-curador.md`.
 
-**Modelo**: `anthropic/claude-sonnet-4.6` (OpenRouter) · T 0.4 · max 8192 · timeout 240s · retry 1× com o erro do validador anexado.
+**Modelo**: `anthropic/claude-sonnet-4.6` (OpenRouter) · T 0.4 · max 8192 · timeout 240s · retry 1× **só quando o JSON vem ilegível/truncado** (o validador de conteúdo saiu em 02/09 — o que ele devolver vale; `normalizarOutput` garante só a forma `estrutura[]` com `section`+`papel`).
 
 ### Entradas (origens declaradas em `SYSTEM_ORIGINS`/`USER_ORIGINS`)
 
@@ -178,19 +178,17 @@ Decide o **esqueleto** do email (sequência de seções + papel narrativo por po
 | `progressao` | `email_intents.body_md` (kind `progressao`) | vault |
 | `referencias` | `email_structure_refs` (por flow_type, embrulhadas por slug — contrato anti-alucinação) | vault |
 | `aprendizados` | `email_learnings` (flow ou globais com `aplica_a`) | vault |
-| `intencao_email` | `email_intents.body_md` (flow_type + email_number exatos; ausente → `sem_material`, não roda) | vault |
-| `brand_name` / `nicho` / `posicionamento` / `tom_voz` / `persona` | `client_stores` + cascatas de `store_briefings.marca` (via store-context) | loja |
-| `pesquisa` | `pesquisaToFullText` — dossiê **completo, com Ads** (diferente do Curador) | loja |
-| `top_products` / `produtos_count` | `store_top_products` (top 5) | loja |
+| `intencao_email` | `email_intents.body_md` (flow_type + email_number exatos; ausente → `sem_material`, não roda). **Sem** as intenções por bloco da Arquitetura (02/09 — a sequência é dele) | vault |
+| `brand_name` + `pesquisa` + `top_products` (bloco `<perfil_da_marca>`) | nome da loja + `pesquisaToFullText` — dossiê **completo, com Ads** (01 Perfil da Marca · 02 Sobre a loja · 03 Cliente Ideal · 04 Tom de Comunicação · 05 Review dos Anúncios) + top 5 produtos com preço e link (`renderTopProducts`). Os campos soltos nicho/posicionamento/persona/tom saíram em 02/09 (eram derivados do dossiê) | loja |
 | `flow_type` / `email_number` | identidade do email (input do pipeline) | sistema |
-| `capacidade_biblioteca` | contagem de `email_component_variants` ativas por categoria + nº de produtos | sistema |
-| `estruturas_dos_outros_emails` | runs `estruturador` success dos **irmãos** do flow (anti-repetição; no retry recebe o erro do validador) | sistema |
+| `secoes_disponiveis` | só os **nomes** das categorias com variante ativa em `email_component_variants` (sem contagem, sem nº de produtos) | sistema |
+| `estruturas_dos_outros_emails` | runs `estruturador` success dos **irmãos** do flow (anti-repetição; no retry recebe o erro de parse) | sistema |
 | `orientacao_coo` | `estruturador_orientacoes` (global→flow→email; efeito imediato, **não** é vault) | curadoria |
 | `revisao_humana` | `email_structure_reviews` (diff ordem_anterior→nova; sinal forte, não trava) | curadoria |
 
-**Saídas**: `parsed_output` da run (diagnóstico, estrutura[], fio_narrativo, fontes, descartes). Em modo `on`: vira a `structure` do Montador, `estruturador_decisao` do Curador, `fio_narrativo` do blueprint (`store_email_blueprints.fio_narrativo`) e 1ª linha do `purpose` de cada bloco.
+**Saídas**: `parsed_output` da run (diagnóstico, estrutura[], fio_narrativo, fontes, aprendizados_aplicados, descartes + `_validador` informativo: retry de parse, revisão humana seguida ou não, convergência com a geração anterior). Em modo `on`: vira a `structure` do Montador e do Curador, a **saída COMPLETA em JSON** na var `estruturador_decisao` do Curador (`decisaoCompletaParaCurador`, clamp 24k), `fio_narrativo` do blueprint (`store_email_blueprints.fio_narrativo`) e 1ª linha do `purpose` de cada bloco.
 
-**Guards**: validador 100% código (slugs alucinados = fatal; header/cta removíveis; dedup entre irmãos), fallback integral pro outline (nunca derruba a geração), precedência declarada: intenção do flow > revisão humana > orientação COO > aprendizados > referências.
+**Guards**: só a forma (`normalizarOutput`); fallback integral para a Arquitetura quando ele falha (nunca derruba a geração); precedência declarada no prompt: intenção do flow > revisão humana > orientação COO > aprendizados > referências. Seção fora da biblioteca (`header`, `cta`) chega ao Curador, que devolve `escolhas: []` e o slot cai no template global.
 
 ## 2 · Curador (`assembler_chooser`)
 
@@ -204,7 +202,9 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 |---|---|---|
 | `{{catalogo}}` (system) | `buildCatalog` sobre `email_component_variants` ativas e **preenchíveis** (`variantIsFillable`): name, description, quando_usar/não_usar, objectives, tones, density, product_slots, orientação de copy, notas | biblioteca |
 | `blocks_json` (sequência) | posições do Estruturador (modo on) **ou** `resolveStructure(email_outline_templates.suggested_blocks, email_blueprints.blocks)` + `clampStructure`; posição com **`intencao`** = purpose escrito na aba Arquitetura (`anexarIntencoes`) | upstream / sistema / curadoria |
-| `estruturador_decisao` | `resumoParaCurador` — só em modo `on` validado | upstream |
+| `estruturador_decisao` | saída **completa** do Estruturador em JSON (`decisaoCompletaParaCurador`) — só em modo `on` com run ok. No Curador do **vault** (o vigente) entra no bloco `<decisao_do_estruturador>` e é o critério DOMINANTE por posição; com ela, `<estruturas_de_referencia>` e `<outline>` são omitidos | upstream |
+| `lacunas_biblioteca` (vault) | `email_vault_docs` kind `lacuna` (`componentes/lacunas/*.md`), das seções do email — `buildLacunasBlock`; lacuna pesa contra, não elimina | vault |
+| `indice_vault` (vault) | árvore de pastas do Obsidian derivada do `file_path` das 4 tabelas sincronizadas (`buildIndiceDoVault`) + ferramentas `listar_pasta`/`ler_nota` (`curador-vault-tools.ts`, até 4 consultas por run via `invokeAgentWithTools`); cada consulta fica em `consultas_ao_vault` na telemetria | vault |
 | `outline_objective` / `tone_hint` | `email_outline_templates` | curadoria |
 | `outline_guidance` | `fio_narrativo` do Estruturador (on) **ou** `email_outline_templates.guidance` | upstream / curadoria |
 | `intencao_flow` / `intencao_email` | `email_intents` (clamp 4000) | vault |
@@ -213,7 +213,7 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 | `objecoes` / `vocabulario` / `top_products` / brand_name / nicho / posicionamento / persona / tom_voz | store-context (client_stores / store_briefings / store_top_products) | loja |
 | `memoria` | `email_generation_choices` — email N‑1 da mesma loja (coerência) + mesmo email em até 3 lojas do org (variedade) | sistema |
 
-**Intenção por bloco (02/09)**: a aba Arquitetura ganhou o campo "Intenção deste bloco" (`ArchBlock.purpose` → `email_blueprints.blocks[].purpose`). `resolveStructure` anexa cada intenção à posição (índice a índice; tamanhos diferentes casam pela 1ª ocorrência livre da categoria), o rótulo (`componente`) vira a intenção truncada e o JSON leva `intencao`. Os dois Curadores têm a regra "a intenção É o papel da posição; rankeie por ela antes da intenção do email"; o Estruturador (modo on) a recebe dentro de `<intencao_do_email>` (`comIntencoesPorBloco`). No blueprint, `combinarIntencaoComPapel` (estruturador-consume) põe a intenção na 1ª linha do `purpose` e o papel do agente embaixo ("Papel (Curador): …") — **mesmo sem agente** (antes `papeisPorPosicao` saía null e o purpose virava só o `copy_guidance`). Por esse purpose a intenção chega ao n8n (`bloco.purpose` + `schema.diretriz`) e ao agente de imagem (`blueprint_purpose`). Telemetria: `intencoes_humanas` no run do Curador + "Intenções por bloco (Arquitetura): N de M" na Entrada.
+**Intenção por bloco (02/09)** — vale quando o Estruturador está `off`/falhou (com ele `on`, a sequência é dele e as intenções da Arquitetura não entram): a aba Arquitetura ganhou o campo "Intenção deste bloco" (`ArchBlock.purpose` → `email_blueprints.blocks[].purpose`). `resolveStructure` anexa cada intenção à posição (índice a índice; tamanhos diferentes casam pela 1ª ocorrência livre da categoria), o rótulo (`componente`) vira a intenção truncada e o JSON leva `intencao`. Os dois Curadores têm a regra "a intenção É o papel da posição; rankeie por ela antes da intenção do email"; o Estruturador (modo on) a recebe dentro de `<intencao_do_email>` (`comIntencoesPorBloco`). No blueprint, `combinarIntencaoComPapel` (estruturador-consume) põe a intenção na 1ª linha do `purpose` e o papel do agente embaixo ("Papel (Curador): …") — **mesmo sem agente** (antes `papeisPorPosicao` saía null e o purpose virava só o `copy_guidance`). Por esse purpose a intenção chega ao n8n (`bloco.purpose` + `schema.diretriz`) e ao agente de imagem (`blueprint_purpose`). Telemetria: `intencoes_humanas` no run do Curador + "Intenções por bloco (Arquitetura): N de M" na Entrada.
 
 **Saída**: ranking por posição (em memória → Montador) + memória em `email_generation_choices`. O catálogo (~120k chars) viaja na telemetria como `{ref:'catalogo', sha8}` — a UI resolve sob demanda.
 
@@ -356,7 +356,17 @@ remove badge + linha (`itens_removidos`).
 
 Disparo: GATE 2 → `runPhase2Image` → `runPhase2HtmlQa` → cadeia `copy_merge → hero → texto → imagem → cores` → QA. Resume por `html_pipeline_stage`; retry 1× por step (contado no banco, cross-invocação); budget dinâmico com headroom 30s; kill-switch individual por agente na aba Agentes (`is_active`).
 
-## 8 · Imagem — 1 run por slot
+## 8 · Imagem — 1 run por slot (03/09: direção + briefing do campo são a fonte principal)
+
+> Migration 20261108. O prompt tem três camadas com peso declarado —
+> `CFY_PRIMARY_BRIEF` (direção fotográfica da variante, medidas apagadas,
+> frases inteiras), `CFY_THIS_FRAME` (slot do campo: `especificidade` +
+> `onde_fica` + formato + `papel_neste_grupo` nas thumbs) e `CFY_SUPPORT`
+> (fio, papel do bloco, marca). Saíram a frase de cena por bloco/flow, o
+> `CENARIO`/`MOOD` derivados e o "prompt master". Anexos rotulados
+> `CFY_REF_PRODUCT` (produto DO CAMPO, `pickProductForField`) e
+> `CFY_REF_ANCHOR` (thumbs). O restante desta seção descreve a mecânica,
+> que não mudou.
 
 Gera as fotos via OpenRouter (chat completions com saída de imagem). Cada campo `nature='imagem_gerada'` do schema do bloco vira **uma chamada própria**, em 2 ondas (âncoras → dependentes com a foto da âncora como referência img2img) + avatares de testimonials (prompt in-code, cap 4). Concorrência 6; teto 24 imagens; budget da fase 600s.
 

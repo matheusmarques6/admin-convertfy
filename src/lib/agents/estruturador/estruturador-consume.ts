@@ -1,11 +1,13 @@
 /**
  * Consumo do output do Estruturador (fase 3 — modo 'on'). Módulo PURO.
  *
- * Quando `estruturador_mode='on'` e a run valida, a estrutura decidida pelo
- * agente SUBSTITUI o outline: as posições viram a `structure` do Montador
- * (categoria + papel como rótulo) e o papel narrativo de cada posição
- * sobrescreve o `purpose` do bloco correspondente no blueprint — é assim que
- * a decisão chega à copy do n8n (o purpose já viaja no payload por bloco).
+ * Quando `estruturador_mode='on'` e a run devolve estrutura, a sequência
+ * decidida pelo agente SUBSTITUI a da aba Arquitetura: as posições viram a
+ * `structure` do Montador e do Curador (categoria + papel como rótulo) e o
+ * papel narrativo de cada posição sobrescreve o `purpose` do bloco
+ * correspondente no blueprint — é assim que a decisão chega à copy do n8n
+ * (o purpose já viaja no payload por bloco). A intenção por bloco da
+ * Arquitetura não entra nesse caminho (a sequência é do Estruturador).
  * O `fio_narrativo` vira o guidance do Montador e persiste no blueprint
  * (coluna própria, migration 20261083) para alimentar EMAIL_IDEIA e o
  * payload de copy.
@@ -53,33 +55,26 @@ export function estruturaParaPosicoes(
 }
 
 /**
- * Resumo da decisão do Estruturador servido ao CURADOR (var
- * `estruturador_decisao` do prompt): diagnóstico + fio + papel/porquê por
- * posição, na MESMA ordem (pós-clamp) da <sequencia_do_email> — por isso
- * recebe as `posicoes` já clampadas, não o output cru. Compacto de
- * propósito: é critério de escolha, não o embasamento completo (que fica
- * na run).
+ * A decisão do Estruturador servida ao CURADOR (var `estruturador_decisao`
+ * do prompt): o output INTEIRO, em JSON legível — diagnóstico, cada posição
+ * com papel/referência/adaptação/porquê, fio, fontes, aprendizados
+ * aplicados e descartes.
+ *
+ * Era um resumo (`resumoParaCurador`: objeção + mecanismo + fio + papel/
+ * porquê por posição). Decisão do owner (02/09): o Curador recebe tudo. Os
+ * descartes importam na prática — se o Estruturador tirou o CTA isolado
+ * "para não competir com os botões da grade", o Curador precisa saber, senão
+ * escolhe um body com CTA pesado e recoloca o dispositivo por outra via.
+ *
+ * Clamp de segurança (24k chars, marcador explícito) no mesmo espírito do
+ * `clampPromptText`: um output patológico não pode engolir o prompt.
  */
-export function resumoParaCurador(
-  output: EstruturadorOutput,
-  posicoes: PosicaoEstruturada[],
-): string {
-  const linhas = posicoes.map((p, i) => {
-    const porque = p.porque ? ` (porquê: ${p.porque})` : ""
-    return `${i + 1}. ${p.section} — ${p.papel}${porque}`
-  })
-  const aprendizados = (output.aprendizados_aplicados ?? [])
-    .map((a) => `- ${a.slug}${a.como ? `: ${a.como}` : ""}`)
-    .join("\n")
-  const partes = [
-    `Objeção dominante: ${output.diagnostico?.objecao_dominante ?? "—"}`,
-    `Mecanismo traduzido: ${output.diagnostico?.traducao_do_mecanismo ?? "—"}`,
-    `Fio narrativo: ${output.fio_narrativo ?? "—"}`,
-    `Papéis por posição (mesma ordem de <sequencia_do_email>):`,
-    ...linhas,
-  ]
-  if (aprendizados) partes.push(`Aprendizados aplicados:\n${aprendizados}`)
-  return partes.join("\n")
+export const DECISAO_MAX_CHARS = 24_000
+
+export function decisaoCompletaParaCurador(output: EstruturadorOutput): string {
+  const json = JSON.stringify(output, null, 2)
+  if (json.length <= DECISAO_MAX_CHARS) return json
+  return `${json.slice(0, DECISAO_MAX_CHARS)}\n(… decisão truncada em ${DECISAO_MAX_CHARS} caracteres — o restante está na run do Estruturador)`
 }
 
 /**

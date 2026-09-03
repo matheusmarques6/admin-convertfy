@@ -20,16 +20,26 @@ import {
   buildAprendizadosBlock,
   buildConvivenciaBlock,
   buildEstruturasRefResumo,
+  buildLacunasBlock,
   buildMomentoBlock,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   momentoDoEmail,
+  renderIndiceDoVault,
   renderUsageCounts,
   type AprendizadoResumo,
   type CuradorVaultKnowledge,
   type EstruturaRefResumo,
+  type IndiceDoVault,
 } from "./curador-vault"
-import { interpolateSystem, invokeAgent, type AgentInvokeConfig } from "./llm-invoke"
+import {
+  interpolateSystem,
+  invokeAgent,
+  invokeAgentWithTools,
+  type AgentInvokeConfig,
+  type InvokeWithToolsOptions,
+  type ToolCallLog,
+} from "./llm-invoke"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
 import {
   conformarEstrutura,
@@ -51,7 +61,7 @@ import {
 
 const log = logger.child("CuradorShadow")
 
-const SHADOW_TOP_N = 3
+const SHADOW_TOP_N = 1
 
 /** Modelo do shadow (e candidato do flip). Env sobrepõe sem deploy de config. */
 export const CURADOR_SHADOW_MODEL =
@@ -59,22 +69,12 @@ export const CURADOR_SHADOW_MODEL =
 
 // ── Prompt do contrato AMPLIADO (o prompt do flip, ensaiado no shadow) ───
 
-export const DEFAULT_CHOOSER_VAULT_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. Num único passe você decide a ESTRUTURA de um email (sequência de seções + papel narrativo de cada posição + fio narrativo) e seleciona da biblioteca as ATÉ ${SHADOW_TOP_N} variantes que melhor servem a cada posição, em ordem de preferência.
+export const DEFAULT_CHOOSER_VAULT_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. A ESTRUTURA do email já está decidida pelo Estruturador — a sequência de seções e o papel de cada posição chegam prontos em <decisao_do_estruturador> e <estrutura_do_email>. A sua função é ENCONTRAR NA BIBLIOTECA os blocos que encaixam perfeitamente em cada posição e conversam com essa proposta: para cada posição, A variante cuja ANATOMIA realiza o papel decidido — uma só, a que encaixa melhor. Você não decide estrutura, não reescreve papel, não discute a sequência.
 
 Você decide pelo protocolo, pelos eixos e pelos metadados. Você NÃO recebe o HTML das variantes.
 
 <protocolo_de_selecao>
-Protocolo canônico de seleção (vault de componentes). Ele é a LEI do processo: ELIMINAR ANTES DE RANKEAR, na ordem dos passos. Em conflito com qualquer regra desta mensagem, o protocolo vence — COM UMA ÚNICA EXCEÇÃO, declarada abaixo.
 
-EMENDA-MOMENTO-01 (suspende parte do passo 5 e parte do passo 7)
-O passo 5 manda eliminar por "declaração positiva": variante cujo \`momento\` é lista não vazia que não inclui o momento do e-mail seria eliminada. ESSA PARTE ESTÁ SUSPENSA. O passo 5 elimina SOMENTE por veto (\`momento_vetado\`, \`registro_vetado\`).
-Motivo: \`momento\` foi escrito no vault para dizer ONDE A VARIANTE BRILHA, não onde ela é permitida. Lido como filtro, ele apagava seções inteiras — em 01/09, de 7 variantes de reviews, ZERO vetavam welcome-1 e as 7 foram eliminadas só por declararem outro momento; o e-mail saiu com 2 de 6 posições preenchidas.
-Em troca, \`momento\` vira o PRIMEIRO eixo do ranking do passo 7, antes de \`objecao\`, nesta ordem:
-  1º quem declara o momento pedido — foi feita para este e-mail;
-  2º quem tem \`momento: []\` — não discrimina, serve a qualquer momento;
-  3º quem declara outros momentos — serve, mas não é a vocação dela.
-O trecho do passo 7 que diz que \`momento\` "não entra nesta lista" também está suspenso.
-Fora isso, o protocolo vale integralmente.
 {{protocolo}}
 </protocolo_de_selecao>
 
@@ -90,16 +90,20 @@ Regras de coexistência entre variantes na MESMA peça:
 </convivencia>
 
 Como decidir, na ordem:
-1. PAPEL DE CADA POSIÇÃO: a sequência de <estrutura_do_email> é FIXA — foi desenhada por uma pessoa na aba Arquitetura. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Sua tarefa é dizer por que cada posição existe: cruze <intencao_do_email> (a intenção, o que o email DEVE e o que NÃO DEVE) com a posição da seção no arco e escreva um papel de UMA frase para cada uma, na ordem em que elas vêm. O email inteiro recebe também um fio_narrativo curto (como as posições se ligam). Se uma posição lhe parecer errada para este email, o papel é o lugar de dizer isso — nunca a remoção. Posição que traz \`intencao\` foi escrita pela pessoa na Arquitetura: ela É o papel daquela posição — o seu \`papel\` serve a ela (pode detalhar, nunca contradizer nem substituir), e a seleção do passo 2 rankeia por ela antes de <intencao_do_email>.
-2. SELEÇÃO por posição, seguindo os passos 3-9 do protocolo COM a EMENDA-MOMENTO-01: elimine por ativa/schema (já filtrados do catálogo), por momento SOMENTE quando <momento> estiver em \`momento_vetado\` (declarar outro momento NÃO elimina), e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Essa é a lista COMPLETA do que elimina. Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Rankeie os sobreviventes por momento → objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas → menor número no slug (ou a menos usada em <memoria>, quando a contagem existir).
+1. LER A PROPOSTA DO ESTRUTURADOR: <decisao_do_estruturador> é o critério DOMINANTE por posição. Para cada posição de <estrutura_do_email>, extraia do \`estrutura[].papel\` (com \`adaptacao\` e \`porque\`) o que a ANATOMIA do bloco precisa ter para realizar aquele papel — quantos produtos mostra, se leva cupom em texto real, se tem depoimento com nome e nota, se isola em fundo contrastante, se abre ou fecha a peça, quantos itens de lista, se pede foto de uso real. É contra ISSO que as variantes são medidas. O \`fio_narrativo\` diz como as posições se ligam: as escolhas têm de conversar entre si (peso, convivência, linguagem visual) e com o arco. Os \`descartes\` dizem o que foi tirado de propósito — não recoloque o dispositivo por outra via (ex.: CTA isolado descartado não volta como body de CTA pesado). A objeção dominante do \`diagnostico\` é o alvo do eixo \`objecao\`. A sequência é FIXA. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Papel vence memória e preferência estética; marca e viabilidade (produtos/dados) continuam vetos.
+   Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
+   <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
+   <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
+2.  elimine por ativa/schema (já filtrados do catálogo), declarar outro momento NÃO elimina, e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por momento → objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra; <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
 
 O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
-- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — quem foi eliminado e em que passo (momento vetado/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
-- TODA escolha rankeada leva \`motivo\` (uma frase curta): na 1ª, por que ela venceu; nas demais, por que ficam atrás da anterior.
+- \`papeis\`: UMA frase por posição dizendo COMO a variante escolhida realiza o papel decidido pelo Estruturador (qual parte da anatomia entrega o quê). Não é lugar de reescrever o papel nem de propor outra sequência. Sem decisão do Estruturador, aí sim é o papel derivado da intenção.
+- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — o que o papel pedia da anatomia e quem encaixou, quem foi eliminado e em que passo (momento vetado/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
+- A escolha leva \`motivo\` (uma frase curta): por que ela venceu as outras candidatas da posição.
 
 Responda APENAS o objeto JSON, sem markdown:
 
@@ -107,10 +111,10 @@ Responda APENAS o objeto JSON, sem markdown:
  "fio_narrativo":"...",
  "escolhas":[{"block_index":0,
    "justificativa":"5 candidatas; nenhuma veta welcome-1. objecao decidiu: só hero-3 declara preco-valor, o alvo deste toque; hero-4 e hero-5 ficam atrás por registro (premium-editorial contra o popular desta marca).",
-   "escolhas":[{"variant_id":"...","motivo":"..."},{"variant_id":"...","motivo":"..."}]}]}
+   "escolhas":[{"variant_id":"...","motivo":"..."}]}]}
 
 - \`papeis\` traz UM item por posição de <estrutura_do_email>, na mesma ordem e com o mesmo \`block_index\` (0-based); \`escolhas\` usa esses mesmos índices.
-- A ORDEM dentro de \`escolhas\` é a preferência.`
+- \`escolhas\` de cada posição traz UM item: a variante escolhida. Mais de um é ignorado — só o primeiro vale.`
 
 export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 - marca: {{brand_name}}
@@ -149,6 +153,10 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 {{secoes_notas}}
 </notas_de_secao>
 
+<lacunas_da_biblioteca>
+{{lacunas_biblioteca}}
+</lacunas_da_biblioteca>
+
 <aprendizados>
 {{aprendizados}}
 </aprendizados>
@@ -177,14 +185,24 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 {{memoria}}
 </memoria>
 
+<indice_do_vault>
+Pastas do Obsidian sincronizadas (consulta sob demanda, só se quiser conferir uma nota):
+{{indice_vault}}
+</indice_do_vault>
+
+<decisao_do_estruturador>
+{{estruturador_decisao}}
+</decisao_do_estruturador>
+
 <estrutura_do_email>
-Sequência desenhada por uma pessoa na aba Arquitetura deste email. É FIXA:
-não remova, não acrescente, não reordene. Cada posição existe por uma razão
-— sua tarefa é dizer QUAL, a partir de <intencao_do_email>.
+Sequência FIXA deste email, decidida pelo Estruturador (o papel completo de
+cada posição está em <decisao_do_estruturador>). Não remova, não acrescente,
+não reordene. Sua tarefa: para cada posição, os blocos da biblioteca cuja
+anatomia realiza o papel decidido e conversa com o fio.
 {{blocks_json}}
 </estrutura_do_email>
 
-Atribua o papel de cada posição, escreva o fio narrativo e selecione as até ${SHADOW_TOP_N} variantes por posição. A sequência não se discute. Responda APENAS o objeto JSON.`
+Selecione a variante de cada posição que realiza o papel decidido, diga em \`papeis\` como ela o realiza e justifique cada posição. A sequência não se discute. Responda APENAS o objeto JSON.`
 
 // ── Parser do contrato ampliado (puro) ──────────────────────────────────
 
@@ -407,6 +425,17 @@ export interface CuradorShadowParams {
    */
   liveSections: string[]
   /**
+   * Há decisão do Estruturador nesta geração (02/09). Com ela, as
+   * <estruturas_de_referencia> e o <outline> são OMITIDOS — o Estruturador
+   * já consumiu e traduziu esse material; servi-lo de novo é sinal
+   * concorrente à decisão.
+   */
+  estruturadorOn?: boolean
+  /** Índice de pastas do Obsidian (consulta sob demanda). */
+  indiceDoVault?: IndiceDoVault
+  /** Ferramentas de consulta ao vault; ausente = call sem ferramentas. */
+  ferramentas?: Pick<InvokeWithToolsOptions, "tools" | "executar" | "maxCalls">
+  /**
    * `on` = este call É o Curador: a saída volta para o pipeline. `shadow` =
    * ensaio em paralelo ao kimi, nada é consumido. Default shadow para o call
    * site antigo não mudar de comportamento por omissão.
@@ -458,11 +487,21 @@ export async function runCuradorShadow(
       user_template: DEFAULT_CHOOSER_VAULT_USER,
     }
 
+    const estruturadorOn = p.estruturadorOn === true
+    const OMITIDO = "(omitido — a decisão do Estruturador em <decisao_do_estruturador> substitui este bloco)"
+    const lacunasBlock = buildLacunasBlock(p.vault, p.liveSections)
     const vars: Record<string, string> = {
       ...p.baseVars,
       momento: buildMomentoBlock(p.vault, p.flowType, p.emailNumber),
-      estruturas_ref: buildEstruturasRefResumo(p.estruturasRef),
+      // Com decisão do Estruturador, referências e outline saem: ele já
+      // traduziu esse material e a sequência é dele.
+      estruturas_ref: estruturadorOn ? OMITIDO : buildEstruturasRefResumo(p.estruturasRef),
+      ...(estruturadorOn
+        ? { outline_objective: OMITIDO, outline_guidance: OMITIDO, outline_tone_hint: OMITIDO }
+        : {}),
       secoes_notas: buildSecaoNotasBlock(p.vault, p.liveSections),
+      lacunas_biblioteca: lacunasBlock,
+      indice_vault: renderIndiceDoVault(p.indiceDoVault ?? { pastas: [] }),
       aprendizados: buildAprendizadosBlock(p.aprendizados),
       memoria: `${p.baseVars.memoria ?? ""}\n\n${renderUsageCounts(p.usageCounts, p.extras)}`.trim(),
     }
@@ -481,6 +520,8 @@ export async function runCuradorShadow(
     const segUser = buildSegmentedPrompt(config.user_template, vars, {
       ...p.origins,
       aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
+      lacunas_biblioteca: { cls: "vault", rotulo: "Lacunas da biblioteca — email_vault_docs (componentes/lacunas)" },
+      indice_vault: { cls: "vault", rotulo: "Índice de pastas do Obsidian — file_path das tabelas do vault" },
     }, { parte: "user" })
     const segSystem = buildInterpolatedSegments(config.system_prompt, systemVars, {
       catalogo: {
@@ -521,7 +562,23 @@ export async function runCuradorShadow(
         : []),
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
-      { rotulo: "Estruturas de referência", cls: "vault", valor: `${p.estruturasRef.length} do flow` },
+      {
+        rotulo: "Estruturas de referência",
+        cls: "vault",
+        valor: estruturadorOn
+          ? "omitidas — a decisão do Estruturador substitui"
+          : `${p.estruturasRef.length} do flow`,
+      },
+      {
+        rotulo: "Lacunas da biblioteca (vault)",
+        cls: "vault",
+        valor: p.vault.lacunas.length > 0 ? `${p.vault.lacunas.length} registrada(s) · ${lacunasBlock.startsWith("(") ? "nenhuma das seções deste email" : "servidas as das seções deste email"}` : "(nenhuma registrada)",
+      },
+      {
+        rotulo: "Índice do vault (Obsidian)",
+        cls: "vault",
+        valor: `${(p.indiceDoVault?.pastas ?? []).length} pasta(s) · consulta sob demanda ${p.ferramentas ? `(até ${p.ferramentas.maxCalls ?? 4})` : "desligada"}`,
+      },
       ...(p.baseInputSummary ?? []),
     ]
 
@@ -546,7 +603,16 @@ export async function runCuradorShadow(
       inputSummary,
     })
 
-    const res = await invokeAgent(config, vars, systemVars)
+    // Com ferramentas o modelo pode consultar o Obsidian antes de responder;
+    // cada consulta fica em `consultas` (telemetria) e os tokens somam todas
+    // as voltas.
+    const res = p.ferramentas
+      ? await invokeAgentWithTools(config, vars, systemVars, {
+          tools: p.ferramentas.tools,
+          executar: p.ferramentas.executar,
+          maxCalls: p.ferramentas.maxCalls ?? 4,
+        })
+      : { ...(await invokeAgent(config, vars, systemVars)), consultas: [] as ToolCallLog[], voltas: 1, fallback_sem_ferramentas: false }
     const parsed = parseCuradorVaultOutput(res.raw)
     // A sequência é a da ARQUITETURA, sempre. O guard casa os papéis contra
     // ela e registra o que o agente tentou mudar; o `block_index` das
@@ -606,6 +672,14 @@ export async function runCuradorShadow(
         shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
         curador_vault_mode: modo,
+        // 02/09: a decisão do Estruturador entrou no template do vault (só
+        // o legado tinha) e o Curador pode consultar o Obsidian.
+        estruturador_consumido: estruturadorOn,
+        lacunas_servidas: p.vault.lacunas.length,
+        consultou_vault: res.consultas.length > 0,
+        consultas_ao_vault: res.consultas,
+        voltas: res.voltas,
+        fallback_sem_ferramentas: res.fallback_sem_ferramentas,
         // A estrutura VIGENTE (a da arquitetura, com os papéis casados) e,
         // separada, a que ele devolveu. Guardar as duas é o que permite ver
         // se ele obedeceu sem ter de reler o raw_output.
@@ -671,6 +745,9 @@ export async function runCuradorShadow(
       storeId: p.storeId,
       flowType: p.flowType,
       emailNumber: p.emailNumber,
+      estruturadorOn,
+      consultas: res.consultas.length,
+      voltas: res.voltas,
       positions: ranking?.byBlock.size ?? 0,
       violations: violations.length,
       liveViolations: p.liveViolations.length,

@@ -40,7 +40,10 @@ describe("parseCuradorVaultOutput", () => {
   it("o system exige justificativa por posição e motivo em todo rank", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("OUTPUT SAI JUSTIFICADO")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("TODA escolha rankeada leva `motivo`")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("A escolha leva `motivo`")
+    // 03/09: uma variante por posição — o Montador saiu do caminho.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("uma só, a que encaixa melhor")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("em ordem de preferência")
   })
 })
 
@@ -149,10 +152,6 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // caíram só por declararem outro momento. `momento` diz onde a variante
   // brilha, não onde ela é permitida.
   it("momento NÃO elimina — só o veto elimina", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("EMENDA-MOMENTO-01")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
-      "por momento SOMENTE quando <momento> estiver em `momento_vetado`",
-    )
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("declarar outro momento NÃO elimina")
     // E entra no ranking, como primeiro eixo.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
@@ -160,13 +159,14 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     )
   })
 
-  // O protocolo é a LEI do prompt ("em conflito, o protocolo vence") e vive
-  // num vault externo. Sem a ressalva NOMEADA, o passo 5 continuaria valendo
-  // e o modelo continuaria eliminando.
-  it("a ressalva de precedência é explícita e diz o que suspende", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("COM UMA ÚNICA EXCEÇÃO")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ESSA PARTE ESTÁ SUSPENSA")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Fora isso, o protocolo vale integralmente")
+  // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a
+  // menção a `momento_vetado` saíram do prompt — o protocolo do vault entra
+  // sem prefácio, e o passo 2 diz só que declarar outro momento não elimina.
+  it("o system não carrega mais a emenda nem o veto por momento", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("EMENDA-MOMENTO-01")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("momento_vetado")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("COM UMA ÚNICA EXCEÇÃO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("<protocolo_de_selecao>\n\n{{protocolo}}\n</protocolo_de_selecao>")
   })
 
   // No `body` ele tinha 4 sobreviventes e devolveu `escolhas: []` porque
@@ -197,8 +197,9 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("exige")
   })
 
-  it("a lista de eliminação é fechada e material não está nela", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Essa é a lista COMPLETA do que elimina")
+  it("material não elimina e só ativa/schema + capacidade eliminam", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("elimine por ativa/schema")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("e por capacidade (product_slots × produtos com link")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("não elimina ninguém")
   })
 
@@ -208,5 +209,36 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
   it("divergência vault × banco rebaixa, não elimina", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO é eliminada por isso")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("fica ATRÁS")
+  })
+})
+
+
+// ── Dieta com o Estruturador ligado (02/09) ─────────────────────────────
+describe("template do Curador do vault — decisão do Estruturador, lacunas e índice", () => {
+  it("o user leva a decisão COMPLETA do Estruturador, as lacunas e o índice do Obsidian", () => {
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<decisao_do_estruturador>\n{{estruturador_decisao}}")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<lacunas_da_biblioteca>\n{{lacunas_biblioteca}}")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<indice_do_vault>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{indice_vault}}")
+    // A decisão vem ANTES da sequência, que é o que ela explica.
+    expect(DEFAULT_CHOOSER_VAULT_USER.indexOf("<decisao_do_estruturador>")).toBeLessThan(
+      DEFAULT_CHOOSER_VAULT_USER.indexOf("<estrutura_do_email>"),
+    )
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("decidida pelo Estruturador")
+  })
+
+  it("o system faz da decisão o critério dominante, não elimina por lacuna e limita as consultas", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("critério DOMINANTE por posição")
+    // A função é ENCAIXAR blocos na proposta do Estruturador — não decidir
+    // estrutura nem reescrever papel (owner, 02/09).
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ENCONTRAR NA BIBLIOTECA os blocos")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ENCAIXE PRIMEIRO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Você não decide estrutura, não reescreve papel")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Sua tarefa é dizer por que cada posição existe")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`descartes`")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Lacuna NÃO elimina")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("no máximo 4 consultas")
+    // A justificativa por posição continua obrigatória.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
   })
 })
