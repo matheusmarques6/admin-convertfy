@@ -2210,12 +2210,21 @@ menor. **Media queries mobile são neutralizadas no preview**
 (`max-width:Npx` → `0px` só no prelúdio): a 600px `@media (max-width:600px)`
 dispararia e mostraria a versão celular empilhada.
 
-**Normalização** (`lib/email-workspace/email-width.ts`, puro, 23 testes):
-`enforceEmailWidth` só toca `<table>` cuja largura numérica está PERTO de
-600 (560–640 — a assinatura de "container que errou o número"); colunas
-internas (350, 200…) e `width="100%"` ficam intactas. Raiz `<table>` de
-fragmento sem largura ganha `width="600"`; raiz `<tr>` não tem onde
-declarar. Idempotente. Aplicada (a) no salvar — POST/PATCH de
+**Normalização** (`lib/email-workspace/email-width.ts`, puro, 27 testes) —
+três correções, porque 100% num BLOCO não quer dizer nada (o bloco tem uma
+largura só): (1) `<table>` cuja largura numérica está PERTO de 600 (560–640
+— a assinatura de "container que errou o número") vira 600, e coluna interna
+(350, 200…) nunca é tocada; (2) `<table>` de NÍVEL RAIZ com `width="100%"`
+(a calha do boilerplate) vira 600 — tabela 100% ANINHADA continua 100%, ali
+significa "preenche a célula", e a profundidade é contada fora de comentário
+para os blocos MSO não confundirem a conta; (3) `width:100%` nas regras de
+`body`/`html`/`.body` do `<style>` vira `600px`, menos dentro de `@media`
+(lá é a versão mobile e tem de continuar 100%). `max-width:100%` de coluna
+responsiva não é tocado. Raiz `<table>` de fragmento sem largura ganha
+`width="600"`; raiz `<tr>` não tem onde declarar. Idempotente. Efeito
+conhecido: em janela > 600px o bloco para de esticar e fica à esquerda — é
+o certo para uma peça de 600px, e o preview roda a 600. Aplicada (a) no
+salvar — POST/PATCH de
 `/api/admin/components` normalizam ANTES do hash CM-6; (b) no editor, aviso
 "Bloco fora de 600px" + botão "Fixar agora" (`auditEmailWidth`); (c) na
 varredura `GET/POST /api/admin/components/normalize-width` (botão "Largura

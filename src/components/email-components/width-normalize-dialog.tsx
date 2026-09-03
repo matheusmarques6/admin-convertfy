@@ -200,11 +200,12 @@ export function WidthNormalizeDialog({
 
         <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>
           <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 12 }}>
-            Todo bloco tem de declarar o container em {width}px — é o que o
-            Montador, o enxerto e o preview assumem. A prévia abaixo lista o
-            que a normalização muda em cada variante ativa (só
-            <code> &lt;table&gt;</code> com largura perto de {width} é
-            tocada; colunas internas ficam como estão).
+            Todo bloco tem de declarar {width}px — é o que o Montador, o
+            enxerto e o preview assumem. A normalização corrige três coisas:
+            container com largura errada (598, 620), tabela de nível raiz em{" "}
+            <code>100%</code> e <code>body &#123; width:100% &#125;</code> no
+            CSS. Coluna interna e tabela <code>100%</code> aninhada NÃO são
+            tocadas — ali o 100% quer dizer &ldquo;preenche a célula&rdquo;.
           </div>
 
           {error && (
