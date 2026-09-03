@@ -24,7 +24,8 @@ const log = logger.child("CsPipelinesSync")
 interface CallSyncInput {
   callId: string
   storeId: string
-  clientId: string
+  /** null quando a loja não tem cliente vinculado (loja avulsa). */
+  clientId: string | null
   conductedBy: string | null
   conductedAt: string | null
   nextCallDate: string | null

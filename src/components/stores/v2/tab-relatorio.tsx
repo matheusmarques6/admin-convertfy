@@ -612,6 +612,14 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
                 className="w-full min-h-[80px] p-3 rounded-[8px] text-[13px] outline-none resize-y"
                 style={{ border: `1px solid ${C.border}`, background: C.g50, color: C.g900 }}
               />
+              {/* O que ficou combinado nas calls já é o plano do ciclo —
+                  puxar evita redigitar (e evita esquecer). */}
+              <PendenciasDasCalls
+                storeId={storeId}
+                onUse={(texto) =>
+                  setProximos((prev) => (prev.trim() ? `${prev.trim()}\n${texto}` : texto))
+                }
+              />
             </FormField>
           )}
 
@@ -941,6 +949,73 @@ function DuplicateReportDialog({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Pendências das calls de alinhamento → próximos passos do relatório.
+ *
+ * O que foi combinado com o cliente na call É o plano do ciclo; sem
+ * essa ponte o CSM redigitava (ou esquecia). Só aparece quando há
+ * pendência aberta — bloco vazio no formulário é ruído.
+ */
+function PendenciasDasCalls({
+  storeId,
+  onUse,
+}: {
+  storeId: string
+  onUse: (texto: string) => void
+}) {
+  const [pend, setPend] = useState<Array<{ description: string; days_open: number }>>([])
+  const [usado, setUsado] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    fetch(`/api/stores/${storeId}/calls`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!vivo || !body) return
+        const lista = body?.next_meeting_agenda?.pending
+        if (Array.isArray(lista)) setPend(lista.slice(0, 6))
+      })
+      .catch(() => {
+        /* sem pendências não é erro de tela */
+      })
+    return () => {
+      vivo = false
+    }
+  }, [storeId])
+
+  if (pend.length === 0) return null
+
+  return (
+    <div className="mt-2 rounded-[8px] p-2.5" style={{ background: C.g50, border: `1px solid ${C.border}` }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold" style={{ color: C.g700 }}>
+          {pend.length} pendência{pend.length > 1 ? "s" : ""} das calls de alinhamento
+        </span>
+        <button
+          type="button"
+          disabled={usado}
+          onClick={() => {
+            onUse(pend.map((p) => `- ${p.description}`).join("\n"))
+            setUsado(true)
+          }}
+          className="h-[26px] rounded-[6px] px-2.5 text-[11px] font-semibold disabled:opacity-50"
+          style={{ background: C.brand, color: "#fff" }}
+        >
+          {usado ? "Adicionado" : "Usar no relatório"}
+        </button>
+      </div>
+      <ul className="mt-1.5 flex flex-col gap-0.5">
+        {pend.map((p, i) => (
+          <li key={i} className="text-[11.5px]" style={{ color: C.g600 }}>
+            • {p.description}{" "}
+            <span style={{ color: C.g400, ...TNUM }}>({p.days_open}d)</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
