@@ -21,6 +21,8 @@ export type BuiltinConnectorKey =
   | "klaviyo"
   | "crm"
   | "metricas"
+  /** Geração de imagem — sempre disponível, não é toggle do composer. */
+  | "imagem"
 
 /** built-in ou "mcp:<uuid do ai_mcp_servers>" */
 export type ConnectorKey = BuiltinConnectorKey | `mcp:${string}`

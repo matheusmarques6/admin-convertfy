@@ -13,6 +13,7 @@ import { withTiming } from "@/lib/api/with-timing"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
 
 export const dynamic = "force-dynamic"
 
@@ -28,7 +29,7 @@ async function handleGet(request: NextRequest) {
       ? "comercial"
       : "operacional"
 
-    const [convResp, storesResp, skillsResp, mcpResp, profileResp] = await Promise.all([
+    const [convResp, storesResp, skillsResp, mcpResp, profileResp, budget] = await Promise.all([
       admin
         .from("ai_chat_conversations")
         .select("id, title, context, last_message_at, created_at")
@@ -60,6 +61,7 @@ async function handleGet(request: NextRequest) {
         .eq("org_id", orgId)
         .order("created_at", { ascending: true }),
       admin.from("profiles").select("name").eq("id", user.id).maybeSingle(),
+      getConvertiaBudget(admin, user.id),
     ])
 
     // Skills/MCP degradam com aviso quando a migration 20261090 não rodou
@@ -87,6 +89,7 @@ async function handleGet(request: NextRequest) {
       stores,
       skills,
       mcp_servers: mcpServers,
+      budget,
       schema_missing: schemaMissing,
     })
   } catch (error) {

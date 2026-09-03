@@ -34,8 +34,10 @@ import {
   type ChatToolDef,
 } from "@/lib/ai/openrouter-chat"
 import { resolveConnectors } from "@/lib/ai/connectors/registry"
+import { buildImagemConnector } from "@/lib/ai/connectors/imagem"
 import type { ConnectorTool, ConnectorToolContext } from "@/lib/ai/connectors/types"
 import { resolveConvertiaModel } from "@/lib/ai/convertia-models"
+import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ConvertiaChat")
@@ -80,6 +82,16 @@ export async function POST(request: NextRequest) {
     }
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
+
+    // Guard-rail de custo: limite diário POR USUÁRIO (America/Sao_Paulo)
+    const budget = await getConvertiaBudget(admin, user.id)
+    if (budget.exceeded) {
+      throw new AppError(
+        `Limite diário da ConvertIA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}). Volta amanhã — ou peça a um admin para ajustar o limite.`,
+        429,
+        "budget-exceeded",
+      )
+    }
 
     const body = bodySchema.parse(await request.json())
     const model = resolveConvertiaModel(body.model).id
@@ -141,12 +153,26 @@ export async function POST(request: NextRequest) {
         : Promise.resolve({ data: [] as Array<{ id: string; name: string; instructions: string }> }),
     ])
 
+    // Custo de geração de imagem (fora do stream do chat) — somado nos
+    // totais do turno pelo callback do conector.
+    const imageCost = { cents: 0, tokensInput: 0, tokensOutput: 0 }
+
     const connectors = await resolveConnectors({
       admin,
       orgId,
       storeId,
       enabled: body.connectors,
     })
+    // Geração de imagem: sempre disponível (não é toggle do composer)
+    connectors.push(
+      buildImagemConnector({
+        onCost: (cents, tIn, tOut) => {
+          imageCost.cents += cents
+          imageCost.tokensInput += tIn
+          imageCost.tokensOutput += tOut
+        },
+      }),
+    )
     const toolIndex = new Map<string, { tool: ConnectorTool; connectorKey: string; connectorName: string }>()
     const toolDefs: ChatToolDef[] = []
     for (const c of connectors) {
@@ -178,6 +204,7 @@ export async function POST(request: NextRequest) {
         : "As ferramentas disponíveis nesta mensagem são só de leitura — para executar ações, o usuário precisa ligar o conector correspondente.",
       "Se um dado não veio das tools, diga que não tem. Termine análises com uma recomendação prática quando fizer sentido.",
       "Quando o usuário pedir um email, página ou peça em HTML, entregue o documento COMPLETO num bloco ```html — o chat renderiza esse bloco como preview visual com abas Preview/Código. Para email, use HTML de email (tabelas, estilos inline, largura 600px). Arquivos anexados pelo usuário chegam como [Arquivo anexado: nome] com o conteúdo — use-os como referência fiel.",
+      "Para gerar IMAGENS (foto, banner, arte de campanha), use a tool convertia_gerar_imagem e inclua o resultado na resposta como markdown ![descrição](url) — o chat renderiza a imagem inline. Nunca invente URLs de imagem.",
       storeContext ? `## Contexto da loja selecionada\n${storeContext}` : "",
       skillsBlock ? `## Skills ativas (siga estas instruções)\n${skillsBlock}` : "",
     ]
@@ -366,19 +393,33 @@ export async function POST(request: NextRequest) {
         }
 
         // ── Persistência + telemetria (nunca quebram o stream) ────
+        // custo do turno = chat (USD do OpenRouter) + geração de imagem
+        const totalCostUsd = costUsd + imageCost.cents / 100
+        let assistantMessageId: string | null = null
         try {
           if (fullText || sources.length > 0) {
-            await admin.from("ai_chat_messages").insert({
-              conversation_id: conversationId,
-              role: "assistant",
-              content: fullText || "(sem resposta)",
-              meta: {
-                model,
-                sources,
-                usage: { tokens_input: tokensInput, tokens_output: tokensOutput, cost_usd: costUsd },
-                ...(errorMessage ? { error: errorMessage } : {}),
-              },
-            })
+            const { data: savedMsg } = await admin
+              .from("ai_chat_messages")
+              .insert({
+                conversation_id: conversationId,
+                role: "assistant",
+                content: fullText || "(sem resposta)",
+                meta: {
+                  model,
+                  sources,
+                  // nomes das skills ativas — base do painel de feedback
+                  skills: (skillRows ?? []).map((s) => s.name),
+                  usage: {
+                    tokens_input: tokensInput,
+                    tokens_output: tokensOutput,
+                    cost_usd: totalCostUsd,
+                  },
+                  ...(errorMessage ? { error: errorMessage } : {}),
+                },
+              })
+              .select("id")
+              .single()
+            assistantMessageId = savedMsg?.id ?? null
           }
           await admin
             .from("ai_chat_conversations")
@@ -394,24 +435,33 @@ export async function POST(request: NextRequest) {
           model,
           provider: "openrouter",
           status,
-          tokensInput,
-          tokensOutput,
+          tokensInput: tokensInput + imageCost.tokensInput,
+          tokensOutput: tokensOutput + imageCost.tokensOutput,
           durationMs: Date.now() - started,
           userId: user.id,
           orgId,
           storeId,
+          // custo REAL (OpenRouter + imagem) em centavos — é o que o
+          // guard-rail diário soma
+          costCents: totalCostUsd > 0 ? totalCostUsd * 100 : null,
           context: {
             conversation_id: conversationId,
             connectors: connectors.map((c) => c.key),
             sources: sources.length,
             cost_usd_openrouter: costUsd,
+            ...(imageCost.cents > 0 ? { image_cost_cents: imageCost.cents } : {}),
           },
           errorMessage,
         })
 
         send({
           type: "done",
-          usage: { tokens_input: tokensInput, tokens_output: tokensOutput, cost_usd: costUsd },
+          message_id: assistantMessageId,
+          usage: {
+            tokens_input: tokensInput,
+            tokens_output: tokensOutput,
+            cost_usd: totalCostUsd,
+          },
           sources,
         })
         try {

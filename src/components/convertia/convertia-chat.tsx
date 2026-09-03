@@ -24,10 +24,14 @@ import {
   Filter,
   Briefcase,
   ImageIcon,
+  Mic,
   PanelLeft,
   Paperclip,
+  Pin,
+  PinOff,
   Plus,
   RotateCcw,
+  Search,
   Sparkles,
   ThumbsUp,
   Trash2,
@@ -50,6 +54,7 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   klaviyo: { n: "Klaviyo", c: "#111827", g: "K" },
   crm: { n: "CRM Convertfy", c: "#4E62D8", g: "C" },
   metricas: { n: "Métricas", c: "#0E7490", g: "M" },
+  imagem: { n: "Geração de imagem", c: "#D97706", g: "I" },
 }
 const MCP_DOT = { c: "#7C3AED", g: "X" }
 const BRAND = "#4E62D8"
@@ -108,6 +113,11 @@ interface Bootstrap {
   stores: BootstrapStore[]
   skills: BootstrapSkill[]
   mcp_servers: BootstrapMcp[]
+  budget?: {
+    today_cost_cents: number
+    daily_limit_cents: number
+    exceeded: boolean
+  }
   schema_missing: string[]
 }
 
@@ -135,6 +145,26 @@ interface UiMessage {
   attachments?: Array<{ name: string; kind: "image" | "text" }>
   streaming?: boolean
   pendingTools?: number
+  /** id REAL em ai_chat_messages (feedback persiste por ele). */
+  dbId?: string
+  feedback?: "up" | null
+}
+
+/** Superfície mínima da Web Speech API (sem lib de tipos do DOM). */
+interface SpeechRecognitionLike {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult:
+    | ((e: {
+        resultIndex: number
+        results: ArrayLike<{ isFinal: boolean } & ArrayLike<{ transcript: string }>>
+      }) => void)
+    | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+  start: () => void
+  stop: () => void
 }
 
 /** Bolha do usuário mostra só o que foi digitado — os anexos viram chips. */
@@ -215,6 +245,10 @@ function greeting(name: string | null): string {
   return first ? `${p}, ${first}` : p
 }
 
+function isPinned(c: Conversation): boolean {
+  return c.context?.pinned === true
+}
+
 function groupConversations(convs: Conversation[]): Array<[string, Conversation[]]> {
   const today = new Date().toDateString()
   const yesterday = new Date(Date.now() - 86_400_000).toDateString()
@@ -222,8 +256,9 @@ function groupConversations(convs: Conversation[]): Array<[string, Conversation[
   const groups = new Map<string, Conversation[]>()
   for (const c of convs) {
     const d = new Date(c.last_message_at ?? c.created_at)
-    const key =
-      d.toDateString() === today
+    const key = isPinned(c)
+      ? "Fixadas"
+      : d.toDateString() === today
         ? "Hoje"
         : d.toDateString() === yesterday
           ? "Ontem"
@@ -234,7 +269,7 @@ function groupConversations(convs: Conversation[]): Array<[string, Conversation[
     list.push(c)
     groups.set(key, list)
   }
-  return ["Hoje", "Ontem", "7 dias", "Antigas"]
+  return ["Fixadas", "Hoje", "Ontem", "7 dias", "Antigas"]
     .filter((k) => groups.has(k))
     .map((k) => [k, groups.get(k)!])
 }
@@ -263,6 +298,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [manage, setManage] = useState<ManageKind | null>(null)
   const [attachments, setAttachments] = useState<UiAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [railSearch, setRailSearch] = useState("")
+  const [recording, setRecording] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const recogRef = useRef<{ stop: () => void } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -273,13 +312,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (typeof window !== "undefined" && window.innerWidth < 768) setRailOpen(false)
   }, [])
 
-  // Retorno do fluxo OAuth de MCP (?mcp_connected / ?mcp_error)
+  // Retorno do fluxo OAuth de MCP (?mcp_connected / ?mcp_error) +
+  // contexto por rota (?store=uuid pré-seleciona a loja — o botão
+  // "ConvertIA" no detalhe da loja chega por aqui)
   const [oauthNotice, setOauthNotice] = useState<{ ok: boolean; text: string } | null>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const connected = params.get("mcp_connected")
     const errorMsg = params.get("mcp_error")
+    const storeParam = params.get("store")
     if (connected) {
       const tools = params.get("mcp_tools")
       setOauthNotice({
@@ -289,9 +331,25 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     } else if (errorMsg) {
       setOauthNotice({ ok: false, text: errorMsg })
     }
-    if (connected || errorMsg) {
+    if (
+      storeParam &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeParam)
+    ) {
+      // vence o default "primeira loja" (o effect de default só roda
+      // enquanto storeId === undefined)
+      setStoreId(storeParam)
+    }
+    if (connected || errorMsg || storeParam) {
       window.history.replaceState({}, "", window.location.pathname)
     }
+  }, [])
+
+  // Ditado por voz: Web Speech API (Chrome/Edge/Safari) — feature-detect
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const w = window as unknown as Record<string, unknown>
+    setVoiceSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition))
+    return () => recogRef.current?.stop()
   }, [])
 
   const stores = useMemo(() => boot?.stores ?? [], [boot])
@@ -383,6 +441,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const nSkills = skills.filter((s) => skillOn[s.id]).length
   const mSel = resolveConvertiaModel(model)
 
+  // Guard-rail de custo diário (vem do bootstrap; o servidor reforça)
+  const budget = boot?.budget
+  const budgetPct =
+    budget && budget.daily_limit_cents > 0
+      ? budget.today_cost_cents / budget.daily_limit_cents
+      : 0
+
   // ── Anexos: imagem (multimodal) + arquivos de texto como referência ─
   // ref espelho pro loop async não perder adds concorrentes
   const attachmentsRef = useRef<UiAttachment[]>([])
@@ -462,17 +527,20 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           meta?: {
             sources?: Source[]
             attachments?: Array<{ name: string; kind: "image" | "text" }>
+            feedback?: { rating?: string } | null
           } | null
         }>
       }).messages ?? [])
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => ({
           id: m.id,
+          dbId: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
           sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
           attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
             ?.attachments,
+          feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
         }))
       setMessages(msgs)
       scrollToBottom()
@@ -495,6 +563,67 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (c.id === convId) novaConversa()
     void mutateBoot()
   }
+
+  // Fixar/desafixar: o PATCH de context é REPLACE total — manda o
+  // context INTEIRO mesclado pra não perder source/workspace/store_id.
+  const togglePin = async (c: Conversation) => {
+    const next = { ...(c.context ?? {}), pinned: !isPinned(c) }
+    await fetch(`/api/ai/conversations/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: next }),
+    }).catch(() => {})
+    void mutateBoot()
+  }
+
+  // Feedback 👍 persistido no meta da mensagem (toggle)
+  const sendFeedback = useCallback((dbId: string, rating: "up" | null) => {
+    void fetch("/api/ai/convertia/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_id: dbId, rating }),
+    }).catch(() => {})
+  }, [])
+
+  // Ditado por voz (pt-BR): resultado final entra no input
+  const toggleVoice = useCallback(() => {
+    if (recording) {
+      recogRef.current?.stop()
+      return
+    }
+    const w = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike
+    }
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+    if (!Ctor) return
+    try {
+      const recog = new Ctor()
+      recog.lang = "pt-BR"
+      recog.continuous = true
+      recog.interimResults = false
+      recog.onresult = (e) => {
+        let finalText = ""
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += e.results[i][0].transcript
+        }
+        const t = finalText.trim()
+        if (t) setInput((prev) => (prev ? `${prev.replace(/\s+$/, "")} ${t}` : t))
+      }
+      recog.onend = () => setRecording(false)
+      recog.onerror = (e) => {
+        setRecording(false)
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setAttachError("Microfone sem permissão no navegador — libere o acesso e tente de novo.")
+        }
+      }
+      recogRef.current = recog
+      recog.start()
+      setRecording(true)
+    } catch {
+      setRecording(false)
+    }
+  }, [recording])
 
   // ── Envio (streaming SSE) ────────────────────────────────────────
   const send = async (text?: string) => {
@@ -614,6 +743,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             patchDraft((d) => ({
               ...d,
               streaming: false,
+              dbId: typeof ev.message_id === "string" ? ev.message_id : d.dbId,
               sources: Array.isArray(ev.sources) ? (ev.sources as Source[]) : d.sources,
             }))
           } else if (ev.type === "error") {
@@ -933,6 +1063,21 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               e.target.value = ""
             }}
           />
+          {/* Ditado por voz (só aparece onde a Web Speech API existe) */}
+          {voiceSupported && (
+            <button
+              title={recording ? "Parar ditado" : "Ditar por voz (pt-BR)"}
+              onClick={toggleVoice}
+              className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={
+                recording
+                  ? { color: "#DC2626", background: "rgba(220,38,38,0.08)" }
+                  : { color: "var(--ops-mut)" }
+              }
+            >
+              <Mic className={`h-3.5 w-3.5 ${recording ? "animate-pulse" : ""}`} />
+            </button>
+          )}
           <span className="flex-1" />
           {/* Modelo */}
           <div className="relative">
@@ -983,8 +1128,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           </div>
           <button
             onClick={() => void send()}
-            disabled={sending || !input.trim()}
-            title="Enviar"
+            disabled={sending || !input.trim() || budget?.exceeded === true}
+            title={budget?.exceeded ? "Limite diário de IA atingido" : "Enviar"}
             className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
             style={{ background: BRAND }}
           >
@@ -992,6 +1137,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           </button>
         </div>
       </div>
+      {budget && budgetPct >= 0.8 && (
+        <div
+          className="mt-1.5 text-center text-[10.5px]"
+          style={{ color: budget.exceeded ? "var(--ops-neg)" : "#B45309" }}
+        >
+          {budget.exceeded
+            ? `Limite diário de IA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}) — libera de novo amanhã, ou peça a um admin para ajustar.`
+            : `Uso de IA hoje: US$ ${(budget.today_cost_cents / 100).toFixed(2)} de US$ ${(budget.daily_limit_cents / 100).toFixed(2)} (${Math.round(budgetPct * 100)}% do limite diário).`}
+        </div>
+      )}
     </div>
   )
 
@@ -1019,20 +1174,60 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               </span>
               Nova conversa
             </button>
+            <div
+              className="mt-1.5 flex h-[27px] items-center gap-1.5 rounded-[7px] border px-2"
+              style={{ borderColor: HAIR, background: "var(--ops-card)" }}
+            >
+              <Search className="h-3 w-3 shrink-0" style={{ color: "var(--ops-mut)" }} />
+              <input
+                value={railSearch}
+                onChange={(e) => setRailSearch(e.target.value)}
+                placeholder="Buscar conversa"
+                className="w-full min-w-0 border-0 bg-transparent text-[11.5px] outline-none"
+                style={{ color: "var(--ops-title)" }}
+              />
+              {railSearch && (
+                <button
+                  aria-label="Limpar busca"
+                  onClick={() => setRailSearch("")}
+                  className="text-[12px]"
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 pt-1">
-            {groupConversations(boot?.conversations ?? []).map(([g, items]) => (
+            {railSearch.trim() &&
+              groupConversations(
+                (boot?.conversations ?? []).filter((c) =>
+                  c.title.toLowerCase().includes(railSearch.trim().toLowerCase()),
+                ),
+              ).length === 0 && (
+                <div className="px-2 pt-3 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                  Nenhuma conversa com “{railSearch.trim()}”.
+                </div>
+              )}
+            {groupConversations(
+              railSearch.trim()
+                ? (boot?.conversations ?? []).filter((c) =>
+                    c.title.toLowerCase().includes(railSearch.trim().toLowerCase()),
+                  )
+                : (boot?.conversations ?? []),
+            ).map(([g, items]) => (
               <div key={g} className="mt-3.5">
                 <div className="px-2 pb-[5px] text-[10px] font-semibold" style={{ color: "var(--ops-mut)" }}>
                   {g}
                 </div>
                 {items.map((c) => {
                   const on = c.id === convId
+                  const pinned = isPinned(c)
                   return (
                     <div key={c.id} className="group relative">
                       <button
                         onClick={() => void openConversation(c)}
-                        className="block w-full truncate rounded-[7px] px-2 py-[6.5px] pr-6 text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+                        className="block w-full truncate rounded-[7px] px-2 py-[6.5px] pr-11 text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                         style={{
                           background: on ? "rgba(17,24,39,0.05)" : undefined,
                           color: on ? "var(--ops-title)" : "var(--ops-sec)",
@@ -1040,14 +1235,30 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       >
                         {c.title}
                       </button>
-                      <button
-                        title="Excluir conversa"
-                        onClick={() => void deleteConversation(c)}
-                        className="absolute right-1 top-1/2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] hover:bg-black/[0.06] group-hover:flex dark:hover:bg-white/[0.08]"
-                        style={{ color: "var(--ops-mut)" }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-px group-hover:flex">
+                        <button
+                          title={pinned ? "Desafixar conversa" : "Fixar conversa"}
+                          onClick={() => void togglePin(c)}
+                          className="flex h-5 w-5 items-center justify-center rounded-[5px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                          style={{ color: pinned ? BRAND : "var(--ops-mut)" }}
+                        >
+                          {pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                        </button>
+                        <button
+                          title="Excluir conversa"
+                          onClick={() => void deleteConversation(c)}
+                          className="flex h-5 w-5 items-center justify-center rounded-[5px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                          style={{ color: "var(--ops-mut)" }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {pinned && (
+                        <Pin
+                          className="pointer-events-none absolute right-2 top-1/2 h-2.5 w-2.5 -translate-y-1/2 group-hover:hidden"
+                          style={{ color: "var(--ops-mut)" }}
+                        />
+                      )}
                     </div>
                   )
                 })}
@@ -1168,7 +1379,17 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       </div>
                     </div>
                   ) : (
-                    <AssistantMessage key={m.id} msg={m} onRefazer={refazer} />
+                    <AssistantMessage
+                      key={m.id}
+                      msg={m}
+                      onRefazer={refazer}
+                      onFeedback={(next) => {
+                        setMessages((all) =>
+                          all.map((x) => (x.id === m.id ? { ...x, feedback: next ? "up" : null } : x)),
+                        )
+                        if (m.dbId) sendFeedback(m.dbId, next ? "up" : null)
+                      }}
+                    />
                   ),
                 )}
               </div>
@@ -1198,10 +1419,18 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
 // ── Mensagem do assistente (fontes + markdown + ações) ─────────────
 
-function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () => void }) {
+function AssistantMessage({
+  msg,
+  onRefazer,
+  onFeedback,
+}: {
+  msg: UiMessage
+  onRefazer: () => void
+  onFeedback: (next: boolean) => void
+}) {
   const [toolsOpen, setToolsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [useful, setUseful] = useState(false)
+  const useful = msg.feedback === "up"
 
   const copy = () => {
     void navigator.clipboard.writeText(msg.content)
@@ -1288,8 +1517,8 @@ function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () =>
               <RotateCcw className="h-[13.5px] w-[13.5px]" />
             </button>
             <button
-              title="Útil"
-              onClick={() => setUseful(!useful)}
+              title={useful ? "Remover marcação de útil" : "Marcar como útil"}
+              onClick={() => onFeedback(!useful)}
               className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
               style={{ color: useful ? BRAND : "var(--ops-mut)" }}
             >
