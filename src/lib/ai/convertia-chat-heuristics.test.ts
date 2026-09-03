@@ -20,6 +20,14 @@ describe("isAnalyticalQuestion", () => {
     expect(isAnalyticalQuestion("obrigado!")).toBe(false)
   })
 
+  it("verbo criativo no início vence citação de métrica/campanha", () => {
+    expect(isAnalyticalQuestion("escreva um email de lançamento da campanha de natal")).toBe(false)
+    expect(isAnalyticalQuestion("crie uma copy sobre a queda de preços")).toBe(false)
+    expect(isAnalyticalQuestion("melhore o assunto dessa campanha")).toBe(false)
+    // análise continua análise
+    expect(isAnalyticalQuestion("analise as campanhas da loja")).toBe(true)
+  })
+
   it("mensagem curta demais nunca dispara", () => {
     expect(isAnalyticalQuestion("vendas")).toBe(false)
     expect(isAnalyticalQuestion("   ")).toBe(false)
