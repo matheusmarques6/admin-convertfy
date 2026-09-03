@@ -447,3 +447,11 @@
 }
 .convertia-md a { color: #4E62D8; }
 .convertia-md hr { border: 0; border-top: 1px solid var(--ops-border); margin: 14px 0; }
+.convertia-md img {
+  max-width: min(420px, 100%);
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--ops-border);
+  margin: 6px 0;
+  display: block;
+}
