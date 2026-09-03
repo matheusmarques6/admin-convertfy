@@ -44,6 +44,7 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   merge_verifier: "Verificador de Merge",
   text_format: "Formatação de Texto",
   image_format: "Formatação de Imagem",
+  typography: "Tipografia",
   color_format: "Cores & Botões",
   qa: "QA",
   qavision: "QA Vision",
@@ -75,6 +76,7 @@ export const TEST_BASE_AGENT_KEYS = [
   "copy_merge",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "qa",
 ] as const
@@ -100,6 +102,7 @@ const PHASE2_STEP_KEYS = [
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "qa",
 ] as const

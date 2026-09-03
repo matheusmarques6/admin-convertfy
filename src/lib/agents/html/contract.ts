@@ -156,6 +156,30 @@ export const ColorFormatPromptVarsSchema = z.object({
 })
 export type ColorFormatPromptVars = z.infer<typeof ColorFormatPromptVarsSchema>
 
+/**
+ * Vars do TIPÓGRAFO. Ele não recebe o documento: recebe o inventário das
+ * declarações de fonte (uma linha por item) e devolve ops por número.
+ */
+export const TypographyPromptVarsSchema = z.object({
+  brand_name: z.string(),
+  locale: z.string(),
+  font_heading: z.string(),
+  font_heading_weight: z.string(),
+  font_body: z.string(),
+  font_body_weight: z.string(),
+  classe_principal: z.string(),
+  tom_de_voz: z.string(),
+  posicionamento: z.string(),
+  niche: z.string(),
+  hero_com_texto: z.string(),
+  font_whitelist: z.string(),
+  inventario: z.string(),
+  inventario_total: z.string(),
+  email_name: z.string(),
+  subject: z.string(),
+})
+export type TypographyPromptVars = z.infer<typeof TypographyPromptVarsSchema>
+
 export const HTML_PROMPT_VAR_DESCRIPTIONS: Record<
   keyof HtmlPromptVars,
   string

@@ -64,6 +64,7 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   // Encurtador de copy (migration 20261089).
   "copy_fit",
@@ -173,6 +174,7 @@ export async function listPrompts(opts: {
     hero_section: { active: null, history: [] },
     text_format: { active: null, history: [] },
     image_format: { active: null, history: [] },
+    typography: { active: null, history: [] },
     color_format: { active: null, history: [] },
     copy_fit: { active: null, history: [] },
   }

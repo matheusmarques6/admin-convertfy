@@ -1,7 +1,14 @@
 # Agente de Tipografia
 
-> Status: desenhado, não implementado. Base de conhecimento fechada com o
-> especialista em 03/09/2026.
+> Status: **implementado e ativo** (migration 20261109, 03/09/2026). Base de
+> conhecimento fechada com o especialista na mesma data.
+>
+> Onde vive: `src/lib/agents/typography/{inventory,rules,apply}.ts` (puros),
+> `src/lib/agents/chains/typography.chain.ts` (prompt e parser), STEP 3.5 do
+> `phase2-runner.service.ts` (entre a formatação de imagem e as cores),
+> `buildTypographyVars` em `html/format-context.ts`. Fail-open. Desligar:
+> `UPDATE email_agent_configs SET is_active=false WHERE agent_type=
+> 'typography';` — o runner registra o step como desligado e o email segue.
 
 ## 1. Escopo
 
@@ -296,23 +303,37 @@ Além disso, `refiner/guards.ts` descarta a rodada inteira se o texto, os `href`
 os `src` ou o tamanho do documento mudarem — é a garantia de que o agente não
 encostou na copy.
 
-## 8. Implementação
+## 8. Implementação (como ficou)
 
-1. `src/lib/agents/typography/inventory.ts` — monta o inventário (base:
-   `extractFontOccurrences` em `refiner/apply-delta.ts:189`, mais bloco, campo,
-   caixa, tracking e cor de fundo).
-2. `chains/typography.chain.ts` — o prompt da seção 6; vars e proveniência em
-   `html/format-context.ts` (`TYPOGRAPHY_VAR_ORIGINS`).
-3. `src/lib/agents/typography/rules.ts` — os guards da seção 7, puros e testados.
-4. Aplicação por índice com `applyRefinerDelta` + `@import` por código
-   (`buildGoogleFontsImport` / `injectFontImport`).
-5. Passo no `phase2-runner.service.ts` entre `image_format` e `color_format`,
-   **fail-open** (duas falhas mantêm o HTML e seguem).
-6. `normalizeFonts` deixa de carimbar tudo: passa a receber a decisão por papel.
-7. Migration com o CHECK de `email_agent_configs` + kill-switch em
-   `email_generation_settings`; registro em `agent-visual.ts`,
-   `studio-graph.ts` e `prompt-management.service.ts` (sem isso a aba do agente
-   nasce vazia). O `text_format` sai do pipeline.
+1. `typography/inventory.ts` — monta o inventário. A régua da declaração é o
+   bloco de `style` que contém o `font-family` (não uma janela de N chars), e
+   a **aspa simples não delimita**: ela vive dentro da própria cadeia de
+   fontes, e cortar ali fazia o `font-weight` ao lado sumir do inventário. O
+   texto do item para na próxima declaração de fonte — varrer uma janela fixa
+   juntava o email inteiro num item só.
+2. `typography/rules.ts` — os guards da seção 7. O colapso de degrau respeita
+   a **direção** do pedido: quem queria descer não acaba subindo por causa do
+   vizinho.
+3. `typography/apply.ts` — escreve por splices, de trás para a frente
+   (reescrever durante a varredura deslocaria os offsets do próprio regex), e
+   declara a webfont secundária num `<link>` dentro do bloco `!mso`.
+4. `chains/typography.chain.ts` — prompt da seção 6, parser tolerante a cerca
+   de markdown, proveniência com guard de recomposição.
+5. STEP 3.5 do `phase2-runner.service.ts`, entre `image_format` e
+   `color_format`, **fail-open**. Dois guards estruturais no próprio step:
+   contagem de `<table>` e contagem de declarações de fonte são invariantes.
+   Documento sem nenhuma declaração de fonte não chama o modelo (run
+   `skipped`, `sem_declaracoes_de_fonte`).
+6. Migration `20261109` — CHECK de `email_agent_configs` + seed ativo com
+   prompts VAZIOS (o editor da aba Agentes passa a poder sobrescrever sem
+   migration). Registro em `agent-visual.ts`, `studio-graph.ts`,
+   `test-run-view.ts`, `telemetry-contract.ts` e
+   `prompt-management.service.ts`.
+
+**Ainda aberto:** `normalizeFonts` continua carimbando a fonte em todas as
+declarações na montagem (fase 1); o tipógrafo corrige por cima. Trocar a
+heurística dela por "decisão por papel" é o próximo passo, e é o que reduz o
+trabalho que o agente tem de desfazer.
 
 **Backlog:** configuração de tipografia da loja editável em tempo real na aba
 de emails.

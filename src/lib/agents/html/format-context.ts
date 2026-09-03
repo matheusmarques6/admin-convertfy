@@ -46,6 +46,7 @@ import {
   ColorFormatPromptVarsSchema,
   HeroPromptVarsSchema,
   TextFormatPromptVarsSchema,
+  TypographyPromptVarsSchema,
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
@@ -562,6 +563,20 @@ export const TEXT_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   top_products_json: { cls: "loja", rotulo: "Produtos da loja — store_products" },
 }
 
+export const TYPOGRAPHY_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  ...IDENTITY_ORIGINS,
+  niche: LOJA_STORE,
+  tom_de_voz: LOJA_STORE,
+  posicionamento: LOJA_STORE,
+  classe_principal: { cls: "sistema", rotulo: "Classe da fonte principal — classifyFontFamily (código)" },
+  hero_com_texto: { cls: "sistema", rotulo: "Hero com texto embutido — derivado do documento (código)" },
+  font_whitelist: { cls: "biblioteca", rotulo: "Fontes de display curadas — font-whitelist.ts" },
+  inventario: { cls: "sistema", rotulo: "Inventário tipográfico do documento — extractTypographyInventory" },
+  inventario_total: { cls: "sistema", rotulo: "Total de declarações de fonte — código" },
+  email_name: EMAIL_ROW,
+  subject: EMAIL_ROW,
+}
+
 export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   ...IDENTITY_ORIGINS,
   niche: LOJA_STORE,
@@ -740,4 +755,63 @@ export function buildColorFormatVars(
     subject: ctx.emailRow?.subject || "",
   }
   return validateVars(ColorFormatPromptVarsSchema, vars, "color_format")
+}
+
+
+// ── TIPÓGRAFO ──────────────────────────────────────────────────────────
+
+/**
+ * Classe da fonte pelo NOME — é o que temos: a identidade visual guarda o
+ * nome da família, não a classificação tipográfica. A classe decide o par
+ * que sobrevive ao substituto (sans+sans desaparece para quem não carrega a
+ * webfont), então errar aqui só torna o guard mais conservador.
+ */
+export function classifyFontFamily(name: string): "serif" | "sans" | "mono" | "display" {
+  const n = (name || "").toLowerCase()
+  if (/mono|courier|consol|code|typewriter|plex mono/.test(n)) return "mono"
+  if (/serif|georgia|garamond|times|playfair|merriweather|lora|baskerville|didot|bodoni|caslon|prata|marcellus|fraunces|newsreader|bitter|crimson/.test(n)) {
+    return "serif"
+  }
+  if (/display|unbounded|syne|bungee|lobster|impact/.test(n)) return "display"
+  return "sans"
+}
+
+/**
+ * Vars do tipógrafo. O documento NÃO entra: entra o inventário das
+ * declarações de fonte, uma linha por item (`typography/inventory.ts`).
+ */
+export function buildTypographyVars(
+  ctx: FormatChainContext,
+  html: string,
+  extras: {
+    niche: string
+    tomDeVoz: string
+    posicionamento: string
+    /** A hero traz texto embutido na imagem? Um grau a menos de ruptura. */
+    heroComTexto: boolean
+    fontWhitelist: string
+    inventario: string
+    inventarioTotal: number
+  },
+): Record<string, string> {
+  void html
+  const vars = {
+    brand_name: ctx.brandName,
+    locale: ctx.locale,
+    font_heading: ctx.fontHeading,
+    font_heading_weight: ctx.fontHeadingWeight,
+    font_body: ctx.fontBody,
+    font_body_weight: ctx.fontBodyWeight,
+    classe_principal: classifyFontFamily(ctx.fontHeading),
+    tom_de_voz: extras.tomDeVoz,
+    posicionamento: extras.posicionamento,
+    niche: extras.niche,
+    hero_com_texto: extras.heroComTexto ? "sim" : "não",
+    font_whitelist: extras.fontWhitelist,
+    inventario: extras.inventario,
+    inventario_total: String(extras.inventarioTotal),
+    email_name: ctx.emailRow?.name || "",
+    subject: ctx.emailRow?.subject || "",
+  }
+  return validateVars(TypographyPromptVarsSchema, vars, "typography")
 }

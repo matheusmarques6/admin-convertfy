@@ -52,6 +52,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
   hero_section: "Hero Section",
   text_format: "Formatação de Texto",
   image_format: "Formatação de Imagem",
+  typography: "Tipografia",
   color_format: "Cores & Botões",
   copy_fit: "Encurtador de Copy",
 }
@@ -75,6 +76,7 @@ const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   hero_section: Sparkles,
   text_format: Type,
   image_format: ImageIcon,
+  typography: Type,
   color_format: Palette,
   copy_fit: Scissors,
 }
