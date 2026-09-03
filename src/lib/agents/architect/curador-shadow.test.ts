@@ -149,10 +149,6 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // caíram só por declararem outro momento. `momento` diz onde a variante
   // brilha, não onde ela é permitida.
   it("momento NÃO elimina — só o veto elimina", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("EMENDA-MOMENTO-01")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
-      "por momento SOMENTE quando <momento> estiver em `momento_vetado`",
-    )
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("declarar outro momento NÃO elimina")
     // E entra no ranking, como primeiro eixo.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
@@ -160,13 +156,14 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     )
   })
 
-  // O protocolo é a LEI do prompt ("em conflito, o protocolo vence") e vive
-  // num vault externo. Sem a ressalva NOMEADA, o passo 5 continuaria valendo
-  // e o modelo continuaria eliminando.
-  it("a ressalva de precedência é explícita e diz o que suspende", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("COM UMA ÚNICA EXCEÇÃO")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ESSA PARTE ESTÁ SUSPENSA")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Fora isso, o protocolo vale integralmente")
+  // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a
+  // menção a `momento_vetado` saíram do prompt — o protocolo do vault entra
+  // sem prefácio, e o passo 2 diz só que declarar outro momento não elimina.
+  it("o system não carrega mais a emenda nem o veto por momento", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("EMENDA-MOMENTO-01")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("momento_vetado")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("COM UMA ÚNICA EXCEÇÃO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("<protocolo_de_selecao>\n\n{{protocolo}}\n</protocolo_de_selecao>")
   })
 
   // No `body` ele tinha 4 sobreviventes e devolveu `escolhas: []` porque
@@ -197,8 +194,9 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("exige")
   })
 
-  it("a lista de eliminação é fechada e material não está nela", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Essa é a lista COMPLETA do que elimina")
+  it("material não elimina e só ativa/schema + capacidade eliminam", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("elimine por ativa/schema")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("e por capacidade (product_slots × produtos com link")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("não elimina ninguém")
   })
 
