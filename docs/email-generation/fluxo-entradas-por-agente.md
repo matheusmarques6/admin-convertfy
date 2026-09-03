@@ -356,7 +356,17 @@ remove badge + linha (`itens_removidos`).
 
 Disparo: GATE 2 → `runPhase2Image` → `runPhase2HtmlQa` → cadeia `copy_merge → hero → texto → imagem → cores` → QA. Resume por `html_pipeline_stage`; retry 1× por step (contado no banco, cross-invocação); budget dinâmico com headroom 30s; kill-switch individual por agente na aba Agentes (`is_active`).
 
-## 8 · Imagem — 1 run por slot
+## 8 · Imagem — 1 run por slot (03/09: direção + briefing do campo são a fonte principal)
+
+> Migration 20261108. O prompt tem três camadas com peso declarado —
+> `CFY_PRIMARY_BRIEF` (direção fotográfica da variante, medidas apagadas,
+> frases inteiras), `CFY_THIS_FRAME` (slot do campo: `especificidade` +
+> `onde_fica` + formato + `papel_neste_grupo` nas thumbs) e `CFY_SUPPORT`
+> (fio, papel do bloco, marca). Saíram a frase de cena por bloco/flow, o
+> `CENARIO`/`MOOD` derivados e o "prompt master". Anexos rotulados
+> `CFY_REF_PRODUCT` (produto DO CAMPO, `pickProductForField`) e
+> `CFY_REF_ANCHOR` (thumbs). O restante desta seção descreve a mecânica,
+> que não mudou.
 
 Gera as fotos via OpenRouter (chat completions com saída de imagem). Cada campo `nature='imagem_gerada'` do schema do bloco vira **uma chamada própria**, em 2 ondas (âncoras → dependentes com a foto da âncora como referência img2img) + avatares de testimonials (prompt in-code, cap 4). Concorrência 6; teto 24 imagens; budget da fase 600s.
 

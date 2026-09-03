@@ -147,6 +147,14 @@ export interface BuildImageSlotsOptions {
    * pedido ao modelo, não garantia.
    */
   fieldKey?: string | null
+  /**
+   * Quando este campo é DEPENDENTE de outro do mesmo grupo (a thumb que
+   * nasce da foto principal), o key da âncora. O slot ganha a linha que diz
+   * o papel: mesma sessão e mesmo produto, mas enquadramento diferente —
+   * sem isto o modelo, vendo a foto da âncora anexada, devolvia um recorte
+   * dela (Innova, 02/09: 4 thumbs iguais à principal).
+   */
+  anchorKey?: string | null
 }
 
 export function buildImageSlots(
@@ -173,7 +181,14 @@ export function buildImageSlots(
     // A `tag` saiu do snapshot (20/08): o identificador do slot é a própria
     // key em maiúsculas — snapshot antigo com tag residual no jsonb ignora.
     const tag = f.key.toUpperCase()
-    const spec = (f.image_spec ?? "").trim() || (f.guidance ?? "").trim()
+    const specRaw = (f.image_spec ?? "").trim()
+    const guidanceRaw = (f.guidance ?? "").trim()
+    const spec = specRaw || guidanceRaw
+    // As duas entram (03/09): o "briefing e formato" diz O QUE fotografar e
+    // a orientação diz ONDE a imagem fica na peça. Antes era um OU outro, e
+    // "Onde fica: fundo de todo o e-mail; lockup e headline sobrepostos ao
+    // terço superior" nunca chegava ao gerador quando havia briefing.
+    const ondeFica = specRaw && guidanceRaw && guidanceRaw !== specRaw ? guidanceRaw : ""
     const example = (f.example ?? "").trim()
     const formato = formatoLine(f)
     const note = (f.slot_note ?? "").trim()
@@ -181,6 +196,7 @@ export function buildImageSlots(
 
     const lines: string[] = [`<slot_imagem tag="${tag}">`, `campo: ${f.key}`]
     if (spec) lines.push(`especificidade: ${spec}`)
+    if (ondeFica) lines.push(`onde_fica: ${ondeFica}`)
     if (example) lines.push(`exemplo: ${example}`)
     if (formato) lines.push(`formato: ${formato}`)
     if (note) lines.push(`comentario: ${note}`)
@@ -189,6 +205,13 @@ export function buildImageSlots(
         "areas_de_texto (o HTML escreve estes textos POR CIMA da imagem — deixe estas regiões limpas, sem desenhar nada nelas):",
       )
       for (const [k, v] of grupo) lines.push(`- ${k}: ${v}`)
+    }
+    const anchorKey = (opts?.anchorKey ?? "").trim()
+    if (anchorKey && anchorKey !== f.key) {
+      const ancora = allImageFields.find((o) => o.key === anchorKey)
+      lines.push(
+        `papel_neste_grupo: esta imagem é DEPENDENTE de ${anchorKey}${ancora ? ` (${ideiaResumida(ancora) || "a foto principal do grupo"})` : ""}, cuja foto já existe e vai anexada como CFY_REF_ANCHOR. Mesma sessão, mesmo produto, mesma luz e mesmo tratamento de cor — mas enquadramento, ângulo e distância DIFERENTES, conforme a especificidade acima. Nunca um recorte nem uma repetição da principal.`,
+      )
     }
     const irmaos = fieldKey ? allImageFields.filter((o) => o.key !== f.key) : []
     if (irmaos.length > 0) {

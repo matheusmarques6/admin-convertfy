@@ -1780,12 +1780,30 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 | 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **DESLIGADO** (`montador_mode='off'`, migration 20261107). Ligado: `moonshotai/kimi-k3` · T=0.3 · max 2048 | finalistas do Curador + `output_schema`, perfil, objeções, vocabulário, produtos, memória, decisão do Estruturador | JSON de escolha (1 variante por posição). O HTML é montado por CÓDIGO (`assemble-document.ts`) a partir do rank 1 do Curador → `store_email_references` (`model='code'`, `slot_map`) |
 | 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
-| 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
+| 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | `google/gemini-3.1-flash-image` (config; CLAUDE.md dizia gpt-5.4-image-2, revertido na 20261072) · 90s/chamada · 1 chamada por campo `imagem_gerada` | **direção fotográfica da variante + briefing/onde_fica do campo = fonte principal** (migration 20261108); apoio: fio do Estruturador, papel do bloco, marca. Anexos rotulados: `CFY_REF_PRODUCT` (produto DO CAMPO — `panel_2_*` → 2º produto) e `CFY_REF_ANCHOR` (foto principal do grupo, nas thumbs) | `email_blocks.content.images[campo]` = {url, alt, overlay_luminance} + espelho `image_url`/`image_alt`; status `image_done` |
 | 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `moonshotai/kimi-k3` (swap 20261047) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
 | 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `moonshotai/kimi-k3` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
 | 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `moonshotai/kimi-k3` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
 | 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `moonshotai/kimi-k3` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
 | 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
+
+**Agente de imagem — fonte principal (03/09, migration 20261108)**: o prompt
+saiu de "prompt master de diretor de arte + frase de cena fixa por bloco/flow
++ CENARIO/MOOD derivados por código" para três camadas com peso declarado:
+`CFY_PRIMARY_BRIEF` (direção fotográfica da variante, agora com as MEDIDAS
+apagadas em vez das linhas — "terço superior (0–480px) fora de foco" vira
+"terço superior fora de foco"; tabela de categorias vira "coluna — coluna"),
+`CFY_THIS_FRAME` (o `<slot_imagem>` do campo: `especificidade` + `onde_fica`
++ formato + áreas de texto + `papel_neste_grupo` nas thumbs) e `CFY_SUPPORT`
+(fio, papel do bloco, marca). Sem direção, o template diz para NÃO inventar
+cena. Produto por painel (`pickProductForField`, `image/product-for-field.ts`);
+âncora e produto vão anexados os DOIS, rotulados — antes `referenceImages`
+substituía a foto do produto e a thumb via só a âncora. `CFY_PRODUCT_FIDELITY`
+passou a dizer que a foto dá o objeto e a direção dá a cena (o "ATTACHED
+PHOTO WINS" fazia copiar ângulo e fundo). Alt sem português ("Produto ·
+rótulo"). `MOEDA` = moeda dos produtos, não da coluna da loja. `CENARIO`/
+`MOOD` seguem como vars (o agente `campaign_image` usa), mas o template do
+`image` não as referencia mais.
 
 **Split do HTML agent (migration 20261039, jul/2026 — corte seco)**: o agente
 `html` monolítico e o `refiner` foram DESATIVADOS (configs `is_active=false`,

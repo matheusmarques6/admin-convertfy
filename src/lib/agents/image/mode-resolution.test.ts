@@ -207,13 +207,18 @@ describe("productRefFidelityInstruction", () => {
   it("manda reproduzir o produto exato e proibe redesenhar", () => {
     const out = productRefFidelityInstruction({ productName: "EnergySave Pro" })
     expect(out).toContain("EnergySave Pro")
-    expect(out).toContain("Reproduce THAT EXACT product")
-    expect(out).toMatch(/NOT redesign the product/)
+    expect(out).toContain("IDENTITY comes from that photo")
+    expect(out).toMatch(/Never redesign it/)
   })
 
-  it("resolve o conflito a favor da foto quando a direcao fala de outra categoria", () => {
+  // 03/09: "ATTACHED PHOTO WINS" fazia o modelo copiar a foto — inclusive o
+  // ângulo e o fundo. A foto dá o objeto; a direção dá a cena.
+  it("a foto dá o produto, a direção dá a cena — nunca copiar ângulo ou fundo da referência", () => {
     const out = productRefFidelityInstruction({ productName: "OBD CarScan" })
-    expect(out).toContain("ATTACHED PHOTO WINS")
+    expect(out).not.toContain("ATTACHED PHOTO WINS")
+    expect(out).toContain("angle, background and staging are NOT to be copied")
+    expect(out).toContain("keep the product from the photo and the scene from the direction")
+    expect(out).toContain("CFY_REF_PRODUCT")
   })
 })
 
