@@ -12,6 +12,7 @@ import {
   requireAuth,
   AppError,
 } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 
 export const dynamic = "force-dynamic"
 
@@ -25,13 +26,33 @@ export async function GET(
     const user = await requireAuth(sb)
     const admin = createAdminClient()
 
+    // Dono lê sempre; conversa com context.shared=true é legível por
+    // qualquer membro da MESMA org (modo leitura — PATCH/DELETE seguem
+    // exclusivos do dono).
     const { data: conv } = await admin
       .from("ai_chat_conversations")
       .select("*")
       .eq("id", id)
-      .eq("user_id", user.id)
       .maybeSingle()
     if (!conv) throw new AppError("Conversa nao encontrada", 404)
+    const isOwner = conv.user_id === user.id
+    const isShared = (conv.context as { shared?: boolean } | null)?.shared === true
+    if (!isOwner) {
+      if (!isShared) throw new AppError("Conversa nao encontrada", 404)
+      const orgId = await resolveOrgId(user.id)
+      if (conv.org_id !== orgId) throw new AppError("Conversa nao encontrada", 404)
+    }
+
+    // Nome de quem compartilhou (pro banner de leitura)
+    let ownerName: string | null = null
+    if (!isOwner) {
+      const { data: owner } = await admin
+        .from("profiles")
+        .select("name")
+        .eq("id", conv.user_id)
+        .maybeSingle()
+      ownerName = owner?.name ?? null
+    }
 
     // meta (fontes/uso da ConvertIA) chegou na migration 20261090 —
     // retry sem a coluna quando ela ainda não existe na base.
@@ -57,6 +78,8 @@ export async function GET(
     return successResponse(request, {
       conversation: conv,
       messages: messages ?? [],
+      is_owner: isOwner,
+      owner_name: ownerName,
     })
   } catch (error) {
     return errorResponse(request, error, "ai-conversation-get")

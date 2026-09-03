@@ -32,7 +32,9 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Share2,
   Sparkles,
+  Telescope,
   ThumbsUp,
   Trash2,
   Activity,
@@ -55,6 +57,7 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   crm: { n: "CRM Convertfy", c: "#4E62D8", g: "C" },
   metricas: { n: "Métricas", c: "#0E7490", g: "M" },
   imagem: { n: "Geração de imagem", c: "#D97706", g: "I" },
+  relatorio: { n: "Relatório da loja", c: "#0F766E", g: "R" },
 }
 const MCP_DOT = { c: "#7C3AED", g: "X" }
 const BRAND = "#4E62D8"
@@ -127,6 +130,8 @@ export interface Source {
   tool: string
   label: string
   summary: string | null
+  /** O QUE foi consultado ("period: 30d · status: paid"). */
+  args_summary?: string | null
   write: boolean
 }
 interface UiAttachment {
@@ -299,6 +304,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [attachments, setAttachments] = useState<UiAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
   const [railSearch, setRailSearch] = useState("")
+  const [deep, setDeep] = useState(false)
   const [recording, setRecording] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const recogRef = useRef<{ stop: () => void } | null>(null)
@@ -509,44 +515,65 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   }, [])
 
   // ── Abrir conversa existente ─────────────────────────────────────
-  const openConversation = async (c: Conversation) => {
-    abortRef.current?.abort()
-    setConvId(c.id)
-    setConvTitle(c.title)
-    setMessages([])
-    const ctx = c.context ?? {}
-    if (typeof ctx.model === "string") setModel(ctx.model)
-    if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
-    try {
-      const body = await fetcher(`/api/ai/conversations/${c.id}`)
-      const msgs = ((body as {
-        messages?: Array<{
-          id: string
-          role: string
-          content: string
-          meta?: {
-            sources?: Source[]
-            attachments?: Array<{ name: string; kind: "image" | "text" }>
-            feedback?: { rating?: string } | null
-          } | null
-        }>
-      }).messages ?? [])
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({
-          id: m.id,
-          dbId: m.id,
-          role: m.role as "user" | "assistant",
-          content: m.content,
-          sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
-          attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
-            ?.attachments,
-          feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
-        }))
-      setMessages(msgs)
-      scrollToBottom()
-    } catch {
+  // sharedBy != null → conversa de OUTRA pessoa aberta por link
+  // compartilhado: somente leitura (sem composer/refazer/feedback).
+  const [sharedBy, setSharedBy] = useState<string | null>(null)
+  const [convShared, setConvShared] = useState(false)
+
+  const openConversationById = useCallback(
+    async (id: string, fallbackTitle?: string) => {
+      abortRef.current?.abort()
+      setConvId(id)
+      setConvTitle(fallbackTitle ?? null)
       setMessages([])
-    }
+      setSharedBy(null)
+      setConvShared(false)
+      try {
+        const body = (await fetcher(`/api/ai/conversations/${id}`)) as {
+          conversation?: { title?: string; context?: Record<string, unknown> | null }
+          is_owner?: boolean
+          owner_name?: string | null
+          messages?: Array<{
+            id: string
+            role: string
+            content: string
+            meta?: {
+              sources?: Source[]
+              attachments?: Array<{ name: string; kind: "image" | "text" }>
+              feedback?: { rating?: string } | null
+            } | null
+          }>
+        }
+        const conv = body.conversation
+        if (conv?.title) setConvTitle(conv.title)
+        const ctx = conv?.context ?? {}
+        if (typeof ctx.model === "string") setModel(ctx.model)
+        if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
+        setConvShared(ctx.shared === true)
+        if (body.is_owner === false) setSharedBy(body.owner_name ?? "outra pessoa")
+        const msgs = (body.messages ?? [])
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: m.id,
+            dbId: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
+            attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
+              ?.attachments,
+            feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
+          }))
+        setMessages(msgs)
+        scrollToBottom()
+      } catch {
+        setMessages([])
+      }
+    },
+    [scrollToBottom],
+  )
+
+  const openConversation = async (c: Conversation) => {
+    await openConversationById(c.id, c.title)
   }
 
   const novaConversa = () => {
@@ -555,6 +582,60 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     setConvTitle(null)
     setMessages([])
     setInput("")
+    setSharedBy(null)
+    setConvShared(false)
+  }
+
+  // Link compartilhado (?conversa=uuid) — abre direto a conversa, em
+  // modo leitura quando ela é de outra pessoa da org.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const conversa = params.get("conversa")
+    if (
+      conversa &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversa)
+    ) {
+      window.history.replaceState({}, "", window.location.pathname)
+      void openConversationById(conversa)
+    }
+    // roda uma vez no mount, com a função já estável (useCallback)
+  }, [openConversationById])
+
+  // Compartilhar com a org: liga context.shared (PATCH é replace — o
+  // context atual vem do GET pra não perder nada) e copia o link.
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  const toggleShare = async () => {
+    if (!convId || sharedBy) return
+    try {
+      const body = (await fetcher(`/api/ai/conversations/${convId}`)) as {
+        conversation?: { context?: Record<string, unknown> | null }
+      }
+      const ctx = body.conversation?.context ?? {}
+      const next = { ...ctx, shared: !convShared }
+      const resp = await fetch(`/api/ai/conversations/${convId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: next }),
+      })
+      if (!resp.ok) throw new Error("PATCH falhou")
+      setConvShared(!convShared)
+      if (!convShared) {
+        const link = `${window.location.origin}/admin/${ws}/ia?conversa=${convId}`
+        try {
+          await navigator.clipboard.writeText(link)
+          setShareNotice("Link copiado — qualquer pessoa da organização abre em modo leitura.")
+        } catch {
+          setShareNotice(`Compartilhada com a organização: ${link}`)
+        }
+      } else {
+        setShareNotice("Compartilhamento desativado — só você vê esta conversa.")
+      }
+      setTimeout(() => setShareNotice(null), 5000)
+    } catch {
+      setShareNotice("Não consegui alterar o compartilhamento — tente de novo.")
+      setTimeout(() => setShareNotice(null), 5000)
+    }
   }
 
   const deleteConversation = async (c: Conversation) => {
@@ -670,6 +751,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           store_id: storeId ?? null,
           connectors: activeConns.map((c) => c.key),
           skills: skills.filter((s) => skillOn[s.id]).map((s) => s.id),
+          deep,
           attachments: atts.map((a) => ({
             name: a.name,
             mime: a.mime,
@@ -723,6 +805,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     tool: String(ev.name ?? ""),
                     label: String(ev.label ?? ev.name ?? ""),
                     summary: null,
+                    args_summary:
+                      typeof ev.args_summary === "string" ? ev.args_summary : null,
                     write: ev.write === true,
                   },
                 ],
@@ -1063,6 +1147,24 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               e.target.value = ""
             }}
           />
+          {/* Análise profunda: plano → coleta ampla → análise completa */}
+          <button
+            title={
+              deep
+                ? "Análise profunda LIGADA — plano + consulta ampla + resposta completa (mais lenta e mais cara)"
+                : "Ligar análise profunda (plano + consulta ampla + resposta completa)"
+            }
+            onClick={() => setDeep(!deep)}
+            className="inline-flex h-[27px] shrink-0 items-center gap-1 rounded-[8px] border px-2 text-[11px] font-medium"
+            style={
+              deep
+                ? { borderColor: "#8B9BE8", background: "rgba(78,98,216,0.08)", color: BRAND }
+                : { borderColor: "transparent", color: "var(--ops-mut)" }
+            }
+          >
+            <Telescope className="h-3.5 w-3.5" />
+            {deep && "Profunda"}
+          </button>
           {/* Ditado por voz (só aparece onde a Web Speech API existe) */}
           {voiceSupported && (
             <button
@@ -1296,8 +1398,31 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             <PanelLeft className="h-[15px] w-[15px]" />
           </button>
           {view === "conversa" ? (
-            <span className="truncate text-[12.5px] font-medium" style={{ color: "var(--ops-sec)" }}>
-              {convTitle ?? "Conversa"}
+            <span className="inline-flex min-w-0 items-center gap-2 text-[12.5px] font-medium" style={{ color: "var(--ops-sec)" }}>
+              <span className="truncate">{convTitle ?? "Conversa"}</span>
+              {sharedBy ? (
+                <span
+                  className="shrink-0 rounded-[5px] px-1.5 py-[1px] text-[9.5px] font-bold uppercase tracking-[0.05em]"
+                  style={{ background: "rgba(78,98,216,0.10)", color: BRAND }}
+                >
+                  leitura
+                </span>
+              ) : (
+                convId && (
+                  <button
+                    title={
+                      convShared
+                        ? "Compartilhada com a organização — clique para tornar privada"
+                        : "Compartilhar com a organização (link de leitura)"
+                    }
+                    onClick={() => void toggleShare()}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
+                    style={{ color: convShared ? BRAND : "var(--ops-mut)" }}
+                  >
+                    <Share2 className="h-[13px] w-[13px]" />
+                  </button>
+                )
+              )}
             </span>
           ) : (
             <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }}>
@@ -1382,6 +1507,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     <AssistantMessage
                       key={m.id}
                       msg={m}
+                      readOnly={sharedBy !== null}
                       onRefazer={refazer}
                       onFeedback={(next) => {
                         setMessages((all) =>
@@ -1394,12 +1520,33 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 )}
               </div>
             </div>
-            <div className="shrink-0 px-8 pb-4 pt-2">
-              {composer(false)}
-              <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
+            {shareNotice && (
+              <div className="px-8 pb-1 text-center text-[10.5px]" style={{ color: BRAND }} role="status">
+                {shareNotice}
               </div>
-            </div>
+            )}
+            {sharedBy ? (
+              <div className="shrink-0 px-8 pb-5 pt-2">
+                <div
+                  className="mx-auto max-w-[680px] rounded-[10px] border px-4 py-2.5 text-center text-[11.5px]"
+                  style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+                >
+                  Conversa compartilhada por <strong>{sharedBy}</strong> — somente leitura.
+                  Para conversar com a ConvertIA, abra uma{" "}
+                  <button onClick={novaConversa} className="font-semibold underline" style={{ color: BRAND }}>
+                    nova conversa
+                  </button>
+                  .
+                </div>
+              </div>
+            ) : (
+              <div className="shrink-0 px-8 pb-4 pt-2">
+                {composer(false)}
+                <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                  O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -1421,16 +1568,23 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
 function AssistantMessage({
   msg,
+  readOnly = false,
   onRefazer,
   onFeedback,
 }: {
   msg: UiMessage
+  readOnly?: boolean
   onRefazer: () => void
   onFeedback: (next: boolean) => void
 }) {
   const [toolsOpen, setToolsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const useful = msg.feedback === "up"
+  // Consulta em andamento: a última fonte sem summary é a que roda agora
+  const running =
+    (msg.pendingTools ?? 0) > 0
+      ? [...msg.sources].reverse().find((s) => s.summary == null)
+      : undefined
 
   const copy = () => {
     void navigator.clipboard.writeText(msg.content)
@@ -1469,22 +1623,39 @@ function AssistantMessage({
                 style={{ transform: toolsOpen ? "rotate(180deg)" : "none" }}
               />
             </button>
+            {/* consulta em andamento: o QUE está sendo buscado agora */}
+            {!toolsOpen && running && (
+              <div className="-mt-1.5 mb-3 flex items-center gap-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                <ConnDot k={running.connector} size={12} />
+                <span className="truncate">
+                  {running.label}
+                  {running.args_summary ? ` — ${running.args_summary}` : ""}…
+                </span>
+              </div>
+            )}
             {toolsOpen && (
               <div className="-mt-1.5 mb-4 flex flex-col gap-[7px] border-l-2 pl-[13px]" style={{ borderColor: HAIR }}>
                 {msg.sources.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11.5px]">
-                    <ConnDot k={s.connector} size={14} />
-                    <span style={{ color: "var(--ops-text)" }}>
-                      {s.label}
-                      {s.write && (
-                        <span className="ml-1.5 rounded-[4px] px-1 text-[8.5px] font-bold uppercase" style={{ background: "rgba(220,38,38,0.08)", color: "#DC2626" }}>
-                          executou
-                        </span>
-                      )}
-                    </span>
-                    <span className="tabular-nums text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
-                      {s.summary ?? "…"}
-                    </span>
+                  <div key={i} className="flex flex-col gap-px text-[11.5px]">
+                    <div className="flex items-center gap-2">
+                      <ConnDot k={s.connector} size={14} />
+                      <span style={{ color: "var(--ops-text)" }}>
+                        {s.label}
+                        {s.write && (
+                          <span className="ml-1.5 rounded-[4px] px-1 text-[8.5px] font-bold uppercase" style={{ background: "rgba(220,38,38,0.08)", color: "#DC2626" }}>
+                            executou
+                          </span>
+                        )}
+                      </span>
+                      <span className="tabular-nums text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                        {s.summary ?? "…"}
+                      </span>
+                    </div>
+                    {s.args_summary && (
+                      <span className="pl-[22px] text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        {s.args_summary}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1508,22 +1679,26 @@ function AssistantMessage({
             >
               {copied ? <Check className="h-[13.5px] w-[13.5px]" /> : <Copy className="h-[13.5px] w-[13.5px]" />}
             </button>
-            <button
-              title="Refazer"
-              onClick={onRefazer}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: "var(--ops-mut)" }}
-            >
-              <RotateCcw className="h-[13.5px] w-[13.5px]" />
-            </button>
-            <button
-              title={useful ? "Remover marcação de útil" : "Marcar como útil"}
-              onClick={() => onFeedback(!useful)}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: useful ? BRAND : "var(--ops-mut)" }}
-            >
-              <ThumbsUp className="h-[13.5px] w-[13.5px]" fill={useful ? "currentColor" : "none"} />
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  title="Refazer"
+                  onClick={onRefazer}
+                  className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  <RotateCcw className="h-[13.5px] w-[13.5px]" />
+                </button>
+                <button
+                  title={useful ? "Remover marcação de útil" : "Marcar como útil"}
+                  onClick={() => onFeedback(!useful)}
+                  className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  style={{ color: useful ? BRAND : "var(--ops-mut)" }}
+                >
+                  <ThumbsUp className="h-[13.5px] w-[13.5px]" fill={useful ? "currentColor" : "none"} />
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

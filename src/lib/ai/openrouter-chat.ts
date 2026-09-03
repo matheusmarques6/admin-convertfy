@@ -69,6 +69,14 @@ interface StreamChatInput {
   temperature?: number
   timeoutMs?: number
   signal?: AbortSignal
+  /**
+   * Raciocínio estendido via OpenRouter (normalizado entre provedores).
+   * Mesmo formato dos chains de email (`reasoning: {enabled:false}`) —
+   * a ConvertIA usa `{effort}` no modo análise profunda. Só é enviado
+   * quando presente; modelos sem suporte ignoram via normalização do
+   * OpenRouter.
+   */
+  reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
   /** Texto incremental da resposta (não dispara para tool_calls). */
   onDelta?: (text: string) => void
 }
@@ -102,6 +110,7 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
         model: input.model,
         messages: input.messages,
         ...(input.tools && input.tools.length > 0 ? { tools: input.tools } : {}),
+        ...(input.reasoning ? { reasoning: input.reasoning } : {}),
         max_tokens: input.maxTokens ?? 4096,
         temperature: input.temperature ?? 0.4,
         stream: true,

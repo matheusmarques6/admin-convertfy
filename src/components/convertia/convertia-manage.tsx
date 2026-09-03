@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from "react"
-import { Plus, RefreshCw, Trash2, X } from "lucide-react"
+import { Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react"
 
 export type ManageKind = "skills" | "mcp"
 
@@ -115,6 +115,45 @@ function SkillsDialog({ ws, onClose }: { ws: string; onClose: () => void }) {
   const [editing, setEditing] = useState<Partial<SkillRow> | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // "Criar com IA": descreve em uma frase (+ exemplo real opcional),
+  // a IA escreve a skill no template da casa e o rascunho cai no form
+  // de edição pra revisão humana — nada é salvo sem revisar.
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiDesc, setAiDesc] = useState("")
+  const [aiExample, setAiExample] = useState("")
+  const [aiBusy, setAiBusy] = useState(false)
+
+  const generateWithAi = async () => {
+    if (aiDesc.trim().length < 10 || aiBusy) return
+    setAiBusy(true)
+    setErr(null)
+    try {
+      const body = (await jsonOrThrow(
+        await fetch("/api/ai/skills/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: aiDesc.trim(),
+            workspace: ws,
+            example: aiExample.trim() || null,
+          }),
+        }),
+      )) as { draft: { name: string; description: string; instructions: string } }
+      setEditing({
+        name: body.draft.name,
+        description: body.draft.description,
+        workspace: ws,
+        instructions: body.draft.instructions,
+      })
+      setAiOpen(false)
+      setAiDesc("")
+      setAiExample("")
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao gerar a skill")
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   const load = async () => {
     try {
@@ -230,13 +269,69 @@ function SkillsDialog({ ws, onClose }: { ws: string; onClose: () => void }) {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setEditing({ workspace: ws })}
-            className="mt-3.5 inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
-            style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
-          >
-            <Plus className="h-3.5 w-3.5" /> Nova skill
-          </button>
+          <div className="mt-3.5 flex items-center gap-2">
+            <button
+              onClick={() => setEditing({ workspace: ws })}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
+              style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+            >
+              <Plus className="h-3.5 w-3.5" /> Nova skill
+            </button>
+            <button
+              onClick={() => setAiOpen(!aiOpen)}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-semibold"
+              style={{ background: "rgba(78,98,216,0.09)", color: BRAND }}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Criar com IA
+            </button>
+          </div>
+          {aiOpen && (
+            <div className="mt-3 rounded-[10px] border p-3" style={{ borderColor: HAIR }}>
+              <label className={labelCls} style={{ color: "var(--ops-mut)" }}>
+                O que a skill deve fazer?
+              </label>
+              <textarea
+                value={aiDesc}
+                onChange={(e) => setAiDesc(e.target.value)}
+                rows={2}
+                placeholder='ex.: "relatório semanal de performance no padrão que mando pros clientes, com destaque de quedas e 3 ações"'
+                className="w-full resize-y rounded-[8px] border bg-transparent px-2.5 py-2 text-[12.5px] leading-[1.55] outline-none"
+                style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+              />
+              <label className={labelCls} style={{ color: "var(--ops-mut)" }}>
+                Exemplo real do resultado desejado (opcional — a IA destila o padrão)
+              </label>
+              <textarea
+                value={aiExample}
+                onChange={(e) => setAiExample(e.target.value)}
+                rows={4}
+                placeholder="cole aqui um relatório/email/mensagem real no formato que você quer"
+                className="w-full resize-y rounded-[8px] border bg-transparent px-2.5 py-2 text-[12.5px] leading-[1.55] outline-none"
+                style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                  O rascunho abre no editor pra você revisar antes de salvar.
+                </span>
+                <button
+                  onClick={() => void generateWithAi()}
+                  disabled={aiBusy || aiDesc.trim().length < 10}
+                  className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: BRAND }}
+                >
+                  {aiBusy ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Gerando…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5" /> Gerar skill
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {editing && (

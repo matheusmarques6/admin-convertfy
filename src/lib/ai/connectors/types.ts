@@ -23,6 +23,8 @@ export type BuiltinConnectorKey =
   | "metricas"
   /** Geração de imagem — sempre disponível, não é toggle do composer. */
   | "imagem"
+  /** Relatório mensal da loja — sempre disponível (age sobre a loja da conversa). */
+  | "relatorio"
 
 /** built-in ou "mcp:<uuid do ai_mcp_servers>" */
 export type ConnectorKey = BuiltinConnectorKey | `mcp:${string}`
