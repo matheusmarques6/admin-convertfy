@@ -156,6 +156,8 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   const [callModal, setCallModal] = useState<Card | null>(null)
   const [callData, setCallData] = useState("")
   const [callNota, setCallNota] = useState("")
+  const [callFathom, setCallFathom] = useState("")
+  const [callResult, setCallResult] = useState<string | null>(null)
   const [editCols, setEditCols] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -269,24 +271,44 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   }
 
   const registrarCall = async () => {
-    if (!callModal || !callData) return
+    // Com link do Fathom a data é opcional (vem da gravação)
+    if (!callModal || (!callData && !callFathom.trim())) return
     setBusy(true)
     setActionError(null)
+    setCallResult(null)
     try {
       const res = await fetch(`/api/stores/${callModal.store_id}/calls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conducted_at: `${callData}T12:00:00`,
+          ...(callData ? { conducted_at: `${callData}T12:00:00` } : {}),
           notes: callNota.trim() || null,
+          fathom_url: callFathom.trim() || null,
         }),
       })
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
-        throw new Error((b as { error?: string })?.error || "Não foi possível registrar a call")
+      const b = (await res.json().catch(() => ({}))) as {
+        error?: string
+        fathom?: { title: string | null; action_items: number; participants: number } | null
       }
-      setCallModal(null)
+      if (!res.ok) {
+        throw new Error(b?.error || "Não foi possível registrar a call")
+      }
       await mutate()
+      if (b.fathom) {
+        // Confirma o que veio do Fathom antes de fechar — o operador
+        // precisa ver que a importação pegou o que esperava.
+        setCallResult(
+          `Importado do Fathom${b.fathom.title ? `: “${b.fathom.title}”` : ""} · ${b.fathom.action_items} item(ns) de ação · ${b.fathom.participants} participante(s).`,
+        )
+        setCallFathom("")
+        setCallNota("")
+        setTimeout(() => {
+          setCallModal(null)
+          setCallResult(null)
+        }, 2600)
+      } else {
+        setCallModal(null)
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Não foi possível registrar a call")
     } finally {
@@ -469,6 +491,9 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             setCallModal(selCard)
             setCallData(new Date().toISOString().slice(0, 10))
             setCallNota("")
+            setCallFathom("")
+            setCallResult(null)
+            setActionError(null)
           }}
           busy={busy}
         />
@@ -569,7 +594,22 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             </div>
           )}
           <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
-            Resumo (opcional)
+            Link do Fathom (opcional)
+          </div>
+          <input
+            type="url"
+            value={callFathom}
+            onChange={(e) => setCallFathom(e.target.value)}
+            placeholder="fathom.video/calls/123456789"
+            className="mt-[7px] box-border h-[34px] w-full rounded-[8px] border px-2.5 text-[12px] outline-none"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
+          />
+          <div className="mt-1.5 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+            Com o link, puxamos resumo, itens de ação e participantes direto do Fathom —
+            a data vem da gravação.
+          </div>
+          <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+            Resumo {callFathom.trim() ? "(complementa o do Fathom)" : "(opcional)"}
           </div>
           <textarea
             value={callNota}
@@ -579,10 +619,19 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             className="mt-[7px] box-border w-full resize-none rounded-[8px] border px-2.5 py-2 text-[12px] leading-[1.5] outline-none"
             style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
           />
+          {callResult && (
+            <div
+              className="mt-2.5 rounded-[8px] border px-2.5 py-2 text-[11px]"
+              style={{ borderColor: "var(--ops-pos)", color: "var(--ops-pos)" }}
+              role="status"
+            >
+              {callResult}
+            </div>
+          )}
           <div className="mt-3.5 flex justify-end gap-2">
             <ModalBtn onClick={() => setCallModal(null)}>Cancelar</ModalBtn>
-            <ModalBtn primary disabled={!callData || busy} onClick={registrarCall}>
-              Registrar
+            <ModalBtn primary disabled={(!callData && !callFathom.trim()) || busy} onClick={registrarCall}>
+              {busy && callFathom.trim() ? "Buscando no Fathom…" : "Registrar"}
             </ModalBtn>
           </div>
         </Modal>
@@ -1022,6 +1071,7 @@ function CarteiraDrawer({
             </strong>
           </span>
         </div>
+        <NextMeetingAgendaBlock storeId={c.store_id} />
         <button
           onClick={onRegistrarCall}
           className="mt-2.5 h-[29px] rounded-[7px] border px-3 text-[11.5px] font-medium"
@@ -1076,6 +1126,69 @@ const HEALTH_COMPONENT_LABELS: Array<[key: string, label: string]> = [
  * "por quê" do número que posiciona a loja na carteira. Regras e
  * fórmulas completas ficam no painel "Regras do score" do header.
  */
+/**
+ * Pauta da próxima reunião — o que ficou aberto nas calls anteriores.
+ * A rota devolve a agenda já montada (buildNextMeetingAgenda), então
+ * aqui é só exibição. Some quando não há nada aberto: bloco vazio no
+ * drawer é ruído.
+ */
+function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
+  const { data } = useSWR<{
+    next_meeting_agenda?: {
+      pending: Array<{ description: string; days_open: number; assignee: string | null }>
+      completed_since_last: string[]
+    }
+  }>(
+    `/api/stores/${storeId}/calls`,
+    (url: string) => fetch(url).then((r) => (r.ok ? r.json() : { next_meeting_agenda: null })),
+    { revalidateOnFocus: false },
+  )
+  const agenda = data?.next_meeting_agenda
+  const pending = agenda?.pending ?? []
+  const done = agenda?.completed_since_last ?? []
+  if (pending.length === 0 && done.length === 0) return null
+
+  return (
+    <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
+      <div className="text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+        Para a próxima call
+      </div>
+      {pending.length > 0 ? (
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {pending.slice(0, 5).map((p, i) => (
+            <li key={i} className="flex items-start justify-between gap-2 text-[11.5px]">
+              <span style={{ color: "var(--ops-title)" }}>
+                {p.description}
+                {p.assignee && (
+                  <span style={{ color: "var(--ops-mut)" }}> · {p.assignee}</span>
+                )}
+              </span>
+              <span
+                className="shrink-0 text-[10.5px]"
+                style={{
+                  color: p.days_open >= 30 ? "var(--ops-neg)" : p.days_open >= 14 ? "var(--ops-warn)" : "var(--ops-mut)",
+                  ...TNUM,
+                }}
+              >
+                {p.days_open}d
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--ops-pos)" }}>
+          Nenhuma pendência aberta.
+        </div>
+      )}
+      {done.length > 0 && (
+        <div className="mt-2 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+          Entregue desde então: {done.slice(0, 3).join(" · ")}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DrawerHealth({ storeId, score }: { storeId: string; score: number | null }) {
   const { data } = useSWR<{ history: Array<{ health_score: number; components: Record<string, number>; created_at: string }> }>(
     `/api/admin/stores/${storeId}/health-history?limit=1`,
