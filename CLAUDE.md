@@ -1777,7 +1777,7 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 |---|--------|---------|-----------------|-------|--------|
 | 1 | **Briefing** | `briefing-generation.service.ts` | cascata `claude-sonnet-4-6` → `openai/gpt-5.3-chat` → template | `form_responses` + pesquisa (`pesquisaToFullText`) | `onboardings.briefing` (JSON BriefingContent) |
 | 2 | **Pesquisa & Diagnóstico** | n8n callbacks `/api/webhooks/n8n/{brand,competitors,icp,tone,ads-analyzer}` | n8n + agentes | URL da loja | 5 pilares em `client_stores` (`brand_*`,`store_*`,`icp_*`,`tone_*`,`ads_*`) |
-| 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **`anthropic/claude-opus-4.8`** (OpenRouter) · T=0.3 · max 16384 | briefing+pesquisa+outline+`structure`+`reference_template_html`+biblioteca | HTML de ARQUITETURA → `store_email_references` (só persiste se `usedLlm`) |
+| 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **DESLIGADO** (`montador_mode='off'`, migration 20261107). Ligado: `moonshotai/kimi-k3` · T=0.3 · max 2048 | finalistas do Curador + `output_schema`, perfil, objeções, vocabulário, produtos, memória, decisão do Estruturador | JSON de escolha (1 variante por posição). O HTML é montado por CÓDIGO (`assemble-document.ts`) a partir do rank 1 do Curador → `store_email_references` (`model='code'`, `slot_map`) |
 | 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
 | 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | **`openai/gpt-5.4-image-2`** (OpenRouter) · 90s | blocos `needs_image` + `image_brief` | `email_blocks.content.image_url`/`image_alt`; status `image_done` |
@@ -1804,7 +1804,17 @@ placeholders + lang rodam UMA vez no fim da cadeia (após 7c). Executor legado
 `generateEmail` + rotas `generate-flow`/`test-generate` removidos. Nos logs, a
 linha sintética "Montagem HTML" soma os 4 agentes + legados.
 
-**Papel-chave**: o Montador (#3) GERA a arquitetura HTML (esqueleto, ordem dos
+**Montador desligado (03/09, migration 20261107)**: desde CM-4 o Montador
+NÃO escreve HTML — escolhia 1 entre as até 3 finalistas do Curador e o
+documento era concatenado por código. Agora o Curador do vault devolve UMA
+variante por posição (`SHADOW_TOP_N = 1`) e ela vai direto para
+`assembleDocument`; o passo B não chama LLM (`loadMontadorMode` →
+kill-switch `email_generation_settings.montador_mode`, aba Configurações)
+e grava a run `assembler` como `skipped` com as stats da montagem. O
+Curador legado do kimi (fallback) segue rankeando até 3 — desligado, o
+rank 1 dele é a escolha.
+
+**Papel-chave (histórico)**: o Montador (#3) GERAVA a arquitetura HTML (esqueleto, ordem dos
 blocos, CSS variables, placeholders `{{HEADLINE}}`) UMA vez por loja×email; a
 cadeia 7a-7d só FINALIZA (hero, copy, imagens, cores) — nunca redesenha.
 

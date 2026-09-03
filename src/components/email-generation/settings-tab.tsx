@@ -111,6 +111,7 @@ export function SettingsTab() {
       form.merge_verifier_mode ?? settings?.merge_verifier_mode ?? "on_flag",
     estruturador_mode:
       form.estruturador_mode ?? settings?.estruturador_mode ?? "off",
+    montador_mode: form.montador_mode ?? settings?.montador_mode ?? "off",
     refiner_enabled: form.refiner_enabled ?? settings?.refiner_enabled ?? true,
     max_blocks_per_email:
       form.max_blocks_per_email ?? settings?.max_blocks_per_email ?? 9,
@@ -269,6 +270,26 @@ export function SettingsTab() {
                     { value: "off", label: "Desligado" },
                     { value: "shadow", label: "Observar (shadow)" },
                     { value: "on", label: "Decidir (on)" },
+                  ]}
+                />
+              </div>
+            </SettingRow>
+            <SettingRow
+              title="Montador"
+              sub="Desligado = a variante que o Curador escolheu para cada posição vai direto para a montagem por código, sem outro agente no meio. Ligado = o Montador escolhe entre os finalistas do Curador olhando o email inteiro"
+            >
+              <div style={{ width: 170, flexShrink: 0 }}>
+                <EGSelect
+                  value={merged.montador_mode}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      montador_mode: v as "off" | "on",
+                    }))
+                  }
+                  options={[
+                    { value: "off", label: "Desligado" },
+                    { value: "on", label: "Ligado" },
                   ]}
                 />
               </div>

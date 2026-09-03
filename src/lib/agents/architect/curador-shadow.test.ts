@@ -40,7 +40,10 @@ describe("parseCuradorVaultOutput", () => {
   it("o system exige justificativa por posição e motivo em todo rank", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("OUTPUT SAI JUSTIFICADO")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("TODA escolha rankeada leva `motivo`")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("A escolha leva `motivo`")
+    // 03/09: uma variante por posição — o Montador saiu do caminho.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("uma só, a que encaixa melhor")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("em ordem de preferência")
   })
 })
 

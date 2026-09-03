@@ -21,7 +21,7 @@ Efeito operacional de `on`: o reuso da fase 1 é desligado (ADR
 ## Ordem da fase 1
 
 ```
-Pesquisa completa → ESTRUTURADOR → CURADOR (vault) → Montador → Blueprint → copy n8n (fase 2)
+Pesquisa completa → ESTRUTURADOR → CURADOR (vault, 1 variante/posição) → [Montador desligado — 20261107] → montagem por código → Blueprint → copy n8n (fase 2)
 ```
 
 `generate.service.ts`: lê o modo (`email_generation_settings.estruturador_mode`)

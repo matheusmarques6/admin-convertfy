@@ -90,6 +90,37 @@ export async function loadCuradorVaultMode(storeId: string): Promise<CuradorVaul
   }
 }
 
+export type MontadorMode = "off" | "on"
+
+/**
+ * Kill-switch do Montador (migration 20261107). `off` = o passo B não
+ * chama LLM: a escolha de cada posição é o rank 1 do Curador, e o código
+ * monta o documento. Coluna/linha ausente → `on` (comportamento anterior à
+ * migration), ao contrário do Curador do vault, cujo default é `off`.
+ */
+export async function loadMontadorMode(storeId: string): Promise<MontadorMode> {
+  try {
+    const admin = createAdminClient()
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("org_id")
+      .eq("id", storeId)
+      .maybeSingle()
+    const orgId = (store as { org_id?: string | null } | null)?.org_id
+    if (!orgId) return "on"
+    const { data, error } = await admin
+      .from("email_generation_settings")
+      .select("montador_mode")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    if (error) return "on"
+    const mode = (data as { montador_mode?: string | null } | null)?.montador_mode
+    return mode === "off" ? "off" : "on"
+  } catch {
+    return "on"
+  }
+}
+
 export function emptyCuradorVaultKnowledge(): CuradorVaultKnowledge {
   return {
     protocolo: null,

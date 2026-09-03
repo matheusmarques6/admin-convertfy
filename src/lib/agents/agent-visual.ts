@@ -87,7 +87,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   assembler: {
     name: "Montador",
-    desc: "Monta o HTML reusando as variantes escolhidas (passo B)",
+    desc: "Escolhe 1 entre os finalistas do Curador (passo B); desligado, o rank 1 vai direto para a montagem por código",
     color: "#2137B6",
     bg: "#EEF0FB",
     border: "#C7CDEF",
