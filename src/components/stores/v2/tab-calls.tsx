@@ -17,6 +17,18 @@ interface Call {
   klaviyo_revenue: number | null
   total_revenue: number | null
   conducted_by_profile: { id: string; name: string; avatar_url: string | null } | null
+  /** Presentes quando a call veio do Fathom (migration 20261106). */
+  fathom_url?: string | null
+  fathom_recording_id?: string | null
+}
+
+interface CallsPayload {
+  calls: Call[]
+  upcoming_call_date: string | null
+  next_meeting_agenda?: {
+    pending: Array<{ description: string; days_open: number; assignee: string | null }>
+    completed_since_last: string[]
+  }
 }
 
 function moneyBRL(n: number | null): string {
@@ -24,46 +36,77 @@ function moneyBRL(n: number | null): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(n)
 }
 
+const EMPTY_FORM = {
+  conducted_at: new Date().toISOString().slice(0, 16),
+  duration_minutes: 30,
+  notes: "",
+  action_items: "",
+  next_call_date: "",
+  fathom_url: "",
+}
+
 export default function TabCalls({ storeId }: { storeId: string }) {
-  const { data, isLoading, mutate } = useSWR<{ data?: { calls: Call[]; upcoming_call_date: string | null } }>(
+  // successResponse ESPALHA no topo ({success, calls, ...}) — ler
+  // `data.data` deixava o histórico sempre vazio. Aceita os dois
+  // formatos para não depender do envelope.
+  const { data, isLoading, mutate } = useSWR<{ data?: CallsPayload } & Partial<CallsPayload>>(
     `/api/stores/${storeId}/calls`,
     fetcher,
   )
-  const payload = data?.data
+  const payload: CallsPayload | undefined = data?.calls
+    ? (data as CallsPayload)
+    : data?.data
   const calls = payload?.calls ?? []
   const upcoming = payload?.upcoming_call_date ?? null
+  const agenda = payload?.next_meeting_agenda
 
   const [showNewForm, setShowNewForm] = useState(false)
-  const [form, setForm] = useState({
-    conducted_at: new Date().toISOString().slice(0, 16),
-    duration_minutes: 30,
-    notes: "",
-    action_items: "",
-    next_call_date: "",
-  })
+  const [saving, setSaving] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+  const [form, setForm] = useState({ ...EMPTY_FORM })
 
   async function createCall() {
-    await fetch(`/api/stores/${storeId}/calls`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        conducted_at: new Date(form.conducted_at).toISOString(),
-        duration_minutes: form.duration_minutes,
-        notes: form.notes,
-        action_items: form.action_items,
-        next_call_date: form.next_call_date ? new Date(form.next_call_date).toISOString() : null,
-      }),
-    })
-    setShowNewForm(false)
-    setForm({
-      conducted_at: new Date().toISOString().slice(0, 16),
-      duration_minutes: 30,
-      notes: "",
-      action_items: "",
-      next_call_date: "",
-    })
-    mutate()
+    if (saving) return
+    setSaving(true)
+    setErro(null)
+    setOkMsg(null)
+    try {
+      const res = await fetch(`/api/stores/${storeId}/calls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          conducted_at: new Date(form.conducted_at).toISOString(),
+          duration_minutes: form.duration_minutes,
+          notes: form.notes || null,
+          action_items: form.action_items || null,
+          next_call_date: form.next_call_date
+            ? new Date(form.next_call_date).toISOString()
+            : null,
+          fathom_url: form.fathom_url.trim() || null,
+        }),
+      })
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string
+        fathom?: { title: string | null; action_items: number } | null
+      }
+      // Antes o erro era engolido: o form fechava e nada acontecia.
+      if (!res.ok) throw new Error(body?.error || `Não foi possível salvar (${res.status})`)
+      await mutate()
+      if (body.fathom) {
+        setOkMsg(
+          `Importado do Fathom${body.fathom.title ? `: “${body.fathom.title}”` : ""} · ${body.fathom.action_items} item(ns) de ação.`,
+        )
+        setTimeout(() => setOkMsg(null), 5000)
+      }
+      setShowNewForm(false)
+      setForm({ ...EMPTY_FORM, conducted_at: new Date().toISOString().slice(0, 16) })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível salvar a call")
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (isLoading) {
@@ -139,6 +182,15 @@ export default function TabCalls({ storeId }: { storeId: string }) {
               gap: 10,
             }}
           >
+            <FormField label="Link do Fathom (opcional · puxa resumo, ações e participantes)" colSpan={2}>
+              <input
+                type="url"
+                value={form.fathom_url}
+                onChange={(e) => setForm({ ...form, fathom_url: e.target.value })}
+                placeholder="fathom.video/calls/123456789"
+                style={inputStyle}
+              />
+            </FormField>
             <FormField label="Data/hora da call">
               <input
                 type="datetime-local"
@@ -179,17 +231,82 @@ export default function TabCalls({ storeId }: { storeId: string }) {
                 placeholder="O que ficou definido..."
               />
             </FormField>
+            {erro && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  fontSize: 12,
+                  color: C.neg,
+                  background: C.negBg,
+                  border: `1px solid ${C.negBorder}`,
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                }}
+                role="alert"
+              >
+                {erro}
+              </div>
+            )}
             <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <Btn variant="ghost" size="sm" onClick={() => setShowNewForm(false)}>
                 Cancelar
               </Btn>
-              <Btn variant="primary" size="sm" onClick={createCall}>
-                Salvar call
+              <Btn variant="primary" size="sm" onClick={createCall} disabled={saving}>
+                {saving ? (form.fathom_url.trim() ? "Buscando no Fathom…" : "Salvando…") : "Salvar call"}
               </Btn>
             </div>
           </div>
         )}
       </Section>
+
+      {okMsg && (
+        <div
+          style={{
+            fontSize: 12.5,
+            color: C.pos,
+            background: C.posBg,
+            border: `1px solid ${C.posBorder}`,
+            borderRadius: 6,
+            padding: "10px 12px",
+          }}
+          role="status"
+        >
+          {okMsg}
+        </div>
+      )}
+
+      {/* Pauta da próxima call: o que ficou aberto nas anteriores */}
+      {agenda && agenda.pending.length > 0 && (
+        <Section title="Para falar na próxima call">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {agenda.pending.map((p, i) => (
+              <div
+                key={i}
+                style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}
+              >
+                <span style={{ color: C.g900 }}>
+                  {p.description}
+                  {p.assignee && <span style={{ color: C.g500 }}> · {p.assignee}</span>}
+                </span>
+                <span
+                  style={{
+                    ...TNUM,
+                    fontSize: 11,
+                    color: p.days_open >= 30 ? C.neg : p.days_open >= 14 ? C.warn : C.g500,
+                  }}
+                >
+                  aberto há {p.days_open}d
+                </span>
+              </div>
+            ))}
+            {agenda.completed_since_last.length > 0 && (
+              <div style={{ fontSize: 11, color: C.g500, marginTop: 4 }}>
+                Entregue desde então: {agenda.completed_since_last.slice(0, 4).join(" · ")}
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
 
       <Section title={`Histórico · ${calls.length} calls`}>
         {calls.length === 0 ? (
@@ -216,8 +333,21 @@ export default function TabCalls({ storeId }: { storeId: string }) {
                       year: "numeric",
                     })}
                   </div>
-                  <div style={{ fontSize: 11, color: C.g500 }}>
-                    {c.duration_minutes ?? "—"}min · {c.conducted_by_profile?.name ?? "—"}
+                  <div style={{ fontSize: 11, color: C.g500, display: "flex", gap: 8, alignItems: "center" }}>
+                    <span>
+                      {c.duration_minutes ?? "—"}min · {c.conducted_by_profile?.name ?? "—"}
+                    </span>
+                    {c.fathom_url && (
+                      <a
+                        href={c.fathom_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: C.brand, textDecoration: "none", fontWeight: 600 }}
+                        title="Abrir a gravação no Fathom"
+                      >
+                        ▶ Fathom
+                      </a>
+                    )}
                   </div>
                 </div>
                 {c.notes && (
