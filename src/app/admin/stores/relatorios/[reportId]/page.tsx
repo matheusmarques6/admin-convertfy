@@ -5,7 +5,8 @@
 
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { canAccessReport } from "@/lib/api/store-org-guard"
 import { ReportPreviewClient } from "@/components/stores/v2/report-preview-client"
 import { ReportSlidesEditor } from "@/components/stores/v2/report-slides-editor"
 import type { ReportSnapshot, ReportKpisOverrides } from "@/types/monthly-report"
@@ -64,6 +65,13 @@ export default async function ReportPreviewPage({
   params: Promise<{ reportId: string }>
 }) {
   const { reportId } = await params
+  // A página lê com service role (bypassa RLS) — o escopo por org é
+  // aqui, não no middleware (que só exige sessão).
+  const sb = await createClient()
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!(await canAccessReport(createAdminClient(), user?.id, reportId))) notFound()
   const report = await getReport(reportId)
   if (!report) notFound()
 

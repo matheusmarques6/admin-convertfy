@@ -9,6 +9,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { mergeKpisOverrides } from "@/lib/services/report-overrides.service"
+import { assertReportInUserOrg } from "@/lib/api/store-org-guard"
 import type { ReportKpisOverrides, ReportKpisOverridesPatch } from "@/types/monthly-report"
 
 export const dynamic = "force-dynamic"
@@ -91,8 +92,9 @@ export async function GET(
   try {
     const { reportId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertReportInUserOrg(admin, user.id, reportId)
     const { data, error } = await admin
       .from("client_monthly_reports")
       .select("*")
@@ -114,6 +116,7 @@ export async function PATCH(
     const sb = await createClient()
     const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertReportInUserOrg(admin, user.id, reportId)
 
     const raw = await request.json()
     const parsed = patchSchema.safeParse(raw)
@@ -170,8 +173,9 @@ export async function DELETE(
   try {
     const { reportId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertReportInUserOrg(admin, user.id, reportId)
     const { error } = await admin
       .from("client_monthly_reports")
       .delete()

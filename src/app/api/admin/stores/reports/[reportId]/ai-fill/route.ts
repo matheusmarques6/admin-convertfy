@@ -11,6 +11,7 @@
 import { NextRequest } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { assertReportInUserOrg } from "@/lib/api/store-org-guard"
 import {
   errorResponse,
   successResponse,
@@ -40,8 +41,9 @@ export async function POST(
   try {
     const { reportId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
+    await assertReportInUserOrg(admin, user.id, reportId)
 
     // Carrega o relatório com snapshot
     const { data: report, error: fetchErr } = await admin
