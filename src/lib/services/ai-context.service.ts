@@ -46,12 +46,40 @@ function deltaPp(cur: { n: number; d: number }, prev: { n: number; d: number }):
 }
 
 /**
+ * Cache do dossiê por loja. São 7 queries por chamada e a rota do chat
+ * refaz o contexto a CADA mensagem — numa conversa de 10 turnos eram
+ * 70 queries para dados que mudam no ritmo de sync diário/campanha.
+ * TTL curto (90s) mantém a conversa fresca; o cap evita crescer sem
+ * limite na memória da instância serverless.
+ */
+const CONTEXT_TTL_MS = 90_000
+const CONTEXT_CACHE_MAX = 50
+const contextCache = new Map<string, { text: string; expiresAt: number }>()
+
+/**
  * Dossiê da loja injetado no system prompt da ConvertIA. É o PISO de
  * contexto: quanto mais rico, menos rodadas o modelo gasta se situando
  * e menos resposta genérica sai. Cada bloco falha de forma isolada
  * (Promise.allSettled) — fonte indisponível vira lacuna, nunca erro.
  */
 export async function buildStoreContext(storeId: string): Promise<string> {
+  const now = Date.now()
+  const cached = contextCache.get(storeId)
+  if (cached && cached.expiresAt > now) return cached.text
+  const text = await buildStoreContextUncached(storeId)
+  // Só cacheia resultado ÚTIL — string vazia é falha/loja inexistente e
+  // não deve congelar por 90s.
+  if (text) {
+    if (contextCache.size >= CONTEXT_CACHE_MAX) {
+      const oldest = contextCache.keys().next().value
+      if (oldest) contextCache.delete(oldest)
+    }
+    contextCache.set(storeId, { text, expiresAt: now + CONTEXT_TTL_MS })
+  }
+  return text
+}
+
+async function buildStoreContextUncached(storeId: string): Promise<string> {
   try {
     const admin = createAdminClient()
     const { data: store } = await admin
