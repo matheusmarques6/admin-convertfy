@@ -35,9 +35,14 @@ import {
 } from "@/lib/ai/openrouter-chat"
 import { resolveConnectors } from "@/lib/ai/connectors/registry"
 import { buildImagemConnector } from "@/lib/ai/connectors/imagem"
+import { buildRelatorioConnector } from "@/lib/ai/connectors/relatorio"
 import type { ConnectorTool, ConnectorToolContext } from "@/lib/ai/connectors/types"
 import { resolveConvertiaModel } from "@/lib/ai/convertia-models"
 import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
+import {
+  describeToolArgs,
+  isAnalyticalQuestion,
+} from "@/lib/ai/convertia-chat-heuristics"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ConvertiaChat")
@@ -46,6 +51,8 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
 const MAX_TOOL_ROUNDS = 6
+/** Análise profunda: mais rodadas de consulta e resposta mais longa. */
+const DEEP_TOOL_ROUNDS = 12
 const HISTORY_LIMIT = 24
 
 const attachmentSchema = z.object({
@@ -66,6 +73,8 @@ const bodySchema = z.object({
   connectors: z.array(z.string().max(50)).max(20).default([]),
   skills: z.array(z.string().uuid()).max(20).default([]),
   attachments: z.array(attachmentSchema).max(3).default([]),
+  /** Modo análise profunda: plano → coleta ampla → análise completa. */
+  deep: z.boolean().default(false),
 })
 
 function sse(payload: unknown): string {
@@ -94,7 +103,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = bodySchema.parse(await request.json())
-    const model = resolveConvertiaModel(body.model).id
+    const modelInfo = resolveConvertiaModel(body.model)
+    const model = modelInfo.id
     const storeId = body.store_id ?? null
 
     // ── Conversa (cria com o contexto do composer) ────────────────
@@ -173,6 +183,14 @@ export async function POST(request: NextRequest) {
         },
       }),
     )
+    // Relatório mensal da loja: gera pelo sistema oficial — precisa do
+    // cookie da sessão (o snapshot consulta endpoints internos autenticados)
+    connectors.push(
+      buildRelatorioConnector({
+        origin: request.nextUrl.origin,
+        cookie: request.headers.get("cookie") ?? "",
+      }),
+    )
     const toolIndex = new Map<string, { tool: ConnectorTool; connectorKey: string; connectorName: string }>()
     const toolDefs: ChatToolDef[] = []
     for (const c of connectors) {
@@ -203,8 +221,15 @@ export async function POST(request: NextRequest) {
         ? `Você TEM ferramentas de EXECUÇÃO nesta mensagem (não apenas leitura): ${writeToolNames.join(", ")}. As ferramentas disponíveis AGORA são a única verdade — ignore qualquer afirmação anterior desta conversa sobre não conseguir executar. Ações de execução: use apenas com pedido explícito do usuário, e confirme o que foi feito. Envio de campanha e exclusões: peça confirmação nomeando o alvo antes.`
         : "As ferramentas disponíveis nesta mensagem são só de leitura — para executar ações, o usuário precisa ligar o conector correspondente.",
       "Se um dado não veio das tools, diga que não tem. Termine análises com uma recomendação prática quando fizer sentido.",
+      // Perfil de resposta por tipo de pergunta — mata a resposta
+      // genérica de tamanho único.
+      "Calibre o FORMATO ao tipo de pergunta: pergunta rápida/fatual → resposta curta e direta, sem seções nem enrolação. Pedido de ANÁLISE → obrigatório: (1) consulte os dados pelas tools primeiro; (2) cite os números reais que encontrou; (3) compare com o período anterior ou benchmark quando disponível; (4) feche com recomendação prática e acionável. Análise sem número consultado é resposta ruim — não entregue.",
+      body.deep
+        ? "MODO ANÁLISE PROFUNDA ativado pelo usuário. Fluxo obrigatório: (1) comece a resposta com um plano curto — linha '**Plano:**' seguida de 2-4 bullets dizendo quais dados vai consultar e por quê; (2) execute TODAS as consultas necessárias, em várias rodadas se preciso — cruze fontes (métricas + campanhas + flows + CRM quando fizer sentido), busque a comparação temporal e os outliers; (3) só então redija a análise completa: contexto → números consultados → causas prováveis → recomendações priorizadas com impacto estimado. Profundidade é o objetivo — não resuma por economia."
+        : "",
       "Quando o usuário pedir um email, página ou peça em HTML, entregue o documento COMPLETO num bloco ```html — o chat renderiza esse bloco como preview visual com abas Preview/Código. Para email, use HTML de email (tabelas, estilos inline, largura 600px). Arquivos anexados pelo usuário chegam como [Arquivo anexado: nome] com o conteúdo — use-os como referência fiel.",
       "Para gerar IMAGENS (foto, banner, arte de campanha), use a tool convertia_gerar_imagem e inclua o resultado na resposta como markdown ![descrição](url) — o chat renderiza a imagem inline. Nunca invente URLs de imagem.",
+      "Para RELATÓRIO MENSAL da loja, use a tool gerar_relatorio_loja (sistema oficial de relatórios — KPIs reais, campanhas, flows) e apresente os links devolvidos como markdown. Se ela avisar que já existe relatório do mês, pergunte ao usuário antes de chamar com substituir=true.",
       storeContext ? `## Contexto da loja selecionada\n${storeContext}` : "",
       skillsBlock ? `## Skills ativas (siga estas instruções)\n${skillsBlock}` : "",
     ]
@@ -218,6 +243,7 @@ export async function POST(request: NextRequest) {
       connectors: connectors.map((c) => `${c.key}:${c.tools.length}`),
       write_tools: writeToolNames.length,
       total_tools: toolDefs.length,
+      deep: body.deep,
     })
 
     // ── Anexos: arquivos de texto entram INLINE (viram parte do
@@ -290,6 +316,7 @@ export async function POST(request: NextRequest) {
           tool: string
           label: string
           summary: string | null
+          args_summary: string | null
           write: boolean
         }> = []
         let fullText = ""
@@ -301,25 +328,66 @@ export async function POST(request: NextRequest) {
 
         send({ type: "meta", conversation_id: conversationId, title: conversationTitle })
 
+        // Guard "consulte antes de responder": pergunta ANALÍTICA com
+        // conectores ligados não pode sair de memória. O 1º passe roda
+        // com os deltas RETIDOS; se ele terminar sem nenhuma tool call,
+        // o texto retido é descartado, um nudge entra na conversa e o
+        // modelo ganha um novo passe (que aí streama normal). Uma
+        // tentativa só — o 2º passe vale o que vier.
+        let nudgePending = toolDefs.length > 0 && isAnalyticalQuestion(body.message)
+        const maxRounds = body.deep ? DEEP_TOOL_ROUNDS : MAX_TOOL_ROUNDS
+
         try {
-          for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+          for (let round = 0; round <= maxRounds; round++) {
+            const holdDeltas = nudgePending
+            let held = ""
             const result = await streamOpenRouterChat({
               model,
               messages,
               tools: toolDefs.length > 0 ? toolDefs : undefined,
-              maxTokens: 4096,
+              maxTokens: body.deep ? 12288 : 4096,
+              // Análise profunda liga o raciocínio estendido nos
+              // modelos que aceitam (OpenRouter normaliza o parâmetro)
+              reasoning: body.deep && modelInfo.reasoning ? { effort: "medium" } : undefined,
               signal: request.signal,
-              onDelta: (text) => send({ type: "delta", text }),
+              onDelta: holdDeltas
+                ? (text) => {
+                    held += text
+                  }
+                : (text) => send({ type: "delta", text }),
             })
             tokensInput += result.tokensInput
             tokensOutput += result.tokensOutput
             costUsd += result.costUsd
+
+            if (holdDeltas) {
+              nudgePending = false
+              const answeredWithoutData =
+                result.toolCalls.length === 0 && result.finishReason !== "tool_calls"
+              if (answeredWithoutData) {
+                // Resposta de memória descartada — nudge e novo passe.
+                log.info("nudge de consulta", {
+                  conversation_id: conversationId,
+                  discarded_len: result.text.length,
+                })
+                messages.push({ role: "assistant", content: result.text || "(vazio)" })
+                messages.push({
+                  role: "user",
+                  content:
+                    "[verificação automática] Sua resposta não consultou NENHUMA fonte, mas a pergunta pede dados reais. Use as tools disponíveis agora para buscar os números e responda de novo com base neles — não repita a resposta de memória.",
+                })
+                continue
+              }
+              // Passou no guard: solta o que ficou retido e segue normal.
+              if (held) send({ type: "delta", text: held })
+            }
+
             if (result.text) {
               fullText = fullText ? `${fullText}\n\n${result.text}` : result.text
             }
 
             if (result.finishReason !== "tool_calls" || result.toolCalls.length === 0) break
-            if (round === MAX_TOOL_ROUNDS) {
+            if (round === maxRounds) {
               send({ type: "delta", text: "\n\n_(limite de consultas atingido)_" })
               break
             }
@@ -337,6 +405,12 @@ export async function POST(request: NextRequest) {
               if (!entry) {
                 output = `Tool desconhecida: ${call.function.name}`
               } else {
+                let args: Record<string, unknown> = {}
+                try {
+                  args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>
+                } catch {
+                  /* args ilegíveis — executa com vazio */
+                }
                 send({
                   type: "tool",
                   id: call.id,
@@ -345,14 +419,11 @@ export async function POST(request: NextRequest) {
                   name: call.function.name,
                   label: entry.tool.label,
                   write: entry.tool.write === true,
+                  // o QUE está sendo consultado ("period: 30d · status:
+                  // paid") — a UI mostra enquanto a consulta roda
+                  args_summary: describeToolArgs(args),
                   status: "start",
                 })
-                let args: Record<string, unknown> = {}
-                try {
-                  args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>
-                } catch {
-                  /* args ilegíveis — executa com vazio */
-                }
                 const ctx: ConnectorToolContext = {
                   admin,
                   orgId,
@@ -374,6 +445,7 @@ export async function POST(request: NextRequest) {
                   tool: call.function.name,
                   label: entry.tool.label,
                   summary,
+                  args_summary: describeToolArgs(args),
                   write: entry.tool.write === true,
                 })
                 send({ type: "tool", id: call.id, status: "done", summary })
@@ -407,6 +479,7 @@ export async function POST(request: NextRequest) {
                 meta: {
                   model,
                   sources,
+                  ...(body.deep ? { deep: true } : {}),
                   // nomes das skills ativas — base do painel de feedback
                   skills: (skillRows ?? []).map((s) => s.name),
                   usage: {

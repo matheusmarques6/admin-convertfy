@@ -13,6 +13,12 @@ export interface ConvertiaModel {
   name: string
   description: string
   tag: string | null
+  /**
+   * Aceita o parâmetro `reasoning` do OpenRouter (raciocínio estendido,
+   * usado no modo Análise profunda). Todos os atuais aceitam via
+   * normalização do OpenRouter; modelo futuro sem suporte marca false.
+   */
+  reasoning: boolean
 }
 
 export const CONVERTIA_MODELS: ConvertiaModel[] = [
@@ -21,30 +27,35 @@ export const CONVERTIA_MODELS: ConvertiaModel[] = [
     name: "Claude Opus 4.8",
     description: "Máxima qualidade — análises complexas",
     tag: "padrão",
+    reasoning: true,
   },
   {
     id: "anthropic/claude-sonnet-4.6",
     name: "Claude Sonnet 4.6",
     description: "Rápido e capaz — uso diário",
     tag: null,
+    reasoning: true,
   },
   {
     id: "openai/gpt-5.3-chat",
     name: "GPT-5.3",
     description: "OpenAI — alternativa geral",
     tag: null,
+    reasoning: true,
   },
   {
     id: "google/gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
     description: "Google — contexto longo",
     tag: null,
+    reasoning: true,
   },
   {
     id: "moonshotai/kimi-k3",
     name: "Kimi K3",
     description: "Custo baixo — tarefas leves",
     tag: null,
+    reasoning: true,
   },
 ]
 
