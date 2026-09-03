@@ -31,11 +31,18 @@
 -- agent_type='image' AND version=3; UPDATE ... SET is_active=true WHERE
 -- agent_type='image' AND version=2;` — a v2 fica guardada, inativa.
 
--- 1. Nova versão herda model/temperature/max_tokens da ativa; a antiga fica
---    inativa como histórico.
+-- 1. Desativa a versão vigente ANTES de inserir a nova: o índice único
+--    parcial `idx_agent_config_active` permite UMA linha ativa por
+--    agent_type (a primeira tentativa inseriu primeiro e tomou 23505).
+update email_agent_configs
+   set is_active = false
+ where agent_type = 'image' and is_active = true;
+
+-- 2. Nova versão herda model/temperature/max_tokens da maior versão (que
+--    continua existindo, inativa, como histórico).
 with atual as (
   select * from email_agent_configs
-   where agent_type = 'image' and is_active = true
+   where agent_type = 'image'
    order by version desc limit 1
 )
 insert into email_agent_configs (
@@ -97,12 +104,6 @@ UNIVERSAL RESTRICTIONS:
 {{INSTRUCAO_ADICIONAL}}
 {{/if}}$USR$
 from atual;
-
-update email_agent_configs
-   set is_active = false
- where agent_type = 'image'
-   and is_active = true
-   and version < (select max(version) from email_agent_configs where agent_type = 'image');
 
 select agent_type, version, is_active, model, length(system_prompt) as sys, length(user_template) as usr
   from email_agent_configs where agent_type='image' order by version;
