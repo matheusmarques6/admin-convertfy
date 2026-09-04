@@ -93,11 +93,11 @@ Como decidir, na ordem:
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
    <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
-2.  elimine por ativa/schema (já filtrados do catálogo), declarar outro momento NÃO elimina, e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por momento → objecao → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
+2.  elimine por ativa/schema (já filtrados do catálogo), declarar outro momento NÃO elimina, e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por momento → objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo tem força de VETO, igual a quando_nao_usar: variante cuja anatomia obriga um item proibido está FORA, não em último lugar. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
-Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra; <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
+Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra (é o critério do eixo objecao só quando <alvo> declara ausência); <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
 
 O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
 - \`papeis\`: UMA frase por posição dizendo COMO a variante escolhida realiza o papel decidido pelo Estruturador (qual parte da anatomia entrega o quê). Não é lugar de reescrever o papel nem de propor outra sequência. Sem decisão do Estruturador, aí sim é o papel derivado da intenção.
@@ -175,6 +175,10 @@ biblioteca (não existe variante que não existe).
 <perfil_marca>
 {{briefing_marca}}
 </perfil_marca>
+
+<alvo>
+{{alvo}}
+</alvo>
 
 <objecoes>
 {{objecoes}}
@@ -507,6 +511,8 @@ export interface CuradorShadowParams {
    */
   baseInputSummary?: InputSummaryItem[]
   liveRank1: Map<number, string>
+  /** Alvo do Seletor para o medidor de veto (aliviador_ausente / proibicao_violada). */
+  alvoMedicao?: AlvoParaMedicao | null
 }
 
 /**
@@ -696,6 +702,7 @@ export async function runCuradorShadow(
       extras: p.extras,
       momento,
       sectionByBlock,
+      alvo: p.alvoMedicao ?? null,
     })
 
     // Concordância rank-1 com o vivo, nas posições comparáveis (mesma

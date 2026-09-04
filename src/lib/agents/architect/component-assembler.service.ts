@@ -27,6 +27,8 @@
  *     template global.
  */
 
+import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
+import type { AlvoParaMedicao } from "./curador-shadow"
 import crypto from "crypto"
 
 import { createAdminClient } from "@/lib/supabase/server"
@@ -233,7 +235,7 @@ Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.
 Como usar os eixos do vault (variantes com campo \`vault\`):
 - momento SÓ elimina por VETO: se <momento> do email está em \`vault.momento_vetado\`, a variante está FORA. Declarar outro momento NÃO elimina — \`vault.momento\` diz onde a variante brilha, não onde ela é permitida. Ele é o PRIMEIRO eixo do ranking, nesta ordem: 1º quem declara o momento pedido, 2º quem tem lista vazia, 3º quem declara outros momentos.
 - Material que a variante pede (foto, tipografia, tipo de campanha) NÃO elimina ninguém: a imagem é gerada depois. Adequação de material entra no ranking, nunca no corte.
-- Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com a objeção-alvo deste email (da intenção/decisão servidas ou de <objecoes>); eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
+- Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → aliviador → profundidade → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com o eixo equivalente do alvo em <alvo> (ou com <objecoes> quando não há alvo); \`vault.aliviador\` com o \`aliviador pedido\`; \`vault.profundidade\` com a \`profundidade de prova\` pedida. Eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
 - \`vault.convivencia\`: respeite as regras de <convivencia> contra as variantes que você indica nas OUTRAS posições da mesma peça (ex.: prova social não duplica; grade de produtos não convive com review-vitrine).
 - Empate total entre duplicatas de cadastro (mesmos eixos): vence o MENOR número no slug.
@@ -245,7 +247,8 @@ Regras de seleção:
 - Respeite quando_nao_usar: se o contexto do email casa com um "quando NÃO usar", a variante está fora, não em último lugar.
 - Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
-- <objecoes> é o que trava a compra desta loja. A variante escolhida precisa ter ANATOMIA para responder à objeção que este email enfrenta (prova social, FAQ, garantia, comparativo, demonstração). Bloco bonito que não responde a nenhuma objeção perde para o que responde.
+- <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` (decisão do Seletor). A variante precisa ter anatomia do aliviador pedido. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo tem força de VETO, igual a quando_nao_usar: variante cuja anatomia obriga um item proibido está FORA, não em último lugar. Quando o aliviador pedido depende de um ativo da loja (prova_de_terceiro → três reviews distintos), diga na justificativa "ativo sugerido: …" — ainda não é veto.
+- Sem alvo (Seletor desligado), <objecoes> é o que trava a compra desta loja. A variante escolhida precisa ter ANATOMIA para responder à objeção que este email enfrenta (prova social, FAQ, garantia, comparativo, demonstração). Bloco bonito que não responde a nenhuma objeção perde para o que responde.
 - <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
@@ -304,6 +307,10 @@ sobre a memória e sobre sua preferência.
 <perfil_marca>
 {{briefing_marca}}
 </perfil_marca>
+
+<alvo>
+{{alvo}}
+</alvo>
 
 <objecoes>
 {{objecoes}}
@@ -406,6 +413,10 @@ export const DEFAULT_ASSEMBLER_USER = `<store>
 <perfil_marca>
 {{briefing_marca}}
 </perfil_marca>
+
+<alvo>
+{{alvo}}
+</alvo>
 
 <objecoes>
 {{objecoes}}
@@ -586,6 +597,10 @@ export interface AssembleReferenceInput {
   // antigo era `briefingJson` e mentia: desde o fallback de ago/2026 isto
   // raramente é JSON de briefing.
   perfilMarca: string
+  /** Alvo do toque renderizado (Seletor, set/2026) — ausente = texto de ausência declarada. */
+  alvo?: string | null
+  /** O que o medidor de veto precisa do alvo (aliviador pedido + proibições). */
+  alvoMedicao?: AlvoParaMedicao | null
   /**
    * Revisões humanas de estrutura aplicáveis (migration 20261088). O Curador
    * e o Montador só recebem as que o operador MARCOU para eles — a ordem é
@@ -872,6 +887,7 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       cls: "loja",
       rotulo: "Perfil da marca — store_briefings ou Pesquisa (sem o review de anúncios)",
     },
+    alvo: { cls: "upstream", rotulo: "Alvo do toque — SAÍDA do Seletor (store_email_objection_targets)" },
     objecoes: {
       cls: "loja",
       rotulo: "Objeções do cliente ideal — client_stores.icp_objections",
@@ -1045,6 +1061,7 @@ export async function assembleStoreReference(
     // Objeções e vocabulário em blocos PRÓPRIOS (27/08). Os dois já viajavam
     // dentro do perfil, enterrados em "O que a faz hesitar" e "Vocabulário ·
     // Usar/Evitar" — dado presente que ninguém usava como critério.
+    alvo: input.alvo ?? ALVO_AUSENTE_CURADOR,
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
     top_n: String(topN),
@@ -1245,6 +1262,7 @@ export async function assembleStoreReference(
       flowId: input.flowId,
       baseVars: chooserVars,
       origins,
+      alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
       extras: vaultExtras,
       catalogComExtras: catalog,
@@ -1464,6 +1482,7 @@ export async function assembleStoreReference(
       flowId: input.flowId,
       baseVars: chooserVars,
       origins,
+      alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
       extras: shadowExtras,
       catalogComExtras: buildCatalog(eligible, shadowExtras),
@@ -1477,6 +1496,7 @@ export async function assembleStoreReference(
         extras: shadowExtras,
         momento: momentoDoEmail(input.flowType, input.emailNumber),
         sectionByBlock: new Map(sections.map((s, i) => [i, s])),
+        alvo: input.alvoMedicao ?? null,
       }),
       liveRank1,
     })
@@ -1538,6 +1558,7 @@ export async function assembleStoreReference(
     // posição a posição, isolada; só o Montador vê se o email INTEIRO
     // responde à objeção e se a composição soa como esta marca.
     briefing_marca: input.perfilMarca,
+    alvo: input.alvo ?? ALVO_AUSENTE_CURADOR,
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
     revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "montador"),

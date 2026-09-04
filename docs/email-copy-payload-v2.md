@@ -315,3 +315,40 @@ estourado, cobrando só campos de natureza `copy`); senão contra o
   n8n antigo volta a funcionar sem mudança adicional.
 - Chaves aditivas anteriores (`component_variants`, `test_context`)
   continuam presentes e opcionais.
+
+## `emails[].alvo` — o alvo do toque (Seletor de objeções, set/2026)
+
+Chave **aditiva** por email, presente só quando `email_generation_settings.seletor_mode = 'on'`
+(em `off`/`shadow` vem `null`). É a saída do agente **Seletor**
+(`store_email_objection_targets`, plano em `docs/email-generation/plano-objecoes-macro-micro.md`):
+
+```jsonc
+"alvo": {
+  "modo": "quebra_de_objecao",            // | varredura_de_objecoes | confirmacao_por_terceiros | varredura_de_canal | fechamento_de_ciclo | manutencao_de_confianca
+  "trabalhos_fixos": ["entrega_de_incentivo", "prova_secundaria"],
+  "alvos": [{
+    "ordem": 1, "primaria": true, "id": "obj_3",
+    "objecao": "Marca nova — como sei que a qualidade é boa?",   // voz da pessoa, literal do catálogo
+    "tipo_de_risco": "desempenho",
+    "tratamento": "reviews com foto do produto recebido",       // mecanismo, literal do catálogo
+    "aliviador_pedido": "prova_de_terceiro",
+    "profundidade_de_prova": "mecanismo"                        // afirmacao | mecanismo | prova_de_terceiro | garantia
+  }],
+  "medos_alvo": [],                          // só em varredura_de_canal
+  "promessa_a_pagar": null,                  // só em manutencao_de_confianca
+  "angulo_do_tratamento": [{ "ordem": 1, "veiculo": "origem_da_marca", "papel": "por que a marca existe", "insumo_disponivel": true }],
+  "suspeita_a_antecipar": null,
+  "ja_atacadas": [{ "id": "obj_5", "email_number": 1, "profundidade": "afirmacao", "via": "primaria" }],
+  "proibido_neste_toque": ["prazo com hora fechada"],
+  "alerta_de_lastro": null,
+  "razao": "uma frase",
+  "lacuna": null                             // {motivo, detalhe} quando nada sobreviveu — não invente objeção
+}
+```
+
+Uso esperado no n8n: a copy do email ataca `alvos[].objecao` com o
+`tratamento` e na `profundidade_de_prova` pedida; `proibido_neste_toque` é
+veto; `ja_atacadas` diz o que NÃO repetir no mesmo registro; `lacuna`
+preenchida = não há objeção declarada (siga o `purpose` dos blocos). O
+`purpose`/`fio_narrativo` do blueprint já carregam a tradução do
+Estruturador para esse alvo.

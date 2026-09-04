@@ -52,6 +52,8 @@ import {
   type SegmentOrigin,
 } from "../shared/prompt-provenance"
 import { renderTopProducts } from "../architect/store-context"
+import { ALVO_AUSENTE_ESTRUTURADOR, renderAlvo, renderObjecoesJaAtacadas } from "../objecoes/alvo-render"
+import type { AlvoDoEmail } from "../objecoes/vocabulario"
 import {
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
@@ -113,6 +115,10 @@ export const USER_ORIGINS: Record<string, SegmentOrigin> = {
   flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
   email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
   intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
+  // Alvo do toque (set/2026): SAÍDA do Seletor — a objeção-alvo deixa de
+  // ser decisão deste agente e vira tradução.
+  decisao_de_objecao: { cls: "upstream", rotulo: "Alvo do toque — SAÍDA do Seletor (store_email_objection_targets)" },
+  objecoes_ja_atacadas: { cls: "upstream", rotulo: "Objeções já atacadas pelos irmãos — alvos vigentes do flow (Seletor)" },
   secoes_disponiveis: { cls: "sistema", rotulo: "Seções disponíveis — categorias com variante ativa (código)" },
   estruturas_dos_outros_emails: {
     cls: "sistema",
@@ -157,6 +163,11 @@ export interface RunEstruturadorInput {
    * então a query roda uma vez por geração.
    */
   revisoes?: RevisaoHumana[]
+  /**
+   * Alvo do Seletor (set/2026) — só chega quando `seletor_mode='on'`. Null =
+   * o agente diagnostica sozinho (fallback declarado no prompt).
+   */
+  alvo?: AlvoDoEmail | null
 }
 
 export interface RunEstruturadorResult {
@@ -441,6 +452,8 @@ export async function runEstruturador(
     flow_type: input.flowType,
     email_number: String(input.emailNumber),
     intencao_email: intencaoEmail,
+    decisao_de_objecao: renderAlvo(input.alvo ?? null, ALVO_AUSENTE_ESTRUTURADOR),
+    objecoes_ja_atacadas: renderObjecoesJaAtacadas(input.alvo ?? null),
     secoes_disponiveis: secoesTexto,
     estruturas_dos_outros_emails: irmasTexto,
     orientacao_coo: montarBlocoOrientacoes(
@@ -456,6 +469,13 @@ export async function runEstruturador(
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars do dossiê (com Ads) · ${input.topProducts.length} produto(s)` },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: resumo(intencaoEmail) },
+    {
+      rotulo: "Alvo do toque (Seletor)",
+      cls: "upstream",
+      valor: input.alvo
+        ? `${input.alvo.modo} · ${input.alvo.alvos.map((a) => `${a.id}/${a.aliviador_pedido}/${a.profundidade_de_prova}`).join(", ") || "sem objeção"}${input.alvo.lacuna ? ` · LACUNA ${input.alvo.lacuna.motivo}` : ""}`
+        : "(ausente — diagnóstico próprio)",
+    },
     { rotulo: "Referências servidas (vault)", cls: "vault", valor: carga.refsServidas.join(", ") },
     { rotulo: "Aprendizados servidos (vault)", cls: "vault", valor: carga.aprendizadosServidos.join(", ") || "(nenhum)" },
     { rotulo: "Commit do vault", cls: "vault", valor: carga.vaultCommitSha ?? "(desconhecido)" },

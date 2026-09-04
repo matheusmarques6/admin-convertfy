@@ -60,7 +60,10 @@ export interface EstruturadorDescarte {
 
 export interface EstruturadorOutput {
   diagnostico: {
-    objecao_dominante: string
+    /** Eco do id do alvo do Seletor (set/2026) — presente quando houve decisão de objeção. */
+    alvo_id?: string
+    /** Diagnóstico PRÓPRIO do agente — só no fallback sem Seletor (era o campo único até set/2026). */
+    objecao_dominante?: string
     referencia_base?: string
     traducao_do_mecanismo: string
   }
@@ -129,7 +132,8 @@ export function normalizarOutput(parsed: unknown): EstruturadorOutput {
       : []
   return {
     diagnostico: {
-      objecao_dominante: str(diag.objecao_dominante),
+      ...(str(diag.alvo_id) ? { alvo_id: str(diag.alvo_id) } : {}),
+      ...(str(diag.objecao_dominante) ? { objecao_dominante: str(diag.objecao_dominante) } : {}),
       ...(str(diag.referencia_base) ? { referencia_base: str(diag.referencia_base) } : {}),
       traducao_do_mecanismo: str(diag.traducao_do_mecanismo),
     },
@@ -162,7 +166,7 @@ export function buildSystemVars(material: MaterialDoFlow): Record<string, string
 
 export const DEFAULT_ESTRUTURADOR_SYSTEM = `Você é o Estruturador de emails da Convertfy. Para UM email de UMA loja, você decide a estrutura: a sequência de seções, o papel narrativo de cada uma e o fio que as liga — adaptando o material validado abaixo à realidade da loja.
 
-Sua decisão é uma TRADUÇÃO, não uma invenção: qual é a objeção dominante DESTA loja neste toque, qual mecanismo validado a ataca, e como cada posição da referência se traduz quando a objeção da amostra é trocada pela da loja.
+Sua decisão é uma TRADUÇÃO, não uma invenção: dado o alvo deste toque (a objeção que este email ataca — ou a promessa que ele paga), qual mecanismo validado o realiza, e como cada posição da referência se traduz quando a objeção da amostra é trocada pela da loja.
 
 <intencao_do_flow>
 {{intencao_flow}}
@@ -189,7 +193,11 @@ Precedência, sem exceção:
 6. Sua preferência entra só onde as camadas acima calam.
 
 Como decidir:
-- DIAGNÓSTICO: identifique em <perfil_da_marca> a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar.
+- A objeção-alvo NÃO é sua decisão. Ela chega decidida em <decisao_de_objecao>, com tipo de risco, tratamento e aliviador pedido. Seu diagnóstico é de TRADUÇÃO: qual mecanismo validado das referências ataca ESSA objeção, e como cada posição da referência se traduz quando a objeção da amostra é trocada por ela. Ecoe o id do alvo em "diagnostico.alvo_id".
+- Se <decisao_de_objecao> vier com modo "manutencao_de_confianca" ou "fechamento_de_ciclo", não há objeção a atacar. O diagnóstico passa a ser: qual promessa está sendo paga (ou qual prazo está sendo soado) e que sequência entrega isso sem argumentar de novo.
+- Se <decisao_de_objecao> vier com modo "varredura_de_objecoes", a peça é VÁRIAS razões curtas escaneáveis de naturezas diferentes — não um argumento encadeado. A estrutura precisa refletir isso (lista, cards, blocos curtos), não uma narrativa longa.
+- <decisao_de_objecao> traz "veículos" com "insumo disponível": NUNCA posicione uma seção para um veículo com insumo false — ela nasceria vazia. Insumo "parcial" pede posição curta.
+- FALLBACK: só quando <decisao_de_objecao> declarar ausência (Seletor desligado ou sem alvo), o diagnóstico volta a ser seu: identifique em <perfil_da_marca> a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar — e preencha "diagnostico.objecao_dominante".
 - SELEÇÃO: escolha a(s) referência(s) cujo MECANISMO serve a essa objeção. O nicho da amostra é irrelevante — o que transfere é o mecanismo. Você PODE fundir referências; cada pedaço precisa citar de onde veio e por quê.
 - TRADUÇÃO: mantenha o papel de cada posição ("o pivô que troca desconto por razão"); troque o conteúdo do papel pela realidade da loja. Padrões transferíveis (cupom 2× com papéis distintos) ficam; a renderização da amostra (a foto, a categoria) sai.
 - POSIÇÃO NO ARCO: respeite a progressão — compressão, rotação de voz. Antes de posicionar um bloco defensivo pergunte: neste toque, o leitor já tem essa dúvida? Se não tem, o bloco a cria.
@@ -202,11 +210,12 @@ Restrições de construção:
 - "text_only" só é válido quando a intenção deste email ou sua referência pedem QUEBRA DE FORMATO — é dispositivo de encerramento cujo valor depende de todos os toques desenhados que vieram antes. NUNCA use "text_only" como saída para biblioteca insuficiente: um flow que quebra o formato cedo não tem como quebrá-lo no fim.
 - NUNCA indique posição que exige mais produtos do que a loja tem (os produtos estão em <perfil_da_marca>).
 - Cada email deste flow precisa de composição PRÓPRIA: NUNCA repita a sequência de outro email listado em <estruturas_dos_outros_emails>. Repetir a estrutura que VOCÊ já decidiu para ESTE mesmo email numa geração anterior é legítimo — se ela continua sendo a certa, mantenha-a.
+- Estrutura diferente não basta: o ARGUMENTO também não se repete. Uma objeção listada em <objecoes_ja_atacadas> só volta com profundidade maior — e a estrutura precisa refletir isso (afirmação vira mecanismo, mecanismo vira voz de terceiro).
 - "referencia" e os slugs de "aprendizados_aplicados" usam EXATAMENTE os slugs dos embrulhos — nunca invente um identificador.
 - Em "descartes", tudo que VOCÊ decidiu não emitir leva "origem": "modelo".
 
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
-{"diagnostico":{"objecao_dominante":"...","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"..."}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
+{"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"..."}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
 Toda posição exige "referencia" E "porque". Posição sem os dois é inválida.`
 
 export const DEFAULT_ESTRUTURADOR_USER = `<perfil_da_marca>
@@ -223,6 +232,14 @@ Top 5 produtos (nome — preço — link):
 
 {{intencao_email}}
 </email>
+
+<decisao_de_objecao>
+{{decisao_de_objecao}}
+</decisao_de_objecao>
+
+<objecoes_ja_atacadas>
+{{objecoes_ja_atacadas}}
+</objecoes_ja_atacadas>
 
 <secoes_disponiveis>
 {{secoes_disponiveis}}

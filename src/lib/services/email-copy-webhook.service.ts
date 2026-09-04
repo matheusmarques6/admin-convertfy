@@ -26,6 +26,8 @@ import { DEFAULT_BLUEPRINTS } from "@/lib/agents/email-blueprint"
 import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { buildCopyLanguageDirective } from "@/lib/i18n/copy-language-directive"
 import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
+import { loadCurrentTargets, loadSeletorMode } from "@/lib/agents/objecoes/seletor.service"
+import type { AlvoDoEmail } from "@/lib/agents/objecoes/vocabulario"
 import { pickBrandLogo } from "@/lib/brand/pick-logo"
 import type {
   StoreBrandIdentity,
@@ -841,6 +843,21 @@ export async function dispatchEmailCopyWebhook(
   }
 
   // "Estrutura geral" por chave — vai no payload dos emails somente-texto.
+  // Alvo do Seletor por email (set/2026, chave ADITIVA `alvo`): só com
+  // `seletor_mode='on'` — em shadow o n8n não vê nada. Fail-open.
+  const alvoByKey = new Map<string, AlvoDoEmail>()
+  try {
+    if ((await loadSeletorMode(storeId)) === "on") {
+      for (const ft of flowTypes) {
+        for (const t of await loadCurrentTargets(storeId, ft)) {
+          alvoByKey.set(`${t.flow_type}:${t.email_number}`, t.target)
+        }
+      }
+    }
+  } catch (err) {
+    log.warn("email_copy.alvo_load_failed", { storeId, error: err instanceof Error ? err.message : String(err) })
+  }
+
   const outlineByKey = new Map<string, OutlineRow>()
   for (const o of (outlinesRes.data ?? []) as OutlineRow[]) {
     outlineByKey.set(`${o.flow_type}:${o.email_number}`, o)
@@ -1245,6 +1262,11 @@ export async function dispatchEmailCopyWebhook(
                 fio_narrativo: bpEffective.fio_narrativo ?? null,
               }
             : null,
+          // Aditivo (Seletor de objeções, set/2026): a objeção que este
+          // email ataca, aliviador pedido, profundidade, veículos e
+          // proibições. null com o Seletor desligado/shadow. O n8n ignora
+          // até consumir (docs/email-copy-payload-v2.md, seção "alvo").
+          alvo: alvoByKey.get(key) ?? null,
           blocks: (options.regenerateAll
             ? (blocksByEmail.get(e.id) ?? [])
             : selectBlocksForCopy(blocksByEmail.get(e.id) ?? [])

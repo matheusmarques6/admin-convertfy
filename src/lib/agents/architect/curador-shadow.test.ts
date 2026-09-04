@@ -196,7 +196,7 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("declarar outro momento NÃO elimina")
     // E entra no ranking, como primeiro eixo.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
-      "momento → objecao → registro → paleta → papel_na_peca",
+      "momento → objecao → aliviador → profundidade → registro → paleta → papel_na_peca",
     )
   })
 

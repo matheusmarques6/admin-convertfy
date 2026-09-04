@@ -84,6 +84,7 @@ interface DescarteView {
 interface EmbasamentoView {
   diagnostico?: {
     objecao_dominante?: string
+    alvo_id?: string
     referencia_base?: string
     traducao_do_mecanismo?: string
   }
@@ -138,7 +139,8 @@ export function EstruturadorEmbasamento({ output }: { output: unknown }) {
 
       <Sec title="Diagnóstico">
         <div style={body}>
-          <strong>Objeção dominante:</strong> {o.diagnostico?.objecao_dominante ?? "—"}
+          <strong>{o.diagnostico?.alvo_id ? "Alvo (Seletor):" : "Objeção dominante:"}</strong>{" "}
+          {o.diagnostico?.alvo_id ?? o.diagnostico?.objecao_dominante ?? "—"}
           <br />
           <strong>Referência base:</strong> {o.diagnostico?.referencia_base ?? "—"}
           <br />

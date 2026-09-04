@@ -31,6 +31,9 @@ import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
+import { ALVO_AUSENTE_CURADOR, alvoParaMedicao, renderAlvo } from "../objecoes/alvo-render"
+import { loadObjectionTarget } from "../objecoes/seletor.service"
+import type { AlvoDoEmail } from "../objecoes/vocabulario"
 import { logGenerationRun } from "../callbacks/telemetry.callback"
 import {
   combinarIntencaoComPapel,
@@ -125,10 +128,11 @@ export async function generateBlueprintAndReference(
   let defaultModel: string | null = null
   let blueprintMode: "auto" | "llm" | "deterministic" = "auto"
   let estruturadorMode: "off" | "shadow" | "on" = "off"
+  let seletorMode: "off" | "shadow" | "on" = "off"
   if (orgId) {
     const { data: settingsRow } = await admin
       .from("email_generation_settings")
-      .select("max_blocks_per_email, default_model, blueprint_mode, estruturador_mode")
+      .select("max_blocks_per_email, default_model, blueprint_mode, estruturador_mode, seletor_mode")
       .eq("org_id", orgId)
       .maybeSingle()
     maxBlocksPerEmail =
@@ -139,6 +143,33 @@ export async function generateBlueprintAndReference(
     const rawEstruturador = settingsRow?.estruturador_mode as string | undefined
     if (rawEstruturador === "shadow" || rawEstruturador === "on")
       estruturadorMode = rawEstruturador
+    const rawSeletor = settingsRow?.seletor_mode as string | undefined
+    if (rawSeletor === "shadow" || rawSeletor === "on") seletorMode = rawSeletor
+  }
+
+  // Alvo do toque (Seletor, set/2026): só DESCE com `seletor_mode='on'` —
+  // em shadow o alvo existe na tabela e ninguém consome. Consumir marca a
+  // linha (`consumido=true`), fire-and-forget. Sem alvo, os agentes
+  // recebem ausência declarada e voltam ao comportamento anterior.
+  let alvo: AlvoDoEmail | null = null
+  if (seletorMode === "on") {
+    try {
+      const target = await loadObjectionTarget(input.storeId, input.flowType, input.emailNumber)
+      if (target) {
+        alvo = target.target
+        if (!target.consumido) {
+          void admin
+            .from("store_email_objection_targets")
+            .update({ consumido: true })
+            .eq("id", target.id)
+            .then(() => undefined, () => undefined)
+        }
+      } else {
+        log.info("seletor.alvo_ausente", { storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber })
+      }
+    } catch (err) {
+      log.warn("seletor.alvo_load_failed", { storeId: input.storeId, error: err instanceof Error ? err.message : String(err) })
+    }
   }
 
   // REUSO: sem `force`, arquitetura já persistida para este loja×flow×email
@@ -418,6 +449,7 @@ export async function generateBlueprintAndReference(
         pesquisa,
         topProducts,
         revisoes,
+        alvo,
       })
       if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
@@ -510,6 +542,11 @@ export async function generateBlueprintAndReference(
     // do perfil, sem rótulo, e o Curador não tinha como saber que aquelas
     // linhas eram critério de veto.
     objecoes: resolveObjecoes(store as PesquisaFields),
+    // Alvo do Seletor (set/2026): o Curador rankeia por aliviador/profundidade
+    // contra ele; ausente → "(sem decisão de objeção…)" e <objecoes> volta a
+    // ser o critério.
+    alvo: renderAlvo(alvo, ALVO_AUSENTE_CURADOR),
+    alvoMedicao: alvoParaMedicao(alvo),
     vocabulario: resolveVocabulario(store as PesquisaFields),
     revisoes,
     topProducts,

@@ -5,8 +5,15 @@ micro — v2" + ajustes do Estruturador e do Curador definidos pelo owner na
 mesma data. Levantamento com caminho:linha no código e contagens do banco de
 produção (somente leitura) em 04/09.*
 
-> **Status:** mapeamento + plano. Nada implementado ainda. As decisões em
-> aberto estão no §5 — o plano só vira código depois delas.
+> **Status (04/09, fim do dia):** fases 0–4 IMPLEMENTADAS na branch
+> `claude/resume-previous-session-UvATK` (commits `32beb71`, `41594b3`,
+> `e3c4a6f`, `7f66029` + fase 4). Migration `20261116` APLICADA em produção.
+> Decisões do owner: catálogo em COLUNA (`client_stores.objection_catalog`),
+> Seletor email por email em ordem, tradução de vocabulário em código com a
+> nota do vault vencendo. `seletor_mode='off'` — ligar `shadow` é o próximo
+> gesto (§4, fase 5). Pendências humanas: frontmatter das 8 intenções no
+> Obsidian (`intencoes-welcome-frontmatter.md`), ordem de ranking no
+> `_protocolo-de-selecao`, backfill (`POST /api/admin/objection-catalogs/batch`).
 
 ---
 

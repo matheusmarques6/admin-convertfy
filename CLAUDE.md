@@ -2486,5 +2486,68 @@ significado) e normaliza também `html_tagged`.
 
 ---
 
+## Objeções: Catalogador (macro) e Seletor (micro) (set/2026, migration 20261116)
+
+Spec "Objeções: catalogação macro e seleção micro — v2"; plano e mapa em
+`docs/email-generation/plano-objecoes-macro-micro.md`. Fato de partida: a
+objeção existia em `client_stores.icp_objections` (35 lojas) e nenhum
+agente a lia — `resolveObjecoes` servia `icp_frictions` (DOR) ao Curador,
+`pesquisaToFullText` não incluía objeções (o Estruturador "adivinhava" a
+dominante de prosa), o payload de copy levava `icp.frictions`. Corrigido na
+fase 0: os dois leem `icp_objections`; o dossiê ganhou "O que trava o
+checkout" na seção 03. Objeção ≠ dor: trava DEPOIS de querer o produto.
+
+**Catalogador** (`src/lib/agents/objecoes/catalogador.service.ts`, agent
+`catalogador`, sonnet-4.6): 1× por pesquisa — `pesquisa-completa` (antes
+do enqueue, fail-open), botão "Regenerar objeções" (rota v2) e
+`POST /api/admin/objection-catalogs/batch` (backfill, 1 loja por chamada,
+`exclude_ids`). Grava `client_stores.objection_catalog` (4 catálogos:
+objeções tipadas por `tipo_de_risco` × `aliviador` com lastro e
+`flows_elegiveis`; veículos de argumento; medos de categoria; incentivo —
+`vocabulario.ts` é a fonte única dos domínios) e a PROJEÇÃO
+`[{objection,treatment}]` em `icp_objections` (UI/n8n/PATCH intocados).
+`catalogo-regras.ts` confere o checável (4–8, risco×aliviador único,
+compatibilidade risco↔aliviador, uma dominante, nada de política inventada)
+e reprova para retry; editar a projeção à mão marca `verificado` no
+catálogo. Painel "Catálogo de argumento" na aba Pesquisa.
+
+**Seletor** (`seletor.service.ts`, agent `seletor`, gate
+`email_generation_settings.seletor_mode` off|shadow|on): por email, ANTES
+do Estruturador, decide o ALVO do toque (spec §3.2) ou declara lacuna —
+nunca alvo inventado. `ensureObjectionTargets` é o ÚNICO caminho e roda
+**sequencial por `email_number`** como pré-passo da fila de dispatch, da
+aba Teste e do botão de blueprints: a fase 1 roda 4 emails em paralelo e
+`ja_atacadas` (o que os irmãos anteriores atacaram) depende da ordem.
+Reaproveita o alvo vigente quando o catálogo não mudou (`catalog_sha8`).
+Alvos em `store_email_objection_targets` (`is_current`, `consumido`).
+Contrato do toque vem do frontmatter tipado de `email_intents`
+(`intent-contract.ts`; sem `modo` válido não há contrato → run `skipped`
+`sem_contrato`; proposta dos 8 do welcome em
+`docs/email-generation/intencoes-welcome-frontmatter.md`). Rollout
+welcome-only, como o Estruturador.
+
+**Consumo (só com `seletor_mode='on'`)**: `generate.service` carrega o
+alvo e marca `consumido`; Estruturador recebe `<decisao_de_objecao>` +
+`<objecoes_ja_atacadas>` (DIAGNÓSTICO virou TRADUÇÃO; modos sem objeção;
+"estrutura diferente não basta — o argumento não se repete"; varredura =
+razões curtas; veículo sem insumo não vira seção; ecoa `diagnostico.alvo_id`
+— `objecao_dominante` só no fallback sem alvo); Curador legado e do vault
+recebem `<alvo>` e rankeiam `momento → objecao → aliviador → profundidade
+→ registro → paleta → papel_na_peca` com `proibido_neste_toque` como veto;
+copy do n8n leva `emails[].alvo` (aditivo, `docs/email-copy-payload-v2.md`).
+Sem alvo, TODOS recebem ausência declarada (`alvo-render.ts`) e voltam ao
+comportamento anterior — desligar o Seletor nunca regride.
+
+**Ponte de vocabulário** (`aliviador-bridge.ts`): o eixo `objecao` das
+notas do vault tem 11 valores próprios; risco×aliviador do alvo →
+`eixo_objecao_equivalente`, e cada variante ganha `aliviador`/
+`profundidade` DERIVADOS de block_type+objecao+exige (frontmatter
+`aliviador:`/`profundidade:` na nota VENCE). `exige_medicao` fica fora do
+JSON servido ao Curador (01/09: eliminar por `exige` reprovava sobre
+requisito não verificável) — serve só ao medidor
+(`aliviador_ausente`/`proibicao_violada`). **Autoria pendente no vault**:
+mesma ordem de ranking na nota `_protocolo-de-selecao`; as 26 intenções
+fora do welcome; `aliviador`/`profundidade` nas 44 notas.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
