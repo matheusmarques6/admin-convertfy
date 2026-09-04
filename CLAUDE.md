@@ -1911,6 +1911,41 @@ aponta a nota `lacuna` quando a queixa é "nenhum bloco faz isso" — o
 `AgentOrientacoes`/`AgentFeedback` (ex-`Estruturador*`) recebem `agente`;
 os escopos `flow:intencao`/`flow:progressao` ficam fora do Curador.
 
+## Tipografia: o agente e a edição humana (set/2026)
+
+**Agente de Tipografia** (migration 20261109, STEP 3.5 da fase 2, entre
+`image_format` e `color_format`): entra DEPOIS que a copy está no HTML, não
+escreve texto. Recebe o INVENTÁRIO numerado das declarações de fonte
+(`typography/inventory.ts`) — nunca o documento — e devolve ops por número
+de item; o código aplica (`typography/apply.ts`). É a lição do `text_format`:
+modelo que recebe 86 KB devolve 86 KB e quebra tabela. Base de conhecimento
+fechada com especialista em `docs/email-generation/agente-tipografia.md`
+(teto de 3 rupturas de família, piso de 16px, CTA rompe por caixa e peso,
+par sans+sans recusado, escala de 3 pesos com distância 200, fundo escuro
+comprime). Fail-open. **Só o CHECK de `email_agent_configs` não basta: sem
+`typography` em `email_generation_runs.agent` o step roda, custa dinheiro e
+some da telemetria** (incidente 04/09, migration 20261110 — mesma armadilha
+do `copy_fit`).
+
+**Edição humana na tela** (04/09, migration 20261112): Editar → aba
+Tipografia no e-mail. Clicar num texto seleciona a DECLARAÇÃO daquele
+elemento (que governa por herança — o contorno mostra o alcance); a lista de
+famílias do documento permite remapear a peça inteira (head + corpo, por
+NOME — `normalizeFonts` cru apagaria a segunda fonte do tipógrafo e daria
+família de título a um corpo levado a 700). `TypographyOp` (agente) e
+`TypographyOpHumana` (painel) são tipos DIFERENTES: `familia` livre e
+`tamanho_px` só existem no segundo, então o agente é fisicamente incapaz de
+pedi-los. A régua vira AVISO para o humano (`avaliarOpsHumanas`) e continua
+descarte para o agente. `sanitizarFamilia` é obrigatório: o nome entra em
+`style="…"` com aspa dupla, e `Arial";x="` injetaria markup num documento
+que vai para o Klaviyo — o guard estrutural não pega. Cada op sobe com
+`esperado` (a tela não tem polling; um re-render entre carregar e salvar faz
+o item 14 virar outro elemento). Grava `html` + `html_marked` num único
+UPDATE — nada de RPC. **Do `typography_override`, só `fontes` sobrevive a um
+re-render**; as ops endereçam por índice e viram registro. "Repensar" é o
+STEP 3.5 fora do runner, com as fontes da PEÇA e os itens tocados pelo
+humano pinados.
+
 ## Proveniência do prompt (migration 20261085, ago/2026)
 
 Toda run de agente grava, além do `rendered_prompt`, o MESMO prompt **cortado

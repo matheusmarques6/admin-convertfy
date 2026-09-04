@@ -335,8 +335,7 @@ declarações na montagem (fase 1); o tipógrafo corrige por cima. Trocar a
 heurística dela por "decisão por papel" é o próximo passo, e é o que reduz o
 trabalho que o agente tem de desfazer.
 
-**Backlog:** configuração de tipografia da loja editável em tempo real na aba
-de emails.
+**Feito (04/09):** a tipografia é editável na tela do e-mail — ver a seção 11.
 
 ## 9. Verificação
 
@@ -362,3 +361,99 @@ de emails.
   só no rótulo do CTA; `review 1`, Georgia só no glifo de aspas de 52px;
   `review 8`, Asap; `footer 1`, Raleway + Montserrat. Todas achatadas hoje pelo
   `normalizeFonts`.
+
+
+---
+
+## 11. Edição humana (04/09/2026, migration 20261112)
+
+O agente decide sozinho na geração. Quem revisa a peça no Workspace de
+produção agora também mexe: **Editar → aba Tipografia**.
+
+### Os dois gestos
+
+| Gesto | O que faz | Como vira op |
+|---|---|---|
+| Clicar num texto do preview | Seleciona a DECLARAÇÃO daquele elemento | `ops[{item}]` com família/tamanho/peso/caixa/tracking |
+| Trocar uma família na lista | Remapeia aquela família no documento inteiro | `familias[{de, para}]` → `remapFamilies` (head + corpo) |
+
+O clique seleciona uma **declaração**, não um trecho de texto — e uma
+declaração num `<td>` governa por herança tudo que está dentro dele. O
+contorno cheio marca o elemento inteiro por isso: é o alcance real. Criar um
+`<span>` novo para isolar um trecho **inseriria uma ocorrência**, renumerando
+todos os índices seguintes e violando o invariante
+`font_declaration_count_changed` — fica de fora por construção.
+
+A lista de famílias existe no lugar de dois seletores ("título" e "corpo")
+porque, depois que o tipógrafo age, a peça tem três famílias: o painel mostra
+o documento, não uma suposição sobre ele.
+
+### O que é do humano e o que é do agente
+
+`TypographyOp` (agente) e `TypographyOpHumana` (painel) são **tipos
+diferentes**. `familia` livre e `tamanho_px` só existem na segunda, e o
+parser do agente devolve a primeira — ele fica fisicamente incapaz de pedir
+os dois, sem depender de o prompt não oferecer.
+
+A régua da seção 7 muda de papel conforme quem decide:
+
+| | Agente (`aplicarGuards`) | Humano (`avaliarOpsHumanas`) |
+|---|---|---|
+| Piso de 16px, CTA, ornamento, par sans+sans, teto de família | **descarta** | **avisa** e aplica |
+| Família fora do saneamento, peso fora da escala, tamanho fora de 8–96, tracking malformado | descarta | descarta |
+| Invariantes (`<table>`, contagem de declarações) | recusa a rodada | recusa a rodada |
+
+As regras existem para conter um modelo que decide sobre um inventário de
+texto e não vê a peça. Quem clicou no elemento está olhando para ele.
+
+### Saneamento da família (obrigatório)
+
+O valor entra dentro de `style="…"`, delimitado por aspa DUPLA. `Arial";x="`
+fecharia o atributo e injetaria markup num documento que vai por "Enviar
+teste" e para o Klaviyo — e o guard estrutural não pega, porque a contagem de
+`font-family:` não muda. `sanitizarFamilia` (`/^[A-Za-z0-9][A-Za-z0-9 _-]
+{0,48}$/`) roda no ponto de escrita, que é o último antes do documento.
+
+### Índice velho
+
+A tela não tem polling. Entre carregar o e-mail e clicar em Aplicar, um
+re-render pode ter reescrito o documento — e aí o item 14 é outro elemento.
+Cada op sobe com `esperado` (família, tamanho, peso e tag que a tela viu); a
+rota recalcula o inventário e recusa item a item, devolvendo `desatualizados`.
+O `base_updated_at` cobre o caso global.
+
+### O que sobrevive a um re-render
+
+| Ajuste | Sobrevive? |
+|---|---|
+| Fontes da peça (`typography_override.fontes`) | **Sim** — é escolha de família, relida por `fontesEfetivas` |
+| Ops por item | **Não** — endereçam por índice, e o documento regerado é outro |
+
+As ops ficam gravadas como registro do que a pessoa fez; a tela avisa que um
+re-render as perde. Replay por índice depois de um re-render escreveria no
+lugar errado com cara de sucesso.
+
+### "Repensar tipografia"
+
+O STEP 3.5 fora do runner (`POST …/typography` com `modo: "repensar"`), com
+duas diferenças: as vars saem das fontes EFETIVAS da peça (senão
+`classe_principal` sai errada e o guard do par avalia contra a classe errada),
+e os itens que o humano tocou ficam **pinados** — op do agente que caia neles
+é recusada, com a contagem na telemetria. Roda sobre o documento atual, nunca
+sobre `html_pre_refiner` (que é pré-tipografia mas também pré-CORES).
+
+### Onde está
+
+| Peça | Arquivo |
+|---|---|
+| Ops do humano, saneamento, régua consultiva | `typography/rules.ts` |
+| Escrita no documento | `typography/apply.ts` |
+| Invariantes (compartilhados com o STEP 3.5) | `typography/guards.ts` |
+| Anotação do preview (`data-cfy-font`) | `typography/annotate.ts` |
+| Troca de família (peça e por papel) | `typography/swap-fonts.ts` |
+| `<link>` de webfont sem acumular | `typography/webfont.ts` |
+| Fonte da peça × da marca | `typography/fontes-efetivas.ts` |
+| Orquestração pura da edição | `typography/edit.ts` |
+| Rota | `app/api/admin/emails/[emailId]/typography/route.ts` |
+| Painel | `components/stores/producao/email-typography-panel.tsx` |
+| Seleção no preview | `components/emails/scaled-email-frame.tsx` |
