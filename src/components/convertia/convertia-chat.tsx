@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import {
+  AlertTriangle,
   ArrowUp,
   BarChart3,
   Calendar,
@@ -34,12 +35,17 @@ import {
   Search,
   Share2,
   Sparkles,
+  Square,
   Telescope,
   ThumbsUp,
   Trash2,
   Activity,
   Workflow,
+  Brain,
+  Leaf,
 } from "lucide-react"
+import { fmtMs, fmtTokens, type TurnUsageSummary } from "@/lib/ai/convertia/telemetry"
+import type { PendingConfirmation } from "@/lib/ai/convertia/types"
 import { ConvertiaMarkdown } from "./convertia-markdown"
 import {
   CONVERTIA_DEFAULT_MODEL,
@@ -59,7 +65,12 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   metricas: { n: "Métricas", c: "#0E7490", g: "M" },
   imagem: { n: "Geração de imagem", c: "#D97706", g: "I" },
   relatorio: { n: "Relatório da loja", c: "#0F766E", g: "R" },
+  conhecimento: { n: "Conhecimento", c: "#7C3AED", g: "K" },
+  memoria: { n: "Memória", c: "#BE185D", g: "L" },
 }
+const ADVISOR_DOT = { c: "#0F766E", g: "A" }
+/** Modelo barato das rodadas de consulta (roteamento por rodada). */
+const ECONOMY_KEY = "convertia:economy"
 const MCP_DOT = { c: "#7C3AED", g: "X" }
 const BRAND = "#4E62D8"
 
@@ -122,6 +133,14 @@ interface Bootstrap {
     daily_limit_cents: number
     exceeded: boolean
   }
+  /** Base de conhecimento do Obsidian (notas aprovadas + advisors). */
+  knowledge?: {
+    available: boolean
+    notes: number
+    advisors: Array<{ path: string; title: string; excerpt: string | null }>
+  }
+  /** Memórias propostas pela IA aguardando revisão. */
+  memories?: { pending: number }
   schema_missing: string[]
 }
 
@@ -134,6 +153,18 @@ export interface Source {
   /** O QUE foi consultado ("period: 30d · status: paid"). */
   args_summary?: string | null
   write: boolean
+  /** Duração da execução (ms). */
+  ms?: number
+  /** Código do erro estruturado quando falhou. */
+  error_code?: string | null
+  retries?: number
+  confirmation_id?: string | null
+}
+
+interface Continuation {
+  job_id: string
+  status: "queued" | "running" | "done" | "failed"
+  reason?: string
 }
 interface UiAttachment {
   name: string
@@ -167,6 +198,13 @@ interface UiMessage {
    */
   generating?: boolean
   startedAt?: string | null
+  /** Telemetria do turno (rodadas, tools, tokens, cache, custo). */
+  usage?: TurnUsageSummary | null
+  /** Ação irreversível aguardando o Confirmar do usuário. */
+  pendingConfirmation?: PendingConfirmation | null
+  /** Turno continuando em segundo plano (orçamento da rota acabou). */
+  continuation?: Continuation | null
+  status?: string | null
 }
 
 /** Chave do localStorage: última conversa aberta por workspace. */
@@ -174,6 +212,16 @@ const lastConvKey = (ws: Ws) => `convertia:last-conversa:${ws}`
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Depois disso uma linha ainda "streaming" é turno morto (maxDuration é 300s). */
 const GENERATING_STALE_MS = 6 * 60_000
+/** Com continuação em job o turno pode durar mais (cron retoma a cada minuto). */
+const CONTINUATION_STALE_MS = 25 * 60_000
+
+function isLive(m: { generating?: boolean; startedAt?: string | null; continuation?: Continuation | null }): boolean {
+  if (!m.generating) return false
+  if (!m.startedAt) return true
+  const age = Date.now() - new Date(m.startedAt).getTime()
+  const continuing = m.continuation?.status === "queued" || m.continuation?.status === "running"
+  return age < (continuing ? CONTINUATION_STALE_MS : GENERATING_STALE_MS)
+}
 
 /** Superfície mínima da Web Speech API (sem lib de tipos do DOM). */
 interface SpeechRecognitionLike {
@@ -325,6 +373,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [attachError, setAttachError] = useState<string | null>(null)
   const [railSearch, setRailSearch] = useState("")
   const [deep, setDeep] = useState(false)
+  // Roteamento por rodada: modelo barato consulta, o escolhido responde.
+  const [economy, setEconomy] = useState(false)
+  const [advisorOn, setAdvisorOn] = useState<Record<string, boolean>>({})
+  // Botão Parar: pedido enviado, aguardando o servidor fechar o turno
+  const [stopping, setStopping] = useState(false)
+  const stopRequestedRef = useRef(false)
+  const draftDbIdRef = useRef<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const recogRef = useRef<{ stop: () => void } | null>(null)
@@ -376,8 +431,23 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (typeof window === "undefined") return
     const w = window as unknown as Record<string, unknown>
     setVoiceSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition))
+    try {
+      setEconomy(localStorage.getItem(ECONOMY_KEY) === "1")
+    } catch {
+      /* storage bloqueado */
+    }
     return () => recogRef.current?.stop()
   }, [])
+  const toggleEconomy = () => {
+    setEconomy((v) => {
+      try {
+        localStorage.setItem(ECONOMY_KEY, v ? "0" : "1")
+      } catch {
+        /* storage bloqueado */
+      }
+      return !v
+    })
+  }
 
   const stores = useMemo(() => boot?.stores ?? [], [boot])
   const skills = useMemo(
@@ -441,8 +511,22 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         sub: m.store_id ? "MCP da loja" : "MCP da organização",
         available: m.last_status === "ok" || (m.tool_count ?? 0) > 0,
       }))
-    return [...builtin, ...mcps]
+    // Base de conhecimento do Obsidian (org-level): só aparece quando há
+    // notas aprovadas sincronizadas.
+    const knowledge = boot?.knowledge?.available
+      ? [
+          {
+            key: "conhecimento",
+            name: AI_CONN.conhecimento.n,
+            sub: `base do Obsidian · ${boot.knowledge.notes} nota${boot.knowledge.notes === 1 ? "" : "s"}`,
+            available: true,
+          },
+        ]
+      : []
+    return [...builtin, ...knowledge, ...mcps]
   }, [ws, store, boot, storeId])
+  const advisors = useMemo(() => boot?.knowledge?.advisors ?? [], [boot])
+  const activeAdvisors = advisors.filter((a) => advisorOn[a.path])
 
   // Default: TUDO que está disponível nasce ligado. A disponibilidade
   // chega em ondas (bootstrap → loja selecionada), então um conector
@@ -568,6 +652,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         progress?: string[]
         streaming?: boolean
         started_at?: string
+        usage?: TurnUsageSummary | null
+        pending_confirmation?: PendingConfirmation | null
+        continuation?: Continuation | null
+        status?: string | null
       } | null
     }>
   }
@@ -587,6 +675,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           attachments: m.meta?.attachments,
           feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
           progress: m.meta?.progress ?? [],
+          usage: m.meta?.usage ?? null,
+          pendingConfirmation: m.meta?.pending_confirmation ?? null,
+          continuation: m.meta?.continuation ?? null,
+          status: m.meta?.status ?? null,
           generating,
           startedAt,
           // turno vivo no servidor: a bolha mostra o spinner como se
@@ -606,11 +698,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const scheduleGeneratingPoll = useCallback(
     (id: string, msgs: UiMessage[]) => {
       if (pollRef.current) clearTimeout(pollRef.current)
-      const live = msgs.filter(
-        (m) =>
-          m.generating &&
-          (!m.startedAt || Date.now() - new Date(m.startedAt).getTime() < GENERATING_STALE_MS),
-      )
+      const live = msgs.filter(isLive)
       if (live.length === 0) return
       pollRef.current = setTimeout(async () => {
         if (convIdRef.current !== id || sendingRef.current) return
@@ -859,16 +947,47 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     }
   }, [recording])
 
+  // ── Botão Parar ─────────────────────────────────────────────────
+  // O fetch NÃO é abortado: o servidor precisa fechar o turno direito
+  // (gravar o que saiu, contabilizar custo, mandar o `done`). O pedido
+  // vai por uma rota própria que marca a flag lida pelo loop.
+  const requestStop = useCallback(async (messageId: string) => {
+    try {
+      await fetch("/api/ai/convertia/chat/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: messageId }),
+      })
+    } catch {
+      /* o turno termina sozinho pelo orçamento */
+    }
+  }, [])
+  const stopTurn = () => {
+    if (!sending || stopping) return
+    setStopping(true)
+    stopRequestedRef.current = true
+    if (draftDbIdRef.current) void requestStop(draftDbIdRef.current)
+    // sem message_id ainda (meta não chegou): o handler do meta dispara
+  }
+
   // ── Envio (streaming SSE) ────────────────────────────────────────
-  const send = async (text?: string) => {
+  const send = async (
+    text?: string,
+    opts?: { approve?: { message_id: string; confirmation_id: string } },
+  ) => {
     const message = (text ?? input).trim()
     if (!message || sending) return
-    const atts = attachments
-    setInput("")
-    setAttachments([])
+    const atts = opts?.approve ? [] : attachments
+    if (!opts?.approve) {
+      setInput("")
+      setAttachments([])
+    }
     setAttachError(null)
     if (inputRef.current) inputRef.current.style.height = "auto"
     setSending(true)
+    setStopping(false)
+    stopRequestedRef.current = false
+    draftDbIdRef.current = null
     sendingRef.current = true
     if (pollRef.current) clearTimeout(pollRef.current)
     const userMsg: UiMessage = {
@@ -887,7 +1006,17 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       pendingTools: 0,
       progress: [],
     }
-    setMessages((m) => [...m, userMsg, draft])
+    setMessages((m) => [
+      ...(opts?.approve
+        ? m.map((x) =>
+            x.dbId === opts.approve?.message_id && x.pendingConfirmation
+              ? { ...x, pendingConfirmation: { ...x.pendingConfirmation, resolved_at: new Date().toISOString(), resolution: "approved" as const } }
+              : x,
+          )
+        : m),
+      userMsg,
+      draft,
+    ])
     scrollToBottom()
 
     const controller = new AbortController()
@@ -908,6 +1037,9 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           connectors: activeConns.map((c) => c.key),
           skills: skills.filter((s) => skillOn[s.id]).map((s) => s.id),
           deep,
+          economy,
+          advisors: activeAdvisors.map((a) => a.path),
+          ...(opts?.approve ? { approve: { ...opts.approve, decision: "approve" } } : {}),
           attachments: atts.map((a) => ({
             name: a.name,
             mime: a.mime,
@@ -949,7 +1081,10 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               void mutateBoot()
             }
             if (typeof ev.message_id === "string") {
+              draftDbIdRef.current = ev.message_id
               patchDraft((d) => ({ ...d, dbId: ev.message_id as string }))
+              // Parar clicado antes do id existir: dispara agora
+              if (stopRequestedRef.current) void requestStop(ev.message_id)
             }
           } else if (ev.type === "delta") {
             patchDraft((d) => ({ ...d, content: d.content + String(ev.text ?? "") }))
@@ -988,21 +1123,44 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 pendingTools: Math.max(0, (d.pendingTools ?? 1) - 1),
                 sources: d.sources.map((s, i) =>
                   i === d.sources.length - 1 && s.summary == null
-                    ? { ...s, summary: (ev.summary as string) ?? "ok" }
+                    ? {
+                        ...s,
+                        summary: (ev.summary as string) ?? "ok",
+                        ms: typeof ev.ms === "number" ? ev.ms : s.ms,
+                        error_code: typeof ev.error_code === "string" ? ev.error_code : null,
+                        retries: typeof ev.retries === "number" ? ev.retries : undefined,
+                      }
                     : s,
                 ),
               }))
             }
             scrollToBottom()
-          } else if (ev.type === "done") {
+          } else if (ev.type === "confirm") {
+            // Ação irreversível: o card com Confirmar/Cancelar entra na
+            // bolha — nada foi executado.
+            patchDraft((d) => ({ ...d, pendingConfirmation: (ev.confirmation as PendingConfirmation) ?? null }))
+            scrollToBottom()
+          } else if (ev.type === "notice") {
             patchDraft((d) => ({
               ...d,
-              streaming: false,
-              generating: false,
+              content: `${d.content}${d.content.trim() ? "\n\n" : ""}_${String(ev.text ?? "")}_`,
+            }))
+          } else if (ev.type === "done") {
+            const continuation = (ev.continuation as Continuation | null) ?? null
+            const continuing = continuation?.status === "queued" || continuation?.status === "running"
+            patchDraft((d) => ({
+              ...d,
+              streaming: continuing,
+              generating: continuing,
               pendingTools: 0,
               dbId: typeof ev.message_id === "string" ? ev.message_id : d.dbId,
               sources: Array.isArray(ev.sources) ? (ev.sources as Source[]) : d.sources,
               progress: Array.isArray(ev.progress) ? (ev.progress as string[]) : d.progress,
+              usage: (ev.usage as TurnUsageSummary | null) ?? d.usage ?? null,
+              pendingConfirmation: (ev.pending_confirmation as PendingConfirmation | null) ?? d.pendingConfirmation ?? null,
+              continuation,
+              status: typeof ev.status === "string" ? ev.status : d.status,
+              startedAt: d.startedAt ?? new Date().toISOString(),
               // texto consolidado do servidor vence o montado por deltas
               content: typeof ev.content === "string" && ev.content.trim() ? ev.content : d.content,
             }))
@@ -1015,7 +1173,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           }
         }
       }
-      patchDraft((d) => ({ ...d, streaming: false }))
+      patchDraft((d) => (d.continuation ? d : { ...d, streaming: false }))
       void mutateBoot()
     } catch (err) {
       if ((err as Error)?.name !== "AbortError") {
@@ -1027,8 +1185,60 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       }
     } finally {
       setSending(false)
+      setStopping(false)
+      stopRequestedRef.current = false
       sendingRef.current = false
       scrollToBottom()
+      // Turno que continua em job: o polling (mesmo caminho do F5) repõe
+      // a resposta quando o cron terminar.
+      if (convIdRef.current) {
+        setMessages((cur) => {
+          scheduleGeneratingPoll(convIdRef.current as string, cur)
+          return cur
+        })
+      }
+    }
+  }
+
+  // Gate de confirmação: aprovar dispara um turno novo com a ação já
+  // autorizada; cancelar só registra (sem turno).
+  const resolveConfirmation = async (msg: UiMessage, decision: "approve" | "reject") => {
+    if (!msg.dbId || !msg.pendingConfirmation || sending) return
+    if (decision === "approve") {
+      // O servidor grava "✅ Confirmado: <resumo>" — a bolha mostra o mesmo.
+      await send(`✅ Confirmado: ${msg.pendingConfirmation.summary}`, {
+        approve: { message_id: msg.dbId, confirmation_id: msg.pendingConfirmation.id },
+      })
+      return
+    }
+    const conf = msg.pendingConfirmation
+    setMessages((m) =>
+      m.map((x) =>
+        x.id === msg.id && x.pendingConfirmation
+          ? { ...x, pendingConfirmation: { ...x.pendingConfirmation, resolved_at: new Date().toISOString(), resolution: "rejected" } }
+          : x,
+      ),
+    )
+    try {
+      await fetch("/api/ai/convertia/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: convId,
+          message: "Cancelar a ação.",
+          model,
+          workspace: ws,
+          store_id: storeId ?? null,
+          approve: { message_id: msg.dbId, confirmation_id: conf.id, decision: "reject" },
+        }),
+      })
+      setMessages((m) => [
+        ...m,
+        { id: `u-${Date.now()}`, role: "user", content: `[Cancelado] ${conf.summary}`, sources: [] },
+      ])
+      scrollToBottom()
+    } catch {
+      /* já marcado na UI; o servidor rejeita reuso do token de qualquer jeito */
     }
   }
 
@@ -1244,6 +1454,33 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     </button>
                   </div>
 
+                  {advisors.length > 0 && (
+                    <>
+                      <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                      {menuHeader(`Advisors · ${activeAdvisors.length}/${advisors.length} ativos`)}
+                      {advisors.map((a) =>
+                        menuRow({
+                          key: a.path,
+                          dot: (
+                            <span
+                              className="inline-flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[5px] text-[9.5px] font-bold text-white"
+                              style={{ background: ADVISOR_DOT.c }}
+                            >
+                              {ADVISOR_DOT.g}
+                            </span>
+                          ),
+                          name: a.title,
+                          sub: a.excerpt ?? "persona da base de conhecimento",
+                          on: Boolean(advisorOn[a.path]),
+                          onClick: () => setAdvisorOn((x) => ({ ...x, [a.path]: !x[a.path] })),
+                        }),
+                      )}
+                      <div className="px-[9px] pb-[3px] pt-[3px] text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        a ConvertIA responde como o advisor ligado responderia
+                      </div>
+                    </>
+                  )}
+
                   <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
                   {menuHeader(`Skills · ${nSkills}/${skills.length} ativas`)}
                   {skills.length === 0 && (
@@ -1273,6 +1510,33 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       criar skill
                     </button>
                   </div>
+
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {/* Memória entre conversas: a IA propõe, alguém aprova. */}
+                  <button
+                    onClick={() => {
+                      setMenu(null)
+                      setManage("memories")
+                    }}
+                    className="flex w-full items-center gap-[9px] rounded-[7px] px-[9px] py-[7px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: "var(--ops-title)" }}>
+                      <Brain className="h-3 w-3" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
+                        Memórias
+                        {(boot?.memories?.pending ?? 0) > 0 && (
+                          <span className="ml-1.5 rounded-[4px] px-[5px] py-[1px] text-[9px] font-bold" style={{ background: "rgba(190,24,93,0.12)", color: "#BE185D" }}>
+                            {boot?.memories?.pending} para revisar
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-px block truncate text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        o que a ConvertIA lembra entre conversas · por loja ou organização
+                      </span>
+                    </span>
+                  </button>
                 </>,
               )}
           </div>
@@ -1436,23 +1700,43 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     disabled: !mSel.reasoning,
                     onClick: () => setDeep(!deep),
                   })}
+                  {/* Roteamento por rodada: as rodadas de CONSULTA rodam
+                      num modelo barato; escrita e resposta final ficam
+                      com o modelo escolhido. */}
+                  {menuRow({
+                    key: "economy",
+                    dot: (
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: economy ? "var(--ops-pos)" : "var(--ops-mut)" }}>
+                        <Leaf className="h-3 w-3" />
+                      </span>
+                    ),
+                    name: "Modo econômico",
+                    sub: "consultas com Kimi K3 · escrita e resposta com o modelo escolhido",
+                    on: economy,
+                    disabled: mSel.id === "moonshotai/kimi-k3",
+                    onClick: toggleEconomy,
+                  })}
                 </>,
                 true,
               )}
           </div>
           {sending ? (
-            // Gerando: o botão vira o indicador — dá pra ver de longe
-            // que ainda não é hora de mandar o próximo prompt.
-            <span
-              title="Gerando resposta… aguarde para enviar o próximo prompt"
-              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full"
-              style={{ background: "rgba(78,98,216,0.12)" }}
+            // Gerando: o botão vira o PARAR (padrão Claude — quadrado
+            // dentro do círculo). O servidor fecha o turno direito.
+            <button
+              onClick={stopTurn}
+              disabled={stopping}
+              title={stopping ? "Parando… fechando o turno" : "Parar a geração"}
+              aria-label={stopping ? "Parando" : "Parar a geração"}
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-60"
+              style={{ background: stopping ? "var(--ops-mut)" : "var(--ops-title)" }}
             >
-              <span
-                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: BRAND, borderTopColor: "transparent" }}
-              />
-            </span>
+              {stopping ? (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <Square className="h-[11px] w-[11px]" fill="currentColor" strokeWidth={0} />
+              )}
+            </button>
           ) : (
             <button
               onClick={() => void send()}
@@ -1477,7 +1761,9 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: BRAND }} />
             <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: BRAND }} />
           </span>
-          ConvertIA está gerando a resposta — aguarde para enviar o próximo prompt.
+          {stopping
+            ? "Parando — a ConvertIA fecha o turno e guarda o que já foi gerado."
+            : "ConvertIA está gerando a resposta — clique no quadrado para parar."}
         </div>
       )}
       {budget && budgetPct >= 0.8 && (
@@ -1749,6 +2035,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       key={m.id}
                       msg={m}
                       readOnly={sharedBy !== null}
+                      busy={sending}
+                      onConfirm={(decision) => void resolveConfirmation(m, decision)}
                       onRefazer={refazer}
                       onFeedback={(next) => {
                         setMessages((all) =>
@@ -1812,17 +2100,25 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 function AssistantMessage({
   msg,
   readOnly = false,
+  busy = false,
+  onConfirm,
   onRefazer,
   onFeedback,
 }: {
   msg: UiMessage
   readOnly?: boolean
+  busy?: boolean
+  onConfirm: (decision: "approve" | "reject") => void
   onRefazer: () => void
   onFeedback: (next: boolean) => void
 }) {
   const [toolsOpen, setToolsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const useful = msg.feedback === "up"
+  const usage = msg.usage ?? null
+  const continuing = msg.continuation?.status === "queued" || msg.continuation?.status === "running"
+  const confirmation = msg.pendingConfirmation ?? null
+  const confirmOpen = Boolean(confirmation && !confirmation.resolved_at)
   // Consulta em andamento: a última fonte sem summary é a que roda agora
   const running =
     (msg.pendingTools ?? 0) > 0
@@ -1832,10 +2128,7 @@ function AssistantMessage({
   const lastProgress = progress.length > 0 ? progress[progress.length - 1] : null
   // Turno que veio do banco ainda "streaming" mas velho demais pra
   // estar vivo: a função foi morta — marca como interrompido.
-  const stale =
-    msg.generating === true &&
-    Boolean(msg.startedAt) &&
-    Date.now() - new Date(msg.startedAt as string).getTime() > GENERATING_STALE_MS
+  const stale = msg.generating === true && Boolean(msg.startedAt) && !isLive(msg)
   const isStreaming = msg.streaming === true && !stale
   const hasProcess = msg.sources.length > 0 || progress.length > 0
 
@@ -1915,6 +2208,39 @@ function AssistantMessage({
                     ))}
                   </div>
                 )}
+                {usage && usage.rounds.length > 0 && (
+                  <div className="mb-1 flex flex-col gap-[3px] text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                    {usage.rounds.map((r) => (
+                      <div key={r.n} className="flex items-center gap-2 tabular-nums">
+                        <span className="w-[22px] shrink-0">R{r.n}</span>
+                        <span className="truncate" style={{ color: "var(--ops-sec)" }}>
+                          {r.model.replace(/^[^/]+\//, "")}
+                          {r.role === "cheap" ? " · econômico" : ""}
+                        </span>
+                        <span>{fmtMs(r.ms)}</span>
+                        <span>
+                          {fmtTokens(r.tokens_input)} in
+                          {r.tokens_input > 0 && r.tokens_cached > 0
+                            ? ` (${Math.round((r.tokens_cached / r.tokens_input) * 100)}% cache)`
+                            : ""}
+                          {" · "}
+                          {fmtTokens(r.tokens_output)} out
+                        </span>
+                        <span>
+                          {r.outcome === "final"
+                            ? "resposta"
+                            : r.outcome === "tools"
+                              ? `${r.tool_calls} tool${r.tool_calls === 1 ? "" : "s"}`
+                              : r.outcome === "nudged"
+                                ? "descartada (sem consulta)"
+                                : r.outcome === "rerouted"
+                                  ? "refeita no modelo forte"
+                                  : r.outcome}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.sources.map((s, i) => (
                   <div key={i} className="flex flex-col gap-px text-[11.5px]">
                     <div className="flex items-center gap-2">
@@ -1927,9 +2253,18 @@ function AssistantMessage({
                           </span>
                         )}
                       </span>
-                      <span className="tabular-nums text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                      <span
+                        className="tabular-nums text-[10.5px]"
+                        style={{ color: s.error_code ? "var(--ops-neg)" : "var(--ops-mut)" }}
+                      >
                         {s.summary ?? "…"}
                       </span>
+                      {typeof s.ms === "number" && (
+                        <span className="ml-auto shrink-0 tabular-nums text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                          {fmtMs(s.ms)}
+                          {s.retries ? ` · ${s.retries}× retry` : ""}
+                        </span>
+                      )}
                     </div>
                     {s.args_summary && (
                       <span className="pl-[22px] text-[10px]" style={{ color: "var(--ops-mut)" }}>
@@ -1962,11 +2297,96 @@ function AssistantMessage({
             para continuar se faltou algo.
           </div>
         )}
+        {continuing && !stale && (
+          <div className="mb-2 flex items-center gap-2 text-[11.5px]" style={{ color: BRAND }} role="status">
+            <span className="h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
+            Continuando em segundo plano — o tempo do turno acabou e a ConvertIA segue trabalhando; a
+            resposta aparece aqui quando terminar.
+          </div>
+        )}
+        {msg.continuation?.status === "failed" && (
+          <div className="mb-2 text-[11.5px]" style={{ color: "var(--ops-neg)" }}>
+            A continuação em segundo plano falhou{msg.continuation.reason ? ` (${msg.continuation.reason})` : ""}.
+            Peça para continuar de onde parou.
+          </div>
+        )}
+        {confirmation && (
+          <div
+            className="mb-3 rounded-[10px] border px-3.5 py-3"
+            style={{
+              borderColor: confirmOpen ? "#DC2626" : HAIR,
+              background: confirmOpen ? "rgba(220,38,38,0.05)" : "transparent",
+            }}
+            role="group"
+            aria-label="Confirmação de ação irreversível"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-[2px] h-[14px] w-[14px] shrink-0" style={{ color: confirmOpen ? "#DC2626" : "var(--ops-mut)" }} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }}>
+                  {confirmOpen ? "Ação irreversível — confirmar?" : confirmation.resolution === "approved" ? "Ação confirmada" : "Ação cancelada"}
+                </div>
+                <div className="mt-0.5 text-[12px] leading-[1.5]" style={{ color: "var(--ops-text)" }}>
+                  {confirmation.summary}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                  <ConnDot k={confirmation.connector} size={12} />
+                  <span className="truncate">{confirmation.label}</span>
+                  {Object.keys(confirmation.args ?? {}).length > 0 && (
+                    <span className="truncate">
+                      · {Object.entries(confirmation.args).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(" · ").slice(0, 140)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {confirmOpen && !readOnly && (
+              <div className="mt-2.5 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => onConfirm("reject")}
+                  disabled={busy}
+                  className="h-[29px] rounded-[8px] border px-3 text-[12px] font-medium disabled:opacity-50"
+                  style={{ borderColor: HAIR, color: "var(--ops-text)" }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => onConfirm("approve")}
+                  disabled={busy}
+                  className="h-[29px] rounded-[8px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: "#DC2626" }}
+                >
+                  Confirmar e executar
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="convertia-md text-[14px] leading-[1.75]" style={{ color: "var(--ops-title)" }}>
           <ConvertiaMarkdown content={msg.content} streaming={isStreaming} />
         </div>
         {!isStreaming && msg.content && (
           <div className="mt-4 flex items-center gap-1">
+            {/* Telemetria do turno (padrão Claude: uma linha discreta) */}
+            {usage && (
+              <span
+                className="truncate tabular-nums text-[10.5px]"
+                style={{ color: "var(--ops-mut)" }}
+                title={`${usage.rounds.length} rodada(s) · ${usage.tools.length} tool(s) · ${usage.tokens_input} tokens de entrada (${usage.tokens_cached} do cache) · ${usage.tokens_output} de saída`}
+              >
+                {usage.rounds.length} rodada{usage.rounds.length === 1 ? "" : "s"}
+                {usage.tools.length > 0 ? ` · ${usage.tools.length} tool${usage.tools.length === 1 ? "" : "s"}` : ""}
+                {" · "}
+                {fmtTokens(usage.tokens_input)} in
+                {usage.cache_hit_ratio > 0 ? ` (${Math.round(usage.cache_hit_ratio * 100)}% cache)` : ""}
+                {" · "}
+                {fmtTokens(usage.tokens_output)} out
+                {usage.cost_usd > 0 ? ` · US$ ${usage.cost_usd.toFixed(usage.cost_usd < 0.01 ? 4 : 3)}` : ""}
+                {" · "}
+                {fmtMs(usage.duration_ms)}
+                {msg.status === "cancelled" ? " · interrompida" : ""}
+              </span>
+            )}
             <span className="flex-1" />
             <button
               title="Copiar"

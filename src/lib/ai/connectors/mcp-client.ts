@@ -48,6 +48,23 @@ export interface McpToolInfo {
   description: string
   inputSchema: Record<string, unknown>
   readOnly: boolean
+  /**
+   * Ação destrutiva/irreversível: `annotations.destructiveHint === true`
+   * OU nome que denuncia (delete/remove/send/purge/suppress). Passa
+   * pelo gate de confirmação da UI antes de executar.
+   */
+  destructive: boolean
+}
+
+const DESTRUCTIVE_NAME = /(^|[_\-.])(delete|remove|purge|suppress|send|unsubscribe)([_\-.]|$)/i
+
+export function isDestructiveMcpTool(t: {
+  name: string
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean } | null
+}): boolean {
+  if (t.annotations?.readOnlyHint === true) return false
+  if (t.annotations?.destructiveHint === true) return true
+  return DESTRUCTIVE_NAME.test(t.name)
 }
 
 interface JsonRpcResponse {
@@ -117,7 +134,10 @@ export class McpSession {
       }
       if (!resp.ok) {
         const snippet = (await resp.text().catch(() => "")).slice(0, 300)
-        throw new Error(`MCP ${this.cfg.name}: HTTP ${resp.status} — ${snippet || "sem corpo"}`)
+        const retryAfter = resp.headers.get("retry-after")
+        throw new Error(
+          `MCP ${this.cfg.name}: HTTP ${resp.status}${retryAfter ? ` retry-after: ${retryAfter}` : ""} — ${snippet || "sem corpo"}`,
+        )
       }
 
       const ctype = resp.headers.get("content-type") ?? ""
@@ -182,31 +202,56 @@ export class McpSession {
     this.initialized = true
   }
 
-  async listTools(): Promise<McpToolInfo[]> {
+  /** Lista CRUA (sem o filtro de allow_write) — é o que vai pro cache. */
+  async listToolsRaw(): Promise<McpToolInfo[]> {
     await this.initialize()
     const result = (await this.rpc("tools/list", {})) as {
       tools?: Array<{
         name: string
         description?: string
         inputSchema?: Record<string, unknown>
-        annotations?: { readOnlyHint?: boolean }
+        annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean }
       }>
     }
-    const tools = (result?.tools ?? []).map((t) => ({
+    return (result?.tools ?? []).map((t) => ({
       name: t.name,
       description: t.description ?? t.name,
       inputSchema: t.inputSchema ?? { type: "object", properties: {} },
       readOnly: t.annotations?.readOnlyHint === true,
+      destructive: isDestructiveMcpTool(t),
     }))
+  }
+
+  /** Aplica a régua de allow_write a uma lista (crua ou do cache). */
+  filterAllowed(tools: McpToolInfo[]): McpToolInfo[] {
     // Sem allow_write, só read-only explícitas passam
     return this.cfg.allowWrite ? tools : tools.filter((t) => t.readOnly)
   }
 
+  async listTools(): Promise<McpToolInfo[]> {
+    return this.filterAllowed(await this.listToolsRaw())
+  }
+
+  /**
+   * tools/call com retry em 429/503/rede ANTES de qualquer resposta.
+   * Timeout NÃO repete: a chamada pode ter executado do outro lado.
+   */
   async callTool(name: string, args: Record<string, unknown>): Promise<string> {
     await this.initialize()
-    const result = (await this.rpc("tools/call", { name, arguments: args })) as {
-      content?: Array<{ type: string; text?: string }>
-      isError?: boolean
+    let result: { content?: Array<{ type: string; text?: string }>; isError?: boolean } | undefined
+    for (let attempt = 0; ; attempt++) {
+      try {
+        result = (await this.rpc("tools/call", { name, arguments: args })) as typeof result
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        const transient = /HTTP (429|502|503)\b/.test(msg) || /fetch failed|ECONNRESET/i.test(msg)
+        if (!transient || attempt >= 2) throw err
+        const retryAfter = msg.match(/retry-after[:\s]*(\d+)/i)
+        const wait = Math.min(retryAfter ? Number(retryAfter[1]) * 1000 : 800 * 2 ** attempt, 6_000)
+        log.warn("tools/call transitório — retry", { server: this.cfg.name, tool: name, attempt, wait })
+        await new Promise((r) => setTimeout(r, wait))
+      }
     }
     const text = (result?.content ?? [])
       .map((c) => (c.type === "text" ? (c.text ?? "") : `[${c.type}]`))
@@ -217,16 +262,17 @@ export class McpSession {
   }
 }
 
-/** Teste de conexão usado pelo botão "Testar" da UI. */
+/** Teste de conexão usado pelo botão "Testar" da UI (devolve a lista crua pro cache). */
 export async function testMcpServer(cfg: McpServerConfig): Promise<{
   ok: boolean
   toolCount: number
+  tools?: McpToolInfo[]
   error?: string
 }> {
   try {
     const session = new McpSession({ ...cfg, allowWrite: true })
-    const tools = await session.listTools()
-    return { ok: true, toolCount: tools.length }
+    const tools = await session.listToolsRaw()
+    return { ok: true, toolCount: tools.length, tools }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn("teste MCP falhou", { server: cfg.name, error: msg })

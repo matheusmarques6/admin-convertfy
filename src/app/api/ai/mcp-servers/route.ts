@@ -106,24 +106,35 @@ export async function POST(request: NextRequest) {
       allowWrite: true,
     })
 
-    const { data, error } = await admin
+    const row = {
+      org_id: orgId,
+      store_id: parsed.store_id ?? null,
+      name: parsed.name,
+      url: parsed.url,
+      auth_token: parsed.auth_token ? encrypt(parsed.auth_token) : null,
+      headers: parsed.headers ?? {},
+      allow_write: parsed.allow_write,
+      is_active: true,
+      last_status: test.ok ? "ok" : test.error ?? "falhou",
+      last_checked_at: new Date().toISOString(),
+      tool_count: test.toolCount,
+      created_by: user.id,
+    }
+    const select = "id, name, url, store_id, is_active, allow_write, tool_count, last_status"
+    // Lista de tools vai pro cache (o chat lê de lá — migration 20261114);
+    // sem as colunas, grava sem o cache.
+    let ins = await admin
       .from("ai_mcp_servers")
       .insert({
-        org_id: orgId,
-        store_id: parsed.store_id ?? null,
-        name: parsed.name,
-        url: parsed.url,
-        auth_token: parsed.auth_token ? encrypt(parsed.auth_token) : null,
-        headers: parsed.headers ?? {},
-        allow_write: parsed.allow_write,
-        is_active: true,
-        last_status: test.ok ? "ok" : test.error ?? "falhou",
-        last_checked_at: new Date().toISOString(),
-        tool_count: test.toolCount,
-        created_by: user.id,
+        ...row,
+        ...(test.ok ? { tools_cache: test.tools ?? [], tools_cached_at: new Date().toISOString() } : {}),
       })
-      .select("id, name, url, store_id, is_active, allow_write, tool_count, last_status")
+      .select(select)
       .single()
+    if (ins.error && (ins.error.code === "42703" || ins.error.code === "PGRST204")) {
+      ins = await admin.from("ai_mcp_servers").insert(row).select(select).single()
+    }
+    const { data, error } = ins
     if (error) throw error
     return successResponse(
       request,

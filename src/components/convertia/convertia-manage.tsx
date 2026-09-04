@@ -10,9 +10,10 @@
  */
 
 import { useEffect, useState } from "react"
-import { Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react"
+import { Check, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react"
+import { MEMORY_KIND_LABELS, MEMORY_KINDS, type MemoryKind } from "@/lib/ai/convertia/memories"
 
-export type ManageKind = "skills" | "mcp"
+export type ManageKind = "skills" | "mcp" | "memories"
 
 const HAIR = "var(--ops-border)"
 const BRAND = "#4E62D8"
@@ -105,7 +106,236 @@ export function ConvertiaManageDialogs({
 }) {
   if (kind === "skills") return <SkillsDialog ws={ws} onClose={onClose} />
   if (kind === "mcp") return <McpDialog stores={stores} onClose={onClose} />
+  if (kind === "memories") return <MemoriesDialog stores={stores} onClose={onClose} />
   return null
+}
+
+// ── Memórias entre conversas ────────────────────────────────────────
+
+interface MemoryRow {
+  id: string
+  store_id: string | null
+  store_name: string | null
+  content: string
+  kind: MemoryKind
+  status: "pending" | "approved" | "rejected"
+  source: "ai" | "human"
+  created_at: string
+}
+
+function MemoriesDialog({
+  stores,
+  onClose,
+}: {
+  stores: Array<{ id: string; name: string }>
+  onClose: () => void
+}) {
+  const [tab, setTab] = useState<"pending" | "approved" | "rejected">("pending")
+  const [rows, setRows] = useState<MemoryRow[]>([])
+  const [err, setErr] = useState<string | null>(null)
+  const [schemaMissing, setSchemaMissing] = useState(false)
+  const [adding, setAdding] = useState<{ content: string; kind: MemoryKind; store_id: string | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    try {
+      const body = (await jsonOrThrow(await fetch("/api/ai/memories"))) as {
+        memories: MemoryRow[]
+        schema_missing?: boolean
+      }
+      setRows(body.memories)
+      setSchemaMissing(body.schema_missing === true)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao carregar")
+    }
+  }
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const setStatus = async (m: MemoryRow, status: MemoryRow["status"]) => {
+    await fetch(`/api/ai/memories/${m.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    })
+    await load()
+  }
+  const remove = async (m: MemoryRow) => {
+    await fetch(`/api/ai/memories/${m.id}`, { method: "DELETE" })
+    await load()
+  }
+  const create = async () => {
+    if (!adding || adding.content.trim().length < 3) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await jsonOrThrow(
+        await fetch("/api/ai/memories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(adding),
+        }),
+      )
+      setAdding(null)
+      setTab("approved")
+      await load()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao salvar")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const counts = {
+    pending: rows.filter((r) => r.status === "pending").length,
+    approved: rows.filter((r) => r.status === "approved").length,
+    rejected: rows.filter((r) => r.status === "rejected").length,
+  }
+  const list = rows.filter((r) => r.status === tab)
+
+  return (
+    <Shell
+      title="Memórias da ConvertIA"
+      subtitle="O que ela lembra entre conversas — por loja ou para a organização inteira. A IA propõe (tool 'lembrar'); só o que alguém aprovar aqui entra no prompt."
+      onClose={onClose}
+      width={600}
+    >
+      {err && (
+        <div className="mt-2 text-[11px]" style={{ color: "var(--ops-neg)" }} role="alert">
+          {err}
+        </div>
+      )}
+      {schemaMissing && (
+        <div className="mt-2 rounded-[8px] border px-3 py-2 text-[11px]" style={{ borderColor: "var(--ops-warn)", color: "var(--ops-warn)" }}>
+          Memórias ainda não habilitadas neste ambiente — aplique a migration 20261114.
+        </div>
+      )}
+      <div className="mt-3 flex items-center gap-1 rounded-[8px] border p-[3px]" style={{ borderColor: HAIR }}>
+        {(["pending", "approved", "rejected"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="h-[26px] flex-1 rounded-[6px] text-[11.5px] font-medium"
+            style={{
+              background: tab === t ? "rgba(78,98,216,0.10)" : "transparent",
+              color: tab === t ? BRAND : "var(--ops-sec)",
+            }}
+          >
+            {t === "pending" ? "Para revisar" : t === "approved" ? "Aprovadas" : "Rejeitadas"} · {counts[t]}
+          </button>
+        ))}
+      </div>
+      {!adding && (
+        <>
+          <div className="mt-3 flex flex-col gap-1.5">
+            {list.map((m) => (
+              <div key={m.id} className="rounded-[8px] border px-2.5 py-2" style={{ borderColor: HAIR }}>
+                <div className="text-[12.5px] leading-[1.5]" style={{ color: "var(--ops-title)" }}>
+                  {m.content}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                  <span className="rounded-[4px] px-1.5 py-[1px] font-semibold uppercase tracking-[0.04em]" style={{ background: "rgba(78,98,216,0.08)", color: BRAND }}>
+                    {MEMORY_KIND_LABELS[m.kind] ?? m.kind}
+                  </span>
+                  <span>{m.store_id ? `loja: ${m.store_name ?? "—"}` : "organização"}</span>
+                  <span>{m.source === "ai" ? "proposta pela IA" : "adicionada por pessoa"}</span>
+                  <span>{new Date(m.created_at).toLocaleDateString("pt-BR")}</span>
+                  <span className="flex-1" />
+                  {m.status !== "approved" && (
+                    <button onClick={() => void setStatus(m, "approved")} className="inline-flex items-center gap-1 font-medium" style={{ color: "var(--ops-pos)" }}>
+                      <Check className="h-3 w-3" /> Aprovar
+                    </button>
+                  )}
+                  {m.status !== "rejected" && (
+                    <button onClick={() => void setStatus(m, "rejected")} className="font-medium" style={{ color: "var(--ops-warn)" }}>
+                      Rejeitar
+                    </button>
+                  )}
+                  <button onClick={() => void remove(m)} title="Excluir" style={{ color: "var(--ops-neg)" }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {list.length === 0 && (
+              <div className="py-4 text-center text-[12px]" style={{ color: "var(--ops-mut)" }}>
+                {tab === "pending"
+                  ? "Nada para revisar. Peça na conversa: “lembre que…” — a proposta aparece aqui."
+                  : tab === "approved"
+                    ? "Nenhuma memória aprovada ainda."
+                    : "Nenhuma memória rejeitada."}
+              </div>
+            )}
+          </div>
+          <div className="mt-3.5">
+            <button
+              onClick={() => setAdding({ content: "", kind: "fato", store_id: null })}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
+              style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+            >
+              <Plus className="h-3.5 w-3.5" /> Adicionar memória
+            </button>
+          </div>
+        </>
+      )}
+      {adding && (
+        <div className="mt-2">
+          <label className={labelCls} style={{ color: "var(--ops-mut)" }}>Memória (uma frase, autossuficiente)</label>
+          <textarea
+            value={adding.content}
+            onChange={(e) => setAdding({ ...adding, content: e.target.value })}
+            rows={3}
+            maxLength={600}
+            placeholder="ex.: A loja X não faz promoção com desconto acima de 15% — usar frete grátis como oferta."
+            className="w-full resize-y rounded-[8px] border bg-transparent px-2.5 py-2 text-[12.5px] leading-[1.55] outline-none"
+            style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+          />
+          <label className={labelCls} style={{ color: "var(--ops-mut)" }}>Tipo</label>
+          <select
+            value={adding.kind}
+            onChange={(e) => setAdding({ ...adding, kind: e.target.value as MemoryKind })}
+            className={inputCls}
+            style={{ borderColor: HAIR, color: "var(--ops-title)", background: "var(--ops-card)" }}
+          >
+            {MEMORY_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {MEMORY_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+          <label className={labelCls} style={{ color: "var(--ops-mut)" }}>Escopo</label>
+          <select
+            value={adding.store_id ?? ""}
+            onChange={(e) => setAdding({ ...adding, store_id: e.target.value || null })}
+            className={inputCls}
+            style={{ borderColor: HAIR, color: "var(--ops-title)", background: "var(--ops-card)" }}
+          >
+            <option value="">Organização (todas as conversas)</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                Loja: {s.name}
+              </option>
+            ))}
+          </select>
+          <div className="mt-3 flex justify-end gap-2">
+            <button onClick={() => setAdding(null)} className="h-[31px] rounded-[8px] border px-3 text-[12px] font-medium" style={{ borderColor: HAIR, color: "var(--ops-text)" }}>
+              Cancelar
+            </button>
+            <button
+              onClick={() => void create()}
+              disabled={busy || adding.content.trim().length < 3}
+              className="h-[31px] rounded-[8px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-50"
+              style={{ background: BRAND }}
+            >
+              {busy ? "Salvando…" : "Salvar (já aprovada)"}
+            </button>
+          </div>
+        </div>
+      )}
+    </Shell>
+  )
 }
 
 // ── Skills ──────────────────────────────────────────────────────────

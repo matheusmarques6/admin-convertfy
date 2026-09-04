@@ -64,6 +64,18 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/convertia-continue",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/convertia-maintenance",
+      "schedule": "50 * * * *"
+    },
+    {
+      "path": "/api/cron/convertia-eval",
+      "schedule": "0 5 * * 1"
+    },
+    {
       "path": "/api/cron/weekly-feedback",
       "schedule": "40 7 * * 1"
     },

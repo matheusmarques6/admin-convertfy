@@ -19,6 +19,8 @@ import { PageHeader } from "@/components/ui/page-header"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
 import { ConvertiaFeedbackCard } from "./convertia-feedback-card"
+import { ConvertiaPerfCard } from "./convertia-perf-card"
+import { ConvertiaEvalCard } from "./convertia-eval-card"
 
 const AiUsageCostChart = dynamic(
   () => import("./ai-usage-cost-chart").then((m) => ({ default: m.AiUsageCostChart })),
@@ -291,8 +293,10 @@ export function AiUsageDashboard() {
             </table>
           </div>
 
-          {/* ── ConvertIA · Feedback ───────────────────────── */}
+          {/* ── ConvertIA · Feedback / Desempenho / Avaliação ── */}
           <ConvertiaFeedbackCard windowDays={windowDays} />
+          <ConvertiaPerfCard windowDays={windowDays} />
+          <ConvertiaEvalCard />
 
           {/* ── Recentes ───────────────────────────────────── */}
           <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-x-auto">

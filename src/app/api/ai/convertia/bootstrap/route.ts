@@ -14,6 +14,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
+import { listAdvisors } from "@/lib/ai/convertia/knowledge"
 
 export const dynamic = "force-dynamic"
 
@@ -29,7 +30,7 @@ async function handleGet(request: NextRequest) {
       ? "comercial"
       : "operacional"
 
-    const [convResp, storesResp, skillsResp, mcpResp, profileResp, budget] = await Promise.all([
+    const [convResp, storesResp, skillsResp, mcpResp, profileResp, budget, knowledgeCount, advisors, memoriesPending] = await Promise.all([
       admin
         .from("ai_chat_conversations")
         .select("id, title, context, last_message_at, created_at")
@@ -62,6 +63,15 @@ async function handleGet(request: NextRequest) {
         .order("created_at", { ascending: true }),
       admin.from("profiles").select("name").eq("id", user.id).maybeSingle(),
       getConvertiaBudget(admin, user.id),
+      // base de conhecimento (Obsidian): notas aprovadas + advisors
+      admin.from("ai_knowledge_notes").select("id", { count: "exact", head: true }).eq("is_active", true),
+      listAdvisors(admin),
+      // memórias propostas pela IA aguardando revisão (badge no menu +)
+      admin
+        .from("ai_memories")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("status", "pending"),
     ])
 
     // Skills/MCP degradam com aviso quando a migration 20261090 não rodou
@@ -83,6 +93,9 @@ async function handleGet(request: NextRequest) {
       },
     }))
 
+    if (knowledgeCount.error && MISSING_SCHEMA.has(knowledgeCount.error.code)) schemaMissing.push("ai_knowledge_notes")
+    if (memoriesPending.error && MISSING_SCHEMA.has(memoriesPending.error.code)) schemaMissing.push("ai_memories")
+
     return successResponse(request, {
       user_name: profileResp.data?.name ?? null,
       conversations: convResp.data ?? [],
@@ -90,6 +103,12 @@ async function handleGet(request: NextRequest) {
       skills,
       mcp_servers: mcpServers,
       budget,
+      knowledge: {
+        available: !knowledgeCount.error && (knowledgeCount.count ?? 0) > 0,
+        notes: knowledgeCount.count ?? 0,
+        advisors,
+      },
+      memories: { pending: memoriesPending.error ? 0 : (memoriesPending.count ?? 0) },
       schema_missing: schemaMissing,
     })
   } catch (error) {

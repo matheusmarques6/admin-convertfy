@@ -9,6 +9,7 @@
 import crypto from "crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { syncVault } from "@/lib/vault/vault-sync.service"
+import { syncKnowledge } from "@/lib/ai/convertia/knowledge-sync"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("VaultSyncWebhook")
@@ -48,7 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: `push em ${ref}, sync segue ${branch}` })
   }
 
-  const result = await syncVault({ trigger: "webhook" })
-  log.info("webhook.synced", { status: result.status, sha: result.commitSha?.slice(0, 8) })
-  return NextResponse.json(result)
+  // O mesmo push cobre as duas pastas do vault: emails (Curador) e
+  // conhecimento (ConvertIA). Falha de uma não derruba a outra.
+  const [result, knowledge] = await Promise.all([
+    syncVault({ trigger: "webhook" }),
+    syncKnowledge({ trigger: "webhook" }).catch((err) => ({
+      status: "error" as const,
+      error: err instanceof Error ? err.message : String(err),
+    })),
+  ])
+  log.info("webhook.synced", { status: result.status, sha: result.commitSha?.slice(0, 8), knowledge: knowledge.status })
+  return NextResponse.json({ ...result, knowledge })
 }

@@ -1336,6 +1336,52 @@ turno: `isUnknownModelError` (400/404 falando de model) → fallback para
 o padrão na 1ª rodada com aviso na resposta. Estudo de arquitetura e
 backlog priorizado em `docs/convertia/arquitetura-e-melhorias.md`.
 
+## ConvertIA v3 — motor (set/2026, migrations 20261114/20261115)
+
+Loop de tools extraído da rota para `src/lib/ai/convertia/tool-loop.ts`
+(puro, 13 testes com stream mockado) — a rota autentica, monta contexto
+e abre o stream; o MESMO loop roda no job de continuação e na avaliação.
+Mapa completo em `docs/convertia/motor-v3.md`. O que não pode quebrar:
+
+- **`meta` da mensagem é MERGE** (`ai_chat_message_progress()`): a
+  persistência parcial (2,5 s), o botão Parar (`cancel_requested`) e o
+  Confirmar (`pending_confirmation.resolved_at`) escrevem na mesma
+  coluna JSONB. Um update com o objeto inteiro apagaria a flag alheia.
+- **System prompt em dois blocos** (`system-prompt.ts`): o estável leva
+  `cache_control` (só `anthropic/*`, via `prompt-cache.ts`); data, "o que
+  já foi consultado" (`consult-memory.ts`), sumário rolante e modo
+  profundo ficam no dinâmico. Mover um bloco invalida o cache do prefixo.
+- **Tool que falha devolve erro ESTRUTURADO** (`tool-errors.ts`:
+  `{error:{code, retry_after_s, hint}}`) — o loop repete transitórios
+  (429/timeout/5xx) até 2× dentro do orçamento e o prompt ensina o que
+  fazer com cada `code`. "Erro ao consultar: …" cru era lido pelo modelo
+  como "a plataforma não faz isso".
+- **Ação irreversível passa pelo gate da UI** (`ConnectorTool.confirm`):
+  enviar campanha, DELETE, supressão, MCP `destructiveHint`/nome. A tool
+  NÃO executa; `needs_confirmation` volta ao modelo e o card
+  Confirmar/Cancelar aparece. Aprovar = POST com `approve` (uso único,
+  dono da conversa) → a rota executa ANTES da 1ª rodada.
+- **Parar não aborta o fetch**: marca a flag; o loop lê por polling e
+  fecha o turno limpo (custo contabilizado, `status: cancelled`).
+- **Orçamento esgotado com tools já executadas → `ai_chat_jobs`**; o cron
+  `convertia-continue` retoma da rodada e grava na mesma mensagem (a UI
+  repõe por polling até 25 min). Relatório (cookie) fica fora do job.
+- **MCP lê a lista de tools do banco** (`tools_cache`, 6 h; stale é usado
+  e renovado em background; Testar e o cron horário renovam).
+- **Modo econômico** (roteamento por rodada): rodadas de consulta no Kimi
+  K3; final ou pedido de ESCRITA é refeito no modelo escolhido — nunca
+  deixar um modelo barato montar payload de escrita.
+- **Memórias** (`ai_memories`, por org ou loja): a IA propõe
+  (`convertia_lembrar`, pending), humano aprova no painel; só aprovadas
+  entram no prompt. **Base de conhecimento** (`ai_knowledge_notes`):
+  segunda pasta do vault (`VAULT_KNOWLEDGE_BASE_PATH`), só `status:
+  aprovado`, grafo por wikilinks normalizados por NOME (como o Obsidian),
+  embeddings OpenAI com fallback full-text; advisors = `Advisors/`.
+  Coluna gerada `search` NÃO inclui `array_to_string(tags)` — é STABLE e
+  coluna gerada exige IMMUTABLE (a migration quebrou por isso).
+- **Avaliação** (`ai_eval_cases/runs`): casos dos 👍, lote semanal em 3
+  modelos com tools SÓ de leitura, juiz na rubrica; card em Custo de IA.
+
 ## Financeiro ligado à loja (set/2026, migration 20261113)
 
 Cobrança (`client_charges` local e `invoices` do Asaas) ganhou
