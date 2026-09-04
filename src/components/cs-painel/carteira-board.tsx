@@ -628,6 +628,18 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
               {callResult}
             </div>
           )}
+          {/* O erro global fica no topo do board — ATRÁS deste modal.
+              Sem repeti-lo aqui, a falha era invisível: o operador
+              clicava, nada acontecia e nada explicava. */}
+          {actionError && (
+            <div
+              className="mt-2.5 rounded-[8px] border px-2.5 py-2 text-[11px]"
+              style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }}
+              role="alert"
+            >
+              {actionError}
+            </div>
+          )}
           <div className="mt-3.5 flex justify-end gap-2">
             <ModalBtn onClick={() => setCallModal(null)}>Cancelar</ModalBtn>
             <ModalBtn primary disabled={(!callData && !callFathom.trim()) || busy} onClick={registrarCall}>

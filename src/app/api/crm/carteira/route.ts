@@ -164,6 +164,32 @@ async function handleGet(request: NextRequest) {
         : Promise.resolve({ data: [], error: null } as const),
     ])
 
+    // Última call: a VERDADE é store_feedback_calls, não a coluna
+    // denormalizada client_stores.last_feedback_date — o trigger que a
+    // mantinha sobrescrevia sem comparar (registrar uma call antiga
+    // fazia a data VOLTAR no tempo, e o card seguia "atrasado" depois
+    // de registrar). A coluna continua como fallback para loja cuja
+    // call foi registrada antes desta correção.
+    const lastCallByStore = new Map<string, string>()
+    if (storeIds.length > 0) {
+      const { data: callRows, error: callsError } = await admin
+        .from("store_feedback_calls")
+        .select("store_id, conducted_at")
+        .in("store_id", storeIds)
+        .order("conducted_at", { ascending: false })
+      if (callsError) {
+        log.warn("calls indisponíveis — usando last_feedback_date", {
+          error: callsError.message,
+        })
+      }
+      for (const row of callRows ?? []) {
+        // ordenado desc: a primeira de cada loja é a mais recente
+        if (!lastCallByStore.has(row.store_id as string)) {
+          lastCallByStore.set(row.store_id as string, row.conducted_at as string)
+        }
+      }
+    }
+
     if ("error" in invoicesResp && invoicesResp.error) {
       log.warn("unified_invoices indisponível", { error: invoicesResp.error.message })
     }
@@ -206,7 +232,8 @@ async function handleGet(request: NextRequest) {
           ? mensalidadeFromInvoices(invoicesByClient.get(store.client_id) ?? [], now)
           : { status: "none" as const, history: [] }
 
-        const callDays = daysSince(store.last_feedback_date, now)
+        const lastCallAt = lastCallByStore.get(store.id) ?? store.last_feedback_date
+        const callDays = daysSince(lastCallAt, now)
         const cf = (d.custom_fields ?? {}) as Record<string, unknown>
 
         return {
