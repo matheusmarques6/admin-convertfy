@@ -25,7 +25,9 @@
  * renderEmphasis         · markdown-leve (**negrito**, *itálico*) p/ prosa
  */
 
-import { Loader2, Sparkles } from "lucide-react"
+import { ExternalLink, Loader2, Sparkles } from "lucide-react"
+import Link from "next/link"
+import { ROUTES } from "@/lib/routes"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { cn } from "@/lib/utils"
 
@@ -872,10 +874,13 @@ export function ObjectionCatalogPanel({
   catalog,
   source,
   updatedAt,
+  runId,
 }: {
   catalog: CatalogoDeObjecoes
   source?: string | null
   updatedAt?: string | null
+  /** Última run `catalogador` da loja — vira o link "ver run" (prompt, saída, custo no Estúdio). */
+  runId?: string | null
 }) {
   const quando = updatedAt ? new Date(updatedAt).toLocaleDateString("pt-BR") : null
   const subtitle = [
@@ -889,6 +894,17 @@ export function ObjectionCatalogPanel({
   return (
     <IcpBlock>
       <IcpBlockHeader title="Catálogo de argumento" subtitle={subtitle} />
+      {runId && (
+        <div className="-mt-2 mb-3">
+          <Link
+            href={`${ROUTES.ADMIN.AGENTS.RUNS}?run=${encodeURIComponent(runId)}`}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:underline"
+          >
+            <ExternalLink size={11} />
+            ver run do Catalogador
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         {(catalog.objecoes ?? []).map((o) => (

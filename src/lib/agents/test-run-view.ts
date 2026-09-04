@@ -56,6 +56,9 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
 
 /** Ordem canônica exibida nas listas (extras aparecem quando têm run). */
 export const TEST_BASE_AGENT_KEYS = [
+  // Seletor ANTES do Estruturador (set/2026): decide o alvo de objeção que
+  // os dois seguintes consomem. Em off/sem catálogo a linha fica pendente.
+  "seletor",
   // O Estruturador roda ANTES do Curador quando ligado; em 'off' a linha
   // aparece pendente e a run nunca chega — que é a verdade, e melhor do que
   // o agente não existir na tela.

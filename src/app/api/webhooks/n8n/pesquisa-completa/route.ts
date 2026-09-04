@@ -19,8 +19,9 @@
  * REGERAÇÃO: o briefing webhook (dispatchBriefingWebhook) envia um campo
  * `regeneration` no payload de saída. Quando o briefing é REGERADO, o n8n
  * deve ECOAR `regeneration: true` neste callback. Nesse caso, a geração de
- * copy NÃO é re-disparada (apenas a Pesquisa é atualizada). Quando ausente
- * ou false, o comportamento é o normal: enfileira Architect + seed + copy.
+ * copy NÃO é re-disparada (apenas a Pesquisa é atualizada — e o Catalogador
+ * roda de novo, porque a pesquisa mudou). Quando ausente ou false, o
+ * comportamento é o normal: Catalogador + enfileira Architect + seed + copy.
  */
 
 import { NextRequest, after } from "next/server"
@@ -66,20 +67,20 @@ export async function POST(request: NextRequest) {
     // Gatilho em background — falha não derruba o 200 (o n8n não deve re-tentar
     // por erro nosso). A idempotência vive no enqueue (dedup de job ativo).
     after(async () => {
-      // Regeração de briefing apenas atualiza a Pesquisa — não re-dispara copy.
-      if (body.regeneration === true) {
-        logger.info("[n8n:pesquisa-completa] skipped_due_to_regeneration", {
-          store_id: body.store_id,
-        })
-        return
-      }
       // Catalogador ANTES de enfileirar (set/2026): o Seletor da fase 1 lê o
       // catálogo, e a pesquisa acabou de mudar. Fail-open — sem catálogo o
       // Seletor degrada para lacuna; a geração nunca fica presa aqui.
+      // Roda TAMBÉM na regeneração: o callback `icp` do n8n acabou de
+      // regravar `icp_objections` sem tipagem, e sem esta passada a projeção
+      // divergiria do catálogo antigo (a pesquisa nova sem catálogo novo).
       try {
-        const cat = await runCatalogador({ storeId: body.store_id, triggeredBy: "pesquisa_completa" })
+        const cat = await runCatalogador({
+          storeId: body.store_id,
+          triggeredBy: body.regeneration ? "pesquisa_regenerada" : "pesquisa_completa",
+        })
         logger.info("[n8n:pesquisa-completa] catalogador", {
           store_id: body.store_id,
+          regeneration: body.regeneration,
           status: cat.status,
           objections: cat.objections.length,
         })
@@ -88,6 +89,14 @@ export async function POST(request: NextRequest) {
           store_id: body.store_id,
           error: err instanceof Error ? err.message : String(err),
         })
+      }
+      // Regeração de briefing apenas atualiza a Pesquisa (e o catálogo acima)
+      // — não re-dispara copy.
+      if (body.regeneration === true) {
+        logger.info("[n8n:pesquisa-completa] skipped_due_to_regeneration", {
+          store_id: body.store_id,
+        })
+        return
       }
       try {
         const res = await enqueueDispatchJob(body.store_id, {

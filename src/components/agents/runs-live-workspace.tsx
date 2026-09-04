@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import useSWR from "swr"
 import {
   Activity,
@@ -608,7 +609,12 @@ export function RunsLiveWorkspace() {
   const [agentFilter, setAgentFilter] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [storeFilter, setStoreFilter] = useState<string>("")
-  const [detailRunId, setDetailRunId] = useState<string | null>(null)
+  // `?run=<id>` abre o detalhe direto — é o deep-link do "ver run" das
+  // telas que apontam para uma run de LOJA (Catalogador, aba Pesquisa), que
+  // não tem email e por isso não aparece na listagem por email do Estúdio.
+  const searchParams = useSearchParams()
+  const runFromUrl = searchParams?.get("run") ?? null
+  const [detailRunId, setDetailRunId] = useState<string | null>(runFromUrl)
 
   const { runs, pipeline, status, isLoading } = useAgentRunsLive(windowMin)
 

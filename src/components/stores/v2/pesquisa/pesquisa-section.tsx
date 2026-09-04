@@ -180,6 +180,10 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [regeneratingAll, setRegeneratingAll] = useState(false)
   const [regeneratingObjections, setRegeneratingObjections] = useState(false)
   const [clearing, setClearing] = useState(false)
+  // Última run `catalogador` da loja (link "ver run" do painel do catálogo).
+  // Vem do POST de regeneração quando o operador acabou de rodar; no load
+  // vem do GET da mesma rota — a run é de loja e não está no `client_stores`.
+  const [catalogRunId, setCatalogRunId] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -191,6 +195,26 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       // noop
     }
   }, [storeId])
+
+  const hasCatalog = Boolean(data.objection_catalog)
+  useEffect(() => {
+    if (!hasCatalog) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/admin/stores/${storeId}/regenerate-objections`)
+        if (!r.ok) return
+        const j = await r.json().catch(() => ({}))
+        const id = (j.data?.run?.id ?? j.run?.id ?? null) as string | null
+        if (!cancelled && id) setCatalogRunId(id)
+      } catch {
+        // noop — o link é conveniência, o painel não depende dele
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [storeId, hasCatalog])
 
   // Sincroniza com initialData quando o pai carrega o ctx async.
   // O pai (tab-contexto) passa `{}` no mount e popula depois do fetch —
@@ -282,6 +306,8 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
         const j = await res.json().catch(() => ({}))
         const objections = (j.data?.objections ?? j.objections) as PesquisaData["icp_objections"]
         const catalog = (j.data?.catalog ?? j.catalog ?? null) as PesquisaData["objection_catalog"]
+        const runId = (j.data?.run_id ?? j.run_id ?? null) as string | null
+        if (runId) setCatalogRunId(runId)
         if (objections && objections.length > 0) {
           setData((prev) => ({
             ...prev,
@@ -645,6 +671,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               catalog={data.objection_catalog}
               source={data.objection_catalog_source ?? null}
               updatedAt={data.objection_catalog_updated_at ?? null}
+              runId={catalogRunId}
             />
           )}
 

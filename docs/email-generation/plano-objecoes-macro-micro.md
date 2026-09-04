@@ -14,6 +14,18 @@ produção (somente leitura) em 04/09.*
 > gesto (§4, fase 5). Pendências humanas: frontmatter das 8 intenções no
 > Obsidian (`intencoes-welcome-frontmatter.md`), ordem de ranking no
 > `_protocolo-de-selecao`, backfill (`POST /api/admin/objection-catalogs/batch`).
+>
+> **Ajustes pós-fase 4 (04/09, PR 6):** Seletor entrou ANTES do Estruturador
+> nas telas (`TEST_BASE_AGENT_KEYS`, `PIPELINE_AGENT_ORDER` e nó próprio no
+> mapa do Estúdio — `STUDIO_NODES`, com os nós seguintes deslocados 256px;
+> `catalogador` também entrou na ordem dos logs). A run do Catalogador é de
+> LOJA e não cabe na listagem por email do Estúdio: o painel "Catálogo de
+> argumento" da aba Pesquisa ganhou "ver run do Catalogador" →
+> `/admin/agents/runs?run=<id>` (o deep-link abre o `RunDetailDrawer`; o id
+> vem do POST de regeneração ou do `GET .../regenerate-objections`, que
+> devolve a última run). O Catalogador passou a rodar TAMBÉM no
+> `pesquisa-completa` com `regeneration: true` (antes o `return` da regeneração
+> vinha primeiro e a projeção ficava sem tipagem depois do callback `icp`).
 
 ---
 
@@ -233,7 +245,9 @@ Estruturador).
   Sonnet. Custo ~US$ 0,05–0,10/loja, 1× por pesquisa.
 - Gatilhos: (1) `pesquisa-completa` — roda **antes** do `enqueueDispatchJob`
   dentro do `after()` (maxDuration 300; ~30–60 s), fail-open: falhou →
-  enfileira mesmo assim e o Seletor degrada para lacuna; (2) botão
+  enfileira mesmo assim e o Seletor degrada para lacuna; roda também quando
+  o callback vem com `regeneration: true` (a pesquisa mudou, o catálogo tem
+  de acompanhar — só a copy não é re-disparada); (2) botão
   "Regenerar objeções" (mesma rota, corpo novo, resposta continua devolvendo
   a projeção para a UI); (3) `POST /api/admin/objection-catalogs/batch`
   para o backfill (§3) — 1 loja por chamada com `exclude_ids`, o padrão do

@@ -256,6 +256,10 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
 /** Ordem canônica de exibição dos agentes operacionais (sem 'seed'). */
 export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "copy",
+  // Objeções (set/2026): Catalogador é por LOJA (1×/pesquisa) e o Seletor
+  // roda por email antes do Estruturador — a ordem aqui é a das telas.
+  "catalogador",
+  "seletor",
   "estruturador",
   "blueprint",
   "subject",

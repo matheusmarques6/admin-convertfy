@@ -2501,7 +2501,7 @@ checkout" na seção 03. Objeção ≠ dor: trava DEPOIS de querer o produto.
 
 **Catalogador** (`src/lib/agents/objecoes/catalogador.service.ts`, agent
 `catalogador`, sonnet-4.6): 1× por pesquisa — `pesquisa-completa` (antes
-do enqueue, fail-open), botão "Regenerar objeções" (rota v2) e
+do enqueue, fail-open, TAMBÉM com `regeneration: true`), botão "Regenerar objeções" (rota v2) e
 `POST /api/admin/objection-catalogs/batch` (backfill, 1 loja por chamada,
 `exclude_ids`). Grava `client_stores.objection_catalog` (4 catálogos:
 objeções tipadas por `tipo_de_risco` × `aliviador` com lastro e

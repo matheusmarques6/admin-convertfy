@@ -6,7 +6,8 @@
  * execução (email) sobre o grafo. Client-safe: sem imports de servidor.
  *
  * O grafo é o pipeline REAL completo (decisão ago/2026 — não a síntese da
- * maquete): fase 1 por loja (Curador → Montador → Blueprint → Assunto),
+ * maquete): fase 1 por loja (Seletor → Estruturador → Curador → Montador →
+ * Blueprint → Assunto),
  * copy no n8n, fase 2 por email (Image → Merge por example → Hero →
  * Texto → Imagens → Cores) e qualidade (QA → QA Vision). O merge roda
  * ANTES da hero (D1, 20/08) e o verificador de merge morreu com a fila
@@ -45,40 +46,45 @@ export interface StudioNode {
 export const STUDIO_NODES: StudioNode[] = [
   { key: "trigger", type: "trigger", label: "Pesquisa completa", sub: "Fila de dispatch · por loja", icon: "zap", x: 40, y: 452 },
   // ── Fase 1: referência & estrutura (por loja × email) ──
+  // Seletor (set/2026) ANTES do Estruturador: escolhe o ALVO de objeção que
+  // o Estruturador e o Curador consomem. Roda como pré-passo sequencial da
+  // fase 1; com seletor_mode=off não há run e o nó aparece pendente — que é
+  // a verdade, e melhor do que o agente não existir no mapa.
+  { key: "seletor", type: "agent", agent: "seletor", icon: "target", x: 300, y: 452 },
   // Estruturador antes do Curador: decide o esqueleto (modo shadow/on) que a
   // fase 1 consome — em off o nó aparece como pulado, que é a verdade.
-  { key: "estruturador", type: "agent", agent: "estruturador", icon: "layers", x: 300, y: 452 },
-  { key: "assembler_chooser", type: "agent", agent: "assembler_chooser", icon: "search", x: 556, y: 452 },
-  { key: "assembler", type: "agent", agent: "assembler", icon: "package", x: 812, y: 452 },
-  { key: "blueprint", type: "agent", agent: "blueprint", icon: "layers", x: 1068, y: 452 },
-  { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 1068, y: 308 },
+  { key: "estruturador", type: "agent", agent: "estruturador", icon: "layers", x: 556, y: 452 },
+  { key: "assembler_chooser", type: "agent", agent: "assembler_chooser", icon: "search", x: 812, y: 452 },
+  { key: "assembler", type: "agent", agent: "assembler", icon: "package", x: 1068, y: 452 },
+  { key: "blueprint", type: "agent", agent: "blueprint", icon: "layers", x: 1324, y: 452 },
+  { key: "subject", type: "agent", agent: "subject", icon: "edit", x: 1324, y: 308 },
   // ── Copy (externo, n8n) ──
   // Dois nós, não um: o Dispatch é o que ENVIAMOS (payload com blocos,
   // campos e blueprint) e o Copy é o que VOLTOU do n8n. Colapsá-los
   // escondia o payload atrás do retorno — e era justamente o payload que
   // ninguém conseguia abrir (a run não tinha email/flow/batch).
-  { key: "copy_dispatch", type: "agent", agent: "copy_dispatch", icon: "send", x: 1324, y: 452 },
-  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1580, y: 452 },
+  { key: "copy_dispatch", type: "agent", agent: "copy_dispatch", icon: "send", x: 1580, y: 452 },
+  { key: "copy", type: "agent", agent: "copy", icon: "edit", x: 1836, y: 452 },
   // Encurtador (migration 20261089): roda no CALLBACK, entre a copy voltar e
   // a fase 2 começar. Fica na linha de cima porque é condicional — só existe
   // run quando algum campo passou do limite da caixa.
-  { key: "copy_fit", type: "agent", agent: "copy_fit", icon: "check", x: 1580, y: 308 },
+  { key: "copy_fit", type: "agent", agent: "copy_fit", icon: "check", x: 1836, y: 308 },
   // ── Fase 2: montagem (por email) — merge por example ANTES da hero ──
-  { key: "image", type: "agent", agent: "image", icon: "file", x: 1836, y: 308 },
-  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 1836, y: 452 },
-  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 2092, y: 452 },
-  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2348, y: 452 },
-  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2604, y: 452 },
-  { key: "typography", type: "agent", agent: "typography", icon: "edit", x: 2860, y: 452 },
-  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 3116, y: 452 },
+  { key: "image", type: "agent", agent: "image", icon: "file", x: 2092, y: 308 },
+  { key: "copy_merge", type: "agent", agent: "copy_merge", icon: "check", x: 2092, y: 452 },
+  { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 2348, y: 452 },
+  { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2604, y: 452 },
+  { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2860, y: 452 },
+  { key: "typography", type: "agent", agent: "typography", icon: "edit", x: 3116, y: 452 },
+  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 3372, y: 452 },
   // Fundo no tamanho declarado (código, 02/09): faixa chapada + foto quando
   // o td declara um background maior que a foto gerada. Linha de cima
   // porque é condicional — só há run quando o documento tem box de fundo.
-  { key: "background_fit", type: "agent", agent: "background_fit", icon: "check", x: 3116, y: 308 },
+  { key: "background_fit", type: "agent", agent: "background_fit", icon: "check", x: 3372, y: 308 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3372, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3628, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3884, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3628, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3884, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 4140, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -86,7 +92,8 @@ export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries
 )
 
 export const STUDIO_EDGES: Array<[string, string]> = [
-  ["trigger", "estruturador"],
+  ["trigger", "seletor"],
+  ["seletor", "estruturador"],
   ["estruturador", "assembler_chooser"],
   ["assembler_chooser", "assembler"],
   ["assembler", "blueprint"],
@@ -124,10 +131,10 @@ export interface StudioGroup {
 }
 
 export const STUDIO_GROUPS: StudioGroup[] = [
-  { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 1048, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
-  { label: "COPY (N8N)", x: 1296, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
-  { label: "MONTAGEM", x: 1552, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
-  { label: "QUALIDADE", x: 2832, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
+  { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 1304, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
+  { label: "COPY (N8N)", x: 1552, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
+  { label: "MONTAGEM", x: 1808, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
+  { label: "QUALIDADE", x: 3088, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
 ]
 
 // ── Estado de run por nó ─────────────────────────────────────────────────
@@ -196,6 +203,7 @@ export type ExecutionBucket = "success" | "error" | "running"
 /** Ordem topológica da linha principal — usada para derivar aguardando/pulado. */
 const MAIN_ORDER = [
   "trigger",
+  "seletor",
   "estruturador",
   "assembler_chooser",
   "assembler",
@@ -358,7 +366,7 @@ export interface LiveTestRun {
   created_at?: string
 }
 
-const PHASE1_NODE_KEYS = ["estruturador", "assembler_chooser", "assembler", "blueprint", "subject"] as const
+const PHASE1_NODE_KEYS = ["seletor", "estruturador", "assembler_chooser", "assembler", "blueprint", "subject"] as const
 
 /**
  * Qual nó está RODANDO agora, derivado da máquina de status do email —
@@ -567,7 +575,7 @@ export interface RerunPlan {
   hint: string
 }
 
-const PHASE1_KEYS = new Set(["estruturador", "assembler_chooser", "assembler", "blueprint", "subject"])
+const PHASE1_KEYS = new Set(["seletor", "estruturador", "assembler_chooser", "assembler", "blueprint", "subject"])
 const PHASE2_KEYS = new Set([
   "image",
   "copy_merge",
