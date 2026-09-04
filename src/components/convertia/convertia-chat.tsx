@@ -47,6 +47,7 @@ import {
   resolveConvertiaModel,
 } from "@/lib/ai/convertia-models"
 import { ConvertiaManageDialogs, type ManageKind } from "./convertia-manage"
+import { ROUTES } from "@/lib/routes"
 
 // ── Vocabulário do design ───────────────────────────────────────────
 
@@ -364,6 +365,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     [boot],
   )
   const store = stores.find((s) => s.id === storeId) ?? null
+  // Quantas lojas têm plataforma de email ligada — o conector nasce
+  // ativo nelas; o resto precisa da chave cadastrada na loja.
+  const storesComEmail = useMemo(
+    () => stores.filter((s) => s.connectors.omnisend || s.connectors.klaviyo).length,
+    [stores],
+  )
 
   // primeira loja como default (design abre com uma loja no chip)
   useEffect(() => {
@@ -1022,7 +1029,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             {menu === "store" &&
               menuCard(
                 <>
-                  {menuHeader("Loja da conversa")}
+                  {menuHeader(
+                    ws === "comercial"
+                      ? "Loja da conversa"
+                      : `Loja da conversa · ${storesComEmail}/${stores.length} com plataforma de email`,
+                  )}
                   <button
                     onClick={() => {
                       setStoreId(null)
@@ -1046,6 +1057,22 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     >
                       <ConnDot k="shopify" size={15} />
                       <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      {/* Loja sem plataforma de email não tem o que a
+                          ConvertIA consulta e executa — é o que faz o
+                          conector nascer desligado. Ver isso ANTES de
+                          escolher a loja evita descobrir no meio da
+                          conversa. */}
+                      {ws !== "comercial" &&
+                        !s.connectors.omnisend &&
+                        !s.connectors.klaviyo && (
+                          <span
+                            className="shrink-0 text-[9.5px]"
+                            style={{ color: "var(--ops-warn)" }}
+                            title="Sem chave de Omnisend/Klaviyo — cadastre nas integrações da loja"
+                          >
+                            sem email
+                          </span>
+                        )}
                       {s.id === storeId && <Check className="h-3 w-3 shrink-0" style={{ color: BRAND }} />}
                     </button>
                   ))}
@@ -1086,6 +1113,21 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                         setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
                       },
                     }),
+                  )}
+                  {/* Conector indisponível por falta de credencial não
+                      é algo que se resolva aqui — o caminho é cadastrar
+                      a chave na loja. Sem este atalho, "loja sem
+                      credencial" era um beco sem saída. */}
+                  {store && connectorEntries.some((c) => !c.available && c.sub.includes("sem credencial")) && (
+                    <div className="mx-[5px] mt-1 border-t px-[5px] pt-[7px]" style={{ borderColor: HAIR }}>
+                      <a
+                        href={`${ROUTES.ADMIN.STORES.DETAIL(store.id)}?tab=setup`}
+                        className="text-[10.5px] font-medium hover:underline"
+                        style={{ color: BRAND }}
+                      >
+                        Cadastrar a chave em {store.name} →
+                      </a>
+                    </div>
                   )}
                   <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
                     <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
