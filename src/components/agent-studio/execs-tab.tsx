@@ -30,8 +30,8 @@ import { FlowCanvas, type Positions } from "./flow-canvas"
 import { CodeBlock, Spinner, StudioBtn, fmtTok, usd3 } from "./studio-atoms"
 import {
   EstruturadorEmbasamento,
-  EstruturadorFeedback,
-  EstruturadorOrientacoes,
+  AgentFeedback,
+  AgentOrientacoes,
 } from "./estruturador-panel"
 import { AgentOutputView } from "./agent-output-views"
 import {
@@ -737,20 +737,48 @@ export function NodeRunPanel({
               }
             />
           )}
-        {/* Estruturador: embasamento legível + ciclo de feedback do COO
-            (fase 4 do ADR) — o JSON bruto continua logo abaixo. */}
+        {/* Estruturador: embasamento legível + ciclo de calibração (fase 4
+            do ADR) — o JSON bruto continua logo abaixo. */}
         {tab === "output" && n.agent === "estruturador" && run.runId && (
           <>
             <EstruturadorEmbasamento output={detail?.parsed_output} />
             {/* Primeiro o que instrui as PRÓXIMAS gerações (efeito
                 imediato), depois o julgamento DESTA run (vira rascunho de
                 aprendizado do vault). São coisas diferentes. */}
-            <EstruturadorOrientacoes
+            <AgentOrientacoes
+              agente="estruturador"
               runId={run.runId}
               flowType={exec.flow_type}
               emailNumber={exec.email_number}
             />
-            <EstruturadorFeedback
+            <AgentFeedback
+              agente="estruturador"
+              runId={run.runId}
+              output={detail?.parsed_output}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+              storeName={exec.store_name}
+              runIso={exec.updated_at}
+            />
+          </>
+        )}
+        {/* Curador: o mesmo ciclo (migration 20261111). Ele não decide a
+            sequência — decide QUAL bloco da biblioteca ocupa cada posição —,
+            então a orientação e o rascunho falam de escolha de bloco. Os
+            escopos `flow:intencao`/`flow:progressao` ficam de fora: são o
+            arco e a escada do fluxo, matéria do Estruturador. */}
+        {tab === "output" && n.agent === "assembler_chooser" && run.runId && (
+          <>
+            <AgentOrientacoes
+              agente="curador"
+              runId={run.runId}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+              campos={["email", "flow", "global"]}
+              titulo="Orientações ao Curador para as próximas gerações"
+            />
+            <AgentFeedback
+              agente="curador"
               runId={run.runId}
               output={detail?.parsed_output}
               flowType={exec.flow_type}

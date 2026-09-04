@@ -30,7 +30,7 @@ import type {
 import { delayLabel, textToGuides } from "@/lib/email-architecture/merge"
 import { C, F } from "./ui/eg-theme"
 import { EGBtn, EGNotice } from "./ui/eg-atoms"
-import { EstruturadorOrientacoes } from "@/components/agent-studio/estruturador-panel"
+import { AgentOrientacoes } from "@/components/agent-studio/estruturador-panel"
 import { ArchGuides } from "./architecture/arch-guides"
 import { ArchBlocks, shortCategoryLabel } from "./architecture/arch-blocks"
 import { CategoryIcon } from "./architecture/category-icon"
@@ -476,7 +476,7 @@ export function ArchitectureTab() {
               campo só, a régua de toques e o arco brigavam pela mesma
               caixa. */}
           {flowType && (
-            <EstruturadorOrientacoes
+            <AgentOrientacoes
               flowType={flowType}
               emailNumber={activeNumber ?? 1}
               campos={["flow:intencao", "flow:progressao"]}

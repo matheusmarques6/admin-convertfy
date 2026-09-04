@@ -63,8 +63,10 @@ import {
 import {
   aplicaveis,
   montarBlocoOrientacoes,
-  type Orientacao,
 } from "./orientacoes"
+// Loader compartilhado com o Curador (migration 20261111): a mesma tabela
+// guarda as orientações dos dois, separadas pela coluna `agente`.
+import { loadOrientacoes } from "../shared/orientacoes-loader"
 import {
   montarBlocoRevisao,
   type RevisaoHumana,
@@ -238,19 +240,6 @@ async function loadMaterial(flowType: string): Promise<{
  * vazio e a geração segue — perder uma diretriz é ruim, derrubar a
  * estrutura por causa dela é pior.
  */
-async function loadOrientacoes(): Promise<Orientacao[]> {
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from("estruturador_orientacoes")
-    .select("escopo, flow_type, email_number, texto")
-    .eq("is_active", true)
-  if (error) {
-    log.warn("estruturador.orientacoes_load_failed", { error: error.message })
-    return []
-  }
-  return (data ?? []) as Orientacao[]
-}
-
 async function loadIntencaoDoEmail(flowType: string, emailNumber: number): Promise<string | null> {
   const admin = createAdminClient()
   const { data } = await admin.from("email_intents")
@@ -382,7 +371,7 @@ export async function runEstruturador(
   }
   const [intencaoEmail, orientacoes] = await Promise.all([
     loadIntencaoDoEmail(input.flowType, input.emailNumber),
-    loadOrientacoes(),
+    loadOrientacoes("estruturador"),
   ])
   if (!intencaoEmail) {
     log.info("estruturador.sem_intencao_do_email", {

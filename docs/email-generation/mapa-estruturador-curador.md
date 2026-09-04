@@ -10,6 +10,7 @@ feito com caminho:linha no código, cruzado com as runs de produção
 |---|---|---|
 | 31/08 | Estruturador **desligado** em todas as orgs; a tese era o Curador do vault absorver estrutura + variantes num call só | migration `20261093`, `plano-curador-cerebro-vault.md` |
 | 01/09 | Curador do vault vira o vigente (`curador_vault_mode='on'`), **seguindo** a sequência da aba Arquitetura (`conformarEstrutura`) | migration `20261101` |
+| **04/09** | **O ciclo de calibração passa a servir os dois.** Orientação do COO e 👍/👎 por run existem agora também para o Curador, na mesma tabela separada por `agente`; o rascunho de aprendizado do Curador fala de escolha de bloco (ou aponta a `lacuna` quando o bloco não existe) | migration `20261111` |
 | **02/09** | **Estruturador religado, e a SEQUÊNCIA de seções volta a ser dele.** A aba Arquitetura fica como intenção por bloco, usada só quando ele está desligado. Sem validador de conteúdo: o que ele devolver vale. O Curador do vault recebe a saída COMPLETA dele, as lacunas do vault e o índice do Obsidian com consulta sob demanda | migration `20261106` + este commit |
 
 Efeito operacional de `on`: o reuso da fase 1 é desligado (ADR
@@ -76,7 +77,7 @@ sem origem):
 | `<email>` | `flow_type` + `email_number` + intenção DESTE email (`email_intents`) | sistema / vault |
 | `<secoes_disponiveis>` | só os NOMES das categorias com variante ativa (`email_component_variants`) | sistema |
 | `<estruturas_dos_outros_emails>` | sequência vigente dos irmãos do flow (última run `success` de cada) | sistema |
-| `<orientacao_do_coo>` | `estruturador_orientacoes` (global → flow → email) | curadoria |
+| `<orientacao_do_coo>` | `estruturador_orientacoes` com `agente='estruturador'` (global → flow → email) | curadoria |
 | `<revisao_humana>` | `email_structure_reviews` com `para_estruturador` | curadoria |
 
 **Não recebe** (por decisão): catálogo/variantes, lacunas, intenções por
@@ -162,6 +163,7 @@ paleta, papel na peça, peso). `{{catalogo}}` viaja na telemetria como
 | `<aprendizados>` | `email_learnings` do flow + globais | existente |
 | `<indice_do_vault>` | árvore de pastas do Obsidian (derivada do `file_path` das 4 tabelas) | **novo** |
 | `<intencao_do_email>` | intenção do flow + deste email + restrições da Arquitetura | existente |
+| `<orientacao_do_coo>` | `estruturador_orientacoes` com `agente='curador'` (global → flow → email) | **novo** (04/09, migration `20261111`) |
 | `<momento>`, `<perfil_marca>`, `<objecoes>`, `<vocabulario>`, `<top_products>`, `<memoria>`, `<revisao_humana>` | loja / vault / código | existentes |
 | `<estruturas_de_referencia>`, `<outline>` | — | **omitidos quando há decisão do Estruturador** (ele já traduziu esse material); voltam sem decisão |
 

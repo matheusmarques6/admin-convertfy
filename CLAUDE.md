@@ -1896,6 +1896,21 @@ da fase 1 é desligado e a fase 1 chega a ~220 s por email — recomendado
 `DISPATCH_TICK_BUDGET_MS=15000` no ambiente. Mapa completo:
 `docs/email-generation/mapa-estruturador-curador.md`.
 
+**Calibração do Curador** (04/09, migration 20261111): o ciclo que era só
+do Estruturador — orientação do COO (efeito imediato, servida em
+`<orientacao_do_coo>`) + 👍/👎 por run (vira rascunho de nota do vault) —
+passou a valer para o Curador. MESMA tabela (`estruturador_orientacoes` /
+`estruturador_feedback`, nomes históricos), separada pela coluna `agente`:
+escrever para um NÃO instrui o outro. O agente do feedback sai da RUN, não
+do caller. Loader único em `shared/orientacoes-loader.ts` (o `kind` faltava
+no select do Estruturador — das duas orientações de flow, intenção e
+progressão, só a primeira chegava ao prompt). O rascunho do Curador
+(`architect/aprendizado-curador.ts`, puro) fala de ESCOLHA DE BLOCO e
+aponta a nota `lacuna` quando a queixa é "nenhum bloco faz isso" — o
+`aprendizado` do Estruturador fala de sequência e não serviria. Componentes
+`AgentOrientacoes`/`AgentFeedback` (ex-`Estruturador*`) recebem `agente`;
+os escopos `flow:intencao`/`flow:progressao` ficam fora do Curador.
+
 ## Proveniência do prompt (migration 20261085, ago/2026)
 
 Toda run de agente grava, além do `rendered_prompt`, o MESMO prompt **cortado

@@ -160,6 +160,14 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 {{aprendizados}}
 </aprendizados>
 
+<orientacao_do_coo>
+Instrução direta de quem responde pelo método, escrita no Estúdio. Vale
+sobre as notas do vault, sobre a memória e sobre sua preferência — só não
+vence a sequência decidida pelo Estruturador nem a capacidade real da
+biblioteca (não existe variante que não existe).
+{{orientacao_coo}}
+</orientacao_do_coo>
+
 <revisao_humana>
 {{revisao_humana}}
 </revisao_humana>
