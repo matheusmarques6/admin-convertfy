@@ -15,7 +15,7 @@
 import crypto from "crypto"
 
 import { logger } from "@/lib/logger"
-import { buildCatalog, type BuildCatalogResult, type CatalogVaultExtra } from "./catalog-builder"
+import { type BuildCatalogResult, type CatalogVaultExtra } from "./catalog-builder"
 import {
   buildAprendizadosBlock,
   buildConvivenciaBlock,
@@ -312,7 +312,40 @@ export interface ProtocolViolation {
     | "hero_dupla"
     | "variante_repetida"
     | "convivencia"
+    // Objeções (set/2026): nenhuma posição realiza o aliviador pedido pelo
+    // alvo / uma escolhida obriga algo proibido neste toque.
+    | "aliviador_ausente"
+    | "proibicao_violada"
   detalhe: string
+}
+
+/** O que o medidor precisa do alvo do Seletor (fase 4 passa; em shadow só mede). */
+export interface AlvoParaMedicao {
+  aliviador_pedido: string | null
+  proibicoes: readonly string[]
+}
+
+const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+
+/** Proibição em prosa ↔ requisito/aliviador da variante (só o checável). */
+function proibicaoBateNaVariante(proibicao: string, extra: CatalogVaultExtra | undefined): string | null {
+  if (!extra) return null
+  const p = norm(proibicao)
+  const exige = extra.exige_medicao ?? []
+  const aliv = extra.aliviador ?? []
+  if (p.includes("cupom") || p.includes("incentivo")) {
+    if (exige.includes("cupom-ativo")) return "exige cupom-ativo"
+  }
+  if (p.includes("prova social") || p.includes("depoimento")) {
+    if (aliv.includes("prova_de_terceiro") || aliv.includes("prova_por_volume")) return `aliviador ${aliv.join("/")}`
+  }
+  if (p.includes("catalogo") || p.includes("catálogo")) {
+    if (exige.includes("catalogo-de-variantes") || exige.includes("produtos-com-pagina-propria")) return "anatomia de catálogo"
+  }
+  if (p.includes("prazo") || p.includes("hora fechada")) {
+    if (exige.includes("prazo-real")) return "exige prazo-real"
+  }
+  return null
 }
 
 /**
@@ -326,8 +359,25 @@ export function measureProtocolViolations(p: {
   momento: string | null
   /** block_index → seção da posição. */
   sectionByBlock: Map<number, string>
+  /** Alvo do Seletor (opcional — sem ele os dois tipos novos não são medidos). */
+  alvo?: AlvoParaMedicao | null
 }): ProtocolViolation[] {
   const out: ProtocolViolation[] = []
+  if (p.alvo) {
+    const pedido = p.alvo.aliviador_pedido
+    if (pedido) {
+      const alguma = Array.from(p.rank1ByBlock.values()).some((id) => (p.extras.get(id)?.aliviador ?? []).includes(pedido))
+      if (!alguma) {
+        out.push({ block_index: -1, variant_id: "", tipo: "aliviador_ausente", detalhe: `nenhuma posição realiza o aliviador pedido (${pedido})` })
+      }
+    }
+    for (const [block, variantId] of p.rank1ByBlock) {
+      for (const proib of p.alvo.proibicoes) {
+        const bate = proibicaoBateNaVariante(proib, p.extras.get(variantId))
+        if (bate) out.push({ block_index: block, variant_id: variantId, tipo: "proibicao_violada", detalhe: `"${proib}" × ${bate}` })
+      }
+    }
+  }
   const heroBlocks: number[] = []
   const seenVariant = new Map<string, number>()
   const convivenciaSeen = new Map<string, number>()

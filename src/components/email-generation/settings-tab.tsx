@@ -111,6 +111,7 @@ export function SettingsTab() {
       form.merge_verifier_mode ?? settings?.merge_verifier_mode ?? "on_flag",
     estruturador_mode:
       form.estruturador_mode ?? settings?.estruturador_mode ?? "off",
+    seletor_mode: form.seletor_mode ?? settings?.seletor_mode ?? "off",
     montador_mode: form.montador_mode ?? settings?.montador_mode ?? "off",
     refiner_enabled: form.refiner_enabled ?? settings?.refiner_enabled ?? true,
     max_blocks_per_email:
@@ -249,6 +250,27 @@ export function SettingsTab() {
                     { value: "auto", label: "Auto (híbrido)" },
                     { value: "llm", label: "Sempre LLM" },
                     { value: "deterministic", label: "Sempre determinístico" },
+                  ]}
+                />
+              </div>
+            </SettingRow>
+            <SettingRow
+              title="Seletor de objeções"
+              sub="Decide, por email e antes do Estruturador, qual objeção do catálogo da loja este toque ataca (aliviador, profundidade, veículos, proibições). Observar = roda e grava o alvo sem ninguém consumir; Decidir = o alvo desce para Estruturador, Curador e copy"
+            >
+              <div style={{ width: 170, flexShrink: 0 }}>
+                <EGSelect
+                  value={merged.seletor_mode}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      seletor_mode: v as "off" | "shadow" | "on",
+                    }))
+                  }
+                  options={[
+                    { value: "off", label: "Desligado" },
+                    { value: "shadow", label: "Observar (shadow)" },
+                    { value: "on", label: "Decidir (on)" },
                   ]}
                 />
               </div>

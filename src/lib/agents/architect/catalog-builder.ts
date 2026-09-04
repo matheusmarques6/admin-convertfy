@@ -44,6 +44,22 @@ export interface CatalogVaultExtra {
   peso?: string | null
   convivencia?: string[]
   itens?: string | null
+  /**
+   * Objeções (set/2026): aliviador(es) que a anatomia realiza e a
+   * profundidade de prova — frontmatter da nota quando existe (`fonte:
+   * 'vault'`), senão derivados de block_type + objecao + exige
+   * (`aliviador-bridge.ts`). É o eixo que cruza com o alvo do Seletor.
+   */
+  aliviador?: string[]
+  profundidade?: string | null
+  aliviador_fonte?: "vault" | "derivado"
+  /**
+   * `exige:` da nota, SÓ para o medidor de proibições e a derivação do
+   * aliviador — nunca entra no JSON servido ao Curador (01/09: eliminar
+   * candidata por `exige` reprovava sobre requisito que o próprio vault
+   * declara não verificável).
+   */
+  exige_medicao?: string[]
 }
 
 /**
@@ -141,6 +157,9 @@ export interface CatalogEntry {
     peso: string | null
     convivencia: string[]
     itens: string | null
+    aliviador: string[]
+    profundidade: string | null
+    aliviador_fonte: "vault" | "derivado" | null
   }
 }
 
@@ -263,6 +282,9 @@ function toEntry(
       peso: extra.peso ?? null,
       convivencia: extra.convivencia ?? [],
       itens: extra.itens ?? null,
+      aliviador: extra.aliviador ?? [],
+      profundidade: extra.profundidade ?? null,
+      aliviador_fonte: extra.aliviador_fonte ?? null,
     }
   }
   return entry

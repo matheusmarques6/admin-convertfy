@@ -99,6 +99,44 @@ describe("measureProtocolViolations", () => {
   })
 })
 
+describe("measureProtocolViolations — alvo do Seletor (set/2026)", () => {
+  const extras = new Map<string, CatalogVaultExtra>([
+    ["hero-cupom", { slug: "hero-3-cupom", momento: [], momento_vetado: [], convivencia: [], exige_medicao: ["cupom-ativo"], aliviador: [] }],
+    ["reviews-prova", { slug: "reviews-1", momento: [], momento_vetado: [], convivencia: [], aliviador: ["prova_de_terceiro"], profundidade: "prova_de_terceiro" }],
+    ["body-mec", { slug: "body-5", momento: [], momento_vetado: [], convivencia: [], aliviador: ["comparacao_de_categoria"] }],
+  ])
+  const sec = new Map([[0, "hero"], [1, "body"]])
+
+  it("aliviador_ausente quando nenhuma posição realiza o aliviador pedido; some quando alguma realiza", () => {
+    const sem = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "body-mec"]]), extras, momento: null, sectionByBlock: sec,
+      alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] },
+    })
+    expect(sem.some((v) => v.tipo === "aliviador_ausente")).toBe(true)
+    const com = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, momento: null, sectionByBlock: sec,
+      alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] },
+    })
+    expect(com.some((v) => v.tipo === "aliviador_ausente")).toBe(false)
+  })
+
+  it("proibicao_violada cruza a proibição em prosa com exige/aliviador da variante", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, momento: null, sectionByBlock: sec,
+      alvo: { aliviador_pedido: null, proibicoes: ["Não mexer no incentivo", "não depender de prova social"] },
+    })
+    const tipos = v.filter((x) => x.tipo === "proibicao_violada")
+    expect(tipos).toHaveLength(2)
+    expect(tipos[0].detalhe).toContain("cupom-ativo")
+    expect(tipos[1].detalhe).toContain("prova_de_terceiro")
+  })
+
+  it("sem alvo nada muda (compatibilidade com o medidor de antes)", () => {
+    const v = measureProtocolViolations({ rank1ByBlock: new Map([[0, "hero-cupom"]]), extras, momento: null, sectionByBlock: sec })
+    expect(v).toEqual([])
+  })
+})
+
 describe("rank1ByBlock + blocos da fase 1", () => {
   it("pega o primeiro de cada posição", () => {
     const byBlock = new Map<number, RankedChoice[]>([

@@ -728,6 +728,7 @@ export function ImageGeradaView({ output }: { output: unknown }) {
       </div>
       {/* A imagem em si: era uma URL perdida no meio do JSON. */}
       <a href={url} target="_blank" rel="noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={url}
           alt=""
@@ -1230,6 +1231,7 @@ export function BackgroundFitView({ output }: { output: unknown }) {
           </div>
           {typeof c.para === "string" && (
             <a href={c.para} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={c.para}
                 alt=""
@@ -1263,6 +1265,171 @@ export function BackgroundFitView({ output }: { output: unknown }) {
 }
 
 /** Roteia a view legível pelo agente do nó. null = sem view própria. */
+// ── Objeções (set/2026): Seletor e Catalogador ────────────────────────
+
+function ObjLinha({ children }: { children: React.ReactNode }) {
+  return <div className="text-[12px] leading-snug text-slate-700 mb-1">{children}</div>
+}
+
+function ObjBloco({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-3 mb-2 bg-white">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">{titulo}</div>
+      {children}
+    </div>
+  )
+}
+
+/** Saída do Seletor: o alvo do toque (modo, alvos, veículos, proibições, lacuna). */
+export function SeletorAlvoView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const meta = (o._seletor ?? {}) as Record<string, unknown>
+  const alvos = Array.isArray(o.alvos) ? (o.alvos as Array<Record<string, unknown>>) : []
+  const angulos = Array.isArray(o.angulo_do_tratamento) ? (o.angulo_do_tratamento as Array<Record<string, unknown>>) : []
+  const ja = Array.isArray(o.ja_atacadas) ? (o.ja_atacadas as Array<Record<string, unknown>>) : []
+  const proib = Array.isArray(o.proibido_neste_toque) ? (o.proibido_neste_toque as string[]) : []
+  const medos = Array.isArray(o.medos_alvo) ? (o.medos_alvo as string[]) : []
+  const lacuna = (o.lacuna ?? null) as { motivo?: string; detalhe?: string | null } | null
+  const skip = typeof o.skip_reason === "string" ? o.skip_reason : null
+  if (skip) {
+    return <OutPill text={`Seletor pulado — ${skip}`} tone="warn" />
+  }
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <OutPill text={`modo ${String(o.modo ?? "?")}`} tone="pos" />
+        {meta.shadow === true && <OutPill text="shadow — alvo gravado, NÃO consumido" tone="warn" />}
+        {meta.consumido === true && <OutPill text="consumido pelo pipeline" tone="pos" />}
+        {typeof meta.retry_count === "number" && meta.retry_count > 0 && <OutPill text={`${meta.retry_count} retry`} tone="warn" />}
+        {lacuna?.motivo && <OutPill text={`LACUNA: ${lacuna.motivo}`} tone="warn" />}
+      </div>
+      {lacuna?.detalhe && <ObjLinha>{lacuna.detalhe}</ObjLinha>}
+      {alvos.length > 0 && (
+        <ObjBloco titulo={`Alvos (${alvos.length})`}>
+          {alvos.map((a, i) => (
+            <ObjLinha key={i}>
+              <strong>{String(a.id)}</strong>
+              {a.primaria === true ? " · primária" : ""} · risco <em>{String(a.tipo_de_risco ?? "?")}</em> · aliviador{" "}
+              <em>{String(a.aliviador_pedido ?? "?")}</em> · profundidade <em>{String(a.profundidade_de_prova ?? "?")}</em>
+              <div className="text-slate-600 italic">“{String(a.objecao ?? "")}”</div>
+              <div className="text-slate-500">tratamento: {String(a.tratamento ?? "")}</div>
+            </ObjLinha>
+          ))}
+        </ObjBloco>
+      )}
+      {medos.length > 0 && (
+        <ObjBloco titulo="Medos de categoria (alvo)">
+          {medos.map((m, i) => <ObjLinha key={i}>• {m}</ObjLinha>)}
+        </ObjBloco>
+      )}
+      {typeof o.promessa_a_pagar === "string" && o.promessa_a_pagar && (
+        <ObjBloco titulo="Promessa a pagar"><ObjLinha>{o.promessa_a_pagar}</ObjLinha></ObjBloco>
+      )}
+      {angulos.length > 0 && (
+        <ObjBloco titulo="Veículos (ângulo do tratamento)">
+          {angulos.map((g, i) => (
+            <ObjLinha key={i}>
+              {String(g.ordem ?? i + 1)}. <strong>{String(g.veiculo)}</strong> — {String(g.papel ?? "")} · insumo:{" "}
+              <em>{String(g.insumo_disponivel)}</em>
+            </ObjLinha>
+          ))}
+        </ObjBloco>
+      )}
+      {(typeof o.criterio_de_selecao === "string" || typeof o.razao === "string") && (
+        <ObjBloco titulo="Por quê">
+          {typeof o.criterio_de_selecao === "string" && o.criterio_de_selecao && <ObjLinha>{o.criterio_de_selecao}</ObjLinha>}
+          {typeof o.razao === "string" && o.razao && <ObjLinha><em>{o.razao}</em></ObjLinha>}
+          {typeof o.suspeita_a_antecipar === "string" && o.suspeita_a_antecipar && <ObjLinha>Suspeita a antecipar: {o.suspeita_a_antecipar}</ObjLinha>}
+          {typeof o.alerta_de_lastro === "string" && o.alerta_de_lastro && <ObjLinha>⚠ lastro: {o.alerta_de_lastro}</ObjLinha>}
+        </ObjBloco>
+      )}
+      {proib.length > 0 && (
+        <ObjBloco titulo="Proibido neste toque">
+          {proib.map((p, i) => <ObjLinha key={i}>• {p}</ObjLinha>)}
+        </ObjBloco>
+      )}
+      {ja.length > 0 && (
+        <ObjBloco titulo="Já atacadas pelos irmãos">
+          {ja.map((j, i) => (
+            <ObjLinha key={i}>
+              {String(j.id)} · email #{String(j.email_number)} · {String(j.profundidade)} · {String(j.via)}
+            </ObjLinha>
+          ))}
+        </ObjBloco>
+      )}
+      {Array.isArray(meta.candidatas_elegiveis) && (
+        <ObjLinha>
+          <span className="text-slate-400">candidatas elegíveis por código: {(meta.candidatas_elegiveis as string[]).join(", ") || "nenhuma"}</span>
+        </ObjLinha>
+      )}
+    </div>
+  )
+}
+
+/** Saída do Catalogador: os quatro catálogos, resumidos. */
+export function CatalogadorView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  const objecoes = Array.isArray(o.objecoes) ? (o.objecoes as Array<Record<string, unknown>>) : []
+  const veiculos = (o.veiculos_de_argumento ?? {}) as Record<string, Record<string, unknown>>
+  const medos = Array.isArray(o.medos_de_categoria) ? (o.medos_de_categoria as Array<Record<string, unknown>>) : []
+  const cobertura = (o.cobertura ?? {}) as { tipos_cobertos?: string[]; lacunas?: string[] }
+  const descartadas = Array.isArray(o.descartadas) ? (o.descartadas as Array<Record<string, unknown>>) : []
+  const incentivo = (o.incentivo ?? {}) as Record<string, unknown>
+  const erros = Array.isArray(o.erros) ? (o.erros as string[]) : []
+  if (erros.length > 0 && objecoes.length === 0) {
+    return (
+      <ObjBloco titulo="Catalogador reprovado">
+        {erros.map((e, i) => <ObjLinha key={i}>• {e}</ObjLinha>)}
+      </ObjBloco>
+    )
+  }
+  return (
+    <div>
+      <ObjBloco titulo={`Objeções (${objecoes.length})`}>
+        {objecoes.map((ob, i) => (
+          <ObjLinha key={i}>
+            <strong>{String(ob.id)}</strong> · {String(ob.tipo_de_risco)} · {String(ob.aliviador)} · sev {String(ob.severidade)}
+            {ob.dominante_da_categoria === true ? " · DOMINANTE" : ""} · flows {(Array.isArray(ob.flows_elegiveis) ? (ob.flows_elegiveis as string[]) : []).join(", ")}
+            <div className="text-slate-600 italic">“{String(ob.objecao ?? "")}”</div>
+            <div className="text-slate-500">tratamento: {String(ob.tratamento ?? "")}</div>
+          </ObjLinha>
+        ))}
+      </ObjBloco>
+      <ObjBloco titulo="Veículos de argumento">
+        {Object.entries(veiculos).map(([k, v]) => (
+          <ObjLinha key={k}>
+            <strong>{k}</strong>:{" "}
+            {v.aplicavel === false ? "não se aplica" : typeof v.texto === "string" && v.texto ? v.texto : `sem insumo${typeof v.alerta === "string" && v.alerta ? ` — ${v.alerta}` : ""}`}
+          </ObjLinha>
+        ))}
+      </ObjBloco>
+      <ObjBloco titulo="Medos de categoria">
+        {medos.length === 0 && <ObjLinha>(nenhum)</ObjLinha>}
+        {medos.map((m, i) => (
+          <ObjLinha key={i}>
+            <strong>{String(m.medo)}</strong>: {typeof m.marca_esta_fora_porque === "string" && m.marca_esta_fora_porque ? m.marca_esta_fora_porque : "sem lastro"}
+          </ObjLinha>
+        ))}
+      </ObjBloco>
+      <ObjBloco titulo="Incentivo · cobertura · descartadas">
+        <ObjLinha>
+          incentivo:{" "}
+          {incentivo.existe === true
+            ? [incentivo.valor, incentivo.codigo, incentivo.condicoes, incentivo.prazo].filter(Boolean).map(String).join(" · ")
+            : incentivo.existe === false
+              ? "nenhum"
+              : "não identificado"}
+        </ObjLinha>
+        <ObjLinha>cobertura: {(cobertura.tipos_cobertos ?? []).join(", ") || "—"}</ObjLinha>
+        {(cobertura.lacunas ?? []).map((l, i) => <ObjLinha key={i}>lacuna: {l}</ObjLinha>)}
+        {descartadas.map((d, i) => (
+          <ObjLinha key={i}><span className="text-slate-400">descartada ({String(d.motivo)}): {String(d.texto)}</span></ObjLinha>
+        ))}
+      </ObjBloco>
+    </div>
+  )
+}
+
 export function AgentOutputView({
   agent,
   output,
@@ -1271,6 +1438,10 @@ export function AgentOutputView({
   output: unknown
 }) {
   switch (agent) {
+    case "seletor":
+      return <SeletorAlvoView output={output} />
+    case "catalogador":
+      return <CatalogadorView output={output} />
     case "assembler_chooser":
       return <CuradorRankingView output={output} />
     case "assembler":

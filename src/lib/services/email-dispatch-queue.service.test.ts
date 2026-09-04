@@ -84,6 +84,12 @@ vi.mock("@/lib/services/email-copy-webhook.service", () => ({
   dispatchEmailCopyWebhook: (...a: unknown[]) => dispatchEmailCopyWebhook(...a),
 }))
 
+// Seletor de objeções (set/2026): pré-passo antes dos lotes do Architect.
+const ensureObjectionTargets = vi.fn()
+vi.mock("@/lib/agents/objecoes/seletor.service", () => ({
+  ensureObjectionTargets: (...a: unknown[]) => ensureObjectionTargets(...a),
+}))
+
 import {
   enqueueDispatchJob,
   processDispatchJobs,
@@ -108,6 +114,7 @@ beforeEach(() => {
   generateBlueprintAndReference.mockReset()
   isArchitectConfigured.mockReset().mockResolvedValue(true)
   dispatchEmailCopyWebhook.mockReset().mockResolvedValue({ ok: true, flow_count: 1, email_count: 2 })
+  ensureObjectionTargets.mockReset().mockResolvedValue({ mode: "off", targets: [], ran: 0, reused: 0, skipped: 0 })
   // por padrão, "gerar" persiste a reference (Montador genuíno → source 'llm')
   generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
     if (h.refControl.persistOnRun) {
@@ -218,6 +225,26 @@ describe("enqueueDispatchJob", () => {
 })
 
 describe("processDispatchJobs", () => {
+  it("Seletor de objeções roda UMA vez por tick, ANTES do Architect, com os pendentes em ordem de número", async () => {
+    await enqueueDispatchJob("store1")
+    const ordem: string[] = []
+    ensureObjectionTargets.mockImplementation(async (input: { emails: Array<{ flowType: string; emailNumber: number }> }) => {
+      ordem.push(`seletor:${input.emails.map((e) => `${e.flowType}#${e.emailNumber}`).join(",")}`)
+      return { mode: "shadow", targets: [], ran: input.emails.length, reused: 0, skipped: 0 }
+    })
+    generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
+      ordem.push(`architect:${input.flowType}#${input.emailNumber}`)
+      h.tables.store_email_references.push({ store_id: input.storeId, flow_type: input.flowType, email_number: input.emailNumber })
+      return { referenceSource: "llm" }
+    })
+    await processDispatchJobs()
+    expect(ensureObjectionTargets).toHaveBeenCalledTimes(1)
+    expect(ordem[0]).toBe("seletor:welcome#1,welcome#2")
+    expect(ordem.slice(1).every((x) => x.startsWith("architect:"))).toBe(true)
+    // logSkipped só na 1ª passagem (todos com attempts=0).
+    expect(ensureObjectionTargets.mock.calls[0][0]).toMatchObject({ storeId: "store1", batchId: expect.any(String), logSkipped: true })
+  })
+
   it("roda o Architect de todos e dispara pro n8n UMA vez quando settled", async () => {
     await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
     const res = await processDispatchJobs()

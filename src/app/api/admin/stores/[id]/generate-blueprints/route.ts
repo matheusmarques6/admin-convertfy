@@ -3,6 +3,7 @@
  * POST opcional body: { flow_ids?: string[] } para restringir a flows.
  * Usado pela UI ("Regenerar") e para validação manual.
  */
+import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
 import { NextRequest } from "next/server"
 import { randomUUID } from "crypto"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
@@ -67,9 +68,12 @@ export async function POST(
           typeof e.flowType === "string",
       )
 
+    // Seletor de objeções antes da fase 1 (set/2026): sequencial por email.
+    const batchId = randomUUID()
+    await ensureObjectionTargets({ storeId, emails: list, triggeredBy: user.id, batchId, force, logSkipped: true })
     const result = await generateForEmails(
       storeId,
-      randomUUID(),
+      batchId,
       list,
       user.id,
       { force },

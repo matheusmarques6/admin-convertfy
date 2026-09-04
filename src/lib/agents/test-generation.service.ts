@@ -11,6 +11,7 @@
  *    Montador → Blueprint → seed → N8N. O render acontece depois, via gate
  *    de brand / callback do N8N (assíncrono).
  */
+import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { generateBlueprintAndReference } from "./architect/generate.service"
@@ -215,6 +216,9 @@ export async function runTestGeneration(
       .eq("id", emailId)
 
     // 2) Fase 1: Curador + Montador + Blueprint (força reescrita da estrutura).
+    // Seletor de objeções antes (set/2026): alvo deste email, com o que os
+    // irmãos já atacaram; força porque a estrutura vai ser refeita.
+    await ensureObjectionTargets({ storeId, emails: [{ flowType, emailNumber }], triggeredBy, batchId, force: true, logSkipped: true })
     try {
       await generateBlueprintAndReference({
         storeId,
@@ -306,6 +310,7 @@ export async function runTestGeneration(
     if (phase2Only) {
       log.info("test.phase2_only.skip_architect", { storeId, emailId, batchId })
     } else {
+      await ensureObjectionTargets({ storeId, emails: [{ flowType, emailNumber }], triggeredBy, batchId, logSkipped: true })
       await generateBlueprintAndReference({
         storeId,
         flowType,

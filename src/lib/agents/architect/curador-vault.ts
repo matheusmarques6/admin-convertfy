@@ -22,6 +22,7 @@
  * Builders são PUROS (testáveis); só os `load*` tocam o banco.
  */
 
+import { derivarAliviadorEProfundidade } from "../objecoes/aliviador-bridge"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CatalogVaultExtra } from "./catalog-builder"
@@ -261,9 +262,10 @@ export function extractVariantSections(body: string): {
  */
 export function buildCatalogVaultExtras(
   k: CuradorVaultKnowledge,
-  variants: Array<{ id: string; name: string }>,
+  variants: Array<{ id: string; name: string; block_type?: string | null }>,
 ): Map<string, CatalogVaultExtra> {
   const byName = new Map(variants.map((v) => [v.name.trim().toLowerCase(), v.id]))
+  const typeById = new Map(variants.map((v) => [v.id, v.block_type ?? null]))
   const out = new Map<string, CatalogVaultExtra>()
   for (const doc of k.variantes) {
     const fm = doc.frontmatter
@@ -286,6 +288,19 @@ export function buildCatalogVaultExtras(
       peso: parsePesoRaw(fm.peso),
       convivencia: strArr(fm.convivencia),
       itens: typeof fm.itens === "string" ? fm.itens : null,
+      exige_medicao: strArr(fm.exige),
+      // Frontmatter `aliviador:`/`profundidade:` vence; sem ele, derivação
+      // por block_type + objecao + exige (bootstrap até as notas terem o campo).
+      ...(() => {
+        const d = derivarAliviadorEProfundidade({
+          block_type: typeById.get(id),
+          objecao: strArr(fm.objecao),
+          exige: strArr(fm.exige),
+          aliviador: fm.aliviador,
+          profundidade: fm.profundidade,
+        })
+        return { aliviador: d.aliviador, profundidade: d.profundidade, aliviador_fonte: d.fonte }
+      })(),
     })
   }
   return out

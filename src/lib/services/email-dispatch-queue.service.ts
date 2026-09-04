@@ -29,6 +29,7 @@ import {
   isArchitectConfigured,
 } from "@/lib/agents/architect/generate.service"
 import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
+import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
 import { loadTextOnlyBlueprints } from "@/lib/agents/architect/blueprint-loader"
 import {
   dispatchEmailCopyWebhook,
@@ -423,6 +424,24 @@ export async function processDispatchJobs(): Promise<{
   if (!job) return { claimed: false, architectRan: 0, dispatched: false, done: false }
 
   let architectRan = 0
+
+  // Pré-passo do SELETOR de objeções (set/2026): o alvo de cada email nasce
+  // AQUI, em ordem de email_number, antes dos lotes paralelos — welcome-2
+  // precisa saber o que welcome-1 atacou. Reaproveita o alvo vigente quando
+  // o catálogo não mudou (sem LLM nos ticks seguintes). Nunca derruba o job.
+  const pendentesSeletor = job.emails.filter((e) => e.architect === "pending")
+  if (pendentesSeletor.length > 0) {
+    const r = await ensureObjectionTargets({
+      storeId: job.store_id,
+      emails: pendentesSeletor.map((e) => ({ flowType: e.flow_type, emailNumber: e.email_number })),
+      triggeredBy: job.triggered_by ?? undefined,
+      batchId: job.id,
+      logSkipped: pendentesSeletor.every((e) => e.attempts === 0),
+    })
+    if (r.mode !== "off") {
+      log.info("seletor.pre_passo", { jobId: job.id, mode: r.mode, ran: r.ran, reused: r.reused, skipped: r.skipped, error: r.error })
+    }
+  }
 
   // Roda o Architect dos pendentes em lotes paralelos até esgotar ou estourar
   // o orçamento de tempo do tick.

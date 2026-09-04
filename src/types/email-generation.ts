@@ -308,6 +308,10 @@ export interface EmailGenerationSettings {
   // do Curador — e o reuso da arquitetura é desligado (a estrutura é
   // decidida a cada geração).
   estruturador_mode: "off" | "shadow" | "on"
+  // Seletor de objeções (set/2026, migration 20261116): 'shadow' roda e
+  // grava o alvo por email sem ninguém consumir; 'on' desce para o
+  // Estruturador, o Curador e a copy.
+  seletor_mode: "off" | "shadow" | "on"
   // Montador (migration 20261107): 'off' = a escolha de cada posição é o
   // rank 1 do Curador e nenhum LLM roda no passo B (run gravada como
   // skipped); 'on' = o agente escolhe entre os finalistas.
