@@ -93,12 +93,16 @@ import {
 import { aplicarGuards } from "./typography/rules"
 import { checarInvariantesDeTipografia } from "./typography/guards"
 import {
+  resolveAgentSwitch,
+  toChainConfig,
+  type FormatAgent,
+} from "./chains/format-config"
+import {
   applyTypographyOps,
   injectSecondaryFontLink,
 } from "./typography/apply"
 import { renderWhitelistForPrompt } from "./refiner/font-whitelist"
 import { pesoNumerico } from "./html/hero-graft"
-import type { FormatChainConfig } from "./chains/format-invoke"
 import { attachUsage, usageOf } from "./chains/step-usage"
 import {
   buildSegmentedPrompt,
@@ -1983,13 +1987,6 @@ function chainBudgetMs(): number {
   return Number.isFinite(env) && env > 0 ? env : DEFAULT_CHAIN_BUDGET_MS
 }
 
-type FormatAgent =
-  | "hero_section"
-  | "text_format"
-  | "image_format"
-  | "typography"
-  | "color_format"
-
 // Espelham os defaults/envs dos chains — o runner precisa deles pro guard
 // de budget ANTES de invocar (o chain só conhece o próprio timeout).
 // TETO POR STEP — e, por tabela, o que cada um EXIGE de folga: o guard de
@@ -2036,50 +2033,6 @@ const FMT_FAILURE_REASON: Record<FormatAgent, string> = {
   image_format: "image_format_failed",
   color_format: "color_format_failed",
   typography: "typography_failed",
-}
-
-const FMT_DEFAULTS: Record<
-  FormatAgent,
-  { temperature: number; maxTokens: number }
-> = {
-  hero_section: { temperature: 0.3, maxTokens: 16384 },
-  text_format: { temperature: 0.3, maxTokens: 65536 },
-  image_format: { temperature: 0.2, maxTokens: 8192 },
-  color_format: { temperature: 0.3, maxTokens: 16384 },
-  typography: { temperature: 0.2, maxTokens: 8192 },
-}
-// Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
-const FMT_DEFAULT_MODEL = "moonshotai/kimi-k3"
-
-/**
- * Estado do toggle da aba Agentes para um step da cadeia.
- *
- * `row` é a linha MAIS RECENTE do agent_type (ativa quando existe ativa —
- * o select ordena por is_active desc). Três estados:
- *   - row == null            → nunca configurado → roda com defaults
- *   - row.is_active === true → roda com a config
- *   - row.is_active !== true → desativado na UI → step PULADO
- */
-function resolveAgentSwitch(row: EmailAgentConfig | null): {
-  config: EmailAgentConfig | null
-  disabled: boolean
-} {
-  if (!row) return { config: null, disabled: false }
-  const active = (row as unknown as { is_active?: boolean }).is_active === true
-  return { config: active ? row : null, disabled: !active }
-}
-
-function toChainConfig(
-  config: EmailAgentConfig | null,
-  agent: FormatAgent,
-): FormatChainConfig {
-  return {
-    model: config?.model || FMT_DEFAULT_MODEL,
-    temperature: config?.temperature ?? FMT_DEFAULTS[agent].temperature,
-    max_tokens: config?.max_tokens ?? FMT_DEFAULTS[agent].maxTokens,
-    system_prompt: config?.system_prompt ?? "",
-    user_template: config?.user_template ?? "",
-  }
 }
 
 /** Hash curto pra auditoria "output do step N = input do step N+1". */
