@@ -5,7 +5,8 @@
  * Uma rota só porque o board inteiro lê as MESMAS lojas: etapas do
  * pipeline, deal por loja (etapa/motivo), CSM, MRR, receita 30d
  * (atribuída/total/% via store_revenue_summary — mesma fonte do
- * dashboard), mensalidade + histórico (unified_invoices por cliente) e
+ * dashboard), mensalidade e comissão por LOJA (unified_invoices do
+ * cliente atribuídas por store_id/assinatura vinculada) e
  * régua de calls (last/next_feedback_date, alimentados por
  * store_feedback_calls e meetings via trigger).
  *
@@ -38,11 +39,15 @@ import {
 } from "@/lib/services/call-coverage"
 import {
   callTone,
+  comissaoFromInvoices,
   daysSince,
   mensalidadeFromInvoices,
   nextCallLabel,
   sinceLabel,
+  splitInvoicesForStore,
+  subscriptionsForStore,
   type InvoiceLite,
+  type SubscriptionLite,
 } from "@/lib/services/cs-carteira"
 import { logger } from "@/lib/logger"
 
@@ -160,22 +165,86 @@ async function handleGet(request: NextRequest) {
 
     // Receita 30d (mesma fonte/período do dashboard de lojas) + faturas
     // do cliente, em paralelo.
-    const [revenueRows, invoicesResp] = await Promise.all([
+    // Faturas com as colunas da migration 20261113 (tipo, meses, loja,
+    // assinatura); se ela ainda não rodou, cai no select antigo — a
+    // carteira volta ao agrupamento por cliente em vez de quebrar.
+    const INVOICE_COLUMN_SETS = [
+      "client_id, due_date, payment_date, status, amount, charge_type, reference_months, store_id, subscription_id",
+      "client_id, due_date, payment_date, status, amount",
+    ]
+    const fetchInvoices = async () => {
+      if (clientIds.length === 0) return { data: [] as unknown[], error: null }
+      let last: { data: unknown[] | null; error: { message: string } | null } = { data: [], error: null }
+      for (const cols of INVOICE_COLUMN_SETS) {
+        last = await admin
+          .from("unified_invoices")
+          .select(cols)
+          .in("client_id", clientIds)
+          .order("due_date", { ascending: false })
+          .limit(Math.min(clientIds.length * 12, 900))
+        if (!last.error) break
+      }
+      return last
+    }
+
+    const [revenueRows, invoicesResp, subsResp, storeCountResp] = await Promise.all([
       storeIds.length > 0
         ? getUnifiedRevenue(admin, orgId, ["30d"], storeIds).catch((err) => {
             log.warn("revenue indisponível", { error: err instanceof Error ? err.message : String(err) })
             return []
           })
         : Promise.resolve([]),
+      fetchInvoices(),
       clientIds.length > 0
         ? admin
-            .from("unified_invoices")
-            .select("client_id, due_date, payment_date, status, amount")
+            .from("client_subscriptions")
+            .select("id, client_id, name, value, cycle, status")
             .in("client_id", clientIds)
-            .order("due_date", { ascending: false })
-            .limit(Math.min(clientIds.length * 8, 600))
+        : Promise.resolve({ data: [], error: null } as const),
+      clientIds.length > 0
+        ? admin.from("client_stores").select("id, client_id").in("client_id", clientIds).eq("is_active", true)
         : Promise.resolve({ data: [], error: null } as const),
     ])
+
+    // Assinatura → lojas vinculadas (migration 20261113). Tabela ausente
+    // = sem vínculo: cliente de uma loja herda, multi-loja fica "sem
+    // loja definida" no drawer.
+    const subscriptionStores: Record<string, string[]> = {}
+    const subsByClient = new Map<string, SubscriptionLite[]>()
+    const subRows = ((subsResp as { data: unknown[] | null }).data ?? []) as Array<{
+      id: string
+      client_id: string
+      name: string
+      value: number | string
+      cycle: string
+      status: string
+    }>
+    for (const s of subRows) {
+      const list = subsByClient.get(s.client_id) ?? []
+      list.push({ id: s.id, name: s.name, value: Number(s.value) || 0, cycle: s.cycle, status: s.status })
+      subsByClient.set(s.client_id, list)
+    }
+    if (subRows.length > 0) {
+      const { data: links, error: linksErr } = await admin
+        .from("client_subscription_stores")
+        .select("subscription_id, store_id")
+        .in(
+          "subscription_id",
+          subRows.map((s) => s.id),
+        )
+      if (linksErr) {
+        log.warn("client_subscription_stores indisponível", { error: linksErr.message })
+      }
+      for (const l of (links ?? []) as Array<{ subscription_id: string; store_id: string }>) {
+        ;(subscriptionStores[l.subscription_id] ??= []).push(l.store_id)
+      }
+    }
+    const storeCountByClient = new Map<string, number>()
+    for (const s of ((storeCountResp as { data: unknown[] | null }).data ?? []) as Array<{
+      client_id: string
+    }>) {
+      storeCountByClient.set(s.client_id, (storeCountByClient.get(s.client_id) ?? 0) + 1)
+    }
 
     // Última call: a VERDADE é store_feedback_calls, não a coluna
     // denormalizada client_stores.last_feedback_date — o trigger que a
@@ -285,6 +354,10 @@ async function handleGet(request: NextRequest) {
       payment_date: string | null
       status: string
       amount: number
+      charge_type?: string | null
+      reference_months?: string[] | null
+      store_id?: string | null
+      subscription_id?: string | null
     }>) {
       const list = invoicesByClient.get(inv.client_id) ?? []
       list.push({
@@ -292,6 +365,10 @@ async function handleGet(request: NextRequest) {
         payment_date: inv.payment_date,
         status: inv.status,
         amount: Number(inv.amount) || 0,
+        charge_type: inv.charge_type ?? null,
+        reference_months: inv.reference_months ?? null,
+        store_id: inv.store_id ?? null,
+        subscription_id: inv.subscription_id ?? null,
       })
       invoicesByClient.set(inv.client_id, list)
     }
@@ -313,9 +390,25 @@ async function handleGet(request: NextRequest) {
         ])
         const pct = totalBRL > 0 ? (attributedBRL / totalBRL) * 100 : null
 
-        const mensalidade = store.client_id
-          ? mensalidadeFromInvoices(invoicesByClient.get(store.client_id) ?? [], now)
-          : { status: "none" as const, history: [] }
+        // Pagamentos POR LOJA: store_id/assinatura vinculada decidem;
+        // cliente de uma loja só herda o que não tem loja. Mensalidade e
+        // comissão são baldes separados — comissão de julho atrasada não
+        // é "mensalidade atrasada".
+        const clientStoreCount = store.client_id ? (storeCountByClient.get(store.client_id) ?? 1) : 1
+        const split = splitInvoicesForStore({
+          invoices: store.client_id ? (invoicesByClient.get(store.client_id) ?? []) : [],
+          storeId: store.id,
+          subscriptionStores,
+          clientStoreCount,
+        })
+        const mensalidade = mensalidadeFromInvoices(split.mensalidade, now)
+        const comissao = comissaoFromInvoices(split.comissao, now)
+        const assinaturas = subscriptionsForStore({
+          subscriptions: store.client_id ? (subsByClient.get(store.client_id) ?? []) : [],
+          storeId: store.id,
+          subscriptionStores,
+          clientStoreCount,
+        })
 
         const lastCall = lastCallByStore.get(store.id)
         const lastCallAt = lastCall?.conducted_at ?? store.last_feedback_date
@@ -353,6 +446,16 @@ async function handleGet(request: NextRequest) {
           revenue_synced: Boolean(rev),
           mensalidade: mensalidade.status,
           mensalidade_history: mensalidade.history,
+          // Como a atribuição aconteceu (loja/assinatura × herdada do
+          // cliente) e quantas cobranças do cliente ficaram sem loja —
+          // é o que o financeiro precisa classificar.
+          pagamentos_scope: split.scope,
+          pagamentos_sem_loja: split.unassigned,
+          comissao: comissao.status,
+          comissao_history: comissao.history,
+          comissao_meses: comissao.months,
+          assinaturas: assinaturas.list.filter((s) => s.status === "active"),
+          assinaturas_scope: assinaturas.scope,
           call_days: callDays,
           call_tone: callTone(callDays),
           next_call: nextCallLabel(store.next_feedback_date, now),

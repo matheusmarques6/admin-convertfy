@@ -10,9 +10,12 @@
  * rotas existentes: move de deal, PATCH (motivo de pausa), POST de call
  * da loja, CRUD de etapas da pipeline.
  *
- * Honestidades vs mock do design: sem linha "Comissão" (o sistema não
- * modela comissão por loja — só em crm_partners) e sem delta numérico
- * no "Convertfy gera" (não há fonte de % do período anterior no cache).
+ * Pagamentos são POR LOJA desde a migration 20261113: mensalidade
+ * (assinatura vinculada / cobrança com loja) e comissão (tipo +
+ * meses de referência) em baldes separados. Cliente com uma loja só
+ * herda o que não tem loja; multi-loja mostra "N sem loja definida".
+ * Honestidade mantida: sem delta numérico no "Convertfy gera" (não há
+ * fonte de % do período anterior no cache).
  */
 
 import { useMemo, useState } from "react"
@@ -24,8 +27,10 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { ScoreRulesDialog } from "./score-rules-dialog"
 import {
   pctTone,
+  type ComissaoMes,
   type MensalidadeMes,
   type MensalidadeStatus,
+  type SubscriptionLite,
 } from "@/lib/services/cs-carteira"
 import {
   defaultReferenceMonths,
@@ -64,6 +69,15 @@ interface Card {
   revenue_synced: boolean
   mensalidade: MensalidadeStatus
   mensalidade_history: MensalidadeMes[]
+  /** loja = atribuída por loja/assinatura; cliente = herdada (cliente de uma loja). */
+  pagamentos_scope?: "loja" | "cliente" | "none"
+  /** Cobranças do cliente sem loja definida (só em cliente multi-loja). */
+  pagamentos_sem_loja?: number
+  comissao?: MensalidadeStatus
+  comissao_history?: MensalidadeMes[]
+  comissao_meses?: ComissaoMes[]
+  assinaturas?: SubscriptionLite[]
+  assinaturas_scope?: "loja" | "cliente" | "none"
   call_days: number | null
   call_tone: { tone: "ok" | "warn" | "neg"; agendar: boolean }
   next_call: string | null
@@ -921,6 +935,32 @@ function StoreCard({
               true,
             )}
             {row("Mensalidade", mensTxt, mensCor)}
+            {/* Comissão só aparece em loja que tem comissão modelada —
+                e o que importa no card é o furo: mês sem cobrança ou
+                cobrança vencida. */}
+            {(c.comissao_history?.length ?? 0) > 0 &&
+              (() => {
+                const naoCobrados = (c.comissao_meses ?? []).filter((m) => m.status === "não cobrada")
+                const txt =
+                  c.comissao === "atrasada"
+                    ? "Atrasada"
+                    : naoCobrados.length > 0
+                      ? `${naoCobrados[0].label} não cobrada${naoCobrados.length > 1 ? ` +${naoCobrados.length - 1}` : ""}`
+                      : c.comissao === "pendente"
+                        ? "Pendente"
+                        : c.comissao === "paga"
+                          ? "Paga"
+                          : "—"
+                const cor =
+                  c.comissao === "atrasada" || naoCobrados.length > 0
+                    ? "var(--ops-neg)"
+                    : c.comissao === "pendente"
+                      ? "var(--ops-warn)"
+                      : c.comissao === "paga"
+                        ? "var(--ops-pos)"
+                        : "var(--ops-mut)"
+                return row("Comissão", txt, cor)
+              })()}
             {row(
               "Última call",
               c.call_days == null
@@ -995,9 +1035,99 @@ function CarteiraDrawer({
       ? "var(--ops-pos)"
       : st === "em aberto"
         ? "var(--ops-warn)"
+        : st === "atrasada" || st === "não cobrada"
+          ? "var(--ops-neg)"
+          : "var(--ops-mut)"
+
+  // Linha "Mensalidade"/"Comissão" do bloco de pagamentos: bolinha +
+  // status agregado + valor à direita.
+  const agregCor = (st: MensalidadeStatus | undefined) =>
+    st === "paga"
+      ? "var(--ops-pos)"
+      : st === "pendente"
+        ? "var(--ops-warn)"
         : st === "atrasada"
           ? "var(--ops-neg)"
           : "var(--ops-mut)"
+  const pagamentoRow = (label: string, st: MensalidadeStatus | undefined, right: string) => (
+    <div className="mt-2 flex items-center gap-[9px]">
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ background: st && st !== "none" ? agregCor(st) : "var(--ops-track, rgba(0,0,0,0.1))" }}
+      />
+      <span className="flex-1 text-[11.5px]" style={{ color: "var(--ops-text)" }}>
+        {label}
+      </span>
+      <span className="text-[11.5px] font-semibold capitalize" style={{ color: agregCor(st) }}>
+        {!st || st === "none" ? "—" : st}
+      </span>
+      <span className="w-[56px] text-right text-[11.5px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
+        {right}
+      </span>
+    </div>
+  )
+  const historico = (rows: MensalidadeMes[]) => (
+    <div className="mt-2 overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--ops-border)" }}>
+      {rows.map((m, i) => (
+        <div
+          key={`${m.month}-${i}`}
+          className="flex items-center gap-2 px-2.5 py-[6.5px]"
+          style={{
+            borderTop: i ? "1px solid var(--ops-border)" : "none",
+            background: m.status === "atrasada" ? "rgba(248,113,113,0.06)" : "transparent",
+          }}
+        >
+          <span
+            className="min-w-[38px] text-[10.5px] font-semibold"
+            style={{ color: "var(--ops-title)", ...TNUM }}
+            title={m.inferred ? "Mês estimado pelo vencimento — a cobrança não tem mês de referência" : undefined}
+          >
+            {m.month}
+            {m.inferred ? "~" : ""}
+          </span>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stCor(m.status) }} />
+          <span className="flex-1 text-[10.5px] font-semibold capitalize" style={{ color: stCor(m.status) }}>
+            {m.status}
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+            {m.detail}
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
+            {fmtK(m.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+  const cobrarLink = (st: MensalidadeStatus | undefined, view: "charges" | "subscriptions") =>
+    c.client_id && (st === "atrasada" || st === "pendente") ? (
+      <div
+        className="flex items-center gap-2 px-2.5 py-[7px]"
+        style={{ background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
+      >
+        <span className="flex-1 text-[10px]" style={{ color: "var(--ops-sec)" }}>
+          {st === "atrasada" ? "Cobrança vencida — cobre pelo financeiro" : "Cobrança em aberto"}
+        </span>
+        <Link
+          href={`/admin/clients/${c.client_id}?tab=financial&fin_view=${view}`}
+          className="text-[10.5px] font-semibold"
+          style={{ color: "#4E62D8" }}
+        >
+          {st === "atrasada" ? "Cobrar agora" : "Ver fatura"}
+        </Link>
+      </div>
+    ) : null
+  const CICLO: Record<string, string> = {
+    WEEKLY: "semanal",
+    BIWEEKLY: "quinzenal",
+    MONTHLY: "mensal",
+    QUARTERLY: "trimestral",
+    SEMIANNUALLY: "semestral",
+    YEARLY: "anual",
+  }
+  const assinaturasDaLoja = c.assinaturas ?? []
+  const comissaoMeses = c.comissao_meses ?? []
+  const temComissao = (c.comissao_history?.length ?? 0) > 0
 
   return (
     <aside
@@ -1102,95 +1232,124 @@ function CarteiraDrawer({
       {/* Pagamentos */}
       <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
         {secTitle("Pagamentos")}
-        <div className="mt-2 flex items-center gap-[9px]">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{
-              background:
-                c.mensalidade === "paga"
-                  ? "var(--ops-pos)"
-                  : c.mensalidade === "pendente"
-                    ? "var(--ops-warn)"
-                    : c.mensalidade === "atrasada"
-                      ? "var(--ops-neg)"
-                      : "var(--ops-track, rgba(0,0,0,0.1))",
-            }}
-          />
-          <span className="flex-1 text-[11.5px]" style={{ color: "var(--ops-text)" }}>
-            Mensalidade
-          </span>
-          <span
-            className="text-[11.5px] font-semibold capitalize"
-            style={{
-              color:
-                c.mensalidade === "paga"
-                  ? "var(--ops-pos)"
-                  : c.mensalidade === "pendente"
-                    ? "var(--ops-warn)"
-                    : c.mensalidade === "atrasada"
-                      ? "var(--ops-neg)"
-                      : "var(--ops-mut)",
-            }}
-          >
-            {c.mensalidade === "none" ? "—" : c.mensalidade}
-          </span>
-          <span className="w-[56px] text-right text-[11.5px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
-            {c.mrr > 0 ? fmtK(c.mrr) : "—"}
-          </span>
-        </div>
+        {pagamentoRow(
+          "Mensalidade",
+          c.mensalidade,
+          assinaturasDaLoja.length > 0
+            ? fmtK(assinaturasDaLoja.reduce((s, a) => s + a.value, 0))
+            : c.mrr > 0
+              ? fmtK(c.mrr)
+              : "—",
+        )}
+
+        {/* Assinatura que cobre ESTA loja — o vínculo é o que deixa a
+            carteira falar por loja em cliente com várias. */}
+        {assinaturasDaLoja.length > 0 ? (
+          <div className="mt-1.5 space-y-0.5 pl-[17px]">
+            {assinaturasDaLoja.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 text-[10.5px]" style={{ color: "var(--ops-sec)" }}>
+                <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                <span style={TNUM}>
+                  {brl0(a.value)} · {CICLO[a.cycle] ?? a.cycle.toLowerCase()}
+                </span>
+              </div>
+            ))}
+            {c.assinaturas_scope === "cliente" && (
+              <div className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                Herdada do cliente (loja única).
+              </div>
+            )}
+          </div>
+        ) : (
+          c.client_id && (
+            <div className="mt-1.5 flex items-center gap-2 pl-[17px] text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+              <span className="flex-1">Sem assinatura vinculada a esta loja.</span>
+              <Link
+                href={`/admin/clients/${c.client_id}?tab=financial&fin_view=subscriptions`}
+                className="font-semibold"
+                style={{ color: "#4E62D8" }}
+              >
+                Vincular
+              </Link>
+            </div>
+          )
+        )}
 
         <div className="mt-[13px] text-[9.5px] font-[650] uppercase tracking-[0.08em]" style={{ color: "var(--ops-mut)" }}>
           Histórico · mensalidade
         </div>
         {c.mensalidade_history.length > 0 ? (
-          <div className="mt-2 overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--ops-border)" }}>
-            {c.mensalidade_history.map((m, i) => (
-              <div
-                key={`${m.month}-${i}`}
-                className="flex items-center gap-2 px-2.5 py-[6.5px]"
-                style={{
-                  borderTop: i ? "1px solid var(--ops-border)" : "none",
-                  background: m.status === "atrasada" ? "rgba(248,113,113,0.06)" : "transparent",
-                }}
-              >
-                <span className="w-[38px] text-[10.5px] font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
-                  {m.month}
-                </span>
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stCor(m.status) }} />
-                <span className="flex-1 text-[10.5px] font-semibold capitalize" style={{ color: stCor(m.status) }}>
-                  {m.status}
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
-                  {m.detail}
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
-                  {fmtK(m.amount)}
-                </span>
-              </div>
-            ))}
-            {c.client_id && (c.mensalidade === "atrasada" || c.mensalidade === "pendente") && (
-              <div
-                className="flex items-center gap-2 border-t px-2.5 py-[7px]"
-                style={{ borderColor: "var(--ops-border)", background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
-              >
-                <span className="flex-1 text-[10px]" style={{ color: "var(--ops-sec)" }}>
-                  {c.mensalidade === "atrasada" ? "Fatura vencida — cobre pelo financeiro" : "Fatura em aberto"}
-                </span>
-                <Link
-                  href={`/admin/clients/${c.client_id}`}
-                  className="text-[10.5px] font-semibold"
-                  style={{ color: "#4E62D8" }}
-                >
-                  {c.mensalidade === "atrasada" ? "Cobrar agora" : "Ver fatura"}
-                </Link>
-              </div>
-            )}
-          </div>
+          <>
+            {historico(c.mensalidade_history)}
+            {cobrarLink(c.mensalidade, "charges")}
+          </>
         ) : (
           <div className="mt-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
-            Nenhuma fatura registrada para este cliente.
+            Nenhuma mensalidade registrada para esta loja.
           </div>
         )}
+
+        {/* Comissão: balde separado — a de julho vence em agosto, e a
+            grade mês a mês mostra o furo ("não cobrada"). Só aparece
+            em loja que tem comissão modelada. */}
+        {temComissao && (
+          <>
+            {pagamentoRow(
+              "Comissão",
+              c.comissao,
+              c.comissao_history?.[0] ? fmtK(c.comissao_history[0].amount) : "—",
+            )}
+            {comissaoMeses.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1 pl-[17px]">
+                {comissaoMeses.map((m) => (
+                  <span
+                    key={m.month}
+                    title={`${m.label}: ${m.status}${m.amount ? ` · ${brl0(m.amount)}` : ""}`}
+                    className="inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-[2px] text-[10px] font-semibold"
+                    style={{
+                      borderColor: "var(--ops-border)",
+                      color: stCor(m.status),
+                      background: m.status === "não cobrada" ? "rgba(248,113,113,0.06)" : "transparent",
+                      ...TNUM,
+                    }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stCor(m.status) }} />
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {comissaoMeses.some((m) => m.status === "não cobrada") && (
+              <div className="mt-1 pl-[17px] text-[10px]" style={{ color: "var(--ops-neg)" }}>
+                {comissaoMeses.filter((m) => m.status === "não cobrada").map((m) => m.label).join(", ")} sem
+                comissão cobrada.
+              </div>
+            )}
+            <div className="mt-[13px] text-[9.5px] font-[650] uppercase tracking-[0.08em]" style={{ color: "var(--ops-mut)" }}>
+              Histórico · comissão
+            </div>
+            {historico(c.comissao_history ?? [])}
+            {cobrarLink(c.comissao, "charges")}
+          </>
+        )}
+
+        {c.pagamentos_sem_loja ? (
+          <div className="mt-2 flex items-center gap-2 text-[10.5px]" style={{ color: "var(--ops-warn)" }}>
+            <span className="flex-1">
+              {c.pagamentos_sem_loja} cobrança{c.pagamentos_sem_loja > 1 ? "s" : ""} do cliente sem loja definida
+              — não entra{c.pagamentos_sem_loja > 1 ? "m" : ""} aqui.
+            </span>
+            {c.client_id && (
+              <Link
+                href={`/admin/clients/${c.client_id}?tab=financial`}
+                className="font-semibold"
+                style={{ color: "#4E62D8" }}
+              >
+                Classificar
+              </Link>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Onboarding — espelho do pipeline operacional */}

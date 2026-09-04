@@ -4,6 +4,10 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
+import {
+  isMissingClassificationColumn,
+  stripClassification,
+} from "@/lib/services/charge-classification"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasSync")
@@ -41,7 +45,7 @@ export async function POST() {
         // Check if invoice already exists
         const { data: existingInvoice } = await supabase
           .from("invoices")
-          .select("id")
+          .select("id, charge_type")
           .eq("asaas_id", payment.id)
           .single()
 
@@ -68,7 +72,7 @@ export async function POST() {
           clientId = client?.id
         }
 
-        const invoiceData = {
+        const invoiceData: Record<string, unknown> = {
           asaas_id: payment.id,
           client_id: clientId,
           amount: payment.value,
@@ -77,22 +81,30 @@ export async function POST() {
           status,
           description: payment.description || `Assinatura Asaas #${payment.id}`,
         }
-
-        if (existingInvoice) {
-          // Update existing invoice
-          await supabase
-            .from("invoices")
-            .update({
-              ...invoiceData,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existingInvoice.id)
-          updated++
-        } else {
-          // Create new invoice
-          await supabase.from("invoices").insert(invoiceData)
-          synced++
+        // Pagamento nascido de assinatura: guarda o sub_… (a view resolve
+        // a assinatura local) e classifica como assinatura — sem
+        // sobrescrever uma classificação feita à mão.
+        if (payment.subscription) {
+          invoiceData.asaas_subscription_id = payment.subscription
+          const current = (existingInvoice as { charge_type?: string } | null)?.charge_type
+          if (!existingInvoice || !current || current === "other") invoiceData.charge_type = "subscription"
         }
+
+        const write = async (row: Record<string, unknown>) =>
+          existingInvoice
+            ? supabase
+                .from("invoices")
+                .update({ ...row, updated_at: new Date().toISOString() })
+                .eq("id", existingInvoice.id)
+            : supabase.from("invoices").insert(row)
+
+        let { error: wErr } = await write(invoiceData)
+        if (wErr && isMissingClassificationColumn(wErr)) {
+          ;({ error: wErr } = await write(stripClassification(invoiceData)))
+        }
+        if (wErr) throw wErr
+        if (existingInvoice) updated++
+        else synced++
       } catch (err) {
         log.error(`Error syncing payment ${payment.id}:`, err)
         errors++

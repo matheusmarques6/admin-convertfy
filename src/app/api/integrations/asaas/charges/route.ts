@@ -8,6 +8,11 @@ import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { validateMonetaryValue } from "@/lib/schemas/common"
+import {
+  isMissingClassificationColumn,
+  parseChargeClassification,
+  stripClassification,
+} from "@/lib/services/charge-classification"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasCharges")
@@ -27,6 +32,24 @@ export async function POST(request: NextRequest) {
     }
 
     validateMonetaryValue(value)
+
+    // Classificação (tipo / meses de referência / loja) — aceita tanto
+    // o vocabulário snake_case das rotas locais quanto camelCase.
+    const classification = parseChargeClassification({
+      charge_type: body.charge_type ?? body.chargeType,
+      reference_months: body.reference_months ?? body.referenceMonths,
+      store_id: body.store_id ?? body.storeId,
+    })
+    if (classification.store_id) {
+      const { data: store } = await supabase
+        .from("client_stores")
+        .select("id, client_id")
+        .eq("id", classification.store_id)
+        .maybeSingle()
+      if (!store || store.client_id !== clientId) {
+        throw new AppError("A loja informada não pertence a este cliente", 422, "validation-error")
+      }
+    }
 
     const { data: integration } = await supabase
       .from("integrations")
@@ -98,10 +121,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await supabase.from("invoices").insert({
+    const invoiceRow: Record<string, unknown> = {
       asaas_id: payment.id, client_id: clientId, amount: value,
       due_date: dueDate, status: "pending", description: paymentData.description,
-    })
+      charge_type: classification.charge_type ?? "other",
+      reference_months: classification.reference_months ?? null,
+      store_id: classification.store_id ?? null,
+    }
+    const { error: invErr } = await supabase.from("invoices").insert(invoiceRow)
+    if (invErr && isMissingClassificationColumn(invErr)) {
+      // Migration 20261113 pendente — a fatura existe no Asaas, então o
+      // espelho local entra sem a classificação (o sync completa depois).
+      log.warn("invoices sem colunas de classificação — retry sem elas", { error: invErr.message })
+      await supabase.from("invoices").insert(stripClassification(invoiceRow))
+    } else if (invErr) {
+      log.warn("espelho local da fatura Asaas falhou", { error: invErr.message, paymentId: payment.id })
+    }
 
     return successResponse(request, {
       payment: {

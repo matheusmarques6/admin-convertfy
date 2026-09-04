@@ -1294,6 +1294,57 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 ---
 
+## Financeiro ligado à loja (set/2026, migration 20261113)
+
+Cobrança (`client_charges` local e `invoices` do Asaas) ganhou
+`charge_type` (subscription | commission | other), `reference_months`
+TEXT[] (YYYY-MM — comissão de julho VENCE em agosto, mas é de julho) e
+`store_id`; `invoices.asaas_subscription_id` guarda o `subscription`
+do payment (o sync preenche e classifica como assinatura sem
+sobrescrever classificação manual). `client_subscription_stores`
+liga assinatura a 1..N lojas ("Plano Mensal 2 Lojas"). A view
+`unified_invoices` expõe tudo (colunas APENDADAS) e resolve a
+assinatura local da fatura Asaas pelo `asaas_subscription_id`.
+
+**Carteira por loja** (`cs-carteira.ts`, 20 testes): `splitInvoicesForStore`
+— `store_id` decide; senão assinatura vinculada decide (inclusive
+excluindo a loja que não está no vínculo); senão só entra quando o
+cliente tem UMA loja ativa (multi-loja vira `pagamentos_sem_loja`, que
+o drawer mostra com link "Classificar"). Mensalidade e comissão são
+baldes separados; `comissaoFromInvoices` monta a grade mês a mês até o
+mês PASSADO com "não cobrada" como furo (só em loja que tem comissão).
+Sem `reference_months`, comissão assume o mês ANTERIOR ao vencimento
+e marca `inferred` ("~" na UI).
+
+**Parser da convenção do time** (`charge-description.ts`, 14 testes):
+`inferChargeType` ("comiss" vence tudo), `inferReferenceMonths`
+(nomes, "Julho/Agosto", "abril a junho", ano explícito; abreviações
+mar/set/out NUNCA — "setup", "out of stock"), `monthsLabel`
+("abr–jun/26"), `describeCharge` (texto padrão que o parser lê de
+volta). A migration fez o backfill por regex das 67 faturas (42/50
+comissões com mês; loja por cliente único ou nome da loja na
+descrição); o que sobrou classifica-se à mão em "Classificar (tipo ·
+mês · loja)" no financeiro do cliente → `PUT
+/api/financial/charge-classification` (Asaas ou local). Toda rota que
+grava cobrança degrada sem a migration (retry sem as colunas).
+
+**Vínculo assinatura ↔ lojas**: `store_ids` no POST de
+`/api/client-subscriptions`, `PUT /api/client-subscriptions/[id]/stores`
+(substitui o conjunto; toda loja tem de ser do cliente), stub local
+criado na hora pelo POST de assinatura Asaas (era só no sync). O
+fechamento do negócio (`deals/[id]/billing`) liga assinatura e
+cobranças à loja do onboarding. Card da assinatura mostra as lojas;
+cliente multi-loja sem vínculo vê aviso âmbar.
+
+**Setup da loja editável**: `PATCH /api/admin/stores/[id]` aceita
+nome, URL (normalizada com https e sem barra final), plataforma
+(enum do banco ampliado com tray/vtex/dupla_estrutura), moeda
+(`STORE_CURRENCIES` em `constants/currencies.ts` — lista fechada),
+país/idioma/nicho, MRR, vigência (fim ≥ início) e alerta de receita;
+`assertStoreInUserOrg` fecha por org. Dialog em
+`store-setup-edit-dialog.tsx`, botão "Editar" nas seções Dados da
+loja e Contrato da aba Setup.
+
 ## Metas, previsão e performance — P1 (jul/2026, migration 20261055)
 
 Painel do gestor no topo do dashboard comercial (`performance-panel.tsx`),

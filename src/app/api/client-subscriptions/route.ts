@@ -3,6 +3,11 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireOrgRoles, FINANCIAL_REPORT_ROLES } from "@/lib/api/require-org-admin"
 import { validateMonetaryValue } from "@/lib/schemas/common"
+import {
+  assertStoresOfClient,
+  linkSubscriptionStores,
+  parseStoreIds,
+} from "@/lib/services/subscription-stores"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientSubscriptions")
@@ -155,8 +160,26 @@ export async function GET(request: NextRequest) {
       (s) => !asaasIdsLinked.has(s.asaas_subscription_id),
     )
 
+    // 4. Lojas cobertas por cada assinatura local (migration 20261113).
+    const storeIdsBySub: Record<string, string[]> = {}
+    if (localSubs.length > 0) {
+      const { data: links } = await admin
+        .from("client_subscription_stores")
+        .select("subscription_id, store_id")
+        .in(
+          "subscription_id",
+          localSubs.map((s) => s.id),
+        )
+      for (const l of (links ?? []) as Array<{ subscription_id: string; store_id: string }>) {
+        ;(storeIdsBySub[l.subscription_id] ??= []).push(l.store_id)
+      }
+    }
+
     return successResponse(request, {
-      subscriptions: [...localSubs, ...asaasOnlyExtra],
+      subscriptions: [
+        ...localSubs.map((s) => ({ ...s, store_ids: storeIdsBySub[s.id] ?? [] })),
+        ...asaasOnlyExtra.map((s) => ({ ...s, store_ids: [] as string[] })),
+      ],
     })
   } catch (error) {
     return errorResponse(request, error, "ClientSubscriptions")
@@ -171,7 +194,19 @@ export async function POST(request: NextRequest) {
     await requireOrgRoles(user.id, FINANCIAL_REPORT_ROLES)
 
     const body = await request.json()
-    const { client_id, name, value, cycle, payment_method, status, start_date, next_due_date, notes } = body
+    const {
+      client_id,
+      name,
+      value,
+      cycle,
+      payment_method,
+      status,
+      start_date,
+      next_due_date,
+      notes,
+      asaas_subscription_id,
+      store_ids,
+    } = body
 
     if (!client_id) {
       throw new AppError("client_id is required", 400)
@@ -181,6 +216,11 @@ export async function POST(request: NextRequest) {
     }
 
     validateMonetaryValue(value)
+
+    // Lojas cobertas pela assinatura — todas do MESMO cliente.
+    const storeIds = parseStoreIds(store_ids)
+    const admin = createAdminClient()
+    await assertStoresOfClient(admin, storeIds, client_id)
 
     const subscriptionData: Record<string, unknown> = {
       client_id,
@@ -193,17 +233,40 @@ export async function POST(request: NextRequest) {
       next_due_date: next_due_date || start_date || new Date().toISOString().split("T")[0],
       notes: notes || null,
     }
+    if (typeof asaas_subscription_id === "string" && asaas_subscription_id) {
+      subscriptionData.asaas_subscription_id = asaas_subscription_id
+    }
 
-    const { data, error } = await supabase
-      .from("client_subscriptions")
-      .insert(subscriptionData)
-      .select()
-      .single()
+    // Assinatura do Asaas que ainda não tinha stub local (o sync cria
+    // depois): reusa o stub existente em vez de duplicar.
+    let data: Record<string, unknown> | null = null
+    if (subscriptionData.asaas_subscription_id) {
+      const { data: existing } = await admin
+        .from("client_subscriptions")
+        .select("*")
+        .eq("client_id", client_id)
+        .eq("asaas_subscription_id", subscriptionData.asaas_subscription_id as string)
+        .maybeSingle()
+      if (existing) data = existing as Record<string, unknown>
+    }
+    if (!data) {
+      const { data: inserted, error } = await supabase
+        .from("client_subscriptions")
+        .insert(subscriptionData)
+        .select()
+        .single()
+      if (error) throw error
+      data = inserted as Record<string, unknown>
+    }
 
-    if (error) throw error
+    const linked = await linkSubscriptionStores(admin, data.id as string, storeIds)
 
-    log.info("Subscription created", { subscription_id: data.id, client_id })
-    return successResponse(request, { success: true, subscription: data })
+    log.info("Subscription created", { subscription_id: data.id, client_id, stores: storeIds.length })
+    return successResponse(request, {
+      success: true,
+      subscription: { ...data, store_ids: linked ? storeIds : [] },
+      stores_linked: linked,
+    })
   } catch (error) {
     return errorResponse(request, error, "ClientSubscriptions")
   }

@@ -1,10 +1,14 @@
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { validateMonetaryValue } from "@/lib/schemas/common"
+import { linkSubscriptionStores } from "@/lib/services/subscription-stores"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AsaasSubscriptions")
 
 // GET - Get subscriptions for a client
 export async function GET(request: NextRequest) {
@@ -82,9 +86,12 @@ export async function POST(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
-    const { clientId, value, cycle, billingType, nextDueDate, description } = body
+    const { clientId, value, cycle, billingType, nextDueDate, description, storeIds } = body
 
     validateMonetaryValue(value)
+    const stores: string[] = Array.isArray(storeIds)
+      ? [...new Set((storeIds as unknown[]).filter((s): s is string => typeof s === "string"))]
+      : []
 
     const { data: integration } = await supabase
       .from("integrations")
@@ -110,7 +117,58 @@ export async function POST(request: NextRequest) {
       customer: asaasCustomerId, billingType, value, nextDueDate, cycle, description,
     })
 
-    return successResponse(request, { subscription }, { status: 201 })
+    // Stub local IMEDIATO (o sync criaria o mesmo depois, idempotente
+    // por asaas_subscription_id) — é o que permite vincular as lojas
+    // agora, sem esperar a sincronização. Best-effort: a assinatura já
+    // existe no Asaas.
+    let localId: string | null = null
+    let storesLinked = false
+    try {
+      const admin = createAdminClient()
+      const { data: existing } = await admin
+        .from("client_subscriptions")
+        .select("id")
+        .eq("client_id", clientId)
+        .eq("asaas_subscription_id", subscription.id)
+        .maybeSingle()
+      if (existing) {
+        localId = existing.id
+      } else {
+        const { data: stub, error } = await admin
+          .from("client_subscriptions")
+          .insert({
+            client_id: clientId,
+            name: description || "Assinatura Asaas",
+            value: Number(value),
+            cycle: cycle || "MONTHLY",
+            payment_method: "asaas",
+            status: "active",
+            start_date: new Date().toISOString().slice(0, 10),
+            next_due_date: subscription.nextDueDate ?? nextDueDate,
+            asaas_subscription_id: subscription.id,
+          })
+          .select("id")
+          .single()
+        if (error) throw error
+        localId = stub.id
+      }
+      if (localId && stores.length > 0) {
+        const { data: own } = await admin.from("client_stores").select("id, client_id").in("id", stores)
+        const valid = (own ?? []).filter((s) => s.client_id === clientId).map((s) => s.id)
+        storesLinked = await linkSubscriptionStores(admin, localId, valid)
+      }
+    } catch (err) {
+      log.warn("stub local da assinatura Asaas não criado", {
+        subscriptionId: subscription.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    return successResponse(
+      request,
+      { subscription, local_subscription_id: localId, stores_linked: storesLinked },
+      { status: 201 },
+    )
   } catch (error) {
     return errorResponse(request, error, "AsaasSubscriptions POST")
   }

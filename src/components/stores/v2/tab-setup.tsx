@@ -23,13 +23,19 @@
  * complexos (modal config, persistência) — mas wrapped em Section.
  */
 
-import { Check, Zap, Link2, Paperclip } from "lucide-react"
+import { useState } from "react"
+import Link from "next/link"
+import { Check, Zap, Link2, Paperclip, Pencil } from "lucide-react"
 import { IntegrationsPanel } from "@/components/stores/integrations-panel"
 import { StoreMcpPanel } from "@/components/stores/store-mcp-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { useStoreOverview } from "@/lib/hooks/use-store-overview"
+import { PLATFORMS, COUNTRIES } from "@/lib/constants/onboarding"
+import { currencySymbol } from "@/lib/constants/currencies"
+import { languageCodeToLabel } from "@/lib/i18n/store-language"
 import { Section, Badge, Btn, KV, C, TNUM, ChannelIcon } from "./_primitives"
+import { StoreSetupEditDialog } from "./store-setup-edit-dialog"
 
 interface SetupData {
   store_name?: string
@@ -38,17 +44,27 @@ interface SetupData {
   country?: string | null
   language?: string | null
   currency?: string | null
+  niche?: string | null
   mrr_cents?: number | null
   contract_start_date?: string | null
   contract_end_date?: string | null
   alert_revenue_threshold?: number | null
   client_id?: string | null
-  clients?: { name?: string; email?: string; phone?: string; cpf_cnpj?: string; company?: string } | null
+  clients?: { id?: string; name?: string; email?: string; phone?: string; cpf_cnpj?: string; company?: string } | null
 }
 
 export function TabSetup({ storeId }: { storeId: string }) {
-  const { data: overview } = useStoreOverview(storeId)
+  const { data: overview, mutate } = useStoreOverview(storeId)
   const data = (overview?.store ?? {}) as SetupData
+  const [edit, setEdit] = useState<"loja" | "contrato" | null>(null)
+  const platformLabel = PLATFORMS.find((p) => p.value === data.platform)?.label ?? data.platform
+  const countryLabel = COUNTRIES.find((c) => c.value === data.country)?.label ?? data.country
+  const languageLabel = languageCodeToLabel(data.language) ?? data.language
+  const editBtn = (section: "loja" | "contrato") => (
+    <Btn variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEdit(section)}>
+      Editar
+    </Btn>
+  )
 
   // Credentials/integration status pra contar configuradas
   const status = (overview?.status ?? {}) as Record<string, { connected: boolean }>
@@ -132,7 +148,20 @@ export function TabSetup({ storeId }: { storeId: string }) {
           </div>
         </Section>
 
-        <Section title="Dados pessoais do cliente">
+        <Section
+          title="Dados pessoais do cliente"
+          right={
+            data.client_id ? (
+              <Link
+                href={`/admin/clients/${data.client_id}`}
+                className="text-[12px] font-medium"
+                style={{ color: C.g600 }}
+              >
+                Editar no cliente →
+              </Link>
+            ) : undefined
+          }
+        >
           <KV label="Nome" value={client.name ?? "—"} mute={!client.name} />
           <KV label="Empresa" value={client.company ?? "—"} mute={!client.company} />
           <KV label="Email" value={client.email ?? "—"} mono mute={!client.email} />
@@ -140,15 +169,22 @@ export function TabSetup({ storeId }: { storeId: string }) {
           <KV label="CPF/CNPJ" value={client.cpf_cnpj ?? "—"} mono mute={!client.cpf_cnpj} />
         </Section>
 
-        <Section title="Dados da loja">
+        <Section title="Dados da loja" right={editBtn("loja")}>
+          <KV label="Nome" value={data.store_name ?? "—"} mute={!data.store_name} />
           <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} />
-          <KV label="Plataforma" value={data.platform ? data.platform[0].toUpperCase() + data.platform.slice(1) : "—"} mute={!data.platform} />
-          <KV label="País" value={data.country ?? "—"} mute={!data.country} />
-          <KV label="Idioma" value={data.language ?? "—"} mute={!data.language} />
-          <KV label="Moeda" value={data.currency ? `${data.currency}${data.currency === "BRL" ? " · R$" : ""}` : "—"} mono mute={!data.currency} />
+          <KV label="Plataforma" value={platformLabel ?? "—"} mute={!data.platform} />
+          <KV label="País" value={countryLabel ?? "—"} mute={!data.country} />
+          <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} />
+          <KV
+            label="Moeda"
+            value={data.currency ? `${data.currency} · ${currencySymbol(data.currency)}` : "—"}
+            mono
+            mute={!data.currency}
+          />
+          <KV label="Nicho" value={data.niche ?? "—"} mute={!data.niche} />
         </Section>
 
-        <Section title="Contrato">
+        <Section title="Contrato" right={editBtn("contrato")}>
           <KV label="MRR" value={formatMRR(data.mrr_cents)} mono mute={!data.mrr_cents} />
           <KV
             label="Vigência"
@@ -168,6 +204,15 @@ export function TabSetup({ storeId }: { storeId: string }) {
           />
         </Section>
       </div>
+
+      <StoreSetupEditDialog
+        storeId={storeId}
+        open={edit !== null}
+        section={edit ?? "loja"}
+        initial={data}
+        onOpenChange={(open) => !open && setEdit(null)}
+        onSaved={() => mutate()}
+      />
     </div>
   )
 }

@@ -42,6 +42,7 @@ import {
 import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { RefundDialog, type RefundCharge } from "@/components/financial/refund-dialog"
+import { CHARGE_TYPE_LABELS, isChargeType, monthsLabel } from "@/lib/services/charge-description"
 import Link from "next/link"
 
 interface Charge {
@@ -59,6 +60,10 @@ interface Charge {
   asaas_id?: string | null
   subscription_id?: string | null
   refund_total?: number
+  /** Classificação do espelho local (migration 20261113). */
+  charge_type?: string | null
+  reference_months?: string[] | null
+  store?: { id: string; name: string } | null
   client: {
     id: string
     name: string
@@ -150,7 +155,11 @@ export function ChargesManager() {
       c.client?.name.toLowerCase().includes(query) ||
       c.client?.company?.toLowerCase().includes(query) ||
       c.description?.toLowerCase().includes(query) ||
-      c.id.toLowerCase().includes(query)
+      c.id.toLowerCase().includes(query) ||
+      // "comissão", "assinatura", nome da loja e "jul/26" também filtram
+      (c.charge_type && isChargeType(c.charge_type) && CHARGE_TYPE_LABELS[c.charge_type].toLowerCase().includes(query)) ||
+      c.store?.name.toLowerCase().includes(query) ||
+      monthsLabel(c.reference_months).toLowerCase().includes(query)
     )
   }
 
@@ -306,8 +315,46 @@ export function ChargesManager() {
       ),
     },
     {
+      // Tipo de NEGÓCIO (assinatura × comissão × avulsa) + mês de
+      // referência + loja — vem do espelho local; "—" = ainda não
+      // classificada (classifica-se no financeiro do cliente).
+      accessorKey: "charge_type",
+      header: "Referente a",
+      type: "custom",
+      mobilePriority: "detail",
+      cell: (row) => {
+        const label = row.charge_type && isChargeType(row.charge_type) ? CHARGE_TYPE_LABELS[row.charge_type] : null
+        const months = monthsLabel(row.reference_months)
+        if (!label && !row.store) {
+          return <span className="text-sm text-gray-400 dark:text-[#5C6378]">—</span>
+        }
+        return (
+          <div className="min-w-0">
+            {label && (
+              <span
+                className={cn(
+                  "inline-flex items-center px-1.5 py-0 text-[11px] font-semibold rounded-[4px] border",
+                  row.charge_type === "commission"
+                    ? "bg-[#EEF0FB] text-[#2137B6] border-[#C7CDEF]"
+                    : row.charge_type === "subscription"
+                      ? "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]"
+                      : "bg-[#F3F4F6] text-gray-600 border-[#E5E7EB]",
+                )}
+              >
+                {label}
+                {months ? ` · ${months}` : ""}
+              </span>
+            )}
+            {row.store && (
+              <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate mt-0.5">{row.store.name}</p>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       accessorKey: "billingType",
-      header: "Tipo",
+      header: "Forma",
       type: "custom",
       mobilePriority: "hidden",
       hideOnTablet: true,
