@@ -48,3 +48,19 @@ describe("buildConsultedBlock", () => {
     expect(block).not.toContain("[turno 1]")
   })
 })
+
+import { TurnTelemetry } from "./telemetry"
+
+describe("TurnTelemetry.summaryNew", () => {
+  it("fatura só as rodadas depois do seed (continuação não cobra em dobro)", () => {
+    const seed = { rounds: [{ n: 1, model: "m", role: "primary" as const, ms: 10, tokens_input: 100, tokens_output: 10, tokens_cached: 0, tokens_cache_write: 0, cost_usd: 0.2, tool_calls: 1, outcome: "tools" as const }], tools: [{ name: "a", connector: "c", ms: 5, ok: true }], startedAt: 0 }
+    const t = new TurnTelemetry(() => 1000, seed)
+    t.round({ model: "m", role: "primary", ms: 20, tokens_input: 50, tokens_output: 5, tokens_cached: 0, tokens_cache_write: 0, cost_usd: 0.05, tool_calls: 0, outcome: "final" })
+    expect(t.summary().cost_usd).toBeCloseTo(0.25)
+    expect(t.summary().rounds).toHaveLength(2)
+    const fresh = t.summaryNew()
+    expect(fresh.cost_usd).toBeCloseTo(0.05)
+    expect(fresh.rounds).toHaveLength(1)
+    expect(fresh.tools).toHaveLength(0)
+  })
+})

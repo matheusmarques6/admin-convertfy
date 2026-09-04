@@ -18,6 +18,8 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ChatMessage } from "@/lib/ai/openrouter-chat"
 import { resolveConnectors } from "@/lib/ai/connectors/registry"
 import { buildImagemConnector } from "@/lib/ai/connectors/imagem"
+import { KNOWLEDGE_CONNECTOR_KEY, loadKnowledgeForPrompt } from "./knowledge"
+import { buildMemoriaConnector } from "./memories"
 import type { ConnectorToolContext } from "@/lib/ai/connectors/types"
 import { logger } from "@/lib/logger"
 import { CONVERTIA_DEFAULT_MODEL, isUnknownModelError, resolveConvertiaModel } from "@/lib/ai/convertia-models"
@@ -53,6 +55,8 @@ export interface ContinuationPayload {
   reasoning_supported: boolean
   connectors: string[]
   skills: string[]
+  /** Advisors ligados no composer (caminhos das notas). */
+  advisors?: string[]
   messages: ChatMessage[]
   round: number
   max_rounds: number
@@ -154,6 +158,13 @@ async function runJob(admin: SupabaseClient, job: JobRow, budgetMs: number): Pro
   const imageCost = { cents: p.extra_cost_cents ?? 0, tokensInput: 0, tokensOutput: 0 }
   const origin = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://admin.convertfy.com.br").replace(/\/+$/, "")
   const connectors = await resolveConnectors({ admin, orgId: p.org_id, storeId: p.store_id, enabled: p.connectors })
+  // Os mesmos conectores internos da rota (o modelo já os chamou no
+  // histórico — sem eles, "Tool desconhecida" no meio da continuação).
+  const knowledge = await loadKnowledgeForPrompt(admin, p.org_id, p.advisors ?? [], {
+    enabled: p.connectors.includes(KNOWLEDGE_CONNECTOR_KEY) || (p.advisors ?? []).length > 0,
+  })
+  if (knowledge.connector) connectors.push(knowledge.connector)
+  connectors.push(buildMemoriaConnector({ conversationId: p.conversation_id, messageId: p.message_id }))
   connectors.push(
     buildImagemConnector({
       origin: /^https?:\/\//.test(origin) ? origin : `https://${origin}`,
@@ -247,6 +258,7 @@ async function runJob(admin: SupabaseClient, job: JobRow, budgetMs: number): Pro
     result,
     baseMeta: () => ({ model: result.model, skills: p.skills, ...(p.deep ? { deep: true } : {}) }),
     extraCostCents: imageCost.cents,
+    extraCostCentsNew: imageCost.cents - (p.extra_cost_cents ?? 0),
     extraTokens: { input: imageCost.tokensInput, output: imageCost.tokensOutput },
     connectors: p.connectors,
     continuation: () => ({

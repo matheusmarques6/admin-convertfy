@@ -60,6 +60,9 @@ export class TurnTelemetry {
   readonly rounds: RoundStat[] = []
   readonly tools: ToolStat[] = []
   private readonly startedAt: number
+  /** Quantas rodadas/tools vieram do seed — já foram FATURADAS pelo turno anterior. */
+  private readonly seededRounds: number
+  private readonly seededTools: number
 
   /** `seed` retoma a telemetria de um turno continuado em job. */
   constructor(
@@ -69,6 +72,23 @@ export class TurnTelemetry {
     this.startedAt = seed?.startedAt ?? clock()
     if (seed?.rounds) this.rounds.push(...seed.rounds)
     if (seed?.tools) this.tools.push(...seed.tools)
+    this.seededRounds = seed?.rounds?.length ?? 0
+    this.seededTools = seed?.tools?.length ?? 0
+  }
+
+  /**
+   * Só o que este processo executou (rodadas/tools depois do seed) — é o
+   * que vai para ai_usage_events; o resumo completo (`summary`) vai para
+   * o meta da mensagem. Sem isso a continuação cobrava as rodadas da
+   * rota de novo e o guard-rail diário estourava antes da hora.
+   */
+  summaryNew(extraCostUsd = 0): TurnUsageSummary {
+    const scoped = new TurnTelemetry(this.clock, {
+      rounds: this.rounds.slice(this.seededRounds),
+      tools: this.tools.slice(this.seededTools),
+      startedAt: this.startedAt,
+    })
+    return scoped.summary(extraCostUsd)
   }
 
   round(stat: Omit<RoundStat, "n">): RoundStat {

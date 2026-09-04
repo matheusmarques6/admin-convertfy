@@ -37,6 +37,8 @@ export interface PendingConfirmation {
   /** Descrição humana do que será executado ("Enviar a campanha X para 12.400 contatos"). */
   summary: string
   args: Record<string, unknown>
+  /** Loja da conversa quando a ação foi proposta — aprovar com outra loja é recusado. */
+  store_id?: string | null
   created_at: string
   /** Preenchido quando o usuário confirmou/cancelou (uso único). */
   resolved_at?: string | null
