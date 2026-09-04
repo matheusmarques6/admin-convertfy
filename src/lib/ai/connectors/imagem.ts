@@ -21,7 +21,8 @@ import {
   isAspectKey,
   type AspectKey,
 } from "@/lib/agents/image/aspect-ratio"
-import { rewriteStorageImageSrc } from "@/lib/ai/convertia-image-url"
+import { rewriteStorageImageSrc, storagePathFromUrl } from "@/lib/ai/convertia-image-url"
+import { publicConvertiaAssetUrl } from "@/lib/ai/convertia-asset-signature"
 import type { ConnectorTool, ResolvedConnector } from "./types"
 
 const ASPECTS: AspectKey[] = ["1:1", "4:5", "3:4", "4:3", "16:9", "9:16", "2:1", "3:5"]
@@ -29,6 +30,12 @@ const ASPECTS: AspectKey[] = ["1:1", "4:5", "3:4", "4:3", "16:9", "9:16", "2:1",
 export function buildImagemConnector(opts: {
   /** Soma o custo real da geração no total do turno (centavos USD). */
   onCost?: (costCents: number, tokensInput: number, tokensOutput: number) => void
+  /**
+   * Origem pública do admin (publicOrigin). Com ela a tool devolve
+   * também a URL assinada e SEM login que o Omnisend/Klaviyo/Shopify
+   * conseguem baixar — sem isso a arte gerada não entra num popup.
+   */
+  origin?: string
 }): ResolvedConnector {
   const gerarImagem: ConnectorTool = {
     label: "Gerar imagem",
@@ -94,12 +101,28 @@ export function buildImagemConnector(opts: {
       // também não expira. Se a URL não for do bucket, segue como veio.
       const url = rewriteStorageImageSrc(storageUrl)
 
+      // URL pública assinada: é a que vai para post_images do Omnisend,
+      // para o Klaviyo ou para o Shopify. A do chat exige login e a
+      // plataforma externa não consegue baixá-la.
+      const objectPath = storagePathFromUrl(storageUrl)
+      let publicUrl: string | null = null
+      if (opts.origin && objectPath) {
+        try {
+          publicUrl = publicConvertiaAssetUrl(opts.origin, objectPath)
+        } catch {
+          /* sem ENCRYPTION_KEY — segue só com a URL do chat */
+        }
+      }
+
       return {
         content: [
           `Imagem gerada com sucesso (${aspect}).`,
           `URL: ${url}`,
           `Inclua na resposta como: ![${prompt.slice(0, 60)}](${url})`,
           "Use EXATAMENTE essa URL — não a reescreva nem invente outra.",
+          publicUrl
+            ? `URL pública (para subir em plataformas — Omnisend post_images, Klaviyo, Shopify): ${publicUrl}\nPasse-a inteira, com o ?sig=. A URL do chat NÃO funciona fora do admin.`
+            : "Sem URL pública nesta instalação — para usar a arte numa plataforma externa, peça ao usuário para subir a imagem manualmente.",
         ].join("\n"),
         summary: `imagem ${aspect}`,
       }

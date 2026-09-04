@@ -25,6 +25,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { publicOrigin } from "@/lib/api/public-origin"
 import { checkAiRateLimit } from "@/lib/services/ai-rate-limit"
 import { recordAiUsage } from "@/lib/services/ai-usage.service"
 import { buildStoreContext } from "@/lib/services/ai-context.service"
@@ -226,6 +227,7 @@ export async function POST(request: NextRequest) {
     // Geração de imagem: sempre disponível (não é toggle do composer)
     connectors.push(
       buildImagemConnector({
+        origin: publicOrigin(request),
         onCost: (cents, tIn, tOut) => {
           imageCost.cents += cents
           imageCost.tokensInput += tIn
