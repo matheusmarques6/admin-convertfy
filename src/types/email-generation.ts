@@ -127,6 +127,11 @@ export type AgentType =
   // conhecimento à loja (fase 1, antes do Curador — ADR
   // adr-estruturador-adaptativo). Fase 2: shadow.
   | "estruturador"
+  // Objeções (set/2026): catalogador roda 1× por pesquisa (catálogo de
+  // argumento da loja); seletor roda por email, antes do Estruturador (o
+  // alvo do toque). Plano: docs/email-generation/plano-objecoes-macro-micro.md.
+  | "catalogador"
+  | "seletor"
   | "copy"
   | "image"
   | "html"
@@ -314,6 +319,8 @@ export interface EmailGenerationSettings {
 export type GenerationRunStatus = "running" | "success" | "error" | "skipped"
 export type GenerationRunAgent =
   | "estruturador"
+  | "catalogador"
+  | "seletor"
   | "seed"
   | "copy"
   | "image"

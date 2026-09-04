@@ -8,6 +8,8 @@
 
 export type PipelineAgentKey =
   | "copy"
+  | "catalogador"
+  | "seletor"
   | "estruturador"
   | "blueprint"
   | "subject"
@@ -53,6 +55,22 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#E5E7EB",
     external: true,
     kind: "externo",
+  },
+  catalogador: {
+    name: "Catalogador",
+    desc: "Catálogo de argumento da loja: objeções tipadas por risco/aliviador com lastro, veículos, medos, incentivo (1× por pesquisa)",
+    color: "#7C2D12",
+    bg: "#FFF7ED",
+    border: "#FDBA74",
+    kind: "texto",
+  },
+  seletor: {
+    name: "Seletor",
+    desc: "Decide o alvo do toque — qual objeção este email ataca, aliviador e profundidade (roda antes do Estruturador; modo shadow/on)",
+    color: "#9A3412",
+    bg: "#FFEDD5",
+    border: "#FDBA74",
+    kind: "texto",
   },
   estruturador: {
     name: "Estruturador",

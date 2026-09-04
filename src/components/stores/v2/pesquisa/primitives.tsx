@@ -26,6 +26,7 @@
  */
 
 import { Loader2, Sparkles } from "lucide-react"
+import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { cn } from "@/lib/utils"
 
 // ─── Pull ────────────────────────────────────────────────
@@ -805,6 +806,203 @@ export function VocabularyList({
             </div>
           )
         })}
+      </div>
+    </IcpBlock>
+  )
+}
+
+// ─── ObjectionCatalogPanel (Catalogador v2, set/2026) ─────────────────
+//
+// Leitura do catálogo de argumento: objeções tipadas (risco, aliviador,
+// dimensão, flows, lastro), veículos, medos de categoria, incentivo,
+// cobertura e descartadas. Read-only — a edição continua no editor da
+// projeção (icp_objections); editar lá marca `verificado` aqui.
+
+const RISCO_LABEL: Record<string, string> = {
+  financeiro: "Financeiro",
+  desempenho: "Desempenho",
+  tempo: "Tempo",
+  psicologico: "Psicológico",
+  social: "Social",
+  seguranca: "Segurança",
+  adequacao: "Adequação",
+}
+const ALIVIADOR_LABEL: Record<string, string> = {
+  garantia_de_devolucao: "Garantia de devolução",
+  prova_de_terceiro: "Prova de terceiro",
+  prova_por_volume: "Prova por volume",
+  demonstracao_de_mecanismo: "Demonstração de mecanismo",
+  transparencia_de_politica: "Transparência de política",
+  amostra_ou_teste: "Amostra ou teste",
+  dado_de_adequacao: "Dado de adequação",
+  comparacao_de_categoria: "Comparação de categoria",
+  seguranca_de_pagamento: "Segurança de pagamento",
+  reputacao_da_loja: "Reputação da loja",
+}
+const VEICULO_LABEL: Record<string, string> = {
+  origem_da_marca: "Origem da marca",
+  economia_do_preco: "Economia do preço",
+  operacao_por_pedido: "Operação por pedido",
+  mecanismo_unico: "Mecanismo único",
+}
+const FONTE_LABEL: Record<string, string> = {
+  catalogador_v2: "gerado pelo Catalogador",
+  manual: "revisado à mão",
+  legacy_import: "importado do cadastro antigo",
+}
+
+function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "accent" | "warn" | "ok" }) {
+  const tones = {
+    neutral: { bg: "#F3F4F6", color: "#374151", border: "#E5E7EB" },
+    accent: INDIGO,
+    warn: { bg: "#FFFBEB", color: "#92400E", border: "#FDE68A" },
+    ok: { bg: "#ECFDF5", color: "#065F46", border: "#A7F3D0" },
+  }[tone]
+  return (
+    <span
+      className="inline-flex items-center h-5 px-1.5 rounded text-[10px] font-semibold whitespace-nowrap"
+      style={{ background: tones.bg, color: tones.color, border: `1px solid ${tones.border}` }}
+    >
+      {children}
+    </span>
+  )
+}
+
+export function ObjectionCatalogPanel({
+  catalog,
+  source,
+  updatedAt,
+}: {
+  catalog: CatalogoDeObjecoes
+  source?: string | null
+  updatedAt?: string | null
+}) {
+  const quando = updatedAt ? new Date(updatedAt).toLocaleDateString("pt-BR") : null
+  const subtitle = [
+    "Objeções tipadas por risco e aliviador, com lastro — é o que o Seletor lê por email",
+    source ? FONTE_LABEL[source] ?? source : null,
+    quando,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+  const veiculos = Object.entries(catalog.veiculos_de_argumento ?? {})
+  return (
+    <IcpBlock>
+      <IcpBlockHeader title="Catálogo de argumento" subtitle={subtitle} />
+
+      <div className="flex flex-col gap-2">
+        {(catalog.objecoes ?? []).map((o) => (
+          <div
+            key={o.id}
+            className="rounded-md border p-3"
+            style={{ borderColor: "rgba(0,0,0,0.06)", background: "#FBFBFD" }}
+          >
+            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+              <span className="text-[10px] font-bold text-slate-400 tabular-nums">{o.id}</span>
+              {o.tipo_de_risco && <Chip tone="accent">{RISCO_LABEL[o.tipo_de_risco] ?? o.tipo_de_risco}</Chip>}
+              {o.aliviador && <Chip>{ALIVIADOR_LABEL[o.aliviador] ?? o.aliviador}</Chip>}
+              {o.dimensao_confianca && <Chip>{o.dimensao_confianca}</Chip>}
+              {o.dominante_da_categoria && <Chip tone="warn">dominante da categoria</Chip>}
+              <Chip>severidade {o.severidade}/5</Chip>
+              <Chip>{o.confianca}</Chip>
+              {o.lastro_operacional?.verificado ? <Chip tone="ok">verificado</Chip> : <Chip tone="warn">não verificado</Chip>}
+            </div>
+            <div
+              className="text-[12px] text-slate-800 italic leading-snug"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
+              &ldquo;{o.objecao}&rdquo;
+            </div>
+            <div className="text-[11.5px] text-slate-600 leading-snug mt-1">
+              <span className="font-semibold text-slate-500">Tratamento:</span> {o.tratamento}
+            </div>
+            {o.lastro_operacional?.afirmacao && (
+              <div className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                <span className="font-semibold">Lastro:</span> {o.lastro_operacional.afirmacao}
+                {o.lastro_operacional.campo_de_origem ? ` (${o.lastro_operacional.campo_de_origem})` : ""}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {(o.flows_elegiveis ?? []).map((f) => (
+                <Chip key={f}>{f}</Chip>
+              ))}
+            </div>
+            {o.evidencia && (
+              <div className="text-[10.5px] text-slate-400 leading-snug mt-1">Evidência: “{o.evidencia}”</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          <div className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-slate-500">Veículos de argumento</div>
+          {veiculos.map(([k, v]) => (
+            <div key={k} className="text-[11.5px] leading-snug mb-1">
+              <span className="font-semibold text-slate-700">{VEICULO_LABEL[k] ?? k}:</span>{" "}
+              {!v.aplicavel ? (
+                <span className="text-slate-400">não se aplica a esta loja</span>
+              ) : v.texto ? (
+                <span className="text-slate-600">{v.texto}</span>
+              ) : (
+                <span className="text-amber-700">{v.alerta ?? "sem insumo na pesquisa"}</span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          <div className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-slate-500">Medos da categoria</div>
+          {(catalog.medos_de_categoria ?? []).length === 0 && (
+            <div className="text-[11px] text-slate-400">nenhum registrado</div>
+          )}
+          {(catalog.medos_de_categoria ?? []).map((m, i) => (
+            <div key={i} className="text-[11.5px] leading-snug mb-1">
+              <span className="font-semibold text-slate-700">{m.medo}:</span>{" "}
+              {m.marca_esta_fora_porque ? (
+                <span className="text-slate-600">{m.marca_esta_fora_porque}</span>
+              ) : (
+                <span className="text-amber-700">{m.alerta ?? "sem lastro — não usar"}</span>
+              )}
+            </div>
+          ))}
+          {catalog.concorrente_nomeavel?.existe && (
+            <div className="text-[11px] text-slate-600 mt-1.5">
+              <span className="font-semibold">Concorrente nomeável:</span> {catalog.concorrente_nomeavel.nome}
+              {catalog.concorrente_nomeavel.eixo_de_diferenca ? ` — ${catalog.concorrente_nomeavel.eixo_de_diferenca}` : ""}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          <div className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-slate-500">Incentivo</div>
+          <div className="text-[11.5px] text-slate-600 leading-snug">
+            {catalog.incentivo?.existe === true
+              ? [catalog.incentivo.valor, catalog.incentivo.codigo ? `código ${catalog.incentivo.codigo}` : null, catalog.incentivo.condicoes, catalog.incentivo.prazo]
+                  .filter(Boolean)
+                  .join(" · ")
+              : catalog.incentivo?.existe === false
+                ? "sem incentivo ativo no contexto"
+                : catalog.incentivo?.alerta ?? "não identificado na pesquisa"}
+          </div>
+        </div>
+        <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+          <div className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-slate-500">Cobertura e descartes</div>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {(catalog.cobertura?.tipos_cobertos ?? []).map((t) => (
+              <Chip key={t} tone="accent">{RISCO_LABEL[t] ?? t}</Chip>
+            ))}
+          </div>
+          {(catalog.cobertura?.lacunas ?? []).map((l, i) => (
+            <div key={i} className="text-[11px] text-amber-700 leading-snug">Lacuna: {l}</div>
+          ))}
+          {(catalog.descartadas ?? []).map((d, i) => (
+            <div key={i} className="text-[11px] text-slate-400 leading-snug">
+              Descartada ({d.motivo}): {d.texto}
+            </div>
+          ))}
+        </div>
       </div>
     </IcpBlock>
   )

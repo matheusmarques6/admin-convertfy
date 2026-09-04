@@ -157,6 +157,8 @@ export async function listPrompts(opts: {
 
   const by_type: Record<AgentType, PromptListGroup> = {
     estruturador: { active: null, history: [] },
+    catalogador: { active: null, history: [] },
+    seletor: { active: null, history: [] },
     copy: { active: null, history: [] },
     image: { active: null, history: [] },
     html: { active: null, history: [] },

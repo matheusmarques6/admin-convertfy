@@ -25,6 +25,8 @@ export type TestRunMode = "default" | "phase2" | "full"
 
 /** Labels PT-BR dos agentes nas listas de teste. */
 export const TEST_AGENT_LABELS: Record<string, string> = {
+  catalogador: "Catalogador",
+  seletor: "Seletor",
   estruturador: "Estruturador",
   assembler_chooser: "Curador",
   assembler: "Montador",

@@ -33,6 +33,8 @@ import { PromptEditor } from "@/components/agents/prompt-editor"
 import { PromptHistory } from "@/components/agents/prompt-history"
 
 const AGENT_LABELS: Record<AgentType, string> = {
+  catalogador: "Catalogador",
+  seletor: "Seletor",
   estruturador: "Estruturador",
   copy: "Copy",
   image: "Imagens",
@@ -58,6 +60,8 @@ const AGENT_LABELS: Record<AgentType, string> = {
 }
 
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
+  catalogador: Tags,
+  seletor: Compass,
   estruturador: Bot,
   copy: Bot,
   image: ImageIcon,

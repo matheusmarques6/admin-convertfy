@@ -48,6 +48,10 @@ const PESQUISA_COLUMNS = [
   "icp_unique_mechanism",
   "icp_objections",
   "icp_vocabulary",
+  // Catálogo de argumento (Catalogador v2, set/2026) — a projeção é icp_objections.
+  "objection_catalog",
+  "objection_catalog_source",
+  "objection_catalog_updated_at",
   // 4. Tom de Comunicação
   "tone_description",
   "tone_do",

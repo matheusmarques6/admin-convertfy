@@ -28,6 +28,7 @@ import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { enqueueDispatchJob } from "@/lib/services/email-dispatch-queue.service"
+import { runCatalogador } from "@/lib/agents/objecoes/catalogador.service"
 import {
   errorResponse,
   successResponse,
@@ -71,6 +72,22 @@ export async function POST(request: NextRequest) {
           store_id: body.store_id,
         })
         return
+      }
+      // Catalogador ANTES de enfileirar (set/2026): o Seletor da fase 1 lê o
+      // catálogo, e a pesquisa acabou de mudar. Fail-open — sem catálogo o
+      // Seletor degrada para lacuna; a geração nunca fica presa aqui.
+      try {
+        const cat = await runCatalogador({ storeId: body.store_id, triggeredBy: "pesquisa_completa" })
+        logger.info("[n8n:pesquisa-completa] catalogador", {
+          store_id: body.store_id,
+          status: cat.status,
+          objections: cat.objections.length,
+        })
+      } catch (err) {
+        logger.warn("[n8n:pesquisa-completa] catalogador_failed", {
+          store_id: body.store_id,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
       try {
         const res = await enqueueDispatchJob(body.store_id, {

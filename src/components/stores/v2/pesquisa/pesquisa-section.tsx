@@ -36,8 +36,10 @@ import {
   StarvingCrowdScorecard,
   UniqueMechanism,
   ObjectionList,
+  ObjectionCatalogPanel,
   VocabularyList,
 } from "./primitives"
+import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { EditMarcaModal } from "./editors/edit-marca"
 import { EditLojaModal } from "./editors/edit-loja"
 import { EditIcpModal } from "./editors/edit-icp"
@@ -95,6 +97,10 @@ export interface PesquisaData {
   } | null
   icp_unique_mechanism?: { headline: string; body: string } | null
   icp_objections?: { objection: string; treatment: string }[] | null
+  /** Catálogo de argumento (Catalogador v2) — icp_objections é a projeção dele. */
+  objection_catalog?: CatalogoDeObjecoes | null
+  objection_catalog_source?: "catalogador_v2" | "manual" | "legacy_import" | null
+  objection_catalog_updated_at?: string | null
   icp_vocabulary?: {
     type: "Dor" | "Desejo" | "Objeção" | "Marca"
     channel: string
@@ -275,12 +281,22 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
       if (res.ok) {
         const j = await res.json().catch(() => ({}))
         const objections = (j.data?.objections ?? j.objections) as PesquisaData["icp_objections"]
+        const catalog = (j.data?.catalog ?? j.catalog ?? null) as PesquisaData["objection_catalog"]
         if (objections && objections.length > 0) {
-          setData((prev) => ({ ...prev, icp_objections: objections }))
+          setData((prev) => ({
+            ...prev,
+            icp_objections: objections,
+            objection_catalog: catalog ?? prev.objection_catalog ?? null,
+            objection_catalog_source: catalog ? "catalogador_v2" : prev.objection_catalog_source,
+            objection_catalog_updated_at: catalog ? new Date().toISOString() : prev.objection_catalog_updated_at,
+          }))
         } else {
           await reload()
         }
-        toast({ title: "Objeções regeradas", description: "As 5 objeções foram atualizadas com IA." })
+        toast({
+          title: "Catálogo de objeções regerado",
+          description: `${objections?.length ?? 0} objeções tipadas por risco e aliviador, com veículos, medos e incentivo.`,
+        })
       } else {
         const err = await res.json().catch(() => ({}))
         const msg = (err as Record<string, unknown>).error ?? (err as Record<string, unknown>).message ?? `HTTP ${res.status}`
@@ -621,6 +637,14 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               items={data.icp_objections ?? []}
               onRegenerate={regenerateObjections}
               regenerating={regeneratingObjections}
+            />
+          )}
+
+          {data.objection_catalog && (
+            <ObjectionCatalogPanel
+              catalog={data.objection_catalog}
+              source={data.objection_catalog_source ?? null}
+              updatedAt={data.objection_catalog_updated_at ?? null}
             />
           )}
 

@@ -120,6 +120,16 @@ export interface ProvenanceRequirement {
 }
 
 export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
+  catalogador: {
+    prompt: true,
+    input: true,
+    motivo: "o catálogo de argumento é derivado da pesquisa: sem a marcação por origem não se sabe se uma objeção veio do dossiê, do material anterior ou foi inventada",
+  },
+  seletor: {
+    prompt: true,
+    input: true,
+    motivo: "o alvo do toque cruza catálogo (loja), intenção (vault) e o que os irmãos já atacaram (upstream) — separar as três é o que explica a escolha",
+  },
   estruturador: {
     prompt: true,
     input: true,

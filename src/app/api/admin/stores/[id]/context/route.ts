@@ -12,6 +12,11 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { marcarVerificadoPorEdicao } from "@/lib/agents/objecoes/catalogo-regras"
+import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("StoreContextPatch")
 
 export const dynamic = "force-dynamic"
 
@@ -165,6 +170,38 @@ export async function PATCH(
     }
     if (Object.keys(update).length === 0) {
       return successResponse(request, { updated: false })
+    }
+
+    // Edição humana das objeções = a única revisão que o catálogo recebe
+    // (set/2026): a objeção do catálogo cujo texto casa com a editada ganha
+    // `verificado: true` e o tratamento novo; a fonte vira 'manual'.
+    // Fail-open: sem catálogo (ou sem a coluna), a projeção é gravada como
+    // antes.
+    if (Array.isArray(update.icp_objections)) {
+      try {
+        const { data: row } = await admin
+          .from("client_stores")
+          .select("objection_catalog")
+          .eq("id", storeId)
+          .maybeSingle()
+        const catalogo = (row as { objection_catalog?: unknown } | null)?.objection_catalog
+        if (catalogo && typeof catalogo === "object") {
+          const { catalogo: novo, tocadas } = marcarVerificadoPorEdicao(
+            catalogo as CatalogoDeObjecoes,
+            update.icp_objections as Array<{ objection: string; treatment: string }>,
+          )
+          if (tocadas > 0) {
+            update.objection_catalog = novo
+            update.objection_catalog_source = "manual"
+            update.objection_catalog_updated_at = new Date().toISOString()
+          }
+        }
+      } catch (err) {
+        log.warn("context.objection_catalog_verificado_failed", {
+          storeId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
 
     const { error } = await admin
