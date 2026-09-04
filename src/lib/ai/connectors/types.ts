@@ -53,6 +53,13 @@ export interface ResolvedConnector {
   key: ConnectorKey
   name: string
   tools: ConnectorTool[]
+  /**
+   * Instruções de uso do conector que entram no system prompt quando ele
+   * está ativo (ex.: "leia o guia da operação antes de montar o body").
+   * Regras que dependem de COMO a plataforma funciona vivem aqui, não no
+   * prompt genérico do chat.
+   */
+  guidance?: string
 }
 
 /** Serialização segura de resultado de tool (o modelo lê isto). */

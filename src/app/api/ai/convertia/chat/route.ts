@@ -264,6 +264,11 @@ export async function POST(request: NextRequest) {
       connectors.length > 0
         ? `Conectores ativos nesta conversa: ${connectors.map((c) => c.name).join(", ")}. Use as tools para buscar DADOS REAIS antes de afirmar números — nunca invente métricas.`
         : "Nenhum conector ativo nesta conversa — deixe claro quando não tiver o dado e sugira ligar o conector.",
+      // Regras de uso específicas de cada conector ativo (como a
+      // plataforma funciona, o que ler antes de escrever).
+      ...connectors
+        .filter((c) => c.guidance)
+        .map((c) => `## Como usar o conector ${c.name}\n${c.guidance}`),
       // A lista de tools de CADA mensagem é a autoridade — conexões
       // mudam entre turnos e o modelo não pode ancorar num "não
       // consigo" dito quando a conversa tinha menos conectores.
