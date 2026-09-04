@@ -48,7 +48,20 @@ export async function POST(request: NextRequest) {
     // derivar de nextUrl.origin nas duas pontas dava valores diferentes
     // atrás do proxy (alias de preview × domínio final) e o AS recusava.
     const redirectUri = mcpOAuthRedirectUri(request)
-    const as = await discoverAuthServer(body.url)
+    // Erro de discovery/registro é do SERVIDOR REMOTO, não bug nosso —
+    // precisa chegar ao usuário com o detalhe. Sem o AppError, o
+    // errorResponse trata Error genérico como 500 e devolve só "Erro
+    // interno", que foi exatamente o que apareceu na tela.
+    let as: Awaited<ReturnType<typeof discoverAuthServer>>
+    try {
+      as = await discoverAuthServer(body.url)
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : "Falha ao descobrir o authorization server",
+        422,
+        "mcp-discovery",
+      )
+    }
     if (!as.registration_endpoint) {
       throw new AppError(
         "O authorization server não suporta registro dinâmico de cliente — conexão manual necessária.",
@@ -56,11 +69,23 @@ export async function POST(request: NextRequest) {
         "validation-error",
       )
     }
-    const { clientId, clientSecret } = await registerClient(
-      as.registration_endpoint,
-      redirectUri,
-      as.scopes_supported,
-    )
+    let clientId: string
+    let clientSecret: string | undefined
+    try {
+      const registered = await registerClient(
+        as.registration_endpoint,
+        redirectUri,
+        as.scopes_supported,
+      )
+      clientId = registered.clientId
+      clientSecret = registered.clientSecret
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : "Registro de cliente recusado",
+        422,
+        "mcp-registration",
+      )
+    }
     const { verifier, challenge } = makePkce()
 
     // return_to só dentro do admin — nada de open redirect

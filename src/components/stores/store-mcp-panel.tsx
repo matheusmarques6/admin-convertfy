@@ -15,7 +15,6 @@
 import { useEffect, useState } from "react"
 import useSWR from "swr"
 import { Copy, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react"
-import { startMcpOAuth } from "@/components/convertia/convertia-manage"
 
 const HAIR = "var(--crm-border, rgba(0,0,0,0.08))"
 const BRAND = "#4E62D8"
@@ -188,27 +187,13 @@ export function StoreMcpPanel({
 
       {!adding ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
-          <button
-            onClick={async () => {
-              setBusy(true)
-              const e = await startMcpOAuth({
-                name: "Omnisend (MCP oficial)",
-                url: "https://mcp.omnisend.com/mcp",
-                store_id: storeId,
-                allow_write: true,
-              })
-              if (e) {
-                setErr(e)
-                setBusy(false)
-              }
-            }}
-            disabled={busy}
-            className="inline-flex h-[30px] items-center rounded-[6px] px-3 text-[12px] font-semibold text-white disabled:opacity-60"
-            style={{ background: "#5C6AC4" }}
-            title="Autoriza via OAuth na conta Omnisend DESTA loja — selecione permissões de escrita na tela deles"
-          >
-            {busy ? "Redirecionando…" : "Conectar Omnisend (OAuth)"}
-          </button>
+          {/* O botão "Conectar Omnisend (OAuth)" saiu daqui: a própria
+              Omnisend confirmou que não é para nos conectarmos ao MCP
+              deles como cliente. Quem é o servidor MCP somos nós (o
+              endpoint acima); a autenticação com a Omnisend é a API key
+              da loja, que já está gravada. O OAuth deles serve a app
+              SaaS multi-tenant que autoriza pelo login do usuário final
+              — não é o nosso caso. */}
           <button
             onClick={() => setAdding({ name: "", url: "", auth_token: "", allow_write: false })}
             className="inline-flex h-[30px] items-center gap-1.5 rounded-[6px] border border-dashed px-3 text-[12px] font-medium"

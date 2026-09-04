@@ -399,8 +399,6 @@ const OBSIDIAN_PRESET = {
   hint: "Exponha seu vault via um servidor MCP do Obsidian (ex.: obsidian-mcp + Local REST API) atrás de HTTPS público — um túnel (Cloudflare Tunnel/ngrok) resolve — e cole a URL do endpoint MCP aqui.",
 }
 
-const OMNISEND_MCP_URL = "https://mcp.omnisend.com/mcp"
-
 /** Inicia o fluxo OAuth de um servidor MCP e redireciona pro login. */
 export async function startMcpOAuth(args: {
   name: string
@@ -537,12 +535,15 @@ function McpDialog({
             className="mt-2.5 rounded-[8px] border px-3 py-2 text-[11px] leading-[1.6]"
             style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
           >
-            <strong style={{ color: "var(--ops-title)" }}>API key ≠ MCP.</strong> A chave da
-            plataforma (Omnisend, Shopify, Klaviyo) já é usada pelos conectores da loja — ela
-            autentica as chamadas que o admin faz na API pública. Um servidor MCP é outra coisa:
-            um endereço HTTPS separado que fala o protocolo MCP e expõe o catálogo de operações
-            da plataforma. Ele tem autenticação própria — normalmente <em>login OAuth</em> (o
-            botão abaixo), às vezes um token Bearer. Colar a API key aqui não conecta nada.
+            <strong style={{ color: "var(--ops-title)" }}>
+              O servidor MCP das plataformas somos nós.
+            </strong>{" "}
+            A ConvertIA fala com Omnisend, Shopify e Klaviyo pela API key de cada loja — é o
+            desenho que a própria Omnisend recomenda para sistema próprio, e já está de pé
+            (cada loja tem o endpoint MCP dela na aba Setup, para plugar no Claude ou no
+            Cursor). Não há o que &ldquo;conectar&rdquo; aqui para elas. Esta lista é para
+            servidores MCP de TERCEIROS — um endereço HTTPS que fala o protocolo MCP, com
+            autenticação própria (token Bearer ou login OAuth).
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             {servers.map((s) => (
@@ -582,26 +583,11 @@ function McpDialog({
             )}
           </div>
           <div className="mt-3.5 flex flex-wrap gap-2">
-            <button
-              onClick={async () => {
-                setBusy(true)
-                const e = await startMcpOAuth({
-                  name: "Omnisend (MCP oficial)",
-                  url: OMNISEND_MCP_URL,
-                  allow_write: true,
-                })
-                if (e) {
-                  setErr(e)
-                  setBusy(false)
-                }
-              }}
-              disabled={busy}
-              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-semibold text-white disabled:opacity-60"
-              style={{ background: "#5C6AC4" }}
-              title="Autoriza via OAuth na sua conta Omnisend — escolha permissões de escrita na tela deles para criar/editar automações, campanhas e popups"
-            >
-              {busy ? "Redirecionando…" : "Conectar Omnisend (OAuth)"}
-            </button>
+            {/* Saiu o "Conectar Omnisend (OAuth)": a própria Omnisend
+                confirmou o desenho — o servidor MCP é o NOSSO, e a
+                autenticação com eles é a API key da loja (já gravada).
+                O OAuth deles existe para app SaaS que autoriza pelo
+                login do usuário final, que não é o nosso caso. */}
             <button
               onClick={() => setAdding({ name: "", url: "", auth_token: "", store_id: null, allow_write: false })}
               className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
@@ -627,8 +613,10 @@ function McpDialog({
             </button>
           </div>
           <div className="mt-1.5 text-[10px] leading-[1.5]" style={{ color: "var(--ops-mut)" }}>
-            Omnisend multi-marca: conecte de novo trocando a URL para
-            https://mcp.omnisend.com/v2/mcp?brand=&lt;marca&gt; via &ldquo;Adicionar servidor&rdquo; + OAuth.
+            Omnisend, Shopify e Klaviyo não entram aqui: eles já são MCP da loja pela API key
+            cadastrada nas integrações — uma chave por loja, que é como a própria Omnisend
+            recomenda para sistema próprio. Este espaço é para servidores MCP de terceiros
+            (Obsidian, ERP, o que for).
           </div>
         </>
       )}
