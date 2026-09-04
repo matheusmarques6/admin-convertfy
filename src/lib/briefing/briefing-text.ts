@@ -195,6 +195,8 @@ export interface PesquisaFields {
   icp_day_in_life?: string | null
   icp_motivations?: string[] | null
   icp_frictions?: string[] | null
+  /** Projeção do catálogo de objeções (set/2026) — `[{objection, treatment}]`. */
+  icp_objections?: { objection?: string | null; treatment?: string | null }[] | null
   // 04 · Tom de Comunicação
   tone_description?: string | null
   tone_do?: string[] | null
@@ -349,6 +351,20 @@ export function pesquisaToFullText(
     if (motivations.length) lines.push("O que ela quer:", ...motivations.map((m) => `- ${m}`))
     const frictions = cleanList(store.icp_frictions)
     if (frictions.length) lines.push("O que a faz hesitar:", ...frictions.map((f) => `- ${f}`))
+    // Objeção ≠ dor: é o que trava o checkout DEPOIS de a pessoa querer o
+    // produto. Ficava fora do dossiê (set/2026) — e o Estruturador, que só
+    // recebe este texto, inferia a "objeção dominante" da prosa acima.
+    const objections = (Array.isArray(store.icp_objections) ? store.icp_objections : [])
+      .map((o) => {
+        const objecao = str(o?.objection)
+        if (!objecao) return ""
+        const tratamento = str(o?.treatment)
+        return tratamento ? `- ${objecao} — tratamento: ${tratamento}` : `- ${objecao}`
+      })
+      .filter(Boolean)
+    if (objections.length) {
+      lines.push("O que trava o checkout (objeções — já quer o produto e hesita):", ...objections)
+    }
     if (lines.length) blocks.push(["## 03 · Cliente Ideal", ...lines].join("\n"))
   }
 

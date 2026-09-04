@@ -59,6 +59,7 @@ import {
   momentoDoEmail,
   loadIndiceDoVault,
   loadMontadorMode,
+  type MontadorMode,
 } from "./curador-vault"
 import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
@@ -109,7 +110,6 @@ import {
   buildSegmentedPrompt,
   concatSegments,
   type InputSummaryItem,
-  type PromptSegment,
   type SegmentOrigin,
 } from "../shared/prompt-provenance"
 import {
@@ -130,6 +130,17 @@ const DEFAULT_CHOOSER_MODEL = "anthropic/claude-sonnet-4.6"
 
 /** Teto de finalistas por posição (o Montador escolhe entre eles — CM-4). */
 export const CHOOSER_TOP_N = 3
+
+/**
+ * Quantas finalistas o Curador legado devolve por posição, dado o
+ * `montador_mode` (set/2026). Com o Montador desligado (20261107) só o
+ * rank 1 é consumido — pedir 3 era pagar tokens por duas finalistas que
+ * ninguém lia. O vault já roda com 1 (`SHADOW_TOP_N`); isto alinha o
+ * fallback do kimi.
+ */
+export function chooserTopN(montadorMode: MontadorMode): number {
+  return montadorMode === "on" ? CHOOSER_TOP_N : 1
+}
 
 /**
  * Tentativas do Curador antes de desistir. Sem o score do pré-filtro não há
@@ -200,7 +211,7 @@ export function rankingDetalhado(
     }))
 }
 
-export const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. Para CADA posição da sequência de um email, você seleciona da biblioteca as ATÉ ${CHOOSER_TOP_N} variantes que melhor servem àquele email e àquela loja, em ordem de preferência.
+export const DEFAULT_CHOOSER_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. Para CADA posição da sequência de um email, você seleciona da biblioteca as ATÉ {{top_n}} variantes que melhor servem àquele email e àquela loja, em ordem de preferência.
 
 Você decide pelo nome, pela descrição e pelos metadados de cada variante. Você NÃO recebe o HTML delas.
 
@@ -230,7 +241,7 @@ Como usar os eixos do vault (variantes com campo \`vault\`):
 
 Regras de seleção:
 - Para cada block_index da sequência, escolha SOMENTE entre variantes cujo tipo de seção é o daquela posição.
-- Devolva ATÉ ${CHOOSER_TOP_N} por posição, em ordem de preferência — a 1ª é a sua recomendação. Se o tipo tiver menos de ${CHOOSER_TOP_N} variantes adequadas, devolva quantas houver: nunca complete a lista com uma variante que você rejeitaria.
+- Devolva ATÉ {{top_n}} por posição, em ordem de preferência — a 1ª é a sua recomendação. Se o tipo tiver menos de {{top_n}} variantes adequadas, devolva quantas houver: nunca complete a lista com uma variante que você rejeitaria.
 - Respeite quando_nao_usar: se o contexto do email casa com um "quando NÃO usar", a variante está fora, não em último lugar.
 - Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
@@ -328,7 +339,7 @@ Notas de seção do vault para as seções DESTE email — cobertura e CHAVE DE 
 {{blocks_json}}
 </sequencia_do_email>
 
-Para CADA block_index de <sequencia_do_email>, selecione em <biblioteca> as até ${CHOOSER_TOP_N} variantes do tipo daquela posição, em ordem de preferência. Responda APENAS o array JSON.`
+Para CADA block_index de <sequencia_do_email>, selecione em <biblioteca> as até {{top_n}} variantes do tipo daquela posição, em ordem de preferência. Responda APENAS o array JSON.`
 
 // ── PASSO B — Montador: escolhe 1 entre os finalistas, olhando o email
 // INTEIRO (story CM-4). Ele não escreve HTML nem copy: decide a COMPOSIÇÃO.
@@ -863,8 +874,9 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
     },
     objecoes: {
       cls: "loja",
-      rotulo: "Objeções do cliente ideal — client_stores.icp_frictions",
+      rotulo: "Objeções do cliente ideal — client_stores.icp_objections",
     },
+    top_n: { cls: "sistema", rotulo: "Teto de finalistas por posição — montador_mode (código)" },
     // Diretriz viva do COO (migration 20261111) — NÃO é vault: o vault é o
     // corpus curado, isto é instrução direta e de efeito imediato. Sem esta
     // linha o guard de recomposição derruba os segmentos da run inteira.
@@ -974,7 +986,13 @@ export async function assembleStoreReference(
     input.emailNumber,
   )
 
-  // ── PASSO A — Curador: rankeia até CHOOSER_TOP_N por posição.
+  // Kill-switch do Montador (migration 20261107), lido ANTES do Curador
+  // porque decide quantas finalistas pedir: desligado, só o rank 1 é
+  // consumido e o teto cai para 1 (set/2026).
+  const montadorMode = await loadMontadorMode(input.storeId)
+  const topN = chooserTopN(montadorMode)
+
+  // ── PASSO A — Curador: rankeia até `topN` por posição.
   // O HTML das variantes NÃO entra: o catálogo é só nome + descrição +
   // metadados, e vai no SYSTEM para ser cacheável.
   //
@@ -1029,6 +1047,7 @@ export async function assembleStoreReference(
     // Usar/Evitar" — dado presente que ninguém usava como critério.
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
+    top_n: String(topN),
     // Orientação do COO ao CURADOR (migration 20261111) — a do Estruturador
     // não entra aqui: são papéis diferentes e a tabela as separa por
     // `agente`.
@@ -1289,6 +1308,7 @@ export async function assembleStoreReference(
         // Substituição LITERAL (interpolateSystem), nunca pelo renderer —
         // ele apagaria notação como as tags {{TAG}} de outros prompts (CM-1).
         catalogo: catalog.json,
+        top_n: String(topN),
       })
       chooserRaw = res.raw
       chooserTokensIn += res.tokensInput
@@ -1298,7 +1318,7 @@ export async function assembleStoreReference(
         raw: res.raw,
         sections,
         typeIndex,
-        maxPerBlock: CHOOSER_TOP_N,
+        maxPerBlock: topN,
       })
       ranking = parsed
       // JSON ilegível ou nada aproveitável → vale uma segunda tentativa.
@@ -1470,7 +1490,8 @@ export async function assembleStoreReference(
   // devolve UMA variante por posição) e o documento vai direto para a
   // montagem por código. A run `assembler` é gravada como `skipped` com as
   // stats da montagem — o nó continua existindo no mapa e na aba Teste.
-  const montadorMode = await loadMontadorMode(input.storeId)
+  // (`montadorMode` foi carregado antes do passo A — o teto de finalistas
+  // do Curador depende dele.)
   const montadorOn = montadorMode === "on"
   const asmRow = montadorOn ? await loadActiveAgentConfig("assembler") : null
   const asmConfig: AgentInvokeConfig = {

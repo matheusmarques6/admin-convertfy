@@ -60,6 +60,27 @@ describe("parseFrontmatter", () => {
     expect(r.data).toEqual({})
   })
 
+  // set/2026: o frontmatter das intenções (contrato do Seletor) carrega
+  // proibições em prosa e listas longas — lista em bloco e vírgula dentro
+  // de aspas deixaram de quebrar em silêncio.
+  it("lista em bloco (`- item`) vira array; chave vazia sem itens continua null", () => {
+    const { data } = parseFrontmatter(
+      "---\nmodo: varredura_de_objecoes\nproibicoes:\n  - repetir a tese do toque 1\n  - prazo com hora fechada\nloja:\nstatus: aprovada\n---\ncorpo",
+    )
+    expect(data.modo).toBe("varredura_de_objecoes")
+    expect(data.proibicoes).toEqual(["repetir a tese do toque 1", "prazo com hora fechada"])
+    expect(data.loja).toBeNull()
+    expect(data.status).toBe("aprovada")
+  })
+
+  it("array inline respeita vírgula dentro de aspas", () => {
+    const { data } = parseFrontmatter(
+      '---\nproibicoes: ["repetir a tese, no mesmo registro", prazo com hora fechada]\nriscos_elegiveis: [desempenho, financeiro]\n---\n',
+    )
+    expect(data.proibicoes).toEqual(["repetir a tese, no mesmo registro", "prazo com hora fechada"])
+    expect(data.riscos_elegiveis).toEqual(["desempenho", "financeiro"])
+  })
+
   it("escalares: número, boolean, aspas", () => {
     const { data } = parseFrontmatter(
       `---\nemail_number: 3\nflag: true\nnome: "Com: dois pontos"\n---\ncorpo`,

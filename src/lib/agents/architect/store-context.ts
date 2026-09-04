@@ -156,20 +156,36 @@ export function missingStoreFields(input: {
 // usado. As funções abaixo montam esses blocos — sem deduzir nada e
 // declarando ausência, que são as duas regras deste módulo.
 
-/** Lista `- item` a partir de um array de texto, ignorando vazios. */
-function bullets(items: readonly (string | null | undefined)[] | null | undefined): string[] {
-  return (items ?? []).map((v) => str(v)).filter(Boolean).map((v) => `- ${v}`)
+/** Item de `client_stores.icp_objections` (projeção do catálogo, set/2026). */
+export interface ObjecaoDaLoja {
+  objection?: string | null
+  treatment?: string | null
 }
 
 /**
- * Objeções do cliente ideal (`client_stores.icp_frictions`) para
+ * Objeções do cliente ideal (`client_stores.icp_objections`) para
  * `<objecoes>`. É o que a variante escolhida precisa ter anatomia para
  * responder — prova social, FAQ, garantia, comparativo.
+ *
+ * Lia `icp_frictions` até set/2026 — e friction é DOR (o incômodo de antes
+ * de querer o produto), não objeção (o que trava o checkout depois de
+ * querer). As objeções existiam a uma coluna de distância, em 35 lojas,
+ * sem nenhum agente lê-las; a dor é quase idêntica entre lojas, e por isso
+ * o 1º eixo de ranking do Curador não separava nada. O tratamento vai na
+ * mesma linha: é ele que diz qual anatomia responde.
  */
 export function resolveObjecoes(
-  pesquisa: { icp_frictions?: string[] | null } | null | undefined,
+  pesquisa: { icp_objections?: ObjecaoDaLoja[] | null } | null | undefined,
 ): string {
-  const linhas = bullets(pesquisa?.icp_frictions)
+  const itens = Array.isArray(pesquisa?.icp_objections) ? pesquisa.icp_objections : []
+  const linhas = itens
+    .map((o) => {
+      const objecao = str(o?.objection)
+      if (!objecao) return ""
+      const tratamento = str(o?.treatment)
+      return tratamento ? `- ${objecao} — tratamento: ${tratamento}` : `- ${objecao}`
+    })
+    .filter(Boolean)
   return linhas.length > 0
     ? linhas.join("\n")
     : "(não cadastradas — não presuma objeção)"

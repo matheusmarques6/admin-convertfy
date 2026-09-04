@@ -151,26 +151,52 @@ describe("missingStoreFields", () => {
 // Dados reais da Innova Bay nova: 5 objeções, 22 palavras a usar, 28 a
 // evitar, 5 produtos com handle.
 
-const OBJECOES_INNOVA = [
-  "Desconfiança de que produtos baratos vendidos online não funcionam como mostram nos anúncios.",
-  "Medo de comprar e não conseguir instalar sozinho.",
+// Objeções reais (Rivo Coast, set/2026) — voz da pessoa + tratamento.
+const OBJECOES_RIVO = [
+  {
+    objection: "Marca nova, não conheço. Como sei que a qualidade é boa de verdade?",
+    treatment: "Mostra o acabamento de perto. Close no solado, na tira, na costura.",
+  },
+  {
+    objection: "E se não servir ou não for o que eu esperava? Troca é complicada?",
+    treatment: "Política de troca direta e clara em uma frase.",
+  },
 ]
 
 describe("resolveObjecoes", () => {
-  it("uma objeção por linha, com marcador", () => {
-    expect(resolveObjecoes({ icp_frictions: OBJECOES_INNOVA })).toBe(
-      `- ${OBJECOES_INNOVA[0]}\n- ${OBJECOES_INNOVA[1]}`,
+  it("uma objeção por linha, com o tratamento na mesma linha", () => {
+    expect(resolveObjecoes({ icp_objections: OBJECOES_RIVO })).toBe(
+      `- ${OBJECOES_RIVO[0].objection} — tratamento: ${OBJECOES_RIVO[0].treatment}\n` +
+        `- ${OBJECOES_RIVO[1].objection} — tratamento: ${OBJECOES_RIVO[1].treatment}`,
     )
   })
 
-  it("descarta item vazio sem deixar bullet órfão", () => {
-    expect(resolveObjecoes({ icp_frictions: ["", "  ", "real"] })).toBe("- real")
+  it("objeção sem tratamento sai sozinha; item sem objeção some", () => {
+    expect(
+      resolveObjecoes({
+        icp_objections: [
+          { objection: "Vale o que custa?", treatment: "" },
+          { objection: "  ", treatment: "órfão" },
+        ],
+      }),
+    ).toBe("- Vale o que custa?")
+  })
+
+  // set/2026: friction é DOR, não objeção — deixou de ser lida aqui. Uma loja
+  // com frictions e sem objeções tem de declarar ausência, não servir dor
+  // como se fosse objeção.
+  it("icp_frictions NÃO conta como objeção", () => {
+    expect(
+      resolveObjecoes({
+        icp_frictions: ["desconfia de anúncio bonito"],
+      } as unknown as Parameters<typeof resolveObjecoes>[0]),
+    ).toContain("não presuma")
   })
 
   // Regra do módulo: ausência é DECLARADA. Bloco vazio faria o modelo
   // inventar a objeção que "provavelmente" trava a compra desta loja.
   it("sem objeções → ausência declarada, nunca vazio", () => {
-    expect(resolveObjecoes({ icp_frictions: [] })).toContain("não presuma")
+    expect(resolveObjecoes({ icp_objections: [] })).toContain("não presuma")
     expect(resolveObjecoes({})).toContain("não presuma")
     expect(resolveObjecoes(null)).toContain("não presuma")
   })

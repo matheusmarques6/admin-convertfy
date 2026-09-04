@@ -81,14 +81,49 @@ function scalar(raw: string): unknown {
   return m ? m[1] : v
 }
 
-/** Array inline `[a, b, c]` (o único formato de lista que o vault usa). */
+/**
+ * Divide o miolo de um array inline por vírgula RESPEITANDO aspas. O split
+ * ingênuo partia `["prazo com hora fechada", "repetir a tese, no mesmo
+ * registro"]` em três itens — e o frontmatter das intenções (set/2026)
+ * carrega proibições escritas em prosa, com vírgula dentro.
+ */
+function splitInline(inner: string): string[] {
+  const out: string[] = []
+  let cur = ""
+  let quote: string | null = null
+  for (const ch of inner) {
+    if (quote) {
+      cur += ch
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      cur += ch
+      continue
+    }
+    if (ch === ",") {
+      out.push(cur)
+      cur = ""
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out
+}
+
+/** Array inline `[a, b, c]` (o formato de lista mais comum do vault). */
 function inlineArray(raw: string): unknown[] | null {
   const m = raw.trim().match(/^\[(.*)\]$/)
   if (!m) return null
   const inner = m[1].trim()
   if (!inner) return []
-  return inner.split(",").map((s) => scalar(s))
+  return splitInline(inner).map((s) => scalar(s))
 }
+
+/** Item de lista em bloco (`- item`), com a indentação que o Obsidian usa. */
+const BLOCK_ITEM = /^\s*-\s+(.*)$/
 
 export interface Frontmatter {
   data: Record<string, unknown>
@@ -109,13 +144,35 @@ export function parseFrontmatter(md: string): Frontmatter {
   const raw = text.slice(4, end)
   const body = text.slice(end + 4).replace(/^\n/, "")
   const data: Record<string, unknown> = {}
-  for (const line of raw.split("\n")) {
+  const lines = raw.split("\n")
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     if (!line.trim() || line.trim().startsWith("#")) continue
+    // Item de bloco fora de uma chave (ou depois de uma chave com valor
+    // inline) é ruído — pula em vez de virar chave vazia.
+    if (BLOCK_ITEM.test(line)) continue
     const idx = line.indexOf(":")
     if (idx < 0) continue
     const key = line.slice(0, idx).trim()
     const value = line.slice(idx + 1)
     if (!key) continue
+    // Lista em bloco: `chave:` sem valor seguida de linhas `- item`. Vale
+    // até a primeira linha que não é item. `chave:` sem itens continua null.
+    if (!value.trim()) {
+      const items: unknown[] = []
+      let j = i + 1
+      while (j < lines.length) {
+        const m = lines[j].match(BLOCK_ITEM)
+        if (!m) break
+        items.push(scalar(m[1]))
+        j++
+      }
+      if (items.length > 0) {
+        data[key] = items
+        i = j - 1
+        continue
+      }
+    }
     data[key] = inlineArray(value) ?? scalar(value)
   }
   return { data, body, hasFrontmatter: true }
