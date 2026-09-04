@@ -21,7 +21,8 @@ import { CRM_CONNECTOR } from "./crm"
 import { buildShopifyConnector } from "./shopify"
 import { buildOmnisendConnector } from "./omnisend"
 import { buildKlaviyoConnector } from "./klaviyo"
-import { McpSession, type McpServerConfig } from "./mcp-client"
+import { McpSession, type McpServerConfig, type McpToolInfo } from "./mcp-client"
+import { isToolsCacheStale, parseToolsCache, refreshMcpToolsCache } from "./mcp-tools-cache"
 import type { ConnectorTool, ResolvedConnector } from "./types"
 
 const log = logger.child("ConnectorRegistry")
@@ -80,20 +81,43 @@ export async function resolveConnectors(args: ResolveArgs): Promise<ResolvedConn
     .filter((k) => k.startsWith("mcp:"))
     .map((k) => k.slice(4))
   if (mcpIds.length > 0) {
-    const { data: servers } = await args.admin
+    const baseCols = "id, name, url, auth_token, headers, allow_write, store_id, is_active"
+    type ServerRow = Record<string, unknown> & {
+      id: string
+      name: string
+      url: string
+      store_id: string | null
+      tools_cache?: unknown
+      tools_cached_at?: string | null
+    }
+    let rows: ServerRow[] = []
+    const withCache = await args.admin
       .from("ai_mcp_servers")
-      .select("id, name, url, auth_token, headers, allow_write, store_id, is_active")
+      .select(`${baseCols}, tools_cache, tools_cached_at`)
       .eq("org_id", args.orgId)
       .in("id", mcpIds)
       .eq("is_active", true)
-    for (const s of servers ?? []) {
+    if (withCache.error && (withCache.error.code === "42703" || withCache.error.code === "PGRST204")) {
+      // Sem a migration 20261114 (colunas do cache): retry sem elas
+      const legacy = await args.admin
+        .from("ai_mcp_servers")
+        .select(baseCols)
+        .eq("org_id", args.orgId)
+        .in("id", mcpIds)
+        .eq("is_active", true)
+      rows = (legacy.data ?? []) as ServerRow[]
+    } else {
+      rows = (withCache.data ?? []) as ServerRow[]
+    }
+    const servers = rows
+    for (const s of servers) {
       // Servidor de loja só entra na conversa daquela loja
       if (s.store_id && s.store_id !== args.storeId) continue
       const cfg: McpServerConfig = {
         id: s.id,
         name: s.name,
         url: s.url,
-        authToken: s.auth_token ? safeDecrypt(s.auth_token) : null,
+        authToken: typeof s.auth_token === "string" ? safeDecrypt(s.auth_token) : null,
         headers: (s.headers as Record<string, string> | null) ?? {},
         allowWrite: s.allow_write === true,
         // OAuth (ex.: MCP oficial da Omnisend): envelope renovado
@@ -106,7 +130,7 @@ export async function resolveConnectors(args: ResolveArgs): Promise<ResolvedConn
             .eq("id", s.id)
         },
       }
-      const connector = await buildMcpConnector(cfg)
+      const connector = await buildMcpConnector(cfg, args.admin, s)
       if (connector) out.push(connector)
     }
   }
@@ -127,15 +151,45 @@ function mcpPrefix(serverId: string): string {
   return `mcp_${serverId.replace(/-/g, "").slice(0, 8)}`
 }
 
-async function buildMcpConnector(cfg: McpServerConfig): Promise<ResolvedConnector | null> {
+/**
+ * Monta o conector a partir do CACHE de tools (ai_mcp_servers.tools_cache).
+ * Sem cache: consulta o servidor uma vez e grava. Cache velho (>6h) é
+ * usado mesmo assim e renovado em background — o chat nunca espera o
+ * MCP para começar. A sessão MCP só é aberta na primeira tools/call.
+ */
+async function buildMcpConnector(
+  cfg: McpServerConfig,
+  admin: SupabaseClient,
+  row: { tools_cache?: unknown; tools_cached_at?: string | null },
+): Promise<ResolvedConnector | null> {
   try {
     const session = new McpSession(cfg)
-    const tools = await session.listTools()
+    let raw: McpToolInfo[] | null = null
+    const cached = parseToolsCache(row)
+    if (cached) {
+      raw = cached.tools
+      if (isToolsCacheStale(cached.cachedAt)) {
+        // fire-and-forget: a conversa segue com a lista antiga
+        void refreshMcpToolsCache(admin, cfg)
+      }
+    } else {
+      const fresh = await refreshMcpToolsCache(admin, cfg)
+      raw = fresh?.tools ?? null
+    }
+    if (!raw) return null
+    const tools = session.filterAllowed(raw)
     if (tools.length === 0) return null
     const prefix = mcpPrefix(cfg.id)
     const connectorTools: ConnectorTool[] = tools.slice(0, 40).map((t) => ({
       label: `${cfg.name}: ${t.name}`,
       write: !t.readOnly,
+      // Ação destrutiva do MCP passa pelo gate de confirmação da UI
+      ...(t.destructive
+        ? {
+            confirm: (toolArgs: Record<string, unknown>) =>
+              `${cfg.name}: executar "${t.name}" com ${JSON.stringify(toolArgs).slice(0, 300)}`,
+          }
+        : {}),
       def: {
         type: "function" as const,
         function: {

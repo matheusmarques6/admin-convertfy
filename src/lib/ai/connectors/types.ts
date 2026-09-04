@@ -25,6 +25,10 @@ export type BuiltinConnectorKey =
   | "imagem"
   /** Relatório mensal da loja — sempre disponível (age sobre a loja da conversa). */
   | "relatorio"
+  /** Base de conhecimento do Obsidian (toggle do composer, org-level). */
+  | "conhecimento"
+  /** Memória entre conversas — sempre disponível (a IA propõe, humano aprova). */
+  | "memoria"
 
 /** built-in ou "mcp:<uuid do ai_mcp_servers>" */
 export type ConnectorKey = BuiltinConnectorKey | `mcp:${string}`
@@ -43,6 +47,15 @@ export interface ConnectorTool {
   /** Rótulo humano da consulta, mostrado no chip "Consultou N fontes". */
   label: string
   write?: boolean
+  /**
+   * Gate de confirmação (ação IRREVERSÍVEL: envio para a base,
+   * exclusão, cancelamento). Recebe os args da chamada e devolve a
+   * descrição humana do que será executado quando a chamada precisa
+   * do "Confirmar" do usuário na UI — ou null quando pode executar
+   * direto. O loop não executa sem a confirmação; a mesma chamada
+   * volta aprovada num turno seguinte.
+   */
+  confirm?: (args: Record<string, unknown>) => string | null
   execute: (
     args: Record<string, unknown>,
     ctx: ConnectorToolContext,

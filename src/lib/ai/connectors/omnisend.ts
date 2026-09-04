@@ -48,13 +48,30 @@ function writeTool(
   description: string,
   parameters: Record<string, unknown>,
   run: (args: Record<string, unknown>) => Promise<{ content: string; summary?: string }>,
+  /** Gate de confirmação da UI para ação IRREVERSÍVEL (ver ConnectorTool.confirm). */
+  confirm?: (args: Record<string, unknown>) => string | null,
 ): ConnectorTool {
   return {
     label,
     write: true,
+    ...(confirm ? { confirm } : {}),
     def: { type: "function", function: { name, description, parameters } },
     execute: run,
   }
+}
+
+/**
+ * Operações do catálogo que passam pelo gate de confirmação: DELETE de
+ * qualquer recurso e o envio real de campanha. Agendar, pausar, editar
+ * rascunho e criar são reversíveis — executam direto.
+ */
+export function omnisendOperationNeedsConfirmation(method: string, path: string): string | null {
+  const m = method.toUpperCase()
+  if (m === "DELETE") return `Excluir definitivamente o recurso ${path} no Omnisend`
+  if (m === "POST" && /\/campaigns\/[^/]+\/send\/?$/.test(path)) {
+    return `Enviar a campanha ${path.split("/")[3]} para a lista REAL no Omnisend (irreversível)`
+  }
+  return null
 }
 
 export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
@@ -364,6 +381,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
       async (args) => {
         return runCall("POST", `/api/campaigns/${String(args.campaign_id)}/send`, {}, "CAMPANHA ENVIADA")
       },
+      (args) => `Enviar a campanha ${String(args.campaign_id)} para a lista REAL no Omnisend (irreversível)`,
     ),
     writeTool(
       "omnisend_cancelar_campanha",
@@ -417,6 +435,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
           `${method} ${path}`,
         )
       },
+      (args) => omnisendOperationNeedsConfirmation(String(args.method ?? "GET"), String(args.path ?? "")),
     ),
   ]
 

@@ -9,6 +9,13 @@
  * completas quando finish_reason === "tool_calls". Texto flui pelo
  * onDelta conforme chega.
  *
+ * Cache de prompt (set/2026): com `promptCache: true` a mensagem de
+ * sistema e o último turno do usuário viajam como blocos de conteúdo
+ * com `cache_control` (formato Anthropic, que o OpenRouter repassa).
+ * Em modelos `anthropic/*` o prefixo tools + system + histórico passa a
+ * ser lido do cache nas rodadas e turnos seguintes — é o que corta o
+ * custo de input de uma conversa longa. Ver prompt-cache.ts.
+ *
  * Erros reusam as classes nomeadas do openrouter-invoke
  * (OpenRouterHttpError etc.) pra manter o mesmo vocabulário de retry.
  */
@@ -19,6 +26,7 @@ import {
   OpenRouterMidStreamError,
 } from "@/lib/agents/openrouter-invoke"
 import { logger } from "@/lib/logger"
+import { applyPromptCache, parseCacheUsage } from "./convertia/prompt-cache"
 
 const log = logger.child("OpenRouterChat")
 
@@ -41,13 +49,18 @@ export interface ChatToolCall {
   function: { name: string; arguments: string }
 }
 
+/** Bloco de texto com marcador opcional de cache (formato Anthropic). */
+export interface ChatTextPart {
+  type: "text"
+  text: string
+  cache_control?: { type: "ephemeral" }
+}
+
 /** Parte multimodal do turno do usuário (imagens via data URL). */
-export type ChatContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } }
+export type ChatContentPart = ChatTextPart | { type: "image_url"; image_url: { url: string } }
 
 export type ChatMessage =
-  | { role: "system"; content: string }
+  | { role: "system"; content: string | ChatTextPart[] }
   | { role: "user"; content: string | ChatContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: ChatToolCall[] }
   | { role: "tool"; content: string; tool_call_id: string }
@@ -58,10 +71,16 @@ export interface ChatStreamResult {
   finishReason: string | null
   tokensInput: number
   tokensOutput: number
+  /** Tokens do prompt lidos do cache (subconjunto de tokensInput). */
+  tokensCached: number
+  /** Tokens gravados no cache nesta chamada (custam ~1,25x). */
+  tokensCacheWrite: number
   costUsd: number
+  /** Duração da chamada (do fetch ao último frame). */
+  ms: number
 }
 
-interface StreamChatInput {
+export interface StreamChatInput {
   model: string
   messages: ChatMessage[]
   tools?: ChatToolDef[]
@@ -77,6 +96,13 @@ interface StreamChatInput {
    * OpenRouter.
    */
   reasoning?: { enabled?: boolean; effort?: "low" | "medium" | "high" }
+  /**
+   * Marca os blocos estáveis do prompt com `cache_control` (só tem
+   * efeito em modelos que suportam — os demais recebem o prompt
+   * intacto). As mensagens NÃO são mutadas: a transformação é feita
+   * numa cópia na hora do envio.
+   */
+  promptCache?: boolean
   /** Texto incremental da resposta (não dispara para tool_calls). */
   onDelta?: (text: string) => void
 }
@@ -97,6 +123,9 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
 
   const started = Date.now()
   try {
+    const messages = input.promptCache
+      ? applyPromptCache(input.model, input.messages)
+      : input.messages
     const resp = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
@@ -108,7 +137,7 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
       },
       body: JSON.stringify({
         model: input.model,
-        messages: input.messages,
+        messages,
         ...(input.tools && input.tools.length > 0 ? { tools: input.tools } : {}),
         ...(input.reasoning ? { reasoning: input.reasoning } : {}),
         max_tokens: input.maxTokens ?? 4096,
@@ -135,6 +164,8 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
     let finishReason: string | null = null
     let tokensInput = 0
     let tokensOutput = 0
+    let tokensCached = 0
+    let tokensCacheWrite = 0
     let costUsd = 0
     // tool_calls chegam fragmentados por índice
     const toolAcc = new Map<number, { id: string; name: string; args: string }>()
@@ -153,7 +184,7 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
           finish_reason?: string | null
           error?: { message?: string; metadata?: { error_type?: string } }
         }>
-        usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
+        usage?: Record<string, unknown>
         error?: { message?: string; metadata?: { error_type?: string } }
       }
       try {
@@ -191,9 +222,12 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
       }
       if (choice?.finish_reason) finishReason = choice.finish_reason
       if (json.usage) {
-        tokensInput = json.usage.prompt_tokens ?? tokensInput
-        tokensOutput = json.usage.completion_tokens ?? tokensOutput
-        costUsd = json.usage.cost ?? costUsd
+        const u = parseCacheUsage(json.usage)
+        tokensInput = u.promptTokens ?? tokensInput
+        tokensOutput = u.completionTokens ?? tokensOutput
+        costUsd = u.cost ?? costUsd
+        tokensCached = u.cachedTokens
+        tokensCacheWrite = u.cacheWriteTokens
       }
     }
 
@@ -231,15 +265,27 @@ export async function streamOpenRouterChat(input: StreamChatInput): Promise<Chat
       throw new OpenRouterEmptyBodyError({ status: 200, ms: Date.now() - started })
     }
 
+    const ms = Date.now() - started
     log.debug("stream ok", {
       model: input.model,
-      ms: Date.now() - started,
+      ms,
       text_len: text.length,
       tool_calls: toolCalls.length,
       finish: finishReason,
+      cached: tokensCached,
     })
 
-    return { text, toolCalls, finishReason, tokensInput, tokensOutput, costUsd }
+    return {
+      text,
+      toolCalls,
+      finishReason,
+      tokensInput,
+      tokensOutput,
+      tokensCached,
+      tokensCacheWrite,
+      costUsd,
+      ms,
+    }
   } finally {
     clearTimeout(timer)
     input.signal?.removeEventListener("abort", onAbort)

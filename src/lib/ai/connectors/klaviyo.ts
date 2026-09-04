@@ -11,6 +11,19 @@ import { toolJson, type ConnectorTool, type ResolvedConnector } from "./types"
 
 const PERIODS = ["7d", "15d", "30d", "60d", "90d"]
 
+/**
+ * Endpoints do Klaviyo que passam pelo gate de confirmação: envio de
+ * campanha, supressão em massa e exclusão de dados (LGPD). O resto
+ * (criar lista, inscrever, consultar) executa direto.
+ */
+export function klaviyoOperationNeedsConfirmation(method: string, path: string): string | null {
+  if (method.toUpperCase() !== "POST") return null
+  if (/\/campaign-send-jobs\/?/.test(path)) return `Enviar campanha no Klaviyo via ${path} (irreversível)`
+  if (/\/profile-suppression-bulk-create-jobs\/?/.test(path)) return "Suprimir perfis em massa no Klaviyo"
+  if (/\/data-privacy-deletion-jobs\/?/.test(path)) return "Excluir dados de perfil no Klaviyo (LGPD — irreversível)"
+  return null
+}
+
 export function buildKlaviyoConnector(apiKey: string, storeId: string | null): ResolvedConnector {
   const performance: ConnectorTool = {
     label: "Performance Klaviyo",
@@ -131,6 +144,9 @@ export function buildKlaviyoConnector(apiKey: string, storeId: string | null): R
   const suprimir: ConnectorTool = {
     label: "Suprimir perfis",
     write: true,
+    // Supressão tira o contato de TODO marketing — passa pelo gate da UI
+    confirm: (args) =>
+      `Suprimir ${Array.isArray(args.emails) ? args.emails.length : 0} perfil(is) no Klaviyo (param de receber marketing)`,
     def: {
       type: "function",
       function: {
@@ -197,6 +213,7 @@ export function buildKlaviyoConnector(apiKey: string, storeId: string | null): R
   const operacao: ConnectorTool = {
     label: "Operação Klaviyo (avançada)",
     write: true,
+    confirm: (args) => klaviyoOperationNeedsConfirmation(String(args.method ?? "GET"), String(args.path ?? "")),
     def: {
       type: "function",
       function: {

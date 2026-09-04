@@ -104,3 +104,9 @@ bootstrap ──GET──▶ conversas · lojas + credenciais presentes · skill
 3. Itens 8 e 7 — segurança e tarefas longas.
 4. Itens 11 e 12 — manutenção e método para evoluir com dado.
 5. Itens 4, 10 e 13 — refino.
+
+## 6. Status (set/2026)
+
+Tudo acima foi implementado, exceto o item 5 (rate limit no banco —
+excluído pelo usuário). Detalhes de cada entrega, contratos e variáveis
+de ambiente em `motor-v3.md`.

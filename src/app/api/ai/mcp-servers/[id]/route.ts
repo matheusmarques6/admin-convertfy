@@ -103,16 +103,24 @@ export async function POST(
     })
 
     const admin = createAdminClient()
-    await admin
+    const patch = {
+      last_status: test.ok ? "ok" : test.error ?? "falhou",
+      last_checked_at: new Date().toISOString(),
+      tool_count: test.toolCount,
+    }
+    // "Testar" também renova o cache de tools que o chat usa
+    let upd = await admin
       .from("ai_mcp_servers")
       .update({
-        last_status: test.ok ? "ok" : test.error ?? "falhou",
-        last_checked_at: new Date().toISOString(),
-        tool_count: test.toolCount,
+        ...patch,
+        ...(test.ok ? { tools_cache: test.tools ?? [], tools_cached_at: new Date().toISOString() } : {}),
       })
       .eq("id", id)
+    if (upd.error && (upd.error.code === "42703" || upd.error.code === "PGRST204")) {
+      upd = await admin.from("ai_mcp_servers").update(patch).eq("id", id)
+    }
 
-    return successResponse(request, { test })
+    return successResponse(request, { test: { ok: test.ok, toolCount: test.toolCount, error: test.error } })
   } catch (error) {
     return errorResponse(request, error, "ai-mcp-test")
   }
