@@ -154,7 +154,26 @@ interface UiMessage {
   /** id REAL em ai_chat_messages (feedback persiste por ele). */
   dbId?: string
   feedback?: "up" | null
+  /**
+   * Narração das rodadas que chamaram ferramentas ("vou buscar o
+   * popup atual…") — é processo, não resposta. Fica no painel
+   * recolhível junto com as fontes; `content` é só a resposta final.
+   */
+  progress?: string[]
+  /**
+   * A linha veio do banco ainda com meta.streaming=true: o turno está
+   * (ou estava) rodando no servidor. O chat repõe a resposta por
+   * polling até ela fechar.
+   */
+  generating?: boolean
+  startedAt?: string | null
 }
+
+/** Chave do localStorage: última conversa aberta por workspace. */
+const lastConvKey = (ws: Ws) => `convertia:last-conversa:${ws}`
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Depois disso uma linha ainda "streaming" é turno morto (maxDuration é 300s). */
+const GENERATING_STALE_MS = 6 * 60_000
 
 /** Superfície mínima da Web Speech API (sem lib de tipos do DOM). */
 interface SpeechRecognitionLike {
@@ -338,16 +357,17 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     } else if (errorMsg) {
       setOauthNotice({ ok: false, text: errorMsg })
     }
-    if (
-      storeParam &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeParam)
-    ) {
+    if (storeParam && UUID_RE.test(storeParam)) {
       // vence o default "primeira loja" (o effect de default só roda
       // enquanto storeId === undefined)
       setStoreId(storeParam)
     }
     if (connected || errorMsg || storeParam) {
-      window.history.replaceState({}, "", window.location.pathname)
+      // Limpa SÓ esses params — `?conversa=` fica (é o que faz o F5
+      // voltar na mesma conversa).
+      for (const k of ["mcp_connected", "mcp_error", "mcp_tools", "store"]) params.delete(k)
+      const qs = params.toString()
+      window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`)
     }
   }, [])
 
@@ -526,31 +546,102 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   // compartilhado: somente leitura (sem composer/refazer/feedback).
   const [sharedBy, setSharedBy] = useState<string | null>(null)
   const [convShared, setConvShared] = useState(false)
+  // Conversa aberta no momento (ref pro polling não repor uma conversa
+  // que o usuário já trocou) e polling ativo.
+  const convIdRef = useRef<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sendingRef = useRef(false)
+
+  interface ConversationBody {
+    conversation?: { title?: string; context?: Record<string, unknown> | null }
+    is_owner?: boolean
+    owner_name?: string | null
+    messages?: Array<{
+      id: string
+      role: string
+      content: string
+      created_at?: string
+      meta?: {
+        sources?: Source[]
+        attachments?: Array<{ name: string; kind: "image" | "text" }>
+        feedback?: { rating?: string } | null
+        progress?: string[]
+        streaming?: boolean
+        started_at?: string
+      } | null
+    }>
+  }
+
+  const toUiMessages = useCallback((body: ConversationBody): UiMessage[] => {
+    return (body.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => {
+        const startedAt = m.meta?.started_at ?? m.created_at ?? null
+        const generating = m.meta?.streaming === true
+        return {
+          id: m.id,
+          dbId: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          sources: m.meta?.sources ?? [],
+          attachments: m.meta?.attachments,
+          feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
+          progress: m.meta?.progress ?? [],
+          generating,
+          startedAt,
+          // turno vivo no servidor: a bolha mostra o spinner como se
+          // estivesse recebendo o stream
+          streaming: generating,
+          pendingTools: generating ? (m.meta?.sources ?? []).filter((s) => s.summary == null).length : 0,
+        }
+      })
+  }, [])
+
+  /**
+   * Re-lê a conversa enquanto alguma resposta está em geração no
+   * servidor (F5 no meio do turno). Para quando a linha fecha, quando
+   * o usuário troca de conversa/envia, ou quando o turno passou do
+   * tempo máximo (aí é turno morto — a UI marca como interrompida).
+   */
+  const scheduleGeneratingPoll = useCallback(
+    (id: string, msgs: UiMessage[]) => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+      const live = msgs.filter(
+        (m) =>
+          m.generating &&
+          (!m.startedAt || Date.now() - new Date(m.startedAt).getTime() < GENERATING_STALE_MS),
+      )
+      if (live.length === 0) return
+      pollRef.current = setTimeout(async () => {
+        if (convIdRef.current !== id || sendingRef.current) return
+        try {
+          const body = (await fetcher(`/api/ai/conversations/${id}`)) as ConversationBody
+          if (convIdRef.current !== id || sendingRef.current) return
+          const next = toUiMessages(body)
+          setMessages(next)
+          scrollToBottom()
+          scheduleGeneratingPoll(id, next)
+        } catch {
+          /* próxima tentativa só se o usuário reabrir */
+        }
+      }, 2_500)
+    },
+    [scrollToBottom, toUiMessages],
+  )
 
   const openConversationById = useCallback(
     async (id: string, fallbackTitle?: string) => {
       abortRef.current?.abort()
+      if (pollRef.current) clearTimeout(pollRef.current)
+      convIdRef.current = id
       setConvId(id)
       setConvTitle(fallbackTitle ?? null)
       setMessages([])
       setSharedBy(null)
       setConvShared(false)
       try {
-        const body = (await fetcher(`/api/ai/conversations/${id}`)) as {
-          conversation?: { title?: string; context?: Record<string, unknown> | null }
-          is_owner?: boolean
-          owner_name?: string | null
-          messages?: Array<{
-            id: string
-            role: string
-            content: string
-            meta?: {
-              sources?: Source[]
-              attachments?: Array<{ name: string; kind: "image" | "text" }>
-              feedback?: { rating?: string } | null
-            } | null
-          }>
-        }
+        const body = (await fetcher(`/api/ai/conversations/${id}`)) as ConversationBody
+        if (convIdRef.current !== id) return
         const conv = body.conversation
         if (conv?.title) setConvTitle(conv.title)
         const ctx = conv?.context ?? {}
@@ -558,24 +649,15 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
         setConvShared(ctx.shared === true)
         if (body.is_owner === false) setSharedBy(body.owner_name ?? "outra pessoa")
-        const msgs = (body.messages ?? [])
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            id: m.id,
-            dbId: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
-            attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
-              ?.attachments,
-            feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
-          }))
+        const msgs = toUiMessages(body)
         setMessages(msgs)
         scrollToBottom()
+        scheduleGeneratingPoll(id, msgs)
       } catch {
         // Conversa excluída ou compartilhamento desativado — avisa em
         // vez de deixar um convId órfão com composer ativo (todo envio
         // daria "Conversa não encontrada").
+        convIdRef.current = null
         setConvId(null)
         setConvTitle(null)
         setMessages([])
@@ -585,8 +667,44 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         })
       }
     },
-    [scrollToBottom],
+    [scrollToBottom, toUiMessages, scheduleGeneratingPoll],
   )
+
+  // ── F5 volta na MESMA conversa ─────────────────────────────────
+  // A conversa aberta vive em `?conversa=` (também é o link de
+  // compartilhar) e, como reserva, no localStorage por workspace. Nova
+  // conversa limpa os dois.
+  const hydratedRef = useRef(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    // No primeiro render convId ainda é null — gravar aqui apagaria o
+    // `?conversa=`/localStorage ANTES do effect de abertura ler.
+    if (!hydratedRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (convId) {
+      params.set("conversa", convId)
+      try {
+        localStorage.setItem(lastConvKey(ws), convId)
+      } catch {
+        /* storage bloqueado */
+      }
+    } else {
+      params.delete("conversa")
+      try {
+        localStorage.removeItem(lastConvKey(ws))
+      } catch {
+        /* storage bloqueado */
+      }
+    }
+    const qs = params.toString()
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`)
+  }, [convId, ws])
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+    }
+  }, [])
 
   const openConversation = async (c: Conversation) => {
     await openConversationById(c.id, c.title)
@@ -594,6 +712,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
   const novaConversa = () => {
     abortRef.current?.abort()
+    if (pollRef.current) clearTimeout(pollRef.current)
+    convIdRef.current = null
     setConvId(null)
     setConvTitle(null)
     setMessages([])
@@ -602,21 +722,26 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     setConvShared(false)
   }
 
-  // Link compartilhado (?conversa=uuid) — abre direto a conversa, em
-  // modo leitura quando ela é de outra pessoa da org.
+  // Abertura no mount: `?conversa=uuid` (link compartilhado OU a
+  // própria conversa depois de um F5) → senão a última aberta neste
+  // workspace (localStorage). Sem nada, tela de nova conversa.
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
-    const conversa = params.get("conversa")
-    if (
-      conversa &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversa)
-    ) {
-      window.history.replaceState({}, "", window.location.pathname)
+    let conversa = params.get("conversa")
+    if (!conversa || !UUID_RE.test(conversa)) {
+      try {
+        conversa = localStorage.getItem(lastConvKey(ws))
+      } catch {
+        conversa = null
+      }
+    }
+    hydratedRef.current = true
+    if (conversa && UUID_RE.test(conversa)) {
       void openConversationById(conversa)
     }
     // roda uma vez no mount, com a função já estável (useCallback)
-  }, [openConversationById])
+  }, [openConversationById, ws])
 
   // Compartilhar com a org: liga context.shared (PATCH é replace — o
   // context atual vem do GET pra não perder nada) e copia o link.
@@ -744,6 +869,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     setAttachError(null)
     if (inputRef.current) inputRef.current.style.height = "auto"
     setSending(true)
+    sendingRef.current = true
+    if (pollRef.current) clearTimeout(pollRef.current)
     const userMsg: UiMessage = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -758,6 +885,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       sources: [],
       streaming: true,
       pendingTools: 0,
+      progress: [],
     }
     setMessages((m) => [...m, userMsg, draft])
     scrollToBottom()
@@ -814,12 +942,27 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           }
           if (ev.type === "meta") {
             if (!convId && typeof ev.conversation_id === "string") {
+              convIdRef.current = ev.conversation_id
               setConvId(ev.conversation_id)
               setConvTitle((ev.title as string) ?? message.slice(0, 64))
+              // a conversa nova já existe no banco — aparece no rail
+              void mutateBoot()
+            }
+            if (typeof ev.message_id === "string") {
+              patchDraft((d) => ({ ...d, dbId: ev.message_id as string }))
             }
           } else if (ev.type === "delta") {
             patchDraft((d) => ({ ...d, content: d.content + String(ev.text ?? "") }))
             scrollToBottom()
+          } else if (ev.type === "round_end") {
+            // A rodada terminou chamando ferramentas: o que foi
+            // escrito era narração ("vou buscar…"). Vai pro processo e
+            // a bolha fica limpa pra resposta final.
+            patchDraft((d) => ({
+              ...d,
+              progress: d.content.trim() ? [...(d.progress ?? []), d.content.trim()] : d.progress,
+              content: "",
+            }))
           } else if (ev.type === "tool") {
             if (ev.status === "start") {
               patchDraft((d) => ({
@@ -855,8 +998,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             patchDraft((d) => ({
               ...d,
               streaming: false,
+              generating: false,
+              pendingTools: 0,
               dbId: typeof ev.message_id === "string" ? ev.message_id : d.dbId,
               sources: Array.isArray(ev.sources) ? (ev.sources as Source[]) : d.sources,
+              progress: Array.isArray(ev.progress) ? (ev.progress as string[]) : d.progress,
+              // texto consolidado do servidor vence o montado por deltas
+              content: typeof ev.content === "string" && ev.content.trim() ? ev.content : d.content,
             }))
           } else if (ev.type === "error") {
             patchDraft((d) => ({
@@ -879,6 +1027,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       }
     } finally {
       setSending(false)
+      sendingRef.current = false
       scrollToBottom()
     }
   }
@@ -1291,17 +1440,46 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 true,
               )}
           </div>
-          <button
-            onClick={() => void send()}
-            disabled={sending || !input.trim() || budget?.exceeded === true}
-            title={budget?.exceeded ? "Limite diário de IA atingido" : "Enviar"}
-            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
-            style={{ background: BRAND }}
-          >
-            <ArrowUp className="h-[13px] w-[13px]" strokeWidth={2.2} />
-          </button>
+          {sending ? (
+            // Gerando: o botão vira o indicador — dá pra ver de longe
+            // que ainda não é hora de mandar o próximo prompt.
+            <span
+              title="Gerando resposta… aguarde para enviar o próximo prompt"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full"
+              style={{ background: "rgba(78,98,216,0.12)" }}
+            >
+              <span
+                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent"
+                style={{ borderColor: BRAND, borderTopColor: "transparent" }}
+              />
+            </span>
+          ) : (
+            <button
+              onClick={() => void send()}
+              disabled={!input.trim() || budget?.exceeded === true}
+              title={budget?.exceeded ? "Limite diário de IA atingido" : "Enviar"}
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
+              style={{ background: BRAND }}
+            >
+              <ArrowUp className="h-[13px] w-[13px]" strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </div>
+      {sending && (
+        <div
+          className="mt-1.5 flex items-center justify-center gap-2 text-center text-[10.5px] font-medium"
+          style={{ color: BRAND }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: BRAND }} />
+            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: BRAND }} />
+          </span>
+          ConvertIA está gerando a resposta — aguarde para enviar o próximo prompt.
+        </div>
+      )}
       {budget && budgetPct >= 0.8 && (
         <div
           className="mt-1.5 text-center text-[10.5px]"
@@ -1605,9 +1783,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             ) : (
               <div className="shrink-0 px-8 pb-4 pt-2">
                 {composer(false)}
-                <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                  O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
-                </div>
+                {!sending && (
+                  <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                    O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1648,6 +1828,16 @@ function AssistantMessage({
     (msg.pendingTools ?? 0) > 0
       ? [...msg.sources].reverse().find((s) => s.summary == null)
       : undefined
+  const progress = msg.progress ?? []
+  const lastProgress = progress.length > 0 ? progress[progress.length - 1] : null
+  // Turno que veio do banco ainda "streaming" mas velho demais pra
+  // estar vivo: a função foi morta — marca como interrompido.
+  const stale =
+    msg.generating === true &&
+    Boolean(msg.startedAt) &&
+    Date.now() - new Date(msg.startedAt as string).getTime() > GENERATING_STALE_MS
+  const isStreaming = msg.streaming === true && !stale
+  const hasProcess = msg.sources.length > 0 || progress.length > 0
 
   const copy = () => {
     void navigator.clipboard.writeText(msg.content)
@@ -1661,19 +1851,26 @@ function AssistantMessage({
         <IaMark s={22} />
       </span>
       <div className="min-w-0 flex-1">
-        {msg.sources.length > 0 && (
+        {hasProcess && (
           <>
             <button
               onClick={() => setToolsOpen(!toolsOpen)}
               className="mb-3.5 inline-flex h-7 items-center gap-[7px] rounded-[14px] border px-[11px] text-[11px] font-medium"
               style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
             >
-              {(msg.pendingTools ?? 0) > 0 ? (
+              {(msg.pendingTools ?? 0) > 0 && isStreaming ? (
                 <span className="h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
               ) : (
                 <Check className="h-[11px] w-[11px]" style={{ color: "var(--ops-pos)" }} />
               )}
-              Consultou {msg.sources.length} fonte{msg.sources.length === 1 ? "" : "s"}
+              {msg.sources.length > 0
+                ? `Consultou ${msg.sources.length} fonte${msg.sources.length === 1 ? "" : "s"}`
+                : "Processo"}
+              {progress.length > 0 && (
+                <span style={{ color: "var(--ops-mut)" }}>
+                  · {progress.length} etapa{progress.length === 1 ? "" : "s"}
+                </span>
+              )}
               <span className="-ml-px flex">
                 {[...new Set(msg.sources.map((s) => s.connector))].slice(0, 5).map((k, i) => (
                   <span key={k} className="flex" style={{ marginLeft: i ? -3 : 0 }}>
@@ -1687,7 +1884,7 @@ function AssistantMessage({
               />
             </button>
             {/* consulta em andamento: o QUE está sendo buscado agora */}
-            {!toolsOpen && running && (
+            {!toolsOpen && running && isStreaming && (
               <div className="-mt-1.5 mb-3 flex items-center gap-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
                 <ConnDot k={running.connector} size={12} />
                 <span className="truncate">
@@ -1696,8 +1893,28 @@ function AssistantMessage({
                 </span>
               </div>
             )}
+            {/* Última narração enquanto ainda não há resposta final:
+                o usuário vê O QUE ela está fazendo, sem a parede de
+                texto de antes. */}
+            {!toolsOpen && isStreaming && !running && lastProgress && !msg.content.trim() && (
+              <div className="-mt-1.5 mb-3 text-[11.5px] italic" style={{ color: "var(--ops-mut)" }}>
+                {lastProgress.length > 220 ? `${lastProgress.slice(0, 220)}…` : lastProgress}
+              </div>
+            )}
             {toolsOpen && (
               <div className="-mt-1.5 mb-4 flex flex-col gap-[7px] border-l-2 pl-[13px]" style={{ borderColor: HAIR }}>
+                {progress.length > 0 && (
+                  <div className="mb-1 flex flex-col gap-1.5">
+                    {progress.map((p, i) => (
+                      <div key={i} className="flex gap-2 text-[11.5px] leading-[1.5]" style={{ color: "var(--ops-sec)" }}>
+                        <span className="shrink-0 tabular-nums" style={{ color: "var(--ops-mut)" }}>
+                          {i + 1}.
+                        </span>
+                        <span className="min-w-0 whitespace-pre-wrap">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.sources.map((s, i) => (
                   <div key={i} className="flex flex-col gap-px text-[11.5px]">
                     <div className="flex items-center gap-2">
@@ -1725,13 +1942,30 @@ function AssistantMessage({
             )}
           </>
         )}
+        {isStreaming && !msg.content.trim() && (
+          <div className="mb-2 flex items-center gap-2 text-[12px]" style={{ color: "var(--ops-mut)" }} role="status">
+            <span className="flex gap-[3px]">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-1.5 w-1.5 animate-bounce rounded-full"
+                  style={{ background: BRAND, animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </span>
+            {msg.generating ? "Resposta em andamento — atualizando…" : "Gerando resposta…"}
+          </div>
+        )}
+        {stale && (
+          <div className="mb-2 text-[11.5px]" style={{ color: "#B45309" }}>
+            Resposta interrompida — o turno passou do tempo limite. O que foi gerado está abaixo; peça
+            para continuar se faltou algo.
+          </div>
+        )}
         <div className="convertia-md text-[14px] leading-[1.75]" style={{ color: "var(--ops-title)" }}>
-          <ConvertiaMarkdown
-            content={msg.content || (msg.streaming ? "…" : "")}
-            streaming={msg.streaming === true}
-          />
+          <ConvertiaMarkdown content={msg.content} streaming={isStreaming} />
         </div>
-        {!msg.streaming && msg.content && (
+        {!isStreaming && msg.content && (
           <div className="mt-4 flex items-center gap-1">
             <span className="flex-1" />
             <button

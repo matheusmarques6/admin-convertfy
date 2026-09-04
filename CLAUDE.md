@@ -1294,6 +1294,37 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 ---
 
+## ConvertIA — resposta legível, indicador de geração, F5 na mesma conversa (set/2026)
+
+Sintoma: parede de texto (a narração "vou buscar o popup…" de cada
+rodada de tools colava na resposta), nada dizia se ainda estava gerando,
+e recarregar a página voltava na tela inicial com a conversa em branco
+até o turno terminar (a linha do assistente só era gravada no FIM).
+
+`POST /api/ai/convertia/chat`: **persistência progressiva** — a linha
+em `ai_chat_messages` nasce no início do turno (`meta.streaming=true`,
+`started_at`) e é atualizada a cada ~2,5 s (throttle, cadeia de
+promises para o update final ser o último); `content` = resposta FINAL
+(a rodada que não chamou tool) e `meta.progress[]` = narração das
+rodadas intermediárias (evento SSE `round_end` move o texto da bolha
+para o processo). O modelo NÃO recebe mais `request.signal`: F5 ou
+troca de conversa não aborta uma ação de escrita pela metade — o turno
+vai até o fim (freio = orçamento de tempo) e fica gravado. Placeholder
+vazio no histórico é filtrado antes de ir ao modelo. Regra de
+FORMATAÇÃO no system prompt (resumo em 1 linha, `###` curtos, listas
+com negrito, tabela para números, narração de no máximo 1 frase por
+rodada).
+
+Chat (`convertia-chat.tsx`): `?conversa=` fica na URL (não é mais
+apagado) + `localStorage convertia:last-conversa:<ws>`; o effect de
+sincronia só grava depois do mount (`hydratedRef`) — senão apagava o
+param antes de ler. Mensagem que chega do banco com `streaming=true`
+entra como "em andamento" com polling de 2,5 s até fechar; passada de
+6 min (maxDuration é 300 s) vira "interrompida". Enquanto envia, o
+botão vira spinner e o rodapé diz "gerando — aguarde"; a bolha mostra
+"Gerando resposta…" com a última narração em itálico; "Consultou N
+fontes · M etapas" abre o processo completo.
+
 ## Financeiro ligado à loja (set/2026, migration 20261113)
 
 Cobrança (`client_charges` local e `invoices` do Asaas) ganhou
