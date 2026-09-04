@@ -1325,6 +1325,17 @@ botão vira spinner e o rodapé diz "gerando — aguarde"; a bolha mostra
 "Gerando resposta…" com a última narração em itálico; "Consultou N
 fontes · M etapas" abre o processo completo.
 
+**Composer no padrão Claude (set/2026)**: botão "+" abre anexo,
+conectores·MCP e skills num menu só; a análise profunda virou toggle
+DENTRO do menu de modelo (é um modo do modelo, desabilitado quando o
+modelo não tem `reasoning`); rodapé = "+" · loja · mic · modelo · enviar.
+Lista de modelos em `convertia-models.ts` com grupos claude/outros
+(Opus 4.8 segue padrão; Fable 5.1, Opus 5, Sonnet 5, GPT-5.4, Gemini
+3.5 Flash entraram). Slug que o OpenRouter não serve NÃO derruba o
+turno: `isUnknownModelError` (400/404 falando de model) → fallback para
+o padrão na 1ª rodada com aviso na resposta. Estudo de arquitetura e
+backlog priorizado em `docs/convertia/arquitetura-e-melhorias.md`.
+
 ## Financeiro ligado à loja (set/2026, migration 20261113)
 
 Cobrança (`client_charges` local e `invoices` do Asaas) ganhou

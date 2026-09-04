@@ -45,6 +45,11 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "claude-opus-4-8": { input: 15.0, output: 75.0 },
   "anthropic/claude-opus-4.8": { input: 15.0, output: 75.0 },
   "anthropic/claude-sonnet-4.6": { input: 3.0, output: 15.0 },
+  // Claude 5 (ConvertIA) — preço de referência do tier; o custo REAL do
+  // OpenRouter (usage.cost) tem precedência quando vem.
+  "anthropic/claude-fable-5.1": { input: 25.0, output: 125.0 },
+  "anthropic/claude-opus-5": { input: 15.0, output: 75.0 },
+  "anthropic/claude-sonnet-5": { input: 3.0, output: 15.0 },
   // Moonshot (ConvertIA)
   "moonshotai/kimi-k3": { input: 0.6, output: 2.5 },
   // Google (ConvertIA)

@@ -314,7 +314,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [railOpen, setRailOpen] = useState(true)
   const [input, setInput] = useState("")
   const [focus, setFocus] = useState(false)
-  const [menu, setMenu] = useState<"model" | "conns" | "skills" | "store" | null>(null)
+  const [menu, setMenu] = useState<"model" | "plus" | "store" | null>(null)
   const [model, setModel] = useState(CONVERTIA_DEFAULT_MODEL)
   const [storeId, setStoreId] = useState<string | null | undefined>(undefined) // undefined = ainda não inicializado
   const [connOn, setConnOn] = useState<Record<string, boolean>>({})
@@ -1048,7 +1048,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         style={{
           [view === "novo" ? "top" : "bottom"]: "calc(100% + 6px)",
           [right ? "right" : "left"]: 0,
-          maxHeight: "min(340px, 46vh)",
+          maxHeight: "min(440px, 60vh)",
           background: "var(--ops-card)",
           borderColor: HAIR,
         }}
@@ -1164,6 +1164,118 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           style={{ color: "var(--ops-title)" }}
         />
         <div className="flex items-center gap-1.5">
+          {/* "+" — anexos, conectores e skills num lugar só (padrão
+              Claude): o rodapé fica com loja à esquerda e modelo à
+              direita, e o resto sai do caminho. */}
+          <div className="relative">
+            <button
+              title="Anexar arquivo, conectores e skills"
+              aria-label="Anexar arquivo, conectores e skills"
+              onClick={() => setMenu(menu === "plus" ? null : "plus")}
+              className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-full border transition-transform hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={{
+                borderColor: menu === "plus" ? "#8B9BE8" : HAIR,
+                color: menu === "plus" ? BRAND : "var(--ops-sec)",
+                transform: menu === "plus" ? "rotate(45deg)" : "none",
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </button>
+            {menu === "plus" &&
+              menuCard(
+                <>
+                  <button
+                    onClick={() => {
+                      setMenu(null)
+                      fileInputRef.current?.click()
+                    }}
+                    className="flex w-full items-center gap-[9px] rounded-[7px] px-[9px] py-[7px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: "var(--ops-title)" }}>
+                      <Paperclip className="h-3 w-3" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
+                        Anexar imagem ou arquivo
+                      </span>
+                      <span className="mt-px block truncate text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        html, csv, md, txt, json · até 3 por mensagem
+                      </span>
+                    </span>
+                  </button>
+
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuHeader(`Conectores · MCP · ${activeConns.length}/${connectorEntries.length} ativos`)}
+                  {connectorEntries.map((c) =>
+                    menuRow({
+                      key: c.key,
+                      dot: <ConnDot k={c.key} size={17} title={c.name} />,
+                      name: c.name,
+                      sub: c.sub,
+                      on: Boolean(connOn[c.key] && c.available),
+                      disabled: !c.available,
+                      onClick: () => {
+                        touchedRef.current.add(c.key)
+                        setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
+                      },
+                    }),
+                  )}
+                  {/* Conector indisponível por falta de credencial não
+                      é algo que se resolva aqui — o caminho é cadastrar
+                      a chave na loja. Sem este atalho, "loja sem
+                      credencial" era um beco sem saída. */}
+                  {store && connectorEntries.some((c) => !c.available && c.sub.includes("sem credencial")) && (
+                    <div className="px-[9px] pb-1 pt-[3px]">
+                      <a
+                        href={`${ROUTES.ADMIN.STORES.DETAIL(store.id)}?tab=setup`}
+                        className="text-[10.5px] font-medium hover:underline"
+                        style={{ color: BRAND }}
+                      >
+                        Cadastrar a chave em {store.name} →
+                      </a>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-[9px] pb-[3px] pt-[3px]">
+                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                      valem só para esta conversa
+                    </span>
+                    <button onClick={() => { setMenu(null); setManage("mcp") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
+                      gerenciar conexões
+                    </button>
+                  </div>
+
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuHeader(`Skills · ${nSkills}/${skills.length} ativas`)}
+                  {skills.length === 0 && (
+                    <div className="px-2.5 py-1.5 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                      Nenhuma skill ainda — crie a primeira.
+                    </div>
+                  )}
+                  {skills.map((s) =>
+                    menuRow({
+                      key: s.id,
+                      dot: (
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: skillOn[s.id] ? "var(--ops-title)" : "var(--ops-mut)" }}>
+                          <Sparkles className="h-3 w-3" />
+                        </span>
+                      ),
+                      name: s.name,
+                      sub: s.description ?? "skill própria",
+                      on: Boolean(skillOn[s.id]),
+                      onClick: () => setSkillOn((x) => ({ ...x, [s.id]: !x[s.id] })),
+                    }),
+                  )}
+                  <div className="flex items-center justify-between px-[9px] pb-[3px] pt-[3px]">
+                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                      a ConvertIA só usa skills ativas
+                    </span>
+                    <button onClick={() => { setMenu(null); setManage("skills") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
+                      criar skill
+                    </button>
+                  </div>
+                </>,
+              )}
+          </div>
           {/* Loja */}
           <div className="relative min-w-0 shrink">
             <button
@@ -1228,126 +1340,6 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 </>,
               )}
           </div>
-          {/* Conectores · MCP */}
-          <div className="relative">
-            <button
-              title="Conectores ativos nesta conversa"
-              onClick={() => setMenu(menu === "conns" ? null : "conns")}
-              className="inline-flex h-[27px] items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-medium"
-              style={{
-                borderColor: menu === "conns" ? "#8B9BE8" : HAIR,
-                background: menu === "conns" ? "rgba(78,98,216,0.06)" : "transparent",
-                color: "var(--ops-sec)",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 3v6a6 6 0 0012 0V3M6 3h12M9 21v-4M15 21v-4M9 17h6" />
-              </svg>
-              {activeConns.length}/{connectorEntries.length}
-            </button>
-            {menu === "conns" &&
-              menuCard(
-                <>
-                  {menuHeader("Conectores · MCP")}
-                  {connectorEntries.map((c) =>
-                    menuRow({
-                      key: c.key,
-                      dot: <ConnDot k={c.key} size={17} title={c.name} />,
-                      name: c.name,
-                      sub: c.sub,
-                      on: Boolean(connOn[c.key] && c.available),
-                      disabled: !c.available,
-                      onClick: () => {
-                        touchedRef.current.add(c.key)
-                        setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
-                      },
-                    }),
-                  )}
-                  {/* Conector indisponível por falta de credencial não
-                      é algo que se resolva aqui — o caminho é cadastrar
-                      a chave na loja. Sem este atalho, "loja sem
-                      credencial" era um beco sem saída. */}
-                  {store && connectorEntries.some((c) => !c.available && c.sub.includes("sem credencial")) && (
-                    <div className="mx-[5px] mt-1 border-t px-[5px] pt-[7px]" style={{ borderColor: HAIR }}>
-                      <a
-                        href={`${ROUTES.ADMIN.STORES.DETAIL(store.id)}?tab=setup`}
-                        className="text-[10.5px] font-medium hover:underline"
-                        style={{ color: BRAND }}
-                      >
-                        Cadastrar a chave em {store.name} →
-                      </a>
-                    </div>
-                  )}
-                  <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
-                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                      valem só para esta conversa
-                    </span>
-                    <button onClick={() => { setMenu(null); setManage("mcp") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
-                      gerenciar conexões
-                    </button>
-                  </div>
-                </>,
-              )}
-          </div>
-          {/* Skills */}
-          <div className="relative">
-            <button
-              title="Skills ativas da ConvertIA"
-              onClick={() => setMenu(menu === "skills" ? null : "skills")}
-              className="inline-flex h-[27px] items-center gap-1.5 whitespace-nowrap rounded-[8px] border px-2.5 text-[11px] font-medium"
-              style={{
-                borderColor: menu === "skills" ? "#8B9BE8" : HAIR,
-                background: menu === "skills" ? "rgba(78,98,216,0.06)" : "transparent",
-                color: "var(--ops-sec)",
-              }}
-            >
-              <Sparkles className="h-3 w-3" />
-              Skills <span className="opacity-70 tabular-nums">{nSkills}</span>
-            </button>
-            {menu === "skills" &&
-              menuCard(
-                <>
-                  {menuHeader(`Skills da ConvertIA · ${ws === "comercial" ? "Comercial" : "Operacional"}`)}
-                  {skills.length === 0 && (
-                    <div className="px-2.5 py-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
-                      Nenhuma skill ainda — crie a primeira.
-                    </div>
-                  )}
-                  {skills.map((s) =>
-                    menuRow({
-                      key: s.id,
-                      dot: (
-                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: skillOn[s.id] ? "var(--ops-title)" : "var(--ops-mut)" }}>
-                          <Sparkles className="h-3 w-3" />
-                        </span>
-                      ),
-                      name: s.name,
-                      sub: s.description ?? "skill própria",
-                      on: Boolean(skillOn[s.id]),
-                      onClick: () => setSkillOn((x) => ({ ...x, [s.id]: !x[s.id] })),
-                    }),
-                  )}
-                  <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
-                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                      a ConvertIA só usa skills ativas
-                    </span>
-                    <button onClick={() => { setMenu(null); setManage("skills") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
-                      criar skill
-                    </button>
-                  </div>
-                </>,
-                true,
-              )}
-          </div>
-          {/* Anexar */}
-          <button
-            title="Anexar imagem ou arquivo (html, csv, md, txt, json)"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            style={{ color: "var(--ops-mut)" }}
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -1359,24 +1351,6 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               e.target.value = ""
             }}
           />
-          {/* Análise profunda: plano → coleta ampla → análise completa */}
-          <button
-            title={
-              deep
-                ? "Análise profunda LIGADA — plano + consulta ampla + resposta completa (mais lenta e mais cara)"
-                : "Ligar análise profunda (plano + consulta ampla + resposta completa)"
-            }
-            onClick={() => setDeep(!deep)}
-            className="inline-flex h-[27px] shrink-0 items-center gap-1 rounded-[8px] border px-2 text-[11px] font-medium"
-            style={
-              deep
-                ? { borderColor: "#8B9BE8", background: "rgba(78,98,216,0.08)", color: BRAND }
-                : { borderColor: "transparent", color: "var(--ops-mut)" }
-            }
-          >
-            <Telescope className="h-3.5 w-3.5" />
-            {deep && "Profunda"}
-          </button>
           {/* Ditado por voz (só aparece onde a Web Speech API existe) */}
           {voiceSupported && (
             <button
@@ -1397,44 +1371,70 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           <div className="relative">
             <button
               onClick={() => setMenu(menu === "model" ? null : "model")}
-              className="inline-flex h-[27px] max-w-[150px] items-center gap-1 whitespace-nowrap rounded-[8px] px-2 text-[11.5px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: "var(--ops-sec)" }}
+              title={deep ? `${mSel.name} · análise profunda ligada` : mSel.name}
+              className="inline-flex h-[27px] max-w-[170px] items-center gap-1 whitespace-nowrap rounded-[8px] px-2 text-[11.5px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={{ color: deep ? BRAND : "var(--ops-sec)" }}
             >
+              {deep && <Telescope className="h-3 w-3 shrink-0" />}
               <span className="truncate">{mSel.name.replace("Claude ", "")}</span>
               <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" />
             </button>
             {menu === "model" &&
               menuCard(
                 <>
-                  {menuHeader("Modelo · via OpenRouter")}
-                  {CONVERTIA_MODELS.map((m) => {
-                    const on = m.id === model
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          setModel(m.id)
-                          setMenu(null)
-                        }}
-                        className="flex w-full items-start gap-[9px] rounded-[7px] px-[9px] py-[7px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                        style={{ background: on ? "rgba(78,98,216,0.07)" : undefined }}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
-                            {m.name}
-                            {m.tag && (
-                              <span className="rounded-[4px] px-[5px] py-[1.5px] text-[8.5px] font-bold uppercase tracking-[0.05em]" style={{ color: BRAND, background: "rgba(78,98,216,0.10)" }}>
-                                {m.tag}
+                  {(["claude", "outros"] as const).map((group) => (
+                    <div key={group}>
+                      {menuHeader(group === "claude" ? "Claude · via OpenRouter" : "Outros modelos")}
+                      {CONVERTIA_MODELS.filter((m) => m.group === group).map((m) => {
+                        const on = m.id === model
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              setModel(m.id)
+                              setMenu(null)
+                            }}
+                            className="flex w-full items-start gap-[9px] rounded-[7px] px-[9px] py-[6px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                            style={{ background: on ? "rgba(78,98,216,0.07)" : undefined }}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
+                                {m.name}
+                                {m.tag && (
+                                  <span className="rounded-[4px] px-[5px] py-[1.5px] text-[8.5px] font-bold uppercase tracking-[0.05em]" style={{ color: BRAND, background: "rgba(78,98,216,0.10)" }}>
+                                    {m.tag}
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                          <span className="mt-px block text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                            {m.description}
-                          </span>
-                        </span>
-                        {on && <Check className="mt-0.5 h-[13px] w-[13px]" style={{ color: BRAND }} />}
-                      </button>
-                    )
+                              <span className="mt-px block text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                                {m.description}
+                              </span>
+                            </span>
+                            {on && <Check className="mt-0.5 h-[13px] w-[13px]" style={{ color: BRAND }} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                  {/* Análise profunda mora junto do modelo (padrão do
+                      Claude): é um MODO do modelo — plano → coleta
+                      ampla → resposta completa, com raciocínio
+                      estendido onde o modelo aceita. */}
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuRow({
+                    key: "deep",
+                    dot: (
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: deep ? BRAND : "var(--ops-mut)" }}>
+                        <Telescope className="h-3 w-3" />
+                      </span>
+                    ),
+                    name: "Análise profunda",
+                    sub: mSel.reasoning
+                      ? "plano + consulta ampla + resposta completa · mais lenta e mais cara"
+                      : "este modelo não tem raciocínio estendido",
+                    on: deep && mSel.reasoning,
+                    disabled: !mSel.reasoning,
+                    onClick: () => setDeep(!deep),
                   })}
                 </>,
                 true,

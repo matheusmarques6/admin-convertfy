@@ -49,7 +49,12 @@ import { resolveConnectors } from "@/lib/ai/connectors/registry"
 import { buildImagemConnector } from "@/lib/ai/connectors/imagem"
 import { buildRelatorioConnector } from "@/lib/ai/connectors/relatorio"
 import type { ConnectorTool, ConnectorToolContext } from "@/lib/ai/connectors/types"
-import { resolveConvertiaModel } from "@/lib/ai/convertia-models"
+import {
+  CONVERTIA_DEFAULT_MODEL,
+  isUnknownModelError,
+  resolveConvertiaModel,
+} from "@/lib/ai/convertia-models"
+import { OpenRouterHttpError } from "@/lib/agents/openrouter-invoke"
 import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
 import {
   claimsImpossible,
@@ -138,7 +143,9 @@ export async function POST(request: NextRequest) {
     }
 
     const modelInfo = resolveConvertiaModel(body.model)
-    const model = modelInfo.id
+    // `let`: slug que o OpenRouter não conhece cai para o padrão na 1ª
+    // rodada (ver isUnknownModelError) e o resto do turno segue com ele.
+    let model = modelInfo.id
     let storeId = body.store_id ?? null
 
     // A loja da conversa tem de ser da ORG do usuário — sem isso, um
@@ -564,34 +571,67 @@ export async function POST(request: NextRequest) {
             }
             const holdDeltas = nudgePending
             let held = ""
-            const result = await streamOpenRouterChat({
-              model,
-              messages,
-              tools: toolDefs.length > 0 ? toolDefs : undefined,
-              maxTokens: body.deep ? 12288 : 4096,
-              // Resposta longa + reasoning não cabe nos 120s default —
-              // a rodada final do modo profundo estourava no meio da
-              // análise (texto exibido sumia do histórico persistido).
-              // Limitado pelo que resta do turno.
-              timeoutMs: Math.min(body.deep ? 240_000 : 120_000, remainingMs),
-              // Análise profunda liga o raciocínio estendido nos
-              // modelos que aceitam (OpenRouter normaliza o parâmetro)
-              reasoning: body.deep && modelInfo.reasoning ? { effort: "medium" } : undefined,
-              // SEM request.signal de propósito: recarregar a página ou
-              // trocar de conversa não pode abortar uma ação de escrita
-              // no meio (o A/B setup ficaria pela metade). O turno vai
-              // até o fim e fica persistido; o orçamento de tempo é o
-              // freio.
-              onDelta: holdDeltas
-                ? (text) => {
-                    held += text
-                  }
-                : (text) => {
-                    roundText += text
-                    send({ type: "delta", text })
-                    persistPartial()
-                  },
-            })
+            const callModel = () =>
+              streamOpenRouterChat({
+                model,
+                messages,
+                tools: toolDefs.length > 0 ? toolDefs : undefined,
+                maxTokens: body.deep ? 12288 : 4096,
+                // Resposta longa + reasoning não cabe nos 120s default —
+                // a rodada final do modo profundo estourava no meio da
+                // análise (texto exibido sumia do histórico persistido).
+                // Limitado pelo que resta do turno.
+                timeoutMs: Math.min(body.deep ? 240_000 : 120_000, remainingMs),
+                // Análise profunda liga o raciocínio estendido nos
+                // modelos que aceitam (OpenRouter normaliza o parâmetro)
+                reasoning: body.deep && modelInfo.reasoning ? { effort: "medium" } : undefined,
+                // SEM request.signal de propósito: recarregar a página ou
+                // trocar de conversa não pode abortar uma ação de escrita
+                // no meio (o A/B setup ficaria pela metade). O turno vai
+                // até o fim e fica persistido; o orçamento de tempo é o
+                // freio.
+                onDelta: holdDeltas
+                  ? (text) => {
+                      held += text
+                    }
+                  : (text) => {
+                      roundText += text
+                      send({ type: "delta", text })
+                      persistPartial()
+                    },
+              })
+            let result: Awaited<ReturnType<typeof streamOpenRouterChat>>
+            try {
+              result = await callModel()
+            } catch (err) {
+              // Slug recém-listado que o OpenRouter (ainda) não serve:
+              // cai para o padrão UMA vez, avisa e segue — a lista de
+              // modelos pode andar na frente do catálogo sem quebrar o chat.
+              if (
+                round === 0 &&
+                model !== CONVERTIA_DEFAULT_MODEL &&
+                err instanceof OpenRouterHttpError &&
+                isUnknownModelError(err.status, err.snippet)
+              ) {
+                const from = modelInfo.name
+                log.warn("modelo indisponível no OpenRouter — fallback", {
+                  requested: model,
+                  fallback: CONVERTIA_DEFAULT_MODEL,
+                  snippet: err.snippet,
+                })
+                model = CONVERTIA_DEFAULT_MODEL
+                const aviso = `_(${from} indisponível no OpenRouter agora — respondendo com ${resolveConvertiaModel(model).name})_\n\n`
+                if (!holdDeltas) {
+                  roundText += aviso
+                  send({ type: "delta", text: aviso })
+                } else {
+                  held += aviso
+                }
+                result = await callModel()
+              } else {
+                throw err
+              }
+            }
             tokensInput += result.tokensInput
             tokensOutput += result.tokensOutput
             costUsd += result.costUsd
