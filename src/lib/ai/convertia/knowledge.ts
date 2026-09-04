@@ -12,7 +12,7 @@
  *     o vault como uma pessoa navega no Obsidian.
  *
  * Só nota ativa (status aprovado). Degrada sem a migration 20261115
- * (conector fora, bloco vazio) e sem OPENAI_API_KEY (busca full-text).
+ * (conector fora, bloco vazio) e sem embeddings (busca full-text).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"

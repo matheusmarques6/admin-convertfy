@@ -1376,7 +1376,9 @@ Mapa completo em `docs/convertia/motor-v3.md`. O que não pode quebrar:
   entram no prompt. **Base de conhecimento** (`ai_knowledge_notes`):
   segunda pasta do vault (`VAULT_KNOWLEDGE_BASE_PATH`), só `status:
   aprovado`, grafo por wikilinks normalizados por NOME (como o Obsidian),
-  embeddings OpenAI com fallback full-text; advisors = `Advisors/`.
+  embeddings via OpenRouter (`openai/text-embedding-3-small`, mesma
+  OPENROUTER_API_KEY) com fallback full-text; advisors = `Advisors/`.
+  Limite diário editável em Custo de IA (`PUT /api/ai/convertia/limits`).
   Coluna gerada `search` NÃO inclui `array_to_string(tags)` — é STABLE e
   coluna gerada exige IMMUTABLE (a migration quebrou por isso).
 - **Avaliação** (`ai_eval_cases/runs`): casos dos 👍, lote semanal em 3

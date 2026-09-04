@@ -1772,8 +1772,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           style={{ color: budget.exceeded ? "var(--ops-neg)" : "#B45309" }}
         >
           {budget.exceeded
-            ? `Limite diário de IA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}) — libera de novo amanhã, ou peça a um admin para ajustar.`
-            : `Uso de IA hoje: US$ ${(budget.today_cost_cents / 100).toFixed(2)} de US$ ${(budget.daily_limit_cents / 100).toFixed(2)} (${Math.round(budgetPct * 100)}% do limite diário).`}
+            ? `Limite diário de IA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}) — libera de novo amanhã.`
+            : `Uso de IA hoje: US$ ${(budget.today_cost_cents / 100).toFixed(2)} de US$ ${(budget.daily_limit_cents / 100).toFixed(2)} (${Math.round(budgetPct * 100)}% do limite diário).`}{" "}
+          <a href="/admin/ai-usage" className="font-medium underline" style={{ color: "inherit" }}>
+            ajustar limite
+          </a>
         </div>
       )}
     </div>
