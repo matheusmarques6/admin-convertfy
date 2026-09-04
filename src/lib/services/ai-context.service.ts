@@ -20,61 +20,257 @@ function fmtBRL(v: number): string {
   }).format(v)
 }
 
+/** Formata na MOEDA da loja — loja EUR/USD não pode sair como R$. */
+function fmtMoney(v: number, currency: string | null | undefined): string {
+  const cur = (currency ?? "BRL").toUpperCase()
+  try {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: cur,
+      maximumFractionDigits: 0,
+    }).format(v)
+  } catch {
+    return `${cur} ${Math.round(v).toLocaleString("pt-BR")}`
+  }
+}
+
+function pct(num: number, den: number): string {
+  return den > 0 ? `${((num / den) * 100).toFixed(1)}%` : "—"
+}
+
+function deltaPp(cur: { n: number; d: number }, prev: { n: number; d: number }): string {
+  if (cur.d === 0 || prev.d === 0) return ""
+  const diff = (cur.n / cur.d - prev.n / prev.d) * 100
+  const sign = diff >= 0 ? "+" : ""
+  return ` (${sign}${diff.toFixed(1)}pp vs 30d anteriores)`
+}
+
+/**
+ * Cache do dossiê por loja. São 7 queries por chamada e a rota do chat
+ * refaz o contexto a CADA mensagem — numa conversa de 10 turnos eram
+ * 70 queries para dados que mudam no ritmo de sync diário/campanha.
+ * TTL curto (90s) mantém a conversa fresca; o cap evita crescer sem
+ * limite na memória da instância serverless.
+ */
+const CONTEXT_TTL_MS = 90_000
+const CONTEXT_CACHE_MAX = 50
+const contextCache = new Map<string, { text: string; expiresAt: number }>()
+
+/**
+ * Dossiê da loja injetado no system prompt da ConvertIA. É o PISO de
+ * contexto: quanto mais rico, menos rodadas o modelo gasta se situando
+ * e menos resposta genérica sai. Cada bloco falha de forma isolada
+ * (Promise.allSettled) — fonte indisponível vira lacuna, nunca erro.
+ */
 export async function buildStoreContext(storeId: string): Promise<string> {
+  const now = Date.now()
+  const cached = contextCache.get(storeId)
+  if (cached && cached.expiresAt > now) return cached.text
+  const text = await buildStoreContextUncached(storeId)
+  // Só cacheia resultado ÚTIL — string vazia é falha/loja inexistente e
+  // não deve congelar por 90s.
+  if (text) {
+    if (contextCache.size >= CONTEXT_CACHE_MAX) {
+      const oldest = contextCache.keys().next().value
+      if (oldest) contextCache.delete(oldest)
+    }
+    contextCache.set(storeId, { text, expiresAt: now + CONTEXT_TTL_MS })
+  }
+  return text
+}
+
+async function buildStoreContextUncached(storeId: string): Promise<string> {
   try {
     const admin = createAdminClient()
     const { data: store } = await admin
       .from("client_stores")
       .select(
-        "id, store_name, platform, niche, country, target_audience, health_score, mrr_cents, currency",
+        "id, store_name, platform, niche, country, target_audience, health_score, mrr_cents, currency, email_platform",
       )
       .eq("id", storeId)
       .maybeSingle()
     if (!store) return ""
 
-    // Metricas dos ultimos 30 dias
-    const thirtyAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000)
-    const { data: campaigns } = await admin
-      .from("omnisend_campaign_metrics")
-      .select("conversion_value, recipients, opened, clicked")
-      .eq("store_id", storeId)
-      .gte("send_time", thirtyAgo.toISOString())
+    const now = Date.now()
+    const d30 = new Date(now - 30 * 24 * 3600 * 1000).toISOString()
+    const d60 = new Date(now - 60 * 24 * 3600 * 1000).toISOString()
+    const day30 = d30.slice(0, 10)
+    const day60 = d60.slice(0, 10)
 
-    const totalRevenue =
-      campaigns?.reduce((s, c) => s + Number(c.conversion_value ?? 0), 0) ?? 0
-    const totalRecipients = campaigns?.reduce((s, c) => s + (c.recipients ?? 0), 0) ?? 0
-    const totalOpened = campaigns?.reduce((s, c) => s + (c.opened ?? 0), 0) ?? 0
-    const openRate =
-      totalRecipients > 0
-        ? ((totalOpened / totalRecipients) * 100).toFixed(1)
-        : "0"
+    const [dailyQ, kCampQ, oCampQ, flowsOQ, flowsKQ, alertsQ, healthQ] =
+      await Promise.allSettled([
+        // Série diária da LOJA (60d — janela atual + anterior)
+        admin
+          .from("store_daily_metrics")
+          .select("metric_date, delivered, opened, clicked, conversion_value")
+          .eq("store_id", storeId)
+          .gte("metric_date", day60),
+        // Campanhas recentes das DUAS plataformas (loja Klaviyo ficava sem nada)
+        admin
+          .from("klaviyo_campaign_metrics")
+          .select("campaign_id, campaign_name, send_time, recipients, open_rate, conversion_value, fetched_at")
+          .eq("store_id", storeId)
+          .gte("send_time", d30)
+          .order("send_time", { ascending: false })
+          .limit(30),
+        admin
+          .from("omnisend_campaign_metrics")
+          .select("campaign_id, campaign_name, send_time, recipients, open_rate, conversion_value, fetched_at")
+          .eq("store_id", storeId)
+          .gte("send_time", d30)
+          .order("send_time", { ascending: false })
+          .limit(30),
+        admin
+          .from("omnisend_flow_metrics")
+          .select("flow_name, conversion_value")
+          .eq("store_id", storeId)
+          .gte("period_start", d30)
+          .order("conversion_value", { ascending: false })
+          .limit(3),
+        admin
+          .from("klaviyo_flow_metrics")
+          .select("flow_name, conversion_value")
+          .eq("store_id", storeId)
+          .gte("period_start", d30)
+          .order("conversion_value", { ascending: false })
+          .limit(3),
+        admin
+          .from("store_alerts")
+          .select("severity, title, created_at")
+          .eq("store_id", storeId)
+          .eq("status", "active")
+          .order("created_at", { ascending: false })
+          .limit(5),
+        admin
+          .from("crm_health_history")
+          .select("health_score, computed_at")
+          .eq("store_id", storeId)
+          .lte("computed_at", d30)
+          .order("computed_at", { ascending: false })
+          .limit(1),
+      ])
 
-    const { data: flows } = await admin
-      .from("omnisend_flow_metrics")
-      .select("flow_name, conversion_value")
-      .eq("store_id", storeId)
-      .gte("period_start", thirtyAgo.toISOString())
-      .order("conversion_value", { ascending: false })
-      .limit(3)
+    const rows = <T,>(q: PromiseSettledResult<{ data: T[] | null }>): T[] =>
+      q.status === "fulfilled" ? (q.value.data ?? []) : []
 
+    // ── Tendência 30d vs 30d anteriores (série diária da loja) ──────
+    const daily = rows<{
+      metric_date: string
+      delivered: number | null
+      opened: number | null
+      clicked: number | null
+      conversion_value: number | string | null
+    }>(dailyQ)
+    const cur = { revenue: 0, delivered: 0, opened: 0, clicked: 0 }
+    const prev = { revenue: 0, delivered: 0, opened: 0, clicked: 0 }
+    for (const r of daily) {
+      const bucket = r.metric_date >= day30 ? cur : prev
+      bucket.revenue += Number(r.conversion_value ?? 0)
+      bucket.delivered += r.delivered ?? 0
+      bucket.opened += r.opened ?? 0
+      bucket.clicked += r.clicked ?? 0
+    }
+    const revDelta =
+      prev.revenue > 0
+        ? ` (${cur.revenue >= prev.revenue ? "+" : ""}${(((cur.revenue - prev.revenue) / prev.revenue) * 100).toFixed(0)}% vs 30d anteriores)`
+        : ""
+
+    // Rótulo honesto: a série diária cobre CAMPANHAS — receita de flow
+    // não entra aqui (mesma convenção do dashboard, "campanhas · diário").
+    const trendBlock =
+      daily.length > 0
+        ? `TENDÊNCIA (30 dias vs 30 anteriores · campanhas, série diária — flows ficam FORA deste número; para o total do email consulte as tools):
+- Receita atribuída (campanhas): ${fmtMoney(cur.revenue, store.currency)}${revDelta}
+- Open rate: ${pct(cur.opened, cur.delivered)}${deltaPp({ n: cur.opened, d: cur.delivered }, { n: prev.opened, d: prev.delivered })}
+- Click rate: ${pct(cur.clicked, cur.delivered)}${deltaPp({ n: cur.clicked, d: cur.delivered }, { n: prev.clicked, d: prev.delivered })}`
+        : "TENDÊNCIA: sem série diária coletada ainda."
+
+    // ── Campanhas recentes (dedup por campaign_id, fetched_at mais novo) ─
+    type Camp = {
+      campaign_id: string
+      campaign_name: string | null
+      send_time: string | null
+      recipients: number | null
+      open_rate: number | string | null
+      conversion_value: number | string | null
+      fetched_at: string | null
+    }
+    const byId = new Map<string, Camp>()
+    for (const c of [...rows<Camp>(kCampQ), ...rows<Camp>(oCampQ)]) {
+      const existing = byId.get(c.campaign_id)
+      if (!existing || (c.fetched_at ?? "") > (existing.fetched_at ?? "")) {
+        byId.set(c.campaign_id, c)
+      }
+    }
+    const recentCampaigns = [...byId.values()]
+      .sort((a, b) => (b.send_time ?? "").localeCompare(a.send_time ?? ""))
+      .slice(0, 3)
+    const campaignsBlock =
+      recentCampaigns.length > 0
+        ? `ÚLTIMAS CAMPANHAS:\n${recentCampaigns
+            .map((c) => {
+              const when = c.send_time
+                ? new Date(c.send_time).toLocaleDateString("pt-BR")
+                : "—"
+              return `- ${c.campaign_name ?? c.campaign_id} (${when}): ${c.recipients ?? 0} envios · open ${Number(c.open_rate ?? 0).toFixed(1)}% · ${fmtMoney(Number(c.conversion_value ?? 0), store.currency)}`
+            })
+            .join("\n")}`
+        : "ÚLTIMAS CAMPANHAS: nenhuma nos últimos 30 dias."
+
+    // ── Top flows (duas plataformas) ────────────────────────────────
+    // As tabelas guardam VÁRIAS janelas por flow (7d/15d/30d…) — sem
+    // dedup por nome o mesmo flow saía 2x com valores divergentes.
+    // Fica o MAIOR valor de cada flow, com rótulo de janela honesto.
+    const bestByFlow = new Map<string, number>()
+    for (const f of [
+      ...rows<{ flow_name: string; conversion_value: number | string | null }>(flowsOQ),
+      ...rows<{ flow_name: string; conversion_value: number | string | null }>(flowsKQ),
+    ]) {
+      const v = Number(f.conversion_value ?? 0)
+      if (v > (bestByFlow.get(f.flow_name) ?? -1)) bestByFlow.set(f.flow_name, v)
+    }
     const topFlows =
-      (flows ?? [])
-        .map((f) => `${f.flow_name} (${fmtBRL(Number(f.conversion_value ?? 0))})`)
+      [...bestByFlow.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, v]) => `${name} (${fmtMoney(v, store.currency)})`)
         .join(", ") || "nenhum flow com dados"
 
-    return `LOJA EM CONTEXTO:
+    // ── Alertas ativos ──────────────────────────────────────────────
+    const alerts = rows<{ severity: string; title: string }>(alertsQ)
+    const alertsBlock =
+      alerts.length > 0
+        ? `ALERTAS ATIVOS (investigue antes de concluir que está tudo bem):\n${alerts
+            .map((a) => `- [${a.severity}] ${a.title}`)
+            .join("\n")}`
+        : ""
+
+    // ── Health: valor atual + direção vs ~30d atrás ─────────────────
+    const pastHealth = rows<{ health_score: number }>(healthQ)[0]?.health_score
+    const healthTrend =
+      store.health_score != null && pastHealth != null
+        ? store.health_score > pastHealth
+          ? ` (subiu de ${pastHealth} há 30d)`
+          : store.health_score < pastHealth
+            ? ` (caiu de ${pastHealth} há 30d)`
+            : " (estável há 30d)"
+        : ""
+
+    return [
+      `LOJA EM CONTEXTO:
 - Nome: ${store.store_name}
-- Plataforma: ${store.platform ?? "—"}
+- Plataforma: ${store.platform ?? "—"} · Email: ${store.email_platform ?? "—"}
 - Nicho: ${store.niche ?? "—"} · País: ${store.country ?? "BR"}
 - MRR: ${store.mrr_cents ? fmtBRL(store.mrr_cents / 100) : "não informado"}
-- Health score: ${store.health_score ?? "—"}/100
-- Audiencia: ${store.target_audience ?? "—"}
-
-ÚLTIMOS 30 DIAS:
-- Receita atribuida (campanhas): ${fmtBRL(totalRevenue)}
-- ${campaigns?.length ?? 0} campanhas enviadas a ${totalRecipients} destinatarios
-- Taxa de abertura: ${openRate}%
-- Top flows: ${topFlows}`
+- Health score: ${store.health_score ?? "—"}/100${healthTrend}
+- Audiência: ${store.target_audience ?? "—"}`,
+      trendBlock,
+      campaignsBlock,
+      `TOP FLOWS (maior valor entre as janelas sincronizadas recentes — não somar com a tendência): ${topFlows}`,
+      alertsBlock,
+    ]
+      .filter(Boolean)
+      .join("\n\n")
   } catch (e) {
     log.warn("buildStoreContext failed", e)
     return ""

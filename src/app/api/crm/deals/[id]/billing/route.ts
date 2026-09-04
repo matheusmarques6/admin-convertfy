@@ -21,8 +21,28 @@ import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api
 import { logger } from "@/lib/logger"
 import { ensureClientForDeal } from "@/lib/services/crm-client-link.service"
 import { createFromDeal } from "@/lib/services/onboarding-pipeline.service"
+import { linkSubscriptionStores } from "@/lib/services/subscription-stores"
+import {
+  isMissingClassificationColumn,
+  stripClassification,
+} from "@/lib/services/charge-classification"
 
 const log = logger.child("CrmDealBilling")
+
+/**
+ * Insere em client_charges com tipo/meses; se a migration 20261113 não
+ * rodou, grava sem eles (a venda fecha do mesmo jeito).
+ */
+async function insertCharge(
+  admin: ReturnType<typeof createAdminClient>,
+  row: Record<string, unknown>,
+) {
+  let res = await admin.from("client_charges").insert(row).select("id").single()
+  if (res.error && isMissingClassificationColumn(res.error)) {
+    res = await admin.from("client_charges").insert(stripClassification(row)).select("id").single()
+  }
+  return res
+}
 
 export const dynamic = "force-dynamic"
 
@@ -157,19 +177,17 @@ export async function POST(
 
       // 1ª mensalidade já entra no contas-a-receber — sem ela a
       // assinatura existe mas nada aparece pra cobrar.
-      const { data: firstCharge, error: cErr } = await admin
-        .from("client_charges")
-        .insert({
-          client_id: clientId,
-          subscription_id: sub.id,
-          description: `1ª mensalidade — ${deal.title}`.slice(0, 240),
-          value: s.value,
-          due_date: s.next_due_date,
-          payment_method: s.payment_method,
-          status: "pending",
-        })
-        .select("id")
-        .single()
+      const { data: firstCharge, error: cErr } = await insertCharge(admin, {
+        client_id: clientId,
+        subscription_id: sub.id,
+        description: `1ª mensalidade — ${deal.title}`.slice(0, 240),
+        value: s.value,
+        due_date: s.next_due_date,
+        payment_method: s.payment_method,
+        status: "pending",
+        charge_type: "subscription",
+        reference_months: [s.next_due_date.slice(0, 7)],
+      })
       if (cErr) {
         log.warn("[Billing] assinatura criada mas 1ª mensalidade falhou", {
           subscriptionId,
@@ -183,18 +201,15 @@ export async function POST(
 
     if (parsed.charge) {
       const c = parsed.charge
-      const { data: charge, error } = await admin
-        .from("client_charges")
-        .insert({
-          client_id: clientId,
-          description: (c.description?.trim() || `Cobrança — ${deal.title}`).slice(0, 240),
-          value: c.value,
-          due_date: c.due_date,
-          payment_method: c.payment_method,
-          status: "pending",
-        })
-        .select("id")
-        .single()
+      const { data: charge, error } = await insertCharge(admin, {
+        client_id: clientId,
+        description: (c.description?.trim() || `Cobrança — ${deal.title}`).slice(0, 240),
+        value: c.value,
+        due_date: c.due_date,
+        payment_method: c.payment_method,
+        status: "pending",
+        charge_type: "other",
+      })
       if (error) throw error
       chargeIds.push(charge.id)
       summary.push(`cobrança única de R$ ${c.value}`)
@@ -205,6 +220,9 @@ export async function POST(
     // procurar), com fallback pra org do operador.
     let onboardingId: string | null = null
     let onboardingError: string | null = null
+    // Loja do passo operacional — é a que a assinatura e as cobranças
+    // desta venda cobrem (vínculo assinatura ↔ loja + store_id).
+    let linkedStoreId: string | null = null
     if (parsed.onboarding) {
       const { data: clientRow } = await admin
         .from("clients")
@@ -237,6 +255,7 @@ export async function POST(
 
           if (existingOnb) {
             onboardingId = existingOnb.id
+            linkedStoreId = existingOnb.store_id ?? null
             if (storeName && existingOnb.store_id) {
               const { data: currentStore } = await admin
                 .from("client_stores")
@@ -322,6 +341,9 @@ export async function POST(
               created_by: user.id,
             })
             onboardingId = result.onboarding?.id ?? null
+            linkedStoreId =
+              storeId ??
+              ((result.onboarding as { store_id?: string | null } | null | undefined)?.store_id ?? null)
             if (onboardingId) {
               summary.push(result.created ? "onboarding criado" : "onboarding vinculado")
             } else {
@@ -331,6 +353,23 @@ export async function POST(
         } catch (err) {
           onboardingError = err instanceof Error ? err.message : "erro inesperado"
           log.error("[Billing] passo operacional falhou", { dealId: id, err })
+        }
+      }
+    }
+
+    // Amarra o financeiro à loja da venda: assinatura ↔ loja e store_id
+    // nas cobranças. É o que faz a Gestão de Carteira mostrar a
+    // mensalidade NESTA loja (e não em todas as do cliente). Fail-open:
+    // a venda já está fechada.
+    if (linkedStoreId) {
+      if (subscriptionId) await linkSubscriptionStores(admin, subscriptionId, [linkedStoreId])
+      if (chargeIds.length > 0) {
+        const { error: stErr } = await admin
+          .from("client_charges")
+          .update({ store_id: linkedStoreId })
+          .in("id", chargeIds)
+        if (stErr && !isMissingClassificationColumn(stErr)) {
+          log.warn("[Billing] store_id das cobranças não gravado", { error: stErr.message })
         }
       }
     }

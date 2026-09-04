@@ -683,6 +683,7 @@ const HTML_CHAIN_KEYS: PipelineAgentKey[] = [
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "background_fit",
   "html",

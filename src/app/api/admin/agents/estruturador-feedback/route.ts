@@ -1,6 +1,11 @@
 /**
- * Feedback do COO sobre as decisões do Estruturador (fase 4 do ADR
+ * Feedback do COO sobre a decisão de UMA run (fase 4 do ADR
  * adr-estruturador-adaptativo).
+ *
+ * Nasceu para o Estruturador e desde 04/09 serve também o Curador
+ * (migration 20261111): o agente sai da run, não do caller — pedir o nome
+ * no corpo abriria a porta para gravar feedback de Curador numa run de
+ * Estruturador.
  *
  * GET  ?run_id=<uuid>  — feedbacks da run (com nome do autor), p/ o painel
  *                        de embasamento do Estúdio.
@@ -24,6 +29,7 @@ import {
   ValidationError,
 } from "@/lib/api/errors"
 import { canManagePrompts } from "@/lib/services/prompt-management.service"
+import { agenteDaRun, ROTULO_AGENTE } from "@/lib/agents/shared/agente-calibravel"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("EstruturadorFeedbackRoute")
@@ -114,8 +120,13 @@ export async function POST(request: NextRequest) {
       .eq("id", body.run_id)
       .maybeSingle()
     if (!run) throw new ValidationError("run não encontrada")
-    if (run.agent !== "estruturador")
-      throw new ValidationError("feedback é só para runs do Estruturador")
+    // O agente vem da RUN. A tela manda 👍/👎 e comentário — nunca de quem
+    // é a decisão julgada.
+    const agente = agenteDaRun(run.agent as string)
+    if (!agente)
+      throw new ValidationError(
+        `feedback é só para runs de ${Object.values(ROTULO_AGENTE).join(" ou ")}`,
+      )
 
     let flowType: string | null = null
     let emailNumber: number | null = null
@@ -137,6 +148,7 @@ export async function POST(request: NextRequest) {
       .upsert(
         {
           run_id: body.run_id,
+          agente,
           store_id: run.store_id ?? null,
           flow_type: flowType,
           email_number: emailNumber,

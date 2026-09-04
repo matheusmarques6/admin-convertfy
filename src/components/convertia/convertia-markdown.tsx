@@ -14,6 +14,7 @@ import { isValidElement, useMemo, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Check, Copy, Download, Maximize2, Minimize2 } from "lucide-react"
+import { rewriteStorageImageSrc } from "@/lib/ai/convertia-image-url"
 
 const HAIR = "var(--ops-border)"
 
@@ -171,6 +172,24 @@ export function ConvertiaMarkdown({
       pre: (props: { children?: React.ReactNode }) => (
         <PreBlock streaming={streaming}>{props.children}</PreBlock>
       ),
+      // Imagem gerada pela ConvertIA: a signed URL do Storage vinha
+      // quebrada (token assinando outro path) e o histórico já salvo
+      // carrega esse link. Reescrever aqui conserta as respostas
+      // antigas sem mexer no texto persistido.
+      img: (props: { src?: string | Blob; alt?: string }) => {
+        const src = typeof props.src === "string" ? rewriteStorageImageSrc(props.src) : ""
+        if (!src) return null
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={props.alt ?? ""}
+            loading="lazy"
+            className="my-2 h-auto max-w-full rounded-[10px] border"
+            style={{ borderColor: HAIR }}
+          />
+        )
+      },
     }),
     [streaming],
   )

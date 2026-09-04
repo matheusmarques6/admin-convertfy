@@ -85,7 +85,24 @@ import {
   textFormatGuard,
 } from "./chains/text-format.chain"
 import { invokeColorFormatChain } from "./chains/color-format.chain"
-import type { FormatChainConfig } from "./chains/format-invoke"
+import { invokeTypographyChain } from "./chains/typography.chain"
+import {
+  extractTypographyInventory,
+  renderInventoryForPrompt,
+} from "./typography/inventory"
+import { aplicarGuards } from "./typography/rules"
+import { checarInvariantesDeTipografia } from "./typography/guards"
+import {
+  resolveAgentSwitch,
+  toChainConfig,
+  type FormatAgent,
+} from "./chains/format-config"
+import {
+  applyTypographyOps,
+  injectSecondaryFontLink,
+} from "./typography/apply"
+import { renderWhitelistForPrompt } from "./refiner/font-whitelist"
+import { pesoNumerico } from "./html/hero-graft"
 import { attachUsage, usageOf } from "./chains/step-usage"
 import {
   buildSegmentedPrompt,
@@ -100,6 +117,7 @@ import {
   buildHeroVars,
   buildTextFormatVars,
   buildColorFormatVars,
+  buildTypographyVars,
   takeContractDrift,
   type FormatChainContext,
   type HeroVariantData,
@@ -119,7 +137,8 @@ import {
   defaultBackgroundFitDeps,
   fitBackgrounds,
 } from "./image/background-fit.service"
-import { fixHeroOverlayText } from "./html/fix-hero-overlay"
+import { fixHeroOverlayText, fixDarkOverlayText } from "./html/fix-hero-overlay"
+import { relativeLuminance } from "./html/color-roles"
 import {
   buildQaBlockViews,
   viewsFromBlocksFallback,
@@ -169,6 +188,7 @@ import {
   overlaySpec,
   measureOverlayLuminance,
   overlayIsLight,
+  overlayIsDark,
 } from "./image/overlay-luminance"
 import { loadTopProducts } from "./top-products"
 import {
@@ -489,6 +509,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     textConfigRes,
     imageFmtConfigRes,
     colorConfigRes,
+    typographyConfigRes,
     mergeVerifierConfigRes,
   ] = await Promise.all([
     admin
@@ -532,6 +553,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     fmtConfig("text_format"),
     fmtConfig("image_format"),
     fmtConfig("color_format"),
+    fmtConfig("typography"),
     fmtConfig("merge_verifier"),
   ])
 
@@ -604,6 +626,8 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       (imageFmtConfigRes.data as EmailAgentConfig | null) ?? null,
     colorFormatConfig:
       (colorConfigRes.data as EmailAgentConfig | null) ?? null,
+    typographyConfig:
+      (typographyConfigRes.data as EmailAgentConfig | null) ?? null,
     mergeVerifierConfig:
       (mergeVerifierConfigRes.data as EmailAgentConfig | null) ?? null,
     mergeVerifierMode,
@@ -1963,12 +1987,6 @@ function chainBudgetMs(): number {
   return Number.isFinite(env) && env > 0 ? env : DEFAULT_CHAIN_BUDGET_MS
 }
 
-type FormatAgent =
-  | "hero_section"
-  | "text_format"
-  | "image_format"
-  | "color_format"
-
 // Espelham os defaults/envs dos chains — o runner precisa deles pro guard
 // de budget ANTES de invocar (o chain só conhece o próprio timeout).
 // TETO POR STEP — e, por tabela, o que cada um EXIGE de folga: o guard de
@@ -2000,6 +2018,8 @@ export const FMT_STEP_TIMEOUT: Record<
   image_format: { envVar: "IMAGE_FORMAT_TIMEOUT_MS", def: 180_000 },
   // JSON de ops pequeno e fail-open — 240s era teto de sobra.
   color_format: { envVar: "COLOR_FORMAT_TIMEOUT_MS", def: 120_000 },
+  // Mesmo formato do color_format: inventário entra, JSON de ops sai.
+  typography: { envVar: "TYPOGRAPHY_TIMEOUT_MS", def: 120_000 },
 }
 function stepTimeoutMs(agent: FormatAgent): number {
   const env = Number(process.env[FMT_STEP_TIMEOUT[agent].envVar])
@@ -2012,49 +2032,7 @@ const FMT_FAILURE_REASON: Record<FormatAgent, string> = {
   text_format: "text_format_failed",
   image_format: "image_format_failed",
   color_format: "color_format_failed",
-}
-
-const FMT_DEFAULTS: Record<
-  FormatAgent,
-  { temperature: number; maxTokens: number }
-> = {
-  hero_section: { temperature: 0.3, maxTokens: 16384 },
-  text_format: { temperature: 0.3, maxTokens: 65536 },
-  image_format: { temperature: 0.2, maxTokens: 8192 },
-  color_format: { temperature: 0.3, maxTokens: 16384 },
-}
-// Kimi K3 via OpenRouter (migration 20261047 — swap do z-ai/glm-5.2).
-const FMT_DEFAULT_MODEL = "moonshotai/kimi-k3"
-
-/**
- * Estado do toggle da aba Agentes para um step da cadeia.
- *
- * `row` é a linha MAIS RECENTE do agent_type (ativa quando existe ativa —
- * o select ordena por is_active desc). Três estados:
- *   - row == null            → nunca configurado → roda com defaults
- *   - row.is_active === true → roda com a config
- *   - row.is_active !== true → desativado na UI → step PULADO
- */
-function resolveAgentSwitch(row: EmailAgentConfig | null): {
-  config: EmailAgentConfig | null
-  disabled: boolean
-} {
-  if (!row) return { config: null, disabled: false }
-  const active = (row as unknown as { is_active?: boolean }).is_active === true
-  return { config: active ? row : null, disabled: !active }
-}
-
-function toChainConfig(
-  config: EmailAgentConfig | null,
-  agent: FormatAgent,
-): FormatChainConfig {
-  return {
-    model: config?.model || FMT_DEFAULT_MODEL,
-    temperature: config?.temperature ?? FMT_DEFAULTS[agent].temperature,
-    max_tokens: config?.max_tokens ?? FMT_DEFAULTS[agent].maxTokens,
-    system_prompt: config?.system_prompt ?? "",
-    user_template: config?.user_template ?? "",
-  }
+  typography: "typography_failed",
 }
 
 /** Hash curto pra auditoria "output do step N = input do step N+1". */
@@ -2394,11 +2372,13 @@ async function runFormattingChain(p: {
   const textSwitch = resolveAgentSwitch(ctx.textFormatConfig)
   const imageFmtSwitch = resolveAgentSwitch(ctx.imageFormatConfig)
   const colorSwitch = resolveAgentSwitch(ctx.colorFormatConfig)
+  const typographySwitch = resolveAgentSwitch(ctx.typographyConfig)
   const disabledAgents = (
     [
       ["hero_section", heroSwitch],
       ["text_format", textSwitch],
       ["image_format", imageFmtSwitch],
+      ["typography", typographySwitch],
       ["color_format", colorSwitch],
     ] as const
   )
@@ -3170,6 +3150,8 @@ async function runFormattingChain(p: {
     const imgT0 = Date.now()
     let overlayTextFixed = 0
     let overlaySlotsLight = 0
+    let overlayTextLightened = 0
+    let overlaySlotsDark = 0
     try {
       const im = imageMerge({
         html: inputHtml,
@@ -3197,6 +3179,13 @@ async function runFormattingChain(p: {
       // região do bloco: `review 7` tem TRÊS bandas com overlay e cada
       // uma tem a sua medição — escurecer o bloco inteiro criaria o
       // defeito oposto na banda escura.
+      // Cor clara de destino para o sentido inverso: a paleta já carrega uma
+      // cor de texto sobre fundo escuro (`button_text`). Cair em branco puro
+      // quando a marca tem outro claro seria trocar um defeito por outro.
+      const textoClaro =
+        relativeLuminance(fmtCtx.roles.button_text || "") >= 0.55
+          ? fmtCtx.roles.button_text
+          : "#FFFFFF"
       let mergedHtml = im.html
       for (const blk of fmtCtx.blocks ?? []) {
         const imgs = (blk.content as { images?: unknown } | null)?.images
@@ -3208,15 +3197,27 @@ async function runFormattingChain(p: {
             typeof val?.overlay_luminance === "number"
               ? val.overlay_luminance
               : null
-          if (!overlayIsLight(lum)) continue
-          overlaySlotsLight++
+          const clara = overlayIsLight(lum)
+          const escura = overlayIsDark(lum)
+          // Entre os dois cortes fica a zona morta: faixa de meio-tom não
+          // dispara nenhum dos sentidos (senão a mesma medição oscilaria
+          // entre escurecer e clarear a cada regeneração da foto).
+          if (!clara && !escura) continue
           // URL ausente do documento é no-op: slot declarado dentro de
           // `style` não é preenchido pelo merge (o slot-finder só varre
           // src/alt/href), e corrigir às cegas seria pior.
           const url = typeof val?.url === "string" ? val.url : ""
-          const fix = fixHeroOverlayText(mergedHtml, url, fmtCtx.roles.text)
-          mergedHtml = fix.html
-          overlayTextFixed += fix.fixed
+          if (clara) {
+            overlaySlotsLight++
+            const fix = fixHeroOverlayText(mergedHtml, url, fmtCtx.roles.text)
+            mergedHtml = fix.html
+            overlayTextFixed += fix.fixed
+          } else {
+            overlaySlotsDark++
+            const fix = fixDarkOverlayText(mergedHtml, url, textoClaro)
+            mergedHtml = fix.html
+            overlayTextLightened += fix.fixed
+          }
         }
       }
       if (overlaySlotsLight > 0) {
@@ -3224,6 +3225,13 @@ async function runFormattingChain(p: {
           emailId,
           slots_light: overlaySlotsLight,
           fixed: overlayTextFixed,
+        })
+      }
+      if (overlaySlotsDark > 0) {
+        log.info("phase2.fmt.overlay_text_lightened", {
+          emailId,
+          slots_dark: overlaySlotsDark,
+          lightened: overlayTextLightened,
         })
       }
 
@@ -3262,6 +3270,8 @@ async function runFormattingChain(p: {
           rows_removidas: im.report.rows_removidas,
           overlay_slots_light: overlaySlotsLight,
           overlay_text_fixed: overlayTextFixed,
+          overlay_slots_dark: overlaySlotsDark,
+          overlay_text_lightened: overlayTextLightened,
           output_html_len: mergedHtml.length,
           output_sha8: sha8(mergedHtml),
           output_html: htmlSnapshot(mergedHtml),
@@ -3325,6 +3335,173 @@ async function runFormattingChain(p: {
       html_pre_refiner: stripCfyBlockMarkers(currentHtml),
     })
     stage = "image"
+  }
+
+  // ── STEP 3.5 — TIPOGRAFIA (FAIL-OPEN) ──────────────────────────────
+  // A copy já está no documento; aqui só se decide ONDE o email rompe a
+  // tipografia. O agente não vê o HTML: recebe o INVENTÁRIO das declarações
+  // de fonte e devolve ops por número de item — os guards
+  // (`typography/rules`) filtram e o código escreve (`typography/apply`).
+  //
+  // Antes disto a tipografia era uma decisão de ninguém: `normalizeFonts`
+  // carimbava a fonte da loja em TODA declaração (74 delas no Welcome 1 da
+  // Innova, do título do herói ao link do rodapé) e o email saía sem
+  // hierarquia nenhuma. Base de conhecimento (especialista, 03/09) em
+  // docs/email-generation/agente-tipografia.md.
+  if (typographySwitch.disabled) {
+    await logStepDisabled("typography", currentHtml)
+  } else {
+    const inputHtml = currentHtml
+    const config = toChainConfig(typographySwitch.config, "typography")
+    const storeRaw = ctx.storeRaw as Record<string, unknown>
+    const inventario = extractTypographyInventory(inputHtml)
+    // Sem declaração de fonte não há o que decidir — e chamar o modelo para
+    // devolver lista vazia é custo puro.
+    if (inventario.length === 0) {
+      await logGenerationRun({
+        ...ids,
+        agent: "typography",
+        status: "skipped",
+        model: "deterministic",
+        parsedOutput: { skip_reason: "sem_declaracoes_de_fonte" },
+        costCents: 0,
+        durationMs: 0,
+      }).catch(() => {})
+    } else {
+      // A hero traz texto embutido na imagem? Um grau a menos de ruptura no
+      // resto da peça (a imagem já gastou a cota de expressão, e a fonte
+      // dela não é a da marca).
+      const heroComTexto = (fmtCtx.imageMap ?? []).some(
+        (e) => e.block_type === "hero" && !!e.url,
+      )
+      const vars = buildTypographyVars(fmtCtx, inputHtml, {
+        niche: (storeRaw.niche as string) || "",
+        tomDeVoz:
+          ((storeRaw.tone_description as string) ??
+            (storeRaw.tom_de_voz as string)) ||
+          "",
+        posicionamento: (storeRaw.posicionamento_preco as string) || "",
+        heroComTexto,
+        fontWhitelist: renderWhitelistForPrompt(),
+        inventario: renderInventoryForPrompt(inventario),
+        inventarioTotal: inventario.length,
+      })
+      const contractDrift = takeContractDrift("typography")
+
+      const outcome = await executeFormatStep<{
+        html: string
+        aplicadas: number
+        descartadas: number
+      }>({
+        ids,
+        agent: "typography",
+        config: typographySwitch.config,
+        model: config.model,
+        routeT0,
+        budgetMs,
+        inputHtml,
+        attempt: async () => {
+          const r = await invokeTypographyChain({ config, vars })
+          const guarded = aplicarGuards(r.decision, inventario, {
+            classePrincipal: vars.classe_principal,
+            pesoMarca: pesoNumerico(fmtCtx.fontHeadingWeight)
+              ? Number(pesoNumerico(fmtCtx.fontHeadingWeight))
+              : null,
+          })
+          const aplicado = applyTypographyOps(
+            inputHtml,
+            guarded.ops,
+            guarded.segundaFonte,
+          )
+          const comFonte = injectSecondaryFontLink(
+            aplicado.html,
+            aplicado.familiasTrocadas > 0 ? guarded.segundaFonte : null,
+            guarded.ops
+              .map((o) => o.peso)
+              .filter((w): w is number => typeof w === "number"),
+          )
+          // Guard estrutural: este step só reescreve declarações de estilo —
+          // contagem de tabelas e de declarações de fonte são invariantes.
+          // A mesma checagem roda na rota de tipografia da tela do email
+          // (o humano escreve no mesmo HTML pelo mesmo apply).
+          const invariantes = checarInvariantesDeTipografia(
+            inputHtml,
+            comFonte,
+            inventario.length,
+          )
+          if (!invariantes.ok) {
+            throw new Error(`guard: ${invariantes.violacao}`)
+          }
+          return {
+            value: {
+              html: comFonte,
+              aplicadas: aplicado.aplicadas,
+              descartadas: guarded.descartadas.length,
+            },
+            tokensInput: r.tokensInput,
+            tokensOutput: r.tokensOutput,
+            costUsd: r.costUsd,
+            renderedPrompt: r.renderedPrompt,
+            promptSegments: r.promptSegments,
+            inputSummary: [
+              {
+                rotulo: "Documento de entrada",
+                cls: "upstream",
+                valor: `${inputHtml.length.toLocaleString("pt-BR")} chars (sha8 ${sha8(inputHtml)})`,
+              },
+              {
+                rotulo: "Inventário tipográfico",
+                cls: "sistema",
+                valor: `${inventario.length} declaração(ões) de fonte extraídas por código`,
+              },
+              {
+                rotulo: "Tipografia da marca",
+                cls: "loja",
+                valor: `${fmtCtx.fontHeading} (${vars.classe_principal}) / ${fmtCtx.fontBody}`,
+              },
+            ] as InputSummaryItem[],
+            rawOutput: r.rawOutput,
+            parsed: {
+              ...(contractDrift.length > 0 ? { contract_drift: contractDrift } : {}),
+              segunda_fonte: guarded.segundaFonte?.familia ?? null,
+              segunda_fonte_recusada: guarded.segundaFonteRecusada,
+              justificativa: r.decision.justificativa,
+              ops_pedidas: r.decision.ops.length,
+              ops_aplicadas: aplicado.aplicadas,
+              familias_trocadas: aplicado.familiasTrocadas,
+              // O que os guards barraram, com o motivo — é aqui que se vê o
+              // agente pedindo o que a base de conhecimento proíbe.
+              ops_descartadas: guarded.descartadas,
+              ocorrencias_total: inventario.length,
+              output_html_len: comFonte.length,
+              output_sha8: sha8(comFonte),
+              output_html: htmlSnapshot(comFonte),
+            },
+          }
+        },
+      })
+
+      if (outcome.kind === "ok") {
+        currentHtml = outcome.value.html
+        await persistStage(currentHtml, "image")
+      } else {
+        // FAIL-OPEN: tipografia é acabamento — mantém o HTML do step de
+        // imagem e segue para as cores.
+        log.warn("phase2.fmt.typography_fail_open", {
+          emailId,
+          reason: outcome.kind === "failed" ? outcome.lastError : "out_of_budget",
+        })
+        if (outcome.kind === "out_of_budget") {
+          await logGenerationRun({
+            ...ids,
+            agent: "typography",
+            status: "skipped",
+            model: config.model,
+            parsedOutput: { reason: "out_of_budget" },
+          }).catch(() => {})
+        }
+      }
+    }
   }
 
   // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────

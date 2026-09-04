@@ -40,6 +40,28 @@ export class OmnisendPermissionError extends Error {
   }
 }
 
+/**
+ * Erro de API com status e corpo — só é lançado quando o chamador pede
+ * (`throwOnError`).
+ *
+ * Existe por causa de um caso concreto: a ConvertIA tentou criar um
+ * formulário (`POST /api/forms`), o Omnisend recusou com 400 dizendo
+ * quais campos faltavam, e a rota devolvia `null` → a tool entregava
+ * `{}` ao modelo. Sem status nem mensagem, ele concluiu que "a
+ * plataforma não deixa criar formulário por API" e desistiu da tarefa.
+ * Quem chama uma API a mando do usuário precisa VER a recusa.
+ */
+export class OmnisendApiError extends Error {
+  constructor(
+    public status: number,
+    public body: string,
+    public endpoint: string,
+  ) {
+    super(`Omnisend ${status} em ${endpoint}: ${body.slice(0, 500) || "(sem corpo)"}`)
+    this.name = "OmnisendApiError"
+  }
+}
+
 // ── Constants ─────────────────────────────────────────────
 
 export const OMNISEND_API_BASE = "https://api.omnisend.com"
@@ -185,9 +207,17 @@ export async function omnisendRequest<T>(
      *     22/04 com Azzurro Milano: retornou €371k total + €12.853
      *     attributed usando SOMENTE Authorization. */
     authStyle?: "default" | "bearer"
+    /**
+     * Propaga a recusa da API como OmnisendApiError (status + corpo) em
+     * vez de devolver null. Ligue quando quem chama PRECISA saber por
+     * que falhou — é o caso das tools da ConvertIA, onde `null` virava
+     * `{}` e o modelo lia isso como "a operação não existe". Default
+     * false: todo o resto do sistema segue com o null silencioso.
+     */
+    throwOnError?: boolean
   }
 ): Promise<T | null> {
-  const { method = "GET", body, logTag = "Omnisend", omnisendVersion = "2026-03-15", authStyle = "default" } = options || {}
+  const { method = "GET", body, logTag = "Omnisend", omnisendVersion = "2026-03-15", authStyle = "default", throwOnError = false } = options || {}
   const url = endpoint.startsWith("http") ? endpoint : `${OMNISEND_API_BASE}${endpoint}`
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -301,20 +331,31 @@ export async function omnisendRequest<T>(
 
         if (response.status === 404) {
           log.info(`[${logTag}] 404 Not Found — endpoint or resource does not exist`)
+          if (throwOnError) throw new OmnisendApiError(404, responseText, endpoint)
           return null
         }
 
         log.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
+        // Sem isto o chamador recebe `null` e não tem como distinguir
+        // "a API recusou o meu payload" de "isso não existe".
+        if (throwOnError) throw new OmnisendApiError(response.status, responseText, endpoint)
         return null
       }
 
+      // 204/corpo vazio é sucesso — JSON.parse("") lançaria e o catch
+      // trataria como falha de rede (com retry inútil).
+      if (!responseText.trim()) return null
       const data = JSON.parse(responseText) as T
       return data
     } catch (error) {
       if (
         error instanceof OmnisendRateLimitError ||
         error instanceof OmnisendInvalidKeyError ||
-        error instanceof OmnisendPermissionError
+        error instanceof OmnisendPermissionError ||
+        // Recusa da API já é resposta: repetir o mesmo payload não muda
+        // o 400, e engoli-la aqui devolveria o `null` que estamos
+        // justamente eliminando.
+        error instanceof OmnisendApiError
       ) {
         throw error
       }

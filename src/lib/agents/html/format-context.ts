@@ -46,9 +46,15 @@ import {
   ColorFormatPromptVarsSchema,
   HeroPromptVarsSchema,
   TextFormatPromptVarsSchema,
+  TypographyPromptVarsSchema,
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
+// A classificação por nome mora num módulo PURO: a tela de tipografia
+// precisa dela, e importar este arquivo no navegador traria o cliente
+// Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
+export { classifyFontFamily } from "../typography/font-name"
+import { classifyFontFamily } from "../typography/font-name"
 import { annotateInventoryPairs } from "./color-contrast"
 
 const log = logger.child("FormatContext")
@@ -562,6 +568,20 @@ export const TEXT_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   top_products_json: { cls: "loja", rotulo: "Produtos da loja — store_products" },
 }
 
+export const TYPOGRAPHY_VAR_ORIGINS: Record<string, SegmentOrigin> = {
+  ...IDENTITY_ORIGINS,
+  niche: LOJA_STORE,
+  tom_de_voz: LOJA_STORE,
+  posicionamento: LOJA_STORE,
+  classe_principal: { cls: "sistema", rotulo: "Classe da fonte principal — classifyFontFamily (código)" },
+  hero_com_texto: { cls: "sistema", rotulo: "Hero com texto embutido — derivado do documento (código)" },
+  font_whitelist: { cls: "biblioteca", rotulo: "Fontes de display curadas — font-whitelist.ts" },
+  inventario: { cls: "sistema", rotulo: "Inventário tipográfico do documento — extractTypographyInventory" },
+  inventario_total: { cls: "sistema", rotulo: "Total de declarações de fonte — código" },
+  email_name: EMAIL_ROW,
+  subject: EMAIL_ROW,
+}
+
 export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   ...IDENTITY_ORIGINS,
   niche: LOJA_STORE,
@@ -740,4 +760,69 @@ export function buildColorFormatVars(
     subject: ctx.emailRow?.subject || "",
   }
   return validateVars(ColorFormatPromptVarsSchema, vars, "color_format")
+}
+
+
+// ── TIPÓGRAFO ──────────────────────────────────────────────────────────
+
+/**
+ * Classe da fonte pelo NOME — é o que temos: a identidade visual guarda o
+ * nome da família, não a classificação tipográfica. A classe decide o par
+ * que sobrevive ao substituto (sans+sans desaparece para quem não carrega a
+ * webfont), então errar aqui só torna o guard mais conservador.
+ */
+
+
+/**
+ * Vars do tipógrafo. O documento NÃO entra: entra o inventário das
+ * declarações de fonte, uma linha por item (`typography/inventory.ts`).
+ */
+/**
+ * O recorte do contexto que o tipógrafo realmente usa.
+ *
+ * Existe para a rota de tipografia da tela do e-mail poder chamar a MESMA
+ * função com duas queries, em vez de montar o `FormatChainContext` inteiro
+ * (`loadFormatChainContext` pede brand, blueprint, produtos, loja e blocos).
+ * A alternativa seria uma segunda montagem de vars ao lado desta — que
+ * diverge desta na primeira mudança.
+ */
+export type TypographyCtx = Pick<
+  FormatChainContext,
+  "brandName" | "locale" | "fontHeading" | "fontHeadingWeight" | "fontBody" | "fontBodyWeight" | "emailRow"
+>
+
+export function buildTypographyVars(
+  ctx: TypographyCtx,
+  html: string,
+  extras: {
+    niche: string
+    tomDeVoz: string
+    posicionamento: string
+    /** A hero traz texto embutido na imagem? Um grau a menos de ruptura. */
+    heroComTexto: boolean
+    fontWhitelist: string
+    inventario: string
+    inventarioTotal: number
+  },
+): Record<string, string> {
+  void html
+  const vars = {
+    brand_name: ctx.brandName,
+    locale: ctx.locale,
+    font_heading: ctx.fontHeading,
+    font_heading_weight: ctx.fontHeadingWeight,
+    font_body: ctx.fontBody,
+    font_body_weight: ctx.fontBodyWeight,
+    classe_principal: classifyFontFamily(ctx.fontHeading),
+    tom_de_voz: extras.tomDeVoz,
+    posicionamento: extras.posicionamento,
+    niche: extras.niche,
+    hero_com_texto: extras.heroComTexto ? "sim" : "não",
+    font_whitelist: extras.fontWhitelist,
+    inventario: extras.inventario,
+    inventario_total: String(extras.inventarioTotal),
+    email_name: ctx.emailRow?.name || "",
+    subject: ctx.emailRow?.subject || "",
+  }
+  return validateVars(TypographyPromptVarsSchema, vars, "typography")
 }

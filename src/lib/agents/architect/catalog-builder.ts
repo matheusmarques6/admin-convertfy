@@ -128,12 +128,6 @@ export interface CatalogEntry {
   product_slots: number
   orientacao_copy: string
   notas_implementacao: string
-  /**
-   * A descrição do BANCO, servida junto quando ela contradiz a do vault. O
-   * HTML que será montado é o da linha do banco: com as duas à vista, o
-   * Curador não decide sobre uma peça e recebe outra.
-   */
-  description_no_banco?: string
   /** Presente quando a variante tem nota no vault de componentes. */
   vault?: {
     slug: string
@@ -164,17 +158,15 @@ export interface BuildCatalogResult {
   /** Tipos de seção presentes, na ordem. */
   types: string[]
   /**
-   * Variantes em que a prosa do vault e o cadastro do banco descrevem
-   * coisas diferentes. Mais divergente primeiro.
+   * Variantes em que a nota do vault descreve outra peça que não a do
+   * cadastro. Mais divergente primeiro.
    *
-   * Isto existe porque a substituição era SILENCIOSA: `toEntry` sobrepõe a
-   * descrição do vault à do banco e o prompt declara que "onde o vault
-   * contradisser os metadados do banco, O VAULT VENCE". O Curador então
-   * raciocina sobre a prosa do vault, escolhe o `variant_id`, e o que é
-   * montado é o HTML da linha do banco — que pode ser outra peça
-   * (`body-4-tutorial-de-uso`, 01/09: o vault descreve um tutorial em
-   * passos, o id aponta para um comparativo contra a concorrência). Nada
-   * em lugar nenhum registrava a contradição.
+   * NÃO entra no prompt: desde 03/09 o catálogo serve a descrição do
+   * SISTEMA e ponto — o modelo não arbitra entre duas versões da mesma
+   * variante, porque isso nunca foi decisão dele e não conserta o dado.
+   * Esta lista é higiene: é a nota do Obsidian que está errada, e é lá que
+   * se corrige (o admin só LÊ o vault). Vai para a telemetria da run e
+   * para a aba Conhecimento.
    */
   divergentes: DivergenciaDeCatalogo[]
 }
@@ -243,19 +235,20 @@ function toEntry(
   const entry: CatalogEntry = {
     variant_id: v.id,
     name: v.name,
-    // A prosa do vault, quando existe, VENCE o cadastro do banco: é o
-    // julgamento curado (descrição curta, quando usar/não usar) escrito
-    // para o protocolo de seleção. Sem nota, o cadastro segue valendo.
-    description: extra?.descricao_curta || v.description || "",
-    quando_usar: extra?.quando_usar || v.when_use || "",
-    quando_nao_usar: extra?.quando_nao_usar || v.when_not_use || "",
+    // O SISTEMA prevalece: o cadastro do banco é a descrição da peça que
+    // será montada — é o HTML DESTA linha que vai para o email. O vault é
+    // apoio: entra só onde o sistema não tem nada. Até 03/09 era o
+    // contrário (o vault sobrepunha o cadastro), e o Curador decidia sobre
+    // uma peça enquanto o email recebia outra.
+    description: v.description || extra?.descricao_curta || "",
+    quando_usar: v.when_use || extra?.quando_usar || "",
+    quando_nao_usar: v.when_not_use || extra?.quando_nao_usar || "",
     objectives: v.objectives ?? [],
     tones: v.tones ?? [],
     density: v.density ?? null,
     product_slots: v.product_slots ?? 0,
     orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
-    ...(divergente ? { description_no_banco: descBanco } : {}),
   }
   if (extra) {
     entry.vault = {
@@ -285,4 +278,74 @@ export function buildTypeIndex(
   variants: EmailComponentVariant[],
 ): Map<string, string> {
   return new Map(variants.map((v) => [v.id, v.block_type]))
+}
+
+// ── Higiene do vault ───────────────────────────────────────────────────
+//
+// A divergência saiu do prompt (o sistema prevalece), mas o dado errado
+// continua lá — e até 03/09 ele só aparecia dentro de uma run do Curador,
+// onde ninguém que fosse corrigir o Obsidian ia olhar. Estas três listas
+// são o que se conserta na nota.
+
+/** Nota do vault cujo `variant_id` não aponta para variante ativa. */
+export interface NotaOrfa {
+  slug: string
+  variant_id: string | null
+  /** `nome_no_banco` declarado no frontmatter. */
+  nome_no_banco: string | null
+}
+
+/** Variante ativa sem nota no vault — o Curador decide sem os eixos dela. */
+export interface VarianteSemNota {
+  variant_id: string
+  name: string
+  block_type: string
+}
+
+export interface HigieneDoVault {
+  /** Nota e cadastro descrevem peças diferentes. Mais divergente primeiro. */
+  divergentes: DivergenciaDeCatalogo[]
+  notas_orfas: NotaOrfa[]
+  variantes_sem_nota: VarianteSemNota[]
+}
+
+/** Uma nota de variante do vault, do ponto de vista da higiene. */
+export interface NotaDeVariante {
+  slug: string
+  variant_id: string | null
+  nome_no_banco: string | null
+}
+
+/**
+ * Cruza as notas do vault com as variantes ATIVAS e devolve o que está
+ * descasado. Puro — quem lê banco e vault é o chamador.
+ *
+ * `divergentes` vem de `buildCatalog`: a mesma medida, sem recalcular.
+ */
+export function levantarHigieneDoVault(
+  notas: NotaDeVariante[],
+  variantesAtivas: { id: string; name: string; block_type: string }[],
+  divergentes: DivergenciaDeCatalogo[],
+): HigieneDoVault {
+  const ativas = new Map(variantesAtivas.map((v) => [v.id, v]))
+  const comNota = new Set<string>()
+  const notas_orfas: NotaOrfa[] = []
+
+  for (const n of notas) {
+    if (n.variant_id && ativas.has(n.variant_id)) {
+      comNota.add(n.variant_id)
+      continue
+    }
+    notas_orfas.push({
+      slug: n.slug,
+      variant_id: n.variant_id ?? null,
+      nome_no_banco: n.nome_no_banco ?? null,
+    })
+  }
+
+  const variantes_sem_nota: VarianteSemNota[] = variantesAtivas
+    .filter((v) => !comNota.has(v.id))
+    .map((v) => ({ variant_id: v.id, name: v.name, block_type: v.block_type }))
+
+  return { divergentes, notas_orfas, variantes_sem_nota }
 }

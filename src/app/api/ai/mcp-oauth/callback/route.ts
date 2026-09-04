@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/api/errors"
+import { mcpOAuthRedirectUri } from "@/lib/api/public-origin"
 import { decrypt, encrypt } from "@/lib/crypto"
 import { exchangeCode } from "@/lib/ai/connectors/mcp-oauth"
 import { testMcpServer } from "@/lib/ai/connectors/mcp-client"
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
       clientId: state.client_id,
       clientSecret: state.client_secret ?? undefined,
       code,
-      redirectUri: `${request.nextUrl.origin}/api/ai/mcp-oauth/callback`,
+      redirectUri: mcpOAuthRedirectUri(request),
       verifier: state.verifier,
       resource: state.url,
     })

@@ -183,7 +183,7 @@ Decide o **esqueleto** do email (sequência de seções + papel narrativo por po
 | `flow_type` / `email_number` | identidade do email (input do pipeline) | sistema |
 | `secoes_disponiveis` | só os **nomes** das categorias com variante ativa em `email_component_variants` (sem contagem, sem nº de produtos) | sistema |
 | `estruturas_dos_outros_emails` | runs `estruturador` success dos **irmãos** do flow (anti-repetição; no retry recebe o erro de parse) | sistema |
-| `orientacao_coo` | `estruturador_orientacoes` (global→flow→email; efeito imediato, **não** é vault) | curadoria |
+| `orientacao_coo` | `estruturador_orientacoes` com `agente='estruturador'` (global→flow→email; efeito imediato, **não** é vault). O Curador recebe a var homônima com `agente='curador'` — a tabela separa as duas (migration `20261111`) | curadoria |
 | `revisao_humana` | `email_structure_reviews` (diff ordem_anterior→nova; sinal forte, não trava) | curadoria |
 
 **Saídas**: `parsed_output` da run (diagnóstico, estrutura[], fio_narrativo, fontes, aprendizados_aplicados, descartes + `_validador` informativo: retry de parse, revisão humana seguida ou não, convergência com a geração anterior). Em modo `on`: vira a `structure` do Montador e do Curador, a **saída COMPLETA em JSON** na var `estruturador_decisao` do Curador (`decisaoCompletaParaCurador`, clamp 24k), `fio_narrativo` do blueprint (`store_email_blueprints.fio_narrativo`) e 1ª linha do `purpose` de cada bloco.

@@ -5,7 +5,8 @@
  */
 
 import { notFound } from "next/navigation"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { canAccessReport } from "@/lib/api/store-org-guard"
 import { ReportSlides } from "@/components/stores/v2/slides/report-slides"
 import { applyKpisOverrides } from "@/lib/services/report-overrides.service"
 import type { ReportSnapshot, ReportKpisOverrides } from "@/types/monthly-report"
@@ -38,6 +39,13 @@ export default async function ReportPrintPage({
 }) {
   const { reportId } = await params
   const { autoprint, present } = await searchParams
+  // Deck lê com service role — escopo por org aqui (middleware só
+  // garante que existe sessão, não QUAL org).
+  const sb = await createClient()
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!(await canAccessReport(createAdminClient(), user?.id, reportId))) notFound()
   const report = await getReport(reportId)
   if (!report) notFound()
 

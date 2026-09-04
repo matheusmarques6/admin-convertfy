@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
   callTone,
+  comissaoFromInvoices,
   daysSince,
   mensalidadeFromInvoices,
+  splitInvoicesForStore,
+  subscriptionsForStore,
   monthLabel,
   nextCallLabel,
   pctTone,
@@ -67,6 +70,151 @@ describe("mensalidadeFromInvoices", () => {
       inv(d, "paid", d),
     )
     expect(mensalidadeFromInvoices(many, NOW).history).toHaveLength(4)
+  })
+})
+
+describe("splitInvoicesForStore", () => {
+  const A = "store-a"
+  const B = "store-b"
+  const byStore = (store_id: string | null, charge_type = "subscription", sub?: string): InvoiceLite => ({
+    ...inv("2026-08-05", "paid", "2026-08-05"),
+    store_id,
+    charge_type,
+    subscription_id: sub ?? null,
+  })
+
+  it("store_id decide sozinho; comissão vai pro balde de comissão", () => {
+    const r = splitInvoicesForStore({
+      invoices: [byStore(A), byStore(B), byStore(A, "commission")],
+      storeId: A,
+      subscriptionStores: {},
+      clientStoreCount: 2,
+    })
+    expect(r.mensalidade).toHaveLength(1)
+    expect(r.comissao).toHaveLength(1)
+    expect(r.unassigned).toBe(0)
+    expect(r.scope).toBe("loja")
+  })
+
+  it("assinatura vinculada atribui — e exclui a loja que não está no vínculo", () => {
+    const r = splitInvoicesForStore({
+      invoices: [byStore(null, "subscription", "sub-1"), byStore(null, "subscription", "sub-2")],
+      storeId: A,
+      subscriptionStores: { "sub-1": [A, B], "sub-2": [B] },
+      clientStoreCount: 2,
+    })
+    expect(r.mensalidade).toHaveLength(1)
+    expect(r.unassigned).toBe(0)
+  })
+
+  it("cliente com uma loja só herda tudo (scope cliente); com várias, sem loja vira unassigned", () => {
+    const one = splitInvoicesForStore({
+      invoices: [byStore(null), byStore(null, "commission")],
+      storeId: A,
+      subscriptionStores: {},
+      clientStoreCount: 1,
+    })
+    expect(one.mensalidade).toHaveLength(1)
+    expect(one.comissao).toHaveLength(1)
+    expect(one.scope).toBe("cliente")
+
+    const multi = splitInvoicesForStore({
+      invoices: [byStore(null), byStore(null, "commission"), byStore(A)],
+      storeId: A,
+      subscriptionStores: {},
+      clientStoreCount: 2,
+    })
+    expect(multi.mensalidade).toHaveLength(1)
+    expect(multi.unassigned).toBe(2)
+    expect(multi.scope).toBe("loja")
+  })
+
+  it("linha antiga sem charge_type conta como mensalidade (comportamento anterior preservado)", () => {
+    const r = splitInvoicesForStore({
+      invoices: [inv("2026-08-05", "paid", "2026-08-05")],
+      storeId: A,
+      subscriptionStores: {},
+      clientStoreCount: 1,
+    })
+    expect(r.mensalidade).toHaveLength(1)
+    expect(r.comissao).toHaveLength(0)
+  })
+})
+
+describe("subscriptionsForStore", () => {
+  const subs = [
+    { id: "s1", name: "Plano", value: 3500, cycle: "MONTHLY", status: "active" },
+    { id: "s2", name: "Plano 2", value: 3500, cycle: "MONTHLY", status: "active" },
+  ]
+  it("vinculadas primeiro; sem vínculo, herda só quando o cliente tem uma loja", () => {
+    expect(
+      subscriptionsForStore({ subscriptions: subs, storeId: "a", subscriptionStores: { s2: ["a"] }, clientStoreCount: 2 }),
+    ).toEqual({ list: [subs[1]], scope: "loja" })
+    expect(
+      subscriptionsForStore({ subscriptions: subs, storeId: "a", subscriptionStores: {}, clientStoreCount: 1 }).scope,
+    ).toBe("cliente")
+    expect(
+      subscriptionsForStore({ subscriptions: subs, storeId: "a", subscriptionStores: {}, clientStoreCount: 2 }),
+    ).toEqual({ list: [], scope: "none" })
+    // vinculada a OUTRA loja não é herdada nem em cliente de uma loja
+    expect(
+      subscriptionsForStore({ subscriptions: subs, storeId: "a", subscriptionStores: { s1: ["b"], s2: ["b"] }, clientStoreCount: 1 }).list,
+    ).toEqual([])
+  })
+})
+
+describe("comissaoFromInvoices", () => {
+  const com = (due: string, status: string, months: string[] | null, paid?: string): InvoiceLite => ({
+    ...inv(due, status, paid, 1000),
+    charge_type: "commission",
+    reference_months: months,
+  })
+
+  it("grade mês a mês até o mês passado, 'não cobrada' é o furo", () => {
+    // NOW = 26/08/2026 → grade termina em jul/26
+    const r = comissaoFromInvoices(
+      [com("2026-07-21", "paid", ["2026-04", "2026-05", "2026-06"], "2026-07-21"), com("2026-08-25", "pending", ["2026-07"])],
+      NOW,
+    )
+    expect(r.status).toBe("atrasada") // pending vencida em 25/08
+    expect(r.months.map((m) => [m.month, m.status])).toEqual([
+      ["2026-07", "atrasada"],
+      ["2026-06", "paga"],
+      ["2026-05", "paga"],
+      ["2026-04", "paga"],
+    ])
+    expect(r.history[0]).toMatchObject({ month: "jul/26", status: "atrasada", months: ["2026-07"], inferred: false })
+    expect(r.history[1].month).toBe("abr–jun/26")
+  })
+
+  it("mês pulado aparece como 'não cobrada'; cancelada reemitida perde pro pending", () => {
+    const r = comissaoFromInvoices(
+      [
+        com("2026-06-20", "paid", ["2026-05"], "2026-06-20"),
+        com("2026-08-20", "cancelled", ["2026-07"]),
+        com("2026-09-02", "pending", ["2026-07"]),
+      ],
+      NOW,
+    )
+    expect(r.months.map((m) => [m.month, m.status])).toEqual([
+      ["2026-07", "em aberto"],
+      ["2026-06", "não cobrada"],
+      ["2026-05", "paga"],
+    ])
+    expect(r.status).toBe("pendente")
+  })
+
+  it("sem reference_months assume o mês anterior ao vencimento e marca inferred", () => {
+    const r = comissaoFromInvoices([com("2026-09-13", "pending", null)], NOW)
+    expect(r.history[0]).toMatchObject({ month: "ago/26", inferred: true })
+    // mês citado à frente da janela entra na grade (não é "não cobrada")
+    expect(r.months[0]).toMatchObject({ month: "2026-08", status: "em aberto" })
+  })
+
+  it("janela limitada a windowMonths quando o histórico é longo; vazio sem comissão", () => {
+    const r = comissaoFromInvoices([com("2025-02-10", "paid", ["2025-01"], "2025-02-10")], NOW, { windowMonths: 3 })
+    expect(r.months.map((m) => m.month)).toEqual(["2026-07", "2026-06", "2026-05"])
+    expect(comissaoFromInvoices([], NOW).months).toEqual([])
   })
 })
 

@@ -70,6 +70,11 @@ import {
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
+import { loadOrientacoes } from "../shared/orientacoes-loader"
+import {
+  aplicaveis as aplicaveisAoEmail,
+  montarBlocoOrientacoes,
+} from "../estruturador/orientacoes"
 import {
   montarBlocoRevisao,
   type RevisaoHumana,
@@ -274,6 +279,12 @@ export const DEFAULT_CHOOSER_USER = `<store>
 <decisao_do_estruturador>
 {{estruturador_decisao}}
 </decisao_do_estruturador>
+
+<orientacao_do_coo>
+Instrução direta de quem responde pelo método, escrita no Estúdio. Vale
+sobre a memória e sobre sua preferência.
+{{orientacao_coo}}
+</orientacao_do_coo>
 
 <revisao_humana>
 {{revisao_humana}}
@@ -854,6 +865,13 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       cls: "loja",
       rotulo: "Objeções do cliente ideal — client_stores.icp_frictions",
     },
+    // Diretriz viva do COO (migration 20261111) — NÃO é vault: o vault é o
+    // corpus curado, isto é instrução direta e de efeito imediato. Sem esta
+    // linha o guard de recomposição derruba os segmentos da run inteira.
+    orientacao_coo: {
+      cls: "curadoria",
+      rotulo: "Orientação do COO ao Curador — estruturador_orientacoes (agente=curador)",
+    },
     revisao_humana: {
       cls: "curadoria",
       rotulo: "Revisão humana da estrutura — email_structure_reviews",
@@ -897,6 +915,9 @@ export async function assembleStoreReference(
   // comportamento vivo é o de sempre (o shadow roda em call paralelo).
   // Fail-open em tudo: sem sync/tabela/coluna, degrada para 'off'.
   const curadorVaultMode = await loadCuradorVaultMode(input.storeId)
+  // Orientações do COO ao CURADOR (migration 20261111). Fail-open no
+  // loader: sem a coluna `agente`, volta vazio e o prompt declara ausência.
+  const orientacoesCurador = await loadOrientacoes("curador")
   // Conhecimento carregado em shadow E on (o shadow precisa dele); as vars
   // do call VIVO só o recebem em 'on'.
   const vaultKnowledge =
@@ -1008,6 +1029,12 @@ export async function assembleStoreReference(
     // Usar/Evitar" — dado presente que ninguém usava como critério.
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
+    // Orientação do COO ao CURADOR (migration 20261111) — a do Estruturador
+    // não entra aqui: são papéis diferentes e a tabela as separa por
+    // `agente`.
+    orientacao_coo: montarBlocoOrientacoes(
+      aplicaveisAoEmail(orientacoesCurador, input.flowType, input.emailNumber),
+    ),
     revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "curador"),
     // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
     // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
@@ -1115,6 +1142,18 @@ export async function assembleStoreReference(
     { rotulo: "Intenções por bloco (Arquitetura)", cls: "curadoria", valor: `${intencoesHumanas} de ${input.structure.length} posições` },
     { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida — saída completa (diagnóstico, posições, fio, fontes, descartes)" : "(sem decisão nesta geração)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
+    {
+      rotulo: "Orientação do COO",
+      cls: "curadoria",
+      valor: (() => {
+        const n = aplicaveisAoEmail(
+          orientacoesCurador,
+          input.flowType,
+          input.emailNumber,
+        ).filter((o) => (o.texto ?? "").trim()).length
+        return n > 0 ? `${n} escrita(s) para o Curador` : "(nenhuma registrada)"
+      })(),
+    },
     { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
     { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
     { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },
@@ -1527,6 +1566,18 @@ export async function assembleStoreReference(
       valor: estruturadorOn ? "servida (papéis por posição + fio)" : "(sem decisão nesta geração)",
     },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
+    {
+      rotulo: "Orientação do COO",
+      cls: "curadoria",
+      valor: (() => {
+        const n = aplicaveisAoEmail(
+          orientacoesCurador,
+          input.flowType,
+          input.emailNumber,
+        ).filter((o) => (o.texto ?? "").trim()).length
+        return n > 0 ? `${n} escrita(s) para o Curador` : "(nenhuma registrada)"
+      })(),
+    },
     { rotulo: "Objeções", cls: "loja", valor: resumoObjecoes(input.objecoes) },
     { rotulo: "Vocabulário", cls: "loja", valor: resumoVocabulario(input.vocabulario) },
     { rotulo: "Top produtos", cls: "loja", valor: resumoProdutos(input.topProducts) },

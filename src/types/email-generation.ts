@@ -176,6 +176,10 @@ export type AgentType =
   | "hero_section"
   | "text_format"
   | "image_format"
+  // typography: decide onde o email rompe a tipografia (família, peso,
+  //   caixa, espaçamento). Recebe o inventário das declarações de fonte,
+  //   nunca o documento; output = JSON de ops por item; fail-open.
+  | "typography"
   | "color_format"
   // copy_fit: encurta a copy que o n8n devolveu acima do max_len do slot
   //   (migration 20261089). Roda no callback, antes da fase 2; a saída é
@@ -335,6 +339,7 @@ export type GenerationRunAgent =
   | "hero_section"
   | "text_format"
   | "image_format"
+  | "typography"
   | "color_format"
   // Merge determinístico de copy (por EXAMPLE desde 20/08): estágio de
   // CÓDIGO, sem LLM; run próprio pra metrificação campo a campo.

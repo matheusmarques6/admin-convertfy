@@ -10,9 +10,12 @@
  * rotas existentes: move de deal, PATCH (motivo de pausa), POST de call
  * da loja, CRUD de etapas da pipeline.
  *
- * Honestidades vs mock do design: sem linha "Comissão" (o sistema não
- * modela comissão por loja — só em crm_partners) e sem delta numérico
- * no "Convertfy gera" (não há fonte de % do período anterior no cache).
+ * Pagamentos são POR LOJA desde a migration 20261113: mensalidade
+ * (assinatura vinculada / cobrança com loja) e comissão (tipo +
+ * meses de referência) em baldes separados. Cliente com uma loja só
+ * herda o que não tem loja; multi-loja mostra "N sem loja definida".
+ * Honestidade mantida: sem delta numérico no "Convertfy gera" (não há
+ * fonte de % do período anterior no cache).
  */
 
 import { useMemo, useState } from "react"
@@ -24,9 +27,18 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { ScoreRulesDialog } from "./score-rules-dialog"
 import {
   pctTone,
+  type ComissaoMes,
   type MensalidadeMes,
   type MensalidadeStatus,
+  type SubscriptionLite,
 } from "@/lib/services/cs-carteira"
+import {
+  defaultReferenceMonths,
+  monthLabel,
+  monthOptionsFor,
+} from "@/lib/services/call-coverage"
+import { isOnboardingStageName } from "@/lib/services/carteira-onboarding"
+import { ROUTES } from "@/lib/routes"
 
 // ── Tipos do payload ────────────────────────────────────────────────
 
@@ -57,9 +69,32 @@ interface Card {
   revenue_synced: boolean
   mensalidade: MensalidadeStatus
   mensalidade_history: MensalidadeMes[]
+  /** loja = atribuída por loja/assinatura; cliente = herdada (cliente de uma loja). */
+  pagamentos_scope?: "loja" | "cliente" | "none"
+  /** Cobranças do cliente sem loja definida (só em cliente multi-loja). */
+  pagamentos_sem_loja?: number
+  comissao?: MensalidadeStatus
+  comissao_history?: MensalidadeMes[]
+  comissao_meses?: ComissaoMes[]
+  assinaturas?: SubscriptionLite[]
+  assinaturas_scope?: "loja" | "cliente" | "none"
   call_days: number | null
   call_tone: { tone: "ok" | "warn" | "neg"; agendar: boolean }
   next_call: string | null
+  /** Data real da última call + gravação no Fathom (quando houver). */
+  last_call_at: string | null
+  last_call_fathom_url: string | null
+  last_call_notes: string | null
+  /** Meses fechados sem call de alinhamento (mais recente primeiro). */
+  months_missing?: string[]
+  /** Onboarding real da loja (pipeline operacional). */
+  onboarding?: {
+    id: string
+    phase: string | null
+    phase_slug: string | null
+    since: string | null
+    in_onboarding: boolean
+  } | null
   motivo: string | null
   stage_changed_at: string | null
   manual_stage: boolean
@@ -156,6 +191,12 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   const [callModal, setCallModal] = useState<Card | null>(null)
   const [callData, setCallData] = useState("")
   const [callNota, setCallNota] = useState("")
+  const [callFathom, setCallFathom] = useState("")
+  // Meses que a call cobre. Default = mês anterior (convenção do time);
+  // `mesesTocado` impede que trocar a data desfaça a escolha manual.
+  const [callMeses, setCallMeses] = useState<string[]>([])
+  const [mesesTocado, setMesesTocado] = useState(false)
+  const [callResult, setCallResult] = useState<string | null>(null)
   const [editCols, setEditCols] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -269,24 +310,45 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   }
 
   const registrarCall = async () => {
-    if (!callModal || !callData) return
+    // Com link do Fathom a data é opcional (vem da gravação)
+    if (!callModal || (!callData && !callFathom.trim())) return
     setBusy(true)
     setActionError(null)
+    setCallResult(null)
     try {
       const res = await fetch(`/api/stores/${callModal.store_id}/calls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conducted_at: `${callData}T12:00:00`,
+          ...(callData ? { conducted_at: `${callData}T12:00:00` } : {}),
           notes: callNota.trim() || null,
+          fathom_url: callFathom.trim() || null,
+          reference_months: callMeses,
         }),
       })
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
-        throw new Error((b as { error?: string })?.error || "Não foi possível registrar a call")
+      const b = (await res.json().catch(() => ({}))) as {
+        error?: string
+        fathom?: { title: string | null; action_items: number; participants: number } | null
       }
-      setCallModal(null)
+      if (!res.ok) {
+        throw new Error(b?.error || "Não foi possível registrar a call")
+      }
       await mutate()
+      if (b.fathom) {
+        // Confirma o que veio do Fathom antes de fechar — o operador
+        // precisa ver que a importação pegou o que esperava.
+        setCallResult(
+          `Importado do Fathom${b.fathom.title ? `: “${b.fathom.title}”` : ""} · ${b.fathom.action_items} item(ns) de ação · ${b.fathom.participants} participante(s).`,
+        )
+        setCallFathom("")
+        setCallNota("")
+        setTimeout(() => {
+          setCallModal(null)
+          setCallResult(null)
+        }, 2600)
+      } else {
+        setCallModal(null)
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Não foi possível registrar a call")
     } finally {
@@ -423,6 +485,15 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
                       <span className="text-[11px] font-medium" style={{ color: "var(--ops-mut)", ...TNUM }}>
                         {colCards.length}
                       </span>
+                      {isOnboardingStageName(col.name) && (
+                        <span
+                          className="ml-auto rounded-[4px] border px-1.5 py-[1px] text-[9.5px] font-[650] uppercase tracking-[0.05em]"
+                          style={{ borderColor: "var(--ops-border)", color: "var(--ops-mut)" }}
+                          title="Espelha o pipeline de onboarding — o card sai sozinho quando o onboarding chega em Cliente ativo."
+                        >
+                          auto
+                        </span>
+                      )}
                     </div>
                     <div className="mt-2 h-[2px] rounded-[1px] opacity-55" style={{ background: cor }} />
                   </div>
@@ -469,7 +540,13 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             setCallModal(selCard)
             setCallData(new Date().toISOString().slice(0, 10))
             setCallNota("")
+            setCallFathom("")
+            setCallMeses(defaultReferenceMonths(new Date()))
+            setMesesTocado(false)
+            setCallResult(null)
+            setActionError(null)
           }}
+          onCallsChanged={() => void mutate()}
           busy={busy}
         />
       )}
@@ -556,7 +633,15 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             type="date"
             value={callData}
             max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => setCallData(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value
+              setCallData(v)
+              // Enquanto o operador não escolher os meses à mão, a
+              // sugestão acompanha a data da call.
+              if (!mesesTocado) {
+                setCallMeses(defaultReferenceMonths(v ? `${v}T12:00:00` : new Date()))
+              }
+            }}
             className="mt-[7px] box-border h-[34px] w-full rounded-[8px] border px-2.5 text-[12.5px] outline-none"
             style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
           />
@@ -569,7 +654,55 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             </div>
           )}
           <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
-            Resumo (opcional)
+            Referente a que mês?
+          </div>
+          <div className="mt-[7px] flex flex-wrap gap-1.5">
+            {monthOptionsFor(callData ? `${callData}T12:00:00` : new Date(), 6).map((m) => {
+              const on = callMeses.includes(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMesesTocado(true)
+                    setCallMeses((prev) =>
+                      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m].sort(),
+                    )
+                  }}
+                  className="h-[26px] rounded-[6px] border px-2 text-[11px] font-medium"
+                  style={{
+                    borderColor: on ? "#4E62D8" : "var(--ops-border)",
+                    background: on ? "#4E62D8" : "transparent",
+                    color: on ? "#fff" : "var(--ops-sec)",
+                  }}
+                >
+                  {monthLabel(m)}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+            {callMeses.length === 0
+              ? "Sem mês marcado, assumimos o mês anterior à call."
+              : "É o que define se algum mês ficou sem alinhamento — marque mais de um quando a call cobriu meses atrasados."}
+          </div>
+          <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+            Link do Fathom (opcional)
+          </div>
+          <input
+            type="url"
+            value={callFathom}
+            onChange={(e) => setCallFathom(e.target.value)}
+            placeholder="fathom.video/calls/123456789"
+            className="mt-[7px] box-border h-[34px] w-full rounded-[8px] border px-2.5 text-[12px] outline-none"
+            style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
+          />
+          <div className="mt-1.5 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+            Com o link, puxamos resumo, itens de ação e participantes direto do Fathom —
+            a data vem da gravação.
+          </div>
+          <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+            Resumo {callFathom.trim() ? "(complementa o do Fathom)" : "(opcional)"}
           </div>
           <textarea
             value={callNota}
@@ -579,10 +712,31 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             className="mt-[7px] box-border w-full resize-none rounded-[8px] border px-2.5 py-2 text-[12px] leading-[1.5] outline-none"
             style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
           />
+          {callResult && (
+            <div
+              className="mt-2.5 rounded-[8px] border px-2.5 py-2 text-[11px]"
+              style={{ borderColor: "var(--ops-pos)", color: "var(--ops-pos)" }}
+              role="status"
+            >
+              {callResult}
+            </div>
+          )}
+          {/* O erro global fica no topo do board — ATRÁS deste modal.
+              Sem repeti-lo aqui, a falha era invisível: o operador
+              clicava, nada acontecia e nada explicava. */}
+          {actionError && (
+            <div
+              className="mt-2.5 rounded-[8px] border px-2.5 py-2 text-[11px]"
+              style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }}
+              role="alert"
+            >
+              {actionError}
+            </div>
+          )}
           <div className="mt-3.5 flex justify-end gap-2">
             <ModalBtn onClick={() => setCallModal(null)}>Cancelar</ModalBtn>
-            <ModalBtn primary disabled={!callData || busy} onClick={registrarCall}>
-              Registrar
+            <ModalBtn primary disabled={(!callData && !callFathom.trim()) || busy} onClick={registrarCall}>
+              {busy && callFathom.trim() ? "Buscando no Fathom…" : "Registrar"}
             </ModalBtn>
           </div>
         </Modal>
@@ -638,6 +792,7 @@ function StoreCard({
 }) {
   const paused = isPauseStage(stage)
   const churn = isChurnStage(stage)
+  const onboardingCol = isOnboardingStageName(stage.name)
   const tone = c.call_tone
   const destaque = !paused && tone.agendar
 
@@ -716,7 +871,10 @@ function StoreCard({
               Mover para
             </div>
             {stages
-              .filter((s) => s.id !== c.stage_id)
+              // A etapa Onboarding é automática (espelha o pipeline
+              // operacional) — mover um card PARA ela à mão criaria um
+              // estado que o próximo sync desfaz.
+              .filter((s) => s.id !== c.stage_id && !isOnboardingStageName(s.name))
               .map((s) => (
                 <button
                   key={s.id}
@@ -736,7 +894,28 @@ function StoreCard({
       )}
 
       <div className="mt-2.5 flex flex-col gap-1.5 border-t pt-[9px]" style={{ borderColor: "var(--ops-border)" }}>
-        {paused ? (
+        {onboardingCol ? (
+          // Coluna automática: o que importa aqui é a fase do
+          // onboarding real, não a régua de score (que ainda nem tem
+          // dado — a loja não começou a operar).
+          <>
+            {row("Fase", c.onboarding?.phase ?? "—", "var(--ops-title)", true)}
+            {row(
+              "Nesta fase",
+              c.onboarding?.since
+                ? (() => {
+                    const d = Math.max(
+                      0,
+                      Math.round((Date.now() - new Date(c.onboarding.since).getTime()) / 86_400_000),
+                    )
+                    return d === 0 ? "hoje" : `há ${d}d`
+                  })()
+                : "—",
+              "var(--ops-sec)",
+            )}
+            {row("Mensalidade", mensTxt, mensCor)}
+          </>
+        ) : paused ? (
           <>
             {row(
               "Pausada em",
@@ -756,12 +935,61 @@ function StoreCard({
               true,
             )}
             {row("Mensalidade", mensTxt, mensCor)}
+            {/* Comissão só aparece em loja que tem comissão modelada —
+                e o que importa no card é o furo: mês sem cobrança ou
+                cobrança vencida. */}
+            {(c.comissao_history?.length ?? 0) > 0 &&
+              (() => {
+                const naoCobrados = (c.comissao_meses ?? []).filter((m) => m.status === "não cobrada")
+                const txt =
+                  c.comissao === "atrasada"
+                    ? "Atrasada"
+                    : naoCobrados.length > 0
+                      ? `${naoCobrados[0].label} não cobrada${naoCobrados.length > 1 ? ` +${naoCobrados.length - 1}` : ""}`
+                      : c.comissao === "pendente"
+                        ? "Pendente"
+                        : c.comissao === "paga"
+                          ? "Paga"
+                          : "—"
+                const cor =
+                  c.comissao === "atrasada" || naoCobrados.length > 0
+                    ? "var(--ops-neg)"
+                    : c.comissao === "pendente"
+                      ? "var(--ops-warn)"
+                      : c.comissao === "paga"
+                        ? "var(--ops-pos)"
+                        : "var(--ops-mut)"
+                return row("Comissão", txt, cor)
+              })()}
             {row(
               "Última call",
-              c.call_days == null ? "nunca" : c.call_days === 0 ? "hoje" : `há ${c.call_days}d${destaque ? " · agendar" : ""}`,
+              c.call_days == null
+                ? "nunca"
+                : // Data + idade: o card precisa dizer QUANDO foi, não só
+                  // "há 22d" (que some da leitura assim que o CSM registra).
+                  `${
+                    c.last_call_at
+                      ? `${new Date(c.last_call_at).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })} · `
+                      : ""
+                  }${c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}${destaque ? " · agendar" : ""}`,
               c.call_days == null ? "var(--ops-mut)" : toneColor(tone.tone),
               destaque,
             )}
+            {/* Mês fechado sem alinhamento: é o relatório que ficou
+                para trás — "há 22d" não conta essa história. */}
+            {(c.months_missing?.length ?? 0) > 0 &&
+              row(
+                "Sem relatório",
+                (c.months_missing ?? []).slice(0, 3).map(monthLabel).join(" · ") +
+                  ((c.months_missing?.length ?? 0) > 3
+                    ? ` +${(c.months_missing?.length ?? 0) - 3}`
+                    : ""),
+                "var(--ops-warn)",
+                true,
+              )}
             {churn && c.motivo && row("Motivo", c.motivo, "var(--ops-neg)")}
           </>
         )}
@@ -779,6 +1007,7 @@ function CarteiraDrawer({
   onPausar,
   onReativar,
   onRegistrarCall,
+  onCallsChanged,
   busy,
 }: {
   card: Card
@@ -787,6 +1016,8 @@ function CarteiraDrawer({
   onPausar: () => void
   onReativar: () => void
   onRegistrarCall: () => void
+  /** Excluir/editar call muda a última call e a cobertura do board. */
+  onCallsChanged: () => void
   busy: boolean
 }) {
   const stage = stages.find((s) => s.id === c.stage_id)
@@ -804,9 +1035,99 @@ function CarteiraDrawer({
       ? "var(--ops-pos)"
       : st === "em aberto"
         ? "var(--ops-warn)"
+        : st === "atrasada" || st === "não cobrada"
+          ? "var(--ops-neg)"
+          : "var(--ops-mut)"
+
+  // Linha "Mensalidade"/"Comissão" do bloco de pagamentos: bolinha +
+  // status agregado + valor à direita.
+  const agregCor = (st: MensalidadeStatus | undefined) =>
+    st === "paga"
+      ? "var(--ops-pos)"
+      : st === "pendente"
+        ? "var(--ops-warn)"
         : st === "atrasada"
           ? "var(--ops-neg)"
           : "var(--ops-mut)"
+  const pagamentoRow = (label: string, st: MensalidadeStatus | undefined, right: string) => (
+    <div className="mt-2 flex items-center gap-[9px]">
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ background: st && st !== "none" ? agregCor(st) : "var(--ops-track, rgba(0,0,0,0.1))" }}
+      />
+      <span className="flex-1 text-[11.5px]" style={{ color: "var(--ops-text)" }}>
+        {label}
+      </span>
+      <span className="text-[11.5px] font-semibold capitalize" style={{ color: agregCor(st) }}>
+        {!st || st === "none" ? "—" : st}
+      </span>
+      <span className="w-[56px] text-right text-[11.5px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
+        {right}
+      </span>
+    </div>
+  )
+  const historico = (rows: MensalidadeMes[]) => (
+    <div className="mt-2 overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--ops-border)" }}>
+      {rows.map((m, i) => (
+        <div
+          key={`${m.month}-${i}`}
+          className="flex items-center gap-2 px-2.5 py-[6.5px]"
+          style={{
+            borderTop: i ? "1px solid var(--ops-border)" : "none",
+            background: m.status === "atrasada" ? "rgba(248,113,113,0.06)" : "transparent",
+          }}
+        >
+          <span
+            className="min-w-[38px] text-[10.5px] font-semibold"
+            style={{ color: "var(--ops-title)", ...TNUM }}
+            title={m.inferred ? "Mês estimado pelo vencimento — a cobrança não tem mês de referência" : undefined}
+          >
+            {m.month}
+            {m.inferred ? "~" : ""}
+          </span>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stCor(m.status) }} />
+          <span className="flex-1 text-[10.5px] font-semibold capitalize" style={{ color: stCor(m.status) }}>
+            {m.status}
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
+            {m.detail}
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
+            {fmtK(m.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+  const cobrarLink = (st: MensalidadeStatus | undefined, view: "charges" | "subscriptions") =>
+    c.client_id && (st === "atrasada" || st === "pendente") ? (
+      <div
+        className="flex items-center gap-2 px-2.5 py-[7px]"
+        style={{ background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
+      >
+        <span className="flex-1 text-[10px]" style={{ color: "var(--ops-sec)" }}>
+          {st === "atrasada" ? "Cobrança vencida — cobre pelo financeiro" : "Cobrança em aberto"}
+        </span>
+        <Link
+          href={`/admin/clients/${c.client_id}?tab=financial&fin_view=${view}`}
+          className="text-[10.5px] font-semibold"
+          style={{ color: "#4E62D8" }}
+        >
+          {st === "atrasada" ? "Cobrar agora" : "Ver fatura"}
+        </Link>
+      </div>
+    ) : null
+  const CICLO: Record<string, string> = {
+    WEEKLY: "semanal",
+    BIWEEKLY: "quinzenal",
+    MONTHLY: "mensal",
+    QUARTERLY: "trimestral",
+    SEMIANNUALLY: "semestral",
+    YEARLY: "anual",
+  }
+  const assinaturasDaLoja = c.assinaturas ?? []
+  const comissaoMeses = c.comissao_meses ?? []
+  const temComissao = (c.comissao_history?.length ?? 0) > 0
 
   return (
     <aside
@@ -911,96 +1232,184 @@ function CarteiraDrawer({
       {/* Pagamentos */}
       <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
         {secTitle("Pagamentos")}
-        <div className="mt-2 flex items-center gap-[9px]">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{
-              background:
-                c.mensalidade === "paga"
-                  ? "var(--ops-pos)"
-                  : c.mensalidade === "pendente"
-                    ? "var(--ops-warn)"
-                    : c.mensalidade === "atrasada"
-                      ? "var(--ops-neg)"
-                      : "var(--ops-track, rgba(0,0,0,0.1))",
-            }}
-          />
-          <span className="flex-1 text-[11.5px]" style={{ color: "var(--ops-text)" }}>
-            Mensalidade
-          </span>
-          <span
-            className="text-[11.5px] font-semibold capitalize"
-            style={{
-              color:
-                c.mensalidade === "paga"
-                  ? "var(--ops-pos)"
-                  : c.mensalidade === "pendente"
-                    ? "var(--ops-warn)"
-                    : c.mensalidade === "atrasada"
-                      ? "var(--ops-neg)"
-                      : "var(--ops-mut)",
-            }}
-          >
-            {c.mensalidade === "none" ? "—" : c.mensalidade}
-          </span>
-          <span className="w-[56px] text-right text-[11.5px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
-            {c.mrr > 0 ? fmtK(c.mrr) : "—"}
-          </span>
-        </div>
+        {pagamentoRow(
+          "Mensalidade",
+          c.mensalidade,
+          assinaturasDaLoja.length > 0
+            ? fmtK(assinaturasDaLoja.reduce((s, a) => s + a.value, 0))
+            : c.mrr > 0
+              ? fmtK(c.mrr)
+              : "—",
+        )}
+
+        {/* Assinatura que cobre ESTA loja — o vínculo é o que deixa a
+            carteira falar por loja em cliente com várias. */}
+        {assinaturasDaLoja.length > 0 ? (
+          <div className="mt-1.5 space-y-0.5 pl-[17px]">
+            {assinaturasDaLoja.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 text-[10.5px]" style={{ color: "var(--ops-sec)" }}>
+                <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                <span style={TNUM}>
+                  {brl0(a.value)} · {CICLO[a.cycle] ?? a.cycle.toLowerCase()}
+                </span>
+              </div>
+            ))}
+            {c.assinaturas_scope === "cliente" && (
+              <div className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                Herdada do cliente (loja única).
+              </div>
+            )}
+          </div>
+        ) : (
+          c.client_id && (
+            <div className="mt-1.5 flex items-center gap-2 pl-[17px] text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+              <span className="flex-1">Sem assinatura vinculada a esta loja.</span>
+              <Link
+                href={`/admin/clients/${c.client_id}?tab=financial&fin_view=subscriptions`}
+                className="font-semibold"
+                style={{ color: "#4E62D8" }}
+              >
+                Vincular
+              </Link>
+            </div>
+          )
+        )}
 
         <div className="mt-[13px] text-[9.5px] font-[650] uppercase tracking-[0.08em]" style={{ color: "var(--ops-mut)" }}>
           Histórico · mensalidade
         </div>
         {c.mensalidade_history.length > 0 ? (
-          <div className="mt-2 overflow-hidden rounded-[8px] border" style={{ borderColor: "var(--ops-border)" }}>
-            {c.mensalidade_history.map((m, i) => (
-              <div
-                key={`${m.month}-${i}`}
-                className="flex items-center gap-2 px-2.5 py-[6.5px]"
-                style={{
-                  borderTop: i ? "1px solid var(--ops-border)" : "none",
-                  background: m.status === "atrasada" ? "rgba(248,113,113,0.06)" : "transparent",
-                }}
-              >
-                <span className="w-[38px] text-[10.5px] font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
-                  {m.month}
-                </span>
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stCor(m.status) }} />
-                <span className="flex-1 text-[10.5px] font-semibold capitalize" style={{ color: stCor(m.status) }}>
-                  {m.status}
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
-                  {m.detail}
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
-                  {fmtK(m.amount)}
-                </span>
-              </div>
-            ))}
-            {c.client_id && (c.mensalidade === "atrasada" || c.mensalidade === "pendente") && (
-              <div
-                className="flex items-center gap-2 border-t px-2.5 py-[7px]"
-                style={{ borderColor: "var(--ops-border)", background: "var(--ops-hover, rgba(0,0,0,0.02))" }}
-              >
-                <span className="flex-1 text-[10px]" style={{ color: "var(--ops-sec)" }}>
-                  {c.mensalidade === "atrasada" ? "Fatura vencida — cobre pelo financeiro" : "Fatura em aberto"}
-                </span>
-                <Link
-                  href={`/admin/clients/${c.client_id}`}
-                  className="text-[10.5px] font-semibold"
-                  style={{ color: "#4E62D8" }}
-                >
-                  {c.mensalidade === "atrasada" ? "Cobrar agora" : "Ver fatura"}
-                </Link>
-              </div>
-            )}
-          </div>
+          <>
+            {historico(c.mensalidade_history)}
+            {cobrarLink(c.mensalidade, "charges")}
+          </>
         ) : (
           <div className="mt-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
-            Nenhuma fatura registrada para este cliente.
+            Nenhuma mensalidade registrada para esta loja.
           </div>
         )}
+
+        {/* Comissão: balde separado — a de julho vence em agosto, e a
+            grade mês a mês mostra o furo ("não cobrada"). Só aparece
+            em loja que tem comissão modelada. */}
+        {temComissao && (
+          <>
+            {pagamentoRow(
+              "Comissão",
+              c.comissao,
+              c.comissao_history?.[0] ? fmtK(c.comissao_history[0].amount) : "—",
+            )}
+            {comissaoMeses.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1 pl-[17px]">
+                {comissaoMeses.map((m) => (
+                  <span
+                    key={m.month}
+                    title={`${m.label}: ${m.status}${m.amount ? ` · ${brl0(m.amount)}` : ""}`}
+                    className="inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-[2px] text-[10px] font-semibold"
+                    style={{
+                      borderColor: "var(--ops-border)",
+                      color: stCor(m.status),
+                      background: m.status === "não cobrada" ? "rgba(248,113,113,0.06)" : "transparent",
+                      ...TNUM,
+                    }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: stCor(m.status) }} />
+                    {m.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {comissaoMeses.some((m) => m.status === "não cobrada") && (
+              <div className="mt-1 pl-[17px] text-[10px]" style={{ color: "var(--ops-neg)" }}>
+                {comissaoMeses.filter((m) => m.status === "não cobrada").map((m) => m.label).join(", ")} sem
+                comissão cobrada.
+              </div>
+            )}
+            <div className="mt-[13px] text-[9.5px] font-[650] uppercase tracking-[0.08em]" style={{ color: "var(--ops-mut)" }}>
+              Histórico · comissão
+            </div>
+            {historico(c.comissao_history ?? [])}
+            {cobrarLink(c.comissao, "charges")}
+          </>
+        )}
+
+        {c.pagamentos_sem_loja ? (
+          <div className="mt-2 flex items-center gap-2 text-[10.5px]" style={{ color: "var(--ops-warn)" }}>
+            <span className="flex-1">
+              {c.pagamentos_sem_loja} cobrança{c.pagamentos_sem_loja > 1 ? "s" : ""} do cliente sem loja definida
+              — não entra{c.pagamentos_sem_loja > 1 ? "m" : ""} aqui.
+            </span>
+            {c.client_id && (
+              <Link
+                href={`/admin/clients/${c.client_id}?tab=financial`}
+                className="font-semibold"
+                style={{ color: "#4E62D8" }}
+              >
+                Classificar
+              </Link>
+            )}
+          </div>
+        ) : null}
       </div>
+
+      {/* Onboarding — espelho do pipeline operacional */}
+      {c.onboarding && (
+        <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
+          {secTitle("Onboarding")}
+          <div className="mt-2 flex flex-col gap-1.5 text-[11.5px]" style={{ color: "var(--ops-sec)" }}>
+            <span className="flex justify-between gap-2">
+              <span>Fase atual</span>
+              <strong
+                className="min-w-0 truncate text-right font-semibold"
+                style={{ color: "var(--ops-title)" }}
+                title={c.onboarding.phase ?? undefined}
+              >
+                {c.onboarding.phase ?? "—"}
+              </strong>
+            </span>
+            <span className="flex justify-between">
+              <span>Nesta fase</span>
+              <strong className="font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
+                {c.onboarding.since
+                  ? (() => {
+                      const d = Math.max(
+                        0,
+                        Math.round(
+                          (Date.now() - new Date(c.onboarding.since).getTime()) / 86_400_000,
+                        ),
+                      )
+                      return d === 0 ? "hoje" : `há ${d}d`
+                    })()
+                  : "—"}
+              </strong>
+            </span>
+            <span className="flex justify-between">
+              <span>Status</span>
+              <strong
+                className="font-semibold"
+                style={{
+                  color: c.onboarding.in_onboarding ? "var(--ops-warn)" : "var(--ops-pos)",
+                }}
+              >
+                {c.onboarding.in_onboarding ? "Em implantação" : "Em acompanhamento"}
+              </strong>
+            </span>
+            <Link
+              href={ROUTES.ADMIN.ONBOARDING_V2.DETAIL(c.onboarding.id)}
+              className="mt-0.5 font-semibold hover:underline"
+              style={{ color: "#4E62D8" }}
+            >
+              Abrir onboarding →
+            </Link>
+            {c.onboarding.in_onboarding && (
+              <span className="text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                O card sai da coluna Onboarding sozinho quando o onboarding chegar em
+                &ldquo;Cliente ativo&rdquo;.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Relacionamento */}
       <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
@@ -1012,9 +1421,44 @@ function CarteiraDrawer({
               className="font-semibold"
               style={{ color: (c.call_days ?? 0) >= 21 ? "var(--ops-warn)" : "var(--ops-title)", ...TNUM }}
             >
-              {c.call_days == null ? "nunca" : c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}
+              {/* A DATA primeiro — "há 22d" não diz quando foi */}
+              {c.last_call_at
+                ? `${new Date(c.last_call_at).toLocaleDateString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "2-digit",
+                  })} · ${c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}`
+                : c.call_days == null
+                  ? "nunca"
+                  : c.call_days === 0
+                    ? "hoje"
+                    : `há ${c.call_days}d`}
             </strong>
           </span>
+          {c.last_call_fathom_url && (
+            <span className="flex justify-between">
+              <span>Gravação</span>
+              <a
+                href={c.last_call_fathom_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold hover:underline"
+                style={{ color: "#4E62D8" }}
+                title="Abrir a gravação no Fathom"
+              >
+                ▶ Ver no Fathom
+              </a>
+            </span>
+          )}
+          {c.last_call_notes && (
+            <span
+              className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-[11px]"
+              style={{ color: "var(--ops-mut)" }}
+              title={c.last_call_notes}
+            >
+              {c.last_call_notes}
+            </span>
+          )}
           <span className="flex justify-between">
             <span>Próxima call</span>
             <strong className="font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
@@ -1022,6 +1466,7 @@ function CarteiraDrawer({
             </strong>
           </span>
         </div>
+        <NextMeetingAgendaBlock storeId={c.store_id} onChanged={onCallsChanged} />
         <button
           onClick={onRegistrarCall}
           className="mt-2.5 h-[29px] rounded-[7px] border px-3 text-[11.5px] font-medium"
@@ -1076,6 +1521,226 @@ const HEALTH_COMPONENT_LABELS: Array<[key: string, label: string]> = [
  * "por quê" do número que posiciona a loja na carteira. Regras e
  * fórmulas completas ficam no painel "Regras do score" do header.
  */
+/**
+ * Histórico curto de calls + pauta da próxima, buscando DIRETO da loja
+ * (/api/stores/:id/calls). Independe do payload da carteira de
+ * propósito: a data e o link da gravação precisam aparecer mesmo que a
+ * agregação da carteira não os traga.
+ */
+function NextMeetingAgendaBlock({
+  storeId,
+  onChanged,
+}: {
+  storeId: string
+  onChanged?: () => void
+}) {
+  const { data, mutate } = useSWR<{
+    calls?: Array<{
+      id: string
+      conducted_at: string
+      notes: string | null
+      fathom_url?: string | null
+      reference_months?: string[] | null
+      conducted_by_profile?: { name: string } | null
+    }>
+    coverage?: { missing: string[] }
+    next_meeting_agenda?: {
+      pending: Array<{ description: string; days_open: number; assignee: string | null }>
+      completed_since_last: string[]
+    }
+  }>(
+    `/api/stores/${storeId}/calls`,
+    (url: string) => fetch(url).then((r) => (r.ok ? r.json() : {})),
+    { revalidateOnFocus: false },
+  )
+  const calls = data?.calls ?? []
+  const agenda = data?.next_meeting_agenda
+  const pending = agenda?.pending ?? []
+  const done = agenda?.completed_since_last ?? []
+  const missing = data?.coverage?.missing ?? []
+
+  // Exclusão em dois toques: o ✕ pede confirmação na própria linha —
+  // apagar uma call leva junto o resumo e a gravação.
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [apagando, setApagando] = useState<string | null>(null)
+
+  const excluir = async (callId: string) => {
+    setApagando(callId)
+    setErro(null)
+    try {
+      const res = await fetch(`/api/stores/${storeId}/calls/${callId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}))
+        throw new Error((b as { error?: string })?.error || "Não foi possível excluir")
+      }
+      setConfirmId(null)
+      await mutate()
+      onChanged?.()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível excluir a call")
+    } finally {
+      setApagando(null)
+    }
+  }
+
+  return (
+    <>
+      {missing.length > 0 && (
+        <div
+          className="mt-3 rounded-[8px] border px-2.5 py-2 text-[11px]"
+          style={{ borderColor: "var(--ops-warn)", color: "var(--ops-warn)" }}
+          role="status"
+        >
+          <strong className="font-semibold">Sem alinhamento:</strong>{" "}
+          {missing.slice(0, 6).map(monthLabel).join(" · ")}
+          {missing.length > 6 && ` +${missing.length - 6}`}
+        </div>
+      )}
+      {calls.length > 0 && (
+        <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
+          <div
+            className="text-[9.5px] font-[650] uppercase tracking-[0.07em]"
+            style={{ color: "var(--ops-mut)" }}
+          >
+            Calls registradas
+          </div>
+          <div className="mt-1.5 flex flex-col gap-2">
+            {calls.slice(0, 3).map((c) => (
+              <div key={c.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between gap-2 text-[11.5px]">
+                  <span className="font-medium" style={{ color: "var(--ops-title)", ...TNUM }}>
+                    {new Date(c.conducted_at).toLocaleDateString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                    })}
+                    {c.conducted_by_profile?.name && (
+                      <span style={{ color: "var(--ops-mut)", fontWeight: 400 }}>
+                        {" "}
+                        · {c.conducted_by_profile.name.split(" ")[0]}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {c.fathom_url ? (
+                      <a
+                        href={c.fathom_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold hover:underline"
+                        style={{ color: "#4E62D8" }}
+                        title="Abrir a gravação no Fathom"
+                      >
+                        ▶ Fathom
+                      </a>
+                    ) : (
+                      <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        sem gravação
+                      </span>
+                    )}
+                    {confirmId === c.id ? (
+                      <span className="flex items-center gap-1.5 text-[10.5px]">
+                        <button
+                          onClick={() => void excluir(c.id)}
+                          disabled={apagando === c.id}
+                          className="font-semibold disabled:opacity-60"
+                          style={{ color: "var(--ops-neg)" }}
+                        >
+                          {apagando === c.id ? "excluindo…" : "excluir"}
+                        </button>
+                        <button onClick={() => setConfirmId(null)} style={{ color: "var(--ops-mut)" }}>
+                          não
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setErro(null)
+                          setConfirmId(c.id)
+                        }}
+                        title="Excluir esta call"
+                        aria-label="Excluir esta call"
+                        className="leading-none opacity-60 hover:opacity-100"
+                        style={{ color: "var(--ops-mut)" }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {(c.reference_months?.length ?? 0) > 0 && (
+                  <span className="text-[10px]" style={{ color: "var(--ops-sec)" }}>
+                    ref. {(c.reference_months ?? []).map(monthLabel).join(" · ")}
+                  </span>
+                )}
+                {c.notes && (
+                  <span
+                    className="line-clamp-2 whitespace-pre-wrap text-[10.5px]"
+                    style={{ color: "var(--ops-mut)" }}
+                    title={c.notes}
+                  >
+                    {c.notes}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          {calls.length > 3 && (
+            <div className="mt-2 text-[10px]" style={{ color: "var(--ops-mut)" }}>
+              +{calls.length - 3} call(s) anteriores — veja o histórico na página da loja.
+            </div>
+          )}
+          {erro && (
+            <div className="mt-2 text-[10.5px]" style={{ color: "var(--ops-neg)" }} role="alert">
+              {erro}
+            </div>
+          )}
+        </div>
+      )}
+      {(pending.length > 0 || done.length > 0) && (
+    <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
+      <div className="text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+        Para a próxima call
+      </div>
+      {pending.length > 0 ? (
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {pending.slice(0, 5).map((p, i) => (
+            <li key={i} className="flex items-start justify-between gap-2 text-[11.5px]">
+              <span style={{ color: "var(--ops-title)" }}>
+                {p.description}
+                {p.assignee && (
+                  <span style={{ color: "var(--ops-mut)" }}> · {p.assignee}</span>
+                )}
+              </span>
+              <span
+                className="shrink-0 text-[10.5px]"
+                style={{
+                  color: p.days_open >= 30 ? "var(--ops-neg)" : p.days_open >= 14 ? "var(--ops-warn)" : "var(--ops-mut)",
+                  ...TNUM,
+                }}
+              >
+                {p.days_open}d
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-1.5 text-[11.5px]" style={{ color: "var(--ops-pos)" }}>
+          Nenhuma pendência aberta.
+        </div>
+      )}
+      {done.length > 0 && (
+        <div className="mt-2 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+          Entregue desde então: {done.slice(0, 3).join(" · ")}
+        </div>
+      )}
+    </div>
+      )}
+    </>
+  )
+}
+
 function DrawerHealth({ storeId, score }: { storeId: string; score: number | null }) {
   const { data } = useSWR<{ history: Array<{ health_score: number; components: Record<string, number>; created_at: string }> }>(
     `/api/admin/stores/${storeId}/health-history?limit=1`,

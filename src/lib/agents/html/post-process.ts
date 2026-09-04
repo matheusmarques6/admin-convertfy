@@ -227,13 +227,21 @@ export function stripCfyBlockMarkers(html: string): string {
 }
 
 /**
- * Remove os atributos internos de endereçamento (data-cfy-slot/data-cfy-row)
- * que a anotação de slots injetava. A anotação morreu com o vocabulário
- * {{TAG}} (20/08) — o strip fica porque documentos persistidos em estágio
- * intermediário ainda podem carregá-los, e atributo interno jamais chega
- * ao cliente de email. Migrado de slot-annotate na remoção do módulo.
+ * Remove os atributos internos de endereçamento. A anotação de slots morreu
+ * com o vocabulário {{TAG}} (20/08) — o strip fica porque documentos
+ * persistidos em estágio intermediário ainda podem carregá-los, e atributo
+ * interno jamais chega ao cliente de email. Migrado de slot-annotate na
+ * remoção do módulo.
+ *
+ * `idx` e `font` entraram em 04/09: são as anotações que a TELA injeta para
+ * tornar bloco e declaração de fonte clicáveis no preview
+ * (`annotateRegionsForEditing`, `annotateFontDeclarations`). Elas só existem
+ * na cópia que vai para o iframe e nunca deveriam ser gravadas — este é o
+ * cinto para o dia em que alguém salvar o documento anotado por engano. O
+ * comentário do `block-regions` já afirmava que o strip limpava "qualquer
+ * `data-cfy-*`"; agora é verdade.
  */
-const CFY_SLOT_ATTR = /\s+data-cfy-(?:slot|row)\s*=\s*"[^"]*"/gi
+const CFY_SLOT_ATTR = /\s+data-cfy-(?:slot|row|idx|font)\s*=\s*"[^"]*"/gi
 
 export function stripSlotAttributes(html: string): string {
   return html.replace(CFY_SLOT_ATTR, "")

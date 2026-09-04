@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from "react"
-import { Plus, RefreshCw, Trash2, X } from "lucide-react"
+import { Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react"
 
 export type ManageKind = "skills" | "mcp"
 
@@ -115,6 +115,45 @@ function SkillsDialog({ ws, onClose }: { ws: string; onClose: () => void }) {
   const [editing, setEditing] = useState<Partial<SkillRow> | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // "Criar com IA": descreve em uma frase (+ exemplo real opcional),
+  // a IA escreve a skill no template da casa e o rascunho cai no form
+  // de edição pra revisão humana — nada é salvo sem revisar.
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiDesc, setAiDesc] = useState("")
+  const [aiExample, setAiExample] = useState("")
+  const [aiBusy, setAiBusy] = useState(false)
+
+  const generateWithAi = async () => {
+    if (aiDesc.trim().length < 10 || aiBusy) return
+    setAiBusy(true)
+    setErr(null)
+    try {
+      const body = (await jsonOrThrow(
+        await fetch("/api/ai/skills/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: aiDesc.trim(),
+            workspace: ws,
+            example: aiExample.trim() || null,
+          }),
+        }),
+      )) as { draft: { name: string; description: string; instructions: string } }
+      setEditing({
+        name: body.draft.name,
+        description: body.draft.description,
+        workspace: ws,
+        instructions: body.draft.instructions,
+      })
+      setAiOpen(false)
+      setAiDesc("")
+      setAiExample("")
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao gerar a skill")
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   const load = async () => {
     try {
@@ -230,13 +269,69 @@ function SkillsDialog({ ws, onClose }: { ws: string; onClose: () => void }) {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setEditing({ workspace: ws })}
-            className="mt-3.5 inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
-            style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
-          >
-            <Plus className="h-3.5 w-3.5" /> Nova skill
-          </button>
+          <div className="mt-3.5 flex items-center gap-2">
+            <button
+              onClick={() => setEditing({ workspace: ws })}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
+              style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+            >
+              <Plus className="h-3.5 w-3.5" /> Nova skill
+            </button>
+            <button
+              onClick={() => setAiOpen(!aiOpen)}
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-semibold"
+              style={{ background: "rgba(78,98,216,0.09)", color: BRAND }}
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Criar com IA
+            </button>
+          </div>
+          {aiOpen && (
+            <div className="mt-3 rounded-[10px] border p-3" style={{ borderColor: HAIR }}>
+              <label className={labelCls} style={{ color: "var(--ops-mut)" }}>
+                O que a skill deve fazer?
+              </label>
+              <textarea
+                value={aiDesc}
+                onChange={(e) => setAiDesc(e.target.value)}
+                rows={2}
+                placeholder='ex.: "relatório semanal de performance no padrão que mando pros clientes, com destaque de quedas e 3 ações"'
+                className="w-full resize-y rounded-[8px] border bg-transparent px-2.5 py-2 text-[12.5px] leading-[1.55] outline-none"
+                style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+              />
+              <label className={labelCls} style={{ color: "var(--ops-mut)" }}>
+                Exemplo real do resultado desejado (opcional — a IA destila o padrão)
+              </label>
+              <textarea
+                value={aiExample}
+                onChange={(e) => setAiExample(e.target.value)}
+                rows={4}
+                placeholder="cole aqui um relatório/email/mensagem real no formato que você quer"
+                className="w-full resize-y rounded-[8px] border bg-transparent px-2.5 py-2 text-[12.5px] leading-[1.55] outline-none"
+                style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                  O rascunho abre no editor pra você revisar antes de salvar.
+                </span>
+                <button
+                  onClick={() => void generateWithAi()}
+                  disabled={aiBusy || aiDesc.trim().length < 10}
+                  className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: BRAND }}
+                >
+                  {aiBusy ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Gerando…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5" /> Gerar skill
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {editing && (
@@ -303,8 +398,6 @@ const OBSIDIAN_PRESET = {
   url: "",
   hint: "Exponha seu vault via um servidor MCP do Obsidian (ex.: obsidian-mcp + Local REST API) atrás de HTTPS público — um túnel (Cloudflare Tunnel/ngrok) resolve — e cole a URL do endpoint MCP aqui.",
 }
-
-const OMNISEND_MCP_URL = "https://mcp.omnisend.com/mcp"
 
 /** Inicia o fluxo OAuth de um servidor MCP e redireciona pro login. */
 export async function startMcpOAuth(args: {
@@ -423,12 +516,35 @@ function McpDialog({
       onClose={onClose}
     >
       {err && (
-        <div className="mt-2 rounded-[8px] border px-3 py-2 text-[11px]" style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }} role="alert">
+        // O erro do discovery vem com a lista do que foi tentado (URL →
+        // status). Precisa caber inteiro: era aqui que "deu erro ao
+        // conectar" morria sem dizer onde travou.
+        <div
+          className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border px-3 py-2 text-[11px] leading-[1.55]"
+          style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }}
+          role="alert"
+        >
           {err}
         </div>
       )}
       {!adding && (
         <>
+          {/* A confusão mais comum: achar que a API key da plataforma já
+              é a conexão do MCP. São coisas diferentes. */}
+          <div
+            className="mt-2.5 rounded-[8px] border px-3 py-2 text-[11px] leading-[1.6]"
+            style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+          >
+            <strong style={{ color: "var(--ops-title)" }}>
+              O servidor MCP das plataformas somos nós.
+            </strong>{" "}
+            A ConvertIA fala com Omnisend, Shopify e Klaviyo pela API key de cada loja — é o
+            desenho que a própria Omnisend recomenda para sistema próprio, e já está de pé
+            (cada loja tem o endpoint MCP dela na aba Setup, para plugar no Claude ou no
+            Cursor). Não há o que &ldquo;conectar&rdquo; aqui para elas. Esta lista é para
+            servidores MCP de TERCEIROS — um endereço HTTPS que fala o protocolo MCP, com
+            autenticação própria (token Bearer ou login OAuth).
+          </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             {servers.map((s) => (
               <div key={s.id} className="rounded-[8px] border px-2.5 py-2" style={{ borderColor: HAIR }}>
@@ -467,26 +583,11 @@ function McpDialog({
             )}
           </div>
           <div className="mt-3.5 flex flex-wrap gap-2">
-            <button
-              onClick={async () => {
-                setBusy(true)
-                const e = await startMcpOAuth({
-                  name: "Omnisend (MCP oficial)",
-                  url: OMNISEND_MCP_URL,
-                  allow_write: true,
-                })
-                if (e) {
-                  setErr(e)
-                  setBusy(false)
-                }
-              }}
-              disabled={busy}
-              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-semibold text-white disabled:opacity-60"
-              style={{ background: "#5C6AC4" }}
-              title="Autoriza via OAuth na sua conta Omnisend — escolha permissões de escrita na tela deles para criar/editar automações, campanhas e popups"
-            >
-              {busy ? "Redirecionando…" : "Conectar Omnisend (OAuth)"}
-            </button>
+            {/* Saiu o "Conectar Omnisend (OAuth)": a própria Omnisend
+                confirmou o desenho — o servidor MCP é o NOSSO, e a
+                autenticação com eles é a API key da loja (já gravada).
+                O OAuth deles existe para app SaaS que autoriza pelo
+                login do usuário final, que não é o nosso caso. */}
             <button
               onClick={() => setAdding({ name: "", url: "", auth_token: "", store_id: null, allow_write: false })}
               className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border border-dashed px-3 text-[12px] font-medium"
@@ -512,8 +613,10 @@ function McpDialog({
             </button>
           </div>
           <div className="mt-1.5 text-[10px] leading-[1.5]" style={{ color: "var(--ops-mut)" }}>
-            Omnisend multi-marca: conecte de novo trocando a URL para
-            https://mcp.omnisend.com/v2/mcp?brand=&lt;marca&gt; via &ldquo;Adicionar servidor&rdquo; + OAuth.
+            Omnisend, Shopify e Klaviyo não entram aqui: eles já são MCP da loja pela API key
+            cadastrada nas integrações — uma chave por loja, que é como a própria Omnisend
+            recomenda para sistema próprio. Este espaço é para servidores MCP de terceiros
+            (Obsidian, ERP, o que for).
           </div>
         </>
       )}

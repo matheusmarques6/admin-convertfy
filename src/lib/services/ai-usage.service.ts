@@ -45,6 +45,11 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "claude-opus-4-8": { input: 15.0, output: 75.0 },
   "anthropic/claude-opus-4.8": { input: 15.0, output: 75.0 },
   "anthropic/claude-sonnet-4.6": { input: 3.0, output: 15.0 },
+  // Claude 5 (ConvertIA) — preço de referência do tier; o custo REAL do
+  // OpenRouter (usage.cost) tem precedência quando vem.
+  "anthropic/claude-fable-5.1": { input: 25.0, output: 125.0 },
+  "anthropic/claude-opus-5": { input: 15.0, output: 75.0 },
+  "anthropic/claude-sonnet-5": { input: 3.0, output: 15.0 },
   // Moonshot (ConvertIA)
   "moonshotai/kimi-k3": { input: 0.6, output: 2.5 },
   // Google (ConvertIA)
@@ -99,6 +104,13 @@ export interface RecordAiUsageParams {
   storeId?: string | null
   context?: Record<string, unknown> | null
   errorMessage?: string | null
+  /**
+   * Custo REAL em centavos de USD (ex.: usage.cost do OpenRouter).
+   * Quando presente e > 0, tem precedência sobre o cálculo pela tabela
+   * PRICING — a ConvertIA usa isto pro guard-rail diário bater com a
+   * fatura de verdade.
+   */
+  costCents?: number | null
 }
 
 /**
@@ -117,7 +129,10 @@ export async function recordAiUsage(params: RecordAiUsageParams): Promise<void> 
       status: params.status ?? "success",
       tokens_input: tokensInput,
       tokens_output: tokensOutput,
-      cost_cents: computeAiCostCents(params.model, tokensInput, tokensOutput),
+      cost_cents:
+        params.costCents != null && params.costCents > 0
+          ? Math.round(params.costCents * 10000) / 10000
+          : computeAiCostCents(params.model, tokensInput, tokensOutput),
       duration_ms: params.durationMs ?? 0,
       user_id: params.userId ?? null,
       org_id: params.orgId ?? null,

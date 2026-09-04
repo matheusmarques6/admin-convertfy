@@ -4,6 +4,10 @@ import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import {
+  isMissingClassificationColumn,
+  stripClassification,
+} from "@/lib/services/charge-classification"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasPayments")
@@ -124,6 +128,7 @@ export async function POST(request: NextRequest) {
     let allPayments: Array<{
       id: string; customer: string; value: number; status: string;
       billingType: string; dueDate: string; paymentDate?: string; description?: string;
+      subscription?: string;
     }> = []
 
     let offset = 0
@@ -144,21 +149,37 @@ export async function POST(request: NextRequest) {
       try {
         const clientId = clientMap.get(payment.customer)
         const status = mapAsaasStatusToInternal(payment.status as never)
-        const invoiceData = {
+        const invoiceData: Record<string, unknown> = {
           asaas_id: payment.id, client_id: clientId || null, amount: payment.value,
           due_date: payment.dueDate, payment_date: payment.paymentDate || null,
           status, description: payment.description || `Assinatura #${payment.id}`,
         }
 
-        const { data: existing } = await supabase.from("invoices").select("id").eq("asaas_id", payment.id).single()
+        const { data: existing } = await supabase
+          .from("invoices")
+          .select("id, charge_type")
+          .eq("asaas_id", payment.id)
+          .single()
 
-        if (existing) {
-          const { error } = await supabase.from("invoices").update({ ...invoiceData, updated_at: new Date().toISOString() }).eq("id", existing.id)
-          if (error) errors++; else updated++
-        } else {
-          const { error } = await supabase.from("invoices").insert(invoiceData)
-          if (error) errors++; else synced++
+        // Pagamento de assinatura: grava o sub_… e classifica como
+        // assinatura sem sobrescrever classificação manual.
+        if (payment.subscription) {
+          invoiceData.asaas_subscription_id = payment.subscription
+          const current = (existing as { charge_type?: string } | null)?.charge_type
+          if (!existing || !current || current === "other") invoiceData.charge_type = "subscription"
         }
+
+        const write = (row: Record<string, unknown>) =>
+          existing
+            ? supabase.from("invoices").update({ ...row, updated_at: new Date().toISOString() }).eq("id", existing.id)
+            : supabase.from("invoices").insert(row)
+        let { error } = await write(invoiceData)
+        if (error && isMissingClassificationColumn(error)) {
+          ;({ error } = await write(stripClassification(invoiceData)))
+        }
+        if (error) errors++
+        else if (existing) updated++
+        else synced++
       } catch { errors++ }
     }
 

@@ -1294,6 +1294,99 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 ---
 
+## ConvertIA — resposta legível, indicador de geração, F5 na mesma conversa (set/2026)
+
+Sintoma: parede de texto (a narração "vou buscar o popup…" de cada
+rodada de tools colava na resposta), nada dizia se ainda estava gerando,
+e recarregar a página voltava na tela inicial com a conversa em branco
+até o turno terminar (a linha do assistente só era gravada no FIM).
+
+`POST /api/ai/convertia/chat`: **persistência progressiva** — a linha
+em `ai_chat_messages` nasce no início do turno (`meta.streaming=true`,
+`started_at`) e é atualizada a cada ~2,5 s (throttle, cadeia de
+promises para o update final ser o último); `content` = resposta FINAL
+(a rodada que não chamou tool) e `meta.progress[]` = narração das
+rodadas intermediárias (evento SSE `round_end` move o texto da bolha
+para o processo). O modelo NÃO recebe mais `request.signal`: F5 ou
+troca de conversa não aborta uma ação de escrita pela metade — o turno
+vai até o fim (freio = orçamento de tempo) e fica gravado. Placeholder
+vazio no histórico é filtrado antes de ir ao modelo. Regra de
+FORMATAÇÃO no system prompt (resumo em 1 linha, `###` curtos, listas
+com negrito, tabela para números, narração de no máximo 1 frase por
+rodada).
+
+Chat (`convertia-chat.tsx`): `?conversa=` fica na URL (não é mais
+apagado) + `localStorage convertia:last-conversa:<ws>`; o effect de
+sincronia só grava depois do mount (`hydratedRef`) — senão apagava o
+param antes de ler. Mensagem que chega do banco com `streaming=true`
+entra como "em andamento" com polling de 2,5 s até fechar; passada de
+6 min (maxDuration é 300 s) vira "interrompida". Enquanto envia, o
+botão vira spinner e o rodapé diz "gerando — aguarde"; a bolha mostra
+"Gerando resposta…" com a última narração em itálico; "Consultou N
+fontes · M etapas" abre o processo completo.
+
+**Composer no padrão Claude (set/2026)**: botão "+" abre anexo,
+conectores·MCP e skills num menu só; a análise profunda virou toggle
+DENTRO do menu de modelo (é um modo do modelo, desabilitado quando o
+modelo não tem `reasoning`); rodapé = "+" · loja · mic · modelo · enviar.
+Lista de modelos em `convertia-models.ts` com grupos claude/outros
+(Opus 4.8 segue padrão; Fable 5.1, Opus 5, Sonnet 5, GPT-5.4, Gemini
+3.5 Flash entraram). Slug que o OpenRouter não serve NÃO derruba o
+turno: `isUnknownModelError` (400/404 falando de model) → fallback para
+o padrão na 1ª rodada com aviso na resposta. Estudo de arquitetura e
+backlog priorizado em `docs/convertia/arquitetura-e-melhorias.md`.
+
+## Financeiro ligado à loja (set/2026, migration 20261113)
+
+Cobrança (`client_charges` local e `invoices` do Asaas) ganhou
+`charge_type` (subscription | commission | other), `reference_months`
+TEXT[] (YYYY-MM — comissão de julho VENCE em agosto, mas é de julho) e
+`store_id`; `invoices.asaas_subscription_id` guarda o `subscription`
+do payment (o sync preenche e classifica como assinatura sem
+sobrescrever classificação manual). `client_subscription_stores`
+liga assinatura a 1..N lojas ("Plano Mensal 2 Lojas"). A view
+`unified_invoices` expõe tudo (colunas APENDADAS) e resolve a
+assinatura local da fatura Asaas pelo `asaas_subscription_id`.
+
+**Carteira por loja** (`cs-carteira.ts`, 20 testes): `splitInvoicesForStore`
+— `store_id` decide; senão assinatura vinculada decide (inclusive
+excluindo a loja que não está no vínculo); senão só entra quando o
+cliente tem UMA loja ativa (multi-loja vira `pagamentos_sem_loja`, que
+o drawer mostra com link "Classificar"). Mensalidade e comissão são
+baldes separados; `comissaoFromInvoices` monta a grade mês a mês até o
+mês PASSADO com "não cobrada" como furo (só em loja que tem comissão).
+Sem `reference_months`, comissão assume o mês ANTERIOR ao vencimento
+e marca `inferred` ("~" na UI).
+
+**Parser da convenção do time** (`charge-description.ts`, 14 testes):
+`inferChargeType` ("comiss" vence tudo), `inferReferenceMonths`
+(nomes, "Julho/Agosto", "abril a junho", ano explícito; abreviações
+mar/set/out NUNCA — "setup", "out of stock"), `monthsLabel`
+("abr–jun/26"), `describeCharge` (texto padrão que o parser lê de
+volta). A migration fez o backfill por regex das 67 faturas (42/50
+comissões com mês; loja por cliente único ou nome da loja na
+descrição); o que sobrou classifica-se à mão em "Classificar (tipo ·
+mês · loja)" no financeiro do cliente → `PUT
+/api/financial/charge-classification` (Asaas ou local). Toda rota que
+grava cobrança degrada sem a migration (retry sem as colunas).
+
+**Vínculo assinatura ↔ lojas**: `store_ids` no POST de
+`/api/client-subscriptions`, `PUT /api/client-subscriptions/[id]/stores`
+(substitui o conjunto; toda loja tem de ser do cliente), stub local
+criado na hora pelo POST de assinatura Asaas (era só no sync). O
+fechamento do negócio (`deals/[id]/billing`) liga assinatura e
+cobranças à loja do onboarding. Card da assinatura mostra as lojas;
+cliente multi-loja sem vínculo vê aviso âmbar.
+
+**Setup da loja editável**: `PATCH /api/admin/stores/[id]` aceita
+nome, URL (normalizada com https e sem barra final), plataforma
+(enum do banco ampliado com tray/vtex/dupla_estrutura), moeda
+(`STORE_CURRENCIES` em `constants/currencies.ts` — lista fechada),
+país/idioma/nicho, MRR, vigência (fim ≥ início) e alerta de receita;
+`assertStoreInUserOrg` fecha por org. Dialog em
+`store-setup-edit-dialog.tsx`, botão "Editar" nas seções Dados da
+loja e Contrato da aba Setup.
+
 ## Metas, previsão e performance — P1 (jul/2026, migration 20261055)
 
 Painel do gestor no topo do dashboard comercial (`performance-panel.tsx`),
@@ -1895,6 +1988,56 @@ consultas, fail-open). Telemetria do run `assembler_chooser`:
 da fase 1 é desligado e a fase 1 chega a ~220 s por email — recomendado
 `DISPATCH_TICK_BUDGET_MS=15000` no ambiente. Mapa completo:
 `docs/email-generation/mapa-estruturador-curador.md`.
+
+**Calibração do Curador** (04/09, migration 20261111): o ciclo que era só
+do Estruturador — orientação do COO (efeito imediato, servida em
+`<orientacao_do_coo>`) + 👍/👎 por run (vira rascunho de nota do vault) —
+passou a valer para o Curador. MESMA tabela (`estruturador_orientacoes` /
+`estruturador_feedback`, nomes históricos), separada pela coluna `agente`:
+escrever para um NÃO instrui o outro. O agente do feedback sai da RUN, não
+do caller. Loader único em `shared/orientacoes-loader.ts` (o `kind` faltava
+no select do Estruturador — das duas orientações de flow, intenção e
+progressão, só a primeira chegava ao prompt). O rascunho do Curador
+(`architect/aprendizado-curador.ts`, puro) fala de ESCOLHA DE BLOCO e
+aponta a nota `lacuna` quando a queixa é "nenhum bloco faz isso" — o
+`aprendizado` do Estruturador fala de sequência e não serviria. Componentes
+`AgentOrientacoes`/`AgentFeedback` (ex-`Estruturador*`) recebem `agente`;
+os escopos `flow:intencao`/`flow:progressao` ficam fora do Curador.
+
+## Tipografia: o agente e a edição humana (set/2026)
+
+**Agente de Tipografia** (migration 20261109, STEP 3.5 da fase 2, entre
+`image_format` e `color_format`): entra DEPOIS que a copy está no HTML, não
+escreve texto. Recebe o INVENTÁRIO numerado das declarações de fonte
+(`typography/inventory.ts`) — nunca o documento — e devolve ops por número
+de item; o código aplica (`typography/apply.ts`). É a lição do `text_format`:
+modelo que recebe 86 KB devolve 86 KB e quebra tabela. Base de conhecimento
+fechada com especialista em `docs/email-generation/agente-tipografia.md`
+(teto de 3 rupturas de família, piso de 16px, CTA rompe por caixa e peso,
+par sans+sans recusado, escala de 3 pesos com distância 200, fundo escuro
+comprime). Fail-open. **Só o CHECK de `email_agent_configs` não basta: sem
+`typography` em `email_generation_runs.agent` o step roda, custa dinheiro e
+some da telemetria** (incidente 04/09, migration 20261110 — mesma armadilha
+do `copy_fit`).
+
+**Edição humana na tela** (04/09, migration 20261112): Editar → aba
+Tipografia no e-mail. Clicar num texto seleciona a DECLARAÇÃO daquele
+elemento (que governa por herança — o contorno mostra o alcance); a lista de
+famílias do documento permite remapear a peça inteira (head + corpo, por
+NOME — `normalizeFonts` cru apagaria a segunda fonte do tipógrafo e daria
+família de título a um corpo levado a 700). `TypographyOp` (agente) e
+`TypographyOpHumana` (painel) são tipos DIFERENTES: `familia` livre e
+`tamanho_px` só existem no segundo, então o agente é fisicamente incapaz de
+pedi-los. A régua vira AVISO para o humano (`avaliarOpsHumanas`) e continua
+descarte para o agente. `sanitizarFamilia` é obrigatório: o nome entra em
+`style="…"` com aspa dupla, e `Arial";x="` injetaria markup num documento
+que vai para o Klaviyo — o guard estrutural não pega. Cada op sobe com
+`esperado` (a tela não tem polling; um re-render entre carregar e salvar faz
+o item 14 virar outro elemento). Grava `html` + `html_marked` num único
+UPDATE — nada de RPC. **Do `typography_override`, só `fontes` sobrevive a um
+re-render**; as ops endereçam por índice e viram registro. "Repensar" é o
+STEP 3.5 fora do runner, com as fontes da PEÇA e os itens tocados pelo
+humano pinados.
 
 ## Proveniência do prompt (migration 20261085, ago/2026)
 

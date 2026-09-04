@@ -13,7 +13,7 @@
  *  KPIs com label uppercase 10.5px + valor 22px tnum + delta colorido
  */
 
-import { ExternalLink, Calendar } from "lucide-react"
+import { ExternalLink, Calendar, Sparkles } from "lucide-react"
 import { Avatar, Badge, C, ChannelIcon, HealthRing, StoreLogo, TNUM } from "./_primitives"
 import { StoreLanguagePopover } from "./store-language-popover"
 import { StoreCountryPopover } from "./store-country-popover"
@@ -138,8 +138,22 @@ export function StoreHero({
           </div>
         </div>
 
-        {/* CSM + Health */}
+        {/* ConvertIA + CSM + Health */}
         <div className="flex items-stretch gap-3 shrink-0">
+          <a
+            href={`/admin/operacional/ia?store=${storeId}`}
+            title="Abrir a ConvertIA com esta loja selecionada"
+            className="flex items-center gap-1.5 px-3 rounded-[8px] text-[12px] font-semibold self-center"
+            style={{
+              background: "#16181D",
+              color: "#fff",
+              height: 32,
+              textDecoration: "none",
+            }}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            ConvertIA
+          </a>
           {cmName && (
             <div
               className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-[8px]"

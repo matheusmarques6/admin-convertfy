@@ -21,6 +21,7 @@ export type PipelineAgentKey =
   | "merge_verifier"
   | "text_format"
   | "image_format"
+  | "typography"
   | "color_format"
   | "background_fit"
   | "html"
@@ -160,6 +161,14 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#FDE68A",
     kind: "texto",
   },
+  typography: {
+    name: "Tipografia",
+    desc: "Decide onde o email rompe a tipografia — família, peso, caixa e espaçamento",
+    color: "#0F766E",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
+    kind: "texto",
+  },
   color_format: {
     name: "Cores & Botões",
     desc: "Conforma cores e botões à identidade — substitui o Refinador",
@@ -241,6 +250,7 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "merge_verifier",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "background_fit",
   "html",

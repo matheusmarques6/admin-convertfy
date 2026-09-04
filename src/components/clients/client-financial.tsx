@@ -37,7 +37,20 @@ import {
   Ban,
   Send,
   Download,
+  Store,
+  Tags,
 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  CHARGE_TYPE_LABELS,
+  describeCharge,
+  inferChargeType,
+  inferReferenceMonths,
+  isChargeType,
+  monthsLabel,
+  type ChargeType,
+} from "@/lib/services/charge-description"
+import { defaultReferenceMonths, monthLabel, monthOptionsFor } from "@/lib/services/call-coverage"
 import {
   Card,
   CardContent,
@@ -131,6 +144,7 @@ interface LocalSubscription {
   next_due_date: string
   notes?: string
   created_at: string
+  asaas_subscription_id?: string | null
 }
 
 interface LocalCharge {
@@ -146,6 +160,191 @@ interface LocalCharge {
   actual_payment_method?: string
   notes?: string
   created_at: string
+  charge_type?: ChargeType | null
+  reference_months?: string[] | null
+  store_id?: string | null
+}
+
+/** Loja do cliente (para vincular assinatura/cobrança). */
+interface ClientStoreLite {
+  id: string
+  store_name: string
+  is_active: boolean | null
+}
+
+/** Classificação do espelho local de uma fatura Asaas (`invoices`). */
+interface InvoiceMeta {
+  id: string
+  charge_type: ChargeType | null
+  reference_months: string[] | null
+  store_id: string | null
+}
+
+/**
+ * Chips de mês (YYYY-MM) — "esta cobrança é referente a que mês?".
+ * Opções: o mês do vencimento e os 11 anteriores, mais recente primeiro.
+ */
+function MonthChips({
+  reference,
+  value,
+  onChange,
+  disabled,
+}: {
+  reference: string
+  value: string[]
+  onChange: (months: string[]) => void
+  disabled?: boolean
+}) {
+  const options = monthOptionsFor(`${reference}T12:00:00`, 12)
+  const toggle = (m: string) =>
+    onChange(value.includes(m) ? value.filter((x) => x !== m) : [...value, m].sort())
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((m) => {
+        const on = value.includes(m)
+        return (
+          <button
+            key={m}
+            type="button"
+            disabled={disabled}
+            onClick={() => toggle(m)}
+            className={cn(
+              "h-7 px-2.5 rounded-[6px] border text-[12px] font-medium tabular-nums transition-colors",
+              on
+                ? "bg-[#1F1F1F] text-white border-[#1F1F1F]"
+                : "bg-white dark:bg-transparent text-gray-700 dark:text-[#EAEDF3] border-[rgba(0,0,0,0.12)] dark:border-[rgba(255,255,255,0.12)] hover:bg-gray-50",
+              disabled && "opacity-50 cursor-not-allowed",
+            )}
+          >
+            {monthLabel(m)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Linha "Lojas" do card da assinatura: quais lojas ela cobre. Sem
+ * vínculo em cliente multi-loja é o caso que a carteira não consegue
+ * atribuir — por isso o aviso e o botão.
+ */
+function SubscriptionStoresRow({
+  storeIds,
+  storeNameById,
+  clientStoreCount,
+  onLink,
+}: {
+  storeIds: string[]
+  storeNameById: Record<string, string>
+  clientStoreCount: number
+  onLink: () => void
+}) {
+  return (
+    <div className="flex justify-between gap-2 pt-1.5 mt-1.5 border-t border-dashed border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+      <span className="text-muted-foreground shrink-0">Lojas</span>
+      <span className="flex flex-wrap justify-end gap-1 min-w-0">
+        {storeIds.length > 0 ? (
+          storeIds.map((id) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-medium rounded-[4px] bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.06)] text-gray-700 dark:text-[#EAEDF3]"
+            >
+              <Store className="h-3 w-3" />
+              {storeNameById[id] ?? "Loja"}
+            </span>
+          ))
+        ) : (
+          <button
+            type="button"
+            onClick={onLink}
+            className={cn(
+              "text-[11px] font-medium underline-offset-2 hover:underline",
+              clientStoreCount > 1 ? "text-[#92400E] dark:text-[#FCD34D]" : "text-[#4E62D8]",
+            )}
+          >
+            {clientStoreCount > 1 ? "Sem loja — vincular" : "Vincular loja"}
+          </button>
+        )}
+      </span>
+    </div>
+  )
+}
+
+/** Checkboxes das lojas do cliente (vínculo de assinatura). */
+function StoreCheckboxList({
+  stores,
+  value,
+  onChange,
+}: {
+  stores: ClientStoreLite[]
+  value: string[]
+  onChange: (ids: string[]) => void
+}) {
+  return (
+    <div className="rounded-[6px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] divide-y divide-[rgba(0,0,0,0.06)] dark:divide-[rgba(255,255,255,0.06)]">
+      {stores.map((s) => {
+        const checked = value.includes(s.id)
+        return (
+          <label
+            key={s.id}
+            className="flex items-center gap-2.5 px-3 py-2 text-[13px] cursor-pointer hover:bg-gray-50 dark:hover:bg-[rgba(255,255,255,0.03)]"
+          >
+            <Checkbox
+              checked={checked}
+              onCheckedChange={(v) =>
+                onChange(v ? [...value, s.id] : value.filter((id) => id !== s.id))
+              }
+            />
+            <span className={cn("flex-1", s.is_active === false && "text-muted-foreground")}>
+              {s.store_name}
+              {s.is_active === false ? " (inativa)" : ""}
+            </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Badge do tipo + meses + loja de uma cobrança. */
+function ChargeClassBadges({
+  chargeType,
+  months,
+  storeName,
+}: {
+  chargeType?: ChargeType | null
+  months?: string[] | null
+  storeName?: string | null
+}) {
+  const label = chargeType && isChargeType(chargeType) ? CHARGE_TYPE_LABELS[chargeType] : null
+  const ml = monthsLabel(months)
+  if (!label && !ml && !storeName) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1 mt-0.5">
+      {label && (
+        <span
+          className={cn(
+            "inline-flex items-center px-1.5 py-0 text-[10px] font-semibold rounded-[4px] border",
+            chargeType === "commission"
+              ? "bg-[#EEF0FB] text-[#2137B6] border-[#C7CDEF]"
+              : chargeType === "subscription"
+                ? "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]"
+                : "bg-[#F3F4F6] text-gray-600 border-[#E5E7EB]",
+          )}
+        >
+          {label}
+          {ml ? ` · ${ml}` : ""}
+        </span>
+      )}
+      {storeName && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 dark:text-[#8B92A5]">
+          <Store className="h-3 w-3" />
+          {storeName}
+        </span>
+      )}
+    </div>
+  )
 }
 
 interface Contract {
@@ -392,6 +591,37 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const [localSubscriptions, setLocalSubscriptions] = useState<LocalSubscription[]>([])
   const [localCharges, setLocalCharges] = useState<LocalCharge[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
+  // Lojas do cliente + classificação das faturas Asaas (espelho local)
+  // + lojas vinculadas por assinatura (migration 20261113).
+  const [clientStores, setClientStores] = useState<ClientStoreLite[]>([])
+  const [invoiceMetaByAsaasId, setInvoiceMetaByAsaasId] = useState<Record<string, InvoiceMeta>>({})
+  const [storeIdsBySub, setStoreIdsBySub] = useState<Record<string, string[]>>({})
+  // Dialog "Classificar cobrança" (tipo / meses / loja) — Asaas ou local.
+  const [classifyTarget, setClassifyTarget] = useState<{
+    source: "asaas" | "local"
+    id: string
+    description: string
+    dueDate: string
+    chargeType: ChargeType
+    months: string[]
+    storeId: string
+  } | null>(null)
+  const [isClassifying, setIsClassifying] = useState(false)
+  // Dialog "Vincular lojas" de uma assinatura.
+  const [linkTarget, setLinkTarget] = useState<{
+    localId: string | null
+    asaasId: string | null
+    name: string
+    value: number
+    cycle: string
+    storeIds: string[]
+  } | null>(null)
+  const [isLinking, setIsLinking] = useState(false)
+  const activeStores = useMemo(() => clientStores.filter((s) => s.is_active !== false), [clientStores])
+  const storeNameById = useMemo(
+    () => Object.fromEntries(clientStores.map((s) => [s.id, s.store_name])) as Record<string, string>,
+    [clientStores],
+  )
   const [selectedYear, setSelectedYear] = useState(initialYear)
   const [activeView, setActiveView] = useState<"charges" | "subscriptions" | "contracts">(validView)
 
@@ -465,6 +695,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     description: "",
     installmentCount: "1",
     paymentMethod: "asaas",
+    // Classificação: tipo, meses de referência (comissão), loja e
+    // assinatura (quando é mensalidade de uma assinatura local).
+    chargeType: "subscription" as ChargeType,
+    referenceMonths: [] as string[],
+    storeId: "",
+    subscriptionId: "",
   })
 
   const [subscriptionForm, setSubscriptionForm] = useState({
@@ -475,6 +711,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     billingType: "UNDEFINED" as "UNDEFINED" | "PIX" | "CREDIT_CARD" | "BOLETO",
     startDate: new Date().toISOString().split("T")[0],
     notes: "",
+    storeIds: [] as string[],
   })
 
   const [statusForm, setStatusForm] = useState({
@@ -490,10 +727,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, selectedYear])
 
+  // Defaults dependem das lojas carregadas (loja única já escolhida,
+  // mês anterior pré-marcado) — aplicados na ABERTURA do dialog.
+  useEffect(() => {
+    if (createDialogOpen) resetForm()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createDialogOpen])
+  useEffect(() => {
+    if (subscriptionDialogOpen) resetSubscriptionForm()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriptionDialogOpen])
+
   async function loadLocalData() {
     try {
       const supabase = createClient()
-      const [subsResult, chargesResult, contractsResult] = await Promise.all([
+      const [subsResult, chargesResult, contractsResult, storesResult, invoicesResult] = await Promise.all([
         supabase
           .from("client_subscriptions")
           .select("*")
@@ -512,11 +760,53 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           .eq("client_id", clientId)
           .order("created_at", { ascending: false })
           .limit(50),
+        supabase
+          .from("client_stores")
+          .select("id, store_name, is_active")
+          .eq("client_id", clientId)
+          .order("store_name"),
+        // Espelho local das faturas Asaas — é onde mora a classificação.
+        supabase
+          .from("invoices")
+          .select("id, asaas_id, charge_type, reference_months, store_id")
+          .eq("client_id", clientId)
+          .not("asaas_id", "is", null)
+          .limit(500),
       ])
 
       if (subsResult.data) setLocalSubscriptions(subsResult.data)
       if (chargesResult.data) setLocalCharges(chargesResult.data)
       if (contractsResult.data) setContracts(contractsResult.data)
+      if (storesResult.data) setClientStores(storesResult.data as ClientStoreLite[])
+      if (invoicesResult.data) {
+        const map: Record<string, InvoiceMeta> = {}
+        for (const r of invoicesResult.data as Array<InvoiceMeta & { asaas_id: string | null }>) {
+          if (r.asaas_id) {
+            map[r.asaas_id] = {
+              id: r.id,
+              charge_type: r.charge_type ?? null,
+              reference_months: r.reference_months ?? null,
+              store_id: r.store_id ?? null,
+            }
+          }
+        }
+        setInvoiceMetaByAsaasId(map)
+      }
+      // Lojas vinculadas por assinatura (tabela pode não existir ainda).
+      const subIds = (subsResult.data ?? []).map((s: { id: string }) => s.id)
+      if (subIds.length > 0) {
+        const { data: links } = await supabase
+          .from("client_subscription_stores")
+          .select("subscription_id, store_id")
+          .in("subscription_id", subIds)
+        const map: Record<string, string[]> = {}
+        for (const l of (links ?? []) as Array<{ subscription_id: string; store_id: string }>) {
+          ;(map[l.subscription_id] ??= []).push(l.store_id)
+        }
+        setStoreIdsBySub(map)
+      } else {
+        setStoreIdsBySub({})
+      }
     } catch (err) {
       console.error("Error loading local data:", err)
     }
@@ -527,7 +817,32 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o valor e a data de vencimento" })
       return
     }
+    if (chargeForm.chargeType === "commission" && chargeForm.referenceMonths.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Mês de referência",
+        description: "Comissão precisa dizer a que mês (ou meses) se refere.",
+      })
+      return
+    }
     setIsCreating(true)
+    // Descrição padrão segue a convenção que o parser lê de volta
+    // ("Comissão de jul/26 — Loja") — sem isso o Asaas mostraria
+    // "Fatura - Cliente" e ninguém saberia do que era.
+    const storeName = chargeForm.storeId ? storeNameById[chargeForm.storeId] : null
+    const description =
+      chargeForm.description.trim() ||
+      describeCharge({
+        type: chargeForm.chargeType,
+        months: chargeForm.chargeType === "other" ? null : chargeForm.referenceMonths,
+        storeName,
+        clientName,
+      })
+    const classification = {
+      charge_type: chargeForm.chargeType,
+      reference_months: chargeForm.chargeType === "other" ? null : chargeForm.referenceMonths,
+      store_id: chargeForm.storeId || null,
+    }
     try {
       if (chargeForm.paymentMethod === "asaas") {
         const response = await fetch("/api/integrations/asaas/charges", {
@@ -538,8 +853,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             value: centsToReais(chargeForm.value),
             billingType: chargeForm.billingType,
             dueDate: chargeForm.dueDate,
-            description: chargeForm.description || `Fatura - ${clientName}`,
+            description,
             installmentCount: parseInt(chargeForm.installmentCount),
+            ...classification,
           }),
         })
         const result = await response.json()
@@ -548,6 +864,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           toast({ title: "Fatura criada!" })
           mutatePayments()
           mutateSubscriptions()
+          loadLocalData()
         } else {
           toast({ variant: "destructive", title: "Erro ao criar fatura", description: result.error })
         }
@@ -557,11 +874,16 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             client_id: clientId,
-            description: chargeForm.description || `Fatura - ${clientName}`,
+            description,
             value: centsToReais(chargeForm.value),
             due_date: chargeForm.dueDate,
             status: "pending",
             payment_method: chargeForm.paymentMethod,
+            subscription_id:
+              chargeForm.chargeType === "subscription" && chargeForm.subscriptionId
+                ? chargeForm.subscriptionId
+                : undefined,
+            ...classification,
           }),
         })
         const resData = await res.json()
@@ -597,13 +919,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             nextDueDate: subscriptionForm.startDate,
             description: subscriptionForm.name,
             billingType: subscriptionForm.billingType,
+            storeIds: subscriptionForm.storeIds,
           }),
         })
         const result = await response.json()
         if (response.ok && result.subscription) {
-          toast({ title: "Assinatura criada", description: `ID: ${result.subscription?.id}` })
+          toast({
+            title: "Assinatura criada",
+            description:
+              subscriptionForm.storeIds.length > 0 && result.stores_linked === false
+                ? "Criada no Asaas, mas as lojas não foram vinculadas — vincule pelo card."
+                : `ID: ${result.subscription?.id}`,
+          })
           mutatePayments()
           mutateSubscriptions()
+          loadLocalData()
           setSubscriptionDialogOpen(false)
           resetSubscriptionForm()
         } else {
@@ -623,6 +953,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             start_date: subscriptionForm.startDate,
             next_due_date: subscriptionForm.startDate,
             notes: subscriptionForm.notes || null,
+            store_ids: subscriptionForm.storeIds,
           }),
         })
         const resData = await res.json()
@@ -774,13 +1105,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   function resetForm() {
+    const today = new Date().toISOString().split("T")[0]
     setChargeForm({
       value: 0,
       billingType: "PIX",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: today,
       description: "",
       installmentCount: "1",
       paymentMethod: "asaas",
+      chargeType: "subscription",
+      // Convenção da casa: a cobrança fala do mês ANTERIOR (comissão de
+      // julho vence em agosto).
+      referenceMonths: defaultReferenceMonths(`${today}T12:00:00`),
+      // Cliente com uma loja só: já vem escolhida.
+      storeId: activeStores.length === 1 ? activeStores[0].id : "",
+      subscriptionId: "",
     })
     setCreatedPayment(null)
   }
@@ -794,7 +1133,121 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       billingType: "UNDEFINED",
       startDate: new Date().toISOString().split("T")[0],
       notes: "",
+      storeIds: activeStores.length === 1 ? [activeStores[0].id] : [],
     })
+  }
+
+  // Abre "Classificar cobrança" com a sugestão do parser quando a
+  // linha ainda não foi classificada.
+  function openClassify(target: {
+    source: "asaas" | "local"
+    id: string
+    description: string
+    dueDate: string
+    chargeType?: ChargeType | null
+    months?: string[] | null
+    storeId?: string | null
+    hasSubscription?: boolean
+  }) {
+    const chargeType =
+      target.chargeType && isChargeType(target.chargeType) && target.chargeType !== "other"
+        ? target.chargeType
+        : inferChargeType(target.description, { hasSubscription: target.hasSubscription })
+    const months =
+      target.months && target.months.length > 0
+        ? target.months
+        : inferReferenceMonths(target.description, target.dueDate)
+    setClassifyTarget({
+      source: target.source,
+      id: target.id,
+      description: target.description,
+      dueDate: target.dueDate,
+      chargeType,
+      months,
+      storeId: target.storeId ?? (activeStores.length === 1 ? activeStores[0].id : ""),
+    })
+  }
+
+  async function handleClassify() {
+    if (!classifyTarget) return
+    if (classifyTarget.chargeType === "commission" && classifyTarget.months.length === 0) {
+      toast({ variant: "destructive", title: "Comissão precisa do mês de referência" })
+      return
+    }
+    setIsClassifying(true)
+    try {
+      const res = await fetch("/api/financial/charge-classification", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: classifyTarget.source,
+          id: classifyTarget.id,
+          charge_type: classifyTarget.chargeType,
+          reference_months: classifyTarget.chargeType === "other" ? null : classifyTarget.months,
+          store_id: classifyTarget.storeId || null,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao classificar")
+      toast({ title: "Cobrança classificada" })
+      setClassifyTarget(null)
+      loadLocalData()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao classificar",
+        description: err instanceof Error ? err.message : undefined,
+      })
+    } finally {
+      setIsClassifying(false)
+    }
+  }
+
+  async function handleLinkStores() {
+    if (!linkTarget) return
+    setIsLinking(true)
+    try {
+      let localId = linkTarget.localId
+      // Assinatura só do Asaas (sem stub local): cria o stub primeiro —
+      // é nele que o vínculo mora.
+      if (!localId && linkTarget.asaasId) {
+        const res = await fetch("/api/client-subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            name: linkTarget.name,
+            value: linkTarget.value,
+            cycle: linkTarget.cycle,
+            payment_method: "asaas",
+            asaas_subscription_id: linkTarget.asaasId,
+          }),
+        })
+        const result = await res.json()
+        if (!res.ok) throw new Error(result.error || "Erro ao preparar a assinatura")
+        localId = result.subscription?.id ?? null
+      }
+      if (!localId) throw new Error("Assinatura não encontrada")
+      const res = await fetch(`/api/client-subscriptions/${localId}/stores`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_ids: linkTarget.storeIds }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao vincular lojas")
+      toast({ title: "Lojas vinculadas" })
+      setLinkTarget(null)
+      loadLocalData()
+      mutateSubscriptions()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao vincular",
+        description: err instanceof Error ? err.message : undefined,
+      })
+    } finally {
+      setIsLinking(false)
+    }
   }
 
   function openStatusDialog(charge: LocalCharge, initialStatus?: LocalCharge["status"]) {
@@ -1490,6 +1943,11 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <TableCell>
                         <div>
                           <p className="font-medium text-sm">{charge.description}</p>
+                          <ChargeClassBadges
+                            chargeType={charge.charge_type}
+                            months={charge.reference_months}
+                            storeName={charge.store_id ? storeNameById[charge.store_id] : null}
+                          />
                           {charge.actual_payment_method && (
                             <p className="text-xs text-muted-foreground">
                               Pago via:{" "}
@@ -1531,6 +1989,23 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                               <Edit2 className="mr-2 h-4 w-4" />
                               Alterar status
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                openClassify({
+                                  source: "local",
+                                  id: charge.id,
+                                  description: charge.description,
+                                  dueDate: charge.due_date,
+                                  chargeType: charge.charge_type,
+                                  months: charge.reference_months,
+                                  storeId: charge.store_id,
+                                  hasSubscription: Boolean(charge.subscription_id),
+                                })
+                              }
+                            >
+                              <Tags className="mr-2 h-4 w-4" />
+                              Classificar (tipo · mês · loja)
+                            </DropdownMenuItem>
                             {charge.status !== "cancelled" && (
                               <DropdownMenuItem onClick={() => handleCancelCharge(charge)}>
                                 <Ban className="mr-2 h-4 w-4" />
@@ -1550,13 +2025,20 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       </TableCell>
                     </TableRow>
                   ))}
-                  {payments.map((payment) => (
+                  {payments.map((payment) => {
+                    const meta = invoiceMetaByAsaasId[payment.id]
+                    return (
                     <TableRow key={payment.id}>
                       <TableCell>
                         <div>
                           <p className="font-medium text-sm">
                             {payment.description || `Fatura #${payment.id.slice(-6)}`}
                           </p>
+                          <ChargeClassBadges
+                            chargeType={meta?.charge_type}
+                            months={meta?.reference_months}
+                            storeName={meta?.store_id ? storeNameById[meta.store_id] : null}
+                          />
                           <p className="text-[11px] text-muted-foreground font-mono">
                             Asaas: {payment.id}
                           </p>
@@ -1598,6 +2080,22 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                                 </a>
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={() =>
+                                openClassify({
+                                  source: "asaas",
+                                  id: payment.id,
+                                  description: payment.description ?? "",
+                                  dueDate: payment.dueDate,
+                                  chargeType: meta?.charge_type,
+                                  months: meta?.reference_months,
+                                  storeId: meta?.store_id,
+                                })
+                              }
+                            >
+                              <Tags className="mr-2 h-4 w-4" />
+                              Classificar (tipo · mês · loja)
+                            </DropdownMenuItem>
                             {(payment.status === "PENDING" || payment.status === "OVERDUE") && (
                               <DropdownMenuItem onClick={() => handleCancelAsaasPayment(payment.id)}>
                                 <Ban className="mr-2 h-4 w-4" />
@@ -1608,7 +2106,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -1671,6 +2170,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                             <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setLinkTarget({
+                                  localId: sub.id,
+                                  asaasId: sub.asaas_subscription_id ?? null,
+                                  name: sub.name,
+                                  value: Number(sub.value),
+                                  cycle: sub.cycle,
+                                  storeIds: storeIdsBySub[sub.id] ?? [],
+                                })
+                              }
+                            >
+                              <Store className="mr-2 h-4 w-4" />
+                              Vincular lojas
+                            </DropdownMenuItem>
                             {sub.status === "active" && (
                               <DropdownMenuItem onClick={() => handleCancelSubscription(sub)}>
                                 <Ban className="mr-2 h-4 w-4" />
@@ -1707,6 +2221,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span className="text-muted-foreground">Próximo vencimento</span>
                         <span>{new Date(sub.next_due_date).toLocaleDateString("pt-BR")}</span>
                       </div>
+                      <SubscriptionStoresRow
+                        storeIds={storeIdsBySub[sub.id] ?? []}
+                        storeNameById={storeNameById}
+                        clientStoreCount={activeStores.length}
+                        onLink={() =>
+                          setLinkTarget({
+                            localId: sub.id,
+                            asaasId: sub.asaas_subscription_id ?? null,
+                            name: sub.name,
+                            value: Number(sub.value),
+                            cycle: sub.cycle,
+                            storeIds: storeIdsBySub[sub.id] ?? [],
+                          })
+                        }
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -1735,6 +2264,24 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
                             <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setLinkTarget({
+                                  localId: localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? null,
+                                  asaasId: sub.id,
+                                  name: sub.description || "Assinatura Asaas",
+                                  value: Number(sub.value),
+                                  cycle: sub.cycle,
+                                  storeIds:
+                                    storeIdsBySub[
+                                      localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? ""
+                                    ] ?? [],
+                                })
+                              }
+                            >
+                              <Store className="mr-2 h-4 w-4" />
+                              Vincular lojas
+                            </DropdownMenuItem>
                             {sub.isActive && (
                               <DropdownMenuItem
                                 onClick={() => handleCancelAsaasSubscription(sub.id)}
@@ -1770,6 +2317,25 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span className="text-muted-foreground">ID Asaas</span>
                         <span className="text-[10px] font-mono truncate max-w-[160px]">{sub.id}</span>
                       </div>
+                      <SubscriptionStoresRow
+                        storeIds={
+                          storeIdsBySub[
+                            localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? ""
+                          ] ?? []
+                        }
+                        storeNameById={storeNameById}
+                        clientStoreCount={activeStores.length}
+                        onLink={() =>
+                          setLinkTarget({
+                            localId: localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? null,
+                            asaasId: sub.id,
+                            name: sub.description || "Assinatura Asaas",
+                            value: Number(sub.value),
+                            cycle: sub.cycle,
+                            storeIds: [],
+                          })
+                        }
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -1888,6 +2454,114 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   />
                 </div>
 
+                {/* Tipo · loja · mês de referência: é o que liga a
+                    cobrança ao negócio (carteira por loja, comissão
+                    por mês). */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Tipo de cobrança *</Label>
+                    <Select
+                      value={chargeForm.chargeType}
+                      onValueChange={(value) => {
+                        const chargeType = value as ChargeType
+                        setChargeForm({
+                          ...chargeForm,
+                          chargeType,
+                          referenceMonths:
+                            chargeType === "other"
+                              ? []
+                              : chargeForm.referenceMonths.length > 0
+                                ? chargeForm.referenceMonths
+                                : defaultReferenceMonths(`${chargeForm.dueDate}T12:00:00`),
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="subscription">Assinatura / mensalidade</SelectItem>
+                        <SelectItem value="commission">Comissão</SelectItem>
+                        <SelectItem value="other">Avulsa (setup, extra…)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Loja{activeStores.length > 1 ? " *" : ""}</Label>
+                    <Select
+                      value={chargeForm.storeId || "_none"}
+                      onValueChange={(value) =>
+                        setChargeForm({ ...chargeForm, storeId: value === "_none" ? "" : value })
+                      }
+                      disabled={activeStores.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={activeStores.length === 0 ? "Cliente sem loja" : "Selecione"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">— Sem loja definida</SelectItem>
+                        {activeStores.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.store_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {activeStores.length > 1 && !chargeForm.storeId && (
+                  <p className="text-[11px] text-[#92400E] dark:text-[#FCD34D] -mt-2">
+                    Cliente com {activeStores.length} lojas: sem a loja, a Gestão de Carteira não sabe
+                    em qual delas esta cobrança conta.
+                  </p>
+                )}
+
+                {chargeForm.chargeType !== "other" && (
+                  <div className="space-y-2">
+                    <Label>
+                      {chargeForm.chargeType === "commission" ? "Comissão referente a *" : "Mês de referência"}
+                    </Label>
+                    <MonthChips
+                      reference={chargeForm.dueDate}
+                      value={chargeForm.referenceMonths}
+                      onChange={(months) => setChargeForm({ ...chargeForm, referenceMonths: months })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {chargeForm.chargeType === "commission"
+                        ? "Pode marcar mais de um mês (ex.: abril, maio e junho numa cobrança só)."
+                        : "Opcional — qual mensalidade esta cobrança paga."}
+                    </p>
+                  </div>
+                )}
+
+                {chargeForm.chargeType === "subscription" &&
+                  chargeForm.paymentMethod !== "asaas" &&
+                  localSubscriptions.filter((s) => s.status === "active").length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Assinatura</Label>
+                      <Select
+                        value={chargeForm.subscriptionId || "_none"}
+                        onValueChange={(value) =>
+                          setChargeForm({ ...chargeForm, subscriptionId: value === "_none" ? "" : value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">— Sem assinatura</SelectItem>
+                          {localSubscriptions
+                            .filter((s) => s.status === "active")
+                            .map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.name} · {formatCurrency(Number(s.value))}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                 {chargeForm.paymentMethod === "asaas" && (
                   <div className="space-y-2">
                     <Label>Forma de Pagamento (Asaas) *</Label>
@@ -1962,10 +2636,18 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 <div className="space-y-2">
                   <Label>Descrição</Label>
                   <Textarea
-                    placeholder="Descrição da fatura..."
+                    placeholder={describeCharge({
+                      type: chargeForm.chargeType,
+                      months: chargeForm.chargeType === "other" ? null : chargeForm.referenceMonths,
+                      storeName: chargeForm.storeId ? storeNameById[chargeForm.storeId] : null,
+                      clientName,
+                    })}
                     value={chargeForm.description}
                     onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Vazio = usa o texto acima (é o que o cliente vê na fatura).
+                  </p>
                 </div>
               </div>
 
@@ -2210,6 +2892,29 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               />
             </div>
 
+            {/* Lojas cobertas: é o que sincroniza "assinatura paga" com a
+                loja certa na Gestão de Carteira. */}
+            <div className="space-y-2">
+              <Label>Lojas cobertas{activeStores.length > 1 ? " *" : ""}</Label>
+              {activeStores.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground">
+                  Este cliente ainda não tem loja cadastrada — vincule depois pelo card da assinatura.
+                </p>
+              ) : (
+                <StoreCheckboxList
+                  stores={activeStores}
+                  value={subscriptionForm.storeIds}
+                  onChange={(storeIds) => setSubscriptionForm({ ...subscriptionForm, storeIds })}
+                />
+              )}
+              {activeStores.length > 1 && subscriptionForm.storeIds.length === 0 && (
+                <p className="text-[11px] text-[#92400E] dark:text-[#FCD34D]">
+                  Cliente com {activeStores.length} lojas: sem o vínculo, a carteira não sabe qual loja esta
+                  assinatura paga.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label>Observações</Label>
               <Textarea
@@ -2232,6 +2937,133 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             >
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Classificar cobrança: tipo · mês de referência · loja */}
+      <Dialog open={classifyTarget !== null} onOpenChange={(open) => !open && setClassifyTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tags className="h-5 w-5" />
+              Classificar cobrança
+            </DialogTitle>
+            <DialogDescription className="truncate">{classifyTarget?.description || "Fatura"}</DialogDescription>
+          </DialogHeader>
+          {classifyTarget && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Tipo *</Label>
+                <Select
+                  value={classifyTarget.chargeType}
+                  onValueChange={(value) =>
+                    setClassifyTarget({
+                      ...classifyTarget,
+                      chargeType: value as ChargeType,
+                      months:
+                        value === "other"
+                          ? []
+                          : classifyTarget.months.length > 0
+                            ? classifyTarget.months
+                            : defaultReferenceMonths(`${classifyTarget.dueDate}T12:00:00`),
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="subscription">Assinatura / mensalidade</SelectItem>
+                    <SelectItem value="commission">Comissão</SelectItem>
+                    <SelectItem value="other">Avulsa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {classifyTarget.chargeType !== "other" && (
+                <div className="space-y-2">
+                  <Label>{classifyTarget.chargeType === "commission" ? "Referente a *" : "Mês de referência"}</Label>
+                  <MonthChips
+                    reference={classifyTarget.dueDate}
+                    value={classifyTarget.months}
+                    onChange={(months) => setClassifyTarget({ ...classifyTarget, months })}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Loja</Label>
+                <Select
+                  value={classifyTarget.storeId || "_none"}
+                  onValueChange={(value) =>
+                    setClassifyTarget({ ...classifyTarget, storeId: value === "_none" ? "" : value })
+                  }
+                  disabled={activeStores.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">— Sem loja definida</SelectItem>
+                    {clientStores.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.store_name}
+                        {s.is_active === false ? " (inativa)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setClassifyTarget(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleClassify} disabled={isClassifying}>
+              {isClassifying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vincular lojas a uma assinatura */}
+      <Dialog open={linkTarget !== null} onOpenChange={(open) => !open && setLinkTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              Lojas cobertas pela assinatura
+            </DialogTitle>
+            <DialogDescription>
+              {linkTarget?.name} · {linkTarget ? formatCurrency(linkTarget.value) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {linkTarget && (
+            <div className="space-y-3 py-2">
+              {clientStores.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Este cliente não tem loja cadastrada.</p>
+              ) : (
+                <StoreCheckboxList
+                  stores={clientStores}
+                  value={linkTarget.storeIds}
+                  onChange={(storeIds) => setLinkTarget({ ...linkTarget, storeIds })}
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                A Gestão de Carteira mostra a mensalidade desta assinatura só nas lojas marcadas. Uma
+                assinatura pode cobrir várias lojas (&quot;Plano 2 lojas&quot;).
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setLinkTarget(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleLinkStores} disabled={isLinking || clientStores.length === 0}>
+              {isLinking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar vínculo
             </Button>
           </DialogFooter>
         </DialogContent>

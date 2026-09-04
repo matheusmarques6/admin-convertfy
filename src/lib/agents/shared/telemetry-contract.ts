@@ -166,6 +166,11 @@ export const PROVENANCE_CONTRACT: Record<string, ProvenanceRequirement> = {
     input: true,
     motivo: "recebe o documento do step anterior e o contrato de campos — distinguir os dois é o que diz se a culpa é do agente ou do cadastro",
   },
+  typography: {
+    prompt: true,
+    input: true,
+    motivo: "decide sobre um inventário de declarações de fonte derivado por código; sem a marcação não se sabe se o erro é do agente ou do inventário",
+  },
   color_format: {
     prompt: true,
     input: true,

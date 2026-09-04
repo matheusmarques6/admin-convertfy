@@ -24,11 +24,17 @@ import {
   Filter,
   Briefcase,
   ImageIcon,
+  Mic,
   PanelLeft,
   Paperclip,
+  Pin,
+  PinOff,
   Plus,
   RotateCcw,
+  Search,
+  Share2,
   Sparkles,
+  Telescope,
   ThumbsUp,
   Trash2,
   Activity,
@@ -41,6 +47,7 @@ import {
   resolveConvertiaModel,
 } from "@/lib/ai/convertia-models"
 import { ConvertiaManageDialogs, type ManageKind } from "./convertia-manage"
+import { ROUTES } from "@/lib/routes"
 
 // ── Vocabulário do design ───────────────────────────────────────────
 
@@ -50,6 +57,8 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   klaviyo: { n: "Klaviyo", c: "#111827", g: "K" },
   crm: { n: "CRM Convertfy", c: "#4E62D8", g: "C" },
   metricas: { n: "Métricas", c: "#0E7490", g: "M" },
+  imagem: { n: "Geração de imagem", c: "#D97706", g: "I" },
+  relatorio: { n: "Relatório da loja", c: "#0F766E", g: "R" },
 }
 const MCP_DOT = { c: "#7C3AED", g: "X" }
 const BRAND = "#4E62D8"
@@ -108,6 +117,11 @@ interface Bootstrap {
   stores: BootstrapStore[]
   skills: BootstrapSkill[]
   mcp_servers: BootstrapMcp[]
+  budget?: {
+    today_cost_cents: number
+    daily_limit_cents: number
+    exceeded: boolean
+  }
   schema_missing: string[]
 }
 
@@ -117,6 +131,8 @@ export interface Source {
   tool: string
   label: string
   summary: string | null
+  /** O QUE foi consultado ("period: 30d · status: paid"). */
+  args_summary?: string | null
   write: boolean
 }
 interface UiAttachment {
@@ -135,6 +151,45 @@ interface UiMessage {
   attachments?: Array<{ name: string; kind: "image" | "text" }>
   streaming?: boolean
   pendingTools?: number
+  /** id REAL em ai_chat_messages (feedback persiste por ele). */
+  dbId?: string
+  feedback?: "up" | null
+  /**
+   * Narração das rodadas que chamaram ferramentas ("vou buscar o
+   * popup atual…") — é processo, não resposta. Fica no painel
+   * recolhível junto com as fontes; `content` é só a resposta final.
+   */
+  progress?: string[]
+  /**
+   * A linha veio do banco ainda com meta.streaming=true: o turno está
+   * (ou estava) rodando no servidor. O chat repõe a resposta por
+   * polling até ela fechar.
+   */
+  generating?: boolean
+  startedAt?: string | null
+}
+
+/** Chave do localStorage: última conversa aberta por workspace. */
+const lastConvKey = (ws: Ws) => `convertia:last-conversa:${ws}`
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Depois disso uma linha ainda "streaming" é turno morto (maxDuration é 300s). */
+const GENERATING_STALE_MS = 6 * 60_000
+
+/** Superfície mínima da Web Speech API (sem lib de tipos do DOM). */
+interface SpeechRecognitionLike {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult:
+    | ((e: {
+        resultIndex: number
+        results: ArrayLike<{ isFinal: boolean } & ArrayLike<{ transcript: string }>>
+      }) => void)
+    | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+  start: () => void
+  stop: () => void
 }
 
 /** Bolha do usuário mostra só o que foi digitado — os anexos viram chips. */
@@ -215,6 +270,10 @@ function greeting(name: string | null): string {
   return first ? `${p}, ${first}` : p
 }
 
+function isPinned(c: Conversation): boolean {
+  return c.context?.pinned === true
+}
+
 function groupConversations(convs: Conversation[]): Array<[string, Conversation[]]> {
   const today = new Date().toDateString()
   const yesterday = new Date(Date.now() - 86_400_000).toDateString()
@@ -222,8 +281,9 @@ function groupConversations(convs: Conversation[]): Array<[string, Conversation[
   const groups = new Map<string, Conversation[]>()
   for (const c of convs) {
     const d = new Date(c.last_message_at ?? c.created_at)
-    const key =
-      d.toDateString() === today
+    const key = isPinned(c)
+      ? "Fixadas"
+      : d.toDateString() === today
         ? "Hoje"
         : d.toDateString() === yesterday
           ? "Ontem"
@@ -234,7 +294,7 @@ function groupConversations(convs: Conversation[]): Array<[string, Conversation[
     list.push(c)
     groups.set(key, list)
   }
-  return ["Hoje", "Ontem", "7 dias", "Antigas"]
+  return ["Fixadas", "Hoje", "Ontem", "7 dias", "Antigas"]
     .filter((k) => groups.has(k))
     .map((k) => [k, groups.get(k)!])
 }
@@ -254,7 +314,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [railOpen, setRailOpen] = useState(true)
   const [input, setInput] = useState("")
   const [focus, setFocus] = useState(false)
-  const [menu, setMenu] = useState<"model" | "conns" | "skills" | "store" | null>(null)
+  const [menu, setMenu] = useState<"model" | "plus" | "store" | null>(null)
   const [model, setModel] = useState(CONVERTIA_DEFAULT_MODEL)
   const [storeId, setStoreId] = useState<string | null | undefined>(undefined) // undefined = ainda não inicializado
   const [connOn, setConnOn] = useState<Record<string, boolean>>({})
@@ -263,6 +323,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [manage, setManage] = useState<ManageKind | null>(null)
   const [attachments, setAttachments] = useState<UiAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [railSearch, setRailSearch] = useState("")
+  const [deep, setDeep] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const recogRef = useRef<{ stop: () => void } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -273,13 +338,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (typeof window !== "undefined" && window.innerWidth < 768) setRailOpen(false)
   }, [])
 
-  // Retorno do fluxo OAuth de MCP (?mcp_connected / ?mcp_error)
+  // Retorno do fluxo OAuth de MCP (?mcp_connected / ?mcp_error) +
+  // contexto por rota (?store=uuid pré-seleciona a loja — o botão
+  // "ConvertIA" no detalhe da loja chega por aqui)
   const [oauthNotice, setOauthNotice] = useState<{ ok: boolean; text: string } | null>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const connected = params.get("mcp_connected")
     const errorMsg = params.get("mcp_error")
+    const storeParam = params.get("store")
     if (connected) {
       const tools = params.get("mcp_tools")
       setOauthNotice({
@@ -289,9 +357,26 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     } else if (errorMsg) {
       setOauthNotice({ ok: false, text: errorMsg })
     }
-    if (connected || errorMsg) {
-      window.history.replaceState({}, "", window.location.pathname)
+    if (storeParam && UUID_RE.test(storeParam)) {
+      // vence o default "primeira loja" (o effect de default só roda
+      // enquanto storeId === undefined)
+      setStoreId(storeParam)
     }
+    if (connected || errorMsg || storeParam) {
+      // Limpa SÓ esses params — `?conversa=` fica (é o que faz o F5
+      // voltar na mesma conversa).
+      for (const k of ["mcp_connected", "mcp_error", "mcp_tools", "store"]) params.delete(k)
+      const qs = params.toString()
+      window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`)
+    }
+  }, [])
+
+  // Ditado por voz: Web Speech API (Chrome/Edge/Safari) — feature-detect
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const w = window as unknown as Record<string, unknown>
+    setVoiceSupported(Boolean(w.SpeechRecognition || w.webkitSpeechRecognition))
+    return () => recogRef.current?.stop()
   }, [])
 
   const stores = useMemo(() => boot?.stores ?? [], [boot])
@@ -300,6 +385,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     [boot],
   )
   const store = stores.find((s) => s.id === storeId) ?? null
+  // Quantas lojas têm plataforma de email ligada — o conector nasce
+  // ativo nelas; o resto precisa da chave cadastrada na loja.
+  const storesComEmail = useMemo(
+    () => stores.filter((s) => s.connectors.omnisend || s.connectors.klaviyo).length,
+    [stores],
+  )
 
   // primeira loja como default (design abre com uma loja no chip)
   useEffect(() => {
@@ -383,6 +474,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const nSkills = skills.filter((s) => skillOn[s.id]).length
   const mSel = resolveConvertiaModel(model)
 
+  // Guard-rail de custo diário (vem do bootstrap; o servidor reforça)
+  const budget = boot?.budget
+  const budgetPct =
+    budget && budget.daily_limit_cents > 0
+      ? budget.today_cost_cents / budget.daily_limit_cents
+      : 0
+
   // ── Anexos: imagem (multimodal) + arquivos de texto como referência ─
   // ref espelho pro loop async não perder adds concorrentes
   const attachmentsRef = useRef<UiAttachment[]>([])
@@ -444,49 +542,241 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   }, [])
 
   // ── Abrir conversa existente ─────────────────────────────────────
-  const openConversation = async (c: Conversation) => {
-    abortRef.current?.abort()
-    setConvId(c.id)
-    setConvTitle(c.title)
-    setMessages([])
-    const ctx = c.context ?? {}
-    if (typeof ctx.model === "string") setModel(ctx.model)
-    if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
-    try {
-      const body = await fetcher(`/api/ai/conversations/${c.id}`)
-      const msgs = ((body as {
-        messages?: Array<{
-          id: string
-          role: string
-          content: string
-          meta?: {
-            sources?: Source[]
-            attachments?: Array<{ name: string; kind: "image" | "text" }>
-          } | null
-        }>
-      }).messages ?? [])
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({
+  // sharedBy != null → conversa de OUTRA pessoa aberta por link
+  // compartilhado: somente leitura (sem composer/refazer/feedback).
+  const [sharedBy, setSharedBy] = useState<string | null>(null)
+  const [convShared, setConvShared] = useState(false)
+  // Conversa aberta no momento (ref pro polling não repor uma conversa
+  // que o usuário já trocou) e polling ativo.
+  const convIdRef = useRef<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sendingRef = useRef(false)
+
+  interface ConversationBody {
+    conversation?: { title?: string; context?: Record<string, unknown> | null }
+    is_owner?: boolean
+    owner_name?: string | null
+    messages?: Array<{
+      id: string
+      role: string
+      content: string
+      created_at?: string
+      meta?: {
+        sources?: Source[]
+        attachments?: Array<{ name: string; kind: "image" | "text" }>
+        feedback?: { rating?: string } | null
+        progress?: string[]
+        streaming?: boolean
+        started_at?: string
+      } | null
+    }>
+  }
+
+  const toUiMessages = useCallback((body: ConversationBody): UiMessage[] => {
+    return (body.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => {
+        const startedAt = m.meta?.started_at ?? m.created_at ?? null
+        const generating = m.meta?.streaming === true
+        return {
           id: m.id,
+          dbId: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
-          sources: (m.meta as { sources?: Source[] } | null)?.sources ?? [],
-          attachments: (m.meta as { attachments?: Array<{ name: string; kind: "image" | "text" }> } | null)
-            ?.attachments,
-        }))
-      setMessages(msgs)
-      scrollToBottom()
-    } catch {
+          sources: m.meta?.sources ?? [],
+          attachments: m.meta?.attachments,
+          feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
+          progress: m.meta?.progress ?? [],
+          generating,
+          startedAt,
+          // turno vivo no servidor: a bolha mostra o spinner como se
+          // estivesse recebendo o stream
+          streaming: generating,
+          pendingTools: generating ? (m.meta?.sources ?? []).filter((s) => s.summary == null).length : 0,
+        }
+      })
+  }, [])
+
+  /**
+   * Re-lê a conversa enquanto alguma resposta está em geração no
+   * servidor (F5 no meio do turno). Para quando a linha fecha, quando
+   * o usuário troca de conversa/envia, ou quando o turno passou do
+   * tempo máximo (aí é turno morto — a UI marca como interrompida).
+   */
+  const scheduleGeneratingPoll = useCallback(
+    (id: string, msgs: UiMessage[]) => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+      const live = msgs.filter(
+        (m) =>
+          m.generating &&
+          (!m.startedAt || Date.now() - new Date(m.startedAt).getTime() < GENERATING_STALE_MS),
+      )
+      if (live.length === 0) return
+      pollRef.current = setTimeout(async () => {
+        if (convIdRef.current !== id || sendingRef.current) return
+        try {
+          const body = (await fetcher(`/api/ai/conversations/${id}`)) as ConversationBody
+          if (convIdRef.current !== id || sendingRef.current) return
+          const next = toUiMessages(body)
+          setMessages(next)
+          scrollToBottom()
+          scheduleGeneratingPoll(id, next)
+        } catch {
+          /* próxima tentativa só se o usuário reabrir */
+        }
+      }, 2_500)
+    },
+    [scrollToBottom, toUiMessages],
+  )
+
+  const openConversationById = useCallback(
+    async (id: string, fallbackTitle?: string) => {
+      abortRef.current?.abort()
+      if (pollRef.current) clearTimeout(pollRef.current)
+      convIdRef.current = id
+      setConvId(id)
+      setConvTitle(fallbackTitle ?? null)
       setMessages([])
+      setSharedBy(null)
+      setConvShared(false)
+      try {
+        const body = (await fetcher(`/api/ai/conversations/${id}`)) as ConversationBody
+        if (convIdRef.current !== id) return
+        const conv = body.conversation
+        if (conv?.title) setConvTitle(conv.title)
+        const ctx = conv?.context ?? {}
+        if (typeof ctx.model === "string") setModel(ctx.model)
+        if (typeof ctx.store_id === "string") setStoreId(ctx.store_id)
+        setConvShared(ctx.shared === true)
+        if (body.is_owner === false) setSharedBy(body.owner_name ?? "outra pessoa")
+        const msgs = toUiMessages(body)
+        setMessages(msgs)
+        scrollToBottom()
+        scheduleGeneratingPoll(id, msgs)
+      } catch {
+        // Conversa excluída ou compartilhamento desativado — avisa em
+        // vez de deixar um convId órfão com composer ativo (todo envio
+        // daria "Conversa não encontrada").
+        convIdRef.current = null
+        setConvId(null)
+        setConvTitle(null)
+        setMessages([])
+        setOauthNotice({
+          ok: false,
+          text: "Não consegui abrir a conversa — ela pode ter sido excluída ou o compartilhamento desativado.",
+        })
+      }
+    },
+    [scrollToBottom, toUiMessages, scheduleGeneratingPoll],
+  )
+
+  // ── F5 volta na MESMA conversa ─────────────────────────────────
+  // A conversa aberta vive em `?conversa=` (também é o link de
+  // compartilhar) e, como reserva, no localStorage por workspace. Nova
+  // conversa limpa os dois.
+  const hydratedRef = useRef(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    // No primeiro render convId ainda é null — gravar aqui apagaria o
+    // `?conversa=`/localStorage ANTES do effect de abertura ler.
+    if (!hydratedRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (convId) {
+      params.set("conversa", convId)
+      try {
+        localStorage.setItem(lastConvKey(ws), convId)
+      } catch {
+        /* storage bloqueado */
+      }
+    } else {
+      params.delete("conversa")
+      try {
+        localStorage.removeItem(lastConvKey(ws))
+      } catch {
+        /* storage bloqueado */
+      }
     }
+    const qs = params.toString()
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`)
+  }, [convId, ws])
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+    }
+  }, [])
+
+  const openConversation = async (c: Conversation) => {
+    await openConversationById(c.id, c.title)
   }
 
   const novaConversa = () => {
     abortRef.current?.abort()
+    if (pollRef.current) clearTimeout(pollRef.current)
+    convIdRef.current = null
     setConvId(null)
     setConvTitle(null)
     setMessages([])
     setInput("")
+    setSharedBy(null)
+    setConvShared(false)
+  }
+
+  // Abertura no mount: `?conversa=uuid` (link compartilhado OU a
+  // própria conversa depois de um F5) → senão a última aberta neste
+  // workspace (localStorage). Sem nada, tela de nova conversa.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    let conversa = params.get("conversa")
+    if (!conversa || !UUID_RE.test(conversa)) {
+      try {
+        conversa = localStorage.getItem(lastConvKey(ws))
+      } catch {
+        conversa = null
+      }
+    }
+    hydratedRef.current = true
+    if (conversa && UUID_RE.test(conversa)) {
+      void openConversationById(conversa)
+    }
+    // roda uma vez no mount, com a função já estável (useCallback)
+  }, [openConversationById, ws])
+
+  // Compartilhar com a org: liga context.shared (PATCH é replace — o
+  // context atual vem do GET pra não perder nada) e copia o link.
+  const [shareNotice, setShareNotice] = useState<string | null>(null)
+  const toggleShare = async () => {
+    if (!convId || sharedBy) return
+    try {
+      const body = (await fetcher(`/api/ai/conversations/${convId}`)) as {
+        conversation?: { context?: Record<string, unknown> | null }
+      }
+      const ctx = body.conversation?.context ?? {}
+      const next = { ...ctx, shared: !convShared }
+      const resp = await fetch(`/api/ai/conversations/${convId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: next }),
+      })
+      if (!resp.ok) throw new Error("PATCH falhou")
+      setConvShared(!convShared)
+      if (!convShared) {
+        const link = `${window.location.origin}/admin/${ws}/ia?conversa=${convId}`
+        try {
+          await navigator.clipboard.writeText(link)
+          setShareNotice("Link copiado — qualquer pessoa da organização abre em modo leitura.")
+        } catch {
+          setShareNotice(`Compartilhada com a organização: ${link}`)
+        }
+      } else {
+        setShareNotice("Compartilhamento desativado — só você vê esta conversa.")
+      }
+      setTimeout(() => setShareNotice(null), 5000)
+    } catch {
+      setShareNotice("Não consegui alterar o compartilhamento — tente de novo.")
+      setTimeout(() => setShareNotice(null), 5000)
+    }
   }
 
   const deleteConversation = async (c: Conversation) => {
@@ -495,6 +785,79 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     if (c.id === convId) novaConversa()
     void mutateBoot()
   }
+
+  // Fixar/desafixar: o PATCH de context é REPLACE total — busca o
+  // context FRESCO no GET antes de mesclar (o objeto do rail vem do
+  // bootstrap e pode estar stale: mesclar sobre ele apagaria um
+  // `shared` ligado depois do último refresh, matando o link dos
+  // colegas em silêncio).
+  const togglePin = async (c: Conversation) => {
+    let ctx: Record<string, unknown> = c.context ?? {}
+    try {
+      const body = (await fetcher(`/api/ai/conversations/${c.id}`)) as {
+        conversation?: { context?: Record<string, unknown> | null }
+      }
+      ctx = body.conversation?.context ?? ctx
+    } catch {
+      /* sem GET, mescla sobre o context do rail mesmo */
+    }
+    const next = { ...ctx, pinned: ctx.pinned !== true }
+    await fetch(`/api/ai/conversations/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: next }),
+    }).catch(() => {})
+    void mutateBoot()
+  }
+
+  // Feedback 👍 persistido no meta da mensagem (toggle)
+  const sendFeedback = useCallback((dbId: string, rating: "up" | null) => {
+    void fetch("/api/ai/convertia/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_id: dbId, rating }),
+    }).catch(() => {})
+  }, [])
+
+  // Ditado por voz (pt-BR): resultado final entra no input
+  const toggleVoice = useCallback(() => {
+    if (recording) {
+      recogRef.current?.stop()
+      return
+    }
+    const w = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike
+    }
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+    if (!Ctor) return
+    try {
+      const recog = new Ctor()
+      recog.lang = "pt-BR"
+      recog.continuous = true
+      recog.interimResults = false
+      recog.onresult = (e) => {
+        let finalText = ""
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += e.results[i][0].transcript
+        }
+        const t = finalText.trim()
+        if (t) setInput((prev) => (prev ? `${prev.replace(/\s+$/, "")} ${t}` : t))
+      }
+      recog.onend = () => setRecording(false)
+      recog.onerror = (e) => {
+        setRecording(false)
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setAttachError("Microfone sem permissão no navegador — libere o acesso e tente de novo.")
+        }
+      }
+      recogRef.current = recog
+      recog.start()
+      setRecording(true)
+    } catch {
+      setRecording(false)
+    }
+  }, [recording])
 
   // ── Envio (streaming SSE) ────────────────────────────────────────
   const send = async (text?: string) => {
@@ -506,6 +869,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
     setAttachError(null)
     if (inputRef.current) inputRef.current.style.height = "auto"
     setSending(true)
+    sendingRef.current = true
+    if (pollRef.current) clearTimeout(pollRef.current)
     const userMsg: UiMessage = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -520,6 +885,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       sources: [],
       streaming: true,
       pendingTools: 0,
+      progress: [],
     }
     setMessages((m) => [...m, userMsg, draft])
     scrollToBottom()
@@ -541,6 +907,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           store_id: storeId ?? null,
           connectors: activeConns.map((c) => c.key),
           skills: skills.filter((s) => skillOn[s.id]).map((s) => s.id),
+          deep,
           attachments: atts.map((a) => ({
             name: a.name,
             mime: a.mime,
@@ -575,12 +942,27 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           }
           if (ev.type === "meta") {
             if (!convId && typeof ev.conversation_id === "string") {
+              convIdRef.current = ev.conversation_id
               setConvId(ev.conversation_id)
               setConvTitle((ev.title as string) ?? message.slice(0, 64))
+              // a conversa nova já existe no banco — aparece no rail
+              void mutateBoot()
+            }
+            if (typeof ev.message_id === "string") {
+              patchDraft((d) => ({ ...d, dbId: ev.message_id as string }))
             }
           } else if (ev.type === "delta") {
             patchDraft((d) => ({ ...d, content: d.content + String(ev.text ?? "") }))
             scrollToBottom()
+          } else if (ev.type === "round_end") {
+            // A rodada terminou chamando ferramentas: o que foi
+            // escrito era narração ("vou buscar…"). Vai pro processo e
+            // a bolha fica limpa pra resposta final.
+            patchDraft((d) => ({
+              ...d,
+              progress: d.content.trim() ? [...(d.progress ?? []), d.content.trim()] : d.progress,
+              content: "",
+            }))
           } else if (ev.type === "tool") {
             if (ev.status === "start") {
               patchDraft((d) => ({
@@ -594,6 +976,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     tool: String(ev.name ?? ""),
                     label: String(ev.label ?? ev.name ?? ""),
                     summary: null,
+                    args_summary:
+                      typeof ev.args_summary === "string" ? ev.args_summary : null,
                     write: ev.write === true,
                   },
                 ],
@@ -614,7 +998,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             patchDraft((d) => ({
               ...d,
               streaming: false,
+              generating: false,
+              pendingTools: 0,
+              dbId: typeof ev.message_id === "string" ? ev.message_id : d.dbId,
               sources: Array.isArray(ev.sources) ? (ev.sources as Source[]) : d.sources,
+              progress: Array.isArray(ev.progress) ? (ev.progress as string[]) : d.progress,
+              // texto consolidado do servidor vence o montado por deltas
+              content: typeof ev.content === "string" && ev.content.trim() ? ev.content : d.content,
             }))
           } else if (ev.type === "error") {
             patchDraft((d) => ({
@@ -637,6 +1027,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       }
     } finally {
       setSending(false)
+      sendingRef.current = false
       scrollToBottom()
     }
   }
@@ -657,7 +1048,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         style={{
           [view === "novo" ? "top" : "bottom"]: "calc(100% + 6px)",
           [right ? "right" : "left"]: 0,
-          maxHeight: "min(340px, 46vh)",
+          maxHeight: "min(440px, 60vh)",
           background: "var(--ops-card)",
           borderColor: HAIR,
         }}
@@ -773,6 +1164,118 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           style={{ color: "var(--ops-title)" }}
         />
         <div className="flex items-center gap-1.5">
+          {/* "+" — anexos, conectores e skills num lugar só (padrão
+              Claude): o rodapé fica com loja à esquerda e modelo à
+              direita, e o resto sai do caminho. */}
+          <div className="relative">
+            <button
+              title="Anexar arquivo, conectores e skills"
+              aria-label="Anexar arquivo, conectores e skills"
+              onClick={() => setMenu(menu === "plus" ? null : "plus")}
+              className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-full border transition-transform hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={{
+                borderColor: menu === "plus" ? "#8B9BE8" : HAIR,
+                color: menu === "plus" ? BRAND : "var(--ops-sec)",
+                transform: menu === "plus" ? "rotate(45deg)" : "none",
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </button>
+            {menu === "plus" &&
+              menuCard(
+                <>
+                  <button
+                    onClick={() => {
+                      setMenu(null)
+                      fileInputRef.current?.click()
+                    }}
+                    className="flex w-full items-center gap-[9px] rounded-[7px] px-[9px] py-[7px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: "var(--ops-title)" }}>
+                      <Paperclip className="h-3 w-3" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
+                        Anexar imagem ou arquivo
+                      </span>
+                      <span className="mt-px block truncate text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        html, csv, md, txt, json · até 3 por mensagem
+                      </span>
+                    </span>
+                  </button>
+
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuHeader(`Conectores · MCP · ${activeConns.length}/${connectorEntries.length} ativos`)}
+                  {connectorEntries.map((c) =>
+                    menuRow({
+                      key: c.key,
+                      dot: <ConnDot k={c.key} size={17} title={c.name} />,
+                      name: c.name,
+                      sub: c.sub,
+                      on: Boolean(connOn[c.key] && c.available),
+                      disabled: !c.available,
+                      onClick: () => {
+                        touchedRef.current.add(c.key)
+                        setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
+                      },
+                    }),
+                  )}
+                  {/* Conector indisponível por falta de credencial não
+                      é algo que se resolva aqui — o caminho é cadastrar
+                      a chave na loja. Sem este atalho, "loja sem
+                      credencial" era um beco sem saída. */}
+                  {store && connectorEntries.some((c) => !c.available && c.sub.includes("sem credencial")) && (
+                    <div className="px-[9px] pb-1 pt-[3px]">
+                      <a
+                        href={`${ROUTES.ADMIN.STORES.DETAIL(store.id)}?tab=setup`}
+                        className="text-[10.5px] font-medium hover:underline"
+                        style={{ color: BRAND }}
+                      >
+                        Cadastrar a chave em {store.name} →
+                      </a>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-[9px] pb-[3px] pt-[3px]">
+                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                      valem só para esta conversa
+                    </span>
+                    <button onClick={() => { setMenu(null); setManage("mcp") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
+                      gerenciar conexões
+                    </button>
+                  </div>
+
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuHeader(`Skills · ${nSkills}/${skills.length} ativas`)}
+                  {skills.length === 0 && (
+                    <div className="px-2.5 py-1.5 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                      Nenhuma skill ainda — crie a primeira.
+                    </div>
+                  )}
+                  {skills.map((s) =>
+                    menuRow({
+                      key: s.id,
+                      dot: (
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: skillOn[s.id] ? "var(--ops-title)" : "var(--ops-mut)" }}>
+                          <Sparkles className="h-3 w-3" />
+                        </span>
+                      ),
+                      name: s.name,
+                      sub: s.description ?? "skill própria",
+                      on: Boolean(skillOn[s.id]),
+                      onClick: () => setSkillOn((x) => ({ ...x, [s.id]: !x[s.id] })),
+                    }),
+                  )}
+                  <div className="flex items-center justify-between px-[9px] pb-[3px] pt-[3px]">
+                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                      a ConvertIA só usa skills ativas
+                    </span>
+                    <button onClick={() => { setMenu(null); setManage("skills") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
+                      criar skill
+                    </button>
+                  </div>
+                </>,
+              )}
+          </div>
           {/* Loja */}
           <div className="relative min-w-0 shrink">
             <button
@@ -787,7 +1290,11 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             {menu === "store" &&
               menuCard(
                 <>
-                  {menuHeader("Loja da conversa")}
+                  {menuHeader(
+                    ws === "comercial"
+                      ? "Loja da conversa"
+                      : `Loja da conversa · ${storesComEmail}/${stores.length} com plataforma de email`,
+                  )}
                   <button
                     onClick={() => {
                       setStoreId(null)
@@ -811,117 +1318,28 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                     >
                       <ConnDot k="shopify" size={15} />
                       <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      {/* Loja sem plataforma de email não tem o que a
+                          ConvertIA consulta e executa — é o que faz o
+                          conector nascer desligado. Ver isso ANTES de
+                          escolher a loja evita descobrir no meio da
+                          conversa. */}
+                      {ws !== "comercial" &&
+                        !s.connectors.omnisend &&
+                        !s.connectors.klaviyo && (
+                          <span
+                            className="shrink-0 text-[9.5px]"
+                            style={{ color: "var(--ops-warn)" }}
+                            title="Sem chave de Omnisend/Klaviyo — cadastre nas integrações da loja"
+                          >
+                            sem email
+                          </span>
+                        )}
                       {s.id === storeId && <Check className="h-3 w-3 shrink-0" style={{ color: BRAND }} />}
                     </button>
                   ))}
                 </>,
               )}
           </div>
-          {/* Conectores · MCP */}
-          <div className="relative">
-            <button
-              title="Conectores ativos nesta conversa"
-              onClick={() => setMenu(menu === "conns" ? null : "conns")}
-              className="inline-flex h-[27px] items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-medium"
-              style={{
-                borderColor: menu === "conns" ? "#8B9BE8" : HAIR,
-                background: menu === "conns" ? "rgba(78,98,216,0.06)" : "transparent",
-                color: "var(--ops-sec)",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 3v6a6 6 0 0012 0V3M6 3h12M9 21v-4M15 21v-4M9 17h6" />
-              </svg>
-              {activeConns.length}/{connectorEntries.length}
-            </button>
-            {menu === "conns" &&
-              menuCard(
-                <>
-                  {menuHeader("Conectores · MCP")}
-                  {connectorEntries.map((c) =>
-                    menuRow({
-                      key: c.key,
-                      dot: <ConnDot k={c.key} size={17} title={c.name} />,
-                      name: c.name,
-                      sub: c.sub,
-                      on: Boolean(connOn[c.key] && c.available),
-                      disabled: !c.available,
-                      onClick: () => {
-                        touchedRef.current.add(c.key)
-                        setConnOn((s) => ({ ...s, [c.key]: !s[c.key] }))
-                      },
-                    }),
-                  )}
-                  <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
-                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                      valem só para esta conversa
-                    </span>
-                    <button onClick={() => { setMenu(null); setManage("mcp") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
-                      gerenciar conexões
-                    </button>
-                  </div>
-                </>,
-              )}
-          </div>
-          {/* Skills */}
-          <div className="relative">
-            <button
-              title="Skills ativas da ConvertIA"
-              onClick={() => setMenu(menu === "skills" ? null : "skills")}
-              className="inline-flex h-[27px] items-center gap-1.5 whitespace-nowrap rounded-[8px] border px-2.5 text-[11px] font-medium"
-              style={{
-                borderColor: menu === "skills" ? "#8B9BE8" : HAIR,
-                background: menu === "skills" ? "rgba(78,98,216,0.06)" : "transparent",
-                color: "var(--ops-sec)",
-              }}
-            >
-              <Sparkles className="h-3 w-3" />
-              Skills <span className="opacity-70 tabular-nums">{nSkills}</span>
-            </button>
-            {menu === "skills" &&
-              menuCard(
-                <>
-                  {menuHeader(`Skills da ConvertIA · ${ws === "comercial" ? "Comercial" : "Operacional"}`)}
-                  {skills.length === 0 && (
-                    <div className="px-2.5 py-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
-                      Nenhuma skill ainda — crie a primeira.
-                    </div>
-                  )}
-                  {skills.map((s) =>
-                    menuRow({
-                      key: s.id,
-                      dot: (
-                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: skillOn[s.id] ? "var(--ops-title)" : "var(--ops-mut)" }}>
-                          <Sparkles className="h-3 w-3" />
-                        </span>
-                      ),
-                      name: s.name,
-                      sub: s.description ?? "skill própria",
-                      on: Boolean(skillOn[s.id]),
-                      onClick: () => setSkillOn((x) => ({ ...x, [s.id]: !x[s.id] })),
-                    }),
-                  )}
-                  <div className="mx-[5px] mt-1 flex items-center justify-between border-t px-[5px] pb-[3px] pt-[7px]" style={{ borderColor: HAIR }}>
-                    <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                      a ConvertIA só usa skills ativas
-                    </span>
-                    <button onClick={() => { setMenu(null); setManage("skills") }} className="text-[10.5px] font-medium" style={{ color: BRAND }}>
-                      criar skill
-                    </button>
-                  </div>
-                </>,
-                true,
-              )}
-          </div>
-          {/* Anexar */}
-          <button
-            title="Anexar imagem ou arquivo (html, csv, md, txt, json)"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            style={{ color: "var(--ops-mut)" }}
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -933,65 +1351,145 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               e.target.value = ""
             }}
           />
+          {/* Ditado por voz (só aparece onde a Web Speech API existe) */}
+          {voiceSupported && (
+            <button
+              title={recording ? "Parar ditado" : "Ditar por voz (pt-BR)"}
+              onClick={toggleVoice}
+              className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[8px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={
+                recording
+                  ? { color: "#DC2626", background: "rgba(220,38,38,0.08)" }
+                  : { color: "var(--ops-mut)" }
+              }
+            >
+              <Mic className={`h-3.5 w-3.5 ${recording ? "animate-pulse" : ""}`} />
+            </button>
+          )}
           <span className="flex-1" />
           {/* Modelo */}
           <div className="relative">
             <button
               onClick={() => setMenu(menu === "model" ? null : "model")}
-              className="inline-flex h-[27px] max-w-[150px] items-center gap-1 whitespace-nowrap rounded-[8px] px-2 text-[11.5px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: "var(--ops-sec)" }}
+              title={deep ? `${mSel.name} · análise profunda ligada` : mSel.name}
+              className="inline-flex h-[27px] max-w-[170px] items-center gap-1 whitespace-nowrap rounded-[8px] px-2 text-[11.5px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+              style={{ color: deep ? BRAND : "var(--ops-sec)" }}
             >
+              {deep && <Telescope className="h-3 w-3 shrink-0" />}
               <span className="truncate">{mSel.name.replace("Claude ", "")}</span>
               <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" />
             </button>
             {menu === "model" &&
               menuCard(
                 <>
-                  {menuHeader("Modelo · via OpenRouter")}
-                  {CONVERTIA_MODELS.map((m) => {
-                    const on = m.id === model
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          setModel(m.id)
-                          setMenu(null)
-                        }}
-                        className="flex w-full items-start gap-[9px] rounded-[7px] px-[9px] py-[7px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                        style={{ background: on ? "rgba(78,98,216,0.07)" : undefined }}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
-                            {m.name}
-                            {m.tag && (
-                              <span className="rounded-[4px] px-[5px] py-[1.5px] text-[8.5px] font-bold uppercase tracking-[0.05em]" style={{ color: BRAND, background: "rgba(78,98,216,0.10)" }}>
-                                {m.tag}
+                  {(["claude", "outros"] as const).map((group) => (
+                    <div key={group}>
+                      {menuHeader(group === "claude" ? "Claude · via OpenRouter" : "Outros modelos")}
+                      {CONVERTIA_MODELS.filter((m) => m.group === group).map((m) => {
+                        const on = m.id === model
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              setModel(m.id)
+                              setMenu(null)
+                            }}
+                            className="flex w-full items-start gap-[9px] rounded-[7px] px-[9px] py-[6px] text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                            style={{ background: on ? "rgba(78,98,216,0.07)" : undefined }}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--ops-title)" }}>
+                                {m.name}
+                                {m.tag && (
+                                  <span className="rounded-[4px] px-[5px] py-[1.5px] text-[8.5px] font-bold uppercase tracking-[0.05em]" style={{ color: BRAND, background: "rgba(78,98,216,0.10)" }}>
+                                    {m.tag}
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                          <span className="mt-px block text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                            {m.description}
-                          </span>
-                        </span>
-                        {on && <Check className="mt-0.5 h-[13px] w-[13px]" style={{ color: BRAND }} />}
-                      </button>
-                    )
+                              <span className="mt-px block text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                                {m.description}
+                              </span>
+                            </span>
+                            {on && <Check className="mt-0.5 h-[13px] w-[13px]" style={{ color: BRAND }} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                  {/* Análise profunda mora junto do modelo (padrão do
+                      Claude): é um MODO do modelo — plano → coleta
+                      ampla → resposta completa, com raciocínio
+                      estendido onde o modelo aceita. */}
+                  <div className="mx-[5px] mt-1 border-t" style={{ borderColor: HAIR }} />
+                  {menuRow({
+                    key: "deep",
+                    dot: (
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] border" style={{ borderColor: HAIR, color: deep ? BRAND : "var(--ops-mut)" }}>
+                        <Telescope className="h-3 w-3" />
+                      </span>
+                    ),
+                    name: "Análise profunda",
+                    sub: mSel.reasoning
+                      ? "plano + consulta ampla + resposta completa · mais lenta e mais cara"
+                      : "este modelo não tem raciocínio estendido",
+                    on: deep && mSel.reasoning,
+                    disabled: !mSel.reasoning,
+                    onClick: () => setDeep(!deep),
                   })}
                 </>,
                 true,
               )}
           </div>
-          <button
-            onClick={() => void send()}
-            disabled={sending || !input.trim()}
-            title="Enviar"
-            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
-            style={{ background: BRAND }}
-          >
-            <ArrowUp className="h-[13px] w-[13px]" strokeWidth={2.2} />
-          </button>
+          {sending ? (
+            // Gerando: o botão vira o indicador — dá pra ver de longe
+            // que ainda não é hora de mandar o próximo prompt.
+            <span
+              title="Gerando resposta… aguarde para enviar o próximo prompt"
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full"
+              style={{ background: "rgba(78,98,216,0.12)" }}
+            >
+              <span
+                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent"
+                style={{ borderColor: BRAND, borderTopColor: "transparent" }}
+              />
+            </span>
+          ) : (
+            <button
+              onClick={() => void send()}
+              disabled={!input.trim() || budget?.exceeded === true}
+              title={budget?.exceeded ? "Limite diário de IA atingido" : "Enviar"}
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white disabled:opacity-50"
+              style={{ background: BRAND }}
+            >
+              <ArrowUp className="h-[13px] w-[13px]" strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </div>
+      {sending && (
+        <div
+          className="mt-1.5 flex items-center justify-center gap-2 text-center text-[10.5px] font-medium"
+          style={{ color: BRAND }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: BRAND }} />
+            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: BRAND }} />
+          </span>
+          ConvertIA está gerando a resposta — aguarde para enviar o próximo prompt.
+        </div>
+      )}
+      {budget && budgetPct >= 0.8 && (
+        <div
+          className="mt-1.5 text-center text-[10.5px]"
+          style={{ color: budget.exceeded ? "var(--ops-neg)" : "#B45309" }}
+        >
+          {budget.exceeded
+            ? `Limite diário de IA atingido (US$ ${(budget.daily_limit_cents / 100).toFixed(2)}) — libera de novo amanhã, ou peça a um admin para ajustar.`
+            : `Uso de IA hoje: US$ ${(budget.today_cost_cents / 100).toFixed(2)} de US$ ${(budget.daily_limit_cents / 100).toFixed(2)} (${Math.round(budgetPct * 100)}% do limite diário).`}
+        </div>
+      )}
     </div>
   )
 
@@ -1019,20 +1517,60 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               </span>
               Nova conversa
             </button>
+            <div
+              className="mt-1.5 flex h-[27px] items-center gap-1.5 rounded-[7px] border px-2"
+              style={{ borderColor: HAIR, background: "var(--ops-card)" }}
+            >
+              <Search className="h-3 w-3 shrink-0" style={{ color: "var(--ops-mut)" }} />
+              <input
+                value={railSearch}
+                onChange={(e) => setRailSearch(e.target.value)}
+                placeholder="Buscar conversa"
+                className="w-full min-w-0 border-0 bg-transparent text-[11.5px] outline-none"
+                style={{ color: "var(--ops-title)" }}
+              />
+              {railSearch && (
+                <button
+                  aria-label="Limpar busca"
+                  onClick={() => setRailSearch("")}
+                  className="text-[12px]"
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 pt-1">
-            {groupConversations(boot?.conversations ?? []).map(([g, items]) => (
+            {railSearch.trim() &&
+              groupConversations(
+                (boot?.conversations ?? []).filter((c) =>
+                  c.title.toLowerCase().includes(railSearch.trim().toLowerCase()),
+                ),
+              ).length === 0 && (
+                <div className="px-2 pt-3 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                  Nenhuma conversa com “{railSearch.trim()}”.
+                </div>
+              )}
+            {groupConversations(
+              railSearch.trim()
+                ? (boot?.conversations ?? []).filter((c) =>
+                    c.title.toLowerCase().includes(railSearch.trim().toLowerCase()),
+                  )
+                : (boot?.conversations ?? []),
+            ).map(([g, items]) => (
               <div key={g} className="mt-3.5">
                 <div className="px-2 pb-[5px] text-[10px] font-semibold" style={{ color: "var(--ops-mut)" }}>
                   {g}
                 </div>
                 {items.map((c) => {
                   const on = c.id === convId
+                  const pinned = isPinned(c)
                   return (
                     <div key={c.id} className="group relative">
                       <button
                         onClick={() => void openConversation(c)}
-                        className="block w-full truncate rounded-[7px] px-2 py-[6.5px] pr-6 text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+                        className="block w-full truncate rounded-[7px] px-2 py-[6.5px] pr-11 text-left text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                         style={{
                           background: on ? "rgba(17,24,39,0.05)" : undefined,
                           color: on ? "var(--ops-title)" : "var(--ops-sec)",
@@ -1040,14 +1578,30 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       >
                         {c.title}
                       </button>
-                      <button
-                        title="Excluir conversa"
-                        onClick={() => void deleteConversation(c)}
-                        className="absolute right-1 top-1/2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[5px] hover:bg-black/[0.06] group-hover:flex dark:hover:bg-white/[0.08]"
-                        style={{ color: "var(--ops-mut)" }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-px group-hover:flex">
+                        <button
+                          title={pinned ? "Desafixar conversa" : "Fixar conversa"}
+                          onClick={() => void togglePin(c)}
+                          className="flex h-5 w-5 items-center justify-center rounded-[5px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                          style={{ color: pinned ? BRAND : "var(--ops-mut)" }}
+                        >
+                          {pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                        </button>
+                        <button
+                          title="Excluir conversa"
+                          onClick={() => void deleteConversation(c)}
+                          className="flex h-5 w-5 items-center justify-center rounded-[5px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                          style={{ color: "var(--ops-mut)" }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {pinned && (
+                        <Pin
+                          className="pointer-events-none absolute right-2 top-1/2 h-2.5 w-2.5 -translate-y-1/2 group-hover:hidden"
+                          style={{ color: "var(--ops-mut)" }}
+                        />
+                      )}
                     </div>
                   )
                 })}
@@ -1085,8 +1639,31 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             <PanelLeft className="h-[15px] w-[15px]" />
           </button>
           {view === "conversa" ? (
-            <span className="truncate text-[12.5px] font-medium" style={{ color: "var(--ops-sec)" }}>
-              {convTitle ?? "Conversa"}
+            <span className="inline-flex min-w-0 items-center gap-2 text-[12.5px] font-medium" style={{ color: "var(--ops-sec)" }}>
+              <span className="truncate">{convTitle ?? "Conversa"}</span>
+              {sharedBy ? (
+                <span
+                  className="shrink-0 rounded-[5px] px-1.5 py-[1px] text-[9.5px] font-bold uppercase tracking-[0.05em]"
+                  style={{ background: "rgba(78,98,216,0.10)", color: BRAND }}
+                >
+                  leitura
+                </span>
+              ) : (
+                convId && (
+                  <button
+                    title={
+                      convShared
+                        ? "Compartilhada com a organização — clique para tornar privada"
+                        : "Compartilhar com a organização (link de leitura)"
+                    }
+                    onClick={() => void toggleShare()}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
+                    style={{ color: convShared ? BRAND : "var(--ops-mut)" }}
+                  >
+                    <Share2 className="h-[13px] w-[13px]" />
+                  </button>
+                )
+              )}
             </span>
           ) : (
             <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold" style={{ color: "var(--ops-title)" }}>
@@ -1168,17 +1745,51 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                       </div>
                     </div>
                   ) : (
-                    <AssistantMessage key={m.id} msg={m} onRefazer={refazer} />
+                    <AssistantMessage
+                      key={m.id}
+                      msg={m}
+                      readOnly={sharedBy !== null}
+                      onRefazer={refazer}
+                      onFeedback={(next) => {
+                        setMessages((all) =>
+                          all.map((x) => (x.id === m.id ? { ...x, feedback: next ? "up" : null } : x)),
+                        )
+                        if (m.dbId) sendFeedback(m.dbId, next ? "up" : null)
+                      }}
+                    />
                   ),
                 )}
               </div>
             </div>
-            <div className="shrink-0 px-8 pb-4 pt-2">
-              {composer(false)}
-              <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
+            {shareNotice && (
+              <div className="px-8 pb-1 text-center text-[10.5px]" style={{ color: BRAND }} role="status">
+                {shareNotice}
               </div>
-            </div>
+            )}
+            {sharedBy ? (
+              <div className="shrink-0 px-8 pb-5 pt-2">
+                <div
+                  className="mx-auto max-w-[680px] rounded-[10px] border px-4 py-2.5 text-center text-[11.5px]"
+                  style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+                >
+                  Conversa compartilhada por <strong>{sharedBy}</strong> — somente leitura.
+                  Para conversar com a ConvertIA, abra uma{" "}
+                  <button onClick={novaConversa} className="font-semibold underline" style={{ color: BRAND }}>
+                    nova conversa
+                  </button>
+                  .
+                </div>
+              </div>
+            ) : (
+              <div className="shrink-0 px-8 pb-4 pt-2">
+                {composer(false)}
+                {!sending && (
+                  <div className="mt-2 text-center text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                    O assistente consulta dados reais dos clientes — confira números críticos antes de enviar ao cliente.
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </main>
@@ -1198,10 +1809,35 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
 
 // ── Mensagem do assistente (fontes + markdown + ações) ─────────────
 
-function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () => void }) {
+function AssistantMessage({
+  msg,
+  readOnly = false,
+  onRefazer,
+  onFeedback,
+}: {
+  msg: UiMessage
+  readOnly?: boolean
+  onRefazer: () => void
+  onFeedback: (next: boolean) => void
+}) {
   const [toolsOpen, setToolsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [useful, setUseful] = useState(false)
+  const useful = msg.feedback === "up"
+  // Consulta em andamento: a última fonte sem summary é a que roda agora
+  const running =
+    (msg.pendingTools ?? 0) > 0
+      ? [...msg.sources].reverse().find((s) => s.summary == null)
+      : undefined
+  const progress = msg.progress ?? []
+  const lastProgress = progress.length > 0 ? progress[progress.length - 1] : null
+  // Turno que veio do banco ainda "streaming" mas velho demais pra
+  // estar vivo: a função foi morta — marca como interrompido.
+  const stale =
+    msg.generating === true &&
+    Boolean(msg.startedAt) &&
+    Date.now() - new Date(msg.startedAt as string).getTime() > GENERATING_STALE_MS
+  const isStreaming = msg.streaming === true && !stale
+  const hasProcess = msg.sources.length > 0 || progress.length > 0
 
   const copy = () => {
     void navigator.clipboard.writeText(msg.content)
@@ -1215,19 +1851,26 @@ function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () =>
         <IaMark s={22} />
       </span>
       <div className="min-w-0 flex-1">
-        {msg.sources.length > 0 && (
+        {hasProcess && (
           <>
             <button
               onClick={() => setToolsOpen(!toolsOpen)}
               className="mb-3.5 inline-flex h-7 items-center gap-[7px] rounded-[14px] border px-[11px] text-[11px] font-medium"
               style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
             >
-              {(msg.pendingTools ?? 0) > 0 ? (
+              {(msg.pendingTools ?? 0) > 0 && isStreaming ? (
                 <span className="h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
               ) : (
                 <Check className="h-[11px] w-[11px]" style={{ color: "var(--ops-pos)" }} />
               )}
-              Consultou {msg.sources.length} fonte{msg.sources.length === 1 ? "" : "s"}
+              {msg.sources.length > 0
+                ? `Consultou ${msg.sources.length} fonte${msg.sources.length === 1 ? "" : "s"}`
+                : "Processo"}
+              {progress.length > 0 && (
+                <span style={{ color: "var(--ops-mut)" }}>
+                  · {progress.length} etapa{progress.length === 1 ? "" : "s"}
+                </span>
+              )}
               <span className="-ml-px flex">
                 {[...new Set(msg.sources.map((s) => s.connector))].slice(0, 5).map((k, i) => (
                   <span key={k} className="flex" style={{ marginLeft: i ? -3 : 0 }}>
@@ -1240,35 +1883,89 @@ function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () =>
                 style={{ transform: toolsOpen ? "rotate(180deg)" : "none" }}
               />
             </button>
+            {/* consulta em andamento: o QUE está sendo buscado agora */}
+            {!toolsOpen && running && isStreaming && (
+              <div className="-mt-1.5 mb-3 flex items-center gap-2 text-[11px]" style={{ color: "var(--ops-mut)" }}>
+                <ConnDot k={running.connector} size={12} />
+                <span className="truncate">
+                  {running.label}
+                  {running.args_summary ? ` — ${running.args_summary}` : ""}…
+                </span>
+              </div>
+            )}
+            {/* Última narração enquanto ainda não há resposta final:
+                o usuário vê O QUE ela está fazendo, sem a parede de
+                texto de antes. */}
+            {!toolsOpen && isStreaming && !running && lastProgress && !msg.content.trim() && (
+              <div className="-mt-1.5 mb-3 text-[11.5px] italic" style={{ color: "var(--ops-mut)" }}>
+                {lastProgress.length > 220 ? `${lastProgress.slice(0, 220)}…` : lastProgress}
+              </div>
+            )}
             {toolsOpen && (
               <div className="-mt-1.5 mb-4 flex flex-col gap-[7px] border-l-2 pl-[13px]" style={{ borderColor: HAIR }}>
-                {msg.sources.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11.5px]">
-                    <ConnDot k={s.connector} size={14} />
-                    <span style={{ color: "var(--ops-text)" }}>
-                      {s.label}
-                      {s.write && (
-                        <span className="ml-1.5 rounded-[4px] px-1 text-[8.5px] font-bold uppercase" style={{ background: "rgba(220,38,38,0.08)", color: "#DC2626" }}>
-                          executou
+                {progress.length > 0 && (
+                  <div className="mb-1 flex flex-col gap-1.5">
+                    {progress.map((p, i) => (
+                      <div key={i} className="flex gap-2 text-[11.5px] leading-[1.5]" style={{ color: "var(--ops-sec)" }}>
+                        <span className="shrink-0 tabular-nums" style={{ color: "var(--ops-mut)" }}>
+                          {i + 1}.
                         </span>
-                      )}
-                    </span>
-                    <span className="tabular-nums text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
-                      {s.summary ?? "…"}
-                    </span>
+                        <span className="min-w-0 whitespace-pre-wrap">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {msg.sources.map((s, i) => (
+                  <div key={i} className="flex flex-col gap-px text-[11.5px]">
+                    <div className="flex items-center gap-2">
+                      <ConnDot k={s.connector} size={14} />
+                      <span style={{ color: "var(--ops-text)" }}>
+                        {s.label}
+                        {s.write && (
+                          <span className="ml-1.5 rounded-[4px] px-1 text-[8.5px] font-bold uppercase" style={{ background: "rgba(220,38,38,0.08)", color: "#DC2626" }}>
+                            executou
+                          </span>
+                        )}
+                      </span>
+                      <span className="tabular-nums text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                        {s.summary ?? "…"}
+                      </span>
+                    </div>
+                    {s.args_summary && (
+                      <span className="pl-[22px] text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        {s.args_summary}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </>
         )}
+        {isStreaming && !msg.content.trim() && (
+          <div className="mb-2 flex items-center gap-2 text-[12px]" style={{ color: "var(--ops-mut)" }} role="status">
+            <span className="flex gap-[3px]">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-1.5 w-1.5 animate-bounce rounded-full"
+                  style={{ background: BRAND, animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </span>
+            {msg.generating ? "Resposta em andamento — atualizando…" : "Gerando resposta…"}
+          </div>
+        )}
+        {stale && (
+          <div className="mb-2 text-[11.5px]" style={{ color: "#B45309" }}>
+            Resposta interrompida — o turno passou do tempo limite. O que foi gerado está abaixo; peça
+            para continuar se faltou algo.
+          </div>
+        )}
         <div className="convertia-md text-[14px] leading-[1.75]" style={{ color: "var(--ops-title)" }}>
-          <ConvertiaMarkdown
-            content={msg.content || (msg.streaming ? "…" : "")}
-            streaming={msg.streaming === true}
-          />
+          <ConvertiaMarkdown content={msg.content} streaming={isStreaming} />
         </div>
-        {!msg.streaming && msg.content && (
+        {!isStreaming && msg.content && (
           <div className="mt-4 flex items-center gap-1">
             <span className="flex-1" />
             <button
@@ -1279,22 +1976,26 @@ function AssistantMessage({ msg, onRefazer }: { msg: UiMessage; onRefazer: () =>
             >
               {copied ? <Check className="h-[13.5px] w-[13.5px]" /> : <Copy className="h-[13.5px] w-[13.5px]" />}
             </button>
-            <button
-              title="Refazer"
-              onClick={onRefazer}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: "var(--ops-mut)" }}
-            >
-              <RotateCcw className="h-[13.5px] w-[13.5px]" />
-            </button>
-            <button
-              title="Útil"
-              onClick={() => setUseful(!useful)}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-              style={{ color: useful ? BRAND : "var(--ops-mut)" }}
-            >
-              <ThumbsUp className="h-[13.5px] w-[13.5px]" fill={useful ? "currentColor" : "none"} />
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  title="Refazer"
+                  onClick={onRefazer}
+                  className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  <RotateCcw className="h-[13.5px] w-[13.5px]" />
+                </button>
+                <button
+                  title={useful ? "Remover marcação de útil" : "Marcar como útil"}
+                  onClick={() => onFeedback(!useful)}
+                  className="flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  style={{ color: useful ? BRAND : "var(--ops-mut)" }}
+                >
+                  <ThumbsUp className="h-[13.5px] w-[13.5px]" fill={useful ? "currentColor" : "none"} />
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

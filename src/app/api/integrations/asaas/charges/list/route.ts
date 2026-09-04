@@ -66,6 +66,46 @@ export async function GET(request: NextRequest) {
 
     allPayments.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
 
+    // Classificação (tipo / meses / loja) vive no espelho local
+    // `invoices` (migration 20261113). Sem ela a lista segue sem as
+    // colunas — o Financeiro mostra "—".
+    interface Classification {
+      charge_type: string | null
+      reference_months: string[] | null
+      store: { id: string; name: string } | null
+    }
+    const classificationByAsaasId = new Map<string, Classification>()
+    if (allPayments.length > 0) {
+      const ids = allPayments.map((p) => p.id)
+      const rows: Array<{
+        asaas_id: string
+        charge_type: string | null
+        reference_months: string[] | null
+        store_id: string | null
+      }> = []
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await supabase
+          .from("invoices")
+          .select("asaas_id, charge_type, reference_months, store_id")
+          .in("asaas_id", ids.slice(i, i + 200))
+        if (error) break
+        rows.push(...((data ?? []) as typeof rows))
+      }
+      const storeIds = [...new Set(rows.map((r) => r.store_id).filter(Boolean))] as string[]
+      const storeName = new Map<string, string>()
+      if (storeIds.length > 0) {
+        const { data: stores } = await supabase.from("client_stores").select("id, store_name").in("id", storeIds)
+        for (const s of stores ?? []) storeName.set(s.id, s.store_name)
+      }
+      for (const r of rows) {
+        classificationByAsaasId.set(r.asaas_id, {
+          charge_type: r.charge_type ?? null,
+          reference_months: r.reference_months ?? null,
+          store: r.store_id ? { id: r.store_id, name: storeName.get(r.store_id) ?? "Loja" } : null,
+        })
+      }
+    }
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -89,6 +129,9 @@ export async function GET(request: NextRequest) {
         billingTypeLabel: getBillingTypeLabel(p.billingType), dueDate: p.dueDate,
         paymentDate: p.paymentDate, description: p.description, invoiceUrl: p.invoiceUrl,
         client: client ? { id: client.id, name: client.name, company: client.company } : null,
+        charge_type: classificationByAsaasId.get(p.id)?.charge_type ?? null,
+        reference_months: classificationByAsaasId.get(p.id)?.reference_months ?? null,
+        store: classificationByAsaasId.get(p.id)?.store ?? null,
         isOverdue: p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.dueDate) < today),
         daysOverdue: p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.dueDate) < today)
           ? Math.floor((today.getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24)) : 0,

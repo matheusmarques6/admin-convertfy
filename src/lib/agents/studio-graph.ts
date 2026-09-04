@@ -69,15 +69,16 @@ export const STUDIO_NODES: StudioNode[] = [
   { key: "hero_section", type: "agent", agent: "hero_section", icon: "mail", x: 2092, y: 452 },
   { key: "text_format", type: "agent", agent: "text_format", icon: "edit", x: 2348, y: 452 },
   { key: "image_format", type: "agent", agent: "image_format", icon: "file", x: 2604, y: 452 },
-  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 2860, y: 452 },
+  { key: "typography", type: "agent", agent: "typography", icon: "edit", x: 2860, y: 452 },
+  { key: "color_format", type: "agent", agent: "color_format", icon: "target", x: 3116, y: 452 },
   // Fundo no tamanho declarado (código, 02/09): faixa chapada + foto quando
   // o td declara um background maior que a foto gerada. Linha de cima
   // porque é condicional — só há run quando o documento tem box de fundo.
-  { key: "background_fit", type: "agent", agent: "background_fit", icon: "check", x: 2860, y: 308 },
+  { key: "background_fit", type: "agent", agent: "background_fit", icon: "check", x: 3116, y: 308 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3116, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3372, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3628, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3372, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3628, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 3884, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -101,7 +102,8 @@ export const STUDIO_EDGES: Array<[string, string]> = [
   ["copy_merge", "hero_section"],
   ["hero_section", "text_format"],
   ["text_format", "image_format"],
-  ["image_format", "color_format"],
+  ["image_format", "typography"],
+  ["typography", "color_format"],
   ["color_format", "background_fit"],
   ["background_fit", "qa"],
   ["color_format", "qa"],
@@ -206,6 +208,7 @@ const MAIN_ORDER = [
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "background_fit",
   "qa",
@@ -571,6 +574,7 @@ const PHASE2_KEYS = new Set([
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "background_fit",
   "qa",

@@ -49,14 +49,32 @@ export function parseOAuthEnvelope(raw: string | null | undefined): McpOAuthEnve
   }
 }
 
-async function fetchJson(url: string, init?: RequestInit): Promise<Record<string, unknown> | null> {
+/**
+ * Busca JSON anotando o que aconteceu em `trace`. O discovery tenta
+ * várias URLs e antes engolia todas as falhas: quando nenhuma servia,
+ * o usuário via "não encontrei o authorization server" e não havia como
+ * saber se foi 404, timeout, HTML no lugar de JSON ou DNS. O rastro é o
+ * que torna o erro do botão "Conectar" diagnosticável.
+ */
+async function fetchJson(
+  url: string,
+  init?: RequestInit,
+  trace?: string[],
+): Promise<Record<string, unknown> | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
   try {
     const resp = await fetch(url, { ...init, signal: controller.signal })
-    if (!resp.ok) return null
-    return (await resp.json().catch(() => null)) as Record<string, unknown> | null
-  } catch {
+    if (!resp.ok) {
+      trace?.push(`${url} → HTTP ${resp.status}`)
+      return null
+    }
+    const json = (await resp.json().catch(() => null)) as Record<string, unknown> | null
+    trace?.push(`${url} → ${json ? "JSON ok" : "200 sem JSON válido"}`)
+    return json
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    trace?.push(`${url} → ${msg.includes("aborted") ? `timeout ${FETCH_TIMEOUT}ms` : msg}`)
     return null
   } finally {
     clearTimeout(timer)
@@ -73,6 +91,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<Record<string
 export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta> {
   const u = new URL(mcpUrl)
   let resourceMetaUrl: string | null = null
+  const trace: string[] = []
 
   try {
     const controller = new AbortController()
@@ -87,8 +106,12 @@ export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta
     const www = probe.headers.get("www-authenticate") ?? ""
     const m = www.match(/resource_metadata="([^"]+)"/)
     if (m) resourceMetaUrl = m[1]
-  } catch {
-    /* segue pros fallbacks */
+    trace.push(
+      `probe ${mcpUrl} → HTTP ${probe.status}${www ? ` · WWW-Authenticate presente${m ? "" : " (sem resource_metadata)"}` : " · sem WWW-Authenticate"}`,
+    )
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    trace.push(`probe ${mcpUrl} → ${msg.includes("aborted") ? `timeout ${FETCH_TIMEOUT}ms` : msg}`)
   }
 
   const candidates = [
@@ -99,7 +122,7 @@ export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta
 
   let issuer: string | null = null
   for (const c of candidates) {
-    const meta = await fetchJson(c)
+    const meta = await fetchJson(c, undefined, trace)
     const servers = meta?.authorization_servers
     if (Array.isArray(servers) && typeof servers[0] === "string") {
       issuer = servers[0]
@@ -116,7 +139,7 @@ export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta
     `${issuerUrl.origin}/.well-known/openid-configuration`,
   ]
   for (const c of asCandidates) {
-    const meta = await fetchJson(c)
+    const meta = await fetchJson(c, undefined, trace)
     if (meta?.authorization_endpoint && meta?.token_endpoint) {
       return {
         authorization_endpoint: String(meta.authorization_endpoint),
@@ -130,8 +153,9 @@ export async function discoverAuthServer(mcpUrl: string): Promise<AuthServerMeta
       }
     }
   }
+  log.error("discovery OAuth falhou", { mcpUrl, trace })
   throw new Error(
-    `Não encontrei o authorization server do MCP em ${u.origin} — o servidor suporta OAuth?`,
+    `Não encontrei o authorization server de ${u.origin}. Tentativas: ${trace.join(" | ")}`,
   )
 }
 

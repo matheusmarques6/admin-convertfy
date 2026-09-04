@@ -63,6 +63,8 @@ export interface AsaasPayment {
   dueDate: string
   description?: string
   externalReference?: string
+  /** Assinatura de origem (sub_…) quando o pagamento nasceu de uma. */
+  subscription?: string
   status: AsaasPaymentStatus
   paymentDate?: string
   clientPaymentDate?: string

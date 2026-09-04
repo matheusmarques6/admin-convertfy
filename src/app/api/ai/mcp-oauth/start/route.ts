@@ -13,6 +13,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { mcpOAuthRedirectUri } from "@/lib/api/public-origin"
 import { encrypt } from "@/lib/crypto"
 import {
   buildAuthorizeUrl,
@@ -43,8 +44,24 @@ export async function POST(request: NextRequest) {
       throw new AppError("O endpoint MCP precisa ser HTTPS.", 422, "validation-error")
     }
 
-    const redirectUri = `${request.nextUrl.origin}/api/ai/mcp-oauth/callback`
-    const as = await discoverAuthServer(body.url)
+    // O redirect_uri tem de ser IDÊNTICO aqui e na troca do código —
+    // derivar de nextUrl.origin nas duas pontas dava valores diferentes
+    // atrás do proxy (alias de preview × domínio final) e o AS recusava.
+    const redirectUri = mcpOAuthRedirectUri(request)
+    // Erro de discovery/registro é do SERVIDOR REMOTO, não bug nosso —
+    // precisa chegar ao usuário com o detalhe. Sem o AppError, o
+    // errorResponse trata Error genérico como 500 e devolve só "Erro
+    // interno", que foi exatamente o que apareceu na tela.
+    let as: Awaited<ReturnType<typeof discoverAuthServer>>
+    try {
+      as = await discoverAuthServer(body.url)
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : "Falha ao descobrir o authorization server",
+        422,
+        "mcp-discovery",
+      )
+    }
     if (!as.registration_endpoint) {
       throw new AppError(
         "O authorization server não suporta registro dinâmico de cliente — conexão manual necessária.",
@@ -52,11 +69,23 @@ export async function POST(request: NextRequest) {
         "validation-error",
       )
     }
-    const { clientId, clientSecret } = await registerClient(
-      as.registration_endpoint,
-      redirectUri,
-      as.scopes_supported,
-    )
+    let clientId: string
+    let clientSecret: string | undefined
+    try {
+      const registered = await registerClient(
+        as.registration_endpoint,
+        redirectUri,
+        as.scopes_supported,
+      )
+      clientId = registered.clientId
+      clientSecret = registered.clientSecret
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : "Registro de cliente recusado",
+        422,
+        "mcp-registration",
+      )
+    }
     const { verifier, challenge } = makePkce()
 
     // return_to só dentro do admin — nada de open redirect

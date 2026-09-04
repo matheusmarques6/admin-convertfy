@@ -1,18 +1,23 @@
 /**
- * Orientações do COO ao Estruturador (migration 20261086).
+ * Orientações do COO ao agente da fase 1 (migration 20261086).
  *
  * O outro lado do ciclo do `estruturador-feedback`: aquele julga UMA run e
  * vira rascunho de aprendizado; este instrui as PRÓXIMAS gerações e vale
  * imediatamente, servido em `<orientacao_do_coo>`.
  *
- * GET  ?flow_type=&email_number=  — as aplicáveis (global, flow em dois
+ * Desde 04/09 serve DOIS agentes (migration 20261111): `?agente=` /
+ * `agente` no corpo escolhe a quem o texto será servido — `estruturador`
+ * (default, compatível com o que já estava gravado) ou `curador`. Escrever
+ * para um NÃO instrui o outro: são prompts, papéis e erros diferentes.
+ *
+ * GET  ?agente=&flow_type=&email_number=  — as aplicáveis (global, flow em dois
  *      kinds, email), preenchidas ou não: a UI mostra os campos sempre.
  *      Devolve também `tem_material_vault`: sem `email_structure_refs` do
  *      flow, o Estruturador nem roda (`carregarMaterial` corta em
  *      `refs.length === 0`) e a orientação não chega a prompt nenhum — quem
  *      vai escrever precisa saber disso ANTES de escrever.
- * PUT  { escopo, kind?, flow_type?, email_number?, texto, origem_run_id? }
- *      — upsert por escopo+kind (migration 20261092: o flow tem dois textos,
+ * PUT  { agente?, escopo, kind?, flow_type?, email_number?, texto, origem_run_id? }
+ *      — upsert por agente+escopo+kind (migration 20261092: o flow tem dois textos,
  *      intenção e progressão, como o vault já separa). Texto vazio
  *      DESATIVA em vez de apagar: o histórico de quem pediu o quê
  *      sobrevive, e reativar é reescrever.
@@ -41,6 +46,10 @@ import type {
   EscopoOrientacao,
   KindOrientacao,
 } from "@/lib/agents/estruturador/orientacoes"
+import {
+  AGENTES_CALIBRAVEIS,
+  parseAgenteCalibravel,
+} from "@/lib/agents/shared/agente-calibravel"
 
 const log = logger.child("EstruturadorOrientacoesRoute")
 
@@ -68,6 +77,9 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(sb)
     const admin = await requireManager(user.id)
 
+    const agente = parseAgenteCalibravel(
+      request.nextUrl.searchParams.get("agente"),
+    )
     const flowType = request.nextUrl.searchParams.get("flow_type")
     const emailNumberRaw = request.nextUrl.searchParams.get("email_number")
     const emailNumber = emailNumberRaw ? Number(emailNumberRaw) : null
@@ -81,7 +93,8 @@ export async function GET(request: NextRequest) {
         .select(
           "id, escopo, kind, flow_type, email_number, texto, is_active, created_by, updated_at",
         )
-        .eq("is_active", true),
+        .eq("is_active", true)
+        .eq("agente", agente),
       // Só para o aviso: o Estruturador exige referência de estrutura do
       // flow para rodar. Sem isso o texto é escrito no vazio.
       flowType
@@ -127,6 +140,7 @@ export async function GET(request: NextRequest) {
 }
 
 const putSchema = z.object({
+  agente: z.enum(AGENTES_CALIBRAVEIS).default("estruturador"),
   escopo: z.enum(["email", "flow", "global"]),
   // Só o escopo `flow` se divide (intenção × progressão); os outros ficam
   // em 'geral', que é o default da coluna.
@@ -180,6 +194,7 @@ export async function PUT(request: NextRequest) {
     let existente = admin
       .from("estruturador_orientacoes")
       .select("id")
+      .eq("agente", body.agente)
       .eq("escopo", body.escopo)
       .eq("kind", body.kind)
     existente =
@@ -198,6 +213,7 @@ export async function PUT(request: NextRequest) {
           .update(campos)
           .eq("id", atual.id as string)
       : admin.from("estruturador_orientacoes").insert({
+          agente: body.agente,
           escopo: body.escopo,
           kind: body.kind,
           flow_type: flowType,
@@ -212,6 +228,7 @@ export async function PUT(request: NextRequest) {
     if (error) throw error
 
     log.info("estruturador.orientacao_salva", {
+      agente: body.agente,
       escopo: body.escopo,
       kind: body.kind,
       flowType,

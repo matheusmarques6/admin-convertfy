@@ -40,6 +40,7 @@ const EDITABLE_AGENTS = new Set([
   "hero_section",
   "text_format",
   "image_format",
+  "typography",
   "color_format",
   "qa",
 ])

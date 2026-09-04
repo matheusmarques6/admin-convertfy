@@ -14,6 +14,13 @@
  * aprendizado", que monta a nota do vault a partir da run + feedback
  * (buildAprendizadoDraft, puro). O caminho de volta ao agente é a curadoria
  * no Obsidian — nunca injeção direta no prompt.
+ *
+ * `AgentOrientacoes` e `AgentFeedback` servem DOIS agentes desde 04/09
+ * (migration 20261111): o Estruturador, que decide a sequência, e o
+ * Curador, que escolhe o bloco de cada posição. A tela é a mesma; o que
+ * muda é a quem o texto chega e qual rascunho o botão monta. Só o
+ * `EstruturadorEmbasamento` continua sendo de um agente só — é a leitura do
+ * output dele.
  */
 
 import { useMemo, useState } from "react"
@@ -33,6 +40,11 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
+import { buildAprendizadoCuradorDraft } from "@/lib/agents/architect/aprendizado-curador"
+import {
+  ROTULO_AGENTE,
+  type AgenteCalibravel,
+} from "@/lib/agents/shared/agente-calibravel"
 import {
   LIMITE_ORIENTACAO,
   rotuloEscopo,
@@ -314,7 +326,8 @@ const DEF: Record<
  * diretriz em dois componentes diferentes é como as telas antigas
  * divergiram.
  */
-export function EstruturadorOrientacoes({
+export function AgentOrientacoes({
+  agente = "estruturador",
   runId,
   flowType,
   emailNumber,
@@ -323,6 +336,12 @@ export function EstruturadorOrientacoes({
   rotulos,
   colapsavel = false,
 }: {
+  /**
+   * A quem o texto será servido. A tabela separa por `agente` (migration
+   * 20261111): escrever para o Estruturador NÃO instrui o Curador, e o
+   * contrário também não — são papéis e erros diferentes.
+   */
+  agente?: AgenteCalibravel
   runId?: string | null
   flowType: string | null
   emailNumber: number
@@ -345,6 +364,7 @@ export function EstruturadorOrientacoes({
   colapsavel?: boolean
 }) {
   const qs = new URLSearchParams()
+  qs.set("agente", agente)
   if (flowType) qs.set("flow_type", flowType)
   if (flowType) qs.set("email_number", String(emailNumber))
   const { data, mutate } = useSWR<OrientacoesResponse>(
@@ -377,6 +397,7 @@ export function EstruturadorOrientacoes({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          agente,
           escopo,
           kind,
           flow_type: escopo === "global" ? null : flowType,
@@ -503,7 +524,10 @@ export function EstruturadorOrientacoes({
    * no vault nem chega a montar o prompt do Estruturador — a orientação não
    * é ignorada, ela nunca é lida.
    */
-  const semMaterial = Boolean(flowType) && data?.tem_material_vault === false
+  const semMaterial =
+    agente === "estruturador" &&
+    Boolean(flowType) &&
+    data?.tem_material_vault === false
   const aviso = semMaterial ? (
     <div
       style={{
@@ -580,7 +604,8 @@ export function EstruturadorOrientacoes({
 /** Teto do `comentario` na rota de feedback (`z.string().max(4000)`). */
 const LIMITE_COMENTARIO = 4000
 
-export function EstruturadorFeedback({
+export function AgentFeedback({
+  agente,
   runId,
   output,
   flowType,
@@ -588,6 +613,12 @@ export function EstruturadorFeedback({
   storeName,
   runIso,
 }: {
+  /**
+   * Quem decidiu. Não vai para a rota — o agente é lido da RUN lá, para
+   * que a tela não possa gravar feedback de Curador numa run de
+   * Estruturador. Aqui ele escolhe o rascunho e o vocabulário do botão.
+   */
+  agente: AgenteCalibravel
   runId: string
   output: unknown
   flowType: string | null
@@ -638,7 +669,10 @@ export function EstruturadorFeedback({
   }
 
   const gerarDraft = () => {
-    const d = buildAprendizadoDraft({
+    // Os dois erram coisas diferentes — a sequência × o bloco de cada
+    // posição —, então o rascunho não pode ser o mesmo texto com outro
+    // título: cada builder lê o output do SEU agente.
+    const comum = {
       flowType: flowType ?? "custom",
       emailNumber,
       storeName,
@@ -649,8 +683,21 @@ export function EstruturadorFeedback({
         comentario: f.comentario,
         autor: f.autor,
       })),
-      output: (output ?? {}) as Parameters<typeof buildAprendizadoDraft>[0]["output"],
-    })
+    }
+    const d =
+      agente === "curador"
+        ? buildAprendizadoCuradorDraft({
+            ...comum,
+            output: (output ?? {}) as Parameters<
+              typeof buildAprendizadoCuradorDraft
+            >[0]["output"],
+          })
+        : buildAprendizadoDraft({
+            ...comum,
+            output: (output ?? {}) as Parameters<
+              typeof buildAprendizadoDraft
+            >[0]["output"],
+          })
     setDraft({ path: d.path, markdown: d.markdown })
   }
 
@@ -702,10 +749,13 @@ export function EstruturadorFeedback({
         background: C.g50,
       }}
     >
-      <div style={{ ...label, marginBottom: 3 }}>Sobre ESTA decisão</div>
+      <div style={{ ...label, marginBottom: 3 }}>
+        Sobre ESTA decisão do {ROTULO_AGENTE[agente]}
+      </div>
       <div style={{ ...body, color: C.g500, marginBottom: 8 }}>
-        Julga a run que está aberta e alimenta o rascunho de aprendizado do
-        vault. Para instruir as próximas gerações, use o bloco acima.
+        {agente === "curador"
+          ? "Julga a escolha de bloco desta run e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."
+          : "Julga a run que está aberta e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>

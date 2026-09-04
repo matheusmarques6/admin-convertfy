@@ -228,3 +228,23 @@ export const LIGHT_OVERLAY_THRESHOLD = 0.55
 export function overlayIsLight(luminance: number | null): boolean {
   return luminance != null && luminance >= LIGHT_OVERLAY_THRESHOLD
 }
+
+/**
+ * A faixa é escura demais para texto escuro?
+ *
+ * O outro lado da mesma pergunta — e o quadrante que ficava sem dono: a
+ * correção de overlay só olhava foto CLARA com texto claro, então texto preto
+ * sobre foto escura passava sem correção, sem aviso e sem telemetria. Das 16
+ * variantes ativas com `background-image`, todas declaram `#000000` em algum
+ * ponto.
+ *
+ * O corte NÃO é o espelho de 0.55: entre 0.20 e 0.55 fica uma ZONA MORTA em
+ * que nenhum dos dois lados dispara. Com um corte só, uma faixa de meio-tom
+ * cairia ora de um lado ora do outro conforme a foto fosse regerada, e a
+ * mesma peça oscilaria entre "escurece o texto" e "clareia o texto".
+ */
+export const DARK_OVERLAY_THRESHOLD = 0.2
+
+export function overlayIsDark(luminance: number | null): boolean {
+  return luminance != null && luminance <= DARK_OVERLAY_THRESHOLD
+}

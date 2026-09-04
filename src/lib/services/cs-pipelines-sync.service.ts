@@ -13,6 +13,13 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { clearCsPipelineCache, getCsPipeline } from "@/lib/cs-pipelines"
 import { getStoreHealthRules } from "./store-health-rules.service"
+import {
+  buildOnboardingStateByStore,
+  CARTEIRA_ONBOARDING_STAGE,
+  isOnboardingStageName,
+  type OnboardingRow,
+  type StoreOnboardingState,
+} from "./carteira-onboarding"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CsPipelinesSync")
@@ -24,7 +31,8 @@ const log = logger.child("CsPipelinesSync")
 interface CallSyncInput {
   callId: string
   storeId: string
-  clientId: string
+  /** null quando a loja não tem cliente vinculado (loja avulsa). */
+  clientId: string | null
   conductedBy: string | null
   conductedAt: string | null
   nextCallDate: string | null
@@ -175,16 +183,22 @@ export async function syncCallToDeal(args: CallSyncInput): Promise<void> {
  * são MANUAIS. A régua antiga por número de order quebrava assim que a
  * org inseria/reordenava etapas (ex.: a "Pausada" entra antes do Churn
  * e renumera tudo).
+ *
+ * A etapa "Onboarding" é aberta mas fica FORA da faixa de score: ela
+ * espelha o pipeline operacional. Sem tirá-la daqui, ela roubaria o
+ * lugar de "Saudável" (é a primeira aberta) e toda loja com score alto
+ * cairia na coluna de onboarding.
  */
 type CarteiraStage = { id: string; name: string; order: number; stage_type: string | null }
 
 function carteiraTargets(stages: CarteiraStage[]) {
+  const onboarding = stages.find((s) => isOnboardingStageName(s.name)) ?? null
   const open = stages
-    .filter((s) => (s.stage_type ?? "open") === "open")
+    .filter((s) => (s.stage_type ?? "open") === "open" && !isOnboardingStageName(s.name))
     .sort((a, b) => a.order - b.order)
   const auto = open.slice(0, 3)
   const lost = stages.find((s) => s.stage_type === "lost") ?? null
-  return { auto, autoIds: new Set(auto.map((s) => s.id)), lost }
+  return { auto, autoIds: new Set(auto.map((s) => s.id)), lost, onboarding }
 }
 
 function stageForScore(
@@ -196,6 +210,58 @@ function stageForScore(
   const s = score ?? 50
   const idx = s >= thresholds.healthy ? 0 : s >= thresholds.attention ? 1 : 2
   return auto[Math.min(idx, auto.length - 1)]
+}
+
+/**
+ * Estado de onboarding das lojas (pipeline operacional real). Falha de
+ * leitura devolve mapa vazio: sem o dado, a carteira volta a se guiar
+ * só pelo score — nunca deixa de responder.
+ */
+async function loadOnboardingStates(args: {
+  admin: ReturnType<typeof createAdminClient>
+  orgId?: string
+  storeIds?: string[]
+}): Promise<Map<string, StoreOnboardingState>> {
+  try {
+    let query = args.admin
+      .from("onboardings")
+      .select(
+        "id, store_id, status, entered_at, last_column_change_at, created_at, " +
+          "current_column:operational_pipeline_columns(name, slug, is_final)",
+      )
+    if (args.orgId) query = query.eq("org_id", args.orgId)
+    if (args.storeIds) {
+      if (args.storeIds.length === 0) return new Map()
+      query = query.in("store_id", args.storeIds)
+    }
+    const { data, error } = await query
+    if (error) throw error
+
+    const raws = (data ?? []) as unknown as Array<Record<string, unknown>>
+    const rows: OnboardingRow[] = raws.map((raw) => {
+      const col = (Array.isArray(raw.current_column) ? raw.current_column[0] : raw.current_column) as
+        | { name?: string | null; slug?: string | null; is_final?: boolean | null }
+        | null
+        | undefined
+      return {
+        id: raw.id as string,
+        store_id: (raw.store_id as string) ?? "",
+        status: (raw.status as string) ?? null,
+        column_slug: col?.slug ?? null,
+        column_name: col?.name ?? null,
+        column_is_final: col?.is_final ?? null,
+        entered_at: (raw.entered_at as string) ?? null,
+        last_column_change_at: (raw.last_column_change_at as string) ?? null,
+        created_at: (raw.created_at as string) ?? null,
+      }
+    })
+    return buildOnboardingStateByStore(rows)
+  } catch (err) {
+    log.warn("onboarding indisponível para a carteira", {
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return new Map()
+  }
 }
 
 /**
@@ -224,12 +290,21 @@ export async function syncCarteiraDeal(args: {
       .maybeSingle()
     if (!store) return
 
-    const { auto, autoIds, lost } = carteiraTargets(pipeline.stages)
+    const { auto, autoIds, lost, onboarding } = carteiraTargets(pipeline.stages)
     const isActive = store.is_active ?? true
     const rules = await getStoreHealthRules()
-    const targetStage = isActive
-      ? stageForScore(args.healthScore, auto, rules.stage_thresholds)
-      : lost
+
+    // Loja ainda em onboarding não entra na faixa de score: o card só
+    // vira acompanhamento quando o pipeline operacional chega em
+    // "Cliente ativo".
+    const onbStates = await loadOnboardingStates({ admin, storeIds: [args.storeId] })
+    const inOnboarding = onbStates.get(args.storeId)?.in_onboarding === true
+
+    const targetStage = !isActive
+      ? lost
+      : inOnboarding && onboarding
+        ? onboarding
+        : stageForScore(args.healthScore, auto, rules.stage_thresholds)
     if (!targetStage) return
     const targetIsChurn = !isActive
 
@@ -259,7 +334,14 @@ export async function syncCarteiraDeal(args: {
 
       // Stage aberta MANUAL (Em recuperação, Churn iminente, novas) —
       // não mexe. Exceção: loja INATIVA vai pro churn de onde estiver.
-      if (currentStage && !autoIds.has(currentStage.id) && isActive) return
+      // A etapa "Onboarding" NÃO é manual: ela é auto-gerida pelo
+      // pipeline operacional e precisa liberar o card no handoff.
+      const currentIsOnboarding = currentStage
+        ? isOnboardingStageName(currentStage.name)
+        : false
+      if (currentStage && !autoIds.has(currentStage.id) && !currentIsOnboarding && isActive) {
+        return
+      }
 
       // Mesma stage? Atualiza so o custom_fields
       if (existing.stage_id === targetStage.id) {
@@ -366,7 +448,38 @@ export async function ensureCarteiraStages(pipelineId: string): Promise<void> {
       }
     }
 
-    // 2) Etapa de pausa
+    // 2) Etapa "Onboarding" — primeira coluna, espelho do pipeline
+    //    operacional. Entra ANTES de "Saudável": a loja só vira
+    //    acompanhamento quando o onboarding chega em "Cliente ativo".
+    if (!stages.some((s) => isOnboardingStageName(s.name))) {
+      const firstOrder = stages.length > 0 ? Math.min(...stages.map((s) => s.order)) : 1
+      // Abre espaço de trás pra frente (UNIQUE de order na pipeline).
+      for (const s of [...stages].sort((a, b) => b.order - a.order)) {
+        await admin.from("pipeline_stages").update({ order: s.order + 1 }).eq("id", s.id)
+      }
+      const { error } = await admin.from("pipeline_stages").insert({
+        pipeline_id: pipelineId,
+        name: CARTEIRA_ONBOARDING_STAGE,
+        color: "#6366F1",
+        order: firstOrder,
+        stage_type: "open",
+        description:
+          "Automática — espelha o pipeline de onboarding. A loja sai daqui sozinha quando o onboarding chega em \"Cliente ativo\".",
+      })
+      if (error) throw error
+      // As etapas seguintes mudaram de order; recarrega para os passos
+      // abaixo não trabalharem com números velhos.
+      const { data: reloaded } = await admin
+        .from("pipeline_stages")
+        .select("id, name, \"order\", stage_type")
+        .eq("pipeline_id", pipelineId)
+        .order("order", { ascending: true })
+      stages.length = 0
+      stages.push(...((reloaded ?? []) as CarteiraStage[]))
+      changed = true
+    }
+
+    // 3) Etapa de pausa
     const hasPause = stages.some(
       (s) => s.stage_type === "archived" || /pausad/i.test(s.name),
     )
@@ -418,7 +531,7 @@ export async function ensureCarteiraDeals(orgId: string, pipelineId: string): Pr
       .order("order", { ascending: true })
     const stages = (stagesData ?? []) as CarteiraStage[]
 
-    const { auto } = carteiraTargets(stages)
+    const { auto, onboarding } = carteiraTargets(stages)
     if (auto.length === 0) return 0
 
     const { data: stores } = await admin
@@ -445,8 +558,16 @@ export async function ensureCarteiraDeals(orgId: string, pipelineId: string): Pr
 
     const nowIso = new Date().toISOString()
     const rules = await getStoreHealthRules()
+    // Loja nova costuma estar em onboarding — nascer em "Saudável"
+    // por score default (50) daria uma leitura errada da carteira.
+    const onbStates = await loadOnboardingStates({
+      admin,
+      storeIds: missing.map((s) => s.id as string),
+    })
     const rows = missing.map((s) => {
+      const inOnboarding = onbStates.get(s.id as string)?.in_onboarding === true
       const stage =
+        (inOnboarding ? onboarding : null) ??
         stageForScore((s.health_score as number | null) ?? null, auto, rules.stage_thresholds) ??
         auto[0]
       const owner = Array.isArray(s.client) ? s.client[0] : s.client
@@ -477,6 +598,102 @@ export async function ensureCarteiraDeals(orgId: string, pipelineId: string): Pr
     return rows.length
   } catch (err) {
     log.warn("ensureCarteiraDeals falhou", {
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return 0
+  }
+}
+
+/**
+ * Espelha o pipeline de onboarding na coluna "Onboarding" da carteira
+ * (idempotente, chamado pelo GET do board e barato quando nada muda:
+ * 2 selects e nenhum update no caso comum).
+ *
+ * Duas direções:
+ * - loja com onboarding em andamento entra na coluna Onboarding;
+ * - loja cujo onboarding chegou em "Cliente ativo" SAI dela para a
+ *   faixa de health score — é o handoff para o acompanhamento.
+ *
+ * Não toca em: etapa terminal (churn/pausa) e deal com `manual_stage`
+ * — decisão humana registrada continua soberana, como no resto do
+ * board. Devolve quantos cards moveu.
+ */
+export async function syncCarteiraOnboarding(
+  orgId: string,
+  pipelineId: string,
+): Promise<number> {
+  try {
+    const admin = createAdminClient()
+
+    const { data: stagesData } = await admin
+      .from("pipeline_stages")
+      .select("id, name, \"order\", stage_type")
+      .eq("pipeline_id", pipelineId)
+      .order("order", { ascending: true })
+    const stages = (stagesData ?? []) as CarteiraStage[]
+    const { auto, onboarding } = carteiraTargets(stages)
+    // Sem a coluna Onboarding (org que a apagou) não há o que espelhar.
+    if (!onboarding || auto.length === 0) return 0
+
+    const { data: dealsData } = await admin
+      .from("deals")
+      .select("id, store_id, stage_id, custom_fields, store:client_stores!inner(id, org_id, health_score, is_active)")
+      .eq("pipeline_id", pipelineId)
+      .eq("store.org_id", orgId)
+    const deals = (dealsData ?? []) as unknown as Array<{
+      id: string
+      store_id: string | null
+      stage_id: string
+      custom_fields: Record<string, unknown> | null
+      store: { health_score: number | null; is_active: boolean | null } | null
+    }>
+    if (deals.length === 0) return 0
+
+    const states = await loadOnboardingStates({ admin, orgId })
+    const rules = await getStoreHealthRules()
+    const stageById = new Map(stages.map((s) => [s.id, s]))
+    const nowIso = new Date().toISOString()
+    let moved = 0
+
+    for (const deal of deals) {
+      if (!deal.store_id) continue
+      const cf = deal.custom_fields ?? {}
+      if (cf.manual_stage === true) continue
+
+      const current = stageById.get(deal.stage_id)
+      const type = current?.stage_type ?? "open"
+      if (type === "lost" || type === "archived") continue
+      // Loja desativada é assunto do churn, não do onboarding.
+      if (deal.store?.is_active === false) continue
+
+      const inOnboarding = states.get(deal.store_id)?.in_onboarding === true
+      const isHere = current ? isOnboardingStageName(current.name) : false
+
+      let target: CarteiraStage | null = null
+      if (inOnboarding && !isHere) {
+        target = onboarding
+      } else if (!inOnboarding && isHere) {
+        // Handoff: entra na faixa de score pelo health atual.
+        target =
+          stageForScore(deal.store?.health_score ?? null, auto, rules.stage_thresholds) ?? auto[0]
+      }
+      if (!target || target.id === deal.stage_id) continue
+
+      const { error } = await admin
+        .from("deals")
+        .update({
+          stage_id: target.id,
+          status: "open" as const,
+          custom_fields: { ...cf, onboarding_sync: nowIso },
+        })
+        .eq("id", deal.id)
+      if (!error) moved++
+    }
+
+    if (moved > 0) log.info("syncCarteiraOnboarding moveu cards", { org_id: orgId, moved })
+    return moved
+  } catch (err) {
+    log.warn("syncCarteiraOnboarding falhou", {
       err: err instanceof Error ? err.message : String(err),
     })
     return 0
