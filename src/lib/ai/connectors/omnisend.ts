@@ -18,7 +18,7 @@ import {
   OMNISEND_TOOLS,
   executeOmnisendTool,
 } from "@/lib/integrations/omnisend/ritual-tools"
-import { omnisendRequest } from "@/lib/integrations/omnisend/client"
+import { OmnisendApiError, omnisendRequest } from "@/lib/integrations/omnisend/client"
 import { searchOmnisendOperations } from "@/lib/integrations/omnisend/operation-catalog"
 import { toolJson, type ConnectorTool, type ResolvedConnector } from "./types"
 
@@ -58,7 +58,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
   }))
 
   const call = async (
-    method: "GET" | "POST" | "PATCH" | "PUT",
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
     path: string,
     body?: Record<string, unknown>,
   ) => {
@@ -66,8 +66,54 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
       method,
       body,
       logTag: "ConvertIA",
+      // A recusa da API precisa CHEGAR ao modelo. Sem isto, um 400 de
+      // validação virava `null` → `{}` na tool, e ele concluía que a
+      // operação não existia (caso real: criar formulário/popup).
+      throwOnError: true,
     })
     return res
+  }
+
+  /**
+   * Executa devolvendo texto legível para o modelo. Erro da API vira
+   * instrução acionável — status, corpo do Omnisend e a ordem de
+   * corrigir o payload em vez de declarar impossibilidade.
+   */
+  const runCall = async (
+    method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+    path: string,
+    body: Record<string, unknown> | undefined,
+    okSummary: string,
+  ): Promise<{ content: string; summary?: string }> => {
+    try {
+      const res = await call(method, path, body)
+      return {
+        content:
+          res === null || res === undefined
+            ? `OK — ${method} ${path} respondeu sucesso sem corpo (204).`
+            : toolJson(res, 8000),
+        summary: okSummary,
+      }
+    } catch (err) {
+      if (err instanceof OmnisendApiError) {
+        return {
+          content: [
+            `A API do Omnisend RECUSOU a chamada: HTTP ${err.status} em ${method} ${path}.`,
+            `Resposta do Omnisend: ${err.body.slice(0, 1500) || "(sem corpo)"}`,
+            err.status === 400 || err.status === 422
+              ? "Isso é payload inválido, NÃO ausência do recurso: leia os campos apontados acima, corrija o corpo e chame de novo. Não conclua que a operação não existe."
+              : err.status === 404
+                ? "Confira se o path e os {params} estão certos (use omnisend_catalogo) antes de concluir qualquer coisa."
+                : "Reveja a chamada antes de concluir qualquer coisa sobre limitação da plataforma.",
+          ].join("\n"),
+          summary: `HTTP ${err.status}`,
+        }
+      }
+      return {
+        content: `Falha ao chamar ${method} ${path}: ${err instanceof Error ? err.message : String(err)}`,
+        summary: "erro",
+      }
+    }
   }
 
   // O "search" do padrão MCP da Omnisend: descobre a operação no
@@ -182,8 +228,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         required: ["campaign_id"],
       },
       async (args) => {
-        const res = await call("POST", `/api/campaigns/${String(args.campaign_id)}/copy`, {})
-        return { content: toolJson(res ?? {}, 2000), summary: "rascunho criado" }
+        return runCall("POST", `/api/campaigns/${String(args.campaign_id)}/copy`, {}, "rascunho criado")
       },
     ),
     writeTool(
@@ -205,8 +250,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         if (typeof args.subject === "string") body.subject = args.subject
         if (typeof args.preheader === "string") body.preheader = args.preheader
         if (typeof args.name === "string") body.name = args.name
-        const res = await call("PATCH", `/api/campaigns/${String(args.campaign_id)}`, body)
-        return { content: toolJson(res ?? {}, 2000), summary: "rascunho editado" }
+        return runCall("PATCH", `/api/campaigns/${String(args.campaign_id)}`, body, "rascunho editado")
       },
     ),
     writeTool(
@@ -222,10 +266,12 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         required: ["campaign_id", "emails"],
       },
       async (args) => {
-        const res = await call("POST", `/api/campaigns/${String(args.campaign_id)}/test-email`, {
-          emails: Array.isArray(args.emails) ? args.emails.map(String) : [],
-        })
-        return { content: toolJson(res ?? {}, 1200), summary: "teste enviado" }
+        return runCall(
+          "POST",
+          `/api/campaigns/${String(args.campaign_id)}/test-email`,
+          { emails: Array.isArray(args.emails) ? args.emails.map(String) : [] },
+          "teste enviado",
+        )
       },
     ),
     writeTool(
@@ -238,8 +284,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         required: ["campaign_id"],
       },
       async (args) => {
-        const res = await call("POST", `/api/campaigns/${String(args.campaign_id)}/send`, {})
-        return { content: toolJson(res ?? {}, 1200), summary: "CAMPANHA ENVIADA" }
+        return runCall("POST", `/api/campaigns/${String(args.campaign_id)}/send`, {}, "CAMPANHA ENVIADA")
       },
     ),
     writeTool(
@@ -252,8 +297,7 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         required: ["campaign_id"],
       },
       async (args) => {
-        const res = await call("POST", `/api/campaigns/${String(args.campaign_id)}/cancel`, {})
-        return { content: toolJson(res ?? {}, 1200), summary: "campanha cancelada" }
+        return runCall("POST", `/api/campaigns/${String(args.campaign_id)}/cancel`, {}, "campanha cancelada")
       },
     ),
     writeTool(
@@ -277,14 +321,14 @@ export function buildOmnisendConnector(apiKey: string): ResolvedConnector {
         const method = ["GET", "POST", "PATCH", "PUT", "DELETE"].includes(String(args.method))
           ? (args.method as "GET")
           : "GET"
-        const res = await call(
+        return runCall(
           method,
           path,
           typeof args.body === "object" && args.body !== null
             ? (args.body as Record<string, unknown>)
             : undefined,
+          `${method} ${path}`,
         )
-        return { content: toolJson(res ?? {}, 8000), summary: `${method} ${path}` }
       },
     ),
   ]

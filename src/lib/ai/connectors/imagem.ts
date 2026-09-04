@@ -21,6 +21,7 @@ import {
   isAspectKey,
   type AspectKey,
 } from "@/lib/agents/image/aspect-ratio"
+import { rewriteStorageImageSrc } from "@/lib/ai/convertia-image-url"
 import type { ConnectorTool, ResolvedConnector } from "./types"
 
 const ASPECTS: AspectKey[] = ["1:1", "4:5", "3:4", "4:3", "16:9", "9:16", "2:1", "3:5"]
@@ -79,7 +80,7 @@ export function buildImagemConnector(opts: {
       const folder = ctx.storeId ?? `org-${ctx.orgId}`
       const fullPrompt = `${prompt}\n\n${aspectInstructionForPrompt(aspect)}`
 
-      const url = await generateEmailImage(fullPrompt, folder, {
+      const storageUrl = await generateEmailImage(fullPrompt, folder, {
         aspect,
         mode: referenceUrl ? "product_ref" : "text2img",
         ...(referenceUrl ? { referenceImageUrl: referenceUrl } : {}),
@@ -87,11 +88,18 @@ export function buildImagemConnector(opts: {
         onMeta: (m) => opts.onCost?.(m.costCents, m.tokensInput, m.tokensOutput),
       })
 
+      // A signed URL do Storage vinha quebrada (token assinando um path
+      // diferente do objeto) e a imagem dava erro no chat. Entregamos a
+      // rota do admin, que autentica e transmite o objeto — e que
+      // também não expira. Se a URL não for do bucket, segue como veio.
+      const url = rewriteStorageImageSrc(storageUrl)
+
       return {
         content: [
           `Imagem gerada com sucesso (${aspect}).`,
           `URL: ${url}`,
           `Inclua na resposta como: ![${prompt.slice(0, 60)}](${url})`,
+          "Use EXATAMENTE essa URL — não a reescreva nem invente outra.",
         ].join("\n"),
         summary: `imagem ${aspect}`,
       }

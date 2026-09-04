@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { describeToolArgs, isAnalyticalQuestion } from "./convertia-chat-heuristics"
+import {
+  claimsImpossible,
+  defersDecision,
+  describeToolArgs,
+  isActionRequest,
+  isAnalyticalQuestion,
+} from "./convertia-chat-heuristics"
 
 describe("isAnalyticalQuestion", () => {
   it("reconhece perguntas de métricas e performance", () => {
@@ -77,3 +83,53 @@ describe("describeToolArgs", () => {
     expect(out!.length).toBeLessThanOrEqual(91)
   })
 })
+
+describe("isActionRequest", () => {
+  it("reconhece pedidos de execução", () => {
+    expect(isActionRequest("cria um teste a/b com o popup atual")).toBe(true)
+    expect(isActionRequest("configura o split 50/50 e dá o start")).toBe(true)
+    expect(isActionRequest("pausa a automação de boas-vindas")).toBe(true)
+    expect(isActionRequest("duplica essa campanha para setembro")).toBe(true)
+    expect(isActionRequest("exclui esse segmento antigo")).toBe(true)
+  })
+
+  it("não confunde pergunta de leitura com ação", () => {
+    expect(isActionRequest("como foi a performance de email?")).toBe(false)
+    expect(isActionRequest("oi")).toBe(false)
+    expect(isActionRequest("quantos pedidos ontem?")).toBe(false)
+  })
+})
+
+describe("claimsImpossible", () => {
+  it("pega a negativa que motivou o guard", () => {
+    // frase real da ConvertIA, depois desmentida por ela mesma
+    expect(
+      claimsImpossible("A API pública do Omnisend não expõe formulários/popups."),
+    ).toBe(true)
+    expect(claimsImpossible("Ou seja: não consigo executar esse A/B test por aqui.")).toBe(true)
+    expect(claimsImpossible("não é possível criar roleta por API")).toBe(true)
+    expect(claimsImpossible("não existe template de roleta nessa conta")).toBe(true)
+    expect(claimsImpossible("isso é uma limitação da plataforma")).toBe(true)
+    expect(claimsImpossible("não há endpoint público para isso")).toBe(true)
+  })
+
+  it("não dispara em resposta normal", () => {
+    expect(claimsImpossible("Criei o teste A/B com split 50/50 e deixei pausado.")).toBe(false)
+    expect(claimsImpossible("A receita caiu 12% no período.")).toBe(false)
+    expect(claimsImpossible("ok")).toBe(false)
+  })
+})
+
+describe("defersDecision", () => {
+  it("pega a resposta que devolve a decisão em vez de agir", () => {
+    expect(defersDecision("Qual caminho você prefere?")).toBe(true)
+    expect(defersDecision("Quer que eu já monte a estrutura de prêmios?")).toBe(true)
+    expect(defersDecision("Me confirma o teto de desconto antes?")).toBe(true)
+  })
+
+  it("não dispara em pergunta retórica dentro de análise", () => {
+    expect(defersDecision("O split ficou 50/50 e a métrica vencedora é conversão.")).toBe(false)
+    expect(defersDecision("")).toBe(false)
+  })
+})
+
