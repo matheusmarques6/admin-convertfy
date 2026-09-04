@@ -681,6 +681,49 @@ export function EmailDetailView({
     }
   }
 
+  /** Chama o agente de Tipografia sobre o documento SALVO. */
+  const repensarTipografia = async () => {
+    if (!email) return
+    setSalvandoTipo(true)
+    try {
+      const res = await fetch(`/api/admin/emails/${email.id}/typography`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modo: "repensar" }),
+      })
+      const json = (await res.json().catch(() => null)) as
+        | {
+            aplicadas?: number
+            justificativa?: string
+            descartadas?: OpDescartada[]
+            ops_recusadas_por_pin?: number
+            motivo?: string
+            error?: string
+          }
+        | null
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`)
+      setTipoAvisos(json?.descartadas ?? [])
+      setFonteSelecionada(null)
+      await mutate()
+      onEmailUpdated?.()
+      toast.toast({
+        title:
+          json?.aplicadas
+            ? `Tipografia repensada — ${json.aplicadas} ajuste(s)`
+            : "O agente não mudou nada",
+        description: json?.justificativa || undefined,
+      })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao repensar a tipografia",
+        description: e instanceof Error ? e.message : undefined,
+      })
+    } finally {
+      setSalvandoTipo(false)
+    }
+  }
+
   const estruturaAlterada =
     editing &&
     (draftRemoved.length > 0 ||
@@ -1308,6 +1351,7 @@ export function EmailDetailView({
                 avisos={tipoAvisos}
                 salvando={salvandoTipo}
                 onAplicar={() => void aplicarTipografia()}
+                onRepensar={() => void repensarTipografia()}
                 onDescartar={() => {
                   setTipoDraft(DRAFT_VAZIO)
                   setFonteSelecionada(null)

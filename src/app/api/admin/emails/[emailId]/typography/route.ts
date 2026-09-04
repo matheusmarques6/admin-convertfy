@@ -36,6 +36,22 @@ import {
   ValidationError,
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { resolveCostCents, logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
+import { invokeTypographyChain } from "@/lib/agents/chains/typography.chain"
+import {
+  resolveAgentSwitch,
+  toChainConfig,
+} from "@/lib/agents/chains/format-config"
+import { buildTypographyVars } from "@/lib/agents/html/format-context"
+import { renderWhitelistForPrompt } from "@/lib/agents/refiner/font-whitelist"
+import {
+  extractTypographyInventory,
+  renderInventoryForPrompt,
+} from "@/lib/agents/typography/inventory"
+import { aplicarGuards } from "@/lib/agents/typography/rules"
+import { applyTypographyOps, injectSecondaryFontLink } from "@/lib/agents/typography/apply"
+import { checarInvariantesDeTipografia } from "@/lib/agents/typography/guards"
+import type { EmailAgentConfig } from "@/types/email-generation"
 import { stripCfyBlockMarkers } from "@/lib/agents/html/post-process"
 import {
   fontesEfetivas,
@@ -55,6 +71,9 @@ export const dynamic = "force-dynamic"
 interface EmailRow {
   id: string
   number: number
+  name: string | null
+  subject: string | null
+  generation_batch_id: string | null
   html: string | null
   html_marked: string | null
   typography_override: unknown
@@ -69,7 +88,7 @@ async function loadEmail(
   const { data, error } = await admin
     .from("email_flow_emails")
     .select(
-      "id, number, html, html_marked, typography_override, updated_at, flow:email_flows!inner(id, store_id, flow_type)",
+      "id, number, name, subject, html, html_marked, typography_override, updated_at, generation_batch_id, flow:email_flows!inner(id, store_id, flow_type)",
     )
     .eq("id", emailId)
     .maybeSingle()
@@ -199,6 +218,188 @@ function mesclarOverride(
   }
 }
 
+/**
+ * "Repensar tipografia": o STEP 3.5 fora do runner.
+ *
+ * Roda sobre o documento ATUAL — não sobre o `html_pre_refiner`, que é o
+ * pré-tipografia mas também o pré-CORES: usá-lo como base apagaria o passo
+ * de cor.
+ *
+ * Duas coisas que o runner não precisa e esta rota sim:
+ *
+ *   - as vars saem das fontes EFETIVAS da peça. Se o humano trocou a fonte
+ *     só deste e-mail, `classe_principal` tem de acompanhar; senão o guard
+ *     do par avalia contra a classe errada e a justificativa fala de uma
+ *     fonte que não está no documento;
+ *   - itens que o humano tocou ficam PINADOS. Sem isso o botão desfaz o
+ *     trabalho manual, que é o oposto do que quem clica nele espera.
+ */
+async function repensar(
+  admin: ReturnType<typeof createAdminClient>,
+  email: EmailRow,
+  userId: string,
+) {
+  const inicio = Date.now()
+  const { data: configRow } = await admin
+    .from("email_agent_configs")
+    .select("*")
+    .eq("agent_type", "typography")
+    .order("is_active", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const chave = resolveAgentSwitch((configRow ?? null) as EmailAgentConfig | null)
+  if (chave.disabled) {
+    throw new ValidationError(
+      "O agente de Tipografia está desligado na aba Agentes — ligue lá antes de repensar",
+    )
+  }
+
+  const marca = await loadFontesDaMarca(admin, email.flow.store_id)
+  const override = parseTypographyOverride(email.typography_override)
+  const efetivas = fontesEfetivas(marca, override)
+  const { doc, temMarcado } = documentoBase(email)
+  const inventario = extractTypographyInventory(doc)
+  if (inventario.length === 0) {
+    return { ok: true, html_atualizado: false, motivo: "sem_declaracoes_de_fonte" }
+  }
+
+  const { data: loja } = await admin
+    .from("client_stores")
+    .select("store_name, niche, tone_description, posicionamento_preco, language")
+    .eq("id", email.flow.store_id)
+    .maybeSingle()
+  const store = (loja ?? {}) as Record<string, unknown>
+
+  const vars = buildTypographyVars(
+    {
+      brandName: (store.store_name as string) || "",
+      locale: (store.language as string) || "pt-BR",
+      fontHeading: efetivas.heading,
+      fontHeadingWeight: efetivas.headingWeight,
+      fontBody: efetivas.body,
+      fontBodyWeight: efetivas.bodyWeight,
+      emailRow: {
+        name: email.name ?? "",
+        subject: email.subject ?? "",
+        preheader: "",
+      },
+    },
+    doc,
+    {
+      niche: (store.niche as string) || "",
+      tomDeVoz: (store.tone_description as string) || "",
+      posicionamento: (store.posicionamento_preco as string) || "",
+      // Sem o imageMap do runner: a hero tem texto embutido quando a
+      // primeira seção do documento carrega imagem. Errar aqui só muda o
+      // grau de ruptura sugerido, nunca quebra nada.
+      heroComTexto: /<!--\s*cfy:block:0:hero:start[\s\S]{0,4000}?<img/i.test(doc),
+      fontWhitelist: renderWhitelistForPrompt(),
+      inventario: renderInventoryForPrompt(inventario),
+      inventarioTotal: inventario.length,
+    },
+  )
+
+  const pinados = new Set((override?.ops ?? []).map((o) => o.item))
+  const config = toChainConfig(chave.config, "typography")
+
+  try {
+    const r = await invokeTypographyChain({ config, vars })
+    const guarded = aplicarGuards(r.decision, inventario, {
+      classePrincipal: efetivas.classePrincipal,
+      pesoMarca: Number.parseInt(efetivas.headingWeight.replace(/\D/g, ""), 10) || null,
+    })
+    const respeitandoOHumano = guarded.ops.filter((o) => !pinados.has(o.item))
+    const recusadasPorPin = guarded.ops.length - respeitandoOHumano.length
+
+    const aplicado = applyTypographyOps(doc, respeitandoOHumano, guarded.segundaFonte)
+    const comFonte = injectSecondaryFontLink(
+      aplicado.html,
+      aplicado.familiasTrocadas > 0 ? guarded.segundaFonte : null,
+      respeitandoOHumano.map((o) => o.peso).filter((w): w is number => typeof w === "number"),
+    )
+    const invariantes = checarInvariantesDeTipografia(doc, comFonte, inventario.length)
+    if (!invariantes.ok) {
+      throw new Error(`guard: ${invariantes.violacao}`)
+    }
+
+    if (aplicado.aplicadas > 0) {
+      const { error } = await admin
+        .from("email_flow_emails")
+        .update({
+          html: stripCfyBlockMarkers(comFonte),
+          ...(temMarcado ? { html_marked: comFonte } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", email.id)
+      if (error) throw error
+    }
+
+    await logGenerationRun({
+      storeId: email.flow.store_id,
+      flowId: email.flow.id,
+      emailId: email.id,
+      triggeredBy: userId,
+      batchId: email.generation_batch_id || "",
+      agent: "typography",
+      status: "success",
+      model: config.model,
+      renderedPrompt: r.renderedPrompt,
+      promptSegments: r.promptSegments,
+      rawOutput: r.rawOutput,
+      parsedOutput: {
+        origem: "tela_repensar",
+        justificativa: r.decision.justificativa,
+        segunda_fonte: guarded.segundaFonte,
+        segunda_fonte_recusada: guarded.segundaFonteRecusada,
+        ops: respeitandoOHumano,
+        descartadas: guarded.descartadas,
+        itens_pinados_pelo_humano: [...pinados],
+        ops_recusadas_por_pin: recusadasPorPin,
+        aplicadas: aplicado.aplicadas,
+      },
+      tokensInput: r.tokensInput,
+      tokensOutput: r.tokensOutput,
+      costCents: resolveCostCents({
+        model: config.model,
+        tokensInput: r.tokensInput,
+        tokensOutput: r.tokensOutput,
+        costUsd: r.costUsd,
+      }),
+      durationMs: Date.now() - inicio,
+    }).catch(() => {})
+
+    log.info("typography.repensada", {
+      emailId: email.id,
+      aplicadas: aplicado.aplicadas,
+      descartadas: guarded.descartadas.length,
+      recusadasPorPin,
+    })
+
+    return {
+      ok: true,
+      html_atualizado: aplicado.aplicadas > 0,
+      aplicadas: aplicado.aplicadas,
+      justificativa: r.decision.justificativa,
+      descartadas: guarded.descartadas,
+      ops_recusadas_por_pin: recusadasPorPin,
+    }
+  } catch (err) {
+    await logGenerationRun({
+      storeId: email.flow.store_id,
+      flowId: email.flow.id,
+      emailId: email.id,
+      triggeredBy: userId,
+      batchId: email.generation_batch_id || "",
+      agent: "typography",
+      status: "error",
+      model: config.model,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - inicio,
+    }).catch(() => {})
+    throw err
+  }
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ emailId: string }> },
@@ -210,13 +411,11 @@ export async function POST(
     const admin = createAdminClient()
 
     const body = postSchema.parse(await request.json())
+    const email = await loadEmail(admin, emailId)
     if (body.modo === "repensar") {
-      throw new ValidationError(
-        "Repensar tipografia ainda não está ligado nesta rota",
-      )
+      return successResponse(request, await repensar(admin, email, user.id))
     }
 
-    const email = await loadEmail(admin, emailId)
     if (body.base_updated_at && body.base_updated_at !== email.updated_at) {
       // O documento mudou entre a tela carregar e salvar (re-render, outra
       // aba). Os índices das ops não descrevem mais este HTML.

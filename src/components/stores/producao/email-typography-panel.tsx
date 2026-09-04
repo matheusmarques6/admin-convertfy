@@ -22,7 +22,7 @@
  */
 
 import { useMemo, useState } from "react"
-import { Type, RotateCcw } from "lucide-react"
+import { Type, RotateCcw, Sparkles } from "lucide-react"
 
 import { FONT_WHITELIST } from "@/lib/agents/refiner/font-whitelist"
 import { familiasDoDocumento } from "@/lib/agents/typography/swap-fonts"
@@ -75,6 +75,7 @@ export function EmailTypographyPanel({
   avisos,
   salvando,
   onAplicar,
+  onRepensar,
   onDescartar,
 }: {
   /** Inventário do documento BASE — é ele que dá endereço às ops. */
@@ -91,6 +92,8 @@ export function EmailTypographyPanel({
   avisos: OpDescartada[]
   salvando: boolean
   onAplicar: () => void
+  /** Chama o agente de Tipografia sobre o documento salvo. */
+  onRepensar: () => void
   onDescartar: () => void
 }) {
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false)
@@ -364,7 +367,7 @@ export function EmailTypographyPanel({
         >
           {salvando ? "Aplicando…" : "Aplicar"}
         </button>
-        {mudanca && (
+        {mudanca ? (
           <button
             onClick={onDescartar}
             disabled={salvando}
@@ -380,6 +383,29 @@ export function EmailTypographyPanel({
             }}
           >
             Descartar
+          </button>
+        ) : (
+          /* Só sem rascunho: o agente lê o documento SALVO, então oferecer
+             os dois juntos prometeria que ele veria o que ainda está na
+             tela. Aplique primeiro, depois repense. */
+          <button
+            onClick={onRepensar}
+            disabled={salvando}
+            title="O agente relê o e-mail e decide onde romper a fonte. Os lugares que você ajustou à mão ficam como estão."
+            style={{
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 4,
+              border: "1px solid var(--crm-border)",
+              background: "var(--crm-gray-0)",
+              color: "var(--crm-gray-500)",
+              fontSize: 12.5,
+              cursor: salvando ? "wait" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Sparkles size={12} style={{ display: "inline", marginRight: 5 }} />
+            Repensar
           </button>
         )}
       </section>
