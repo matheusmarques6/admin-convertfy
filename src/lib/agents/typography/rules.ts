@@ -10,6 +10,7 @@
  * Puro (zero I/O) — testável.
  */
 
+import { classifyFontFamily, familiaPrincipal } from "./font-name"
 import type { TypographyOccurrence } from "./inventory"
 
 /** Uma mudança pedida pelo agente, endereçada por item do inventário. */
@@ -144,6 +145,26 @@ export interface GuardOpts {
 }
 
 /**
+ * Quantas ocorrências já estão numa família diferente da dominante — as
+ * rupturas que o documento carrega antes desta rodada.
+ */
+export function ocorrenciasForaDaDominante(
+  occurrences: ReadonlyArray<TypographyOccurrence>,
+): number {
+  const contagem = new Map<string, number>()
+  for (const oc of occurrences) {
+    const f = familiaPrincipal(oc.family)
+    if (!f) continue
+    contagem.set(f, (contagem.get(f) ?? 0) + 1)
+  }
+  if (contagem.size <= 1) return 0
+  const dominante = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  let fora = 0
+  for (const [familia, n] of contagem) if (familia !== dominante) fora += n
+  return fora
+}
+
+/**
  * Aplica os guards sobre a decisão do agente.
  *
  * Ordem importa: a recusa da segunda fonte (par ruim) esvazia toda troca de
@@ -173,7 +194,12 @@ export function aplicarGuards(
   const itemDoMaiorTitulo = occurrences.find((o) => (o.sizePx ?? 0) === maiorSize)?.index ?? null
 
   const saida: TypographyOp[] = []
-  let familiasUsadas = 0
+  // O teto de família conta o que JÁ ESTÁ no documento, não só o que esta
+  // rodada acrescenta. Sem isso, "Repensar tipografia" duas vezes passaria
+  // de 3 ocorrências (regra 1 do especialista): a segunda rodada começaria
+  // do zero e somaria mais 3 em cima das que a primeira deixou. A família
+  // dominante é a principal por definição — o resto é ruptura.
+  let familiasUsadas = ocorrenciasForaDaDominante(occurrences)
   const pesosUsados = new Set<number>(
     occurrences.map((o) => o.weight).filter((w): w is number => w !== null),
   )
@@ -299,4 +325,160 @@ export function aplicarGuards(
   }
 
   return { ops: saida, segundaFonte, descartadas, segundaFonteRecusada }
+}
+
+// ── Ops do humano: a régua avisa, não descarta ──────────────────────────
+
+export interface AvaliacaoHumana {
+  /** As ops que vão para o documento. */
+  ops: TypographyOpHumana[]
+  /**
+   * O que a régua do especialista tem a dizer sobre elas — mesma forma de
+   * `OpDescartada` porque a tela renderiza os dois do mesmo jeito, mas
+   * estas ops FORAM aplicadas.
+   */
+  avisos: OpDescartada[]
+  /** Estas não foram: valor impossível de escrever no documento. */
+  descartadas: OpDescartada[]
+}
+
+/** Faixa de tamanho que faz sentido num e-mail. */
+const TAMANHO_MIN_PX = 8
+const TAMANHO_MAX_PX = 96
+
+/**
+ * Avalia as ops que uma PESSOA escreveu no painel de tipografia.
+ *
+ * A diferença para `aplicarGuards` não é de rigor, é de autoridade. As
+ * regras do especialista existem para conter um modelo que decide sobre um
+ * inventário de texto e não vê a peça; quem clicou naquele elemento está
+ * olhando para ele. Então aqui elas viram AVISO — "abaixo de 16px a troca
+ * de família não se lê como intenção", "este par vira Arial dos dois lados
+ * para ~40% da base" — e a escolha é aplicada mesmo assim. Descartar em
+ * silêncio o que a pessoa acabou de pedir é o jeito mais rápido de a tela
+ * ser considerada quebrada.
+ *
+ * O que continua sendo descarte é o que o documento não consegue receber:
+ * família que não passa no saneamento, peso fora da escala, tamanho fora da
+ * faixa, tracking em formato inválido, item que não existe.
+ */
+export function avaliarOpsHumanas(
+  ops: ReadonlyArray<TypographyOpHumana>,
+  occurrences: ReadonlyArray<TypographyOccurrence>,
+  opts: { classePrincipal?: string } = {},
+): AvaliacaoHumana {
+  const porItem = new Map(occurrences.map((o) => [o.index, o]))
+  const saida: TypographyOpHumana[] = []
+  const avisos: OpDescartada[] = []
+  const descartadas: OpDescartada[] = []
+
+  for (const op of ops) {
+    const occ = porItem.get(op.item)
+    if (!occ) {
+      descartadas.push({ item: op.item, campo: "op", motivo: "item não existe no inventário" })
+      continue
+    }
+
+    const limpa: TypographyOpHumana = { item: op.item, motivo: op.motivo }
+
+    if (op.familia !== undefined) {
+      const familia = sanitizarFamilia(op.familia)
+      if (!familia) {
+        descartadas.push({
+          item: op.item,
+          campo: "familia",
+          motivo: `nome de fonte inválido: ${JSON.stringify(op.familia)}`,
+        })
+      } else {
+        limpa.familia = familia
+        if (occ.isCta) {
+          avisos.push({
+            item: op.item,
+            campo: "familia",
+            motivo: "rótulo de botão: a regra da casa é romper por caixa e peso, não por família",
+          })
+        }
+        if ((occ.sizePx ?? 0) < PISO_FAMILIA_PX) {
+          avisos.push({
+            item: op.item,
+            campo: "familia",
+            motivo: `abaixo de ${PISO_FAMILIA_PX}px a troca de família não se lê como intenção`,
+          })
+        }
+        if (occ.soPontuacao) {
+          avisos.push({
+            item: op.item,
+            campo: "familia",
+            motivo: "ornamento (só pontuação): a família É o desenho do glifo",
+          })
+        }
+        if (
+          opts.classePrincipal &&
+          !parSobreviveAoFallback(opts.classePrincipal, classifyFontFamily(familia))
+        ) {
+          avisos.push({
+            item: op.item,
+            campo: "familia",
+            motivo: `par ${opts.classePrincipal}+${classifyFontFamily(familia)} desaparece no substituto — os dois caem na mesma fonte de sistema`,
+          })
+        }
+      }
+    }
+
+    if (op.peso !== undefined) {
+      if (!PESOS_VALIDOS.includes(op.peso)) {
+        descartadas.push({ item: op.item, campo: "peso", motivo: `peso ${op.peso} fora da escala` })
+      } else {
+        limpa.peso = op.peso
+        const ajustado = ajustarPesoNoEscuro(op.peso, occ.sizePx, occ.bgDark)
+        if (ajustado !== op.peso) {
+          avisos.push({
+            item: op.item,
+            campo: "peso",
+            motivo: `fundo escuro engorda o traço: ${op.peso} pesa como ${ajustado} aqui`,
+          })
+        }
+      }
+    }
+
+    if (op.tamanho_px !== undefined) {
+      const t = op.tamanho_px
+      if (!Number.isInteger(t) || t < TAMANHO_MIN_PX || t > TAMANHO_MAX_PX) {
+        descartadas.push({
+          item: op.item,
+          campo: "tamanho",
+          motivo: `tamanho fora da faixa (${TAMANHO_MIN_PX}–${TAMANHO_MAX_PX}px): ${t}`,
+        })
+      } else {
+        limpa.tamanho_px = t
+      }
+    }
+
+    if (op.caixa !== undefined) limpa.caixa = op.caixa
+
+    if (op.tracking !== undefined) {
+      if (/^-?\d+(\.\d+)?(px|em)$/.test(op.tracking.trim())) limpa.tracking = op.tracking.trim()
+      else {
+        descartadas.push({
+          item: op.item,
+          campo: "tracking",
+          motivo: `tracking inválido: ${op.tracking}`,
+        })
+      }
+    }
+
+    const mexeEmAlgo =
+      limpa.familia !== undefined ||
+      limpa.peso !== undefined ||
+      limpa.tamanho_px !== undefined ||
+      limpa.caixa !== undefined ||
+      limpa.tracking !== undefined
+    if (!mexeEmAlgo) {
+      descartadas.push({ item: op.item, campo: "op", motivo: "nada a mudar neste item" })
+      continue
+    }
+    saida.push(limpa)
+  }
+
+  return { ops: saida, avisos, descartadas }
 }

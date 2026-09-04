@@ -20,20 +20,16 @@
  * Puro (zero I/O) — testável.
  */
 
+import { fallbackChainFor } from "../html/hero-graft"
+import { familiaPrincipal } from "./font-name"
+export { familiaPrincipal } from "./font-name"
 import type { TypographyOccurrence } from "./inventory"
+import { sanitizarFamilia } from "./rules"
 import type { TypographyOpHumana } from "./rules"
 
 /** Limiar de "isto é título" — o mesmo da normalização da montagem. */
 const HEADING_MIN_PX = 20
 const HEADING_TAGS = new Set(["h1", "h2", "h3"])
-
-/** Primeira família da cadeia, sem aspas e em minúsculas. */
-export function familiaPrincipal(stack: string): string {
-  return (stack.split(",")[0] ?? "")
-    .replace(/["']/g, "")
-    .trim()
-    .toLowerCase()
-}
 
 export function ehTitulo(oc: TypographyOccurrence): boolean {
   if (oc.sizePx !== null && oc.sizePx >= HEADING_MIN_PX) return true
@@ -90,4 +86,83 @@ export function opsParaTrocarFontesDaPeca(
     })
   }
   return ops
+}
+
+// ── Troca por NOME de família, no documento inteiro ──────────────────────
+
+/**
+ * O `<style>` do head também declara família — o esqueleto legado
+ * (`html/default-reference.ts`) traz `font-family: 'Inter', Arial,
+ * sans-serif`, e as variantes da biblioteca podem trazer `<style>` próprio.
+ * O inventário corta em `<body>` de propósito (o agente decide sobre o que
+ * se vê), então uma troca que só olhasse o corpo deixaria o Gmail webmail —
+ * que honra `<style>` embutido — com a fonte antiga em tudo que herda.
+ *
+ * Este regex é o do `hero-graft` (não o do inventário): ele entende nome
+ * entre aspas, e aqui o casamento é por NOME, não por posição. Os dois
+ * contratos são diferentes de propósito e não devem ser misturados.
+ */
+const FAMILY_DECL_RE = /font-family\s*:\s*((?:'[^']*'|"[^"]*"|[^;}"'])+)/gi
+
+export interface RemapResult {
+  html: string
+  trocadas: number
+}
+
+/**
+ * Troca a família das declarações cuja PRIMEIRA família casa com uma chave
+ * do mapa (comparação sem caixa e sem aspas). Varre head e corpo.
+ *
+ * Só troca VALOR: não cria nem apaga declaração, então a contagem que os
+ * invariantes checam não muda.
+ */
+export function remapFamilies(
+  html: string,
+  mapa: Readonly<Record<string, string>>,
+): RemapResult {
+  const alvo = new Map<string, string>()
+  for (const [de, para] of Object.entries(mapa)) {
+    const nome = sanitizarFamilia(para)
+    const chave = familiaPrincipal(de)
+    if (nome && chave) alvo.set(chave, nome)
+  }
+  if (alvo.size === 0) return { html, trocadas: 0 }
+
+  let trocadas = 0
+  const out = html.replace(FAMILY_DECL_RE, (match, stack: string) => {
+    const nova = alvo.get(familiaPrincipal(stack))
+    if (!nova) return match
+    trocadas++
+    const comAspas = /\s/.test(nova) ? `'${nova}'` : nova
+    return `font-family:${comAspas},${fallbackChainFor(nova)}`
+  })
+  return { html: out, trocadas }
+}
+
+/**
+ * As famílias do documento com quantas vezes cada uma aparece — o que o
+ * painel mostra. Depois que o tipógrafo age a peça tem TRÊS famílias, então
+ * dois seletores (título e corpo) não descrevem o documento: listar o que
+ * está lá e deixar remapear é a verdade, e sai de graça.
+ */
+export function familiasDoDocumento(
+  inventario: ReadonlyArray<TypographyOccurrence>,
+): Array<{ familia: string; ocorrencias: number; maiorTamanho: number | null }> {
+  const mapa = new Map<string, { familia: string; ocorrencias: number; maiorTamanho: number | null }>()
+  for (const oc of inventario) {
+    const chave = familiaPrincipal(oc.family)
+    if (!chave) continue
+    const atual = mapa.get(chave)
+    // Guarda o nome como está escrito no documento (com a caixa original).
+    const nome = (oc.family.split(",")[0] ?? "").replace(/["']/g, "").trim()
+    if (!atual) {
+      mapa.set(chave, { familia: nome, ocorrencias: 1, maiorTamanho: oc.sizePx })
+    } else {
+      atual.ocorrencias++
+      if (oc.sizePx !== null && (atual.maiorTamanho === null || oc.sizePx > atual.maiorTamanho)) {
+        atual.maiorTamanho = oc.sizePx
+      }
+    }
+  }
+  return [...mapa.values()].sort((a, b) => b.ocorrencias - a.ocorrencias)
 }

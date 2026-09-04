@@ -50,6 +50,11 @@ import {
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
+// A classificação por nome mora num módulo PURO: a tela de tipografia
+// precisa dela, e importar este arquivo no navegador traria o cliente
+// Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
+export { classifyFontFamily } from "../typography/font-name"
+import { classifyFontFamily } from "../typography/font-name"
 import { annotateInventoryPairs } from "./color-contrast"
 
 const log = logger.child("FormatContext")
@@ -766,15 +771,7 @@ export function buildColorFormatVars(
  * que sobrevive ao substituto (sans+sans desaparece para quem não carrega a
  * webfont), então errar aqui só torna o guard mais conservador.
  */
-export function classifyFontFamily(name: string): "serif" | "sans" | "mono" | "display" {
-  const n = (name || "").toLowerCase()
-  if (/mono|courier|consol|code|typewriter|plex mono/.test(n)) return "mono"
-  if (/serif|georgia|garamond|times|playfair|merriweather|lora|baskerville|didot|bodoni|caslon|prata|marcellus|fraunces|newsreader|bitter|crimson/.test(n)) {
-    return "serif"
-  }
-  if (/display|unbounded|syne|bungee|lobster|impact/.test(n)) return "display"
-  return "sans"
-}
+
 
 /**
  * Vars do tipógrafo. O documento NÃO entra: entra o inventário das

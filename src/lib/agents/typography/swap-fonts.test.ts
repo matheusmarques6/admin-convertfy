@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest"
 import { applyTypographyOps } from "./apply"
 import { extractTypographyInventory } from "./inventory"
-import { ehTitulo, familiaPrincipal, opsParaTrocarFontesDaPeca } from "./swap-fonts"
+import {
+  ehTitulo,
+  familiaPrincipal,
+  familiasDoDocumento,
+  opsParaTrocarFontesDaPeca,
+  remapFamilies,
+} from "./swap-fonts"
 
 // Peça no estado em que o tipógrafo a deixa: a marca em Montserrat e UM item
 // já rompido para uma segunda família (o que `normalizeFonts` apagaria).
@@ -85,5 +91,51 @@ describe("opsParaTrocarFontesDaPeca", () => {
     const ops = opsParaTrocarFontesDaPeca(inv, { paraTitulo: "Sora" })
     // Os dois itens de "título" (56px e o de 25px) entram; o corpo não.
     expect(ops.map((o) => o.item)).toEqual([0, 2])
+  })
+})
+
+// O head declara família também — é o Gmail webmail que honra `<style>`.
+const COM_HEAD = `<!DOCTYPE html><html><head><style>
+  body { font-family: 'Inter', Arial, sans-serif; }
+</style></head><body>
+  <div style="font-family:Inter,Arial;font-size:40px;">TÍTULO</div>
+  <p style="font-family:'Playfair Display',Georgia;font-size:14px;">corpo</p>
+</body></html>`
+
+describe("remapFamilies", () => {
+  it("troca no head E no corpo — o inventário sozinho não alcança o head", () => {
+    const r = remapFamilies(COM_HEAD, { Inter: "Sora" })
+    expect(r.trocadas).toBe(2)
+    expect(r.html).toContain("font-family:Sora,Arial,Helvetica,sans-serif;")
+    expect(r.html).not.toContain("'Inter'")
+  })
+
+  it("não toca em família fora do mapa", () => {
+    const r = remapFamilies(COM_HEAD, { Inter: "Sora" })
+    expect(r.html).toContain("'Playfair Display'")
+  })
+
+  it("não muda a contagem de declarações — o invariante segue valendo", () => {
+    const antes = extractTypographyInventory(COM_HEAD).length
+    const r = remapFamilies(COM_HEAD, { Inter: "Sora", "playfair display": "Lora" })
+    expect(extractTypographyInventory(r.html)).toHaveLength(antes)
+  })
+
+  it("nome de destino que não passa no saneamento é ignorado", () => {
+    const r = remapFamilies(COM_HEAD, { Inter: 'Sora";x="' })
+    expect(r.trocadas).toBe(0)
+    expect(r.html).toBe(COM_HEAD)
+  })
+
+  it("mapa vazio devolve o documento intacto", () => {
+    expect(remapFamilies(COM_HEAD, {}).html).toBe(COM_HEAD)
+  })
+})
+
+describe("familiasDoDocumento", () => {
+  it("lista as famílias com contagem, da mais usada para a menos", () => {
+    const lista = familiasDoDocumento(extractTypographyInventory(HTML))
+    expect(lista[0]).toMatchObject({ familia: "Montserrat", ocorrencias: 2, maiorTamanho: 56 })
+    expect(lista[1]).toMatchObject({ familia: "Playfair Display", ocorrencias: 1 })
   })
 })

@@ -198,3 +198,83 @@ describe("op inválida", () => {
     expect(r.descartadas.some((d) => d.motivo.includes("sem efeito"))).toBe(true)
   })
 })
+
+// ── Ops do humano: avisa e aplica ───────────────────────────────────────
+
+import { avaliarOpsHumanas, ocorrenciasForaDaDominante } from "./rules"
+
+const OCC_HUMANO: TypographyOccurrence[] = [
+  {
+    index: 0, blockIndex: 0, section: "hero", tag: "div", family: "Montserrat,Arial",
+    sizePx: 56, weight: 900, uppercase: false, tracking: null, bg: "#FFFFFF",
+    bgDark: false, isCta: false, soPontuacao: false, text: "TÍTULO",
+  },
+  {
+    index: 1, blockIndex: 0, section: "hero", tag: "a", family: "Montserrat,Arial",
+    sizePx: 15, weight: 700, uppercase: false, tracking: null, bg: "#07A55D",
+    bgDark: false, isCta: true, soPontuacao: false, text: "SHOP NOW",
+  },
+]
+
+describe("avaliarOpsHumanas", () => {
+  it("aplica a troca de família no CTA, mas avisa que a casa rompe por caixa e peso", () => {
+    const r = avaliarOpsHumanas([{ item: 1, familia: "Sora", motivo: "quero" }], OCC_HUMANO)
+    expect(r.ops).toHaveLength(1)
+    expect(r.ops[0].familia).toBe("Sora")
+    expect(r.avisos.map((a) => a.motivo).join(" ")).toContain("rótulo de botão")
+  })
+
+  it("avisa sobre o piso de 16px sem descartar", () => {
+    const r = avaliarOpsHumanas([{ item: 1, familia: "Lora", motivo: "x" }], OCC_HUMANO)
+    expect(r.ops).toHaveLength(1)
+    expect(r.avisos.some((a) => a.motivo.includes("16px"))).toBe(true)
+  })
+
+  it("avisa quando o par não sobrevive ao substituto", () => {
+    const r = avaliarOpsHumanas([{ item: 0, familia: "Sora", motivo: "x" }], OCC_HUMANO, {
+      classePrincipal: "sans",
+    })
+    expect(r.ops).toHaveLength(1)
+    expect(r.avisos.some((a) => a.motivo.includes("substituto"))).toBe(true)
+  })
+
+  it("descarta o que o documento não consegue receber", () => {
+    const r = avaliarOpsHumanas(
+      [
+        { item: 0, familia: 'Sora";x="', motivo: "x" },
+        { item: 0, peso: 450, motivo: "x" },
+        { item: 0, tamanho_px: 400, motivo: "x" },
+        { item: 0, tracking: "muito", motivo: "x" },
+        { item: 99, peso: 700, motivo: "x" },
+      ],
+      OCC_HUMANO,
+    )
+    expect(r.ops).toHaveLength(0)
+    // Cada valor impossível é descartado pelo CAMPO; a op que fica sem nada
+    // para mudar é descartada de novo como "op", com o motivo certo.
+    expect(new Set(r.descartadas.map((d) => d.campo))).toEqual(
+      new Set(["familia", "peso", "tamanho", "tracking", "op"]),
+    )
+    expect(r.descartadas.find((d) => d.campo === "familia")?.motivo).toContain("inválido")
+  })
+
+  it("aceita tamanho e caixa — o que o agente não pode pedir", () => {
+    const r = avaliarOpsHumanas(
+      [{ item: 0, tamanho_px: 40, caixa: "alta", motivo: "x" }],
+      OCC_HUMANO,
+    )
+    expect(r.ops[0]).toMatchObject({ tamanho_px: 40, caixa: "alta" })
+    expect(r.descartadas).toHaveLength(0)
+  })
+})
+
+describe("ocorrenciasForaDaDominante", () => {
+  it("conta as rupturas que o documento já carrega", () => {
+    const comRuptura = [
+      ...OCC_HUMANO,
+      { ...OCC_HUMANO[0], index: 2, family: "'Playfair Display',Georgia" },
+    ]
+    expect(ocorrenciasForaDaDominante(comRuptura)).toBe(1)
+    expect(ocorrenciasForaDaDominante(OCC_HUMANO)).toBe(0)
+  })
+})
