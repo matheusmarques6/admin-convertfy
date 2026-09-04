@@ -237,4 +237,33 @@ SELECT 43, 'variantes com schema desalinhado do HTML',
               FROM v$q$,
          false, true, '')))[1]::text, 'sem dados') END
 
+UNION ALL
+-- 44. Todo agente com config precisa poder GRAVAR RUN. Faltar no CHECK de
+--     email_generation_runs.agent é o buraco mudo que engoliu o `copy_fit`
+--     (28/08–01/09) e a `typography` (03/09): o passo roda, custa dinheiro e
+--     não deixa rastro — no Estúdio o nó aparece "pulado".
+SELECT 44, 'agentes que não conseguem gravar run',
+       CASE WHEN to_regclass('public.email_agent_configs') IS NULL
+                 OR to_regclass('public.email_generation_runs') IS NULL
+              THEN 'PENDENTE'
+            WHEN NOT EXISTS (
+              SELECT 1 FROM public.email_agent_configs c
+               WHERE c.is_active
+                 AND NOT EXISTS (
+                   SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'public.email_generation_runs'::regclass
+                      AND contype = 'c'
+                      AND pg_get_constraintdef(oid) ILIKE '%' || c.agent_type || '%'))
+              THEN 'ok' ELSE 'PENDENTE' END,
+       COALESCE((
+         SELECT string_agg(c.agent_type, ', ' ORDER BY c.agent_type)
+           FROM public.email_agent_configs c
+          WHERE c.is_active
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+               WHERE conrelid = 'public.email_generation_runs'::regclass
+                 AND contype = 'c'
+                 AND pg_get_constraintdef(oid) ILIKE '%' || c.agent_type || '%')
+       ), 'todos os agentes ativos estão no CHECK')
+
 ORDER BY ordem;

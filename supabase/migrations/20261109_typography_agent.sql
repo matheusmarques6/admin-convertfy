@@ -26,8 +26,13 @@
 -- agent_type='typography';` — o runner trata linha inativa como step
 -- desligado (logStepDisabled) e o email segue igual a hoje.
 
--- 1. CHECK de agent_type (o de email_generation_runs não existe mais em
---    produção desde 28/08 — verificado; só este precisa ser estendido).
+-- 1. CHECK de agent_type de email_agent_configs.
+--
+--    ERRO CONHECIDO DESTA MIGRATION: aqui estava escrito que o CHECK de
+--    `email_generation_runs.agent` "não existe mais em produção". Existe — a
+--    frase foi copiada de outra migration sem conferir, e por isso a run de
+--    tipografia foi rejeitada com 23514 e o agente sumiu da telemetria por um
+--    dia. Corrigido na 20261110. Agente novo precisa dos DOIS CHECKs.
 DO $$
 DECLARE cname text;
 BEGIN
