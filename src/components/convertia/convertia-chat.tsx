@@ -1243,8 +1243,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   }
 
   const refazer = () => {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user")
-    if (lastUser) void send(lastUser.content)
+    // Só o que foi DIGITADO: anexos inline (até 300 KB) estourariam o
+    // limite da rota, e turno de confirmação não se repete como prompt.
+    const lastUser = [...messages]
+      .reverse()
+      .find((m) => m.role === "user" && !/^(✅ Confirmado:|\[Cancelado\])/.test(m.content))
+    const text = lastUser ? displayUserContent(lastUser.content) : ""
+    if (text) void send(text)
   }
 
   const view = messages.length > 0 ? "conversa" : "novo"

@@ -61,6 +61,36 @@ export async function mergeMessageMeta(
   if (error) throw error
 }
 
+/**
+ * Resolve a confirmação de ação irreversível de forma ATÔMICA (RPC
+ * `ai_chat_confirmation_resolve`: UPDATE condicional em resolved_at IS
+ * NULL). Devolve false quando outra requisição já resolveu — dois
+ * cliques em "Confirmar" executam UMA vez. Sem a migration 20261117
+ * cai no merge não atômico (comportamento anterior).
+ */
+export async function resolveConfirmationAtomic(
+  admin: SupabaseClient,
+  messageId: string,
+  confirmationId: string,
+  resolution: "approved" | "rejected",
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("ai_chat_confirmation_resolve", {
+    p_message_id: messageId,
+    p_confirmation_id: confirmationId,
+    p_resolution: resolution,
+  })
+  if (!error) return data === true
+  if (!MISSING_FN.has(error.code ?? "") && !/function .* does not exist/i.test(error.message)) throw error
+  log.warn("rpc ai_chat_confirmation_resolve ausente — fallback não atômico (aplique a migration 20261117)")
+  const { data: row } = await admin.from("ai_chat_messages").select("meta").eq("id", messageId).maybeSingle()
+  const pending = (row?.meta as { pending_confirmation?: Record<string, unknown> } | null)?.pending_confirmation
+  if (!pending || pending.id !== confirmationId || pending.resolved_at) return false
+  await mergeMessageMeta(admin, messageId, {
+    pending_confirmation: { ...pending, resolved_at: new Date().toISOString(), resolution },
+  })
+  return true
+}
+
 export function createTurnPersistence(opts: {
   admin: SupabaseClient
   messageId: string | null

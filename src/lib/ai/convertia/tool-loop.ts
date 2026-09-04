@@ -264,6 +264,7 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
         label: entry.tool.label,
         summary: confirmSummary,
         args,
+        store_id: deps.toolCtx.storeId,
         created_at: new Date(clock()).toISOString(),
       }
       state.pendingConfirmation = confirmation

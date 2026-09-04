@@ -133,6 +133,7 @@ export async function syncKnowledge(opts: {
 
     const notes: ParsedKnowledgeNote[] = []
     const skipped: Array<{ path: string; motivo: string }> = []
+    const seen = new Set<string>()
     const CONC = 8
     for (let i = 0; i < files.length; i += CONC) {
       await Promise.all(
@@ -147,6 +148,10 @@ export async function syncKnowledge(opts: {
             notes.push(parseKnowledgeNote(rel, content, { advisorsFolder: cfg.advisorsFolder }))
           } catch (err) {
             skipped.push({ path: rel, motivo: `download falhou: ${err instanceof Error ? err.message : String(err)}` })
+            // Falha transitória NÃO é remoção: a nota continua ativa com
+            // a versão anterior (senão a varredura abaixo a desativaria e
+            // o no-op de SHA nunca a traria de volta).
+            seen.add(rel)
           }
         }),
       )
@@ -157,7 +162,6 @@ export async function syncKnowledge(opts: {
     const byPath = new Map((existing ?? []).map((e) => [e.path as string, e]))
 
     let upserted = 0
-    const seen = new Set<string>()
     for (const n of notes) {
       seen.add(n.path)
       const prev = byPath.get(n.path)

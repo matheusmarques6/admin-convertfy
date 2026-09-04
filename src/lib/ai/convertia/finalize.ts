@@ -32,8 +32,10 @@ export interface FinalizeInput {
   telemetry: TurnTelemetry
   result: ToolLoopResult
   baseMeta: () => Record<string, unknown>
-  /** Custo fora do stream do chat (geração de imagem), em centavos USD. */
+  /** Custo fora do stream do chat (geração de imagem), em centavos USD — TOTAL do turno (vai no meta). */
   extraCostCents: number
+  /** Parte do custo extra gerada NESTE processo (vai na fatura). Default = extraCostCents. */
+  extraCostCentsNew?: number
   extraTokens: { input: number; output: number }
   connectors: string[]
   /** Dados para montar o job de continuação quando `result.resumable`. */
@@ -52,6 +54,9 @@ export interface FinalizeOutput {
 export async function finalizeTurn(input: FinalizeInput): Promise<FinalizeOutput> {
   const { result, state, telemetry } = input
   const usage = telemetry.summary(input.extraCostCents / 100)
+  // Fatura = só o que ESTE processo executou (a rota já faturou as
+  // rodadas dela antes de enfileirar a continuação).
+  const billed = telemetry.summaryNew((input.extraCostCentsNew ?? input.extraCostCents) / 100)
   let continuationJobId: string | null = null
   let status: TurnStatus = result.status
 
@@ -71,9 +76,15 @@ export async function finalizeTurn(input: FinalizeInput): Promise<FinalizeOutput
   const continuing = Boolean(continuationJobId)
   // Continuando: a bolha fica em "resposta em andamento" (a narração já
   // está em meta.progress — repeti-la no content duplicaria na tela).
+  // Continuável mas SEM job (tabela ausente, payload grande demais): o
+  // usuário precisa saber que parou — não pode virar "(sem resposta)".
+  const cutOff =
+    result.resumable && !continuing
+      ? `${state.progress.join("\n\n")}\n\n_(o tempo do turno acabou antes da resposta final — o que foi consultado está no processo acima; peça para continuar de onde parou)_`.trim()
+      : ""
   const content = continuing
     ? result.fullText
-    : result.fullText || (state.sources.length > 0 || state.progress.length > 0 ? "(sem resposta)" : "")
+    : result.fullText || cutOff || (state.sources.length > 0 || state.progress.length > 0 ? "(sem resposta)" : "")
 
   const meta: AssistantMessageMeta = {
     ...(input.baseMeta() as Pick<AssistantMessageMeta, "model" | "skills" | "deep">),
@@ -124,27 +135,28 @@ export async function finalizeTurn(input: FinalizeInput): Promise<FinalizeOutput
     model: result.model,
     provider: "openrouter",
     status: status === "error" ? "error" : "success",
-    tokensInput: usage.tokens_input + input.extraTokens.input,
-    tokensOutput: usage.tokens_output + input.extraTokens.output,
-    durationMs: usage.duration_ms,
+    tokensInput: billed.tokens_input + input.extraTokens.input,
+    tokensOutput: billed.tokens_output + input.extraTokens.output,
+    durationMs: billed.duration_ms,
     userId: input.userId,
     orgId: input.orgId,
     storeId: input.storeId,
     // custo REAL (OpenRouter + imagem) em centavos — é o que o
     // guard-rail diário soma
-    costCents: usage.cost_usd > 0 ? usage.cost_usd * 100 : null,
+    costCents: billed.cost_usd > 0 ? billed.cost_usd * 100 : null,
     context: {
       conversation_id: input.conversationId,
       message_id: messageId,
       connectors: input.connectors,
       sources: state.sources.length,
       status,
-      rounds: usage.rounds,
-      tools: usage.tools,
-      tokens_cached: usage.tokens_cached,
-      tokens_cache_write: usage.tokens_cache_write,
-      cache_hit_ratio: usage.cache_hit_ratio,
-      ...(input.extraCostCents > 0 ? { image_cost_cents: input.extraCostCents } : {}),
+      rounds: billed.rounds,
+      tools: billed.tools,
+      tokens_cached: billed.tokens_cached,
+      tokens_cache_write: billed.tokens_cache_write,
+      cache_hit_ratio: billed.cache_hit_ratio,
+      ...(continuing || telemetry.rounds.length !== billed.rounds.length ? { partial: true, rounds_total: usage.rounds.length } : {}),
+      ...((input.extraCostCentsNew ?? input.extraCostCents) > 0 ? { image_cost_cents: input.extraCostCentsNew ?? input.extraCostCents } : {}),
       ...(continuationJobId ? { continuation_job_id: continuationJobId } : {}),
     },
     errorMessage: result.errorMessage,

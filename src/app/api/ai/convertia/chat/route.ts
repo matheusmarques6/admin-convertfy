@@ -58,7 +58,7 @@ import { supportsPromptCache } from "@/lib/ai/convertia/prompt-cache"
 import { buildConsultedBlock, type ConsultedTurn } from "@/lib/ai/convertia/consult-memory"
 import { TurnTelemetry } from "@/lib/ai/convertia/telemetry"
 import { createTurnState, runToolLoop, type ToolEntry } from "@/lib/ai/convertia/tool-loop"
-import { createTurnPersistence, mergeMessageMeta } from "@/lib/ai/convertia/persist"
+import { createTurnPersistence, resolveConfirmationAtomic } from "@/lib/ai/convertia/persist"
 import { createCancelWatcher } from "@/lib/ai/convertia/cancel"
 import { finalizeTurn } from "@/lib/ai/convertia/finalize"
 import { stripImagesForJob } from "@/lib/ai/convertia/continuation"
@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
     // aqui (checado abaixo).
     let preApproved: Array<{ name: string; args: Record<string, unknown> }> | undefined
     let approvedSummary: string | null = null
+    let pendingApproval: PendingConfirmation | null = null
     if (body.approve) {
       if (!conversationId) throw new AppError("Confirmação sem conversa", 422, "validation")
       const { data: prev } = await admin
@@ -217,6 +218,7 @@ export async function POST(request: NextRequest) {
       if (pending.resolved_at) {
         throw new AppError("Esta ação já foi confirmada ou cancelada.", 409, "conflict")
       }
+      pendingApproval = pending
     }
 
     // ── Conversa (cria com o contexto do composer) ────────────────
@@ -253,29 +255,27 @@ export async function POST(request: NextRequest) {
     // Daqui em diante a conversa existe (criada ou validada).
     const convId: string = conversationId as string
 
-    // Resolve a confirmação (uso único) — depois da checagem de dono.
-    if (body.approve) {
-      const { data: prev } = await admin
-        .from("ai_chat_messages")
-        .select("meta")
-        .eq("id", body.approve.message_id)
-        .maybeSingle()
-      const pending = (prev?.meta as { pending_confirmation: PendingConfirmation }).pending_confirmation
-      const resolution = body.approve.decision === "approve" ? "approved" : "rejected"
-      await mergeMessageMeta(admin, body.approve.message_id, {
-        pending_confirmation: { ...pending, resolved_at: new Date().toISOString(), resolution },
+    // Cancelar: resolve (atômico, uso único) e encerra sem turno.
+    if (body.approve && pendingApproval && body.approve.decision === "reject") {
+      const ok = await resolveConfirmationAtomic(admin, body.approve.message_id, pendingApproval.id, "rejected")
+      if (!ok) throw new AppError("Esta ação já foi confirmada ou cancelada.", 409, "conflict")
+      await admin.from("ai_chat_messages").insert({
+        conversation_id: convId,
+        role: "user",
+        content: `[Cancelado] ${pendingApproval.summary}`,
+        meta: { confirmation: { id: pendingApproval.id, decision: "reject" } },
       })
-      if (resolution === "rejected") {
-        await admin.from("ai_chat_messages").insert({
-          conversation_id: convId,
-          role: "user",
-          content: `[Cancelado] ${pending.summary}`,
-          meta: { confirmation: { id: pending.id, decision: "reject" } },
-        })
-        return successResponse(request, { ok: true, rejected: true, conversation_id: convId })
-      }
-      preApproved = [{ name: pending.tool, args: pending.args }]
-      approvedSummary = pending.summary
+      return successResponse(request, { ok: true, rejected: true, conversation_id: convId })
+    }
+    // Aprovar: a ação foi proposta para UMA loja — com outra loja
+    // selecionada, a mesma chamada bateria em outra conta. Recusa SEM
+    // queimar o token (o usuário volta pra loja certa e confirma).
+    if (pendingApproval && (pendingApproval.store_id ?? null) !== storeId) {
+      throw new AppError(
+        "Esta ação foi proposta com outra loja selecionada — selecione a mesma loja da conversa e confirme de novo.",
+        409,
+        "conflict",
+      )
     }
 
     // ── Histórico + contexto ─────────────────────────────────────
@@ -341,6 +341,24 @@ export async function POST(request: NextRequest) {
         cookie: request.headers.get("cookie") ?? "",
       }),
     )
+
+    // Aprovar (continuação): o conector da ação precisa estar ligado
+    // AGORA; só então o token é consumido (atômico — clique duplo ou
+    // duas abas executam uma vez).
+    if (body.approve && pendingApproval) {
+      const toolAvailable = connectors.some((c) => c.tools.some((t) => t.def.function.name === pendingApproval.tool))
+      if (!toolAvailable) {
+        throw new AppError(
+          `O conector desta ação (${pendingApproval.connector_name}) não está ligado nesta conversa — ligue-o no menu + e confirme de novo.`,
+          409,
+          "conflict",
+        )
+      }
+      const ok = await resolveConfirmationAtomic(admin, body.approve.message_id, pendingApproval.id, "approved")
+      if (!ok) throw new AppError("Esta ação já foi confirmada ou cancelada.", 409, "conflict")
+      preApproved = [{ name: pendingApproval.tool, args: pendingApproval.args }]
+      approvedSummary = pendingApproval.summary
+    }
 
     const skills = (skillRows ?? []).map((s) => ({ name: s.name, instructions: s.instructions }))
     const skillNames = skills.map((s) => s.name)
@@ -640,6 +658,7 @@ export async function POST(request: NextRequest) {
             reasoning_supported: modelInfo.reasoning,
             connectors: body.connectors,
             skills: skillNames,
+            advisors: body.advisors,
             messages: stripImagesForJob(messages),
             round: result.nextRound,
             max_rounds: body.deep ? DEEP_TOOL_ROUNDS : MAX_TOOL_ROUNDS,

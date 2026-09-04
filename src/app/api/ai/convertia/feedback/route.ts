@@ -12,6 +12,7 @@ import { z } from "zod"
 import { withTiming } from "@/lib/api/with-timing"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { mergeMessageMeta } from "@/lib/ai/convertia/persist"
 
 export const dynamic = "force-dynamic"
 
@@ -44,18 +45,11 @@ async function handlePost(request: NextRequest) {
       throw new AppError("Mensagem não encontrada", 404, "not-found")
     }
 
-    const meta = (msg.meta ?? {}) as Record<string, unknown>
-    const nextMeta = {
-      ...meta,
-      feedback: body.rating
-        ? { rating: body.rating, user_id: user.id, at: new Date().toISOString() }
-        : null,
-    }
-    const { error } = await admin
-      .from("ai_chat_messages")
-      .update({ meta: nextMeta })
-      .eq("id", msg.id)
-    if (error) throw error
+    // MERGE (regra do motor v3): a mensagem pode estar sendo finalizada
+    // por um job de continuação — replace apagaria usage/status/flags.
+    await mergeMessageMeta(admin, msg.id, {
+      feedback: body.rating ? { rating: body.rating, user_id: user.id, at: new Date().toISOString() } : null,
+    })
 
     return successResponse(request, { message_id: msg.id, rating: body.rating })
   } catch (error) {

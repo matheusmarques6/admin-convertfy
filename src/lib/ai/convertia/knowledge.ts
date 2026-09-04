@@ -20,7 +20,7 @@ import type { ConnectorTool, ResolvedConnector } from "@/lib/ai/connectors/types
 import { toolJson } from "@/lib/ai/connectors/types"
 import { logger } from "@/lib/logger"
 import { embedQuery, embeddingsAvailable } from "./knowledge-embeddings"
-import { normalizeNoteName } from "./knowledge-parse"
+import { fileTitle, normalizeNoteName } from "./knowledge-parse"
 
 const log = logger.child("ConvertiaKnowledge")
 
@@ -255,25 +255,36 @@ export function buildConhecimentoConnector(admin: SupabaseClient): ResolvedConne
       if (!ref) return { content: "Informe a nota." }
       const note = await findNote(admin, ref)
       if (!note) return { content: `Nota "${ref}" não encontrada (ou não aprovada). Use conhecimento_buscar.`, summary: "não encontrada" }
-      const norm = normalizeNoteName(note.title)
-      const [outgoing, backlinks] = await Promise.all([
+      // O Obsidian resolve [[link]] pelo NOME DO ARQUIVO (ou alias) — os
+      // wikilinks ficam gravados assim; o título do frontmatter/H1 pode
+      // ser outro. As duas direções usam a mesma chave.
+      const myNames = [normalizeNoteName(fileTitle(note.path)), ...note.aliases].filter(Boolean)
+      type Lite = { path: string; title: string; folder: string; aliases: string[] }
+      const [all, backlinks] = await Promise.all([
         note.links.length > 0
-          ? admin.from("ai_knowledge_notes").select("path, title, folder").eq("is_active", true).limit(40)
-          : Promise.resolve({ data: [] as Array<{ path: string; title: string; folder: string }> }),
+          ? admin.from("ai_knowledge_notes").select("path, title, folder, aliases").eq("is_active", true).limit(3000)
+          : Promise.resolve({ data: [] as Lite[] }),
         admin
           .from("ai_knowledge_notes")
           .select("path, title, folder")
           .eq("is_active", true)
-          .contains("links", [norm])
-          .limit(30),
+          .overlaps("links", myNames)
+          .neq("path", note.path)
+          .limit(40),
       ])
-      // resolve links de saída por nome (como o Obsidian)
       const wanted = new Set(note.links)
-      const resolved = ((outgoing.data ?? []) as Array<{ path: string; title: string; folder: string }>).filter((r) =>
-        wanted.has(normalizeNoteName(r.title)) || wanted.has(normalizeNoteName(r.path.split("/").pop() ?? "")),
-      )
-      const resolvedNames = new Set(resolved.map((r) => normalizeNoteName(r.title)))
-      const unresolved = note.links.filter((l) => !resolvedNames.has(l))
+      const resolved: Lite[] = []
+      const resolvedKeys = new Set<string>()
+      for (const r of (all.data ?? []) as Lite[]) {
+        if (r.path === note.path) continue
+        const keys = [normalizeNoteName(fileTitle(r.path)), ...(r.aliases ?? [])]
+        const hit = keys.find((k) => wanted.has(k))
+        if (hit) {
+          resolved.push(r)
+          for (const k of keys) resolvedKeys.add(k)
+        }
+      }
+      const unresolved = note.links.filter((l) => !resolvedKeys.has(l))
       const body = (note.body_md ?? "").slice(0, NOTE_MAX_CHARS)
       return {
         content: toolJson({
