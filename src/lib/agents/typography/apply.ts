@@ -3,7 +3,8 @@
  *
  * Percorre o MESMO `FONT_FAMILY_RE` do inventário, na MESMA ordem, e reescreve
  * apenas a DECLARAÇÃO daquele item (o conteúdo do `style="…"`), trocando só o
- * que a op pede: família, peso, caixa e espaçamento. Nenhuma tag, nenhum
+ * que a op pede: família, tamanho, peso, caixa e espaçamento. Nenhuma tag,
+ * nenhum
  * texto, nenhum atributo fora do estilo é tocado — é isso que torna este
  * passo incapaz de quebrar estrutura, ao contrário do agente de HTML que ele
  * substitui.
@@ -14,8 +15,10 @@
  * Puro (zero I/O) — testável.
  */
 
+import { fallbackChainFor } from "../html/hero-graft"
 import { FONT_FAMILY_RE, splitAtBody } from "./inventory"
-import type { TypographyOp, SegundaFonte } from "./rules"
+import { sanitizarFamilia } from "./rules"
+import type { TypographyOpHumana, SegundaFonte } from "./rules"
 
 export interface ApplyResult {
   html: string
@@ -65,7 +68,9 @@ function limitesDaDeclaracao(body: string, offset: number): { start: number; end
  */
 export function applyTypographyOps(
   html: string,
-  ops: TypographyOp[],
+  // Aceita a op do agente também: `TypographyOp` é atribuível a
+  // `TypographyOpHumana` (os campos a mais são opcionais).
+  ops: ReadonlyArray<TypographyOpHumana>,
   segundaFonte: SegundaFonte | null,
 ): ApplyResult {
   if (ops.length === 0) return { html, aplicadas: 0, familiasTrocadas: 0 }
@@ -88,7 +93,20 @@ export function applyTypographyOps(
     const original = body.slice(start, end)
     let nova = original
 
-    if (op.fonte === "secundaria" && segundaFonte) {
+    // Família livre (humano) vence a "secundaria" (agente): quem digitou o
+    // nome está olhando o email, e as duas no mesmo item seriam ambíguas.
+    // Família livre passa pelo saneamento SEMPRE — este é o último ponto
+    // antes de o nome entrar num atributo `style="…"`, e um cinto no fim
+    // vale mais que três validações espalhadas antes dele.
+    const familia = sanitizarFamilia(op.familia)
+    if (familia) {
+      nova = setProp(
+        nova,
+        "font-family",
+        `${quoteSeNecessario(familia)},${fallbackChainFor(familia)}`,
+      )
+      familiasTrocadas++
+    } else if (!op.familia && op.fonte === "secundaria" && segundaFonte) {
       nova = setProp(
         nova,
         "font-family",
@@ -97,6 +115,9 @@ export function applyTypographyOps(
       familiasTrocadas++
     }
     if (op.peso !== undefined) nova = setProp(nova, "font-weight", String(op.peso))
+    if (op.tamanho_px !== undefined) {
+      nova = setProp(nova, "font-size", `${op.tamanho_px}px`)
+    }
     if (op.caixa !== undefined) {
       nova = setProp(nova, "text-transform", op.caixa === "alta" ? "uppercase" : "none")
     }

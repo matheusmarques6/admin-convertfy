@@ -97,6 +97,87 @@ describe("applyTypographyOps", () => {
   })
 })
 
+describe("ops do humano (família livre e tamanho)", () => {
+  it("escreve a família pedida com a cadeia de substituto derivada do nome", () => {
+    const r = applyTypographyOps(
+      HTML,
+      [{ item: 0, familia: "Playfair Display", motivo: "humano" }],
+      null,
+    )
+    expect(r.familiasTrocadas).toBe(1)
+    expect(r.html).toContain("font-family:'Playfair Display',Georgia,'Times New Roman',serif")
+    // Serifada → substituto serifado; sans continuaria em Arial.
+    const sans = applyTypographyOps(HTML, [{ item: 0, familia: "Sora", motivo: "x" }], null)
+    expect(sans.html).toContain("font-family:Sora,Arial,Helvetica,sans-serif")
+  })
+
+  it("família livre vence a secundária no mesmo item", () => {
+    const r = applyTypographyOps(
+      HTML,
+      [{ item: 0, fonte: "secundaria", familia: "Sora", motivo: "x" }],
+      PLAYFAIR,
+    )
+    expect(r.html).toContain("font-family:Sora,")
+    expect(r.html).not.toContain("font-family:'Playfair Display'")
+  })
+
+  it("recusa nome que escaparia do atributo style — o furo de injeção", () => {
+    const venenos = [
+      'Arial";x="',
+      "Arial;color:red",
+      "Arial}<script>",
+      "url(javascript:alert(1))",
+      "expression(alert(1))",
+      "  ",
+    ]
+    for (const familia of venenos) {
+      const r = applyTypographyOps(HTML, [{ item: 0, familia, motivo: "x" }], null)
+      expect(r.familiasTrocadas, familia).toBe(0)
+      expect(r.html, familia).toBe(HTML)
+    }
+  })
+
+  it("nome recusado NÃO cai na secundária do agente — a op some inteira", () => {
+    const r = applyTypographyOps(
+      HTML,
+      [{ item: 0, fonte: "secundaria", familia: 'Arial";x="', motivo: "x" }],
+      PLAYFAIR,
+    )
+    expect(r.html).toBe(HTML)
+  })
+
+  it("aceita os nomes reais da biblioteca", () => {
+    for (const familia of ["Sora", "Playfair Display", "Source Serif 4", "IBM Plex Sans"]) {
+      const r = applyTypographyOps(HTML, [{ item: 0, familia, motivo: "x" }], null)
+      expect(r.familiasTrocadas, familia).toBe(1)
+    }
+  })
+
+  it("escreve font-size em px sem tocar no resto da declaração", () => {
+    const r = applyTypographyOps(HTML, [{ item: 2, tamanho_px: 18, motivo: "x" }], null)
+    const inv = extractTypographyInventory(r.html)
+    expect(inv[2].sizePx).toBe(18)
+    expect(inv[0].sizePx).toBe(56)
+    expect(inv[1].sizePx).toBe(30)
+  })
+
+  it("não muda a contagem de declarações nem o texto do documento", () => {
+    const r = applyTypographyOps(
+      HTML,
+      [
+        { item: 0, familia: "Sora", tamanho_px: 40, motivo: "x" },
+        { item: 2, peso: 600, motivo: "y" },
+      ],
+      null,
+    )
+    expect(extractTypographyInventory(r.html)).toHaveLength(
+      extractTypographyInventory(HTML).length,
+    )
+    const texto = (h: string) => h.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    expect(texto(r.html)).toBe(texto(HTML))
+  })
+})
+
 describe("injectSecondaryFontLink", () => {
   it("declara a webfont fora do Outlook e é idempotente", () => {
     const uma = injectSecondaryFontLink(HTML, PLAYFAIR, [400, 700])

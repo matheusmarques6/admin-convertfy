@@ -23,6 +23,24 @@ export interface TypographyOp {
   motivo: string
 }
 
+/**
+ * A op que o HUMANO escreve no painel de tipografia da tela do email.
+ *
+ * Os dois campos a mais são deliberadamente INVISÍVEIS para o agente — não
+ * por convenção de prompt, mas porque `TypographyDecision.ops` é
+ * `TypographyOp[]` e o parser não tem onde colocá-los. Família livre e
+ * tamanho são decisão de quem está olhando a peça: o agente escolhe a fonte
+ * da biblioteca curada e não redesenha escala.
+ *
+ * Consequência prática: `aplicarGuards` recebe e devolve `TypographyOp` e
+ * nunca vê estes campos, então não pode engoli-los. As ops humanas seguem
+ * por `avaliarOpsHumanas`, que AVISA em vez de descartar.
+ */
+export interface TypographyOpHumana extends TypographyOp {
+  familia?: string
+  tamanho_px?: number
+}
+
 export interface SegundaFonte {
   familia: string
   onde: "destaque" | "corpo"
@@ -39,7 +57,7 @@ export interface TypographyDecision {
 
 export interface OpDescartada {
   item: number
-  campo: "fonte" | "peso" | "caixa" | "tracking" | "op"
+  campo: "fonte" | "familia" | "peso" | "tamanho" | "caixa" | "tracking" | "op"
   motivo: string
 }
 
@@ -59,6 +77,30 @@ export const TETO_FAMILIA = 3
 export const TETO_PESOS = 3
 /** Distância mínima entre dois degraus de peso para serem distinguíveis. */
 export const DISTANCIA_PESO = 200
+
+/**
+ * Nome de família aceitável — guard de CORREÇÃO, não de gosto: vale para o
+ * agente e para o humano, sem exceção.
+ *
+ * O valor entra dentro de `style="…"`, delimitado por aspa DUPLA. Um nome
+ * como `Arial";x="` fecharia o atributo e injetaria markup num documento que
+ * depois é enviado por "Enviar teste" e exportado para o Klaviyo — e o guard
+ * estrutural não pegaria, porque a contagem de `font-family:` não muda. `;`,
+ * `}`, `<` e `url(`/`expression(` quebram ou envenenam a declaração pelo
+ * mesmo caminho.
+ *
+ * A régua é a dos nomes do Google Fonts (letra, dígito, espaço, hífen,
+ * sublinhado) — mais estreita, de propósito, que a de
+ * `injectSecondaryFontLink`.
+ */
+const FAMILIA_VALIDA = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,48}$/
+
+/** Devolve o nome limpo, ou null quando ele não pode entrar no documento. */
+export function sanitizarFamilia(nome: string | null | undefined): string | null {
+  const limpo = (nome ?? "").trim()
+  if (!limpo) return null
+  return FAMILIA_VALIDA.test(limpo) ? limpo : null
+}
 
 const PESOS_VALIDOS = [100, 200, 300, 400, 500, 600, 700, 800, 900]
 

@@ -91,6 +91,7 @@ import {
   renderInventoryForPrompt,
 } from "./typography/inventory"
 import { aplicarGuards } from "./typography/rules"
+import { checarInvariantesDeTipografia } from "./typography/guards"
 import {
   applyTypographyOps,
   injectSecondaryFontLink,
@@ -3468,12 +3469,15 @@ async function runFormattingChain(p: {
           )
           // Guard estrutural: este step só reescreve declarações de estilo —
           // contagem de tabelas e de declarações de fonte são invariantes.
-          const tabelas = (h: string) => (h.match(/<table[\s>]/gi) ?? []).length
-          if (tabelas(comFonte) !== tabelas(inputHtml)) {
-            throw new Error("guard: table_count_changed_by_typography")
-          }
-          if (extractTypographyInventory(comFonte).length !== inventario.length) {
-            throw new Error("guard: font_declaration_count_changed")
+          // A mesma checagem roda na rota de tipografia da tela do email
+          // (o humano escreve no mesmo HTML pelo mesmo apply).
+          const invariantes = checarInvariantesDeTipografia(
+            inputHtml,
+            comFonte,
+            inventario.length,
+          )
+          if (!invariantes.ok) {
+            throw new Error(`guard: ${invariantes.violacao}`)
           }
           return {
             value: {
