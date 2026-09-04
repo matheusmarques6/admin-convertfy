@@ -144,6 +144,7 @@ export type EmailStatus =
   | "live"
 
 import type { QaIssue } from "./email-generation"
+import type { TypographyOverride } from "@/lib/agents/typography/fontes-efetivas"
 
 export interface EmailFlow {
   id: string
@@ -186,6 +187,13 @@ export interface EmailFlowEmail {
    * revisão, mas NÃO mexe no HTML — e a tela avisa.
    */
   html_marked?: string | null
+  /**
+   * Ajuste de tipografia DESTA peça, feito no modo Editar (migration
+   * 20261112). Não é identidade da marca: `store_brand_identity` é
+   * versionada, aprovada e vale para tudo — trocar a fonte de um e-mail não
+   * pode criar versão nova nem vazar para as outras peças.
+   */
+  typography_override?: TypographyOverride | null
   delay_hours: number | null
   status: EmailStatus
   progress_percent: number

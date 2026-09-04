@@ -777,8 +777,22 @@ export function buildColorFormatVars(
  * Vars do tipógrafo. O documento NÃO entra: entra o inventário das
  * declarações de fonte, uma linha por item (`typography/inventory.ts`).
  */
+/**
+ * O recorte do contexto que o tipógrafo realmente usa.
+ *
+ * Existe para a rota de tipografia da tela do e-mail poder chamar a MESMA
+ * função com duas queries, em vez de montar o `FormatChainContext` inteiro
+ * (`loadFormatChainContext` pede brand, blueprint, produtos, loja e blocos).
+ * A alternativa seria uma segunda montagem de vars ao lado desta — que
+ * diverge desta na primeira mudança.
+ */
+export type TypographyCtx = Pick<
+  FormatChainContext,
+  "brandName" | "locale" | "fontHeading" | "fontHeadingWeight" | "fontBody" | "fontBodyWeight" | "emailRow"
+>
+
 export function buildTypographyVars(
-  ctx: FormatChainContext,
+  ctx: TypographyCtx,
   html: string,
   extras: {
     niche: string
