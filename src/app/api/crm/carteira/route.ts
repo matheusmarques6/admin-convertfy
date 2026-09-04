@@ -23,7 +23,13 @@ import { getCsPipeline } from "@/lib/cs-pipelines"
 import {
   ensureCarteiraDeals,
   ensureCarteiraStages,
+  syncCarteiraOnboarding,
 } from "@/lib/services/cs-pipelines-sync.service"
+import {
+  buildOnboardingStateByStore,
+  type OnboardingRow,
+  type StoreOnboardingState,
+} from "@/lib/services/carteira-onboarding"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import {
@@ -104,6 +110,9 @@ async function handleGet(request: NextRequest) {
     // e barato quando não há nada a fazer.
     await ensureCarteiraStages(pipeline.id)
     await ensureCarteiraDeals(orgId, pipeline.id)
+    // Espelha o pipeline de onboarding: a loja só sai da coluna
+    // "Onboarding" quando chega em "Cliente ativo" lá.
+    await syncCarteiraOnboarding(orgId, pipeline.id)
 
     const now = Date.now()
 
@@ -228,6 +237,44 @@ async function handleGet(request: NextRequest) {
       }
     }
 
+    // Onboarding real da loja: fase atual + se ainda não houve handoff.
+    // É o que a coluna "Onboarding" da carteira espelha.
+    const onboardingByStore = await (async () => {
+      if (storeIds.length === 0) return new Map<string, StoreOnboardingState>()
+      const { data, error } = await admin
+        .from("onboardings")
+        .select(
+          "id, store_id, status, entered_at, last_column_change_at, created_at, " +
+            "current_column:operational_pipeline_columns(name, slug, is_final)",
+        )
+        .in("store_id", storeIds)
+      if (error) {
+        log.warn("onboardings indisponíveis", { error: error.message })
+        return buildOnboardingStateByStore([])
+      }
+      const raws = (data ?? []) as unknown as Array<Record<string, unknown>>
+      const rows: OnboardingRow[] = raws.map((raw) => {
+        const col = (Array.isArray(raw.current_column)
+          ? raw.current_column[0]
+          : raw.current_column) as
+          | { name?: string | null; slug?: string | null; is_final?: boolean | null }
+          | null
+          | undefined
+        return {
+          id: raw.id as string,
+          store_id: (raw.store_id as string) ?? "",
+          status: (raw.status as string) ?? null,
+          column_slug: col?.slug ?? null,
+          column_name: col?.name ?? null,
+          column_is_final: col?.is_final ?? null,
+          entered_at: (raw.entered_at as string) ?? null,
+          last_column_change_at: (raw.last_column_change_at as string) ?? null,
+          created_at: (raw.created_at as string) ?? null,
+        }
+      })
+      return buildOnboardingStateByStore(rows)
+    })()
+
     if ("error" in invoicesResp && invoicesResp.error) {
       log.warn("unified_invoices indisponível", { error: invoicesResp.error.message })
     }
@@ -273,10 +320,13 @@ async function handleGet(request: NextRequest) {
         const lastCall = lastCallByStore.get(store.id)
         const lastCallAt = lastCall?.conducted_at ?? store.last_feedback_date
         const callDays = daysSince(lastCallAt, now)
+        const onb = onboardingByStore.get(store.id) ?? null
         // Meses fechados sem call de alinhamento — o "ficou algum mês em
-        // atraso de relatório?". Loja pausada/churn não é cobrada disso.
+        // atraso de relatório?". Loja pausada/churn não é cobrada disso,
+        // nem loja que ainda está em onboarding (o acompanhamento nem
+        // começou — cobrar relatório dela seria alarme falso).
         const coverage =
-          d.status === "lost" || !store.is_active
+          d.status === "lost" || !store.is_active || onb?.in_onboarding
             ? { missing: [] as string[] }
             : computeCallCoverage({
                 calls: callsByStore.get(store.id) ?? [],
@@ -314,6 +364,17 @@ async function handleGet(request: NextRequest) {
           // Meses fechados sem alinhamento registrado (mais recente
           // primeiro). Vazio = em dia.
           months_missing: coverage.missing,
+          // Onboarding real da loja — a coluna "Onboarding" da carteira
+          // é só o espelho disto.
+          onboarding: onb
+            ? {
+                id: onb.onboarding_id,
+                phase: onb.phase,
+                phase_slug: onb.phase_slug,
+                since: onb.since,
+                in_onboarding: onb.in_onboarding,
+              }
+            : null,
           // Motivo de pausa/churn: lost_reason (churn grava no move;
           // pausa grava via PATCH do deal) com fallback legado.
           motivo:

@@ -32,6 +32,8 @@ import {
   monthLabel,
   monthOptionsFor,
 } from "@/lib/services/call-coverage"
+import { isOnboardingStageName } from "@/lib/services/carteira-onboarding"
+import { ROUTES } from "@/lib/routes"
 
 // ── Tipos do payload ────────────────────────────────────────────────
 
@@ -71,6 +73,14 @@ interface Card {
   last_call_notes: string | null
   /** Meses fechados sem call de alinhamento (mais recente primeiro). */
   months_missing?: string[]
+  /** Onboarding real da loja (pipeline operacional). */
+  onboarding?: {
+    id: string
+    phase: string | null
+    phase_slug: string | null
+    since: string | null
+    in_onboarding: boolean
+  } | null
   motivo: string | null
   stage_changed_at: string | null
   manual_stage: boolean
@@ -461,6 +471,15 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
                       <span className="text-[11px] font-medium" style={{ color: "var(--ops-mut)", ...TNUM }}>
                         {colCards.length}
                       </span>
+                      {isOnboardingStageName(col.name) && (
+                        <span
+                          className="ml-auto rounded-[4px] border px-1.5 py-[1px] text-[9.5px] font-[650] uppercase tracking-[0.05em]"
+                          style={{ borderColor: "var(--ops-border)", color: "var(--ops-mut)" }}
+                          title="Espelha o pipeline de onboarding — o card sai sozinho quando o onboarding chega em Cliente ativo."
+                        >
+                          auto
+                        </span>
+                      )}
                     </div>
                     <div className="mt-2 h-[2px] rounded-[1px] opacity-55" style={{ background: cor }} />
                   </div>
@@ -759,6 +778,7 @@ function StoreCard({
 }) {
   const paused = isPauseStage(stage)
   const churn = isChurnStage(stage)
+  const onboardingCol = isOnboardingStageName(stage.name)
   const tone = c.call_tone
   const destaque = !paused && tone.agendar
 
@@ -837,7 +857,10 @@ function StoreCard({
               Mover para
             </div>
             {stages
-              .filter((s) => s.id !== c.stage_id)
+              // A etapa Onboarding é automática (espelha o pipeline
+              // operacional) — mover um card PARA ela à mão criaria um
+              // estado que o próximo sync desfaz.
+              .filter((s) => s.id !== c.stage_id && !isOnboardingStageName(s.name))
               .map((s) => (
                 <button
                   key={s.id}
@@ -857,7 +880,28 @@ function StoreCard({
       )}
 
       <div className="mt-2.5 flex flex-col gap-1.5 border-t pt-[9px]" style={{ borderColor: "var(--ops-border)" }}>
-        {paused ? (
+        {onboardingCol ? (
+          // Coluna automática: o que importa aqui é a fase do
+          // onboarding real, não a régua de score (que ainda nem tem
+          // dado — a loja não começou a operar).
+          <>
+            {row("Fase", c.onboarding?.phase ?? "—", "var(--ops-title)", true)}
+            {row(
+              "Nesta fase",
+              c.onboarding?.since
+                ? (() => {
+                    const d = Math.max(
+                      0,
+                      Math.round((Date.now() - new Date(c.onboarding.since).getTime()) / 86_400_000),
+                    )
+                    return d === 0 ? "hoje" : `há ${d}d`
+                  })()
+                : "—",
+              "var(--ops-sec)",
+            )}
+            {row("Mensalidade", mensTxt, mensCor)}
+          </>
+        ) : paused ? (
           <>
             {row(
               "Pausada em",
@@ -1148,6 +1192,65 @@ function CarteiraDrawer({
           </div>
         )}
       </div>
+
+      {/* Onboarding — espelho do pipeline operacional */}
+      {c.onboarding && (
+        <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
+          {secTitle("Onboarding")}
+          <div className="mt-2 flex flex-col gap-1.5 text-[11.5px]" style={{ color: "var(--ops-sec)" }}>
+            <span className="flex justify-between gap-2">
+              <span>Fase atual</span>
+              <strong
+                className="min-w-0 truncate text-right font-semibold"
+                style={{ color: "var(--ops-title)" }}
+                title={c.onboarding.phase ?? undefined}
+              >
+                {c.onboarding.phase ?? "—"}
+              </strong>
+            </span>
+            <span className="flex justify-between">
+              <span>Nesta fase</span>
+              <strong className="font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
+                {c.onboarding.since
+                  ? (() => {
+                      const d = Math.max(
+                        0,
+                        Math.round(
+                          (Date.now() - new Date(c.onboarding.since).getTime()) / 86_400_000,
+                        ),
+                      )
+                      return d === 0 ? "hoje" : `há ${d}d`
+                    })()
+                  : "—"}
+              </strong>
+            </span>
+            <span className="flex justify-between">
+              <span>Status</span>
+              <strong
+                className="font-semibold"
+                style={{
+                  color: c.onboarding.in_onboarding ? "var(--ops-warn)" : "var(--ops-pos)",
+                }}
+              >
+                {c.onboarding.in_onboarding ? "Em implantação" : "Em acompanhamento"}
+              </strong>
+            </span>
+            <Link
+              href={ROUTES.ADMIN.ONBOARDING_V2.DETAIL(c.onboarding.id)}
+              className="mt-0.5 font-semibold hover:underline"
+              style={{ color: "#4E62D8" }}
+            >
+              Abrir onboarding →
+            </Link>
+            {c.onboarding.in_onboarding && (
+              <span className="text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+                O card sai da coluna Onboarding sozinho quando o onboarding chegar em
+                &ldquo;Cliente ativo&rdquo;.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Relacionamento */}
       <div className="mt-[18px] border-t pt-[15px]" style={{ borderColor: "var(--ops-border)" }}>
