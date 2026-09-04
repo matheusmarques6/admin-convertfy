@@ -38,6 +38,12 @@ function sanitizeLimits(input: unknown): ConvertiaLimits {
 let cache: ConvertiaLimits | null = null
 let cacheExpiresAt = 0
 
+/** Invalida o cache desta instância (a rota PUT chama ao salvar). */
+export function resetConvertiaLimitsCache(): void {
+  cache = null
+  cacheExpiresAt = 0
+}
+
 export async function getConvertiaLimits(): Promise<ConvertiaLimits> {
   const now = Date.now()
   if (cache && now < cacheExpiresAt) return cache

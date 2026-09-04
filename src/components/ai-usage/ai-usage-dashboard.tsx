@@ -21,6 +21,7 @@ import { AGENT_VISUAL, type PipelineAgentKey } from "@/lib/agents/agent-visual"
 import { ConvertiaFeedbackCard } from "./convertia-feedback-card"
 import { ConvertiaPerfCard } from "./convertia-perf-card"
 import { ConvertiaEvalCard } from "./convertia-eval-card"
+import { ConvertiaLimitCard } from "./convertia-limit-card"
 
 const AiUsageCostChart = dynamic(
   () => import("./ai-usage-cost-chart").then((m) => ({ default: m.AiUsageCostChart })),
@@ -294,6 +295,7 @@ export function AiUsageDashboard() {
           </div>
 
           {/* ── ConvertIA · Feedback / Desempenho / Avaliação ── */}
+          <ConvertiaLimitCard />
           <ConvertiaFeedbackCard windowDays={windowDays} />
           <ConvertiaPerfCard windowDays={windowDays} />
           <ConvertiaEvalCard />

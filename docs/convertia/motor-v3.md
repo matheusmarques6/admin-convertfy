@@ -54,7 +54,7 @@ cron: convertia-continue (1 min) · convertia-maintenance (1 h) · convertia-eva
 |---|---|---|
 | `VAULT_KNOWLEDGE_BASE_PATH` | `Admin Convertfy/Conhecimento` | pasta do vault com a base de conhecimento |
 | `VAULT_KNOWLEDGE_ADVISORS_FOLDER` | `Advisors` | subpasta cujas notas viram advisors |
-| `OPENAI_API_KEY` | — | embeddings (`text-embedding-3-small`); sem ela a busca é full-text |
+| `OPENROUTER_API_KEY` | (já existe) | embeddings via OpenRouter (`openai/text-embedding-3-small`); sem ela a busca é full-text |
 
 `VAULT_REPO`, `VAULT_GITHUB_TOKEN`, `VAULT_BRANCH` e o webhook são os
 mesmos do vault de emails — o mesmo push sincroniza as duas pastas.
@@ -64,7 +64,7 @@ mesmos do vault de emails — o mesmo push sincroniza as duas pastas.
 1. Criar a pasta de conhecimento no vault (ou apontar
    `VAULT_KNOWLEDGE_BASE_PATH` para a existente) e marcar as notas com
    `status: aprovado`; advisors em `Advisors/`.
-2. `OPENAI_API_KEY` na Vercel para a busca semântica.
+2. Nada de chave nova: os embeddings vão pelo OpenRouter. Limite diário editável em Custo de IA.
 3. Conferir os slugs dos modelos Claude 5 no OpenRouter (o fallback
    cobre, mas a lista de avaliação usa `anthropic/claude-opus-4.8` e
    `claude-sonnet-4.6`, que existem).
