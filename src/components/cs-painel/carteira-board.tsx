@@ -1189,28 +1189,93 @@ const HEALTH_COMPONENT_LABELS: Array<[key: string, label: string]> = [
  * fórmulas completas ficam no painel "Regras do score" do header.
  */
 /**
- * Pauta da próxima reunião — o que ficou aberto nas calls anteriores.
- * A rota devolve a agenda já montada (buildNextMeetingAgenda), então
- * aqui é só exibição. Some quando não há nada aberto: bloco vazio no
- * drawer é ruído.
+ * Histórico curto de calls + pauta da próxima, buscando DIRETO da loja
+ * (/api/stores/:id/calls). Independe do payload da carteira de
+ * propósito: a data e o link da gravação precisam aparecer mesmo que a
+ * agregação da carteira não os traga.
  */
 function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
   const { data } = useSWR<{
+    calls?: Array<{
+      id: string
+      conducted_at: string
+      notes: string | null
+      fathom_url?: string | null
+      conducted_by_profile?: { name: string } | null
+    }>
     next_meeting_agenda?: {
       pending: Array<{ description: string; days_open: number; assignee: string | null }>
       completed_since_last: string[]
     }
   }>(
     `/api/stores/${storeId}/calls`,
-    (url: string) => fetch(url).then((r) => (r.ok ? r.json() : { next_meeting_agenda: null })),
+    (url: string) => fetch(url).then((r) => (r.ok ? r.json() : {})),
     { revalidateOnFocus: false },
   )
+  const calls = data?.calls ?? []
   const agenda = data?.next_meeting_agenda
   const pending = agenda?.pending ?? []
   const done = agenda?.completed_since_last ?? []
-  if (pending.length === 0 && done.length === 0) return null
 
   return (
+    <>
+      {calls.length > 0 && (
+        <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
+          <div
+            className="text-[9.5px] font-[650] uppercase tracking-[0.07em]"
+            style={{ color: "var(--ops-mut)" }}
+          >
+            Calls registradas
+          </div>
+          <div className="mt-1.5 flex flex-col gap-2">
+            {calls.slice(0, 3).map((c) => (
+              <div key={c.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between gap-2 text-[11.5px]">
+                  <span className="font-medium" style={{ color: "var(--ops-title)", ...TNUM }}>
+                    {new Date(c.conducted_at).toLocaleDateString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                    })}
+                    {c.conducted_by_profile?.name && (
+                      <span style={{ color: "var(--ops-mut)", fontWeight: 400 }}>
+                        {" "}
+                        · {c.conducted_by_profile.name.split(" ")[0]}
+                      </span>
+                    )}
+                  </span>
+                  {c.fathom_url ? (
+                    <a
+                      href={c.fathom_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 font-semibold hover:underline"
+                      style={{ color: "#4E62D8" }}
+                      title="Abrir a gravação no Fathom"
+                    >
+                      ▶ Fathom
+                    </a>
+                  ) : (
+                    <span className="shrink-0 text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                      sem gravação
+                    </span>
+                  )}
+                </div>
+                {c.notes && (
+                  <span
+                    className="line-clamp-2 whitespace-pre-wrap text-[10.5px]"
+                    style={{ color: "var(--ops-mut)" }}
+                    title={c.notes}
+                  >
+                    {c.notes}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {(pending.length > 0 || done.length > 0) && (
     <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
       <div className="text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
         Para a próxima call
@@ -1248,6 +1313,8 @@ function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
         </div>
       )}
     </div>
+      )}
+    </>
   )
 }
 

@@ -308,6 +308,10 @@ async function handleGet(request: NextRequest) {
       pipeline: { id: pipeline.id, name: pipeline.name },
       stages,
       cards,
+      // Qual commit está servindo esta resposta. Sem isso, "a tela não
+      // mudou" é indistinguível de "o deploy não subiu" — e foi
+      // exatamente onde perdemos tempo depurando a carteira.
+      build: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
     })
   } catch (error) {
     return errorResponse(request, error, "crm-carteira")
