@@ -518,12 +518,32 @@ function McpDialog({
       onClose={onClose}
     >
       {err && (
-        <div className="mt-2 rounded-[8px] border px-3 py-2 text-[11px]" style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }} role="alert">
+        // O erro do discovery vem com a lista do que foi tentado (URL →
+        // status). Precisa caber inteiro: era aqui que "deu erro ao
+        // conectar" morria sem dizer onde travou.
+        <div
+          className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border px-3 py-2 text-[11px] leading-[1.55]"
+          style={{ borderColor: "var(--ops-neg)", color: "var(--ops-neg)" }}
+          role="alert"
+        >
           {err}
         </div>
       )}
       {!adding && (
         <>
+          {/* A confusão mais comum: achar que a API key da plataforma já
+              é a conexão do MCP. São coisas diferentes. */}
+          <div
+            className="mt-2.5 rounded-[8px] border px-3 py-2 text-[11px] leading-[1.6]"
+            style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+          >
+            <strong style={{ color: "var(--ops-title)" }}>API key ≠ MCP.</strong> A chave da
+            plataforma (Omnisend, Shopify, Klaviyo) já é usada pelos conectores da loja — ela
+            autentica as chamadas que o admin faz na API pública. Um servidor MCP é outra coisa:
+            um endereço HTTPS separado que fala o protocolo MCP e expõe o catálogo de operações
+            da plataforma. Ele tem autenticação própria — normalmente <em>login OAuth</em> (o
+            botão abaixo), às vezes um token Bearer. Colar a API key aqui não conecta nada.
+          </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             {servers.map((s) => (
               <div key={s.id} className="rounded-[8px] border px-2.5 py-2" style={{ borderColor: HAIR }}>

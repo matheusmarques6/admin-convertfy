@@ -13,6 +13,7 @@ import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { mcpOAuthRedirectUri } from "@/lib/api/public-origin"
 import { encrypt } from "@/lib/crypto"
 import {
   buildAuthorizeUrl,
@@ -43,7 +44,10 @@ export async function POST(request: NextRequest) {
       throw new AppError("O endpoint MCP precisa ser HTTPS.", 422, "validation-error")
     }
 
-    const redirectUri = `${request.nextUrl.origin}/api/ai/mcp-oauth/callback`
+    // O redirect_uri tem de ser IDÊNTICO aqui e na troca do código —
+    // derivar de nextUrl.origin nas duas pontas dava valores diferentes
+    // atrás do proxy (alias de preview × domínio final) e o AS recusava.
+    const redirectUri = mcpOAuthRedirectUri(request)
     const as = await discoverAuthServer(body.url)
     if (!as.registration_endpoint) {
       throw new AppError(
