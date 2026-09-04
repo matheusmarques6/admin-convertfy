@@ -170,22 +170,46 @@ async function handleGet(request: NextRequest) {
     // fazia a data VOLTAR no tempo, e o card seguia "atrasado" depois
     // de registrar). A coluna continua como fallback para loja cuja
     // call foi registrada antes desta correção.
-    const lastCallByStore = new Map<string, string>()
+    interface LastCall {
+      conducted_at: string
+      fathom_url: string | null
+      notes: string | null
+    }
+    const lastCallByStore = new Map<string, LastCall>()
     if (storeIds.length > 0) {
-      const { data: callRows, error: callsError } = await admin
+      // Colunas do Fathom vieram na 20261106 — retry sem elas para a
+      // carteira não quebrar em base que ainda não migrou.
+      const COLS_FATHOM = "store_id, conducted_at, notes, fathom_url"
+      let callRows: Array<Record<string, unknown>> | null = null
+      const withFathom = await admin
         .from("store_feedback_calls")
-        .select("store_id, conducted_at")
+        .select(COLS_FATHOM)
         .in("store_id", storeIds)
         .order("conducted_at", { ascending: false })
-      if (callsError) {
-        log.warn("calls indisponíveis — usando last_feedback_date", {
-          error: callsError.message,
-        })
+      if (withFathom.error) {
+        const legacy = await admin
+          .from("store_feedback_calls")
+          .select("store_id, conducted_at, notes")
+          .in("store_id", storeIds)
+          .order("conducted_at", { ascending: false })
+        if (legacy.error) {
+          log.warn("calls indisponíveis — usando last_feedback_date", {
+            error: legacy.error.message,
+          })
+        }
+        callRows = (legacy.data ?? []) as unknown as Array<Record<string, unknown>>
+      } else {
+        callRows = (withFathom.data ?? []) as unknown as Array<Record<string, unknown>>
       }
       for (const row of callRows ?? []) {
         // ordenado desc: a primeira de cada loja é a mais recente
-        if (!lastCallByStore.has(row.store_id as string)) {
-          lastCallByStore.set(row.store_id as string, row.conducted_at as string)
+        const storeKey = row.store_id as string
+        if (!lastCallByStore.has(storeKey)) {
+          lastCallByStore.set(storeKey, {
+            conducted_at: row.conducted_at as string,
+            fathom_url: (row.fathom_url as string) ?? null,
+            notes: (row.notes as string) ?? null,
+          })
         }
       }
     }
@@ -232,7 +256,8 @@ async function handleGet(request: NextRequest) {
           ? mensalidadeFromInvoices(invoicesByClient.get(store.client_id) ?? [], now)
           : { status: "none" as const, history: [] }
 
-        const lastCallAt = lastCallByStore.get(store.id) ?? store.last_feedback_date
+        const lastCall = lastCallByStore.get(store.id)
+        const lastCallAt = lastCall?.conducted_at ?? store.last_feedback_date
         const callDays = daysSince(lastCallAt, now)
         const cf = (d.custom_fields ?? {}) as Record<string, unknown>
 
@@ -257,6 +282,11 @@ async function handleGet(request: NextRequest) {
           call_days: callDays,
           call_tone: callTone(callDays),
           next_call: nextCallLabel(store.next_feedback_date, now),
+          // Data real da última call + gravação: "há 22d" não diz QUANDO
+          // foi nem deixa reabrir a call.
+          last_call_at: lastCallAt ?? null,
+          last_call_fathom_url: lastCall?.fathom_url ?? null,
+          last_call_notes: lastCall?.notes ?? null,
           // Motivo de pausa/churn: lost_reason (churn grava no move;
           // pausa grava via PATCH do deal) com fallback legado.
           motivo:

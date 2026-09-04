@@ -60,6 +60,10 @@ interface Card {
   call_days: number | null
   call_tone: { tone: "ok" | "warn" | "neg"; agendar: boolean }
   next_call: string | null
+  /** Data real da última call + gravação no Fathom (quando houver). */
+  last_call_at: string | null
+  last_call_fathom_url: string | null
+  last_call_notes: string | null
   motivo: string | null
   stage_changed_at: string | null
   manual_stage: boolean
@@ -819,7 +823,18 @@ function StoreCard({
             {row("Mensalidade", mensTxt, mensCor)}
             {row(
               "Última call",
-              c.call_days == null ? "nunca" : c.call_days === 0 ? "hoje" : `há ${c.call_days}d${destaque ? " · agendar" : ""}`,
+              c.call_days == null
+                ? "nunca"
+                : // Data + idade: o card precisa dizer QUANDO foi, não só
+                  // "há 22d" (que some da leitura assim que o CSM registra).
+                  `${
+                    c.last_call_at
+                      ? `${new Date(c.last_call_at).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })} · `
+                      : ""
+                  }${c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}${destaque ? " · agendar" : ""}`,
               c.call_days == null ? "var(--ops-mut)" : toneColor(tone.tone),
               destaque,
             )}
@@ -1073,9 +1088,44 @@ function CarteiraDrawer({
               className="font-semibold"
               style={{ color: (c.call_days ?? 0) >= 21 ? "var(--ops-warn)" : "var(--ops-title)", ...TNUM }}
             >
-              {c.call_days == null ? "nunca" : c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}
+              {/* A DATA primeiro — "há 22d" não diz quando foi */}
+              {c.last_call_at
+                ? `${new Date(c.last_call_at).toLocaleDateString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "2-digit",
+                  })} · ${c.call_days === 0 ? "hoje" : `há ${c.call_days}d`}`
+                : c.call_days == null
+                  ? "nunca"
+                  : c.call_days === 0
+                    ? "hoje"
+                    : `há ${c.call_days}d`}
             </strong>
           </span>
+          {c.last_call_fathom_url && (
+            <span className="flex justify-between">
+              <span>Gravação</span>
+              <a
+                href={c.last_call_fathom_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold hover:underline"
+                style={{ color: "#4E62D8" }}
+                title="Abrir a gravação no Fathom"
+              >
+                ▶ Ver no Fathom
+              </a>
+            </span>
+          )}
+          {c.last_call_notes && (
+            <span
+              className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-[11px]"
+              style={{ color: "var(--ops-mut)" }}
+              title={c.last_call_notes}
+            >
+              {c.last_call_notes}
+            </span>
+          )}
           <span className="flex justify-between">
             <span>Próxima call</span>
             <strong className="font-semibold" style={{ color: "var(--ops-title)", ...TNUM }}>
