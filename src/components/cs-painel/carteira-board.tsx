@@ -27,6 +27,11 @@ import {
   type MensalidadeMes,
   type MensalidadeStatus,
 } from "@/lib/services/cs-carteira"
+import {
+  defaultReferenceMonths,
+  monthLabel,
+  monthOptionsFor,
+} from "@/lib/services/call-coverage"
 
 // ── Tipos do payload ────────────────────────────────────────────────
 
@@ -64,6 +69,8 @@ interface Card {
   last_call_at: string | null
   last_call_fathom_url: string | null
   last_call_notes: string | null
+  /** Meses fechados sem call de alinhamento (mais recente primeiro). */
+  months_missing?: string[]
   motivo: string | null
   stage_changed_at: string | null
   manual_stage: boolean
@@ -161,6 +168,10 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   const [callData, setCallData] = useState("")
   const [callNota, setCallNota] = useState("")
   const [callFathom, setCallFathom] = useState("")
+  // Meses que a call cobre. Default = mês anterior (convenção do time);
+  // `mesesTocado` impede que trocar a data desfaça a escolha manual.
+  const [callMeses, setCallMeses] = useState<string[]>([])
+  const [mesesTocado, setMesesTocado] = useState(false)
   const [callResult, setCallResult] = useState<string | null>(null)
   const [editCols, setEditCols] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
@@ -288,6 +299,7 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
           ...(callData ? { conducted_at: `${callData}T12:00:00` } : {}),
           notes: callNota.trim() || null,
           fathom_url: callFathom.trim() || null,
+          reference_months: callMeses,
         }),
       })
       const b = (await res.json().catch(() => ({}))) as {
@@ -496,9 +508,12 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             setCallData(new Date().toISOString().slice(0, 10))
             setCallNota("")
             setCallFathom("")
+            setCallMeses(defaultReferenceMonths(new Date()))
+            setMesesTocado(false)
             setCallResult(null)
             setActionError(null)
           }}
+          onCallsChanged={() => void mutate()}
           busy={busy}
         />
       )}
@@ -585,7 +600,15 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             type="date"
             value={callData}
             max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => setCallData(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value
+              setCallData(v)
+              // Enquanto o operador não escolher os meses à mão, a
+              // sugestão acompanha a data da call.
+              if (!mesesTocado) {
+                setCallMeses(defaultReferenceMonths(v ? `${v}T12:00:00` : new Date()))
+              }
+            }}
             className="mt-[7px] box-border h-[34px] w-full rounded-[8px] border px-2.5 text-[12.5px] outline-none"
             style={{ borderColor: "var(--ops-border)", background: "var(--ops-page)", color: "var(--ops-title)" }}
           />
@@ -597,6 +620,39 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
               })()}
             </div>
           )}
+          <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
+            Referente a que mês?
+          </div>
+          <div className="mt-[7px] flex flex-wrap gap-1.5">
+            {monthOptionsFor(callData ? `${callData}T12:00:00` : new Date(), 6).map((m) => {
+              const on = callMeses.includes(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMesesTocado(true)
+                    setCallMeses((prev) =>
+                      prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m].sort(),
+                    )
+                  }}
+                  className="h-[26px] rounded-[6px] border px-2 text-[11px] font-medium"
+                  style={{
+                    borderColor: on ? "#4E62D8" : "var(--ops-border)",
+                    background: on ? "#4E62D8" : "transparent",
+                    color: on ? "#fff" : "var(--ops-sec)",
+                  }}
+                >
+                  {monthLabel(m)}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 text-[10.5px]" style={{ color: "var(--ops-mut)" }}>
+            {callMeses.length === 0
+              ? "Sem mês marcado, assumimos o mês anterior à call."
+              : "É o que define se algum mês ficou sem alinhamento — marque mais de um quando a call cobriu meses atrasados."}
+          </div>
           <div className="mt-3 text-[9.5px] font-[650] uppercase tracking-[0.07em]" style={{ color: "var(--ops-mut)" }}>
             Link do Fathom (opcional)
           </div>
@@ -838,6 +894,18 @@ function StoreCard({
               c.call_days == null ? "var(--ops-mut)" : toneColor(tone.tone),
               destaque,
             )}
+            {/* Mês fechado sem alinhamento: é o relatório que ficou
+                para trás — "há 22d" não conta essa história. */}
+            {(c.months_missing?.length ?? 0) > 0 &&
+              row(
+                "Sem relatório",
+                (c.months_missing ?? []).slice(0, 3).map(monthLabel).join(" · ") +
+                  ((c.months_missing?.length ?? 0) > 3
+                    ? ` +${(c.months_missing?.length ?? 0) - 3}`
+                    : ""),
+                "var(--ops-warn)",
+                true,
+              )}
             {churn && c.motivo && row("Motivo", c.motivo, "var(--ops-neg)")}
           </>
         )}
@@ -855,6 +923,7 @@ function CarteiraDrawer({
   onPausar,
   onReativar,
   onRegistrarCall,
+  onCallsChanged,
   busy,
 }: {
   card: Card
@@ -863,6 +932,8 @@ function CarteiraDrawer({
   onPausar: () => void
   onReativar: () => void
   onRegistrarCall: () => void
+  /** Excluir/editar call muda a última call e a cobertura do board. */
+  onCallsChanged: () => void
   busy: boolean
 }) {
   const stage = stages.find((s) => s.id === c.stage_id)
@@ -1133,7 +1204,7 @@ function CarteiraDrawer({
             </strong>
           </span>
         </div>
-        <NextMeetingAgendaBlock storeId={c.store_id} />
+        <NextMeetingAgendaBlock storeId={c.store_id} onChanged={onCallsChanged} />
         <button
           onClick={onRegistrarCall}
           className="mt-2.5 h-[29px] rounded-[7px] border px-3 text-[11.5px] font-medium"
@@ -1194,15 +1265,23 @@ const HEALTH_COMPONENT_LABELS: Array<[key: string, label: string]> = [
  * propósito: a data e o link da gravação precisam aparecer mesmo que a
  * agregação da carteira não os traga.
  */
-function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
-  const { data } = useSWR<{
+function NextMeetingAgendaBlock({
+  storeId,
+  onChanged,
+}: {
+  storeId: string
+  onChanged?: () => void
+}) {
+  const { data, mutate } = useSWR<{
     calls?: Array<{
       id: string
       conducted_at: string
       notes: string | null
       fathom_url?: string | null
+      reference_months?: string[] | null
       conducted_by_profile?: { name: string } | null
     }>
+    coverage?: { missing: string[] }
     next_meeting_agenda?: {
       pending: Array<{ description: string; days_open: number; assignee: string | null }>
       completed_since_last: string[]
@@ -1216,9 +1295,46 @@ function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
   const agenda = data?.next_meeting_agenda
   const pending = agenda?.pending ?? []
   const done = agenda?.completed_since_last ?? []
+  const missing = data?.coverage?.missing ?? []
+
+  // Exclusão em dois toques: o ✕ pede confirmação na própria linha —
+  // apagar uma call leva junto o resumo e a gravação.
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [apagando, setApagando] = useState<string | null>(null)
+
+  const excluir = async (callId: string) => {
+    setApagando(callId)
+    setErro(null)
+    try {
+      const res = await fetch(`/api/stores/${storeId}/calls/${callId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}))
+        throw new Error((b as { error?: string })?.error || "Não foi possível excluir")
+      }
+      setConfirmId(null)
+      await mutate()
+      onChanged?.()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível excluir a call")
+    } finally {
+      setApagando(null)
+    }
+  }
 
   return (
     <>
+      {missing.length > 0 && (
+        <div
+          className="mt-3 rounded-[8px] border px-2.5 py-2 text-[11px]"
+          style={{ borderColor: "var(--ops-warn)", color: "var(--ops-warn)" }}
+          role="status"
+        >
+          <strong className="font-semibold">Sem alinhamento:</strong>{" "}
+          {missing.slice(0, 6).map(monthLabel).join(" · ")}
+          {missing.length > 6 && ` +${missing.length - 6}`}
+        </div>
+      )}
       {calls.length > 0 && (
         <div className="mt-3 rounded-[8px] border p-2.5" style={{ borderColor: "var(--ops-border)" }}>
           <div
@@ -1244,23 +1360,58 @@ function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
                       </span>
                     )}
                   </span>
-                  {c.fathom_url ? (
-                    <a
-                      href={c.fathom_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0 font-semibold hover:underline"
-                      style={{ color: "#4E62D8" }}
-                      title="Abrir a gravação no Fathom"
-                    >
-                      ▶ Fathom
-                    </a>
-                  ) : (
-                    <span className="shrink-0 text-[10px]" style={{ color: "var(--ops-mut)" }}>
-                      sem gravação
-                    </span>
-                  )}
+                  <span className="flex shrink-0 items-center gap-2">
+                    {c.fathom_url ? (
+                      <a
+                        href={c.fathom_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold hover:underline"
+                        style={{ color: "#4E62D8" }}
+                        title="Abrir a gravação no Fathom"
+                      >
+                        ▶ Fathom
+                      </a>
+                    ) : (
+                      <span className="text-[10px]" style={{ color: "var(--ops-mut)" }}>
+                        sem gravação
+                      </span>
+                    )}
+                    {confirmId === c.id ? (
+                      <span className="flex items-center gap-1.5 text-[10.5px]">
+                        <button
+                          onClick={() => void excluir(c.id)}
+                          disabled={apagando === c.id}
+                          className="font-semibold disabled:opacity-60"
+                          style={{ color: "var(--ops-neg)" }}
+                        >
+                          {apagando === c.id ? "excluindo…" : "excluir"}
+                        </button>
+                        <button onClick={() => setConfirmId(null)} style={{ color: "var(--ops-mut)" }}>
+                          não
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setErro(null)
+                          setConfirmId(c.id)
+                        }}
+                        title="Excluir esta call"
+                        aria-label="Excluir esta call"
+                        className="leading-none opacity-60 hover:opacity-100"
+                        style={{ color: "var(--ops-mut)" }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
                 </div>
+                {(c.reference_months?.length ?? 0) > 0 && (
+                  <span className="text-[10px]" style={{ color: "var(--ops-sec)" }}>
+                    ref. {(c.reference_months ?? []).map(monthLabel).join(" · ")}
+                  </span>
+                )}
                 {c.notes && (
                   <span
                     className="line-clamp-2 whitespace-pre-wrap text-[10.5px]"
@@ -1273,6 +1424,16 @@ function NextMeetingAgendaBlock({ storeId }: { storeId: string }) {
               </div>
             ))}
           </div>
+          {calls.length > 3 && (
+            <div className="mt-2 text-[10px]" style={{ color: "var(--ops-mut)" }}>
+              +{calls.length - 3} call(s) anteriores — veja o histórico na página da loja.
+            </div>
+          )}
+          {erro && (
+            <div className="mt-2 text-[10.5px]" style={{ color: "var(--ops-neg)" }} role="alert">
+              {erro}
+            </div>
+          )}
         </div>
       )}
       {(pending.length > 0 || done.length > 0) && (

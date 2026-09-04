@@ -27,6 +27,10 @@ import {
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import {
+  computeCallCoverage,
+  type CallForCoverage,
+} from "@/lib/services/call-coverage"
+import {
   callTone,
   daysSince,
   mensalidadeFromInvoices,
@@ -176,32 +180,36 @@ async function handleGet(request: NextRequest) {
       notes: string | null
     }
     const lastCallByStore = new Map<string, LastCall>()
+    const callsByStore = new Map<string, CallForCoverage[]>()
     if (storeIds.length > 0) {
-      // Colunas do Fathom vieram na 20261106 — retry sem elas para a
-      // carteira não quebrar em base que ainda não migrou.
-      const COLS_FATHOM = "store_id, conducted_at, notes, fathom_url"
-      let callRows: Array<Record<string, unknown>> | null = null
-      const withFathom = await admin
-        .from("store_feedback_calls")
-        .select(COLS_FATHOM)
-        .in("store_id", storeIds)
-        .order("conducted_at", { ascending: false })
-      if (withFathom.error) {
-        const legacy = await admin
+      // Cada conjunto de colunas depende de uma migration diferente
+      // (20261106 = Fathom, 20261108 = reference_months). Tenta do mais
+      // completo ao mínimo — a carteira nunca quebra por migration
+      // pendente, só perde o enfeite.
+      const COLUMN_SETS = [
+        "store_id, conducted_at, notes, fathom_url, reference_months",
+        "store_id, conducted_at, notes, fathom_url",
+        "store_id, conducted_at, notes",
+      ]
+      let callRows: Array<Record<string, unknown>> = []
+      let lastError: string | null = null
+      for (const cols of COLUMN_SETS) {
+        const resp = await admin
           .from("store_feedback_calls")
-          .select("store_id, conducted_at, notes")
+          .select(cols)
           .in("store_id", storeIds)
           .order("conducted_at", { ascending: false })
-        if (legacy.error) {
-          log.warn("calls indisponíveis — usando last_feedback_date", {
-            error: legacy.error.message,
-          })
+        if (!resp.error) {
+          callRows = (resp.data ?? []) as unknown as Array<Record<string, unknown>>
+          lastError = null
+          break
         }
-        callRows = (legacy.data ?? []) as unknown as Array<Record<string, unknown>>
-      } else {
-        callRows = (withFathom.data ?? []) as unknown as Array<Record<string, unknown>>
+        lastError = resp.error.message
       }
-      for (const row of callRows ?? []) {
+      if (lastError) {
+        log.warn("calls indisponíveis — usando last_feedback_date", { error: lastError })
+      }
+      for (const row of callRows) {
         // ordenado desc: a primeira de cada loja é a mais recente
         const storeKey = row.store_id as string
         if (!lastCallByStore.has(storeKey)) {
@@ -211,6 +219,12 @@ async function handleGet(request: NextRequest) {
             notes: (row.notes as string) ?? null,
           })
         }
+        const list = callsByStore.get(storeKey) ?? []
+        list.push({
+          conducted_at: row.conducted_at as string,
+          reference_months: (row.reference_months as string[] | null) ?? null,
+        })
+        callsByStore.set(storeKey, list)
       }
     }
 
@@ -259,6 +273,16 @@ async function handleGet(request: NextRequest) {
         const lastCall = lastCallByStore.get(store.id)
         const lastCallAt = lastCall?.conducted_at ?? store.last_feedback_date
         const callDays = daysSince(lastCallAt, now)
+        // Meses fechados sem call de alinhamento — o "ficou algum mês em
+        // atraso de relatório?". Loja pausada/churn não é cobrada disso.
+        const coverage =
+          d.status === "lost" || !store.is_active
+            ? { missing: [] as string[] }
+            : computeCallCoverage({
+                calls: callsByStore.get(store.id) ?? [],
+                contractStart: store.contract_start_date ?? store.created_at,
+                now: new Date(now),
+              })
         const cf = (d.custom_fields ?? {}) as Record<string, unknown>
 
         return {
@@ -287,6 +311,9 @@ async function handleGet(request: NextRequest) {
           last_call_at: lastCallAt ?? null,
           last_call_fathom_url: lastCall?.fathom_url ?? null,
           last_call_notes: lastCall?.notes ?? null,
+          // Meses fechados sem alinhamento registrado (mais recente
+          // primeiro). Vazio = em dia.
+          months_missing: coverage.missing,
           // Motivo de pausa/churn: lost_reason (churn grava no move;
           // pausa grava via PATCH do deal) com fallback legado.
           motivo:

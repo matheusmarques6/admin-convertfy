@@ -22,6 +22,13 @@ import {
   buildNextMeetingAgenda,
   type CallForAgenda,
 } from "@/lib/integrations/fathom/next-meeting-agenda"
+import {
+  computeCallCoverage,
+  isMonthKey,
+  monthOf,
+  previousMonth,
+  type CallForCoverage,
+} from "@/lib/services/call-coverage"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoreCalls")
@@ -31,7 +38,7 @@ export const maxDuration = 60
 /** Colunas do Fathom (migration 20261106) — ausentes até ela rodar. */
 const FATHOM_COLUMNS =
   "fathom_recording_id, fathom_url, fathom_share_url, summary_markdown, " +
-  "action_items_json, participants, fathom_synced_at"
+  "action_items_json, participants, fathom_synced_at, reference_months"
 
 const BASE_COLUMNS =
   "id, conducted_at, duration_minutes, notes, action_items, next_call_date, " +
@@ -51,6 +58,8 @@ const postSchema = z.object({
   result_percentage: z.number().nullable().optional(),
   /** Link da gravação no Fathom — puxa resumo, itens e participantes. */
   fathom_url: z.string().max(500).nullable().optional(),
+  /** Meses que a call cobriu ("2026-08"). Vazio = mês anterior à call. */
+  reference_months: z.array(z.string().max(7)).max(24).optional(),
 })
 
 export async function OPTIONS(request: NextRequest) {
@@ -100,10 +109,23 @@ export async function GET(
     // Pauta da próxima reunião: o que ficou aberto nas calls anteriores
     const agenda = buildNextMeetingAgenda(calls as unknown as CallForAgenda[])
 
+    // Cobertura mensal: que mês ficou sem alinhamento/relatório
+    const { data: storeRow } = await admin
+      .from("client_stores")
+      .select("contract_start_date, created_at")
+      .eq("id", id)
+      .maybeSingle()
+    const coverage = computeCallCoverage({
+      calls: calls as unknown as CallForCoverage[],
+      contractStart:
+        (storeRow?.contract_start_date as string) ?? (storeRow?.created_at as string) ?? null,
+    })
+
     return successResponse(request, {
       calls,
       upcoming_call_date: (upcomingCall?.next_call_date as string) ?? null,
       next_meeting_agenda: agenda,
+      coverage,
       fathom_ready: fathomReady,
     })
   } catch (error) {
@@ -153,8 +175,20 @@ export async function POST(
       ? (digestToActionItemsText(digest) ?? body.action_items ?? null)
       : (body.action_items ?? null)
 
+    // Meses de referência: o que o operador marcou; sem marcação, a
+    // convenção do time — a call fala do mês ANTERIOR ao que aconteceu.
+    const declaredMonths = (body.reference_months ?? []).filter(isMonthKey)
+    const conductedMonth = monthOf(conductedAt)
+    const referenceMonths =
+      declaredMonths.length > 0
+        ? [...new Set(declaredMonths)].sort()
+        : conductedMonth
+          ? [previousMonth(conductedMonth)]
+          : []
+
     const baseRow: Record<string, unknown> = {
       store_id: id,
+      reference_months: referenceMonths,
       // client_id é denormalização: loja sem cliente vinculado (avulsa
       // ou fallback do onboarding) grava NULL. Era NOT NULL no schema
       // antigo e quebrava o registro da call — migration 20261106.
@@ -202,15 +236,25 @@ export async function POST(
             .single()
         : admin.from("store_feedback_calls").insert(row).select().single()
 
+    // Degradação em cascata: colunas que dependem de migration são
+    // descartadas uma camada por vez. Registrar a call NUNCA pode
+    // falhar porque uma migration opcional ainda não rodou.
     let result = await write({ ...baseRow, ...fathomRow })
     if (result.error && MISSING_SCHEMA.has(result.error.code) && digest) {
-      // Migration do Fathom não rodou: grava o essencial (resumo e
-      // itens já estão em notes/action_items) e avisa nos logs.
+      // Migration do Fathom (20261106) não rodou: grava o essencial
+      // (resumo e itens já estão em notes/action_items).
       log.warn("colunas do Fathom ausentes — gravando sem elas", {
         store_id: id,
         recording_id: digest.recording_id,
       })
       result = await write(baseRow)
+    }
+    if (result.error && MISSING_SCHEMA.has(result.error.code)) {
+      // Migration 20261108 (reference_months) não rodou.
+      const { reference_months: _months, ...withoutMonths } = baseRow
+      void _months
+      log.warn("coluna reference_months ausente — gravando sem ela", { store_id: id })
+      result = await write(withoutMonths)
     }
     if (result.error) {
       // 23502 = NOT NULL: acontece se a migration 20261106 (client_id
