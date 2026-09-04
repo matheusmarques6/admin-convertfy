@@ -16,13 +16,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logger } from "@/lib/logger"
-import { isVaultHousekeeping } from "@/lib/vault/vault-parser"
 import { parseKnowledgeNote, type ParsedKnowledgeNote } from "./knowledge-parse"
 import { EMBEDDING_MODEL, embedTexts, embeddingInput, embeddingsAvailable } from "./knowledge-embeddings"
 
 const log = logger.child("KnowledgeSync")
 
 const GITHUB_API = "https://api.github.com"
+
+/**
+ * Faxina da pasta de conhecimento: pastas ocultas (.obsidian, .trash),
+ * templates e índices gerados. Diferente do vault de emails, nota na
+ * RAIZ da base é nota válida (o Obsidian do usuário não tem hierarquia
+ * obrigatória).
+ */
+export function isKnowledgeHousekeeping(relPath: string): boolean {
+  const parts = relPath.split("/")
+  if (parts.some((p) => p.startsWith(".") || p.toLowerCase() === "templates" || p.toLowerCase() === "_templates")) return true
+  const file = parts[parts.length - 1].toLowerCase()
+  return file === "_index.md" || file === "readme.md"
+}
 const MISSING = new Set(["42P01", "PGRST205"])
 
 export interface KnowledgeSyncResult {
@@ -116,7 +128,7 @@ export async function syncKnowledge(opts: {
     if (tree.truncated) log.warn("árvore truncada", { repo: cfg.repo })
     const prefix = `${cfg.basePath}/`
     const files = tree.tree.filter(
-      (e) => e.type === "blob" && e.path.startsWith(prefix) && e.path.endsWith(".md") && !isVaultHousekeeping(e.path.slice(prefix.length)),
+      (e) => e.type === "blob" && e.path.startsWith(prefix) && e.path.endsWith(".md") && !isKnowledgeHousekeeping(e.path.slice(prefix.length)),
     )
 
     const notes: ParsedKnowledgeNote[] = []

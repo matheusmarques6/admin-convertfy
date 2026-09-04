@@ -7,6 +7,18 @@ import {
   normalizeNoteName,
   parseKnowledgeNote,
 } from "./knowledge-parse"
+import { isKnowledgeHousekeeping } from "./knowledge-sync"
+
+describe("isKnowledgeHousekeeping", () => {
+  it("nota na raiz vale; ocultas, templates e índices não", () => {
+    expect(isKnowledgeHousekeeping("Nota.md")).toBe(false)
+    expect(isKnowledgeHousekeeping("Advisors/Max.md")).toBe(false)
+    expect(isKnowledgeHousekeeping(".obsidian/app.json")).toBe(true)
+    expect(isKnowledgeHousekeeping("Templates/base.md")).toBe(true)
+    expect(isKnowledgeHousekeeping("Popups/_INDEX.md")).toBe(true)
+    expect(isKnowledgeHousekeeping("README.md")).toBe(true)
+  })
+})
 
 describe("normalizeNoteName / extractWikilinks", () => {
   it("normaliza por nome, sem acento e sem .md", () => {
