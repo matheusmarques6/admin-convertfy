@@ -1,9 +1,12 @@
 /**
  * Tipografia de UM e-mail, editada na tela (modo Editar do Workspace).
  *
- * `GET`  — o inventário das declarações de fonte, as famílias do documento
- *          com contagem, as fontes efetivas da peça e o ajuste já gravado.
- *          É o que o painel precisa para abrir.
+ * `GET`  — as fontes efetivas da peça e o ajuste já gravado. O INVENTÁRIO
+ *          não vem daqui: a tela o extrai do mesmo documento que está
+ *          mostrando (`extractTypographyInventory` é puro e roda no
+ *          navegador). Servi-lo pela rota criaria duas leituras do mesmo
+ *          documento, que divergem no instante em que o preview mostra um
+ *          rascunho e a rota devolve o que está salvo.
  * `POST` — dois modos:
  *          `aplicar`  → troca por CÓDIGO (famílias da peça e/ou ops por
  *                       item). Instantâneo, sem modelo.
@@ -34,8 +37,6 @@ import {
 } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { stripCfyBlockMarkers } from "@/lib/agents/html/post-process"
-import { extractTypographyInventory } from "@/lib/agents/typography/inventory"
-import { familiasDoDocumento } from "@/lib/agents/typography/swap-fonts"
 import {
   fontesEfetivas,
   parseTypographyOverride,
@@ -122,12 +123,9 @@ export async function GET(
     const email = await loadEmail(admin, emailId)
     const marca = await loadFontesDaMarca(admin, email.flow.store_id)
     const override = parseTypographyOverride(email.typography_override)
-    const { doc, temMarcado } = documentoBase(email)
-    const inventario = extractTypographyInventory(doc)
+    const { temMarcado } = documentoBase(email)
 
     return successResponse(request, {
-      inventario,
-      familias: familiasDoDocumento(inventario),
       fontes: fontesEfetivas(marca, override),
       override,
       /** false = o painel não mostra rótulo de bloco (documento sem marcadores). */

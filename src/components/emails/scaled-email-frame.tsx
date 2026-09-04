@@ -34,6 +34,7 @@ import {
   moverIndice,
   resolveDropTarget,
 } from "@/lib/agents/html/block-regions"
+import { FONT_ATTR } from "@/lib/agents/typography/annotate"
 
 // Folga de viewport no modo desktop. Precisa ser maior que a diferença entre
 // o breakpoint mobile mais alto usado nos emails gerados (620px) e a largura
@@ -48,6 +49,9 @@ export function ScaledEmailFrame({
   baseWidth,
   maxHeight,
   editable = false,
+  selecionavelPorFonte = false,
+  fonteSelecionada = null,
+  onSelecionarFonte,
   rotuloDaRegiao,
   onReorder,
   onRemove,
@@ -68,6 +72,21 @@ export function ScaledEmailFrame({
    * porque o gesto inteiro acontece dentro do documento.
    */
   editable?: boolean
+  /**
+   * Modo de SELEÇÃO de tipografia: as tags marcadas com `data-cfy-font`
+   * (ver `annotateFontDeclarations`) ficam clicáveis, e o clique devolve o
+   * índice da declaração no inventário.
+   *
+   * Exclusivo com `editable`. Os dois gestos brigam pelo mesmo `mousedown`:
+   * o modo de estrutura dá `preventDefault` em qualquer clique dentro de uma
+   * região — ou seja, em quase todo o e-mail —, então ligar os dois juntos
+   * faria clicar num texto virar arrasto de bloco.
+   */
+  selecionavelPorFonte?: boolean
+  /** Declaração selecionada agora (contorno cheio no preview). */
+  fonteSelecionada?: number | null
+  /** Clique numa declaração: índice no inventário de tipografia. */
+  onSelecionarFonte?: (indice: number) => void
   /** Nome legível de cada região, para o chip. Chave = índice do marcador. */
   rotuloDaRegiao?: (indice: number) => string
   /** Nova ordem dos índices de região, após um arrasto. */
@@ -84,8 +103,8 @@ export function ScaledEmailFrame({
   const [loadTick, setLoadTick] = useState(0)
   // Callbacks em ref: o efeito de edição não pode re-instalar (removendo
   // chips e listeners no meio de um arrasto) porque o pai re-renderizou.
-  const cbRef = useRef({ onReorder, onRemove, rotuloDaRegiao })
-  cbRef.current = { onReorder, onRemove, rotuloDaRegiao }
+  const cbRef = useRef({ onReorder, onRemove, rotuloDaRegiao, onSelecionarFonte })
+  cbRef.current = { onReorder, onRemove, rotuloDaRegiao, onSelecionarFonte }
 
   // Largura disponível da coluna (reativo a resize da janela/painéis).
   useEffect(() => {
@@ -123,7 +142,7 @@ export function ScaledEmailFrame({
   // iframe (mesma origem). Nenhum script entra no documento do email e o
   // `sandbox` continua sem `allow-scripts`.
   useEffect(() => {
-    if (!editable) return
+    if (!editable || selecionavelPorFonte) return
     const iframe = iframeRef.current
     const doc = iframe?.contentDocument
     if (!iframe || !doc?.body) return
@@ -329,7 +348,71 @@ export function ScaledEmailFrame({
       doc.body.style.position = posicaoOriginal
       doc.body.style.userSelect = ""
     }
-  }, [editable, html, loadTick, contentHeight])
+  }, [editable, selecionavelPorFonte, html, loadTick, contentHeight])
+
+  // ── Modo tipografia: escolher a declaração clicando no texto ─────────
+  //
+  // Irmão do efeito acima e com o mesmo desenho (CSS no `contentDocument`,
+  // listeners do PAI, nada de script dentro do iframe), mas outro gesto:
+  // aqui não se arrasta nada, só se aponta.
+  //
+  // O que o clique seleciona é uma DECLARAÇÃO de estilo, não um trecho de
+  // texto — e uma declaração num `<td>` governa por herança tudo que está
+  // dentro dele. Por isso o contorno cheio marca o elemento inteiro: é o
+  // alcance real da mudança, e vê-lo antes de aplicar evita a surpresa de
+  // mexer no subtítulo e o parágrafo ao lado ir junto.
+  useEffect(() => {
+    if (!selecionavelPorFonte) return
+    const doc = iframeRef.current?.contentDocument
+    if (!doc?.body) return
+    if (doc.querySelectorAll(`[${FONT_ATTR}]`).length === 0) return
+
+    const style = doc.createElement("style")
+    style.textContent = `
+      [${FONT_ATTR}] { cursor: pointer; }
+      [${FONT_ATTR}]:hover {
+        outline: 2px dashed #7C3AED; outline-offset: -2px;
+      }
+      [${FONT_ATTR}].cfy-font-sel {
+        outline: 2px solid #7C3AED; outline-offset: -2px;
+        background-image: linear-gradient(rgba(124,58,237,.08), rgba(124,58,237,.08));
+      }
+    `
+    doc.head?.appendChild(style)
+
+    const marcarSelecionado = () => {
+      doc.querySelectorAll(`.cfy-font-sel`).forEach((el) => {
+        el.classList.remove("cfy-font-sel")
+      })
+      if (fonteSelecionada == null) return
+      doc
+        .querySelector(`[${FONT_ATTR}="${fonteSelecionada}"]`)
+        ?.classList.add("cfy-font-sel")
+    }
+    marcarSelecionado()
+
+    const aoClicar = (e: MouseEvent) => {
+      const alvo = (e.target as HTMLElement | null)?.closest?.(
+        `[${FONT_ATTR}]`,
+      ) as HTMLElement | null
+      // `preventDefault` mesmo sem alvo: o e-mail é feito de links, e um
+      // clique fora de qualquer declaração não pode navegar para a loja.
+      e.preventDefault()
+      e.stopPropagation()
+      if (!alvo) return
+      const indice = Number(alvo.getAttribute(FONT_ATTR))
+      if (Number.isFinite(indice)) cbRef.current.onSelecionarFonte?.(indice)
+    }
+
+    doc.addEventListener("click", aoClicar)
+    return () => {
+      doc.removeEventListener("click", aoClicar)
+      doc.querySelectorAll(`.cfy-font-sel`).forEach((el) => {
+        el.classList.remove("cfy-font-sel")
+      })
+      style.remove()
+    }
+  }, [selecionavelPorFonte, fonteSelecionada, html, loadTick, contentHeight])
 
   const viewportWidth =
     baseWidth < MOBILE_SIM_THRESHOLD ? baseWidth : baseWidth + DESKTOP_GUTTER

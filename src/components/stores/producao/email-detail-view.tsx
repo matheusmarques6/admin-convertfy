@@ -35,6 +35,17 @@ import { useToast } from "@/lib/hooks/use-toast"
 import { InlineEditField } from "@/components/crm/inline-edit-field"
 import { ScaledEmailFrame } from "@/components/emails/scaled-email-frame"
 import { annotateRegionsForEditing } from "@/lib/agents/html/block-regions"
+import { annotateFontDeclarations } from "@/lib/agents/typography/annotate"
+import { applyTypographyOps } from "@/lib/agents/typography/apply"
+import { extractTypographyInventory } from "@/lib/agents/typography/inventory"
+import { remapFamilies } from "@/lib/agents/typography/swap-fonts"
+import type { OpDescartada } from "@/lib/agents/typography/rules"
+import {
+  DRAFT_VAZIO,
+  EmailTypographyPanel,
+  draftTemMudanca,
+  type TipografiaDraft,
+} from "./email-typography-panel"
 import { buildQaBlockViews } from "@/lib/agents/html/qa-views"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
 import { emailExportBasename } from "@/lib/email-workspace/export-naming"
@@ -128,7 +139,7 @@ export function EmailDetailView({
   const [viewMode, setViewMode] = useState<"render" | "copy" | "html" | "ref">(
     "render",
   )
-  const [activeTab, setActiveTab] = useState<"struct" | "qa">("struct")
+  const [activeTab, setActiveTab] = useState<"struct" | "qa" | "tipo">("struct")
   const [width, setWidth] = useState<number>(600)
 
   const isTextOnly = !!email?.text_only
@@ -485,6 +496,13 @@ export function EmailDetailView({
   const [draftRemoved, setDraftRemoved] = useState<string[]>([])
   const [saveOpen, setSaveOpen] = useState(false)
   const [savingReview, setSavingReview] = useState(false)
+  // Tipografia: rascunho local, como o de estrutura — nada é gravado até
+  // "Aplicar". `fonteSelecionada` é o índice da declaração no inventário, e
+  // é o que liga o clique no preview ao painel.
+  const [tipoDraft, setTipoDraft] = useState<TipografiaDraft>(DRAFT_VAZIO)
+  const [fonteSelecionada, setFonteSelecionada] = useState<number | null>(null)
+  const [tipoAvisos, setTipoAvisos] = useState<OpDescartada[]>([])
+  const [salvandoTipo, setSalvandoTipo] = useState(false)
 
   const entrarNaEdicao = () => {
     setDraftOrder(blocks.map((b) => b.id))
@@ -496,6 +514,10 @@ export function EmailDetailView({
     setDraftOrder([])
     setDraftRemoved([])
     setSaveOpen(false)
+    setTipoDraft(DRAFT_VAZIO)
+    setFonteSelecionada(null)
+    setTipoAvisos([])
+    if (activeTab === "tipo") setActiveTab("struct")
   }
 
   // Os blocos como a tela deve mostrá-los: no modo de edição, a ordem do
@@ -538,19 +560,126 @@ export function EmailDetailView({
   }, [email?.html_marked, blocks])
 
   /** O email é editável no preview? Sem documento marcado, não. */
-  const previewEditavel = editing && Boolean(email?.html_marked) && Boolean(mapaRegioes)
+  const editandoTipografia = editing && activeTab === "tipo"
+  const previewEditavel =
+    editing &&
+    !editandoTipografia &&
+    Boolean(email?.html_marked) &&
+    Boolean(mapaRegioes)
 
   /**
-   * HTML do preview. Em edição vem do documento MARCADO e anotado — é o que
-   * dá endereço a cada região. Fora do modo, exatamente o de hoje.
+   * Documento BASE da tipografia — o mesmo em que a rota vai escrever.
+   *
+   * `html_marked` quando existe (preserva os marcadores), senão `html`.
+   * Tipografia não exige documento marcado, ao contrário da estrutura: o
+   * inventário funciona sobre qualquer HTML, e só o rótulo do bloco se
+   * perde. Os índices são os mesmos nos dois, porque os marcadores são
+   * comentários e não carregam `font-family`.
+   */
+  const docTipografia = email?.html_marked || email?.html || ""
+
+  /** O inventário do BASE: é ele que dá endereço às ops. */
+  const inventarioTipo = useMemo(
+    () => (editandoTipografia && docTipografia ? extractTypographyInventory(docTipografia) : []),
+    [editandoTipografia, docTipografia],
+  )
+
+  /**
+   * HTML do preview. Em edição de estrutura vem do documento MARCADO e
+   * anotado — é o que dá endereço a cada região. Em edição de tipografia
+   * roda as MESMAS funções puras que a rota vai rodar, na mesma ordem, e só
+   * então anota: o que se vê é o que se grava.
    */
   const htmlDoPreview = useMemo(() => {
     if (!email) return ""
+    if (editandoTipografia && docTipografia) {
+      const comFamilias = remapFamilies(docTipografia, tipoDraft.familias).html
+      const comOps = applyTypographyOps(
+        comFamilias,
+        Object.values(tipoDraft.ops),
+        null,
+      ).html
+      return annotateFontDeclarations(comOps)
+    }
     if (previewEditavel && email.html_marked) {
       return annotateRegionsForEditing(email.html_marked)
     }
     return email.html || renderEmailHtml(email, blocks)
-  }, [email, blocks, previewEditavel])
+  }, [email, blocks, previewEditavel, editandoTipografia, docTipografia, tipoDraft])
+
+  /**
+   * Grava o rascunho de tipografia. Manda o `esperado` de cada op: entre a
+   * tela carregar e este clique, um re-render pode ter reescrito o
+   * documento — e aí o índice 14 é outro elemento. A rota confere item a
+   * item e devolve o que não bate em vez de acertar o lugar errado.
+   */
+  const aplicarTipografia = async () => {
+    if (!email || !draftTemMudanca(tipoDraft)) return
+    setSalvandoTipo(true)
+    try {
+      const porIndice = new Map(inventarioTipo.map((o) => [o.index, o]))
+      const res = await fetch(`/api/admin/emails/${email.id}/typography`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modo: "aplicar",
+          familias: Object.entries(tipoDraft.familias).map(([de, para]) => ({ de, para })),
+          ops: Object.values(tipoDraft.ops).map((op) => {
+            const oc = porIndice.get(op.item)
+            return {
+              ...op,
+              esperado: oc
+                ? { family: oc.family, sizePx: oc.sizePx, weight: oc.weight, tag: oc.tag }
+                : undefined,
+            }
+          }),
+          base_updated_at: email.updated_at,
+        }),
+      })
+      const json = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean
+            motivo?: string
+            avisos?: OpDescartada[]
+            descartadas?: OpDescartada[]
+            desatualizados?: Array<{ item: number }>
+            error?: string
+          }
+        | null
+      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`)
+      if (json?.ok === false && json.motivo === "documento_mudou") {
+        toast.toast({
+          variant: "destructive",
+          title: "O e-mail mudou em outra aba",
+          description: "Recarregue antes de aplicar — os ajustes apontam para o documento antigo.",
+        })
+        await mutate()
+        return
+      }
+      const desatualizados = json?.desatualizados?.length ?? 0
+      if (desatualizados > 0) {
+        toast.toast({
+          variant: "destructive",
+          title: "Alguns ajustes não foram aplicados",
+          description: `${desatualizados} apontavam para um lugar que não existe mais no e-mail.`,
+        })
+      }
+      setTipoAvisos([...(json?.avisos ?? []), ...(json?.descartadas ?? [])])
+      setTipoDraft(DRAFT_VAZIO)
+      setFonteSelecionada(null)
+      await mutate()
+      onEmailUpdated?.()
+      if (desatualizados === 0) toast.toast({ title: "Tipografia aplicada" })
+    } catch (e) {
+      toast.toast({
+        variant: "destructive",
+        title: "Erro ao aplicar a tipografia",
+        description: e instanceof Error ? e.message : undefined,
+      })
+    } finally {
+      setSalvandoTipo(false)
+    }
+  }
 
   const estruturaAlterada =
     editing &&
@@ -983,6 +1112,9 @@ export function EmailDetailView({
               html={htmlDoPreview}
               width={width}
               editable={previewEditavel}
+              selecionavelPorFonte={editandoTipografia}
+              fonteSelecionada={fonteSelecionada}
+              onSelecionarFonte={setFonteSelecionada}
               avisoSemDocumento={
                 editing && !email.html_marked
                   ? "Este email foi gerado antes da edição de estrutura, então não dá para arrastar aqui. Reordene pelo painel à direita: a nova ordem e a justificativa ficam salvas e valem a partir da próxima geração."
@@ -1058,6 +1190,19 @@ export function EmailDetailView({
               count={`${qaDone}/${qaTotal}`}
               label="Checklist QA"
             />
+            {/* Tipografia só existe em modo Editar: fora dele não há o que
+                rascunhar, e a aba viraria um painel que não salva nada. */}
+            {editing && (
+              <TabBtn
+                active={activeTab === "tipo"}
+                onClick={() => setActiveTab("tipo")}
+                count={String(
+                  Object.keys(tipoDraft.ops).length +
+                    Object.keys(tipoDraft.familias).length,
+                )}
+                label="Tipografia"
+              />
+            )}
           </div>
 
           {/* Bulk actions row */}
@@ -1134,6 +1279,13 @@ export function EmailDetailView({
                 <b>Aplicado</b>. Os conteúdos já estão prontos para uso — só
                 montar e revisar.
               </>
+            ) : activeTab === "tipo" ? (
+              <>
+                <b>Tipografia desta peça.</b> Clique num texto do preview para
+                escolher onde mexer, ou troque a fonte inteira aqui do lado.
+                Nada é salvo até você clicar em Aplicar — e a identidade
+                visual da loja não muda.
+              </>
             ) : (
               <>
                 Revise cada item antes de enviar para aprovação do cliente.
@@ -1144,6 +1296,24 @@ export function EmailDetailView({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto" style={{ padding: 12 }}>
+            {activeTab === "tipo" && (
+              <EmailTypographyPanel
+                inventario={inventarioTipo}
+                draft={tipoDraft}
+                onDraft={setTipoDraft}
+                selecionado={fonteSelecionada}
+                onSelecionar={setFonteSelecionada}
+                fonteDaPeca={email.typography_override?.fontes?.heading ?? null}
+                temMarcado={Boolean(email.html_marked)}
+                avisos={tipoAvisos}
+                salvando={salvandoTipo}
+                onAplicar={() => void aplicarTipografia()}
+                onDescartar={() => {
+                  setTipoDraft(DRAFT_VAZIO)
+                  setFonteSelecionada(null)
+                }}
+              />
+            )}
             {activeTab === "struct" && (
               <>
                 <DragDropContext onDragEnd={handleDragEnd}>
@@ -1281,13 +1451,19 @@ export function EmailDetailView({
                 >
                   Cancelar
                 </SecondaryBtn>
-                <PrimaryBtn
-                  disabled={!estruturaAlterada}
-                  onClick={async () => setSaveOpen(true)}
-                  icon={<Check className="h-3 w-3" />}
-                >
-                  Salvar alterações
-                </PrimaryBtn>
+                {/* "Salvar alterações" é da ESTRUTURA (pede justificativa e
+                    grava a revisão que os agentes leem). Na aba Tipografia o
+                    botão que salva é o "Aplicar" do painel — deixar os dois
+                    à vista faria parecer que um depende do outro. */}
+                {activeTab !== "tipo" && (
+                  <PrimaryBtn
+                    disabled={!estruturaAlterada}
+                    onClick={async () => setSaveOpen(true)}
+                    icon={<Check className="h-3 w-3" />}
+                  >
+                    Salvar alterações
+                  </PrimaryBtn>
+                )}
               </div>
             ) : (
               <EmailStatusActions
@@ -2433,6 +2609,9 @@ function EmailRenderPreview({
   html,
   width,
   editable = false,
+  selecionavelPorFonte = false,
+  fonteSelecionada = null,
+  onSelecionarFonte,
   avisoSemDocumento,
   rotuloDaRegiao,
   onReorder,
@@ -2447,6 +2626,10 @@ function EmailRenderPreview({
   html: string
   width: number
   editable?: boolean
+  /** Modo de seleção de tipografia (exclusivo com `editable`). */
+  selecionavelPorFonte?: boolean
+  fonteSelecionada?: number | null
+  onSelecionarFonte?: (indice: number) => void
   /** Por que o email não é arrastável, quando não é. */
   avisoSemDocumento?: string | null
   rotuloDaRegiao?: (indice: number) => string
@@ -2559,6 +2742,9 @@ function EmailRenderPreview({
         html={html}
         baseWidth={width}
         editable={editable}
+        selecionavelPorFonte={selecionavelPorFonte}
+        fonteSelecionada={fonteSelecionada}
+        onSelecionarFonte={onSelecionarFonte}
         rotuloDaRegiao={rotuloDaRegiao}
         onReorder={onReorder}
         onRemove={onRemove}
