@@ -1,4 +1,4 @@
--- 20261114 — Objeções: Catalogador (macro) + Seletor (micro)
+-- 20261116 — Objeções: Catalogador (macro) + Seletor (micro)
 --
 -- Plano: docs/email-generation/plano-objecoes-macro-micro.md. A objeção
 -- existia em `client_stores.icp_objections` (35 lojas) e nenhum agente a
