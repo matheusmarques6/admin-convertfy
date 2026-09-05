@@ -65,7 +65,11 @@ async function invokeJson(
   }
 }
 
-export const GET = withTiming("admin/stores/overview", handleGet)
+// Agrega report + campanhas + flows AO VIVO da Klaviyo/Omnisend (o report
+// da Klaviyo pagina listas, flows e campanhas com MIN_REQUEST_INTERVAL
+// entre chamadas) — 10–30 s é o normal dessa rota, não anomalia. O warn
+// fica para quando passa de 45 s (perto do limite de espera da tela).
+export const GET = withTiming("admin/stores/overview", handleGet, { slowMs: 45_000 })
 
 async function handleGet(
   request: NextRequest,

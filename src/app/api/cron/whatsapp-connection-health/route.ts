@@ -66,6 +66,8 @@ export async function GET(request: NextRequest) {
     let healthy = 0
     let unhealthy = 0
     let unreachable = 0
+    // Canais que MUDARAM de estado nesta rodada (é o que merece warn).
+    let newProblems = 0
     // Nome + estado de cada canal com problema — o warn agregado só com
     // contadores ({unhealthy:1}) não dizia QUAL canal reconectar.
     const problems: string[] = []
@@ -112,7 +114,8 @@ export async function GET(request: NextRequest) {
 
       // close / connecting / unknown — instância não operante
       unhealthy++
-      if (live !== knownState && live !== "unknown") {
+      const transition = live !== knownState && live !== "unknown"
+      if (transition) {
         await admin
           .from("crm_channels")
           .update({
@@ -131,11 +134,35 @@ export async function GET(request: NextRequest) {
         detail: live === "unknown" ? "estado desconhecido" : null,
       })
       problems.push(`${channel.display_name || channel.external_id} (${live})`)
-      log.warn("instância não operante no health check", { channelId: channel.id, channelName: channel.display_name, state: live })
+      // Warn só na TRANSIÇÃO. Um número que ficou desconectado (o
+      // "Convertfy Number" ficou um mês em `close`) gerava dois warns a
+      // cada 5 min — 576 linhas/dia repetindo o que o sino já mostra e
+      // enterrando o warn novo. A queda em curso vai como info, com a
+      // idade, pra continuar rastreável sem virar ruído.
+      const since = typeof config.disconnected_at === "string" ? config.disconnected_at : null
+      const downForH = since ? Math.round((Date.now() - new Date(since).getTime()) / 3_600_000) : null
+      if (transition) {
+        log.warn("instância caiu (transição de estado)", {
+          channelId: channel.id,
+          channelName: channel.display_name,
+          from: knownState,
+          to: live,
+        })
+      } else {
+        log.info("instância segue não operante", {
+          channelId: channel.id,
+          channelName: channel.display_name,
+          state: live,
+          down_for_hours: downForH,
+        })
+      }
+      if (transition) newProblems++
     }
 
-    if (unhealthy > 0 || unreachable > 0) {
+    if (newProblems > 0 || unreachable > 0) {
       log.warn("health check com problemas", { healthy, unhealthy, unreachable, channels: problems })
+    } else if (unhealthy > 0) {
+      log.info("health check: queda conhecida, sem mudança", { healthy, unhealthy, channels: problems })
     }
 
     return NextResponse.json({ success: true, healthy, unhealthy, unreachable })

@@ -429,7 +429,9 @@ export async function upsertOmnisendSyncResults(
       log.info(`[SyncPersistence] Upserted ${campaignPayload.length} omnisend_campaign_metrics rows for ${store.id}/${normalizedPeriod}`)
     }
   } else {
-    log.warn(`[SyncPersistence] No campaign rows to upsert for ${store.id}/${period} — data.campaignRows.length=0`)
+    // Loja sem campanha no período é dado, não anomalia — warn aqui
+    // poluía o painel de erros da Vercel a cada sync.
+    log.info(`[SyncPersistence] No campaign rows to upsert for ${store.id}/${period} — data.campaignRows.length=0`)
   }
 
   if (data.automationRows.length > 0) {
@@ -482,7 +484,7 @@ export async function upsertOmnisendSyncResults(
       log.info(`[SyncPersistence] Upserted ${flowPayload.length} omnisend_flow_metrics rows for ${store.id}/${normalizedPeriod}`)
     }
   } else {
-    log.warn(`[SyncPersistence] No automation rows to upsert for ${store.id}/${period} — data.automationRows.length=0`)
+    log.info(`[SyncPersistence] No automation rows to upsert for ${store.id}/${period} — data.automationRows.length=0`)
   }
 
   await supabase
