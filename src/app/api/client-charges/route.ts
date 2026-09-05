@@ -4,9 +4,12 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { requireOrgRoles, FINANCIAL_REPORT_ROLES } from "@/lib/api/require-org-admin"
 import { validateMonetaryValue } from "@/lib/schemas/common"
 import {
+  chargeStoreIds,
   isMissingClassificationColumn,
+  isMissingStoreIdsColumn,
   parseChargeClassification,
   stripClassification,
+  stripStoreIds,
 } from "@/lib/services/charge-classification"
 import { logger } from "@/lib/logger"
 
@@ -19,17 +22,18 @@ const log = logger.child("ClientCharges")
  */
 async function assertStoreBelongsToClient(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  storeId: string | null | undefined,
+  storeIds: string[] | string | null | undefined,
   clientId: string,
 ) {
-  if (!storeId) return
-  const { data: store } = await supabase
+  const ids = Array.isArray(storeIds) ? storeIds : storeIds ? [storeIds] : []
+  if (ids.length === 0) return
+  const { data: stores } = await supabase
     .from("client_stores")
     .select("id, client_id")
-    .eq("id", storeId)
-    .maybeSingle()
-  if (!store || store.client_id !== clientId) {
-    throw new AppError("A loja informada não pertence a este cliente", 422, "validation-error")
+    .in("id", ids)
+  const ok = new Set((stores ?? []).filter((s) => s.client_id === clientId).map((s) => s.id))
+  if (ids.some((id) => !ok.has(id))) {
+    throw new AppError("Alguma loja informada não pertence a este cliente", 422, "validation-error")
   }
 }
 
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     validateMonetaryValue(value)
     const classification = parseChargeClassification(body)
-    await assertStoreBelongsToClient(supabase, classification.store_id, client_id)
+    await assertStoreBelongsToClient(supabase, chargeStoreIds(classification), client_id)
 
     const chargeData: Record<string, unknown> = {
       client_id,
@@ -65,12 +69,17 @@ export async function POST(request: NextRequest) {
       charge_type: classification.charge_type ?? (subscription_id ? "subscription" : "other"),
       reference_months: classification.reference_months ?? null,
       store_id: classification.store_id ?? null,
+      store_ids: classification.store_ids ?? null,
     }
 
     if (subscription_id) chargeData.subscription_id = subscription_id
     if (notes) chargeData.notes = notes
 
     let { data, error } = await supabase.from("client_charges").insert(chargeData).select().single()
+    if (error && isMissingStoreIdsColumn(error)) {
+      // Migration 20261118 pendente: a loja única continua em store_id.
+      ;({ data, error } = await supabase.from("client_charges").insert(stripStoreIds(chargeData)).select().single())
+    }
     if (error && isMissingClassificationColumn(error)) {
       // Migration 20261113 pendente: grava sem a classificação em vez
       // de bloquear o financeiro.
@@ -122,14 +131,14 @@ export async function PUT(request: NextRequest) {
     }
 
     const classification = parseChargeClassification(fields)
-    if (classification.store_id) {
+    if (chargeStoreIds(classification).length > 0) {
       const { data: current } = await supabase
         .from("client_charges")
         .select("client_id")
         .eq("id", charge_id)
         .maybeSingle()
       if (!current) throw new AppError("Cobrança não encontrada", 404, "not-found")
-      await assertStoreBelongsToClient(supabase, classification.store_id, current.client_id)
+      await assertStoreBelongsToClient(supabase, chargeStoreIds(classification), current.client_id)
     }
     Object.assign(updates, classification)
 
@@ -143,6 +152,21 @@ export async function PUT(request: NextRequest) {
       .eq("id", charge_id)
       .select()
       .single()
+    if (error && isMissingStoreIdsColumn(error)) {
+      if ((classification.store_ids?.length ?? 0) > 1) {
+        throw new AppError(
+          "Cobrança com várias lojas indisponível — aplique a migration 20261118_cobranca_multi_loja.",
+          422,
+          "validation-error",
+        )
+      }
+      ;({ data, error } = await supabase
+        .from("client_charges")
+        .update(stripStoreIds(updates))
+        .eq("id", charge_id)
+        .select()
+        .single())
+    }
     if (error && isMissingClassificationColumn(error)) {
       if (Object.keys(classification).length > 0 && Object.keys(stripClassification(updates)).length === 0) {
         throw new AppError(

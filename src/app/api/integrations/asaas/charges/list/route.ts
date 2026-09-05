@@ -5,6 +5,7 @@ import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { chargeStoreIds } from "@/lib/services/charge-classification"
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,36 +73,49 @@ export async function GET(request: NextRequest) {
     interface Classification {
       charge_type: string | null
       reference_months: string[] | null
+      /** Primeira loja (compat). `stores` tem todas — comissão pode ser de várias. */
       store: { id: string; name: string } | null
+      stores: Array<{ id: string; name: string }>
     }
     const classificationByAsaasId = new Map<string, Classification>()
     if (allPayments.length > 0) {
       const ids = allPayments.map((p) => p.id)
-      const rows: Array<{
+      type Row = {
         asaas_id: string
         charge_type: string | null
         reference_months: string[] | null
         store_id: string | null
-      }> = []
-      for (let i = 0; i < ids.length; i += 200) {
-        const { data, error } = await supabase
-          .from("invoices")
-          .select("asaas_id, charge_type, reference_months, store_id")
-          .in("asaas_id", ids.slice(i, i + 200))
-        if (error) break
-        rows.push(...((data ?? []) as typeof rows))
+        store_ids?: string[] | null
       }
-      const storeIds = [...new Set(rows.map((r) => r.store_id).filter(Boolean))] as string[]
+      const rows: Row[] = []
+      // Sem a migration 20261118 o select com store_ids falha — cai no antigo.
+      const COLUMN_SETS = [
+        "asaas_id, charge_type, reference_months, store_id, store_ids",
+        "asaas_id, charge_type, reference_months, store_id",
+      ]
+      let cols = COLUMN_SETS[0]
+      for (let i = 0; i < ids.length; i += 200) {
+        let { data, error } = await supabase.from("invoices").select(cols).in("asaas_id", ids.slice(i, i + 200))
+        if (error && cols === COLUMN_SETS[0]) {
+          cols = COLUMN_SETS[1]
+          ;({ data, error } = await supabase.from("invoices").select(cols).in("asaas_id", ids.slice(i, i + 200)))
+        }
+        if (error) break
+        rows.push(...((data ?? []) as unknown as Row[]))
+      }
+      const storeIds = [...new Set(rows.flatMap((r) => chargeStoreIds(r)))]
       const storeName = new Map<string, string>()
       if (storeIds.length > 0) {
         const { data: stores } = await supabase.from("client_stores").select("id, store_name").in("id", storeIds)
         for (const s of stores ?? []) storeName.set(s.id, s.store_name)
       }
       for (const r of rows) {
+        const stores = chargeStoreIds(r).map((id) => ({ id, name: storeName.get(id) ?? "Loja" }))
         classificationByAsaasId.set(r.asaas_id, {
           charge_type: r.charge_type ?? null,
           reference_months: r.reference_months ?? null,
-          store: r.store_id ? { id: r.store_id, name: storeName.get(r.store_id) ?? "Loja" } : null,
+          store: stores[0] ?? null,
+          stores,
         })
       }
     }
@@ -132,6 +146,7 @@ export async function GET(request: NextRequest) {
         charge_type: classificationByAsaasId.get(p.id)?.charge_type ?? null,
         reference_months: classificationByAsaasId.get(p.id)?.reference_months ?? null,
         store: classificationByAsaasId.get(p.id)?.store ?? null,
+        stores: classificationByAsaasId.get(p.id)?.stores ?? [],
         isOverdue: p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.dueDate) < today),
         daysOverdue: p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.dueDate) < today)
           ? Math.floor((today.getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24)) : 0,

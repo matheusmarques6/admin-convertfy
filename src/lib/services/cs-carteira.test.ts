@@ -129,6 +129,22 @@ describe("splitInvoicesForStore", () => {
     expect(multi.scope).toBe("loja")
   })
 
+  it("store_ids (comissão de várias lojas) entra em TODAS as lojas listadas, marcada como compartilhada", () => {
+    const joint: InvoiceLite = { ...byStore(null, "commission"), store_ids: [A, B], amount: 5000 }
+    const forA = splitInvoicesForStore({ invoices: [joint], storeId: A, subscriptionStores: {}, clientStoreCount: 2 })
+    const forB = splitInvoicesForStore({ invoices: [joint], storeId: B, subscriptionStores: {}, clientStoreCount: 2 })
+    const forC = splitInvoicesForStore({ invoices: [joint], storeId: "store-c", subscriptionStores: {}, clientStoreCount: 3 })
+    expect(forA.comissao).toHaveLength(1)
+    expect(forB.comissao).toHaveLength(1)
+    expect(forC.comissao).toHaveLength(0)
+    expect(forC.unassigned).toBe(0)
+    expect(forA.scope).toBe("loja")
+    // store_ids vence store_id divergente (linha legada re-classificada)
+    const legacy: InvoiceLite = { ...byStore(B, "commission"), store_ids: [A] }
+    expect(splitInvoicesForStore({ invoices: [legacy], storeId: A, subscriptionStores: {}, clientStoreCount: 2 }).comissao).toHaveLength(1)
+    expect(splitInvoicesForStore({ invoices: [legacy], storeId: B, subscriptionStores: {}, clientStoreCount: 2 }).comissao).toHaveLength(0)
+  })
+
   it("linha antiga sem charge_type conta como mensalidade (comportamento anterior preservado)", () => {
     const r = splitInvoicesForStore({
       invoices: [inv("2026-08-05", "paid", "2026-08-05")],

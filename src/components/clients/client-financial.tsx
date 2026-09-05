@@ -163,6 +163,15 @@ interface LocalCharge {
   charge_type?: ChargeType | null
   reference_months?: string[] | null
   store_id?: string | null
+  /** Várias lojas (comissão conjunta — migration 20261118). Vence store_id. */
+  store_ids?: string[] | null
+}
+
+/** Lojas efetivas de uma cobrança: `store_ids` vence; senão `[store_id]`. */
+function storeIdsOf(row: { store_id?: string | null; store_ids?: string[] | null } | null | undefined): string[] {
+  if (!row) return []
+  if (Array.isArray(row.store_ids) && row.store_ids.length > 0) return row.store_ids
+  return row.store_id ? [row.store_id] : []
 }
 
 /** Loja do cliente (para vincular assinatura/cobrança). */
@@ -178,6 +187,7 @@ interface InvoiceMeta {
   charge_type: ChargeType | null
   reference_months: string[] | null
   store_id: string | null
+  store_ids: string[] | null
 }
 
 /**
@@ -307,18 +317,20 @@ function StoreCheckboxList({
   )
 }
 
-/** Badge do tipo + meses + loja de uma cobrança. */
+/** Badge do tipo + meses + loja(s) de uma cobrança. */
 function ChargeClassBadges({
   chargeType,
   months,
-  storeName,
+  storeNames,
 }: {
   chargeType?: ChargeType | null
   months?: string[] | null
-  storeName?: string | null
+  /** Uma loja, ou várias quando a comissão cobre mais de uma. */
+  storeNames?: string[]
 }) {
   const label = chargeType && isChargeType(chargeType) ? CHARGE_TYPE_LABELS[chargeType] : null
   const ml = monthsLabel(months)
+  const storeName = storeNames && storeNames.length > 0 ? storeNames.join(" · ") : null
   if (!label && !ml && !storeName) return null
   return (
     <div className="flex flex-wrap items-center gap-1 mt-0.5">
@@ -338,9 +350,10 @@ function ChargeClassBadges({
         </span>
       )}
       {storeName && (
-        <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 dark:text-[#8B92A5]">
+        <span className="inline-flex items-center gap-1 text-[10px] text-gray-500 dark:text-[#8B92A5]" title={storeName}>
           <Store className="h-3 w-3" />
           {storeName}
+          {(storeNames?.length ?? 0) > 1 ? ` (${storeNames!.length} lojas)` : ""}
         </span>
       )}
     </div>
@@ -551,6 +564,26 @@ function getStatusBadge(status: string) {
   )
 }
 
+/** Rótulo do meio de cobrança — "UNDEFINED" do Asaas é "o cliente escolhe na fatura". */
+function billingMethodLabel(type: string | undefined | null): string {
+  switch (type) {
+    case "UNDEFINED":
+      return "Cliente escolhe"
+    case "CREDIT_CARD":
+      return "Cartão de crédito"
+    case "BOLETO":
+      return "Boleto"
+    case "PIX":
+      return "PIX"
+    case undefined:
+    case null:
+    case "":
+      return "—"
+    default:
+      return paymentMethodLabels[type]?.label ?? type
+  }
+}
+
 function getMethodIcon(type: string) {
   switch (type) {
     case "PIX":
@@ -604,7 +637,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     dueDate: string
     chargeType: ChargeType
     months: string[]
-    storeId: string
+    /** Comissão aceita VÁRIAS lojas (fatura conjunta); os outros tipos usam só a 1ª. */
+    storeIds: string[]
   } | null>(null)
   const [isClassifying, setIsClassifying] = useState(false)
   // Dialog "Vincular lojas" de uma assinatura.
@@ -622,6 +656,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     () => Object.fromEntries(clientStores.map((s) => [s.id, s.store_name])) as Record<string, string>,
     [clientStores],
   )
+  const storeNamesOf = (row: { store_id?: string | null; store_ids?: string[] | null } | null | undefined) =>
+    storeIdsOf(row).map((id) => storeNameById[id] ?? "Loja")
   const [selectedYear, setSelectedYear] = useState(initialYear)
   const [activeView, setActiveView] = useState<"charges" | "subscriptions" | "contracts">(validView)
 
@@ -766,12 +802,23 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           .eq("client_id", clientId)
           .order("store_name"),
         // Espelho local das faturas Asaas — é onde mora a classificação.
+        // Sem a migration 20261118 o select com store_ids falha → cai no antigo.
         supabase
           .from("invoices")
-          .select("id, asaas_id, charge_type, reference_months, store_id")
+          .select("id, asaas_id, charge_type, reference_months, store_id, store_ids")
           .eq("client_id", clientId)
           .not("asaas_id", "is", null)
-          .limit(500),
+          .limit(500)
+          .then(async (r) =>
+            r.error
+              ? supabase
+                  .from("invoices")
+                  .select("id, asaas_id, charge_type, reference_months, store_id")
+                  .eq("client_id", clientId)
+                  .not("asaas_id", "is", null)
+                  .limit(500)
+              : r,
+          ),
       ])
 
       if (subsResult.data) setLocalSubscriptions(subsResult.data)
@@ -787,6 +834,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               charge_type: r.charge_type ?? null,
               reference_months: r.reference_months ?? null,
               store_id: r.store_id ?? null,
+              store_ids: r.store_ids ?? null,
             }
           }
         }
@@ -1146,7 +1194,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     dueDate: string
     chargeType?: ChargeType | null
     months?: string[] | null
-    storeId?: string | null
+    storeIds?: string[] | null
     hasSubscription?: boolean
   }) {
     const chargeType =
@@ -1164,7 +1212,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       dueDate: target.dueDate,
       chargeType,
       months,
-      storeId: target.storeId ?? (activeStores.length === 1 ? activeStores[0].id : ""),
+      storeIds:
+        target.storeIds && target.storeIds.length > 0
+          ? target.storeIds
+          : activeStores.length === 1
+            ? [activeStores[0].id]
+            : [],
     })
   }
 
@@ -1184,7 +1237,14 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           id: classifyTarget.id,
           charge_type: classifyTarget.chargeType,
           reference_months: classifyTarget.chargeType === "other" ? null : classifyTarget.months,
-          store_id: classifyTarget.storeId || null,
+          // Comissão pode ser de várias lojas numa fatura só; os outros
+          // tipos ficam com uma (a 1ª selecionada).
+          store_ids:
+            classifyTarget.storeIds.length === 0
+              ? null
+              : classifyTarget.chargeType === "commission"
+                ? classifyTarget.storeIds
+                : [classifyTarget.storeIds[0]],
         }),
       })
       const result = await res.json()
@@ -1349,6 +1409,30 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       })
     } finally {
       setIsMarkingPaid(false)
+    }
+  }
+
+  // Desfaz a baixa manual (RECEIVED_IN_CASH) — a fatura volta a pendente
+  // no Asaas e no espelho local.
+  async function handleUndoManualPayment(paymentId: string) {
+    if (!confirm("Desfazer o pagamento manual? A fatura volta a pendente no Asaas.")) return
+    try {
+      const res = await fetch("/api/integrations/asaas/charges", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId, action: "undo" }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao desfazer")
+      toast({ title: "Pagamento manual desfeito" })
+      mutatePayments()
+      loadLocalData()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao desfazer pagamento",
+        description: err instanceof Error ? err.message : undefined,
+      })
     }
   }
 
@@ -1786,7 +1870,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                           ? "Vence hoje"
                           : `vence em ${daysToDue} dia${daysToDue !== 1 ? "s" : ""}`
                       }
-                      {" · via "}{nextPayment.method}
+                      {" · via "}{billingMethodLabel(nextPayment.method)}
                     </p>
                   </div>
                 </div>
@@ -1946,7 +2030,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                           <ChargeClassBadges
                             chargeType={charge.charge_type}
                             months={charge.reference_months}
-                            storeName={charge.store_id ? storeNameById[charge.store_id] : null}
+                            storeNames={storeNamesOf(charge)}
                           />
                           {charge.actual_payment_method && (
                             <p className="text-xs text-muted-foreground">
@@ -1998,7 +2082,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                                   dueDate: charge.due_date,
                                   chargeType: charge.charge_type,
                                   months: charge.reference_months,
-                                  storeId: charge.store_id,
+                                  storeIds: storeIdsOf(charge),
                                   hasSubscription: Boolean(charge.subscription_id),
                                 })
                               }
@@ -2037,7 +2121,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                           <ChargeClassBadges
                             chargeType={meta?.charge_type}
                             months={meta?.reference_months}
-                            storeName={meta?.store_id ? storeNameById[meta.store_id] : null}
+                            storeNames={storeNamesOf(meta)}
                           />
                           <p className="text-[11px] text-muted-foreground font-mono">
                             Asaas: {payment.id}
@@ -2047,7 +2131,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <TableCell>
                         <div className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-medium rounded-[6px] bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.04)] text-gray-700 dark:text-[#EAEDF3]">
                           {getMethodIcon(payment.billingType)}
-                          {payment.billingType === "UNDEFINED" ? "Cliente escolhe" : payment.billingType}
+                          {billingMethodLabel(payment.billingType)}
                         </div>
                       </TableCell>
                       <TableCell className="font-medium tabular-nums text-right">
@@ -2089,13 +2173,29 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                                   dueDate: payment.dueDate,
                                   chargeType: meta?.charge_type,
                                   months: meta?.reference_months,
-                                  storeId: meta?.store_id,
+                                  storeIds: storeIdsOf(meta),
                                 })
                               }
                             >
                               <Tags className="mr-2 h-4 w-4" />
                               Classificar (tipo · mês · loja)
                             </DropdownMenuItem>
+                            {(payment.status === "PENDING" || payment.status === "OVERDUE") && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  openPaidModal({ source: "asaas", id: payment.id, value: payment.value })
+                                }
+                              >
+                                <DollarSign className="mr-2 h-4 w-4" />
+                                Marcar como pago (fora do Asaas)
+                              </DropdownMenuItem>
+                            )}
+                            {payment.status === "RECEIVED_IN_CASH" && (
+                              <DropdownMenuItem onClick={() => handleUndoManualPayment(payment.id)}>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Desfazer pagamento manual
+                              </DropdownMenuItem>
+                            )}
                             {(payment.status === "PENDING" || payment.status === "OVERDUE") && (
                               <DropdownMenuItem onClick={() => handleCancelAsaasPayment(payment.id)}>
                                 <Ban className="mr-2 h-4 w-4" />
@@ -2991,29 +3091,50 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   />
                 </div>
               )}
-              <div className="space-y-2">
-                <Label>Loja</Label>
-                <Select
-                  value={classifyTarget.storeId || "_none"}
-                  onValueChange={(value) =>
-                    setClassifyTarget({ ...classifyTarget, storeId: value === "_none" ? "" : value })
-                  }
-                  disabled={activeStores.length === 0}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">— Sem loja definida</SelectItem>
-                    {clientStores.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.store_name}
-                        {s.is_active === false ? " (inativa)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {classifyTarget.chargeType === "commission" ? (
+                // Comissão de várias lojas vem numa fatura só — marca todas.
+                <div className="space-y-2">
+                  <Label>Lojas da comissão</Label>
+                  {clientStores.length > 0 ? (
+                    <StoreCheckboxList
+                      stores={clientStores}
+                      value={classifyTarget.storeIds}
+                      onChange={(storeIds) => setClassifyTarget({ ...classifyTarget, storeIds })}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Este cliente ainda não tem loja cadastrada.</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {classifyTarget.storeIds.length > 1
+                      ? `${classifyTarget.storeIds.length} lojas — a comissão aparece na carteira de cada uma, com o valor da fatura inteira.`
+                      : "Marque mais de uma quando a fatura cobre a comissão de várias lojas."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Loja</Label>
+                  <Select
+                    value={classifyTarget.storeIds[0] || "_none"}
+                    onValueChange={(value) =>
+                      setClassifyTarget({ ...classifyTarget, storeIds: value === "_none" ? [] : [value] })
+                    }
+                    disabled={activeStores.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">— Sem loja definida</SelectItem>
+                      {clientStores.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.store_name}
+                          {s.is_active === false ? " (inativa)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -3199,6 +3320,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {paidTarget?.source === "asaas" && (
+              <div className="rounded-[6px] p-2.5 bg-[#FFFBEB] dark:bg-[rgba(251,191,36,0.08)] border border-[#FDE68A] dark:border-[rgba(251,191,36,0.3)] text-[11.5px] text-[#92400E] dark:text-[#FCD34D]">
+                Para pagamento recebido <strong>fora do Asaas</strong> (transferência internacional, Wise, PIX
+                direto): a cobrança é baixada no Asaas como &quot;recebida em dinheiro&quot; e o cliente não é
+                notificado. Dá para desfazer pelo menu da fatura.
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Comprovante de pagamento</Label>
               <Input
