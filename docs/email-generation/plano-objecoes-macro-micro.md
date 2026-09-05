@@ -26,6 +26,14 @@ produção (somente leitura) em 04/09.*
 > devolve a última run). O Catalogador passou a rodar TAMBÉM no
 > `pesquisa-completa` com `regeneration: true` (antes o `return` da regeneração
 > vinha primeiro e a projeção ficava sem tipagem depois do callback `icp`).
+>
+> **PR 7 (05/09):** decisão do owner — sem botão de backfill em massa; o
+> Catalogador segue sem chave (vivo em toda pesquisa nova/regerada) e o
+> backfill é POR LOJA pela tela: aba Contexto → bloco "Catálogo de argumento
+> ainda não gerado" (`ObjectionCatalogEmpty`) com "Catalogar objeções"
+> (mesma rota v2; desabilitado sem pesquisa, régua `hasContext`). O botão
+> do bloco de objeções passou a se chamar "Catalogar objeções"/"Recatalogar".
+> `seletor_mode` continua `off` — ligar é gesto nas Configurações.
 
 ---
 

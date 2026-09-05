@@ -2511,7 +2511,10 @@ objeções tipadas por `tipo_de_risco` × `aliviador` com lastro e
 `catalogo-regras.ts` confere o checável (4–8, risco×aliviador único,
 compatibilidade risco↔aliviador, uma dominante, nada de política inventada)
 e reprova para retry; editar a projeção à mão marca `verificado` no
-catálogo. Painel "Catálogo de argumento" na aba Pesquisa.
+catálogo. Painel "Catálogo de argumento" na aba Pesquisa; loja SEM catálogo
+(pesquisa anterior à feature) vê o bloco `ObjectionCatalogEmpty` com o botão
+"Catalogar objeções" — é o backfill, loja a loja, pela tela (decisão 05/09:
+sem batch em massa). O botão só habilita com a régua `hasContext` do service.
 
 **Seletor** (`seletor.service.ts`, agent `seletor`, gate
 `email_generation_settings.seletor_mode` off|shadow|on): por email, ANTES

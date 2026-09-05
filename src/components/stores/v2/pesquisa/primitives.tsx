@@ -676,10 +676,13 @@ export function ObjectionList({
   items,
   onRegenerate,
   regenerating,
+  hasCatalog,
 }: {
   items: { objection: string; treatment: string }[]
   onRegenerate?: () => void
   regenerating?: boolean
+  /** Muda só o rótulo: com catálogo é "Recatalogar", sem é "Catalogar objeções". */
+  hasCatalog?: boolean
 }) {
   const red = { bg: "#FEF2F2", border: "#FECACA", color: "#991B1B" }
   return (
@@ -700,7 +703,7 @@ export function ObjectionList({
               ) : (
                 <Sparkles className="h-3 w-3" />
               )}
-              Re-gerar com IA
+              {hasCatalog ? "Recatalogar" : "Catalogar objeções"}
             </button>
           )
         }
@@ -710,8 +713,8 @@ export function ObjectionList({
           className="rounded-md border border-dashed p-4 text-center text-[11.5px] text-slate-500"
           style={{ borderColor: "rgba(0,0,0,0.10)" }}
         >
-          Nenhuma objeção mapeada ainda. Use <strong className="font-semibold text-slate-700">Re-gerar com IA</strong> para
-          gerar a partir da persona e do contexto da loja.
+          Nenhuma objeção mapeada ainda. Use <strong className="font-semibold text-slate-700">Catalogar objeções</strong> para
+          o Catalogador gerar a partir da persona e do contexto da loja.
         </div>
       ) : (
       <div className="flex flex-col gap-2">
@@ -867,6 +870,58 @@ function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?
     >
       {children}
     </span>
+  )
+}
+
+/**
+ * Estado "catálogo ainda não gerado" — o gesto por LOJA para rodar o
+ * Catalogador (set/2026). O agente roda sozinho só quando uma pesquisa NOVA
+ * termina; loja com pesquisa anterior à feature fica sem catálogo até alguém
+ * clicar aqui. `canRun` espelha o `hasContext` do catalogador.service — sem
+ * pesquisa a rota devolve 400, então o botão nem habilita.
+ */
+export function ObjectionCatalogEmpty({
+  canRun,
+  running,
+  onRun,
+}: {
+  canRun: boolean
+  running?: boolean
+  onRun: () => void
+}) {
+  return (
+    <IcpBlock>
+      <IcpBlockHeader
+        title="Catálogo de argumento"
+        subtitle="Ainda não gerado — o Seletor lê daqui a objeção que cada email ataca"
+      />
+      <div
+        className="border-2 border-dashed rounded-md p-4 text-center"
+        style={{ borderColor: "rgba(0,0,0,0.08)" }}
+      >
+        <div className="text-[11.5px] text-slate-600 mb-2.5 max-w-[560px] mx-auto leading-relaxed">
+          O Catalogador lê a Pesquisa &amp; Diagnóstico e grava as objeções tipadas por
+          risco e aliviador (com lastro e flows elegíveis), os veículos de argumento, os
+          medos da categoria e o incentivo. A lista de objeções acima é reescrita pela
+          versão tipada.
+        </div>
+        <button
+          onClick={onRun}
+          disabled={!canRun || running}
+          title={canRun ? undefined : "Precisa da Pesquisa & Diagnóstico (marca ou persona) antes de catalogar"}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-[11.5px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+          style={{ borderColor: INDIGO.border, color: INDIGO.color, background: INDIGO.bg }}
+        >
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {running ? "Catalogando…" : "Catalogar objeções"}
+        </button>
+        {!canRun && (
+          <div className="text-[11px] text-slate-400 mt-2">
+            Precisa da Pesquisa &amp; Diagnóstico (marca ou persona) antes de catalogar.
+          </div>
+        )}
+      </div>
+    </IcpBlock>
   )
 }
 

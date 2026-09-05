@@ -36,6 +36,7 @@ import {
   StarvingCrowdScorecard,
   UniqueMechanism,
   ObjectionList,
+  ObjectionCatalogEmpty,
   ObjectionCatalogPanel,
   VocabularyList,
 } from "./primitives"
@@ -197,6 +198,12 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   }, [storeId])
 
   const hasCatalog = Boolean(data.objection_catalog)
+  // Mesma régua do `hasContext` do catalogador.service — sem isso a rota devolve 400.
+  const canCatalog =
+    Boolean(data.brand_thesis) ||
+    Boolean(data.icp_persona) ||
+    Boolean(data.icp_day_in_life) ||
+    (data.icp_motivations?.length ?? 0) > 0
   useEffect(() => {
     if (!hasCatalog) return
     let cancelled = false
@@ -663,6 +670,18 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               items={data.icp_objections ?? []}
               onRegenerate={regenerateObjections}
               regenerating={regeneratingObjections}
+              hasCatalog={Boolean(data.objection_catalog)}
+            />
+          )}
+
+          {/* Sem catálogo: o gesto por loja para rodar o Catalogador. Fica FORA da
+              condição do ObjectionList para a loja com só a tese da marca (sem
+              persona) também ver o botão — a rota aceita qualquer um dos dois. */}
+          {!data.objection_catalog && (
+            <ObjectionCatalogEmpty
+              canRun={canCatalog}
+              running={regeneratingObjections}
+              onRun={regenerateObjections}
             />
           )}
 
