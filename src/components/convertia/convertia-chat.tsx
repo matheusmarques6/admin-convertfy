@@ -45,6 +45,7 @@ import {
   Leaf,
 } from "lucide-react"
 import { fmtMs, fmtTokens, normalizeTurnUsage, type TurnUsageSummary } from "@/lib/ai/convertia/telemetry"
+import { friendlyModelErrorText } from "@/lib/ai/convertia/model-errors"
 import type { PendingConfirmation } from "@/lib/ai/convertia/types"
 import { ConvertiaMarkdown } from "./convertia-markdown"
 import {
@@ -205,6 +206,8 @@ interface UiMessage {
   /** Turno continuando em segundo plano (orçamento da rota acabou). */
   continuation?: Continuation | null
   status?: string | null
+  /** Erro cru do provedor quando o turno falhou (vem de meta.error). */
+  error?: string | null
 }
 
 /** Chave do localStorage: última conversa aberta por workspace. */
@@ -657,6 +660,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         pending_confirmation?: PendingConfirmation | null
         continuation?: Continuation | null
         status?: string | null
+        error?: string | null
       } | null
     }>
   }
@@ -680,6 +684,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           pendingConfirmation: m.meta?.pending_confirmation ?? null,
           continuation: m.meta?.continuation ?? null,
           status: m.meta?.status ?? null,
+          error: typeof m.meta?.error === "string" ? m.meta.error : null,
           generating,
           startedAt,
           // turno vivo no servidor: a bolha mostra o spinner como se
@@ -1166,10 +1171,13 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               content: typeof ev.content === "string" && ev.content.trim() ? ev.content : d.content,
             }))
           } else if (ev.type === "error") {
+            // Mesma renderização do turno recarregado do banco: status
+            // error + erro cru → a bolha traduz (402 = sem crédito…).
             patchDraft((d) => ({
               ...d,
               streaming: false,
-              content: d.content || `⚠️ ${String(ev.message ?? "Erro inesperado")}`,
+              status: "error",
+              error: typeof ev.raw === "string" && ev.raw ? ev.raw : String(ev.message ?? "Erro inesperado"),
             }))
           }
         }
@@ -2374,25 +2382,39 @@ function AssistantMessage({
         <div className="convertia-md text-[14px] leading-[1.75]" style={{ color: "var(--ops-title)" }}>
           <ConvertiaMarkdown content={msg.content} streaming={isStreaming} />
         </div>
+        {/* Turno que falhou no provedor: a causa traduzida (402 = sem
+            crédito, 401 = chave…) fica na bolha, não só no banco. */}
+        {!isStreaming && msg.status === "error" && msg.error && (
+          <div
+            className="mt-3 rounded-[6px] border px-3 py-2 text-[12px] leading-[1.5]"
+            style={{ borderColor: "rgba(220,38,38,0.25)", background: "rgba(220,38,38,0.05)", color: "var(--ops-text)" }}
+            title={msg.error.slice(0, 300)}
+          >
+            ⚠️ {friendlyModelErrorText(msg.error)}
+          </div>
+        )}
         {!isStreaming && msg.content && (
           <div className="mt-4 flex items-center gap-1">
-            {/* Telemetria do turno (padrão Claude: uma linha discreta) */}
+            {/* Telemetria do turno (padrão Claude: uma linha discreta).
+                Mensagem pré-v3 só tem tokens/custo — sem rodadas nem
+                duração, e "0 rodadas · 0 ms" seria mentira. */}
             {usage && (
               <span
                 className="truncate tabular-nums text-[10.5px]"
                 style={{ color: "var(--ops-mut)" }}
                 title={`${usage.rounds.length} rodada(s) · ${usage.tools.length} tool(s) · ${usage.tokens_input} tokens de entrada (${usage.tokens_cached} do cache) · ${usage.tokens_output} de saída`}
               >
-                {usage.rounds.length} rodada{usage.rounds.length === 1 ? "" : "s"}
-                {usage.tools.length > 0 ? ` · ${usage.tools.length} tool${usage.tools.length === 1 ? "" : "s"}` : ""}
-                {" · "}
+                {usage.rounds.length > 0
+                  ? `${usage.rounds.length} rodada${usage.rounds.length === 1 ? "" : "s"}${
+                      usage.tools.length > 0 ? ` · ${usage.tools.length} tool${usage.tools.length === 1 ? "" : "s"}` : ""
+                    } · `
+                  : ""}
                 {fmtTokens(usage.tokens_input)} in
                 {usage.cache_hit_ratio > 0 ? ` (${Math.round(usage.cache_hit_ratio * 100)}% cache)` : ""}
                 {" · "}
                 {fmtTokens(usage.tokens_output)} out
                 {usage.cost_usd > 0 ? ` · US$ ${usage.cost_usd.toFixed(usage.cost_usd < 0.01 ? 4 : 3)}` : ""}
-                {" · "}
-                {fmtMs(usage.duration_ms)}
+                {usage.duration_ms > 0 ? ` · ${fmtMs(usage.duration_ms)}` : ""}
                 {msg.status === "cancelled" ? " · interrompida" : ""}
               </span>
             )}

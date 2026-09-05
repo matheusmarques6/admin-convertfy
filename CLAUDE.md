@@ -1391,6 +1391,17 @@ Mapa completo em `docs/convertia/motor-v3.md`. O que não pode quebrar:
   qualquer geração; `toUiMessages` e o evento `done` passam por ele. O
   ErrorBoundary agora mostra `error.message` na tela — o print chega
   com a causa, não só com o título.
+- **Erro do provedor é traduzido, não escondido** (incidente 05/09: a
+  conta do OpenRouter ficou SEM CRÉDITO — `HTTP 402 weight_exceeds_budget`
+  / `in_flight_budget_exhausted` — e o chat dizia "troque o modelo"; o
+  usuário trocou Fable → Kimi achando que era o modelo). O erro cru fica
+  em `meta.error` (finalize) e `friendlyModelError` (`model-errors.ts`,
+  puro, 3 testes) o traduz na rota (SSE `error` leva `message` + `raw`)
+  e na bolha (`msg.status === "error" && msg.error`). 402 → "créditos
+  acabaram, adicione em openrouter.ai/settings/credits"; 401 → chave;
+  429 → taxa; contexto; 5xx. O OpenRouter RESERVA o custo máximo da
+  chamada (prompt + max_tokens no preço do modelo) — por isso o modelo
+  mais caro estoura primeiro e parece "defeito do Fable".
 
 ## Financeiro ligado à loja (set/2026, migration 20261113)
 

@@ -61,6 +61,7 @@ import { createTurnState, runToolLoop, type ToolEntry } from "@/lib/ai/convertia
 import { createTurnPersistence, resolveConfirmationAtomic } from "@/lib/ai/convertia/persist"
 import { createCancelWatcher } from "@/lib/ai/convertia/cancel"
 import { finalizeTurn } from "@/lib/ai/convertia/finalize"
+import { friendlyModelErrorText } from "@/lib/ai/convertia/model-errors"
 import { stripImagesForJob } from "@/lib/ai/convertia/continuation"
 import { HISTORY_LIMIT, parseSummary } from "@/lib/ai/convertia/summary"
 import { buildMemoriaConnector, loadApprovedMemories } from "@/lib/ai/convertia/memories"
@@ -621,10 +622,13 @@ export async function POST(request: NextRequest) {
 
         if (result.status === "error") {
           log.error("convertia chat falhou", { error: result.errorMessage, model: result.model })
+          // A causa traduzida (402 = sem crédito no OpenRouter, 401 = chave,
+          // 429 = taxa…) — "troque o modelo" para um 402 mandava a pessoa
+          // caçar o modelo errado enquanto a conta estava zerada.
           send({
             type: "error",
-            message:
-              "Não consegui completar a resposta agora. Tente de novo — se persistir, troque o modelo.",
+            message: friendlyModelErrorText(result.errorMessage),
+            raw: (result.errorMessage ?? "").slice(0, 300),
           })
         }
 
