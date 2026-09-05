@@ -1092,8 +1092,13 @@ function CarteiraDrawer({
           <span className="text-[10px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
             {m.detail}
           </span>
-          <span className="text-[10px]" style={{ color: "var(--ops-sec)", ...TNUM }}>
+          <span
+            className="text-[10px]"
+            style={{ color: "var(--ops-sec)", ...TNUM }}
+            title={m.shared ? `Fatura conjunta de ${m.shared} lojas — valor total da fatura` : undefined}
+          >
             {fmtK(m.amount)}
+            {m.shared ? ` ·${m.shared}L` : ""}
           </span>
         </div>
       ))}

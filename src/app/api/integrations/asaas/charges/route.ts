@@ -2,17 +2,21 @@
 // Credentials are stored in integrations.credentials JSON, while Klaviyo uses client_stores columns.
 // Standardize credential storage and document the financial data flow.
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { validateMonetaryValue } from "@/lib/schemas/common"
 import {
+  chargeStoreIds,
   isMissingClassificationColumn,
+  isMissingStoreIdsColumn,
   parseChargeClassification,
   stripClassification,
+  stripStoreIds,
 } from "@/lib/services/charge-classification"
+import { ensureAsaasInvoiceMirror, loadAsaasService } from "@/lib/services/asaas-invoice-mirror"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasCharges")
@@ -33,21 +37,24 @@ export async function POST(request: NextRequest) {
 
     validateMonetaryValue(value)
 
-    // Classificação (tipo / meses de referência / loja) — aceita tanto
+    // Classificação (tipo / meses de referência / lojas) — aceita tanto
     // o vocabulário snake_case das rotas locais quanto camelCase.
     const classification = parseChargeClassification({
       charge_type: body.charge_type ?? body.chargeType,
       reference_months: body.reference_months ?? body.referenceMonths,
-      store_id: body.store_id ?? body.storeId,
+      ...(body.store_ids !== undefined || body.storeIds !== undefined
+        ? { store_ids: body.store_ids ?? body.storeIds }
+        : { store_id: body.store_id ?? body.storeId }),
     })
-    if (classification.store_id) {
-      const { data: store } = await supabase
+    const storeIds = chargeStoreIds(classification)
+    if (storeIds.length > 0) {
+      const { data: stores } = await supabase
         .from("client_stores")
         .select("id, client_id")
-        .eq("id", classification.store_id)
-        .maybeSingle()
-      if (!store || store.client_id !== clientId) {
-        throw new AppError("A loja informada não pertence a este cliente", 422, "validation-error")
+        .in("id", storeIds)
+      const ok = new Set((stores ?? []).filter((s) => s.client_id === clientId).map((s) => s.id))
+      if (storeIds.some((id) => !ok.has(id))) {
+        throw new AppError("Alguma loja informada não pertence a este cliente", 422, "validation-error")
       }
     }
 
@@ -127,8 +134,13 @@ export async function POST(request: NextRequest) {
       charge_type: classification.charge_type ?? "other",
       reference_months: classification.reference_months ?? null,
       store_id: classification.store_id ?? null,
+      store_ids: classification.store_ids ?? null,
     }
-    const { error: invErr } = await supabase.from("invoices").insert(invoiceRow)
+    let { error: invErr } = await supabase.from("invoices").insert(invoiceRow)
+    if (invErr && isMissingStoreIdsColumn(invErr)) {
+      // Migration 20261118 pendente — mantém a classificação, só sem a lista de lojas.
+      ;({ error: invErr } = await supabase.from("invoices").insert(stripStoreIds(invoiceRow)))
+    }
     if (invErr && isMissingClassificationColumn(invErr)) {
       // Migration 20261113 pendente — a fatura existe no Asaas, então o
       // espelho local entra sem a classificação (o sync completa depois).
@@ -150,7 +162,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Marca uma cobrança Asaas como recebida (receiveInCash)
+/**
+ * PUT - Pagamento MANUAL de uma cobrança Asaas.
+ *
+ * `action: "receive"` (default): o cliente pagou POR FORA do Asaas
+ * (transferência internacional, Wise, PIX direto) — `receiveInCash` no
+ * Asaas + espelho local `paid`. `action: "undo"`: desfaz a marcação
+ * manual (`undoReceivedInCash`) e o espelho volta a `pending`.
+ *
+ * O espelho em `invoices` nasce aqui se ainda não existir
+ * (`ensureAsaasInvoiceMirror`): cobrança gerada pela assinatura só
+ * entrava no banco no sync, e o update local acertava 0 linhas —
+ * classificação e carteira nunca viam o pagamento.
+ */
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -158,51 +182,66 @@ export async function PUT(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
-    const { paymentId, value, paymentDate, proofPath } = body as {
+    const { paymentId, value, paymentDate, proofPath, action } = body as {
       paymentId?: string
       value?: number
       paymentDate?: string
       proofPath?: string
+      action?: "receive" | "undo"
     }
 
     if (!paymentId) {
       throw new ValidationError("paymentId é obrigatório")
     }
 
-    const { data: integration } = await supabase
-      .from("integrations")
-      .select("credentials, is_active")
-      .eq("type", "asaas")
-      .eq("is_active", true)
-      .eq("org_id", orgId)
-      .single()
+    const admin = createAdminClient()
+    const asaas = await loadAsaasService(admin, orgId)
 
-    if (!integration) {
-      throw new AppError("Integração Asaas não ativa", 400)
+    // Espelho local ANTES de mexer no Asaas: se o cliente não é da org,
+    // devolve null e a rota não toca numa cobrança alheia.
+    const mirror = await ensureAsaasInvoiceMirror(admin, orgId, paymentId)
+    if (!mirror) {
+      throw new AppError("Cobrança não encontrada no Asaas para esta organização", 404, "not-found")
     }
 
-    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
+    if (action === "undo") {
+      const undone = await asaas.undoReceivedInCash(paymentId)
+      const { error } = await admin
+        .from("invoices")
+        .update({ status: "pending", payment_date: null })
+        .eq("id", mirror.id)
+      if (error) log.warn("espelho local não voltou a pending", { error: error.message, paymentId })
+      return successResponse(request, {
+        success: true,
+        payment: { id: undone.id, status: undone.status },
+      })
+    }
 
     // O receiveInCash exige o valor recebido; se não vier no body, busca no Asaas.
     const receivedValue = value ?? (await asaas.getPayment(paymentId)).value
     validateMonetaryValue(receivedValue)
 
+    const paidOn = paymentDate || new Date().toISOString().split("T")[0]
     const received = await asaas.receivePaymentInCash(paymentId, {
-      paymentDate: paymentDate || new Date().toISOString().split("T")[0],
+      paymentDate: paidOn,
       value: Number(receivedValue),
       notifyCustomer: false,
     })
 
-    // Reflete localmente na tabela invoices (idempotente por asaas_id)
-    await supabase.from("invoices").update({ status: "paid" }).eq("asaas_id", paymentId)
+    // Reflete localmente (o espelho existe — garantido acima)
+    const { error: updErr } = await admin
+      .from("invoices")
+      .update({ status: "paid", payment_date: paidOn })
+      .eq("id", mirror.id)
+    if (updErr) log.warn("espelho local não marcou paid", { error: updErr.message, paymentId })
 
     // Comprovante anexado (best-effort — a coluna pode não existir se a
     // migration 20260924_payment_proof ainda não tiver sido aplicada)
     if (proofPath) {
-      const { error: proofErr } = await supabase
+      const { error: proofErr } = await admin
         .from("invoices")
         .update({ payment_proof_path: proofPath })
-        .eq("asaas_id", paymentId)
+        .eq("id", mirror.id)
       if (proofErr) {
         log.info("Comprovante não persistido (coluna ausente?)", { error: proofErr.message })
       }
@@ -210,6 +249,7 @@ export async function PUT(request: NextRequest) {
 
     return successResponse(request, {
       success: true,
+      mirror_created: mirror.created,
       payment: { id: received.id, status: received.status },
     })
   } catch (error) {

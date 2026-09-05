@@ -31,8 +31,19 @@ export interface InvoiceLite {
   reference_months?: string[] | null
   /** Loja da cobrança; NULL = do cliente, sem loja definida. */
   store_id?: string | null
+  /**
+   * Lojas da cobrança (migration 20261118): comissão de várias lojas
+   * numa fatura só. Quando preenchido, vence `store_id`.
+   */
+  store_ids?: string[] | null
   /** Assinatura (local, ou Asaas resolvida pela view). */
   subscription_id?: string | null
+}
+
+/** Lojas efetivas da cobrança: `store_ids` vence; senão `[store_id]`. */
+export function invoiceStoreIds(i: Pick<InvoiceLite, "store_id" | "store_ids">): string[] {
+  if (Array.isArray(i.store_ids) && i.store_ids.length > 0) return i.store_ids
+  return i.store_id ? [i.store_id] : []
 }
 
 export type MesStatus = "paga" | "atrasada" | "em aberto" | "cancelada" | "reembolsada"
@@ -48,6 +59,12 @@ export interface MensalidadeMes {
   months?: MonthKey[]
   /** true quando o mês foi deduzido do vencimento (cobrança sem reference_months). */
   inferred?: boolean
+  /**
+   * Nº de lojas que a cobrança cobre quando é mais de uma (comissão
+   * conjunta). O valor é o da FATURA inteira — o drawer avisa que o
+   * montante é compartilhado, em vez de sugerir que a loja pagou tudo.
+   */
+  shared?: number
 }
 
 export interface MensalidadeInfo {
@@ -129,7 +146,8 @@ function aggregateStatus(sorted: InvoiceLite[], now: number): MensalidadeStatus 
 
 function historyEntry(i: InvoiceLite, now: number, month: string): MensalidadeMes {
   const due = i.due_date as string
-  const base = { month, amount: i.amount }
+  const stores = invoiceStoreIds(i)
+  const base = { month, amount: i.amount, ...(stores.length > 1 ? { shared: stores.length } : {}) }
   if (i.status === "paid") {
     return { ...base, status: "paga", detail: i.payment_date ? `paga em ${ddmm(i.payment_date)}` : "paga" }
   }
@@ -175,7 +193,8 @@ export interface StoreInvoiceSplit {
 /**
  * Quais cobranças do CLIENTE pertencem a ESTA loja.
  *
- * 1. `store_id` preenchido decide sozinho.
+ * 1. `store_ids`/`store_id` preenchido decide sozinho (uma cobrança de
+ *    várias lojas entra em TODAS elas — o histórico marca `shared`).
  * 2. Senão, assinatura vinculada a lojas (`client_subscription_stores`)
  *    decide — inclusive excluindo: assinatura da loja B não é da A.
  * 3. Senão (cobrança do cliente sem loja): entra só quando o cliente
@@ -196,8 +215,9 @@ export function splitInvoicesForStore(input: {
   let viaCliente = false
   for (const inv of input.invoices) {
     let verdict: "mine" | "other" | "unassigned"
-    if (inv.store_id) {
-      verdict = inv.store_id === input.storeId ? "mine" : "other"
+    const stores = invoiceStoreIds(inv)
+    if (stores.length > 0) {
+      verdict = stores.includes(input.storeId) ? "mine" : "other"
       if (verdict === "mine") viaLoja = true
     } else {
       const linked = inv.subscription_id ? (input.subscriptionStores[inv.subscription_id] ?? []) : []

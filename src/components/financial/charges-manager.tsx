@@ -64,6 +64,8 @@ interface Charge {
   charge_type?: string | null
   reference_months?: string[] | null
   store?: { id: string; name: string } | null
+  /** Todas as lojas da cobrança (comissão conjunta tem várias). */
+  stores?: Array<{ id: string; name: string }>
   client: {
     id: string
     name: string
@@ -159,6 +161,7 @@ export function ChargesManager() {
       // "comissão", "assinatura", nome da loja e "jul/26" também filtram
       (c.charge_type && isChargeType(c.charge_type) && CHARGE_TYPE_LABELS[c.charge_type].toLowerCase().includes(query)) ||
       c.store?.name.toLowerCase().includes(query) ||
+      c.stores?.some((s) => s.name.toLowerCase().includes(query)) ||
       monthsLabel(c.reference_months).toLowerCase().includes(query)
     )
   }
@@ -325,7 +328,8 @@ export function ChargesManager() {
       cell: (row) => {
         const label = row.charge_type && isChargeType(row.charge_type) ? CHARGE_TYPE_LABELS[row.charge_type] : null
         const months = monthsLabel(row.reference_months)
-        if (!label && !row.store) {
+        const storeNames = (row.stores?.length ? row.stores : row.store ? [row.store] : []).map((s) => s.name)
+        if (!label && storeNames.length === 0) {
           return <span className="text-sm text-gray-400 dark:text-[#5C6378]">—</span>
         }
         return (
@@ -345,8 +349,13 @@ export function ChargesManager() {
                 {months ? ` · ${months}` : ""}
               </span>
             )}
-            {row.store && (
-              <p className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate mt-0.5">{row.store.name}</p>
+            {storeNames.length > 0 && (
+              <p
+                className="text-[11px] text-gray-500 dark:text-[#8B92A5] truncate mt-0.5"
+                title={storeNames.join(" · ")}
+              >
+                {storeNames.join(" · ")}
+              </p>
             )}
           </div>
         )

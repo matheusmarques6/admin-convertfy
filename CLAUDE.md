@@ -1418,6 +1418,36 @@ mês · loja)" no financeiro do cliente → `PUT
 /api/financial/charge-classification` (Asaas ou local). Toda rota que
 grava cobrança degrada sem a migration (retry sem as colunas).
 
+**Cobrança de VÁRIAS lojas + pagamento manual (set/2026, migration
+20261118)**: comissão de cliente multi-loja vem numa fatura só, e o
+"Classificar" tinha um Select de loja única. `store_ids UUID[]` em
+`client_charges` e `invoices` (view expõe `store_ids` resolvido, com
+fallback de `store_id` para linhas antigas). Contrato: 1 loja →
+`store_id` = ela E `store_ids` = [ela]; várias → `store_id` NULL
+(quem só lê store_id vê "sem loja", nunca a errada). `chargeStoreIds`
+(`charge-classification.ts`, 10 testes) é o leitor canônico; o parser
+aceita `store_ids` e o `store_id` legado. Na carteira,
+`splitInvoicesForStore` entra em TODAS as lojas listadas e marca
+`shared: n` no histórico (drawer mostra "·nL" — o valor é da fatura
+inteira, não rateado). UI: tipo Comissão → checkboxes; outros → Select.
+Sem a migration, retry com `stripStoreIds` (loja única sobrevive em
+`store_id`; várias → 422 apontando a migration).
+
+**Espelho sob demanda** (`asaas-invoice-mirror.ts`,
+`ensureAsaasInvoiceMirror`): o Financeiro lista os pagamentos AO VIVO
+do Asaas, mas classificação, comprovante e carteira moram em
+`invoices`, que só o sync preenchia — cobrança recém-gerada pela
+assinatura dava "Fatura ainda não sincronizada localmente" e o
+"Marcar como pago" atualizava 0 linhas. Agora classificar e marcar
+pago criam o espelho na hora (idempotente por `asaas_id`; cliente por
+`externalReference` ou `custom_fields.asaas_customer_id`, SÓ da org).
+`PUT /api/integrations/asaas/charges` = pagamento por fora
+(transferência internacional/Wise/PIX direto → `receiveInCash`, sem
+notificar o cliente) e `action: "undo"` → `undoReceivedInCash` +
+espelho volta a pending (menu "Desfazer pagamento manual" em
+`RECEIVED_IN_CASH`). `billingType: UNDEFINED` = "Cliente escolhe" na
+UI (era "via UNDEFINED").
+
 **Vínculo assinatura ↔ lojas**: `store_ids` no POST de
 `/api/client-subscriptions`, `PUT /api/client-subscriptions/[id]/stores`
 (substitui o conjunto; toda loja tem de ser do cliente), stub local

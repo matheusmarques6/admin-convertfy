@@ -201,6 +201,14 @@ export class AsaasService {
     })
   }
 
+  /**
+   * Desfaz o receiveInCash: a cobrança volta a PENDING/OVERDUE no Asaas.
+   * Só funciona em cobrança que foi marcada manualmente (RECEIVED_IN_CASH).
+   */
+  async undoReceivedInCash(id: string): Promise<AsaasPayment> {
+    return this.request(`/payments/${id}/undoReceivedInCash`, { method: "POST" })
+  }
+
   // Subscriptions
   async createSubscription(subscription: {
     customer: string

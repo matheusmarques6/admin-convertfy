@@ -169,6 +169,7 @@ async function handleGet(request: NextRequest) {
     // assinatura); se ela ainda não rodou, cai no select antigo — a
     // carteira volta ao agrupamento por cliente em vez de quebrar.
     const INVOICE_COLUMN_SETS = [
+      "client_id, due_date, payment_date, status, amount, charge_type, reference_months, store_id, store_ids, subscription_id",
       "client_id, due_date, payment_date, status, amount, charge_type, reference_months, store_id, subscription_id",
       "client_id, due_date, payment_date, status, amount",
     ]
@@ -357,6 +358,7 @@ async function handleGet(request: NextRequest) {
       charge_type?: string | null
       reference_months?: string[] | null
       store_id?: string | null
+      store_ids?: string[] | null
       subscription_id?: string | null
     }>) {
       const list = invoicesByClient.get(inv.client_id) ?? []
@@ -368,6 +370,7 @@ async function handleGet(request: NextRequest) {
         charge_type: inv.charge_type ?? null,
         reference_months: inv.reference_months ?? null,
         store_id: inv.store_id ?? null,
+        store_ids: inv.store_ids ?? null,
         subscription_id: inv.subscription_id ?? null,
       })
       invoicesByClient.set(inv.client_id, list)
