@@ -29,6 +29,12 @@ export type BuiltinConnectorKey =
   | "conhecimento"
   /** Memória entre conversas — sempre disponível (a IA propõe, humano aprova). */
   | "memoria"
+  /**
+   * Transcrições da casa (aulas, calls, referências). Entra sozinho
+   * quando alguma coleção está marcada com a faísca — não é toggle do
+   * composer, do mesmo jeito que a base do Obsidian.
+   */
+  | "transcricoes"
 
 /** built-in ou "mcp:<uuid do ai_mcp_servers>" */
 export type ConnectorKey = BuiltinConnectorKey | `mcp:${string}`

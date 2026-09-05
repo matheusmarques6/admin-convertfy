@@ -82,6 +82,8 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
   const [modalAberto, setModalAberto] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
+  /** Card sob o cursor de teclado (j/k). -1 = nenhum. */
+  const [focado, setFocado] = useState(-1)
   const buscaRef = useRef<HTMLInputElement>(null)
 
   const q = useMemo(
@@ -155,33 +157,6 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
     }
   }, [temProcessando, mutate])
 
-  // ── Atalhos ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    const onTecla = (e: KeyboardEvent) => {
-      const alvo = e.target as HTMLElement | null
-      // Nunca sequestrar tecla enquanto alguém digita.
-      if (alvo && (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.isContentEditable)) {
-        if (e.key === "Escape") alvo.blur()
-        return
-      }
-      if (modalAberto) return
-      if (e.key === "/") {
-        e.preventDefault()
-        buscaRef.current?.focus()
-      } else if (e.key === "n") {
-        e.preventDefault()
-        setModalAberto(true)
-      } else if (e.key === "Escape") {
-        setSel(new Set())
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-        e.preventDefault()
-        setSel(new Set(itens.map((t) => t.id)))
-      }
-    }
-    window.addEventListener("keydown", onTecla)
-    return () => window.removeEventListener("keydown", onTecla)
-  }, [itens, modalAberto])
-
   // ── Colunas pela largura do CONTAINER ───────────────────────────────
   const grade = useRef<HTMLDivElement>(null)
   const [colunas, setColunas] = useState(3)
@@ -225,6 +200,54 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
   // acertaria transcrição fora da tela.
   const visiveis = useMemo(() => new Set(itens.map((t) => t.id)), [itens])
   const selecionados = useMemo(() => [...sel].filter((id) => visiveis.has(id)), [sel, visiveis])
+
+  // ── Atalhos ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onTecla = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement | null
+      // Nunca sequestrar tecla enquanto alguém digita.
+      if (alvo && (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.isContentEditable)) {
+        if (e.key === "Escape") alvo.blur()
+        return
+      }
+      if (modalAberto) return
+      if (e.key === "/") {
+        e.preventDefault()
+        buscaRef.current?.focus()
+      } else if (e.key === "n") {
+        e.preventDefault()
+        setModalAberto(true)
+      } else if (e.key === "j" || e.key === "k") {
+        // Cursor de teclado pela lista: j desce, k sobe (padrão vim, o
+        // mesmo do resto do admin).
+        if (!itens.length) return
+        e.preventDefault()
+        setFocado((f) => {
+          const proximo = e.key === "j" ? Math.min(itens.length - 1, f + 1) : Math.max(0, f <= 0 ? 0 : f - 1)
+          document
+            .querySelector<HTMLElement>(`[data-card="${itens[proximo]?.id}"]`)
+            ?.scrollIntoView({ block: "nearest" })
+          return proximo
+        })
+      } else if (e.key === "x") {
+        if (focado < 0 || !itens[focado]) return
+        e.preventDefault()
+        selecionar(itens[focado].id, false)
+      } else if (e.key === "Enter") {
+        if (focado < 0 || !itens[focado]) return
+        e.preventDefault()
+        router.push(ROUTES.ADMIN.TRANSCRICOES.DETAIL(itens[focado].id))
+      } else if (e.key === "Escape") {
+        setSel(new Set())
+        setFocado(-1)
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault()
+        setSel(new Set(itens.map((t) => t.id)))
+      }
+    }
+    window.addEventListener("keydown", onTecla)
+    return () => window.removeEventListener("keydown", onTecla)
+  }, [itens, modalAberto, focado, selecionar, router])
 
   const comOcupado = async (fn: () => Promise<void>) => {
     setOcupado(true)
@@ -433,6 +456,7 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
                       <CardTranscricao
                         key={t.id}
                         t={t}
+                        focado={itens[focado]?.id === t.id}
                         selecionado={sel.has(t.id)}
                         emSelecao={selecionados.length > 0}
                         onSelecionar={selecionar}

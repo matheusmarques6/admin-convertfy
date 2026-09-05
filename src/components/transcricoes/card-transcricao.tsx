@@ -20,6 +20,8 @@ import { ChipPlataforma, TNUM, TrThumb } from "./ui"
 
 interface Props {
   t: TranscricaoResumo
+  /** Sob o cursor de teclado (j/k) — contorno visível, sem roubar o foco real. */
+  focado?: boolean
   selecionado: boolean
   emSelecao: boolean
   onSelecionar: (id: string, comShift: boolean) => void
@@ -33,7 +35,7 @@ const dataCurta = (iso: string | null): string | null => {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")
 }
 
-export function CardTranscricao({ t, selecionado, emSelecao, onSelecionar, onArrastar, onFimArrasto }: Props) {
+export function CardTranscricao({ t, focado, selecionado, emSelecao, onSelecionar, onArrastar, onFimArrasto }: Props) {
   const processando = t.status === "processando" || t.status === "aguardando"
   const segmentos = segmentosDaEtapa(t.status, t.etapa, t.progresso)
   const meta = [t.canal, dataCurta(t.publicadoEm ?? t.criadoEm), t.colecaoNome].filter(Boolean).join(" · ")
@@ -46,9 +48,13 @@ export function CardTranscricao({ t, selecionado, emSelecao, onSelecionar, onArr
         onArrastar(t.id)
       }}
       onDragEnd={onFimArrasto}
+      data-card={t.id}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-[10px] border bg-[var(--ops-card)] transition-colors",
         selecionado ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)] hover:border-[var(--ops-accent)]/40",
+        // Foco de teclado precisa ser VISÍVEL: sem o anel, j/k move um
+        // cursor invisível e x seleciona algo que ninguém sabe qual é.
+        focado && "ring-2 ring-[var(--ops-accent)] ring-offset-2 ring-offset-[var(--ops-page)]",
       )}
     >
       {/* A caixa de seleção fica sobre a capa e só aparece no hover (ou

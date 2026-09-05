@@ -66,6 +66,7 @@ import { stripImagesForJob } from "@/lib/ai/convertia/continuation"
 import { HISTORY_LIMIT, parseSummary } from "@/lib/ai/convertia/summary"
 import { buildMemoriaConnector, loadApprovedMemories } from "@/lib/ai/convertia/memories"
 import { KNOWLEDGE_CONNECTOR_KEY, loadKnowledgeForPrompt } from "@/lib/ai/convertia/knowledge"
+import { blocoTranscricoes, buildTranscricoesConnector } from "@/lib/ai/connectors/transcricoes"
 import type { PendingConfirmation, TurnSource } from "@/lib/ai/convertia/types"
 import { logger } from "@/lib/logger"
 
@@ -280,7 +281,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Histórico + contexto ─────────────────────────────────────
-    const [{ data: history }, storeContext, { data: skillRows }, memories, knowledge] = await Promise.all([
+    const [{ data: history }, storeContext, { data: skillRows }, memories, knowledge, transcricoes] = await Promise.all([
       admin
         .from("ai_chat_messages")
         .select("id, role, content, meta, created_at")
@@ -301,6 +302,9 @@ export async function POST(request: NextRequest) {
       loadKnowledgeForPrompt(admin, orgId, body.advisors, {
         enabled: body.connectors.includes(KNOWLEDGE_CONNECTOR_KEY) || body.advisors.length > 0,
       }),
+      // Transcrições entram sozinhas quando alguma coleção está com a
+      // faísca ligada — o toggle é lá, na árvore de coleções.
+      blocoTranscricoes(admin, orgId).catch(() => ({ bloco: "", disponivel: false })),
     ])
 
     // Custo de geração de imagem (fora do stream do chat) — somado nos
@@ -322,6 +326,13 @@ export async function POST(request: NextRequest) {
     if (knowledge.connector) {
       connectors.push(knowledge.connector)
       dataToolCount += knowledge.connector.tools.length
+    }
+    // Transcrições da casa — só quando há coleção na base COM peça pronta
+    // (sem isso o modelo teria a tool e nada para achar).
+    if (transcricoes.disponivel) {
+      const conector = buildTranscricoesConnector()
+      connectors.push(conector)
+      dataToolCount += conector.tools.length
     }
     // Geração de imagem: sempre disponível (não é toggle do composer)
     connectors.push(
@@ -489,7 +500,7 @@ export async function POST(request: NextRequest) {
       storeContext,
       skills,
       memories,
-      knowledgeBlock: knowledge.block,
+      knowledgeBlock: [knowledge.block, transcricoes.bloco].filter(Boolean).join("\n\n"),
       deep: body.deep,
       consultedBlock: buildConsultedBlock(consultedTurns),
       historySummary,

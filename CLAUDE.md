@@ -2721,5 +2721,112 @@ com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
 precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
 `Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
+## Módulo Transcrições — vídeo virado texto pesquisável (set/2026, migration 20261121)
+
+Item "Transcrições" no grupo **Conhecimento** do workspace Geral, liberado
+para TODAS as funções (quem assiste a aula não é só quem edita a aula).
+Rotas em `ROUTES.ADMIN.TRANSCRICOES`; documentação em `docs/transcricoes/`.
+
+**Onde cada coisa roda.** O admin (Vercel) NUNCA processa mídia: enfileira,
+lê o banco e mostra. O worker (`worker/transcricoes/`, container com yt-dlp
+e ffmpeg) faz download, áudio, transcrição e indexação. Binário com sistema
+de arquivos não cabe em serverless, e o teto de tempo não cobre o download
+de um vídeo de uma hora. O estado vive na LINHA (`etapa`, `progresso`,
+`media_path`, `audio_path`), então fechar a aba — ou reiniciar o container
+— não interrompe: a próxima execução retoma da etapa em que parou, e o
+áudio já extraído fica no Storage para não rebaixar de novo. Claim atômico
+(`transcricoes_claim`, FOR UPDATE SKIP LOCKED) renovado durante a etapa
+longa: sem a renovação, um download de 40 min expiraria o claim e outra
+instância recomeçaria por cima, cobrando a transcrição duas vezes.
+
+**Duas honestidades que o código trava (e um teste guarda):**
+
+1. **Sem campo de confiança.** O endpoint não devolve confiança por bloco;
+   o que existe em `verbose_json` é `avg_logprob` (log-probabilidade de
+   token), que não é porcentagem de acerto. "96% de confiança" derivado
+   dali seria métrica inventada — pior que nenhuma, porque leva a decidir
+   com base nela. O campo não existe no schema nem na tela.
+2. **A etapa de transcrição não tem porcentagem.** `yt-dlp` reporta bytes e
+   `ffmpeg` reporta tempo processado, então baixar e extrair áudio têm
+   número real; transcrever é UMA chamada síncrona ao provedor. O worker
+   grava `progresso: null` e a barra mostra o segmento pulsando, sem
+   número. Inventar um é o que faz o usuário achar que travou em 70%.
+
+**Transcrição** (`transcrever.ts`): OpenRouter `/audio/transcriptions`,
+multipart (base64 infla 33% e o limite é 25 MB), `verbose_json`, diarização
+ligada, estilo **verbatim** (a bruta é a fonte da verdade; a limpeza
+acontece no chunking, onde dá para auditar) e a **`phrase_list` da
+coleção** — o parâmetro de maior impacto na qualidade: sem ele "Omnisend"
+vira "omni send" e a busca nunca encontra. Modelo padrão
+`microsoft/mai-transcribe-2`, configurável POR COLEÇÃO; o painel lê
+`transcricoes.modelo` (o que foi REALMENTE usado), nunca constante. Áudio
+acima de 24 MB é dividido em pedaços de 10 min e cada um leva o offset —
+errar isso invalida todos os timestamps do segundo em diante e só aparece
+em vídeo longo. A leitura do locutor é defensiva (`speaker`/`speaker_id`/
+`speaker_label`): nome de campo diferente não pode custar a diarização
+inteira.
+
+**Bloqueio de IP é rotina, não exceção.** As três plataformas recusam IP de
+datacenter. `classificarErro` reconhece as frases reais do yt-dlp,
+`mensagemDeErro` devolve texto legível ("O YouTube bloqueou o acesso a
+partir do servidor"), o retry tem backoff exponencial com jitter (sem
+jitter, cinco falhas do mesmo minuto voltam juntas e tomam bloqueio de
+novo) e `HTTP_PROXY` é o slot previsto. Nunca vira "falha genérica".
+
+**Dedupe pela URL normalizada** (`url.ts`, índice único por org):
+`youtu.be`, `/shorts`, `/embed` e `/live` colapsam no mesmo vídeo;
+rastreadores (`utm_*`, `si`, `igsh`, `is_from_webapp`) saem. Variar duplica
+a biblioteca; colapsar vídeos diferentes recusa o segundo e ele nunca é
+transcrito — os dois erros são silenciosos, daí os testes.
+
+**Busca devolve o OFFSET, não só o id.** Por isso a full-text roda em
+`transcricoes_blocos` e não em `texto_completo`: o bloco já carrega o `s`.
+Híbrida — exata (`websearch_to_tsquery` em português + `ts_headline`) mais
+semântica (pgvector nos chunks), mesclando com a exata primeiro. Semântica
+indisponível (sem chave) é DITA na resposta, não escondida.
+
+**Chunking por tópico** (`chunking.ts`): os tópicos detectados são os
+pontos de corte primários; tópico longo subdivide na fronteira de BLOCO,
+nunca no meio de uma fala. Cada chunk ganha uma linha de contexto por LLM e
+o embedding é feito sobre `contexto + texto` — "e aí você aumenta pra 3
+dias" é inútil sem saber que o assunto era carrinho abandonado. Contexto
+que volta desalinhado do lote é descartado inteiro: na posição errada ele
+desloca o vetor.
+
+**Editar uma fala marca os chunks que a cobrem** (`marcarDesatualizados`) e
+a tela diz quantos. Sem isso a base de conhecimento diverge do texto que o
+usuário está vendo, e a divergência é silenciosa. O cron
+`/api/cron/transcricoes-indexar` (a cada 5 min) varre pendências — e cobre
+também a faísca recém-ligada, sem depender do container.
+
+**Renomear locutor toca UMA linha**: os blocos guardam o rótulo do provedor
+(`speaker_0`) e o nome humano vive em `transcricoes_locutores`. Renomear
+não reescreve N mil falas, e o rótulo original preservado permite a um
+reprocessamento remapear os nomes que o humano deu.
+
+**Faísca por coleção** (`na_base_de_conhecimento`): só o que está marcado
+entra na recuperação da ConvertIA. Ligar enfileira os embeddings que
+faltam (assíncrono, a árvore mostra o estado); **desligar exclui da
+recuperação mas NÃO apaga os embeddings** — religar tem de ser instantâneo.
+O conector `transcricoes_buscar/listar/ler` devolve sempre o timestamp e o
+link `?t=MM:SS`, que é o que separa citação verificável de afirmação sem
+lastro. Entra sozinho no chat quando há coleção marcada COM peça pronta.
+
+**Upload de 4 GB vai direto ao Storage por TUS**, sem passar pela API, e
+retoma de onde parou; a barra é o progresso do próprio envio. A linha nasce
+`processando` e só vira `aguardando` quando o envio fecha — senão o worker
+pegaria arquivo pela metade.
+
+**Prévia de link degrada em escada**: worker (`yt-dlp --dump-json`, com
+duração) → oEmbed da plataforma (título, canal e capa REAIS, sem duração) →
+só plataforma e URL. Em nenhum degrau um campo é inventado; o que falta
+fica null e a tela mostra o traço.
+
+**Nada semeado sozinho além do necessário**: só a coleção reservada "Não
+organizadas" nasce automática (todo item precisa de destino). A estrutura
+sugerida e as regras de sugestão de coleção
+(`transcricoes_regras`, configuráveis sem deploy) são OFERECIDAS por botão
+no estado vazio da árvore.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
