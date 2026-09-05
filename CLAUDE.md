@@ -1292,6 +1292,76 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
+## Inbox — recuperação de custo no banco (set/2026, migrations 20261120-23)
+
+O inbox sufocou um Postgres pequeno com **59 conversas e 238 mensagens**.
+Não era volume: era **relógio** (trabalho periódico que não dependia de
+haver mensagem) e **amplificação** (cada escrita acordava todas as abas,
+que reliam e escreviam de novo). Medido em `pg_stat_statements`: o cron da
+fila gastou **372 min de CPU** num `count exact`, e o polling do WAL do
+Realtime outros **372 min**. Mapa completo, queries de acompanhamento e o
+roteiro de religar o número em `docs/crm/inbox-observability.md`.
+
+**As cinco regras que não podem voltar:**
+
+1. **Contagem em caminho quente nunca pelo PostgREST.** `count:'exact'`
+   (com ou sem `head`) vira RPC com literal ou `EXISTS`/`LIMIT 1`. O
+   `head:true` ainda esconde `statement timeout` (supabase-js#1661).
+2. **Índice parcial não serve query parametrizada.** O PostgREST usa
+   prepared statements e, da 6ª execução em diante, o plano genérico não
+   prova `status = $1 ⊆ WHERE status = 'dead'` — era o seq scan de 916 ms.
+   Ou o predicado é literal (dentro de função), ou o índice não é parcial.
+3. **Chave de JSONB tem de ser literal.** `metadata->>$1 = $2` não usa
+   índice e o `->>` não é LEAKPROOF (516 ms → 0,09 ms depois da RPC).
+   Daí `clear_crm_thread_notifications`, `has_open_channel_alert`,
+   `has_open_crm_thread_notification`, `clear_channel_alerts`.
+4. **Escrita evitada = evento de realtime evitado × número de abas.**
+   `crm_threads` está na publication: todo UPDATE acorda todas as abas da
+   org e cada uma relista. Por isso `unread_count=0` só com não-lida,
+   `contact_name` só quando muda, e **GET não escreve** (o backfill de
+   avatar saiu do `after()` da lista para o cron `crm-avatar-backfill`; ele
+   escrevia na tabela que o realtime observa e o evento refazia a lista).
+5. **Notificação de cron é coalescida por chave** — uma linha aberta por
+   (usuário, entidade), atualizada no lugar
+   (`upsert_onboarding_stuck_notifications`). Sem isso o backlog volta:
+   eram 17.611 não lidas de "onboarding travado", 15.465 com mais de 7 dias.
+
+**O que mudou, por camada:**
+
+- **Fila** (`crm_webhook_events`): de 266 MB para 22 MB (VACUUM FULL +
+  autovacuum agressivo, TOAST incluído). `claim_crm_webhook_events` faz
+  claim em LOTE com `FOR UPDATE SKIP LOCKED`, lease ≥ `maxDuration`
+  (90 s no worker, 330 s no cron) e backoff exponencial. `processing` com
+  lease vencido volta para a fila — eram 8 eventos presos desde 15/07. O
+  cron caiu para 5 em 5 minutos e perdeu o `count`; saúde vem de
+  `crm_webhook_queue_stats()`.
+- **Payload**: `stripHeavyFields` tira base64/thumbnail antes de gravar. A
+  guarda é NOSSA porque a config da origem não é confiável
+  (EvolutionAPI#956 relata 12 MB com base64 desligado);
+  `EVOLUTION_WEBHOOK_BASE64=false` também desliga na origem.
+- **Lista**: `crm_inbox_list_threads` faz em UM statement o que custava
+  nove (página + `count exact` + varredura de não-lidas + 4 head counts +
+  2 selects de canais). Contadores por `COUNT(*) FILTER`, sem filtro de
+  canal (senão o contador do outro zera). 7,5 ms medidos.
+- **Cliente**: `useUnifiedNotifications` virou **provider** montado uma vez
+  no layout — era montado 5× por página (sidebar, sidebar-user dentro
+  dela, o drawer mobile sempre montado com a sua sidebar-user, e a top
+  bar), 20 bindings por aba, e o `mutate` do SWR **não** participa do
+  dedupe (vercel/swr#1417), então um evento virava até 5 requisições. Os
+  bindings de `report_jobs` (os únicos sem filtro) saíram. O realtime do
+  inbox é **fail-closed** (sem org, sem canal), tem deps estáveis por ref
+  (antes reassinava a cada clique) e **um** timer de fallback com backoff
+  30s→5min e jitter — o realtime-js reconecta em [1s,2s,5s,10s] fixos e
+  sem jitter, então todas as abas voltavam juntas.
+
+**Pendências conscientes**: Broadcast from Database (o `postgres_changes`
+segue custando polling do WAL; as funções já existem no projeto, mas a
+policy em `realtime.messages` falha em SILÊNCIO se faltar) e a reescrita
+das policies de RLS com `(select ...)` — que deve vir **depois** do
+Broadcast, porque com `postgres_changes` ativo endurecer policy aumenta o
+custo por assinante. Em produção as policies do CRM ainda são
+`USING (true)`: o `APPLY_MANUALLY_fix_rls_round4` nunca foi aplicado.
+
 ---
 
 ## ConvertIA — resposta legível, indicador de geração, F5 na mesma conversa (set/2026)
