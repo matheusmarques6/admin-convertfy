@@ -59,6 +59,7 @@ export type NavItemId =
   | "geral.team"
   | "geral.financial"
   | "geral.reports"
+  | "geral.transcricoes"
   | "tools.tools"
   | "tools.currency_audit"
   | "tools.email_generation"
@@ -111,6 +112,7 @@ const ALL_ITEMS: NavItemId[] = [
   "geral.team",
   "geral.financial",
   "geral.reports",
+  "geral.transcricoes",
   "tools.tools",
   "tools.currency_audit",
   "tools.email_generation",
@@ -164,6 +166,7 @@ const COO_ITEMS = new Set<NavItemId>([
   "geral.team",
   "geral.financial",
   "geral.reports",
+  "geral.transcricoes",
 ])
 
 const SUPORTE_ITEMS = new Set<NavItemId>([
@@ -201,6 +204,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "geral.team",       // read-only (ver READONLY_BY_ROLE)
   "geral.financial",
   "geral.reports",
+  "geral.transcricoes",
 ])
 
 const DESIGNER_IMPLEM_ITEMS = new Set<NavItemId>([
@@ -211,6 +215,7 @@ const DESIGNER_IMPLEM_ITEMS = new Set<NavItemId>([
   ...CONTEUDO_ITEMS,
   "geral.home",
   "geral.board",
+  "geral.transcricoes",
 ])
 
 export const ACCESS_BY_ROLE: Record<OrgRole, Set<NavItemId>> = {

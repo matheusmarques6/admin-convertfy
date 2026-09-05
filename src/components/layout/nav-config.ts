@@ -215,6 +215,16 @@ export const GERAL_NAV: NavGroup[] = [
     ],
   },
   {
+    key: "conhecimento",
+    label: "Conhecimento",
+    items: [
+      // Módulo Transcrições (set/2026): aula, call e referência viram texto
+      // pesquisável com timestamp. Visível para todas as funções — quem
+      // assiste a aula não é só quem edita a aula.
+      { id: "geral.transcricoes", name: "Transcrições", href: ROUTES.ADMIN.TRANSCRICOES.LIST, icon: FileText },
+    ],
+  },
+  {
     key: "time",
     label: "Time",
     items: [

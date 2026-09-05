@@ -54,6 +54,15 @@ export const ROUTES = {
 
     FINANCIAL: "/admin/financial",
 
+    // Módulo Transcrições (set/2026) — biblioteca de vídeo/áudio virada
+    // texto pesquisável. O detalhe é rota própria (nunca modal) e aceita
+    // `?t=MM:SS` como posição inicial do player.
+    TRANSCRICOES: {
+      LIST: "/admin/transcricoes",
+      DETAIL: (id: string) => `/admin/transcricoes/${id}` as const,
+      DETAIL_EM: (id: string, t: string) => `/admin/transcricoes/${id}?t=${encodeURIComponent(t)}` as const,
+    },
+
     REPORTS: {
       LIST: "/admin/reports",
       NEW: "/admin/reports/new",

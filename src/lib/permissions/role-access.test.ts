@@ -67,6 +67,9 @@ const MATRIX: Matrix = {
   "geral.team":             { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "geral.financial":        { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
   "geral.reports":          { admin: true, dev: true, coo: true,  suporte: true,  designer: false, implementacao: false },
+  // Transcrições: visível para TODAS as funções — quem assiste a aula não é
+  // só quem edita a aula.
+  "geral.transcricoes":     { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   // Ferramentas
   "tools.tools":            { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
   "tools.currency_audit":   { admin: true, dev: true, coo: false, suporte: false, designer: false, implementacao: false },
