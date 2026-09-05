@@ -3,7 +3,7 @@
 // Standardize credential storage and document the financial data flow.
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
-import { createAsaasService } from "@/lib/integrations/asaas"
+import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -198,27 +198,31 @@ export async function PUT(request: NextRequest) {
     const asaas = await loadAsaasService(admin, orgId)
 
     // Espelho local ANTES de mexer no Asaas: se o cliente não é da org,
-    // devolve null e a rota não toca numa cobrança alheia.
-    const mirror = await ensureAsaasInvoiceMirror(admin, orgId, paymentId)
+    // devolve null e a rota não toca numa cobrança alheia. O serviço já
+    // carregado é reaproveitado (sem 2ª leitura da integração).
+    const mirror = await ensureAsaasInvoiceMirror(admin, orgId, paymentId, { asaas })
     if (!mirror) {
       throw new AppError("Cobrança não encontrada no Asaas para esta organização", 404, "not-found")
     }
 
     if (action === "undo") {
       const undone = await asaas.undoReceivedInCash(paymentId)
+      // O Asaas devolve PENDING ou OVERDUE (vencimento já passou) — o
+      // espelho segue o que ele disse, não um "pending" fixo.
       const { error } = await admin
         .from("invoices")
-        .update({ status: "pending", payment_date: null })
+        .update({ status: mapAsaasStatusToInternal(undone.status), payment_date: null })
         .eq("id", mirror.id)
-      if (error) log.warn("espelho local não voltou a pending", { error: error.message, paymentId })
+      if (error) log.warn("espelho local não voltou a pendente", { error: error.message, paymentId })
       return successResponse(request, {
         success: true,
         payment: { id: undone.id, status: undone.status },
       })
     }
 
-    // O receiveInCash exige o valor recebido; se não vier no body, busca no Asaas.
-    const receivedValue = value ?? (await asaas.getPayment(paymentId)).value
+    // O receiveInCash exige o valor recebido; se não vier no body, usa o
+    // payment que o espelho já leu ou busca no Asaas.
+    const receivedValue = value ?? mirror.payment?.value ?? (await asaas.getPayment(paymentId)).value
     validateMonetaryValue(receivedValue)
 
     const paidOn = paymentDate || new Date().toISOString().split("T")[0]

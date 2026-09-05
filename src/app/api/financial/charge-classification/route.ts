@@ -50,13 +50,19 @@ export async function PUT(request: NextRequest) {
 
     // Localiza a linha e o cliente dela — a loja precisa ser desse cliente
     // e o cliente precisa ser da org de quem edita (admin client bypassa RLS).
+    // Asaas: o id é o `pay_…` do payment (asaas_id). Comparar "pay_…" com
+    // a coluna UUID `id` num `.or()` dava 22P02 e a linha nunca era achada.
     const table = source === "asaas" ? "invoices" : "client_charges"
-    let query = admin.from(table).select("id, client_id")
-    query = source === "asaas" ? query.or(`asaas_id.eq.${id},id.eq.${id}`) : query.eq("id", id)
-    let { data: row } = await query.limit(1).maybeSingle()
+    const byAsaasId = source === "asaas" && id.startsWith("pay_")
+    let { data: row } = await admin
+      .from(table)
+      .select("id, client_id")
+      .eq(byAsaasId ? "asaas_id" : "id", id)
+      .limit(1)
+      .maybeSingle()
     // Pagamento do Asaas ainda sem espelho local (a assinatura acabou de
     // gerar): o espelho nasce agora, em vez de mandar o usuário sincronizar.
-    if (!row && source === "asaas" && id.startsWith("pay_")) {
+    if (!row && byAsaasId) {
       const mirrored = await ensureAsaasInvoiceMirror(admin, orgId, id)
       if (mirrored) row = { id: mirrored.id, client_id: mirrored.client_id }
     }

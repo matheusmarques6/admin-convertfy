@@ -4,6 +4,8 @@ import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { handleAsaasRefundWebhook } from "@/lib/services/refund.service"
+import { buildInvoiceRowFromPayment, resolveClientForPayment } from "@/lib/services/asaas-invoice-mirror"
+import { isMissingClassificationColumn, stripClassification } from "@/lib/services/charge-classification"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
@@ -30,6 +32,8 @@ interface AsaasWebhookPayload {
     clientPaymentDate?: string
     description?: string
     externalReference?: string
+    /** Assinatura de origem (sub_…) quando o pagamento nasceu de uma. */
+    subscription?: string
   }
   subscription?: {
     id: string
@@ -165,30 +169,25 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload, options?: Handle
     }
 
     log.debug(`Invoice ${invoice.id} updated to status: ${status}`)
-  } else if (payment.externalReference) {
-    // Try to find client by external reference (client_id)
-    const { data: client } = await supabase
-      .from("clients")
-      .select("id")
-      .eq("id", payment.externalReference)
-      .single()
-
-    if (client) {
-      // Create new invoice
-      const { error: insertError } = await supabase.from("invoices").insert({
-        client_id: client.id,
-        asaas_id: payment.id,
-        amount: payment.value,
-        due_date: payment.dueDate,
-        payment_date: payment.paymentDate || payment.clientPaymentDate,
-        status,
-        description: payment.description,
-      })
-
+  } else {
+    // Espelho novo: cliente e linha pelo módulo compartilhado com o sync
+    // (externalReference → custom_fields.asaas_customer_id; sem org aqui,
+    // o webhook não tem sessão). Sem cliente, não há onde pendurar.
+    const clientId = await resolveClientForPayment(supabase, null, payment)
+    if (clientId) {
+      const row = buildInvoiceRowFromPayment(
+        { ...payment, status: payment.status as AsaasPaymentStatus, subscription: payment.subscription },
+        clientId,
+      )
+      let { error: insertError } = await supabase.from("invoices").insert(row)
+      if (insertError && isMissingClassificationColumn(insertError)) {
+        ;({ error: insertError } = await supabase.from("invoices").insert(stripClassification(row)))
+      }
       if (insertError) {
+        // 23505 = o sync/espelho gravou primeiro (índice único 20261119) — nada a fazer.
         log.error("Error creating invoice:", insertError)
       } else {
-        log.debug(`New invoice created for client ${client.id}`)
+        log.debug(`New invoice created for client ${clientId}`)
       }
     }
   }

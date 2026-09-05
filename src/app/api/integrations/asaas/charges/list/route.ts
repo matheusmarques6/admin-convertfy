@@ -73,7 +73,11 @@ export async function GET(request: NextRequest) {
     interface Classification {
       charge_type: string | null
       reference_months: string[] | null
-      /** Primeira loja (compat). `stores` tem todas — comissão pode ser de várias. */
+      /**
+       * Compat: a loja quando é UMA só. Com várias (comissão conjunta) é
+       * null — mesmo contrato de `store_id` no banco: quem só lê o campo
+       * antigo vê "sem loja", nunca uma loja errada. `stores` tem todas.
+       */
       store: { id: string; name: string } | null
       stores: Array<{ id: string; name: string }>
     }
@@ -114,7 +118,7 @@ export async function GET(request: NextRequest) {
         classificationByAsaasId.set(r.asaas_id, {
           charge_type: r.charge_type ?? null,
           reference_months: r.reference_months ?? null,
-          store: stores[0] ?? null,
+          store: stores.length === 1 ? stores[0] : null,
           stores,
         })
       }

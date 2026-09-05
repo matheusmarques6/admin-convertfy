@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import {
   isMissingClassificationColumn,
   stripClassification,
 } from "@/lib/services/charge-classification"
+import { buildInvoiceRowFromPayment, resolveClientForPayment } from "@/lib/services/asaas-invoice-mirror"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasSync")
@@ -49,46 +50,15 @@ export async function POST() {
           .eq("asaas_id", payment.id)
           .single()
 
-        const status = mapAsaasStatusToInternal(payment.status as never)
-
-        // Try to find client by external reference
-        let clientId = null
-        if (payment.externalReference) {
-          const { data: client } = await supabase
-            .from("clients")
-            .select("id")
-            .eq("id", payment.externalReference)
-            .single()
-          clientId = client?.id
-        }
-
-        // If no client found by reference, try by Asaas customer ID
-        if (!clientId && payment.customer) {
-          const { data: client } = await supabase
-            .from("clients")
-            .select("id")
-            .eq("asaas_customer_id", payment.customer)
-            .single()
-          clientId = client?.id
-        }
-
-        const invoiceData: Record<string, unknown> = {
-          asaas_id: payment.id,
-          client_id: clientId,
-          amount: payment.value,
-          due_date: payment.dueDate,
-          payment_date: payment.paymentDate || payment.clientPaymentDate || null,
-          status,
-          description: payment.description || `Assinatura Asaas #${payment.id}`,
-        }
-        // Pagamento nascido de assinatura: guarda o sub_… (a view resolve
-        // a assinatura local) e classifica como assinatura — sem
-        // sobrescrever uma classificação feita à mão.
-        if (payment.subscription) {
-          invoiceData.asaas_subscription_id = payment.subscription
-          const current = (existingInvoice as { charge_type?: string } | null)?.charge_type
-          if (!existingInvoice || !current || current === "other") invoiceData.charge_type = "subscription"
-        }
+        // Cliente e linha vêm do módulo compartilhado com o webhook e o
+        // espelho sob demanda (antes o fallback por customer lia a coluna
+        // `clients.asaas_customer_id`, vazia — o dado mora em custom_fields).
+        const clientId = await resolveClientForPayment(supabase, orgId, payment)
+        const invoiceData = buildInvoiceRowFromPayment(
+          payment,
+          clientId,
+          (existingInvoice as { charge_type?: string } | null)?.charge_type,
+        )
 
         const write = async (row: Record<string, unknown>) =>
           existingInvoice

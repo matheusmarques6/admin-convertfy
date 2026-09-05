@@ -1441,6 +1441,16 @@ assinatura dava "Fatura ainda não sincronizada localmente" e o
 "Marcar como pago" atualizava 0 linhas. Agora classificar e marcar
 pago criam o espelho na hora (idempotente por `asaas_id`; cliente por
 `externalReference` ou `custom_fields.asaas_customer_id`, SÓ da org).
+**O módulo é a fonte única** de `resolveClientForPayment` e
+`buildInvoiceRowFromPayment` — sync e webhook chamam os mesmos: o sync
+procurava o cliente pela COLUNA `clients.asaas_customer_id`, vazia nos
+52 clientes (o dado mora em `custom_fields`), então pagamento sem
+`externalReference` nunca achava dono. `invoices.asaas_id` ganhou
+índice ÚNICO parcial (migration 20261119): três escritores fazendo
+"existe? senão insere" duplicavam a fatura em corrida, e o `.single()`
+do sync passava a inserir uma 3ª a cada rodada. Lookup por payment é
+`.eq("asaas_id")` — comparar `pay_…` com a coluna UUID `id` num `.or()`
+dava 22P02 silencioso (era metade do sintoma original).
 `PUT /api/integrations/asaas/charges` = pagamento por fora
 (transferência internacional/Wise/PIX direto → `receiveInCash`, sem
 notificar o cliente) e `action: "undo"` → `undoReceivedInCash` +
