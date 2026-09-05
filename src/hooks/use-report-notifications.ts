@@ -40,7 +40,10 @@ export interface UseReportNotificationsResult {
 // (mesma matemática do badge unificado — ver useUnifiedNotifications).
 const ACTIVE_STATUSES: ReportJobStatus[] = REPORT_ACTIVE_STATUSES
 const POLL_ACTIVE_MS = 5_000
-const POLL_IDLE_MS = 30_000
+// Sem job ativo o relatório não muda sozinho: 60s basta e é metade das
+// requisições. (Os bindings realtime de report_jobs saíram do provider —
+// eram os únicos SEM filtro, avaliados contra a RLS de cada assinante.)
+const POLL_IDLE_MS = 60_000
 
 // ---------------------------------------------------------------------------
 // Hook

@@ -11,7 +11,7 @@
  * retry de texto falho.
  */
 
-import { useCallback, useState } from "react"
+import { useCallback, useState, useRef } from "react"
 import { Bot, Download, FileText, ImageOff, MapPin, RefreshCw, Smartphone, X } from "lucide-react"
 import { messageAuthor } from "@/lib/services/crm-inbox-format"
 import type { InboxMessage } from "@/types/crm-inbox"
@@ -44,6 +44,8 @@ function statusLabel(status: string): string | null {
   }
 }
 
+const MAX_MEDIA_REFRESH = 2
+
 export function MessageBubble({
   message: m,
   threadId,
@@ -58,8 +60,18 @@ export function MessageBubble({
   const [mediaState, setMediaState] = useState<"ok" | "refreshing" | "gone">("ok")
   const [lightbox, setLightbox] = useState(false)
 
+  // Cada refresh é um GET que ANTES também escrevia no banco. Sem teto,
+  // uma URL assinada que falha de novo vira laço: erro -> fetch -> render
+  // -> erro. Duas tentativas e para.
+  const mediaAttemptsRef = useRef(0)
+
   const refreshMedia = useCallback(async () => {
-    if (mediaState === "refreshing") return
+    if (mediaState === "refreshing" || mediaState === "gone") return
+    if (mediaAttemptsRef.current >= MAX_MEDIA_REFRESH) {
+      setMediaState("gone")
+      return
+    }
+    mediaAttemptsRef.current += 1
     setMediaState("refreshing")
     try {
       const res = await fetch(`/api/crm/inbox/threads/${threadId}/media?message_id=${m.id}`)

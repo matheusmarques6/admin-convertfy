@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { sortThreadsAsQueue } from "@/lib/services/crm-inbox-sla"
-import useSWR from "swr"
+import useSWR, { mutate as globalMutate } from "swr"
 import { AlertTriangle, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDebounce } from "@/hooks/use-debounce"
@@ -123,7 +123,10 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     no_channel_of_type?: string
     channel_counts?: ChannelCounts
   }>(`/api/crm/inbox/threads?${params.toString()}`, fetcher, {
-    refreshInterval: realtimeConnected ? 30000 : 10000,
+    // Com realtime, o evento é quem traz o dado fresco — o poll é rede de
+    // segurança, não o caminho principal. Sem realtime, o fallback com
+    // backoff do useRealtimeInbox assume; 30s aqui é só o piso.
+    refreshInterval: realtimeConnected ? 300_000 : 30_000,
     keepPreviousData: true,
   })
 
@@ -134,7 +137,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   } = useSWR<ThreadDetail>(
     activeThreadId ? `/api/crm/inbox/threads/${activeThreadId}` : null,
     fetcher,
-    { refreshInterval: realtimeConnected ? 30000 : 5000, keepPreviousData: true },
+    { refreshInterval: realtimeConnected ? 300_000 : 30_000, keepPreviousData: true },
   )
 
   const onThreadsUpdate = useCallback(() => {
@@ -154,6 +157,18 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   })
 
   useEffect(() => setRealtimeConnected(rtConnected), [rtConnected])
+
+  // A lista já devolve `total_unread` com a mesma régua da rota do badge
+  // (threads open/pending com unread > 0). Semear o cache dela evita uma
+  // segunda contagem no banco a cada minuto, por aba.
+  useEffect(() => {
+    if (typeof threadsData?.total_unread !== "number") return
+    void globalMutate(
+      "/api/crm/inbox/unread-count",
+      { total_unread: threadsData.total_unread },
+      false,
+    )
+  }, [threadsData?.total_unread])
 
   // "recent" preserva o comportamento de sempre; "queue" ordena como
   // fila de atendimento — quem espera resposta há mais tempo primeiro.
@@ -193,6 +208,10 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
     if (last.direction !== "inbound") return
     if (lastReadInboundRef.current === last.id) return
     lastReadInboundRef.current = last.id
+    // Sem não-lidas não há o que zerar: a rota faria dois UPDATEs, cada um
+    // gerando evento de realtime que faria TODAS as abas relistarem.
+    const known = threadsRef.current.find((t) => t.id === activeThreadId)
+    if (known && (known.unread_count || 0) === 0) return
     fetch(`/api/crm/inbox/threads/${activeThreadId}/read`, { method: "POST" })
       .then(() => mutateThreads())
       .catch(() => {})
