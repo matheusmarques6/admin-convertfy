@@ -2,25 +2,59 @@
 
 /**
  * Casca do editor: carrega o documento pelo id, trata "não encontrado" e
- * entrega ao StEditor com o modal/aba iniciais vindos da URL.
+ * entrega ao Editor com modal/aba iniciais vindos da URL (`?modal=`,
+ * `?aba=ia`, `?modo=template`). Referências visuais do fluxo IA chegam
+ * pelo sessionStorage e abrem no chat.
  */
 
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
+import { useToast } from "@/lib/hooks/use-toast"
+import { novoId } from "@/lib/conteudo/documento"
+import { getTemplate } from "@/lib/conteudo/templates"
+import type { Documento } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtEmpty, CtSkel } from "../ui"
-import { useDocumentos } from "./use-estudio-data"
+import { Editor } from "./editor"
+import type { ModalEditor } from "./editor-types"
+import { ANEXOS_KEY } from "./estudio-home"
+import { useBrandKits, useDocumentos, useMeusTemplates } from "./use-estudio-data"
+
+const MODAIS: ModalEditor[] = ["preview", "exportar", "agendar", "brandkit"]
 
 export function EditorPage({ id }: { id: string }) {
   const params = useSearchParams()
-  const { docs } = useDocumentos()
-  const doc = docs?.find((d) => d.id === id) ?? null
+  const router = useRouter()
+  const { toast } = useToast()
+  const { docs, salvar, recarregar } = useDocumentos()
+  const { kits, salvar: salvarKit } = useBrandKits()
+  const { salvar: salvarMeuTemplate } = useMeusTemplates()
+  const [anexos, setAnexos] = useState<string[] | undefined>(undefined)
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(ANEXOS_KEY(id))
+      if (raw) {
+        setAnexos(JSON.parse(raw) as string[])
+        sessionStorage.removeItem(ANEXOS_KEY(id))
+      }
+    } catch {
+      /* sem sessionStorage */
+    }
+  }, [id])
+
+  const doc = useMemo(() => docs?.find((d) => d.id === id) ?? null, [docs, id])
+  const modal = params.get("modal")
+  const modalInicial = MODAIS.includes(modal as ModalEditor) ? (modal as ModalEditor) : null
+  const abaInicial = params.get("aba") === "ia" ? "ia" : params.get("aba") === "ajustes" ? "ajustes" : undefined
+  const modoTemplate = params.get("modo") === "template"
 
   if (docs === null) {
     return (
-      <div className="flex min-h-full flex-col bg-[var(--ops-page)]">
+      <div className="-m-4 flex h-[100dvh] flex-col bg-[var(--ops-page)] md:-m-6 lg:-m-8">
         <div className="flex h-[52px] items-center gap-3 border-b border-[var(--ops-border)] bg-[var(--ops-card)] px-4">
           <CtSkel h={28} w={28} r={7} />
           <CtSkel h={14} w={220} />
@@ -32,7 +66,7 @@ export function EditorPage({ id }: { id: string }) {
 
   if (!doc) {
     return (
-      <div className="min-h-full bg-[var(--ops-page)]">
+      <div className="-m-4 min-h-[100dvh] bg-[var(--ops-page)] md:-m-6 lg:-m-8">
         <div className="mx-auto max-w-[720px] px-6 pt-16">
           <CtEmpty
             title="Carrossel não encontrado"
@@ -49,27 +83,34 @@ export function EditorPage({ id }: { id: string }) {
     )
   }
 
-  const modalInicial = params.get("modal")
-  const abaInicial = params.get("aba")
-  const modoTemplate = params.get("modo") === "template"
+  const salvarTemplate = async (d: Documento) => {
+    await salvar(d)
+    await salvarMeuTemplate({
+      id: novoId("meu-"),
+      nome: d.nome,
+      origem: "inspiração",
+      frames: d.frames.length,
+      usos: 0,
+      seed: `meutpl${Date.now()}`,
+      templateId: getTemplate(d.templateId).id,
+      criadoEm: new Date().toISOString(),
+    })
+    toast({ title: "Template salvo", description: `"${d.nome}" entrou em Meus templates.` })
+    router.push(ROUTES.ADMIN.CONTEUDO.ESTUDIO)
+  }
 
   return (
-    <div className="flex min-h-full flex-col bg-[var(--ops-page)]">
-      <div className="flex h-[52px] items-center gap-2 border-b border-[var(--ops-border)] bg-[var(--ops-card)] px-4">
-        <Link href={ROUTES.ADMIN.CONTEUDO.ESTUDIO} aria-label="Voltar à biblioteca" className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[var(--ops-border)] text-[var(--ops-sec)] hover:bg-[var(--ops-hover)]">
-          <Icon icon={ChevronLeft} customSize={14} />
-        </Link>
-        <span className="text-[12px] font-semibold text-[var(--ops-title)]">{doc.nome}</span>
-        <span className="text-[10.5px] text-[var(--ops-mut)]">
-          {doc.frames.length} frames · {doc.proporcaoExport}
-          {modoTemplate ? " · modo template" : ""}
-          {modalInicial ? ` · abrir ${modalInicial}` : ""}
-          {abaInicial ? ` · aba ${abaInicial}` : ""}
-        </span>
-      </div>
-      <div className="flex flex-1 items-center justify-center p-8">
-        <CtEmpty title="Editor em construção nesta etapa" desc="O canvas, o painel de frames, os ajustes e a ConvertIA entram na próxima etapa do módulo." />
-      </div>
-    </div>
+    <Editor
+      key={doc.id}
+      doc={doc}
+      brandKits={kits}
+      onSalvarBrandKit={salvarKit}
+      modalInicial={modalInicial}
+      abaInicial={abaInicial}
+      modoTemplate={modoTemplate}
+      onSalvarTemplate={modoTemplate ? salvarTemplate : undefined}
+      anexosIniciais={anexos}
+      onSalvo={() => void recarregar()}
+    />
   )
 }

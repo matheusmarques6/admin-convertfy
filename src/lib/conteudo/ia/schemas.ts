@@ -86,6 +86,20 @@ export const entradaSchema = z.discriminatedUnion("acao", [
   }),
 ])
 
+/** Geração de imagem (não passa pelo LLM de texto — tratada à parte na rota). */
+export const entradaImagemSchema = z.object({
+  acao: z.literal("gerar_imagem"),
+  prompt: z.string().min(3).max(1500),
+  aspecto: z.enum(["4:5", "9:16", "1:1"]).optional(),
+  quantidade: z.number().int().min(1).max(4).optional(),
+})
+
+export type EntradaImagem = z.infer<typeof entradaImagemSchema>
+
+export interface SaidaImagem {
+  urls: string[]
+}
+
 export type EntradaIA = z.infer<typeof entradaSchema>
 
 // ── Saídas ──────────────────────────────────────────────────────────────

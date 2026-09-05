@@ -46,11 +46,6 @@ type FmtFiltro = "Todos" | "Carrossel" | "Reels" | "Vídeo YT"
 
 const ROTULOS_X = ["05/08", "12/08", "19/08", "26/08", "03/09"]
 
-function saudacao(): string {
-  const h = new Date().getHours()
-  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"
-}
-
 function toneDelta(d: string): "pos" | "neg" | "neut" {
   if (d.startsWith("-") || d.startsWith("−")) return "neg"
   if (/^\+0[,.]0/.test(d)) return "neut"
@@ -85,7 +80,8 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
 
 // ── Dashboard ──────────────────────────────────────────────────────────
 
-export function ConteudoDashboard({ userName }: { userName: string }) {
+/** `saudacao` vem do servidor (hora do request): calcular no client causava divergência de hidratação. */
+export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: string; saudacao?: string }) {
   const [perfil, setPerfil] = useState<PerfilFiltro>("consolidado")
   const [period, setPeriod] = useState<OpsPeriodValue>(() => defaultOpsPeriod())
   const [drawer, setDrawer] = useState<string | null>(null)
@@ -163,7 +159,7 @@ export function ConteudoDashboard({ userName }: { userName: string }) {
   const estudioNovo = `${ROUTES.ADMIN.CONTEUDO.ESTUDIO}?novo=template`
 
   return (
-    <div className="flex min-h-full min-w-0">
+    <div className="-m-4 flex min-h-[100dvh] min-w-0 md:-m-6 lg:-m-8">
       <div className="min-w-0 flex-1 bg-[var(--ops-page)]">
         <div className="mx-auto flex max-w-[1320px] flex-col gap-5 px-6 pb-14 pt-8 md:px-10">
           {/* cabeçalho */}
@@ -171,7 +167,7 @@ export function ConteudoDashboard({ userName }: { userName: string }) {
             <div>
               <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.015em] text-[var(--ops-title)]">Conteúdo</h1>
               <div className="mt-0.5 text-[12.5px] text-[var(--ops-sec)]">
-                {saudacao()}, {userName}. Audiência, funil orgânico e o que cada post gerou
+                {saudacao}, {userName}. Audiência, funil orgânico e o que cada post gerou
               </div>
             </div>
             <div className="flex-1" />

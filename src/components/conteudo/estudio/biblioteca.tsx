@@ -75,7 +75,7 @@ export function Biblioteca({ docs, meusTemplates, promptsProntos, onAbrir, onNov
   }
 
   return (
-    <div className="min-h-full bg-[var(--ops-page)]">
+    <div className="-m-4 min-h-[100dvh] bg-[var(--ops-page)] md:-m-6 lg:-m-8">
       <div className="mx-auto flex max-w-[1320px] flex-col gap-5 px-6 pb-14 pt-8 md:px-10">
         <div className="flex flex-wrap items-end gap-3.5">
           <div>

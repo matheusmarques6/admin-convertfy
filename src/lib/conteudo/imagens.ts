@@ -38,13 +38,24 @@ export async function arquivosParaDataUrls(files: FileList | File[], maxLado?: n
 
 const cacheRemoto = new Map<string, Promise<string>>()
 
-/** URL remota → data URL (com cache). Devolve a própria URL quando já é data:. */
-export function urlParaDataUrl(url: string): Promise<string> {
+/**
+ * URL remota → data URL (com cache). Devolve a própria URL quando já é data:.
+ * Tem TIMEOUT: uma imagem externa que não responde não pode travar a
+ * exportação inteira (o frame sai sem ela).
+ */
+export function urlParaDataUrl(url: string, timeoutMs = 12_000): Promise<string> {
   if (url.startsWith("data:")) return Promise.resolve(url)
   const hit = cacheRemoto.get(url)
   if (hit) return hit
   const p = (async () => {
-    const res = await fetch(url, { mode: "cors" })
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    let res: Response
+    try {
+      res = await fetch(url, { mode: "cors", signal: ctrl.signal })
+    } finally {
+      clearTimeout(timer)
+    }
     if (!res.ok) throw new Error(`Imagem indisponível (${res.status})`)
     const blob = await res.blob()
     return new Promise<string>((resolve, reject) => {

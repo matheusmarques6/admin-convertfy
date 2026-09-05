@@ -367,6 +367,17 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       </div>
     ) : null
 
+  /** Slot em fluxo (texto/lista/mec): respeita largura/altura máximas do painel de imagem. */
+  const slotEmFluxo = (marginTop: number, marginBottom = 0) => {
+    const lw = img?.larguraSlot ?? 1080
+    const lh = img?.alturaSlot ?? 1350
+    return (
+      <div style={{ flex: 1, position: "relative", minHeight: S(300), marginTop: S(marginTop), marginBottom: S(marginBottom), display: "flex", justifyContent: "center" }}>
+        <div style={{ position: "relative", width: `min(100%, ${S(lw)}px)`, maxHeight: S(lh), flex: 1 }}>{imgSlot({ inset: 0, borderRadius: S(28) })}</div>
+      </div>
+    )
+  }
+
   const progress = (dark: boolean) => (
     <div style={{ display: "flex", gap: S(8), marginBottom: S(48) }}>
       {visiveis.map((x, i) => (
@@ -427,7 +438,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         </div>
         {T("titulo", { ...cond, fontSize: 88, color: fg })}
         {T("corpo", { fontSize: 40, color: fg2, marginTop: S(34), lineHeight: 1.4, fontFamily: FONTE_META, fontWeight: 500 })}
-        {(img || f.slotsImagem > 0) && <div style={{ flex: 1, position: "relative", marginTop: S(50) }}>{imgSlot({ inset: 0, borderRadius: S(28) })}</div>}
+        {(img || f.slotsImagem > 0) && slotEmFluxo(50)}
       </div>
     )
   } else if (f.tipo === "cta") {
@@ -467,9 +478,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         {T("corpo", { ...serif, fontSize: 42, color: fg2, marginTop: S(36), lineHeight: 1.35, textAlign: variante === "c" ? "center" : "left" })}
       </>
     )
-    const imagem = comImg && variante !== "c" && (
-      <div style={{ flex: 1, position: "relative", minHeight: S(300), marginTop: variante === "a" ? S(56) : 0, marginBottom: variante === "b" ? S(56) : 0 }}>{imgSlot({ inset: 0, borderRadius: S(28) })}</div>
-    )
+    const imagem = comImg && variante !== "c" && slotEmFluxo(variante === "a" ? 56 : 0, variante === "b" ? 56 : 0)
     body = (
       <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 180), bottom: S(off + 100), display: "flex", flexDirection: "column", justifyContent: variante === "c" ? "center" : "flex-start" }}>
         {variante === "b" ? (

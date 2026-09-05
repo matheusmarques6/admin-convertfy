@@ -19,6 +19,10 @@ export default async function ConteudoDashboardPage() {
   const profile = await getProfileByUserId(user.id).catch(() => null)
   const fullName = profile?.name || user.email?.split("@")[0] || "time Convertfy"
   const firstName = fullName.split(" ")[0]
+  // Hora de Brasília (o time está no Brasil); calculado no servidor para o
+  // HTML hidratar igual ao render do client.
+  const hora = Number(new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()))
+  const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite"
 
-  return <ConteudoDashboard userName={firstName} />
+  return <ConteudoDashboard userName={firstName} saudacao={saudacao} />
 }
