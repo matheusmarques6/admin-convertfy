@@ -48,6 +48,22 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       throw new AppError("Não há mídia guardada para reprocessar do início.", 409)
     }
 
+    if (escopo === "indexacao") {
+      // Reindexar sem fala nenhuma não é reindexação: o worker retomaria na
+      // etapa 3, não teria o que indexar e a linha voltaria "pronta" com o
+      // painel vazio. Quem quer isso quer reprocessar do início.
+      const { count } = await admin
+        .from("transcricoes_blocos")
+        .select("id", { count: "exact", head: true })
+        .eq("transcricao_id", id)
+      if (!count) {
+        throw new AppError(
+          "Esta transcrição ainda não tem falas para indexar. Reprocesse do início.",
+          409,
+        )
+      }
+    }
+
     const patch =
       escopo === "tudo"
         ? { status: "aguardando", etapa: 0, progresso: null }

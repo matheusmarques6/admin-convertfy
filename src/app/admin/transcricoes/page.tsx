@@ -71,6 +71,7 @@ export default async function TranscricoesPage({ searchParams }: { searchParams:
 
   return (
     <Biblioteca
+      orgId={orgId}
       inicial={{
         pagina,
         arvore: {

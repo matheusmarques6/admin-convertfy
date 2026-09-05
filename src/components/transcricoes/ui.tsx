@@ -31,12 +31,22 @@ const ICONE_PLATAFORMA: Record<Plataforma, LucideIcon> = {
 }
 
 /** Cor da marca só onde ela existe; upload é neutro. */
+/**
+ * A marca do TikTok é preta — e preto some tanto no chip escuro da capa
+ * quanto no tema escuro da lista. Por isso ele não tem cor fixa: usa o
+ * token do texto, que troca com o tema. O chip (sempre sobre fundo escuro)
+ * tem sua própria régua abaixo.
+ */
 const COR_PLATAFORMA: Record<Plataforma, string> = {
   youtube: "#FF0000",
   instagram: "#C13584",
-  tiktok: "#111111",
+  tiktok: "var(--ops-title)",
   upload: "var(--ops-sec)",
 }
+
+/** Sobre a capa, o chip é escuro: o que não tem cor própria vai de branco. */
+const corNoChip = (p: Plataforma): string =>
+  p === "tiktok" || p === "upload" ? "#fff" : COR_PLATAFORMA[p]
 
 export function ChipPlataforma({ p, className }: { p: Plataforma; className?: string }) {
   return (
@@ -46,7 +56,7 @@ export function ChipPlataforma({ p, className }: { p: Plataforma; className?: st
         className,
       )}
     >
-      <span style={{ color: p === "upload" ? "#fff" : COR_PLATAFORMA[p] }} className="flex">
+      <span style={{ color: corNoChip(p) }} className="flex">
         <Icon icon={ICONE_PLATAFORMA[p]} customSize={11} />
       </span>
       {PLATAFORMA_LABEL[p]}

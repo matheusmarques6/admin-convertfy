@@ -304,8 +304,12 @@ $fn$;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'transcricoes-media', 'transcricoes-media', false, 4294967296,
+  -- Esta lista tem de casar com `EXTENSOES` de /api/transcricoes/upload e
+  -- com o `accept` do modal: extensão aceita pela rota e recusada pelo
+  -- bucket vira um 400 do Storage no meio do envio, sem explicação.
   ARRAY['video/mp4','video/quicktime','video/x-matroska','video/webm',
-        'audio/mpeg','audio/mp4','audio/x-m4a','audio/wav','audio/x-wav','audio/flac','audio/ogg',
+        'audio/mpeg','audio/mp4','audio/x-m4a','audio/wav','audio/x-wav',
+        'audio/flac','audio/x-flac','audio/ogg','audio/aac','audio/x-aac',
         'application/octet-stream']
 )
 ON CONFLICT (id) DO UPDATE
@@ -435,9 +439,15 @@ AS $fn$
     status = 'processando'
   WHERE id IN (
     SELECT t.id FROM transcricoes t
-    WHERE t.status IN ('aguardando', 'processando')
+    -- Só 'aguardando' (a fila de verdade) e 'processando' com claim
+    -- EXPIRADO (linha que um worker pegou e largou). Aceitar qualquer
+    -- 'processando' sem token deixava o worker roubar um UPLOAD EM
+    -- ANDAMENTO — a linha nasce assim enquanto o arquivo sobe pelo TUS.
+    WHERE (
+        t.status = 'aguardando'
+        OR (t.status = 'processando' AND t.claim_token IS NOT NULL AND t.claim_expira_em < now())
+      )
       AND (t.proxima_tentativa_em IS NULL OR t.proxima_tentativa_em <= now())
-      AND (t.claim_token IS NULL OR t.claim_expira_em IS NULL OR t.claim_expira_em < now())
     ORDER BY t.criado_em ASC
     LIMIT p_limite
     FOR UPDATE SKIP LOCKED
@@ -446,3 +456,101 @@ AS $fn$
 $fn$;
 
 REVOKE ALL ON FUNCTION transcricoes_claim(UUID, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
+
+-- ============================================================================
+-- Resumo do filtro + varredura de upload órfão (migration 20261123).
+-- ============================================================================
+
+-- Contagem + soma de duração em UMA agregação. Antes o subtítulo somava
+-- `duracao_seg` de um SELECT sem agregação, e o PostgREST desta instância
+-- corta em 1.000 linhas: numa biblioteca de 1.200 peças o rodapé mostrava a
+-- soma das primeiras 1.000 sem dizer que estava cortando.
+CREATE OR REPLACE FUNCTION transcricoes_resumo(
+  p_org_id UUID,
+  p_colecao_ids UUID[] DEFAULT NULL,
+  p_sem_colecao BOOLEAN DEFAULT false,
+  p_plataforma TEXT DEFAULT NULL,
+  p_status TEXT DEFAULT NULL,
+  p_termo TEXT DEFAULT NULL
+)
+RETURNS TABLE (total BIGINT, duracao_total BIGINT, com_duracao BIGINT)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_temp
+AS $fn$
+  SELECT
+    count(*)::bigint,
+    coalesce(sum(t.duracao_seg), 0)::bigint,
+    count(t.duracao_seg)::bigint
+  FROM transcricoes t
+  WHERE t.org_id = p_org_id
+    -- "Não organizadas" é UM lugar na tela e dois estados no banco: a
+    -- coleção reservada e NULL (o que sobra de uma pasta excluída, porque a
+    -- FK é SET NULL). Com p_sem_colecao a lista de ids carrega a reservada.
+    AND (
+      CASE
+        WHEN p_sem_colecao THEN
+          t.colecao_id IS NULL
+          OR (p_colecao_ids IS NOT NULL AND t.colecao_id = ANY (p_colecao_ids))
+        ELSE
+          p_colecao_ids IS NULL OR t.colecao_id = ANY (p_colecao_ids)
+      END
+    )
+    AND (p_plataforma IS NULL OR t.plataforma = p_plataforma)
+    AND (p_status IS NULL OR t.status = p_status)
+    AND (
+      p_termo IS NULL OR p_termo = ''
+      OR t.titulo ILIKE '%' || replace(replace(replace(p_termo, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
+    );
+$fn$;
+
+-- Upload interrompido não pode ficar "Baixando 0%" para sempre: a linha só
+-- vira `aguardando` quando o navegador fecha o envio, e aba morta no meio
+-- nunca fecha.
+CREATE OR REPLACE FUNCTION transcricoes_expirar_uploads(p_horas INTEGER DEFAULT 6)
+RETURNS INTEGER
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  WITH expiradas AS (
+    UPDATE transcricoes SET
+      status = 'erro',
+      erro_codigo = 'upload_incompleto',
+      erro_msg = 'O envio do arquivo não terminou. Exclua e envie de novo.',
+      claim_token = NULL,
+      claim_expira_em = NULL
+    WHERE plataforma = 'upload'
+      AND status = 'processando'
+      AND etapa = 0
+      AND audio_path IS NULL
+      -- Linha que um worker segura não é upload abandonado.
+      AND claim_token IS NULL
+      AND criado_em < now() - make_interval(hours => p_horas)
+    RETURNING 1
+  )
+  SELECT count(*)::int FROM expiradas;
+$fn$;
+
+REVOKE ALL ON FUNCTION transcricoes_expirar_uploads(INTEGER) FROM PUBLIC, anon, authenticated;
+
+-- ============================================================================
+-- Indexação pendente por coleção (migration 20261124).
+-- ============================================================================
+
+-- Quantas transcrições de cada coleção ainda têm chunk sem embedding ou
+-- marcado como desatualizado — é a "faísca indexando" no item da árvore.
+-- Antes isso vinha de um SELECT de chunks com `.limit(5000)`: o PostgREST
+-- corta em 1.000, então numa org com muitos chunks pendentes o indicador
+-- simplesmente sumia das coleções que ficaram fora do corte.
+CREATE OR REPLACE FUNCTION transcricoes_pendentes_por_colecao(p_org_id UUID)
+RETURNS TABLE (colecao_id UUID, total BIGINT)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_temp
+AS $fn$
+  SELECT t.colecao_id, count(DISTINCT t.id)::bigint
+  FROM transcricoes t
+  WHERE t.org_id = p_org_id
+    AND t.colecao_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM transcricoes_chunks c
+      WHERE c.transcricao_id = t.id
+        AND (c.embedding IS NULL OR c.desatualizado)
+    )
+  GROUP BY t.colecao_id;
+$fn$;

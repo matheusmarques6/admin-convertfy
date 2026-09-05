@@ -77,7 +77,15 @@ export async function buscarTrechos(
       p_colecao_ids: colecaoIds,
     }),
     admin.rpc("transcricoes_conta_trechos", { p_org_id: orgId, p_termo: t, p_colecao_ids: colecaoIds }),
-    opts.incluirSemantica === false ? Promise.resolve(null) : embedQuery(t),
+    // A semântica é COMPLEMENTO: uma falha de rede no embedding não pode
+    // derrubar a busca exata junto — cai para null e a resposta diz que a
+    // semântica ficou indisponível.
+    opts.incluirSemantica === false
+      ? Promise.resolve(null)
+      : embedQuery(t).catch((e) => {
+          log.warn("embedding da busca falhou", { erro: e instanceof Error ? e.message : String(e) })
+          return null
+        }),
   ])
 
   if (exataRes.error) {

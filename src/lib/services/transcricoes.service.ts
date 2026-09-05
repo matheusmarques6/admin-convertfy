@@ -13,6 +13,7 @@
 import type { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { assinarLote, assinarMedia } from "./transcricoes-assets"
+import { lerBlocos } from "@/lib/transcricoes/blocos-io"
 import type {
   BibliotecaPagina,
   Bloco,
@@ -134,13 +135,10 @@ export async function carregarColecoes(admin: Admin, orgId: string): Promise<Arv
     admin.rpc("transcricoes_contagem_por_colecao", { p_org_id: orgId }),
     admin.from("transcricoes").select("id", { count: "exact", head: true }).eq("org_id", orgId),
     admin.from("transcricoes").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("colecao_id", null),
-    admin
-      .from("transcricoes_chunks")
-      .select("transcricao_id")
-      .eq("org_id", orgId)
-      .or("embedding.is.null,desatualizado.is.true")
-      .limit(5000)
-      .returns<Array<{ transcricao_id: string }>>(),
+    // Agregado no banco: ler os chunks pendentes crus voltava cortado em
+    // 1.000 linhas e o indicador sumia justamente nas orgs com muita
+    // pendência — o caso em que ele importa.
+    admin.rpc("transcricoes_pendentes_por_colecao", { p_org_id: orgId }),
   ])
 
   if (colRes.error) throw colRes.error
@@ -157,18 +155,14 @@ export async function carregarColecoes(admin: Admin, orgId: string): Promise<Arv
   }
 
   // Transcrições com indexação pendente, por coleção — é o "processando" da
-  // faísca no item da árvore.
-  const pendentesPorTranscricao = new Set((pendRes.data ?? []).map((c) => c.transcricao_id))
+  // faísca no item da árvore. Sem a RPC (migration não rodou) a árvore abre
+  // igual, só sem o indicador.
   const pendentePorColecao = new Map<string, number>()
-  if (pendentesPorTranscricao.size) {
-    const { data } = await admin
-      .from("transcricoes")
-      .select("id, colecao_id")
-      .eq("org_id", orgId)
-      .in("id", [...pendentesPorTranscricao].slice(0, 1000))
-      .returns<Array<{ id: string; colecao_id: string | null }>>()
-    for (const t of data ?? []) {
-      if (t.colecao_id) pendentePorColecao.set(t.colecao_id, (pendentePorColecao.get(t.colecao_id) ?? 0) + 1)
+  if (pendRes.error) {
+    log.warn("indexação pendente por coleção indisponível", { erro: pendRes.error.message })
+  } else {
+    for (const r of (pendRes.data ?? []) as Array<{ colecao_id: string; total: number }>) {
+      pendentePorColecao.set(r.colecao_id, Number(r.total))
     }
   }
 
@@ -209,12 +203,18 @@ export async function carregarColecoes(admin: Admin, orgId: string): Promise<Arv
   }
   for (const r of raizes) somar(r)
 
+  const inboxId = linhas.find((l) => l.reservada === "inbox")?.id ?? null
+
   return {
     raizes,
     todas: [...nos.values()],
     totalGeral: totalRes.count ?? 0,
-    semColecao: semColRes.count ?? 0,
-    inboxId: linhas.find((l) => l.reservada === "inbox")?.id ?? null,
+    // "Não organizadas" é UM lugar só na tela, mas dois estados no banco: a
+    // coleção reservada (destino de quem entra sem sugestão) e `NULL` (o que
+    // sobra quando uma pasta é excluída — a FK é SET NULL). Contar só o NULL
+    // deixava a peça recém-criada fora da árvore, visível apenas em "Todas".
+    semColecao: (semColRes.count ?? 0) + (inboxId ? contagem.get(inboxId) ?? 0 : 0),
+    inboxId,
   }
 }
 
@@ -251,6 +251,7 @@ interface Filtravel {
   is: (column: string, value: null) => Filtravel
   in: (column: string, values: readonly string[]) => Filtravel
   ilike: (column: string, pattern: string) => Filtravel
+  or: (filtro: string) => Filtravel
 }
 
 /**
@@ -270,18 +271,22 @@ export async function carregarBiblioteca(
   const de = Math.max(0, filtro.pagina) * POR_PAGINA
   const ate = de + POR_PAGINA - 1
 
-  // Os dois selects (página e soma de duração) precisam do MESMO recorte:
-  // divergir aqui faria o rodapé somar a duração de um conjunto e a lista
-  // mostrar outro.
+  const termo = filtro.termo.trim()
+  const colecaoIds =
+    !filtro.semColecao && filtro.colecaoId ? idsComDescendentes(arvore.todas, filtro.colecaoId) : null
+
   const aplicar = <Q>(q: Q): Q => {
     let b = (q as Filtravel).eq("org_id", orgId)
-    if (filtro.semColecao) b = b.is("colecao_id", null)
-    else if (filtro.colecaoId) b = b.in("colecao_id", idsComDescendentes(arvore.todas, filtro.colecaoId))
+    // "Não organizadas" cobre os DOIS estados: a coleção reservada e o NULL
+    // que sobra de uma pasta excluída. Ver `carregarColecoes`.
+    if (filtro.semColecao) {
+      b = arvore.inboxId ? b.or(`colecao_id.is.null,colecao_id.eq.${arvore.inboxId}`) : b.is("colecao_id", null)
+    } else if (colecaoIds) b = b.in("colecao_id", colecaoIds)
     if (filtro.plataforma) b = b.eq("plataforma", filtro.plataforma)
     if (filtro.status) b = b.eq("status", filtro.status)
     // Busca no título aqui é o filtro grosso; a busca por CONTEÚDO (blocos e
     // chunks) mora em `busca.ts` e devolve trechos com timestamp.
-    if (filtro.termo.trim()) b = b.ilike("titulo", `%${escaparLike(filtro.termo.trim())}%`)
+    if (termo) b = b.ilike("titulo", `%${escaparLike(termo)}%`)
     return b as Q
   }
 
@@ -293,7 +298,7 @@ export async function carregarBiblioteca(
   }
   const [coluna, asc] = ordenacao[filtro.ordem] ?? ordenacao.recentes
 
-  const [pagRes, somaRes] = await Promise.all([
+  const [pagRes, resumoRes] = await Promise.all([
     aplicar(admin.from("transcricoes").select(SELECT_RESUMO, { count: "exact" }))
       .order(coluna, { ascending: asc, nullsFirst: false })
       // Desempate estável: sem ele a paginação pode repetir ou pular item
@@ -301,7 +306,22 @@ export async function carregarBiblioteca(
       .order("id", { ascending: true })
       .range(de, ate)
       .returns<LinhaResumo[]>(),
-    aplicar(admin.from("transcricoes").select("duracao_seg")).returns<Array<{ duracao_seg: number | null }>>(),
+    // A soma da duração é AGREGADA no banco. Somar no cliente um
+    // `select("duracao_seg")` parecia funcionar até a biblioteca passar de
+    // 1.000 peças: o PostgREST corta aí, e o rodapé passava a mostrar a
+    // soma das primeiras 1.000 sem dizer que estava cortando. O RPC repete
+    // o MESMO recorte do filtro — divergir aqui faria o rodapé somar um
+    // conjunto e a lista mostrar outro.
+    admin.rpc("transcricoes_resumo", {
+      p_org_id: orgId,
+      // Com `p_sem_colecao`, a lista carrega a reservada — a RPC casa NULL
+      // OU qualquer id desta lista, o mesmo recorte do select acima.
+      p_colecao_ids: filtro.semColecao ? (arvore.inboxId ? [arvore.inboxId] : null) : colecaoIds,
+      p_sem_colecao: filtro.semColecao,
+      p_plataforma: filtro.plataforma ?? null,
+      p_status: filtro.status ?? null,
+      p_termo: termo || null,
+    }),
   ])
 
   if (pagRes.error) throw pagRes.error
@@ -310,15 +330,17 @@ export async function carregarBiblioteca(
   const thumbs = await assinarLote(admin, linhas.map((l) => l.thumb_path ?? "").filter(Boolean))
   const mapaColecoes = new Map(arvore.todas.map((c) => [c.id, { nome: c.nome, naBase: c.naBaseDeConhecimento }]))
 
-  const duracoes = (somaRes.data ?? []).map((r) => r.duracao_seg).filter((v): v is number => typeof v === "number")
-  const total = pagRes.count ?? linhas.length
+  const resumo = (
+    (resumoRes.data ?? []) as Array<{ total: number; duracao_total: number; com_duracao: number }>
+  )[0]
+  const total = pagRes.count ?? resumo?.total ?? linhas.length
 
   return {
     itens: linhas.map((l) => paraResumo(l, thumbs, mapaColecoes)),
     total,
     // null quando NENHUM item tem duração: "0min de conteúdo" seria falso
     // para uma biblioteca que só tem itens ainda processando.
-    duracaoTotalSeg: duracoes.length ? duracoes.reduce((a, b) => a + b, 0) : null,
+    duracaoTotalSeg: Number(resumo?.com_duracao ?? 0) > 0 ? Number(resumo.duracao_total) : null,
     temMais: de + linhas.length < total,
   }
 }
@@ -367,14 +389,10 @@ export async function carregarDetalhe(
   if (error) throw error
   if (!linha) return null
 
-  const [blocosRes, locutoresRes, colecoesRes, pendRes] = await Promise.all([
-    admin
-      .from("transcricoes_blocos")
-      .select("id, s, fim, locutor, texto, editado")
-      .eq("transcricao_id", id)
-      .order("s", { ascending: true })
-      .limit(20000)
-      .returns<Array<{ id: number; s: number; fim: number; locutor: string | null; texto: string; editado: boolean }>>(),
+  const [blocosLidos, locutoresRes, colecoesRes, pendRes] = await Promise.all([
+    // Paginado: o PostgREST corta em 1.000 e um vídeo longo apareceria pela
+    // metade na tela e na exportação, sem nada dizendo que faltou texto.
+    lerBlocos(admin, id),
     admin
       .from("transcricoes_locutores")
       .select("id, rotulo_original, nome, cor")
@@ -395,10 +413,10 @@ export async function carregarDetalhe(
       .or("embedding.is.null,desatualizado.is.true"),
   ])
 
-  const blocos: Bloco[] = (blocosRes.data ?? []).map((b) => ({
+  const blocos: Bloco[] = blocosLidos.map((b) => ({
     id: b.id,
-    s: Number(b.s),
-    fim: Number(b.fim),
+    s: b.s,
+    fim: b.fim,
     locutor: b.locutor,
     texto: b.texto,
     editado: b.editado,

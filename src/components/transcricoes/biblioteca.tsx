@@ -63,7 +63,7 @@ const ORDENS: Array<[string, string]> = [
 
 type Aba = "transcricoes" | "trechos"
 
-export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
+export function Biblioteca({ inicial, orgId }: { inicial: RespostaBiblioteca; orgId: string }) {
   const router = useRouter()
   const params = useSearchParams()
 
@@ -147,15 +147,22 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
     if (!temProcessando) return
     const sb = createClient()
     const canal = sb
-      .channel("transcricoes-biblioteca")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "transcricoes" }, () => {
-        void mutate()
-      })
+      .channel(`transcricoes-biblioteca-${orgId}`)
+      .on(
+        "postgres_changes",
+        // O filtro por org é obrigatório: sem ele o canal acorda com o
+        // progresso de QUALQUER organização e a tela revalida à toa (foi o
+        // incidente do inbox, documentado no CLAUDE.md).
+        { event: "UPDATE", schema: "public", table: "transcricoes", filter: `org_id=eq.${orgId}` },
+        () => {
+          void mutate()
+        },
+      )
       .subscribe()
     return () => {
       void sb.removeChannel(canal)
     }
-  }, [temProcessando, mutate])
+  }, [temProcessando, mutate, orgId])
 
   // ── Colunas pela largura do CONTAINER ───────────────────────────────
   const grade = useRef<HTMLDivElement>(null)
@@ -298,7 +305,7 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
               setAviso(
                 ligar
                   ? r.enfileirados > 0
-                    ? `Na base da ConvertIA. ${r.enfileirados} ${r.enfileirados === 1 ? "transcrição entra" : "transcrições entram"} na fila de indexação.`
+                    ? `Na base da ConvertIA. ${r.enfileirados} ${r.enfileirados === 1 ? "trecho entra" : "trechos entram"} na fila de indexação.`
                     : "Na base da ConvertIA."
                   : "Fora da base da ConvertIA. Os embeddings ficam guardados, religar é instantâneo.",
               )
@@ -529,6 +536,10 @@ export function Biblioteca({ inicial }: { inicial: RespostaBiblioteca }) {
           onFechar={() => setModalAberto(false)}
           onConcluir={() => {
             setModalAberto(false)
+            setPagina(0)
+            void mutate()
+          }}
+          onEnfileirouParcial={() => {
             setPagina(0)
             void mutate()
           }}

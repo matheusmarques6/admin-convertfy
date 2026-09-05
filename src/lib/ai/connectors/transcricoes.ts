@@ -43,14 +43,40 @@ interface LinhaExata {
 
 const link = (id: string, s: number) => `/admin/transcricoes/${id}?t=${encodeURIComponent(fmtDuracao(s))}`
 
-/** Ids das coleções na base — o recorte de tudo neste conector. */
-async function colecoesNaBase(ctx: ConnectorToolContext): Promise<string[]> {
-  const { data } = await ctx.admin
+/**
+ * Ids das coleções na base — o recorte de tudo neste conector.
+ *
+ * A faísca É HERDADA pelas subpastas, como o filtro da biblioteca já
+ * trata a árvore. Sem isso, marcar "Convertfy Academy" não incluiria nada
+ * quando as aulas moram nas filhas — e o silêncio seria total: a tool
+ * responderia "nenhum trecho encontrado" para conteúdo que está lá.
+ */
+async function colecoesNaBase(
+  admin: ConnectorToolContext["admin"],
+  orgId: string,
+): Promise<string[]> {
+  const { data } = await admin
     .from("transcricoes_colecoes")
-    .select("id")
-    .eq("org_id", ctx.orgId)
-    .eq("na_base_de_conhecimento", true)
-  return ((data ?? []) as Array<{ id: string }>).map((c) => c.id)
+    .select("id, pai_id, na_base_de_conhecimento")
+    .eq("org_id", orgId)
+  const todas = (data ?? []) as Array<{ id: string; pai_id: string | null; na_base_de_conhecimento: boolean }>
+
+  const filhas = new Map<string, string[]>()
+  for (const c of todas) {
+    if (!c.pai_id) continue
+    filhas.set(c.pai_id, [...(filhas.get(c.pai_id) ?? []), c.id])
+  }
+
+  const dentro = new Set<string>()
+  const fila = todas.filter((c) => c.na_base_de_conhecimento).map((c) => c.id)
+  while (fila.length) {
+    const id = fila.shift()!
+    // `pai_id` circular (dado corrompido) faria laço infinito; o visto corta.
+    if (dentro.has(id)) continue
+    dentro.add(id)
+    fila.push(...(filhas.get(id) ?? []))
+  }
+  return [...dentro]
 }
 
 const buscar: ConnectorTool = {
@@ -76,7 +102,7 @@ const buscar: ConnectorTool = {
     if (!query) return { content: "Query vazia." }
     const limite = Math.min(Math.max(Number(args.limite) || 6, 1), 12)
 
-    const colecaoIds = await colecoesNaBase(ctx)
+    const colecaoIds = await colecoesNaBase(ctx.admin, ctx.orgId)
     if (!colecaoIds.length) {
       // Estado honesto: nenhuma coleção foi marcada. Dizer isso é melhor
       // que devolver lista vazia como se nada casasse com a busca.
@@ -161,7 +187,7 @@ const listar: ConnectorTool = {
     },
   },
   execute: async (args, ctx) => {
-    const colecaoIds = await colecoesNaBase(ctx)
+    const colecaoIds = await colecoesNaBase(ctx.admin, ctx.orgId)
     if (!colecaoIds.length) {
       return { content: "Nenhuma coleção marcada como base da ConvertIA.", summary: "sem coleções na base" }
     }
@@ -234,7 +260,7 @@ const ler: ConnectorTool = {
   execute: async (args, ctx) => {
     const titulo = String(args.titulo ?? "").trim()
     if (!titulo) return { content: "Informe o título." }
-    const colecaoIds = await colecoesNaBase(ctx)
+    const colecaoIds = await colecoesNaBase(ctx.admin, ctx.orgId)
     if (!colecaoIds.length) return { content: "Nenhuma coleção marcada como base da ConvertIA." }
 
     const { data: achadas } = await ctx.admin
@@ -246,8 +272,14 @@ const ler: ConnectorTool = {
       // `%` e `_` do termo digitado são curingas do LIKE e casariam demais.
       .ilike("titulo", `%${titulo.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
       .limit(4)
-    const lista = (achadas ?? []) as Array<{ id: string; titulo: string; duracao_seg: number | null }>
-    if (!lista.length) return { content: `Nenhuma transcrição com "${titulo}" na base.` }
+    const todas = (achadas ?? []) as Array<{ id: string; titulo: string; duracao_seg: number | null }>
+    if (!todas.length) return { content: `Nenhuma transcrição com "${titulo}" na base.` }
+
+    // Título exato vence: quem chamou com o nome inteiro (que veio do
+    // `transcricoes_listar`) não pode receber "ambíguo" só porque outra
+    // peça contém esse nome como pedaço.
+    const exato = todas.filter((t) => t.titulo.trim().toLowerCase() === titulo.toLowerCase())
+    const lista = exato.length === 1 ? exato : todas
     if (lista.length > 1) {
       // Ambíguo: devolver o primeiro palpite faria a IA citar a aula errada.
       return {
@@ -308,23 +340,22 @@ export async function blocoTranscricoes(
   admin: ConnectorToolContext["admin"],
   orgId: string,
 ): Promise<{ bloco: string; disponivel: boolean }> {
-  const { data: colecoes } = await admin
-    .from("transcricoes_colecoes")
-    .select("id, nome")
-    .eq("org_id", orgId)
-    .eq("na_base_de_conhecimento", true)
-  const naBase = (colecoes ?? []) as Array<{ id: string; nome: string }>
-  if (!naBase.length) return { bloco: "", disponivel: false }
+  // MESMO recorte das tools (marcadas + descendentes): um inventário que
+  // conta diferente do que a busca alcança faz o modelo prometer uma fonte
+  // que a tool depois não encontra.
+  const ids = await colecoesNaBase(admin, orgId)
+  if (!ids.length) return { bloco: "", disponivel: false }
 
-  const { count } = await admin
-    .from("transcricoes")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", orgId)
-    .eq("status", "pronta")
-    .in(
-      "colecao_id",
-      naBase.map((c) => c.id),
-    )
+  const [{ data: colecoes }, { count }] = await Promise.all([
+    admin.from("transcricoes_colecoes").select("id, nome").eq("org_id", orgId).eq("na_base_de_conhecimento", true),
+    admin
+      .from("transcricoes")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("status", "pronta")
+      .in("colecao_id", ids),
+  ])
+  const naBase = (colecoes ?? []) as Array<{ id: string; nome: string }>
 
   const total = count ?? 0
   if (total === 0) return { bloco: "", disponivel: false }

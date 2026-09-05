@@ -32,6 +32,16 @@ describe("classificarErro", () => {
     expect(classificarErro("HTTP Error 404: Not Found")).toBe("indisponivel")
   })
 
+  it("reconhece a resposta sem fala e NÃO a torna retentável", () => {
+    // Áudio mudo devolve 200 com zero segmentos. Sem código próprio isso
+    // caía em "desconhecido" e o item era retranscrito cinco vezes — cinco
+    // chamadas cobradas para chegar ao mesmo lugar.
+    expect(classificarErro("O provedor não devolveu nenhuma fala para este áudio.")).toBe("sem_fala")
+    expect(classificarErro("a transcrição não produziu nenhuma fala")).toBe("sem_fala")
+    expect(ehRetentavel("sem_fala", 0)).toBe(false)
+    expect(mensagemDeErro("sem_fala", "YouTube")).toMatch(/mudo|sem voz/)
+  })
+
   it("cai em desconhecido sem inventar categoria", () => {
     expect(classificarErro("ENOSPC: no space left on device")).toBe("desconhecido")
     expect(classificarErro("")).toBe("desconhecido")

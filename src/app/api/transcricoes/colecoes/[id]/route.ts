@@ -93,16 +93,28 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
     // Ligar a faísca: enfileira o que ainda não tem vetor. Desligar não
     // apaga nada — religar precisa ser instantâneo.
+    // A conta é do que o cron REALMENTE vai processar: chunk sem vetor ou
+    // marcado como desatualizado. Contar "transcrições sem indexado_em"
+    // somava o que falhou e o que ainda está processando — número que a
+    // fila nunca ia honrar, e o usuário ficaria esperando por ele.
     let enfileirados = 0
     if (p.naBaseDeConhecimento === true && !atual.na_base_de_conhecimento) {
-      const { data: pendentes } = await admin
+      const { data: doGrupo } = await admin
         .from("transcricoes")
         .select("id")
         .eq("org_id", orgId)
         .eq("colecao_id", id)
-        .is("indexado_em", null)
+        .eq("status", "pronta")
         .returns<Array<{ id: string }>>()
-      enfileirados = (pendentes ?? []).length
+      const ids = (doGrupo ?? []).map((t) => t.id)
+      if (ids.length) {
+        const { count } = await admin
+          .from("transcricoes_chunks")
+          .select("id", { count: "exact", head: true })
+          .in("transcricao_id", ids)
+          .or("embedding.is.null,desatualizado.is.true")
+        enfileirados = count ?? 0
+      }
     }
 
     return successResponse(request, {

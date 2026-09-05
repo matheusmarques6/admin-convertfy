@@ -25,6 +25,7 @@ import type { PreviaLink } from "@/lib/transcricoes/types"
 import {
   concluirUpload,
   enfileirarLinks,
+  excluirTranscricao,
   getPrevia,
   prepararUpload,
   TranscricoesApiError,
@@ -37,16 +38,19 @@ const IDIOMAS: Array<[string, string]> = [
   ["es", "Espanhol"],
 ]
 
-const ACEITOS = ".mp4,.mov,.mkv,.webm,.mp3,.m4a,.wav,.flac,.ogg"
+/** Casa com `EXTENSOES` de /api/transcricoes/upload e com o bucket. */
+const ACEITOS = ".mp4,.mov,.mkv,.webm,.mp3,.m4a,.wav,.flac,.ogg,.aac"
 
 interface Props {
   colecoes: Array<{ id: string; nome: string; paiId: string | null; reservada: "inbox" | null }>
   colecaoPadrao: string | null
   onFechar: () => void
   onConcluir: () => void
+  /** Parte dos links entrou e parte foi recusada: atualiza a lista sem fechar. */
+  onEnfileirouParcial?: () => void
 }
 
-export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir }: Props) {
+export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir, onEnfileirouParcial }: Props) {
   const [texto, setTexto] = useState("")
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [colecaoId, setColecaoId] = useState<string>(colecaoPadrao ?? "")
@@ -121,31 +125,40 @@ export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir }: Pro
       // arquivo — quem só cola link não paga o peso.
       const { Upload: TusUpload } = await import("tus-js-client")
 
-      await new Promise<void>((resolve, reject) => {
-        const upload = new TusUpload(file, {
-          endpoint: destino.enderecoTus,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
-          headers: { authorization: `Bearer ${token}`, "x-upsert": "true" },
-          uploadDataDuringCreation: true,
-          removeFingerprintOnSuccess: true,
-          metadata: {
-            bucketName: destino.bucket,
-            objectName: destino.caminho,
-            contentType: file.type || "application/octet-stream",
-            cacheControl: "3600",
-          },
-          // 6 MB é o pedaço que o Storage do Supabase aceita no resumível.
-          chunkSize: 6 * 1024 * 1024,
-          onError: reject,
-          onProgress: (enviado, total) => setProgressoUpload(Math.round((enviado / total) * 100)),
-          onSuccess: () => resolve(),
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const upload = new TusUpload(file, {
+            endpoint: destino.enderecoTus,
+            retryDelays: [0, 3000, 5000, 10000, 20000],
+            headers: { authorization: `Bearer ${token}`, "x-upsert": "true" },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            metadata: {
+              bucketName: destino.bucket,
+              objectName: destino.caminho,
+              contentType: file.type || "application/octet-stream",
+              cacheControl: "3600",
+            },
+            // 6 MB é o pedaço que o Storage do Supabase aceita no resumível.
+            chunkSize: 6 * 1024 * 1024,
+            onError: reject,
+            onProgress: (enviado, total) => setProgressoUpload(Math.round((enviado / total) * 100)),
+            onSuccess: () => resolve(),
+          })
+          // Retoma um envio interrompido do MESMO arquivo em vez de recomeçar.
+          upload.findPreviousUploads().then((anteriores) => {
+            if (anteriores.length) upload.resumeFromPreviousUpload(anteriores[0])
+            upload.start()
+          })
         })
-        // Retoma um envio interrompido do MESMO arquivo em vez de recomeçar.
-        upload.findPreviousUploads().then((anteriores) => {
-          if (anteriores.length) upload.resumeFromPreviousUpload(anteriores[0])
-          upload.start()
-        })
-      })
+      } catch (e) {
+        // A linha nasce ANTES do envio para o card aparecer com a barra. Se o
+        // envio morre, ela ficaria "Baixando 0%" na biblioteca até o cron
+        // varrer — o usuário vê o item, mas ele nunca anda. Apagar aqui é o
+        // desfazer imediato; a varredura fica para a aba que fechou sozinha.
+        await excluirTranscricao(destino.id).catch(() => {})
+        throw e
+      }
 
       await concluirUpload(destino.id)
     },
@@ -165,7 +178,25 @@ export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir }: Pro
         .map((p) => p.url)
       const restantes = paraEnfileirar.length ? paraEnfileirar : links
       if (restantes.length) {
-        await enfileirarLinks({ urls: restantes, colecaoId: colecaoId || null, idioma, tags })
+        const r = await enfileirarLinks({ urls: restantes, colecaoId: colecaoId || null, idioma, tags })
+        // A rota devolve 200 com o resultado LINHA A LINHA: cinco links
+        // podem virar quatro na fila e um recusado. Fechar o modal aqui
+        // esconderia a recusa e o usuário só descobriria não achando o
+        // vídeo na biblioteca.
+        const recusados = (r.itens ?? []).filter((i) => !i.id)
+        if (recusados.length) {
+          setErro(
+            recusados.length === restantes.length
+              ? recusados[0].erro ?? "Nenhum link pôde ser enfileirado."
+              : `${r.enfileiradas} na fila. ${recusados.length} não ${
+                  recusados.length === 1 ? "entrou" : "entraram"
+                }: ${recusados.map((i) => i.erro ?? "erro").join(" · ")}`,
+          )
+          // O que entrou já existe na biblioteca — atualiza a lista por trás
+          // do modal sem fechá-lo, para a mensagem continuar visível.
+          if (r.enfileiradas > 0) onEnfileirouParcial?.()
+          return
+        }
       }
       onConcluir()
     } catch (e) {

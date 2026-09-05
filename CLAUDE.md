@@ -2766,6 +2766,12 @@ em vídeo longo. A leitura do locutor é defensiva (`speaker`/`speaker_id`/
 `speaker_label`): nome de campo diferente não pode custar a diarização
 inteira.
 
+**O offset dos pedaços vem do ffmpeg**, não de `i * 600`: o `-segment_time`
+corta na fronteira do quadro, o pedaço passa um pouco do alvo e o erro
+ACUMULA — os timestamps do fim de uma aula longa sairiam adiantados e o
+clique abriria o player no lugar errado. O `-segment_list` traz o início
+real de cada pedaço.
+
 **Bloqueio de IP é rotina, não exceção.** As três plataformas recusam IP de
 datacenter. `classificarErro` reconhece as frases reais do yt-dlp,
 `mensagemDeErro` devolve texto legível ("O YouTube bloqueou o acesso a
@@ -2805,7 +2811,10 @@ não reescreve N mil falas, e o rótulo original preservado permite a um
 reprocessamento remapear os nomes que o humano deu.
 
 **Faísca por coleção** (`na_base_de_conhecimento`): só o que está marcado
-entra na recuperação da ConvertIA. Ligar enfileira os embeddings que
+entra na recuperação da ConvertIA, **e a marca é HERDADA pelas subpastas**
+(marcar o pai inclui as filhas — é como o filtro da biblioteca já trata a
+árvore; sem isso, marcar "Convertfy Academy" não incluiria nada quando as
+aulas moram nas filhas). Ligar enfileira os embeddings que
 faltam (assíncrono, a árvore mostra o estado); **desligar exclui da
 recuperação mas NÃO apaga os embeddings** — religar tem de ser instantâneo.
 O conector `transcricoes_buscar/listar/ler` devolve sempre o timestamp e o
@@ -2815,7 +2824,26 @@ lastro. Entra sozinho no chat quando há coleção marcada COM peça pronta.
 **Upload de 4 GB vai direto ao Storage por TUS**, sem passar pela API, e
 retoma de onde parou; a barra é o progresso do próprio envio. A linha nasce
 `processando` e só vira `aguardando` quando o envio fecha — senão o worker
-pegaria arquivo pela metade.
+pegaria arquivo pela metade. Por isso `transcricoes_claim` aceita apenas
+`aguardando` ou `processando` com claim EXPIRADO: aceitar qualquer
+`processando` sem token fazia o worker reivindicar justamente o upload em
+andamento. O que a aba fechada deixa pendurado o cron varre
+(`transcricoes_expirar_uploads`), e o modal apaga a linha quando o envio
+falha na cara do usuário.
+
+**Todo select de blocos é PAGINADO** (`lerBlocos`, `blocos-io.ts`): o
+PostgREST corta em 1.000 linhas e `.limit(20000)` não muda isso. Sem
+paginar, o vídeo de três horas aparecia pela metade na tela, exportava
+truncado, tinha o `texto_completo` reescrito sem o fim a cada edição e
+entrava na busca faltando dois terços — em silêncio. Pela mesma razão a
+soma de duração da biblioteca e a indexação pendente por coleção são
+AGREGADAS no banco (`transcricoes_resumo`,
+`transcricoes_pendentes_por_colecao`).
+
+**"Não organizadas" é um lugar na tela e dois estados no banco**: a coleção
+reservada (destino de quem entra sem sugestão) e `colecao_id NULL` (o que
+sobra de uma pasta excluída — a FK é SET NULL). Contagem e filtro cobrem os
+dois; cobrir só o NULL deixava a peça recém-criada fora da árvore.
 
 **Prévia de link degrada em escada**: worker (`yt-dlp --dump-json`, com
 duração) → oEmbed da plataforma (título, canal e capa REAIS, sem duração) →

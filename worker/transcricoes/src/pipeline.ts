@@ -21,6 +21,7 @@ import {
 import { PLATAFORMA_LABEL, type Plataforma } from "@/lib/transcricoes/types"
 import { detectarTopicos } from "@/lib/transcricoes/llm"
 import { indexarTranscricao } from "@/lib/transcricoes/indexar"
+import { lerBlocos } from "@/lib/transcricoes/blocos-io"
 import {
   juntarPedacos,
   LIMITE_AUDIO_BYTES,
@@ -212,11 +213,13 @@ async function etapaTranscrever(
   const resultados: ResultadoTranscricao[] = []
   for (let i = 0; i < partes.length; i++) {
     resultados.push(
-      await transcreverAudio(await readFile(partes[i]), {
+      await transcreverAudio(await readFile(partes[i].caminho), {
         ...comum,
         // O offset é o que mantém os timestamps válidos do 2º pedaço em
-        // diante; errar aqui só aparece em vídeo longo.
-        offsetSeg: i * SEGUNDOS_POR_PEDACO,
+        // diante; errar aqui só aparece em vídeo longo. Vem do limite REAL
+        // que o ffmpeg registrou, não do múltiplo (o corte é na fronteira
+        // do quadro e o desvio acumularia).
+        offsetSeg: partes[i].inicioSeg,
         nomeArquivo: `parte_${i}.flac`,
       }),
     )
@@ -290,16 +293,13 @@ async function persistirTranscricao(
 async function etapaIndexar(db: Client, t: LinhaTranscricao): Promise<void> {
   await marcarEtapa(db, t.id, 3, 0)
 
-  const { data: blocosRaw } = await db
-    .from("transcricoes_blocos")
-    .select("id, s, fim, locutor, texto, editado")
-    .eq("transcricao_id", t.id)
-    .order("s", { ascending: true })
-    .limit(20000)
-  const blocos = ((blocosRaw ?? []) as Array<{ id: number; s: number; fim: number; locutor: string | null; texto: string; editado: boolean }>).map(
-    (b) => ({ ...b, s: Number(b.s), fim: Number(b.fim) }),
-  )
-  if (!blocos.length) return
+  // Paginado: com `.limit()` o PostgREST devolveria 1.000 blocos e a busca
+  // ficaria sem os dois terços finais de uma aula longa, sem nada indicando.
+  const blocos = await lerBlocos(db, t.id)
+  // Sem bloco não existe transcrição: seguir daqui marcaria a linha
+  // "pronta" com o painel vazio e a busca sem nada para achar — falha
+  // silenciosa disfarçada de sucesso.
+  if (!blocos.length) throw new Error("a transcrição não produziu nenhuma fala")
 
   const topicos = await detectarTopicos(blocos, t.titulo)
   if (topicos.length) await db.from("transcricoes").update({ topicos }).eq("id", t.id)

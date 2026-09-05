@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { ROUTES } from "@/lib/routes"
 import { createClient } from "@/lib/supabase/client"
-import { fmtDuracao, parseTimestamp, rotuloDaEtapa, segmentosDaEtapa } from "@/lib/transcricoes/pipeline"
+import { fmtDuracao, rotuloDaEtapa, segmentosDaEtapa } from "@/lib/transcricoes/pipeline"
 import { citacaoComTimestamp } from "@/lib/transcricoes/export"
 import { PLATAFORMA_LABEL, type Bloco, type TranscricaoDetalhe } from "@/lib/transcricoes/types"
 import {
@@ -123,6 +123,14 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
     else el.addEventListener("loadedmetadata", aplicar, { once: true })
   }, [inicioSeg])
 
+  /** Um só caminho para play/pause: o botão da barra e o clique no vídeo. */
+  const alternarPlay = useCallback(() => {
+    const el = player.current
+    if (!el) return
+    if (el.paused) void el.play().catch(() => {})
+    else el.pause()
+  }, [])
+
   const irPara = useCallback((seg: number) => {
     setTempo(seg)
     const el = player.current
@@ -201,12 +209,26 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
     }
   }
 
-  const copiarTrecho = async (b: Bloco) => {
+  /**
+   * A área de transferência pode ser NEGADA (contexto não seguro, permissão
+   * bloqueada) e aí `writeText` rejeita. Anunciar "copiado" sem checar
+   * mandaria o usuário colar um texto que não está lá.
+   */
+  const copiar = async (texto: string, ok: string) => {
+    try {
+      await navigator.clipboard.writeText(texto)
+      setAviso(ok)
+    } catch {
+      setAviso("O navegador bloqueou a cópia. Selecione o texto e copie à mão.")
+    }
+  }
+
+  const copiarTrecho = (b: Bloco) => {
     const url = `${window.location.origin}${ROUTES.ADMIN.TRANSCRICOES.DETAIL_EM(t.id, fmtDuracao(b.s))}`
-    await navigator.clipboard.writeText(
+    return copiar(
       citacaoComTimestamp({ texto: b.texto, s: b.s, titulo: t.titulo, url }),
+      "Trecho copiado com o timestamp e o link.",
     )
-    setAviso("Trecho copiado com o timestamp e o link.")
   }
 
   return (
@@ -286,18 +308,36 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* Coluna principal */}
           <div className="flex min-w-0 flex-col gap-3">
-            <div className="overflow-hidden rounded-[10px] border border-[var(--ops-border)] bg-black">
+            <div className="relative overflow-hidden rounded-[10px] border border-[var(--ops-border)] bg-black">
               {t.mediaUrl ? (
-                <video
-                  ref={player}
-                  src={t.mediaUrl}
-                  controls={false}
-                  playsInline
-                  onTimeUpdate={(e) => setTempo(e.currentTarget.currentTime)}
-                  onPlay={() => setTocando(true)}
-                  onPause={() => setTocando(false)}
-                  className="aspect-video w-full bg-black"
-                />
+                <>
+                  <video
+                    ref={player}
+                    src={t.mediaUrl}
+                    controls={false}
+                    playsInline
+                    onTimeUpdate={(e) => setTempo(e.currentTarget.currentTime)}
+                    onPlay={() => setTocando(true)}
+                    onPause={() => setTocando(false)}
+                    onClick={alternarPlay}
+                    className="aspect-video w-full cursor-pointer bg-black"
+                  />
+                  {/* Clicar no vídeo é o gesto que todo mundo tenta primeiro.
+                      Sem o alvo em cima dele, o único play é o botãozinho da
+                      barra de baixo e o vídeo parece quebrado. */}
+                  {!tocando && (
+                    <button
+                      type="button"
+                      aria-label="Reproduzir"
+                      onClick={alternarPlay}
+                      className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/30"
+                    >
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur-sm">
+                        <Icon icon={Play} customSize={20} />
+                      </span>
+                    </button>
+                  )}
+                </>
               ) : (
                 <div className="flex aspect-video w-full items-center justify-center text-[12px] text-white/60">
                   {processando ? "A mídia aparece assim que o download terminar." : "Sem mídia guardada para esta transcrição."}
@@ -339,12 +379,7 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
                   type="button"
                   aria-label={tocando ? "Pausar" : "Reproduzir"}
                   disabled={!t.mediaUrl}
-                  onClick={() => {
-                    const el = player.current
-                    if (!el) return
-                    if (el.paused) void el.play()
-                    else el.pause()
-                  }}
+                  onClick={alternarPlay}
                   className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--ops-border)] text-[var(--ops-title)] transition-colors hover:bg-[var(--ops-hover)] disabled:opacity-40"
                 >
                   <Icon icon={tocando ? Pause : Play} customSize={12} />
@@ -678,10 +713,7 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
                 icon={Copy}
                 className="w-full"
                 disabled={!t.blocos.length}
-                onClick={() => {
-                  void navigator.clipboard.writeText(t.blocos.map((b) => b.texto).join("\n\n"))
-                  setAviso("Texto completo copiado.")
-                }}
+                onClick={() => void copiar(t.blocos.map((b) => b.texto).join("\n\n"), "Texto completo copiado.")}
               >
                 Copiar texto completo
               </TrBtn>
@@ -772,8 +804,28 @@ function Info({ rotulo, valor, mono }: { rotulo: string; valor: string | null; m
 
 function MenuExportar({ id, desabilitado }: { id: string; desabilitado: boolean }) {
   const [aberto, setAberto] = useState(false)
+  const caixa = useRef<HTMLDivElement>(null)
+
+  // Menu que só fecha ao escolher uma opção fica aberto por cima do painel
+  // enquanto a pessoa clica em qualquer outra coisa.
+  useEffect(() => {
+    if (!aberto) return
+    const foraDaqui = (e: MouseEvent) => {
+      if (!caixa.current?.contains(e.target as Node)) setAberto(false)
+    }
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAberto(false)
+    }
+    document.addEventListener("mousedown", foraDaqui)
+    document.addEventListener("keydown", escape)
+    return () => {
+      document.removeEventListener("mousedown", foraDaqui)
+      document.removeEventListener("keydown", escape)
+    }
+  }, [aberto])
+
   return (
-    <div className="relative">
+    <div className="relative" ref={caixa}>
       <TrBtn icon={Download} className="w-full" disabled={desabilitado} onClick={() => setAberto((a) => !a)}>
         Exportar
         <Icon icon={ChevronDown} customSize={12} />
@@ -835,5 +887,3 @@ function SeletorColecao({
     </div>
   )
 }
-
-export { parseTimestamp }

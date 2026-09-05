@@ -91,17 +91,46 @@ export async function POST(request: NextRequest) {
     ])
     const colecaoPadrao = parsed.data.colecaoId ?? null
 
+    // As prévias são REDE (worker com 20 s de teto cada). Em série, 30 links
+    // estouram o `maxDuration` desta rota muito antes de terminar. Vão em
+    // paralelo limitado, com prazo global: quem não voltou a tempo entra na
+    // fila sem metadados — o worker preenche o título quando processar, que
+    // é melhor que a rota inteira dar timeout e nada ser enfileirado.
+    const PRAZO_PREVIAS_MS = 35_000
+    const PARALELAS = 5
+    const limite = Date.now() + PRAZO_PREVIAS_MS
+
+    const alvos = urls.map((bruta) => ({
+      bruta,
+      plataforma: detectarPlataforma(bruta),
+      url: limparUrl(bruta),
+    }))
+    const previas = new Map<string, Awaited<ReturnType<typeof resolverPrevia>>>()
+    const aResolver = alvos.filter((a) => a.plataforma && a.url)
+    let cursor = 0
+    await Promise.all(
+      Array.from({ length: Math.min(PARALELAS, aResolver.length) }, async () => {
+        while (cursor < aResolver.length) {
+          const item = aResolver[cursor++]
+          if (Date.now() > limite) return
+          try {
+            previas.set(item.bruta, await resolverPrevia(admin, orgId, item.url!, regras))
+          } catch {
+            // Prévia é enriquecimento: falhar aqui não impede enfileirar.
+          }
+        }
+      }),
+    )
+
     const criadas: Array<{ url: string; id: string | null; titulo: string | null; erro: string | null }> = []
-    for (const bruta of urls) {
-      const plataforma = detectarPlataforma(bruta)
-      const url = limparUrl(bruta)
+    for (const { bruta, plataforma, url } of alvos) {
       if (!plataforma || !url) {
         criadas.push({ url: bruta, id: null, titulo: null, erro: "Link não suportado." })
         continue
       }
 
-      const previa = await resolverPrevia(admin, orgId, url, regras)
-      if (previa.duplicadaDe) {
+      const previa = previas.get(bruta)
+      if (previa?.duplicadaDe) {
         criadas.push({ url, id: null, titulo: previa.duplicadaDe.titulo, erro: "Já existe na biblioteca." })
         continue
       }
@@ -110,15 +139,15 @@ export async function POST(request: NextRequest) {
         .from("transcricoes")
         .insert({
           org_id: orgId,
-          colecao_id: colecaoPadrao ?? previa.colecaoSugeridaId ?? inboxId,
+          colecao_id: colecaoPadrao ?? previa?.colecaoSugeridaId ?? inboxId,
           // Sem título ainda: o worker preenche. Um placeholder genérico é
           // melhor que inventar nome a partir da URL.
-          titulo: previa.titulo?.slice(0, 300) || "Transcrição em processamento",
+          titulo: previa?.titulo?.slice(0, 300) || "Transcrição em processamento",
           plataforma,
-          canal: previa.canal,
+          canal: previa?.canal ?? null,
           url_original: url,
           url_normalizada: normalizarUrl(url),
-          duracao_seg: previa.duracaoSeg,
+          duracao_seg: previa?.duracaoSeg ?? null,
           idioma,
           tags,
           status: "aguardando",

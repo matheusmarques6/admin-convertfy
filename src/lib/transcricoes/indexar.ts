@@ -6,8 +6,10 @@
  * coleção entra na base). Recebe o client por parâmetro para servir aos
  * dois sem importar nada de Next.
  *
- * Chunk desatualizado é REGERADO, não recriado: apagar e inserir mudaria o
- * id e quebraria qualquer referência que alguém já tenha guardado.
+ * Duas operações diferentes, de propósito: a reindexação COMPLETA substitui
+ * o conjunto (o texto mudou, os cortes mudam com ele), enquanto o cron que
+ * varre pendências só reescreve o EMBEDDING da linha existente — ali o id
+ * é preservado.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -85,13 +87,20 @@ export async function indexarTranscricao(
   const { error: erroDel } = await db.from("transcricoes_chunks").delete().eq("transcricao_id", params.transcricaoId)
   if (erroDel) throw new Error(`não foi possível limpar os chunks: ${erroDel.message}`)
 
-  const { data: inseridos, error: erroIns } = await db
-    .from("transcricoes_chunks")
-    .insert(linhas)
-    .select("id, contexto, texto")
-  if (erroIns) throw new Error(`não foi possível gravar os chunks: ${erroIns.message}`)
-
-  const criados = (inseridos ?? []) as Array<{ id: number; contexto: string | null; texto: string }>
+  // Em lotes: um vídeo de três horas passa de mil chunks, e tanto o corpo
+  // do POST quanto o RETORNO do PostgREST (que corta em 1.000 linhas) ficam
+  // no caminho. Sem o corte, os chunks acima de mil voltariam sem id e
+  // nasceriam sem embedding — só o cron os pegaria, horas depois.
+  const LOTE_INSERT = 500
+  const criados: Array<{ id: number; contexto: string | null; texto: string }> = []
+  for (let i = 0; i < linhas.length; i += LOTE_INSERT) {
+    const { data: inseridos, error: erroIns } = await db
+      .from("transcricoes_chunks")
+      .insert(linhas.slice(i, i + LOTE_INSERT))
+      .select("id, contexto, texto")
+    if (erroIns) throw new Error(`não foi possível gravar os chunks: ${erroIns.message}`)
+    criados.push(...((inseridos ?? []) as Array<{ id: number; contexto: string | null; texto: string }>))
+  }
   const comEmbedding = await gerarEmbeddings(db, criados, (p) => onProgresso?.(50 + Math.round(p / 2)))
 
   return {

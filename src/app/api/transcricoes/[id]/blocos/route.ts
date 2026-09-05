@@ -13,6 +13,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { marcarDesatualizados } from "@/lib/transcricoes/indexar"
+import { lerBlocos } from "@/lib/transcricoes/blocos-io"
 
 export const dynamic = "force-dynamic"
 
@@ -48,15 +49,11 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     const marcados = await marcarDesatualizados(admin, id, { s: Number(bloco.s), fim: Number(bloco.fim) })
 
     // O texto completo é derivado dos blocos: deixar a coluna velha faria a
-    // exportação e o "copiar texto completo" divergirem da tela.
-    const { data: todos } = await admin
-      .from("transcricoes_blocos")
-      .select("texto")
-      .eq("transcricao_id", id)
-      .order("s", { ascending: true })
-      .limit(20000)
-      .returns<Array<{ texto: string }>>()
-    if (todos) {
+    // exportação e o "copiar texto completo" divergirem da tela. A leitura é
+    // PAGINADA — reescrever a coluna a partir de uma resposta cortada em
+    // 1.000 linhas apagaria o fim da transcrição a cada edição.
+    const todos = await lerBlocos(admin, id, "id, s, fim, locutor, texto, editado")
+    if (todos.length) {
       await admin
         .from("transcricoes")
         .update({ texto_completo: todos.map((b) => b.texto).join(" ") })

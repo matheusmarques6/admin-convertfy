@@ -93,6 +93,40 @@ longo.
 conhecimento diverge do texto na tela e a busca devolve a versão antiga
 sem avisar.
 
+**Todo select de blocos é PAGINADO** (`lerBlocos`, em
+`src/lib/transcricoes/blocos-io.ts`). O PostgREST desta instância corta a
+resposta em 1.000 linhas e `.limit(20000)` não muda isso: numa aula de 47
+min tudo parece funcionar, num vídeo de três horas a tela mostra a
+transcrição pela metade, a exportação sai truncada, o `texto_completo` é
+reescrito sem o fim e a indexação deixa dois terços fora da busca — tudo
+em silêncio. Vale para a soma de duração da biblioteca (agregada na RPC
+`transcricoes_resumo`) e para a indexação pendente por coleção
+(`transcricoes_pendentes_por_colecao`) pela mesma razão.
+
+**O claim só pega `aguardando` ou claim EXPIRADO.** A linha de um upload
+nasce `processando` (para o card já aparecer com a barra do envio) e só
+vira `aguardando` quando o navegador fecha o TUS. Aceitar qualquer
+`processando` sem token fazia o worker roubar o arquivo pela metade. O
+que a aba fechada deixa para trás é varrido pelo cron
+(`transcricoes_expirar_uploads`).
+
+**O offset dos pedaços vem do ffmpeg, não da multiplicação.** O
+`-segment_time` corta na fronteira do quadro, então o pedaço passa um
+pouco do alvo e o erro ACUMULA; o `-segment_list` traz o início real de
+cada um.
+
+**A faísca é herdada pelas subpastas.** Marcar a coleção pai inclui as
+filhas na recuperação — é como o filtro da biblioteca já trata a árvore.
+Sem isso, marcar "Convertfy Academy" não incluiria nada quando as aulas
+moram nas filhas, e a tool responderia "nenhum trecho encontrado" para
+conteúdo que está lá.
+
+**"Não organizadas" é um lugar na tela e dois estados no banco**: a
+coleção reservada (destino de quem entra sem sugestão) e `colecao_id
+NULL` (o que sobra quando uma pasta é excluída — a FK é SET NULL). A
+contagem e o filtro cobrem os dois; cobrir só o NULL deixava a peça
+recém-criada fora da árvore.
+
 **Renomear locutor toca uma linha.** Os blocos guardam o rótulo do
 provedor (`speaker_0`); o nome humano vive em `transcricoes_locutores`.
 Assim renomear não reescreve N mil falas e um reprocessamento consegue

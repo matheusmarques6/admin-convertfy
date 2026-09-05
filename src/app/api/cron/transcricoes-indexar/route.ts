@@ -36,13 +36,30 @@ export async function GET(request: NextRequest) {
 
   const inicio = Date.now()
   try {
+    const admin = createAdminClient()
+
+    // Antes de qualquer outra coisa (e independente de haver chave de
+    // embedding): a linha de um upload que o navegador nunca terminou fica
+    // "Baixando 0%" para sempre, porque só o fechamento do TUS a promove
+    // para `aguardando`. Aba fechada no meio nunca fecha.
+    const { data: expiradas, error: erroExpirar } = await admin.rpc("transcricoes_expirar_uploads", {
+      p_horas: 6,
+    })
+    if (erroExpirar) log.warn("varredura de upload órfão falhou", { erro: erroExpirar.message })
+    const uploadsExpirados = typeof expiradas === "number" ? expiradas : 0
+    if (uploadsExpirados > 0) log.info("uploads incompletos marcados", { total: uploadsExpirados })
+
     if (!embeddingsAvailable()) {
       // Sem chave não há o que fazer, e dizer isso é melhor que reportar
       // "0 processados" como se estivesse tudo em dia.
-      return NextResponse.json({ success: true, pulado: "sem OPENROUTER_API_KEY", processados: 0 })
+      return NextResponse.json({
+        success: true,
+        pulado: "sem OPENROUTER_API_KEY",
+        processados: 0,
+        uploadsExpirados,
+      })
     }
 
-    const admin = createAdminClient()
     const { data, error } = await admin
       .from("transcricoes_chunks")
       .select("id, contexto, texto, transcricao_id")
@@ -53,7 +70,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     const pendentes = data ?? []
-    if (!pendentes.length) return NextResponse.json({ success: true, processados: 0, pendentes: 0 })
+    if (!pendentes.length) {
+      return NextResponse.json({ success: true, processados: 0, pendentes: 0, uploadsExpirados })
+    }
 
     // Corta o lote pelo orçamento: cada bloco de 48 leva alguns segundos.
     const cabe = pendentes.slice(0, Math.max(48, Math.floor(((ORCAMENTO_MS - (Date.now() - inicio)) / 6000) * 48)))
@@ -73,7 +92,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const resultado = { processados, transcricoes: tocadas.length, ms: Date.now() - inicio }
+    const resultado = { processados, transcricoes: tocadas.length, uploadsExpirados, ms: Date.now() - inicio }
     log.info("reindexação", resultado)
     return NextResponse.json({ success: true, ...resultado })
   } catch (error) {

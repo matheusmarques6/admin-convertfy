@@ -221,7 +221,10 @@ export async function transcreverAudio(
     const json = (await resp.json()) as RespostaJson
     const segmentos = segmentosDaResposta(json, opts.offsetSeg ?? 0)
     if (segmentos.length === 0) {
-      throw new ErroTranscricao("O provedor devolveu uma transcrição vazia.", 502)
+      // A frase carrega "nenhuma fala" de propósito: é o que
+      // `classificarErro` reconhece como `sem_fala`, que NÃO é retentável.
+      // Sem isso, áudio mudo custaria cinco transcrições até desistir.
+      throw new ErroTranscricao("O provedor não devolveu nenhuma fala para este áudio.", 502)
     }
     return {
       texto: (json.text ?? segmentos.map((s) => s.texto).join(" ")).trim(),

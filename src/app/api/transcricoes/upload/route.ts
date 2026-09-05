@@ -22,7 +22,12 @@ import { sugerirColecao } from "@/lib/transcricoes/sugestao"
 
 export const dynamic = "force-dynamic"
 
-/** O que o `<input type="file">` do modal aceita. */
+/**
+ * O que o `<input type="file">` do modal aceita — e o que o bucket
+ * `transcricoes-media` permite. As três listas (aqui, `ACEITOS` do modal e
+ * `allowed_mime_types` do bucket) andam juntas: extensão aceita aqui e
+ * recusada lá vira 400 do Storage no meio do envio, sem explicação.
+ */
 const EXTENSOES = new Set(["mp4", "mov", "mkv", "webm", "mp3", "m4a", "wav", "flac", "ogg", "aac"])
 const MAX_BYTES = 4 * 1024 * 1024 * 1024
 
@@ -70,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     const ext = (p.nomeArquivo.split(".").pop() ?? "").toLowerCase()
     if (!EXTENSOES.has(ext)) {
-      throw new AppError("Formato não aceito. Use MP4, MOV, MKV, WEBM, MP3, M4A, WAV ou FLAC.", 415)
+      throw new AppError("Formato não aceito. Use MP4, MOV, MKV, WEBM, MP3, M4A, WAV, FLAC, OGG ou AAC.", 415)
     }
 
     const titulo = p.nomeArquivo.replace(/\.[^.]+$/, "").trim().slice(0, 300) || "Arquivo enviado"

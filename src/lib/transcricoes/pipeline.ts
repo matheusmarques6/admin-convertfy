@@ -29,6 +29,8 @@ export type CodigoErro =
   | "provedor"
   /** Sem áudio no arquivo. */
   | "sem_audio"
+  /** O provedor respondeu, mas não devolveu nenhuma fala. */
+  | "sem_fala"
   /** Rede, disco, qualquer outra coisa. */
   | "desconhecido"
 
@@ -71,6 +73,9 @@ export function classificarErro(bruto: string): CodigoErro {
   ) {
     return "indisponivel"
   }
+  // Marcador do próprio worker: o provedor respondeu 200 e devolveu zero
+  // segmentos. Repetir não muda o resultado, então não é retentável.
+  if (s.includes("nenhuma fala")) return "sem_fala"
   if (s.includes("does not contain any stream") || s.includes("no audio")) return "sem_audio"
   if (s.includes("maximum content size") || s.includes("file too large") || s.includes("413")) return "audio_grande"
   if (s.includes("openrouter") || s.includes("transcription") || s.includes("insufficient credits")) return "provedor"
@@ -88,6 +93,8 @@ export function mensagemDeErro(codigo: CodigoErro, plataformaLabel: string): str
       return "O vídeo não está mais disponível nesta URL."
     case "sem_audio":
       return "O arquivo não tem faixa de áudio."
+    case "sem_fala":
+      return "A transcrição não devolveu nenhuma fala. O áudio pode estar mudo ou sem voz."
     case "audio_grande":
       return "O áudio ficou grande demais para o provedor mesmo depois de dividir."
     case "provedor":

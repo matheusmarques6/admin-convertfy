@@ -8,7 +8,7 @@
  */
 
 import { spawn } from "node:child_process"
-import { mkdir, readdir, rm, stat } from "node:fs/promises"
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -205,23 +205,62 @@ export async function extrairFrame(entrada: string, saida: string, duracaoSeg: n
   if (r.code !== 0) throw new Error(r.stderr.trim().slice(-400) || "ffmpeg não extraiu o frame")
 }
 
+export interface PedacoAudio {
+  caminho: string
+  /** Início REAL do pedaço no áudio original, em segundos. */
+  inicioSeg: number
+}
+
 /**
- * Divide o áudio em pedaços de `segundos`. Devolve os caminhos EM ORDEM —
- * a ordem é o que dá o offset de cada pedaço, e errar o offset invalida
- * todos os timestamps a partir do segundo (o sintoma só aparece em vídeo
- * longo).
+ * Divide o áudio em pedaços de ~`segundos`. Devolve o caminho E O INÍCIO
+ * REAL de cada um.
+ *
+ * O início não pode ser deduzido de `i * segundos`: o `-segment_time` corta
+ * na fronteira do QUADRO, então cada pedaço passa um pouco do alvo e o erro
+ * ACUMULA — os timestamps do fim de uma aula longa saem alguns segundos
+ * adiantados, e clicar num trecho abre o player no lugar errado. O próprio
+ * ffmpeg escreve os limites exatos no `-segment_list`; é de lá que o offset
+ * sai. Se a lista faltar, cai no múltiplo (o comportamento antigo) em vez
+ * de falhar.
  */
-export async function dividirAudio(entrada: string, destino: string, segundos: number): Promise<string[]> {
+export async function dividirAudio(entrada: string, destino: string, segundos: number): Promise<PedacoAudio[]> {
   await mkdir(destino, { recursive: true })
+  const lista = join(destino, "partes.csv")
   const r = await rodar(
     "ffmpeg",
-    ["-y", "-i", entrada, "-f", "segment", "-segment_time", String(segundos), "-c", "copy", join(destino, "parte_%03d.flac")],
+    [
+      "-y", "-i", entrada,
+      "-f", "segment",
+      "-segment_time", String(segundos),
+      "-segment_list", lista,
+      "-segment_list_type", "csv",
+      "-c", "copy",
+      join(destino, "parte_%03d.flac"),
+    ],
     { timeoutMs: 20 * 60_000 },
   )
   if (r.code !== 0) throw new Error(r.stderr.trim().slice(-400) || "ffmpeg não dividiu o áudio")
+
   const partes = (await readdir(destino)).filter((f) => f.startsWith("parte_")).sort()
   if (!partes.length) throw new Error("a divisão do áudio não produziu pedaços")
-  return partes.map((f) => join(destino, f))
+
+  // CSV do ffmpeg: `arquivo,inicio,fim` por linha, na ordem dos pedaços.
+  const inicios = new Map<string, number>()
+  try {
+    const csv = await readFile(lista, "utf8")
+    for (const linha of csv.split("\n")) {
+      const [arquivo, inicio] = linha.trim().split(",")
+      const v = Number(inicio)
+      if (arquivo && Number.isFinite(v)) inicios.set(arquivo.split("/").pop()!, v)
+    }
+  } catch {
+    // Sem a lista, o múltiplo é a melhor aproximação disponível.
+  }
+
+  return partes.map((f, i) => ({
+    caminho: join(destino, f),
+    inicioSeg: inicios.get(f) ?? i * segundos,
+  }))
 }
 
 export async function tamanho(caminho: string): Promise<number> {
