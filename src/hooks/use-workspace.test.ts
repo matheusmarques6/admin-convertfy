@@ -21,6 +21,7 @@ describe("detectWorkspaceOrNull", () => {
       "/admin/list-hygiene",
       // Geração de Imagens mora no nav Operacional (fix Onda 1)
       "/admin/imagens",
+      "/admin/conteudo/estudio/abc",
     ]) {
       expect(detectWorkspaceOrNull(p)).toBe("operacional")
     }

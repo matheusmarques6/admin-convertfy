@@ -25,6 +25,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 import { DialogTitle } from "@/components/ui/dialog"
 import {
   NAV_BY_WORKSPACE,
+  flattenNavItems,
   navItemAllowed,
   type NavPermissionCtx,
 } from "@/components/layout/nav-config"
@@ -72,19 +73,22 @@ interface NavCommandItem extends CommandItem {
 }
 
 const navigationItems: NavCommandItem[] = WORKSPACE_ORDER.flatMap((ws) =>
-  NAV_BY_WORKSPACE[ws].flatMap((group) =>
-    group.items.map((item) => ({
-      // Sub-label do grupo ajuda a distinguir homônimos (ex.: Reuniões
-      // existe no Geral e no Comercial) e melhora o match da busca.
-      name: group.label ? `${item.name} · ${group.label}` : item.name,
-      href: item.href,
-      icon: item.icon,
-      group: WORKSPACES[ws].label,
-      navId: item.id,
-      requiresStoreAccess: item.requiresStoreAccess,
-      wsKey: ws,
-    })),
-  ),
+  flattenNavItems(NAV_BY_WORKSPACE[ws]).map(({ item, group, child }) => ({
+    // Sub-label do grupo ajuda a distinguir homônimos (ex.: Reuniões
+    // existe no Geral e no Comercial) e melhora o match da busca. Filho
+    // de submenu leva o nome do pai ("Conteúdo · Estúdio").
+    name: child
+      ? `${item.name} · ${child.name}`
+      : group.label
+        ? `${item.name} · ${group.label}`
+        : item.name,
+    href: child ? child.href : item.href,
+    icon: item.icon,
+    group: WORKSPACES[ws].label,
+    navId: child ? child.id : item.id,
+    requiresStoreAccess: item.requiresStoreAccess,
+    wsKey: ws,
+  })),
 )
 
 // Itens fora da nav por workspace: sub-abas consolidadas (que perderam

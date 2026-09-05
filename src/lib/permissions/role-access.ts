@@ -45,6 +45,12 @@ export type NavItemId =
   | "ops.insights"
   | "ops.list_hygiene"
   | "ops.image_studio"
+  | "ops.conteudo"
+  | "ops.conteudo.dashboard"
+  | "ops.conteudo.estudio"
+  | "ops.conteudo.reels"
+  | "ops.conteudo.calendario"
+  | "ops.conteudo.ideias"
   | "ops.reports"
   // Geral
   | "geral.home"
@@ -92,6 +98,12 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.insights",
   "ops.list_hygiene",
   "ops.image_studio",
+  "ops.conteudo",
+  "ops.conteudo.dashboard",
+  "ops.conteudo.estudio",
+  "ops.conteudo.reels",
+  "ops.conteudo.calendario",
+  "ops.conteudo.ideias",
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -108,6 +120,17 @@ const ALL_ITEMS: NavItemId[] = [
 
 // Funções bypass (veem tudo).
 const BYPASS_ROLES: OrgRole[] = ["admin", "dev"]
+
+// Módulo Conteúdo (Dashboard Social + Estúdio): quem produz conteúdo —
+// COO, suporte e designer/implementação (mesma régua da Geração de Imagens).
+const CONTEUDO_ITEMS: NavItemId[] = [
+  "ops.conteudo",
+  "ops.conteudo.dashboard",
+  "ops.conteudo.estudio",
+  "ops.conteudo.reels",
+  "ops.conteudo.calendario",
+  "ops.conteudo.ideias",
+]
 
 const COO_ITEMS = new Set<NavItemId>([
   "comercial.ia",
@@ -133,6 +156,7 @@ const COO_ITEMS = new Set<NavItemId>([
   "ops.insights",
   "ops.list_hygiene",
   "ops.image_studio",
+  ...CONTEUDO_ITEMS,
   "ops.reports",
   "geral.home",
   "geral.board",
@@ -170,6 +194,7 @@ const SUPORTE_ITEMS = new Set<NavItemId>([
   "ops.cs.cadences",
   "ops.onboarding.tutorial",
   "ops.image_studio",
+  ...CONTEUDO_ITEMS,
   "geral.home",
   "geral.board",
   "geral.meetings",
@@ -183,6 +208,7 @@ const DESIGNER_IMPLEM_ITEMS = new Set<NavItemId>([
   "ops.stores",
   "ops.onboarding",
   "ops.image_studio",
+  ...CONTEUDO_ITEMS,
   "geral.home",
   "geral.board",
 ])

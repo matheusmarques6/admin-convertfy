@@ -108,6 +108,8 @@ const OPERACIONAL_PREFIXES = [
   // Geracao de Imagens: o item mora no nav Operacional (Marketing) — sem
   // este prefixo, entrar pela URL trocava a sidebar pro Geral (Onda 1).
   "/admin/imagens",
+  // Módulo Conteúdo (Dashboard Social + Estúdio) — item do grupo Marketing.
+  "/admin/conteudo",
 ]
 
 // Rotas que NAO pertencem a workspace nenhum (configuracoes, notificacoes,

@@ -42,6 +42,13 @@ import type { NavItemId } from "@/lib/permissions/role-access"
 import type { WorkspaceKey } from "@/hooks/use-workspace"
 import { ROUTES } from "@/lib/routes"
 
+/** Subitem de um item com submenu (herda o ícone do pai). */
+export interface NavChild {
+  id: NavItemId
+  name: string
+  href: string
+}
+
 export interface NavItem {
   id: NavItemId
   name: string
@@ -50,6 +57,12 @@ export interface NavItem {
   group?: string
   requiresStoreAccess?: boolean
   badge?: string
+  /**
+   * Submenu suspenso (ex.: Conteúdo → Dashboard/Estúdio/Reels/…). O `href`
+   * do pai é o destino do clique no rótulo; os filhos passam pelo mesmo
+   * gate de permissão individualmente.
+   */
+  children?: NavChild[]
 }
 
 export interface NavGroup {
@@ -159,6 +172,21 @@ export const OPERACIONAL_NAV: NavGroup[] = [
       // viraram UM item — o hub abre na Central; a rota /admin/campaigns
       // segue viva (acessível por link direto), só saiu da nav.
       { id: "ops.campaigns.central", name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.CENTRAL, icon: Megaphone },
+      // Módulo Conteúdo (set/2026): Dashboard Social + Estúdio de
+      // Carrosséis. Reels, Calendário e Ideias são rotas "em breve".
+      {
+        id: "ops.conteudo",
+        name: "Conteúdo",
+        href: ROUTES.ADMIN.CONTEUDO.DASHBOARD,
+        icon: Instagram,
+        children: [
+          { id: "ops.conteudo.dashboard", name: "Dashboard", href: ROUTES.ADMIN.CONTEUDO.DASHBOARD },
+          { id: "ops.conteudo.estudio", name: "Estúdio", href: ROUTES.ADMIN.CONTEUDO.ESTUDIO },
+          { id: "ops.conteudo.reels", name: "Reels", href: ROUTES.ADMIN.CONTEUDO.REELS },
+          { id: "ops.conteudo.calendario", name: "Calendário", href: ROUTES.ADMIN.CONTEUDO.CALENDARIO },
+          { id: "ops.conteudo.ideias", name: "Ideias", href: ROUTES.ADMIN.CONTEUDO.IDEIAS },
+        ],
+      },
       { id: "ops.image_studio", name: "Geração de Imagens", href: ROUTES.ADMIN.IMAGE_STUDIO, icon: ImagePlus },
       { id: "ops.insights", name: "Insights IA", href: ROUTES.ADMIN.INSIGHTS, icon: Sparkles },
       { id: "ops.list_hygiene", name: "Limpeza", href: ROUTES.ADMIN.LIST_HYGIENE, icon: ListFilter },
@@ -237,8 +265,30 @@ export function navItemAllowed(item: NavItem, ctx: NavPermissionCtx): boolean {
 
 export function filterNavGroups(groups: NavGroup[], ctx: NavPermissionCtx): NavGroup[] {
   return groups
-    .map((group) => ({ ...group, items: group.items.filter((i) => navItemAllowed(i, ctx)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((i) => navItemAllowed(i, ctx))
+        .map((i) =>
+          i.children
+            ? { ...i, children: i.children.filter((c) => ctx.canAccess(c.id)) }
+            : i,
+        )
+        // Pai com submenu e nenhum filho permitido não tem para onde levar.
+        .filter((i) => !i.children || i.children.length > 0),
+    }))
     .filter((group) => group.items.length > 0)
+}
+
+/** Todos os destinos navegáveis (filhos de submenu expandidos) — ⌘K. */
+export function flattenNavItems(groups: NavGroup[]): Array<{ item: NavItem; group: NavGroup; child?: NavChild }> {
+  return groups.flatMap((group) =>
+    group.items.flatMap((item) =>
+      item.children
+        ? item.children.map((child) => ({ item, group, child }))
+        : [{ item, group }],
+    ),
+  )
 }
 
 /** Workspace visível no switcher = tem ao menos 1 item permitido. */

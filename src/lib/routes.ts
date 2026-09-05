@@ -131,6 +131,19 @@ export const ROUTES = {
       },
     },
 
+    // ── Conteúdo (Dashboard Social + Estúdio de Carrosséis) ─────────────
+    // Item "Conteúdo" do grupo Marketing (workspace Operacional) com
+    // submenu: Dashboard, Estúdio, Reels, Calendário, Ideias.
+    CONTEUDO: {
+      ROOT: "/admin/conteudo",
+      DASHBOARD: "/admin/conteudo/dashboard",
+      ESTUDIO: "/admin/conteudo/estudio",
+      ESTUDIO_DOC: (id: string) => `/admin/conteudo/estudio/${id}` as const,
+      REELS: "/admin/conteudo/reels",
+      CALENDARIO: "/admin/conteudo/calendario",
+      IDEIAS: "/admin/conteudo/ideias",
+    },
+
     // ── Compartilhado (comercial e operacional acessam) ─────────────────
     INBOX: "/admin/inbox",
     INBOX_THREAD: (id: string) => `/admin/inbox/${id}` as const,

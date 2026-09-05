@@ -12,10 +12,11 @@
  * Colapsa para 64px (chevron flutuante na borda direita).
  */
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight, X, Search, Bell, Settings } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, X, Search, Bell, Settings } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Logo, LogoIcon } from "@/components/ui/logo"
@@ -208,15 +209,25 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
                   idx > 0 && "mt-[18px]",
                 )}
               >
-                {group.items.map((item) => (
-                  <NavRow
-                    key={item.href}
-                    item={item}
-                    collapsed={collapsed}
-                    active={isActiveHref(pathname, scopeParam, item.href)}
-                    badge={badgeFor(item)}
-                  />
-                ))}
+                {group.items.map((item) =>
+                  item.children ? (
+                    <NavRowWithChildren
+                      key={item.id}
+                      item={item}
+                      collapsed={collapsed}
+                      pathname={pathname}
+                      scopeParam={scopeParam}
+                    />
+                  ) : (
+                    <NavRow
+                      key={item.href}
+                      item={item}
+                      collapsed={collapsed}
+                      active={isActiveHref(pathname, scopeParam, item.href)}
+                      badge={badgeFor(item)}
+                    />
+                  ),
+                )}
               </div>
             ))}
           </nav>
@@ -331,6 +342,145 @@ function NavRow({
     )
   }
   return link
+}
+
+// ---------------------------------------------------------------------------
+// Item com submenu suspenso (ex.: Conteúdo). Expandido: o rótulo abre/fecha
+// a lista de filhos embaixo (abre sozinho quando um filho está ativo).
+// Colapsado: o ícone abre um flyout à direita com os filhos.
+// ---------------------------------------------------------------------------
+
+function NavRowWithChildren({
+  item,
+  collapsed,
+  pathname,
+  scopeParam,
+}: {
+  item: NavItem
+  collapsed: boolean
+  pathname: string
+  scopeParam: string | null
+}) {
+  const children = item.children ?? []
+  const childActive = children.some((c) => isActiveHref(pathname, scopeParam, c.href))
+  const parentPath = item.href.split("?")[0].split("/").slice(0, 4).join("/")
+  const active = childActive || pathname.startsWith(parentPath)
+  const [open, setOpen] = useState(active)
+  const [flyout, setFlyout] = useState(false)
+
+  useEffect(() => {
+    if (active) setOpen(true)
+  }, [active])
+
+  useEffect(() => {
+    setFlyout(false)
+  }, [pathname])
+
+  const iconEl = (
+    <span
+      className={cn(
+        "flex shrink-0",
+        active
+          ? "text-[var(--ws-accent)] dark:text-[var(--ws-accent-dark)]"
+          : "text-[var(--sidebar-muted-foreground)]",
+      )}
+    >
+      <Icon icon={item.icon} customSize={16} />
+    </span>
+  )
+
+  const childRows = (indent: boolean) =>
+    children.map((c) => {
+      const on = isActiveHref(pathname, scopeParam, c.href)
+      return (
+        <Link
+          key={c.id}
+          href={c.href}
+          aria-current={on ? "page" : undefined}
+          className={cn(
+            "flex items-center h-[30px] rounded-md text-[12.5px] transition-colors duration-150",
+            "hover:bg-[var(--sidebar-hover)]",
+            indent ? "pl-[37px] pr-2.5" : "px-2.5",
+            on
+              ? "font-semibold text-[var(--ws-accent)] dark:text-[var(--ws-accent-dark)]"
+              : "font-medium text-[var(--sidebar-foreground)]",
+          )}
+        >
+          <span className="truncate">{c.name}</span>
+        </Link>
+      )
+    })
+
+  if (collapsed) {
+    return (
+      <Popover open={flyout} onOpenChange={setFlyout}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={item.name}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative flex items-center justify-center w-9 h-[33px] rounded-md transition-colors duration-150",
+                  "hover:bg-[var(--sidebar-hover)]",
+                  flyout && "bg-[var(--sidebar-hover)]",
+                )}
+              >
+                {iconEl}
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          {!flyout && (
+            <TooltipContent side="right" sideOffset={8} className="text-xs font-medium">
+              {item.name}
+            </TooltipContent>
+          )}
+        </Tooltip>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={10}
+          className="w-[184px] p-1.5 rounded-lg border-[var(--sidebar-border)] bg-[var(--sidebar-background)] shadow-lg"
+        >
+          <div className="px-2.5 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--sidebar-muted-foreground)]">
+            {item.name}
+          </div>
+          <div className="flex flex-col gap-[2px]">{childRows(false)}</div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-[2px]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-current={active && !open ? "page" : undefined}
+        className={cn(
+          "relative flex items-center w-full h-[33px] gap-[11px] px-2.5 rounded-md text-[13px] transition-colors duration-150 text-left",
+          "hover:bg-[var(--sidebar-hover)]",
+          active
+            ? "font-semibold text-[var(--ws-accent)] dark:text-[var(--ws-accent-dark)]"
+            : "font-medium text-[var(--sidebar-foreground)]",
+        )}
+      >
+        {iconEl}
+        <span className="flex-1 truncate">{item.name}</span>
+        <span
+          className={cn(
+            "flex text-[var(--sidebar-muted-foreground)] transition-transform duration-150",
+            open && "rotate-180",
+          )}
+        >
+          <Icon icon={ChevronDown} customSize={12} />
+        </span>
+      </button>
+      {open && <div className="flex flex-col gap-[2px]">{childRows(true)}</div>}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
