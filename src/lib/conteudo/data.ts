@@ -66,6 +66,12 @@ export async function classificarPost(mediaId: string, patch: { pilar?: string |
   await api(`/api/conteudo/posts/${encodeURIComponent(mediaId)}`, { method: "PATCH", body: JSON.stringify(patch) })
 }
 
+/** Classificação em lote (seleção da tabela). Campo ausente não é tocado. */
+export async function classificarPosts(ids: string[], patch: { pilar?: string | null; molde?: string | null; palavraChave?: string | null }): Promise<number> {
+  const r = await api<{ atualizados: number }>(`/api/conteudo/posts`, { method: "PATCH", body: JSON.stringify({ ids, ...patch }) })
+  return r.atualizados
+}
+
 // ── Perfis ──────────────────────────────────────────────────────────────
 
 export async function getPerfis(refresh = false): Promise<Perfil[]> {

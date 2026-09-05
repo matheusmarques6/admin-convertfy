@@ -35,7 +35,7 @@ import {
 } from "@/lib/conteudo/dashboard/agregacao"
 import { PERFIL_CONSOLIDADO, type Agendado, type DashboardData, type DocStatus, type LeadDoPost, type Post } from "@/lib/conteudo/types"
 import { spDayKey } from "./instagram-followers"
-import { channelIgConfig, ensureChannelsSynced, fetchVisitasPerfil, type ChannelRow } from "./conteudo-instagram-sync.service"
+import { backfillPendente, channelIgConfig, ensureChannelsSynced, fetchVisitasPerfil, type ChannelRow } from "./conteudo-instagram-sync.service"
 import { historicoDoCanal, loadPerfis } from "./conteudo-perfis.service"
 
 const log = logger.child("ConteudoDashboard")
@@ -176,13 +176,14 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
       moldes: montarMoldes([]),
       derivados: { postsPublicados: 0, comentarios: 0, comentariosChave: 0, alcanceParaLead: null, ticketMedio: null, negocios: 0, clientes: 0, receita: 0 },
       sincronizadoEm: null,
+      cobertura: { totalPosts: 0, ultimoPostEm: null, primeiroPostEm: null, backfillPendente: false },
       avisos: ["Nenhum canal Instagram conectado. Conecte em Comercial → Canais."],
     }
   }
 
   const desdeAtrib = menosDias(anterior.start, 14)
 
-  const [mediaRes, dailyRes, threadsRes, agendaRes] = await Promise.all([
+  const [mediaRes, dailyRes, threadsRes, agendaRes, totalRes, ultimoRes, primeiroRes] = await Promise.all([
     admin
       .from("conteudo_ig_media")
       .select(
@@ -207,6 +208,10 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
       .gte("data", hoje)
       .order("data", { ascending: true })
       .limit(20),
+    // Cobertura (fora do período): distingue "vazio no período" de "sem sync".
+    admin.from("conteudo_ig_media").select("media_id", { count: "exact", head: true }).in("channel_id", canalIds),
+    admin.from("conteudo_ig_media").select("published_at").in("channel_id", canalIds).not("published_at", "is", null).order("published_at", { ascending: false }).limit(1),
+    admin.from("conteudo_ig_media").select("published_at").in("channel_id", canalIds).not("published_at", "is", null).order("published_at", { ascending: true }).limit(1),
   ])
 
   if (mediaRes.error) throw mediaRes.error
@@ -309,6 +314,16 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
   const sincronizadoEm = syncs.every((s) => s) ? syncs.sort()[0] : null
   if (!sincronizadoEm) avisos.push("Primeira sincronização com o Instagram ainda não concluiu. Clique em Atualizar dados.")
 
+  const cobertura = {
+    totalPosts: totalRes.count ?? 0,
+    ultimoPostEm: ((ultimoRes.data ?? []) as Array<{ published_at: string | null }>)[0]?.published_at ?? null,
+    primeiroPostEm: ((primeiroRes.data ?? []) as Array<{ published_at: string | null }>)[0]?.published_at ?? null,
+    backfillPendente: canais.some((c) => backfillPendente(c)),
+  }
+  if (cobertura.backfillPendente) {
+    avisos.push("Histórico do Instagram ainda sendo importado — posts antigos vão aparecendo a cada sincronização.")
+  }
+
   return {
     perfil: perfilSel,
     periodo,
@@ -332,6 +347,7 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
       receita: totAtual.receita,
     },
     sincronizadoEm,
+    cobertura,
     avisos,
   }
 }

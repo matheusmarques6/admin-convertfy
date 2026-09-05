@@ -20,10 +20,11 @@ import { Icon } from "@/components/ui/icon"
 import { DateControl, defaultOpsPeriod, periodQuery, type OpsPeriodValue } from "@/components/dashboard/ops/date-control"
 import { OpsCard, SectionTitle, Td, Th } from "@/components/dashboard/ops/primitives"
 import { CT_MOLDE_COR, CT_PILAR_COR } from "@/lib/conteudo/brand"
-import { getDashboard, sincronizarInstagram } from "@/lib/conteudo/data"
-import { PERFIL_CONSOLIDADO, type DashboardData, type Kpi, type PerfilFiltro, type Pilar, type Post } from "@/lib/conteudo/types"
+import { PILARES } from "@/lib/conteudo/config"
+import { classificarPosts, getDashboard, sincronizarInstagram } from "@/lib/conteudo/data"
+import { PERFIL_CONSOLIDADO, type DashboardData, type Kpi, type MoldeKey, type PerfilFiltro, type Pilar, type Post } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
-import { CtAvatar, CtAvatarComCanal, CtBadge, CtBtn, CtEmpty, CtFmt, CtSeg, CtSkel, CtThumbPost, CtTile, TNUM, fmtDec, fmtNum } from "../ui"
+import { CtAvatar, CtAvatarComCanal, CtBadge, CtBtn, CtEmpty, CtFmt, CtSeg, CtSkel, CtThumbPost, CtTile, TNUM, fmtDec, fmtNum, inputCls, selectCls } from "../ui"
 import { FunilConteudo } from "./funil-conteudo"
 import { PerfilPicker } from "./perfil-picker"
 import { PostDrawer } from "./post-drawer"
@@ -31,6 +32,10 @@ import { SeguidoresChart } from "./seguidores-chart"
 
 type SortKey = "alc" | "sav" | "sh" | "seg" | "com" | "leads"
 type FmtFiltro = "Todos" | "Carrossel" | "Reels" | "Imagem"
+
+const MOLDES: MoldeKey[] = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor"]
+/** "" = todos; "-" = só os SEM classificação (é onde o trabalho está). */
+const SEM = "-"
 
 function toneDelta(d: string | null): "pos" | "neg" | "neut" {
   if (!d) return "neut"
@@ -76,6 +81,21 @@ const fmtDiaCurto = (iso: string) => {
   return `${d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")} ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
 }
 
+/** dd/mm/aaaa de um ISO completo (publicação da mídia). */
+const fmtDataCurta = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+
+/**
+ * Período que vai do dia do post mais recente até hoje — é o atalho do
+ * estado vazio: "tem 47 posts, o último é de julho" só ajuda se der para
+ * ver os 47 com um clique.
+ */
+const periodoAte = (iso: string): OpsPeriodValue => {
+  const d = new Date(iso)
+  const inicio = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const hoje = new Date()
+  return { period: "custom", start: inicio, end: new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()), compare: false, presetLabel: null }
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────
 
 /** `saudacao` vem do servidor (hora do request): calcular no client causava divergência de hidratação. */
@@ -85,9 +105,15 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
   const [drawer, setDrawer] = useState<string | null>(null)
   const [q, setQ] = useState("")
   const [fFmt, setFFmt] = useState<FmtFiltro>("Todos")
+  const [fPilar, setFPilar] = useState<string>("")
+  const [fMolde, setFMolde] = useState<string>("")
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "leads", dir: "desc" })
   const [sincronizando, setSincronizando] = useState(false)
   const [erroSync, setErroSync] = useState<string | null>(null)
+  const [sel, setSel] = useState<Set<string>>(() => new Set())
+  const [lote, setLote] = useState<{ pilar: string; molde: string; kw: string }>({ pilar: "", molde: "", kw: "" })
+  const [aplicando, setAplicando] = useState(false)
+  const [erroLote, setErroLote] = useState<string | null>(null)
 
   const pq = periodQuery(period)
   const { data, error, isLoading, isValidating, mutate } = useSWR<DashboardData>(
@@ -104,10 +130,53 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
 
   const posts = useMemo(() => {
     if (!data) return []
-    const lista = data.posts.filter((p) => fFmt === "Todos" || p.fmt === fFmt).filter((p) => !q || p.head.toLowerCase().includes(q.toLowerCase()))
+    const lista = data.posts
+      .filter((p) => fFmt === "Todos" || p.fmt === fFmt)
+      .filter((p) => (fPilar === "" ? true : fPilar === SEM ? p.pilar == null : p.pilar === fPilar))
+      .filter((p) => (fMolde === "" ? true : fMolde === SEM ? p.molde == null : p.molde === fMolde))
+      .filter((p) => !q || p.head.toLowerCase().includes(q.toLowerCase()))
     const v = (p: Post) => p[sort.key] ?? -1
     return [...lista].sort((a, b) => (sort.dir === "desc" ? v(b) - v(a) : v(a) - v(b)))
-  }, [data, fFmt, q, sort])
+  }, [data, fFmt, fPilar, fMolde, q, sort])
+
+  // Seleção só pode conter o que está na tela: filtrar e depois classificar
+  // "todos" não pode alcançar post que saiu do filtro.
+  const idsVisiveis = useMemo(() => new Set(posts.map((p) => p.id)), [posts])
+  const selecionados = useMemo(() => [...sel].filter((id) => idsVisiveis.has(id)), [sel, idsVisiveis])
+  const todosMarcados = posts.length > 0 && selecionados.length === posts.length
+
+  const alternar = (id: string) =>
+    setSel((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const alternarTodos = () => setSel(todosMarcados ? new Set() : new Set(posts.map((p) => p.id)))
+
+  const aplicarLote = async () => {
+    if (!selecionados.length) return
+    const patch: { pilar?: string | null; molde?: string | null; palavraChave?: string | null } = {}
+    if (lote.pilar) patch.pilar = lote.pilar === SEM ? null : lote.pilar
+    if (lote.molde) patch.molde = lote.molde === SEM ? null : lote.molde
+    if (lote.kw.trim()) patch.palavraChave = lote.kw.trim()
+    if (!Object.keys(patch).length) {
+      setErroLote("Escolha pilar, molde ou palavra-chave para aplicar.")
+      return
+    }
+    setAplicando(true)
+    setErroLote(null)
+    try {
+      await classificarPosts(selecionados, patch)
+      setSel(new Set())
+      setLote({ pilar: "", molde: "", kw: "" })
+      await mutate()
+    } catch (e) {
+      setErroLote(e instanceof Error ? e.message : "Não foi possível classificar")
+    } finally {
+      setAplicando(false)
+    }
+  }
 
   const maxLeads = useMemo(() => Math.max(1, ...(data?.posts.map((p) => p.leads) ?? [1])), [data])
   const top5 = useMemo(() => [...(data?.posts ?? [])].sort((a, b) => b.leads - a.leads || (b.alc ?? 0) - (a.alc ?? 0)).slice(0, 5), [data])
@@ -339,7 +408,7 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
               <SectionTitle title="Publicações" hint="o que cada post gerou · clique para abrir e classificar" />
               <OpsCard
                 title="Posts publicados"
-                hint={data ? `${posts.length} no período` : undefined}
+                hint={data ? `${posts.length} de ${data.posts.length} no período · ${data.pilarMix.semClassificacao} sem classificação` : undefined}
                 noPad
                 right={
                   <div className="flex flex-wrap items-center gap-2.5">
@@ -359,6 +428,24 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                         ["Imagem", "Imagens"],
                       ]}
                     />
+                    <select value={fPilar} onChange={(e) => setFPilar(e.target.value)} aria-label="Filtrar por pilar" className={cn(selectCls, "h-[30px] w-auto bg-[var(--ops-page)] text-[11.5px]")}>
+                      <option value="">Pilar: todos</option>
+                      {PILARES.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                      <option value={SEM}>Sem pilar</option>
+                    </select>
+                    <select value={fMolde} onChange={(e) => setFMolde(e.target.value)} aria-label="Filtrar por molde" className={cn(selectCls, "h-[30px] w-auto bg-[var(--ops-page)] text-[11.5px]")}>
+                      <option value="">Molde: todos</option>
+                      {MOLDES.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                      <option value={SEM}>Sem molde</option>
+                    </select>
                   </div>
                 }
               >
@@ -372,11 +459,22 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                   ) : data && data.posts.length === 0 ? (
                     <CtEmpty
                       icon={ImageIcon}
-                      title="Nenhum post no período"
-                      desc={data.sincronizadoEm ? "Publique um carrossel ou amplie o período." : "A primeira sincronização com o Instagram ainda não rodou. Clique em Atualizar dados."}
+                      title="Nenhum post neste período"
+                      desc={
+                        data.cobertura.totalPosts > 0 && data.cobertura.ultimoPostEm
+                          ? `Este perfil tem ${data.cobertura.totalPosts} ${data.cobertura.totalPosts === 1 ? "post sincronizado" : "posts sincronizados"}, mas o mais recente é de ${fmtDataCurta(data.cobertura.ultimoPostEm)}. Amplie o período para vê-los.`
+                          : data.sincronizadoEm
+                            ? "Nada publicado aqui e nada sincronizado deste perfil. Publique um carrossel ou troque de perfil."
+                            : "A primeira sincronização com o Instagram ainda não rodou. Clique em Atualizar dados."
+                      }
                       action={
-                        <div className="mt-2 flex gap-2">
-                          <CtBtn kind="primary" icon={RefreshCw} onClick={() => void atualizar()} disabled={sincronizando}>
+                        <div className="mt-2 flex flex-wrap justify-center gap-2">
+                          {data.cobertura.ultimoPostEm && (
+                            <CtBtn kind="primary" onClick={() => setPeriod(periodoAte(data.cobertura.ultimoPostEm!))}>
+                              Ver desde {fmtDataCurta(data.cobertura.ultimoPostEm)}
+                            </CtBtn>
+                          )}
+                          <CtBtn icon={RefreshCw} onClick={() => void atualizar()} disabled={sincronizando}>
                             {sincronizando ? "Sincronizando…" : "Atualizar dados"}
                           </CtBtn>
                           <Link href={estudioNovo} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--ops-border)] px-[13px] text-[12px] font-semibold text-[var(--ops-title)]">
@@ -387,12 +485,38 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                       }
                     />
                   ) : posts.length === 0 ? (
-                    <CtEmpty title="Nenhum post com esse filtro" desc="Ajuste a busca ou o formato." />
+                    <CtEmpty
+                      title="Nenhum post com esse filtro"
+                      desc="Ajuste a busca, o formato ou a classificação."
+                      action={
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQ("")
+                            setFFmt("Todos")
+                            setFPilar("")
+                            setFMolde("")
+                          }}
+                          className="mt-2 text-[12px] font-semibold text-[var(--ops-accent)] hover:underline"
+                        >
+                          Limpar filtros
+                        </button>
+                      }
+                    />
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
                         <thead>
                           <tr>
+                            <th className="w-8 border-b border-[var(--ops-border)] px-3 py-2.5 text-left">
+                              <input
+                                type="checkbox"
+                                aria-label="Selecionar todos os posts do filtro"
+                                checked={todosMarcados}
+                                onChange={alternarTodos}
+                                className="m-0 accent-[var(--ops-accent)]"
+                              />
+                            </th>
                             <Th>Post</Th>
                             <Th>Perfil</Th>
                             <Th>Formato</Th>
@@ -411,7 +535,17 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                             const on = drawer === p.id
                             const pf = perfilDe(p.perfil)
                             return (
-                              <tr key={p.id} onClick={() => abrir(p.id)} className={cn("cursor-pointer transition-colors hover:bg-[var(--ops-hover)]", on && "bg-[var(--ops-hover)]")}>
+                              <tr key={p.id} onClick={() => abrir(p.id)} className={cn("cursor-pointer transition-colors hover:bg-[var(--ops-hover)]", (on || sel.has(p.id)) && "bg-[var(--ops-hover)]")}>
+                                <Td last={last} className="w-8">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Selecionar ${p.head}`}
+                                    checked={sel.has(p.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={() => alternar(p.id)}
+                                    className="m-0 accent-[var(--ops-accent)]"
+                                  />
+                                </Td>
                                 <Td last={last} className="max-w-[340px]">
                                   <div className="flex min-w-0 items-center gap-3">
                                     <CtThumbPost src={p.thumb} className="h-[45px] w-9 shrink-0 rounded-md shadow-[0_1px_2px_rgba(0,0,0,0.15)]" />
@@ -622,6 +756,50 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
         </div>
       </div>
       <PostDrawer post={dp} perfil={dp ? perfilDe(dp.perfil) : undefined} onClose={() => setDrawer(null)} onClassificado={() => void mutate()} />
+
+      {/* Classificação em lote — FLUTUA (não empurra a tabela). */}
+      {selecionados.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-5">
+          <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2.5 rounded-xl border border-[var(--ops-border)] bg-[var(--ops-card)] px-4 py-3 shadow-[0_8px_28px_rgba(0,0,0,0.22)]">
+            <span className="text-[12px] font-semibold text-[var(--ops-title)]" style={TNUM}>
+              {selecionados.length} {selecionados.length === 1 ? "post" : "posts"}
+            </span>
+            <select value={lote.pilar} onChange={(e) => setLote((l) => ({ ...l, pilar: e.target.value }))} aria-label="Pilar a aplicar" className={cn(selectCls, "h-[30px] w-auto bg-[var(--ops-page)] text-[11.5px]")}>
+              <option value="">Pilar…</option>
+              {PILARES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+              <option value={SEM}>Limpar pilar</option>
+            </select>
+            <select value={lote.molde} onChange={(e) => setLote((l) => ({ ...l, molde: e.target.value }))} aria-label="Molde a aplicar" className={cn(selectCls, "h-[30px] w-auto bg-[var(--ops-page)] text-[11.5px]")}>
+              <option value="">Molde…</option>
+              {MOLDES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+              <option value={SEM}>Limpar molde</option>
+            </select>
+            <input
+              value={lote.kw}
+              onChange={(e) => setLote((l) => ({ ...l, kw: e.target.value }))}
+              placeholder="Palavra-chave"
+              aria-label="Palavra-chave do comment gate"
+              maxLength={80}
+              className={cn(inputCls, "h-[30px] w-[150px] bg-[var(--ops-page)] text-[11.5px]")}
+            />
+            <CtBtn kind="primary" onClick={() => void aplicarLote()} disabled={aplicando}>
+              {aplicando ? "Aplicando…" : "Aplicar"}
+            </CtBtn>
+            <button type="button" onClick={() => setSel(new Set())} className="text-[11.5px] font-semibold text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
+              Limpar seleção
+            </button>
+            {erroLote && <span className="w-full text-[11px] font-medium text-[var(--ops-neg)]">{erroLote}</span>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

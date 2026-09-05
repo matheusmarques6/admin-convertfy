@@ -11,6 +11,10 @@
  * do conjunto mais rico para o mais básico):
  *   FEED (IMAGE/CAROUSEL): reach, saved, shares, total_interactions, follows, profile_visits
  *   REELS/VIDEO:           reach, saved, shares, total_interactions, views
+ *
+ * O histórico é trazido POR INTEIRO (backfill com cursor retomável): o
+ * dashboard permite qualquer período, e limitar a coleta a uma janela fixa
+ * faria período antigo aparecer vazio como se não houvesse post.
  */
 
 import type { createAdminClient } from "@/lib/supabase/server"
@@ -24,8 +28,6 @@ const API_VERSION = "v20.0"
 const BASE_URL = `https://graph.facebook.com/${API_VERSION}`
 const DIA_MS = 86_400_000
 
-/** Janela de mídias mantida em sincronia. */
-export const MEDIA_JANELA_DIAS = 120
 /** Insights de post recente (≤ 30 dias) renovam a cada 6 h; antigos, 1x/dia. */
 const INSIGHTS_TTL_RECENTE_MS = 6 * 3600_000
 const INSIGHTS_TTL_ANTIGO_MS = 24 * 3600_000
@@ -121,22 +123,68 @@ interface RawMedia {
 const MEDIA_FIELDS =
   "id,caption,media_type,media_product_type,permalink,media_url,thumbnail_url,timestamp,like_count,comments_count,children{id}"
 
-/** Lista mídias publicadas a partir de `desdeIso`, paginando pela Graph API. */
-export async function fetchMediaDesde(config: InstagramChannelConfig, desdeIso: string, maxPaginas = 6): Promise<Res<RawMedia[]>> {
+export function primeiraPaginaMedia(config: InstagramChannelConfig): string {
+  return `/${config.instagram_business_account_id}/media?fields=${encodeURIComponent(MEDIA_FIELDS)}&limit=50`
+}
+
+/** `paging.next` é URL absoluta; guardamos só o path relativo à versão. */
+export function pathDoNext(next: string | undefined): string | null {
+  if (!next) return null
+  const i = next.indexOf(`/${API_VERSION}`)
+  return i >= 0 ? next.slice(i + API_VERSION.length + 1) : null
+}
+
+export interface PaginaMedia {
+  midias: RawMedia[]
+  /** Path da próxima página; null quando chegou ao fim do perfil. */
+  proxima: string | null
+  paginas: number
+  /** Publicação mais antiga vista nesta varredura. */
+  maisAntiga: string | null
+}
+
+/**
+ * Varre mídias a partir de um cursor (ou do topo do perfil), respeitando um
+ * teto de páginas e um `desdeIso` opcional.
+ *
+ * O histórico inteiro pode ter centenas de posts, e uma request de rota tem
+ * orçamento curto: por isso a varredura DEVOLVE o cursor em vez de insistir.
+ * Quem chama grava o cursor e continua no próximo tick — é o que faz o
+ * backfill terminar sem estourar timeout.
+ */
+export async function varrerMedia(
+  config: InstagramChannelConfig,
+  opts: { cursor?: string | null; maxPaginas?: number; desdeIso?: string | null; ateMs?: number } = {},
+): Promise<Res<PaginaMedia>> {
   const out: RawMedia[] = []
-  let path: string | null = `/${config.instagram_business_account_id}/media?fields=${encodeURIComponent(MEDIA_FIELDS)}&limit=50`
-  for (let p = 0; p < maxPaginas && path; p++) {
+  let path: string | null = opts.cursor || primeiraPaginaMedia(config)
+  let paginas = 0
+  const max = opts.maxPaginas ?? 6
+
+  while (path && paginas < max) {
+    if (opts.ateMs && Date.now() > opts.ateMs) break
     const res: Res<{ data?: RawMedia[]; paging?: { next?: string } }> = await graph(config, path)
-    if (!res.ok) return out.length ? { ok: true, data: out } : res
+    if (!res.ok) {
+      // Falha no meio da varredura não descarta o que já veio: grava o lote e
+      // mantém o cursor para retomar.
+      return out.length ? { ok: true, data: { midias: out, proxima: path, paginas, maisAntiga: maisAntigaDe(out) } } : res
+    }
     const lote = res.data.data ?? []
     out.push(...lote)
+    paginas++
     const ultima = lote[lote.length - 1]?.timestamp
-    if (!lote.length || (ultima && ultima < desdeIso) || !res.data.paging?.next) break
-    // paging.next é URL absoluta; recorta o path relativo à versão.
-    const i = res.data.paging.next.indexOf(`/${API_VERSION}`)
-    path = i >= 0 ? res.data.paging.next.slice(i + API_VERSION.length + 1) : null
+    path = pathDoNext(res.data.paging?.next)
+    if (!lote.length) break
+    if (opts.desdeIso && ultima && ultima < opts.desdeIso) {
+      // Alcançou a borda da janela pedida: não é fim de perfil, mas basta.
+      return { ok: true, data: { midias: out.filter((m) => !m.timestamp || m.timestamp >= opts.desdeIso!), proxima: null, paginas, maisAntiga: maisAntigaDe(out) } }
+    }
   }
-  return { ok: true, data: out.filter((m) => !m.timestamp || m.timestamp >= desdeIso) }
+  return { ok: true, data: { midias: out, proxima: path, paginas, maisAntiga: maisAntigaDe(out) } }
+}
+
+function maisAntigaDe(m: RawMedia[]): string | null {
+  return m.reduce<string | null>((a, x) => (x.timestamp && (!a || x.timestamp < a) ? x.timestamp : a), null)
 }
 
 export interface MediaInsights {
@@ -260,6 +308,8 @@ export interface SyncResultado {
   midias: number
   insights_atualizados: number
   dias: number
+  /** Estado do backfill do histórico neste canal. */
+  backfill: { completo: boolean; paginas: number; restante: boolean }
   erro?: string
 }
 
@@ -270,9 +320,35 @@ interface MediaLinha {
   insights_at: string | null
 }
 
+function linhaDaMedia(channel: ChannelRow, m: RawMedia, agoraIso: string) {
+  return {
+    org_id: channel.org_id,
+    channel_id: channel.id,
+    media_id: m.id,
+    media_type: m.media_type ?? null,
+    media_product_type: m.media_product_type ?? null,
+    caption: m.caption ?? null,
+    permalink: m.permalink ?? null,
+    media_url: m.media_url ?? null,
+    thumbnail_url: m.thumbnail_url ?? m.media_url ?? null,
+    published_at: m.timestamp ?? null,
+    children_count: m.children?.data?.length ?? null,
+    like_count: typeof m.like_count === "number" ? m.like_count : null,
+    comments_count: typeof m.comments_count === "number" ? m.comments_count : null,
+    synced_at: agoraIso,
+  }
+}
+
 /**
- * Sincroniza um canal: mídias da janela + insights (as mais defasadas
- * primeiro, dentro do orçamento) + série diária dos últimos 30 dias.
+ * Sincroniza um canal: mídias + insights + série diária da conta.
+ *
+ * Duas passadas de mídia, sempre nesta ordem:
+ *  1. TOPO — as páginas mais recentes, que também atualizam curtidas e
+ *     comentários dos posts já conhecidos.
+ *  2. BACKFILL — enquanto o canal não tiver o histórico inteiro, continua
+ *     paginando do cursor salvo. O perfil pode ter centenas de posts e a
+ *     request tem orçamento curto, então o cursor é persistido e a próxima
+ *     execução (botão ou cron) retoma exatamente de onde parou.
  */
 export async function syncChannelConteudo(
   admin: Admin,
@@ -281,53 +357,77 @@ export async function syncChannelConteudo(
 ): Promise<SyncResultado> {
   const inicio = Date.now()
   const budget = opts.budgetMs ?? 20_000
+  const ateMs = inicio + budget
   const agora = opts.agora ?? new Date()
-  const resultado: SyncResultado = { channel_id: channel.id, ok: true, midias: 0, insights_atualizados: 0, dias: 0 }
+  const agoraIso = agora.toISOString()
+  const resultado: SyncResultado = {
+    channel_id: channel.id,
+    ok: true,
+    midias: 0,
+    insights_atualizados: 0,
+    dias: 0,
+    backfill: { completo: false, paginas: 0, restante: false },
+  }
 
   const storedConfig = channel.config ?? {}
   const healed = await resolveAndHealInstagramChannel(admin, channel, storedConfig, channelIgConfig(channel))
   const config = healed.config
   const rawConfig = healed.rawConfig
+  const conteudoAtual = (typeof rawConfig.conteudo === "object" && rawConfig.conteudo ? rawConfig.conteudo : {}) as Record<string, unknown>
+  let cursor = typeof conteudoAtual.media_cursor === "string" ? conteudoAtual.media_cursor : null
+  let backfillCompleto = conteudoAtual.backfill_done === true
+  let maisAntiga = typeof conteudoAtual.media_oldest_at === "string" ? conteudoAtual.media_oldest_at : null
 
-  const desde = new Date(agora.getTime() - MEDIA_JANELA_DIAS * DIA_MS).toISOString()
-  const midias = await fetchMediaDesde(config, desde)
-  if (!midias.ok) {
-    log.warn("[ConteudoIgSync] mídias indisponíveis", { channel: channel.id, error: midias.error })
-    return { ...resultado, ok: false, erro: midias.error.message }
-  }
-
-  if (midias.data.length) {
-    const linhas = midias.data.map((m) => ({
-      org_id: channel.org_id,
-      channel_id: channel.id,
-      media_id: m.id,
-      media_type: m.media_type ?? null,
-      media_product_type: m.media_product_type ?? null,
-      caption: m.caption ?? null,
-      permalink: m.permalink ?? null,
-      media_url: m.media_url ?? null,
-      thumbnail_url: m.thumbnail_url ?? m.media_url ?? null,
-      published_at: m.timestamp ?? null,
-      children_count: m.children?.data?.length ?? null,
-      like_count: typeof m.like_count === "number" ? m.like_count : null,
-      comments_count: typeof m.comments_count === "number" ? m.comments_count : null,
-      synced_at: agora.toISOString(),
-    }))
-    const { error } = await admin.from("conteudo_ig_media").upsert(linhas, { onConflict: "channel_id,media_id" })
+  const gravarMidias = async (lista: RawMedia[]): Promise<string | null> => {
+    if (!lista.length) return null
+    const { error } = await admin
+      .from("conteudo_ig_media")
+      .upsert(lista.map((m) => linhaDaMedia(channel, m, agoraIso)), { onConflict: "channel_id,media_id" })
     if (error) {
       log.error("[ConteudoIgSync] upsert mídias", { channel: channel.id, error: error.message })
-      return { ...resultado, ok: false, erro: error.message }
+      return error.message
     }
-    resultado.midias = linhas.length
+    resultado.midias += lista.length
+    return null
   }
 
-  // Insights: as mais defasadas primeiro, dentro do orçamento.
+  // 1. Topo do perfil (novidades + contadores atualizados).
+  const topo = await varrerMedia(config, { maxPaginas: 2, ateMs })
+  if (!topo.ok) {
+    log.warn("[ConteudoIgSync] mídias indisponíveis", { channel: channel.id, error: topo.error })
+    return { ...resultado, ok: false, erro: topo.error.message }
+  }
+  const erroTopo = await gravarMidias(topo.data.midias)
+  if (erroTopo) return { ...resultado, ok: false, erro: erroTopo }
+  if (topo.data.maisAntiga && (!maisAntiga || topo.data.maisAntiga < maisAntiga)) maisAntiga = topo.data.maisAntiga
+  // Perfil curto: o topo já alcançou o fim, então o histórico está completo.
+  if (!topo.data.proxima) backfillCompleto = true
+
+  // 2. Backfill do histórico, retomando do cursor.
+  if (!backfillCompleto && Date.now() < ateMs) {
+    const passo = await varrerMedia(config, { cursor, maxPaginas: 20, ateMs })
+    if (passo.ok) {
+      const erro = await gravarMidias(passo.data.midias)
+      if (erro) return { ...resultado, ok: false, erro }
+      resultado.backfill.paginas = passo.data.paginas
+      if (passo.data.maisAntiga && (!maisAntiga || passo.data.maisAntiga < maisAntiga)) maisAntiga = passo.data.maisAntiga
+      cursor = passo.data.proxima
+      if (!cursor) backfillCompleto = true
+    } else {
+      log.warn("[ConteudoIgSync] backfill interrompido", { channel: channel.id, error: passo.error.message })
+    }
+  }
+  resultado.backfill.completo = backfillCompleto
+  resultado.backfill.restante = !backfillCompleto
+
+  // Insights: sem insight primeiro, depois os mais defasados. O histórico
+  // inteiro pode levar várias rodadas — o cron continua de onde parou.
   const { data: pendentes } = await admin
     .from("conteudo_ig_media")
     .select("media_id, media_type, published_at, insights_at")
     .eq("channel_id", channel.id)
-    .gte("published_at", desde)
     .order("insights_at", { ascending: true, nullsFirst: true })
+    .order("published_at", { ascending: false })
     .limit(200)
     .returns<MediaLinha[]>()
 
@@ -365,11 +465,22 @@ export async function syncChannelConteudo(
     }
   }
 
-  // Carimbo do sync no config (sem tocar no resto).
-  const conteudo = (typeof rawConfig.conteudo === "object" && rawConfig.conteudo ? rawConfig.conteudo : {}) as Record<string, unknown>
+  // Carimbo do sync + estado do backfill no config (sem tocar no resto).
   await admin
     .from("crm_channels")
-    .update({ config: { ...rawConfig, conteudo: { ...conteudo, last_media_sync_at: agora.toISOString(), last_media_sync_error: resultado.ok ? null : resultado.erro ?? null } } })
+    .update({
+      config: {
+        ...rawConfig,
+        conteudo: {
+          ...conteudoAtual,
+          last_media_sync_at: agoraIso,
+          last_media_sync_error: resultado.ok ? null : resultado.erro ?? null,
+          media_cursor: backfillCompleto ? null : cursor,
+          backfill_done: backfillCompleto,
+          ...(maisAntiga ? { media_oldest_at: maisAntiga } : {}),
+        },
+      },
+    })
     .eq("id", channel.id)
 
   log.info("[ConteudoIgSync] canal sincronizado", { ...resultado, ms: Date.now() - inicio })
@@ -384,7 +495,17 @@ export function lastSyncAt(channel: ChannelRow): string | null {
   return null
 }
 
-/** Sincroniza os canais defasados (ou todos, com `force`) dentro do orçamento total. */
+/** O canal já trouxe o histórico inteiro do perfil? */
+export function backfillPendente(channel: ChannelRow): boolean {
+  const c = channel.config?.conteudo
+  return !(c && typeof c === "object" && (c as Record<string, unknown>).backfill_done === true)
+}
+
+/**
+ * Sincroniza os canais defasados dentro do orçamento total. Canal com
+ * histórico pendente NÃO espera o TTL: enquanto o backfill não termina, cada
+ * abertura do dashboard avança mais um pedaço.
+ */
 export async function ensureChannelsSynced(
   admin: Admin,
   channels: ChannelRow[],
@@ -397,7 +518,8 @@ export async function ensureChannelsSynced(
     const restante = budget - (Date.now() - inicio)
     if (restante < 3_000) break
     const last = lastSyncAt(ch)
-    if (!opts.force && last && Date.now() - Date.parse(last) < SYNC_TTL_MS) continue
+    const fresco = last && Date.now() - Date.parse(last) < SYNC_TTL_MS
+    if (!opts.force && fresco && !backfillPendente(ch)) continue
     out.push(await syncChannelConteudo(admin, ch, { budgetMs: Math.min(restante - 1_000, 20_000) }))
   }
   return out

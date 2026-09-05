@@ -42,6 +42,7 @@ const canaisFake = [
       conteudo: {
         profile: { username: "marca", name: "Marca", picture_url: null, followers: 1000, fetched_at: new Date().toISOString() },
         last_media_sync_at: "2026-09-05T09:00:00Z",
+        backfill_done: true,
       },
       follower_history: [
         { day: "2026-09-01", followers: 900, follows: null, media: null },
@@ -195,5 +196,20 @@ describe("carregarDashboard", () => {
     const d = await carregarDashboard(fakeAdmin(t), ORG, { ...PERIODO, syncBudgetMs: 0 })
     expect(d.posts).toHaveLength(0)
     expect(d.derivados.postsPublicados).toBe(0)
+    // A cobertura é o que separa "vazio no período" de "nada sincronizado".
+    expect(d.cobertura.backfillPendente).toBe(false)
+  })
+
+  it("histórico ainda em importação vira aviso (o vazio pode ser só o backfill)", async () => {
+    const { loadPerfis } = await import("./conteudo-perfis.service")
+    const real = await vi.importActual<typeof import("./conteudo-perfis.service")>("./conteudo-perfis.service")
+    const canalPendente = [{ ...canaisFake[0], config: { ...canaisFake[0].config, conteudo: { ...(canaisFake[0].config.conteudo as Record<string, unknown>), backfill_done: false } } }]
+    vi.mocked(loadPerfis).mockResolvedValueOnce({
+      channels: canalPendente as never,
+      perfis: canalPendente.map((c, i) => real.perfilDoCanal(c as never, i)),
+    })
+    const d = await carregarDashboard(fakeAdmin(baseTabelas()), ORG, { ...PERIODO, syncBudgetMs: 0 })
+    expect(d.cobertura.backfillPendente).toBe(true)
+    expect(d.avisos.some((a) => a.includes("Histórico do Instagram ainda sendo importado"))).toBe(true)
   })
 })

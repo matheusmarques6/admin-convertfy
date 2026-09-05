@@ -182,6 +182,17 @@ export interface DashboardData {
   }
   /** ISO da sincronização mais antiga entre os canais (null = nunca). */
   sincronizadoEm: string | null
+  /**
+   * O que existe no banco INDEPENDENTE do período — é o que distingue
+   * "nenhum post neste período" de "nada sincronizado ainda".
+   */
+  cobertura: {
+    totalPosts: number
+    ultimoPostEm: string | null
+    primeiroPostEm: string | null
+    /** Histórico do perfil ainda sendo trazido da Graph API. */
+    backfillPendente: boolean
+  }
   avisos: string[]
 }
 

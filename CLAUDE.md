@@ -2640,14 +2640,29 @@ insights) e `conteudo_ig_daily` (série da conta). O trigger de
 da TRANSAÇÃO e não anda dentro dela, e esse carimbo é a versão que detecta
 salvamento concorrente no editor.
 
-**Sync do Instagram** (`conteudo-instagram-sync.service.ts`): mídias da
-janela de 120 dias + insights POR MÍDIA (do conjunto mais rico ao mais
-básico — a Meta muda o conjunto aceito por tipo, e `#100` significa "tente
-menos métricas", não "token inválido") + série diária da conta. O dashboard
-lê SEMPRE do banco; o sync inline só roda quando o canal está defasado
-(30 min) e tem orçamento de tempo. O cron `instagram-snapshot` (05:15 BRT)
-sincroniza tudo com budget por canal. Falha de insight fica na linha
-(`insights_error`), nunca derruba a página.
+**Sync do Instagram** (`conteudo-instagram-sync.service.ts`): mídias +
+insights POR MÍDIA (do conjunto mais rico ao mais básico — a Meta muda o
+conjunto aceito por tipo, e `#100` significa "tente menos métricas", não
+"token inválido") + série diária da conta. O dashboard lê SEMPRE do banco;
+o sync inline só roda quando o canal está defasado (30 min) e tem orçamento
+de tempo. O cron `instagram-snapshot` (05:15 BRT) sincroniza tudo com budget
+por canal. Falha de insight fica na linha (`insights_error`), nunca derruba
+a página.
+
+**O histórico vem INTEIRO, por backfill retomável**: a janela fixa de 120
+dias fazia qualquer período mais antigo aparecer vazio como se não houvesse
+post. `syncChannelConteudo` faz duas passadas — TOPO (2 páginas: novidades +
+curtidas/comentários atualizados) e BACKFILL (até 20 páginas a partir do
+cursor salvo). `varrerMedia` devolve o cursor em vez de insistir: teto de
+páginas, orçamento de tempo estourado e falha no meio da paginação todos
+preservam o lote já lido e o `paging.next` (`media_cursor`,
+`backfill_done`, `media_oldest_at` em `crm_channels.config.conteudo`). Canal
+com backfill pendente IGNORA o TTL de 30 min — cada abertura do dashboard
+avança mais um pedaço — e o payload traz `cobertura` (total de posts, mais
+antigo, mais recente, `backfillPendente`) fora do período, que é o que
+distingue "nenhum post NESTE período" de "nada sincronizado ainda": o estado
+vazio da tabela diz qual dos dois é e oferece "Ver desde <data do último
+post>".
 
 **Leads do conteúdo = comment gate medido de verdade** (`atribuirLeads`, puro):
 contato que COMENTOU num post e depois (até 14 dias) abriu direct é lead
@@ -2667,7 +2682,12 @@ Agregação inteira em `lib/conteudo/dashboard/agregacao.ts` (puro, 20 testes).
 **Pilar, molde e palavra-chave são CLASSIFICAÇÃO HUMANA** (`PATCH
 /api/conteudo/posts/[id]`, no drawer do post): a Meta não sabe o que é um
 "Turbo". Sem classificação, mix e desempenho por molde dizem isso em vez de
-mostrar número.
+mostrar número. Com o histórico inteiro no banco, post a post não escala:
+`PATCH /api/conteudo/posts` classifica a SELEÇÃO da tabela (até 500 ids,
+campo ausente no corpo não é tocado, campo `null` limpa) e o dashboard tem
+filtros de pilar e molde com a opção "Sem pilar"/"Sem molde" — que é onde o
+trabalho está. A seleção é PODADA pelo filtro visível (`idsVisiveis`): sem
+isso, "selecionar todos" seguido de um filtro alcançaria post fora da tela.
 
 **Estúdio no servidor**: documentos, brand kits, templates do time e agenda
 persistem via `/api/conteudo/*`; `data.ts` é a ÚNICA porta do cliente e
