@@ -10,7 +10,7 @@ import { useRef } from "react"
 import { CtLabel, TNUM } from "../ui"
 import type { EditorApi } from "./editor-types"
 import type { ImagemSlot } from "@/lib/conteudo/types"
-import { arquivoParaDataUrl } from "@/lib/conteudo/imagens"
+import { uploadImagem } from "@/lib/conteudo/data"
 
 const CAMPOS: Array<[keyof ImagemSlot, string, number, number, string]> = [
   ["larguraSlot", "Largura slot", 400, 1080, "px"],
@@ -78,8 +78,13 @@ export function ImageFloat({ api }: { api: EditorApi }) {
         onChange={async (e) => {
           const f = e.target.files?.[0]
           if (f) {
-            const url = await arquivoParaDataUrl(f)
-            api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: { ...img, url, zoom: 100, x: 0, y: 0 } } } : x)) }), `Imagem trocada · ${frame.label}`)
+            try {
+              api.avisar("Enviando imagem…")
+              const { url } = await uploadImagem(f, "slide")
+              api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: { ...img, url, zoom: 100, x: 0, y: 0 } } } : x)) }), `Imagem trocada · ${frame.label}`)
+            } catch (err) {
+              api.avisar(err instanceof Error ? err.message : "Falha no upload")
+            }
           }
           e.target.value = ""
         }}

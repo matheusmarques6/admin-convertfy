@@ -49,7 +49,6 @@ export const ST_TEMPLATES: Template[] = [
     nome: "Turbo",
     etapaFunil: "topo",
     descricao: "Afirmação universal + multiplicador grande. Alcance e descoberta.",
-    leads: 11.5,
     cor: "#2137B6",
     frames: [
       fr("f1", "capa", "Capa", 1, CAPA),
@@ -66,7 +65,6 @@ export const ST_TEMPLATES: Template[] = [
     nome: "Benchmark de marca",
     etapaFunil: "topo",
     descricao: "Case de marca conhecida com número forte, mecanismo e tradução para o leitor.",
-    leads: 6.0,
     cor: "#0E7490",
     frames: [
       fr("f1", "capa", "Capa", 1, CAPA),
@@ -84,7 +82,6 @@ export const ST_TEMPLATES: Template[] = [
     nome: "Lista prática",
     etapaFunil: "meio",
     descricao: "N coisas que você precisa entender sobre X. Um item por slide, CTA de salvar.",
-    leads: 4.0,
     cor: "#B45309",
     frames: [
       fr("f1", "capa", "Capa", 1, CAPA),
@@ -99,7 +96,6 @@ export const ST_TEMPLATES: Template[] = [
     nome: "MEC papel-por-papel",
     etapaFunil: "meio",
     descricao: "Série numerada com barra de progresso no topo. Um papel por slide.",
-    leads: 7.5,
     cor: "#7C3AED",
     frames: [
       fr("f1", "capa", "Capa", 1, CAPA),
@@ -112,7 +108,6 @@ export const ST_TEMPLATES: Template[] = [
     nome: "Bastidor",
     etapaFunil: "fundo",
     descricao: "O que eu fiz por dentro, prova e convite para conversa.",
-    leads: 5.0,
     cor: "#374151",
     frames: [
       fr("f1", "capa", "Capa", 1, CAPA),

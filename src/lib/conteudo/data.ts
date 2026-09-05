@@ -1,84 +1,43 @@
 /**
- * Acesso a dados do módulo Conteúdo — a ÚNICA porta de leitura/escrita.
- *
- * Hoje: dashboard vem do mock; documentos, brand kits, templates do time e
- * agenda persistem em localStorage (semeados do mock na primeira abertura).
- * Amanhã: trocar as funções daqui por chamadas a rotas/Supabase. Nenhum
- * componente importa `mock/*` diretamente.
+ * Acesso a dados do módulo Conteúdo — a ÚNICA porta de leitura/escrita do
+ * lado do cliente. Tudo passa pelas rotas `/api/conteudo/*` (Supabase +
+ * Graph API no servidor). Nenhum componente conhece URL nem formato de
+ * resposta; erro HTTP vira `ConteudoApiError` com a mensagem da API.
  */
 
-import { BRAND_KIT_PADRAO, CT_PERFIS } from "./brand"
+import { PROMPTS_PRONTOS, type PromptPronto } from "./config"
 import { ST_TEMPLATES } from "./templates"
-import type {
-  AgendaItem,
-  BrandKit,
-  DashboardData,
-  Documento,
-  LeadDoPost,
-  MeuTemplate,
-  PerfilEditavel,
-  PerfilFiltro,
-  Post,
-  Prova,
-  Template,
-} from "./types"
-import * as M from "./mock/dashboard"
-import * as E from "./mock/estudio"
-import type { PromptPronto } from "./mock/estudio"
+import type { Agendado, BrandKit, DashboardData, Documento, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Template } from "./types"
 
-// ── Armazenamento local ─────────────────────────────────────────────────
-
-const KEYS = {
-  documentos: "conteudo:documentos:v1",
-  brandKits: "conteudo:brandkits:v1",
-  meusTemplates: "conteudo:meus-templates:v1",
-  agenda: "conteudo:agenda:v1",
-} as const
-
-function storage(): Storage | null {
-  try {
-    if (typeof window === "undefined" || !window.localStorage) return null
-    return window.localStorage
-  } catch {
-    return null
+export class ConteudoApiError extends Error {
+  status: number
+  code: string | null
+  /** No 409 do documento: a versão que está no servidor. */
+  documentoAtual?: Documento
+  constructor(msg: string, status: number, code: string | null = null) {
+    super(msg)
+    this.name = "ConteudoApiError"
+    this.status = status
+    this.code = code
   }
 }
 
-function ler<T>(key: string): T | null {
-  const s = storage()
-  if (!s) return null
-  try {
-    const raw = s.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : null
-  } catch {
-    return null
+type Body<T> = ({ success: true } & T) | { success: false; error?: string; message?: string; code?: string; documento_atual?: Documento }
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { ...init, headers: { ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...(init?.headers ?? {}) } })
+  const body = (await res.json().catch(() => null)) as Body<T> | null
+  if (!res.ok || !body || body.success === false) {
+    const msg =
+      (body && "error" in body && typeof body.error === "string" && body.error) ||
+      (body && "message" in body && typeof body.message === "string" && body.message) ||
+      (res.status === 401 ? "Sessão expirada. Entre de novo." : `Falha ao falar com o servidor (${res.status}).`)
+    const err = new ConteudoApiError(msg, res.status, body && "code" in body ? (body.code ?? null) : null)
+    if (body && "documento_atual" in body && body.documento_atual) err.documentoAtual = body.documento_atual
+    throw err
   }
+  return body as T
 }
-
-export class QuotaExcedidaError extends Error {
-  constructor() {
-    super("Sem espaço no armazenamento local do navegador. Remova imagens grandes ou carrosséis antigos.")
-    this.name = "QuotaExcedidaError"
-  }
-}
-
-function gravar(key: string, valor: unknown): void {
-  const s = storage()
-  if (!s) return
-  try {
-    s.setItem(key, JSON.stringify(valor))
-  } catch (e) {
-    const nome = (e as { name?: string })?.name ?? ""
-    if (/quota/i.test(nome) || /quota/i.test(String(e))) throw new QuotaExcedidaError()
-    throw e
-  }
-}
-
-// Cache em memória para o fallback sem localStorage (SSR/tests) e para
-// evitar JSON.parse a cada leitura.
-const mem: { documentos?: Documento[]; brandKits?: Record<PerfilEditavel, BrandKit>; meusTemplates?: MeuTemplate[]; agenda?: AgendaEntrada[] } = {}
-
-const espera = (ms = 120) => new Promise<void>((r) => setTimeout(r, ms))
 
 // ── Dashboard ───────────────────────────────────────────────────────────
 
@@ -87,201 +46,160 @@ export interface PeriodoQuery {
   end: string
 }
 
-function postsDoPerfil(perfil: PerfilFiltro): Post[] {
-  if (perfil === "consolidado") return M.CT_POSTS
-  if (perfil === "instagram") return M.CT_POSTS.filter((p) => p.perfil !== "youtube")
-  return M.CT_POSTS.filter((p) => p.perfil === perfil)
+export async function getDashboard(perfil: PerfilFiltro, periodo: PeriodoQuery, opts: { sync?: boolean } = {}): Promise<DashboardData> {
+  const q = new URLSearchParams({ perfil, start: periodo.start, end: periodo.end })
+  if (opts.sync === false) q.set("sync", "0")
+  const r = await api<{ dashboard: DashboardData }>(`/api/conteudo/dashboard?${q}`)
+  return r.dashboard
 }
 
-/**
- * Dados do dashboard para um perfil e período. Simula latência de rede
- * para os estados de carregamento serem reais na UI.
- */
-export async function getDashboard(perfil: PerfilFiltro, _periodo?: PeriodoQuery): Promise<DashboardData> {
-  await espera(260)
-  const posts = postsDoPerfil(perfil)
-  const yt = perfil === "youtube"
-  const kpis = yt ? M.CT_KPIS.yt : M.CT_KPIS.ig
-  const comentarios = posts.reduce((a, p) => a + p.com, 0)
-  const alcance = posts.reduce((a, p) => a + p.alc, 0)
-  const leads = posts.reduce((a, p) => a + p.leads, 0)
-  const clientes = M.CT_FUNIL[5].valor
-  const receita = yt ? 6950 : 41700
-  return {
-    perfil,
-    kpis,
-    serieSeguidores: M.CT_SEG_SERIE,
-    posts,
-    funil: M.CT_FUNIL,
-    pilarMix: M.CT_PILAR_MIX,
-    cadencia: M.CT_CADENCIA,
-    slots: M.CT_SLOTS,
-    moldes: M.CT_MOLDES,
-    derivados: {
-      postsPublicados: posts.length,
-      comentariosChave: comentarios,
-      alcanceParaLead: alcance > 0 ? (leads / alcance) * 100 : 0,
-      cplOrganico: 148,
-      ticketMedio: clientes > 0 ? Math.round(receita / clientes) : 0,
-      diasComentarioFechamento: 19,
-    },
-    sincronizadoEm: M.CT_SINCRONIZADO_EM,
-  }
+/** Força a sincronização com o Instagram (botão "Atualizar dados"). */
+export async function sincronizarInstagram(): Promise<{ perfis: Perfil[]; resultados: Array<{ channel_id: string; ok: boolean; midias: number; erro?: string }> }> {
+  return api(`/api/conteudo/dashboard/sync`, { method: "POST" })
 }
 
-export async function getPosts(perfil: PerfilFiltro = "consolidado"): Promise<Post[]> {
-  await espera(60)
-  return postsDoPerfil(perfil)
+export async function getLeadsDoPost(mediaId: string): Promise<{ leads: LeadDoPost[]; total: number }> {
+  return api(`/api/conteudo/posts/${encodeURIComponent(mediaId)}/leads`)
 }
 
-export async function getLeadsDoPost(_postId: string): Promise<LeadDoPost[]> {
-  await espera(40)
-  return M.CT_LEADS_DO_POST
+export async function classificarPost(mediaId: string, patch: { pilar?: string | null; molde?: string | null; palavraChave?: string | null; documentoId?: string | null }): Promise<void> {
+  await api(`/api/conteudo/posts/${encodeURIComponent(mediaId)}`, { method: "PATCH", body: JSON.stringify(patch) })
 }
 
-export function getEstruturaTurbo() {
-  return M.CT_ESTRUTURA_TURBO
+// ── Perfis ──────────────────────────────────────────────────────────────
+
+export async function getPerfis(refresh = false): Promise<Perfil[]> {
+  const r = await api<{ perfis: Perfil[] }>(`/api/conteudo/perfis${refresh ? "?refresh=1" : ""}`)
+  return r.perfis
 }
 
-export function getProvas(): Prova[] {
-  return M.CT_PROVAS
+export async function setMetaSemanal(perfil: PerfilEditavel, metaSemanal: number): Promise<Perfil> {
+  const r = await api<{ perfil: Perfil }>(`/api/conteudo/perfis/${perfil}`, { method: "PATCH", body: JSON.stringify({ metaSemanal }) })
+  return r.perfil
 }
 
-export function getLegendaExemplo(): string {
-  return M.CT_LEGENDA
-}
+// ── Estúdio: templates e prompts (configuração) ─────────────────────────
 
-export function getPerfil(id: PerfilFiltro) {
-  if (id === "instagram") return { id: "instagram" as const, nome: "Instagram", cor: "#4E62D8", canal: "instagram" as const }
-  return CT_PERFIS[id]
-}
-
-// ── Estúdio: templates ──────────────────────────────────────────────────
-
-export async function getTemplates(): Promise<Template[]> {
+export function getTemplates(): Template[] {
   return ST_TEMPLATES
 }
 
 export function getPromptsProntos(): PromptPronto[] {
-  return E.ST_PROMPTS_IA
+  return PROMPTS_PRONTOS
 }
 
-export function getSugestoesImagem(frameId: string): string[] {
-  return E.ST_SUGESTOES_IMG(frameId)
+/** Slot de imagem a partir de uma URL (upload, banco da org ou gerada). */
+export function slotDeUrl(url: string): ImagemSlot {
+  return { url, zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 1350 }
 }
 
-export function imagemBanco(seed: string) {
-  return E.stImg(E.ST_IMG(seed))
+// ── Imagens (Storage da org) ────────────────────────────────────────────
+
+export interface AssetItem {
+  url: string
+  path: string
+  nome: string
+  criadoEm: string | null
+  kind: "avatar" | "slide" | "gerada"
 }
 
-/** Slot de imagem a partir de uma URL (banco, upload ou data URL). */
-export function slotDeUrl(url: string) {
-  return E.stImg(url)
+export async function getAssets(limit = 60): Promise<AssetItem[]> {
+  const r = await api<{ itens: AssetItem[] }>(`/api/conteudo/assets?limit=${limit}`)
+  return r.itens
 }
+
+/** Sobe uma imagem e devolve a URL servida pelo admin (não expira). */
+export async function uploadImagem(file: File, kind: "slide" | "avatar" = "slide"): Promise<{ url: string; path: string }> {
+  const fd = new FormData()
+  fd.append("file", file)
+  fd.append("kind", kind)
+  return api(`/api/conteudo/upload`, { method: "POST", body: fd })
+}
+
+// ── Estúdio: meus templates ─────────────────────────────────────────────
 
 export async function getMeusTemplates(): Promise<MeuTemplate[]> {
-  if (!mem.meusTemplates) {
-    mem.meusTemplates = ler<MeuTemplate[]>(KEYS.meusTemplates) ?? E.meusTemplatesIniciais()
-  }
-  return mem.meusTemplates
+  const r = await api<{ templates: MeuTemplate[] }>(`/api/conteudo/templates`)
+  return r.templates
 }
 
-export async function saveMeuTemplate(t: MeuTemplate): Promise<MeuTemplate[]> {
-  const lista = await getMeusTemplates()
-  const i = lista.findIndex((x) => x.id === t.id)
-  const nova = i >= 0 ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]
-  mem.meusTemplates = nova
-  gravar(KEYS.meusTemplates, nova)
-  return nova
+export async function criarMeuTemplate(t: { nome: string; templateId: string; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }): Promise<MeuTemplate> {
+  const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates`, { method: "POST", body: JSON.stringify(t) })
+  return r.template
+}
+
+export async function usarMeuTemplate(id: string): Promise<MeuTemplate> {
+  const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates/${id}`, { method: "PATCH", body: JSON.stringify({ usar: true }) })
+  return r.template
+}
+
+export async function excluirMeuTemplate(id: string): Promise<void> {
+  await api(`/api/conteudo/templates/${id}`, { method: "DELETE" })
 }
 
 // ── Estúdio: documentos ─────────────────────────────────────────────────
 
 export async function getDocumentos(): Promise<Documento[]> {
-  if (!mem.documentos) {
-    const salvos = ler<Documento[]>(KEYS.documentos)
-    mem.documentos = salvos ?? E.bibliotecaInicial()
-    if (!salvos) gravar(KEYS.documentos, mem.documentos)
-  }
-  return mem.documentos
+  const r = await api<{ documentos: Documento[] }>(`/api/conteudo/documentos`)
+  return r.documentos
 }
 
 export async function getDocumento(id: string): Promise<Documento | null> {
-  const docs = await getDocumentos()
-  return docs.find((d) => d.id === id) ?? null
+  try {
+    const r = await api<{ documento: Documento }>(`/api/conteudo/documentos/${id}`)
+    return r.documento
+  } catch (e) {
+    if (e instanceof ConteudoApiError && e.status === 404) return null
+    throw e
+  }
 }
 
-/** Grava (upsert) e devolve a lista atualizada. Lança QuotaExcedidaError. */
-export async function saveDocumento(doc: Documento): Promise<Documento[]> {
-  const docs = await getDocumentos()
-  const atualizado = { ...doc, atualizadoEm: new Date().toISOString() }
-  const i = docs.findIndex((d) => d.id === doc.id)
-  const nova = i >= 0 ? docs.map((d) => (d.id === doc.id ? atualizado : d)) : [atualizado, ...docs]
-  mem.documentos = nova
-  gravar(KEYS.documentos, nova)
-  return nova
+export async function criarDocumento(doc: Documento): Promise<Documento> {
+  const r = await api<{ documento: Documento }>(`/api/conteudo/documentos`, { method: "POST", body: JSON.stringify({ documento: doc }) })
+  return r.documento
 }
 
-export async function deleteDocumento(id: string): Promise<Documento[]> {
-  const docs = await getDocumentos()
-  const nova = docs.filter((d) => d.id !== id)
-  mem.documentos = nova
-  gravar(KEYS.documentos, nova)
-  return nova
+/**
+ * Salva (substitui) o documento. `baseAtualizadoEm` é o carimbo da versão
+ * que o cliente carregou; se o servidor tiver outra, lança
+ * `ConteudoApiError` 409 com `documentoAtual`. `force` sobrescreve.
+ */
+export async function saveDocumento(doc: Documento, opts: { baseAtualizadoEm?: string | null; force?: boolean } = {}): Promise<Documento> {
+  const r = await api<{ documento: Documento }>(`/api/conteudo/documentos/${doc.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ documento: doc, baseAtualizadoEm: opts.baseAtualizadoEm ?? null, force: Boolean(opts.force) }),
+  })
+  return r.documento
 }
 
-/** Documento demo com textos completos (referência de prévias e fallback da IA). */
-export function getDocumentoReferencia(): Documento {
-  return E.DOC_REFERENCIA()
-}
-
-export function getEstruturaInspiracaoFallback() {
-  return E.ESTRUTURA_INSPIRACAO_FALLBACK
+export async function deleteDocumento(id: string): Promise<void> {
+  await api(`/api/conteudo/documentos/${id}`, { method: "DELETE" })
 }
 
 // ── Brand kits por perfil ───────────────────────────────────────────────
 
-export async function getBrandKits(): Promise<Record<PerfilEditavel, BrandKit>> {
-  if (!mem.brandKits) {
-    const salvos = ler<Record<PerfilEditavel, BrandKit>>(KEYS.brandKits)
-    mem.brandKits = salvos ?? { convertfy: { ...BRAND_KIT_PADRAO.convertfy }, bruno: { ...BRAND_KIT_PADRAO.bruno } }
-  }
-  return mem.brandKits
+export async function getBrandKits(): Promise<{ kits: Record<PerfilEditavel, BrandKit>; perfis: Perfil[] }> {
+  return api(`/api/conteudo/brand-kits`)
 }
 
-export async function saveBrandKit(perfil: PerfilEditavel, kit: BrandKit): Promise<Record<PerfilEditavel, BrandKit>> {
-  const atual = await getBrandKits()
-  const novo = { ...atual, [perfil]: kit }
-  mem.brandKits = novo
-  gravar(KEYS.brandKits, novo)
-  return novo
+export async function saveBrandKit(perfil: PerfilEditavel, kit: BrandKit): Promise<void> {
+  await api(`/api/conteudo/brand-kits`, { method: "PUT", body: JSON.stringify({ perfil, kit }) })
 }
 
 // ── Agenda (Calendário) ─────────────────────────────────────────────────
 
-export interface AgendaEntrada extends AgendaItem {
-  id: string
-  nome: string
-  criadoEm: string
+export async function getAgenda(periodo?: Partial<PeriodoQuery>): Promise<Agendado[]> {
+  const q = new URLSearchParams()
+  if (periodo?.start) q.set("start", periodo.start)
+  if (periodo?.end) q.set("end", periodo.end)
+  const r = await api<{ itens: Agendado[] }>(`/api/conteudo/agenda${q.size ? `?${q}` : ""}`)
+  return r.itens
 }
 
-export async function getAgenda(): Promise<AgendaEntrada[]> {
-  if (!mem.agenda) mem.agenda = ler<AgendaEntrada[]>(KEYS.agenda) ?? []
-  return mem.agenda
+export async function agendarDocumento(entrada: { documentoId: string; perfil: string | null; data: string; hora: string }): Promise<{ item: Agendado; agenda: { perfil: string; data: string; dataIso: string; hora: string } }> {
+  return api(`/api/conteudo/agenda`, { method: "PUT", body: JSON.stringify(entrada) })
 }
 
-export async function addAgenda(entrada: AgendaEntrada): Promise<AgendaEntrada[]> {
-  const lista = await getAgenda()
-  const nova = [...lista.filter((x) => x.id !== entrada.id), entrada]
-  mem.agenda = nova
-  gravar(KEYS.agenda, nova)
-  return nova
-}
-
-/** Limpa o cache em memória (testes). */
-export function _resetCache() {
-  delete mem.documentos
-  delete mem.brandKits
-  delete mem.meusTemplates
-  delete mem.agenda
+export async function desagendarDocumento(documentoId: string): Promise<void> {
+  await api(`/api/conteudo/agenda?documentoId=${encodeURIComponent(documentoId)}`, { method: "DELETE" })
 }

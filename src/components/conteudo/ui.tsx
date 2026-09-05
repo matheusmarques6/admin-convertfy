@@ -11,8 +11,8 @@ import type { LucideIcon } from "lucide-react"
 import { Instagram, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { CT_PERFIS } from "@/lib/conteudo/brand"
-import type { Formato, PerfilId } from "@/lib/conteudo/types"
+import { COR_CONSOLIDADO } from "@/lib/conteudo/brand"
+import type { Formato, Perfil } from "@/lib/conteudo/types"
 
 export const TNUM: CSSProperties = {
   fontVariantNumeric: "tabular-nums lining-nums",
@@ -217,50 +217,46 @@ export const textareaCls =
 
 // ── Perfil: avatar e canal ─────────────────────────────────────────────
 
-const FOTO: Partial<Record<PerfilId, string>> = { bruno: "https://i.pravatar.cc/96?img=12" }
-
-export function CtAvatar({ perfil, size = 24, src, className }: { perfil: PerfilId; size?: number; src?: string | null; className?: string }) {
-  const P = CT_PERFIS[perfil]
-  const foto = src ?? FOTO[perfil]
+/**
+ * Avatar do perfil: foto real (servida pelo admin) quando existe; senão a
+ * inicial do nome sobre a cor de marcador do canal. `src` sobrescreve (o
+ * brand kit do documento pode ter outra foto).
+ */
+export function CtAvatar({ perfil, size = 24, src, className }: { perfil: Perfil | null | undefined; size?: number; src?: string | null; className?: string }) {
+  const foto = src === undefined ? perfil?.avatar : src
+  const nome = perfil?.nome ?? "Perfil"
   if (foto) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={foto} alt={P.nome} width={size} height={size} className={cn("block shrink-0 rounded-full object-cover", className)} style={{ width: size, height: size }} />
+    return <img src={foto} alt={nome} width={size} height={size} className={cn("block shrink-0 rounded-full object-cover", className)} style={{ width: size, height: size }} />
   }
+  const letra = (perfil?.handle?.replace("@", "") || nome).trim().charAt(0).toUpperCase() || "?"
   return (
     <span
       className={cn("inline-flex shrink-0 items-center justify-center rounded-full text-white", className)}
-      style={{ width: size, height: size, background: perfil === "youtube" ? "#DC2626" : "linear-gradient(90deg, #4E62D8, #2137B6, #041366)" }}
-      aria-label={P.nome}
+      style={{ width: size, height: size, background: perfil?.cor ?? COR_CONSOLIDADO }}
+      aria-label={nome}
     >
-      {perfil === "youtube" ? (
-        <Icon icon={Play} customSize={size * 0.45} />
-      ) : (
-        <span style={{ fontSize: size * 0.42, letterSpacing: "-0.02em" }} className="font-extrabold">
-          C
-        </span>
-      )}
+      <span style={{ fontSize: size * 0.42, letterSpacing: "-0.02em" }} className="font-extrabold">
+        {letra}
+      </span>
     </span>
   )
 }
 
-export function CtCanalDot({ perfil }: { perfil: PerfilId }) {
-  const yt = perfil === "youtube"
+export function CtCanalDot() {
   return (
-    <span
-      className="box-content inline-flex h-[14px] w-[14px] items-center justify-center rounded-[5px] border-2 border-[var(--ops-card)] text-white"
-      style={{ background: yt ? "#DC2626" : "#DB2777" }}
-    >
-      <Icon icon={yt ? Play : Instagram} customSize={yt ? 7 : 8} />
+    <span className="box-content inline-flex h-[14px] w-[14px] items-center justify-center rounded-[5px] border-2 border-[var(--ops-card)] text-white" style={{ background: "#DB2777" }}>
+      <Icon icon={Instagram} customSize={8} />
     </span>
   )
 }
 
-export function CtAvatarComCanal({ perfil, size = 24 }: { perfil: PerfilId; size?: number }) {
+export function CtAvatarComCanal({ perfil, size = 24 }: { perfil: Perfil | null | undefined; size?: number }) {
   return (
     <span className="relative inline-flex">
       <CtAvatar perfil={perfil} size={size} />
       <span className="absolute -bottom-[5px] -right-[6px]">
-        <CtCanalDot perfil={perfil} />
+        <CtCanalDot />
       </span>
     </span>
   )
@@ -271,11 +267,12 @@ export function CtAvatarComCanal({ perfil, size = 24 }: { perfil: PerfilId; size
 const FMT: Record<Formato, { cor: string; icon: LucideIcon }> = {
   Carrossel: { cor: "#4E62D8", icon: Instagram },
   Reels: { cor: "#DB2777", icon: Play },
-  "Vídeo YT": { cor: "#DC2626", icon: Play },
+  Imagem: { cor: "#0E7490", icon: Instagram },
+  Vídeo: { cor: "#DC2626", icon: Play },
 }
 
 export function CtFmt({ fmt }: { fmt: Formato }) {
-  const f = FMT[fmt]
+  const f = FMT[fmt] ?? FMT.Imagem
   return (
     <span
       className="inline-flex h-5 items-center gap-[5px] whitespace-nowrap rounded-md pl-1.5 pr-2 text-[10.5px] font-semibold"
@@ -287,8 +284,18 @@ export function CtFmt({ fmt }: { fmt: Formato }) {
   )
 }
 
-/** Thumb fotográfica estável do post (placeholder até a Graph API). */
-export const ctThumb = (seed: string, w: number, h: number) => `https://picsum.photos/seed/cf${seed}/${w}/${h}`
+/** Miniatura REAL do post (thumbnail da Graph API); sem imagem, placeholder neutro. */
+export function CtThumbPost({ src, className, style }: { src: string | null | undefined; className?: string; style?: CSSProperties }) {
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" loading="lazy" className={cn("object-cover", className)} style={style} />
+  }
+  return (
+    <span className={cn("inline-flex items-center justify-center bg-[var(--ops-track)] text-[var(--ops-mut)]", className)} style={style} aria-hidden>
+      <Icon icon={Instagram} customSize={12} />
+    </span>
+  )
+}
 
 // ── Tile com ícone colorido (funil) ────────────────────────────────────
 

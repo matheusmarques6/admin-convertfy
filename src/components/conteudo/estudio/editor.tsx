@@ -41,11 +41,11 @@ import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { aplicarPropostas, ehTextoGuia, novaVersao, propostasDeLinhas, setTexto as setTextoDoc } from "@/lib/conteudo/documento"
+import { agendarDocumento } from "@/lib/conteudo/data"
 import { chamarIA } from "@/lib/conteudo/ia/client"
-import { frameLocal } from "@/lib/conteudo/ia/fallback"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import { CAMPO_LABEL, camposExcedidos } from "@/lib/conteudo/limites"
-import type { BrandKit, Campo, DocFrame, Documento, EstiloTexto, PerfilEditavel } from "@/lib/conteudo/types"
+import type { BrandKit, Campo, DocFrame, Documento, EstiloTexto, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtBadge, CtIconBtn, CtToast, TNUM, inputCls } from "../ui"
 import { ST_STATUS } from "./biblioteca"
@@ -95,6 +95,7 @@ const PAINEIS: Record<PainelKey, [string, LucideIcon]> = {
 
 interface Props {
   doc: Documento
+  perfis: Perfil[]
   brandKits: Record<PerfilEditavel, BrandKit> | null
   onSalvarBrandKit: (perfil: PerfilEditavel, kit: BrandKit) => Promise<void>
   modalInicial?: ModalEditor | null
@@ -105,7 +106,7 @@ interface Props {
   onSalvo?: (doc: Documento) => void
 }
 
-export function Editor({ doc: docInicial, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, anexosIniciais, onSalvo }: Props) {
+export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, anexosIniciais, onSalvo }: Props) {
   const router = useRouter()
   const ed = useEditor(docInicial, onSalvo)
   const { doc, set, preview } = ed
@@ -144,9 +145,15 @@ export function Editor({ doc: docInicial, brandKits, onSalvarBrandKit, modalInic
 
   const setFrame = useCallback((i: number, patch: Partial<DocFrame>) => set((d) => ({ ...d, frames: d.frames.map((f, j) => (j === i ? { ...f, ...patch } : f)) })), [set])
 
+  const perfilDoc = useMemo(() => perfis.find((p) => p.id === doc.perfil), [perfis, doc.perfil])
+  const abrirMidia = useCallback(() => {
+    setAba("ajustes")
+    setPainel("midia")
+  }, [])
+
   const api: EditorApi = useMemo(
-    () => ({ doc, set, preview, setFrame, ativo, setAtivo, sel, setSel, imgSel, setImgSel, setModal, avisar, brandKits, modoTemplate, restaurar: ed.restaurar, temSnapshot: ed.temSnapshot }),
-    [doc, set, preview, setFrame, ativo, setAtivo, sel, imgSel, avisar, brandKits, modoTemplate, ed.restaurar, ed.temSnapshot],
+    () => ({ doc, set, preview, setFrame, ativo, setAtivo, sel, setSel, imgSel, setImgSel, setModal, avisar, brandKits, perfis, perfil: perfilDoc, modoTemplate, abrirMidia, restaurar: ed.restaurar, temSnapshot: ed.temSnapshot }),
+    [doc, set, preview, setFrame, ativo, setAtivo, sel, imgSel, avisar, brandKits, perfis, perfilDoc, modoTemplate, abrirMidia, ed.restaurar, ed.temSnapshot],
   )
 
   const f = doc.frames[ativo]
@@ -218,12 +225,11 @@ export function Editor({ doc: docInicial, brandKits, onSalvarBrandKit, modalInic
     if (!f) return
     setPreenchendo(true)
     try {
-      const r = await chamarIA({ acao: "preencher_frame", resumo: resumoDocumento(doc), frame: { frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos }, atual: f.textos })
+      const r = await chamarIA({ acao: "preencher_frame", resumo: resumoDocumento(doc, perfilDoc), frame: { frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos }, atual: f.textos })
       setFrame(ativo, { textos: { ...f.textos, ...r.textos } })
       avisar("Slide preenchido pela ConvertIA")
-    } catch {
-      setFrame(ativo, { textos: { ...f.textos, ...frameLocal(doc, f.frameId).textos } })
-      avisar("ConvertIA indisponível: texto do modo local")
+    } catch (e) {
+      avisar(e instanceof Error ? `ConvertIA: ${e.message}` : "A ConvertIA não respondeu. Tente de novo.")
     } finally {
       setPreenchendo(false)
     }
@@ -303,12 +309,24 @@ export function Editor({ doc: docInicial, brandKits, onSalvarBrandKit, modalInic
           </button>
         )}
         {ghost("Preview", () => setModal("preview"), Instagram)}
-        <span className={cn("whitespace-nowrap text-[10.5px]", ed.salvo === "erro" ? "text-[var(--ops-neg)]" : "text-[var(--ops-mut)]")} title={ed.erroSalvar ?? undefined}>
-          {ed.salvo === "salvo" ? "Salvo automaticamente" : ed.salvo === "salvando" ? "Salvando…" : ed.salvo === "pendente" ? "Alterações pendentes" : "Erro ao salvar"}
-        </span>
+        {ed.salvo === "conflito" ? (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-2 py-1 text-[10.5px] text-[var(--ops-warn)]" title={ed.erroSalvar ?? undefined}>
+            Alterado em outro lugar
+            <button type="button" onClick={() => ed.resolverConflito("recarregar")} className="font-semibold underline">
+              Recarregar
+            </button>
+            <button type="button" onClick={() => ed.resolverConflito("sobrescrever")} className="font-semibold underline">
+              Sobrescrever
+            </button>
+          </span>
+        ) : (
+          <span className={cn("whitespace-nowrap text-[10.5px]", ed.salvo === "erro" ? "text-[var(--ops-neg)]" : "text-[var(--ops-mut)]")} title={ed.erroSalvar ?? undefined}>
+            {ed.salvo === "salvo" ? "Salvo no servidor" : ed.salvo === "salvando" ? "Salvando…" : ed.salvo === "pendente" ? "Alterações pendentes" : `Erro ao salvar${ed.erroSalvar ? `: ${ed.erroSalvar}` : ""}`}
+          </span>
+        )}
         {ghost("Salvar", () => {
-          set({ status: "pronto" }, "Marcado como pronto")
-          avisar("Marcado como pronto")
+          set({ status: doc.status === "rascunho" ? "pronto" : doc.status }, doc.status === "rascunho" ? "Marcado como pronto" : null)
+          void ed.salvarAgora().then((ok) => avisar(ok ? "Salvo no servidor" : "Não foi possível salvar"))
         })}
         <div className="relative flex shrink-0">
           <button type="button" onClick={() => setModal("exportar")} className="h-8 rounded-l-lg bg-[var(--ops-accent)] px-3.5 text-[12px] font-semibold text-[var(--ops-on-accent)]">
@@ -518,16 +536,22 @@ export function Editor({ doc: docInicial, brandKits, onSalvarBrandKit, modalInic
         <FramesPanel api={api} />
       </div>
 
-      {modal === "preview" && <PreviewModal doc={doc} onClose={() => setModal(null)} onExportar={() => setModal("exportar")} onAgendar={() => setModal("agendar")} />}
+      {modal === "preview" && <PreviewModal doc={doc} perfil={perfilDoc} onClose={() => setModal(null)} onExportar={() => setModal("exportar")} onAgendar={() => setModal("agendar")} />}
       {modal === "exportar" && <ExportModal api={api} onClose={() => setModal(null)} onAgendar={() => setModal("agendar")} />}
       {modal === "agendar" && (
         <AgendarModal
           doc={doc}
+          perfis={perfis}
           onClose={() => setModal(null)}
-          onConfirmado={(q) => {
-            set({ status: "agendado", data: q.data, agenda: q }, `Agendado para ${q.data} às ${q.hora} · ${q.perfil === "bruno" ? "Bruno" : "Convertfy"}`)
+          onConfirmar={async (q) => {
+            // Salva o documento antes: a agenda referencia a linha no banco.
+            const ok = await ed.salvarAgora()
+            if (!ok) throw new Error("Salve o carrossel antes de agendar.")
+            const r = await agendarDocumento({ documentoId: doc.id, perfil: q.perfil || null, data: q.dataIso, hora: q.hora })
+            const nomePerfil = perfis.find((p) => p.id === q.perfil)?.nome ?? "perfil"
+            set({ status: "agendado", data: r.agenda.data, agenda: { perfil: r.agenda.perfil, data: r.agenda.data, dataIso: r.agenda.dataIso, hora: r.agenda.hora } }, `Agendado para ${r.agenda.data} às ${r.agenda.hora} · ${nomePerfil}`)
             setModal(null)
-            avisar(`Agendado para ${q.data} às ${q.hora} e adicionado ao Calendário`)
+            avisar(`Agendado para ${r.agenda.data} às ${r.agenda.hora} e adicionado ao Calendário`)
           }}
         />
       )}

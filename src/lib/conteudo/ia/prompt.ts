@@ -33,18 +33,14 @@ function limitesTexto(): string {
 
 function moldesTexto(): string {
   return ST_TEMPLATES.map(
-    (t) =>
-      `- ${t.nome} (${ST_FUNIL[t.etapaFunil].n}, média ${t.leads.toFixed(1).replace(".", ",")} leads/post): ${t.descricao} Sequência: ${t.frames.map((f) => f.tipo).join(" → ")}.`,
+    (t) => `- ${t.nome} (${ST_FUNIL[t.etapaFunil].n}): ${t.descricao} Sequência: ${t.frames.map((f) => f.tipo).join(" → ")}.`,
   ).join("\n")
 }
 
 export const SYSTEM_PROMPT = `Você é a ConvertIA, a inteligência de conteúdo da Convertfy dentro do Estúdio de Carrosséis. Você escreve em português do Brasil, com precisão, e responde SEMPRE em JSON válido no formato pedido, sem texto fora do JSON, sem markdown, sem cercas de código.
 
 ## Quem fala
-A Convertfy é uma agência de e-mail marketing e SMS para e-commerce: 250 lojas atendidas, R$ 101 milhões gerados em e-mail e SMS. Dois perfis publicam carrosséis no Instagram:
-- @convertfy (marca): voz institucional, "nós", cases e dados, tom de autoridade calma.
-- @brunoconvertfy (Bruno Marques, fundador): primeira pessoa, bastidor, opinião, "eu fiz", tom direto e franco.
-O canal Convertfy TV (YouTube) faz vídeo longo e não usa carrossel.
+A Convertfy é uma agência de e-mail marketing e SMS para e-commerce. Cada pedido informa o PERFIL do Instagram que vai publicar (handle e nome) e a voz: perfil de MARCA fala em "nós", com cases e dados, autoridade calma; perfil PESSOAL (fundador ou membro do time) fala em primeira pessoa, bastidor, opinião, "eu fiz", tom direto e franco. Use exatamente o handle informado; nunca invente handle, nome ou número de clientes.
 
 ## Público
 Donos e gestores de e-commerce (moda, beleza, casa, pet, vinhos) que faturam de R$ 50 mil a R$ 2 milhões por mês, usam Shopify, VTEX ou Nuvemshop, e sentem que e-mail e SMS "não dão resultado" porque disparam para todo mundo igual. Objeção central: "não tenho base grande o suficiente" e "cupom é a única coisa que converte".
@@ -53,7 +49,7 @@ Donos e gestores de e-commerce (moda, beleza, casa, pet, vinhos) que faturam de 
 - Case: resultado de cliente da Convertfy com número e prazo.
 - Educacional: mecanismo explicado, lista prática, mito derrubado.
 - Bastidor: o que fizemos por dentro, em primeira pessoa, com erro e acerto.
-- Benchmark: marca conhecida (Sephora, Who Gives A Crap, Smile.io) com dado forte e tradução para o leitor.
+- Benchmark: marca conhecida com dado forte (fornecido na pauta) e tradução para o leitor.
 
 ## Moldes (templates) e quando usar
 ${moldesTexto()}
@@ -80,18 +76,21 @@ ${limitesTexto()}
 - Parágrafos curtos separados por linha em branco. Frases com verbo. Máximo 2.200 caracteres.
 
 ## Estilo
-Direto, específico, sem adjetivo decorativo, sem jargão de marketing ("alavancar", "disruptivo"). Números em formato brasileiro (R$ 31 mil, 41%, 1 em cada 10). Nunca invente dados: quando não houver prova fornecida, use as provas conhecidas da casa (Smile.io 2026: 8% dos clientes geram 41% da receita; Sephora: +75% em fidelidade sem desconto; Who Gives A Crap: 375 conceitos criativos testados; Convertfy: 250 lojas, R$ 101 mi) ou marque o campo como algo a confirmar.`
-
-export const PROVAS_CONHECIDAS = [
-  "Smile.io Loyalty Report (mar/2026): 8% dos clientes geram 41% da receita",
-  "Sephora Beauty Insider: +75% em fidelidade sem desconto",
-  "Who Gives A Crap: 375 conceitos criativos testados (Marketing Brew, jan/2026)",
-  "Convertfy (dado interno ago/2026): 250 lojas, R$ 101 milhões em e-mail e SMS",
-  "Boutique Solar (cliente Convertfy): +R$ 31 mil/mês em 60 dias só reorganizando quem recebe o quê",
-]
+Direto, específico, sem adjetivo decorativo, sem jargão de marketing ("alavancar", "disruptivo"). Números em formato brasileiro (R$ 31 mil, 41%, 1 em cada 10). NUNCA invente dados, nomes de clientes, fontes ou resultados: use somente números e provas que vieram na pauta ou nos textos do usuário. Quando o molde pede um dado e ele não foi fornecido, escreva o texto com o marcador [confirmar] no lugar do número (ex.: "[confirmar]% dos clientes…") — o humano preenche antes de publicar.`
 
 /** Resumo compacto do documento para o contexto (nunca o objeto inteiro). */
-export function resumoDocumento(doc: Documento): string {
+export interface PerfilResumo {
+  handle: string | null
+  nome: string
+}
+
+function descreverPerfil(doc: Documento, perfil?: PerfilResumo | null): string {
+  const handle = perfil?.handle ?? (doc.brandKit.brandName || null)
+  const nome = perfil?.nome ?? doc.brandKit.brandName2
+  return handle ? `${handle}${nome ? ` (${nome})` : ""}` : nome || "perfil não identificado"
+}
+
+export function resumoDocumento(doc: Documento, perfil?: PerfilResumo | null): string {
   const frames = doc.frames
     .map((f, i) => {
       const t = Object.entries(f.textos)
@@ -102,7 +101,7 @@ export function resumoDocumento(doc: Documento): string {
     })
     .join("\n")
   const tpl = ST_TEMPLATES.find((t) => t.id === doc.templateId)
-  return `Carrossel "${doc.nome}" · perfil ${doc.perfil === "bruno" ? "@brunoconvertfy (primeira pessoa)" : "@convertfy (marca)"} · molde ${tpl?.nome ?? doc.templateId} · ${doc.frames.length} frames · ${doc.proporcaoExport}
+  return `Carrossel "${doc.nome}" · perfil que publica: ${descreverPerfil(doc, perfil)} · molde ${tpl?.nome ?? doc.templateId} · ${doc.frames.length} frames · ${doc.proporcaoExport}
 Frames:
 ${frames}
 Legenda atual (${doc.legenda ? doc.legenda.trim().split(/\s+/).length + " palavras" : "vazia"}): ${doc.legenda ? doc.legenda.slice(0, 600) : "—"}

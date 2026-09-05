@@ -29,7 +29,8 @@ export const entradaSchema = z.discriminatedUnion("acao", [
   z.object({
     acao: z.literal("gerar_estrutura"),
     nome: z.string().min(1).max(200),
-    perfil: z.enum(["bruno", "convertfy"]),
+    /** Quem publica: handle/nome e a voz (marca = "nós"; pessoal = primeira pessoa). */
+    perfil: z.object({ handle: z.string().max(80).nullable(), nome: z.string().max(120), voz: z.enum(["marca", "pessoal"]).optional() }),
     pauta: z.string().min(1).max(4000),
     pilar: z.string().max(40).optional(),
     etapaFunil: z.string().max(40).optional(),

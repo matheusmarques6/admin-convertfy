@@ -2,20 +2,20 @@
 
 /**
  * Orquestrador da home do Estúdio: biblioteca + fluxo Novo carrossel.
- * Parâmetros de URL: `?novo=template|ia|inspiracao&perfil=bruno|convertfy`
- * (o Dashboard e os slots vazios chegam assim) e `?criar-template=1`.
+ * Parâmetros de URL: `?novo=template|ia|inspiracao&perfil=<id do canal>`
+ * (o Dashboard chega assim) e `?criar-template=1`.
  */
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/lib/hooks/use-toast"
-import { getPromptsProntos, QuotaExcedidaError } from "@/lib/conteudo/data"
-import { comHistorico, novoId } from "@/lib/conteudo/documento"
+import { getPromptsProntos } from "@/lib/conteudo/data"
+import { comHistorico, novoUuid } from "@/lib/conteudo/documento"
 import type { PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { Biblioteca, type Caminho } from "./biblioteca"
 import { NovoFlow, type CriacaoResultado } from "./novo-flow"
-import { useBrandKits, useDocumentos, useMeusTemplates, usePostsPublicados } from "./use-estudio-data"
+import { useBrandKits, useDocumentos, useMeusTemplates, usePerfis, usePostsPublicados } from "./use-estudio-data"
 
 const CAMINHOS: Caminho[] = ["template", "ia", "inspiracao"]
 
@@ -25,17 +25,18 @@ export function EstudioHome() {
   const router = useRouter()
   const params = useSearchParams()
   const { toast } = useToast()
-  const { docs, salvar, excluir } = useDocumentos()
-  const { meus, salvar: salvarMeuTemplate } = useMeusTemplates()
+  const { docs, error, criar, salvar, excluir } = useDocumentos()
+  const { meus, criar: criarMeuTemplate, usar: usarMeuTemplate, excluir: excluirMeuTemplate } = useMeusTemplates()
   const { kits } = useBrandKits()
+  const { perfis } = usePerfis()
   const posts = usePostsPublicados()
-  const [novo, setNovo] = useState<{ caminho?: Caminho | null; perfil?: PerfilEditavel; modoTemplate?: boolean } | null>(null)
+  const [novo, setNovo] = useState<{ caminho?: Caminho | null; perfil?: PerfilEditavel; meuTemplateId?: string; modoTemplate?: boolean } | null>(null)
 
   useEffect(() => {
     const n = params.get("novo")
     const p = params.get("perfil")
     if (params.get("criar-template")) setNovo({ modoTemplate: true })
-    else if (n) setNovo({ caminho: CAMINHOS.includes(n as Caminho) ? (n as Caminho) : null, perfil: p === "bruno" || p === "convertfy" ? p : undefined })
+    else if (n) setNovo({ caminho: CAMINHOS.includes(n as Caminho) ? (n as Caminho) : null, perfil: p ?? undefined })
   }, [params])
 
   const fecharNovo = useCallback(() => {
@@ -47,19 +48,11 @@ export function EstudioHome() {
 
   const onCriado = async (r: CriacaoResultado) => {
     try {
-      await salvar(r.doc)
+      await criar(r.doc)
       if (r.salvarTemplate) {
-        await salvarMeuTemplate({
-          id: novoId("meu-"),
-          nome: r.salvarTemplate.nome,
-          origem: "inspiração",
-          frames: r.salvarTemplate.frames,
-          usos: r.caminho === "template-review" ? 0 : 1,
-          seed: `meutpl${Date.now()}`,
-          templateId: r.salvarTemplate.templateId,
-          criadoEm: new Date().toISOString(),
-        })
+        await criarMeuTemplate({ ...r.salvarTemplate, usos: r.caminho === "template-review" ? 0 : 1 })
       }
+      if (r.meuTemplateUsado) void usarMeuTemplate(r.meuTemplateUsado).catch(() => undefined)
       if (r.anexos?.length) {
         try {
           sessionStorage.setItem(ANEXOS_KEY(r.doc.id), JSON.stringify(r.anexos))
@@ -67,47 +60,81 @@ export function EstudioHome() {
           /* sem sessionStorage: as referências ficam de fora do chat */
         }
       }
-      if (r.modoLocal) toast({ title: "ConvertIA indisponível", description: "O carrossel foi montado pelo modo local. Regenere no editor quando a IA voltar." })
       setNovo(null)
       const q = r.caminho === "template-review" ? "?modo=template" : r.caminho === "ia" ? "?aba=ia" : ""
       router.push(`${ROUTES.ADMIN.CONTEUDO.ESTUDIO_DOC(r.doc.id)}${q}`)
     } catch (e) {
-      toast({ title: "Não foi possível salvar", description: e instanceof QuotaExcedidaError ? e.message : "Tente de novo.", variant: "destructive" })
+      toast({ title: "Não foi possível salvar", description: e instanceof Error ? e.message : "Tente de novo.", variant: "destructive" })
     }
   }
 
   const duplicar = async (id: string) => {
     const d = docs?.find((x) => x.id === id)
     if (!d) return
+    const agora = new Date()
     const copia = comHistorico(
-      { ...d, id: novoId("d"), nome: `${d.nome} (cópia)`, status: "rascunho", data: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), agenda: undefined, criadoEm: new Date().toISOString(), atualizadoEm: new Date().toISOString() },
+      {
+        ...d,
+        id: novoUuid(),
+        nome: `${d.nome} (cópia)`,
+        status: "rascunho",
+        data: agora.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        agenda: undefined,
+        publicacao: undefined,
+        criadoEm: agora.toISOString(),
+        atualizadoEm: agora.toISOString(),
+      },
       `Duplicado de "${d.nome}"`,
     )
-    await salvar(copia)
-    toast({ title: "Carrossel duplicado" })
+    try {
+      await criar(copia)
+      toast({ title: "Carrossel duplicado" })
+    } catch (e) {
+      toast({ title: "Não foi possível duplicar", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    }
   }
 
   const renomear = async (id: string, nome: string) => {
     const d = docs?.find((x) => x.id === id)
     if (!d || d.nome === nome) return
-    await salvar(comHistorico({ ...d, nome }, `Renomeado para "${nome}"`))
+    try {
+      await salvar(comHistorico({ ...d, nome }, `Renomeado para "${nome}"`), { baseAtualizadoEm: d.atualizadoEm })
+    } catch (e) {
+      toast({ title: "Não foi possível renomear", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    }
   }
 
   const excluirDoc = async (id: string) => {
-    await excluir(id)
-    toast({ title: "Carrossel excluído" })
+    try {
+      await excluir(id)
+      toast({ title: "Carrossel excluído" })
+    } catch (e) {
+      toast({ title: "Não foi possível excluir", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    }
+  }
+
+  const excluirTemplate = async (id: string) => {
+    try {
+      await excluirMeuTemplate(id)
+      toast({ title: "Template removido" })
+    } catch (e) {
+      toast({ title: "Não foi possível remover", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    }
   }
 
   return (
     <>
       <Biblioteca
         docs={docs}
+        erro={error?.message ?? null}
+        perfis={perfis}
         meusTemplates={meus}
         promptsProntos={getPromptsProntos().length}
         onAbrir={abrir}
-        onNovo={(caminho, perfil) => setNovo({ caminho: caminho ?? null, perfil })}
+        onNovo={(caminho, perfil, meuTemplateId) => setNovo({ caminho: caminho ?? null, perfil, meuTemplateId })}
         onCriarTemplate={() => setNovo({ modoTemplate: true })}
         onExcluir={excluirDoc}
+        onExcluirTemplate={excluirTemplate}
         onDuplicar={duplicar}
         onRenomear={renomear}
         onBrandKit={() => {
@@ -120,8 +147,11 @@ export function EstudioHome() {
         <NovoFlow
           caminhoInicial={novo.caminho ?? null}
           perfilInicial={novo.perfil}
+          meuTemplateInicial={novo.meuTemplateId ?? null}
           modoTemplate={novo.modoTemplate}
           posts={posts}
+          perfis={perfis ?? []}
+          meusTemplates={meus}
           brandKits={kits}
           onClose={fecharNovo}
           onCriado={onCriado}

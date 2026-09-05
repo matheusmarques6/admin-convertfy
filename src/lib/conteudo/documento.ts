@@ -7,13 +7,14 @@
  * (`templates.ts`) são somente leitura.
  */
 
-import { BRAND_KIT_PADRAO, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { camposDoTipo, getTemplate } from "./templates"
 import type {
   BrandKit,
   Campo,
   DocFrame,
   Documento,
+  EstruturaDetectada,
   FrameTipo,
   PerfilEditavel,
   PropostaSlide,
@@ -27,6 +28,16 @@ let seq = 0
 export function novoId(prefixo = "id"): string {
   seq = (seq + 1) % 1000
   return `${prefixo}${Date.now().toString(36)}${seq.toString(36)}`
+}
+
+/** UUID para entidades persistidas (documentos): o banco exige uuid. */
+export function novoUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID()
+  // fallback RFC 4122 v4 sem crypto (ambientes de teste antigos)
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16)
+  })
 }
 
 export function dataCurta(d = new Date()): string {
@@ -92,16 +103,16 @@ export function novoDocumento(
   const t = getTemplate(templateId)
   const agora = opts.agora ?? new Date()
   return {
-    id: novoId("d"),
+    id: novoUuid(),
     nome,
-    projeto: opts.projeto ?? "Convertfy · setembro",
+    projeto: opts.projeto ?? `Carrosséis · ${agora.toLocaleDateString("pt-BR", { month: "long" })}`,
     templateId: t.id,
     perfil,
     proporcaoExport: "4:5",
     status: "rascunho",
     versao: "v1",
     data: dataCurta(agora),
-    brandKit: { ...(opts.brandKit ?? BRAND_KIT_PADRAO[perfil]) },
+    brandKit: { ...(opts.brandKit ?? brandKitPadrao(null, agora.getFullYear())) },
     ocultos: {},
     cores: { ...CORES_PADRAO },
     fundoPorFrame: Object.fromEntries(t.frames.map((f, i) => [f.id, fundoPadrao(f.tipo, i)])),
@@ -117,10 +128,7 @@ export function novoDocumento(
   }
 }
 
-export interface EstruturaDetectada {
-  tipo: FrameTipo
-  slotImagem?: boolean
-}
+export type { EstruturaDetectada }
 
 /**
  * Documento a partir de uma estrutura detectada numa inspiração: os frames
@@ -402,7 +410,7 @@ export function aplicarPropostas(doc: Documento, props: PropostaSlide[], label?:
 
 export function aplicarPerfil(doc: Documento, perfil: PerfilEditavel, brandKit?: BrandKit): Documento {
   return comHistorico(
-    { ...doc, perfil, brandKit: { ...(brandKit ?? BRAND_KIT_PADRAO[perfil]) } },
+    { ...doc, perfil, brandKit: { ...(brandKit ?? brandKitPadrao(null)) } },
     `Perfil trocado para ${perfil === "bruno" ? "Bruno" : "Convertfy"} (Brand Kit aplicado)`,
   )
 }

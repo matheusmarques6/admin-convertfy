@@ -26,9 +26,13 @@ import { fundoEscuro, fundoValido, gradienteCss } from "./brand"
 
 const agora = new Date("2026-09-05T10:00:00-03:00")
 
+/** Brand kits de teste: no produto eles vêm do canal Instagram conectado. */
+const kitConvertfy = { brandName: "@convertfy", brandName2: "Convertfy", copyright: "© 2026", avatar: null, verificado: true }
+const kitBruno = { brandName: "@brunoconvertfy", brandName2: "Bruno Marques", copyright: "© 2026", avatar: null, verificado: true }
+
 describe("novoDocumento", () => {
   it("copia a estrutura do template e abre com textos-guia", () => {
-    const d = novoDocumento("Teste", "convertfy", "molde-turbo", { agora })
+    const d = novoDocumento("Teste", "canal-1", "molde-turbo", { agora, brandKit: kitConvertfy })
     expect(d.frames).toHaveLength(7)
     expect(d.frames[0].tipo).toBe("capa")
     expect(d.frames[6].tipo).toBe("cta")
@@ -36,20 +40,23 @@ describe("novoDocumento", () => {
     expect(d.frames[6].textos.botao).toBe("Comente PALAVRA")
     expect(d.fundoPorFrame.f1).toBe("gradiente")
     expect(d.brandKit.brandName).toBe("@convertfy")
+    expect(d.perfil).toBe("canal-1")
     expect(d.historico[0].label).toContain("Turbo")
     expect(d.data).toBe("05/09")
   })
 
-  it("perfil bruno recebe o brand kit do Bruno", () => {
-    const d = novoDocumento("x", "bruno", "molde-lista", { agora })
-    expect(d.brandKit.brandName).toBe("@brunoconvertfy")
+  it("sem brand kit informado, o documento nasce com o kit vazio (nada de marca inventada)", () => {
+    const d = novoDocumento("x", "canal-2", "molde-lista", { agora })
+    expect(d.brandKit.brandName).toBe("")
+    expect(d.brandKit.brandName2).toBe("")
+    expect(d.brandKit.copyright).toBe(`© ${agora.getFullYear()}`)
     expect(d.frames).toHaveLength(9)
   })
 })
 
 describe("trocarTemplate", () => {
   it("preserva textos escritos casando por tipo, na ordem", () => {
-    let d = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     d = setTexto(d, "f3", "titulo", "Primeiro texto")
     d = setTexto(d, "f4", "titulo", "Segundo texto")
     d = setTexto(d, "f1", "titulo", "Capa escrita")
@@ -63,7 +70,7 @@ describe("trocarTemplate", () => {
   })
 
   it("avisa o que não coube (frame escrito sem par no novo template)", () => {
-    let d = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     d = setTexto(d, "f2", "titulo", "73%") // dado
     const { doc, naoCoube } = trocarTemplate(d, getTemplate("molde-mec")) // sem frame "dado"
     expect(doc.frames.some((f) => f.tipo === "dado")).toBe(false)
@@ -71,13 +78,13 @@ describe("trocarTemplate", () => {
   })
 
   it("não conta texto-guia como perdido", () => {
-    const d = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+    const d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     const { naoCoube } = trocarTemplate(d, getTemplate("molde-bastidor"))
     expect(naoCoube).toHaveLength(0)
   })
 
   it("imagem só segue quando o novo frame tem slot", () => {
-    let d = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     const img = { url: "u", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 1350 }
     d = { ...d, frames: d.frames.map((f) => (f.frameId === "f4" ? { ...f, imagens: { slot1: img }, textos: { titulo: "Com imagem", corpo: "c" } } : f)) }
     const { doc } = trocarTemplate(d, getTemplate("molde-mec"))
@@ -87,7 +94,7 @@ describe("trocarTemplate", () => {
 })
 
 describe("estrutura de frames", () => {
-  const base = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+  const base = novoDocumento("x", "canal-1", "molde-turbo", { agora })
 
   it("reordena e mantém o conjunto", () => {
     const d = reordenarFrames(base, 1, 4)
@@ -143,7 +150,7 @@ describe("estrutura de frames", () => {
 })
 
 describe("distribuir texto colado", () => {
-  const base = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+  const base = novoDocumento("x", "canal-1", "molde-turbo", { agora })
 
   it("limpa marcadores e gera uma proposta por linha, ignorando capa e CTA", () => {
     expect(linhasDeTexto("- a\n• b\n1. c\n\n2) d")).toEqual(["a", "b", "c", "d"])
@@ -171,13 +178,13 @@ describe("distribuir texto colado", () => {
 
 describe("perfil, slots e versão", () => {
   it("aplicarPerfil troca o brand kit inteiro", () => {
-    const d = aplicarPerfil(novoDocumento("x", "convertfy", "molde-turbo", { agora }), "bruno")
-    expect(d.perfil).toBe("bruno")
+    const d = aplicarPerfil(novoDocumento("x", "canal-1", "molde-turbo", { agora, brandKit: kitConvertfy }), "canal-2", kitBruno)
+    expect(d.perfil).toBe("canal-2")
     expect(d.brandKit.brandName2).toBe("Bruno Marques")
   })
 
   it("slotsDeImagem conta total, cheios e frames sem slot", () => {
-    const s = slotsDeImagem(novoDocumento("x", "convertfy", "molde-turbo", { agora }))
+    const s = slotsDeImagem(novoDocumento("x", "canal-1", "molde-turbo", { agora }))
     expect(s).toEqual({ total: 3, cheios: 0, semSlot: [2, 3, 6, 7] })
   })
 
@@ -197,7 +204,7 @@ describe("limites e auto-fit", () => {
   })
 
   it("camposExcedidos aponta só o que passou", () => {
-    const d = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+    const d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     const f = { ...d.frames[1], textos: { titulo: "123456", corpo: "ok" } } // dado: titulo 5
     expect(camposExcedidos(f)).toEqual(["titulo"])
   })
@@ -233,7 +240,7 @@ describe("compliance", () => {
 })
 
 describe("historico (undo/redo)", () => {
-  const d0 = novoDocumento("x", "convertfy", "molde-turbo", { agora })
+  const d0 = novoDocumento("x", "canal-1", "molde-turbo", { agora })
   const d1 = { ...d0, nome: "um" }
   const d2 = { ...d0, nome: "dois" }
 

@@ -3,8 +3,9 @@
 /**
  * Chat da ConvertIA dentro do editor: conversa com o carrossel aberto,
  * cola conteúdo, anexa inspirações e aplica propostas com um clique. A rota
- * `/api/conteudo/ia` responde com uma AÇÃO tipada; se a IA cair, o modo
- * local responde (e a bolha avisa).
+ * `/api/conteudo/ia` responde com uma AÇÃO tipada; se a IA cair, a bolha
+ * mostra o erro e o modo local só faz o que dá sem inventar (distribuir
+ * texto colado).
  */
 
 import { useEffect, useRef, useState } from "react"
@@ -12,10 +13,9 @@ import { ArrowUp, Check, Image as ImageIcon, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { SLIDE } from "@/lib/conteudo/brand"
-import { getSugestoesImagem, slotDeUrl } from "@/lib/conteudo/data"
 import { aplicarPropostas, setTexto } from "@/lib/conteudo/documento"
 import { chamarIA } from "@/lib/conteudo/ia/client"
-import { chatLocal, estruturaLocal } from "@/lib/conteudo/ia/fallback"
+import { chatLocal } from "@/lib/conteudo/ia/fallback"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import type { SaidaChat } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
@@ -45,7 +45,7 @@ const CHIPS: Array<[string, string]> = [
   ["Distribuir texto", "Distribui este texto nos slides:\n- "],
   ["Melhorar headline", "Melhora a headline da capa"],
   ["Gerar legenda", "Gera a legenda com comment gate"],
-  ["Sugerir imagens", "Sugere imagens para os slots vazios"],
+  ["Imagens", "Quais slots de imagem ainda estão vazios e o que colocar em cada um?"],
 ]
 
 export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?: string[] }) {
@@ -80,7 +80,7 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
     try {
       const r = await chamarIA({
         acao: "chat",
-        resumo: resumoDocumento(doc),
+        resumo: resumoDocumento(doc, api.perfil),
         mensagem: t,
         anexos: ax.length ? ax : undefined,
         historico,
@@ -90,10 +90,9 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
       const props = r.props?.filter((p) => validos.has(p.frameId)).map((p) => ({ ...p, label: doc.frames.find((f) => f.frameId === p.frameId)?.label ?? p.frameId }))
       setMsgs((m) => [...m, { de: "ia", t: r.texto, acao: r.acao?.tipo === "nenhuma" ? undefined : r.acao, props, opcoes: r.opcoes, detalhes: r.detalhes, legenda: r.legenda, palavraChave: r.palavraChave, estilo: r.estilo }])
     } catch (e) {
-      const r = chatLocal(doc, t, ax.length)
+      const r = chatLocal(doc, t, e instanceof Error ? e.message : "sem resposta")
       const props = r.props?.map((p) => ({ ...p, label: doc.frames.find((f) => f.frameId === p.frameId)?.label ?? p.frameId }))
-      setMsgs((m) => [...m, { de: "ia", t: r.texto, acao: r.acao, props, opcoes: r.opcoes, detalhes: r.detalhes, legenda: r.legenda, palavraChave: r.palavraChave, estilo: r.estilo, local: true }])
-      api.avisar(e instanceof Error ? e.message : "ConvertIA indisponível: modo local")
+      setMsgs((m) => [...m, { de: "ia", t: r.texto, acao: r.acao?.tipo === "nenhuma" ? undefined : r.acao, props, local: true }])
     } finally {
       setPensando(false)
     }
@@ -126,8 +125,9 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
         break
       }
       case "imagens":
-        api.set((d) => ({ ...d, frames: d.frames.map((f) => (f.slotsImagem && !f.imagens.slot1 ? { ...f, imagens: { slot1: slotDeUrl(getSugestoesImagem(f.frameId)[0]) } } : f)) }), "ConvertIA preencheu os slots de imagem")
-        break
+        api.abrirMidia()
+        api.avisar("Escolha no banco da org, envie um arquivo ou gere com IA em Ajustes → Mídia")
+        return
       case "exportar":
         api.setModal("exportar")
         return
@@ -141,17 +141,16 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
           const r = await chamarIA({
             acao: "gerar_estrutura",
             nome: doc.nome,
-            perfil: doc.perfil,
+            perfil: { handle: api.perfil?.handle ?? (doc.brandKit.brandName || null), nome: api.perfil?.nome ?? doc.brandKit.brandName2 },
             pauta: msgs.filter((x) => x.de === "eu").map((x) => x.t).join("\n") || doc.nome,
             templateNome: tpl.nome,
             frames: doc.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
             atuais: Object.fromEntries(doc.frames.map((f) => [f.frameId, f.textos])),
           })
           api.set((d) => ({ ...d, frames: d.frames.map((f) => ({ ...f, textos: { ...f.textos, ...(r.frames.find((y) => y.frameId === f.frameId)?.textos ?? {}) } })), legenda: r.legenda || d.legenda, palavraChave: r.palavraChave?.toUpperCase() || d.palavraChave }), "Estrutura gerada pela ConvertIA")
-        } catch {
-          const r = estruturaLocal(doc)
-          api.set((d) => ({ ...d, frames: d.frames.map((f) => ({ ...f, textos: { ...f.textos, ...(r.frames.find((y) => y.frameId === f.frameId)?.textos ?? {}) } })) }), "Estrutura do modo local")
-          api.avisar("ConvertIA indisponível: estrutura do modo local")
+        } catch (e) {
+          api.avisar(e instanceof Error ? `ConvertIA: ${e.message}` : "A ConvertIA não respondeu. Tente de novo.")
+          return
         } finally {
           setPensando(false)
         }
@@ -193,7 +192,7 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="text-[12px] leading-[1.55] text-[var(--ops-title)]">{m.t}</div>
-                {m.local && <div className="text-[10px] text-[var(--ops-warn)]">Resposta do modo local (ConvertIA indisponível).</div>}
+                {m.local && <div className="text-[10px] text-[var(--ops-warn)]">Resposta do modo local — nada foi gerado por modelo.</div>}
                 {m.detalhes && (
                   <ul className="m-0 list-disc pl-4 text-[11.5px] leading-[1.6] text-[var(--ops-sec)]">
                     {m.detalhes.map((d) => (

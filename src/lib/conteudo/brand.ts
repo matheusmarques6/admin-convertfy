@@ -1,11 +1,14 @@
 /**
- * Identidade dos SLIDES e dos perfis. Estas cores são a exceção consciente
- * à regra "zero cor fora do token": elas só aparecem dentro do canvas (o
- * carrossel exportado) e em marcadores de perfil/molde do dashboard. A
+ * Identidade dos SLIDES e marcadores de perfil/molde/pilar. Estas cores são
+ * a exceção consciente à regra "zero cor fora do token": elas só aparecem
+ * dentro do canvas (o carrossel exportado) e em marcadores do dashboard. A
  * interface em volta usa os tokens --ops-*.
+ *
+ * Não existe perfil fixo: o perfil é o canal Instagram conectado na org, e
+ * o brand kit padrão nasce do que a Graph API devolve (username, nome, foto).
  */
 
-import type { BrandKit, Gradiente, MoldeKey, Perfil, PerfilEditavel, PerfilId, Pilar } from "./types"
+import type { BrandKit, Gradiente, MoldeKey, Perfil, Pilar } from "./types"
 
 export const SLIDE = {
   primaria: "#2137B6",
@@ -36,14 +39,14 @@ export const FONTE_TITULO = "'Barlow Condensed', 'Inter Slides', Inter, sans-ser
 export const FONTE_APOIO = "Georgia, 'Times New Roman', serif"
 export const FONTE_META = "'Inter Slides', Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 
-export const CT_PERFIS: Record<PerfilId, Perfil> = {
-  consolidado: { id: "consolidado", nome: "Consolidado", cor: "#4E62D8", canal: null },
-  bruno: { id: "bruno", nome: "Bruno", cor: "#7C3AED", handle: "@brunoconvertfy", canal: "instagram" },
-  convertfy: { id: "convertfy", nome: "Convertfy", cor: "#2137B6", handle: "@convertfy", canal: "instagram" },
-  youtube: { id: "youtube", nome: "YouTube", cor: "#DC2626", handle: "Convertfy TV", canal: "youtube" },
-}
+/** Cores de marcador dos perfis, pela posição do canal na org. */
+export const PERFIL_CORES = ["#2137B6", "#7C3AED", "#0E7490", "#B45309", "#047857", "#DB2777"]
 
-export const PERFIS_EDITAVEIS: PerfilEditavel[] = ["convertfy", "bruno"]
+export const COR_CONSOLIDADO = "#4E62D8"
+
+export function corDoPerfil(indice: number): string {
+  return PERFIL_CORES[indice % PERFIL_CORES.length]
+}
 
 export const CT_MOLDE_COR: Record<MoldeKey, string> = {
   Turbo: "#2137B6",
@@ -63,21 +66,18 @@ export const CT_PILAR_COR: Record<Pilar, string> = {
 /** Cores das etapas do funil de conteúdo (trapézio), de cima para baixo. */
 export const FUNIL_CORES = ["#475569", "#4E62D8", "#2563EB", "#7C3AED", "#D97706", "#047857"]
 
-export const BRAND_KIT_PADRAO: Record<PerfilEditavel, BrandKit> = {
-  convertfy: {
-    brandName: "@convertfy",
-    brandName2: "Convertfy",
-    copyright: "© 2026",
-    avatar: null,
-    verificado: true,
-  },
-  bruno: {
-    brandName: "@brunoconvertfy",
-    brandName2: "Bruno Marques",
-    copyright: "© 2026",
-    avatar: "https://i.pravatar.cc/96?img=12",
-    verificado: true,
-  },
+/**
+ * Brand kit padrão de um perfil: handle e nome do Instagram, foto servida
+ * pelo admin. Sem perfil (documento órfão) nasce vazio — nada inventado.
+ */
+export function brandKitPadrao(perfil?: Pick<Perfil, "handle" | "nome" | "avatar"> | null, ano = new Date().getFullYear()): BrandKit {
+  return {
+    brandName: perfil?.handle ? (perfil.handle.startsWith("@") ? perfil.handle : `@${perfil.handle}`) : "",
+    brandName2: perfil?.nome ?? "",
+    copyright: `© ${ano}`,
+    avatar: perfil?.avatar ?? null,
+    verificado: false,
+  }
 }
 
 // ── Utilitários de cor ──────────────────────────────────────────────────

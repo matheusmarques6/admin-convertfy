@@ -1,54 +1,35 @@
 "use client"
 
 /**
- * Card de template com PRÉVIA REAL (o renderer desenha a capa com uma
- * headline de exemplo) + desempenho: posts publicados com o molde,
- * leads/post e tendência.
+ * Card de template com PRÉVIA REAL (o renderer desenha a capa com o texto
+ * guia do molde) + desempenho: posts publicados classificados com o molde,
+ * leads/post e alcance médio — só quando há posts; sem posts, diz isso.
  */
 
 import { useMemo } from "react"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { imagemBanco } from "@/lib/conteudo/data"
 import { novoDocumento } from "@/lib/conteudo/documento"
 import { moldeKeyDoTemplate } from "@/lib/conteudo/templates"
-import type { Post, Template } from "@/lib/conteudo/types"
-import { TNUM, fmtDec } from "../ui"
+import type { BrandKit, Post, Template } from "@/lib/conteudo/types"
+import { TNUM, fmtDec, fmtNum } from "../ui"
 import { ThumbFit } from "./thumb"
 
-const HEADLINE_EXEMPLO: Record<string, string> = {
-  "molde-turbo": "8% dos clientes fazem 41% do faturamento",
-  "molde-lista": "5 coisas que você precisa entender sobre e-mail",
-  "molde-mec": "Quem faz o quê num time de e-mail que dá certo",
-  "molde-bastidor": "O que eu fiz para dobrar a receita de SMS",
-  "molde-benchmark": "A Sephora cresceu 75% em fidelidade sem desconto",
-}
-
-export function docDePrevia(tpl: Template) {
-  const d = novoDocumento(HEADLINE_EXEMPLO[tpl.id] ?? tpl.nome, "convertfy", tpl.id)
-  d.frames[0].textos.titulo = d.nome
-  d.frames[0].imagens.slot1 = imagemBanco(`tpl${tpl.id}`)
+export function docDePrevia(tpl: Template, brandKit?: BrandKit) {
+  const d = novoDocumento(tpl.nome, "", tpl.id, { brandKit })
+  d.frames[0].textos.titulo = tpl.nome
+  d.frames[0].textos.subtitulo = tpl.descricao.split(".")[0]
   return d
 }
 
-export function TemplateCard({
-  tpl,
-  posts,
-  sel,
-  onClick,
-  compact,
-}: {
-  tpl: Template
-  posts: Post[]
-  sel?: boolean
-  onClick?: () => void
-  compact?: boolean
-}) {
-  const doc = useMemo(() => docDePrevia(tpl), [tpl])
-  const ps = posts.filter((p) => p.molde === moldeKeyDoTemplate(tpl))
-  const med = ps.length ? ps.reduce((a, p) => a + p.leads, 0) / ps.length : tpl.leads
-  const up = ps.length >= 2 ? ps[0].leads >= ps[ps.length - 1].leads : true
+export function TemplateCard({ tpl, posts, sel, onClick, compact, brandKit }: { tpl: Template; posts: Post[]; sel?: boolean; onClick?: () => void; compact?: boolean; brandKit?: BrandKit }) {
+  const doc = useMemo(() => docDePrevia(tpl, brandKit), [tpl, brandKit])
+  const k = moldeKeyDoTemplate(tpl)
+  const ps = posts.filter((p) => p.molde === k)
+  const med = ps.length ? ps.reduce((a, p) => a + p.leads, 0) / ps.length : null
+  const alc = ps.map((p) => p.alc).filter((v): v is number => v != null)
+  const alcMed = alc.length ? alc.reduce((a, b) => a + b, 0) / alc.length : null
   return (
     <button
       type="button"
@@ -77,9 +58,13 @@ export function TemplateCard({
           <span className="whitespace-nowrap">
             {tpl.frames.length} frames · {ps.length} {ps.length === 1 ? "post publicado" : "posts publicados"}
           </span>
-          <span className="whitespace-nowrap font-semibold text-[var(--ops-title)]">
-            {fmtDec(med)} leads/post <span className={cn("font-bold", up ? "text-[var(--ops-pos)]" : "text-[var(--ops-neg)]")}>{up ? "↑" : "↓"}</span>
-          </span>
+          {med != null ? (
+            <span className="whitespace-nowrap font-semibold text-[var(--ops-title)]">
+              {fmtDec(med)} leads/post{alcMed != null ? ` · alcance ${fmtNum(Math.round(alcMed))}` : ""}
+            </span>
+          ) : (
+            <span className="whitespace-nowrap">sem histórico ainda</span>
+          )}
         </div>
       </div>
     </button>

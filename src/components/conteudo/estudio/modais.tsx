@@ -11,14 +11,13 @@ import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { Bookmark, Calendar, Check, ChevronLeft, ChevronRight, Heart, MessageCircle, Send, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { BRAND_KIT_PADRAO, FONTE_APOIO, FONTE_TITULO, gradienteCss } from "@/lib/conteudo/brand"
+import { FONTE_APOIO, FONTE_TITULO, brandKitPadrao, gradienteCss } from "@/lib/conteudo/brand"
 import { avaliarCompliance, corrigirLegendaLocal, LIMITE_LEGENDA, localizarTrecho } from "@/lib/conteudo/compliance"
-import { addAgenda } from "@/lib/conteudo/data"
+import { uploadImagem } from "@/lib/conteudo/data"
 import { contarPalavras, dataCurta, MAX_FRAMES_API } from "@/lib/conteudo/documento"
 import { baixarBlob, renderFrameParaBlob, slug, zipar, type FormatoExport } from "@/lib/conteudo/export/render"
 import { chamarIA } from "@/lib/conteudo/ia/client"
-import { arquivoParaDataUrl } from "@/lib/conteudo/imagens"
-import type { AgendaItem, BrandKit, Documento, PerfilEditavel } from "@/lib/conteudo/types"
+import type { BrandKit, Documento, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { CtAvatar, CtBtn, CtLabel, CtSeg, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { EditorApi } from "./editor-types"
 import { Frame, FRAME_W, alturaFrame } from "./frame"
@@ -34,7 +33,7 @@ function Overlay({ children, onClose, escuro }: { children: React.ReactNode; onC
 
 // ── Prévia ──────────────────────────────────────────────────────────────
 
-export function PreviewModal({ doc, onClose, onExportar, onAgendar }: { doc: Documento; onClose: () => void; onExportar: () => void; onAgendar: () => void }) {
+export function PreviewModal({ doc, perfil, onClose, onExportar, onAgendar }: { doc: Documento; perfil?: Perfil; onClose: () => void; onExportar: () => void; onAgendar: () => void }) {
   const visiveis = doc.frames.map((f, i) => ({ f, i })).filter((x) => !x.f.oculto)
   const [k, setK] = useState(0)
   const n = visiveis.length
@@ -56,9 +55,9 @@ export function PreviewModal({ doc, onClose, onExportar, onAgendar }: { doc: Doc
         <div className="text-[10.5px] font-bold tracking-[0.16em] text-white/60">PRÉVIA · COMO FICA NO INSTAGRAM</div>
         <div className="overflow-hidden rounded-xl bg-white text-[#111] shadow-[0_30px_80px_rgba(0,0,0,0.5)]" style={{ width: W }}>
           <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <CtAvatar perfil={doc.perfil} size={32} src={bk.avatar} />
+            <CtAvatar perfil={perfil} size={32} src={bk.avatar} />
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold">{bk.brandName.replace("@", "")}</span>
+              <span className="block text-[13px] font-semibold">{(bk.brandName || perfil?.handle || "perfil").replace("@", "")}</span>
               <span className="block text-[11px] text-[#737373]">{bk.brandName2}</span>
             </span>
             <span className="text-[16px]">⋯</span>
@@ -91,9 +90,11 @@ export function PreviewModal({ doc, onClose, onExportar, onAgendar }: { doc: Doc
               </span>
               <Icon icon={Bookmark} customSize={22} />
             </div>
-            <div className="mt-2.5 text-[13px] font-semibold">931 curtidas</div>
+            <div className="mt-2.5 text-[11px] text-[#737373]" style={TNUM}>
+              {n} slides · {doc.proporcaoExport}
+            </div>
             <div className="mt-1 text-[13px] leading-[1.45]">
-              <strong className="font-semibold">{bk.brandName.replace("@", "")}</strong> {(doc.legenda || "Sem legenda ainda. Escreva na tela Exportar.").slice(0, 120)}
+              <strong className="font-semibold">{(bk.brandName || perfil?.handle || "perfil").replace("@", "")}</strong> {(doc.legenda || "Sem legenda ainda. Escreva na tela Exportar.").slice(0, 120)}
               <span className="text-[#737373]">… mais</span>
             </div>
           </div>
@@ -330,25 +331,31 @@ function isoAmanha(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-export function AgendarModal({ doc, onClose, onConfirmado }: { doc: Documento; onClose: () => void; onConfirmado: (q: AgendaItem) => void }) {
-  const [perfil, setPerfil] = useState<PerfilEditavel>(doc.perfil)
-  const [data, setData] = useState(isoAmanha())
-  const [hora, setHora] = useState("11:30")
+export interface AgendarEntrada {
+  perfil: PerfilEditavel
+  /** YYYY-MM-DD */
+  dataIso: string
+  hora: string
+}
+
+export function AgendarModal({ doc, perfis, onClose, onConfirmar }: { doc: Documento; perfis: Perfil[]; onClose: () => void; onConfirmar: (q: AgendarEntrada) => Promise<void> }) {
+  const [perfil, setPerfil] = useState<PerfilEditavel>(perfis.some((p) => p.id === doc.perfil) ? doc.perfil : perfis[0]?.id ?? "")
+  const [data, setData] = useState(doc.agenda?.dataIso ?? isoAmanha())
+  const [hora, setHora] = useState(doc.agenda?.hora ?? "11:30")
   const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
   const n = doc.frames.filter((f) => !f.oculto).length
   const confirmar = async () => {
     if (!data || !hora) return
     setSalvando(true)
-    const [y, m, d] = data.split("-")
-    const dataCurtaBr = `${d}/${m}`
-    const item: AgendaItem = { perfil, data: dataCurtaBr, hora }
+    setErro(null)
     try {
-      await addAgenda({ id: doc.id, nome: doc.nome, ...item, criadoEm: new Date().toISOString() })
-    } catch {
-      /* agenda local indisponível: o status do documento ainda muda */
+      await onConfirmar({ perfil, dataIso: data, hora })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível agendar")
+    } finally {
+      setSalvando(false)
     }
-    setSalvando(false)
-    onConfirmado({ ...item, data: `${d}/${m}/${y}`.slice(0, 5) })
   }
   return (
     <Overlay onClose={onClose}>
@@ -371,10 +378,18 @@ export function AgendarModal({ doc, onClose, onConfirmado }: { doc: Documento; o
         </div>
         <div>
           <CtLabel>Perfil</CtLabel>
-          <select value={perfil} onChange={(e) => setPerfil(e.target.value as PerfilEditavel)} className={cn(selectCls, "h-9")}>
-            <option value="convertfy">Convertfy</option>
-            <option value="bruno">Bruno</option>
-          </select>
+          {perfis.length === 0 ? (
+            <div className="text-[11.5px] text-[var(--ops-mut)]">Nenhum canal Instagram conectado — o item entra no calendário sem perfil.</div>
+          ) : (
+            <select value={perfil} onChange={(e) => setPerfil(e.target.value)} className={cn(selectCls, "h-9")}>
+              {perfis.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.handle ? ` · ${p.handle}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-2.5">
           <div>
@@ -386,11 +401,12 @@ export function AgendarModal({ doc, onClose, onConfirmado }: { doc: Documento; o
             <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={cn(inputCls, "h-9")} />
           </div>
         </div>
-        <div className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">Melhor horário para {perfil === "bruno" ? "Bruno" : "Convertfy"} segundo os últimos 30 dias: 11h30 e 19h.</div>
+        <div className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">A publicação em si é feita no app do Instagram; o calendário organiza a cadência e marca o status do carrossel.</div>
+        {erro && <div className="text-[11.5px] text-[var(--ops-neg)]">{erro}</div>}
         <div className="mt-1 flex justify-end gap-2">
           <CtBtn onClick={onClose}>Cancelar</CtBtn>
           <CtBtn kind="primary" icon={Calendar} onClick={() => void confirmar()} disabled={salvando || !data || !hora}>
-            Agendar
+            {salvando ? "Agendando…" : "Agendar"}
           </CtBtn>
         </div>
       </div>
@@ -402,18 +418,28 @@ export function AgendarModal({ doc, onClose, onConfirmado }: { doc: Documento; o
 
 export function BrandKitModal({ api, onSalvarBrandKit, onClose }: { api: EditorApi; onSalvarBrandKit: (perfil: PerfilEditavel, kit: BrandKit) => Promise<void>; onClose: () => void }) {
   const { doc } = api
-  const [perfil, setPerfil] = useState<PerfilEditavel>(doc.perfil)
-  const [kits, setKits] = useState<Record<PerfilEditavel, BrandKit>>(() => ({
-    convertfy: api.brandKits?.convertfy ?? BRAND_KIT_PADRAO.convertfy,
-    bruno: api.brandKits?.bruno ?? BRAND_KIT_PADRAO.bruno,
-    [doc.perfil]: doc.brandKit,
-  }))
+  const perfis = api.perfis
+  const temPerfil = perfis.some((p) => p.id === doc.perfil)
+  const [perfil, setPerfil] = useState<PerfilEditavel>(temPerfil ? doc.perfil : perfis[0]?.id ?? doc.perfil)
+  const [kits, setKits] = useState<Record<PerfilEditavel, BrandKit>>(() => {
+    const base: Record<string, BrandKit> = {}
+    for (const p of perfis) base[p.id] = api.brandKits?.[p.id] ?? brandKitPadrao(p)
+    base[doc.perfil] = doc.brandKit
+    return base
+  })
+  const [erro, setErro] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const bk = kits[perfil]
+  const perfilObj = perfis.find((p) => p.id === perfil)
+  const bk = kits[perfil] ?? doc.brandKit
   const setBk = (p: Partial<BrandKit>) => {
     const novo = { ...bk, ...p }
     setKits((k) => ({ ...k, [perfil]: novo }))
-    void onSalvarBrandKit(perfil, novo)
+    if (perfis.some((x) => x.id === perfil)) {
+      onSalvarBrandKit(perfil, novo).catch((e: Error) => setErro(e.message))
+    } else {
+      // documento sem canal: o kit vive só no documento
+      api.set({ brandKit: novo })
+    }
   }
   const inp = (v: string, on: (s: string) => void, aria: string) => <input value={v} aria-label={aria} onChange={(e) => on(e.target.value)} className={cn(inputCls, "h-[34px] text-[12.5px]")} />
   const sw = (c: string) => <span className="inline-block h-7 w-7 shrink-0 rounded-lg border border-[var(--ops-border)]" style={{ background: c }} />
@@ -427,14 +453,19 @@ export function BrandKitModal({ api, onSalvarBrandKit, onClose }: { api: EditorA
             <div className="mt-0.5 text-[11.5px] text-[var(--ops-sec)]">Tudo que os templates consomem. Mudar aqui muda em todos os carrosséis do perfil.</div>
           </div>
           <span className="flex-1" />
-          <CtSeg<PerfilEditavel>
-            val={perfil}
-            onChange={setPerfil}
-            opts={[
-              ["convertfy", "Convertfy"],
-              ["bruno", "Bruno"],
-            ]}
-          />
+          {perfis.length > 0 && perfis.length <= 3 ? (
+            <CtSeg<PerfilEditavel> val={perfil} onChange={setPerfil} opts={perfis.map((p): [string, string] => [p.id, p.nome])} />
+          ) : perfis.length > 3 ? (
+            <select value={perfil} onChange={(e) => setPerfil(e.target.value)} className={cn(selectCls, "h-8 w-auto")} aria-label="Perfil">
+              {perfis.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-[11px] text-[var(--ops-mut)]">Sem canal conectado · kit deste documento</span>
+          )}
           <button type="button" onClick={onClose} aria-label="Fechar" className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]">
             <Icon icon={X} customSize={14} />
           </button>
@@ -444,7 +475,7 @@ export function BrandKitModal({ api, onSalvarBrandKit, onClose }: { api: EditorA
             <div>
               <CtLabel>Identidade</CtLabel>
               <div className="flex items-center gap-3 rounded-[10px] border border-[var(--ops-border)] p-3">
-                <CtAvatar perfil={perfil} size={48} src={bk.avatar} />
+                <CtAvatar perfil={perfilObj} size={48} src={bk.avatar} />
                 <div className="flex flex-1 flex-col gap-2">
                   {inp(bk.brandName, (v) => setBk({ brandName: v }), "Handle")}
                   {inp(bk.brandName2, (v) => setBk({ brandName2: v }), "Nome")}
@@ -541,7 +572,7 @@ export function BrandKitModal({ api, onSalvarBrandKit, onClose }: { api: EditorA
           </div>
         </div>
         <div className="flex items-center gap-2 border-t border-[var(--ops-border)] px-[22px] py-3">
-          <span className="text-[10.5px] text-[var(--ops-mut)]">Alterações valem para novos carrosséis e para este documento.</span>
+          <span className="text-[10.5px] text-[var(--ops-mut)]">{erro ? <span className="text-[var(--ops-neg)]">{erro}</span> : "Alterações valem para novos carrosséis e para este documento."}</span>
           <span className="flex-1" />
           <CtBtn kind="primary" onClick={onClose}>
             Concluir
@@ -554,8 +585,14 @@ export function BrandKitModal({ api, onSalvarBrandKit, onClose }: { api: EditorA
           className="hidden"
           onChange={async (e) => {
             const f = e.target.files?.[0]
-            if (f) setBk({ avatar: await arquivoParaDataUrl(f, 256) })
             e.target.value = ""
+            if (!f) return
+            try {
+              const { url } = await uploadImagem(f, "avatar")
+              setBk({ avatar: url })
+            } catch (err) {
+              setErro(err instanceof Error ? err.message : "Falha no upload")
+            }
           }}
         />
       </div>

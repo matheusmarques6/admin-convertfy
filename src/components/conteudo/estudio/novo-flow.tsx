@@ -12,22 +12,15 @@ import { Check, Columns3, Image as ImageIcon, Sparkles, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { CT_MOLDE_COR } from "@/lib/conteudo/brand"
-import { getPromptsProntos, getSugestoesImagem, slotDeUrl } from "@/lib/conteudo/data"
-import {
-  ajustarQuantidadeFrames,
-  comHistorico,
-  documentoDeEstrutura,
-  novoDocumento,
-  type EstruturaDetectada,
-} from "@/lib/conteudo/documento"
+import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
+import { getPromptsProntos } from "@/lib/conteudo/data"
+import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
 import { chamarIA } from "@/lib/conteudo/ia/client"
-import { estruturaLocal, inspiracaoLocal } from "@/lib/conteudo/ia/fallback"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
 import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { BrandKit, Documento, FrameTipo, PerfilEditavel, Post } from "@/lib/conteudo/types"
-import { CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
+import type { BrandKit, Documento, EstruturaDetectada, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
+import { CtAvatar, CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { Caminho } from "./biblioteca"
 import { TemplateCard } from "./template-card"
 import { ThumbFit } from "./thumb"
@@ -38,17 +31,20 @@ export interface CriacaoResultado {
   /** Referências visuais anexadas no caminho IA (vão para o chat do editor). */
   anexos?: string[]
   /** Também salvar como template reutilizável (caminho inspiração). */
-  salvarTemplate?: { nome: string; frames: number; templateId: string }
-  /** A IA respondeu pelo modo local. */
-  modoLocal?: boolean
+  salvarTemplate?: { nome: string; templateId: string; estrutura: EstruturaDetectada[]; fidelidade?: number | null }
+  /** Template do time usado (incrementa usos). */
+  meuTemplateUsado?: string
 }
 
 interface Props {
   caminhoInicial?: Caminho | null
   tplInicial?: string | null
   perfilInicial?: PerfilEditavel
+  meuTemplateInicial?: string | null
   modoTemplate?: boolean
   posts: Post[]
+  perfis: Perfil[]
+  meusTemplates: MeuTemplate[]
   brandKits: Record<PerfilEditavel, BrandKit> | null
   onClose: () => void
   onCriado: (r: CriacaoResultado) => void
@@ -63,11 +59,14 @@ const CAMINHOS: Array<[Caminho, string, string, LucideIcon, string]> = [
   ["inspiracao", "A partir de inspiração", "Suba uma referência, vira template fiel", ImageIcon, "#0E7490"],
 ]
 
-export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTemplate, posts, brandKits, onClose, onCriado }: Props) {
+export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplateInicial, modoTemplate, posts, perfis, meusTemplates, brandKits, onClose, onCriado }: Props) {
   const [caminho, setCaminho] = useState<Caminho | null>(modoTemplate ? "inspiracao" : caminhoInicial ?? null)
-  const [tpl, setTpl] = useState<string | null>(tplInicial ?? null)
+  const [tpl, setTpl] = useState<string | null>(meuTemplateInicial ? null : tplInicial ?? null)
+  const [meuTpl, setMeuTpl] = useState<string | null>(meuTemplateInicial ?? null)
   const [nome, setNome] = useState("")
-  const [perfil, setPerfil] = useState<PerfilEditavel>(perfilInicial ?? "convertfy")
+  const [perfil, setPerfil] = useState<PerfilEditavel>(perfilInicial && perfis.some((p) => p.id === perfilInicial) ? perfilInicial : perfis[0]?.id ?? "")
+  const [voz, setVoz] = useState<"marca" | "pessoal">("marca")
+  const perfilObj = perfis.find((p) => p.id === perfil)
   const [prompt, setPrompt] = useState("")
   const [promptSel, setPromptSel] = useState<number | null>(null)
   const [pilar, setPilar] = useState(PILARES[0])
@@ -81,7 +80,6 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
   const [nomeTpl, setNomeTpl] = useState("")
   const [criando, setCriando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [avisoLocal, setAvisoLocal] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const prompts = getPromptsProntos()
 
@@ -95,7 +93,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
   const pronto = modoTemplate
     ? analise === "done" && nomeTpl.trim().length > 0
     : caminho === "template"
-      ? Boolean(nome.trim() && tpl)
+      ? Boolean(nome.trim() && (tpl || meuTpl))
       : caminho === "ia"
         ? Boolean(nome.trim() && (prompt.trim() || promptSel != null))
         : caminho === "inspiracao"
@@ -111,7 +109,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
           : "Revise slots e limites no editor antes de salvar"
       : !nome.trim()
         ? "Falta dar nome ao carrossel"
-        : caminho === "template" && !tpl
+        : caminho === "template" && !tpl && !meuTpl
           ? "Escolha um template"
           : caminho === "ia" && !prompt.trim() && promptSel == null
             ? "Descreva a pauta ou escolha um prompt"
@@ -128,7 +126,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
         : 0
     : !caminho
       ? 0
-      : (caminho === "template" ? !tpl : caminho === "ia" ? !(prompt.trim() || promptSel != null) : analise !== "done")
+      : (caminho === "template" ? !tpl && !meuTpl : caminho === "ia" ? !(prompt.trim() || promptSel != null) : analise !== "done")
         ? 1
         : 2
 
@@ -147,48 +145,51 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
     try {
       const r = await chamarIA({ acao: "analisar_inspiracao", imagens: refs })
       setInspiracao(r)
-      setEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem })))
-      setAvisoLocal(false)
+      setEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem, descricao: f.descricao })))
+      setAnalise("done")
     } catch (e) {
-      const r = inspiracaoLocal()
-      setInspiracao(r)
-      setEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem })))
-      setAvisoLocal(true)
-      setErro(e instanceof Error ? e.message : "ConvertIA indisponível; usei a leitura local.")
+      setAnalise("idle")
+      setErro(e instanceof Error ? e.message : "A ConvertIA não conseguiu ler a inspiração. Tente de novo.")
     }
-    setAnalise("done")
   }
+
+  const kitDoPerfil = useMemo(() => brandKits?.[perfil] ?? brandKitPadrao(perfilObj), [brandKits, perfil, perfilObj])
 
   const docPrevia = useMemo(() => {
     if (!estrutura.length) return null
-    const d = documentoDeEstrutura(nome.trim() || "Prévia com a identidade Convertfy", perfil, estrutura, { templateBase: inspiracao?.templateSugerido })
+    const d = documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil })
     d.frames[0].textos.titulo = nome.trim() || "Sua afirmação forte aqui"
     return d
-  }, [estrutura, nome, perfil, inspiracao])
+  }, [estrutura, nome, perfil, inspiracao, kitDoPerfil])
 
   // ── criação ──
   const criar = async () => {
     if (!pronto || criando) return
     setCriando(true)
     setErro(null)
-    const kit = brandKits?.[perfil]
+    const kit = kitDoPerfil
     try {
       if (modoTemplate) {
-        const d = documentoDeEstrutura(nomeTpl.trim(), "convertfy", estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: brandKits?.convertfy })
+        const d = documentoDeEstrutura(nomeTpl.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit })
         d.projeto = "Templates do time"
-        d.frames[0].imagens.slot1 = slotDeUrl(getSugestoesImagem("f1")[0])
         onCriado({
           doc: comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`),
           caminho: "template-review",
-          salvarTemplate: { nome: nomeTpl.trim(), frames: estrutura.length, templateId: inspiracao?.templateSugerido ?? "molde-benchmark" },
-          modoLocal: avisoLocal,
+          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null },
         })
+        return
+      }
+      if (caminho === "template" && meuTpl) {
+        const m = meusTemplates.find((x) => x.id === meuTpl)
+        if (!m) throw new Error("Template do time não encontrado")
+        const d = documentoDeEstrutura(nome.trim(), perfil, m.estrutura, { templateBase: m.templateId, brandKit: kit })
+        d.frames[0].textos.titulo = nome.trim()
+        onCriado({ doc: comHistorico(d, `Criado a partir do template do time "${m.nome}"`), caminho: "template", meuTemplateUsado: m.id })
         return
       }
       if (caminho === "template" && tpl) {
         const d = novoDocumento(nome.trim(), perfil, tpl, { brandKit: kit })
         d.frames[0].textos.titulo = nome.trim()
-        d.frames = d.frames.map((fr) => (fr.slotsImagem ? { ...fr, imagens: { slot1: slotDeUrl(getSugestoesImagem(fr.frameId)[0]) } } : fr))
         onCriado({ doc: d, caminho: "template" })
         return
       }
@@ -199,61 +200,44 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
         d = ajustarQuantidadeFrames(d, slides)
         const pauta = [prompt.trim(), p?.pauta].filter(Boolean).join("\n\n")
         const t = getTemplate(templateId)
-        let modoLocal = false
-        try {
-          const r = await chamarIA({
-            acao: "gerar_estrutura",
-            nome: nome.trim(),
-            perfil,
-            pauta,
-            pilar: p?.pilar ?? pilar,
-            etapaFunil: ST_FUNIL[etapa].n,
-            objetivoCta: "Comment gate",
-            templateNome: t.nome,
-            frames: d.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
-          })
-          d = {
-            ...d,
-            nome: r.nome?.trim() || d.nome,
-            frames: d.frames.map((f) => {
-              const x = r.frames.find((y) => y.frameId === f.frameId)
-              return x ? { ...f, textos: { ...f.textos, ...x.textos } } : f
-            }),
-            legenda: r.legenda,
-            palavraChave: r.palavraChave.toUpperCase(),
-            cta: { ...d.cta, texto: `Comente ${r.palavraChave.toUpperCase()}` },
-          }
-        } catch (e) {
-          modoLocal = true
-          const r = estruturaLocal(d)
-          d = {
-            ...d,
-            frames: d.frames.map((f) => {
-              const x = r.frames.find((y) => y.frameId === f.frameId)
-              return x ? { ...f, textos: { ...f.textos, ...x.textos } } : f
-            }),
-            legenda: r.legenda,
-            palavraChave: r.palavraChave,
-          }
-          setErro(e instanceof Error ? e.message : "ConvertIA indisponível")
+        const r = await chamarIA({
+          acao: "gerar_estrutura",
+          nome: nome.trim(),
+          perfil: { handle: perfilObj?.handle ?? (kit.brandName || null), nome: perfilObj?.nome ?? kit.brandName2, voz },
+          pauta,
+          pilar: p?.pilar ?? pilar,
+          etapaFunil: ST_FUNIL[etapa].n,
+          objetivoCta: "Comment gate",
+          templateNome: t.nome,
+          frames: d.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
+        })
+        d = {
+          ...d,
+          nome: r.nome?.trim() || d.nome,
+          frames: d.frames.map((f) => {
+            const x = r.frames.find((y) => y.frameId === f.frameId)
+            return x ? { ...f, textos: { ...f.textos, ...x.textos } } : f
+          }),
+          legenda: r.legenda,
+          palavraChave: r.palavraChave.toUpperCase(),
+          cta: { ...d.cta, texto: `Comente ${r.palavraChave.toUpperCase()}` },
         }
-        d.frames = d.frames.map((fr) => (fr.slotsImagem ? { ...fr, imagens: { slot1: slotDeUrl(getSugestoesImagem(fr.frameId)[0]) } } : fr))
-        d = comHistorico(d, modoLocal ? "Carrossel montado pelo modo local (ConvertIA indisponível)" : "Carrossel gerado 100% pela ConvertIA")
-        onCriado({ doc: d, caminho: "ia", anexos: refs.length ? refs : undefined, modoLocal })
+        d = comHistorico(d, "Carrossel gerado pela ConvertIA a partir da pauta")
+        onCriado({ doc: d, caminho: "ia", anexos: refs.length ? refs : undefined })
         return
       }
       if (caminho === "inspiracao") {
         let d = documentoDeEstrutura(nome.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit })
         d.frames[0].textos.titulo = nome.trim()
-        d.frames = d.frames.map((fr) => (fr.slotsImagem ? { ...fr, imagens: { slot1: slotDeUrl(getSugestoesImagem(fr.frameId)[0]) } } : fr))
-        d = comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`)
+        d = comHistorico(d, `Criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`)
         onCriado({
           doc: d,
           caminho: "inspiracao",
-          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), frames: estrutura.length, templateId: inspiracao?.templateSugerido ?? "molde-benchmark" } : undefined,
-          modoLocal: avisoLocal,
+          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
         })
       }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível criar o carrossel. Tente de novo.")
     } finally {
       setCriando(false)
     }
@@ -305,8 +289,8 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-6 px-6 pb-12 pt-7 md:px-8">
           {erro && (
-            <div className="rounded-lg border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-3 py-2.5 text-[11.5px] text-[var(--ops-warn)]">
-              {erro} {avisoLocal || caminho === "ia" ? "O modo local foi usado para não travar o fluxo." : ""}
+            <div className="rounded-lg border border-[var(--ops-neg)]/40 bg-[var(--ops-card)] px-3 py-2.5 text-[11.5px] text-[var(--ops-neg)]">
+              {erro} Nada foi criado com conteúdo inventado — tente de novo ou use o caminho Template.
             </div>
           )}
           {!modoTemplate && (
@@ -340,6 +324,51 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
             </div>
           )}
 
+          {caminho === "template" && meusTemplates.length > 0 && (
+            <div>
+              <div className="mb-2.5 flex flex-wrap items-baseline gap-2.5">
+                <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#0E7490]">Meus templates</span>
+                <span className="text-[11.5px] text-[var(--ops-sec)]">Estruturas lidas de inspirações do time.</span>
+              </div>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
+                {meusTemplates.map((m) => {
+                  const previa = documentoDeEstrutura(m.nome, perfil, m.estrutura, { templateBase: m.templateId, brandKit: kitDoPerfil })
+                  const on = meuTpl === m.id
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        setMeuTpl(on ? null : m.id)
+                        if (!on) setTpl(null)
+                      }}
+                      className={cn("relative flex flex-col gap-2.5 rounded-[10px] border bg-[var(--ops-card)] p-3 text-left transition-colors", on ? "border-[var(--ops-accent)] shadow-[0_0_0_2px_var(--ops-track)]" : "border-[var(--ops-border)] hover:border-[var(--ops-mut)]")}
+                    >
+                      {on && (
+                        <span className="absolute right-3.5 top-3.5 z-[2] inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[var(--ops-accent)] text-[var(--ops-on-accent)] shadow">
+                          <Icon icon={Check} customSize={12} />
+                        </span>
+                      )}
+                      <div className="relative aspect-[4/5] overflow-hidden rounded-[7px]">
+                        <div className="absolute inset-0">
+                          <ThumbFit doc={previa} ix={0} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[12.5px] font-semibold text-[var(--ops-title)]">{m.nome}</div>
+                        <div className="mt-1 text-[10.5px] text-[var(--ops-mut)]" style={TNUM}>
+                          {m.frames} frames · {m.usos} {m.usos === 1 ? "uso" : "usos"}
+                          {m.fidelidade != null ? ` · fidelidade ${m.fidelidade}%` : ""}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {caminho === "template" &&
             (Object.keys(ST_FUNIL) as Array<keyof typeof ST_FUNIL>).map((k) => {
               const g = ST_FUNIL[k]
@@ -353,7 +382,17 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
                   </div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
                     {ST_TEMPLATES.filter((t) => t.etapaFunil === k).map((t) => (
-                      <TemplateCard key={t.id} tpl={t} posts={posts} sel={tpl === t.id} onClick={() => setTpl(t.id)} />
+                      <TemplateCard
+                        key={t.id}
+                        tpl={t}
+                        posts={posts}
+                        brandKit={kitDoPerfil}
+                        sel={tpl === t.id}
+                        onClick={() => {
+                          setTpl(t.id)
+                          setMeuTpl(null)
+                        }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -369,7 +408,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     rows={6}
-                    placeholder="Ex.: Explicar por que segmentar a base por LTV vale mais que dar cupom. Público: donos de e-commerce de moda. Tom direto, com um dado forte na capa e case da Boutique Solar como prova."
+                    placeholder="Ex.: Explicar por que segmentar a base por LTV vale mais que dar cupom. Público: donos de e-commerce de moda. Inclua aqui os números, fontes e cases que a IA pode usar — ela não inventa dados."
                     className={cn(textareaCls, "bg-[var(--ops-card)] px-3.5 py-3 text-[13px]")}
                   />
                 </div>
@@ -417,7 +456,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
                   <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Seguem para a ConvertIA no editor, como direção visual.</div>
                 </div>
                 <div className="flex items-center gap-2 rounded-[9px] border border-[var(--ops-border)] bg-[var(--ops-tile)] px-3 py-2.5 text-[11.5px] text-[var(--ops-sec)]">
-                  <Icon icon={Sparkles} customSize={14} className="shrink-0 text-[var(--ops-title)]" />A ConvertIA escolhe o molde, escreve os slides, sugere imagens e a legenda. Você revisa no editor antes de exportar.
+                  <Icon icon={Sparkles} customSize={14} className="shrink-0 text-[var(--ops-title)]" />A ConvertIA escreve os slides e a legenda só com o que estiver na pauta; número sem fonte sai marcado como [confirmar]. Você revisa no editor antes de exportar.
                 </div>
               </div>
               <div>
@@ -510,7 +549,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
                     Lendo hierarquia, grade, tipografia e ritmo dos slides
                   </div>
                 )}
-                <div className="text-[11px] leading-relaxed text-[var(--ops-mut)]">O sistema extrai a estrutura (tipos de frame, posições, proporções) e recria com a identidade Convertfy. Fotos e textos da referência não são copiados.</div>
+                <div className="text-[11px] leading-relaxed text-[var(--ops-mut)]">A ConvertIA extrai a estrutura (tipos de frame, posições, proporções) e recria com a identidade do perfil. Fotos e textos da referência não são copiados.</div>
               </div>
               <div>
                 <CtLabel>Estrutura detectada</CtLabel>
@@ -550,7 +589,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
                         </div>
                       ))}
                     </div>
-                    <div className="text-[11px] text-[var(--ops-mut)]">Prévia com a identidade Convertfy aplicada. Ajuste os tipos acima se algum frame foi lido errado.</div>
+                    <div className="text-[11px] text-[var(--ops-mut)]">Prévia com a identidade do perfil aplicada. Ajuste os tipos acima se algum frame foi lido errado.</div>
                     {inspiracao?.observacoes && <div className="text-[11px] italic text-[var(--ops-sec)]">{inspiracao.observacoes}</div>}
                     {modoTemplate && (
                       <div>
@@ -577,10 +616,30 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, modoTempla
               </div>
               <div>
                 <CtLabel>Perfil</CtLabel>
-                <select value={perfil} onChange={(e) => setPerfil(e.target.value as PerfilEditavel)} className={cn(selectCls, "h-[42px] bg-[var(--ops-card)] text-[12.5px]")}>
-                  <option value="convertfy">Convertfy</option>
-                  <option value="bruno">Bruno</option>
-                </select>
+                {perfis.length === 0 ? (
+                  <div className="flex h-[42px] items-center rounded-lg border border-dashed border-[var(--ops-border)] px-3 text-[11.5px] text-[var(--ops-mut)]">Nenhum canal Instagram conectado</div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <CtAvatar perfil={perfilObj} size={28} />
+                    <select value={perfil} onChange={(e) => setPerfil(e.target.value)} className={cn(selectCls, "h-[42px] bg-[var(--ops-card)] text-[12.5px]")} aria-label="Perfil">
+                      {perfis.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nome}
+                          {p.handle ? ` · ${p.handle}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {caminho === "ia" && (
+                  <div className="mt-2">
+                    <CtLabel>Voz</CtLabel>
+                    <select value={voz} onChange={(e) => setVoz(e.target.value as "marca" | "pessoal")} className={cn(selectCls, "bg-[var(--ops-card)]")} aria-label="Voz">
+                      <option value="marca">Marca (nós, cases e dados)</option>
+                      <option value="pessoal">Pessoal (primeira pessoa, bastidor)</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           )}

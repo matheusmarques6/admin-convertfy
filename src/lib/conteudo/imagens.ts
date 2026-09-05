@@ -1,10 +1,14 @@
 "use client"
 
 /**
- * Imagens no navegador: arquivo → data URL comprimida (o documento vive em
- * localStorage, que tem ~5 MB; uma foto de celular crua estouraria a cota
- * em dois uploads). Também busca URLs remotas como data URL para a
- * exportação (o SVG serializado não pode referenciar recurso externo).
+ * Imagens no navegador — só para o que NÃO é persistido.
+ *
+ * Imagem que entra no carrossel vai para o Storage pelo upload
+ * (`data.uploadImagem`): o documento guarda a URL, nunca o base64. Aqui
+ * ficam (a) as REFERÊNCIAS visuais que viajam para o modelo como data URL
+ * (anexo do chat, inspiração do fluxo Novo) e (b) o download de uma URL
+ * como data URL para a exportação, porque o SVG serializado não pode
+ * referenciar recurso externo.
  */
 
 export async function arquivoParaDataUrl(file: File, maxLado = 1350, qualidade = 0.86): Promise<string> {

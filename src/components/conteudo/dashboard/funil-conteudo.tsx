@@ -3,6 +3,7 @@
 /**
  * Funil Conteúdo → Comercial: trapézios em clip-path com taper fixo (o
  * volume nunca deforma a silhueta) e pílulas de conversão na borda direita.
+ * Etapa sem fonte (`valor: null`) mostra "sem dado" e não entra na conversão.
  */
 
 import { FUNIL_CORES } from "@/lib/conteudo/brand"
@@ -24,22 +25,28 @@ export function FunilConteudo({ etapas }: { etapas: FunilEtapa[] }) {
           <div
             key={e.label}
             className="flex flex-col items-center justify-center text-white"
+            title={e.nota}
             style={{
               height: SH,
               background: `linear-gradient(180deg, ${cor} 0%, ${cor}E6 100%)`,
               clipPath: `polygon(${t}% 0, ${100 - t}% 0, ${100 - b}% 100%, ${b}% 100%)`,
+              opacity: e.valor == null ? 0.55 : 1,
             }}
           >
             <span className="text-[22px] font-bold leading-none [text-shadow:0_1px_2px_rgba(0,0,0,0.18)]" style={TNUM}>
-              {fmtNum(e.valor)}
+              {e.valor == null ? "—" : fmtNum(e.valor)}
             </span>
-            <span className="mt-[5px] whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.12em] opacity-90">{e.label}</span>
+            <span className="mt-[5px] whitespace-nowrap text-[9px] font-bold uppercase tracking-[0.12em] opacity-90">
+              {e.label}
+              {e.valor == null ? " · sem dado" : ""}
+            </span>
           </div>
         )
       })}
       {etapas.slice(1).map((e, i) => {
         const base = etapas[i].valor
-        const c = base > 0 ? (e.valor / base) * 100 : 0
+        if (base == null || e.valor == null || base <= 0) return null
+        const c = (e.valor / base) * 100
         const b = (i + 1) * STEP
         const x = (FW * (100 - b)) / 100
         return (

@@ -15,7 +15,6 @@ import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { adicionarFrame, contarPalavras, dividirFrame, duplicarFrame, excluirFrame, MIN_FRAMES, reordenarFrames, trocarTipoFrame } from "@/lib/conteudo/documento"
 import { chamarIA } from "@/lib/conteudo/ia/client"
-import { frameLocal, legendaLocal } from "@/lib/conteudo/ia/fallback"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import { ST_TIPOS_TROCA, ST_VARIANTES } from "@/lib/conteudo/templates"
 import type { FrameTipo, VarianteLayout } from "@/lib/conteudo/types"
@@ -40,13 +39,11 @@ export function FramesPanel({ api }: { api: EditorApi }) {
   const gerarLegenda = async () => {
     setGerandoLegenda(true)
     try {
-      const r = await chamarIA({ acao: "legenda", resumo: resumoDocumento(doc), palavraChave: doc.palavraChave || undefined })
+      const r = await chamarIA({ acao: "legenda", resumo: resumoDocumento(doc, api.perfil), palavraChave: doc.palavraChave || undefined })
       api.set({ legenda: r.legenda, palavraChave: r.palavraChave.toUpperCase() }, "Legenda gerada pela ConvertIA")
       api.avisar("Legenda pronta")
-    } catch {
-      const r = legendaLocal(doc.palavraChave)
-      api.set({ legenda: r.legenda, palavraChave: r.palavraChave }, "Legenda do modo local")
-      api.avisar("ConvertIA indisponível: legenda do modo local")
+    } catch (e) {
+      api.avisar(e instanceof Error ? `ConvertIA: ${e.message}` : "A ConvertIA não respondeu. Tente de novo.")
     } finally {
       setGerandoLegenda(false)
     }
@@ -57,12 +54,10 @@ export function FramesPanel({ api }: { api: EditorApi }) {
     if (!f) return
     setRegenerando(f.frameId)
     try {
-      const r = await chamarIA({ acao: "preencher_frame", resumo: resumoDocumento(doc), frame: { frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos }, atual: f.textos, regenerar: true })
+      const r = await chamarIA({ acao: "preencher_frame", resumo: resumoDocumento(doc, api.perfil), frame: { frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos }, atual: f.textos, regenerar: true })
       api.set((d) => ({ ...d, frames: d.frames.map((x) => (x.frameId === f.frameId ? { ...x, textos: { ...x.textos, ...r.textos } } : x)) }), `${f.label} regenerado pela ConvertIA`)
-    } catch {
-      const r = frameLocal(doc, f.frameId)
-      api.set((d) => ({ ...d, frames: d.frames.map((x) => (x.frameId === f.frameId ? { ...x, textos: { ...x.textos, ...r.textos } } : x)) }), `${f.label} preenchido pelo modo local`)
-      api.avisar("ConvertIA indisponível: texto do modo local")
+    } catch (e) {
+      api.avisar(e instanceof Error ? `ConvertIA: ${e.message}` : "A ConvertIA não respondeu. Tente de novo.")
     } finally {
       setRegenerando(null)
     }

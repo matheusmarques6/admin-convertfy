@@ -7,7 +7,7 @@
 
 import { streamOpenRouterChat, type ChatContentPart, type ChatMessage } from "@/lib/ai/openrouter-chat"
 import { logger } from "@/lib/logger"
-import { PROVAS_CONHECIDAS, SYSTEM_PROMPT } from "./prompt"
+import { SYSTEM_PROMPT } from "./prompt"
 import { SAIDA_SCHEMA, type EntradaIA, type SaidaPorAcao } from "./schemas"
 
 const log = logger.child("ConteudoIA")
@@ -44,13 +44,13 @@ function instrucaoDaAcao(e: EntradaIA): { texto: string; imagens?: string[] } {
         texto: `Gere o conteúdo completo de um carrossel.
 
 Nome de trabalho: "${e.nome}"
-Perfil que publica: ${e.perfil === "bruno" ? "@brunoconvertfy (primeira pessoa, bastidor, opinião)" : "@convertfy (marca, nós, autoridade calma)"}
+Perfil que publica: ${[e.perfil.handle, e.perfil.nome].filter(Boolean).join(" · ") || "não informado"} — voz ${e.perfil.voz === "pessoal" ? "PESSOAL (primeira pessoa, bastidor, opinião)" : "de MARCA (nós, cases e dados, autoridade calma)"}
 Molde: ${e.templateNome}
 Pauta: ${e.pauta}
 ${e.pilar ? `Pilar: ${e.pilar}` : ""}
 ${e.etapaFunil ? `Etapa do funil: ${e.etapaFunil}` : ""}
 ${e.objetivoCta ? `Objetivo do CTA: ${e.objetivoCta}` : "Objetivo do CTA: comment gate"}
-${e.prova ? `Dado ou prova a usar: ${e.prova}` : `Provas disponíveis: ${PROVAS_CONHECIDAS.join("; ")}`}
+${e.prova ? `Dado ou prova a usar: ${e.prova}` : "Nenhuma prova fornecida: onde o molde pedir número ou case, use o marcador [confirmar] em vez de inventar."}
 ${e.atuais ? `Textos já escritos pelo usuário (preserve o que não for texto-guia, melhore o resto): ${JSON.stringify(e.atuais)}` : ""}
 
 Frames do documento (escreva EXATAMENTE estes frameIds, só os campos listados, respeitando os limites por tipo):

@@ -10,17 +10,17 @@ import { useRef, useState } from "react"
 import { Eye, EyeOff, Image as ImageIcon, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
-import { getProvas, getSugestoesImagem, slotDeUrl } from "@/lib/conteudo/data"
+import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
+import { PILARES } from "@/lib/conteudo/config"
+import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
-import { estruturaLocal, headlinesLocal } from "@/lib/conteudo/ia/fallback"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
-import { arquivoParaDataUrl } from "@/lib/conteudo/imagens"
 import { getTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { DocFrame, EstiloTexto, OcultavelGlobal, PerfilEditavel, Proporcao } from "@/lib/conteudo/types"
+import type { DocFrame, EstiloTexto, OcultavelGlobal, Proporcao } from "@/lib/conteudo/types"
 import { CtAvatar, CtLabel, CtSeg, CtSkel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { EditorApi } from "./editor-types"
+import { useAssets } from "./use-estudio-data"
 
 const label = (t: string) => <CtLabel>{t}</CtLabel>
 
@@ -127,11 +127,12 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
   const [pauta, setPauta] = useState(doc.nome)
   const [pilar, setPilar] = useState("Case")
   const [cta, setCta] = useState("Comment gate")
-  const [prova, setProva] = useState(0)
+  const [prova, setProva] = useState("")
+  const [voz, setVoz] = useState<"marca" | "pessoal">("marca")
   const [gerar, setGerar] = useState<"idle" | "loading" | "erro">("idle")
   const [erro, setErro] = useState<string | null>(null)
   const [hl, setHl] = useState<"idle" | "loading" | string[]>("idle")
-  const provas = getProvas()
+  const [erroHl, setErroHl] = useState<string | null>(null)
 
   const distribuir = () => {
     const props = propostasDeLinhas(doc, colar)
@@ -142,7 +143,7 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
     api.setAtivo(doc.frames.findIndex((f) => f.frameId === props[0].frameId))
   }
 
-  const aplicarEstrutura = (r: { nome?: string; frames: Array<{ frameId: string; textos: Record<string, string | undefined> }>; legenda: string; palavraChave: string }, local: boolean) => {
+  const aplicarEstrutura = (r: { nome?: string; frames: Array<{ frameId: string; textos: Record<string, string | undefined> }>; legenda: string; palavraChave: string }) => {
     api.set(
       (d) => ({
         ...d,
@@ -154,7 +155,7 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
         legenda: r.legenda || d.legenda,
         palavraChave: r.palavraChave ? r.palavraChave.toUpperCase() : d.palavraChave,
       }),
-      local ? "Estrutura montada pelo modo local" : "Estrutura gerada pela ConvertIA",
+      "Estrutura gerada pela ConvertIA",
     )
   }
 
@@ -165,16 +166,16 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
       const r = await chamarIA({
         acao: "gerar_estrutura",
         nome: doc.nome,
-        perfil: doc.perfil,
+        perfil: { handle: api.perfil?.handle ?? (doc.brandKit.brandName || null), nome: api.perfil?.nome ?? doc.brandKit.brandName2, voz },
         pauta: pauta || doc.nome,
         pilar,
         objetivoCta: cta,
-        prova: provas[prova] ? `${provas[prova].t} (${provas[prova].fonte}, ${provas[prova].data})` : undefined,
+        prova: prova.trim() || undefined,
         templateNome: getTemplate(doc.templateId).nome,
         frames: doc.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
         atuais: Object.fromEntries(doc.frames.map((f) => [f.frameId, f.textos])),
       })
-      aplicarEstrutura(r, false)
+      aplicarEstrutura(r)
       setGerar("idle")
       setSub(false)
       api.avisar("Estrutura gerada")
@@ -186,12 +187,13 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
 
   const headlines = async () => {
     setHl("loading")
+    setErroHl(null)
     try {
-      const r = await chamarIA({ acao: "headlines", resumo: resumoDocumento(doc), atual: doc.frames[0]?.textos.titulo ?? doc.nome })
+      const r = await chamarIA({ acao: "headlines", resumo: resumoDocumento(doc, api.perfil), atual: doc.frames[0]?.textos.titulo ?? doc.nome })
       setHl(r.opcoes)
-    } catch {
-      setHl(headlinesLocal().opcoes)
-      api.avisar("ConvertIA indisponível: sugestões do modo local")
+    } catch (e) {
+      setHl("idle")
+      setErroHl(e instanceof Error ? e.message : "A ConvertIA não respondeu.")
     }
   }
 
@@ -219,9 +221,16 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
             <div>
               {label("Pilar")}
               <select value={pilar} onChange={(e) => setPilar(e.target.value)} className={selectCls}>
-                {["Case", "Educacional", "Bastidor", "Benchmark"].map((o) => (
+                {PILARES.map((o) => (
                   <option key={o}>{o}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              {label("Voz")}
+              <select value={voz} onChange={(e) => setVoz(e.target.value as "marca" | "pessoal")} className={selectCls}>
+                <option value="marca">Marca (nós)</option>
+                <option value="pessoal">Pessoal (eu)</option>
               </select>
             </div>
             <div>
@@ -234,20 +243,9 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
             </div>
           </div>
           <div>
-            {label("Dado ou prova")}
-            <div className="overflow-hidden rounded-lg border border-[var(--ops-border)] bg-[var(--ops-card)]">
-              {provas.map((p, i) => (
-                <button key={p.t} type="button" onClick={() => setProva(i)} className={cn("flex w-full gap-2 px-[9px] py-[7px] text-left", i > 0 && "border-t border-[var(--ops-border)]", prova === i && "bg-[var(--ops-hover)]")}>
-                  <span className={cn("mt-[3px] h-2.5 w-2.5 shrink-0 rounded-full border-[1.5px]", prova === i ? "border-[var(--ops-accent)] bg-[var(--ops-accent)]" : "border-[var(--ops-border)]")} />
-                  <span>
-                    <span className="block text-[11.5px] leading-[1.4] text-[var(--ops-title)]">{p.t}</span>
-                    <span className="mt-px block text-[10px] text-[var(--ops-mut)]">
-                      {p.fonte} · {p.data}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
+            {label("Dado ou prova (opcional)")}
+            <textarea value={prova} onChange={(e) => setProva(e.target.value)} rows={2} placeholder="Ex.: Cliente X: +R$ 31 mil/mês em 60 dias (relatório interno, ago/2026)" className={cn(textareaCls, "text-[11.5px]")} />
+            <div className="mt-1 text-[10px] leading-relaxed text-[var(--ops-mut)]">A IA só usa números que você informar. Sem prova, o slide sai com [confirmar] no lugar do dado.</div>
           </div>
           {gerar === "erro" ? (
             <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--ops-neg)]/30 px-2.5 py-2 text-[11.5px] text-[var(--ops-neg)]">
@@ -256,16 +254,8 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
                 <button type="button" onClick={gerarAgora} className="font-semibold hover:underline">
                   Tentar novamente
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    aplicarEstrutura(estruturaLocal(doc), true)
-                    setGerar("idle")
-                    setSub(false)
-                  }}
-                  className="font-semibold text-[var(--ops-sec)] hover:underline"
-                >
-                  Usar modo local
+                <button type="button" onClick={() => setGerar("idle")} className="font-semibold text-[var(--ops-sec)] hover:underline">
+                  Fechar
                 </button>
               </div>
             </div>
@@ -279,6 +269,7 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
       <AiBtn onClick={headlines} loading={hl === "loading"}>
         Melhorar headline
       </AiBtn>
+      {erroHl && <div className="text-[11px] text-[var(--ops-neg)]">{erroHl}</div>}
       {Array.isArray(hl) && (
         <div className="flex flex-col gap-[5px]">
           {hl.map((h) => {
@@ -320,18 +311,33 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
     <div className="flex flex-col gap-2.5">
       <div>
         {label("Perfil")}
-        <CtSeg<PerfilEditavel>
-          val={doc.perfil}
-          onChange={(p) => {
-            if (p === doc.perfil) return
-            api.set(() => aplicarPerfil(doc, p, api.brandKits?.[p]), null)
-            api.avisar(`Brand Kit ${p === "bruno" ? "do Bruno" : "da Convertfy"} aplicado em todos os frames`)
-          }}
-          opts={[
-            ["convertfy", "Convertfy"],
-            ["bruno", "Bruno"],
-          ]}
-        />
+        {api.perfis.length === 0 ? (
+          <div className="text-[11px] text-[var(--ops-mut)]">Nenhum canal Instagram conectado. O brand kit abaixo é manual.</div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <CtAvatar perfil={api.perfil} size={26} />
+            <select
+              value={api.perfis.some((p) => p.id === doc.perfil) ? doc.perfil : ""}
+              onChange={(e) => {
+                const p = e.target.value
+                if (!p || p === doc.perfil) return
+                const alvo = api.perfis.find((x) => x.id === p)
+                api.set(() => aplicarPerfil(doc, p, api.brandKits?.[p] ?? brandKitPadrao(alvo)), null)
+                api.avisar(`Brand Kit de ${alvo?.nome ?? "perfil"} aplicado em todos os frames`)
+              }}
+              className={cn(selectCls, "h-8")}
+              aria-label="Perfil"
+            >
+              {!api.perfis.some((p) => p.id === doc.perfil) && <option value="">(perfil não conectado)</option>}
+              {api.perfis.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.handle ? ` · ${p.handle}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       {(
         [
@@ -351,7 +357,7 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
       <div>
         {label("avatar")}
         <div className="flex items-center gap-2">
-          <CtAvatar perfil={doc.perfil} size={32} src={doc.brandKit.avatar} />
+          <CtAvatar perfil={api.perfil} size={32} src={doc.brandKit.avatar} />
           <Ghost onClick={() => fileRef.current?.click()}>Trocar</Ghost>
           {doc.brandKit.avatar && <Ghost onClick={() => api.set({ brandKit: { ...doc.brandKit, avatar: null } }, "Avatar removido")}>Remover</Ghost>}
           <span className="ml-auto">{olho("avatar")}</span>
@@ -363,10 +369,14 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
           className="hidden"
           onChange={async (e) => {
             const f = e.target.files?.[0]
-            if (!f) return
-            const url = await arquivoParaDataUrl(f, 256)
-            api.set({ brandKit: { ...doc.brandKit, avatar: url } }, "Avatar trocado")
             e.target.value = ""
+            if (!f) return
+            try {
+              const { url } = await uploadImagem(f, "avatar")
+              api.set({ brandKit: { ...doc.brandKit, avatar: url } }, "Avatar trocado")
+            } catch (err) {
+              api.avisar(err instanceof Error ? err.message : "Falha no upload do avatar")
+            }
           }}
         />
       </div>
@@ -471,7 +481,9 @@ export function PainelMidia({ api }: { api: EditorApi }) {
   const [ia, setIa] = useState<"off" | "prompt" | "loading" | string[]>("off")
   const [prompt, setPrompt] = useState("Interior de loja premium, luz natural, tons de azul profundo, sem pessoas, estética editorial")
   const [erro, setErro] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
   const { total, cheios, semSlot } = slotsDeImagem(doc)
+  const { assets, isLoading: carregandoAssets, recarregar: recarregarAssets } = useAssets()
 
   const abrirUpload = (i: number) => {
     alvoRef.current = i
@@ -482,6 +494,19 @@ export function PainelMidia({ api }: { api: EditorApi }) {
     if (!fr || fr.slotsImagem === 0) return
     api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
   }
+  const enviarArquivo = async (i: number, file: File) => {
+    setEnviando(true)
+    setErro(null)
+    try {
+      const { url } = await uploadImagem(file, "slide")
+      aplicarUrl(i, url, "Imagem enviada")
+      void recarregarAssets()
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upload")
+    } finally {
+      setEnviando(false)
+    }
+  }
 
   const gerar = async () => {
     setIa("loading")
@@ -489,6 +514,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
     try {
       const r = await gerarImagemIA({ prompt, aspecto: doc.proporcaoExport === "9:16" ? "9:16" : "4:5", quantidade: 4 })
       setIa(r.urls)
+      void recarregarAssets()
     } catch (e) {
       setIa("prompt")
       setErro(e instanceof Error ? e.message : "Falha ao gerar")
@@ -503,18 +529,18 @@ export function PainelMidia({ api }: { api: EditorApi }) {
         onClick={() => f?.slotsImagem && abrirUpload(ativo)}
         onKeyDown={(e) => e.key === "Enter" && f?.slotsImagem && abrirUpload(ativo)}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={async (e) => {
+        onDrop={(e) => {
           e.preventDefault()
           const file = e.dataTransfer.files?.[0]
-          if (file && f?.slotsImagem) aplicarUrl(ativo, await arquivoParaDataUrl(file))
+          if (file && f?.slotsImagem) void enviarArquivo(ativo, file)
         }}
         className={cn("rounded-[9px] border border-dashed border-[var(--ops-border)] px-2.5 py-4 text-center", f?.slotsImagem ? "cursor-pointer hover:bg-[var(--ops-hover)]" : "opacity-60")}
       >
         <div className="flex justify-center text-[var(--ops-mut)]">
           <Icon icon={ImageIcon} customSize={18} />
         </div>
-        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{f?.slotsImagem ? "Arraste ou clique" : "Este frame não tem slot"}</div>
-        <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · comprimida para caber no documento</div>
+        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f?.slotsImagem ? "Arraste ou clique" : "Este frame não tem slot"}</div>
+        <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · vai para o Storage da org (≤ 1350px)</div>
       </div>
       <div className="text-[11.5px] font-semibold text-[var(--ops-title)]" style={TNUM}>
         {cheios} de {total} slots
@@ -544,13 +570,27 @@ export function PainelMidia({ api }: { api: EditorApi }) {
       </div>
       {f?.slotsImagem > 0 && (
         <div>
-          {label(`Sugestões para ${f.label}`)}
-          <div className="grid grid-cols-3 gap-1.5">
-            {getSugestoesImagem(f.frameId).map((u) => (
-              <button key={u} type="button" aria-label="Aplicar sugestão" onClick={() => aplicarUrl(ativo, u, "Imagem trocada")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens.slot1?.url === u ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${u})` }} />
-            ))}
-          </div>
-          <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Banco da agência. Um clique troca.</div>
+          {label("Banco de imagens da org")}
+          {carregandoAssets ? (
+            <div className="grid grid-cols-3 gap-1.5">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="aspect-[4/5]">
+                  <CtSkel h={0} className="h-full" r={8} />
+                </div>
+              ))}
+            </div>
+          ) : !assets || assets.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--ops-border)] px-2.5 py-3 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">Nada no banco ainda. Imagens enviadas ou geradas pela ConvertIA aparecem aqui para reutilizar.</div>
+          ) : (
+            <div className="grid max-h-[220px] grid-cols-3 gap-1.5 overflow-y-auto pr-0.5">
+              {assets
+                .filter((a) => a.kind !== "avatar")
+                .map((a) => (
+                  <button key={a.path} type="button" title={a.nome} aria-label="Usar imagem do banco" onClick={() => aplicarUrl(ativo, a.url, "Imagem do banco")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens.slot1?.url === a.url ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${a.url})` }} />
+                ))}
+            </div>
+          )}
+          <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Só imagens reais da sua org: uploads do Estúdio e gerações da ConvertIA.</div>
         </div>
       )}
       <AiBtn onClick={() => setIa((s) => (s === "off" ? "prompt" : "off"))}>Gerar imagem com IA</AiBtn>
@@ -586,10 +626,10 @@ export function PainelMidia({ api }: { api: EditorApi }) {
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={async (e) => {
+        onChange={(e) => {
           const file = e.target.files?.[0]
-          if (file) aplicarUrl(alvoRef.current, await arquivoParaDataUrl(file))
           e.target.value = ""
+          if (file) void enviarArquivo(alvoRef.current, file)
         }}
       />
     </div>

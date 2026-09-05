@@ -2616,68 +2616,90 @@ fora do welcome; `aliviador`/`profundidade` nas 44 notas.
 ## Módulo Conteúdo — Dashboard Social + Estúdio de Carrosséis (set/2026)
 
 Item "Conteúdo" no grupo Marketing do workspace Operacional, com **submenu
-suspenso** (`NavItem.children`, novo em `nav-config.ts`: expandido abre
-acordeão, colapsado abre flyout; o ⌘K achata os filhos via
-`flattenNavItems`). Ids `ops.conteudo*` em `role-access` (mesma régua da
-Geração de Imagens), rotas em `ROUTES.ADMIN.CONTEUDO`, prefixo
-`/admin/conteudo` no `use-workspace`. Reels, Calendário e Ideias são
-telas "em breve" (`em-breve.tsx`).
+suspenso** (`NavItem.children` em `nav-config.ts`: expandido abre acordeão,
+colapsado abre flyout; o ⌘K achata os filhos via `flattenNavItems`). Ids
+`ops.conteudo*` em `role-access`, rotas em `ROUTES.ADMIN.CONTEUDO`, prefixo
+`/admin/conteudo` no `use-workspace`. Reels e Ideias são telas "em breve";
+Dashboard, Estúdio e Calendário estão completos.
 
-**Camada de dados isolada** em `src/lib/conteudo/`: `types.ts`
-(TEMPLATE fixo × DOCUMENTO que É DONO da estrutura dos frames — dividir,
-duplicar, excluir e trocar tipo nunca mexem no template compartilhado),
-`limites.ts` (ST_LIMITES + `fitFactor`: acima do limite o texto ENCOLHE,
-piso 0,58, e a pill avisa "título longo"), `templates.ts`, `brand.ts`
-(identidade dos slides = exceção consciente aos tokens; só aparece dentro
-do canvas e em marcadores de perfil/molde/pilar), `documento.ts` (puro,
-testado: `trocarTemplate` casa por tipo em FIFO e devolve `naoCoube`,
-`propostasDeLinhas` = "uma linha vira um slide" ignorando capa e CTA,
-`dividirTexto` na fronteira de frase), `historico.ts` (reducer undo/redo;
-`preview` de drag vira UM passo), `compliance.ts` (regras devolvem o
-TRECHO que reprovou; `corrigirLegendaLocal` resolve o corrigível sem
-modelo), `data.ts` (ÚNICA porta de leitura/escrita: dashboard do mock;
-documentos, brand kits, templates do time e agenda em localStorage
-semeados de `mock/*` — trocar por Supabase = mexer só aqui;
-`QuotaExcedidaError` vira toast). Uploads passam por
-`imagens.ts` (comprime a ≤1350px; localStorage tem ~5 MB).
+**Não existe perfil fixo** (migration 20261120): perfil = canal Instagram
+conectado da org (`crm_channels.type='instagram'`). Quem conecta um canal
+ganha um perfil no módulo; handle, nome, foto e seguidores vêm da Graph API.
+A foto é REGRAVADA no Storage (`stores/org-<id>/email-assets/avatar-<canal>`)
+porque a URL do CDN da Meta expira e não pode ser embutida na exportação.
+Cor do perfil é derivada da POSIÇÃO do canal (`corDoPerfil`), não do
+Instagram. YouTube aparece no seletor como "não conectado" — não há
+integração, e fingir dado seria pior que a lacuna.
 
-**IA do Estúdio** (`ia/`): `prompt.ts` é a metodologia da casa em texto
-(perfis, pilares, moldes com sequência, anatomia do carrossel que gera
-lead, regras de copy por tipo com os limites REAIS do canvas, legenda
-150–180 palavras com comment gate, compliance, provas conhecidas —
-nunca inventar dado). Oito ações (`schemas.ts`, saída validada por zod
-antes de encostar no documento) + `gerar_imagem` (reusa
-`generateEmailImage` da ConvertIA, pasta `org-<id>`), tudo em
-`POST /api/conteudo/ia` via `streamOpenRouterChat` (modelo
-`CONTEUDO_IA_MODEL`, default sonnet-4.6; JSON inválido → 2ª volta com o
-erro). Erro do provedor traduzido por `friendlyModelErrorText`.
-**`fallback.ts` é o modo local**: qualquer falha da rota devolve algo
-útil (documento de referência, distribuição determinística, heurísticas
-do protótipo) e a UI AVISA que foi local — a tela nunca trava por IA.
+**Nada é mock.** Tabelas novas (todas com RLS `TO authenticated` + escopo por
+org): `conteudo_documentos` (Documento inteiro em JSONB), `conteudo_brand_kits`
+(por canal), `conteudo_meus_templates` (estrutura lida de inspiração),
+`conteudo_agenda` (1 por documento, UNIQUE), `conteudo_ig_media` (mídias +
+insights) e `conteudo_ig_daily` (série da conta). O trigger de
+`atualizado_em` usa **`clock_timestamp()`, não `now()`** — `now()` é o início
+da TRANSAÇÃO e não anda dentro dela, e esse carimbo é a versão que detecta
+salvamento concorrente no editor.
 
-**Renderer** (`estudio/frame.tsx`): base 1080 (4:5 = 1350, 9:16 = 1920
-com `off` centralizando o conteúdo), só estilos inline e SVGs inline —
-o MESMO componente desenha canvas, miniaturas, prévia e exportação.
-Alças operam em px de TELA divididos por `scale` (1:1 em qualquer zoom).
-Fontes self-hosted em `public/fonts` + `styles/conteudo-slides.css`
-(Barlow Condensed 800, "Inter Slides"): a exportação precisa da URL.
+**Sync do Instagram** (`conteudo-instagram-sync.service.ts`): mídias da
+janela de 120 dias + insights POR MÍDIA (do conjunto mais rico ao mais
+básico — a Meta muda o conjunto aceito por tipo, e `#100` significa "tente
+menos métricas", não "token inválido") + série diária da conta. O dashboard
+lê SEMPRE do banco; o sync inline só roda quando o canal está defasado
+(30 min) e tem orçamento de tempo. O cron `instagram-snapshot` (05:15 BRT)
+sincroniza tudo com budget por canal. Falha de insight fica na linha
+(`insights_error`), nunca derruba a página.
 
-**Exportação sem servidor** (`export/render.ts`): frames renderizados a
-1080 fora da tela (`FramesOcultos`) → clone com imagens e fontes em
-base64 → XHTML dentro de SVG `<foreignObject>` → `<canvas>` → PNG/JPG;
-ZIP via jszip (já era dependência) com `legenda.txt`. Imagem externa que
-não responde tem timeout (12 s) e sai do frame em vez de travar tudo.
-**Incidente na verificação**: o prefixo dos ids ocultos era `Date.now()`
-e divergia na hidratação quando o modal abre pela URL — `getElementById`
-não achava o frame. Regra: id de DOM em componente SSR-ável vem de
-`useId`. Saudação do dashboard também vai calculada no servidor.
+**Leads do conteúdo = comment gate medido de verdade** (`atribuirLeads`, puro):
+contato que COMENTOU num post e depois (até 14 dias) abriu direct é lead
+daquele post; casa por id do remetente e, na falta, pelo username; o
+comentário mais recente antes da conversa vence. Threads `comment:<media>`
+nunca são leads (é a conversa dos comentários, não do contato). Receita
+atribuída = negócios GANHOS de contatos do Instagram no período.
 
-**Editor** (`estudio/editor.tsx` + `use-editor.ts`): autosave 600 ms com
-estado visível ("Salvo automaticamente" é real), "Restaurar" do Histórico
-usa snapshots da sessão (`temSnapshot`), trocar perfil aplica o Brand Kit
-em todos os frames, chat aplica propostas por `frameId` validado contra o
-documento. Referências visuais do fluxo "100% com IA" viajam por
-`sessionStorage` (`conteudo:anexos:<docId>`) e abrem no chat.
+**Métrica sem fonte sai `null`, com a nota do porquê** — nunca zero, nunca
+inventada: `montarFunil` marca "webhook de comentários sem eventos" quando a
+Graph API vê comentários e o nosso banco não, e "insights indisponíveis"
+quando a Meta não entrega alcance. Alcance prefere os insights da CONTA
+(`conteudo_ig_daily`) e cai para a soma dos posts, dizendo qual usou.
+`montarPilarMix` conta só os classificados e informa quantos ficaram fora.
+Agregação inteira em `lib/conteudo/dashboard/agregacao.ts` (puro, 20 testes).
+
+**Pilar, molde e palavra-chave são CLASSIFICAÇÃO HUMANA** (`PATCH
+/api/conteudo/posts/[id]`, no drawer do post): a Meta não sabe o que é um
+"Turbo". Sem classificação, mix e desempenho por molde dizem isso em vez de
+mostrar número.
+
+**Estúdio no servidor**: documentos, brand kits, templates do time e agenda
+persistem via `/api/conteudo/*`; `data.ts` é a ÚNICA porta do cliente e
+lança `ConteudoApiError` com a mensagem da API. O autosave manda o carimbo
+`atualizadoEm` que carregou; divergiu, a rota responde **409 com a versão
+atual** e o editor oferece Recarregar ou Sobrescrever (nada de sobrescrever
+em silêncio). Documento com imagem em base64 é RECUSADO (413 acionável):
+imagem entra pelo `POST /api/conteudo/upload`, que redimensiona no servidor
+(≤1350px, avatar 256) e devolve a URL servida pelo admin. O painel Mídia
+sugere o **banco real da org** (`/api/conteudo/assets`, uploads + gerações
+da ConvertIA), não banco de imagens genérico.
+
+**IA sem inventar**: o system prompt perdeu handles, cases e números fixos —
+a voz (marca ou pessoal) e o handle vêm do perfil escolhido, e prova/dado
+só entram se o usuário informar; sem prova, o slide sai com `[confirmar]` no
+lugar do número. O modo local (`ia/fallback.ts`) faz SÓ o que dá sem modelo:
+distribuir texto colado e corrigir compliance. Headline, legenda, estrutura
+e leitura de inspiração falham com a mensagem do erro — não existe mais
+resposta "local" que fingia conteúdo.
+
+**Calendário** (`/admin/conteudo/calendario`) é real: mês a mês com o que foi
+publicado (verde, da conta conectada) e o que está agendado no Estúdio
+(âmbar), lista do dia e cadência da semana por perfil. A publicação em si
+continua no app do Instagram — o calendário organiza a cadência e marca o
+status do carrossel.
+
+**Renderer e exportação** seguem como estavam: base 1080 (4:5 = 1350, 9:16 =
+1920), só estilos inline e SVGs inline, o MESMO componente desenha canvas,
+miniaturas, prévia e exportação; PNG/JPG por `<foreignObject>` → canvas, ZIP
+com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
+precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
+`Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
