@@ -90,16 +90,34 @@ function menosDias(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) - n * DIA_MS).toISOString().slice(0, 10)
 }
 
-/** Deals da org (via pipelines) ligados ao Instagram: por thread/lead ou por origem. */
-async function carregarDeals(admin: Admin, orgId: string, threads: ThreadRow[], desdeIso: string): Promise<DealDb[]> {
-  const { data: pipes } = await admin.from("pipelines").select("id").eq("org_id", orgId)
+/**
+ * Negócios ligados ao Instagram: os das conversas do canal (por `deal_id` ou
+ * `lead_id` da thread) e os criados com origem Instagram.
+ *
+ * `pipelines` NÃO tem org_id — o CRM inteiro escopa por `scope`/`is_archived`
+ * (ver /api/crm/performance). Filtrar por uma coluna inexistente devolvia
+ * erro, e erro silenciado aqui viraria receita zero sem aviso: por isso a
+ * falha sobe como `erro` e a rota mostra no painel.
+ */
+async function carregarDeals(
+  admin: Admin,
+  threads: ThreadRow[],
+  desdeIso: string,
+): Promise<{ deals: DealDb[]; erro: string | null }> {
+  const { data: pipes, error: pipeErr } = await admin.from("pipelines").select("id").eq("is_archived", false)
+  if (pipeErr) {
+    log.warn("pipelines indisponíveis", { error: pipeErr.message })
+    return { deals: [], erro: `Negócios não puderam ser lidos: ${pipeErr.message}` }
+  }
   const pipeIds = (pipes ?? []).map((p: { id: string }) => p.id)
-  if (!pipeIds.length) return []
+  if (!pipeIds.length) return { deals: [], erro: null }
+
   const leadIds = [...new Set(threads.map((t) => t.lead_id).filter((x): x is string => Boolean(x)))]
   const dealIds = [...new Set(threads.map((t) => t.deal_id).filter((x): x is string => Boolean(x)))]
   const ors = [`source.in.(${IG_SOURCES.join(",")})`]
   if (leadIds.length) ors.push(`lead_id.in.(${leadIds.slice(0, 500).join(",")})`)
   if (dealIds.length) ors.push(`id.in.(${dealIds.slice(0, 500).join(",")})`)
+
   const { data, error } = await admin
     .from("deals")
     .select("id, lead_id, status, value, created_at, won_at, source, stage:pipeline_stages(name)")
@@ -110,9 +128,9 @@ async function carregarDeals(admin: Admin, orgId: string, threads: ThreadRow[], 
     .limit(5000)
   if (error) {
     log.warn("deals indisponíveis", { error: error.message })
-    return []
+    return { deals: [], erro: `Negócios não puderam ser lidos: ${error.message}` }
   }
-  return (data ?? []) as unknown as DealDb[]
+  return { deals: (data ?? []) as unknown as DealDb[], erro: null }
 }
 
 export interface DashboardOpts {
@@ -217,8 +235,9 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
     }))
   }
 
-  const dealsDb = await carregarDeals(admin, orgId, dmThreads, anterior.start)
-  const deals: DealRow[] = dealsDb.map((d) => ({ id: d.id, lead_id: d.lead_id, status: d.status, value: d.value == null ? null : Number(d.value), created_at: d.created_at, won_at: d.won_at, source: d.source, stage_name: d.stage?.name ?? null }))
+  const dealsRes = await carregarDeals(admin, dmThreads, anterior.start)
+  if (dealsRes.erro) avisos.push(dealsRes.erro)
+  const deals: DealRow[] = dealsRes.deals.map((d) => ({ id: d.id, lead_id: d.lead_id, status: d.status, value: d.value == null ? null : Number(d.value), created_at: d.created_at, won_at: d.won_at, source: d.source, stage_name: d.stage?.name ?? null }))
 
   const atrib = atribuirLeads(comentarios, dmThreads)
   const leadsNoPeriodo = (mediaId: string, s: string, e: string) => (atrib.porMidia.get(mediaId) ?? []).filter((t) => dentro(t.last_message_at, s, e)).length
@@ -344,7 +363,7 @@ export async function leadsDoPostService(admin: Admin, orgId: string, mediaId: s
   const dm = (threads ?? []) as ThreadRow[]
   const atrib = atribuirLeads(comentarios, dm)
   const ts = atrib.porMidia.get(mediaId) ?? []
-  const deals = await carregarDeals(admin, orgId, ts, diaSp(desde))
+  const { deals } = await carregarDeals(admin, ts, diaSp(desde))
   const dealsMap = new Map(deals.map((d) => [d.id, { id: d.id, lead_id: d.lead_id, status: d.status, value: d.value == null ? null : Number(d.value), created_at: d.created_at, won_at: d.won_at, source: d.source, stage_name: d.stage?.name ?? null }]))
   return { leads: leadsDoPost(ts, dealsMap), total: ts.length }
 }
