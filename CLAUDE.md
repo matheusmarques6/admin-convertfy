@@ -2613,5 +2613,71 @@ requisito não verificável) — serve só ao medidor
 mesma ordem de ranking na nota `_protocolo-de-selecao`; as 26 intenções
 fora do welcome; `aliviador`/`profundidade` nas 44 notas.
 
+## Módulo Conteúdo — Dashboard Social + Estúdio de Carrosséis (set/2026)
+
+Item "Conteúdo" no grupo Marketing do workspace Operacional, com **submenu
+suspenso** (`NavItem.children`, novo em `nav-config.ts`: expandido abre
+acordeão, colapsado abre flyout; o ⌘K achata os filhos via
+`flattenNavItems`). Ids `ops.conteudo*` em `role-access` (mesma régua da
+Geração de Imagens), rotas em `ROUTES.ADMIN.CONTEUDO`, prefixo
+`/admin/conteudo` no `use-workspace`. Reels, Calendário e Ideias são
+telas "em breve" (`em-breve.tsx`).
+
+**Camada de dados isolada** em `src/lib/conteudo/`: `types.ts`
+(TEMPLATE fixo × DOCUMENTO que É DONO da estrutura dos frames — dividir,
+duplicar, excluir e trocar tipo nunca mexem no template compartilhado),
+`limites.ts` (ST_LIMITES + `fitFactor`: acima do limite o texto ENCOLHE,
+piso 0,58, e a pill avisa "título longo"), `templates.ts`, `brand.ts`
+(identidade dos slides = exceção consciente aos tokens; só aparece dentro
+do canvas e em marcadores de perfil/molde/pilar), `documento.ts` (puro,
+testado: `trocarTemplate` casa por tipo em FIFO e devolve `naoCoube`,
+`propostasDeLinhas` = "uma linha vira um slide" ignorando capa e CTA,
+`dividirTexto` na fronteira de frase), `historico.ts` (reducer undo/redo;
+`preview` de drag vira UM passo), `compliance.ts` (regras devolvem o
+TRECHO que reprovou; `corrigirLegendaLocal` resolve o corrigível sem
+modelo), `data.ts` (ÚNICA porta de leitura/escrita: dashboard do mock;
+documentos, brand kits, templates do time e agenda em localStorage
+semeados de `mock/*` — trocar por Supabase = mexer só aqui;
+`QuotaExcedidaError` vira toast). Uploads passam por
+`imagens.ts` (comprime a ≤1350px; localStorage tem ~5 MB).
+
+**IA do Estúdio** (`ia/`): `prompt.ts` é a metodologia da casa em texto
+(perfis, pilares, moldes com sequência, anatomia do carrossel que gera
+lead, regras de copy por tipo com os limites REAIS do canvas, legenda
+150–180 palavras com comment gate, compliance, provas conhecidas —
+nunca inventar dado). Oito ações (`schemas.ts`, saída validada por zod
+antes de encostar no documento) + `gerar_imagem` (reusa
+`generateEmailImage` da ConvertIA, pasta `org-<id>`), tudo em
+`POST /api/conteudo/ia` via `streamOpenRouterChat` (modelo
+`CONTEUDO_IA_MODEL`, default sonnet-4.6; JSON inválido → 2ª volta com o
+erro). Erro do provedor traduzido por `friendlyModelErrorText`.
+**`fallback.ts` é o modo local**: qualquer falha da rota devolve algo
+útil (documento de referência, distribuição determinística, heurísticas
+do protótipo) e a UI AVISA que foi local — a tela nunca trava por IA.
+
+**Renderer** (`estudio/frame.tsx`): base 1080 (4:5 = 1350, 9:16 = 1920
+com `off` centralizando o conteúdo), só estilos inline e SVGs inline —
+o MESMO componente desenha canvas, miniaturas, prévia e exportação.
+Alças operam em px de TELA divididos por `scale` (1:1 em qualquer zoom).
+Fontes self-hosted em `public/fonts` + `styles/conteudo-slides.css`
+(Barlow Condensed 800, "Inter Slides"): a exportação precisa da URL.
+
+**Exportação sem servidor** (`export/render.ts`): frames renderizados a
+1080 fora da tela (`FramesOcultos`) → clone com imagens e fontes em
+base64 → XHTML dentro de SVG `<foreignObject>` → `<canvas>` → PNG/JPG;
+ZIP via jszip (já era dependência) com `legenda.txt`. Imagem externa que
+não responde tem timeout (12 s) e sai do frame em vez de travar tudo.
+**Incidente na verificação**: o prefixo dos ids ocultos era `Date.now()`
+e divergia na hidratação quando o modal abre pela URL — `getElementById`
+não achava o frame. Regra: id de DOM em componente SSR-ável vem de
+`useId`. Saudação do dashboard também vai calculada no servidor.
+
+**Editor** (`estudio/editor.tsx` + `use-editor.ts`): autosave 600 ms com
+estado visível ("Salvo automaticamente" é real), "Restaurar" do Histórico
+usa snapshots da sessão (`temSnapshot`), trocar perfil aplica o Brand Kit
+em todos os frames, chat aplica propostas por `frameId` validado contra o
+documento. Referências visuais do fluxo "100% com IA" viajam por
+`sessionStorage` (`conteudo:anexos:<docId>`) e abrem no chat.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
