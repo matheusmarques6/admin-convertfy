@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto"
 
 import { processar, type LinhaTranscricao } from "./pipeline.ts"
 import { ferramentasDisponiveis } from "./media.ts"
+import { iniciarHttp } from "./http.ts"
 
 const log = (msg: string, extra?: Record<string, unknown>) =>
   console.log(JSON.stringify({ ts: new Date().toISOString(), msg, ...extra }))
@@ -118,6 +119,9 @@ async function main(): Promise<void> {
     console.error("OPENROUTER_API_KEY é obrigatória para transcrever.")
     process.exit(1)
   }
+
+  // A prévia de link do admin bate aqui (yt-dlp não existe na Vercel).
+  iniciarHttp(Number(process.env.PORT || 8080), () => ({ emProcessamento: processando }))
 
   await heartbeat()
   const timerHb = setInterval(() => void heartbeat(), 60_000)

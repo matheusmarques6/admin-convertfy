@@ -146,6 +146,10 @@
     {
       "path": "/api/cron/vault-sync",
       "schedule": "12,42 * * * *"
+    },
+    {
+      "path": "/api/cron/transcricoes-indexar",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

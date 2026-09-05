@@ -56,7 +56,7 @@ export function normalizarUrl(raw: string): string | null {
   if (!plataforma) return null
 
   const host = u.hostname.replace(/^www\./, "").toLowerCase()
-  let path = u.pathname.replace(/\/+$/, "")
+  const path = u.pathname.replace(/\/+$/, "")
   const params = new URLSearchParams()
 
   if (plataforma === "youtube") {
