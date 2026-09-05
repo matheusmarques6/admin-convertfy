@@ -56,6 +56,47 @@ export interface TurnUsageSummary {
   cache_hit_ratio: number
 }
 
+/**
+ * Aceita o `meta.usage` de QUALQUER geração e devolve o resumo no formato
+ * vigente (ou null se não for usage).
+ *
+ * Incidente 04/09: as mensagens anteriores ao motor v3 gravaram
+ * `{tokens_input, tokens_output, cost_usd}` — sem `rounds`/`tools`. A tela
+ * nova fazia `usage.rounds.length` ao reabrir a conversa (que é restaurada
+ * sozinha do localStorage) e a página inteira caía no ErrorBoundary:
+ * "Algo deu errado" em toda abertura da ConvertIA. Dado antigo no banco
+ * nunca pode derrubar a UI — quem adapta é o leitor.
+ */
+export function normalizeTurnUsage(raw: unknown): TurnUsageSummary | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const u = raw as Record<string, unknown>
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+  const rounds = Array.isArray(u.rounds)
+    ? (u.rounds as unknown[]).filter((r): r is RoundStat => !!r && typeof r === "object" && typeof (r as RoundStat).n === "number")
+    : []
+  const tools = Array.isArray(u.tools)
+    ? (u.tools as unknown[]).filter((t): t is ToolStat => !!t && typeof t === "object" && typeof (t as ToolStat).name === "string")
+    : []
+  const tokens_input = num(u.tokens_input)
+  const tokens_cached = num(u.tokens_cached)
+  return {
+    tokens_input,
+    tokens_output: num(u.tokens_output),
+    tokens_cached,
+    tokens_cache_write: num(u.tokens_cache_write),
+    cost_usd: num(u.cost_usd),
+    duration_ms: num(u.duration_ms),
+    rounds,
+    tools,
+    cache_hit_ratio:
+      typeof u.cache_hit_ratio === "number" && Number.isFinite(u.cache_hit_ratio)
+        ? u.cache_hit_ratio
+        : tokens_input > 0
+          ? round4(tokens_cached / tokens_input)
+          : 0,
+  }
+}
+
 export class TurnTelemetry {
   readonly rounds: RoundStat[] = []
   readonly tools: ToolStat[] = []

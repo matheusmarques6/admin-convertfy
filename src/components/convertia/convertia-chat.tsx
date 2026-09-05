@@ -44,7 +44,7 @@ import {
   Brain,
   Leaf,
 } from "lucide-react"
-import { fmtMs, fmtTokens, type TurnUsageSummary } from "@/lib/ai/convertia/telemetry"
+import { fmtMs, fmtTokens, normalizeTurnUsage, type TurnUsageSummary } from "@/lib/ai/convertia/telemetry"
 import type { PendingConfirmation } from "@/lib/ai/convertia/types"
 import { ConvertiaMarkdown } from "./convertia-markdown"
 import {
@@ -652,7 +652,8 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
         progress?: string[]
         streaming?: boolean
         started_at?: string
-        usage?: TurnUsageSummary | null
+        /** Formato varia por geração (pré-v3 sem rounds) — passa por normalizeTurnUsage. */
+        usage?: unknown
         pending_confirmation?: PendingConfirmation | null
         continuation?: Continuation | null
         status?: string | null
@@ -670,12 +671,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           id: m.id,
           dbId: m.id,
           role: m.role as "user" | "assistant",
-          content: m.content,
-          sources: m.meta?.sources ?? [],
-          attachments: m.meta?.attachments,
+          content: m.content ?? "",
+          sources: Array.isArray(m.meta?.sources) ? m.meta.sources : [],
+          attachments: Array.isArray(m.meta?.attachments) ? m.meta.attachments : undefined,
           feedback: (m.meta?.feedback?.rating === "up" ? "up" : null) as "up" | null,
-          progress: m.meta?.progress ?? [],
-          usage: m.meta?.usage ?? null,
+          progress: Array.isArray(m.meta?.progress) ? m.meta.progress : [],
+          usage: normalizeTurnUsage(m.meta?.usage),
           pendingConfirmation: m.meta?.pending_confirmation ?? null,
           continuation: m.meta?.continuation ?? null,
           status: m.meta?.status ?? null,
@@ -1156,7 +1157,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
               dbId: typeof ev.message_id === "string" ? ev.message_id : d.dbId,
               sources: Array.isArray(ev.sources) ? (ev.sources as Source[]) : d.sources,
               progress: Array.isArray(ev.progress) ? (ev.progress as string[]) : d.progress,
-              usage: (ev.usage as TurnUsageSummary | null) ?? d.usage ?? null,
+              usage: normalizeTurnUsage(ev.usage) ?? d.usage ?? null,
               pendingConfirmation: (ev.pending_confirmation as PendingConfirmation | null) ?? d.pendingConfirmation ?? null,
               continuation,
               status: typeof ev.status === "string" ? ev.status : d.status,
@@ -2342,7 +2343,7 @@ function AssistantMessage({
                   <span className="truncate">{confirmation.label}</span>
                   {Object.keys(confirmation.args ?? {}).length > 0 && (
                     <span className="truncate">
-                      · {Object.entries(confirmation.args).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(" · ").slice(0, 140)}
+                      · {Object.entries(confirmation.args ?? {}).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(" · ").slice(0, 140)}
                     </span>
                   )}
                 </div>

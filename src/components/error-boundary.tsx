@@ -39,9 +39,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
         <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center">
           <Icon icon={AlertTriangle} customSize={48} className="text-destructive mb-4" />
           <h2 className="text-xl font-semibold mb-2">Algo deu errado</h2>
-          <p className="text-muted-foreground mb-6 max-w-md">
+          <p className="text-muted-foreground mb-2 max-w-md">
             Ocorreu um erro inesperado. Tente recarregar a página.
           </p>
+          {/* A mensagem do erro na tela: sem ela, o print que chega ao
+              suporte diz só "Algo deu errado" e a causa fica no console
+              que ninguém abriu (incidente ConvertIA, 04/09). */}
+          {this.state.error?.message && (
+            <p className="text-xs text-muted-foreground/70 mb-6 max-w-md font-mono break-words">
+              {this.state.error.message.slice(0, 200)}
+            </p>
+          )}
           <Button
             onClick={() => this.setState({ hasError: false, error: null })}
             variant="secondary"

@@ -1383,6 +1383,14 @@ Mapa completo em `docs/convertia/motor-v3.md`. O que não pode quebrar:
   coluna gerada exige IMMUTABLE (a migration quebrou por isso).
 - **Avaliação** (`ai_eval_cases/runs`): casos dos 👍, lote semanal em 3
   modelos com tools SÓ de leitura, juiz na rubrica; card em Custo de IA.
+- **Dado antigo no banco nunca derruba a UI** (incidente 04/09: "Algo
+  deu errado" em TODA abertura da ConvertIA). As mensagens pré-v3 têm
+  `meta.usage = {tokens_input, tokens_output, cost_usd}` — sem `rounds`
+  — e a tela fazia `usage.rounds.length` ao restaurar a última conversa
+  do localStorage. `normalizeTurnUsage` (telemetry.ts, puro) adapta
+  qualquer geração; `toUiMessages` e o evento `done` passam por ele. O
+  ErrorBoundary agora mostra `error.message` na tela — o print chega
+  com a causa, não só com o título.
 
 ## Financeiro ligado à loja (set/2026, migration 20261113)
 
