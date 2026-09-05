@@ -70,14 +70,12 @@ export async function notifyChannelDisconnected(
   try {
     // Dedup: já existe alerta aberto deste canal? (desconexão contínua
     // não deve re-alertar a cada webhook/ciclo do cron)
-    const { data: existing } = await admin
-      .from("notifications")
-      .select("id")
-      .eq("read", false)
-      .filter("metadata->>source", "eq", CRM_CHANNEL_ALERT_SOURCE)
-      .filter("metadata->>channel_id", "eq", channelId)
-      .limit(1)
-      .maybeSingle()
+    // RPC com chave literal + índice de expressão: o filtro por
+    // `metadata->>$k` parametrizado varria as 18 mil linhas da tabela
+    // (516 ms medidos), duas vezes por canal a cada 5 min.
+    const { data: existing } = await admin.rpc("has_open_channel_alert", {
+      p_channel_id: channelId,
+    })
     if (existing) return
 
     const { data: channel } = await admin
@@ -152,12 +150,7 @@ export async function notifyChannelDisconnected(
  */
 export async function clearChannelAlerts(admin: SupabaseClient, channelId: string): Promise<void> {
   try {
-    const { error } = await admin
-      .from("notifications")
-      .update({ read: true, read_at: new Date().toISOString() })
-      .eq("read", false)
-      .filter("metadata->>source", "eq", CRM_CHANNEL_ALERT_SOURCE)
-      .filter("metadata->>channel_id", "eq", channelId)
+    const { error } = await admin.rpc("clear_channel_alerts", { p_channel_id: channelId })
     if (error) {
       log.warn("clearChannelAlerts falhou", { channelId, message: error.message })
     }

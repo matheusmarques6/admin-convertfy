@@ -121,7 +121,7 @@
     },
     {
       "path": "/api/cron/whatsapp-reprocess-webhooks",
-      "schedule": "* * * * *"
+      "schedule": "2-59/5 * * * *"
     },
     {
       "path": "/api/cron/whatsapp-prune-webhook-events",

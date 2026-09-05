@@ -129,14 +129,12 @@ export async function notifyCrmInboundMessage(
     // O push (Fase 0: celular piloto) dispara SÓ quando a notificação
     // da conversa NASCE — mensagens seguintes só coalescem no sino.
     // Checa antes do RPC se já havia notificação aberta desta thread.
-    const { data: openBefore } = await admin
-      .from("notifications")
-      .select("id")
-      .eq("read", false)
-      .filter("metadata->>source", "eq", CRM_INBOX_NOTIFICATION_SOURCE)
-      .filter("metadata->>thread_id", "eq", threadId)
-      .limit(1)
-      .maybeSingle()
+    // Pela RPC: `metadata->>$k = $v` com chave PARAMETRIZADA nunca usa
+    // índice (e o ->> não é LEAKPROOF). Dentro da função a chave é
+    // literal e o unique partial index volta a valer.
+    const { data: openBefore } = await admin.rpc("has_open_crm_thread_notification", {
+      p_thread_id: threadId,
+    })
 
     const { error } = await admin.rpc("upsert_crm_inbox_notification", {
       p_user_ids: recipients,
@@ -178,13 +176,10 @@ export async function clearCrmThreadNotifications(
   threadId: string,
 ): Promise<void> {
   try {
-    const { error } = await admin
-      .from("notifications")
-      .update({ read: true, read_at: new Date().toISOString() })
-      .eq("read", false)
-      // Arrow operator (->>) casa o unique partial index da migration
-      .filter("metadata->>source", "eq", CRM_INBOX_NOTIFICATION_SOURCE)
-      .filter("metadata->>thread_id", "eq", threadId)
+    // RPC com chave literal — ver comentário em notifyCrmInboundMessage.
+    const { error } = await admin.rpc("clear_crm_thread_notifications", {
+      p_thread_id: threadId,
+    })
     if (error) {
       log.warn("clearCrmThreadNotifications falhou", { threadId, message: error.message })
     }

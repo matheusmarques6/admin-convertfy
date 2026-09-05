@@ -3,7 +3,7 @@
  *
  * O webhook publica { eventId } no QStash; aqui verificamos a assinatura
  * do QStash (fail-closed em prod), fazemos claim atômico via RPC (lease
- * de 30s, attempts++) e processamos. Retorna 200 mesmo em falha de
+ * de 90s — maior que o maxDuration desta rota —, attempts++) e processamos. Retorna 200 mesmo em falha de
  * processamento — o retry é responsabilidade do cron de reprocess, não
  * do re-drive do QStash (evita processamento duplo).
  */
@@ -44,8 +44,11 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient()
 
+  // Lease > maxDuration desta rota (60s): sem isso, o cron podia
+  // reivindicar o mesmo evento enquanto este worker ainda processava.
   const { data: claimed, error: claimError } = await admin.rpc("claim_crm_webhook_event", {
     p_id: eventId,
+    p_lease_seconds: 90,
   })
   if (claimError) {
     log.error("claim falhou", { eventId, message: claimError.message })

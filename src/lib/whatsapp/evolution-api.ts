@@ -300,8 +300,14 @@ export class EvolutionAPI {
    * em 400/422 do envelope, re-tenta no formato flat.
    */
   async setWebhook(url: string, events: string[] = WEBHOOK_EVENTS_DEFAULT): Promise<void> {
+    // `EVOLUTION_WEBHOOK_BASE64=false` corta a mídia embutida na ORIGEM
+    // (o receptor tem a sua própria guarda — a config da Evolution não é
+    // confiável: EvolutionAPI/evolution-api#956). Sem o base64, a mídia
+    // inbound vem pelo getBase64FromMediaMessage, caminho que o processor
+    // já usa hoje quando o evento não a traz.
+    const webhookBase64 = process.env.EVOLUTION_WEBHOOK_BASE64 !== "false"
     const enveloped = {
-      webhook: { enabled: true, url, byEvents: false, base64: true, events },
+      webhook: { enabled: true, url, byEvents: false, base64: webhookBase64, events },
     }
     try {
       await this.request(`/webhook/set/${this.config.instanceName}`, { method: "POST", json: enveloped })
@@ -313,7 +319,7 @@ export class EvolutionAPI {
     }
     await this.request(`/webhook/set/${this.config.instanceName}`, {
       method: "POST",
-      json: { enabled: true, url, webhook_by_events: false, webhook_base64: true, events },
+      json: { enabled: true, url, webhook_by_events: false, webhook_base64: webhookBase64, events },
     })
   }
 

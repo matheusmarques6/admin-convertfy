@@ -244,6 +244,9 @@ export async function handleEvolutionMessage(
 
   if (inserted && !content.fromMe) {
     // Sem janela de 24h no Baileys — inbound só reabre thread resolvida.
+    // O `.eq("status","resolved")` já evita escrever à toa; sem ele seria
+    // mais um UPDATE por mensagem, e todo UPDATE em crm_threads acorda o
+    // realtime de todas as abas da org.
     await admin.from("crm_threads").update({ status: "open" }).eq("id", threadId).eq("status", "resolved")
 
     // Notificação no sino do admin (coalescida por thread). Awaited:
