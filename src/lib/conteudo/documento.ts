@@ -117,6 +117,59 @@ export function novoDocumento(
   }
 }
 
+export interface EstruturaDetectada {
+  tipo: FrameTipo
+  slotImagem?: boolean
+}
+
+/**
+ * Documento a partir de uma estrutura detectada numa inspiração: os frames
+ * nascem com os tipos lidos (capa/dado/texto/prova/lista/mec/cta), slot de
+ * imagem onde a referência depende de foto, e textos-guia.
+ */
+export function documentoDeEstrutura(
+  nome: string,
+  perfil: PerfilEditavel,
+  estrutura: EstruturaDetectada[],
+  opts: { templateBase?: string; brandKit?: BrandKit; agora?: Date } = {},
+): Documento {
+  const base = novoDocumento(nome, perfil, opts.templateBase ?? "molde-benchmark", opts)
+  const frames: DocFrame[] = estrutura.map((e, i) => {
+    const campos = camposDoTipo(e.tipo)
+    const id = `f${i + 1}`
+    const label = e.tipo === "capa" ? "Capa" : e.tipo === "cta" ? "CTA" : `Slide ${i + 1}`
+    return {
+      frameId: id,
+      tipo: e.tipo,
+      label,
+      slotsImagem: e.slotImagem || e.tipo === "capa" ? 1 : 0,
+      campos,
+      textos: textosGuia(e.tipo, campos),
+      imagens: {},
+    }
+  })
+  return {
+    ...base,
+    frames,
+    fundoPorFrame: Object.fromEntries(frames.map((f, i) => [f.frameId, fundoPadrao(f.tipo, i)])),
+    estilos: {},
+  }
+}
+
+/** Ajusta a quantidade de frames (mantém capa e CTA; mexe só no meio). */
+export function ajustarQuantidadeFrames(doc: Documento, total: number): Documento {
+  let d = doc
+  const alvo = Math.max(MIN_FRAMES, Math.min(20, total))
+  while (d.frames.length > alvo) {
+    // remove o último frame do meio
+    const meio = indicesDoMeio(d)
+    if (!meio.length) break
+    d = excluirFrame(d, meio[meio.length - 1])
+  }
+  while (d.frames.length < alvo) d = adicionarFrame(d)
+  return { ...d, historico: doc.historico }
+}
+
 /** Registra um evento no histórico (mais recente primeiro). */
 export function comHistorico(doc: Documento, label: string | null, agora = new Date()): Documento {
   if (!label) return doc

@@ -1,15 +1,13 @@
-import { Columns3 } from "lucide-react"
-import { ConteudoEmBreve } from "@/components/conteudo/em-breve"
+import { Suspense } from "react"
+import { EstudioHome } from "@/components/conteudo/estudio/estudio-home"
 
 export const dynamic = "force-dynamic"
 
+/** /admin/conteudo/estudio — biblioteca de carrosséis + fluxo Novo carrossel. */
 export default function ConteudoEstudioPage() {
   return (
-    <ConteudoEmBreve
-      icon={Columns3}
-      titulo="Estúdio"
-      descricao="Carrosséis que não quebram: template, IA ou inspiração, sempre dentro da marca"
-      itens={["Em construção nesta etapa."]}
-    />
+    <Suspense fallback={<div className="min-h-full bg-[var(--ops-page)]" />}>
+      <EstudioHome />
+    </Suspense>
   )
 }

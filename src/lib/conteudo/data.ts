@@ -174,6 +174,11 @@ export function imagemBanco(seed: string) {
   return E.stImg(E.ST_IMG(seed))
 }
 
+/** Slot de imagem a partir de uma URL (banco, upload ou data URL). */
+export function slotDeUrl(url: string) {
+  return E.stImg(url)
+}
+
 export async function getMeusTemplates(): Promise<MeuTemplate[]> {
   if (!mem.meusTemplates) {
     mem.meusTemplates = ler<MeuTemplate[]>(KEYS.meusTemplates) ?? E.meusTemplatesIniciais()

@@ -4,6 +4,7 @@
 
 @import "../styles/crm-tokens.css";
 @import "../styles/convertfy-ds-v3.css";
+@import "../styles/conteudo-slides.css";
 
 @layer base {
   :root {
