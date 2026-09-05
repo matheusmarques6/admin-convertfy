@@ -24,3 +24,25 @@ export function normalizeThreadTags(tags: string[]): string[] {
   }
   return result
 }
+
+/**
+ * Variantes de caixa de uma tag, para o filtro da lista do inbox.
+ *
+ * A conversa guarda a grafia da PRIMEIRA ocorrência ("teste") e a
+ * registry global pode ter outra ("Teste"); `contains`/`&&` comparam
+ * exato, então o filtro voltava vazio sem erro nenhum. Comparar por
+ * `lower()` exigiria índice de expressão novo — as variantes cobrem o
+ * caso real com o índice GIN que já existe.
+ */
+export function tagCaseVariants(tag: string): string[] {
+  const name = tag.trim()
+  if (!name) return []
+  return Array.from(
+    new Set([
+      name,
+      name.toLowerCase(),
+      name.toUpperCase(),
+      name.charAt(0).toUpperCase() + name.slice(1).toLowerCase(),
+    ]),
+  )
+}

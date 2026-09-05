@@ -36,26 +36,38 @@ export async function POST(
       org_id: string
       channel_id: string
       contact_external_id: string
+      unread_count: number | null
       channel: { type: string } | Array<{ type: string }> | null
     }
     const { data: thread } = await admin
       .from("crm_threads")
-      .select("id, org_id, channel_id, contact_external_id, channel:crm_channels (type)")
+      .select("id, org_id, channel_id, contact_external_id, unread_count, channel:crm_channels (type)")
       .eq("id", id)
       .maybeSingle<ThreadRow>()
 
     if (!thread) throw new AppError("Conversa não encontrada", 404, "not-found")
     assertThreadInOrg(thread.org_id, orgId)
 
-    await admin.from("crm_threads").update({ unread_count: 0 }).eq("id", id)
+    // Só escreve quando há o que zerar. O UPDATE incondicional entrava na
+    // publication do realtime e fazia TODAS as abas da org relistarem —
+    // e esta é a rota mais chamada do inbox (abrir conversa + cada
+    // mensagem que chega com ela aberta).
+    const hadUnread = (thread.unread_count ?? 0) > 0
+    if (hadUnread) {
+      await admin
+        .from("crm_threads")
+        .update({ unread_count: 0 })
+        .eq("id", id)
+        .gt("unread_count", 0)
 
-    // Conversa vista — some do sino para TODOS os destinatários
-    // (clear global, consistente com unread_count). Best-effort.
-    await clearCrmThreadNotifications(admin, id)
+      // Conversa vista — some do sino para TODOS os destinatários
+      // (clear global, consistente com unread_count). Best-effort.
+      await clearCrmThreadNotifications(admin, id)
+    }
 
     // Read receipt best-effort (só WhatsApp — cloud OU evolution)
     const channelType = Array.isArray(thread?.channel) ? thread?.channel[0]?.type : thread?.channel?.type
-    if (thread && channelType === "whatsapp") {
+    if (thread && hadUnread && channelType === "whatsapp") {
       try {
         const { data: lastInbound } = await admin
           .from("crm_messages")

@@ -144,22 +144,3 @@ export async function ensureThreadAvatar(
     return null
   }
 }
-
-/**
- * Backfill em lote pra página da lista (roda no after() da rota, fora
- * do caminho da resposta). Sequencial de propósito — são APIs de
- * terceiros com rate limit; `max` limita o custo por request e o
- * polling da lista completa o resto aos poucos.
- */
-export async function backfillThreadAvatars(
-  admin: SupabaseClient,
-  threads: ThreadForAvatar[],
-  max = 6,
-): Promise<void> {
-  const candidates = threads
-    .filter((t) => !t.contact_avatar_url && !t.contact_external_id.startsWith("comment:"))
-    .slice(0, max)
-  for (const t of candidates) {
-    await ensureThreadAvatar(admin, t)
-  }
-}

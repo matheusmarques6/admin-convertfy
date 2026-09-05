@@ -144,6 +144,10 @@
       "schedule": "15 8 * * *"
     },
     {
+      "path": "/api/cron/crm-avatar-backfill",
+      "schedule": "35 */6 * * *"
+    },
+    {
       "path": "/api/cron/vault-sync",
       "schedule": "12,42 * * * *"
     }
