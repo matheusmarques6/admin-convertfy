@@ -32,9 +32,18 @@ nada — o estado vive na linha, não na sessão.
 
 ```
 OPENROUTER_API_KEY       transcrição, tópicos, embeddings
-WORKER_URL               opcional — prévia de link com duração
-WORKER_SHARED_SECRET     obrigatório com WORKER_URL
+WORKER_URL                    opcional — prévia de link com duração
+WORKER_SHARED_SECRET          obrigatório com WORKER_URL
+TRANSCRICOES_UPLOAD_MAX_MB    teto do upload (default 50)
 ```
+
+**O teto do upload é do PROJETO, não do bucket.** O bucket declara 4 GB, mas
+o Supabase capa todo envio pelo limite global (Storage → Settings → Upload
+file size limit), que nasce em **50 MB**. Passando disso, o endpoint
+resumível responde `413 Maximum size exceeded` no meio do envio — sem dizer
+onde mexer. Por isso a rota recusa antes de criar a linha, com a instrução na
+mensagem. Ao aumentar o limite no painel, suba `TRANSCRICOES_UPLOAD_MAX_MB`
+junto: prometer o que a plataforma recusa é pior que um teto baixo e honesto.
 
 Sem `WORKER_URL`, a prévia cai no oEmbed da plataforma: título, canal e
 capa reais, sem duração. A tela diz isso; nenhum campo é inventado.

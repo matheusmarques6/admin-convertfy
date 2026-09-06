@@ -41,6 +41,26 @@ const IDIOMAS: Array<[string, string]> = [
 /** Casa com `EXTENSOES` de /api/transcricoes/upload e com o bucket. */
 const ACEITOS = ".mp4,.mov,.mkv,.webm,.mp3,.m4a,.wav,.flac,.ogg,.aac"
 
+/**
+ * O TUS reporta o 413 do Storage como texto cru ("unexpected response while
+ * creating upload… response code: 413, response text: Maximum size
+ * exceeded"). Quem lê não tem como saber que o limite mora no PROJETO do
+ * Supabase, não no arquivo nem no navegador.
+ *
+ * A rota já recusa antes de subir; isto é a rede de segurança para quando o
+ * teto configurado no admin estiver acima do teto real da plataforma.
+ */
+function traduzirErroTus(e: unknown, bytes: number): Error {
+  const cru = e instanceof Error ? e.message : String(e)
+  if (/413|maximum size exceeded|entity too large/i.test(cru)) {
+    return new Error(
+      `O Storage recusou o arquivo de ${(bytes / 1024 / 1024).toFixed(0)} MB por passar do limite de upload do projeto. ` +
+        `Aumente em Supabase → Storage → Settings → Upload file size limit, ou cole o link do vídeo.`,
+    )
+  }
+  return e instanceof Error ? e : new Error(cru)
+}
+
 interface Props {
   colecoes: Array<{ id: string; nome: string; paiId: string | null; reservada: "inbox" | null }>
   colecaoPadrao: string | null
@@ -157,7 +177,7 @@ export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir, onEnf
         // varrer — o usuário vê o item, mas ele nunca anda. Apagar aqui é o
         // desfazer imediato; a varredura fica para a aba que fechou sozinha.
         await excluirTranscricao(destino.id).catch(() => {})
-        throw e
+        throw traduzirErroTus(e, file.size)
       }
 
       await concluirUpload(destino.id)
@@ -373,12 +393,15 @@ export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir, onEnf
               </select>
             </div>
             <div>
-              <TrLabel className="mb-1.5">Idioma</TrLabel>
+              {/* "Idioma" sozinho é ambíguo: quem lê pensa em traduzir. Este
+                  campo diz ao transcritor o que ESPERAR ouvir — a saída é
+                  sempre na língua falada. */}
+              <TrLabel className="mb-1.5">Idioma falado no vídeo</TrLabel>
               <select
                 value={idioma}
                 onChange={(e) => setIdioma(e.target.value)}
                 disabled={enviando}
-                aria-label="Idioma do áudio"
+                aria-label="Idioma falado no vídeo"
                 className={selectCls}
               >
                 {IDIOMAS.map(([v, l]) => (
@@ -387,6 +410,9 @@ export function ModalNova({ colecoes, colecaoPadrao, onFechar, onConcluir, onEnf
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-[11px] leading-snug text-[var(--ops-mut)]">
+                A transcrição sai nesse idioma — não traduz.
+              </p>
             </div>
           </div>
 
