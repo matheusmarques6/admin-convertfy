@@ -36,16 +36,29 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
 
     const { data: linha } = await admin
       .from("transcricoes")
-      .select("id, audio_path, media_path")
+      .select("id, audio_path, media_path, url_original, plataforma")
       .eq("org_id", orgId)
       .eq("id", id)
-      .maybeSingle<{ id: string; audio_path: string | null; media_path: string | null }>()
+      .maybeSingle<{
+        id: string
+        audio_path: string | null
+        media_path: string | null
+        url_original: string | null
+        plataforma: string
+      }>()
     if (!linha) throw new AppError("Transcrição não encontrada.", 404)
 
-    if (escopo === "tudo" && !linha.media_path && !linha.audio_path) {
-      // Sem mídia guardada, "tudo" significaria rebaixar do link — o que só
-      // funciona se ele ainda existir. Melhor dizer do que tentar e falhar.
-      throw new AppError("Não há mídia guardada para reprocessar do início.", 409)
+    if (escopo === "tudo" && !linha.media_path && !linha.audio_path && !linha.url_original) {
+      // A mídia é DESCARTADA quando a transcrição fica pronta (o vídeo mora
+      // na plataforma, não aqui). Para link isso não é problema: o worker
+      // rebaixa da URL. Arquivo enviado, sim — a fonte não existe mais em
+      // lugar nenhum, e dizer isso é melhor que enfileirar algo que vai
+      // falhar sozinho daqui a pouco.
+      throw new AppError(
+        "O arquivo enviado não fica guardado depois da transcrição, então não há de onde reprocessar do início. " +
+          "Envie o arquivo de novo para gerar uma transcrição nova.",
+        409,
+      )
     }
 
     if (escopo === "indexacao") {

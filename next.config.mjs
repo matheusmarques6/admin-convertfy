@@ -187,6 +187,16 @@ const nextConfig = {
         "https://api.resend.com",
         "https://*.vercel-insights.com https://*.vercel-analytics.com",
       ].join(" "),
+      // Players embutidos do módulo Transcrições. A mídia não fica guardada:
+      // quem toca o vídeo é a plataforma de origem, do CDN dela. Sem esta
+      // linha o CSP cai no `default-src` e, no dia em que virar enforcement,
+      // o player some da tela sem erro visível.
+      [
+        "frame-src 'self'",
+        "https://www.youtube-nocookie.com https://www.youtube.com",
+        "https://www.instagram.com",
+        "https://www.tiktok.com",
+      ].join(" "),
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",

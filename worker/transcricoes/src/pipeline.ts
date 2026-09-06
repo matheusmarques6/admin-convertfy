@@ -314,6 +314,44 @@ async function etapaIndexar(db: Client, t: LinhaTranscricao): Promise<void> {
   await db.from("transcricoes").update({ indexado_em: new Date().toISOString(), progresso: 100 }).eq("id", t.id)
 }
 
+// ── Descarte da mídia ───────────────────────────────────────────────────
+
+/**
+ * Apaga vídeo e áudio do Storage depois que a transcrição está PRONTA.
+ *
+ * O produto do módulo é o texto com timestamp; o vídeo é meio. Guardar 500
+ * MB por aula é barato, mas SERVIR esses 500 MB a cada play não é — o
+ * egress é a conta que estoura. Quem toca o vídeo passa a ser a própria
+ * plataforma (embed do YouTube/Instagram/TikTok), do CDN dela.
+ *
+ * Só roda no fim: falhar no meio do pipeline não pode apagar a fonte antes
+ * de existir texto. A capa (`thumb_path`) FICA — é o que o card mostra.
+ *
+ * Consequência declarada: sem áudio guardado, "reprocessar do zero" só
+ * funciona para LINK (o worker rebaixa da URL). Arquivo enviado é
+ * irrecuperável, e a rota de reprocessar diz isso.
+ */
+async function descartarMidia(db: Client, t: LinhaTranscricao): Promise<void> {
+  const { data } = await db
+    .from("transcricoes")
+    .select("media_path, audio_path")
+    .eq("id", t.id)
+    .maybeSingle()
+  const linha = data as { media_path?: string | null; audio_path?: string | null } | null
+  const alvos = [linha?.media_path, linha?.audio_path].filter((p): p is string => Boolean(p))
+  if (!alvos.length) return
+
+  const { error } = await db.storage.from(BUCKET_MEDIA).remove(alvos)
+  if (error) {
+    // Arquivo órfão custa armazenamento, não corretude: a transcrição está
+    // pronta e o texto é o que importa. Registrar e seguir.
+    log("não foi possível descartar a mídia", { id: t.id, erro: error.message })
+    return
+  }
+  await db.from("transcricoes").update({ media_path: null, audio_path: null, audio_bytes: null }).eq("id", t.id)
+  log("mídia descartada", { id: t.id, arquivos: alvos.length })
+}
+
 // ── Orquestração ────────────────────────────────────────────────────────
 
 export async function processar(db: Client, t: LinhaTranscricao): Promise<void> {
@@ -354,6 +392,9 @@ export async function processar(db: Client, t: LinhaTranscricao): Promise<void> 
     }
 
     await etapaIndexar(db, t)
+
+    // Só depois de indexar: o texto existe, a mídia cumpriu o papel.
+    await descartarMidia(db, t)
 
     await db
       .from("transcricoes")

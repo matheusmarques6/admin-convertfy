@@ -144,6 +144,29 @@ remapear.
 **Desligar a faísca não apaga embeddings.** Exclui da recuperação e
 pronto — religar tem de ser instantâneo.
 
+**A mídia é DESCARTADA quando a transcrição fica pronta.** Vídeo e áudio
+saem do Storage; sobram o texto, os timestamps e a capa. Guardar 500 MB por
+aula é barato — servir esses 500 MB a cada play não é, e o egress é a conta
+que estoura. Quem toca o vídeo passa a ser a plataforma de origem
+(`embed.ts`), do CDN dela.
+
+O descarte roda **só depois de indexar**: falhar no meio do pipeline não
+pode apagar a fonte antes de existir texto.
+
+**Consequência declarada:** sem áudio guardado, "reprocessar do zero" só
+funciona para LINK (o worker rebaixa da URL). Arquivo enviado é
+irrecuperável — a rota devolve 409 dizendo isso, em vez de enfileirar algo
+que falharia sozinho depois.
+
+**Só o YouTube deixa pular para o tempo.** O embed dele aceita `seekTo` por
+`postMessage` (daí o `enablejsapi=1`). Instagram e TikTok embutem o vídeo e
+ponto: clicar num trecho rola o texto e a tela DIZ isso. Prometer o pulo e
+não entregar é pior que declarar o limite.
+
+Os players embutidos precisam de `frame-src` no CSP (`next.config.mjs`).
+Sem a diretiva o browser cai no `default-src` e, quando o CSP virar
+enforcement, o player some sem erro visível.
+
 ## Modelo
 
 Padrão `microsoft/mai-transcribe-2`, configurável POR COLEÇÃO

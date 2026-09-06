@@ -37,6 +37,7 @@ import { ROUTES } from "@/lib/routes"
 import { createClient } from "@/lib/supabase/client"
 import { fmtDuracao, rotuloDaEtapa, segmentosDaEtapa } from "@/lib/transcricoes/pipeline"
 import { citacaoComTimestamp } from "@/lib/transcricoes/export"
+import { comandoSeek, montarEmbed } from "@/lib/transcricoes/embed"
 import { PLATAFORMA_LABEL, type Bloco, type TranscricaoDetalhe } from "@/lib/transcricoes/types"
 import {
   atualizarTranscricao,
@@ -88,9 +89,20 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false)
   const [tagNova, setTagNova] = useState("")
   const player = useRef<HTMLVideoElement>(null)
+  const quadroEmbed = useRef<HTMLIFrameElement>(null)
   const listaFalas = useRef<HTMLDivElement>(null)
 
   const processando = t.status === "processando" || t.status === "aguardando"
+
+  /**
+   * O player da PLATAFORMA. A mídia é descartada quando a transcrição fica
+   * pronta, então o embed é o que sobra para assistir — e é melhor assim:
+   * o vídeo vem do CDN deles, não do nosso egress.
+   */
+  const embed = useMemo(
+    () => montarEmbed(t.urlOriginal, t.plataforma, inicioSeg),
+    [t.urlOriginal, t.plataforma, inicioSeg],
+  )
 
   // Polling só enquanto processa — quando termina, para sozinho.
   useEffect(() => {
@@ -131,18 +143,32 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
     else el.pause()
   }, [])
 
-  const irPara = useCallback((seg: number) => {
-    setTempo(seg)
-    const el = player.current
-    if (el) {
-      el.currentTime = seg
-      void el.play().then(() => setTocando(true)).catch(() => {})
-    }
-    // Sem mídia (link cuja captura falhou) o clique ainda serve: rola a
-    // lista até a fala.
-    const alvo = listaFalas.current?.querySelector<HTMLElement>(`[data-s="${Math.round(seg)}"]`)
-    alvo?.scrollIntoView({ block: "center", behavior: "smooth" })
-  }, [])
+  const irPara = useCallback(
+    (seg: number) => {
+      setTempo(seg)
+      const el = player.current
+      if (el) {
+        el.currentTime = seg
+        void el.play().then(() => setTocando(true)).catch(() => {})
+      }
+
+      // Embed que aceita tempo (só o YouTube): move o player que já está
+      // tocando. Recarregar o src com `?start=` também pularia, mas custaria
+      // um reload inteiro — anúncio e buffer — a cada clique num trecho.
+      if (embed?.aceitaTempo) {
+        try {
+          quadroEmbed.current?.contentWindow?.postMessage(comandoSeek(seg), new URL(embed.url).origin)
+        } catch {
+          // Player ainda não carregou: o texto rola do mesmo jeito.
+        }
+      }
+
+      // Sem player nenhum o clique ainda serve: rola a lista até a fala.
+      const alvo = listaFalas.current?.querySelector<HTMLElement>(`[data-s="${Math.round(seg)}"]`)
+      alvo?.scrollIntoView({ block: "center", behavior: "smooth" })
+    },
+    [embed],
+  )
 
   const nomePorRotulo = useMemo(
     () => new Map(t.locutores.map((l) => [l.rotuloOriginal, l])),
@@ -308,6 +334,10 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* Coluna principal */}
           <div className="flex min-w-0 flex-col gap-3">
+            {/* Quem toca o vídeo é a PLATAFORMA. A mídia é descartada quando a
+                transcrição fica pronta — guardar é barato, servir a cada play
+                não é. O <video> local só aparece enquanto o worker ainda tem o
+                arquivo (durante o processamento). */}
             <div className="relative overflow-hidden rounded-[10px] border border-[var(--ops-border)] bg-black">
               {t.mediaUrl ? (
                 <>
@@ -338,14 +368,80 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
                     </button>
                   )}
                 </>
+              ) : embed ? (
+                <iframe
+                  ref={quadroEmbed}
+                  src={embed.url}
+                  title={t.titulo}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className={cn(
+                    "w-full border-0 bg-black",
+                    embed.proporcao === "9/16" ? "mx-auto aspect-[9/16] max-w-[420px]" : "aspect-video",
+                  )}
+                />
               ) : (
-                <div className="flex aspect-video w-full items-center justify-center text-[12px] text-white/60">
-                  {processando ? "A mídia aparece assim que o download terminar." : "Sem mídia guardada para esta transcrição."}
+                <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 px-6 text-center">
+                  <span className="text-[12px] text-white/60">
+                    {processando
+                      ? "O vídeo aparece assim que o download terminar."
+                      : t.plataforma === "upload"
+                        ? "O arquivo enviado não fica guardado depois da transcrição — o texto abaixo é o que permanece."
+                        : "Não foi possível embutir o player desta plataforma."}
+                  </span>
+                  {!processando && t.urlOriginal && (
+                    <a
+                      href={t.urlOriginal}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[12px] font-semibold text-white/85 underline underline-offset-2 hover:text-white"
+                    >
+                      Abrir na plataforma
+                    </a>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Barra do player com marcadores de tópico */}
+            {/* Índice de tópicos: no embed ele substitui os marcadores da
+                barra. No YouTube o clique PULA o player; no Instagram e no
+                TikTok o player não aceita tempo, então rola só o texto — e a
+                legenda diz isso em vez de fingir que pulou. */}
+            {embed && t.topicos.length > 0 && (
+              <div className="rounded-[10px] border border-[var(--ops-border)] bg-[var(--ops-card)] px-3.5 py-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--ops-sec)]">
+                    Tópicos
+                  </span>
+                  {!embed.aceitaTempo && (
+                    <span className="text-[11px] text-[var(--ops-mut)]">
+                      O player do {PLATAFORMA_LABEL[t.plataforma]} não pula para o tempo — o texto rola até o trecho.
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {t.topicos.map((tp) => (
+                    <button
+                      key={tp.s}
+                      type="button"
+                      onClick={() => irPara(tp.s)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--ops-border)] px-2 py-1 text-[11.5px] text-[var(--ops-text)] transition-colors hover:bg-[var(--ops-hover)]"
+                    >
+                      <span className="text-[var(--ops-mut)]" style={TNUM}>
+                        {fmtDuracao(tp.s)}
+                      </span>
+                      {tp.titulo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Barra do player com marcadores de tópico. Só com o <video>
+                local: o embed tem os controles da própria plataforma, e uma
+                segunda barra que não consegue ler o tempo dele mostraria
+                00:00 parado enquanto o vídeo anda. */}
+            {t.mediaUrl && (
             <div className="rounded-[10px] border border-[var(--ops-border)] bg-[var(--ops-card)] px-3 py-2.5">
               <div className="relative mb-2 h-1.5 rounded-full bg-[var(--ops-track)]">
                 <input
@@ -406,6 +502,7 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
                 </select>
               </div>
             </div>
+            )}
 
             {processando && (
               <div className="rounded-[10px] border border-[var(--ops-border)] bg-[var(--ops-card)] px-3.5 py-3">
