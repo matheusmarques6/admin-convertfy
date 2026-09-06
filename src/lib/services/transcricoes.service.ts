@@ -12,7 +12,7 @@
 
 import type { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { assinarLote, assinarMedia } from "./transcricoes-assets"
+import { assinarLote, assinarMedia, audioExpiraEm } from "./transcricoes-assets"
 import { lerBlocos } from "@/lib/transcricoes/blocos-io"
 import type {
   BibliotecaPagina,
@@ -357,6 +357,7 @@ interface LinhaDetalhe extends LinhaResumo {
   concluido_em: string | null
   indexado_em: string | null
   media_path: string | null
+  audio_path: string | null
 }
 
 function topicosDaLinha(v: unknown): TopicoDetectado[] {
@@ -380,7 +381,7 @@ export async function carregarDetalhe(
   const { data: linha, error } = await admin
     .from("transcricoes")
     .select(
-      `${SELECT_RESUMO}, idioma, modelo, texto_completo, topicos, custo_usd, tempo_processamento_seg, concluido_em, indexado_em, media_path`,
+      `${SELECT_RESUMO}, idioma, modelo, texto_completo, topicos, custo_usd, tempo_processamento_seg, concluido_em, indexado_em, media_path, audio_path`,
     )
     .eq("org_id", orgId)
     .eq("id", id)
@@ -458,6 +459,9 @@ export async function carregarDetalhe(
     concluidoEm: linha.concluido_em,
     indexadoEm: linha.indexado_em,
     mediaUrl,
+    // A janela precisa ser VISÍVEL: sem ela o usuário só descobre que o
+    // áudio expirou tentando reprocessar e falhando.
+    audioAte: audioExpiraEm(linha.concluido_em, linha.audio_path)?.toISOString() ?? null,
     chunksDesatualizados: pendRes.count ?? 0,
   }
 }

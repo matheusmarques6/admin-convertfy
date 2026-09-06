@@ -37,6 +37,67 @@ export function caminhoThumb(orgId: string, transcricaoId: string): string {
   return `${prefixoOrg(orgId)}/${transcricaoId}/thumb.jpg`
 }
 
+/**
+ * Janela em que o áudio fica guardado depois da transcrição pronta.
+ *
+ * O vídeo sai na hora (o player é o embed da plataforma). O áudio fica
+ * porque é ELE que o pipeline usa para retranscrever, e é ~10x menor:
+ * transcrição que sai ruim — idioma errado, jargão da coleção faltando —
+ * tem uma janela para ser refeita sem reenviar o arquivo. Passada a
+ * janela, o texto já foi conferido e o áudio vira só custo.
+ */
+export const DIAS_RETENCAO_AUDIO = Math.max(0, Number(process.env.TRANSCRICOES_AUDIO_RETENCAO_DIAS) || 3)
+
+/** Quando o áudio desta transcrição some. Null = já foi, ou ainda não terminou. */
+export function audioExpiraEm(concluidoEm: string | null, audioPath: string | null): Date | null {
+  if (!audioPath || !concluidoEm) return null
+  const base = new Date(concluidoEm)
+  if (Number.isNaN(base.getTime())) return null
+  return new Date(base.getTime() + DIAS_RETENCAO_AUDIO * 24 * 3600 * 1000)
+}
+
+/**
+ * Apaga o áudio das transcrições cuja janela de retomada venceu.
+ *
+ * Roda no cron do admin (não no worker): quem terminou de processar já
+ * saiu de cena, e o prazo é medido a partir de `concluido_em`. Falha de
+ * Storage não trava a varredura — o arquivo entra na próxima rodada.
+ */
+export async function varrerAudioExpirado(admin: Admin, limite = 200): Promise<number> {
+  if (DIAS_RETENCAO_AUDIO <= 0) return 0
+
+  const corte = new Date(Date.now() - DIAS_RETENCAO_AUDIO * 24 * 3600 * 1000).toISOString()
+  const { data, error } = await admin
+    .from("transcricoes")
+    .select("id, audio_path")
+    .eq("status", "pronta")
+    .not("audio_path", "is", null)
+    .lt("concluido_em", corte)
+    .limit(limite)
+    .returns<Array<{ id: string; audio_path: string }>>()
+  if (error) {
+    log.warn("varredura de áudio expirado falhou", { erro: error.message })
+    return 0
+  }
+
+  const linhas = data ?? []
+  if (!linhas.length) return 0
+
+  const { error: erroStorage } = await admin.storage.from(BUCKET_MEDIA).remove(linhas.map((l) => l.audio_path))
+  if (erroStorage) {
+    // Arquivo órfão custa armazenamento, não corretude. A coluna NÃO é
+    // limpa: limpar sem apagar deixaria o arquivo invisível e eterno.
+    log.warn("não foi possível apagar áudio expirado", { erro: erroStorage.message, itens: linhas.length })
+    return 0
+  }
+
+  await admin
+    .from("transcricoes")
+    .update({ audio_path: null, audio_bytes: null })
+    .in("id", linhas.map((l) => l.id))
+  return linhas.length
+}
+
 /** Capa maior que isso não é capa: é alguém servindo outra coisa. */
 const MAX_THUMB_BYTES = 4 * 1024 * 1024
 const TIMEOUT_THUMB_MS = 8000

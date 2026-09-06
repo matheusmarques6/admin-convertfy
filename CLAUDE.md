@@ -2831,10 +2831,15 @@ andamento. O que a aba fechada deixa pendurado o cron varre
 (`transcricoes_expirar_uploads`), e o modal apaga a linha quando o envio
 falha na cara do usuário.
 
-**A mídia é DESCARTADA quando a transcrição fica pronta** (set/2026): vídeo
-e áudio saem do Storage e sobram texto, timestamps e capa. Guardar 500 MB
-por aula é barato; SERVIR esses 500 MB a cada play não é, e o egress é a
-conta que estoura. Quem toca o vídeo passa a ser a plataforma de origem —
+**O VÍDEO é descartado quando a transcrição fica pronta** (set/2026); o
+ÁUDIO fica por uma janela (`TRANSCRICOES_AUDIO_RETENCAO_DIAS`, default 3),
+porque é ele — não o vídeo — que o pipeline usa para retranscrever, e é
+~10x menor: transcrição que sai ruim tem prazo para ser refeita sem
+reenviar o arquivo. Quem apaga o áudio é o cron do admin
+(`varrerAudioExpirado`), medindo por `concluido_em`, e a ficha MOSTRA o
+prazo ("Áudio guardado até 09 set") — sem isso o usuário só descobriria a
+janela falhando. Guardar 500 MB por aula é barato; SERVIR esses 500 MB a
+cada play não é, e o egress é a conta que estoura. Quem toca o vídeo passa a ser a plataforma de origem —
 `embed.ts` (puro, 11 testes) monta o iframe do YouTube/Instagram/TikTok e a
 diretiva `frame-src` do CSP declara os três (sem ela o browser cai no
 `default-src` e o player sumiria quando o CSP virar enforcement). O
@@ -2842,9 +2847,9 @@ descarte roda **só depois de indexar**: falhar no meio não pode apagar a
 fonte antes de existir texto. **Só o YouTube pula para o tempo** (`seekTo`
 por `postMessage`, daí o `enablejsapi=1`); Instagram e TikTok embutem e
 ponto — o clique rola o texto e a tela DIZ isso, em vez de fingir o pulo.
-Consequência declarada: "reprocessar do zero" só funciona para LINK (o
-worker rebaixa da URL); arquivo enviado é irrecuperável e a rota devolve
-409 explicando, em vez de enfileirar o que falharia depois.
+Consequência declarada: passada a janela, "reprocessar do zero" só funciona
+para LINK (o worker rebaixa da URL); arquivo enviado vira 409 dizendo
+quantos dias o áudio ficou guardado, em vez de enfileirar o que falharia.
 
 **Todo select de blocos é PAGINADO** (`lerBlocos`, `blocos-io.ts`): o
 PostgREST corta em 1.000 linhas e `.limit(20000)` não muda isso. Sem

@@ -35,6 +35,7 @@ OPENROUTER_API_KEY       transcrição, tópicos, embeddings
 WORKER_URL                    opcional — prévia de link com duração
 WORKER_SHARED_SECRET          obrigatório com WORKER_URL
 TRANSCRICOES_UPLOAD_MAX_MB    teto do upload (default 50)
+TRANSCRICOES_AUDIO_RETENCAO_DIAS  janela de retomada do áudio (default 3)
 ```
 
 **O teto do upload é do PROJETO, não do bucket.** O bucket declara 4 GB, mas
@@ -144,19 +145,23 @@ remapear.
 **Desligar a faísca não apaga embeddings.** Exclui da recuperação e
 pronto — religar tem de ser instantâneo.
 
-**A mídia é DESCARTADA quando a transcrição fica pronta.** Vídeo e áudio
-saem do Storage; sobram o texto, os timestamps e a capa. Guardar 500 MB por
-aula é barato — servir esses 500 MB a cada play não é, e o egress é a conta
-que estoura. Quem toca o vídeo passa a ser a plataforma de origem
-(`embed.ts`), do CDN dela.
+**O VÍDEO é descartado quando a transcrição fica pronta.** Sobram o texto,
+os timestamps, a capa e o áudio. Guardar 500 MB por aula é barato — servir
+esses 500 MB a cada play não é, e o egress é a conta que estoura. Quem toca
+o vídeo passa a ser a plataforma de origem (`embed.ts`), do CDN dela.
 
 O descarte roda **só depois de indexar**: falhar no meio do pipeline não
 pode apagar a fonte antes de existir texto.
 
-**Consequência declarada:** sem áudio guardado, "reprocessar do zero" só
-funciona para LINK (o worker rebaixa da URL). Arquivo enviado é
-irrecuperável — a rota devolve 409 dizendo isso, em vez de enfileirar algo
-que falharia sozinho depois.
+**O ÁUDIO fica por uma janela** (`TRANSCRICOES_AUDIO_RETENCAO_DIAS`, default
+3), porque é ele — não o vídeo — que o pipeline usa para retranscrever, e é
+~10x menor. Transcrição que sai ruim (idioma errado, jargão da coleção
+faltando) tem esse prazo para ser refeita sem reenviar o arquivo. Quem
+apaga é o cron do admin (`varrerAudioExpirado`), medindo por `concluido_em`.
+
+A janela é MOSTRADA na ficha ("Áudio guardado até 09 set"). Sem isso o
+usuário só descobriria o prazo tentando reprocessar e falhando — e a rota,
+quando o prazo vence, diz quantos dias eram, em vez de um 409 seco.
 
 **Só o YouTube deixa pular para o tempo.** O embed dele aceita `seekTo` por
 `postMessage` (daí o `enablejsapi=1`). Instagram e TikTok embutem o vídeo e

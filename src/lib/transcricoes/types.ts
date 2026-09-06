@@ -125,6 +125,11 @@ export interface TranscricaoDetalhe extends TranscricaoResumo {
   indexadoEm: string | null
   /** URL assinada da mídia para o player (expira). */
   mediaUrl: string | null
+  /**
+   * Até quando o áudio fica guardado — a janela em que "reprocessar do
+   * zero" ainda funciona sem reenviar o arquivo. Null = o áudio já saiu.
+   */
+  audioAte: string | null
   /** Chunks pendentes de (re)indexação nesta transcrição. */
   chunksDesatualizados: number
 }

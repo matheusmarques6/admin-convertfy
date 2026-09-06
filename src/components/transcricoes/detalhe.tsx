@@ -844,6 +844,19 @@ export function DetalheTranscricao({ inicial, colecoes, inicioSeg }: Props) {
               />
             </div>
 
+            {/* A janela de retomada precisa ser VISÍVEL: sem ela o usuário
+                só descobre que o áudio expirou tentando reprocessar do zero
+                e falhando. O vídeo já saiu — quem toca é a plataforma. */}
+            {t.status === "pronta" && (
+              <p className="text-[11px] leading-relaxed text-[var(--ops-mut)]">
+                {t.audioAte
+                  ? `Áudio guardado até ${new Date(t.audioAte).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — até lá dá para transcrever de novo do início.`
+                  : t.urlOriginal
+                    ? "O áudio já foi descartado. Reprocessar do início rebaixa o vídeo do link."
+                    : "O áudio já foi descartado. Para transcrever de novo, envie o arquivo outra vez."}
+              </p>
+            )}
+
             {confirmandoExclusao ? (
               <div className="flex flex-col gap-2 rounded-lg border border-[var(--ops-neg)]/30 bg-[var(--ops-neg)]/5 p-3">
                 <p className="text-[11.5px] leading-relaxed text-[var(--ops-neg)]">

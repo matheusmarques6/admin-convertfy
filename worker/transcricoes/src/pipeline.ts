@@ -317,39 +317,36 @@ async function etapaIndexar(db: Client, t: LinhaTranscricao): Promise<void> {
 // ── Descarte da mídia ───────────────────────────────────────────────────
 
 /**
- * Apaga vídeo e áudio do Storage depois que a transcrição está PRONTA.
+ * Apaga o VÍDEO do Storage depois que a transcrição está PRONTA.
  *
  * O produto do módulo é o texto com timestamp; o vídeo é meio. Guardar 500
  * MB por aula é barato, mas SERVIR esses 500 MB a cada play não é — o
  * egress é a conta que estoura. Quem toca o vídeo passa a ser a própria
  * plataforma (embed do YouTube/Instagram/TikTok), do CDN dela.
  *
+ * O ÁUDIO fica, por alguns dias: é ele — não o vídeo — que o pipeline usa
+ * para retranscrever, e é ~10x menor. Sem essa janela, transcrição que sai
+ * ruim (idioma errado, jargão da coleção faltando) seria irrecuperável para
+ * arquivo enviado. Quem apaga o áudio depois do prazo é o cron do admin
+ * (`varrerAudioExpirado`), medindo a partir de `concluido_em`.
+ *
  * Só roda no fim: falhar no meio do pipeline não pode apagar a fonte antes
  * de existir texto. A capa (`thumb_path`) FICA — é o que o card mostra.
- *
- * Consequência declarada: sem áudio guardado, "reprocessar do zero" só
- * funciona para LINK (o worker rebaixa da URL). Arquivo enviado é
- * irrecuperável, e a rota de reprocessar diz isso.
  */
-async function descartarMidia(db: Client, t: LinhaTranscricao): Promise<void> {
-  const { data } = await db
-    .from("transcricoes")
-    .select("media_path, audio_path")
-    .eq("id", t.id)
-    .maybeSingle()
-  const linha = data as { media_path?: string | null; audio_path?: string | null } | null
-  const alvos = [linha?.media_path, linha?.audio_path].filter((p): p is string => Boolean(p))
-  if (!alvos.length) return
+async function descartarVideo(db: Client, t: LinhaTranscricao): Promise<void> {
+  const { data } = await db.from("transcricoes").select("media_path").eq("id", t.id).maybeSingle()
+  const caminho = (data as { media_path?: string | null } | null)?.media_path
+  if (!caminho) return
 
-  const { error } = await db.storage.from(BUCKET_MEDIA).remove(alvos)
+  const { error } = await db.storage.from(BUCKET_MEDIA).remove([caminho])
   if (error) {
     // Arquivo órfão custa armazenamento, não corretude: a transcrição está
     // pronta e o texto é o que importa. Registrar e seguir.
-    log("não foi possível descartar a mídia", { id: t.id, erro: error.message })
+    log("não foi possível descartar o vídeo", { id: t.id, erro: error.message })
     return
   }
-  await db.from("transcricoes").update({ media_path: null, audio_path: null, audio_bytes: null }).eq("id", t.id)
-  log("mídia descartada", { id: t.id, arquivos: alvos.length })
+  await db.from("transcricoes").update({ media_path: null }).eq("id", t.id)
+  log("vídeo descartado", { id: t.id })
 }
 
 // ── Orquestração ────────────────────────────────────────────────────────
@@ -393,8 +390,9 @@ export async function processar(db: Client, t: LinhaTranscricao): Promise<void> 
 
     await etapaIndexar(db, t)
 
-    // Só depois de indexar: o texto existe, a mídia cumpriu o papel.
-    await descartarMidia(db, t)
+    // Só depois de indexar: o texto existe, o vídeo cumpriu o papel. O
+    // áudio fica pela janela de retomada — o cron do admin o varre depois.
+    await descartarVideo(db, t)
 
     await db
       .from("transcricoes")

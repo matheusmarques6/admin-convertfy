@@ -18,6 +18,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { DIAS_RETENCAO_AUDIO } from "@/lib/services/transcricoes-assets"
 
 export const dynamic = "force-dynamic"
 
@@ -55,8 +56,9 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
       // lugar nenhum, e dizer isso é melhor que enfileirar algo que vai
       // falhar sozinho daqui a pouco.
       throw new AppError(
-        "O arquivo enviado não fica guardado depois da transcrição, então não há de onde reprocessar do início. " +
-          "Envie o arquivo de novo para gerar uma transcrição nova.",
+        `O áudio deste arquivo já saiu do armazenamento (ele fica guardado ${DIAS_RETENCAO_AUDIO} ` +
+          `${DIAS_RETENCAO_AUDIO === 1 ? "dia" : "dias"} depois da transcrição), então não há de onde ` +
+          "reprocessar do início. Envie o arquivo de novo para gerar uma transcrição nova.",
         409,
       )
     }

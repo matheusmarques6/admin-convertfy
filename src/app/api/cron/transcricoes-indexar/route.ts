@@ -21,6 +21,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { gerarEmbeddings } from "@/lib/transcricoes/indexar"
 import { embeddingsAvailable } from "@/lib/ai/convertia/knowledge-embeddings"
+import { varrerAudioExpirado } from "@/lib/services/transcricoes-assets"
 
 const log = logger.child("CronTranscricoesIndexar")
 
@@ -49,6 +50,12 @@ export async function GET(request: NextRequest) {
     const uploadsExpirados = typeof expiradas === "number" ? expiradas : 0
     if (uploadsExpirados > 0) log.info("uploads incompletos marcados", { total: uploadsExpirados })
 
+    // Áudio das transcrições cuja janela de retomada venceu. O vídeo já saiu
+    // quando a transcrição ficou pronta; o áudio fica alguns dias porque é
+    // ele que permite retranscrever sem reenviar o arquivo.
+    const audiosApagados = await varrerAudioExpirado(admin)
+    if (audiosApagados > 0) log.info("áudio expirado apagado", { total: audiosApagados })
+
     if (!embeddingsAvailable()) {
       // Sem chave não há o que fazer, e dizer isso é melhor que reportar
       // "0 processados" como se estivesse tudo em dia.
@@ -57,6 +64,7 @@ export async function GET(request: NextRequest) {
         pulado: "sem OPENROUTER_API_KEY",
         processados: 0,
         uploadsExpirados,
+        audiosApagados,
       })
     }
 
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     const pendentes = data ?? []
     if (!pendentes.length) {
-      return NextResponse.json({ success: true, processados: 0, pendentes: 0, uploadsExpirados })
+      return NextResponse.json({ success: true, processados: 0, pendentes: 0, uploadsExpirados, audiosApagados })
     }
 
     // Corta o lote pelo orçamento: cada bloco de 48 leva alguns segundos.
@@ -92,7 +100,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const resultado = { processados, transcricoes: tocadas.length, uploadsExpirados, ms: Date.now() - inicio }
+    const resultado = { processados, transcricoes: tocadas.length, uploadsExpirados, audiosApagados, ms: Date.now() - inicio }
     log.info("reindexação", resultado)
     return NextResponse.json({ success: true, ...resultado })
   } catch (error) {
