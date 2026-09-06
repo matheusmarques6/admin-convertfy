@@ -14,7 +14,7 @@
  *    mount), não pela viewport — o rail de coleções muda a largura útil.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import useSWR from "swr"
@@ -165,19 +165,42 @@ export function Biblioteca({ inicial, orgId }: { inicial: RespostaBiblioteca; or
   }, [temProcessando, mutate, orgId])
 
   // ── Colunas pela largura do CONTAINER ───────────────────────────────
-  const grade = useRef<HTMLDivElement>(null)
   const [colunas, setColunas] = useState(3)
-  useLayoutEffect(() => {
-    const el = grade.current
+  const observador = useRef<ResizeObserver | null>(null)
+
+  /**
+   * Ref de CALLBACK, não `useRef` + efeito de mount.
+   *
+   * A grade é renderizada condicionalmente (estado vazio, busca por trechos
+   * e erro ocupam o lugar dela). Com um efeito `[]`, quem abrisse a
+   * biblioteca vazia teria `grade.current === null` na única vez que o
+   * efeito roda: o observador nunca era preso, e quando o primeiro item
+   * chegava a grade nascia com o número de colunas do palpite inicial —
+   * um card sozinho esticado na largura inteira da página.
+   *
+   * A callback roda toda vez que o nó aparece ou some, então o observador
+   * acompanha a montagem real.
+   */
+  const grade = useCallback((el: HTMLDivElement | null) => {
+    observador.current?.disconnect()
+    observador.current = null
     if (!el) return
-    const medir = (largura: number) => setColunas(largura < 560 ? 1 : largura < 900 ? 2 : largura < 1280 ? 3 : 4)
-    // Leitura síncrona no mount: sem ela o primeiro frame sai com o número
-    // errado de colunas e o layout pisca.
+
+    const medir = (largura: number) => {
+      // Largura 0 é medida de nó ainda fora do layout: manter o valor atual
+      // é melhor que despencar para 1 coluna e voltar no frame seguinte.
+      if (largura <= 0) return
+      setColunas(largura < 560 ? 1 : largura < 900 ? 2 : largura < 1280 ? 3 : 4)
+    }
+    // Leitura síncrona: sem ela o primeiro frame sai com o número errado de
+    // colunas e o layout pisca.
     medir(el.getBoundingClientRect().width)
     const obs = new ResizeObserver((entradas) => medir(entradas[0].contentRect.width))
     obs.observe(el)
-    return () => obs.disconnect()
+    observador.current = obs
   }, [])
+
+  useEffect(() => () => observador.current?.disconnect(), [])
 
   // ── Seleção ─────────────────────────────────────────────────────────
   const selecionar = useCallback(

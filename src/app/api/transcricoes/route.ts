@@ -16,6 +16,7 @@ import type { OrdemBiblioteca, Plataforma, StatusTranscricao } from "@/lib/trans
 import { carregarBiblioteca, carregarColecoes, estadoDaFila, garantirInbox } from "@/lib/services/transcricoes.service"
 import { buscarTrechos } from "@/lib/services/transcricoes-busca.service"
 import { carregarRegras, resolverPrevia } from "@/lib/services/transcricoes-previa.service"
+import { guardarThumbDaUrl } from "@/lib/services/transcricoes-assets"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -169,6 +170,15 @@ export async function POST(request: NextRequest) {
         continue
       }
       criadas.push({ url, id: data?.id ?? null, titulo: data?.titulo ?? null, erro: null })
+
+      // A capa que a prévia trouxe é gravada no NOSSO bucket. Sem isto o
+      // card fica um retângulo vazio até o worker extrair um frame — e o
+      // worker pode demorar, ou nem estar de pé. Fail-open: capa é detalhe,
+      // a transcrição já está na fila.
+      if (data?.id && previa?.thumbUrl) {
+        const caminho = await guardarThumbDaUrl(admin, orgId, data.id, previa.thumbUrl)
+        if (caminho) await admin.from("transcricoes").update({ thumb_path: caminho }).eq("id", data.id)
+      }
     }
 
     const enfileiradas = criadas.filter((c) => c.id).length

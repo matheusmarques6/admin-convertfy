@@ -37,6 +37,61 @@ export function caminhoThumb(orgId: string, transcricaoId: string): string {
   return `${prefixoOrg(orgId)}/${transcricaoId}/thumb.jpg`
 }
 
+/** Capa maior que isso não é capa: é alguém servindo outra coisa. */
+const MAX_THUMB_BYTES = 4 * 1024 * 1024
+const TIMEOUT_THUMB_MS = 8000
+
+/**
+ * Guarda a capa que a prévia trouxe (YouTube/TikTok devolvem no oEmbed).
+ *
+ * A URL do CDN da plataforma NÃO é guardada: ela expira e some, e o card
+ * fica com um vazio sem explicação — foi a lição dos avatares do módulo
+ * Conteúdo. Aqui o arquivo é regravado no nosso bucket.
+ *
+ * Sem isso, o card só ganha imagem quando o worker extrai um frame — ou
+ * seja, nunca, enquanto o container não estiver de pé. Devolve o caminho
+ * gravado ou null; falhar aqui NUNCA impede a transcrição de entrar na fila.
+ */
+export async function guardarThumbDaUrl(
+  admin: Admin,
+  orgId: string,
+  transcricaoId: string,
+  url: string | null,
+): Promise<string | null> {
+  if (!url || !/^https?:\/\//i.test(url)) return null
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_THUMB_MS)
+  try {
+    const resp = await fetch(url, { signal: controller.signal, cache: "no-store" })
+    if (!resp.ok) return null
+
+    const tipo = resp.headers.get("content-type") ?? ""
+    if (!tipo.startsWith("image/")) return null
+
+    const bytes = new Uint8Array(await resp.arrayBuffer())
+    if (!bytes.byteLength || bytes.byteLength > MAX_THUMB_BYTES) return null
+
+    const caminho = caminhoThumb(orgId, transcricaoId)
+    const { error } = await admin.storage
+      .from(BUCKET_THUMBS)
+      .upload(caminho, bytes, { contentType: tipo.split(";")[0], upsert: true })
+    if (error) {
+      log.warn("não foi possível guardar a capa", { transcricaoId, erro: error.message })
+      return null
+    }
+    return caminho
+  } catch (e) {
+    log.warn("capa da prévia não pôde ser baixada", {
+      transcricaoId,
+      erro: e instanceof Error ? e.message : String(e),
+    })
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Assina em lote. Uma chamada por thumb faria 24 round-trips por página —
  * é a diferença entre a biblioteca abrir e a biblioteca demorar.
