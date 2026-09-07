@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 import {
+  buildAliasIndex,
   buildCatalog,
   buildTypeIndex,
   levantarHigieneDoVault,
@@ -333,5 +334,45 @@ describe("levantarHigieneDoVault", () => {
       { variant_id: "id-1", slug: "reviews-3a", name: "review 2", vault: "a", banco: "b", similaridade: 0.2 },
     ]
     expect(levantarHigieneDoVault([], ativas, d).divergentes).toBe(d)
+  })
+})
+
+// PR 10: o índice que devolve o UUID quando o Curador aponta pelo nome ou
+// pelo slug da nota — os dois apelidos que ele LÊ no catálogo servido.
+describe("buildAliasIndex", () => {
+  const extras = (pares: Array<[string, string]>) =>
+    new Map<string, CatalogVaultExtra>(
+      pares.map(([id, slug]) => [id, { slug } as CatalogVaultExtra]),
+    )
+
+  it("indexa nome e slug, normalizando caixa e pontuação", () => {
+    const idx = buildAliasIndex(
+      [v("id-1", "offer", "Offer 4 — Manifesto")],
+      extras([["id-1", "offer-4-manifesto-antes-do-cupom"]]),
+    )
+    // Pelo slug da nota E pelo nome da variante — o Curador vê os dois.
+    expect(idx.get("offer-4-manifesto-antes-do-cupom")).toBe("id-1")
+    expect(idx.get("offer-4-manifesto")).toBe("id-1")
+  })
+
+  it("apelido ambíguo é descartado — resolver para a variante errada é pior", () => {
+    const idx = buildAliasIndex([
+      v("id-1", "hero", "Hero padrão"),
+      v("id-2", "body", "Hero padrão"),
+    ])
+    expect(idx.has("hero-padrao")).toBe(false)
+  })
+
+  it("o mesmo apelido apontando para a MESMA variante não vira ambiguidade", () => {
+    const idx = buildAliasIndex(
+      [v("id-1", "hero", "hero faixa escura")],
+      extras([["id-1", "Hero Faixa Escura"]]),
+    )
+    expect(idx.get("hero-faixa-escura")).toBe("id-1")
+  })
+
+  it("sem extras funciona só com o nome", () => {
+    const idx = buildAliasIndex([v("id-1", "hero", "Hero A")])
+    expect(idx.get("hero-a")).toBe("id-1")
   })
 })

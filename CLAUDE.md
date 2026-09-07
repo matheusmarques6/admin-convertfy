@@ -2606,7 +2606,8 @@ alvo e marca `consumido`; Estruturador recebe `<decisao_de_objecao>` +
 razões curtas; veículo sem insumo não vira seção; ecoa `diagnostico.alvo_id`
 — `objecao_dominante` só no fallback sem alvo); Curador legado e do vault
 recebem `<alvo>` e rankeiam `momento → objecao → aliviador → profundidade
-→ registro → paleta → papel_na_peca` com `proibido_neste_toque` como veto;
+→ registro → paleta → papel_na_peca` com `proibido_neste_toque` como
+desempate (nunca veto — ver abaixo);
 copy do n8n leva `emails[].alvo` (aditivo, `docs/email-copy-payload-v2.md`).
 **`proibido_neste_toque` é restrição de REDAÇÃO, não de curadoria** (incidente
 07/09): servido ao Curador com força de veto, o alvo trouxe 8 proibições de
@@ -2621,6 +2622,27 @@ das posições fica sem variante, em vez de montar peça degenerada; e
 diverge do de blocos — era assim que o papel da hero ia parar no rodapé.
 Sem alvo, TODOS recebem ausência declarada (`alvo-render.ts`) e voltam ao
 comportamento anterior — desligar o Seletor nunca regride.
+
+**Recusar a referência nova não basta: a velha tem de sair** (incidente
+07/09, 14:06). Com a proibição já corrigida, o Curador do vault voltou a
+rankear e a hero existia na peça — e a geração morreu em `hero_failed` de
+novo, porque a montagem RECUSOU corretamente (`reference_source: "none"`,
+`coberturaSuficiente`) e a fase 2 seguiu lendo a linha de 13:45 em
+`store_email_references`, o documento de um bloco. Guard vira DELETE:
+cobertura insuficiente apaga a referência daquele store/flow/email, e o
+consumidor cai no template global, que TEM hero. Referência que não
+representa o email é pior que referência nenhuma. **O ranking também aceita
+apelido**: o Curador escolheu `offer-4-manifesto-antes-do-cupom` — o SLUG da
+nota, que ele leu no catálogo que nós servimos — e o parser jogou em
+`invalid_ids`, perdendo a posição. `buildAliasIndex` (catalog-builder)
+indexa nome e slug normalizados → id, ambíguo é DESCARTADO (resolver para a
+variante errada é pior que não resolver), e `resolvedByAlias` conta a
+frequência em `ids_por_apelido` na telemetria dos dois Curadores.
+**Lacuna de biblioteca que sobra e é dado, não código**: para `welcome-1` as
+9 variantes de products são eliminadas por `momento` (products-4 e
+products-9 vetam `welcome-1` explicitamente), as de reviews não declaram o
+momento, e body-6/7/8/9 estão ATIVAS **sem `output_schema`** — sem schema
+não entram na biblioteca servida ao Curador, então não existem para ele.
 
 **Ponte de vocabulário** (`aliviador-bridge.ts`): o eixo `objecao` das
 notas do vault tem 11 valores próprios; risco×aliviador do alvo →

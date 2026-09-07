@@ -44,7 +44,7 @@ import {
   finishGenerationRun,
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
-import { buildCatalog, buildTypeIndex } from "./catalog-builder"
+import { buildCatalog, buildTypeIndex, buildAliasIndex } from "./catalog-builder"
 import {
   buildCatalogVaultExtras,
   buildConvivenciaBlock,
@@ -964,6 +964,9 @@ export async function assembleStoreReference(
   // vault entram POR variante (mesma ordem estável — continua cacheável).
   const catalog = buildCatalog(eligible, vaultExtras)
   const typeIndex = buildTypeIndex(eligible)
+  // Slug/nome do catálogo resolvem para o UUID quando o modelo devolve um
+  // deles — sem isso a escolha vira `invalid_ids` e a posição fica vazia.
+  const aliasIndex = buildAliasIndex(eligible, vaultExtras)
 
   const blocksJson = sequenciaParaJson(input.structure)
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
@@ -1270,6 +1273,7 @@ export async function assembleStoreReference(
       aprendizados: aprendizadosOn,
       usageCounts: usageCountsOn,
       typeIndex,
+      aliasIndex,
       liveSections: sections,
       // 02/09: decisão do Estruturador (saída completa) no template, lacunas
       // do vault e índice do Obsidian com consulta sob demanda.
@@ -1336,6 +1340,7 @@ export async function assembleStoreReference(
         raw: res.raw,
         sections,
         typeIndex,
+        aliasIndex,
         maxPerBlock: topN,
       })
       ranking = parsed
@@ -1383,6 +1388,7 @@ export async function assembleStoreReference(
     // Validações do parser (o catálogo vai inteiro, então o modelo pode
     // indicar id inexistente ou de outra seção).
     invalid_ids: ranking?.invalidIds ?? [],
+    ids_por_apelido: ranking?.resolvedByAlias ?? [],
     retyped_positions: ranking?.retypedChoices ?? [],
     unknown_blocks: ranking?.unknownBlocks ?? [],
     duplicate_ids: ranking?.duplicateIds ?? [],
@@ -1490,6 +1496,7 @@ export async function assembleStoreReference(
       aprendizados,
       usageCounts,
       typeIndex,
+      aliasIndex,
       liveSections: sections,
       liveViolations: measureProtocolViolations({
         rank1ByBlock: liveRank1,
@@ -1857,8 +1864,14 @@ export async function assembleStoreReference(
       assembled.stats.skipped,
     )
   } else {
-    // Cobertura insuficiente (nenhum bloco, ou metade das posições vazia):
-    // não persiste, o consumidor cai no template global.
+    // Cobertura insuficiente: não persiste, o consumidor cai no template
+    // global. E APAGA a referência anterior — não basta recusar a nova.
+    // Em 07/09 a montagem das 14:06 recusou corretamente, mas a fase 2
+    // seguiu lendo a referência das 13:45 (um bloco, sem hero) e a hero
+    // falhou de novo. Referência que não representa o email é pior que
+    // nenhuma: `store_email_references` é cache regenerável, e sem ela o
+    // consumidor usa o template global, que TEM hero.
+    await descartarStoreReference(input)
     html = curatedReference
     log.warn("assembler.cobertura_insuficiente", {
       storeId: input.storeId,
@@ -2014,6 +2027,27 @@ export async function assembleStoreReference(
     // consumidor não muda de comportamento.
     papeisPorPosicao: vaultResultado?.papeis ?? null,
     fioNarrativo: vaultResultado?.fioNarrativo ?? null,
+  }
+}
+
+/** Remove a referência da loja/email — ver o `else` da cobertura. */
+async function descartarStoreReference(
+  input: AssembleReferenceInput,
+): Promise<void> {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("store_email_references")
+    .delete()
+    .eq("store_id", input.storeId)
+    .eq("flow_type", input.flowType)
+    .eq("email_number", input.emailNumber)
+  if (error) {
+    log.warn("assembler.reference_discard_failed", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      error: error.message,
+    })
   }
 }
 

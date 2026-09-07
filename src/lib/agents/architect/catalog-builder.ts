@@ -296,6 +296,49 @@ function toEntry(
  * catálogo agora vai inteiro, e não pré-separado por posição, nada impede o
  * modelo de pegar um id da seção errada.
  */
+/**
+ * Apelido → `variant_id`. O Curador VÊ o `vault.slug` e o `name` de cada
+ * entrada do catálogo, e às vezes devolve um deles no lugar do UUID: em
+ * 07/09 ele escolheu `offer-4-manifesto-antes-do-cupom` com justificativa
+ * correta e o parser jogou a escolha fora por não ser id conhecido — a
+ * posição ficou vazia e o email perdeu um bloco válido.
+ *
+ * Chave normalizada (minúscula, não-alfanumérico vira hífen) para "footer 1"
+ * e "footer-1" caírem no mesmo lugar. Apelido AMBÍGUO — duas variantes com a
+ * mesma chave — é REMOVIDO: resolver para a errada é pior que não resolver.
+ */
+export function buildAliasIndex(
+  variants: EmailComponentVariant[],
+  extras?: Map<string, CatalogVaultExtra>,
+): Map<string, string> {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+
+  const out = new Map<string, string>()
+  const ambiguas = new Set<string>()
+  const registrar = (chave: string, id: string) => {
+    if (!chave || ambiguas.has(chave)) return
+    const atual = out.get(chave)
+    if (atual && atual !== id) {
+      out.delete(chave)
+      ambiguas.add(chave)
+      return
+    }
+    out.set(chave, id)
+  }
+
+  for (const v of variants) {
+    registrar(norm(v.name ?? ""), v.id)
+    const slug = extras?.get(v.id)?.slug
+    if (slug) registrar(norm(slug), v.id)
+  }
+  return out
+}
+
 export function buildTypeIndex(
   variants: EmailComponentVariant[],
 ): Map<string, string> {

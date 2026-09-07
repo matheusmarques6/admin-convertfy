@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // Estado mutável da biblioteca (email_component_variants) + spy do upsert.
 const h = vi.hoisted(() => ({
   upsertSpy: vi.fn().mockResolvedValue({ error: null }),
+  deleteSpy: vi.fn(),
   variants: [] as Array<Record<string, unknown>>,
 }))
 
@@ -33,11 +34,25 @@ vi.mock("@/lib/supabase/server", () => ({
         }
       }
       if (table === "store_email_references") {
+        // O delete é a invalidação da referência podre (PR 10): a cadeia é
+        // .delete().eq().eq().eq(), então cada eq devolve o mesmo thenable.
+        const filtros: Array<[string, unknown]> = []
+        const chain = {
+          eq: (col: string, val: unknown) => {
+            filtros.push([col, val])
+            return chain
+          },
+          then: (resolve: (v: { error: null }) => unknown) => {
+            h.deleteSpy(Object.fromEntries(filtros))
+            return Promise.resolve({ error: null }).then(resolve)
+          },
+        }
         return {
           upsert: (...args: unknown[]) => {
             h.upsertSpy(...args)
             return Promise.resolve({ error: null })
           },
+          delete: () => chain,
         }
       }
       return {}
@@ -151,6 +166,7 @@ const ASSEMBLER_CONFIRMA = pick([0, "v1"])
 beforeEach(() => {
   modes.montador = "on"
   h.upsertSpy.mockClear()
+  h.deleteSpy.mockClear()
   invokeAgent.mockReset()
   finishGenerationRun.mockClear()
   logGenerationRun.mockClear()
@@ -298,6 +314,13 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     const res = await assembleStoreReference(baseInput)
     expect(res.source).toBe("none")
     expect(h.upsertSpy).not.toHaveBeenCalled()
+    // PR 10: recusar a nova não basta — a referência anterior do mesmo
+    // email é apagada, senão a fase 2 segue lendo o documento podre.
+    expect(h.deleteSpy).toHaveBeenCalledWith({
+      store_id: "s1",
+      flow_type: "welcome",
+      email_number: 1,
+    })
   })
 
   it("toda variante recusada + global curado → devolve o global sem persistir", async () => {
@@ -310,6 +333,7 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     expect(res.source).toBe("none")
     expect(res.html).toContain("curado")
     expect(h.upsertSpy).not.toHaveBeenCalled()
+    expect(h.deleteSpy).toHaveBeenCalled()
   })
 
   // CM-3: sem o score do pré-filtro NÃO existe mais fallback top-1. Id

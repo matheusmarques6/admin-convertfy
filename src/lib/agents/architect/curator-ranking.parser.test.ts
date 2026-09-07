@@ -235,3 +235,66 @@ describe("parseCuratorRanking", () => {
     expect(r.byBlock.get(1)![0].motivo).toBeUndefined()
   })
 })
+
+// PR 10 (incidente 07/09): o Curador devolveu `offer-4-manifesto-antes-do-cupom`
+// — o SLUG da nota do vault — onde o código espera o UUID. A escolha era
+// válida e virou `invalid_ids`; a posição ficou vazia e a peça saiu sem ela.
+describe("parseCuratorRanking — apelido (slug/nome) no lugar do id", () => {
+  const ALIAS = new Map<string, string>([
+    ["offer-4-manifesto-antes-do-cupom", "h2"],
+    ["hero-faixa-escura", "h1"],
+  ])
+
+  const parseComAlias = (raw: string) =>
+    parseCuratorRanking({
+      raw,
+      sections: SECTIONS,
+      typeIndex: TYPES,
+      aliasIndex: ALIAS,
+    })
+
+  it("resolve o slug e registra a resolução", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, escolhas: [{ variant_id: "offer-4-manifesto-antes-do-cupom" }] },
+    ])
+    const r = parseComAlias(raw)
+    expect(rankingIds(r)).toEqual({ 0: ["h2"] })
+    expect(r.invalidIds).toEqual([])
+    expect(r.resolvedByAlias).toEqual([
+      { alias: "offer-4-manifesto-antes-do-cupom", variant_id: "h2" },
+    ])
+  })
+
+  it("normaliza caixa e pontuação do apelido", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, escolhas: [{ variant_id: "Hero — Faixa Escura" }] },
+    ])
+    expect(rankingIds(parseComAlias(raw))).toEqual({ 0: ["h1"] })
+  })
+
+  it("id que já é válido não passa pelo índice de apelidos", () => {
+    const raw = JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "h1" }] }])
+    const r = parseComAlias(raw)
+    expect(r.resolvedByAlias).toEqual([])
+  })
+
+  it("apelido e id da MESMA variante na mesma posição contam como duplicata", () => {
+    const raw = JSON.stringify([
+      {
+        block_index: 0,
+        escolhas: [{ variant_id: "h2" }, { variant_id: "offer-4-manifesto-antes-do-cupom" }],
+      },
+    ])
+    const r = parseComAlias(raw)
+    expect(rankingIds(r)).toEqual({ 0: ["h2"] })
+    expect(r.duplicateIds).toEqual(["h2"])
+  })
+
+  it("sem índice de apelidos o comportamento antigo continua", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, escolhas: [{ variant_id: "offer-4-manifesto-antes-do-cupom" }] },
+    ])
+    const r = parse(raw)
+    expect(r.invalidIds).toEqual(["offer-4-manifesto-antes-do-cupom"])
+  })
+})

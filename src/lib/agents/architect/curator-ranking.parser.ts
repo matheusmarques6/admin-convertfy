@@ -61,6 +61,8 @@ export interface ParsedRanking {
   duplicateIds: string[]
   /** Posições da estrutura que ficaram sem nenhum id válido. */
   emptyBlocks: number[]
+  /** Escolhas que vieram por slug/nome e foram resolvidas para o UUID. */
+  resolvedByAlias: Array<{ alias: string; variant_id: string }>
   /** O JSON não pôde ser lido. */
   malformed: boolean
 }
@@ -71,6 +73,12 @@ export interface ParseRankingInput {
   sections: string[]
   /** `variant_id` → `block_type` do catálogo (ver `buildTypeIndex`). */
   typeIndex: Map<string, string>
+  /**
+   * Apelido normalizado → `variant_id` (`buildAliasIndex`). O Curador vê o
+   * slug e o nome de cada entrada; quando devolve um deles no lugar do UUID,
+   * a escolha é RESOLVIDA em vez de descartada.
+   */
+  aliasIndex?: Map<string, string>
   /** Teto de finalistas por posição. */
   maxPerBlock?: number
 }
@@ -80,7 +88,11 @@ export const DEFAULT_MAX_PER_BLOCK = 3
 export function parseCuratorRanking(
   input: ParseRankingInput,
 ): ParsedRanking {
-  const { raw, sections, typeIndex, maxPerBlock = DEFAULT_MAX_PER_BLOCK } = input
+  const { raw, sections, typeIndex, aliasIndex, maxPerBlock = DEFAULT_MAX_PER_BLOCK } = input
+
+  // Mesma normalização do buildAliasIndex — chave, não texto de gente.
+  const normAlias = (x: string) =>
+    x.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 
   const out: ParsedRanking = {
     byBlock: new Map(),
@@ -89,6 +101,7 @@ export function parseCuratorRanking(
     unknownBlocks: [],
     duplicateIds: [],
     emptyBlocks: [],
+    resolvedByAlias: [],
     malformed: false,
   }
 
@@ -130,8 +143,21 @@ export function parseCuratorRanking(
     const seen = new Set<string>()
 
     for (const c of rawChoices) {
-      const id = choiceId(c)
-      if (!id) continue
+      const bruto = choiceId(c)
+      if (!bruto) continue
+
+      // Id desconhecido pode ser o slug ou o nome da variante — os dois vão
+      // no catálogo que o próprio modelo leu. Resolver antes de descartar:
+      // em 07/09 uma escolha válida virou `invalid_ids` porque veio como
+      // `offer-4-manifesto-antes-do-cupom`, e a posição ficou vazia.
+      let id = bruto
+      if (!typeIndex.has(id)) {
+        const resolvido = aliasIndex?.get(normAlias(bruto))
+        if (resolvido && typeIndex.has(resolvido)) {
+          out.resolvedByAlias.push({ alias: bruto, variant_id: resolvido })
+          id = resolvido
+        }
+      }
 
       if (seen.has(id)) {
         out.duplicateIds.push(id)

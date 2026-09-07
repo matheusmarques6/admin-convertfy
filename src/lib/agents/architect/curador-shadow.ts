@@ -480,6 +480,8 @@ export interface CuradorShadowParams {
   usageCounts: Map<string, number>
   /** variant_id → block_type (validação das escolhas). */
   typeIndex: Map<string, string>
+  /** Apelido (slug/nome) → variant_id — resolve escolha que veio sem UUID. */
+  aliasIndex?: Map<string, string>
   /**
    * Seções da ARQUITETURA deste email (a sequência da aba, que o Curador
    * recebe e não altera). Continua servindo de base de comparação no shadow.
@@ -691,6 +693,7 @@ export async function runCuradorShadow(
           raw: parsed.escolhasRaw,
           sections,
           typeIndex: p.typeIndex,
+          aliasIndex: p.aliasIndex,
           maxPerBlock: SHADOW_TOP_N,
         })
       : null
@@ -780,6 +783,7 @@ export async function runCuradorShadow(
           justificativa: parsed?.justificativas?.[b] ?? "",
         })),
         invalid_ids: ranking?.invalidIds ?? [],
+        ids_por_apelido: ranking?.resolvedByAlias ?? [],
         // A contradição que era SILENCIOSA: `toEntry` sobrepõe a prosa do
         // vault ao cadastro do banco e o prompt diz que o vault vence. Onde
         // as duas descrevem peças diferentes, o Curador decidia sobre uma e
