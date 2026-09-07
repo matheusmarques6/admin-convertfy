@@ -261,7 +261,7 @@ describe("buildCatalog — nenhum requisito de ativo viaja", () => {
       "id-1",
       {
         slug: "body-3-pitch-de-gift-card",
-        momento: ["gift-card"],
+        registro: ["premium-editorial"],
         // Vem do frontmatter do vault e tem de morrer aqui.
         exige: ["gift-card-digital", "foto-com-pessoas"],
         peso: "medio · 900px",
@@ -275,7 +275,7 @@ describe("buildCatalog — nenhum requisito de ativo viaja", () => {
     expect(entrada.vault).toBeDefined()
     expect(entrada.vault).not.toHaveProperty("exige")
     // Os eixos que DECIDEM continuam inteiros.
-    expect(entrada.vault?.momento).toEqual(["gift-card"])
+    expect(entrada.vault?.registro).toEqual(["premium-editorial"])
     expect(entrada.vault?.peso).toBe("medio · 900px")
   })
 
@@ -374,5 +374,38 @@ describe("buildAliasIndex", () => {
   it("sem extras funciona só com o nome", () => {
     const idx = buildAliasIndex([v("id-1", "hero", "Hero A")])
     expect(idx.get("hero-a")).toBe("id-1")
+  })
+})
+
+// 07/09: o eixo `momento` foi aposentado. Fora da hero, NENHUMA variante
+// declarava `welcome-1` — a regra não separava boa de ruim, eliminava quatro
+// seções inteiras. Saiu do catálogo, como o `exige` antes dele.
+describe("buildCatalog — momento não viaja", () => {
+  const extras = new Map<string, CatalogVaultExtra>([
+    [
+      "id-1",
+      {
+        slug: "products-9-grade-de-tamanho",
+        momento: ["queima-de-estoque"],
+        momento_vetado: ["welcome-1"],
+        registro: ["bold-alto-contraste"],
+      } as unknown as CatalogVaultExtra,
+    ],
+  ])
+
+  it("a entrada do catálogo não tem `momento` nem `momento_vetado`", () => {
+    const r = buildCatalog([v("id-1", "products", "produtos 9")], extras)
+    const entrada = r.sections[0].variantes[0]
+    expect(entrada.vault).toBeDefined()
+    expect(entrada.vault).not.toHaveProperty("momento")
+    expect(entrada.vault).not.toHaveProperty("momento_vetado")
+    expect(entrada.vault?.registro).toEqual(["bold-alto-contraste"])
+  })
+
+  it("o JSON servido ao Curador não contém o campo nem os valores", () => {
+    const r = buildCatalog([v("id-1", "products", "produtos 9")], extras)
+    expect(r.json).not.toContain("momento")
+    expect(r.json).not.toContain("queima-de-estoque")
+    expect(r.json).not.toContain("welcome-1")
   })
 })

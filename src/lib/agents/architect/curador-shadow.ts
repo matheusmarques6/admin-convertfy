@@ -21,7 +21,6 @@ import {
   buildConvivenciaBlock,
   buildEstruturasRefResumo,
   buildLacunasBlock,
-  buildMomentoBlock,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   momentoDoEmail,
@@ -79,7 +78,7 @@ Você decide pelo protocolo, pelos eixos e pelos metadados. Você NÃO recebe o 
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. \`description\`, \`quando_usar\` e \`quando_nao_usar\` descrevem a peça que será REALMENTE montada — é o cadastro do sistema, e é ele que vale. Variantes com o campo \`vault\` trazem, ALÉM disso, os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\`: o vault acrescenta o que o sistema não tem, nunca o contradiz.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. \`description\`, \`quando_usar\` e \`quando_nao_usar\` descrevem a peça que será REALMENTE montada — é o cadastro do sistema, e é ele que vale. Variantes com o campo \`vault\` trazem, ALÉM disso, os eixos do protocolo (objecao/registro/paleta/papel_na_peca + registro_vetado), \`peso\` e \`convivencia\`: o vault acrescenta o que o sistema não tem, nunca o contradiz.
 {{catalogo}}
 </biblioteca>
 
@@ -93,15 +92,17 @@ Como decidir, na ordem:
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
    <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
-2.  elimine por ativa/schema (já filtrados do catálogo), declarar outro momento NÃO elimina, e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por momento → objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
+2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
+
+O eixo \`momento\` foi APOSENTADO (07/09). O catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 — está SUPERADO: ignore. Se topar com o campo numa nota lida por ferramenta, ele não vale.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra (é o critério do eixo objecao só quando <alvo> declara ausência); <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
 
 O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
 - \`papeis\`: UMA frase por posição dizendo COMO a variante escolhida realiza o papel decidido pelo Estruturador (qual parte da anatomia entrega o quê). Não é lugar de reescrever o papel nem de propor outra sequência. Sem decisão do Estruturador, aí sim é o papel derivado da intenção.
-- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — o que o papel pedia da anatomia e quem encaixou, quem foi eliminado e em que passo (momento vetado/capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
+- \`justificativa\` é OBRIGATÓRIA em toda posição: o TRAÇO da decisão em 2-4 frases — o que o papel pedia da anatomia e quem encaixou, quem foi eliminado e em que passo (capacidade), qual eixo do ranking decidiu e por quê ("ganhou porque objecao bateu; se não fosse isso, teria sido registro"), e o desempate quando houve.
 - A escolha leva \`motivo\` (uma frase curta): por que ela venceu as outras candidatas da posição.
 
 Responda APENAS o objeto JSON, sem markdown:
@@ -139,10 +140,6 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 [o email NÃO DEVE — restrições da aba Arquitetura]
 {{outline_restricoes}}
 </intencao_do_email>
-
-<momento>
-{{momento}}
-</momento>
 
 <estruturas_de_referencia>
 {{estruturas_ref}}
@@ -311,8 +308,6 @@ export interface ProtocolViolation {
   block_index: number
   variant_id: string
   tipo:
-    | "momento_vetado"
-    | "momento_nao_declarado"
     | "hero_dupla"
     | "variante_repetida"
     | "convivencia"
@@ -360,7 +355,6 @@ function proibicaoBateNaVariante(proibicao: string, extra: CatalogVaultExtra | u
 export function measureProtocolViolations(p: {
   rank1ByBlock: Map<number, string>
   extras: Map<string, CatalogVaultExtra>
-  momento: string | null
   /** block_index → seção da posição. */
   sectionByBlock: Map<number, string>
   /** Alvo do Seletor (opcional — sem ele os dois tipos novos não são medidos). */
@@ -401,24 +395,6 @@ export function measureProtocolViolations(p: {
       })
     } else {
       seenVariant.set(variantId, block)
-    }
-
-    if (extra && p.momento) {
-      if ((extra.momento_vetado ?? []).includes(p.momento)) {
-        out.push({
-          block_index: block,
-          variant_id: variantId,
-          tipo: "momento_vetado",
-          detalhe: `momento_vetado inclui ${p.momento}`,
-        })
-      } else if ((extra.momento ?? []).length > 0 && !(extra.momento ?? []).includes(p.momento)) {
-        out.push({
-          block_index: block,
-          variant_id: variantId,
-          tipo: "momento_nao_declarado",
-          detalhe: `momento [${(extra.momento ?? []).join(", ")}] não inclui ${p.momento}`,
-        })
-      }
     }
 
     for (const slug of extra?.convivencia ?? []) {
@@ -557,7 +533,6 @@ export async function runCuradorShadow(
     const lacunasBlock = buildLacunasBlock(p.vault, p.liveSections)
     const vars: Record<string, string> = {
       ...p.baseVars,
-      momento: buildMomentoBlock(p.vault, p.flowType, p.emailNumber),
       // Com decisão do Estruturador, referências e outline saem: ele já
       // traduziu esse material e a sequência é dele.
       estruturas_ref: estruturadorOn ? OMITIDO : buildEstruturasRefResumo(p.estruturasRef),
@@ -703,7 +678,6 @@ export async function runCuradorShadow(
     const violations = measureProtocolViolations({
       rank1ByBlock: shadowRank1,
       extras: p.extras,
-      momento,
       sectionByBlock,
       alvo: p.alvoMedicao ?? null,
     })

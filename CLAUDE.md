@@ -2667,6 +2667,30 @@ nenhuma é recusada**; peça com hero e poucas seções é POBRE, não inviável
 entra, e as lacunas ficam no `slot_map` e na telemetria, onde a curadoria
 pode ser cobrada.
 
+**O eixo `momento` foi APOSENTADO** (07/09). O dado que decidiu: fora da
+hero, **nenhuma variante do catálogo declara `welcome-1`** — nem body, nem
+offer ativo, nem products, nem reviews. A regra não separava boa de ruim,
+eliminava quatro seções inteiras; e os 7 vetos de `welcome-1` (products-4/6/
+8a/9, hero-7/9, body-10) cortavam justamente as vitrines. O campo saiu de
+`CatalogVaultExtra` e do JSON do catálogo, o bloco `<momento>` saiu dos dois
+prompts do Curador (com `buildMomentoBlock`, e com ela a única leitura de
+`k.eixos`), a ordem do ranking virou `objecao → aliviador → profundidade →
+registro → paleta → papel_na_peca`, e `momento_vetado`/`momento_nao_declarado`
+sumiram de `measureProtocolViolations` — sem dado servido e sem regra, medir
+"violação" seria inventar erro no log. `momentoDoEmail` sobrevive só como
+REGISTRO na telemetria.
+
+**Tirar a regra do texto, não só do dado** — lição repetida do `exige`: a nota
+`_protocolo-de-selecao.md` manda eliminar por momento no passo 5 e é servida
+em `{{protocolo}}`; as notas de seção ensinam momento como chave de decisão.
+Servir a REGRA sem servir o DADO faz o modelo procurar campo que não existe ou
+deduzir o momento da prosa e eliminar assim mesmo. `semMomento` (irmã de
+`semExige`) tira do markdown servido o ITEM NUMERADO inteiro que cita momento
+(linha a linha sobrariam fragmentos de frase), o parágrafo solto e a coluna de
+tabela; roda no `buildProtocoloBlock` e no `buildSecaoNotasBlock`. Os dois
+prompts ainda declaram a precedência ("o eixo foi APOSENTADO… o passo 5 está
+SUPERADO"), porque as ferramentas de vault podem ler a nota crua.
+
 **Ponte de vocabulário** (`aliviador-bridge.ts`): o eixo `objecao` das
 notas do vault tem 11 valores próprios; risco×aliviador do alvo →
 `eixo_objecao_equivalente`, e cada variante ganha `aliviador`/

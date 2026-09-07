@@ -6,12 +6,12 @@ import {
   buildEstruturasRefResumo,
   buildIndiceDoVault,
   buildLacunasBlock,
-  buildMomentoBlock,
   renderIndiceDoVault,
   secaoDaLacuna,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   semExige,
+  semMomento,
   emptyCuradorVaultKnowledge,
   extractVariantSections,
   indexVaultDocs,
@@ -161,10 +161,13 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     expect(extras.size).toBe(2)
     const hero = extras.get("d9e34a1f-7bc7-47e8-9081-53600b104dd2")
     expect(hero?.slug).toBe("hero-3-cupom-de-captacao")
-    expect(hero?.momento).toEqual(["welcome-1"])
+    expect(hero?.objecao).toEqual(["preco-valor"])
     // `exige` não é mais lido do frontmatter (01/09): o campo eliminava
     // candidata sobre requisito que o próprio vault declara não verificável.
     expect(hero).not.toHaveProperty("exige")
+    // `momento` saiu pela mesma razão em 07/09.
+    expect(hero).not.toHaveProperty("momento")
+    expect(hero).not.toHaveProperty("momento_vetado")
     expect(hero?.peso).toBe("medio · 949px")
     expect(hero?.quando_nao_usar).toContain("Sem cupom")
     expect(extras.get("id-faq")?.slug).toBe("body-7-faq")
@@ -186,7 +189,7 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     const r = buildCatalog([variante], extras)
     const entry = r.sections[0].variantes[0]
     expect(entry.vault?.slug).toBe("hero-3-cupom-de-captacao")
-    expect(entry.vault?.momento_vetado).toEqual(["transacional"])
+    expect(entry.vault?.registro_vetado).toEqual(["luxo"])
     // 03/09: o cadastro descreve a peça que será montada e prevalece; a
     // prosa da nota é apoio e só aparece onde o sistema está vazio.
     expect(entry.quando_nao_usar).toBe("quando não usar do banco")
@@ -209,16 +212,6 @@ describe("indexVaultDocs + buildCatalogVaultExtras", () => {
     expect(buildProtocoloBlock(emptyCuradorVaultKnowledge())).toContain("não sincronizado")
     expect(buildConvivenciaBlock(k)).toContain("prova-social-nao-duplica-na-peca")
     expect(buildConvivenciaBlock(emptyCuradorVaultKnowledge())).toContain("nenhuma regra")
-  })
-
-  it("bloco de momento traz o valor + a nota do eixo quando existe", () => {
-    const b = buildMomentoBlock(k, "welcome", 1)
-    expect(b).toContain("welcome-1")
-    expect(b).toContain("Primeiro toque")
-    // Sem nota do eixo, só o valor.
-    expect(buildMomentoBlock(k, "welcome", 3)).toBe("welcome-meio")
-    // Flow não mapeado declara neutralidade.
-    expect(buildMomentoBlock(k, "custom", 1)).toContain("não mapeado")
   })
 
   it("notas de seção só das seções pedidas; ausência declarada", () => {
@@ -335,5 +328,69 @@ describe("índice do Obsidian", () => {
     expect(r).toContain("- componentes/secoes/ (2 notas)")
     expect(r).toContain("- componentes/lacunas/ (1 nota)")
     expect(renderIndiceDoVault({ pastas: [] })).toContain("não sincronizado")
+  })
+})
+
+// ── `momento` fora do que chega ao modelo (07/09) ───────────────────────
+//
+// Mesma armadilha do `exige`: o eixo saiu do catálogo e dos prompts, mas o
+// protocolo do vault manda eliminar por ele no passo 5 e as notas de seção o
+// ensinam como chave de decisão. Servir a REGRA sem servir o DADO faz o
+// modelo procurar um campo que não existe — ou deduzir o momento da prosa e
+// eliminar assim mesmo, que foi o que aconteceu na geração de 07/09.
+describe("semMomento", () => {
+  const PROTOCOLO = [
+    "Nove passos, na ordem. **eliminar antes de rankear, sempre**.",
+    "",
+    "1. **Ler a intenção do toque** — `intencoes/<flow>/<n>.md`. Define qual",
+    "   objeção este e-mail ataca.",
+    "5. **Eliminar por `momento`** — dois mecanismos. O veto: consulta",
+    "   `momento_vetado` e `registro_vetado`. A declaração positiva: se",
+    "   `momento` da variante é uma lista não vazia que não inclui o momento",
+    "   do e-mail, elimina.",
+    "6. **Eliminar por capacidade** — consulta `product_slots` e `itens`.",
+    "",
+    "`momento` não entra nesta lista: já foi consumido como filtro no passo 5.",
+    "",
+    "Ordem dos eixos: **`objecao` → `registro` → `paleta`.**",
+  ].join("\n")
+
+  it("o passo inteiro sai, não só a linha que cita", () => {
+    const r = semMomento(PROTOCOLO)
+    expect(r).not.toContain("momento")
+    expect(r).not.toContain("dois mecanismos")
+    expect(r).not.toContain("declaração positiva")
+    // O que não fala de momento fica intacto.
+    expect(r).toContain("Ler a intenção do toque")
+    expect(r).toContain("Eliminar por capacidade")
+    expect(r).toContain("`objecao` → `registro` → `paleta`")
+  })
+
+  it("parágrafo solto que cita o eixo também sai", () => {
+    expect(semMomento(PROTOCOLO)).not.toContain("consumido como filtro")
+  })
+
+  it("coluna de tabela que cita momento sai de todas as linhas", () => {
+    const md = [
+      "| variante | momento | objecao |",
+      "| --- | --- | --- |",
+      "| hero-3 | welcome-1 | preco-valor |",
+    ].join("\n")
+    const r = semMomento(md)
+    expect(r).not.toContain("momento")
+    expect(r).not.toContain("welcome-1")
+    expect(r).toContain("preco-valor")
+  })
+
+  it("o protocolo servido já vem sem os passos de momento", () => {
+    const comProtocolo = { ...emptyCuradorVaultKnowledge() }
+    comProtocolo.protocolo = {
+      kind: "protocolo",
+      slug: "_protocolo-de-selecao",
+      body_md: PROTOCOLO,
+    } as never
+    const b = buildProtocoloBlock(comProtocolo)
+    expect(b).not.toContain("momento")
+    expect(b).toContain("Eliminar por capacidade")
   })
 })

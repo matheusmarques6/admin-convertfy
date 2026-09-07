@@ -278,8 +278,6 @@ export function buildCatalogVaultExtras(
       descricao_curta: clamp(prosa.descricaoCurta, 600) || undefined,
       quando_usar: clamp(prosa.quandoUsar, 1200) || undefined,
       quando_nao_usar: clamp(prosa.quandoNaoUsar, 1200) || undefined,
-      momento: strArr(fm.momento),
-      momento_vetado: strArr(fm.momento_vetado),
       objecao: strArr(fm.objecao),
       registro: strArr(fm.registro),
       registro_vetado: strArr(fm.registro_vetado),
@@ -312,7 +310,7 @@ export function buildProtocoloBlock(k: CuradorVaultKnowledge): string {
   if (!k.protocolo) {
     return "(vault de componentes não sincronizado — siga as regras de seleção abaixo e os metadados do catálogo)"
   }
-  return clamp(k.protocolo.body_md, 24_000)
+  return clamp(semMomento(k.protocolo.body_md), 24_000)
 }
 
 export function buildConvivenciaBlock(k: CuradorVaultKnowledge): string {
@@ -345,9 +343,13 @@ export function buildConvivenciaBlock(k: CuradorVaultKnowledge): string {
 // ── Blocos de USER (por email) ──────────────────────────────────────────
 
 /**
- * flow_type + número → valor do eixo `momento` do vault. Faixas do welcome
- * vêm das notas de eixo (welcome-1 = #1; welcome-meio = #2-4; welcome-tardio
- * = #5+). Flow não mapeado → null (o eixo momento vira neutro no prompt).
+ * flow_type + número → o momento daquele email. Faixas do welcome vêm das
+ * notas de eixo (welcome-1 = #1; welcome-meio = #2-4; welcome-tardio = #5+).
+ *
+ * NÃO vai mais para prompt nenhum: o eixo `momento` foi aposentado no Curador
+ * (07/09) e o catálogo não traz `momento`/`momento_vetado`. Sobrevive só como
+ * REGISTRO na telemetria — saber de que momento era o email ajuda a ler a
+ * run, e registro não é instrução.
  */
 export function momentoDoEmail(flowType: string, emailNumber: number): string | null {
   if (flowType === "welcome") {
@@ -364,20 +366,6 @@ export function momentoDoEmail(flowType: string, emailNumber: number): string | 
     shipping_stages: "pos-compra",
   }
   return map[flowType] ?? null
-}
-
-export function buildMomentoBlock(
-  k: CuradorVaultKnowledge,
-  flowType: string,
-  emailNumber: number,
-): string {
-  const momento = momentoDoEmail(flowType, emailNumber)
-  if (!momento) {
-    return `(momento não mapeado para o flow "${flowType}" — trate o eixo momento como neutro; aplique momento_vetado apenas quando o veto citar literalmente este flow)`
-  }
-  const nota = k.eixos.get(`momento/${momento}`)
-  if (!nota) return momento
-  return `${momento}\n\n${clamp(nota.body_md, 1_800)}`
 }
 
 /**
@@ -397,12 +385,61 @@ export function buildMomentoBlock(
  * linhas. Linha que sobra vazia some.
  */
 export function semExige(md: string): string {
+  return semPalavra(md, /\bexig(e|em|ência|encia)\b/i)
+}
+
+/**
+ * O mesmo para `momento` (07/09), pela MESMA razão do `exige`: o eixo saiu
+ * do catálogo e dos prompts, mas o protocolo do vault manda eliminar por ele
+ * no passo 5 e as notas de seção o ensinam como chave de decisão. Servir a
+ * regra sem servir o dado faz o modelo procurar um campo que não existe — ou
+ * deduzir o momento da prosa e eliminar assim mesmo, que foi o que aconteceu.
+ *
+ * Item numerado inteiro sai quando o passo cita momento (senão sobrariam
+ * fragmentos de frase); parágrafo solto idem; fora disso vale a regra de
+ * linha/coluna.
+ */
+export function semMomento(md: string): string {
+  const CITA = /\bmomento(s)?\b|\bmomento_vetado\b/i
+  const linhas = md.split("\n")
+  const out: string[] = []
+  let item: string[] | null = null
+
+  const despejaItem = () => {
+    if (item && !item.some((l) => CITA.test(l))) out.push(...item)
+    item = null
+  }
+
+  for (const linha of linhas) {
+    const comecaItem = /^\s{0,3}\d+\.\s/.test(linha)
+    if (comecaItem) {
+      despejaItem()
+      item = [linha]
+      continue
+    }
+    if (item) {
+      // Continuação do item: linha indentada ou vazia entre linhas do item.
+      if (/^\s{2,}\S/.test(linha) || linha.trim() === "") {
+        item.push(linha)
+        continue
+      }
+      despejaItem()
+    }
+    out.push(linha)
+  }
+  despejaItem()
+
+  return semPalavra(out.join("\n"), CITA)
+}
+
+/** Remove de um markdown toda linha — e toda COLUNA de tabela — que cita o padrão. */
+function semPalavra(md: string, padrao: RegExp): string {
   const linhas = md.split("\n")
   const out: string[] = []
   let colunaExige: number | null = null
   let dentroDeTabela = false
   const ehLinhaDeTabela = (l: string) => /^\s*\|.*\|\s*$/.test(l)
-  const cita = (t: string) => /\bexig(e|em|ência|encia)\b/i.test(t)
+  const cita = (t: string) => padrao.test(t)
 
   for (const linha of linhas) {
     if (ehLinhaDeTabela(linha)) {
@@ -440,7 +477,7 @@ export function buildSecaoNotasBlock(
   for (const s of distintas) {
     const nota = k.secoes.get(s)
     if (!nota) continue
-    blocos.push(`## Seção ${s}\n${clamp(semExige(nota.body_md), 5_000)}`)
+    blocos.push(`## Seção ${s}\n${clamp(semMomento(semExige(nota.body_md)), 5_000)}`)
   }
   if (blocos.length === 0) {
     return "(sem notas de seção no vault para as seções deste email)"

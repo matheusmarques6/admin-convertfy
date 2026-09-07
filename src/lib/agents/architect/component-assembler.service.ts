@@ -49,7 +49,6 @@ import {
   buildCatalogVaultExtras,
   buildConvivenciaBlock,
   buildEstruturasRefResumo,
-  buildMomentoBlock,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
@@ -223,7 +222,7 @@ Protocolo canônico de seleção (vault de componentes). Quando presente, ele é
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade. Variantes com o campo \`vault\` trazem os eixos do protocolo (momento/objecao/registro/paleta/papel_na_peca + vetos), \`peso\` e \`convivencia\`.
+Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento nenhum — não trate posição na lista como sinal de qualidade. Variantes com o campo \`vault\` trazem os eixos do protocolo (objecao/registro/paleta/papel_na_peca + registro_vetado), \`peso\` e \`convivencia\`.
 {{catalogo}}
 </biblioteca>
 
@@ -233,7 +232,7 @@ Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.
 </convivencia>
 
 Como usar os eixos do vault (variantes com campo \`vault\`):
-- momento SÓ elimina por VETO: se <momento> do email está em \`vault.momento_vetado\`, a variante está FORA. Declarar outro momento NÃO elimina — \`vault.momento\` diz onde a variante brilha, não onde ela é permitida. Ele é o PRIMEIRO eixo do ranking, nesta ordem: 1º quem declara o momento pedido, 2º quem tem lista vazia, 3º quem declara outros momentos.
+- O eixo \`momento\` foi APOSENTADO (07/09): o catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 — está SUPERADO: ignore.
 - Material que a variante pede (foto, tipografia, tipo de campanha) NÃO elimina ninguém: a imagem é gerada depois. Adequação de material entra no ranking, nunca no corte.
 - Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → aliviador → profundidade → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com o eixo equivalente do alvo em <alvo> (ou com <objecoes> quando não há alvo); \`vault.aliviador\` com o \`aliviador pedido\`; \`vault.profundidade\` com a \`profundidade de prova\` pedida. Eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
@@ -323,10 +322,6 @@ sobre a memória e sobre sua preferência.
 <top_products>
 {{top_products}}
 </top_products>
-
-<momento>
-{{momento}}
-</momento>
 
 <estruturas_de_referencia>
 Referências concretas catalogadas para este flow (passo 2 do protocolo — quando alguma cobre este email, ela orienta papel e desempate):
@@ -918,7 +913,6 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
     memoria: { cls: "sistema", rotulo: "Memória do Curador — escolhas anteriores (código)" },
     finalists_json: { cls: "upstream", rotulo: "Finalistas — SAÍDA do Curador + schemas da biblioteca" },
     // Cérebro do vault de componentes (31/08).
-    momento: { cls: "sistema", rotulo: "Momento do email — derivado de flow_type/número (código) + nota do eixo (vault)" },
     estruturas_ref: { cls: "vault", rotulo: "Estruturas de referência do flow — email_structure_refs" },
     secoes_notas: { cls: "vault", rotulo: "Notas de seção — email_vault_docs (componentes/secoes)" },
   }
@@ -1080,10 +1074,9 @@ export async function assembleStoreReference(
     top_products: renderTopProducts(input.topProducts),
     blocks_json: blocksJson,
     memoria: renderCuradorMemory(memory),
-    // Cérebro do vault (31/08): momento deste email (filtro do passo 5),
-    // estruturas de referência do flow (passo 2) e notas de seção com a
-    // chave de desempate (passo 9). Ausência sempre DECLARADA.
-    momento: buildMomentoBlock(vault, input.flowType, input.emailNumber),
+    // Cérebro do vault (31/08): estruturas de referência do flow (passo 2)
+    // e notas de seção com a chave de desempate (passo 9). Ausência sempre
+    // DECLARADA. O momento saiu em 07/09 — o eixo foi aposentado.
     estruturas_ref: buildEstruturasRefResumo(estruturasRef),
     secoes_notas: buildSecaoNotasBlock(vault, sections),
   }
@@ -1501,7 +1494,6 @@ export async function assembleStoreReference(
       liveViolations: measureProtocolViolations({
         rank1ByBlock: liveRank1,
         extras: shadowExtras,
-        momento: momentoDoEmail(input.flowType, input.emailNumber),
         sectionByBlock: new Map(sections.map((s, i) => [i, s])),
         alvo: input.alvoMedicao ?? null,
       }),

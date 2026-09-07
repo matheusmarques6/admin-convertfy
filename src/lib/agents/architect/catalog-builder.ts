@@ -33,8 +33,6 @@ export interface CatalogVaultExtra {
   descricao_curta?: string
   quando_usar?: string
   quando_nao_usar?: string
-  momento?: string[]
-  momento_vetado?: string[]
   objecao?: string[]
   registro?: string[]
   registro_vetado?: string[]
@@ -147,8 +145,6 @@ export interface CatalogEntry {
   /** Presente quando a variante tem nota no vault de componentes. */
   vault?: {
     slug: string
-    momento: string[]
-    momento_vetado: string[]
     objecao: string[]
     registro: string[]
     registro_vetado: string[]
@@ -272,8 +268,6 @@ function toEntry(
   if (extra) {
     entry.vault = {
       slug: extra.slug,
-      momento: extra.momento ?? [],
-      momento_vetado: extra.momento_vetado ?? [],
       objecao: extra.objecao ?? [],
       registro: extra.registro ?? [],
       registro_vetado: extra.registro_vetado ?? [],

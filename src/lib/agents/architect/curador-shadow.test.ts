@@ -8,7 +8,7 @@ import {
   rank1ByBlock,
 } from "./curador-shadow"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
-import { DEFAULT_CHOOSER_SYSTEM } from "./component-assembler.service"
+import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
 import type { CatalogVaultExtra } from "./catalog-builder"
 import type { RankedChoice } from "./curator-ranking.parser"
 
@@ -50,29 +50,29 @@ describe("parseCuradorVaultOutput", () => {
 
 describe("measureProtocolViolations", () => {
   const extras = new Map<string, CatalogVaultExtra>([
-    ["v-veta", { slug: "hero-x", momento: [], momento_vetado: ["welcome-1"], convivencia: [] }],
-    ["v-fora", { slug: "hero-y", momento: ["carrinho-abandonado"], momento_vetado: [], convivencia: [] }],
-    ["v-ok", { slug: "hero-3", momento: ["welcome-1"], momento_vetado: [], convivencia: [] }],
-    ["v-prova1", { slug: "reviews-1", momento: [], momento_vetado: [], convivencia: ["prova-social-nao-duplica-na-peca"] }],
-    ["v-prova2", { slug: "reviews-5", momento: [], momento_vetado: [], convivencia: ["prova-social-nao-duplica-na-peca"] }],
+    ["v-veta", { slug: "hero-x", convivencia: [] }],
+    ["v-fora", { slug: "hero-y", convivencia: [] }],
+    ["v-ok", { slug: "hero-3", convivencia: [] }],
+    ["v-prova1", { slug: "reviews-1", convivencia: ["prova-social-nao-duplica-na-peca"] }],
+    ["v-prova2", { slug: "reviews-5", convivencia: ["prova-social-nao-duplica-na-peca"] }],
   ])
   const sec = (pairs: Array<[number, string]>) => new Map(pairs)
 
-  it("momento_vetado e momento positivo não declarado", () => {
+  // 07/09: o eixo foi aposentado. Nada é medido por momento — sem dado
+  // servido e sem regra, "violação" de momento seria erro inventado no log.
+  it("momento não é medido", () => {
     const v = measureProtocolViolations({
       rank1ByBlock: new Map([[0, "v-veta"], [1, "v-fora"], [2, "v-ok"]]),
       extras,
-      momento: "welcome-1",
       sectionByBlock: sec([[0, "hero"], [1, "body"], [2, "offer"]]),
     })
-    expect(v.map((x) => x.tipo).sort()).toEqual(["momento_nao_declarado", "momento_vetado"])
+    expect(v).toEqual([])
   })
 
   it("hero dupla e variante repetida", () => {
     const v = measureProtocolViolations({
       rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
       extras,
-      momento: "welcome-1",
       sectionByBlock: sec([[0, "hero"], [1, "hero"]]),
     })
     expect(v.some((x) => x.tipo === "hero_dupla")).toBe(true)
@@ -83,17 +83,15 @@ describe("measureProtocolViolations", () => {
     const v = measureProtocolViolations({
       rank1ByBlock: new Map([[0, "v-prova1"], [1, "v-prova2"]]),
       extras,
-      momento: null,
       sectionByBlock: sec([[0, "reviews"], [1, "reviews"]]),
     })
     expect(v.some((x) => x.tipo === "convivencia" && x.detalhe.includes("prova-social"))).toBe(true)
   })
 
-  it("sem momento e sem extras → nada além do mecânico", () => {
+  it("sem extras → nada além do mecânico", () => {
     const v = measureProtocolViolations({
       rank1ByBlock: new Map([[0, "desconhecida"]]),
       extras,
-      momento: "welcome-1",
       sectionByBlock: sec([[0, "body"]]),
     })
     expect(v).toEqual([])
@@ -102,20 +100,20 @@ describe("measureProtocolViolations", () => {
 
 describe("measureProtocolViolations — alvo do Seletor (set/2026)", () => {
   const extras = new Map<string, CatalogVaultExtra>([
-    ["hero-cupom", { slug: "hero-3-cupom", momento: [], momento_vetado: [], convivencia: [], exige_medicao: ["cupom-ativo"], aliviador: [] }],
-    ["reviews-prova", { slug: "reviews-1", momento: [], momento_vetado: [], convivencia: [], aliviador: ["prova_de_terceiro"], profundidade: "prova_de_terceiro" }],
-    ["body-mec", { slug: "body-5", momento: [], momento_vetado: [], convivencia: [], aliviador: ["comparacao_de_categoria"] }],
+    ["hero-cupom", { slug: "hero-3-cupom", convivencia: [], exige_medicao: ["cupom-ativo"], aliviador: [] }],
+    ["reviews-prova", { slug: "reviews-1", convivencia: [], aliviador: ["prova_de_terceiro"], profundidade: "prova_de_terceiro" }],
+    ["body-mec", { slug: "body-5", convivencia: [], aliviador: ["comparacao_de_categoria"] }],
   ])
   const sec = new Map([[0, "hero"], [1, "body"]])
 
   it("aliviador_ausente quando nenhuma posição realiza o aliviador pedido; some quando alguma realiza", () => {
     const sem = measureProtocolViolations({
-      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "body-mec"]]), extras, momento: null, sectionByBlock: sec,
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "body-mec"]]), extras, sectionByBlock: sec,
       alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] },
     })
     expect(sem.some((v) => v.tipo === "aliviador_ausente")).toBe(true)
     const com = measureProtocolViolations({
-      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, momento: null, sectionByBlock: sec,
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, sectionByBlock: sec,
       alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] },
     })
     expect(com.some((v) => v.tipo === "aliviador_ausente")).toBe(false)
@@ -123,7 +121,7 @@ describe("measureProtocolViolations — alvo do Seletor (set/2026)", () => {
 
   it("proibicao_violada cruza a proibição em prosa com exige/aliviador da variante", () => {
     const v = measureProtocolViolations({
-      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, momento: null, sectionByBlock: sec,
+      rank1ByBlock: new Map([[0, "hero-cupom"], [1, "reviews-prova"]]), extras, sectionByBlock: sec,
       alvo: { aliviador_pedido: null, proibicoes: ["Não mexer no incentivo", "não depender de prova social"] },
     })
     const tipos = v.filter((x) => x.tipo === "proibicao_violada")
@@ -133,7 +131,7 @@ describe("measureProtocolViolations — alvo do Seletor (set/2026)", () => {
   })
 
   it("sem alvo nada muda (compatibilidade com o medidor de antes)", () => {
-    const v = measureProtocolViolations({ rank1ByBlock: new Map([[0, "hero-cupom"]]), extras, momento: null, sectionByBlock: sec })
+    const v = measureProtocolViolations({ rank1ByBlock: new Map([[0, "hero-cupom"]]), extras, sectionByBlock: sec })
     expect(v).toEqual([])
   })
 })
@@ -189,16 +187,28 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO AUTORIZA remover")
   })
 
-  // 01/09: o primeiro e-mail com o protocolo de fato ligado saiu com 2 de 6
-  // posições. Em `reviews`, ZERO das 7 variantes vetavam welcome-1 — as 7
-  // caíram só por declararem outro momento. `momento` diz onde a variante
-  // brilha, não onde ela é permitida.
-  it("momento NÃO elimina — só o veto elimina", () => {
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("declarar outro momento NÃO elimina")
-    // E entra no ranking, como primeiro eixo.
+  // 07/09: o eixo `momento` foi APOSENTADO. Fora da hero, nenhuma variante
+  // do catálogo declarava `welcome-1` — a regra não separava boa de ruim,
+  // eliminava quatro seções inteiras. Sai do catálogo, do ranking e do texto.
+  it("momento não aparece no ranking nem no bloco de USER", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain(
-      "momento → objecao → aliviador → profundidade → registro → paleta → papel_na_peca",
+      "objecao → aliviador → profundidade → registro → paleta → papel_na_peca",
     )
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("momento → objecao")
+    for (const prompt of [DEFAULT_CHOOSER_VAULT_USER, DEFAULT_CHOOSER_USER]) {
+      expect(prompt).not.toContain("<momento>")
+      expect(prompt).not.toContain("{{momento}}")
+    }
+  })
+
+  // A nota `_protocolo-de-selecao` continua mandando eliminar por momento no
+  // passo 5, e é servida em {{protocolo}}. Sem a precedência escrita, o
+  // modelo obedece o vault — foi o que aconteceu em 07/09.
+  it("os dois prompts declaram a precedência sobre o passo 5", () => {
+    for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM]) {
+      expect(prompt).toContain("APOSENTADO")
+      expect(prompt).toContain("passo 5")
+    }
   })
 
   // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a
@@ -217,9 +227,8 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     }
   })
 
-  it("o system não carrega mais a emenda nem o veto por momento", () => {
+  it("o system não carrega mais a emenda de momento", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("EMENDA-MOMENTO-01")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("momento_vetado")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("COM UMA ÚNICA EXCEÇÃO")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("<protocolo_de_selecao>\n\n{{protocolo}}\n</protocolo_de_selecao>")
   })
