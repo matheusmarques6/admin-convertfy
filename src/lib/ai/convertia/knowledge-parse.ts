@@ -52,6 +52,19 @@ export function fileTitle(path: string): string {
   return base.replace(/\.md$/i, "")
 }
 
+/**
+ * Nome legível a partir do arquivo — `roubar-e-o-metodo.md` → "Roubar e o
+ * metodo". No Obsidian o nome da nota É o arquivo; o H1 é conteúdo. Preferir
+ * o H1 dava um catálogo inútil no corpus do Max: 20 notas chamadas "Aviso de
+ * autoria" e 13 chamadas "O que é", porque essas são as primeiras SEÇÕES.
+ * Acento perdido é o preço do slug — quem quiser nome bonito põe `title:`
+ * no frontmatter, que continua vencendo.
+ */
+export function humanizeFileName(path: string): string {
+  const s = fileTitle(path).replace(/^_+/, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim()
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
 export function extractWikilinks(body: string): string[] {
   const out = new Set<string>()
   const re = /\[\[([^\]\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g
@@ -147,8 +160,14 @@ export function parseKnowledgeNote(
     kind === "advisor" && inAdvisors && normalizeNoteName(folder) !== advisorsFolder
       ? (folder.split("/").pop() ?? "")
       : ""
+  // Ordem: `title:` explícito → nome do advisor (a pasta) → nome do arquivo →
+  // H1. O H1 é o último recurso, não o primeiro: ver `humanizeFileName`.
   const title =
-    (typeof fm.title === "string" && fm.title.trim()) || advisorName || h1 || fileTitle(relPath)
+    (typeof fm.title === "string" && fm.title.trim()) ||
+    advisorName ||
+    humanizeFileName(relPath) ||
+    h1 ||
+    fileTitle(relPath)
   const tags = [...new Set([...toStringList(fm.tags).map((t) => t.toLowerCase()), ...extractInlineTags(body)])]
   const links = extractWikilinks(body)
   const aliases = toStringList(fm.aliases).map(normalizeNoteName).filter(Boolean)

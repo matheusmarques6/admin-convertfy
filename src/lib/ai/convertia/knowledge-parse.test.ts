@@ -3,6 +3,7 @@ import {
   contentHash,
   extractInlineTags,
   extractWikilinks,
+  humanizeFileName,
   makeExcerpt,
   normalizeNoteName,
   parseKnowledgeNote,
@@ -64,13 +65,12 @@ Advisor de copy. Regras: [[Copy Longa]] e [[Objeções/Preço|preço]]. #headlin
     expect(n.contentHash).toBe(contentHash(`Max Sutherland\n${n.body}`))
   })
 
-  it("rascunho fica inativo; advisor solto na raiz da pasta; título do H1/arquivo", () => {
+  it("rascunho fica inativo; advisor solto na raiz da pasta; título do arquivo", () => {
     const a = parseKnowledgeNote("Advisors/Ana.md", "# Ana Advisor\n\ncorpo", { advisorsFolder: "Advisors" })
     expect(a.kind).toBe("advisor")
     expect(a.isActive).toBe(false)
-    // Advisor de nota única tem o nome no arquivo, não numa subpasta —
-    // aqui o H1 continua mandando.
-    expect(a.title).toBe("Ana Advisor")
+    // Advisor de nota única tem o nome no arquivo, não numa subpasta.
+    expect(a.title).toBe("Ana")
     const b = parseKnowledgeNote("Popups/Roleta.md", "---\nstatus: aprovada\n---\ncorpo", { advisorsFolder: "Advisors" })
     expect(b.kind).toBe("nota")
     expect(b.isActive).toBe(true)
@@ -89,7 +89,11 @@ Advisor de copy. Regras: [[Copy Longa]] e [[Objeções/Preço|preço]]. #headlin
     expect(corpus.kind).toBe("nota")
     // Continua indexado e buscável — só não é uma persona.
     expect(corpus.isActive).toBe(true)
-    expect(corpus.title).toBe("Roubar é o método")
+    // Título vem do ARQUIVO, não do H1: no corpus do Max o primeiro heading
+    // é uma seção ("Aviso de autoria" em 20 notas, "O que é" em 13), e um
+    // catálogo com 20 notas de nome igual não serve para escolher nada.
+    // Acento perdido é o preço do slug — `title:` no frontmatter conserta.
+    expect(corpus.title).toBe("Roubar e o metodo")
   })
 
   it("a persona na subpasta vira advisor e herda o nome da PASTA", () => {
@@ -127,5 +131,17 @@ describe("makeExcerpt", () => {
     const e = makeExcerpt("# T\n\n**negrito** e `code` ![img](x.png)\n```\nbloco\n```\n" + "x".repeat(500), 50)
     expect(e.startsWith("negrito e")).toBe(true)
     expect(e).toHaveLength(50)
+  })
+})
+
+describe("humanizeFileName", () => {
+  it("vira nome legível e tira o underscore de ordenação", () => {
+    expect(humanizeFileName("Advisors/Max/campanhas/frequencia-de-envio.md")).toBe("Frequencia de envio")
+    expect(humanizeFileName("Advisors/Max/_protocolo.md")).toBe("Protocolo")
+    expect(humanizeFileName("Advisors/Max/_registro/descartes-list-growth.md")).toBe("Descartes list growth")
+  })
+
+  it("nome que já é nome passa intacto", () => {
+    expect(humanizeFileName("Advisors/Max Sutherland.md")).toBe("Max Sutherland")
   })
 })

@@ -34,6 +34,8 @@ const MISSING = new Set(["42P01", "PGRST205", "42883", "PGRST202"])
  */
 const ADVISOR_MAX_CHARS = 18_000
 const NOTE_MAX_CHARS = 12_000
+/** Teto do catálogo: 122 notas do Max cabem folgadas; corta antes de virar prompt. */
+const CATALOG_MAX_NOTES = 400
 
 export const KNOWLEDGE_CONNECTOR_KEY = "conhecimento"
 
@@ -90,26 +92,27 @@ export async function loadKnowledgeForPrompt(
         parts.push(
           `### Advisor: ${a.title}\nResponda como ${a.title} responderia — use o método, os critérios e o vocabulário abaixo quando o tema for da alçada dele; cite-o quando aplicar uma regra dele.\n${(a.body_md ?? "").slice(0, ADVISOR_MAX_CHARS)}`,
         )
+        // A persona diz COMO ele responde; o catálogo diz o que ele já
+        // escreveu. Sem o segundo, o modelo imita o tom e inventa o conteúdo.
+        const catalogo = await advisorCatalog(admin, a)
+        if (catalogo) parts.push(catalogo)
       }
     }
 
     const enabled = opts.enabled !== false && active > 0
     if (enabled) {
-      // índice por pasta — o modelo sabe o que existe antes de buscar
-      const { data: folders } = await admin
-        .from("ai_knowledge_notes")
-        .select("folder, kind")
-        .eq("is_active", true)
-        .limit(2000)
-      const counts = new Map<string, number>()
-      for (const f of folders ?? []) counts.set(f.folder || "(raiz)", (counts.get(f.folder || "(raiz)") ?? 0) + 1)
-      const index = [...counts.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .slice(0, 40)
-        .map(([f, n]) => `- ${f}: ${n} nota${n === 1 ? "" : "s"}`)
-        .join("\n")
+      // Índice = a ÁRVORE (advisors + pastas soltas), não a lista chapada de
+      // caminhos: com tudo sob `Advisors/Max/...` a lista virava 12 linhas
+      // repetindo o mesmo prefixo e nenhuma dizia que existe um advisor.
+      const { advisors: arvore, outrasPastas } = await knowledgeOverview(admin)
+      const linhas: string[] = []
+      for (const a of arvore) {
+        const subs = a.pastas.map((p) => `${p.pasta} (${p.notas})`).join(", ")
+        linhas.push(`- Advisor **${a.advisor}**: ${a.notas} notas em ${a.base}/ — ${subs || "sem subpastas"}`)
+      }
+      for (const p of outrasPastas) linhas.push(`- ${p.pasta}: ${p.notas} nota${p.notas === 1 ? "" : "s"}`)
       parts.unshift(
-        `## Base de conhecimento da casa (Obsidian) — ${active} notas aprovadas\nUse as tools conhecimento_buscar / conhecimento_ler / conhecimento_listar ANTES de responder sobre método, copy, popups, flows, ofertas e processos da Convertfy: a base é a autoridade sobre COMO a casa faz. Siga os links entre notas (a leitura devolve conexões) quando a resposta pedir contexto. Pastas:\n${index}`,
+        `## Base de conhecimento da casa (Obsidian) — ${active} notas aprovadas\nUse as tools conhecimento_buscar / conhecimento_ler / conhecimento_listar ANTES de responder sobre método, copy, popups, flows, ofertas e processos da Convertfy: a base é a autoridade sobre COMO a casa faz. Siga os links entre notas (a leitura devolve conexões) quando a resposta pedir contexto.\n${linhas.slice(0, 60).join("\n")}`,
       )
     }
 
@@ -122,6 +125,114 @@ export async function loadKnowledgeForPrompt(
     log.warn("base de conhecimento indisponível", { error: err instanceof Error ? err.message : String(err) })
     return empty
   }
+}
+
+/** Um advisor e a forma da biblioteca dele. */
+interface AdvisorTree {
+  advisor: string
+  persona: string
+  base: string
+  notas: number
+  pastas: Array<{ pasta: string; notas: number; prefixo: string }>
+}
+
+/**
+ * A forma da base: cada advisor com as pastas dele + as pastas que não são de
+ * advisor nenhum. É a MESMA função no prompt e na tool de listagem — servir
+ * mapas diferentes nos dois lugares é como o modelo passa a pedir pasta que
+ * não existe.
+ *
+ * Existe porque a listagem antiga agrupava pelo PRIMEIRO segmento do caminho:
+ * com tudo sob `Advisors/`, a raiz devolvia uma linha só ("Advisors: 123
+ * notas") e o modelo não tinha por onde começar.
+ */
+export async function knowledgeOverview(
+  admin: SupabaseClient,
+): Promise<{ advisors: AdvisorTree[]; outrasPastas: Array<{ pasta: string; notas: number }> }> {
+  const { data } = await admin
+    .from("ai_knowledge_notes")
+    .select("path, title, folder, kind")
+    .eq("is_active", true)
+    .order("path")
+    .limit(5000)
+  const rows = (data ?? []) as Array<{ path: string; title: string; folder: string; kind: string }>
+
+  const advisors: AdvisorTree[] = rows
+    .filter((r) => r.kind === "advisor")
+    .map((r) => ({ advisor: r.title, persona: r.path, base: r.folder, notas: 0, pastas: [] }))
+  // Base mais longa primeiro: `Advisors/Max/copy` pertence ao Max, não a um
+  // advisor de nota única que more em `Advisors/`.
+  const porBase = [...advisors].sort((a, b) => b.base.length - a.base.length)
+  const contagem = new Map<string, Map<string, number>>()
+  const outras = new Map<string, number>()
+
+  for (const r of rows) {
+    if (r.kind === "advisor") continue
+    const dono = porBase.find((a) => r.folder === a.base || r.folder.startsWith(`${a.base}/`))
+    if (!dono) {
+      const topo = r.folder.split("/")[0] || "(raiz)"
+      outras.set(topo, (outras.get(topo) ?? 0) + 1)
+      continue
+    }
+    dono.notas += 1
+    const sub = r.folder === dono.base ? "(raiz)" : r.folder.slice(dono.base.length + 1).split("/")[0]
+    const m = contagem.get(dono.persona) ?? new Map<string, number>()
+    m.set(sub, (m.get(sub) ?? 0) + 1)
+    contagem.set(dono.persona, m)
+  }
+  for (const a of advisors) {
+    a.pastas = [...(contagem.get(a.persona) ?? new Map())]
+      .sort((x, y) => x[0].localeCompare(y[0]))
+      .map(([pasta, notas]) => ({
+        pasta,
+        notas,
+        prefixo: pasta === "(raiz)" ? a.base : `${a.base}/${pasta}`,
+      }))
+  }
+  return {
+    advisors,
+    outrasPastas: [...outras.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([pasta, notas]) => ({ pasta, notas })),
+  }
+}
+
+/**
+ * Catálogo do advisor ligado: TODAS as notas dele, agrupadas por pasta, só
+ * nome. Custa ~800 tokens para as 122 notas do Max e mora no bloco estável
+ * (cacheado). É o que substitui adivinhar palavra-chave: com o mapa à vista,
+ * o modelo escolhe pelo nome e lê. Sem catálogo, uma busca full-text que não
+ * casa radical devolve zero e ele responde de memória — em silêncio.
+ */
+async function advisorCatalog(admin: SupabaseClient, advisor: { title: string; folder: string }): Promise<string> {
+  const base = advisor.folder
+  if (!base) return ""
+  const { data } = await admin
+    .from("ai_knowledge_notes")
+    .select("path, title, folder")
+    .eq("is_active", true)
+    .eq("kind", "nota")
+    .or(`folder.eq.${pgQuote(base)},folder.like.${pgQuote(`${base}/%`)}`)
+    .order("path")
+    .limit(CATALOG_MAX_NOTES)
+  const rows = (data ?? []) as Array<{ path: string; title: string; folder: string }>
+  if (rows.length === 0) return ""
+
+  const grupos = new Map<string, string[]>()
+  for (const r of rows) {
+    const sub = r.folder === base ? "(raiz)" : r.folder.slice(base.length + 1)
+    const g = grupos.get(sub) ?? []
+    g.push(r.title)
+    grupos.set(sub, g)
+  }
+  const corpo = [...grupos.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([pasta, titulos]) => `**${pasta}/** (${titulos.length}) — ${titulos.join(" · ")}`)
+    .join("\n")
+  return (
+    `### Biblioteca de ${advisor.title} — ${rows.length} notas\n` +
+    `É tudo que existe escrito dele, agrupado por pasta. Escolha pelo nome e leia a nota ` +
+    `inteira com \`conhecimento_ler\` (caminho = \`${base}/<pasta>/<nome-com-hifens>.md\`, ou passe só o nome). ` +
+    `Se o tema tem nota aqui, a resposta sai da nota — não da sua memória.\n${corpo}`
+  )
 }
 
 function slim(n: NoteRow) {
@@ -331,14 +442,18 @@ export function buildConhecimentoConnector(admin: SupabaseClient): ResolvedConne
       const { data } = await q
       const rows = (data ?? []) as NoteRow[]
       if (!pasta) {
-        const folders = new Map<string, number>()
-        for (const r of rows) folders.set(r.folder.split("/")[0] || "(raiz)", (folders.get(r.folder.split("/")[0] || "(raiz)") ?? 0) + 1)
+        // Árvore, não contagem pelo 1º segmento: com tudo sob `Advisors/` a
+        // resposta antiga era uma linha ("Advisors: 123 notas") e o modelo
+        // não tinha por onde entrar. Cada pasta vem com o `prefixo` pronto
+        // para ser devolvido nesta mesma tool.
+        const { advisors: arvore, outrasPastas } = await knowledgeOverview(admin)
         return {
           content: toolJson({
-            pastas: [...folders.entries()].map(([f, n]) => ({ pasta: f, notas: n })),
+            advisors: arvore,
+            outras_pastas: outrasPastas,
             raiz: rows.filter((r) => !r.folder).map(slim),
           }),
-          summary: `${folders.size} pastas`,
+          summary: `${arvore.length} advisor${arvore.length === 1 ? "" : "s"} · ${outrasPastas.length} pastas`,
         }
       }
       return { content: toolJson({ pasta, notas: rows.map(slim) }), summary: `${rows.length} notas` }
