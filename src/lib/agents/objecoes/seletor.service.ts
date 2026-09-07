@@ -422,6 +422,16 @@ export interface EnsureTargetsResult {
   error?: string
 }
 
+/** Motivo do `skipped` em texto de gente — é o que a Entrada da run mostra. */
+const MOTIVO_LEGIVEL: Record<string, string> = {
+  seletor_mode_off: "desligado em Configurações → Seletor de objeções",
+  sem_catalogo:
+    "a loja não tem catálogo de argumento — use \"Catalogar objeções\" na aba Contexto",
+  sem_contrato:
+    "a intenção deste email não declara `modo` no frontmatter (sem contrato não há alvo)",
+  sem_intencao: "não há intenção ativa para este email no vault",
+}
+
 /**
  * O único caminho para ter alvos antes da fase 1. Sequencial por flow e por
  * `email_number` (ja_atacadas depende da ordem). Nunca lança.
@@ -431,7 +441,7 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
   try {
     const mode = await loadSeletorMode(input.storeId)
     result.mode = mode
-    if (mode === "off" || input.emails.length === 0) return result
+    if (input.emails.length === 0) return result
 
     const admin = createAdminClient()
     const { data: store } = await admin
@@ -451,11 +461,26 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
       const ref = await resolveEmailRef(input.storeId, flowType, emailNumber)
       await logGenerationRun({
         storeId: input.storeId, flowId: ref.flowId, emailId: ref.emailId, batchId, triggeredBy: input.triggeredBy,
-        agent: "seletor", status: "skipped", model: "pulado",
-        inputSummary: [{ rotulo: "Motivo", cls: "sistema", valor: reason }],
+        agent: "seletor", status: "skipped",
+        model: reason === "seletor_mode_off" ? "desligado" : "pulado",
+        // `skip_reason` guarda o código para máquina; a Entrada mostra ao
+        // humano onde ele resolve isso, no tom do Estruturador.
+        inputSummary: [{ rotulo: "Motivo", cls: "sistema", valor: MOTIVO_LEGIVEL[reason] ?? reason }],
         parsedOutput: { skip_reason: reason, modo_seletor: mode },
         costCents: 0, durationMs: 0,
       }).catch(() => {})
+    }
+
+    // Desligado grava run 'skipped' em vez de silêncio — mesma regra do
+    // Estruturador (generate.service) e do Montador. O Seletor é passo do
+    // pipeline nas telas: sem run nenhuma a linha dele fica "aguardando"
+    // para sempre e parece travada, quando a verdade é que está desligado.
+    if (mode === "off") {
+      for (const [flowType, nums] of porFlow) {
+        for (const n of nums) await skip(flowType, n, "seletor_mode_off")
+      }
+      log.info("seletor.desligado", { storeId: input.storeId, emails: input.emails.length })
+      return result
     }
 
     if (!s.objection_catalog || typeof s.objection_catalog !== "object") {

@@ -40,7 +40,8 @@ describe("expectedSteps", () => {
     expect(p2[0]).toBe("image")
     expect(p2).not.toContain("assembler")
     const full = expectedSteps("full").map((s) => s.agent)
-    expect(full.slice(0, 8)).toEqual([
+    expect(full.slice(0, 9)).toEqual([
+      "seletor",
       "estruturador",
       "assembler_chooser",
       "assembler",
@@ -52,6 +53,24 @@ describe("expectedSteps", () => {
     ])
     expect(full).toContain("color_format")
     expect(expectedSteps("default")).toEqual(expectedSteps("full"))
+  })
+
+  // O esqueleto (antes da 1ª run) e a lista definitiva (depois dela) são a
+  // MESMA tela. Enquanto eram duas listas literais, esta divergiu em silêncio:
+  // o Seletor e o merge de copy entraram só numa, e a tela nascia com 15
+  // passos para virar 17 no primeiro run que chegava.
+  it("o esqueleto é exatamente a lista base, sem divergir", () => {
+    expect(expectedSteps("full").map((s) => s.agent)).toEqual([
+      ...TEST_BASE_AGENT_KEYS,
+    ])
+  })
+
+  it("a fase 2 do esqueleto é o sufixo da lista base", () => {
+    const p2 = expectedSteps("phase2").map((s) => s.agent)
+    const base: string[] = [...TEST_BASE_AGENT_KEYS]
+    expect(base.slice(base.length - p2.length)).toEqual(p2)
+    // O merge por example roda ANTES da hero (D1, 20/08).
+    expect(p2.indexOf("copy_merge")).toBeLessThan(p2.indexOf("hero_section"))
   })
 })
 

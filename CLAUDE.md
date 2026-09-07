@@ -2576,9 +2576,13 @@ catálogo. Painel "Catálogo de argumento" na aba Pesquisa; loja SEM catálogo
 sem batch em massa). O botão só habilita com a régua `hasContext` do service.
 
 **Seletor** (`seletor.service.ts`, agent `seletor`, gate
-`email_generation_settings.seletor_mode` off|shadow|on): por email, ANTES
-do Estruturador, decide o ALVO do toque (spec §3.2) ou declara lacuna —
-nunca alvo inventado. `ensureObjectionTargets` é o ÚNICO caminho e roda
+`email_generation_settings.seletor_mode` off|shadow|on — **`on` desde
+07/09**): por email, ANTES do Estruturador, decide o ALVO do toque (spec
+§3.2) ou declara lacuna — nunca alvo inventado. **Desligado ele grava run
+`skipped`** (`seletor_mode_off`, `model:'desligado'`), como o Estruturador
+e o Montador: sem run nenhuma a linha dele fica "aguardando" para sempre
+nas telas e parece travada. Os motivos de skip viram texto de gente na
+Entrada da run (`MOTIVO_LEGIVEL`); `skip_reason` guarda o código. `ensureObjectionTargets` é o ÚNICO caminho e roda
 **sequencial por `email_number`** como pré-passo da fila de dispatch, da
 aba Teste e do botão de blueprints: a fase 1 roda 4 emails em paralelo e
 `ja_atacadas` (o que os irmãos anteriores atacaram) depende da ordem.
@@ -2588,7 +2592,12 @@ Contrato do toque vem do frontmatter tipado de `email_intents`
 (`intent-contract.ts`; sem `modo` válido não há contrato → run `skipped`
 `sem_contrato`; proposta dos 8 do welcome em
 `docs/email-generation/intencoes-welcome-frontmatter.md`). Rollout
-welcome-only, como o Estruturador.
+welcome-only, como o Estruturador. **Só `modo` é obrigatório** — todo o
+resto do frontmatter tem default derivado dele. Os 8 `modo` do welcome
+foram gravados direto em `email_intents` em 07/09 e isso é **provisório**:
+o sync do vault faz `upsert` por (flow_type, slug) e sobrescreve o
+frontmatter inteiro, então some no próximo sync se as notas do Obsidian
+não tiverem o campo.
 
 **Consumo (só com `seletor_mode='on'`)**: `generate.service` carrega o
 alvo e marca `consumido`; Estruturador recebe `<decisao_de_objecao>` +

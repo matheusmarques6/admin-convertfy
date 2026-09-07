@@ -54,6 +54,21 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   refiner: "Refinador (legado)",
 }
 
+/**
+ * Passos da fase 2, na ordem em que rodam. O merge por example vem ANTES da
+ * hero desde 20/08 (D1) — a mesma ordem do MAIN_ORDER do mapa do Estúdio.
+ */
+const PHASE2_STEP_KEYS = [
+  "image",
+  "copy_merge",
+  "hero_section",
+  "text_format",
+  "image_format",
+  "typography",
+  "color_format",
+  "qa",
+] as const
+
 /** Ordem canônica exibida nas listas (extras aparecem quando têm run). */
 export const TEST_BASE_AGENT_KEYS = [
   // Seletor ANTES do Estruturador (set/2026): decide o alvo de objeção que
@@ -76,14 +91,7 @@ export const TEST_BASE_AGENT_KEYS = [
   // que voltou. Colapsá-los escondia o payload atrás do retorno.
   "copy_dispatch",
   "copy",
-  "image",
-  "hero_section",
-  "copy_merge",
-  "text_format",
-  "image_format",
-  "typography",
-  "color_format",
-  "qa",
+  ...PHASE2_STEP_KEYS,
 ] as const
 
 /**
@@ -102,33 +110,20 @@ export const TEST_BASE_AGENT_KEYS = [
 //   background e tamanho declarado (migration 20261102).
 export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit", "background_fit"] as const
 
-const PHASE2_STEP_KEYS = [
-  "image",
-  "hero_section",
-  "text_format",
-  "image_format",
-  "typography",
-  "color_format",
-  "qa",
-] as const
-
-/** Steps esperados por modo — placeholder até o polling trazer runs reais. */
+/**
+ * Steps esperados por modo — o esqueleto que a tela mostra ANTES da primeira
+ * run chegar (`TestStepsView` cai neste ramo enquanto `statusInfo.runs` é
+ * vazio).
+ *
+ * Deriva das MESMAS constantes que a lista pós-runs usa. Enquanto era uma
+ * lista literal à parte, ela se atrasou em silêncio: o Seletor e o merge de
+ * copy entraram em `TEST_BASE_AGENT_KEYS` e não aqui, e a tela nascia com 15
+ * passos para virar 17 quando a primeira run chegava.
+ */
 export function expectedSteps(mode: TestRunMode): RunStep[] {
-  const phase2 = PHASE2_STEP_KEYS.map(
-    (agent): RunStep => ({ agent, status: "pending" }),
-  )
-  if (mode === "phase2") return phase2
-  return [
-    { agent: "estruturador", status: "pending" },
-    { agent: "assembler_chooser", status: "pending" },
-    { agent: "assembler", status: "pending" },
-    { agent: "blueprint", status: "pending" },
-    { agent: "subject", status: "pending" },
-    { agent: "seed", status: "pending" },
-    { agent: "copy_dispatch", status: "pending" },
-    { agent: "copy", status: "pending" },
-    ...phase2,
-  ]
+  const keys: readonly string[] =
+    mode === "phase2" ? PHASE2_STEP_KEYS : TEST_BASE_AGENT_KEYS
+  return keys.map((agent): RunStep => ({ agent, status: "pending" }))
 }
 
 /**
