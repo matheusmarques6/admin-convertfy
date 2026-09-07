@@ -2763,6 +2763,74 @@ com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
 precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
 `Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
+## ConvertIA — saúde: o fim da degradação silenciosa (set/2026, migration 20261122)
+
+Medição de 07/09, com 20 respostas no histórico: **4 morreram em HTTP 402 do
+OpenRouter** (sem crédito) e as **124 notas da base ficaram sem embedding pela
+MESMA causa** — `embedTexts` engole a falha em `log.warn` e o sync segue
+reportando sucesso. Um saldo, três subsistemas parados (chat, embeddings da
+base e das transcrições, agentes de email), zero sinal em tela: o diagnóstico
+inteiro passou por SQL. É o padrão de falha desta parte do sistema.
+
+**Saldo do provedor** (`provider-balance.ts`, 7 testes): lê
+`GET /api/v1/credits`, classifica contra `OPENROUTER_SALDO_MINIMO_USD`
+(default 5) e grava snapshot em `ai_provider_balance`. Cron
+`/api/cron/convertia-saldo` (13 * * * *). Duas regras puras que existem para
+o alerta continuar confiável: **`null` é `desconhecido`, nunca `esgotado`**
+(timeout na consulta não é notícia sobre o saldo, e alerta falso é como se
+aprende a ignorar o verdadeiro) e **`deveAlertar` só dispara na TRANSIÇÃO**
+para pior — de hora em hora seriam 24 notificações/dia até alguém recarregar.
+`baixo→esgotado` avisa de novo; `esgotado→baixo` não. O snapshot é gravado
+MESMO quando a consulta falha: histórico com buraco não responde "desde
+quando". Piso folgado porque o OpenRouter RESERVA o custo máximo da chamada
+(prompt + max_tokens no preço do modelo) — o modelo caro estoura primeiro.
+
+**A base diz quando não sabe** (`lacunas.ts`, 7 testes): busca vazia deixou de
+devolver "Nenhuma nota encontrada" e passa a devolver instrução de
+COMPORTAMENTO (`textoSemResultado`) — "isto NÃO autoriza responder de memória;
+tente outras palavras (o corpus mistura PT e EN) e, não havendo nota, DIGA que
+a base não cobre". Vale para `conhecimento_buscar` e `transcricoes_buscar`. Sem
+isso o modelo lê "0 resultados" como permissão para preencher o vazio — e com
+um advisor ligado a resposta sem lastro sai com a autoridade dele. Quando a
+busca semântica está fora (sem embedding), a resposta diz isso: resultado
+pobre por falta de vetor parecia "a base não tem".
+
+**Lacuna vira pauta** (`convertia_lacunas` + RPC `convertia_registrar_lacuna`):
+cada busca vazia é gravada com dedupe por consulta NORMALIZADA (minúsculas,
+sem acento, sem pontuação) e frequência — é a frequência que ordena o que
+escrever primeiro no vault. Guarda as 5 formulações mais recentes: a mesma
+lacuna perguntada de cinco jeitos ensina o vocabulário de quem pergunta.
+ON CONFLICT no banco porque roda dentro do turno, em paralelo com outras
+tools — "SELECT senão INSERT" duplicaria em corrida e o UNIQUE viraria erro
+dentro de uma tool que deve ser fail-open. Lacuna "resolvida" que volta a ser
+perguntada REABRE. **Não reusa `ai_knowledge_gaps`**: aquela exige `agent_id`
+NOT NULL de outro subsistema.
+
+**Painel de saúde** (`GET/POST /api/ai/convertia/health` +
+`convertia-health-card.tsx`, primeiro card de `/admin/ai-usage`): saldo com a
+hora da checagem, turnos com erro em 7d **agrupados por CAUSA** (vinte linhas
+de "HTTP 402: {...}" não dizem nada; "3 turnos sem crédito" diz o que fazer —
+usa o `friendlyModelError` já existente), estado do sync do vault (repo,
+commit, notas puladas com o motivo), advisors detectados, notas sem vetor e as
+lacunas abertas. Botões **Checar saldo** e **Re-sincronizar vault** (sempre
+`force: true` — quem clica ali costuma ter mudado CÓDIGO, e o sync
+curto-circuita pelo SHA do vault). É a tela que faltava: sem ela toda
+verificação desta base passa por console ou SQL.
+
+**Pergunta sem resposta nenhuma** (`turnoPerdido` em `convertia-chat.tsx`): a
+conversa de 03/09 tinha duas mensagens do usuário e ZERO do assistente — o
+turno morreu antes de a linha nascer, então não existe nem `meta.error` para
+mostrar. A bolha agora diz "não chegou a ser respondida", em vez de a conversa
+reabrir parecendo que a pergunta foi ignorada.
+
+**O que NÃO foi mexido, e por quê**: o acerto de cache de prompt e o custo por
+turno já eram exibidos no card *ConvertIA · Desempenho*; a importação dos 👍
+como casos de avaliação já tem botão; a aprovação de memória já tem diálogo.
+Zero memórias, zero casos e zero jobs no banco são falta de USO (20 respostas
+no total), não gatilho quebrado. O **modo econômico segue desligado por
+padrão**: ligá-lo mudaria a qualidade de toda resposta, então é escolha por
+conversa, não default silencioso — o painel explica isso na tela.
+
 ## Módulo Transcrições — vídeo virado texto pesquisável (set/2026, migration 20261121)
 
 Item "Transcrições" no grupo **Conhecimento** do workspace Geral, liberado

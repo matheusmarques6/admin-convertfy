@@ -301,6 +301,8 @@ export async function POST(request: NextRequest) {
       loadApprovedMemories(admin, orgId, storeId),
       loadKnowledgeForPrompt(admin, orgId, body.advisors, {
         enabled: body.connectors.includes(KNOWLEDGE_CONNECTOR_KEY) || body.advisors.length > 0,
+        // A lacuna só vira pauta se der para voltar à conversa em que ela apareceu.
+        conversaId: convId,
       }),
       // Transcrições entram sozinhas quando alguma coleção está com a
       // faísca ligada — o toggle é lá, na árvore de coleções.

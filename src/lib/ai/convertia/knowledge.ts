@@ -21,6 +21,7 @@ import { toolJson } from "@/lib/ai/connectors/types"
 import { logger } from "@/lib/logger"
 import { embedQuery, embeddingsAvailable } from "./knowledge-embeddings"
 import { fileTitle, normalizeNoteName } from "./knowledge-parse"
+import { TEXTO_SEM_SEMANTICA, registrarLacuna, textoSemResultado } from "./lacunas"
 
 const log = logger.child("ConvertiaKnowledge")
 
@@ -64,7 +65,7 @@ export async function loadKnowledgeForPrompt(
   admin: SupabaseClient,
   _orgId: string,
   advisorPaths: string[],
-  opts: { enabled?: boolean } = {},
+  opts: { enabled?: boolean; conversaId?: string | null } = {},
 ): Promise<KnowledgeForPrompt> {
   const empty: KnowledgeForPrompt = { block: "", connector: null, advisors: [] }
   try {
@@ -118,7 +119,7 @@ export async function loadKnowledgeForPrompt(
 
     return {
       block: parts.join("\n\n"),
-      connector: enabled ? buildConhecimentoConnector(admin) : null,
+      connector: enabled ? buildConhecimentoConnector(admin, { conversaId: opts.conversaId ?? null }) : null,
       advisors,
     }
   } catch (err) {
@@ -280,7 +281,11 @@ function pgQuote(v: string): string {
   return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
 }
 
-export function buildConhecimentoConnector(admin: SupabaseClient): ResolvedConnector {
+export function buildConhecimentoConnector(
+  admin: SupabaseClient,
+  /** Conversa do turno — só para amarrar a lacuna a onde ela apareceu. */
+  opts: { conversaId?: string | null } = {},
+): ResolvedConnector {
   const buscar: ConnectorTool = {
     label: "Buscar na base de conhecimento",
     def: {
@@ -300,7 +305,7 @@ export function buildConhecimentoConnector(admin: SupabaseClient): ResolvedConne
         },
       },
     },
-    execute: async (args) => {
+    execute: async (args, ctx) => {
       const query = String(args.query ?? "").trim()
       if (!query) return { content: "Query vazia." }
       const limit = Math.min(Math.max(Number(args.limite) || 6, 1), 12)
@@ -344,10 +349,24 @@ export function buildConhecimentoConnector(admin: SupabaseClient): ResolvedConne
         .slice(0, limit)
         .map(({ _score, ...rest }) => rest)
       if (list.length === 0) {
-        return { content: "Nenhuma nota encontrada. Tente outros termos ou conhecimento_listar para ver as pastas.", summary: "0 notas" }
+        // A lacuna é registrada ANTES de responder e sem await bloqueante de
+        // erro: é telemetria, não pode virar falha da tool.
+        await registrarLacuna(admin, {
+          orgId: ctx.orgId,
+          fonte: "conhecimento",
+          query,
+          conversaId: opts.conversaId ?? null,
+        })
+        return { content: textoSemResultado("conhecimento", query), summary: "0 notas · lacuna registrada" }
       }
       return {
-        content: toolJson({ busca: semantic > 0 ? "semântica + texto" : "texto", notas: list }),
+        content: toolJson({
+          busca: semantic > 0 ? "semântica + texto" : "texto",
+          // Sem esta linha, um resultado pobre por falta de embedding parece
+          // "a base não tem" — e a base tem, só não foi procurada direito.
+          ...(semantic === 0 && !embeddingsAvailable() ? { aviso: TEXTO_SEM_SEMANTICA } : {}),
+          notas: list,
+        }),
         summary: `${list.length} nota${list.length === 1 ? "" : "s"}`,
       }
     },
