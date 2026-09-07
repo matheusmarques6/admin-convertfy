@@ -2599,6 +2599,39 @@ o sync do vault faz `upsert` por (flow_type, slug) e sobrescreve o
 frontmatter inteiro, então some no próximo sync se as notas do Obsidian
 não tiverem o campo.
 
+**O contrato do toque vem de TRÊS fontes** (07/09). `parseIntentContract`
+recebia SÓ o frontmatter e devolvia `null` sem `modo`
+(`intent-contract.ts:106`) — o Seletor gravava `skipped` `sem_contrato` e
+NUNCA rodava, porque as 8 notas do welcome no Obsidian não têm a linha
+`modo:`. Ele só funcionou nas 7 horas de 07/09 entre eu gravar os valores à
+mão em `email_intents.frontmatter` e o sync do vault (20:11) reescrever a
+coluna a partir dos `.md` — o `upsert` de `vault-sync.service.ts:295` grava o
+frontmatter INTEIRO, não faz merge. Dois erros empilhados: **fonte única** e
+**ausência = inexistência**.
+
+O dado sempre esteve em outro lugar: **11 dos 15 campos estão no catálogo da
+loja**, com os mesmos enums (`tipo_de_risco`, `aliviador`,
+`dimensao_confianca`). Prova: as 8 proibições e os 3 trabalhos fixos do alvo
+de 14:06 saíram do catálogo e da PROSA da intenção — o frontmatter tinha uma
+chave só. Precedência agora é **nota tipada > catálogo da loja > default por
+modo**, com `origens` por campo no contrato (senão o modelo lê default como
+ordem) e no `input_summary` da run. Do catálogo saem `riscos_elegiveis` e
+`aliviadores_admissiveis` (das objeções elegíveis NAQUELE flow),
+`dimensao_alvo` (da dominante), `veiculos_exigidos` (só os com `texto`) e as
+proibições dos `alerta`. **`profundidade_minima` é `afirmacao` enquanto
+nenhuma objeção tiver `lastro_operacional.verificado`** — sem confirmação da
+loja não dá para exigir prova dura. **`incentivo.existe: null` NÃO vira
+`promessa_a_pagar`**: "não dá para saber" não é oferta, e inventar promessa é
+o pior erro possível aqui.
+
+`modo` continua sem ser inventado por código: sem declaração o contrato sai
+com `modo: null` e o Seletor **deduz da prosa** que ele já recebe inteira
+(`<intencao_do_toque>`), ecoando em `modo`; a telemetria grava
+`modo_adotado` + `modo_origem` (`declarado`|`deduzido`). `sem_contrato` saiu
+dos motivos de skip — sobram `seletor_mode_off`, `sem_catalogo` e
+`sem_intencao`. `seletor-regras` valida contra o modo EFETIVO
+(`contrato.modo ?? alvo.modo`).
+
 **Consumo (só com `seletor_mode='on'`)**: `generate.service` carrega o
 alvo e marca `consumido`; Estruturador recebe `<decisao_de_objecao>` +
 `<objecoes_ja_atacadas>` (DIAGNÓSTICO virou TRADUÇÃO; modos sem objeção;

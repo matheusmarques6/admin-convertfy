@@ -19,6 +19,7 @@ import { objecoesElegiveisNoFlow } from "./catalogo-regras"
 import {
   MODOS_SEM_OBJECAO,
   isDimensao,
+  isModo,
   isProfundidade,
   isTrabalhoFixo,
   isVeiculo,
@@ -111,7 +112,9 @@ export function normalizarAlvo(
 
   return {
     alvo: {
-      modo: contrato.modo,
+      // Precedência: nota tipada > modo que o modelo adotou lendo a prosa.
+      // O contrato só traz `modo` quando a intenção declara (07/09).
+      modo: contrato.modo ?? (isModo(o.modo) ? o.modo : "quebra_de_objecao"),
       trabalhos_fixos: Array.from(trabalhos),
       alvos,
       medos_alvo: arr(o.medos_alvo).map(str).filter(Boolean),
@@ -161,11 +164,14 @@ export function validarAlvo(
 ): string[] {
   const erros: string[] = []
   const porId = new Map(catalogo.objecoes.map((x) => [x.id, x]))
-  const semObjecao = MODOS_SEM_OBJECAO.includes(contrato.modo)
+  // Sem `modo` na nota, o efetivo é o que o modelo adotou (já resolvido no
+  // parse do alvo) — validar contra `contrato.modo` null reprovaria tudo.
+  const modoEfetivo = contrato.modo ?? alvo.modo
+  const semObjecao = MODOS_SEM_OBJECAO.includes(modoEfetivo)
 
   if (semObjecao) {
-    if (alvo.alvos.length > 0) erros.push(`modo ${contrato.modo} não ataca objeção — alvos deve ser []`)
-    if (contrato.modo === "manutencao_de_confianca" && !alvo.promessa_a_pagar) erros.push("manutencao_de_confianca exige promessa_a_pagar")
+    if (alvo.alvos.length > 0) erros.push(`modo ${modoEfetivo} não ataca objeção — alvos deve ser []`)
+    if (modoEfetivo === "manutencao_de_confianca" && !alvo.promessa_a_pagar) erros.push("manutencao_de_confianca exige promessa_a_pagar")
     return erros
   }
 

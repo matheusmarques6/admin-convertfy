@@ -37,7 +37,11 @@ import {
 } from "./vocabulario"
 
 export interface IntentContract {
-  modo: ModoDoToque
+  /**
+   * `null` quando a nota não declara — o Seletor deduz da prosa da intenção e
+   * ecoa em `modo_adotado`. Ver `parseIntentContract`.
+   */
+  modo: ModoDoToque | null
   /** [mín, máx] de objeções a selecionar. [0,0] nos modos sem objeção. */
   n_objecoes: [number, number]
   fonte_das_objecoes: FonteDasObjecoes
@@ -57,6 +61,35 @@ export interface IntentContract {
   proibicoes: string[]
   /** Valores do frontmatter fora do vocabulário — descartados, não silenciados. */
   desconhecidos: string[]
+  /**
+   * De onde veio cada campo preenchido: `nota` (frontmatter tipado),
+   * `catalogo` (catálogo da loja) ou `default` (derivado do modo). O contrato
+   * deixou de ter fonte única, então a origem deixou de ser óbvia.
+   */
+  origens: Partial<Record<keyof IntentContract, "nota" | "catalogo" | "default">>
+}
+
+/** O que o montador precisa do catálogo da loja — subconjunto de `CatalogoDeObjecoes`. */
+export interface CatalogoParaContrato {
+  objecoes: Array<{
+    tipo_de_risco: TipoDeRisco | null
+    aliviador: Aliviador | null
+    dimensao_confianca: DimensaoConfianca | null
+    dominante_da_categoria: boolean
+    flows_elegiveis: readonly string[]
+    lastro_operacional?: { verificado?: boolean } | null
+  }>
+  veiculos_de_argumento?: Record<string, { texto?: string | null; aplicavel?: boolean; alerta?: string | null }> | null
+  incentivo?: { existe?: boolean | null; valor?: string | null; codigo?: string | null; alerta?: string | null } | null
+  medos_de_categoria?: Array<{ medo?: string; verificado?: boolean; alerta?: string | null }> | null
+}
+
+export interface ParseIntentContractInput {
+  frontmatter?: Record<string, unknown> | null
+  /** Catálogo da loja, já filtrado pelo flow deste email (ou inteiro). */
+  catalogo?: CatalogoParaContrato | null
+  /** Flow deste email — filtra as objeções por `flows_elegiveis`. */
+  flowType?: string | null
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
@@ -96,14 +129,72 @@ function parseN(v: unknown, dflt: [number, number]): [number, number] {
 }
 
 /**
- * Lê o frontmatter da intenção. `null` quando não há `modo` válido — a nota
- * ainda não foi tipada (as 26 fora do welcome) e o Seletor não roda para
- * ela.
+ * Monta o contrato do toque a partir das TRÊS fontes, nesta precedência:
+ * **nota tipada > catálogo da loja > default por modo**.
+ *
+ * Incidente 07/09: a versão anterior lia SÓ o frontmatter e devolvia `null`
+ * sem `modo` — o Seletor gravava `skipped` e nunca rodava. Duas coisas
+ * erradas de uma vez. A primeira: fonte única, quando 11 dos 15 campos já
+ * estão no catálogo da loja, com os mesmos enums (`tipo_de_risco`,
+ * `aliviador`, `dimensao_confianca`) — a run de 14:06 provou, porque as 8
+ * proibições e os 3 trabalhos fixos dela saíram do catálogo e da prosa, não
+ * do frontmatter, que tinha uma chave só. A segunda: ausência de uma
+ * ETIQUETA anulando o contrato inteiro, em vez de degradar para o que dá
+ * para saber.
+ *
+ * Agora nunca devolve `null`. Sem `modo` declarado ele sai `null` no campo, e
+ * quem decide é o Seletor lendo a prosa da intenção (que ele já recebe
+ * inteira) — ecoando em `modo_adotado`.
  */
-export function parseIntentContract(fm: Record<string, unknown> | null | undefined): IntentContract | null {
-  const f = fm ?? {}
-  const modo = f.modo
-  if (!isModo(modo)) return null
+export function parseIntentContract(
+  input?: ParseIntentContractInput | Record<string, unknown> | null,
+): IntentContract {
+  // Compatibilidade: o call site antigo passava o frontmatter cru.
+  const ehInput =
+    input != null &&
+    ("frontmatter" in input || "catalogo" in input || "flowType" in input)
+  const p: ParseIntentContractInput = ehInput
+    ? (input as ParseIntentContractInput)
+    : { frontmatter: (input as Record<string, unknown> | null) ?? null }
+
+  const f = p.frontmatter ?? {}
+  const modo = isModo(f.modo) ? f.modo : null
+  const origens: IntentContract["origens"] = {}
+  if (modo) origens.modo = "nota"
+
+  // ── O que o catálogo da loja sustenta ────────────────────────────────
+  const objecoes = (p.catalogo?.objecoes ?? []).filter(
+    (o) => !p.flowType || o.flows_elegiveis.includes(p.flowType),
+  )
+  const doCatalogo = {
+    riscos: Array.from(
+      new Set(objecoes.map((o) => o.tipo_de_risco).filter((r): r is TipoDeRisco => r != null)),
+    ),
+    aliviadores: Array.from(
+      new Set(objecoes.map((o) => o.aliviador).filter((a): a is Aliviador => a != null)),
+    ),
+    // Lastro não verificado é teto de prova: sem confirmação da loja não dá
+    // para exigir prova dura, e prometer o que não se sustenta é pior que
+    // afirmar. Só sobe quando ALGUMA objeção tem lastro verificado.
+    temLastro: objecoes.some((o) => o.lastro_operacional?.verificado === true),
+    dominante: objecoes.find((o) => o.dominante_da_categoria) ?? null,
+    veiculosComInsumo: Object.entries(p.catalogo?.veiculos_de_argumento ?? {})
+      .filter(([, v]) => v?.aplicavel !== false && Boolean(v?.texto))
+      .map(([nome]) => nome)
+      .filter(isVeiculo),
+    incentivo: p.catalogo?.incentivo ?? null,
+  }
+
+  // Alertas do catálogo viram proibição de REDAÇÃO — é o que a loja não pode
+  // afirmar hoje. A prosa da intenção acrescenta as dela pelo frontmatter.
+  const proibicoesDoCatalogo: string[] = []
+  if (doCatalogo.incentivo?.alerta) proibicoesDoCatalogo.push(doCatalogo.incentivo.alerta)
+  for (const [, v] of Object.entries(p.catalogo?.veiculos_de_argumento ?? {})) {
+    if (v?.alerta && v.texto) proibicoesDoCatalogo.push(v.alerta)
+  }
+  for (const m of p.catalogo?.medos_de_categoria ?? []) {
+    if (m?.alerta && m.verificado === false) proibicoesDoCatalogo.push(m.alerta)
+  }
 
   const desconhecidos: string[] = []
   const filtra = <T,>(campo: string, v: unknown, guard: (x: unknown) => x is T): T[] => {
@@ -115,7 +206,7 @@ export function parseIntentContract(fm: Record<string, unknown> | null | undefin
     return out
   }
 
-  const semObjecao = MODOS_SEM_OBJECAO.includes(modo)
+  const semObjecao = modo != null && MODOS_SEM_OBJECAO.includes(modo)
   const riscosDeclarados = "riscos_elegiveis" in f
   const riscos = filtra("riscos_elegiveis", f.riscos_elegiveis, isTipoDeRisco)
   const riscosVetados = filtra("riscos_vetados", f.riscos_vetados, isTipoDeRisco)
@@ -132,29 +223,106 @@ export function parseIntentContract(fm: Record<string, unknown> | null | undefin
   const dimRaw = f.dimensao_alvo
   if (dimRaw != null && !isDimensao(dimRaw)) desconhecidos.push(`dimensao_alvo: ${str(dimRaw)}`)
 
+  // ── Cada campo: nota, senão catálogo, senão default ──────────────────
+  const marca = (campo: keyof IntentContract, origem: "nota" | "catalogo" | "default") => {
+    origens[campo] = origem
+  }
+
+  // Riscos: a nota restringe; sem ela, os riscos que a loja de fato tem.
+  // `TIPOS_DE_RISCO` inteiro (o comportamento antigo) só quando não há
+  // catálogo — servir risco que a loja não catalogou não ajuda a decidir.
+  let riscosElegiveis: TipoDeRisco[]
+  if (semObjecao) {
+    riscosElegiveis = []
+    marca("riscos_elegiveis", "default")
+  } else if (riscosDeclarados) {
+    riscosElegiveis = riscos.filter((r) => !riscosVetados.includes(r))
+    marca("riscos_elegiveis", "nota")
+  } else if (doCatalogo.riscos.length > 0) {
+    riscosElegiveis = doCatalogo.riscos.filter((r) => !riscosVetados.includes(r))
+    marca("riscos_elegiveis", "catalogo")
+  } else {
+    riscosElegiveis = TIPOS_DE_RISCO.filter((r) => !riscosVetados.includes(r))
+    marca("riscos_elegiveis", "default")
+  }
+
+  // Aliviadores: idem. "todos" só sobrevive sem catálogo — com ele, a lista
+  // fechada é a dos aliviadores que as objeções desta loja pedem.
+  let aliviadores: Aliviador[] | "todos" = aliviadoresAdmissiveis
+  if (!admTodos) marca("aliviadores_admissiveis", "nota")
+  else if (doCatalogo.aliviadores.length > 0) {
+    aliviadores = doCatalogo.aliviadores
+    marca("aliviadores_admissiveis", "catalogo")
+  } else marca("aliviadores_admissiveis", "default")
+
+  let profundidade: Profundidade
+  if (isProfundidade(profRaw)) {
+    profundidade = profRaw
+    marca("profundidade_minima", "nota")
+  } else if (objecoes.length > 0 && !doCatalogo.temLastro) {
+    profundidade = "afirmacao"
+    marca("profundidade_minima", "catalogo")
+  } else {
+    profundidade = modo ? defaultProfundidade(modo) : "afirmacao"
+    marca("profundidade_minima", modo ? "default" : "catalogo")
+  }
+
+  let dimensao: DimensaoConfianca | null = null
+  if (isDimensao(dimRaw)) {
+    dimensao = dimRaw
+    marca("dimensao_alvo", "nota")
+  } else if (doCatalogo.dominante?.dimensao_confianca) {
+    dimensao = doCatalogo.dominante.dimensao_confianca
+    marca("dimensao_alvo", "catalogo")
+  }
+
+  // Promessa a pagar: só existe com incentivo CONFIRMADO. `existe: null` é
+  // "não dá para saber" e não vira promessa — inventar oferta é o pior erro
+  // possível aqui.
+  let promessa = str(f.promessa_a_pagar) || null
+  if (promessa) marca("promessa_a_pagar", "nota")
+  else if (doCatalogo.incentivo?.existe === true) {
+    promessa = [doCatalogo.incentivo.valor, doCatalogo.incentivo.codigo].filter(Boolean).join(" · ") || null
+    if (promessa) marca("promessa_a_pagar", "catalogo")
+  }
+
+  const veiculosDaNota = filtra("veiculos_exigidos", f.veiculos_exigidos, isVeiculo)
+  let veiculos = veiculosDaNota
+  if (veiculosDaNota.length > 0) marca("veiculos_exigidos", "nota")
+  else if (doCatalogo.veiculosComInsumo.length > 0) {
+    veiculos = doCatalogo.veiculosComInsumo
+    marca("veiculos_exigidos", "catalogo")
+  }
+
+  const proibicoesDaNota = arr(f.proibicoes).map(str).filter(Boolean)
+  const proibicoes = Array.from(new Set([...proibicoesDaNota, ...proibicoesDoCatalogo]))
+  if (proibicoes.length > 0) {
+    marca("proibicoes", proibicoesDaNota.length > 0 ? "nota" : "catalogo")
+  }
+
+  const exigeDominante =
+    f.exige_dominante_da_categoria === true
+      ? (marca("exige_dominante_da_categoria", "nota"), true)
+      : false
+
   return {
     modo,
-    n_objecoes: semObjecao ? [0, 0] : parseN(f.n_objecoes, defaultN(modo)),
-    fonte_das_objecoes: isFonte(fonteRaw) ? fonteRaw : defaultFonte(modo),
-    // Sem declaração e com objeção a atacar: todos os riscos elegíveis (a
-    // intenção não restringiu). Modo sem objeção: nenhum.
-    riscos_elegiveis: semObjecao
-      ? []
-      : riscosDeclarados
-        ? riscos.filter((r) => !riscosVetados.includes(r))
-        : TIPOS_DE_RISCO.filter((r) => !riscosVetados.includes(r)),
+    n_objecoes: semObjecao ? [0, 0] : parseN(f.n_objecoes, modo ? defaultN(modo) : [1, 1]),
+    fonte_das_objecoes: isFonte(fonteRaw) ? fonteRaw : modo ? defaultFonte(modo) : "nao_atacadas",
+    riscos_elegiveis: riscosElegiveis,
     riscos_vetados: riscosVetados,
-    profundidade_minima: isProfundidade(profRaw) ? profRaw : defaultProfundidade(modo),
-    aliviadores_admissiveis: aliviadoresAdmissiveis,
+    profundidade_minima: profundidade,
+    aliviadores_admissiveis: aliviadores,
     aliviadores_vetados: filtra("aliviadores_vetados", f.aliviadores_vetados, isAliviador),
-    veiculos_exigidos: filtra("veiculos_exigidos", f.veiculos_exigidos, isVeiculo),
+    veiculos_exigidos: veiculos,
     trabalhos_fixos: filtra("trabalhos_fixos", f.trabalhos_fixos, isTrabalhoFixo),
     permite_reataque: f.permite_reataque === true || modo === "confirmacao_por_terceiros",
-    exige_dominante_da_categoria: f.exige_dominante_da_categoria === true,
-    dimensao_alvo: isDimensao(dimRaw) ? dimRaw : null,
-    promessa_a_pagar: str(f.promessa_a_pagar) || null,
-    proibicoes: arr(f.proibicoes).map(str).filter(Boolean),
+    exige_dominante_da_categoria: exigeDominante,
+    dimensao_alvo: dimensao,
+    promessa_a_pagar: promessa,
+    proibicoes,
     desconhecidos,
+    origens,
   }
 }
 
@@ -167,7 +335,9 @@ export function aliviadorAdmissivel(c: IntentContract, a: Aliviador): boolean {
 /** Bloco `<contrato_do_toque>` do prompt do Seletor — o contrato em linhas legíveis. */
 export function renderIntentContract(c: IntentContract): string {
   const linhas = [
-    `- modo: ${c.modo}`,
+    c.modo
+      ? `- modo: ${c.modo}`
+      : "- modo: NÃO DECLARADO — deduza de <intencao_do_toque> (o texto diz o que este toque faz) e ecoe o adotado em `modo`",
     `- n_objecoes: ${c.n_objecoes[0]}–${c.n_objecoes[1]}`,
     `- fonte_das_objecoes: ${c.fonte_das_objecoes}`,
     `- riscos_elegiveis: ${c.riscos_elegiveis.length ? c.riscos_elegiveis.join(", ") : "(nenhum — modo sem objeção)"}`,
@@ -182,6 +352,11 @@ export function renderIntentContract(c: IntentContract): string {
     c.dimensao_alvo ? `- dimensao_alvo: ${c.dimensao_alvo}` : null,
     c.promessa_a_pagar ? `- promessa_a_pagar: ${c.promessa_a_pagar}` : null,
     c.proibicoes.length ? `- proibicoes:\n${c.proibicoes.map((p) => `  - ${p}`).join("\n")}` : null,
+    // Origem por campo: sem isto o modelo não distingue "a intenção MANDOU"
+    // de "derivamos do catálogo da loja", e trata default como ordem.
+    Object.keys(c.origens).length
+      ? `- origem dos campos: ${Object.entries(c.origens).map(([k, v]) => `${k}=${v}`).join(" · ")}`
+      : null,
   ]
   return linhas.filter(Boolean).join("\n")
 }

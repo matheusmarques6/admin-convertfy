@@ -262,7 +262,13 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   const inputSummary: InputSummaryItem[] = [
     { rotulo: "Loja", cls: "loja", valor: input.brandName },
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
-    { rotulo: "Contrato do toque (vault)", cls: "vault", valor: `${input.contrato.modo} · n ${input.contrato.n_objecoes.join("–")} · riscos ${input.contrato.riscos_elegiveis.join(", ") || "—"}` },
+    {
+      rotulo: "Contrato do toque",
+      // O contrato deixou de vir só do vault (07/09): a classe passa a
+      // refletir de onde os campos realmente vieram nesta run.
+      cls: input.contrato.modo ? "vault" : "loja",
+      valor: `${input.contrato.modo ?? "modo NÃO declarado — o Seletor deduz da intenção"} · n ${input.contrato.n_objecoes.join("–")} · riscos ${input.contrato.riscos_elegiveis.join(", ") || "—"} · origens ${Object.entries(input.contrato.origens).map(([k, v]) => `${k}=${v}`).join(" · ") || "—"}`,
+    },
     { rotulo: "Catálogo da loja", cls: "loja", valor: `${input.catalogo.objecoes.length} objeções · ${candidatas.length} candidata(s) elegível(is) por código · sha8 ${input.catalogSha8}` },
     { rotulo: "Já atacadas (irmãos)", cls: "upstream", valor: input.jaAtacadas.length ? input.jaAtacadas.map((j) => `${j.id}@#${j.email_number}/${j.profundidade}`).join(", ") : "(nenhuma)" },
   ]
@@ -357,6 +363,12 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
             lacuna_com_candidatas: Boolean(alvo.lacuna) && candidatas.length > 0,
             catalog_sha8: input.catalogSha8,
             target_id: row?.id ?? null,
+            // De onde saiu o modo: a nota tipou, ou o agente leu a prosa.
+            // Sem isto não dá para auditar a decisão nem medir quantas
+            // intenções ainda estão sem `modo` declarado (07/09).
+            modo_adotado: alvo.modo,
+            modo_origem: input.contrato.modo ? "declarado" : "deduzido",
+            contrato_origens: input.contrato.origens,
           },
         },
         tokensInput: tokensIn,
@@ -427,8 +439,6 @@ const MOTIVO_LEGIVEL: Record<string, string> = {
   seletor_mode_off: "desligado em Configurações → Seletor de objeções",
   sem_catalogo:
     "a loja não tem catálogo de argumento — use \"Catalogar objeções\" na aba Contexto",
-  sem_contrato:
-    "a intenção deste email não declara `modo` no frontmatter (sem contrato não há alvo)",
   sem_intencao: "não há intenção ativa para este email no vault",
 }
 
@@ -504,11 +514,18 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
           continue
         }
         const intent = intents.get(n)
-        const contrato = intent ? parseIntentContract(intent.frontmatter) : null
-        if (!contrato) {
-          await skip(flowType, n, intent ? "sem_contrato" : "sem_intencao")
+        if (!intent) {
+          await skip(flowType, n, "sem_intencao")
           continue
         }
+        // O contrato vem das TRÊS fontes (07/09): nota tipada > catálogo da
+        // loja > default por modo. Nunca é null — falta de etiqueta no
+        // frontmatter não desliga mais o agente.
+        const contrato = parseIntentContract({
+          frontmatter: intent.frontmatter,
+          catalogo,
+          flowType,
+        })
         const anteriores = Array.from(porNumero.values()).filter((t) => t.email_number < n)
         const jaAtacadas = jaAtacadasDe(anteriores.map((t) => ({ email_number: t.email_number, target: t.target })))
         const row = await runSeletor({
