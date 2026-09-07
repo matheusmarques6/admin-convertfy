@@ -32,7 +32,10 @@ describe("renderAlvo", () => {
     expect(t).toContain("aliviador pedido: reputacao_da_loja")
     expect(t).toContain("eixo objecao (vault) equivalente: confianca-no-canal")
     expect(t).toContain("1. economia_do_preco — por que o preço · insumo disponível: parcial")
-    expect(t).toContain("proibido neste toque (força de veto):\n  - urgência artificial")
+    // A proibição é de REDAÇÃO. Servida como veto de bloco, ela eliminava
+    // quase toda a biblioteca e o e-mail saía só com o rodapé (07/09).
+    expect(t).toContain("proibido neste toque (restrição de REDAÇÃO — não elimina bloco):\n  - urgência artificial")
+    expect(t).not.toContain("força de veto")
     expect(t).toContain("razão: porque sim")
   })
   it("lacuna aparece em destaque", () => {

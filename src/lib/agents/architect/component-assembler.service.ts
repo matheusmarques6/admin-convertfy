@@ -97,7 +97,7 @@ import {
   deriveFieldNature,
 } from "../shared/component-dimensions"
 import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
-import { assembleDocument, validateBlockMarkers } from "./assemble-document"
+import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -247,7 +247,7 @@ Regras de seleção:
 - Respeite quando_nao_usar: se o contexto do email casa com um "quando NÃO usar", a variante está fora, não em último lugar.
 - Prefira variantes cujos objectives/tones batem com o objetivo do outline e o tom de voz da loja.
 - Use <perfil_marca> como âncora de identidade: a variante precisa caber na MARCA, não só no objetivo do email.
-- <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` (decisão do Seletor). A variante precisa ter anatomia do aliviador pedido. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo tem força de VETO, igual a quando_nao_usar: variante cuja anatomia obriga um item proibido está FORA, não em último lugar. Quando o aliviador pedido depende de um ativo da loja (prova_de_terceiro → três reviews distintos), diga na justificativa "ativo sugerido: …" — ainda não é veto.
+- <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` (decisão do Seletor). A variante precisa ter anatomia do aliviador pedido. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Quando o aliviador pedido depende de um ativo da loja (prova_de_terceiro → três reviews distintos), diga na justificativa "ativo sugerido: …" — ainda não é veto.
 - Sem alvo (Seletor desligado), <objecoes> é o que trava a compra desta loja. A variante escolhida precisa ter ANATOMIA para responder à objeção que este email enfrenta (prova social, FAQ, garantia, comparativo, demonstração). Bloco bonito que não responde a nenhuma objeção perde para o que responde.
 - <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
@@ -1842,7 +1842,10 @@ export async function assembleStoreReference(
     })
   }
 
-  const source: ReferenceSource = assembled.stats.blocks > 0 ? "code" : "none"
+  // Cobertura, não só "entrou alguma coisa": 1 bloco de 6 é ruína, e seguir
+  // com ela só adia a falha para a hero (incidente 07/09).
+  const cobertura = coberturaSuficiente(assembled.stats)
+  const source: ReferenceSource = cobertura.ok ? "code" : "none"
 
   if (source === "code") {
     await upsertStoreReference(
@@ -1854,13 +1857,15 @@ export async function assembleStoreReference(
       assembled.stats.skipped,
     )
   } else {
-    // Nenhum bloco entrou (toda variante recusada/vazia): não persiste, o
-    // consumidor cai no template global.
+    // Cobertura insuficiente (nenhum bloco, ou metade das posições vazia):
+    // não persiste, o consumidor cai no template global.
     html = curatedReference
-    log.warn("assembler.no_block_assembled", {
+    log.warn("assembler.cobertura_insuficiente", {
       storeId: input.storeId,
       flowType: input.flowType,
       emailNumber: input.emailNumber,
+      motivo: cobertura.motivo,
+      blocos: assembled.stats.blocks,
       skipped: assembled.stats.skipped,
     })
   }

@@ -124,14 +124,21 @@ describe("aplicarEstruturadorNoBlueprint", () => {
     expect(r.fio_narrativo).toBe("fio")
   })
 
-  it("não muta o input e tolera comprimentos divergentes", () => {
+  it("não muta o input", () => {
     const original = bp()
-    const r = aplicarEstruturadorNoBlueprint(original, ["Só o primeiro"], "fio")
+    aplicarEstruturadorNoBlueprint(original, ["a", "b", "c"], "fio")
     expect(original.blocks[0].purpose).toBe("Diretiva da variante hero")
-    expect(r.blocks[0].purpose).toContain("Só o primeiro")
-    // Posições sem papel mantêm o purpose original.
-    expect(r.blocks[1].purpose).toBe("")
+  })
+
+  // 07/09: o Curador rankeou 1 de 6 posições, sobrou o rodapé, e o papel da
+  // posição 0 (a hero) foi colado nele por índice. Comprimento diferente
+  // significa que alguma posição caiu — o alinhamento não existe mais.
+  it("comprimento divergente NÃO cola papel, e o fio sobrevive", () => {
+    const r = aplicarEstruturadorNoBlueprint(bp(), ["Papel da hero"], "fio")
+    expect(r.blocks[0].purpose).toBe("Diretiva da variante hero")
     expect(r.blocks[2].purpose).toBe("Rodapé legal")
+    expect(r.blocks.some((b) => b.purpose.includes("Papel da hero"))).toBe(false)
+    expect(r.fio_narrativo).toBe("fio")
   })
 
   it("fio vazio persiste como null", () => {

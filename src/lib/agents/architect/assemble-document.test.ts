@@ -11,6 +11,7 @@ import type { EmailComponentVariant } from "@/types/email-generation"
 import type { AssemblySlot } from "./component-assembler.service"
 import {
   assembleDocument,
+  coberturaSuficiente,
   validateBlockMarkers,
   stripBlockMarkers,
 } from "./assemble-document"
@@ -467,5 +468,56 @@ describe("variantes cadastradas como documento completo", () => {
     })
     expect(html).toContain("<!-- cfy:block:0:hero:start -->")
     expect(html).toContain("<!-- cfy:block:0:hero:end -->")
+  })
+})
+
+describe("coberturaSuficiente", () => {
+  const skip = (i: number, section: string) => ({
+    block_index: i,
+    section,
+    label: "",
+    reason: "missing" as const,
+  })
+  const stats = (blocks: number, skipped: ReturnType<typeof skip>[]) =>
+    ({
+      blocks,
+      variants: blocks,
+      skipped,
+      fontsNormalized: 0,
+      weightsNormalized: 0,
+      chars: 0,
+    }) as unknown as Parameters<typeof coberturaSuficiente>[0]
+
+  it("passa quando a maioria das posições entrou", () => {
+    expect(coberturaSuficiente(stats(5, [skip(4, "reviews")])).ok).toBe(true)
+  })
+
+  // O caso real: o Curador rankeou só o rodapé e a peça seguiu até a hero
+  // falhar por não ter região. A recusa nomeia as posições que faltaram.
+  it("recusa 1 bloco de 6 e nomeia as posições vazias", () => {
+    const r = coberturaSuficiente(
+      stats(1, [
+        skip(0, "hero"),
+        skip(1, "body"),
+        skip(2, "body"),
+        skip(3, "products"),
+        skip(4, "reviews"),
+      ]),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.motivo).toContain("5 de 6")
+    expect(r.motivo).toContain("0:hero")
+  })
+
+  // Maioria estrita: perder o rodapé não invalida o email; empate passa.
+  it("empate passa, faltar mais do que entrou recusa", () => {
+    expect(coberturaSuficiente(stats(1, [skip(1, "footer")])).ok).toBe(true)
+    expect(coberturaSuficiente(stats(2, [skip(0, "hero"), skip(1, "body")])).ok).toBe(true)
+    expect(coberturaSuficiente(stats(2, [skip(0, "hero"), skip(1, "body"), skip(2, "products")])).ok).toBe(false)
+  })
+
+  it("nenhum bloco e sequência vazia têm motivo próprio", () => {
+    expect(coberturaSuficiente(stats(0, [skip(0, "hero")])).motivo).toBe("nenhum bloco entrou")
+    expect(coberturaSuficiente(stats(0, [])).motivo).toBe("nenhuma posição na sequência")
   })
 })

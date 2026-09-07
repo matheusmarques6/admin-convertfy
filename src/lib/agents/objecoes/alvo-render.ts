@@ -46,7 +46,7 @@ export function renderAlvo(alvo: AlvoDoEmail | null | undefined, ausente: string
   if (alvo.suspeita_a_antecipar) linhas.push(`suspeita a antecipar: ${alvo.suspeita_a_antecipar}`)
   if (alvo.alerta_de_lastro) linhas.push(`ALERTA DE LASTRO: ${alvo.alerta_de_lastro}`)
   if (alvo.proibido_neste_toque.length) {
-    linhas.push("proibido neste toque (força de veto):")
+    linhas.push("proibido neste toque (restrição de REDAÇÃO — não elimina bloco):")
     for (const p of alvo.proibido_neste_toque) linhas.push(`  - ${p}`)
   }
   if (alvo.razao) linhas.push(`razão: ${alvo.razao}`)

@@ -348,7 +348,11 @@ Chave **aditiva** por email, presente só quando `email_generation_settings.sele
 
 Uso esperado no n8n: a copy do email ataca `alvos[].objecao` com o
 `tratamento` e na `profundidade_de_prova` pedida; `proibido_neste_toque` é
-veto; `ja_atacadas` diz o que NÃO repetir no mesmo registro; `lacuna`
+**veto de REDAÇÃO e é aqui que ele vale** — diz o que o texto não pode
+afirmar ("não prometer nota média", "não criar urgência artificial"), e o n8n
+é quem o cumpre. Ele NÃO é critério de escolha de bloco: servido ao Curador
+com força de veto, em 07/09, eliminou avaliações, cupom, urgência e origem da
+marca, e o email saiu só com o rodapé. `ja_atacadas` diz o que NÃO repetir no mesmo registro; `lacuna`
 preenchida = não há objeção declarada (siga o `purpose` dos blocos). O
 `purpose`/`fio_narrativo` do blueprint já carregam a tradução do
 Estruturador para esse alvo.

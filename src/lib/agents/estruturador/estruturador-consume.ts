@@ -92,6 +92,20 @@ export function aplicarEstruturadorNoBlueprint<
   B extends { purpose: string },
   T extends { blocks: B[]; fio_narrativo?: string | null },
 >(blueprint: T, papeis: string[], fioNarrativo: string): T {
+  // Os papéis vêm por POSIÇÃO da sequência decidida; `blocks` traz só as
+  // posições que acharam variante na biblioteca. Quando uma posição cai, os
+  // dois arrays deixam de estar alinhados e casar por índice cola o papel
+  // ERRADO — foi assim que o papel da hero ("entrega imediata do incentivo")
+  // foi parar no rodapé em 07/09, na geração em que o Curador rankeou 1 de 6.
+  //
+  // Sem alinhamento garantido o papel não entra: o purpose volta a ser o
+  // copy_guidance da variante, que é o comportamento anterior ao
+  // Estruturador. Papel errado mente para a copy e para o agente de imagem;
+  // papel ausente apenas não ajuda. O fio segue nos dois casos — ele é do
+  // email inteiro, não de uma posição.
+  if (papeis.length !== blueprint.blocks.length) {
+    return { ...blueprint, fio_narrativo: fioNarrativo.trim() || null }
+  }
   return {
     ...blueprint,
     fio_narrativo: fioNarrativo.trim() || null,

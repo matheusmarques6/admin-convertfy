@@ -8,6 +8,7 @@ import {
   rank1ByBlock,
 } from "./curador-shadow"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
+import { DEFAULT_CHOOSER_SYSTEM } from "./component-assembler.service"
 import type { CatalogVaultExtra } from "./catalog-builder"
 import type { RankedChoice } from "./curator-ranking.parser"
 
@@ -203,6 +204,19 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a
   // menção a `momento_vetado` saíram do prompt — o protocolo do vault entra
   // sem prefácio, e o passo 2 diz só que declarar outro momento não elimina.
+  // Incidente 07/09: com o Seletor ligado, o alvo trouxe 8 proibições — quase
+  // todas sobre COPY ("não prometer nota média", "não criar urgência") — e o
+  // prompt as servia com força de veto. O Curador eliminou reviews, cupom,
+  // urgência e origem da marca; sobrou o rodapé, e a hero morreu por não
+  // existir região. Proibição de redação não pode desqualificar bloco.
+  it("proibição do alvo desempata, não elimina", () => {
+    for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM]) {
+      expect(prompt).not.toContain("força de VETO")
+      expect(prompt).toContain("restrição de REDAÇÃO")
+      expect(prompt).toContain("NÃO elimina ninguém")
+    }
+  })
+
   it("o system não carrega mais a emenda nem o veto por momento", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("EMENDA-MOMENTO-01")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("momento_vetado")

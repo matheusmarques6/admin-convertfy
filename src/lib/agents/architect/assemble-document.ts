@@ -165,6 +165,38 @@ export interface AssembleDocumentInput {
  * marcadores são três representações da mesma sequência; reindexar
  * desalinharia as três.
  */
+/**
+ * A montagem cobriu o bastante para valer como referência do email?
+ *
+ * Incidente 07/09 (Hero Boxers, welcome 1): o Curador rankeou 1 de 6 posições
+ * e a montagem produziu um documento com o rodapé sozinho. O guard de então
+ * só recusava com ZERO bloco, então a peça seguiu adiante e morreu 3 minutos
+ * depois na hero, que não tinha região para enxertar — `hero_failed`, sem
+ * dizer que a curadoria é que havia falhado.
+ *
+ * A régua é maioria ESTRITA: faltou mais do que entrou. Um email que perde o
+ * rodapé segue de pé; um que só tem rodapé, não. Parar aqui, com as posições
+ * nomeadas, é mais barato e mais legível do que parar lá na hero.
+ */
+export function coberturaSuficiente(stats: AssembledStats): {
+  ok: boolean
+  motivo?: string
+} {
+  const total = stats.blocks + stats.skipped.length
+  if (total === 0) return { ok: false, motivo: "nenhuma posição na sequência" }
+  if (stats.blocks === 0) return { ok: false, motivo: "nenhum bloco entrou" }
+  if (stats.skipped.length > stats.blocks) {
+    const nomes = stats.skipped
+      .map((s) => `${s.block_index}:${s.section}`)
+      .join(", ")
+    return {
+      ok: false,
+      motivo: `${stats.skipped.length} de ${total} posições sem variante (${nomes})`,
+    }
+  }
+  return { ok: true }
+}
+
 export function assembleDocument(
   input: AssembleDocumentInput,
 ): { html: string; stats: AssembledStats } {

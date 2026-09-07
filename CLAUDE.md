@@ -2608,6 +2608,17 @@ razões curtas; veículo sem insumo não vira seção; ecoa `diagnostico.alvo_id
 recebem `<alvo>` e rankeiam `momento → objecao → aliviador → profundidade
 → registro → paleta → papel_na_peca` com `proibido_neste_toque` como veto;
 copy do n8n leva `emails[].alvo` (aditivo, `docs/email-copy-payload-v2.md`).
+**`proibido_neste_toque` é restrição de REDAÇÃO, não de curadoria** (incidente
+07/09): servido ao Curador com força de veto, o alvo trouxe 8 proibições de
+COPY ("não prometer nota média", "não criar urgência") e o agente eliminou
+reviews, cupom, urgência e origem da marca — o Curador legado caiu de 6 para
+1 posição rankeada, a montagem saiu com o rodapé sozinho e a hero morreu em
+`hero_failed` por não existir região. Nos dois prompts do Curador a proibição
+agora DESEMPATA e nunca elimina; quem a cumpre é o n8n. Guardas derivados:
+`coberturaSuficiente` (assemble-document) recusa a referência quando metade
+das posições fica sem variante, em vez de montar peça degenerada; e
+`aplicarEstruturadorNoBlueprint` não cola papel quando o número de papéis
+diverge do de blocos — era assim que o papel da hero ia parar no rodapé.
 Sem alvo, TODOS recebem ausência declarada (`alvo-render.ts`) e voltam ao
 comportamento anterior — desligar o Seletor nunca regride.
 
