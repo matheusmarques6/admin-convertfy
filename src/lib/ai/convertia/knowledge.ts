@@ -25,7 +25,14 @@ import { fileTitle, normalizeNoteName } from "./knowledge-parse"
 const log = logger.child("ConvertiaKnowledge")
 
 const MISSING = new Set(["42P01", "PGRST205", "42883", "PGRST202"])
-const ADVISOR_MAX_CHARS = 7_000
+/**
+ * A persona inteira precisa caber. A do Max tem ~15k caracteres e o corte
+ * em 7k comia justamente o fim — "o que ele NUNCA diria" e os limites da
+ * persona, que são a parte que impede o clone de inventar. Cortar uma
+ * persona pela metade é pior que não ligar o advisor: sobra o tom sem as
+ * restrições.
+ */
+const ADVISOR_MAX_CHARS = 18_000
 const NOTE_MAX_CHARS = 12_000
 
 export const KNOWLEDGE_CONNECTOR_KEY = "conhecimento"

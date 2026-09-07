@@ -9,8 +9,10 @@
  * frontmatter, excerto e hash do conteúdo (para só re-embedar o que
  * mudou).
  *
- * Aprovação: `status: aprovado` (aceita aprovada/approved). Advisor:
- * pasta de advisors OU `tipo: advisor`.
+ * Aprovação: `status: aprovado` (aceita aprovada/approved). Advisor é a
+ * PERSONA — `tipo: persona`/`tipo: advisor`, ou nota solta na raiz da
+ * pasta de advisors —, e o nome dele vem da subpasta. O corpus ao redor
+ * (`Advisors/Max/doutrina/...`) é nota comum: buscável, não é persona.
  */
 
 import { parseFrontmatter } from "@/lib/vault/vault-parser"
@@ -118,14 +120,35 @@ export function parseKnowledgeNote(
   const { data: fm, body } = parseFrontmatter(content)
   const folder = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : ""
   const h1 = body.match(/^#\s+(.+)$/m)?.[1]?.trim()
-  const title = (typeof fm.title === "string" && fm.title.trim()) || h1 || fileTitle(relPath)
   const status = typeof fm.status === "string" ? fm.status.trim().toLowerCase() : "pendente"
   const advisorsFolder = normalizeNoteName(opts.advisorsFolder)
   const inAdvisors =
     advisorsFolder.length > 0 &&
     (normalizeNoteName(folder) === advisorsFolder || normalizeNoteName(folder).startsWith(`${advisorsFolder}/`))
+  // O advisor é a PERSONA, não cada nota do corpus dele. Um advisor bem
+  // documentado tem uma pasta inteira (`Advisors/Max/` tem 123 notas —
+  // doutrina, flows, copy, registro); marcar todas como advisor enchia o
+  // menu do composer com 123 entradas em vez de um "Max", e o bloco de
+  // persona do prompt viraria loteria. Regra: dentro da pasta de advisors,
+  // é advisor a nota `tipo: persona`/`tipo: advisor` OU a que está solta na
+  // raiz da pasta (`Advisors/Fulano.md`, o advisor de nota única). O resto
+  // continua indexado e buscável como nota comum — só não é uma persona.
+  const tipo = String(fm.tipo ?? fm.type ?? "").toLowerCase()
+  const isPersonaTipo = tipo === "advisor" || tipo === "persona"
   const kind: "nota" | "advisor" =
-    inAdvisors || String(fm.tipo ?? fm.type ?? "").toLowerCase() === "advisor" ? "advisor" : "nota"
+    isPersonaTipo || (inAdvisors && normalizeNoteName(folder) === advisorsFolder) ? "advisor" : "nota"
+  // O nome do advisor é o da PASTA dele, não o H1 do arquivo: a persona
+  // costuma abrir com um heading de orientação ("# Onde esta nota entra"),
+  // e era esse texto que ia parar no menu do composer no lugar de "Max".
+  // `title:` no frontmatter continua vencendo tudo.
+  // Só vale para a persona que mora numa SUBpasta (`Advisors/Max/persona.md`);
+  // o advisor de nota única (`Advisors/Fulano.md`) já tem o nome no arquivo.
+  const advisorName =
+    kind === "advisor" && inAdvisors && normalizeNoteName(folder) !== advisorsFolder
+      ? (folder.split("/").pop() ?? "")
+      : ""
+  const title =
+    (typeof fm.title === "string" && fm.title.trim()) || advisorName || h1 || fileTitle(relPath)
   const tags = [...new Set([...toStringList(fm.tags).map((t) => t.toLowerCase()), ...extractInlineTags(body)])]
   const links = extractWikilinks(body)
   const aliases = toStringList(fm.aliases).map(normalizeNoteName).filter(Boolean)

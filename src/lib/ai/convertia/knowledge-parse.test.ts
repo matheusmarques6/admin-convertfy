@@ -64,15 +64,61 @@ Advisor de copy. Regras: [[Copy Longa]] e [[Objeções/Preço|preço]]. #headlin
     expect(n.contentHash).toBe(contentHash(`Max Sutherland\n${n.body}`))
   })
 
-  it("rascunho fica inativo; advisor pela pasta mesmo sem tipo; título do H1/arquivo", () => {
-    const a = parseKnowledgeNote("Advisors/Sub/Ana.md", "# Ana Advisor\n\ncorpo", { advisorsFolder: "Advisors" })
+  it("rascunho fica inativo; advisor solto na raiz da pasta; título do H1/arquivo", () => {
+    const a = parseKnowledgeNote("Advisors/Ana.md", "# Ana Advisor\n\ncorpo", { advisorsFolder: "Advisors" })
     expect(a.kind).toBe("advisor")
     expect(a.isActive).toBe(false)
+    // Advisor de nota única tem o nome no arquivo, não numa subpasta —
+    // aqui o H1 continua mandando.
     expect(a.title).toBe("Ana Advisor")
     const b = parseKnowledgeNote("Popups/Roleta.md", "---\nstatus: aprovada\n---\ncorpo", { advisorsFolder: "Advisors" })
     expect(b.kind).toBe("nota")
     expect(b.isActive).toBe(true)
     expect(b.title).toBe("Roleta")
+  })
+
+  it("o corpus do advisor é NOTA, não persona", () => {
+    // `Advisors/Max/` tem 123 notas (doutrina, flows, copy, registro).
+    // Marcar todas como advisor enchia o menu do composer com 123 entradas
+    // no lugar de um "Max" — e o bloco de persona do prompt viraria sorteio.
+    const corpus = parseKnowledgeNote(
+      "Advisors/Max/doutrina/roubar-e-o-metodo.md",
+      "---\ntipo: principio\nstatus: aprovado\n---\n# Roubar é o método\n\ncorpo",
+      { advisorsFolder: "Advisors" },
+    )
+    expect(corpus.kind).toBe("nota")
+    // Continua indexado e buscável — só não é uma persona.
+    expect(corpus.isActive).toBe(true)
+    expect(corpus.title).toBe("Roubar é o método")
+  })
+
+  it("a persona na subpasta vira advisor e herda o nome da PASTA", () => {
+    // A persona costuma abrir com heading de orientação; sem esta regra o
+    // menu mostrava "Onde esta nota entra" em vez de "Max".
+    const p = parseKnowledgeNote(
+      "Advisors/Max/persona.md",
+      "---\ntipo: persona\nstatus: aprovado\n---\n# Onde esta nota entra\n\ncorpo",
+      { advisorsFolder: "Advisors" },
+    )
+    expect(p.kind).toBe("advisor")
+    expect(p.title).toBe("Max")
+
+    // `title:` explícito continua vencendo a pasta.
+    const comTitulo = parseKnowledgeNote(
+      "Advisors/Max/persona.md",
+      "---\ntipo: persona\ntitle: Max Sturtevant\n---\n# Onde esta nota entra",
+      { advisorsFolder: "Advisors" },
+    )
+    expect(comTitulo.title).toBe("Max Sturtevant")
+  })
+
+  it("`tipo: advisor` fora da pasta de advisors continua valendo", () => {
+    const n = parseKnowledgeNote("Metodo/Fulano.md", "---\ntipo: advisor\n---\n# Fulano", {
+      advisorsFolder: "Advisors",
+    })
+    expect(n.kind).toBe("advisor")
+    // Fora da pasta de advisors não há pasta de onde herdar nome.
+    expect(n.title).toBe("Fulano")
   })
 })
 
