@@ -18,6 +18,7 @@ import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { METRICAS_CONNECTOR } from "./metricas"
 import { CRM_CONNECTOR } from "./crm"
+import { buildWebConnector, WEB_CONNECTOR_KEY } from "./web"
 import { buildShopifyConnector } from "./shopify"
 import { buildOmnisendConnector } from "./omnisend"
 import { buildKlaviyoConnector } from "./klaviyo"
@@ -47,6 +48,9 @@ export async function resolveConnectors(args: ResolveArgs): Promise<ResolvedConn
 
   if (enabled.has("metricas")) out.push(METRICAS_CONNECTOR)
   if (enabled.has("crm")) out.push(CRM_CONNECTOR)
+  // Internet: não depende de loja nem de credencial da loja — a chave de
+  // busca é da instalação, e abrir página não precisa de chave nenhuma.
+  if (enabled.has(WEB_CONNECTOR_KEY)) out.push(buildWebConnector())
 
   // Built-ins por loja — precisam de credencial descriptografada
   const wantsStoreConn =

@@ -69,6 +69,7 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   relatorio: { n: "Relatório da loja", c: "#0F766E", g: "R" },
   conhecimento: { n: "Conhecimento", c: "#7C3AED", g: "K" },
   memoria: { n: "Memória", c: "#BE185D", g: "L" },
+  web: { n: "Internet", c: "#0369A1", g: "W" },
 }
 const ADVISOR_DOT = { c: "#0F766E", g: "A" }
 /** Modelo barato das rodadas de consulta (roteamento por rodada). */
@@ -135,6 +136,8 @@ interface Bootstrap {
     daily_limit_cents: number
     exceeded: boolean
   }
+  /** Internet: o conector existe sempre; a BUSCA depende de chave. */
+  web?: { busca_configurada: boolean }
   /** Base de conhecimento do Obsidian (notas aprovadas + advisors). */
   knowledge?: {
     available: boolean
@@ -534,7 +537,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           },
         ]
       : []
-    return [...builtin, ...knowledge, ...mcps]
+    // Internet: sempre oferecida, e NASCE DESLIGADA (ver o default abaixo).
+    // A web é contexto externo — ligá-la sempre gastaria rodada em pergunta
+    // que a base da casa responde melhor, e arrisca a IA citar um post
+    // aleatório como se fosse método da Convertfy.
+    const web = [
+      {
+        key: "web",
+        name: AI_CONN.web.n,
+        sub: boot?.web?.busca_configurada ? "buscar e abrir páginas" : "só abrir link (busca não configurada)",
+        available: true,
+      },
+    ]
+    return [...builtin, ...knowledge, ...web, ...mcps]
   }, [ws, store, boot, storeId])
   const advisors = useMemo(() => boot?.knowledge?.advisors ?? [], [boot])
   const activeAdvisors = advisors.filter((a) => advisorOn[a.path])
@@ -551,6 +566,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       const next = { ...prev }
       for (const c of connectorEntries) {
         if (!c.available) next[c.key] = false
+        // A Internet é a exceção ao "tudo disponível nasce ligado": ela é
+        // contexto EXTERNO. Ligada por padrão, a IA gastaria rodada buscando
+        // fora para pergunta que a base da casa responde melhor — e citaria
+        // post aleatório com o mesmo peso da doutrina escrita. Quem quer a
+        // web liga; a preferência de quem já mexeu continua soberana.
+        else if (c.key === "web") next[c.key] = touchedRef.current.has(c.key) ? next[c.key] : false
         else if (!touchedRef.current.has(c.key)) next[c.key] = true
       }
       return next

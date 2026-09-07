@@ -2763,6 +2763,59 @@ com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
 precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
 `Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
+## ConvertIA — Internet e MCP de terceiro (set/2026)
+
+**Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o
+par que o Claude oferece. Módulos puros com 40 testes em `lib/ai/web/`.
+
+**A URL é escolhida pelo MODELO** — daí a lista de permissão estreita em
+`web-guard.ts` (14 testes): só http/https, só porta 80/443, e host que não
+seja localhost, IPv4 privado, link-local, IPv6 interno nem sufixo de rede
+(`.local`, `.internal`). O `fetch` usa `redirect: "manual"` e **cada
+redirecionamento passa pela mesma régua**: um host público responde 302 para
+`169.254.169.254` e, se o fetch seguisse sozinho, a URL final nunca seria
+checada — as credenciais do runtime sairiam no corpo da resposta. Armadilha
+que já custou um bug aqui: o construtor de `URL` NORMALIZA
+`::ffff:127.0.0.1` para a forma hexadecimal `::ffff:7f00:1`, então casar só
+o quarteto decimal deixa passar exatamente o bypass que a função existe para
+impedir.
+
+**Conteúdo de site é DADO, nunca instrução**: todo texto de fora vai
+embrulhado em `<conteudo_externo>` com a frase que diz ao modelo que pedido
+dentro da página é texto que ele está LENDO, não ordem que recebeu. Sem o
+rótulo, abrir página é canal de injeção de prompt.
+
+**A web não substitui a base da casa**: o `guidance` do conector manda usar
+`conhecimento_buscar` para método/copy/flows/processo da Convertfy e reservar
+a internet para fato externo. E o conector **nasce DESLIGADO** — é a única
+exceção ao "tudo disponível liga sozinho" do composer: ligado por padrão
+gastaria rodada buscando fora o que o vault responde melhor, e faria post
+aleatório valer tanto quanto a doutrina escrita.
+
+**Busca por provedor plugável** (`web-search.ts`): `TAVILY_API_KEY` →
+`BRAVE_SEARCH_API_KEY` → `SERPER_API_KEY`, o primeiro configurado vence;
+trocar de fornecedor é trocar variável, não código. Chave em branco NÃO conta
+como configurada (variável criada e deixada vazia é o erro de deploy mais
+comum, e escolheria um provedor que responde 401 em toda busca). Sem nenhuma
+chave a tool DIZ que a busca não está configurada e qual variável criar —
+lista vazia silenciosa seria lida como "a internet não tem nada sobre isso".
+`web_abrir` **não precisa de chave nenhuma** e funciona sozinho.
+
+Falha é sempre dita, nunca escondida: 403/401 devolve "o site recusou o
+acesso… diga isso em vez de descrever a página de memória"; PDF/imagem
+devolve o content-type real; página cortada no orçamento devolve
+`truncado: true` (senão o modelo conclui a partir de meia página achando que
+leu tudo).
+
+**Trendtrack**: ZERO código novo. A infra de MCP já cobre — `mcp-client.ts`
+(streamable HTTP + JSON-RPC) e `mcp-oauth.ts` (OAuth 2.1 com discovery,
+registro dinâmico RFC 7591 e PKCE, escrito para o MCP oficial da Omnisend) é
+exatamente o que `https://api.trendtrack.io/v1/mcp` exige. Só entrou um
+preset no diálogo de MCP (Gerenciar → Servidores MCP → "Conectar
+Trendtrack") que pré-preenche nome e URL; o botão **Autorizar via OAuth**
+leva ao login e volta conectado — não existe token para colar. Requer plano
+do Trendtrack que libere o MCP.
+
 ## ConvertIA — saúde: o fim da degradação silenciosa (set/2026, migration 20261122)
 
 Medição de 07/09, com 20 respostas no histórico: **4 morreram em HTTP 402 do
