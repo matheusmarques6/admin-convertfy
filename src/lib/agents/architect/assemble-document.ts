@@ -165,33 +165,54 @@ export interface AssembleDocumentInput {
  * marcadores são três representações da mesma sequência; reindexar
  * desalinharia as três.
  */
+const SECAO_HERO = "hero"
+
+const ehHero = (section: string) => section.trim().toLowerCase() === SECAO_HERO
+
 /**
  * A montagem cobriu o bastante para valer como referência do email?
  *
- * Incidente 07/09 (Hero Boxers, welcome 1): o Curador rankeou 1 de 6 posições
- * e a montagem produziu um documento com o rodapé sozinho. O guard de então
- * só recusava com ZERO bloco, então a peça seguiu adiante e morreu 3 minutos
- * depois na hero, que não tinha região para enxertar — `hero_failed`, sem
- * dizer que a curadoria é que havia falhado.
+ * Incidente 07/09 (Hero Boxers, welcome 1), em dois atos.
  *
- * A régua é maioria ESTRITA: faltou mais do que entrou. Um email que perde o
- * rodapé segue de pé; um que só tem rodapé, não. Parar aqui, com as posições
- * nomeadas, é mais barato e mais legível do que parar lá na hero.
+ * No primeiro, o Curador rankeou 1 de 6 posições e a montagem produziu um
+ * documento com o rodapé sozinho; o guard de então só recusava com ZERO
+ * bloco, a peça seguiu e morreu 3 minutos depois na hero, sem região para
+ * enxertar. A régua virou maioria ESTRITA — faltou mais do que entrou.
+ *
+ * No segundo, a maioria estrita recusou uma peça que TINHA hero (hero +
+ * rodapé contra 4 lacunas) e o email falhou assim mesmo: recusar não é
+ * neutro, empurra o consumidor para o template global, e o global do
+ * welcome-1 não tem marcador nem placeholder `{{HERO_*}}` — o localizador
+ * não acha região e o resultado é o mesmo `hero_failed`, agora garantido.
+ * A premissa "cai no global, que tem hero" era falsa.
+ *
+ * Então a régua passa a medir o que a fase 2 realmente exige: **uma região
+ * de hero para enxertar**. Sequência que pede hero e não recebe nenhuma é
+ * recusada — sem hero a peça está morta de qualquer jeito, e parar aqui,
+ * com as posições nomeadas, é mais legível. Peça com hero e poucas seções
+ * é POBRE, não inviável: entra, e as lacunas ficam registradas no
+ * `slot_map` e na telemetria, onde a curadoria pode ser cobrada.
  */
 export function coberturaSuficiente(stats: AssembledStats): {
   ok: boolean
   motivo?: string
 } {
+  const entraram = stats.expected ?? []
   const total = stats.blocks + stats.skipped.length
   if (total === 0) return { ok: false, motivo: "nenhuma posição na sequência" }
   if (stats.blocks === 0) return { ok: false, motivo: "nenhum bloco entrou" }
-  if (stats.skipped.length > stats.blocks) {
-    const nomes = stats.skipped
-      .map((s) => `${s.block_index}:${s.section}`)
-      .join(", ")
+
+  // `expected` vazio com blocos montados só acontece se o chamador não
+  // preencher as stats — aí não há como saber o que entrou, e inventar uma
+  // recusa seria pior que deixar passar.
+  const pediuHero =
+    entraram.some((e) => ehHero(e.section)) || stats.skipped.some((s) => ehHero(s.section))
+  const temHero = entraram.some((e) => ehHero(e.section))
+  if (entraram.length > 0 && pediuHero && !temHero) {
+    const nomes = stats.skipped.map((s) => `${s.block_index}:${s.section}`).join(", ")
     return {
       ok: false,
-      motivo: `${stats.skipped.length} de ${total} posições sem variante (${nomes})`,
+      motivo: `a sequência pede hero e nenhuma variante de hero entrou — ${stats.skipped.length} de ${total} posições sem variante (${nomes})`,
     }
   }
   return { ok: true }

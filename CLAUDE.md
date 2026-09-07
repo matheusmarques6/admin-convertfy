@@ -2629,9 +2629,9 @@ rankear e a hero existia na peça — e a geração morreu em `hero_failed` de
 novo, porque a montagem RECUSOU corretamente (`reference_source: "none"`,
 `coberturaSuficiente`) e a fase 2 seguiu lendo a linha de 13:45 em
 `store_email_references`, o documento de um bloco. Guard vira DELETE:
-cobertura insuficiente apaga a referência daquele store/flow/email, e o
-consumidor cai no template global, que TEM hero. Referência que não
-representa o email é pior que referência nenhuma. **O ranking também aceita
+cobertura insuficiente apaga a referência daquele store/flow/email.
+Referência que não representa o email é pior que referência nenhuma.
+**O ranking também aceita
 apelido**: o Curador escolheu `offer-4-manifesto-antes-do-cupom` — o SLUG da
 nota, que ele leu no catálogo que nós servimos — e o parser jogou em
 `invalid_ids`, perdendo a posição. `buildAliasIndex` (catalog-builder)
@@ -2643,6 +2643,29 @@ frequência em `ids_por_apelido` na telemetria dos dois Curadores.
 products-9 vetam `welcome-1` explicitamente), as de reviews não declaram o
 momento, e body-6/7/8/9 estão ATIVAS **sem `output_schema`** — sem schema
 não entram na biblioteca servida ao Curador, então não existem para ele.
+
+**O Curador enxergava bloco DESATIVADO** (07/09, terceiro ato). As
+ferramentas `listar_pasta`/`ler_nota` filtravam `is_active` da NOTA
+(`email_vault_docs`) e nunca da VARIANTE (`email_component_variants`). Ele
+leu `offer-4-manifesto-antes-do-cupom.md`, escolheu o bloco — `is_active =
+false`, portanto fora do catálogo servido (`.eq("is_active", true)`) — e a
+escolha morreu em `invalid_ids`. Nem o índice por apelido salva: ele é
+construído sobre as ELEGÍVEIS. Hoje as duas ferramentas cruzam
+`kind='variante'` com a biblioteca; `ler_nota` responde "esta variante está
+desativada e NÃO pode ser escolhida" em vez de "não encontrada" (o modelo
+precisa saber que existe e está fora). Erro na checagem serve demais e loga
+— calar o vault inteiro tiraria a anatomia das 36 boas para proteger contra
+4. Sintoma que denuncia: nota ativa × variante inativa (offer-4, offer-5).
+
+**"Cai no template global, que TEM hero" era FALSO** e derrubou a régua de
+cobertura. O global do `welcome-1` tem 21.314 chars, **zero placeholders e
+nenhum marcador `cfy:hero`** — `locateHeroRegion` não acha região nem por
+marcador nem por tag, então recusar a montagem GARANTE `hero_failed` em vez
+de evitá-lo. A maioria estrita do PR 9 saiu: `coberturaSuficiente` agora
+mede o que a fase 2 exige de fato — **sequência que pede hero e não recebe
+nenhuma é recusada**; peça com hero e poucas seções é POBRE, não inviável,
+entra, e as lacunas ficam no `slot_map` e na telemetria, onde a curadoria
+pode ser cobrada.
 
 **Ponte de vocabulário** (`aliviador-bridge.ts`): o eixo `objecao` das
 notas do vault tem 11 valores próprios; risco×aliviador do alvo →

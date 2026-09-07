@@ -478,46 +478,66 @@ describe("coberturaSuficiente", () => {
     label: "",
     reason: "missing" as const,
   })
-  const stats = (blocks: number, skipped: ReturnType<typeof skip>[]) =>
+  const entrou = (i: number, section: string) => ({ block_index: i, section })
+  const stats = (
+    entraram: ReturnType<typeof entrou>[],
+    skipped: ReturnType<typeof skip>[],
+  ) =>
     ({
-      blocks,
-      variants: blocks,
+      blocks: entraram.length,
+      variants: entraram.length,
+      expected: entraram,
       skipped,
       fontsNormalized: 0,
       weightsNormalized: 0,
       chars: 0,
     }) as unknown as Parameters<typeof coberturaSuficiente>[0]
 
+  const cinco = [
+    entrou(0, "hero"),
+    entrou(1, "body"),
+    entrou(2, "offer"),
+    entrou(3, "products"),
+    entrou(5, "footer"),
+  ]
+
   it("passa quando a maioria das posições entrou", () => {
-    expect(coberturaSuficiente(stats(5, [skip(4, "reviews")])).ok).toBe(true)
+    expect(coberturaSuficiente(stats(cinco, [skip(4, "reviews")])).ok).toBe(true)
   })
 
-  // O caso real: o Curador rankeou só o rodapé e a peça seguiu até a hero
-  // falhar por não ter região. A recusa nomeia as posições que faltaram.
-  it("recusa 1 bloco de 6 e nomeia as posições vazias", () => {
+  // O caso real: o Curador rankeou só o rodapé, a peça não tinha hero e a
+  // geração morreu 3 minutos depois. A recusa nomeia as posições vazias.
+  it("recusa a peça sem hero e nomeia as posições vazias", () => {
     const r = coberturaSuficiente(
-      stats(1, [
-        skip(0, "hero"),
-        skip(1, "body"),
-        skip(2, "body"),
-        skip(3, "products"),
-        skip(4, "reviews"),
-      ]),
+      stats(
+        [entrou(5, "footer")],
+        [skip(0, "hero"), skip(1, "body"), skip(2, "body"), skip(3, "products"), skip(4, "reviews")],
+      ),
     )
     expect(r.ok).toBe(false)
+    expect(r.motivo).toContain("hero")
     expect(r.motivo).toContain("5 de 6")
     expect(r.motivo).toContain("0:hero")
   })
 
-  // Maioria estrita: perder o rodapé não invalida o email; empate passa.
-  it("empate passa, faltar mais do que entrou recusa", () => {
-    expect(coberturaSuficiente(stats(1, [skip(1, "footer")])).ok).toBe(true)
-    expect(coberturaSuficiente(stats(2, [skip(0, "hero"), skip(1, "body")])).ok).toBe(true)
-    expect(coberturaSuficiente(stats(2, [skip(0, "hero"), skip(1, "body"), skip(2, "products")])).ok).toBe(false)
+  // O segundo ato: peça POBRE com hero passa. Recusar empurra para o
+  // template global, que não tem região de hero — a falha seria garantida.
+  it("hero presente basta, mesmo faltando mais do que entrou", () => {
+    const r = coberturaSuficiente(
+      stats(
+        [entrou(0, "hero"), entrou(5, "footer")],
+        [skip(1, "body"), skip(2, "offer"), skip(3, "products"), skip(4, "reviews")],
+      ),
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it("sequência que não pede hero não é cobrada por ela", () => {
+    expect(coberturaSuficiente(stats([entrou(0, "body")], [skip(1, "footer")])).ok).toBe(true)
   })
 
   it("nenhum bloco e sequência vazia têm motivo próprio", () => {
-    expect(coberturaSuficiente(stats(0, [skip(0, "hero")])).motivo).toBe("nenhum bloco entrou")
-    expect(coberturaSuficiente(stats(0, [])).motivo).toBe("nenhuma posição na sequência")
+    expect(coberturaSuficiente(stats([], [skip(0, "hero")])).motivo).toBe("nenhum bloco entrou")
+    expect(coberturaSuficiente(stats([], [])).motivo).toBe("nenhuma posição na sequência")
   })
 })
