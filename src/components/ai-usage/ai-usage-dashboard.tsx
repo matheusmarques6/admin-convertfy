@@ -22,6 +22,7 @@ import { ConvertiaFeedbackCard } from "./convertia-feedback-card"
 import { ConvertiaPerfCard } from "./convertia-perf-card"
 import { ConvertiaEvalCard } from "./convertia-eval-card"
 import { ConvertiaLimitCard } from "./convertia-limit-card"
+import { ConvertiaHealthCard } from "./convertia-health-card"
 
 const AiUsageCostChart = dynamic(
   () => import("./ai-usage-cost-chart").then((m) => ({ default: m.AiUsageCostChart })),
@@ -294,7 +295,10 @@ export function AiUsageDashboard() {
             </table>
           </div>
 
-          {/* ── ConvertIA · Feedback / Desempenho / Avaliação ── */}
+          {/* ── ConvertIA · Saúde / Feedback / Desempenho / Avaliação ── */}
+          {/* A saúde vem PRIMEIRO: quando algo está quebrado, os outros
+              cards mostram números de um sistema que não está respondendo. */}
+          <ConvertiaHealthCard />
           <ConvertiaLimitCard />
           <ConvertiaFeedbackCard windowDays={windowDays} />
           <ConvertiaPerfCard windowDays={windowDays} />

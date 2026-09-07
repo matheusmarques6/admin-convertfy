@@ -12,6 +12,7 @@ import { NextRequest } from "next/server"
 import { withTiming } from "@/lib/api/with-timing"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { escolherProvedor } from "@/lib/ai/web/web-search"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getConvertiaBudget } from "@/lib/ai/convertia-limits"
 import { listAdvisors } from "@/lib/ai/convertia/knowledge"
@@ -108,6 +109,10 @@ async function handleGet(request: NextRequest) {
         notes: knowledgeCount.count ?? 0,
         advisors,
       },
+      // A Internet aparece sempre no composer, mas a BUSCA depende de uma
+      // chave da instalação. Sem isto o composer prometeria busca e a tool
+      // responderia "não configurada" só depois de o usuário perguntar.
+      web: { busca_configurada: escolherProvedor() !== null },
       memories: { pending: memoriesPending.error ? 0 : (memoriesPending.count ?? 0) },
       schema_missing: schemaMissing,
     })

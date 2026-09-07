@@ -150,6 +150,10 @@
     {
       "path": "/api/cron/transcricoes-indexar",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/convertia-saldo",
+      "schedule": "13 * * * *"
     }
   ]
 }

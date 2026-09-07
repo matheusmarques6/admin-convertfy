@@ -27,6 +27,12 @@ export type BuiltinConnectorKey =
   | "relatorio"
   /** Base de conhecimento do Obsidian (toggle do composer, org-level). */
   | "conhecimento"
+  /**
+   * Internet: buscar e abrir página. Toggle do composer, org-level — a web
+   * é contexto EXTERNO, e ligá-la sempre gastaria rodada em pergunta que a
+   * base da casa responde melhor.
+   */
+  | "web"
   /** Memória entre conversas — sempre disponível (a IA propõe, humano aprova). */
   | "memoria"
   /**

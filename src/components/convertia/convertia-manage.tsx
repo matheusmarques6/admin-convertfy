@@ -623,6 +623,21 @@ function SkillsDialog({ ws, onClose }: { ws: string; onClose: () => void }) {
 
 // ── Servidores MCP ──────────────────────────────────────────────────
 
+/**
+ * Servidor MCP de terceiro com endereço FIXO e conhecido. O Trendtrack usa
+ * OAuth 2.1 com registro dinâmico de cliente — exatamente o que
+ * `mcp-oauth.ts` já implementa para o MCP oficial da Omnisend —, então
+ * conectar é só o fluxo de login: não há chave para colar.
+ */
+const TRENDTRACK_PRESET = {
+  name: "Trendtrack",
+  url: "https://api.trendtrack.io/v1/mcp",
+  hint:
+    "O Trendtrack autentica por OAuth: ao salvar, você é levado para o login dele e volta " +
+    "conectado — não existe token para colar aqui. Sua conta precisa de um plano que libere " +
+    "o MCP. Traz anúncios, lojas em escala, e-mails de concorrentes e transcrições de criativos.",
+}
+
 const OBSIDIAN_PRESET = {
   name: "Obsidian",
   url: "",
@@ -840,6 +855,22 @@ function McpDialog({
               style={{ borderColor: HAIR, color: "var(--ops-title)" }}
             >
               <span className="text-[13px]">💎</span> Conectar Obsidian
+            </button>
+            <button
+              onClick={() =>
+                setAdding({
+                  name: TRENDTRACK_PRESET.name,
+                  url: TRENDTRACK_PRESET.url,
+                  auth_token: "",
+                  store_id: null,
+                  allow_write: false,
+                  hint: TRENDTRACK_PRESET.hint,
+                })
+              }
+              className="inline-flex h-[31px] items-center gap-1.5 rounded-[8px] border px-3 text-[12px] font-medium"
+              style={{ borderColor: HAIR, color: "var(--ops-title)" }}
+            >
+              <span className="text-[13px]">📈</span> Conectar Trendtrack
             </button>
           </div>
           <div className="mt-1.5 text-[10px] leading-[1.5]" style={{ color: "var(--ops-mut)" }}>

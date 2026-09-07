@@ -2786,6 +2786,127 @@ com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
 precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
 `Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
+## ConvertIA — Internet e MCP de terceiro (set/2026)
+
+**Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o
+par que o Claude oferece. Módulos puros com 40 testes em `lib/ai/web/`.
+
+**A URL é escolhida pelo MODELO** — daí a lista de permissão estreita em
+`web-guard.ts` (14 testes): só http/https, só porta 80/443, e host que não
+seja localhost, IPv4 privado, link-local, IPv6 interno nem sufixo de rede
+(`.local`, `.internal`). O `fetch` usa `redirect: "manual"` e **cada
+redirecionamento passa pela mesma régua**: um host público responde 302 para
+`169.254.169.254` e, se o fetch seguisse sozinho, a URL final nunca seria
+checada — as credenciais do runtime sairiam no corpo da resposta. Armadilha
+que já custou um bug aqui: o construtor de `URL` NORMALIZA
+`::ffff:127.0.0.1` para a forma hexadecimal `::ffff:7f00:1`, então casar só
+o quarteto decimal deixa passar exatamente o bypass que a função existe para
+impedir.
+
+**Conteúdo de site é DADO, nunca instrução**: todo texto de fora vai
+embrulhado em `<conteudo_externo>` com a frase que diz ao modelo que pedido
+dentro da página é texto que ele está LENDO, não ordem que recebeu. Sem o
+rótulo, abrir página é canal de injeção de prompt.
+
+**A web não substitui a base da casa**: o `guidance` do conector manda usar
+`conhecimento_buscar` para método/copy/flows/processo da Convertfy e reservar
+a internet para fato externo. E o conector **nasce DESLIGADO** — é a única
+exceção ao "tudo disponível liga sozinho" do composer: ligado por padrão
+gastaria rodada buscando fora o que o vault responde melhor, e faria post
+aleatório valer tanto quanto a doutrina escrita.
+
+**Busca por provedor plugável** (`web-search.ts`): `TAVILY_API_KEY` →
+`BRAVE_SEARCH_API_KEY` → `SERPER_API_KEY`, o primeiro configurado vence;
+trocar de fornecedor é trocar variável, não código. Chave em branco NÃO conta
+como configurada (variável criada e deixada vazia é o erro de deploy mais
+comum, e escolheria um provedor que responde 401 em toda busca). Sem nenhuma
+chave a tool DIZ que a busca não está configurada e qual variável criar —
+lista vazia silenciosa seria lida como "a internet não tem nada sobre isso".
+`web_abrir` **não precisa de chave nenhuma** e funciona sozinho.
+
+Falha é sempre dita, nunca escondida: 403/401 devolve "o site recusou o
+acesso… diga isso em vez de descrever a página de memória"; PDF/imagem
+devolve o content-type real; página cortada no orçamento devolve
+`truncado: true` (senão o modelo conclui a partir de meia página achando que
+leu tudo).
+
+**Trendtrack**: ZERO código novo. A infra de MCP já cobre — `mcp-client.ts`
+(streamable HTTP + JSON-RPC) e `mcp-oauth.ts` (OAuth 2.1 com discovery,
+registro dinâmico RFC 7591 e PKCE, escrito para o MCP oficial da Omnisend) é
+exatamente o que `https://api.trendtrack.io/v1/mcp` exige. Só entrou um
+preset no diálogo de MCP (Gerenciar → Servidores MCP → "Conectar
+Trendtrack") que pré-preenche nome e URL; o botão **Autorizar via OAuth**
+leva ao login e volta conectado — não existe token para colar. Requer plano
+do Trendtrack que libere o MCP.
+
+## ConvertIA — saúde: o fim da degradação silenciosa (set/2026, migration 20261122)
+
+Medição de 07/09, com 20 respostas no histórico: **4 morreram em HTTP 402 do
+OpenRouter** (sem crédito) e as **124 notas da base ficaram sem embedding pela
+MESMA causa** — `embedTexts` engole a falha em `log.warn` e o sync segue
+reportando sucesso. Um saldo, três subsistemas parados (chat, embeddings da
+base e das transcrições, agentes de email), zero sinal em tela: o diagnóstico
+inteiro passou por SQL. É o padrão de falha desta parte do sistema.
+
+**Saldo do provedor** (`provider-balance.ts`, 7 testes): lê
+`GET /api/v1/credits`, classifica contra `OPENROUTER_SALDO_MINIMO_USD`
+(default 5) e grava snapshot em `ai_provider_balance`. Cron
+`/api/cron/convertia-saldo` (13 * * * *). Duas regras puras que existem para
+o alerta continuar confiável: **`null` é `desconhecido`, nunca `esgotado`**
+(timeout na consulta não é notícia sobre o saldo, e alerta falso é como se
+aprende a ignorar o verdadeiro) e **`deveAlertar` só dispara na TRANSIÇÃO**
+para pior — de hora em hora seriam 24 notificações/dia até alguém recarregar.
+`baixo→esgotado` avisa de novo; `esgotado→baixo` não. O snapshot é gravado
+MESMO quando a consulta falha: histórico com buraco não responde "desde
+quando". Piso folgado porque o OpenRouter RESERVA o custo máximo da chamada
+(prompt + max_tokens no preço do modelo) — o modelo caro estoura primeiro.
+
+**A base diz quando não sabe** (`lacunas.ts`, 7 testes): busca vazia deixou de
+devolver "Nenhuma nota encontrada" e passa a devolver instrução de
+COMPORTAMENTO (`textoSemResultado`) — "isto NÃO autoriza responder de memória;
+tente outras palavras (o corpus mistura PT e EN) e, não havendo nota, DIGA que
+a base não cobre". Vale para `conhecimento_buscar` e `transcricoes_buscar`. Sem
+isso o modelo lê "0 resultados" como permissão para preencher o vazio — e com
+um advisor ligado a resposta sem lastro sai com a autoridade dele. Quando a
+busca semântica está fora (sem embedding), a resposta diz isso: resultado
+pobre por falta de vetor parecia "a base não tem".
+
+**Lacuna vira pauta** (`convertia_lacunas` + RPC `convertia_registrar_lacuna`):
+cada busca vazia é gravada com dedupe por consulta NORMALIZADA (minúsculas,
+sem acento, sem pontuação) e frequência — é a frequência que ordena o que
+escrever primeiro no vault. Guarda as 5 formulações mais recentes: a mesma
+lacuna perguntada de cinco jeitos ensina o vocabulário de quem pergunta.
+ON CONFLICT no banco porque roda dentro do turno, em paralelo com outras
+tools — "SELECT senão INSERT" duplicaria em corrida e o UNIQUE viraria erro
+dentro de uma tool que deve ser fail-open. Lacuna "resolvida" que volta a ser
+perguntada REABRE. **Não reusa `ai_knowledge_gaps`**: aquela exige `agent_id`
+NOT NULL de outro subsistema.
+
+**Painel de saúde** (`GET/POST /api/ai/convertia/health` +
+`convertia-health-card.tsx`, primeiro card de `/admin/ai-usage`): saldo com a
+hora da checagem, turnos com erro em 7d **agrupados por CAUSA** (vinte linhas
+de "HTTP 402: {...}" não dizem nada; "3 turnos sem crédito" diz o que fazer —
+usa o `friendlyModelError` já existente), estado do sync do vault (repo,
+commit, notas puladas com o motivo), advisors detectados, notas sem vetor e as
+lacunas abertas. Botões **Checar saldo** e **Re-sincronizar vault** (sempre
+`force: true` — quem clica ali costuma ter mudado CÓDIGO, e o sync
+curto-circuita pelo SHA do vault). É a tela que faltava: sem ela toda
+verificação desta base passa por console ou SQL.
+
+**Pergunta sem resposta nenhuma** (`turnoPerdido` em `convertia-chat.tsx`): a
+conversa de 03/09 tinha duas mensagens do usuário e ZERO do assistente — o
+turno morreu antes de a linha nascer, então não existe nem `meta.error` para
+mostrar. A bolha agora diz "não chegou a ser respondida", em vez de a conversa
+reabrir parecendo que a pergunta foi ignorada.
+
+**O que NÃO foi mexido, e por quê**: o acerto de cache de prompt e o custo por
+turno já eram exibidos no card *ConvertIA · Desempenho*; a importação dos 👍
+como casos de avaliação já tem botão; a aprovação de memória já tem diálogo.
+Zero memórias, zero casos e zero jobs no banco são falta de USO (20 respostas
+no total), não gatilho quebrado. O **modo econômico segue desligado por
+padrão**: ligá-lo mudaria a qualidade de toda resposta, então é escolha por
+conversa, não default silencioso — o painel explica isso na tela.
+
 ## Módulo Transcrições — vídeo virado texto pesquisável (set/2026, migration 20261121)
 
 Item "Transcrições" no grupo **Conhecimento** do workspace Geral, liberado

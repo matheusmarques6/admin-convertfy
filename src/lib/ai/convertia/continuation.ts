@@ -162,6 +162,7 @@ async function runJob(admin: SupabaseClient, job: JobRow, budgetMs: number): Pro
   // histórico — sem eles, "Tool desconhecida" no meio da continuação).
   const knowledge = await loadKnowledgeForPrompt(admin, p.org_id, p.advisors ?? [], {
     enabled: p.connectors.includes(KNOWLEDGE_CONNECTOR_KEY) || (p.advisors ?? []).length > 0,
+    conversaId: p.conversation_id,
   })
   if (knowledge.connector) connectors.push(knowledge.connector)
   connectors.push(buildMemoriaConnector({ conversationId: p.conversation_id, messageId: p.message_id }))

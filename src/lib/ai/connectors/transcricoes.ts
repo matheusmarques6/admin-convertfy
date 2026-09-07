@@ -16,6 +16,7 @@
  */
 
 import { embedQuery, embeddingsAvailable } from "@/lib/ai/convertia/knowledge-embeddings"
+import { registrarLacuna, textoSemResultado } from "@/lib/ai/convertia/lacunas"
 import { fmtDuracao } from "@/lib/transcricoes/pipeline"
 import { toolJson, type ConnectorTool, type ConnectorToolContext, type ResolvedConnector } from "./types"
 
@@ -163,7 +164,13 @@ const buscar: ConnectorTool = {
     }
 
     const lista = [...achados.values()]
-    if (!lista.length) return { content: "Nenhum trecho encontrado.", summary: `0 trechos · ${query}` }
+    if (!lista.length) {
+      // Mesma regra da base de conhecimento: "0 resultados" sozinho o modelo
+      // lê como permissão para responder de memória. E a pergunta que a
+      // biblioteca não respondeu vira pauta em vez de sumir.
+      await registrarLacuna(ctx.admin, { orgId: ctx.orgId, fonte: "transcricoes", query })
+      return { content: textoSemResultado("transcricoes", query), summary: `0 trechos · lacuna registrada` }
+    }
     return { content: toolJson(lista), summary: `${lista.length} trechos · ${query}` }
   },
 }

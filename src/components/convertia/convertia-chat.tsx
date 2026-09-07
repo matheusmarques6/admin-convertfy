@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowUp,
   BarChart3,
+  AlertCircle,
   Calendar,
   Check,
   ChevronDown,
@@ -68,6 +69,7 @@ export const AI_CONN: Record<string, { n: string; c: string; g: string }> = {
   relatorio: { n: "Relatório da loja", c: "#0F766E", g: "R" },
   conhecimento: { n: "Conhecimento", c: "#7C3AED", g: "K" },
   memoria: { n: "Memória", c: "#BE185D", g: "L" },
+  web: { n: "Internet", c: "#0369A1", g: "W" },
 }
 const ADVISOR_DOT = { c: "#0F766E", g: "A" }
 /** Modelo barato das rodadas de consulta (roteamento por rodada). */
@@ -134,6 +136,8 @@ interface Bootstrap {
     daily_limit_cents: number
     exceeded: boolean
   }
+  /** Internet: o conector existe sempre; a BUSCA depende de chave. */
+  web?: { busca_configurada: boolean }
   /** Base de conhecimento do Obsidian (notas aprovadas + advisors). */
   knowledge?: {
     available: boolean
@@ -208,6 +212,13 @@ interface UiMessage {
   status?: string | null
   /** Erro cru do provedor quando o turno falhou (vem de meta.error). */
   error?: string | null
+  /**
+   * Pergunta que nunca teve resposta: o turno morreu antes de a linha do
+   * assistente ser criada, então não existe nem `error` para mostrar. Sem
+   * esta marca a conversa reabre como se a pergunta tivesse sido feita e
+   * simplesmente ignorada.
+   */
+  turnoPerdido?: boolean
 }
 
 /** Chave do localStorage: última conversa aberta por workspace. */
@@ -526,7 +537,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           },
         ]
       : []
-    return [...builtin, ...knowledge, ...mcps]
+    // Internet: sempre oferecida, e NASCE DESLIGADA (ver o default abaixo).
+    // A web é contexto externo — ligá-la sempre gastaria rodada em pergunta
+    // que a base da casa responde melhor, e arrisca a IA citar um post
+    // aleatório como se fosse método da Convertfy.
+    const web = [
+      {
+        key: "web",
+        name: AI_CONN.web.n,
+        sub: boot?.web?.busca_configurada ? "buscar e abrir páginas" : "só abrir link (busca não configurada)",
+        available: true,
+      },
+    ]
+    return [...builtin, ...knowledge, ...web, ...mcps]
   }, [ws, store, boot, storeId])
   const advisors = useMemo(() => boot?.knowledge?.advisors ?? [], [boot])
   const activeAdvisors = advisors.filter((a) => advisorOn[a.path])
@@ -543,6 +566,12 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       const next = { ...prev }
       for (const c of connectorEntries) {
         if (!c.available) next[c.key] = false
+        // A Internet é a exceção ao "tudo disponível nasce ligado": ela é
+        // contexto EXTERNO. Ligada por padrão, a IA gastaria rodada buscando
+        // fora para pergunta que a base da casa responde melhor — e citaria
+        // post aleatório com o mesmo peso da doutrina escrita. Quem quer a
+        // web liga; a preferência de quem já mexeu continua soberana.
+        else if (c.key === "web") next[c.key] = touchedRef.current.has(c.key) ? next[c.key] : false
         else if (!touchedRef.current.has(c.key)) next[c.key] = true
       }
       return next
@@ -666,8 +695,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   }
 
   const toUiMessages = useCallback((body: ConversationBody): UiMessage[] => {
-    return (body.messages ?? [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
+    const brutas = (body.messages ?? []).filter((m) => m.role === "user" || m.role === "assistant")
+    // Pergunta sem NENHUMA resposta depois dela: o turno morreu antes de a
+    // linha do assistente ser criada (foi o caso da conversa de 03/09, com
+    // duas perguntas e zero respostas). Sem esta marca a conversa reabre
+    // parecendo que a pessoa nunca perguntou nada — e ninguém descobre que
+    // houve falha.
+    const semResposta = new Set<string>()
+    for (let i = 0; i < brutas.length; i++) {
+      if (brutas[i].role !== "user") continue
+      const proxima = brutas[i + 1]
+      if (!proxima || proxima.role === "user") semResposta.add(brutas[i].id)
+    }
+    return brutas
       .map((m) => {
         const startedAt = m.meta?.started_at ?? m.created_at ?? null
         const generating = m.meta?.streaming === true
@@ -691,6 +731,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           // estivesse recebendo o stream
           streaming: generating,
           pendingTools: generating ? (m.meta?.sources ?? []).filter((s) => s.summary == null).length : 0,
+          turnoPerdido: m.role === "user" && semResposta.has(m.id),
         }
       })
   }, [])
@@ -2045,6 +2086,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                         >
                           {displayUserContent(m.content)}
                         </div>
+                        {m.turnoPerdido && !sending && (
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[11px]"
+                            style={{ color: "var(--ops-neg, #DC2626)" }}
+                          >
+                            <AlertCircle className="h-3 w-3" />
+                            Esta pergunta não chegou a ser respondida — o turno falhou antes de
+                            começar. Envie de novo.
+                          </span>
+                        )}
                       </div>
                     </div>
                   ) : (
