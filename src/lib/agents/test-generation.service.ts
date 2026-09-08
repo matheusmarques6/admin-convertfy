@@ -307,6 +307,22 @@ export async function runTestGeneration(
     // phase2Only: NÃO re-roda o Architect — reusa store_email_references/
     // store_email_blueprints (ou fallback global) exatamente como estão,
     // sem repagar Montador/Blueprint.
+
+    // CLAIM do batch ANTES da fase 1 (08/09) — só o `generation_batch_id`,
+    // sem tocar no status. É o que dá âncora à tela: o polling começa no
+    // clique e, sem o batch no e-mail, /generation-status não teria como
+    // saber que as runs em curso são desta geração (cairia no ramo "batch
+    // superado" e leria a folga entre duas runs como fim). O mesmo que o
+    // pipeline completo já faz no claim dele.
+    const admin = createAdminClient()
+    await admin
+      .from("email_flow_emails")
+      .update({
+        generation_batch_id: batchId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+
     if (phase2Only) {
       log.info("test.phase2_only.skip_architect", { storeId, emailId, batchId })
     } else {
@@ -324,7 +340,6 @@ export async function runTestGeneration(
     // atômico. Cobre re-execução de email que ficou `failed` ou já
     // chegou em `ready` num teste anterior. Persiste batchId pra que
     // /generation-status leia os runs corretos.
-    const admin = createAdminClient()
     await admin
       .from("email_flow_emails")
       .update({

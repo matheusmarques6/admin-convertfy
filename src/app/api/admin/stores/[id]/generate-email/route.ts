@@ -39,6 +39,19 @@ const bodySchema = z.object({
   // Contexto livre do operador (aba Testar → "Objetivo / contexto"):
   // flui pro Architect via {{outline_guidance}} e pro payload da copy.
   test_context: z.string().max(2000).optional(),
+  /**
+   * Batch escolhido pelo CLIENTE (08/09). Sem ele, o id só nascia aqui e a
+   * tela só o descobria quando o POST voltava — na fase 1 síncrona, minutos
+   * depois. Nesse intervalo o polling de status ficava desligado e a
+   * timeline não tinha o que perguntar: os agentes fechavam no servidor e a
+   * tela só se preenchia no fim.
+   *
+   * Com o id vindo do clique, a tela acompanha desde o primeiro segundo. É
+   * só um agrupador de telemetria numa rota autenticada de admin — o uuid
+   * valida a forma, e um valor repetido só mistura runs na própria tela de
+   * quem mandou.
+   */
+  batch_id: z.string().uuid().optional(),
 })
 
 export async function POST(
@@ -53,7 +66,7 @@ export async function POST(
     const body = await request.json()
     const parsed = bodySchema.parse(body)
 
-    const batchId = crypto.randomUUID()
+    const batchId = parsed.batch_id ?? crypto.randomUUID()
 
     log.info("generate-email.start", {
       storeId,

@@ -4,14 +4,25 @@
  * Retorna o status de geração para um batch. A consulta resolve o `emailId`
  * a partir do `batchId` informado e devolve TODOS os runs daquele email
  * (histórico completo). O status agregado (`running` | `done` | `error` |
- * `pending`) e o `summary` são derivados APENAS dos runs do batch atual do
- * email — runs de batches anteriores ficam visíveis pra UI montar histórico,
- * mas não influenciam o status.
+ * `pending`) e o `summary` são derivados APENAS dos runs do batch
+ * PERGUNTADO — runs de outros batches ficam visíveis pra UI montar
+ * histórico, mas não influenciam o status.
+ *
+ * A resposta é sobre o batch perguntado, e é ele que sai em
+ * `currentBatchId` (08/09). Antes o campo trazia o batch VIGENTE do e-mail:
+ * durante a fase 1 de uma geração nova, o e-mail ainda carrega o batch
+ * anterior e as runs recém-gravadas caíam no balde de "histórico" da tela.
+ * `email_batch_id` continua expondo o vigente para quem precisar comparar.
+ *
+ * A derivação do status vive em `@/lib/agents/generation-status-derive`
+ * (pura, testada) — a regra nasceu do incidente em que o `ready` da geração
+ * ANTERIOR era lido como conclusão da nova.
  */
 
 import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
+import { derivarStatusDoBatch } from "@/lib/agents/generation-status-derive"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GenerationStatus")
@@ -32,7 +43,8 @@ export async function GET(
     //    coluna `generation_batch_id` no email (batch atual). Se nada,
     //    fallback: olhar a tabela de runs pra descobrir o email.
     let emailId: string | null = null
-    let currentBatchId: string = batchId
+    /** Batch VIGENTE do e-mail — pode não ser o perguntado. */
+    let emailBatchId: string | null = null
     let emailStatus: string | null = null
     let emailFailureReason: string | null = null
     let emailUpdatedAt: string | null = null
@@ -51,7 +63,7 @@ export async function GET(
 
     if (emailByBatch) {
       emailId = emailByBatch.id as string
-      currentBatchId = (emailByBatch.generation_batch_id as string | null) ?? batchId
+      emailBatchId = (emailByBatch.generation_batch_id as string | null) ?? null
       emailStatus = (emailByBatch.status as string | null) ?? null
       emailFailureReason = (emailByBatch.failure_reason as string | null) ?? null
       emailUpdatedAt = (emailByBatch.updated_at as string | null) ?? null
@@ -76,8 +88,7 @@ export async function GET(
           )
           .eq("id", emailId)
           .maybeSingle()
-        currentBatchId =
-          (emailRow?.generation_batch_id as string | null) ?? batchId
+        emailBatchId = (emailRow?.generation_batch_id as string | null) ?? null
         emailStatus = (emailRow?.status as string | null) ?? null
         emailFailureReason = (emailRow?.failure_reason as string | null) ?? null
         emailUpdatedAt = (emailRow?.updated_at as string | null) ?? null
@@ -90,6 +101,7 @@ export async function GET(
       return successResponse(request, {
         batchId,
         currentBatchId: batchId,
+        email_batch_id: null,
         status: "pending",
         total: 0,
         completed: 0,
@@ -122,7 +134,7 @@ export async function GET(
         .select(
           "id, email_id, batch_id, agent, status, error_message, cost_cents, duration_ms, tokens_input, tokens_output, retry_count, created_at",
         )
-        .eq("batch_id", currentBatchId)
+        .eq("batch_id", batchId)
         .is("email_id", null)
         .order("created_at", { ascending: true }),
     ])
@@ -140,8 +152,8 @@ export async function GET(
       return at - bt
     })
 
-    // 3. Status e summary são derivados SO dos runs do batch atual.
-    const currentRuns = runs.filter((r) => r.batch_id === currentBatchId)
+    // 3. Status e summary são derivados SÓ dos runs do batch PERGUNTADO.
+    const currentRuns = runs.filter((r) => r.batch_id === batchId)
 
     // Agrupar por email (continuamos suportando o shape antigo)
     const byEmail = new Map<string, {
@@ -180,57 +192,20 @@ export async function GET(
       }
     }
 
-    const currentStatuses = currentRuns.map((r) => r.status as string)
-    const hasRunning = currentStatuses.includes("running")
-    const hasError = currentStatuses.includes("error")
-
-    // Status derivado do email_status (autoridade) — runs sozinhos
-    // mentem porque sempre tem agentes esperando phase2 disparar
-    // (ex: with_copy retorna apos assembler+blueprint, mas image+
-    // html+qa ainda vao rodar em background).
-    //
-    // Mid-flight states (copy_ready/rendering/image_done/qa_running):
-    // sempre "running" — UI continua polling ate email_status ficar
-    // terminal (ready ou failed) ou ate watchdog limpar.
-    const IN_FLIGHT_EMAIL_STATUSES = new Set([
-      "copy_ready",
-      "rendering",
-      "image_done",
-      "qa_running",
-      "copy_generating",
-      "copy_generating_recovery",
-      // `in_progress`: janela entre o dispatch da copy (n8n) e o callback
-      // marcar copy_ready. Sem ele, o teste "Geração completa" caía no ramo
-      // legado "todos runs success = done" (fase 1 concluída) e o polling
-      // encerrava ANTES da fase 2 aparecer na tela.
-      "in_progress",
-      "pending",
-    ])
-
-    let status: "running" | "done" | "error" | "pending"
-    if (emailStatus === "ready") {
-      status = "done"
-    } else if (emailStatus === "failed") {
-      status = "error"
-    } else if (emailStatus && IN_FLIGHT_EMAIL_STATUSES.has(emailStatus)) {
-      // Email ainda processando — mantém polling mesmo se currentRuns
-      // todos success (significa que próxima fase ainda não disparou).
-      status = "running"
-    } else if (hasRunning) {
-      status = "running"
-    } else if (hasError) {
-      status = "error"
-    } else if (
-      currentRuns.length > 0 &&
-      currentStatuses.every((s) => s === "success" || s === "skipped")
-    ) {
-      // Sem email_status (raro — email não tem generation_batch_id
-      // setado), cai no antigo "todos success = done". Mantido pra
-      // compat com fluxos legados.
-      status = "done"
-    } else {
-      status = "pending"
-    }
+    // Status do batch — regra pura e testada (generation-status-derive):
+    // o `email_status` só é autoridade quando o e-mail carrega ESTE batch E
+    // já assentou depois da última run dele. Sem essa segunda metade, o
+    // `ready` da geração ANTERIOR (que o claim não apaga) fazia a tela
+    // anunciar "concluída" no primeiro tique e parar de acompanhar.
+    const status = derivarStatusDoBatch({
+      runs: currentRuns.map((r) => ({
+        status: r.status as string,
+        created_at: r.created_at as string | null,
+      })),
+      emailOwnsBatch: emailBatchId === batchId,
+      emailStatus,
+      emailUpdatedAt,
+    })
 
     const total = byEmail.size
     const completed = Array.from(byEmail.values()).filter((e) =>
@@ -239,7 +214,10 @@ export async function GET(
 
     return successResponse(request, {
       batchId,
-      currentBatchId,
+      // A resposta é sobre o batch perguntado — é ele que a tela trata como
+      // "atual" ao separar histórico.
+      currentBatchId: batchId,
+      email_batch_id: emailBatchId,
       status,
       total,
       completed,

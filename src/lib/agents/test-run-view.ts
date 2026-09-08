@@ -267,28 +267,6 @@ export function canRecoverAfterInterrupt(
 }
 
 /**
- * O batch encontrado durante a fase 1 é MESMO o desta geração?
- *
- * Enquanto a fase 1 do "Pipeline completo" roda (síncrona, ~5 min), o POST
- * ainda não voltou e a tela procura o batch que o claim gravou, para
- * acompanhar os agentes AO VIVO em vez de mostrar 17 spinners até o fim.
- *
- * A armadilha: o email pode carregar o claim de uma geração ANTERIOR que
- * travou (a flag `auto_phase2_relaxed` sobrevive). Acompanhar aquele batch
- * mostraria runs de outra execução como se fossem desta — e, pior, ela
- * podia já estar em estado terminal, fazendo a timeline anunciar "pronto"
- * para um e-mail que mal começou. Por isso o batch que o e-mail JÁ tinha no
- * disparo é registrado e rejeitado aqui.
- */
-export function aceitaBatchDoClaim(
-  achado: string | null | undefined,
-  batchNoDisparo: string | null | undefined,
-): boolean {
-  if (!achado) return false
-  return achado !== (batchNoDisparo ?? null)
-}
-
-/**
  * Geração travada: fase in-flight (rendering/image_done/qa_running) sem
  * atualização há mais de `staleMs` (default 90s) — o watchdog vai limpar.
  *

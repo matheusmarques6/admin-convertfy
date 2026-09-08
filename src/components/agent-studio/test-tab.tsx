@@ -133,6 +133,29 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
     Boolean(t.selectedStoreId && t.selectedFlowId && t.selectedEmailId) &&
     !t.generationInFlight
 
+  // Resumo da execução — tokens/custo acumulados e o fechamento quando
+  // termina. Fica na FAIXA (compartilhada pelos dois modos) porque o modo
+  // Fluxo, que é o default, não tinha resumo nenhum: a lista de Etapas e o
+  // hub mostram o total, o canvas não mostrava nada, e a geração acabava
+  // sem que a tela dissesse que acabou nem o que custou.
+  const resumo = useMemo(() => {
+    const atual = t.statusInfo?.currentBatchId ?? t.batchId
+    const runs = (t.statusInfo?.runs ?? []).filter(
+      (r) => !atual || r.batch_id === atual,
+    )
+    if (runs.length === 0) return null
+    const s = t.statusInfo?.summary
+    return {
+      concluidos: runs.filter(
+        (r) => r.status === "success" || r.status === "skipped",
+      ).length,
+      comErro: runs.filter((r) => r.status === "error").length,
+      tokens: s?.tokensTotal ?? 0,
+      custoCents: s?.totalCost ?? 0,
+      duracaoMs: s?.totalDuration ?? 0,
+    }
+  }, [t.statusInfo, t.batchId])
+
   const headerText = runHeaderLabel({
     resultStatus: t.result?.status ?? null,
     pollStatus: t.statusInfo?.status ?? null,
@@ -312,6 +335,44 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
                 >
                   ⏱ {fmtElapsed(t.nowTick - t.startedAt)}
                 </span>
+              )}
+            </div>
+          )}
+          {resumo && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                fontSize: 11.5,
+                color: C.g500,
+                fontFamily: F.sans,
+                flexWrap: "wrap",
+                ...TNUM,
+              }}
+            >
+              <span>
+                {resumo.concluidos} agente{resumo.concluidos === 1 ? "" : "s"}{" "}
+                {t.isTerminalStatus ? "concluídos" : "até aqui"}
+                {resumo.comErro > 0 && ` · ${resumo.comErro} com erro`}
+              </span>
+              <span>{resumo.tokens.toLocaleString("pt-BR")} tokens</span>
+              <span>${(resumo.custoCents / 100).toFixed(4)}</span>
+              {/* Soma dos agentes ≠ tempo de parede (eles se sobrepõem — as
+                  imagens rodam em paralelo). O relógio da linha de cima é o
+                  tempo real; este número é quanto de trabalho foi gasto. */}
+              {resumo.duracaoMs > 0 && (
+                <span>
+                  {(resumo.duracaoMs / 1000).toFixed(1)}s somados nos agentes
+                </span>
+              )}
+              {t.isTerminalStatus && t.batchId && (
+                <a
+                  href={`/admin/settings/email-generation-logs?batch=${t.batchId}`}
+                  style={{ color: C.brand }}
+                >
+                  Ver logs completos
+                </a>
               )}
             </div>
           )}
