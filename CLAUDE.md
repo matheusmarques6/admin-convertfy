@@ -4179,5 +4179,63 @@ A regra saiu do componente para `assinaturasAsaasSemEspelho`
 (`assinatura-duplicada.ts`, puro), com esse caso como teste de
 regressão.
 
+## ConvertIA — as três perdas silenciosas (set/2026)
+
+Medido antes de escrever código: das **27 respostas do assistente, 7
+falharam (26%)** e **124 das 124 notas ativas estavam sem embedding**.
+Nenhuma das três causas aparecia em tela.
+
+**1. O 402 mais comum NÃO é falta de crédito.** Quatro das sete falhas
+eram `in_flight_budget_exhausted` com o saldo em **US$ 5,45, situação
+"ok"**. O OpenRouter RESERVA o custo máximo de cada chamada em voo
+(prompt + max_tokens no preço do modelo), então com saldo curto e
+modelo caro a segunda chamada é recusada enquanto a primeira não
+liquida — a mensagem do provedor diz "retry after in-flight requests
+settle". `friendlyModelError` casava os dois 402 na mesma regra e
+respondia "os créditos acabaram, recarregue", mandando fazer a coisa
+errada numa conta com saldo. Agora são códigos distintos:
+`credits_in_flight` (esperar) e `no_credits` (recarregar, com o link).
+O teste que fixava o comportamento antigo foi corrigido junto — teste
+que congela o erro é o que faz ele sobreviver.
+
+**2. A chamada ao MODELO não tinha retry** (as tools tinham desde a
+v3). `callWith` tratava só o slug desconhecido; qualquer outro erro
+era `throw` e matava o turno. `chamarComRetry` repete o transitório
+(in-flight, 429, 5xx, timeout) até 2× com backoff — o in-flight começa
+em **3s** porque 1s não faz a chamada anterior liquidar — e a espera
+sai do orçamento restante MENOS o mínimo de uma rodada, então insistir
+nunca custa a resposta. **Não repete a tentativa que já escreveu na
+tela**: 402/429/5xx são recusados no cabeçalho, antes do primeiro
+token, mas um timeout no meio do stream deixou texto no state e
+repetir duplicaria o parágrafo para quem está lendo.
+`meta.model_retries` grava a recuperação (ausente quando zero) — sem
+ele, o turno que insistiu 9s passa por lentidão do modelo.
+
+**3. A base inteira sem busca semântica, reportada como sucesso.** Três
+camadas conspiravam: `embedTexts` engolia a causa em `log.warn` e
+devolvia `null` (indistinguível de "nada a fazer"); `embedPending`
+parava no primeiro lote falho e o sync reportava `status:"synced"` com
+`embedded: 0`, que se lê como sucesso; e o aviso "só a busca por
+palavras rodou" estava atrás de `!embeddingsAvailable()`, que só olha
+se a CHAVE existe — e a chave é a mesma do chat, sempre existe. **O
+aviso era impossível de disparar justamente no caso real**, então a
+ConvertIA respondia de full-text degradado como se estivesse inteira.
+Agora toda saída carrega a causa (`{vectors, error}`,
+`{embedded, pending, error}`, `embedError` no sync separado de `error`
+— trazer as notas pode dar certo e a semântica ficar fora do ar) e o
+aviso depende de a semântica ter **rodado**, não de a chave existir.
+Resposta 200 sem nenhum vetor utilizável conta como falha; vetor fora
+de 1536 dimensões já era descartado, mas em silêncio. O parâmetro
+`dimensions` saiu: 1536 é o nativo do modelo, então não muda o
+resultado e só acrescenta uma forma de um dos provedores que servem o
+modelo recusar a chamada.
+
+**Regra derivada, que vale para os três**: "a chave está configurada"
+nunca é prova de que o subsistema funciona — é a mesma lição da chave
+em branco do Serper. Onde a resposta importa, o botão faz a chamada
+REAL e mostra a recusa crua ("Testar embeddings" e "Vetorizar as N
+pendentes" no card de saúde, no padrão do "Testar busca"). Antes, a
+única forma de investigar isto era por SQL e console.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
