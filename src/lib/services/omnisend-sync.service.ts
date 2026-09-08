@@ -32,8 +32,11 @@ import {
   OmnisendRateLimitError,
   OmnisendInvalidKeyError,
   OmnisendPermissionError,
+  getOmnisendBrand,
   sleep,
 } from "@/lib/integrations/omnisend/client"
+import { ehFusoValido } from "@/lib/integrations/omnisend/timezone"
+import { isStoreCurrency } from "@/lib/constants/currencies"
 
 const log = logger.child("OmnisendSync")
 
@@ -1539,15 +1542,29 @@ const COUNTRY_TIMEZONE: Record<string, string> = {
   PY: "America/Asuncion",
 }
 
-/** Resolve o IANA timezone da loja a partir do country (ISO-2) em client_stores. */
+/**
+ * IANA timezone da loja para cortar a janela do sync.
+ *
+ * Ordem: `client_stores.timezone` (o que o Omnisend informa em
+ * `/brands/current`, e portanto o MESMO fuso em que o painel deles
+ * agrega) → mapa por `country` → America/Sao_Paulo.
+ *
+ * O mapa por país sozinho não servia: `country` está errado em boa parte
+ * da base — Lena Warszawa (lenawarszawa.pl), Treuquell (.de) e Bryn Grill
+ * (-dk) estão todas como 'BR'. Toda loja europeia vinha sendo fatiada à
+ * meia-noite de São Paulo, e a diferença aparecia como divergência
+ * inexplicada contra o painel do Omnisend.
+ */
 async function resolveStoreTimezone(storeId: string): Promise<string> {
   try {
     const admin = createAdminClient()
     const { data } = await admin
       .from("client_stores")
-      .select("country")
+      .select("timezone, country")
       .eq("id", storeId)
       .single()
+    const daPlataforma = String(data?.timezone || "").trim()
+    if (ehFusoValido(daPlataforma)) return daPlataforma
     const country = String(data?.country || "BR").toUpperCase()
     return COUNTRY_TIMEZONE[country] || "America/Sao_Paulo"
   } catch {
@@ -1654,6 +1671,28 @@ export async function debugOmnisendStoreTotals(
     window: { start: startDate, end: endDate, timezone },
     month: { totalOrders: month.totalOrders, totalRevenue: month.totalRevenue, rows: month.rows },
     day: { totalOrders: day.totalOrders, totalRevenue: day.totalRevenue, rows: day.rows },
+  }
+}
+
+/**
+ * Moeda da marca conectada, já filtrada pela lista fechada.
+ *
+ * Devolve `null` (em vez de lançar) quando a API recusa ou quando o
+ * código não está na lista: o sync não pode cair por causa disso, e
+ * gravar um código que o câmbio não converte é pior que não gravar.
+ */
+async function moedaDaPlataforma(apiKey: string): Promise<string | null> {
+  try {
+    const brand = await getOmnisendBrand(apiKey, { logTag: "OmnisendSync" })
+    const code = brand?.currency ?? null
+    if (!code) return null
+    if (!isStoreCurrency(code)) {
+      log.warn("[OmnisendSync] plataforma informou moeda fora da lista aceita", { currency: code })
+      return null
+    }
+    return code
+  } catch {
+    return null
   }
 }
 
@@ -1932,13 +1971,16 @@ async function doSyncOmnisendForStore(params: {
         : totalCampaignsOrders + totalAutomationsOrders,
     }
 
-    // Currency vem do DB (client_stores.currency, migration 20241217).
-    // Omnisend nao expoe currency via API (diferente do Klaviyo que tem
-    // preferred_currency em /accounts/), entao depende do operador
-    // configurar manualmente em client_stores.currency. Quando ausente,
-    // logamos error visivel e marcamos sync_status='partial' com
-    // sync_error que aparece em /api/stores/currency-audit pra
-    // diagnostico.
+    // Moeda da loja. O comentário antigo aqui dizia que "Omnisend nao
+    // expoe currency via API" — é FALSO, e foi o que manteve dezenas de
+    // lojas no default 'BRL' com valor em euro entrando no dashboard sem
+    // conversão. `/v5/brands/current` devolve `currency` (e `timezone`)
+    // desde sempre: confirmado em 08/09/2026 contra a conta da Luxe Lift.
+    //
+    // Aqui a busca só acontece quando o cadastro está VAZIO — é o
+    // auto-conserto do caso que este bloco reclamava. A sincronia
+    // completa (inclusive corrigir moeda errada) mora em
+    // `store-platform-profile.service`, chamada pelo backfill e pela tela.
     let currency = "BRL"
     let currencyMissing = false
     try {
@@ -1951,11 +1993,25 @@ async function doSyncOmnisendForStore(params: {
       if (storeCurrency?.currency) {
         currency = storeCurrency.currency
       } else {
-        currencyMissing = true
-        log.error(
-          "[OmnisendSync] Store sem currency configurado — assumindo BRL. Valores em moeda estrangeira NAO serao convertidos no dashboard. Configure client_stores.currency.",
-          { storeId },
-        )
+        const daPlataforma = await moedaDaPlataforma(apiKey)
+        if (daPlataforma) {
+          currency = daPlataforma
+          await admin
+            .from("client_stores")
+            .update({
+              currency: daPlataforma,
+              currency_source: "omnisend",
+              currency_synced_at: new Date().toISOString(),
+            })
+            .eq("id", storeId)
+          log.info("[OmnisendSync] moeda da loja preenchida pela plataforma", { storeId, currency })
+        } else {
+          currencyMissing = true
+          log.error(
+            "[OmnisendSync] Store sem currency e a plataforma não informou uma aceita — assumindo BRL. Valores em moeda estrangeira NAO serao convertidos no dashboard.",
+            { storeId },
+          )
+        }
       }
     } catch (err) {
       currencyMissing = true

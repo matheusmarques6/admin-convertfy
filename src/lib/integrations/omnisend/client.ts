@@ -520,3 +520,55 @@ export async function omnisendPaginateV3<TItem>(
 
   return allItems
 }
+
+/** Dados da marca conectada — `GET /v5/brands/current`. */
+export interface OmnisendBrand {
+  brandID: string | null
+  name: string | null
+  website: string | null
+  /** ISO 4217, ex. "GBP". É a moeda em que o painel do Omnisend mostra a receita. */
+  currency: string | null
+  /**
+   * IANA, ex. "America/Sao_Paulo". É o fuso de RELATÓRIO da marca — o
+   * mesmo que o painel do Omnisend usa para cortar os dias. Não é o fuso
+   * do país da loja, e é justamente por isso que serve: enviar este fuso
+   * na janela do relatório é o que faz o nosso número bater com o deles.
+   */
+  timezone: string | null
+  platform: string | null
+  connected: boolean | null
+}
+
+/**
+ * Busca a marca conectada à chave.
+ *
+ * Existe porque o comentário antigo do sync ("Omnisend nao expoe currency
+ * via API") era falso: `/v5/brands/current` devolve moeda E fuso desde
+ * sempre — confirmado em 08/09/2026 contra a conta da Luxe Lift, que
+ * respondeu `{"currency":"GBP","timezone":"America/Sao_Paulo"}`. Enquanto
+ * acreditamos no comentário, a moeda ficou no default 'BRL' de dezenas de
+ * lojas e o relatório converteu câmbio errado em silêncio.
+ */
+export async function getOmnisendBrand(
+  apiKey: string,
+  options?: { logTag?: string; throwOnError?: boolean },
+): Promise<OmnisendBrand | null> {
+  const raw = await omnisendRequest<Record<string, unknown>>(apiKey, "/v5/brands/current", {
+    logTag: options?.logTag ?? "OmnisendBrand",
+    throwOnError: options?.throwOnError ?? false,
+  })
+  if (!raw) return null
+  const texto = (v: unknown): string | null => {
+    const s = typeof v === "string" ? v.trim() : ""
+    return s.length > 0 ? s : null
+  }
+  return {
+    brandID: texto(raw.brandID ?? raw.brandId),
+    name: texto(raw.name),
+    website: texto(raw.website),
+    currency: texto(raw.currency)?.toUpperCase() ?? null,
+    timezone: texto(raw.timezone),
+    platform: texto(raw.platform),
+    connected: typeof raw.connected === "boolean" ? raw.connected : null,
+  }
+}

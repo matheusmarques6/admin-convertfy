@@ -14,7 +14,7 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore, type OmnisendSyncData } from "@/lib/services/omnisend-sync.service"
 import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
-import { omnisendDateRange, offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
+import { fusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
 
 /** Persiste os dados do sync vivo nas tabelas omnisend_*_metrics +
@@ -53,6 +53,25 @@ async function getStoreCurrency(storeId: string): Promise<string> {
     return (data?.currency as string) || "BRL"
   } catch {
     return "BRL"
+  }
+}
+
+/**
+ * Fuso IANA da loja — é ele que fatia a janela do relatório. Antes o
+ * offset era adivinhado pela MOEDA, o que dava o mesmo "+01:00" para
+ * Berlim e Lisboa e ignorava horário de verão.
+ */
+async function getStoreTimezone(storeId: string): Promise<string | null> {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from("client_stores")
+      .select("timezone")
+      .eq("id", storeId)
+      .maybeSingle()
+    return (data?.timezone as string | null) ?? null
+  } catch {
+    return null
   }
 }
 
@@ -326,12 +345,11 @@ export async function buildOmnisendCampaignsResponse(
   // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
   const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
   // Converte janela pra fuso da loja com `to` exclusivo (Omnisend convention).
-  const currency = await getStoreCurrency(store.storeId)
-  const tzOffset = offsetForCurrency(currency)
+  const { tz } = fusoDaLoja(await getStoreTimezone(store.storeId))
   const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
     startDateStr,
     endDateStr,
-    tzOffset,
+    tz,
   )
   try {
     const result = await syncOmnisendForStore({
@@ -514,12 +532,11 @@ export async function buildOmnisendFlowsResponse(
 
   // daysForPeriod precisa do rawPeriod (today=1, yesterday=1)
   const days = daysForPeriod(rawPeriod, customStartDate, customEndDate)
-  const currency = await getStoreCurrency(store.storeId)
-  const tzOffset = offsetForCurrency(currency)
+  const { tz } = fusoDaLoja(await getStoreTimezone(store.storeId))
   const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
     startDateStr,
     endDateStr,
-    tzOffset,
+    tz,
   )
   try {
     const result = await syncOmnisendForStore({

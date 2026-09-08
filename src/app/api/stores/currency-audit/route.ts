@@ -1,18 +1,26 @@
 /**
  * GET /api/stores/currency-audit
  *
- * Diagnostico de configuracao de moeda em todas as lojas da org. Lista
- * cada loja mostrando:
- *  - currency configurado em client_stores.currency (source of truth
- *    pra Omnisend, fallback pra Klaviyo)
- *  - currency reportado em store_revenue_summary.currency (vem do
- *    sync — Klaviyo Account API ou client_stores.currency p/ Omnisend)
- *  - plataforma detectada (klaviyo/omnisend/none)
- *  - status: "ok" | "missing" | "mismatch" | "no-data"
+ * Diagnóstico de moeda E fuso de cada loja da org.
  *
- * Use: dashboard de auditoria pra identificar lojas EUR/USD que estao
- * caindo em fallback BRL (sem conversao) e gerando inconsistencia nos
- * cards de receita do dashboard.
+ * ── Por que mudou em 08/09/2026 ──────────────────────────────────────
+ *
+ * A versão anterior comparava `client_stores.currency` com
+ * `store_revenue_summary.currency` e chamava de "OK" quando batiam. Para
+ * loja Omnisend isso era CIRCULAR: o `summary.currency` é escrito pelo
+ * sync a partir do próprio `client_stores.currency`. Lena Warszawa
+ * (lenawarszawa.pl) aparecia "OK" em EUR, Treuquell (.de) "OK" em BRL —
+ * a auditoria confirmava o erro que deveria denunciar.
+ *
+ * Agora o eixo é a PROCEDÊNCIA (`currency_source`/`currency_synced_at`,
+ * migration 20261123): moeda que ninguém conferiu com a plataforma sai
+ * como `nunca-conferido`, não como OK. O confronto com a plataforma é
+ * feito pelo botão (POST /api/stores/platform-profile-sync), que faz a
+ * chamada de rede — aqui é leitura de banco, tem que ser rápida.
+ *
+ * O fuso entra na mesma tela porque é o mesmo defeito: sem
+ * `client_stores.timezone` a janela do relatório é cortada num fuso
+ * assumido, e o total diverge do painel do Omnisend sem explicação.
  */
 
 import { NextRequest } from "next/server"
@@ -25,14 +33,29 @@ const log = logger.child("CurrencyAudit")
 
 export const dynamic = "force-dynamic"
 
-interface StoreCurrencyAudit {
+type Procedencia = "omnisend" | "shopify" | "klaviyo" | "manual" | null
+
+export type StatusMoeda =
+  | "plataforma"
+  | "manual"
+  | "nunca-conferido"
+  | "sem-config"
+  | "divergencia"
+  | "sem-dados"
+
+export interface StoreCurrencyAudit {
   storeId: string
   storeName: string
   clientName: string | null
   platform: "klaviyo" | "omnisend" | "none"
   configuredCurrency: string | null
+  currencySource: Procedencia
+  currencySyncedAt: string | null
+  /** Só o Klaviyo reporta moeda própria; para Omnisend isto espelha o cadastro. */
   reportedCurrency: string | null
-  status: "ok" | "missing-config" | "mismatch" | "no-data" | "default-brl"
+  timezone: string | null
+  timezoneSource: Procedencia
+  status: StatusMoeda
   storeRevenueLocal: number
   storeRevenueBRL: number | null
   conversionRatio: number | null
@@ -52,6 +75,10 @@ export async function GET(request: NextRequest) {
       id: string
       store_name: string
       currency: string | null
+      currency_source: Procedencia
+      currency_synced_at: string | null
+      timezone: string | null
+      timezone_source: Procedencia
       omnisend_api_key: string | null
       klaviyo_private_key: string | null
       klaviyo_api_key: string | null
@@ -59,6 +86,10 @@ export async function GET(request: NextRequest) {
       client_id: string | null
       clients: { name: string } | { name: string }[] | null
     }
+
+    const COLUNAS_COMPLETAS =
+      "id, store_name, currency, currency_source, currency_synced_at, timezone, timezone_source, " +
+      "omnisend_api_key, klaviyo_private_key, klaviyo_api_key, email_platform, client_id, clients(name)"
 
     async function fetchStores(cols: string) {
       return admin
@@ -68,9 +99,14 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
         .order("store_name")
     }
-    let storesResp = await fetchStores(
-      "id, store_name, currency, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, email_platform, client_id, clients(name)",
-    )
+    let storesResp = await fetchStores(COLUNAS_COMPLETAS)
+    // Sem a migration 20261123 as colunas de procedência não existem — a
+    // tela degrada para o diagnóstico antigo em vez de morrer em 42703.
+    if (storesResp.error && /currency_source|timezone|currency_synced_at/.test(storesResp.error.message || "")) {
+      storesResp = await fetchStores(
+        "id, store_name, currency, omnisend_api_key, klaviyo_private_key, klaviyo_api_key, email_platform, client_id, clients(name)",
+      )
+    }
     if (storesResp.error && /email_platform|omnisend_api_key/.test(storesResp.error.message || "")) {
       storesResp = await fetchStores(
         "id, store_name, currency, klaviyo_private_key, klaviyo_api_key, client_id, clients(name)",
@@ -81,7 +117,7 @@ export async function GET(request: NextRequest) {
     const stores = (storesResp.data || []) as unknown as StoreRow[]
 
     if (stores.length === 0) {
-      return successResponse(request, { stores: [], summary: emptySummary() })
+      return successResponse(request, { stores: [], summary: emptySummary(), period })
     }
 
     type SummaryRow = {
@@ -101,7 +137,8 @@ export async function GET(request: NextRequest) {
     const summaryMap = new Map<string, SummaryRow>()
     for (const s of summaries || []) summaryMap.set(s.store_id, s)
 
-    // Carrega taxas atuais (1 BRL = X foreign) so quando precisar
+    // Cotações atuais (1 BRL = X estrangeira) — só carregadas se alguma
+    // loja tiver receita em moeda estrangeira para converter.
     let rates: Record<string, number> | null = null
     async function loadRates(): Promise<Record<string, number> | null> {
       if (rates) return rates
@@ -132,7 +169,11 @@ export async function GET(request: NextRequest) {
         }
 
         const configured = s.currency || null
-        const reported = summary?.currency || null
+        const fonte = s.currency_source ?? null
+        // Para Omnisend o "reportado" é o próprio cadastro (o sync copia)
+        // — não serve de confronto, e mostrá-lo como se servisse foi o
+        // que sustentou o falso OK. Só o Klaviyo reporta moeda própria.
+        const reported = platform === "klaviyo" ? summary?.currency || null : null
         const storeRevLocal = Number(summary?.store_total_revenue) || 0
 
         let storeRevBRL: number | null = null
@@ -153,24 +194,31 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Status
-        let status: StoreCurrencyAudit["status"]
+        let status: StatusMoeda
         let hint: string
-        if (!summary) {
-          status = "no-data"
-          hint = "Sem registro em store_revenue_summary. Loja ainda nao sincronizada."
-        } else if (!configured && platform === "omnisend") {
-          status = "missing-config"
-          hint = "Loja Omnisend sem currency em client_stores — sync vai cair em fallback BRL e nao converter valores."
-        } else if (configured && reported && configured !== reported) {
-          status = "mismatch"
-          hint = `Configurado=${configured} mas Klaviyo Account reporta=${reported}. Use o reportado pelo Klaviyo (atualize client_stores.currency).`
-        } else if (effectiveCurrency === "BRL" && !configured) {
-          status = "default-brl"
-          hint = "Sem currency configurado — sistema assumiu BRL. Confirme se realmente e BRL ou ajuste."
+        if (!configured) {
+          status = "sem-config"
+          hint =
+            "Sem moeda no cadastro — o sync assume BRL e nenhum valor estrangeiro é convertido. Clique em Conferir com a plataforma."
+        } else if (reported && configured !== reported) {
+          status = "divergencia"
+          hint = `Cadastro diz ${configured} e o Klaviyo reporta ${reported}. O Klaviyo é a fonte: ajuste o cadastro.`
+        } else if (fonte === "manual") {
+          status = "manual"
+          hint = "Moeda definida à mão. A sincronia com a plataforma respeita este valor (use Forçar para sobrescrever)."
+        } else if (fonte) {
+          status = "plataforma"
+          hint = s.currency_synced_at
+            ? `Conferido com ${fonte} em ${new Date(s.currency_synced_at).toLocaleString("pt-BR")}.`
+            : `Veio de ${fonte}.`
+        } else if (!summary) {
+          status = "sem-dados"
+          hint = "Loja ainda não sincronizada, e a moeda nunca foi conferida com a plataforma."
         } else {
-          status = "ok"
-          hint = "Configuracao consistente."
+          status = "nunca-conferido"
+          hint =
+            `Está ${configured}, mas ninguém conferiu com a plataforma — pode ser o default. ` +
+            "Clique em Conferir com a plataforma."
         }
 
         return {
@@ -179,7 +227,11 @@ export async function GET(request: NextRequest) {
           clientName: client?.name ?? null,
           platform,
           configuredCurrency: configured,
+          currencySource: fonte,
+          currencySyncedAt: s.currency_synced_at ?? null,
           reportedCurrency: reported,
+          timezone: s.timezone ?? null,
+          timezoneSource: s.timezone_source ?? null,
           status,
           storeRevenueLocal: storeRevLocal,
           storeRevenueBRL: storeRevBRL,
@@ -191,11 +243,13 @@ export async function GET(request: NextRequest) {
 
     const summary = {
       total: results.length,
-      ok: results.filter((r) => r.status === "ok").length,
-      missingConfig: results.filter((r) => r.status === "missing-config").length,
-      mismatch: results.filter((r) => r.status === "mismatch").length,
-      defaultBrl: results.filter((r) => r.status === "default-brl").length,
-      noData: results.filter((r) => r.status === "no-data").length,
+      plataforma: results.filter((r) => r.status === "plataforma").length,
+      manual: results.filter((r) => r.status === "manual").length,
+      nuncaConferido: results.filter((r) => r.status === "nunca-conferido").length,
+      semConfig: results.filter((r) => r.status === "sem-config").length,
+      divergencia: results.filter((r) => r.status === "divergencia").length,
+      semDados: results.filter((r) => r.status === "sem-dados").length,
+      semFuso: results.filter((r) => !r.timezone).length,
       currenciesInUse: Array.from(
         new Set(
           results
@@ -214,11 +268,13 @@ export async function GET(request: NextRequest) {
 function emptySummary() {
   return {
     total: 0,
-    ok: 0,
-    missingConfig: 0,
-    mismatch: 0,
-    defaultBrl: 0,
-    noData: 0,
+    plataforma: 0,
+    manual: 0,
+    nuncaConferido: 0,
+    semConfig: 0,
+    divergencia: 0,
+    semDados: 0,
+    semFuso: 0,
     currenciesInUse: [] as string[],
   }
 }

@@ -11,7 +11,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
-import { ensureThreadAvatar } from "@/lib/services/crm-contact-avatar.service"
+import { ensureThreadAvatar, isMirroredAvatar } from "@/lib/services/crm-contact-avatar.service"
 import { normalizeThreadTags, THREAD_TAG_MAX_LENGTH, THREAD_TAGS_MAX_COUNT } from "@/lib/crm/thread-tags"
 import { logger } from "@/lib/logger"
 
@@ -67,7 +67,7 @@ export async function GET(
     // abertura (IG Messaging Profile / Evolution) e persiste. Em
     // after(): inline, uma Evolution lenta (retry interno) atrasaria a
     // abertura da conversa; o poll de 30s traz a foto persistida.
-    if (!before && !thread.contact_avatar_url) {
+    if (!before && !isMirroredAvatar(thread.contact_avatar_url as string | null)) {
       const forAvatar = thread as unknown as Parameters<typeof ensureThreadAvatar>[1]
       after(async () => {
         try {

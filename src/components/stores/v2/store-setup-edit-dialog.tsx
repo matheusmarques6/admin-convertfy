@@ -36,6 +36,7 @@ import { CurrencyInput } from "@/components/ui/currency-input"
 import { useToast } from "@/lib/hooks/use-toast"
 import { COUNTRIES, PLATFORMS } from "@/lib/constants/onboarding"
 import { STORE_CURRENCIES } from "@/lib/constants/currencies"
+import { STORE_TIMEZONES } from "@/lib/constants/timezones"
 import {
   STORE_LANGUAGE_OPTIONS,
   languageLabelToCode,
@@ -48,6 +49,7 @@ export interface StoreSetupEditable {
   country?: string | null
   language?: string | null
   currency?: string | null
+  timezone?: string | null
   niche?: string | null
   mrr_cents?: number | null
   contract_start_date?: string | null
@@ -77,6 +79,7 @@ function toForm(initial: StoreSetupEditable) {
     country: initial.country ?? NONE,
     language: languageLabelToCode(initial.language) ?? NONE,
     currency: initial.currency ?? NONE,
+    timezone: initial.timezone ?? NONE,
     niche: initial.niche ?? "",
     mrr_cents: initial.mrr_cents ?? 0,
     contract_start_date: initial.contract_start_date?.slice(0, 10) ?? "",
@@ -112,6 +115,7 @@ export function StoreSetupEditDialog({ storeId, open, section, initial, onOpenCh
     if (form.country !== base.country) out.country = opt(form.country)
     if (form.language !== base.language) out.language = opt(form.language)
     if (form.currency !== base.currency) out.currency = opt(form.currency)
+    if (form.timezone !== base.timezone) out.timezone = opt(form.timezone)
     if (form.niche !== base.niche) out.niche = form.niche.trim() || null
     if (form.mrr_cents !== base.mrr_cents) out.mrr_cents = form.mrr_cents > 0 ? form.mrr_cents : null
     if (form.contract_start_date !== base.contract_start_date)
@@ -235,6 +239,31 @@ export function StoreSetupEditDialog({ storeId, open, section, initial, onOpenCh
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fuso horário</Label>
+                <Select value={form.timezone} onValueChange={(v) => set("timezone", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>— (assumir America/Sao_Paulo)</SelectItem>
+                    {/* Fuso que veio da plataforma e não está no atalho da
+                        tela continua selecionável — recusá-lo faria o select
+                        discordar do que está gravado. */}
+                    {initial.timezone && !STORE_TIMEZONES.some((t) => t.value === initial.timezone) && (
+                      <SelectItem value={initial.timezone}>{initial.timezone} (atual)</SelectItem>
+                    )}
+                    {STORE_TIMEZONES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label} · {t.value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Corta a janela dos relatórios. Vem da plataforma de e-mail quando conectada.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>País principal</Label>
