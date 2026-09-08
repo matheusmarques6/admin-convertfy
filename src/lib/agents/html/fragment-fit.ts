@@ -26,6 +26,7 @@
  * Puro (zero I/O) — testável.
  */
 
+import { neutralizeGutterPadding } from "@/lib/email-workspace/email-width"
 import { hasDocumentShell, stripDocumentShell } from "../shared/document-shell"
 
 export interface FitOptions {
@@ -63,6 +64,14 @@ export interface FitResult {
    * `@media` da variante. Quem monta o documento reinjeta no head.
    */
   styles?: string[]
+  /**
+   * A calha da variante tinha recuo horizontal e ele foi zerado no encaixe
+   * (ver `neutralizeGutterPadding`). Fora do documento aquele recuo é
+   * invisível; DENTRO da célula de 600px ele soma à largura do container e
+   * estica o email. Contagem para a telemetria — não é erro da variante,
+   * é a diferença entre a peça solta e a peça encaixada.
+   */
+  gutterNeutralized?: boolean
 }
 
 const wrap = (t: string): string =>
@@ -71,8 +80,27 @@ const wrap = (t: string): string =>
 /**
  * Adapta o fragmento para o contexto de linha da tabela container.
  * Retorna `null` quando o fragmento não encaixa.
+ *
+ * O encaixe passa pelo `neutralizeGutterPadding` ANTES de tudo: o destino é
+ * sempre a célula de 600px do documento, e a calha da variante — legítima
+ * na peça solta — ali vira um recuo que empurra o container para fora dos
+ * 600px. Fica aqui, e não em cada chamador, porque montagem e enxerto
+ * precisam do MESMO fragmento: se só a montagem normalizasse, o enxerto
+ * compararia a região montada com a variante crua, não veria igualdade e
+ * reenxertaria a versão com recuo — desfazendo o conserto.
  */
 export function fitFragment(
+  variantHtml: string,
+  opts: FitOptions = {},
+): FitResult | null {
+  const canonical = neutralizeGutterPadding(variantHtml ?? "")
+  const fit = fitVariant(canonical.html, opts)
+  if (!fit) return null
+  return canonical.changed ? { ...fit, gutterNeutralized: true } : fit
+}
+
+/** O encaixe em si, já com a calha normalizada. Recursivo. */
+function fitVariant(
   variantHtml: string,
   opts: FitOptions = {},
 ): FitResult | null {
@@ -84,7 +112,7 @@ export function fitFragment(
   }
   // Comentário inicial é comum nas variantes — pula e reavalia.
   const afterComment = t.replace(/^(?:<!--[\s\S]*?-->\s*)+/, "")
-  if (afterComment !== t) return fitFragment(afterComment, opts)
+  if (afterComment !== t) return fitVariant(afterComment, opts)
 
   // Documento completo: a casca sai e o MIOLO é reavaliado pela mesma
   // matriz. Isto vem ANTES do wrapUnknown de propósito — embrulhar o
@@ -105,7 +133,7 @@ export function fitFragment(
   if (hasDocumentShell(t)) {
     const inner = stripDocumentShell(t)
     if (!inner.stripped || !inner.html || inner.html === t) return null
-    const fit = fitFragment(inner.html, { ...opts, wrapUnknown: true })
+    const fit = fitVariant(inner.html, { ...opts, wrapUnknown: true })
     if (!fit) return null
     return {
       ...fit,

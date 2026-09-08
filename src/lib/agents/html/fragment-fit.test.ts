@@ -137,3 +137,49 @@ describe("miolo do body que não começa com tabela", () => {
     }
   })
 })
+
+/**
+ * A calha da variante no encaixe.
+ *
+ * O destino é sempre a célula de 600px do documento. Ali o recuo horizontal
+ * da calha — invisível na peça solta, onde a calha ocupa a janela — soma à
+ * largura do container e estica o email (incidente 08/09: `.email-container`
+ * de 680px, cada bloco numa largura diferente).
+ */
+const VARIANTE_COM_CALHA = `<!DOCTYPE html><html><head><style>.x{color:red}</style></head><body>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEE;">
+<tr><td align="center" style="padding:28px 28px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;"><tr><td>{{HEADLINE}}</td></tr></table>
+</td></tr></table>
+</body></html>`
+
+describe("fitFragment + calha", () => {
+  it("zera o recuo horizontal da calha e sinaliza na volta", () => {
+    const fit = fitFragment(VARIANTE_COM_CALHA, { wrapUnknown: true })
+    expect(fit).not.toBeNull()
+    expect(fit!.gutterNeutralized).toBe(true)
+    expect(fit!.html).toContain("padding:28px 0")
+    expect(fit!.html).not.toContain("padding:28px 28px")
+    // O resto do encaixe segue igual: casca fora, CSS resgatado, placeholder
+    // intacto.
+    expect(fit!.unshelled).toBe(true)
+    expect(fit!.styles).toEqual([".x{color:red}"])
+    expect(fit!.html).toContain("{{HEADLINE}}")
+  })
+
+  it("variante sem recuo na calha não é marcada", () => {
+    const fit = fitFragment(VARIANTE_COM_CALHA.replace("padding:28px 28px;", "padding:28px 0;"), {
+      wrapUnknown: true,
+    })
+    expect(fit!.gutterNeutralized).toBeUndefined()
+  })
+
+  it("o modo conservador (enxerto) recebe o MESMO fragmento", () => {
+    // Se só a montagem normalizasse, o enxerto compararia a região montada
+    // com a variante crua, não veria igualdade e reenxertaria a versão com
+    // recuo — desfazendo o conserto no caminho principal.
+    expect(fitFragmentToRow(VARIANTE_COM_CALHA)).toBe(
+      fitFragment(VARIANTE_COM_CALHA, { wrapUnknown: true })!.html,
+    )
+  })
+})

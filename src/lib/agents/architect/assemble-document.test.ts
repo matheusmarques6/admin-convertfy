@@ -541,3 +541,60 @@ describe("coberturaSuficiente", () => {
     expect(coberturaSuficiente(stats([], [])).motivo).toBe("nenhuma posição na sequência")
   })
 })
+
+/**
+ * A largura do email montado.
+ *
+ * Incidente 08/09 (Hero Boxers): o email saía "fora dos 600px". As
+ * variantes estavam certas — container em 600 —, mas cada uma trazia a
+ * própria calha de boilerplate (`<table width="100%">` + `<td>` com
+ * padding), e dentro da célula de 600px do documento aquele padding SOMA ao
+ * container. Medido em Chromium: calhas de 0, 28 e 40px produziram um
+ * `.email-container` de 680px, com scroll horizontal e cada bloco
+ * centralizado numa largura diferente. Depois do conserto: 600px exatos.
+ */
+const COM_CALHA = (padding: string, miolo: string) =>
+  `<!DOCTYPE html><html><head></head><body>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEE;">
+<tr><td align="center" style="padding:${padding};">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;"><tr><td>${miolo}</td></tr></table>
+</td></tr></table>
+</body></html>`
+
+describe("assembleDocument — a calha não empurra o container", () => {
+  it("zera o recuo horizontal de cada calha e registra as seções", () => {
+    const { html, stats } = assembleDocument({
+      slots: [
+        slot("hero", "a", COM_CALHA("0", "{{HERO_HEADLINE}}")),
+        slot("body", "b", COM_CALHA("28px 28px", "{{BODY_TEXT}}")),
+        slot("products", "c", COM_CALHA("20px 40px", "{{PRODUCT_1_NAME}}")),
+      ],
+    })
+    expect(stats.guttersNeutralized).toEqual(["body", "products"])
+    expect(html).toContain("padding:28px 0")
+    expect(html).toContain("padding:20px 0")
+    expect(html).not.toContain("padding:28px 28px")
+    expect(html).not.toContain("padding:20px 40px")
+    // O container do documento continua único e em 600.
+    expect(html).toContain('width="600" style="width:600px;max-width:600px')
+    // Nada mais mudou: placeholders e blocos seguem inteiros.
+    expect(html).toContain("{{HERO_HEADLINE}}")
+    expect(html).toContain("{{PRODUCT_1_NAME}}")
+    expect(stats.blocks).toBe(3)
+  })
+
+  it("recuo DENTRO do container é do texto e sobrevive", () => {
+    const { html, stats } = assembleDocument({
+      slots: [
+        slot(
+          "body",
+          "a",
+          `<!DOCTYPE html><html><body><table width="600" style="width:600px;max-width:600px;">
+<tr><td style="padding:40px 32px;">{{BODY_TEXT}}</td></tr></table></body></html>`,
+        ),
+      ],
+    })
+    expect(stats.guttersNeutralized).toEqual([])
+    expect(html).toContain("padding:40px 32px")
+  })
+})
