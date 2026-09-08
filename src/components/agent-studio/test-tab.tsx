@@ -111,6 +111,9 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
         FLOW_TYPE_LABELS[t.selectedFlow.flow_type] ?? t.selectedFlow.flow_type,
       cost_cents: 0,
       runs: [],
+      // A aba Teste dispara pelo hook antigo (sem overrides); execução
+      // manual com overrides nasce na aba Execuções.
+      manual: null,
     }
   }, [t.selectedEmailId, t.selectedFlow, t.selectedEmail, t.selectedStoreId, t.stores, t.statusInfo, t.result?.status, t.nowTick])
 

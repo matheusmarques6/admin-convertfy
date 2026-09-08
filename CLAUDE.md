@@ -3698,18 +3698,92 @@ aberta). **Limite declarado:** não existe progresso DENTRO de um step — uma
 chamada de LLM não reporta nada entre começo e fim, então o nó fica
 "rodando" por 30–240s sem fração, e barra ali seria medida inventada.
 
-**Decisões para as camadas seguintes** (execução como entidade, overrides
-por execução, pin): linha dura manual × produção (produção ignora pin e
-desativação, como no n8n); desativar vale para TODOS os nós, mas o disparo
-é **recusado antes de gastar** quando falta insumo sem "passa adiante"
-(Curador, Blueprint, Copy) — a premissa "cai no template global, que tem
-hero" é FALSA (o global do welcome-1 tem zero placeholders e nenhum
-marcador `cfy:hero`), então deixar rodar para descobrir custa a fase 1 e
-termina em `hero_failed` garantido; os três modos parciais (parar em X,
-rodar só X, retomar de X); pin do pipeline INTEIRO, fase 1 incluída (a fase
-1 leva ~220s — sem pin, "testar até onde eu quiser" é impagável); grafo
-segue em CÓDIGO, só operável. O watchdog terá de respeitar execução manual
-pausada, senão parar no nó X e sair para almoçar devolve a execução morta.
+**Uma feature inteira estava morta em produção** (descoberta 08/09): a
+migration `20260816_agent_runs_live.sql` nunca foi aplicada, então
+`email_generation_runs.updated_at` NÃO EXISTIA — o SSE de runs (AE-9) fazia
+`.gt("updated_at", …)`, tomava 42703 a cada volta de 2s e caía calado no
+SWR. A live view de agentes nunca recebeu um `run_upsert`. Aplicada junto
+com o delta. **Lição operacional: migration deste repo é aplicada à mão e
+SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
+erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
+quatro dias sem gravar run porque o CHECK não tinha o valor).
+
+## Execução manual: desativar, pinar e parar onde quiser (set/2026, migration 20261128)
+
+Camadas B/C/D do plano. `email_generation_executions` (mode manual|producao,
+`overrides`, `config_snapshot`, status, `stopped_at_node`) +
+`email_generation_runs.execution_id`. Régua e gate no módulo PURO
+`agents/execucao/overrides.ts`, usado pela TELA e pelo SERVIDOR.
+
+**A linha dura vive numa função**: `gateFor(node, overrides, mode)` devolve
+gate NEUTRO quando `mode !== 'manual'`. Não consulta intenção, consulta
+modo — vale para override gravado por engano, por corrida ou por `curl` com
+o modo errado. É o que impede um pin esquecido de mandar ao cliente um
+e-mail com a copy congelada de outro.
+
+**Só o modo MANUAL grava linha**, e é decisão: produção não pode ter
+override por construção, então a linha seria telemetria pura (que já existe
+em runs/status/batch), e fechá-la exigiria cobrir cinco saídas distintas —
+linha `running` órfã é o estado zumbi que este repo já pagou caro. A lista
+da esquerda segue agrupando produção por e-mail; o que ela ganhou é o selo
+da execução manual viva, o que ela mudou e o botão de cancelar.
+
+**A régua de degradação por nó** (`DEGRADACAO`): `passa_adiante` (o step
+seguinte usa a entrada — o que o `resolveAgentSwitch` já fazia),
+`roda_degradado` (segue com menos, e o motivo diz o quê) e `recusa`. As
+quatro recusas são Curador, Blueprint, Copy e Dispatch: a premissa "cai no
+template global, que TEM hero" é FALSA (o global do welcome-1 tem 21.314
+chars, zero placeholders, nenhum marcador `cfy:hero`), então deixar rodar
+para descobrir custa a fase 1 inteira e termina em `hero_failed` de
+qualquer jeito. Um teste garante que TODO nó do grafo tem degradação
+declarada — nó novo sem entrada reprova em vez de aparecer na tela sem
+explicação.
+
+**Pin = "não execute; a saída gravada vale"** (artefato da fase 1, copy dos
+blocos, HTML do estágio). É a única coisa que destrava a recusa: desativar o
+Curador é lacuna, pinar o Curador é dizer que a referência gravada serve.
+Repor `parsed_output` de run arbitrária ficou fora — exigiria escrever de
+volta nos artefatos. **Pin sem artefato é tão fatal quanto desativar sem
+pin**, e a régua pura não pode ver isso: daí a segunda régua com I/O
+(`verificarPins`), que também recusa `start_from` sem HTML persistido —
+a cadeia trata "estágio sem HTML" como inconsistente e RECOMEÇA do zero, ou
+seja, o pedido seria ignorado em silêncio.
+
+**Os três modos parciais**: `stop_after`, "rodar só X"
+(`overridesSoEsteNo` = pina tudo antes + para depois + `start_from`) e
+retomar de X (`start_from` → `html_pipeline_stage`, o resume que a cadeia já
+tinha). Um teste garante que o atalho NUNCA produz override que o servidor
+recusa — senão o botão existiria para falhar.
+
+**O watchdog respeita a pausa**: `stop_after` deixa o e-mail em `rendering`
+com o estágio persistido, indistinguível de geração travada por fora. Os
+dois fronts que o tocavam (sweep de `timeout_phase2` e retomada in-process)
+excluem os pausados; fail-open com lista vazia. Sem isso, parar no nó X e
+sair para almoçar devolvia `failed:timeout_phase2`.
+
+**Duas chamadas no disparo, de propósito**: `POST
+/api/admin/agents/executions/manual` grava a execução e o estágio, e devolve
+qual disparo fazer; o disparo é o que JÁ EXISTE (`generate-email`, com fase
+1 síncrona, split da fase 2 e fallback sem `INTERNAL_SECRET`).
+Reimplementá-lo criaria um segundo caminho que divergiria na primeira
+mudança. O runner acha a execução sozinho pelo `email_id` — nenhum
+parâmetro novo atravessa as três fronteiras de processo do pipeline.
+
+Invariantes no banco: `uniq_ege_manual_viva` (uma manual viva por e-mail; o
+segundo disparo toma 409 em vez de embaralhar overrides de duas pessoas no
+mesmo HTML), trigger de `updated_at` com `clock_timestamp()`, RPC com
+predicados literais, e RLS `TO authenticated` com escopo por org
+(`org_members.profile_id`, não `user_id` neste schema) — a tabela nasce
+fechada em vez de nascer com o débito das irmãs. `execution_id` degrada:
+coluna ausente → retry sem ela, senão uma feature de teste apagaria a
+telemetria inteira.
+
+**Na tela**: painel do nó com "Nesta execução" (Desativar · Pinar · Parar
+aqui · Rodar só este), o rascunho pinta no canvas quem não vai rodar ANTES
+do disparo (reusa o status `pulado`, sem inventar um sexto) e a barra mostra
+o resumo e as recusas nó a nó, com o botão travado enquanto houver recusa.
+Desativar e pinar são EXCLUSIVOS na tela: os dois impedem o nó de rodar, e
+dois selos ao mesmo tempo fariam o operador não saber qual valeu.
 
 ---
 

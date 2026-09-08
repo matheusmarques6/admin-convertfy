@@ -42,6 +42,17 @@ import {
   useAgentExecutionsLive,
   type LiveStatus,
 } from "@/hooks/use-agent-executions-live"
+import {
+  overridesSoEsteNo,
+  type ExecutionOverrides,
+} from "@/lib/agents/execucao/overrides"
+import {
+  BarraDeExecucaoManual,
+  NoNaExecucaoManual,
+  RASCUNHO_VAZIO,
+  SeloExecucaoManual,
+  projetarRascunho,
+} from "./execucao-manual"
 import type { ExecutionRow, RunDetailPayload } from "./studio-data"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -517,6 +528,9 @@ export function NodeRunPanel({
   onClose,
   onRerun,
   rerunning,
+  rascunho,
+  onRascunho,
+  onSoEsteNo,
 }: {
   exec: ExecutionRow
   nodeKey: string
@@ -524,6 +538,14 @@ export function NodeRunPanel({
   onClose: () => void
   onRerun: (mode: "phase2" | "full_pipeline" | "blueprints") => void
   rerunning: boolean
+  /**
+   * Rascunho de overrides da execução manual. Ausente na aba Teste, que
+   * dispara pelo hook antigo — o bloco "Nesta execução" simplesmente não
+   * aparece lá.
+   */
+  rascunho?: ExecutionOverrides
+  onRascunho?: (ov: ExecutionOverrides) => void
+  onSoEsteNo?: (node: string) => void
 }) {
   const [tab, setTab] = useState<"input" | "prompt" | "output">("input")
   const n = STUDIO_NODE_BY_KEY[nodeKey]
@@ -707,6 +729,18 @@ export function NodeRunPanel({
         </div>
       )}
 
+      {rascunho && onRascunho && (
+        <div style={{ padding: "12px 16px 0" }}>
+          <NoNaExecucaoManual
+            nodeKey={nodeKey}
+            rascunho={rascunho}
+            onRascunho={onRascunho}
+            disparando={rerunning}
+            onDispararSoEste={() => onSoEsteNo?.(nodeKey)}
+          />
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 2, padding: "12px 16px 0" }}>
         {tabs.map(([k, l]) => (
           <button
@@ -885,6 +919,13 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
   const [nodeKey, setNodeKey] = useState<string | null>(null)
   const [rerunning, setRerunning] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null)
+  // Rascunho de overrides: monta-se clicando nos nós e nada acontece até
+  // "Disparar" — o gesto do n8n. Zera ao trocar de execução, senão o
+  // rascunho de uma peça vazaria para a outra.
+  const [rascunho, setRascunho] = useState<ExecutionOverrides>(RASCUNHO_VAZIO)
+  const [recusas, setRecusas] = useState<
+    Array<{ node: string; motivo: string }> | null
+  >(null)
 
   const {
     executions,
@@ -963,6 +1004,100 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
     }
   }
 
+  /**
+   * Cria a execução manual e dispara.
+   *
+   * Duas chamadas de propósito: a primeira grava os overrides e o estágio
+   * de retomada; a segunda é o disparo que JÁ EXISTE
+   * (`generate-email`), com toda a lógica de fase 1 síncrona, split interno
+   * da fase 2 e fallback sem INTERNAL_SECRET. O runner encontra a execução
+   * sozinho pelo `email_id`.
+   */
+  const dispararManual = async (ov: ExecutionOverrides) => {
+    if (!exec || !exec.store_id || !exec.flow_id || !exec.flow_type) return
+    setRerunning(true)
+    setRecusas(null)
+    setNotice(null)
+    try {
+      const criar = await fetch("/api/admin/agents/executions/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_id: exec.email_id, overrides: ov }),
+      })
+      const criado = await criar.json().catch(() => null)
+      if (!criar.ok) {
+        // 422 traz a lista nó a nó — é o que transforma "não deu" em "pine
+        // o Curador ou reative-o".
+        if (Array.isArray(criado?.recusas)) {
+          setRecusas(criado.recusas)
+          return
+        }
+        throw new Error(criado?.error ?? "Falha ao criar a execução manual")
+      }
+
+      const res = await fetch(
+        `/api/admin/stores/${exec.store_id}/generate-email`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flowId: exec.flow_id,
+            emailId: exec.email_id,
+            flowType: exec.flow_type,
+            emailNumber: exec.email_number,
+            ...(criado.dispatch === "phase2"
+              ? { phase2_only: true }
+              : { full_pipeline: true }),
+          }),
+        },
+      )
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Execução criada, mas o disparo falhou")
+      }
+      setNotice({ ok: true, msg: `Execução manual disparada — ${criado.resumo}` })
+      setRascunho(RASCUNHO_VAZIO)
+      refresh()
+    } catch (e) {
+      setNotice({
+        ok: false,
+        msg: e instanceof Error ? e.message : "Erro ao disparar",
+      })
+    } finally {
+      setRerunning(false)
+    }
+  }
+
+  /** Cancela a execução manual viva (libera o e-mail e o watchdog). */
+  const cancelarManual = async () => {
+    if (!exec) return
+    setRerunning(true)
+    try {
+      const res = await fetch("/api/admin/agents/executions/manual", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_id: exec.email_id, action: "cancelar" }),
+      })
+      if (!res.ok) throw new Error("Falha ao cancelar")
+      setNotice({ ok: true, msg: "Execução manual cancelada." })
+      refresh()
+    } catch (e) {
+      setNotice({
+        ok: false,
+        msg: e instanceof Error ? e.message : "Erro ao cancelar",
+      })
+    } finally {
+      setRerunning(false)
+    }
+  }
+
+  // O rascunho pinta no canvas quem não vai rodar, ANTES de disparar — é o
+  // feedback que o n8n dá no nó desativado.
+  const runsNoCanvas = useMemo(
+    () => projetarRascunho(runs, rascunho),
+    [runs, rascunho],
+  )
+
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       <ExecList
@@ -972,6 +1107,8 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
           setActiveId(id)
           setNodeKey(null)
           setNotice(null)
+          setRascunho(RASCUNHO_VAZIO)
+          setRecusas(null)
         }}
         liveStatus={liveStatus}
         loading={isLoading}
@@ -1026,6 +1163,22 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
                 </div>
               )}
             </div>
+            {exec.manual && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <SeloExecucaoManual
+                  status={exec.manual.status}
+                  paradoEm={exec.manual.stopped_at_node}
+                />
+                <StudioBtn
+                  onClick={() => void cancelarManual()}
+                  disabled={rerunning}
+                  style={{ height: 26, padding: "0 9px", fontSize: 11 }}
+                  title="Encerra a execução manual: libera o e-mail e devolve o cuidado ao watchdog"
+                >
+                  Cancelar
+                </StudioBtn>
+              </div>
+            )}
             <div style={{ flex: 1 }} />
             {notice && (
               <span
@@ -1045,12 +1198,13 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
             </span>
           </div>
         )}
-        <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           <FlowCanvas
             positions={positions}
             selected={nodeKey}
             onSelect={setNodeKey}
-            runs={runs}
+            runs={runsNoCanvas}
             overlay={
               <div style={{ position: "absolute", top: 14, left: 16, pointerEvents: "none" }}>
                 <span
@@ -1069,6 +1223,17 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
               </div>
             }
           />
+          </div>
+          <BarraDeExecucaoManual
+            rascunho={rascunho}
+            onLimpar={() => {
+              setRascunho(RASCUNHO_VAZIO)
+              setRecusas(null)
+            }}
+            onDisparar={() => void dispararManual(rascunho)}
+            disparando={rerunning}
+            recusasDoServidor={recusas}
+          />
         </div>
       </div>
       {exec && nodeKey && runs?.[nodeKey] && (
@@ -1079,6 +1244,12 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
           onClose={() => setNodeKey(null)}
           onRerun={rerunExec}
           rerunning={rerunning}
+          rascunho={rascunho}
+          onRascunho={(ov) => {
+            setRascunho(ov)
+            setRecusas(null)
+          }}
+          onSoEsteNo={(node) => void dispararManual(overridesSoEsteNo(node))}
         />
       )}
     </div>
