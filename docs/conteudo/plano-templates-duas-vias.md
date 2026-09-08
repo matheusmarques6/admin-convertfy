@@ -103,3 +103,56 @@ passo "Verificar dados" na revisão, depois.
    como default, frame `gerado`.
 3. **Via A**: famílias Editorial e Alternado (CSS do Alternado já pronto).
 4. Padrões de hook no prompt de `headlines`.
+
+---
+
+# Rodada 2 (08/09, noite): os 9 documentos lidos — recriar × adaptar × complementar
+
+Leitura dos quatro que chegaram depois (2 carrosséis completos, o system
+prompt v4 da Máquina de Carrosséis, o Headline Generator e o Content
+Machine) cruzada com o que o Estúdio já tem em `lib/conteudo/ia/`
+(`prompt.ts` + `service.ts`: gerar_estrutura one-shot, preencher_frame,
+headlines com 5 opções ≤ 56 chars, legenda, distribuir, chat,
+analisar_inspiracao, transcrever_referencia, gerar_imagem).
+
+## O que eles têm e nós NÃO temos — recriar
+
+| Peça deles | Como é hoje no Estúdio | Recriar como |
+|---|---|---|
+| **Pipeline em etapas com aprovação** (triagem → 10 headlines → espinha dorsal → copy → revisão → imagens → render) | `gerar_estrutura` faz tudo de uma vez a partir da pauta | Fluxo do caminho "100% com IA" em passos; cada passo é uma ação com schema; o humano escolhe a headline e aprova a espinha ANTES da copy. É o que separa "gerou um carrossel" de "gerou um bom" |
+| **Triagem estruturada** (transformação, fricção central, ângulo dominante, evidências A/B/C + eixo + funil) | não existe | ação `triagem`; resultado gravado em `doc.triagem` e servido em TODAS as ações seguintes (é o contexto que a copy hoje não tem) |
+| **Motor de headlines**: 10 opções com padrão declarado + 2 gatilhos + veredito interno; modo DIAGNÓSTICO de headline existente; "ajusta a 3", "mistura a 2 com a 7" | 5 strings, sem padrão nem gatilho | ação `headlines` devolve `{texto, subtitulo, padrao, gatilhos[], veredito}` ×10; ação `diagnosticar_headline`; edição parcial por índice |
+| **Espinha dorsal** (headline → hook → mecanismo → prova A/B/C → aplicação → direção) | não existe | ação `espinha`; a copy por frame passa a ser preenchida A PARTIR dela (um frame por campo da espinha, conforme o molde) |
+| **Revisão editorial com nota** (7 parâmetros, mínimo 8; reprova um → reescreve) + filtro anti-slop | não existe (só o "compliance" da legenda) | `lib/conteudo/editorial/` puro e testável: `filtroAntiSlop(texto)` devolve violações com trecho e regra; ação `revisar` devolve a tabela dos 7 parâmetros por slide; botão "Revisar copy" no editor |
+| **Títulos internos ancorados** (número + tensão, nome concreto; nunca slogan) | regra de tipo `texto` diz "título curto" | regra no prompt + teste da substituição no filtro ("troca o sujeito e continua fazendo sentido? → genérico") |
+| **Família visual Alternado claro/escuro** | não existe | fase 2 (CSS pronto) |
+
+## O que é deles e precisa ADAPTAR ao nosso contexto
+
+- **Padrões de lift e gatilhos**: os deles medem conteúdo cultural (Brasil +155%, morte/fim +119%, geracional +119%). Para dono de e-commerce a tabela é outra, e o próprio carrossel "8% → 41%" mostra quais funcionam aqui: **dado contraintuitivo** (8% fazem 41%), **vilão externo** (imposto da Meta, CPM +20%), **conta traduzida para a loja do leitor** (R$ 123 mil/mês), **morte de X** ("a morte do cupom"), **nome de marca como âncora** (Smile.io, Shopify, Meta), **contraste** (cliente novo custa mais × vender de novo custa o mesmo). Gatilhos que valem: medo/alerta, identidade (dono de loja), indignação (paga em dobro), curiosidade, aspiração; nostalgia quase nunca. Mantém-se a RÉGUA deles (≥1 padrão, ≥2 gatilhos, checklist de rejeição), troca-se a TABELA — e a tabela nasce editável, porque o item "loop de dado" abaixo vai calibrá-la.
+- **Contagem de palavras**: 14–18 no hook e 8–12 no sub-hook são para a capa DELES (condensada 88px, 4–5 linhas). A nossa capa Editorial é "8% dos clientes fazem 41% do faturamento" (8 palavras). O limite vem do CANVAS por formato (`ST_LIMITES`), não de uma regra fixa. O que fica: texto 1 e texto 2 **independentes sintaticamente**, o 2 nunca começa com conectivo.
+- **2ª pessoa e tom jornalístico**: regra por PERFIL (marca × pessoal), nunca global — o carrossel que o usuário mais gosta é todo em "você".
+- **Arcos narrativos por tipo** (Tendência → Hook·Contexto·Mudança·Impacto·Ação; Tese contraintuitiva → Crença·Dados·Verdade·Novo modelo·Aplicação; Case → Resultado·Quem·Como·Princípio·Replicar; Previsão → Sinais·Padrão·Direção·Quem ganha·Ações): viram metadado `arco` dos moldes. Benchmark ≈ Case; Turbo ≈ Tese contraintuitiva; faltam **Tendência interpretada** e **Previsão** como moldes.
+- **Briefing criativo de 7 perguntas**: perfil, nicho, cor, fonte e estilo já vivem no brand kit do canal. Sobram insumo, tipo/molde, CTA, nº de slides e imagens — é o `NovoFlow` de hoje, mais curto do que o deles.
+- **Paleta por nicho / fontes por estilo**: viram PRESETS de brand kit (Editorial bege, Alternado), com a derivação "1 cor primária → paleta inteira" do `principios-de-design`.
+- **Legenda**: a deles é gancho ≤ 125 chars + contexto + análise + fontes + CTA + 5–12 hashtags; a nossa é 150–180 palavras sem bloco de hashtag. Mantém a nossa; entra a linha "Fontes:".
+- **"Máximo 2 blocos por slide; bloco 1 contextualiza, bloco 2 aprofunda; nunca fechar o slide com afirmação fechada"**: adotar literalmente — é título + corpo dos nossos frames, com o fechamento em gancho.
+- **Sugestão de imagem por slide** (< 60% de preenchimento): o renderer sabe o preenchimento REAL de cada frame; a sugestão vira automática e alimenta a via B (prompt por slide).
+- **Assinatura fixa** ("Produzido com ajuda de IA inspirado no artigo…"): não adotar como regra; vira campo opcional "insumo/fonte" quando o carrossel nasce de um artigo.
+- **Travessão**: o Content Machine proíbe, o manual permite, a NOSSA regra de legenda já proíbe. Fica proibido em tudo — consistência com o que já existe.
+
+## O que eles NÃO têm e é o nosso diferencial — complementar
+
+1. **Referências com métrica real** (few-shot já ligado): o banco deles é estático; o nosso lê salvamentos/compartilhamentos do post real e prioriza por afinidade de molde.
+2. **Comment gate ligado ao CRM**: para eles o CTA termina em "Comenta MANUAL"; para nós a palavra-chave é a porta do funil — automação de DM → lead → negócio já existe no Instagram (`setup-automation`). O Estúdio deve criar/ligar a automação da palavra-chave ao publicar. É a razão de o carrossel existir na Convertfy.
+3. **Evidências vindas do banco da casa**: a triagem pode puxar cases reais (lojas, receita, flows) em vez de deixar "[confirmar]" — a ConvertIA já tem os conectores de leitura; o Estúdio hoje não usa tools.
+4. **Busca web na triagem** (o Content Machine faz no modo "insight"): `web_buscar` já existe na ConvertIA. Entra como "Verificar dados" na revisão e como validação de hipótese na triagem.
+5. **Loop de dado próprio**: eles mediram lift em 1.168 posts; nós temos 87 posts sincronizados (0 classificados). Classificar por padrão de headline e cruzar com salvamentos/leads calibra a NOSSA tabela de lift — a régua deles vira hipótese inicial, não verdade.
+6. **Via B** (prompt por slide, híbrido) e **edição no sistema com exportação idêntica** — eles renderizam HTML e exportam por Playwright a cada rodada; nós editamos e reexportamos sem regerar.
+
+## Ordem revisada
+
+1. **Motor editorial** (maior ganho de qualidade por hora): triagem → 10 headlines com padrão/gatilho/veredito + diagnóstico → espinha dorsal → copy a partir da espinha → revisão 7 parâmetros + filtro anti-slop puro (testes) + títulos ancorados + 2 blocos por slide. Tabelas de padrão/gatilho ADAPTADAS ao e-commerce, editáveis. UI: passos com aprovação no caminho "100% com IA"; botões "Headlines" (10, com diagnóstico da atual) e "Revisar copy" no editor.
+2. **Via B**: `promptImagem` por frame, construtor, Copiar/Gerar, híbrido default, sugestão automática pelo preenchimento real.
+3. **Famílias visuais** Editorial + Alternado, presets de brand kit, moldes Tendência e Previsão com `arco`.
+4. **Loop**: CTA → automação da palavra-chave; classificação por padrão de headline; evidências e busca web na triagem.
