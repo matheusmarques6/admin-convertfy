@@ -323,12 +323,17 @@ async function handleInboundMessage(
     // Mesma ponte do Instagram: o gatilho "Mensagem recebida" nunca era
     // emitido, então automações com ele ficavam paradas. Awaited de
     // propósito — promise solta some no runtime serverless.
-    const { count: previousInbound } = await admin
+    // EXISTS, não count: só interessa se HÁ inbound anterior. Contar
+    // todas as mensagens da conversa a cada mensagem é custo linear no
+    // tamanho do histórico.
+    const { data: previousInboundRows } = await admin
       .from("crm_messages")
-      .select("id", { count: "exact", head: true })
+      .select("id")
       .eq("thread_id", threadId)
       .eq("direction", "inbound")
       .neq("external_id", message.id)
+      .limit(1)
+    const previousInbound = previousInboundRows?.length ?? 0
 
     await dispatchThreadMessage({
       org_id: orgId,
@@ -373,15 +378,18 @@ export async function getOrCreateThread(
   // Só o LOOKUP usa variantes; o insert mantém o wa_id original.
   const { data: existingThread } = await admin
     .from("crm_threads")
-    .select("id")
+    .select("id, contact_name")
     .eq("channel_id", channelId)
     .in("contact_external_id", phoneVariants(phoneE164))
     .order("last_message_at", { ascending: false })
     .limit(1)
-    .maybeSingle()
+    .maybeSingle<{ id: string; contact_name: string | null }>()
 
   if (existingThread) {
-    if (contactName) {
+    // Só escreve quando o nome MUDOU. Antes era um UPDATE por mensagem
+    // recebida, e todo UPDATE em crm_threads entra na publication do
+    // realtime → acorda todas as abas da org → cada uma relista.
+    if (contactName && contactName !== existingThread.contact_name) {
       await admin.from("crm_threads").update({ contact_name: contactName }).eq("id", existingThread.id)
     }
     return existingThread.id

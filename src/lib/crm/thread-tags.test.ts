@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { normalizeThreadTags, THREAD_TAGS_MAX_COUNT } from "./thread-tags"
+import { normalizeThreadTags, THREAD_TAGS_MAX_COUNT, tagCaseVariants } from "./thread-tags"
 
 describe("normalizeThreadTags", () => {
   it("trim e descarta vazias", () => {
@@ -22,5 +22,29 @@ describe("normalizeThreadTags", () => {
 
   it("array vazio → vazio", () => {
     expect(normalizeThreadTags([])).toEqual([])
+  })
+})
+
+describe("tagCaseVariants", () => {
+  it("cobre as grafias que o filtro exato perdia", () => {
+    expect(tagCaseVariants("teste").sort()).toEqual(["TESTE", "Teste", "teste"])
+  })
+
+  it("dedupe quando as variantes coincidem", () => {
+    expect(tagCaseVariants("VIP")).toEqual(["VIP", "vip", "Vip"])
+  })
+
+  it("nome composto capitaliza só a primeira letra", () => {
+    expect(tagCaseVariants("cliente novo")).toContain("Cliente novo")
+  })
+
+  it("tag vazia não vira filtro", () => {
+    expect(tagCaseVariants("   ")).toEqual([])
+    expect(tagCaseVariants("")).toEqual([])
+  })
+
+  it("aparas de espaço antes de variar", () => {
+    expect(tagCaseVariants("  vip  ")).toContain("vip")
+    expect(tagCaseVariants("  vip  ").every((v) => v === v.trim())).toBe(true)
   })
 })

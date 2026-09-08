@@ -329,7 +329,7 @@ function PopupConversation({ threadId, onClose }: { threadId: string; onClose: (
   const { data: detail, mutate: mutateDetail } = useSWR<ThreadDetail>(
     `/api/crm/inbox/threads/${threadId}`,
     fetcher,
-    { refreshInterval: realtimeConnected ? 30000 : 5000 },
+    { refreshInterval: realtimeConnected ? 300_000 : 30_000 },
   )
 
   const onDetailUpdate = useCallback(() => {
@@ -343,6 +343,9 @@ function PopupConversation({ threadId, onClose }: { threadId: string; onClose: (
     onThreadsUpdate: noop,
     onDetailUpdate,
     activeThreadId: threadId,
+    // O popup não tem lista: abrir o canal de threads aqui só duplicaria
+    // as assinaturas da aba (e o orçamento de joins/s do Realtime).
+    threadsChannelEnabled: false,
   })
   useEffect(() => setRealtimeConnected(rtConnected), [rtConnected])
 

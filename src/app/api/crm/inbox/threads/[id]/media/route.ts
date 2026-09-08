@@ -359,11 +359,14 @@ export async function GET(
     if (!message) throw new AppError("Mensagem não encontrada", 404, "not-found")
     assertThreadInOrg(message.org_id, orgId)
 
-    // Caminho feliz: já tem storage_path → só renova a signed URL
+    // Caminho feliz: já tem storage_path → só renova a signed URL.
+    // NÃO persiste: a URL assinada expira em 1h, então gravá-la só troca
+    // uma URL morta por outra — e cada UPDATE em crm_messages vira evento
+    // de realtime, que faz o detalhe recarregar em todas as abas com a
+    // conversa aberta. O cliente usa a URL da resposta.
     if (message.media_storage_path) {
       const signedUrl = await createSignedUrl(admin, message.media_storage_path)
       if (!signedUrl) throw new AppError("Falha ao gerar URL", 500, "signed-url")
-      await admin.from("crm_messages").update({ media_url: signedUrl }).eq("id", message.id)
       return successResponse(request, { media_url: signedUrl })
     }
 
