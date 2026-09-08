@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { STUDIO_NODES } from "./studio-graph"
 import {
+  GERACAO_TIMEOUT_S,
   TEST_AGENT_LABELS,
   TEST_BASE_AGENT_KEYS,
   TEST_CONDITIONAL_AGENT_KEYS,
@@ -390,5 +391,23 @@ describe("aceitaBatchDoClaim", () => {
     expect(aceitaBatchDoClaim(null, null)).toBe(false)
     expect(aceitaBatchDoClaim(undefined, "batch-velho")).toBe(false)
     expect(aceitaBatchDoClaim("", null)).toBe(false)
+  })
+})
+
+/**
+ * 08/09: a janela da rota subiu (300 → 500) porque a fase 1 síncrona passou
+ * de 280s e qualquer retry estourava o gateway. As mensagens de timeout
+ * citavam "300s" em literal, em três lugares — e passariam a mentir o
+ * número. Agora saem daqui.
+ */
+describe("GERACAO_TIMEOUT_S", () => {
+  it("acompanha o maxDuration da rota de geração", () => {
+    // Mudou `maxDuration` em generate-email/route.ts? Muda aqui também — o
+    // Next exige literal estático lá, então não há como derivar um do outro.
+    expect(GERACAO_TIMEOUT_S).toBe(500)
+  })
+
+  it("é folgado o bastante para a fase 1 medida (280,8s em 08/09)", () => {
+    expect(GERACAO_TIMEOUT_S).toBeGreaterThan(281)
   })
 })

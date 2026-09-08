@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react"
 import useSWR from "swr"
 
 import {
+  GERACAO_TIMEOUT_S,
   aceitaBatchDoClaim,
   canRecoverAfterInterrupt,
   isNetworkFailure,
@@ -372,7 +373,7 @@ export function useTestGeneration() {
         } catch {
           throw new Error(
             res.status === 504 || text.includes("timed out")
-              ? "__timeout__: a conexão com o servidor expirou (300s)."
+              ? `__timeout__: a conexão com o servidor expirou (${GERACAO_TIMEOUT_S}s).`
               : `Resposta inválida do servidor (HTTP ${res.status})`,
           )
         }
@@ -441,7 +442,7 @@ export function useTestGeneration() {
             setResult({
               status: "running",
               message: isTimeoutMarker(msg)
-                ? "A conexão expirou (300s), mas a geração CONTINUA no servidor. " +
+                ? `A conexão expirou (${GERACAO_TIMEOUT_S}s), mas a geração CONTINUA no servidor. ` +
                   "Acompanhando pelo batch persistido — não reclique."
                 : "A conexão caiu, mas a geração CONTINUA no servidor. " +
                   "Acompanhando pelo batch persistido — não reclique.",
@@ -457,7 +458,7 @@ export function useTestGeneration() {
           // queda de rede há dois desfechos possíveis, e o operador não
           // tem como distingui-los sozinho a partir de "Failed to fetch".
           error: isTimeoutMarker(msg)
-            ? "Timeout: a conexão expirou (300s), mas a geração pode seguir rodando no servidor. Verifique em /admin/settings/email-generation-logs antes de re-testar."
+            ? `Timeout: a conexão expirou (${GERACAO_TIMEOUT_S}s), mas a geração pode seguir rodando no servidor. Verifique em /admin/settings/email-generation-logs antes de re-testar.`
             : isNetworkFailure(err)
               ? "A conexão com o servidor caiu. Se a geração chegou a começar, ela continua rodando — confira em Execuções antes de re-testar."
               : msg,

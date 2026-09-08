@@ -4,7 +4,12 @@
  * Gera um email individual usando a pipeline de IA.
  * Body: { flowId, emailId, flowType, emailNumber }
  *
- * maxDuration: 300s (Vercel serverless limit)
+ * maxDuration: 500s — a fase 1 do teste completo (Seletor → Estruturador →
+ * Curador → Blueprint) é síncrona e passou de 280s com o Seletor ligado
+ * (08/09), contra os 300s de antes: qualquer retry estourava o gateway e o
+ * 504 escondia a causa real da falha. 500 exige Fluid Compute (Vercel Pro),
+ * o mesmo que as rotas internas da fase 2 já usam em 800 — se o deploy
+ * falhar na validação, ligar em Project Settings → Functions.
  */
 
 import { NextRequest, after } from "next/server"
@@ -18,7 +23,7 @@ import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 const log = logger.child("GenerateEmail")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300
+export const maxDuration = 500
 
 const bodySchema = z.object({
   flowId: z.string().uuid(),

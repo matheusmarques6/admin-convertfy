@@ -199,6 +199,19 @@ export function isTerminalStatus(statusInfo: {
   )
 }
 
+/**
+ * Janela da rota de geração, em segundos — o teto do GATEWAY, não do
+ * cliente (não há AbortController: o 504 vem da Vercel quando a função
+ * passa do `maxDuration`).
+ *
+ * Anda junto com `maxDuration` em `generate-email/route.ts`. Não dá para
+ * importar de lá: o Next exige que `maxDuration` seja literal estático, e
+ * uma constante importada não sobrevive à análise. Mudou lá, muda aqui —
+ * senão a mensagem de timeout passa a mentir o número, como mentia "300s"
+ * depois que a janela subiu (08/09).
+ */
+export const GERACAO_TIMEOUT_S = 500
+
 /** Marcador de timeout de GATEWAY (504/corpo detectado no parse). */
 export const TIMEOUT_MARKER = "__timeout__"
 

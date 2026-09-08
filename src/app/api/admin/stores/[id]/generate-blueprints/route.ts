@@ -16,7 +16,9 @@ const log = logger.child("GenerateBlueprints")
 export const dynamic = "force-dynamic"
 // Montador (Opus, HTML completo) leva 60-180s por email; lote inteiro precisa
 // de mais que os 60s default. Para lojas grandes, restrinja por flow_ids.
-export const maxDuration = 300
+// 500s: roda a MESMA fase 1 da rota de teste, e para vários emails —
+// deixá-la em 300 só mudaria o lugar onde a janela estoura.
+export const maxDuration = 500
 
 export async function POST(
   request: NextRequest,
