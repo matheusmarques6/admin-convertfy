@@ -89,7 +89,7 @@ sem separar os painéis de custo; uma execução manual por e-mail por vez.
 
 ## 5. As camadas
 
-### 5.1 — Tempo real ✅ ENTREGUE (migration 20261126)
+### 5.1 — Tempo real ✅ ENTREGUE (migration 20261127)
 
 O caminho óbvio — baixar o intervalo do SWR — era o errado. A query da
 listagem filtra com `.or("generation_batch_id.not.is.null, status.in.(…)")`

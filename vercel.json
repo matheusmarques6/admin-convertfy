@@ -145,7 +145,7 @@
     },
     {
       "path": "/api/cron/crm-avatar-backfill",
-      "schedule": "35 */6 * * *"
+      "schedule": "35 */2 * * *"
     },
     {
       "path": "/api/cron/store-platform-profile",

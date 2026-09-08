@@ -40,6 +40,7 @@ import {
   type InstagramChannelConfig,
 } from "@/lib/services/instagram-graph.service"
 import { canalPodeEntregarFoto } from "@/lib/crm/avatar-elegibilidade"
+import { type AvatarMotivo, origemRespondeu } from "@/lib/crm/avatar-fila"
 
 const log = logger.child("CrmContactAvatar")
 
@@ -112,21 +113,47 @@ async function espelharAvatar(
 }
 
 /**
- * Carimba a tentativa e, quando houve foto nova, grava a URL na MESMA
+ * Registra o desfecho e, quando houve foto nova, grava a URL na MESMA
  * escrita. `crm_threads` está na publication do realtime: dois UPDATEs
  * acordariam todas as abas da org duas vezes, e cada uma relista.
+ *
+ * O carimbo depende de QUEM respondeu. Origem que respondeu (inclusive
+ * "não tem foto") move `contact_avatar_checked_at` — janela longa.
+ * Chamada que falhou move `contact_avatar_failed_at` — janela curta,
+ * porque é transitório; mas move ALGUMA coisa, senão a mesma dúzia do
+ * topo da lista volta em toda rodada e a cauda nunca é alcançada.
  */
-async function marcarTentativa(
+async function registrarDesfecho(
   admin: SupabaseClient,
   threadId: string,
+  motivo: AvatarMotivo,
   urlNova: string | null,
 ): Promise<AvatarResult> {
-  const patch: Record<string, string> = { contact_avatar_checked_at: new Date().toISOString() }
+  const agora = new Date().toISOString()
+  const patch: Record<string, string> = origemRespondeu(motivo)
+    ? { contact_avatar_checked_at: agora }
+    : { contact_avatar_failed_at: agora }
   if (urlNova) patch.contact_avatar_url = urlNova
-  const { error } = await admin.from("crm_threads").update(patch).eq("id", threadId)
+
+  let { error } = await admin.from("crm_threads").update(patch).eq("id", threadId)
+  // Coluna nova (migration 20261125): sem ela, o erro é a falha do
+  // provedor virar silêncio. Degrada para o carimbo antigo — pior fila,
+  // nunca fila parada.
+  if (error && ehColunaAusente(error) && "contact_avatar_failed_at" in patch) {
+    const { contact_avatar_failed_at: _ignorado, ...resto } = patch
+    ;({ error } = await admin
+      .from("crm_threads")
+      .update({ ...resto, contact_avatar_checked_at: agora })
+      .eq("id", threadId))
+  }
   if (error) log.warn("avatar: update falhou", { threadId, error: error.message })
   // A URL serve à resposta em curso mesmo se a gravação falhou.
-  return { url: urlNova, tentou: true }
+  return { url: urlNova, tentou: true, motivo }
+}
+
+/** 42703 / PGRST204 = a migration da coluna ainda não rodou. */
+function ehColunaAusente(error: { code?: string | null }): boolean {
+  return error.code === "42703" || error.code === "PGRST204"
 }
 
 function igConfigFromChannel(channel: {
@@ -153,9 +180,15 @@ export interface AvatarResult {
    * uma semana depois de o canal voltar.
    */
   tentou: boolean
+  /**
+   * O desfecho, para o cron dizer POR QUE a rodada não encheu de fotos.
+   * "filled: 0" não distingue canal deslogado de contato sem foto.
+   */
+  motivo: AvatarMotivo
 }
 
-const NAO_TENTOU: AvatarResult = { url: null, tentou: false }
+/** Não deu para tentar: nada é carimbado, a thread volta na próxima. */
+const naoTentou = (motivo: AvatarMotivo): AvatarResult => ({ url: null, tentou: false, motivo })
 
 /**
  * Busca e persiste a foto do contato quando ainda não existe (ou quando
@@ -167,16 +200,16 @@ export async function ensureThreadAvatar(
 ): Promise<AvatarResult> {
   // Foto de CDN de terceiro é re-buscada: ela vence. Só a nossa encerra.
   if (isMirroredAvatar(thread.contact_avatar_url)) {
-    return { url: thread.contact_avatar_url ?? null, tentou: false }
+    return { url: thread.contact_avatar_url ?? null, tentou: false, motivo: "ja_espelhado" }
   }
   const channelId = thread.channel?.id ?? thread.channel_id
-  if (!channelId) return NAO_TENTOU
+  if (!channelId) return naoTentou("canal_indisponivel")
   // O "contato" é a publicação, não uma pessoa — não há foto de perfil.
-  if (thread.contact_external_id.startsWith("comment:")) return NAO_TENTOU
+  if (thread.contact_external_id.startsWith("comment:")) return naoTentou("sem_contato")
 
   const now = Date.now()
   const prev = lastAttempt.get(thread.id)
-  if (prev && now - prev < ATTEMPT_COOLDOWN_MS) return NAO_TENTOU
+  if (prev && now - prev < ATTEMPT_COOLDOWN_MS) return naoTentou("cooldown")
   lastAttempt.set(thread.id, now)
   // Mapa não pode crescer sem limite num runtime quente.
   if (lastAttempt.size > 2000) {
@@ -194,7 +227,7 @@ export async function ensureThreadAvatar(
       .maybeSingle()
     if (!ch) {
       log.info("avatar: canal não encontrado", { threadId: thread.id, channelId })
-      return NAO_TENTOU
+      return naoTentou("canal_indisponivel")
     }
 
     let url: string | null = null
@@ -220,12 +253,12 @@ export async function ensureThreadAvatar(
           threadId: thread.id,
           estado: (ch.config as Record<string, unknown> | null)?.connection_state,
         })
-        return NAO_TENTOU
+        return naoTentou("canal_indisponivel")
       }
       const cfg = await getEvolutionRuntimeConfig(admin)
       if (!cfg || !ch.external_id) {
         log.info("avatar: Evolution sem config/instância", { threadId: thread.id })
-        return NAO_TENTOU
+        return naoTentou("sem_credencial")
       }
       const client = createEvolutionClient({
         baseUrl: cfg.baseUrl,
@@ -233,7 +266,7 @@ export async function ensureThreadAvatar(
         instanceName: ch.external_id,
       })
       const number = thread.contact_external_id.replace(/\D/g, "")
-      if (!number) return NAO_TENTOU
+      if (!number) return naoTentou("sem_contato")
       url = await client.fetchProfilePictureUrl(number)
       if (!url) {
         log.info("avatar: WhatsApp sem foto (privacidade)", { threadId: thread.id })
@@ -241,16 +274,17 @@ export async function ensureThreadAvatar(
     } else {
       // WhatsApp Cloud: a Meta não expõe foto de contato. Conta como
       // tentativa — não existe caminho, não adianta voltar amanhã.
-      return marcarTentativa(admin, thread.id, null)
+      return registrarDesfecho(admin, thread.id, "sem_caminho", null)
     }
 
-    if (!url) return marcarTentativa(admin, thread.id, null)
+    if (!url) return registrarDesfecho(admin, thread.id, "sem_foto", null)
 
     const mirrored = await espelharAvatar(admin, thread.org_id, thread.id, url)
     const finalUrl = mirrored ?? url
-    const res = await marcarTentativa(
+    const res = await registrarDesfecho(
       admin,
       thread.id,
+      "preenchido",
       finalUrl === thread.contact_avatar_url ? null : finalUrl,
     )
     log.info("avatar: preenchido", {
@@ -258,13 +292,17 @@ export async function ensureThreadAvatar(
       channelType: ch.type,
       espelhado: Boolean(mirrored),
     })
-    return { url: res.url ?? finalUrl, tentou: true }
+    return { url: res.url ?? finalUrl, tentou: true, motivo: "preenchido" }
   } catch (err) {
-    // Falha de rede/API é transitória: não queima a janela.
+    // A origem FOI chamada e falhou. Transitório, mas não de graça: sem
+    // carimbo nenhum, esta thread volta ao topo do lote em toda rodada
+    // e as do fim da lista nunca chegam a ser tentadas. `failed_at` tem
+    // janela curta — a próxima rodada re-tenta, depois da vez de quem
+    // nunca foi tentado.
     log.warn("avatar: fetch falhou", {
       threadId: thread.id,
       error: err instanceof Error ? err.message : String(err),
     })
-    return NAO_TENTOU
+    return registrarDesfecho(admin, thread.id, "erro_provedor", null)
   }
 }

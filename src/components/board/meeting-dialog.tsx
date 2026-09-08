@@ -98,6 +98,15 @@ interface MeetingDialogProps {
   members?: ParticipantOption[]
   initialDate?: Date
   hasGoogleCalendar?: boolean
+  /**
+   * Contexto de quem abriu (loja, carteira, negócio). A loja não tem select
+   * no formulário de propósito: quando se agenda a partir da ficha de uma
+   * loja, ela já é conhecida — pedir de novo é fazer o operador confirmar o
+   * óbvio e abrir espaço para escolher a errada.
+   */
+  initialClientId?: string
+  initialStoreId?: string
+  initialTitle?: string
 }
 
 const schema = z.object({
@@ -127,6 +136,9 @@ export function MeetingDialog({
   members = [],
   initialDate,
   hasGoogleCalendar = false,
+  initialClientId,
+  initialStoreId,
+  initialTitle,
 }: MeetingDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>()
@@ -305,8 +317,8 @@ export function MeetingDialog({
         }
       } else {
         reset({
-          title: "",
-          client_id: "",
+          title: initialTitle || "",
+          client_id: initialClientId || "",
           duration_minutes: 30,
           meeting_url: "",
           notes: "",
@@ -332,7 +344,7 @@ export function MeetingDialog({
         }
       }
     }
-  }, [open, meeting, initialDate, setValue, reset, hasGoogleCalendar])
+  }, [open, meeting, initialDate, setValue, reset, hasGoogleCalendar, initialClientId, initialTitle])
 
   async function onSubmit(data: FormData) {
     if (!scheduledDate) {
@@ -358,6 +370,12 @@ export function MeetingDialog({
       const body = {
         title: data.title,
         client_id: data.client_id || null,
+        // Loja vem do contexto de quem abriu; na edição, preserva a que já
+        // estava (mandar null apagaria o vínculo com a carteira em silêncio).
+        store_id:
+          initialStoreId ||
+          (meeting as { store_id?: string | null } | null | undefined)?.store_id ||
+          null,
         scheduled_at: scheduledAt.toISOString(),
         duration_minutes: data.duration_minutes,
         meeting_url: data.meeting_url || null,

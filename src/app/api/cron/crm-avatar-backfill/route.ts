@@ -24,15 +24,28 @@ import { logger } from "@/lib/logger"
 import { ensureThreadAvatar } from "@/lib/services/crm-contact-avatar.service"
 import { CONVERTIA_IMAGE_ROUTE } from "@/lib/ai/convertia-image-url"
 import { canaisElegiveisParaAvatar } from "@/lib/crm/avatar-elegibilidade"
+import {
+  type AvatarMotivo,
+  cabeMaisUma,
+  contarMotivos,
+  janelasDaFila,
+  ORDEM_DA_FILA,
+} from "@/lib/crm/avatar-fila"
 
 const log = logger.child("CronCrmAvatarBackfill")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 120
+export const maxDuration = 300
 
-/** APIs de terceiros com rate limit — lote pequeno, sem paralelismo. */
-const BATCH = 20
-const RETRY_AFTER_DAYS = 7
+/**
+ * O teto é o ORÇAMENTO de tempo, não o número de linhas: cada item faz
+ * chamada externa + download + resize + upload, e a Evolution tem retry
+ * interno. Com lote de 20 a base inteira levava três rodadas (18h) para
+ * ser coberta uma vez — quem religa o número via as fotos no dia
+ * seguinte. O lote agora cobre a base numa passada e para no relógio.
+ */
+const BATCH = 60
+const ORCAMENTO_MS = 240_000
 
 export async function GET(request: NextRequest) {
   const authError = requireCronAuth(request)
@@ -40,7 +53,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient()
-    const cutoff = new Date(Date.now() - RETRY_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    const inicio = Date.now()
+    const { checadoAntesDe, falhouAntesDe } = janelasDaFila(new Date())
 
     // Canais que HOJE conseguem entregar uma foto. Sem este filtro, um
     // canal desconectado (54 das 59 conversas em produção) ocupa o lote
@@ -54,42 +68,88 @@ export async function GET(request: NextRequest) {
     const elegiveis = canaisElegiveisParaAvatar(canais ?? [])
 
     if (elegiveis.length === 0) {
-      return NextResponse.json({ success: true, checked: 0, filled: 0, skipped: 0, elegiveis: 0 })
+      // Nenhum canal entrega foto agora (Evolution deslogada, por
+      // exemplo). Dizer isso é o que separa "não há o que fazer" de
+      // "está quebrado" quando o inbox aparece só com iniciais.
+      return NextResponse.json({
+        success: true,
+        checked: 0,
+        filled: 0,
+        skipped: 0,
+        elegiveis: 0,
+        motivos: {},
+      })
     }
 
-    const { data: threads, error } = await admin
-      .from("crm_threads")
-      .select("id, org_id, contact_external_id, contact_avatar_url, channel_id")
-      .in("channel_id", elegiveis)
-      // Aspas: o `.` é separador de campo no `or()` do PostgREST.
-      .or(`contact_avatar_url.is.null,contact_avatar_url.not.like."${CONVERTIA_IMAGE_ROUTE}%"`)
-      .not("contact_external_id", "like", "comment:%")
-      .or(`contact_avatar_checked_at.is.null,contact_avatar_checked_at.lt.${cutoff}`)
-      .order("last_message_at", { ascending: false })
-      .limit(BATCH)
+    // A ordem mora em ORDEM_DA_FILA (com o porquê). Ordenar por
+    // recência, como antes, fazia o lote reprocessar o topo da lista a
+    // cada rodada e nunca alcançar a cauda.
+    const montarFila = (comFailedAt: boolean) => {
+      let q = admin
+        .from("crm_threads")
+        .select("id, org_id, contact_external_id, contact_avatar_url, channel_id")
+        .in("channel_id", elegiveis)
+        // Aspas: o `.` é separador de campo no `or()` do PostgREST.
+        .or(`contact_avatar_url.is.null,contact_avatar_url.not.like."${CONVERTIA_IMAGE_ROUTE}%"`)
+        .not("contact_external_id", "like", "comment:%")
+        .or(`contact_avatar_checked_at.is.null,contact_avatar_checked_at.lt.${checadoAntesDe}`)
+      if (comFailedAt) {
+        q = q.or(`contact_avatar_failed_at.is.null,contact_avatar_failed_at.lt.${falhouAntesDe}`)
+      }
+      for (const o of ORDEM_DA_FILA) {
+        // Sem a migration a coluna de falha não existe: pular a ordem
+        // dela é o que mantém a rodada de pé em vez de dar 42703.
+        if (!comFailedAt && o.coluna === "contact_avatar_failed_at") continue
+        q = q.order(o.coluna, { ascending: o.ascendente, nullsFirst: o.nulosPrimeiro })
+      }
+      return q.limit(BATCH)
+    }
+
+    let { data: threads, error } = await montarFila(true)
+    // Migration 20261125 ainda não rodou: segue sem o filtro de falha.
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      log.warn("fila sem contact_avatar_failed_at — aplique a migration 20261125")
+      ;({ data: threads, error } = await montarFila(false))
+    }
     if (error) throw error
 
     let filled = 0
     let skipped = 0
+    const motivos: AvatarMotivo[] = []
+    let checked = 0
     for (const thread of threads ?? []) {
-      // O serviço carimba `contact_avatar_checked_at` na MESMA escrita
-      // da foto (crm_threads está na publication do realtime: dois
-      // UPDATEs acordariam todas as abas duas vezes). Aqui só contamos.
-      const { url, tentou } = await ensureThreadAvatar(admin, thread)
+      if (!cabeMaisUma(inicio, Date.now(), ORCAMENTO_MS)) {
+        log.info("orçamento esgotado — o resto fica para a próxima rodada", {
+          restantes: (threads?.length ?? 0) - checked,
+        })
+        break
+      }
+      checked++
+      // O serviço carimba o desfecho na MESMA escrita da foto
+      // (crm_threads está na publication do realtime: dois UPDATEs
+      // acordariam todas as abas duas vezes). Aqui só contamos.
+      const { url, tentou, motivo } = await ensureThreadAvatar(admin, thread)
+      motivos.push(motivo)
       if (url) filled++
-      // Canal desconectado não gasta a janela de 7 dias: tem de voltar à
-      // fila assim que religar, não uma semana depois.
+      // Canal desconectado não gasta a janela: tem de voltar à fila
+      // assim que religar, não uma semana depois.
       if (!tentou) skipped++
     }
 
-    if (filled > 0) log.info("avatares preenchidos", { filled, checked: threads?.length ?? 0 })
+    const contagem = contarMotivos(motivos)
+    if (filled > 0) log.info("avatares preenchidos", { filled, checked })
+    // Rodada que não preencheu nada tem de dizer por quê: erro do
+    // provedor e contato sem foto pedem ações opostas.
+    else if (checked > 0) log.info("rodada sem foto nova", { checked, motivos: contagem })
 
     return NextResponse.json({
       success: true,
-      checked: threads?.length ?? 0,
+      checked,
       filled,
       skipped,
       elegiveis: elegiveis.length,
+      motivos: contagem,
+      ms: Date.now() - inicio,
     })
   } catch (error) {
     log.error("backfill de avatar falhou", error)

@@ -21,7 +21,7 @@ import type { ExecutionAgentRun } from "@/lib/agents/studio-graph"
  *
  * SYNC: a mesma lista é o predicado LITERAL do índice
  * `idx_efe_em_voo_updated` e da perna 2 de `agent_studio_executions_delta`
- * (migration 20261126). Mudar aqui sem mudar lá não quebra nada em
+ * (migration 20261127). Mudar aqui sem mudar lá não quebra nada em
  * silêncio — o índice deixa de servir a query e o delta fica lento.
  *
  * Difere de `ACTIVE_EMAIL_STATUSES` (types/agent-runs-live) por incluir

@@ -216,7 +216,7 @@ export interface ChangedExecution {
  * ele que acende o nó no canvas no instante em que o agente começa).
  *
  * Devolve só ids, de propósito: é a pergunta barata que o SSE faz de 2 em
- * 2 segundos. Ver `agent_studio_executions_delta` (migration 20261126)
+ * 2 segundos. Ver `agent_studio_executions_delta` (migration 20261127)
  * para por que são três pernas UNION ALL e não um OR.
  */
 export async function fetchChangedExecutionIds(

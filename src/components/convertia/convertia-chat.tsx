@@ -26,6 +26,7 @@ import {
   Filter,
   Briefcase,
   ImageIcon,
+  Loader2,
   Mic,
   PanelLeft,
   Paperclip,
@@ -46,6 +47,15 @@ import {
   Leaf,
 } from "lucide-react"
 import { fmtMs, fmtTokens, normalizeTurnUsage, type TurnUsageSummary } from "@/lib/ai/convertia/telemetry"
+import { AnexoError, prepararAnexo } from "@/lib/ai/convertia/anexo-preparar"
+import {
+  ACCEPT_ANEXOS,
+  cabeNoOrcamento,
+  formatarBytes,
+  MAX_ANEXOS,
+  ORCAMENTO_PAYLOAD,
+  pesoDoAnexo,
+} from "@/lib/ai/convertia/anexos"
 import { friendlyModelErrorText } from "@/lib/ai/convertia/model-errors"
 import type { PendingConfirmation } from "@/lib/ai/convertia/types"
 import { ConvertiaMarkdown } from "./convertia-markdown"
@@ -177,6 +187,10 @@ interface UiAttachment {
   kind: "image" | "text"
   data_url?: string
   text?: string
+  /** Miniatura da imagem para o chip (não viaja no POST). */
+  thumb?: string
+  /** "3,9 MB → 412 KB · 1568×1046" — no title do chip. */
+  detalhe?: string
 }
 
 interface UiMessage {
@@ -385,6 +399,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const [manage, setManage] = useState<ManageKind | null>(null)
   const [attachments, setAttachments] = useState<UiAttachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
   const [railSearch, setRailSearch] = useState("")
   const [deep, setDeep] = useState(false)
   // Roteamento por rodada: modelo barato consulta, o escolhido responde.
@@ -597,54 +612,59 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
       ? budget.today_cost_cents / budget.daily_limit_cents
       : 0
 
-  // ── Anexos: imagem (multimodal) + arquivos de texto como referência ─
+  // ── Anexos: imagem (multimodal) + arquivos como referência ─────────
+  // O tamanho deixou de ser problema do usuário: `prepararAnexo` reduz a
+  // imagem no navegador e extrai o texto de planilha/docx/PDF. O que
+  // sobra de limite é o ORÇAMENTO do corpo da requisição (a Vercel corta
+  // em 4,5 MB), e ele é do conjunto — por isso a conta é acumulada.
   // ref espelho pro loop async não perder adds concorrentes
   const attachmentsRef = useRef<UiAttachment[]>([])
+  const [attachBusy, setAttachBusy] = useState(0)
   const addFiles = useCallback(async (files: FileList | File[]) => {
     setAttachError(null)
-    for (const file of Array.from(files)) {
-      if (attachmentsRef.current.length >= 3) {
-        setAttachError("Máximo de 3 anexos por mensagem.")
-        break
-      }
-      const isImage = file.type.startsWith("image/")
-      const isText =
-        /\.(html?|txt|md|csv|json|xml)$/i.test(file.name) ||
-        /^(text\/|application\/(json|xml))/.test(file.type)
-      if (!isImage && !isText) {
-        setAttachError(`"${file.name}": só imagens ou arquivos de texto (html, csv, md, txt, json).`)
-        continue
-      }
-      if (isImage && file.size > 2 * 1024 * 1024) {
-        setAttachError(`"${file.name}": imagem acima de 2MB.`)
-        continue
-      }
-      if (!isImage && file.size > 300 * 1024) {
-        setAttachError(`"${file.name}": arquivo de texto acima de 300KB.`)
-        continue
-      }
-      const att: UiAttachment | null = await new Promise<UiAttachment>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onerror = () => reject(new Error("leitura falhou"))
-        if (isImage) {
-          reader.onload = () =>
-            resolve({
-              name: file.name || "imagem.png",
-              mime: file.type,
-              kind: "image",
-              data_url: String(reader.result),
-            })
-          reader.readAsDataURL(file)
-        } else {
-          reader.onload = () =>
-            resolve({ name: file.name, mime: file.type || "text/plain", kind: "text", text: String(reader.result) })
-          reader.readAsText(file)
+    const lista = Array.from(files)
+    setAttachBusy((n) => n + lista.length)
+    // Baixa UM por arquivo tratado. Zerar no fim seria errado: duas
+    // seleções em paralelo (colar enquanto o PDF ainda abre) e uma
+    // apagaria o contador da outra.
+    let pendentes = lista.length
+    const baixar = () => {
+      if (pendentes <= 0) return
+      pendentes -= 1
+      setAttachBusy((n) => Math.max(0, n - 1))
+    }
+    try {
+      for (const file of lista) {
+        if (attachmentsRef.current.length >= MAX_ANEXOS) {
+          setAttachError(`Máximo de ${MAX_ANEXOS} anexos por mensagem.`)
+          break
         }
-      }).catch(() => null)
-      if (att) {
-        attachmentsRef.current = [...attachmentsRef.current, att]
-        setAttachments(attachmentsRef.current)
+        try {
+          const pronto = await prepararAnexo(file)
+          const peso = pesoDoAnexo(pronto)
+          if (!cabeNoOrcamento(attachmentsRef.current, peso)) {
+            setAttachError(
+              `"${file.name}" não coube: os anexos desta mensagem somam mais que ` +
+                `${formatarBytes(ORCAMENTO_PAYLOAD)}, o teto do envio. Mande em duas mensagens.`,
+            )
+            continue
+          }
+          attachmentsRef.current = [...attachmentsRef.current, pronto]
+          setAttachments(attachmentsRef.current)
+        } catch (e) {
+          // A mensagem do preparador diz o formato e o que fazer — trocar
+          // por "falhou" aqui apagaria justamente a parte acionável.
+          setAttachError(
+            e instanceof AnexoError ? e.message : `"${file.name}": não consegui preparar o arquivo.`,
+          )
+        } finally {
+          baixar()
+        }
       }
+    } finally {
+      // O que sobrou quando o laço quebrou no limite — senão o spinner
+      // ficaria girando para sempre.
+      while (pendentes > 0) baixar()
     }
   }, [])
   useEffect(() => {
@@ -1361,10 +1381,29 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
   const composer = (autoFocus: boolean) => (
     <div className="mx-auto w-full max-w-[680px]">
       <div
+        // Arrastar vários arquivos para cima do composer é o gesto natural
+        // de "manda essas cinco imagens"; sem isto o navegador ABRE o
+        // arquivo e a conversa é perdida.
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault()
+            setDragging(true)
+          }
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setDragging(false)
+        }}
+        onDrop={(e) => {
+          const files = Array.from(e.dataTransfer.files ?? [])
+          setDragging(false)
+          if (files.length === 0) return
+          e.preventDefault()
+          void addFiles(files)
+        }}
         className="relative rounded-[16px] border px-3.5 pb-[11px] pt-[13px] transition-shadow"
         style={{
           background: "var(--ops-card)",
-          borderColor: focus ? "#8B9BE8" : HAIR,
+          borderColor: dragging ? BRAND : focus ? "#8B9BE8" : HAIR,
           boxShadow: focus
             ? "0 0 0 3px rgba(78,98,216,0.10)"
             : "0 2px 12px rgba(17,24,39,0.06)",
@@ -1375,10 +1414,26 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             {attachments.map((a, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1.5 rounded-[8px] border px-2 py-1 text-[10.5px]"
-                style={{ borderColor: HAIR, color: "var(--ops-sec)" }}
+                // O detalhe ("3,9 MB → 412 KB · 1568×1046") fica no title:
+                // quem quiser saber que a imagem foi reduzida descobre, e
+                // quem não quiser não vê ruído no composer.
+                title={a.detalhe ? `${a.name} — ${a.detalhe}` : a.name}
+                className="inline-flex items-center gap-1.5 rounded-[8px] border py-1 pr-2 text-[10.5px]"
+                style={{ borderColor: HAIR, color: "var(--ops-sec)", paddingLeft: a.thumb ? 4 : 8 }}
               >
-                {a.kind === "image" ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                {a.thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- data URL local, sem otimização possível
+                  <img
+                    src={a.thumb}
+                    alt=""
+                    className="h-6 w-6 rounded-[5px] object-cover"
+                    style={{ border: `1px solid ${HAIR}` }}
+                  />
+                ) : a.kind === "image" ? (
+                  <ImageIcon className="h-3 w-3" />
+                ) : (
+                  <FileText className="h-3 w-3" />
+                )}
                 <span className="max-w-[160px] truncate">{a.name}</span>
                 <button
                   aria-label={`Remover ${a.name}`}
@@ -1389,6 +1444,16 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
                 </button>
               </span>
             ))}
+            {attachBusy > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 text-[10.5px]"
+                style={{ color: "var(--ops-mut)" }}
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {/* Planilha e PDF levam segundos: sem isto o clique parece não ter feito nada. */}
+                preparando {attachBusy} arquivo{attachBusy > 1 ? "s" : ""}…
+              </span>
+            )}
             {attachError && (
               <span className="text-[10.5px]" style={{ color: "var(--ops-neg)" }}>
                 {attachError}
@@ -1404,13 +1469,19 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
           onPaste={(e) => {
-            const imgs = Array.from(e.clipboardData?.items ?? [])
-              .filter((it) => it.type.startsWith("image/"))
+            // `files` cobre o arquivo copiado do Finder/Explorer; `items`
+            // cobre a captura de tela, que só existe como item da área de
+            // transferência e não aparece em `files` em todo navegador.
+            const doArquivo = Array.from(e.clipboardData?.files ?? [])
+            const daCaptura = Array.from(e.clipboardData?.items ?? [])
+              .filter((it) => it.kind === "file")
               .map((it) => it.getAsFile())
               .filter((f): f is File => f !== null)
-            if (imgs.length > 0) {
+            const vistos = new Set(doArquivo.map((f) => `${f.name}:${f.size}`))
+            const todos = [...doArquivo, ...daCaptura.filter((f) => !vistos.has(`${f.name}:${f.size}`))]
+            if (todos.length > 0) {
               e.preventDefault()
-              void addFiles(imgs)
+              void addFiles(todos)
             }
           }}
           onChange={(e) => {
@@ -1663,7 +1734,7 @@ export function ConvertiaChat({ ws }: { ws: Ws }) {
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,.html,.htm,.txt,.md,.csv,.json,.xml"
+            accept={ACCEPT_ANEXOS}
             className="hidden"
             onChange={(e) => {
               if (e.target.files) void addFiles(e.target.files)

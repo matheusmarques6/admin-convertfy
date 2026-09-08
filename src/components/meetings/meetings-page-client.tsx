@@ -127,6 +127,14 @@ export function MeetingsPageClient({
   // Calendar is now the default view (absorbs dashboard calendar)
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar")
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Contexto de quem mandou agendar (loja, carteira, negócio). Vive em estado
+  // e não é lido do searchParams na hora de salvar: limpar a URL depois de
+  // abrir não pode apagar o cliente já escolhido.
+  const [agendarContexto, setAgendarContexto] = useState<{
+    clientId?: string
+    storeId?: string
+    titulo?: string
+  } | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
   const [initialDate, setInitialDate] = useState<Date | undefined>()
   const [completionMeeting, setCompletionMeeting] = useState<MeetingWithRelations | null>(null)
@@ -162,6 +170,29 @@ export function MeetingsPageClient({
     params.delete("success")
     params.delete("error")
     params.delete("settings")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, router, pathname])
+
+  // Deep-link "agendar com contexto": a loja, a carteira e o negócio mandam
+  // ?agendar=1&client_id=&store_id=&titulo= e o diálogo abre preenchido.
+  // Roda uma vez por chegada: os params são limpos logo em seguida, então
+  // reabrir o diálogo depois de fechar exige um novo clique — e não um
+  // re-render qualquer reabrindo sozinho.
+  useEffect(() => {
+    if (searchParams.get("agendar") !== "1") return
+
+    setEditingMeeting(null)
+    setAgendarContexto({
+      clientId: searchParams.get("client_id") || undefined,
+      storeId: searchParams.get("store_id") || undefined,
+      titulo: searchParams.get("titulo") || undefined,
+    })
+    setDialogOpen(true)
+
+    const params = new URLSearchParams(searchParams.toString())
+    for (const k of ["agendar", "client_id", "store_id", "titulo"]) params.delete(k)
     const qs = params.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -219,6 +250,7 @@ export function MeetingsPageClient({
   }
 
   const handleDialogClose = () => {
+    setAgendarContexto(null)
     setDialogOpen(false)
     setEditingMeeting(null)
   }
@@ -626,6 +658,9 @@ export function MeetingsPageClient({
         members={members}
         initialDate={initialDate}
         hasGoogleCalendar={hasGoogleCalendar}
+        initialClientId={agendarContexto?.clientId}
+        initialStoreId={agendarContexto?.storeId}
+        initialTitle={agendarContexto?.titulo}
       />
 
       {completionMeeting && (
