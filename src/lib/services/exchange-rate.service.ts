@@ -60,6 +60,32 @@ export interface BRLConversion {
   valueBRL: number
   converted: boolean
   reason?: "same-currency" | "zero" | "no-rates" | "no-currency-rate"
+  /**
+   * Quantos REAIS vale 1 unidade da moeda (ex.: EUR → 5.9589).
+   *
+   * É o inverso do que o provedor manda (`rates` é "1 BRL = X moeda"),
+   * porque é assim que a conta é lida por quem confere: "€ 12.400 ×
+   * 5,9589 = R$ 73.890". Sem expor a taxa, o número em real não é
+   * verificável por ninguém — foi a lacuna que fez o valor convertido
+   * parecer inventado.
+   */
+  rate?: number
+  /** Dia (YYYY-MM-DD) da cotação usada. */
+  rateDate?: string
+  /**
+   * A cotação NÃO é a do dia pedido — é a mais próxima que tínhamos.
+   * Acontece para datas anteriores ao início do histórico diário. Quem
+   * mostra o valor precisa poder dizer isso.
+   */
+  rateApproximate?: boolean
+}
+
+/** Uma parcela em moeda estrangeira, para o resumo de composição. */
+export interface ConversionPart {
+  currency: string
+  amount: number
+  amountBRL: number
+  rate?: number
 }
 
 /**
@@ -72,24 +98,55 @@ export async function convertToBRLDetailed(
   amount: number,
   currency: string,
 ): Promise<BRLConversion> {
-  if (currency === "BRL") return { valueBRL: amount, converted: true, reason: "same-currency" }
+  return convertToBRLOn(amount, currency, null)
+}
+
+/**
+ * Converte usando a cotação DE UM DIA.
+ *
+ * `day` (YYYY-MM-DD) null = cotação corrente, o comportamento histórico.
+ *
+ * Por que existe: a receita de uma janela de 90 dias era convertida
+ * inteira pela cotação de hoje. Além do erro de valor, o MESMO período
+ * dava um total diferente a cada dia — relatório que muda sozinho não
+ * fecha com nada. Com a taxa do dia, o dia 12/08 vale sempre o que valia
+ * em 12/08.
+ *
+ * Fora do histórico disponível a função NÃO inventa: devolve a cotação
+ * mais próxima que existe com `rateApproximate: true`, e quem mostra o
+ * número diz que é aproximada.
+ */
+export async function convertToBRLOn(
+  amount: number,
+  currency: string,
+  day: string | null,
+): Promise<BRLConversion> {
+  const moeda = (currency || "BRL").toUpperCase()
+  if (moeda === "BRL") return { valueBRL: amount, converted: true, reason: "same-currency", rate: 1 }
   if (amount === 0) return { valueBRL: 0, converted: true, reason: "zero" }
 
-  const rates = await getExchangeRates()
-  if (!rates) {
-    log.warn("[ExchangeRate] No rates available, returning unconverted", { currency, amount })
+  const cotacao = day ? await getRatesForDay(day) : await cotacaoCorrente()
+  if (!cotacao) {
+    log.warn("[ExchangeRate] No rates available, returning unconverted", { currency: moeda, amount })
     return { valueBRL: amount, converted: false, reason: "no-rates" }
   }
 
-  const rateFromBRL = rates.rates[currency]
+  const rateFromBRL = cotacao.rates[moeda]
   if (!rateFromBRL || rateFromBRL === 0) {
-    log.warn("[ExchangeRate] No rate for currency, returning unconverted", { currency, amount })
-    return { valueBRL: amount, converted: false, reason: "no-currency-rate" }
+    log.warn("[ExchangeRate] No rate for currency, returning unconverted", { currency: moeda, amount })
+    return { valueBRL: amount, converted: false, reason: "no-currency-rate", rateDate: cotacao.day }
   }
 
-  // rates are "1 BRL = X foreign", so to convert foreign to BRL: amount / rate
+  // O provedor manda "1 BRL = X moeda"; para ir de moeda a BRL divide-se.
+  // `rate` sai invertido porque é como a conta é conferida por quem lê.
   const converted = amount / rateFromBRL
-  return { valueBRL: Math.round(converted * 100) / 100, converted: true }
+  return {
+    valueBRL: Math.round(converted * 100) / 100,
+    converted: true,
+    rate: Math.round((1 / rateFromBRL) * 10000) / 10000,
+    rateDate: cotacao.day,
+    rateApproximate: cotacao.approximate || undefined,
+  }
 }
 
 /**
@@ -104,6 +161,155 @@ export async function convertToBRLDetailed(
 export async function convertToBRL(amount: number, currency: string): Promise<number> {
   const { valueBRL } = await convertToBRLDetailed(amount, currency)
   return valueBRL
+}
+
+/** Cotação resolvida para uma data, com a procedência da resolução. */
+interface Cotacao {
+  rates: Record<string, number>
+  /** Dia da cotação REALMENTE usada (YYYY-MM-DD). */
+  day: string
+  /** A cotação não é do dia pedido — é a mais próxima que existe. */
+  approximate: boolean
+}
+
+/** YYYY-MM-DD em UTC — mesmo eixo em que o histórico é gravado. */
+function diaUtc(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+async function cotacaoCorrente(): Promise<Cotacao | null> {
+  const r = await getExchangeRates()
+  if (!r) return null
+  return { rates: r.rates, day: diaUtc(new Date(r.fetchedAt)), approximate: false }
+}
+
+// Cotação por dia: dia → resultado. Dia fechado NÃO muda, então o cache
+// não expira dentro da vida do processo. Só o dia de hoje é excluído (a
+// cotação dele ainda pode ser atualizada).
+const cotacaoPorDia = new Map<string, Cotacao | null>()
+
+/** Reseta o estado de módulo. Existe para os testes — não usar em runtime. */
+export function __resetDailyRatesCacheForTests(): void {
+  cotacaoPorDia.clear()
+}
+
+/**
+ * Cotação de um dia: a do próprio dia; senão a mais recente ANTES dele.
+ *
+ * A busca é "<= dia, mais recente primeiro" porque cotação de dia futuro
+ * não pode valer para o passado — usar a de amanhã para converter ontem
+ * seria inventar informação que não existia no momento do faturamento.
+ */
+export async function getRatesForDay(day: string): Promise<Cotacao | null> {
+  const alvo = day.slice(0, 10)
+  const hoje = diaUtc(new Date())
+  if (alvo !== hoje && cotacaoPorDia.has(alvo)) return cotacaoPorDia.get(alvo) ?? null
+
+  let resultado: Cotacao | null = null
+  try {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from("exchange_rate_daily")
+      .select("day, rates")
+      .lte("day", alvo)
+      .order("day", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!error && data?.rates) {
+      resultado = {
+        rates: data.rates as Record<string, number>,
+        day: String(data.day).slice(0, 10),
+        approximate: String(data.day).slice(0, 10) !== alvo,
+      }
+    }
+  } catch (e) {
+    log.warn("[ExchangeRate] histórico diário indisponível", { day: alvo, erro: String(e) })
+  }
+
+  // Antes do início do histórico (ou tabela ainda sem a migration) sobra
+  // a cotação corrente — declarada como aproximada, nunca como exata.
+  if (!resultado) {
+    const corrente = await cotacaoCorrente()
+    if (corrente) resultado = { ...corrente, approximate: corrente.day !== alvo }
+  }
+
+  if (alvo !== hoje) cotacaoPorDia.set(alvo, resultado)
+  return resultado
+}
+
+/**
+ * Cotação FRESCA direto do provedor, com a metainformação dele.
+ *
+ * Existe para o cron diário: ali queremos a cotação do dia, não o que
+ * estiver no cache de 1 h. Não mexe em `memoryCache` — o cron não deve
+ * influenciar o que as telas estão servindo.
+ */
+export async function getLatestRatesForSnapshot(): Promise<{
+  rates: Record<string, number>
+  provider: string
+  providerUpdatedAt: string | null
+} | null> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    const response = await fetch(API_URL, { signal: controller.signal, cache: "no-store" })
+    clearTimeout(timeout)
+    if (!response.ok) {
+      log.warn("[ExchangeRate] snapshot: API respondeu", { status: response.status })
+      return null
+    }
+    const data = (await response.json()) as {
+      result: string
+      rates: Record<string, number>
+      provider?: string
+      time_last_update_utc?: string
+    }
+    if (data.result !== "success" || !data.rates) return null
+    return {
+      rates: data.rates,
+      provider: data.provider ?? "open.er-api.com",
+      providerUpdatedAt: data.time_last_update_utc
+        ? new Date(data.time_last_update_utc).toISOString()
+        : null,
+    }
+  } catch (e) {
+    log.warn("[ExchangeRate] snapshot falhou", { erro: String(e) })
+    return null
+  }
+}
+
+/**
+ * Guarda a cotação de hoje no histórico. Idempotente por dia.
+ *
+ * Chamada de dentro do fetch (oportunista: quem já foi buscar a cotação
+ * grava de graça) e pelo cron diário — que existe porque um dia sem
+ * NENHUMA visita ao dashboard não teria linha, e o buraco só apareceria
+ * meses depois, na conversão de um período antigo.
+ */
+export async function snapshotDailyRates(
+  rates: Record<string, number>,
+  meta?: { provider?: string; providerUpdatedAt?: string | null },
+): Promise<void> {
+  try {
+    const supabase = createAdminClient()
+    const { error } = await supabase.from("exchange_rate_daily").upsert(
+      {
+        day: diaUtc(new Date()),
+        base: "BRL",
+        rates,
+        provider: meta?.provider ?? "open.er-api.com",
+        provider_updated_at: meta?.providerUpdatedAt ?? null,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "day" },
+    )
+    if (error) log.warn("[ExchangeRate] não gravou o histórico do dia", { message: error.message })
+  } catch (e) {
+    // Best-effort: o histórico é para o futuro, não pode derrubar a
+    // conversão de agora.
+    log.warn("[ExchangeRate] falha ao gravar histórico diário", { erro: String(e) })
+  }
 }
 
 /**
@@ -202,6 +408,8 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
     const data = await response.json() as {
       result: string
       rates: Record<string, number>
+      provider?: string
+      time_last_update_utc?: string
     }
 
     if (data.result !== "success" || !data.rates) {
@@ -212,6 +420,22 @@ async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
 
     memoryCache = { rates: data.rates, fetchedAt: Date.now() }
     log.info(`[ExchangeRate] Fetched ${Object.keys(data.rates).length} rates from API`)
+
+    // Histórico do dia, de graça: quem já pagou a chamada grava a linha.
+    // `time_last_update_utc` é do PROVEDOR — o feed gratuito atualiza uma
+    // vez por dia, então sem ele não dá para distinguir "cotação de hoje"
+    // de "cotação de ontem lida hoje".
+    //
+    // AWAIT, não `void`: promise solta em serverless morre quando o
+    // processo congela depois da resposta (foi assim que os eventos de
+    // conversão da Meta se perderam). O custo é um upsert a mais no
+    // caminho da 1a conversão depois do cache expirar — uma vez por hora.
+    await snapshotDailyRates(data.rates, {
+      provider: data.provider ?? "open.er-api.com",
+      providerUpdatedAt: data.time_last_update_utc
+        ? new Date(data.time_last_update_utc).toISOString()
+        : null,
+    })
 
     // Write-back no L2. Best-effort: o L1 ja foi populado acima, entao
     // falhar aqui nao invalida a cotacao que vamos devolver.

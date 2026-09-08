@@ -245,6 +245,15 @@ async function handleGet(request: NextRequest) {
         trend: trends.get(store.id) ?? null,
         // true = câmbio indisponivel, valores estao na moeda original (nao BRL).
         fxDegraded,
+        // Valores NA MOEDA DA LOJA + a cotação usada. Sem isto, o número
+        // em real na tela é uma conta sem as parcelas: ninguém consegue
+        // conferir, e moeda cadastrada errada continua passando (a Lena
+        // Warszawa ficou meses em EUR sendo PLN — o total parecia certo).
+        totalRevenueLocal: Math.round(totalRevenue * 100) / 100,
+        attributedRevenueLocal: Math.round(attributedRevenue * 100) / 100,
+        fxRate: totalConv.rate ?? null,
+        fxRateDate: totalConv.rateDate ?? null,
+        fxRateApproximate: totalConv.rateApproximate ?? false,
         totalRevenueBRL: Math.round(totalBRL * 100) / 100,
         attributedRevenueBRL: Math.round(attributedBRL * 100) / 100,
         recoveryRate: Math.round(recoveryRate * 100) / 100,

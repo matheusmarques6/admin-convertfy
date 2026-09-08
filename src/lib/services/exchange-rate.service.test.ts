@@ -13,6 +13,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // ── Estado mutavel dos mocks ──────────────────────────────────
 let selectCalls = 0
 let upsertCalls = 0
+/** Upserts por TABELA: o serviço grava no cache corrente E no histórico
+ *  diário (exchange_rate_daily), então o contador único deixou de dizer
+ *  o que o teste de singleflight quer afirmar. */
+let upsertsPorTabela: Record<string, number> = {}
 let fetchCalls = 0
 
 // Resposta do SELECT no L2 (exchange_rate_cache)
@@ -27,17 +31,24 @@ let apiResponse: () => Promise<Response> = () =>
     new Response(JSON.stringify({ result: "success", rates: { USD: 0.2 } }), { status: 200 }),
   )
 
-function buildQuery() {
+function buildQuery(table: string) {
   const chain = {
     select: () => chain,
     eq: () => chain,
     gt: () => chain,
+    lte: () => chain,
+    order: () => chain,
+    limit: () => chain,
     maybeSingle: () => {
+      // Só o cache corrente responde ao SELECT deste teste; o histórico
+      // diário não é consultado nos cenários aqui.
+      if (table !== "exchange_rate_cache") return Promise.resolve({ data: null, error: null })
       selectCalls++
       return Promise.resolve(l2Response)
     },
     upsert: () => {
       upsertCalls++
+      upsertsPorTabela[table] = (upsertsPorTabela[table] ?? 0) + 1
       return Promise.resolve({ data: null, error: null })
     },
   }
@@ -46,7 +57,7 @@ function buildQuery() {
 
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(() => ({
-    from: () => buildQuery(),
+    from: (table: string) => buildQuery(table),
   })),
 }))
 
@@ -70,6 +81,7 @@ import {
 beforeEach(() => {
   selectCalls = 0
   upsertCalls = 0
+  upsertsPorTabela = {}
   fetchCalls = 0
   l2Response = { data: null, error: null }
   apiResponse = () =>
@@ -86,7 +98,9 @@ beforeEach(() => {
 describe("short-circuits (nao tocam em cache)", () => {
   it("BRL retorna o proprio valor sem ler o L2", async () => {
     const r = await convertToBRLDetailed(100, "BRL")
-    expect(r).toEqual({ valueBRL: 100, converted: true, reason: "same-currency" })
+    // `rate: 1` é explícito de propósito: a tela mostra a cotação usada,
+    // e "real para real" tem taxa 1, não taxa ausente.
+    expect(r).toEqual({ valueBRL: 100, converted: true, reason: "same-currency", rate: 1 })
     expect(selectCalls).toBe(0)
   })
 
@@ -108,7 +122,11 @@ describe("singleflight", () => {
 
     expect(selectCalls).toBe(1)
     expect(fetchCalls).toBe(1)
-    expect(upsertCalls).toBe(1)
+    // Uma gravação em CADA tabela: o cache corrente e o histórico do dia.
+    // O que o singleflight garante é que não houve N de cada uma.
+    expect(upsertsPorTabela["exchange_rate_cache"]).toBe(1)
+    expect(upsertsPorTabela["exchange_rate_daily"]).toBe(1)
+    expect(upsertCalls).toBe(2)
     // 1 BRL = 0.2 USD → 100 USD = 500 BRL
     expect(results.every((v) => v === 500)).toBe(true)
   })

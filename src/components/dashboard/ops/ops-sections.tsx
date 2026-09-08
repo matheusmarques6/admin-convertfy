@@ -9,6 +9,7 @@
 import { useState } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
+import { ValorBRL, ValorBRLTotal } from "@/components/money/valor-brl"
 import { Spark } from "./charts"
 import { EmailAuditDialog } from "./ops-audit"
 import {
@@ -18,7 +19,6 @@ import {
   Td,
   Th,
   fmtBRLCompact,
-  fmtBRLFull,
   fmtCompactInt,
   fmtPct,
 } from "./primitives"
@@ -82,6 +82,16 @@ interface StoreOverviewRow {
   attributedRevenueBRL: number
   recoveryRate: number
   campaigns: { openRate: number; clickRate: number; envios: number }
+  // Moeda da loja + valores como a plataforma reportou + a cotação usada.
+  // É o que o hover mostra: sem isso o valor em real é uma conta sem as
+  // parcelas, impossível de conferir.
+  currency?: string
+  totalRevenueLocal?: number
+  attributedRevenueLocal?: number
+  fxRate?: number | null
+  fxRateDate?: string | null
+  fxRateApproximate?: boolean
+  fxDegraded?: boolean
 }
 
 interface FlowsAggregateData {
@@ -285,9 +295,33 @@ export function StoresHealthTable({ q }: { q: string }) {
                       )}
                       {s.storeName}
                     </Td>
-                    <Td right last={last}>{fmtBRLCompact(s.totalRevenueBRL)}</Td>
                     <Td right last={last}>
-                      {s.attributedRevenueBRL > 0 ? fmtBRLCompact(s.attributedRevenueBRL) : "—"}
+                      <ValorBRL
+                        compacto
+                        valorBRL={s.totalRevenueBRL}
+                        valorOriginal={s.totalRevenueLocal}
+                        moeda={s.currency}
+                        taxa={s.fxRate}
+                        dataDaTaxa={s.fxRateDate}
+                        taxaAproximada={s.fxRateApproximate}
+                        naoConvertido={s.fxDegraded}
+                      />
+                    </Td>
+                    <Td right last={last}>
+                      {s.attributedRevenueBRL > 0 ? (
+                        <ValorBRL
+                          compacto
+                          valorBRL={s.attributedRevenueBRL}
+                          valorOriginal={s.attributedRevenueLocal}
+                          moeda={s.currency}
+                          taxa={s.fxRate}
+                          dataDaTaxa={s.fxRateDate}
+                          taxaAproximada={s.fxRateApproximate}
+                          naoConvertido={s.fxDegraded}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </Td>
                     <Td
                       right
@@ -642,6 +676,13 @@ interface ClientAgg {
   clickW: number
   bestScore: number | null
   trend: "up" | "down" | null
+  /**
+   * As lojas que formam a receita deste cliente, cada uma na sua moeda.
+   * Cliente multi-loja pode faturar em EUR e BRL ao mesmo tempo — aí não
+   * existe "o valor original", existe uma composição, e é ela que o
+   * hover mostra.
+   */
+  parcelas: Array<{ moeda?: string; valorOriginal: number; valorBRL: number; naoConvertido?: boolean }>
 }
 
 function statusFromScore(score: number | null): { label: string; cls: string } {
@@ -673,9 +714,16 @@ export function ClientsRevenueTable({ className, q }: { className?: string; q: s
         clickW: 0,
         bestScore: null,
         trend: null,
+        parcelas: [],
         topRevenue: -1,
       }
       cur.revenue += s.totalRevenueBRL
+      cur.parcelas.push({
+        moeda: s.currency,
+        valorOriginal: s.totalRevenueLocal ?? s.totalRevenueBRL,
+        valorBRL: s.totalRevenueBRL,
+        naoConvertido: s.fxDegraded,
+      })
       cur.delivered += s.campaigns.envios
       cur.openW += s.campaigns.openRate * s.campaigns.envios
       cur.clickW += s.campaigns.clickRate * s.campaigns.envios
@@ -731,7 +779,9 @@ export function ClientsRevenueTable({ className, q }: { className?: string; q: s
                 return (
                   <tr key={c.name}>
                     <Td last={last} className="font-semibold text-[var(--ops-title)]">{c.name}</Td>
-                    <Td right last={last}>{fmtBRLFull(c.revenue)}</Td>
+                    <Td right last={last}>
+                      <ValorBRLTotal valorBRL={c.revenue} parcelas={c.parcelas} semCentavos />
+                    </Td>
                     <Td
                       right
                       last={last}

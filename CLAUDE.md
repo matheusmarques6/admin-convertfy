@@ -3291,5 +3291,70 @@ válido** (lista aberta, `STORE_TIMEZONES` é só o atalho da tela) porque
 quem preenche na prática é a plataforma — recusar o que já está gravado
 faria o select discordar do banco.
 
+## Câmbio: o real mostra de onde veio (set/2026, migration 20261124)
+
+O dashboard consolida tudo em BRL e o número aparecia sozinho. Um total
+em real de loja europeia é uma CONTA, e conta sem as parcelas não é
+verificável — foi assim que a Lena Warszawa passou meses em EUR sendo
+PLN: o valor final continuava parecendo plausível.
+
+**Como a conversão funciona** — `exchange-rate.service.ts`:
+`GET open.er-api.com/v6/latest/BRL` devolve `rates` no formato "1 BRL =
+X moeda"; converter é `valor / rates[moeda]`. Cache em três camadas
+(memória 1 h → `exchange_rate_cache` 1 h → API) com singleflight,
+stale-on-error e cooldown. A conversão roda na LEITURA, em cada rota de
+dashboard — nada é gravado convertido.
+
+**O que era impreciso, e o que mudou:**
+
+1. **Taxa de hoje aplicada a 90 dias de receita.** Além do erro de valor,
+   o MESMO período dava um total diferente a cada dia — relatório que
+   muda sozinho não fecha com nada. `exchange_rate_daily` (uma linha por
+   dia, ~1 KB) + `convertToBRLOn(valor, moeda, dia)` resolvem: o dia
+   12/08 vale sempre o que valia em 12/08. **Limite declarado**: o feed
+   gratuito não serve histórico, então o histórico começa no dia em que
+   isto subiu; para trás a cotação é a mais próxima anterior e vem com
+   `rateApproximate: true`, que a tela DIZ.
+2. **A taxa não aparecia em lugar nenhum.** `convertToBRLDetailed` passa
+   a devolver `rate` (invertido — REAIS por 1 unidade, que é como a conta
+   é conferida), `rateDate` e `rateApproximate`.
+3. **Duas fontes de cotação divergindo.** `/api/stores/currency-audit`
+   tinha um `fetch` próprio da API: uma chamada externa a mais e um
+   número que podia discordar do dashboard para a mesma loja. Agora usa
+   o mesmo serviço.
+4. **Valor não convertido somado como se fosse real.** Câmbio
+   indisponível devolve o valor NA MOEDA ORIGINAL, e ele entrava no total
+   sem marca. `fxDegraded` sobe nas rotas e o total avisa que mistura
+   moedas.
+
+**Na tela** (`components/money/valor-brl.tsx`): o real fica no texto (é o
+que se compara de relance) e a memória de cálculo no hover —
+`ValorBRL` para uma parcela ("€ 12.400,00 × 5,9589 = R$ 73.890,36 ·
+cotação de 08/09/2026") e `ValorBRLTotal` para total de várias moedas,
+onde não existe "o valor original" e sim a COMPOSIÇÃO. Regras em
+`lib/money/conversao.ts` (puro, 17 testes): valor já em real não gera
+tooltip (repetir o que está na tela é ruído); código que o `Intl` não
+conhece não derruba a página; o espaço é NBSP nos dois ramos (com espaço
+comum, "R$ 10" quebraria de linha entre símbolo e valor); e
+`formatarDiaISO` não passa por `Date` (`new Date("2026-09-08")` é
+meia-noite UTC e voltaria 07/09 no Brasil).
+
+**Onde aparece**: dashboard operacional (tabela de lojas, Clientes por
+Receita, card Faturamento total), auditoria de moeda e o hero da loja.
+
+**Cotação mid-market**: é a taxa de referência, não a que o cliente
+recebe depois do spread do meio de pagamento. Fica declarado aqui —
+"aproximar da realidade" nesse eixo exigiria a taxa efetiva de cada
+gateway, que não temos.
+
+**O cron existe porque a gravação oportunista não basta**
+(`/api/cron/exchange-rate-snapshot`, 5 11 * * *): o serviço grava a linha
+do dia quando busca a cotação, mas isso depende de alguém abrir uma tela.
+Um feriado sem acesso deixaria o dia sem linha, e o buraco só apareceria
+meses depois como "cotação aproximada" sem ninguém saber por quê. A
+gravação oportunista é **await, nunca `void`** — promise solta em
+serverless morre quando o processo congela depois da resposta (a mesma
+armadilha que perdeu os eventos de conversão da Meta).
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
