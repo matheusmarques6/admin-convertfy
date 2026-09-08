@@ -234,14 +234,28 @@ export class AsaasService {
   }
 
   async listSubscriptions(params?: {
+    /** Id do cliente no Asaas — sem ele a lista vem da conta INTEIRA. */
+    customer?: string
     status?: string
     offset?: number
     limit?: number
   }): Promise<{
-    data: Array<{ id: string; customer: string; value: number; cycle: string; status: string }>
+    data: Array<{
+      id: string
+      customer: string
+      value: number
+      cycle: string
+      status: string
+      description?: string
+      // `dateCreated` é o que separa clique duplo de segunda loja na
+      // régua de duplicata — sem ele a decisão vira "pedir confirmação".
+      dateCreated?: string
+      nextDueDate?: string
+    }>
     totalCount: number
   }> {
     const query = new URLSearchParams()
+    if (params?.customer) query.set("customer", params.customer)
     if (params?.status) query.set("status", params.status)
     if (params?.offset != null) query.set("offset", String(params.offset))
     if (params?.limit) query.set("limit", String(params.limit))

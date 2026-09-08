@@ -22,6 +22,7 @@ import {
 } from "../shared/prompt-provenance"
 import { TEXT_FORMAT_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+import { corteDeRaciocinio } from "../model-capabilities"
 import { postProcessDocumentPreserveTags } from "../html/post-process"
 import {
   HERO_SENTINEL_START,
@@ -245,10 +246,9 @@ export async function invokeTextFormatChain(input: {
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Text Format",
     // Kimi K3 tem reasoning always-on — o full-doc já é o step mais longo
-    // da cadeia; sem o corte estoura o timeout. FORMAT_OPS_REASONING=on re-liga.
-    ...(process.env.FORMAT_OPS_REASONING === "on"
-      ? {}
-      : { reasoning: { enabled: false } }),
+    // da cadeia; sem o corte estoura o timeout. Só em quem aceita o corte:
+    // no Fable ele vira 400. FORMAT_OPS_REASONING=on re-liga.
+    ...corteDeRaciocinio(config.model),
   })
 
   // PreserveTags: o strip de placeholders + lang rodam SÓ no fim da cadeia

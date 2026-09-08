@@ -153,3 +153,34 @@ export function avisoDeAssinaturaExistente(
     ? "Este cliente já tem 1 assinatura ativa. Uma nova será criada além dela."
     : `Este cliente já tem ${vivas.length} assinaturas ativas. Uma nova será criada além delas.`
 }
+
+
+/**
+ * Uma assinatura, um card.
+ *
+ * O financeiro do cliente lê DUAS fontes independentes — as linhas de
+ * `client_subscriptions` e a lista crua do Asaas — e renderizava as duas
+ * inteiras, uma embaixo da outra. Toda assinatura do Asaas que ganha
+ * espelho local passa a ocupar DOIS cards, com o MRR somado em dobro.
+ *
+ * O espelho nasce em vários caminhos legítimos: o POST de assinatura
+ * Asaas cria na hora, "Vincular lojas" cria (é onde o vínculo mora — a FK
+ * de `client_subscription_stores` aponta para `client_subscriptions`), o
+ * onboarding cria, o sync cria. Medido em 08/09: criar uma assinatura
+ * pelo perfil do cliente gravou UMA linha correta
+ * (`sub_nx3acxf97wuc96j7`) e ainda assim a tela mostrava duas.
+ *
+ * A **linha local vence** porque é ela que carrega lojas, classificação e
+ * notas; a do provedor vira o `asaas_subscription_id` exibido no card
+ * local. É a mesma regra que o `GET /api/client-subscriptions` já
+ * aplicava — mas aquele endpoint a tela não usa.
+ */
+export function assinaturasAsaasSemEspelho<T extends { id: string }>(
+  locais: Pick<AssinaturaLocal, "asaas_subscription_id">[],
+  doAsaas: T[],
+): T[] {
+  const espelhadas = new Set(
+    locais.map((l) => l.asaas_subscription_id).filter((id): id is string => Boolean(id)),
+  )
+  return doAsaas.filter((s) => !espelhadas.has(s.id))
+}

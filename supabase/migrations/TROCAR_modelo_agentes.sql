@@ -275,6 +275,28 @@ SELECT c.agent_type,
 -- `email_generation_runs.model` guarda o que foi REALMENTE usado.
 -- Se aqui aparecer o modelo antigo, a config não foi lida (agente
 -- errado, linha inativa, ou o chain tem modelo fixo em código).
+--
+-- DOIS AGENTES IGNORAVAM ESTA TABELA — corrigido em 08/09, e vale saber
+-- por que eles apareciam em Sonnet depois de uma troca em massa:
+--
+--   `assembler_chooser` — o Curador do VAULT lia uma constante
+--     (`CURADOR_SHADOW_MODEL`) e o Curador LEGADO lia a config. Mesmo
+--     agent_type, dois modelos, e a telemetria mostrava os dois. Agora a
+--     precedência é env `CURADOR_SHADOW_MODEL` > esta tabela > constante.
+--     Só o MODELO vem daqui: o prompt do vault é outro contrato.
+--
+--   `hero_section` — quando o exemplo da variante é mockup-IMAGEM, a hero
+--     anexa o screenshot ao prompt, e isso exige visão. Ela trocava para
+--     `HERO_VISION_MODEL` SEMPRE nesse caso, mesmo com o configurado
+--     enxergando. Agora só troca quando precisa: modelo cego (kimi, glm) ou
+--     sem "/" (o SDK da Anthropic lança ao receber anexo).
+--
+-- UM MODELO NOVO PODE EXIGIR TETO MAIOR. Raciocínio obrigatório (Fable,
+-- Mythos) consome `max_tokens` ANTES de escrever a resposta: com teto
+-- apertado o conteúdo volta vazio e o parse estoura com "Unexpected end of
+-- JSON input", sem erro do provedor. Foi o que derrubou o `subject` em
+-- 08/09, com os 400 tokens que sobravam para o Sonnet. Confira na consulta
+-- 1 quem está abaixo de ~4000 antes de trocar.
 SELECT agent, model, status, created_at
   FROM email_generation_runs
  WHERE created_at > now() - interval '2 hours'

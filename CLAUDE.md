@@ -4091,5 +4091,93 @@ segunda loja precisa mesmo da segunda assinatura, e ali o valor idêntico
 espelho), senão deixaria de avisar justamente quem tem a assinatura viva
 no Asaas e ainda sem espelho.
 
+### O quarto escritor: a duplicata que COBRA (08/09)
+
+O usuário mostrou a EP Negócios Digital com DOIS cards de R$ 2.497 —
+depois da correção acima. Medido: **zero linhas em
+`client_subscriptions` para esse cliente**. A lista da tela é
+`localSubscriptions` + `subscriptions` do Asaas, então dois cards com
+zero locais só podem ser **duas assinaturas no próprio Asaas**.
+
+`POST /api/integrations/asaas/subscriptions` chamava
+`asaas.createSubscription` **sem checar nada**, e o provedor não
+deduplica. A chamada leva segundos, o botão não travava de verdade e um
+F5 reenviava: o cliente passa a ser cobrado duas vezes por ciclo. As
+duplicatas locais eram feias na tela; esta sai na fatura de quem
+comprou uma assinatura só.
+
+`decidirCriacaoNoAsaas` (`asaas-assinatura-duplicada.ts`, puro, 18
+testes) separa por TEMPO, porque recusar tudo seria pior: a segunda loja
+de um cliente custa quase sempre o MESMO que a primeira (o JMJC tem duas
+de R$ 3.500), e recusar em silêncio faria a venda nova não ser cobrada.
+
+- **`reusar`** — idêntica (valor + ciclo + descrição sem acento/caixa)
+  criada há menos de 10 min: não existe decisão de negócio tomada duas
+  vezes nessa janela, é clique duplo ou retry. Segue com a que existe.
+- **`confirmar`** — idêntica mais antiga: 409 com a data, e o diálogo
+  "Criar mesmo assim" diz que passa a cobrar em dobro. Sem `dateCreated`
+  também cai aqui — afirmar recência que não se tem reusaria uma
+  assinatura que deveria nascer.
+- **`criar`** — nada parecido. Cancelada no Asaas não bloqueia; status
+  ausente conta como ATIVA (ignorá-la liberaria a duplicata).
+
+A **consulta** é fail-open (listagem que cai não pode recusar a venda),
+mas a criação não: `confirmar_duplicada` só vem de um clique humano. Duas
+armadilhas fechadas junto: `listSubscriptions` não filtrava por
+`customer` (traria a conta inteira) e `onClick={handleCreateSubscription}`
+passaria o EVENTO como `confirmarDuplicada` — truthy, e a checagem nunca
+rodaria. O POST passa `externalReference: clientId`, que é como
+`resolveClientForPayment` acha o dono do pagamento.
+
+**Nota de método**: o `execute_sql` do MCP devolve só o ÚLTIMO statement.
+Duas queries num envio fazem a primeira sumir sem erro — foi o que quase
+me fez concluir que o cliente não existia.
+
+### O card duplicado ERA o vínculo (08/09) — a tela somava duas fontes
+
+O relato original era literal e eu demorei a ouvi-lo: **vincular loja
+duplicava a assinatura**. Não era corrida, nem escritor a mais — é que
+`client-financial.tsx` lê DUAS fontes independentes (`client_subscriptions`
+pelo Supabase e a lista crua do Asaas por `useAsaasSubscriptions`) e
+renderizava as duas inteiras, `localSubscriptions.map()` seguido de
+`subscriptions.map()`, **sem nenhum filtro entre elas**.
+
+Enquanto a assinatura existia só no Asaas era um card. No instante em que
+alguém clicava "Vincular lojas", `handleLinkStores` criava a linha local
+— corretamente, porque é onde o vínculo mora: a FK de
+`client_subscription_stores` aponta para `client_subscriptions` — e a
+MESMA assinatura passava a ocupar dois cards. No print da EP Negócios os
+dois se distinguem: o esquerdo diz "Asaas (Automático)" sem id (é o
+local, que usa `paymentMethodLabels`), o direito mostra "ID Asaas" (é o
+do provedor).
+
+**O merge por `asaas_subscription_id` já existia — no
+`GET /api/client-subscriptions`, que esta tela não usa.** Agora a mesma
+regra roda aqui: a linha local VENCE (é ela que carrega lojas,
+classificação e notas) e a do provedor é descartada da lista. O card
+local ganhou a linha "ID Asaas", senão o dado sumiria junto com o card
+do Asaas.
+
+Conserta três sintomas de uma vez, porque todos liam a mesma variável:
+o card repetido, o "Assinaturas (2)" e o MRR de R$ 4.994 (= 2.497 × 2,
+somado em `activeSubsValue` = Asaas + locais). E vale para qualquer
+origem do espelho — vínculo, onboarding, fechamento da venda ou o sync —
+não só para o clique que expôs o defeito.
+
+**Lição**: mesma entidade vinda de duas fontes precisa do merge em TODA
+leitura, não só na que foi escrita primeiro. Um endpoint mergeado não
+protege a tela que fala direto com as duas pontas.
+
+**Reproduzido e medido (08/09, 22:37)**: criar assinatura pelo perfil do
+cliente (Ricardo Lacerda, Plano Mensal R$ 3.500) gravou **UMA linha
+correta**, com `asaas_subscription_id = sub_nx3acxf97wuc96j7` — e a tela
+mostrou duas. Prova de que o defeito é de LEITURA, não de escrita: o
+banco estava certo o tempo todo. Vale para todo caminho que cria o
+espelho, e o POST de assinatura Asaas cria um por construção, então
+"criar assinatura" duplicava a tela mesmo sem ninguém vincular loja.
+A regra saiu do componente para `assinaturasAsaasSemEspelho`
+(`assinatura-duplicada.ts`, puro), com esse caso como teste de
+regressão.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

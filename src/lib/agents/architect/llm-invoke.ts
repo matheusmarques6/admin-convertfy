@@ -11,6 +11,7 @@ import Anthropic from "@anthropic-ai/sdk"
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { corteDeRaciocinio } from "../model-capabilities"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
@@ -300,15 +301,14 @@ async function callOnceArchitect(
     // O agente escolhe (`config.reasoning`): o encurtador roda em 'low'.
     if (isReasoningModel(config.model)) {
       body.reasoning = config.reasoning ?? { effort: "medium" }
-    } else if (
-      /kimi|glm/i.test(config.model) &&
-      process.env.FORMAT_OPS_REASONING !== "on"
-    ) {
+    } else {
       // Kimi K3 / GLM: reasoning always-on por default do modelo — sem este
       // corte o Curador queimava ~160s/27k tokens só pensando. O output aqui
       // é JSON de escolhas / HTML de montagem, não precisa de thinking.
+      // A régua é compartilhada com os chains da fase 2 desde 08/09, quando
+      // o corte incondicional deles virou 400 no Fable.
       // FORMAT_OPS_REASONING=on re-liga sem deploy.
-      body.reasoning = { enabled: false }
+      Object.assign(body, corteDeRaciocinio(config.model))
     }
 
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
