@@ -105,6 +105,7 @@ import {
   resolverLojasDaAssinatura,
   type VinculoDeLojas,
 } from "@/lib/financial/lojas-da-assinatura"
+import { suspeitasDeDuplicata } from "@/lib/financial/assinatura-duplicada"
 
 interface ClientFinancialProps {
   clientId: string
@@ -816,6 +817,41 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
   const isLoading = paymentsLoading
 
+  /**
+   * A mesma assinatura aparecendo duas vezes.
+   *
+   * A tela lista DUAS fontes — as linhas locais e as assinaturas vivas do
+   * Asaas — e só esconde a do Asaas quando alguma local aponta pra ela por
+   * `asaas_subscription_id`. O fechamento da venda criava a linha local SEM
+   * esse id (corrigido na migration 20261132), então as cinco que nasceram
+   * assim seguem duplicando o MRR na tela até alguém ligar as duas. Aqui a
+   * suspeita é apontada; fundir é decisão do operador.
+   */
+  const suspeitaPorLocal = useMemo(
+    () =>
+      new Map(
+        suspeitasDeDuplicata(
+          localSubscriptions.map((l) => ({
+            id: l.id,
+            name: l.name,
+            value: l.value,
+            cycle: l.cycle,
+            status: l.status,
+            asaas_subscription_id: l.asaas_subscription_id,
+          })),
+          subscriptions.map((a) => ({
+            id: a.id,
+            name: a.description,
+            value: a.value,
+            cycle: a.cycle,
+            status: a.status,
+          })),
+        ).map((s) => [s.localId, s]),
+      ),
+    [localSubscriptions, subscriptions],
+  )
+  const [fundindo, setFundindo] = useState<string | null>(null)
+
   const error = paymentsError
     ? "Erro ao carregar dados financeiros"
     : paymentsData?.error
@@ -1360,6 +1396,37 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       })
     } finally {
       setIsClassifying(false)
+    }
+  }
+
+  /**
+   * Confirma que este espelho local é a assinatura X do Asaas.
+   *
+   * Grava o id no espelho — não apaga nada. Assinatura com cobrança já
+   * emitida (quatro das cinco medidas têm) não pode sumir por um clique;
+   * o que some é a DUPLICIDADE, porque o merge passa a fundir as duas.
+   */
+  async function unificarComAsaas(localId: string, asaasId: string) {
+    setFundindo(localId)
+    try {
+      const res = await fetch("/api/client-subscriptions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: localId, asaas_subscription_id: asaasId }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error?.message || result.error || "Erro ao unificar")
+      toast({ title: "Assinaturas unificadas" })
+      loadLocalData()
+      mutateSubscriptions()
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível unificar",
+        description: err instanceof Error ? err.message : undefined,
+      })
+    } finally {
+      setFundindo(null)
     }
   }
 
@@ -2405,6 +2472,30 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <CardDescription>{sub.name}</CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {suspeitaPorLocal.has(sub.id) && (
+                      <div className="mb-3 rounded-[6px] border border-amber-300 bg-amber-50 p-2.5 text-[12px] dark:border-amber-500/30 dark:bg-amber-500/10">
+                        <p className="font-medium text-amber-900 dark:text-amber-200">
+                          Pode ser a mesma assinatura de &ldquo;
+                          {suspeitaPorLocal.get(sub.id)!.asaasNome}&rdquo; no Asaas
+                        </p>
+                        <p className="mt-0.5 text-amber-800 dark:text-amber-300/90">
+                          Mesmo valor e mesmo ciclo, sem vínculo entre elas — por isso as
+                          duas aparecem aqui e a mensalidade conta em dobro. Unificar
+                          mantém as cobranças e as lojas desta; some só a duplicidade.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2 h-7 text-[12px]"
+                          disabled={fundindo === sub.id}
+                          onClick={() =>
+                            unificarComAsaas(sub.id, suspeitaPorLocal.get(sub.id)!.asaasId)
+                          }
+                        >
+                          {fundindo === sub.id ? "Unificando…" : "É a mesma — unificar"}
+                        </Button>
+                      </div>
+                    )}
                     <div className="space-y-1.5 text-[12px]">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Método</span>
