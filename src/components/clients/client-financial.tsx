@@ -851,6 +851,15 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     [localSubscriptions, subscriptions],
   )
   const [fundindo, setFundindo] = useState<string | null>(null)
+  /**
+   * O 409 da rota do Asaas: já existe assinatura ativa idêntica.
+   *
+   * Não é erro — é uma decisão que só quem está vendendo pode tomar
+   * (segunda loja custa o mesmo que a primeira). Guarda a mensagem para
+   * o diálogo de confirmação; criar mesmo assim passa a cobrar o cliente
+   * duas vezes por ciclo, então o caminho tem de ser explícito.
+   */
+  const [duplicataAsaas, setDuplicataAsaas] = useState<string | null>(null)
 
   const error = paymentsError
     ? "Erro ao carregar dados financeiros"
@@ -1085,7 +1094,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     }
   }
 
-  async function handleCreateSubscription() {
+  async function handleCreateSubscription(confirmarDuplicada = false) {
     if (!subscriptionForm.name || subscriptionForm.value <= 0) {
       toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o nome e o valor" })
       return
@@ -1104,10 +1113,22 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             description: subscriptionForm.name,
             billingType: subscriptionForm.billingType,
             storeIds: subscriptionForm.storeIds,
+            confirmar_duplicada: confirmarDuplicada,
           }),
         })
         const result = await response.json()
+        if (response.status === 409) {
+          // Assinatura idêntica já ativa no Asaas: pergunta em vez de
+          // criar a segunda cobrança em silêncio.
+          const raw = result.error
+          setDuplicataAsaas(
+            (typeof raw === "string" ? raw : raw?.message) ??
+              "Este cliente já tem uma assinatura ativa idêntica no Asaas.",
+          )
+          return
+        }
         if (response.ok && result.subscription) {
+          setDuplicataAsaas(null)
           toast({
             title: "Assinatura criada",
             description:
@@ -3259,11 +3280,42 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               Cancelar
             </Button>
             <Button
-              onClick={handleCreateSubscription}
+              // Arrow, não a referência direta: onClick passa o EVENTO
+              // como 1º argumento, e ele cairia em `confirmarDuplicada`
+              // como truthy — a checagem de duplicata nunca rodaria.
+              onClick={() => handleCreateSubscription()}
               disabled={isCreating || subscriptionForm.value === 0}
             >
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assinatura idêntica já ativa no Asaas: decisão do operador,
+          porque a segunda loja de um cliente costuma custar o mesmo que
+          a primeira — e criar de novo cobra o cliente em dobro. */}
+      <Dialog open={duplicataAsaas !== null} onOpenChange={(open) => !open && setDuplicataAsaas(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assinatura parecida já existe</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">{duplicataAsaas}</p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDuplicataAsaas(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={isCreating}
+              onClick={() => {
+                setDuplicataAsaas(null)
+                handleCreateSubscription(true)
+              }}
+            >
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Criar mesmo assim
             </Button>
           </DialogFooter>
         </DialogContent>
