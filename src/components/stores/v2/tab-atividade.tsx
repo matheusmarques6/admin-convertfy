@@ -26,7 +26,7 @@ import {
   Zap, Target, Package, Mail, Link2, Phone, Bell, Plus, Filter, X,
   ChevronRight, Check, Download, ExternalLink, Image as ImageIcon,
 } from "lucide-react"
-import { useStoreOverview } from "@/lib/hooks/use-store-overview"
+import { useStoreBasics } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, Btn, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -75,7 +75,9 @@ export function TabAtividade({ storeId }: { storeId: string }) {
   const [filterKind, setFilterKind] = useState<FilterKey>("all")
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const { data: overview } = useStoreOverview(storeId)
+  // A timeline vem do NOSSO banco — não precisa esperar a plataforma de
+  // e-mail, que é o que segurava esta rota por dezenas de segundos.
+  const { data: overview } = useStoreBasics(storeId)
   const materials = (overview?.store ?? {}) as StoreMaterials
 
   const { data: tasksData } = useSWR(`/api/tasks?store_id=${storeId}&source_type=auto_onboarding_step&limit=50`, fetcher, { revalidateOnFocus: false })

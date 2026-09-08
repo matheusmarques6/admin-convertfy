@@ -8,6 +8,22 @@
  *
  * Query params:
  *  ?period=7d|30d|90d|1A (default 30d) — repassado a report/campaigns/flows
+ *  ?scope=basics — devolve SÓ o que vem do NOSSO banco, sem report/
+ *    campaigns/flows.
+ *
+ * ── Por que existe o `scope` (08/09/2026) ────────────────────────────
+ *
+ * Sintoma: abrir a aba Setup mostrava a ficha da loja INTEIRA vazia
+ * ("—" em nome, URL, plataforma, país…) e "0 de 6 plataformas
+ * configuradas" por 10-30 s, como se a loja não tivesse cadastro. Não
+ * era lentidão do banco: a rota é um `Promise.all` e report/campaigns/
+ * flows batem AO VIVO na Klaviyo/Omnisend (o report da Klaviyo pagina
+ * listas com intervalo entre chamadas). A ficha da loja — uma linha de
+ * `client_stores` que responde em milissegundos — só era entregue
+ * quando a chamada mais lenta terminava.
+ *
+ * Quem não precisa de métrica de campanha (Setup, Atividade, o badge de
+ * novidades) pede `scope=basics` e recebe em ~200 ms.
  */
 
 import { NextRequest } from "next/server"
@@ -84,6 +100,9 @@ async function handleGet(
     await requireStoreAccess(storeId, user.id)
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
+    // `basics` = só o nosso banco. É o que a ficha da loja precisa, e é o
+    // que separa 200 ms de 30 s (ver o cabeçalho do arquivo).
+    const somenteBasico = request.nextUrl.searchParams.get("scope") === "basics"
     const origin = request.nextUrl.origin
     const admin = createAdminClient()
 
@@ -129,19 +148,19 @@ async function handleGet(
         getStoreBriefing,
         new URL(`/api/onboarding/store-briefing?store_id=${storeId}`, origin),
       ),
-      emailPlatformConnected
+      emailPlatformConnected && !somenteBasico
         ? invokeJson(
             getEmailPlatformReport,
             new URL(`/api/integrations/email-platform/report?store_id=${storeId}&period=${period}`, origin),
           )
         : Promise.resolve(null),
-      emailPlatformConnected
+      emailPlatformConnected && !somenteBasico
         ? invokeJson(
             getEmailPlatformCampaigns,
             new URL(`/api/integrations/email-platform/campaigns?store_id=${storeId}&period=${period}`, origin),
           )
         : Promise.resolve(null),
-      emailPlatformConnected
+      emailPlatformConnected && !somenteBasico
         ? invokeJson(
             getEmailPlatformFlows,
             new URL(`/api/integrations/email-platform/flows?store_id=${storeId}&period=${period}`, origin),
@@ -155,6 +174,7 @@ async function handleGet(
 
     return successResponse(request, {
       period,
+      scope: somenteBasico ? "basics" : "full",
       status,
       connected: { emailPlatform: emailPlatformConnected, shopify: shopifyConnected },
       store: storeRes.data,

@@ -214,21 +214,37 @@ interface KVProps {
   value: ReactNode
   mono?: boolean
   mute?: boolean
+  /**
+   * Ainda carregando. Mostra uma barra em vez do valor.
+   *
+   * Existe porque o traço "—" é uma AFIRMAÇÃO ("não tem nada cadastrado")
+   * e enquanto a resposta não chegou nós não sabemos disso. A ficha da
+   * loja inteira em "—" durante a espera foi lida como perda de cadastro.
+   */
+  loading?: boolean
 }
 
-export function KV({ label, value, mono, mute }: KVProps) {
+export function KV({ label, value, mono, mute, loading }: KVProps) {
   return (
     <div
       className="flex justify-between items-baseline gap-3 py-2"
       style={{ borderBottom: `1px dashed ${C.border}` }}
     >
       <span className="text-[12px] text-slate-500 shrink-0">{label}</span>
-      <span
-        className={cn("text-[13px] font-medium text-right", mute ? "text-slate-400" : "text-slate-900")}
-        style={mono ? TNUM : undefined}
-      >
-        {value}
-      </span>
+      {loading ? (
+        <span
+          aria-busy="true"
+          aria-label="carregando"
+          className="h-[13px] w-24 rounded-[3px] bg-slate-200/80 animate-pulse"
+        />
+      ) : (
+        <span
+          className={cn("text-[13px] font-medium text-right", mute ? "text-slate-400" : "text-slate-900")}
+          style={mono ? TNUM : undefined}
+        >
+          {value}
+        </span>
+      )}
     </div>
   )
 }

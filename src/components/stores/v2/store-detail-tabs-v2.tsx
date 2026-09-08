@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { useStoreOverview } from "@/lib/hooks/use-store-overview"
+import { useStoreBasics } from "@/lib/hooks/use-store-overview"
 import { StoreHero } from "./store-hero"
 import { TabVisao } from "./tab-visao"
 import { TabAtividade } from "./tab-atividade"
@@ -104,7 +104,7 @@ export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV
   }
 
   // Activity count for Atividade tab badge (last 7d as "novidades")
-  const { data: overviewData } = useStoreOverview(store.id)
+  const { data: overviewData } = useStoreBasics(store.id)
   const recentCount = useMemo(() => {
     const items = overviewData?.activity ?? []
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000

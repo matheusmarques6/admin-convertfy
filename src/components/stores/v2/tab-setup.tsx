@@ -30,7 +30,7 @@ import { IntegrationsPanel } from "@/components/stores/integrations-panel"
 import { StoreMcpPanel } from "@/components/stores/store-mcp-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
-import { useStoreOverview } from "@/lib/hooks/use-store-overview"
+import { useStoreBasics } from "@/lib/hooks/use-store-overview"
 import { PLATFORMS, COUNTRIES } from "@/lib/constants/onboarding"
 import { currencySymbol } from "@/lib/constants/currencies"
 import { timezoneLabel } from "@/lib/constants/timezones"
@@ -59,14 +59,25 @@ interface SetupData {
 }
 
 export function TabSetup({ storeId }: { storeId: string }) {
-  const { data: overview, mutate } = useStoreOverview(storeId)
+  // Chave LEVE: a ficha da loja não espera report/campanhas/flows da
+  // plataforma de e-mail (10-30 s no mesmo Promise.all da rota completa).
+  const { data: overview, isLoading, mutate } = useStoreBasics(storeId)
+  const carregando = isLoading && !overview
   const data = (overview?.store ?? {}) as SetupData
   const [edit, setEdit] = useState<"loja" | "contrato" | null>(null)
   const platformLabel = PLATFORMS.find((p) => p.value === data.platform)?.label ?? data.platform
   const countryLabel = COUNTRIES.find((c) => c.value === data.country)?.label ?? data.country
   const languageLabel = languageCodeToLabel(data.language) ?? data.language
+  // Enquanto a ficha não chegou, o dialog abriria com todos os campos em
+  // branco e o operador editaria contra um estado que não é o do banco.
   const editBtn = (section: "loja" | "contrato") => (
-    <Btn variant="secondary" size="sm" icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEdit(section)}>
+    <Btn
+      variant="secondary"
+      size="sm"
+      icon={<Pencil className="h-3.5 w-3.5" />}
+      disabled={carregando}
+      onClick={() => setEdit(section)}
+    >
       Editar
     </Btn>
   )
@@ -76,6 +87,11 @@ export function TabSetup({ storeId }: { storeId: string }) {
   const integrationKeys = ["shopify", "klaviyo", "omnisend", "ga4", "meta", "google_ads"]
   const configured = integrationKeys.filter((k) => status[k]?.connected).length
   const completePct = Math.round((configured / integrationKeys.length) * 100)
+  // "0 de 6" enquanto a resposta não chegou é número inventado — e foi
+  // lido como "esta loja não tem integração nenhuma".
+  const subtituloIntegracoes = carregando
+    ? "verificando as plataformas conectadas…"
+    : `${configured} de ${integrationKeys.length} plataformas configuradas · credenciais criptografadas (AES-256-GCM)`
 
   const client = data.clients ?? {}
   const clientLink = typeof window !== "undefined"
@@ -98,7 +114,7 @@ export function TabSetup({ storeId }: { storeId: string }) {
       <div>
         <Section
           title="Integrações"
-          subtitle={`${configured} de ${integrationKeys.length} plataformas configuradas · credenciais criptografadas (AES-256-GCM)`}
+          subtitle={subtituloIntegracoes}
           right={
             <div className="flex gap-2">
               <Btn variant="secondary" size="sm" icon={<Zap className="h-3.5 w-3.5" />}>Sincronizar agora</Btn>
@@ -119,7 +135,7 @@ export function TabSetup({ storeId }: { storeId: string }) {
         <Section
           title="Progresso do onboarding"
           subtitle="6 etapas · acompanhe cada fase"
-          right={<Badge tone="info">{completePct}% completo</Badge>}
+          right={carregando ? undefined : <Badge tone="info">{completePct}% completo</Badge>}
         >
           <OnboardingStepper storeId={storeId} />
         </Section>
@@ -174,19 +190,19 @@ export function TabSetup({ storeId }: { storeId: string }) {
             ) : undefined
           }
         >
-          <KV label="Nome" value={client.name ?? "—"} mute={!client.name} />
-          <KV label="Empresa" value={client.company ?? "—"} mute={!client.company} />
-          <KV label="Email" value={client.email ?? "—"} mono mute={!client.email} />
-          <KV label="Telefone" value={client.phone ?? "—"} mono mute={!client.phone} />
-          <KV label="CPF/CNPJ" value={client.cpf_cnpj ?? "—"} mono mute={!client.cpf_cnpj} />
+          <KV label="Nome" value={client.name ?? "—"} mute={!client.name} loading={carregando} />
+          <KV label="Empresa" value={client.company ?? "—"} mute={!client.company} loading={carregando} />
+          <KV label="Email" value={client.email ?? "—"} mono mute={!client.email} loading={carregando} />
+          <KV label="Telefone" value={client.phone ?? "—"} mono mute={!client.phone} loading={carregando} />
+          <KV label="CPF/CNPJ" value={client.cpf_cnpj ?? "—"} mono mute={!client.cpf_cnpj} loading={carregando} />
         </Section>
 
         <Section title="Dados da loja" right={editBtn("loja")}>
-          <KV label="Nome" value={data.store_name ?? "—"} mute={!data.store_name} />
-          <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} />
-          <KV label="Plataforma" value={platformLabel ?? "—"} mute={!data.platform} />
-          <KV label="País" value={countryLabel ?? "—"} mute={!data.country} />
-          <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} />
+          <KV label="Nome" value={data.store_name ?? "—"} mute={!data.store_name} loading={carregando} />
+          <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} loading={carregando} />
+          <KV label="Plataforma" value={platformLabel ?? "—"} mute={!data.platform} loading={carregando} />
+          <KV label="País" value={countryLabel ?? "—"} mute={!data.country} loading={carregando} />
+          <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} loading={carregando} />
           <KV
             label="Moeda"
             value={
@@ -196,6 +212,7 @@ export function TabSetup({ storeId }: { storeId: string }) {
             }
             mono
             mute={!data.currency}
+            loading={carregando}
           />
           {/* O fuso corta a janela do relatório. Sem ele o sistema assume
               America/Sao_Paulo e o total diverge do painel da plataforma —
@@ -209,12 +226,13 @@ export function TabSetup({ storeId }: { storeId: string }) {
             }
             mono
             mute={!data.timezone}
+            loading={carregando}
           />
-          <KV label="Nicho" value={data.niche ?? "—"} mute={!data.niche} />
+          <KV label="Nicho" value={data.niche ?? "—"} mute={!data.niche} loading={carregando} />
         </Section>
 
         <Section title="Contrato" right={editBtn("contrato")}>
-          <KV label="MRR" value={formatMRR(data.mrr_cents)} mono mute={!data.mrr_cents} />
+          <KV label="MRR" value={formatMRR(data.mrr_cents)} mono mute={!data.mrr_cents} loading={carregando} />
           <KV
             label="Vigência"
             value={
@@ -224,12 +242,14 @@ export function TabSetup({ storeId }: { storeId: string }) {
             }
             mono
             mute={!data.contract_start_date}
+            loading={carregando}
           />
           <KV
             label="Alerta de receita"
             value={data.alert_revenue_threshold ? `R$ ${data.alert_revenue_threshold.toLocaleString("pt-BR")}` : "—"}
             mono
             mute={!data.alert_revenue_threshold}
+            loading={carregando}
           />
         </Section>
       </div>
