@@ -17,6 +17,11 @@ import {
   OpenRouterMidStreamError,
   withOpenRouterRetry,
 } from "@/lib/agents/openrouter-invoke"
+import {
+  ehFalhaDeProvedor,
+  IMAGE_MODEL_PRIMARIO,
+  modeloDeFallback,
+} from "../image/model-policy"
 
 const log = logger.child("ImageChain")
 
@@ -62,7 +67,7 @@ export function renderImagePrompt(
  * modelo em email_agent_configs (migration 20260730) — a config do banco
  * vence; esta constante é o fallback e o rótulo default de telemetria.
  */
-export const OPENROUTER_IMAGE_MODEL = "google/gemini-3.1-flash-image"
+export const OPENROUTER_IMAGE_MODEL = IMAGE_MODEL_PRIMARIO
 
 const OPENROUTER_IMAGE_TIMEOUT_MS = 90_000
 
@@ -104,6 +109,16 @@ async function fetchWithTimeout(
  * não filtro de lentidão.
  */
 const OPENROUTER_IMAGE_BODY_TIMEOUT_MS = 300_000
+
+/**
+ * Até quando ainda vale tentar o OUTRO modelo.
+ *
+ * O orçamento da fase 2 é de 760 s por email (PHASE2_CHAIN_BUDGET_MS) e a
+ * imagem é um passo dele. Se o primário já consumiu mais que isto, uma
+ * segunda geração não cabe — falhar rápido com a mensagem do provedor é
+ * melhor que estourar o orçamento e derrubar os passos seguintes junto.
+ */
+const FALLBACK_ORCAMENTO_MS = 360_000
 
 async function readTextWithTimeout(
   res: Response,
@@ -397,6 +412,13 @@ export async function generateEmailImage(
       tokensOutput: number
       costCents: number
       refsSent: RefImage[]
+      /**
+       * O modelo que REALMENTE produziu a imagem — difere do pedido
+       * quando o fallback de provedor agiu. Sem isto a telemetria diria
+       * "gpt-5.4-image-2" numa imagem feita pelo Gemini, e a comparação
+       * entre os dois viraria ficção.
+       */
+      modelUsed: string
     }) => void
     /**
      * Master Prompt v2: prompt de sistema do agente de imagem (Part A do
@@ -479,7 +501,7 @@ export async function generateEmailImage(
   // timeout mid-stream, documentado) — viram erros nomeados retryable e ganham
   // 1 retry com backoff. Erros HTTP e "nenhuma imagem extraível" (refusal de
   // texto, formato inesperado) NÃO são retryable: propagam direto.
-  const fetchImageBuffer = async (attempt: number): Promise<Buffer> => {
+  const fetchImageBuffer = async (attempt: number, model: string): Promise<Buffer> => {
     const attemptT0 = Date.now()
     // Vira true se o fallback de multimodal-unsupported remover as imagens nesta
     // tentativa (o reenvio sai puro text2img, sem refs).
@@ -708,18 +730,60 @@ export async function generateEmailImage(
     return imageBuffer
   }
 
-  const imageBuffer = await withOpenRouterRetry(
-    (n) => fetchImageBuffer(n),
-    {
+  const tentarComModelo = (m: string, retries?: number) =>
+    withOpenRouterRetry((n) => fetchImageBuffer(n, m), {
+      ...(retries !== undefined ? { retries } : {}),
       onRetry: (err, n) =>
         log.warn("image.retry", {
           storeId,
           attempt: n,
+          model: m,
           errorName: (err as Error)?.name,
           message: (err as Error)?.message,
         }),
-    },
-  )
+    })
+
+  /**
+   * Fallback de MODELO — o que torna seguro ter o GPT Image 2 como
+   * primário de novo.
+   *
+   * Ele entra em loop de whitespace (200 OK pingando espaço, sem imagem):
+   * é o incidente da Luxe Lift em 10/08, em que o email saiu sem a imagem
+   * da hero porque o agente recebeu `<hero_image url="" />` e removeu a
+   * linha. Os retries do `withOpenRouterRetry` não resolvem — repetem no
+   * MESMO modelo, e o defeito é dele.
+   *
+   * Só troca em falha de PROVEDOR (`ehFalhaDeProvedor`). Recusa por
+   * política de conteúdo propaga como antes: o segundo modelo recusaria
+   * igual, e a mensagem que explica o motivo é o que o operador precisa.
+   */
+  let modeloUsado = model
+  let imageBuffer: Buffer
+  try {
+    imageBuffer = await tentarComModelo(model)
+  } catch (err) {
+    const alternativo = modeloDeFallback(model)
+    const gasto = Date.now() - t0
+    if (!alternativo || !ehFalhaDeProvedor(err)) throw err
+    // O fallback pode PIORAR o caso de timeout: com retry próprio seriam 4
+    // janelas de 300 s, ~20 min, muito além do orçamento da fase 2 (760 s
+    // default) — o remédio mataria o paciente. Por isso ele é UMA
+    // tentativa (o primário já gastou as dele; o que falta aqui é outro
+    // modelo, não mais insistência) e só quando ainda sobra tempo.
+    if (gasto > FALLBACK_ORCAMENTO_MS) {
+      log.warn("image.model.fallback_sem_orcamento", { storeId, de: model, gastoMs: gasto })
+      throw err
+    }
+    log.warn("image.model.fallback", {
+      storeId,
+      de: model,
+      para: alternativo,
+      gastoMs: gasto,
+      motivo: (err as Error)?.message?.slice(0, 200),
+    })
+    modeloUsado = alternativo
+    imageBuffer = await tentarComModelo(alternativo, 0)
+  }
 
   // Reporta a instrumentação ao caller (opt-in): tokens de input/output e quais
   // refs foram efetivamente anexadas (vazio quando não foi multimodal).
@@ -731,6 +795,7 @@ export async function generateEmailImage(
       // pra 4 casas de centavo pra evitar ruído de float (0.0412*100 = 4.11999…).
       costCents: Math.round(lastUsage.costUsd * 1_000_000) / 10_000,
       refsSent: lastRefsSent,
+      modelUsed: modeloUsado,
     })
   }
 

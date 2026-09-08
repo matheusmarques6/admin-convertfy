@@ -2729,6 +2729,47 @@ elas ficam intactas para disparar.
 
 ---
 
+## Modelo de imagem: GPT Image 2 com fallback (set/2026, migration 20261126)
+
+**O primário voltou a ser `openai/gpt-5.4-image-2`** nos dois agentes que
+compartilham o motor (`image` e `campaign_image`), e `google/gemini-3.1-flash-image`
+é o segundo. Regras em `agents/image/model-policy.ts` (puro, 14 testes).
+
+Isto é o caminho da migration 20261071, que a **20261072 desfez por um
+motivo real**: o GPT Image 2 entra em LOOP DE WHITESPACE — 200 OK pingando
+espaço por minutos, sem imagem. Na Luxe Lift (10/08) duas tentativas
+queimaram 455 s da fase 2 e o email SAIU SEM a hero (o agente recebeu
+`<hero_image url="" />` e removeu a linha). O defeito é do provedor e
+continua existindo; o que mudou é o custo dele:
+
+1. `OPENROUTER_IMAGE_BODY_TIMEOUT_MS` (300 s) corta o corpo que não termina
+   — o `fetch` resolve nos HEADERS, então antes a leitura não tinha relógio.
+2. **Fallback de MODELO**: falha de PROVEDOR (`ehFalhaDeProvedor`) troca
+   para o Gemini e gera a imagem. Recusa por política de conteúdo NÃO
+   troca — o segundo recusaria igual e a mensagem do primeiro é o que
+   explica. A régua casa pelo **nome da classe** de erro antes do texto:
+   `OpenRouterEmptyBodyError` diz "empty body" com ESPAÇO, e a primeira
+   versão procurava `empty_body` — o fallback não disparava no corpo vazio.
+3. **O fallback é UMA tentativa e tem orçamento** (`FALLBACK_ORCAMENTO_MS`,
+   360 s): com retry próprio seriam 4 janelas de 300 s (~20 min) contra os
+   760 s de `PHASE2_CHAIN_BUDGET_MS` — o remédio mataria o paciente. O
+   primário já gastou os retries dele; o que falta é outro modelo, não mais
+   insistência.
+4. `onMeta.modelUsed` diz quem REALMENTE gerou. Sem isso a telemetria
+   registraria "gpt-5.4-image-2" numa imagem feita pelo Gemini e comparar
+   os dois viraria ficção.
+
+**Duas variações do mesmo prompt saem uma de cada** (`modelosParaVariacoes`):
+é comparação lado a lado, não duas tentativas do mesmo. Uma só usa o
+primário — pedir uma imagem não é pedir um teste. Acima de duas, alterna.
+Hoje o único ponto com quantidade é `/api/conteudo/ia`; é código, não
+config, então não depende da migration.
+
+Pior caso hoje: imagem do Gemini + uma linha `image.model.fallback` no log.
+Antes: bloco sem imagem, em silêncio. Rollback = voltar o `model` das duas
+linhas de `email_agent_configs` para `google/gemini-3.1-flash-image` (a
+config do banco VENCE a constante do código).
+
 ## Objeções: Catalogador (macro) e Seletor (micro) (set/2026, migration 20261116)
 
 Spec "Objeções: catalogação macro e seleção micro — v2"; plano e mapa em
