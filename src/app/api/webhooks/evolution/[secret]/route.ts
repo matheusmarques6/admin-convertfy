@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { stripHeavyFields } from "@/lib/whatsapp/webhook-payload"
 import { enqueueWhatsAppWebhookEvent, isQStashConfigured } from "@/lib/whatsapp/queue"
 import { parseEvolutionEnvelope } from "@/lib/whatsapp/evolution-content"
 import {
@@ -82,13 +83,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ ignored: true })
   }
 
-  // Persiste o evento cru ANTES de processar (recuperabilidade).
+  // Persiste o evento cru ANTES de processar (recuperabilidade) — mas
+  // sem o binário: a Evolution embute mídia em base64 e 12 linhas
+  // chegaram a ocupar 266 MB, na tabela que o cron varria por minuto.
+  // A mídia continua recuperável pelo getBase64FromMediaMessage, que o
+  // processor já usa quando o evento não traz o base64.
+  const { payload: storedPayload, stripped, originalBytes } = stripHeavyFields(payload, {
+    force: process.env.EVOLUTION_WEBHOOK_BASE64 === "false",
+  })
+  if (stripped) {
+    log.info("payload sem binário antes de persistir", {
+      instance: envelope.instance,
+      event: envelope.event,
+      original_bytes: originalBytes,
+    })
+  }
+
   const { data: event, error: insertError } = await admin
     .from("crm_webhook_events")
     .insert({
       source: "evolution",
       external_channel_id: envelope.instance,
-      raw_payload: payload,
+      raw_payload: storedPayload,
     })
     .select("id, source, raw_payload, attempts, max_attempts")
     .single()

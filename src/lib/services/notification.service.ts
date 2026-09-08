@@ -29,6 +29,9 @@ export interface Notification {
   created_at: string;
 }
 
+/** Teto do badge do sino — a UI mostra "99+" acima disso. */
+export const UNREAD_BADGE_CAP = 100;
+
 class NotificationService {
   /**
    * Create a new notification
@@ -176,18 +179,21 @@ class NotificationService {
   async getUnreadCount(userId: string): Promise<number> {
     const supabase = createClient();
 
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false);
+    // RPC com TETO em vez de count exact. A tabela chegou a 18 mil linhas
+    // não lidas (cron de onboarding), e o badge só mostra "99+" — contar
+    // além disso era varredura pura. `userId` fica no filtro por
+    // compatibilidade de assinatura; quem decide é a RLS (auth.uid()).
+    const { data, error } = await supabase.rpc('unread_notifications_count', {
+      p_cap: UNREAD_BADGE_CAP,
+    });
 
     if (error) {
       log.error('[NotificationService] Failed to get unread count:', error);
       return 0;
     }
 
-    return count || 0;
+    void userId;
+    return typeof data === 'number' ? data : 0;
   }
 
   /**

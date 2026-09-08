@@ -9,6 +9,7 @@ import type { OrgRole } from "@/types/organization"
 import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
 import { SettingsModalProvider } from "@/components/settings/settings-modal"
+import { NotificationsLiveProvider } from "@/hooks/use-unified-notifications"
 import { WelcomeTour } from "@/components/ui/welcome-tour"
 import { CrmKeyboardShortcuts } from "@/components/crm/keyboard-shortcuts"
 import { AiChatLazy } from "@/components/ai/ai-chat-lazy"
@@ -227,6 +228,11 @@ export default async function DashboardLayout({
     >
       {/* SettingsModalProvider ANTES do CommandPalette: a paleta abre o
           modal de Configurações via contexto. */}
+      {/* Um canal realtime de notificações por ABA. Antes o hook era
+          montado 5x (sidebar desktop, sidebar-user dentro dela, o drawer
+          mobile sempre montado com a sua sidebar-user, e a top bar):
+          5 canais x 4 bindings = 20 avaliações de RLS por evento. */}
+      <NotificationsLiveProvider>
       <SettingsModalProvider>
       <CommandPalette>
         {/* Layout 100dvh + flex row. Cada filho gerencia sua propria altura
@@ -260,6 +266,7 @@ export default async function DashboardLayout({
         </div>
       </CommandPalette>
       </SettingsModalProvider>
+      </NotificationsLiveProvider>
       <WelcomeTour />
       <CrmKeyboardShortcuts />
       <AiChatLazy />

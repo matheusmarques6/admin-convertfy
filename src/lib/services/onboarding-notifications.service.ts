@@ -217,16 +217,21 @@ export async function notifyStuck(params: {
       : ["suporte", "implementacao", ...BYPASS_TARGET_ROLES]
     const userIds = await profilesByCanonicalRoles(admin, params.orgId, roles)
 
-    await insertNotifications(admin, userIds, {
-      title: `Onboarding travado há ${params.daysStuck} dias`,
-      body: `${ctx.client} · ${ctx.store}`,
-      type: "onboarding_stuck",
-      link: `/admin/onboarding/${params.onboardingId}`,
-      metadata: {
-        onboarding_id: params.onboardingId,
-        days_stuck: params.daysStuck,
-      },
+    // COALESCIDO por (usuário, onboarding): o cron roda todo dia e
+    // ninguém marca como lido um aviso que se repete, então a inserção
+    // direta acumulava uma linha por dia por membro — 17.611 não lidas em
+    // 05/09, 15.465 delas com mais de 7 dias. Agora "travado há 3 dias"
+    // vira "há 4 dias" na MESMA linha, que sobe no sino pelo bump de
+    // created_at. Depois de lida, um novo travamento cria linha nova.
+    const { error } = await admin.rpc("upsert_onboarding_stuck_notifications", {
+      p_user_ids: userIds,
+      p_onboarding_id: params.onboardingId,
+      p_title: `Onboarding travado há ${params.daysStuck} dias`,
+      p_body: `${ctx.client} · ${ctx.store}`,
+      p_link: `/admin/onboarding/${params.onboardingId}`,
+      p_days_stuck: params.daysStuck,
     })
+    if (error) log.error("upsert_onboarding_stuck_notifications", error)
   } catch (e) {
     log.error("notifyStuck", e)
   }

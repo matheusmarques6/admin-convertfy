@@ -22,22 +22,13 @@ async function handleGet(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
 
-    const { data, error } = await admin
-      .from("crm_threads")
-      .select("unread_count")
-      .eq("org_id", orgId)
-      .in("status", ["open", "pending"])
-      .gt("unread_count", 0)
-      .limit(500)
-
+    // Soma no banco, com índice parcial (o predicado é literal dentro da
+    // função). Antes trazia até 500 linhas para somar em JS, e a mesma
+    // varredura ainda rodava dentro da rota da lista.
+    const { data, error } = await admin.rpc("crm_inbox_unread_total", { p_org_id: orgId })
     if (error) throw error
 
-    const totalUnread = (data ?? []).reduce(
-      (sum, t) => sum + (Number(t.unread_count) || 0),
-      0,
-    )
-
-    return successResponse(request, { total_unread: totalUnread })
+    return successResponse(request, { total_unread: Number(data) || 0 })
   } catch (error) {
     return errorResponse(request, error, "crm-inbox-unread-count")
   }

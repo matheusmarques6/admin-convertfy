@@ -1,35 +1,44 @@
 "use client"
 
 /**
- * Realtime do inbox CRM — espelha o padrão de use-realtime-board.ts:
- * postgres_changes + debounce + polling de reconexão + safety refresh.
+ * Realtime do inbox CRM.
  *
  * Dois canais:
- *  - crm_threads (INSERT/UPDATE): revalida a lista de conversas
- *  - crm_messages filtrado por thread_id ativa (INSERT/UPDATE):
- *    revalida a conversa aberta (debounce curto — mensagem nova tem
- *    que aparecer rápido)
+ *  - crm_threads (INSERT/UPDATE), FILTRADO por org_id: revalida a lista
+ *  - crm_messages filtrado por thread_id ativa: revalida a conversa aberta
  *
- * Requer as tabelas na publication supabase_realtime (migration
- * 20260812_whatsapp_core_messaging.sql). O canal de threads é
- * FILTRADO por org_id: sem isso, cada mensagem de qualquer cliente de
- * qualquer organização acordava todos os inboxes abertos (revalidação
- * inútil) e entregava ao browser o padrão de atividade alheio. O dado
- * em si sempre veio filtrado pela API — o que vazava era o evento.
+ * Três correções do incidente set/2026 (ver docs/crm/inbox-observability.md):
  *
- * O safety refresh só roda quando o realtime NÃO está conectado: com
- * ele ativo eram quatro requisições a cada 30s por aba, redundantes
- * entre si. E tudo pausa em aba oculta.
+ * 1. FAIL-CLOSED. Antes, sem `orgId` (lista ainda carregando — ou, pior,
+ *    lista FALHANDO porque o banco estava saturado) o canal era assinado
+ *    SEM filtro: cada mensagem de qualquer organização acordava este
+ *    inbox e disparava uma revalidação de 9 statements. Quanto pior o
+ *    banco, maior o raio de explosão. Agora: sem org, sem canal.
+ *
+ * 2. UM timer de fallback, com backoff e jitter. Eram dois intervalos de
+ *    30s (polling de reconexão + safety refresh) chamando a MESMA
+ *    revalidação dupla, para sempre, no mesmo instante em todas as abas.
+ *
+ * 3. DEPS ESTÁVEIS. As deps do efeito incluíam callbacks derivados do
+ *    `mutate` do SWR, que muda de identidade a cada troca de thread,
+ *    busca ou filtro — o canal era destruído e reassinado a cada clique
+ *    (cada re-join grava em realtime.subscription e refaz autorização; o
+ *    orçamento do Realtime é de 100 joins/s).
+ *
+ * Tudo pausa em aba oculta e revalida uma vez ao voltar ao foco.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { RealtimeChannel } from "@supabase/supabase-js"
+import {
+  nextAttempt,
+  nextBackoffMs,
+  shouldRefetchNow,
+  shouldSubscribeThreads,
+} from "@/lib/crm/inbox-realtime-policy"
 
 const LIST_DEBOUNCE_MS = 1500
 const DETAIL_DEBOUNCE_MS = 300
-const RECONNECT_POLLING_MS = 30_000
-const SAFETY_REFRESH_MS = 30_000
 
 interface UseRealtimeInboxOptions {
   /** Revalida a lista de threads (SWR mutate). */
@@ -38,9 +47,15 @@ interface UseRealtimeInboxOptions {
   onDetailUpdate: () => void
   /** Thread aberta — null desliga o canal de mensagens. */
   activeThreadId: string | null
-  /** Org do usuário: filtra os eventos de thread. */
+  /** Org do usuário: filtra os eventos de thread. Sem ela, não assina. */
   orgId?: string | null
   enabled?: boolean
+  /**
+   * Desliga o canal da LISTA mantendo o da conversa. O popup do card de
+   * negócio não renderiza lista nenhuma — abrir um segundo canal de
+   * threads por aba só duplicava trabalho no banco.
+   */
+  threadsChannelEnabled?: boolean
 }
 
 export function useRealtimeInbox({
@@ -49,96 +64,111 @@ export function useRealtimeInbox({
   activeThreadId,
   orgId,
   enabled = true,
+  threadsChannelEnabled = true,
 }: UseRealtimeInboxOptions) {
   const [realtimeConnected, setRealtimeConnected] = useState(false)
-  const threadsChannelRef = useRef<RealtimeChannel | null>(null)
-  const messagesChannelRef = useRef<RealtimeChannel | null>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const safetyRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const attemptRef = useRef(0)
   const listDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const detailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
 
+  // Refs para os callbacks: é o que mantém as deps dos efeitos estáveis
+  // (o mesmo padrão já usado em use-unified-notifications).
+  const threadsUpdateRef = useRef(onThreadsUpdate)
+  threadsUpdateRef.current = onThreadsUpdate
+  const detailUpdateRef = useRef(onDetailUpdate)
+  detailUpdateRef.current = onDetailUpdate
+
   const debouncedThreads = useCallback(() => {
     if (listDebounceRef.current) clearTimeout(listDebounceRef.current)
-    listDebounceRef.current = setTimeout(onThreadsUpdate, LIST_DEBOUNCE_MS)
-  }, [onThreadsUpdate])
+    listDebounceRef.current = setTimeout(() => threadsUpdateRef.current(), LIST_DEBOUNCE_MS)
+  }, [])
 
   const debouncedDetail = useCallback(() => {
     if (detailDebounceRef.current) clearTimeout(detailDebounceRef.current)
-    detailDebounceRef.current = setTimeout(onDetailUpdate, DETAIL_DEBOUNCE_MS)
-  }, [onDetailUpdate])
+    detailDebounceRef.current = setTimeout(() => detailUpdateRef.current(), DETAIL_DEBOUNCE_MS)
+  }, [])
 
   const refreshAll = useCallback(() => {
-    // Aba em segundo plano não precisa de dado fresco — ela revalida
-    // ao voltar ao foco.
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") return
-    onThreadsUpdate()
-    onDetailUpdate()
-  }, [onThreadsUpdate, onDetailUpdate])
+    if (typeof document !== "undefined" && !shouldRefetchNow(document.visibilityState)) return
+    threadsUpdateRef.current()
+    detailUpdateRef.current()
+  }, [])
 
-  const startPolling = useCallback(() => {
-    if (pollingRef.current) return
-    pollingRef.current = setInterval(refreshAll, RECONNECT_POLLING_MS)
-  }, [refreshAll])
-
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
+  const stopFallback = useCallback(() => {
+    if (fallbackRef.current) {
+      clearTimeout(fallbackRef.current)
+      fallbackRef.current = null
     }
   }, [])
 
-  // Canal 1: lista de threads
-  useEffect(() => {
-    if (!enabled) return
+  /**
+   * Timer ÚNICO, reagendado a cada disparo com backoff crescente. Não é
+   * setInterval de propósito: o intervalo muda a cada rodada e a aba
+   * oculta não deve acumular disparos.
+   */
+  const scheduleFallback = useCallback(() => {
+    stopFallback()
+    const delay = nextBackoffMs(attemptRef.current)
+    fallbackRef.current = setTimeout(() => {
+      attemptRef.current = nextAttempt(false, attemptRef.current)
+      refreshAll()
+      scheduleFallback()
+    }, delay)
+  }, [refreshAll, stopFallback])
 
-    const orgFilter = orgId ? { filter: `org_id=eq.${orgId}` } : {}
+  // Canal 1: lista de threads (só com org resolvida)
+  useEffect(() => {
+    if (!shouldSubscribeThreads({ enabled: enabled && threadsChannelEnabled, orgId })) {
+      // Sem canal, o fallback é o único caminho — mas só quando a tela
+      // está de fato ligada (enabled), senão seria polling fantasma.
+      setRealtimeConnected(false)
+      if (enabled && threadsChannelEnabled) scheduleFallback()
+      return () => stopFallback()
+    }
+
     const channel = supabase
-      .channel(orgId ? `inbox-threads-realtime-${orgId}` : "inbox-threads-realtime")
+      .channel(`inbox-threads-realtime-${orgId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "crm_threads", ...orgFilter },
+        { event: "INSERT", schema: "public", table: "crm_threads", filter: `org_id=eq.${orgId}` },
         () => debouncedThreads(),
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "crm_threads", ...orgFilter },
+        { event: "UPDATE", schema: "public", table: "crm_threads", filter: `org_id=eq.${orgId}` },
         () => debouncedThreads(),
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setRealtimeConnected(true)
-          stopPolling()
-          // Realtime saudável dispensa a rede de segurança.
-          if (safetyRef.current) {
-            clearInterval(safetyRef.current)
-            safetyRef.current = null
-          }
+          attemptRef.current = nextAttempt(true, attemptRef.current)
+          stopFallback()
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           setRealtimeConnected(false)
-          startPolling()
-          if (!safetyRef.current) safetyRef.current = setInterval(refreshAll, SAFETY_REFRESH_MS)
+          if (!fallbackRef.current) scheduleFallback()
         }
       })
 
-    threadsChannelRef.current = channel
-
-    // Rede de segurança até o canal confirmar a inscrição.
-    safetyRef.current = setInterval(refreshAll, SAFETY_REFRESH_MS)
+    // Rede de segurança até a inscrição confirmar.
+    if (!fallbackRef.current) scheduleFallback()
 
     return () => {
       supabase.removeChannel(channel)
-      threadsChannelRef.current = null
-      stopPolling()
-      if (safetyRef.current) {
-        clearInterval(safetyRef.current)
-        safetyRef.current = null
-      }
+      stopFallback()
       if (listDebounceRef.current) clearTimeout(listDebounceRef.current)
     }
-  }, [enabled, orgId, supabase, debouncedThreads, refreshAll, startPolling, stopPolling])
+  }, [
+    enabled,
+    threadsChannelEnabled,
+    orgId,
+    supabase,
+    debouncedThreads,
+    scheduleFallback,
+    stopFallback,
+  ])
 
   // Canal 2: mensagens da thread aberta (re-cria ao trocar de thread)
   useEffect(() => {
@@ -168,14 +198,26 @@ export function useRealtimeInbox({
       )
       .subscribe()
 
-    messagesChannelRef.current = channel
-
     return () => {
       supabase.removeChannel(channel)
-      messagesChannelRef.current = null
       if (detailDebounceRef.current) clearTimeout(detailDebounceRef.current)
     }
   }, [enabled, activeThreadId, supabase, debouncedDetail])
+
+  // Volta ao foco / volta a rede: uma revalidação, não um intervalo.
+  useEffect(() => {
+    if (!enabled || typeof document === "undefined") return
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshAll()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("online", refreshAll)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("online", refreshAll)
+    }
+  }, [enabled, refreshAll])
 
   return { realtimeConnected }
 }
