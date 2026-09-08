@@ -2091,14 +2091,14 @@ OpenRouter; sem "/" usa Anthropic SDK direto.
 | 1 | **Briefing** | `briefing-generation.service.ts` | cascata `claude-sonnet-4-6` → `openai/gpt-5.3-chat` → template | `form_responses` + pesquisa (`pesquisaToFullText`) | `onboardings.briefing` (JSON BriefingContent) |
 | 2 | **Pesquisa & Diagnóstico** | n8n callbacks `/api/webhooks/n8n/{brand,competitors,icp,tone,ads-analyzer}` | n8n + agentes | URL da loja | 5 pilares em `client_stores` (`brand_*`,`store_*`,`icp_*`,`tone_*`,`ads_*`) |
 | 3 | **Montador** (Component Assembler) | `architect/component-assembler.service.ts` | **DESLIGADO** (`montador_mode='off'`, migration 20261107). Ligado: `moonshotai/kimi-k3` · T=0.3 · max 2048 | finalistas do Curador + `output_schema`, perfil, objeções, vocabulário, produtos, memória, decisão do Estruturador | JSON de escolha (1 variante por posição). O HTML é montado por CÓDIGO (`assemble-document.ts`) a partir do rank 1 do Curador → `store_email_references` (`model='code'`, `slot_map`) |
-| 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `anthropic/claude-sonnet-4.6` (OpenRouter) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
+| 4 | **Blueprint** | `architect/blueprint-generator.service.ts` | `moonshotai/kimi-k3` (banco, 08/09) · T=0.4 · max 8192 | o HTML do Montador + contexto | JSON `{objective,messaging,subject_hint,blocks[]}` → `store_email_blueprints` (só persiste se `source='ai'`) |
 | 5 | **Copy** | `email-copy-webhook.service.ts` + callback `/api/webhooks/n8n/email-copy` | n8n (externo) | store+blueprint+blocos vazios | `email_flow_emails.subject/preheader` + `email_blocks.content`; status `copy_ready` |
 | 6 | **Imagem** | `phase2-runner.service.ts` + `chains/image.chain.ts` | `google/gemini-3.1-flash-image` (config; CLAUDE.md dizia gpt-5.4-image-2, revertido na 20261072) · 90s/chamada · 1 chamada por campo `imagem_gerada` | **direção fotográfica da variante + briefing/onde_fica do campo = fonte principal** (migration 20261108); apoio: fio do Estruturador, papel do bloco, marca. Anexos rotulados: `CFY_REF_PRODUCT` (produto DO CAMPO — `panel_2_*` → 2º produto) e `CFY_REF_ANCHOR` (foto principal do grupo, nas thumbs) | `email_blocks.content.images[campo]` = {url, alt, overlay_luminance} + espelho `image_url`/`image_alt`; status `image_done` |
-| 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `moonshotai/kimi-k3` (swap 20261047) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
+| 7a | **Hero Section** | `chains/hero.chain.ts` + `html/format-context.ts` | `anthropic/claude-sonnet-4.6` (banco, 08/09) · 240s | Montador HTML + região da hero + `html`/`rendered_html` da variante escolhida (cascata slot_map→blueprint→choices) + copy/imagem da hero + fontes/cores + logos clara/escura | fragmento da hero, splice por código (sentinelas `cfy:hero`); modos marker/tag/full-doc |
 | 7b | **Formatação de Texto** | `chains/text-format.chain.ts` | `moonshotai/kimi-k3` · 540s | HTML do 7a + copy do n8n (sem hero) + fields do blueprint + fontes/cores | documento completo; guards (tabelas, shrink, tags de imagem sobrevivem, hero re-spliced se mexer) |
 | 7c | **Formatação de Imagem** | `chains/image-format.chain.ts` + `html/apply-patches.ts` | `moonshotai/kimi-k3` · 180s | HTML do 7b + image_map (sem hero) + logos | JSON de ops (img/remove_slot/replace) aplicado por código; hero proibida |
 | 7d | **Cores & Botões** | `chains/color-format.chain.ts` (substitui o Refinador) | `moonshotai/kimi-k3` · 240s | HTML do 7c + paleta com papéis + nicho/tons/pesquisa | JSON de ops replace (só cores; pode tocar a hero); **FAIL-OPEN** |
-| 8 | **QA** | `chains/qa.chain.ts` | `claude-sonnet-4-6` (config) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
+| 8 | **QA** | `chains/qa.chain.ts` | `moonshotai/kimi-k3` (banco, 08/09) · 60s | HTML final + blocks + briefing + brand | `email_flow_emails.qa_issues` + `passed`; status `ready`/`failed` |
 
 **Agente de imagem — fonte principal (03/09, migration 20261108)**: o prompt
 saiu de "prompt master de diretor de arte + frase de cena fixa por bloco/flow
@@ -2382,7 +2382,8 @@ normalizado** (migrations 20261022-24). Router em
   `deterministic-blueprint.builder.ts`: casa variantes do Curador com o
   skeleton (FIFO por categoria via `blockTypeToCategory`), purpose ←
   `copy_guidance`, image_brief ← campos type=image do `output_schema`.
-  Subject via mini-LLM `subject` (Haiku, config própria). Persiste com
+  Subject via mini-LLM `subject` (`anthropic/claude-sonnet-4.6` no banco em
+  08/09; nasceu Haiku — config própria). Persiste com
   `model='deterministic'`, custo ~zero.
 - **Rota B (LLM fallback)**: skeleton null, cobertura <100% ou
   `mode='llm'` — fluxo LLM de antes, intacto.
@@ -2757,7 +2758,18 @@ continua existindo; o que mudou é o custo dele:
    insistência.
 4. `onMeta.modelUsed` diz quem REALMENTE gerou. Sem isso a telemetria
    registraria "gpt-5.4-image-2" numa imagem feita pelo Gemini e comparar
-   os dois viraria ficção.
+   os dois viraria ficção. **O runner de e-mail ignorava esse campo até
+   08/09**: gravava `ctx.imageConfig?.model` (o modelo PEDIDO) nas duas
+   runs de sucesso, então imagem feita pelo fallback aparecia como se o
+   primário tivesse funcionado — e a run é justamente onde se confere se
+   uma troca de modelo pegou. As campanhas já passavam o valor certo.
+
+**A tabela de modelos deste arquivo envelhece.** A troca é `UPDATE` na
+linha ativa de `email_agent_configs` (sem bumpar `version` nem
+`created_at`), então o banco muda sem o repo mudar — quatro células desta
+doc estavam erradas em 08/09. A fonte é o banco; a receita de leitura e
+de troca, agente por agente, é
+`supabase/migrations/TROCAR_modelo_agentes.sql`.
 
 **Duas variações do mesmo prompt saem uma de cada** (`modelosParaVariacoes`):
 é comparação lado a lado, não duas tentativas do mesmo. Uma só usa o

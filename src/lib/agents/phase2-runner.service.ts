@@ -1083,7 +1083,17 @@ export async function runPhase2Image(
         const prompt = renderAvatarPrompt(idx, author)
         // Instrumentação opt-in do agente de imagem (tokens + custo real do
         // OpenRouter). Default zerado pro caminho de erro/sem-usage não quebrar.
-        let imgMeta = { tokensInput: 0, tokensOutput: 0, costCents: 0 }
+        // `modelUsed` nasce com o modelo PEDIDO e é sobrescrito pelo
+        // `onMeta` com quem realmente gerou (o fallback de provedor troca
+        // o modelo por dentro). Sem ele a run diria "gpt-5.4-image-2" numa
+        // imagem feita pelo Gemini — e é a run que responde "minha troca
+        // de modelo pegou?".
+        let imgMeta = {
+          tokensInput: 0,
+          tokensOutput: 0,
+          costCents: 0,
+          modelUsed: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
+        }
         try {
           const imageUrl = await generateEmailImage(prompt, storeId, {
             aspect: "1:1",
@@ -1108,7 +1118,8 @@ export async function runPhase2Image(
             batchId,
             agent: "image",
             status: "success",
-            model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
+            // Quem REALMENTE gerou (o fallback de provedor troca por dentro).
+            model: imgMeta.modelUsed,
             durationMs: Date.now() - itemT0,
             renderedPrompt: prompt,
             // O prompt do avatar é 100% in-code (`renderAvatarPrompt`), com
@@ -1263,7 +1274,13 @@ export async function runPhase2Image(
       // Instrumentação opt-in do agente de imagem (tokens + custo real do
       // OpenRouter). Fora do try pra o catch também repassar (zerado se o
       // onMeta não chegou a disparar).
-      let imgMeta = { tokensInput: 0, tokensOutput: 0, costCents: 0 }
+      // Ver a outra chamada: `modelUsed` é quem REALMENTE gerou.
+      let imgMeta = {
+        tokensInput: 0,
+        tokensOutput: 0,
+        costCents: 0,
+        modelUsed: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
+      }
       try {
         // CONTRATO COM AE-16: o campo opcional em `email_blocks.content` se
         // chama EXATAMENTE `image_instruction` (string). Se AE-16 nomear
@@ -1640,7 +1657,8 @@ export async function runPhase2Image(
           batchId,
           agent: "image",
           status: "success",
-          model: ctx.imageConfig?.model || OPENROUTER_IMAGE_MODEL,
+          // Quem REALMENTE gerou (o fallback de provedor troca por dentro).
+          model: imgMeta.modelUsed,
           durationMs: Date.now() - imgT0,
           inputVars: promptVars,
           renderedPrompt: promptWithAspect || undefined,
