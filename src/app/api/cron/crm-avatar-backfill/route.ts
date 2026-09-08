@@ -72,20 +72,14 @@ export async function GET(request: NextRequest) {
     let filled = 0
     let skipped = 0
     for (const thread of threads ?? []) {
+      // O serviço carimba `contact_avatar_checked_at` na MESMA escrita
+      // da foto (crm_threads está na publication do realtime: dois
+      // UPDATEs acordariam todas as abas duas vezes). Aqui só contamos.
       const { url, tentou } = await ensureThreadAvatar(admin, thread)
       if (url) filled++
-      // Marca a tentativa só quando a origem foi de fato consultada:
-      // contato com perfil privado não pode ser re-tentado a cada
-      // rodada, mas canal desconectado tem de voltar à fila assim que
-      // religar — senão a foto apareceria uma semana depois.
-      if (!tentou) {
-        skipped++
-        continue
-      }
-      await admin
-        .from("crm_threads")
-        .update({ contact_avatar_checked_at: new Date().toISOString() })
-        .eq("id", thread.id)
+      // Canal desconectado não gasta a janela de 7 dias: tem de voltar à
+      // fila assim que religar, não uma semana depois.
+      if (!tentou) skipped++
     }
 
     if (filled > 0) log.info("avatares preenchidos", { filled, checked: threads?.length ?? 0 })

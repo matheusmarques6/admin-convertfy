@@ -44,6 +44,8 @@ import { canalPodeEntregarFoto } from "@/lib/crm/avatar-elegibilidade"
 const log = logger.child("CrmContactAvatar")
 
 const ATTEMPT_COOLDOWN_MS = 15 * 60 * 1000
+/** Maior avatar na tela é 44px; 160 cobre retina 3x com folga. */
+const AVATAR_PX = 160
 const lastAttempt = new Map<string, number>()
 
 interface ThreadForAvatar {
@@ -67,6 +69,12 @@ export function isMirroredAvatar(url: string | null | undefined): boolean {
 /**
  * Baixa a foto e regrava no bucket do admin. Devolve a URL servida por
  * nós, ou null quando não deu (a foto externa segue valendo).
+ *
+ * WebP a 160px, não PNG a 256: o maior uso na tela é 44px (132px em
+ * retina) e a foto sai pela FUNÇÃO serverless, não por CDN. Os avatares
+ * PNG que o módulo Conteúdo gravou pesam 52–68 KB medidos; em WebP a
+ * 160px a mesma foto fica na casa de 5 KB — ~10× menos armazenado e,
+ * sobretudo, ~10× menos banda a cada exibição.
  */
 async function espelharAvatar(
   admin: SupabaseClient,
@@ -80,15 +88,15 @@ async function espelharAvatar(
       log.info("avatar: origem recusou o download", { threadId, status: res.status })
       return null
     }
-    const png = await sharp(Buffer.from(await res.arrayBuffer()))
-      .resize(256, 256, { fit: "cover" })
-      .png()
+    const foto = await sharp(Buffer.from(await res.arrayBuffer()))
+      .resize(AVATAR_PX, AVATAR_PX, { fit: "cover" })
+      .webp({ quality: 82 })
       .toBuffer()
     // Path fixo por thread: re-espelhar sobrescreve em vez de acumular.
-    const path = `stores/org-${orgId}/email-assets/avatar-thread-${threadId}.png`
+    const path = `stores/org-${orgId}/email-assets/avatar-thread-${threadId}.webp`
     const { error } = await admin.storage
       .from(CONVERTIA_IMAGE_BUCKET)
-      .upload(path, png, { contentType: "image/png", upsert: true })
+      .upload(path, foto, { contentType: "image/webp", upsert: true })
     if (error) {
       log.warn("avatar: upload falhou", { threadId, error: error.message })
       return null
@@ -101,6 +109,24 @@ async function espelharAvatar(
     })
     return null
   }
+}
+
+/**
+ * Carimba a tentativa e, quando houve foto nova, grava a URL na MESMA
+ * escrita. `crm_threads` está na publication do realtime: dois UPDATEs
+ * acordariam todas as abas da org duas vezes, e cada uma relista.
+ */
+async function marcarTentativa(
+  admin: SupabaseClient,
+  threadId: string,
+  urlNova: string | null,
+): Promise<AvatarResult> {
+  const patch: Record<string, string> = { contact_avatar_checked_at: new Date().toISOString() }
+  if (urlNova) patch.contact_avatar_url = urlNova
+  const { error } = await admin.from("crm_threads").update(patch).eq("id", threadId)
+  if (error) log.warn("avatar: update falhou", { threadId, error: error.message })
+  // A URL serve à resposta em curso mesmo se a gravação falhou.
+  return { url: urlNova, tentou: true }
 }
 
 function igConfigFromChannel(channel: {
@@ -215,32 +241,24 @@ export async function ensureThreadAvatar(
     } else {
       // WhatsApp Cloud: a Meta não expõe foto de contato. Conta como
       // tentativa — não existe caminho, não adianta voltar amanhã.
-      return { url: null, tentou: true }
+      return marcarTentativa(admin, thread.id, null)
     }
 
-    if (!url) return { url: null, tentou: true }
+    if (!url) return marcarTentativa(admin, thread.id, null)
 
     const mirrored = await espelharAvatar(admin, thread.org_id, thread.id, url)
     const finalUrl = mirrored ?? url
-
-    // Escrita evitada = evento de realtime evitado × abas: só grava se
-    // mudou (re-espelho devolve sempre o mesmo path).
-    if (finalUrl === thread.contact_avatar_url) return { url: finalUrl, tentou: true }
-
-    const { error } = await admin
-      .from("crm_threads")
-      .update({ contact_avatar_url: finalUrl })
-      .eq("id", thread.id)
-    if (error) {
-      log.warn("avatar: update falhou", { threadId: thread.id, error: error.message })
-      return { url: finalUrl, tentou: true } // ainda serve pra resposta atual
-    }
+    const res = await marcarTentativa(
+      admin,
+      thread.id,
+      finalUrl === thread.contact_avatar_url ? null : finalUrl,
+    )
     log.info("avatar: preenchido", {
       threadId: thread.id,
       channelType: ch.type,
       espelhado: Boolean(mirrored),
     })
-    return { url: finalUrl, tentou: true }
+    return { url: res.url ?? finalUrl, tentou: true }
   } catch (err) {
     // Falha de rede/API é transitória: não queima a janela.
     log.warn("avatar: fetch falhou", {
