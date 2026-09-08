@@ -53,13 +53,14 @@ export interface IgErro {
   meta?: number
 }
 
-type Res<T> = { ok: true; data: T } | { ok: false; error: IgErro }
+export type Res<T> = { ok: true; data: T } | { ok: false; error: IgErro }
 
 interface GraphErrorBody {
   error?: { message?: string; code?: number; error_subcode?: number; type?: string }
 }
 
-async function graph<T>(config: InstagramChannelConfig, path: string): Promise<Res<T>> {
+/** GET na Graph API com o token do canal. Exportado para leituras pontuais (filhos de um carrossel). */
+export async function graph<T>(config: InstagramChannelConfig, path: string): Promise<Res<T>> {
   if (!config.access_token) return { ok: false, error: { code: "config_missing", message: "Canal sem access_token" } }
   try {
     const res = await fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${config.access_token}` }, cache: "no-store" })

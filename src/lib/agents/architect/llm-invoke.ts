@@ -12,6 +12,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { corteDeRaciocinio } from "../model-capabilities"
+import { RespostaVaziaError } from "../resposta-vazia"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
@@ -139,9 +140,31 @@ export async function invokeAgent(
   const resolved: AgentInvokeConfig = systemVars
     ? { ...config, system_prompt: interpolateSystem(config.system_prompt, systemVars) }
     : config
-  return resolved.model.includes("/")
-    ? invokeViaOpenRouter(resolved, userMessage)
-    : invokeViaAnthropic(resolved, userMessage)
+  const res = resolved.model.includes("/")
+    ? await invokeViaOpenRouter(resolved, userMessage)
+    : await invokeViaAnthropic(resolved, userMessage)
+
+  // Ponto único dos dois caminhos, e DEPOIS do retry: repetir a chamada com
+  // o mesmo teto falharia igual, cobrando de novo. Sem isto o vazio segue
+  // para o caller e vira `JSON.parse("")` — o erro que a run grava, e que
+  // não diz nada sobre a causa (subject 08/09, copy_fit 5d7396b5).
+  if (!res.raw) {
+    const erro = new RespostaVaziaError({
+      model: resolved.model,
+      maxTokens: resolved.max_tokens,
+      tokensInput: res.tokensInput,
+      tokensOutput: res.tokensOutput,
+      costUsd: res.costUsd,
+      finishReason: res.finishReason,
+      reasoningTokens: res.reasoningTokens,
+    })
+    log.error("invoke.resposta_vazia", {
+      model: resolved.model,
+      motivo: erro.message,
+    })
+    throw erro
+  }
+  return res
 }
 
 /**

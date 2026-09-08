@@ -1,7 +1,7 @@
 /**
  * POST /api/conteudo/upload — imagem do Estúdio (slot, avatar, referência)
  * para o Storage da org. FormData: `file` (PNG/JPG/WebP ≤ 15 MB) e `kind`
- * (`slide` | `avatar`). Redimensiona no servidor (≤ 1350px; avatar 256px) e
+ * (`slide` | `avatar` | `referencia`). Redimensiona no servidor (≤ 1350px; avatar 256px) e
  * devolve a URL servida pelo admin (`/api/ai/convertia/imagem/...`), que não
  * expira e só abre para a org dona — a mesma régua das imagens da ConvertIA.
  */
@@ -28,7 +28,10 @@ export async function POST(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const form = await request.formData()
     const file = form.get("file")
-    const kind = form.get("kind") === "avatar" ? "avatar" : "slide"
+    const kindRaw = form.get("kind")
+    // `referencia` = slide de um carrossel-exemplo: fica no banco da org com
+    // prefixo próprio, fora das sugestões de Mídia (é referência, não asset).
+    const kind = kindRaw === "avatar" ? "avatar" : kindRaw === "referencia" ? "referencia" : "slide"
     if (!(file instanceof File)) throw new AppError("Arquivo obrigatório (campo file)", 400)
     if (!ALLOWED.includes(file.type)) throw new AppError("Use PNG, JPG, WebP ou GIF.", 400)
     if (file.size > 15 * 1024 * 1024) throw new AppError("Imagem maior que 15 MB", 400)
@@ -51,7 +54,8 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const path = `stores/org-${orgId}/email-assets/${kind === "avatar" ? "avatar-" : "slide-"}${crypto.randomUUID()}.${ext}`
+    const prefixo = kind === "avatar" ? "avatar-" : kind === "referencia" ? "ref-" : "slide-"
+    const path = `stores/org-${orgId}/email-assets/${prefixo}${crypto.randomUUID()}.${ext}`
     const { error } = await admin.storage.from(CONVERTIA_IMAGE_BUCKET).upload(path, saida, { contentType: ext === "png" ? "image/png" : "image/jpeg", upsert: false })
     if (error) {
       log.error("upload falhou", { path, error: error.message })

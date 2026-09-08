@@ -304,6 +304,67 @@ SELECT agent, model, status, created_at
  LIMIT 20;
 
 
+-- ═════════════════════════════════════════════════════════════
+-- 9. Tetos: raciocínio obrigatório paga do MESMO max_tokens
+-- ═════════════════════════════════════════════════════════════
+-- Modelo que pensa por padrão consome teto ANTES de escrever. Teto
+-- dimensionado para um modelo que não pensa devolve conteúdo VAZIO, e o
+-- caller estoura em `JSON.parse("")` — nenhum erro vem do provedor.
+--
+-- Medido em 30 dias (08/09), saída máxima do MESMO agente por família:
+--
+--   agente         Sonnet    Fable    fator
+--   copy_fit        1.427    3.686     2,6x
+--   estruturador    7.498    7.700     2,1x   (por tentativa; a run somou 2)
+--   seletor         2.385    3.625     1,5x
+--
+-- Regra prática: teto >= 3x a saída ÚTIL observada. Os tetos abaixo foram
+-- ajustados em 08/09 por essa régua.
+--
+--   agente          de       para    o que motivou
+--   subject           400    4.000   QUEBROU: saída útil 213, sem folga
+--   seletor         4.096    8.192   Fable já usava 89% do teto
+--   estruturador    8.192   16.384   ~94% por tentativa, com retry
+--   catalogador     8.192   12.288   64% já no Sonnet
+--   merge_verifier  2.048    6.000   85% já no Sonnet
+--   copy_fit        6.000    8.000   61% no Fable
+--   qa              1.500    4.000   sem histórico, 2º menor teto
+--   assembler       2.048    4.000   desligado hoje, apertado se ligar
+--
+-- ROLLBACK dos tetos (estado anterior ao ajuste de 08/09):
+-- UPDATE email_agent_configs AS c SET max_tokens = v.teto
+--   FROM (VALUES ('subject',400),('seletor',4096),('estruturador',8192),
+--                ('catalogador',8192),('merge_verifier',2048),
+--                ('copy_fit',6000),('qa',1500),('assembler',2048))
+--        AS v(agent_type, teto)
+--  WHERE c.agent_type = v.agent_type AND c.is_active = true
+-- RETURNING c.agent_type, c.max_tokens;
+--
+-- SUBIR TETO CUSTA RESERVA, não gasto. O OpenRouter reserva
+-- (prompt + max_tokens) no preço do modelo enquanto a chamada está em voo,
+-- e é isso que produz `402 ... would exceed your available credits given
+-- your current in-flight requests` sem a conta ter acabado.
+--
+-- Com Fable ($50/1M de saída), `text_format` é o extremo: teto 65.536
+-- reserva ~US$ 3,28 por chamada e a saída máxima medida é 872 tokens.
+-- NÃO foi mexido — ele existe para reescrever o documento inteiro, e o
+-- histórico atual é do modo em que quase sempre é pulado. Se os 402
+-- voltarem com crédito na conta, é o primeiro lugar para olhar.
+
+-- Quem está apertado agora (rode depois de trocar de modelo):
+SELECT c.agent_type, c.model, c.max_tokens,
+       max(r.tokens_output) AS saida_max_30d,
+       round(100.0 * max(r.tokens_output) / c.max_tokens) AS pct_do_teto
+  FROM email_agent_configs c
+  LEFT JOIN email_generation_runs r
+    ON r.agent = c.agent_type AND r.status = 'success'
+   AND r.created_at > now() - interval '30 days'
+ WHERE c.is_active = true
+ GROUP BY c.agent_type, c.model, c.max_tokens
+HAVING max(r.tokens_output) > 0.6 * c.max_tokens
+ ORDER BY pct_do_teto DESC;
+
+
 -- ─────────────────────────────────────────────
 -- Rollback
 -- ─────────────────────────────────────────────
