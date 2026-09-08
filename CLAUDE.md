@@ -1292,6 +1292,26 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
+**Responder pelo CELULAR marca a conversa como lida** (set/2026,
+migration 20261128). O atendente respondia o cliente pelo WhatsApp do
+aparelho e a conversa seguia não lida no admin: "Breno Neves" com
+`unread_count = 14` e "Lucas" com 3, os dois com a última mensagem
+outbound e `sent_by_kind = 'system'` (a marca do fromMe da Evolution).
+O `CASE` do trigger `crm_messages_update_thread` incrementava no inbound
+e, em todo o resto, MANTINHA o valor — quem zerava era só
+`POST /threads/[id]/read`, ou seja, abrir a conversa no admin, caminho
+que responder pelo celular nunca percorre. O webhook já cobria metade
+(`clearCrmThreadNotifications` no fromMe), então divergiam justamente as
+duas coisas que a doc diz espelharem uma à outra: sino limpo e badge
+aceso na mesma conversa. Agora outbound de `agent`/`system` zera.
+**Automação NÃO zera** — fluxo automático responder não é alguém ter
+lido, e zerar ali esconderia mensagem por olhar. `is_historical` fora
+(importação traz outbound aos milhares) e a guarda
+`created_at >= last_message_at` é a mesma do `GREATEST`: mensagem fora
+de ordem não pode apagar não-lida mais recente que ela. Custo ZERO em
+escrita — o trigger já fazia esse UPDATE, muda só o valor de uma coluna,
+nenhum evento de realtime a mais.
+
 **Foto de perfil do contato — a fila não pode travar no topo**
 (set/2026, migration 20261125). Sintoma: inbox só com iniciais, 56 das
 61 conversas sem foto E sem tentativa registrada. A causa imediata NÃO
@@ -2709,6 +2729,47 @@ elas ficam intactas para disparar.
 
 ---
 
+## Modelo de imagem: GPT Image 2 com fallback (set/2026, migration 20261126)
+
+**O primário voltou a ser `openai/gpt-5.4-image-2`** nos dois agentes que
+compartilham o motor (`image` e `campaign_image`), e `google/gemini-3.1-flash-image`
+é o segundo. Regras em `agents/image/model-policy.ts` (puro, 14 testes).
+
+Isto é o caminho da migration 20261071, que a **20261072 desfez por um
+motivo real**: o GPT Image 2 entra em LOOP DE WHITESPACE — 200 OK pingando
+espaço por minutos, sem imagem. Na Luxe Lift (10/08) duas tentativas
+queimaram 455 s da fase 2 e o email SAIU SEM a hero (o agente recebeu
+`<hero_image url="" />` e removeu a linha). O defeito é do provedor e
+continua existindo; o que mudou é o custo dele:
+
+1. `OPENROUTER_IMAGE_BODY_TIMEOUT_MS` (300 s) corta o corpo que não termina
+   — o `fetch` resolve nos HEADERS, então antes a leitura não tinha relógio.
+2. **Fallback de MODELO**: falha de PROVEDOR (`ehFalhaDeProvedor`) troca
+   para o Gemini e gera a imagem. Recusa por política de conteúdo NÃO
+   troca — o segundo recusaria igual e a mensagem do primeiro é o que
+   explica. A régua casa pelo **nome da classe** de erro antes do texto:
+   `OpenRouterEmptyBodyError` diz "empty body" com ESPAÇO, e a primeira
+   versão procurava `empty_body` — o fallback não disparava no corpo vazio.
+3. **O fallback é UMA tentativa e tem orçamento** (`FALLBACK_ORCAMENTO_MS`,
+   360 s): com retry próprio seriam 4 janelas de 300 s (~20 min) contra os
+   760 s de `PHASE2_CHAIN_BUDGET_MS` — o remédio mataria o paciente. O
+   primário já gastou os retries dele; o que falta é outro modelo, não mais
+   insistência.
+4. `onMeta.modelUsed` diz quem REALMENTE gerou. Sem isso a telemetria
+   registraria "gpt-5.4-image-2" numa imagem feita pelo Gemini e comparar
+   os dois viraria ficção.
+
+**Duas variações do mesmo prompt saem uma de cada** (`modelosParaVariacoes`):
+é comparação lado a lado, não duas tentativas do mesmo. Uma só usa o
+primário — pedir uma imagem não é pedir um teste. Acima de duas, alterna.
+Hoje o único ponto com quantidade é `/api/conteudo/ia`; é código, não
+config, então não depende da migration.
+
+Pior caso hoje: imagem do Gemini + uma linha `image.model.fallback` no log.
+Antes: bloco sem imagem, em silêncio. Rollback = voltar o `model` das duas
+linhas de `email_agent_configs` para `google/gemini-3.1-flash-image` (a
+config do banco VENCE a constante do código).
+
 ## Objeções: Catalogador (macro) e Seletor (micro) (set/2026, migration 20261116)
 
 Spec "Objeções: catalogação macro e seleção micro — v2"; plano e mapa em
@@ -3643,6 +3704,73 @@ simulação mostrou que, tratadas em bloco, `deals`/`pipelines`/`automations`
 ficariam só com SELECT e `client_briefings`/`store_feedback_calls` só com
 INSERT — quebrando kanban e telas.
 
+## Fase 3: o convite chega ao cliente, e o SQL foi aplicado (set/2026)
+
+Executado com acesso ao banco de produção. O que a medição revelou muda o
+que estava escrito acima.
+
+**1. O trigger da ponte reunião→carteira NUNCA existiu neste banco**
+(migration 20261128). A
+migration 20260415 criava `trg_sync_meeting_to_store_feedback`; só a FUNÇÃO
+estava lá. Concluir uma reunião com loja nunca alimentou
+`last_feedback_date` nem `store_feedback_calls` — a ponte estava morta desde
+sempre, sem erro em lugar nenhum, e a 20261126 (que recria só a função) não
+teria consertado. Criado e testado de verdade: reunião → conclusão → 1 call
+gravada, concluir de novo NÃO duplica (o índice único parcial funciona), a
+loja recebe a data; tudo dentro de transação com ROLLBACK.
+
+**2. `crm_contacts` está VAZIA (0 linhas), e isso quebrava a fase 1.** A
+seção "Convidados do cliente" diria "nenhum contato cadastrado" em **100%
+dos casos**, com o endereço a uma coluna de distância: `clients.email` cobre
+**54 dos 55 clientes** e **todas as 63 lojas ativas** têm cliente com email.
+Agora o email do CADASTRO é oferecido como convidável (pré-marcado quando
+não há contatos) e viaja como convidado externo — não tem id de
+`crm_contacts`, então fingir que é um contato seria mentira de proveniência.
+Medido depois: **63 de 63 lojas ativas passam a ter alguém para convidar**;
+antes, 0.
+
+**3. As pipelines de CS pararam de presumir.** `calls-pipeline` e
+`cs-painel/proximas-calls` resolvem a próxima call por `resolverProximaCall`
+e cada item carrega `origem` ('agendada' × 'prevista') + `meeting_id`;
+`counts.presumidas` conta as que a tela mostrava como marcadas sem reunião
+por trás. Duas correções de borda que a leitura expôs: loja com previsão
+além de 30 dias **sumia das seis etapas em silêncio** (agora cai em "a
+marcar", que é onde alguém age), e `proximas-calls` exigia
+`next_feedback_date NOT NULL`, então loja com reunião de verdade e sem
+previsão **ficava fora do painel**.
+
+**4. `ATIVOS` listava status que não existem.** O enum `meeting_status` tem
+exatamente quatro valores — `scheduled`, `completed`, `cancelled`,
+`no_show` — e o módulo aceitava `confirmed`/`rescheduled`. Não era bug
+(`scheduled` é o único ativo e estava coberto), mas fazia o próximo leitor
+supor um fluxo de confirmação que não existe. A lista é permissiva nas
+BORDAS de propósito: status novo que este arquivo não conheça cai fora e a
+loja aparece como "sem call marcada" — visível e corrigível; o inverso faria
+um `no_show` valer como próxima call.
+
+**O retrato da carteira, medido**: das 63 lojas ativas, **61 não têm call
+marcada nem prevista**, 2 têm só previsão e **zero têm reunião agendada**.
+É o número que a tela escondia atrás da palavra "agendada".
+
+### RLS aplicado e verificado nos três papéis
+
+O round 5A foi aplicado. Depois dele: `anon_aberto = 0`, `tabelas_sem_rls =
+0`, nenhuma tabela do CRM sem cobertura. Provado assumindo cada papel:
+
+- **anon** (a chave pública do browser): `crm_leads` devolvia **301 linhas**,
+  agora devolve **0**; idem `crm_contacts`, `client_charges`,
+  `crm_ad_accounts`, `auth_events`, `client_monthly_reports`.
+- **membro da org**: continua vendo 100% do que existe (301 leads, 6
+  cobranças, 3 produtos) — zero regressão.
+- **usuário do portal**: 0 leads, 0 produtos. Fora do banco interno, que era
+  o motivo de a policy ser `is_org_member()` e não `USING (true)`.
+- Formulário público e `tracking_lookups` intactos (3 policies TO PUBLIC
+  preservadas), e "Portal users can view own client_charges" de pé — o
+  cliente segue vendo as PRÓPRIAS faturas.
+
+**Ainda aberto**: o round 5B (as 61 policies `TO authenticated USING(true)`,
+que exigem avaliação tabela a tabela) e o painel de agenda por colaborador.
+---
 ---
 
 ## Execuções ao vivo no Estúdio, e o caminho até a execução parcial (set/2026, migration 20261127)

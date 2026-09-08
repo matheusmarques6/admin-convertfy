@@ -42,7 +42,11 @@ import { toast } from "@/lib/hooks/use-toast"
 import { MEETING_DURATION_OPTIONS, MEETING_STATUS_OPTIONS } from "@/lib/constants/board"
 import { GoogleSyncBadge, MeetingJoinButton, RetrySyncButton } from "@/components/meetings/google-sync-badge"
 import { ParticipantRsvpStatus } from "@/components/meetings/participant-rsvp-status"
-import { contatoSugerido, type ContatoDoCliente } from "@/lib/meetings/convidados"
+import {
+  contatoSugerido,
+  externosNaoCobertos,
+  type ContatoDoCliente,
+} from "@/lib/meetings/convidados"
 import type { Meeting, MeetingStatus, MeetingParticipant, MeetingResponseStatus } from "@/types"
 
 interface UserProfile {
@@ -151,6 +155,13 @@ export function MeetingDialog({
   const [guestInput, setGuestInput] = useState("")
   // Contatos do cliente: quem, do lado de lá, recebe o convite.
   const [clientContacts, setClientContacts] = useState<ContatoDoCliente[]>([])
+  // Email do CADASTRO do cliente (clients.email). Hoje é a única fonte real:
+  // crm_contacts está vazia e clients.email cobre quase toda a base. Fica
+  // separado dos contatos porque não tem id de contato — quando marcado,
+  // viaja como convidado externo, não como `contacts[]`.
+  const [clientEmail, setClientEmail] = useState<string | null>(null)
+  const [clientName, setClientName] = useState<string | null>(null)
+  const [usarEmailDoCadastro, setUsarEmailDoCadastro] = useState(false)
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([])
   const [contactsLoading, setContactsLoading] = useState(false)
   const [contactsError, setContactsError] = useState<string | null>(null)
@@ -158,6 +169,7 @@ export function MeetingDialog({
   // ele não mexeu na lista — sugestão que volta sozinha depois de alguém
   // desmarcar é a UI decidindo por cima da pessoa.
   const [contactsTouched, setContactsTouched] = useState(false)
+  const contactsTouchedRef = useRef(false)
 
   const addGuest = () => {
     const email = guestInput.trim().toLowerCase()
@@ -190,6 +202,9 @@ export function MeetingDialog({
   useEffect(() => {
     if (!open || !selectedClientId) {
       setClientContacts([])
+      setClientEmail(null)
+      setClientName(null)
+      setUsarEmailDoCadastro(false)
       setContactsError(null)
       setContactsLoading(false)
       return
@@ -209,7 +224,18 @@ export function MeetingDialog({
       })
       .then((json) => {
         if (cancelado) return
-        setClientContacts((json?.contacts as ContatoDoCliente[]) || [])
+        const lista = (json?.contacts as ContatoDoCliente[]) || []
+        setClientContacts(lista)
+        setClientEmail((json?.client_email as string) || null)
+        setClientName((json?.client_name as string) || null)
+        // Sem contato cadastrado, o email da conta entra pré-marcado: é o
+        // caso de 100% da base hoje, e deixá-lo desmarcado faria a reunião
+        // nascer sem avisar o cliente pelo caminho mais comum.
+        // Pré-marca só enquanto a pessoa não mexeu na lista. Lido por ref
+        // para o efeito não reabrir (e refazer o fetch) a cada clique.
+        if (lista.length === 0 && json?.client_email && !contactsTouchedRef.current) {
+          setUsarEmailDoCadastro(true)
+        }
       })
       .catch((err: Error) => {
         if (cancelado) return
@@ -244,6 +270,8 @@ export function MeetingDialog({
       clienteAnteriorRef.current = selectedClientId
       setSelectedContactIds([])
       setContactsTouched(false)
+      contactsTouchedRef.current = false
+      setUsarEmailDoCadastro(false)
     }
   }, [open, selectedClientId])
 
@@ -256,6 +284,7 @@ export function MeetingDialog({
   }, [clientContacts, contactsTouched, selectedContactIds.length])
 
   const toggleContact = (id: string) => {
+    contactsTouchedRef.current = true
     setContactsTouched(true)
     setSelectedContactIds((atual) =>
       atual.includes(id) ? atual.filter((c) => c !== id) : [...atual, id],
@@ -288,6 +317,7 @@ export function MeetingDialog({
             .map((p) => p.participant_id),
         )
         setContactsTouched(true)
+        contactsTouchedRef.current = true
 
         // Load existing participants (excluding organizer)
         if (meeting.participants) {
@@ -329,6 +359,7 @@ export function MeetingDialog({
         setGuestInput("")
         setSelectedContactIds([])
         setContactsTouched(false)
+        contactsTouchedRef.current = false
         setContactsError(null)
         setTimezone(getBrowserTimezone())
         setCreateGoogleMeet(hasGoogleCalendar)
@@ -367,6 +398,11 @@ export function MeetingDialog({
       const url = isEditing ? `/api/meetings/${meeting.id}` : "/api/meetings"
       const method = isEditing ? "PUT" : "POST"
 
+      const emailsExternosFinais =
+        usarEmailDoCadastro && clientEmail
+          ? externosNaoCobertos([...guestEmails, clientEmail], [])
+          : guestEmails
+
       const body = {
         title: data.title,
         client_id: data.client_id || null,
@@ -383,7 +419,11 @@ export function MeetingDialog({
         timezone,
         create_google_meet: createGoogleMeet,
         participants: selectedParticipants.map(p => ({ id: p.id, type: p.type })),
-        guest_emails: guestEmails,
+        // O email do cadastro não tem id de contato, então viaja como
+        // convidado externo. A rota deduplica contra os contatos; aqui a
+        // dedupe é contra o que foi digitado à mão — marcar a caixa E
+        // digitar o mesmo endereço não pode gerar dois attendees.
+        guest_emails: emailsExternosFinais,
         contacts: selectedContactIds,
         ...(isEditing ? { status } : {}),
       }
@@ -614,12 +654,43 @@ export function MeetingDialog({
                     <p className="text-xs text-destructive">{contactsError}</p>
                   )}
 
-                  {!contactsLoading && !contactsError && clientContacts.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Este cliente ainda não tem contatos cadastrados. Use
-                      &quot;Convidados externos&quot; abaixo para convidar por email.
-                    </p>
-                  )}
+                  {!contactsLoading && !contactsError && clientContacts.length === 0 &&
+                    clientEmail && (
+                      <div className="rounded-md border">
+                        <label className="flex cursor-pointer items-center gap-2 px-2 py-2 text-sm hover:bg-muted">
+                          <Checkbox
+                            checked={usarEmailDoCadastro}
+                            onCheckedChange={() => {
+                              contactsTouchedRef.current = true
+                              setContactsTouched(true)
+                              setUsarEmailDoCadastro((v) => !v)
+                            }}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-medium">{clientName || "Cliente"}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {clientEmail}
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                  {!contactsLoading && !contactsError && clientContacts.length === 0 &&
+                    clientEmail && (
+                      <p className="text-xs text-muted-foreground">
+                        Email do cadastro do cliente. Cadastre contatos no CRM para
+                        convidar pessoas específicas.
+                      </p>
+                    )}
+
+                  {!contactsLoading && !contactsError && clientContacts.length === 0 &&
+                    !clientEmail && (
+                      <p className="text-xs text-muted-foreground">
+                        Este cliente não tem contatos nem email cadastrado. Use
+                        &quot;Convidados externos&quot; abaixo para convidar por email.
+                      </p>
+                    )}
 
                   {clientContacts.length > 0 && (
                     <div className="rounded-md border">
@@ -663,7 +734,7 @@ export function MeetingDialog({
                   )}
 
                   <p className="text-xs text-muted-foreground">
-                    {selectedContactIds.length > 0
+                    {selectedContactIds.length > 0 || usarEmailDoCadastro
                       ? "Recebem o convite do Google e um email de confirmação da Convertfy."
                       : "Ninguém do cliente será avisado desta reunião."}
                   </p>

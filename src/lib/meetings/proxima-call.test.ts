@@ -56,6 +56,24 @@ describe("resolverProximaCall", () => {
     expect(r.origem).toBe("prevista")
   })
 
+  it("no_show não conta — reunião que ninguém apareceu não é próxima call", () => {
+    const r = resolverProximaCall({
+      reunioes: [reuniao({ id: "n", status: "no_show", scheduled_at: em(1) })],
+      agora: AGORA,
+    })
+    expect(r.origem).toBe("nenhuma")
+  })
+
+  it("status desconhecido cai fora, e isso é a escolha segura", () => {
+    // Melhor a loja aparecer como "sem call marcada" (visível, corrigível)
+    // do que um status novo virar compromisso sem ninguém ter decidido isso.
+    const r = resolverProximaCall({
+      reunioes: [reuniao({ id: "x", status: "status_que_nao_existe", scheduled_at: em(1) })],
+      agora: AGORA,
+    })
+    expect(r.origem).toBe("nenhuma")
+  })
+
   it("cancelada e concluída não contam", () => {
     const r = resolverProximaCall({
       reunioes: [

@@ -15,7 +15,8 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { withTiming } from "@/lib/api/with-timing"
 import { friendlyModelErrorText } from "@/lib/ai/convertia/model-errors"
 import { rewriteStorageImageSrc } from "@/lib/ai/convertia-image-url"
-import { generateEmailImage, OPENROUTER_IMAGE_MODEL } from "@/lib/agents/chains/image.chain"
+import { generateEmailImage } from "@/lib/agents/chains/image.chain"
+import { modelosParaVariacoes } from "@/lib/agents/image/model-policy"
 import { aspectInstructionForPrompt } from "@/lib/agents/image/aspect-ratio"
 import { entradaImagemSchema, entradaSchema } from "@/lib/conteudo/ia/schemas"
 import { executarIA, IaJsonInvalidoError } from "@/lib/conteudo/ia/service"
@@ -42,9 +43,12 @@ async function handlePost(request: NextRequest) {
       const n = img.data.quantidade ?? 1
       const prompt = `${img.data.prompt.trim()}\n\nEstética editorial premium, sem texto na imagem, sem marcas d'água, paleta com azuis profundos e neutros, luz natural.\n${aspectInstructionForPrompt(aspect)}`
       try {
+        // Duas variações = uma do GPT Image 2 e uma do Gemini, mesmo
+        // prompt — é comparação entre modelos, não duas tentativas do
+        // mesmo. Uma só usa o primário. Regra em `image/model-policy`.
         const urls = await Promise.all(
-          Array.from({ length: n }, () =>
-            generateEmailImage(prompt, `org-${orgId}`, { aspect, mode: "text2img", model: OPENROUTER_IMAGE_MODEL }).then(rewriteStorageImageSrc),
+          modelosParaVariacoes(n).map((model) =>
+            generateEmailImage(prompt, `org-${orgId}`, { aspect, mode: "text2img", model }).then(rewriteStorageImageSrc),
           ),
         )
         return successResponse(request, { dados: { urls } })

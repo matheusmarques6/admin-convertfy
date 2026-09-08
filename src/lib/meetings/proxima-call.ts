@@ -40,8 +40,20 @@ export interface ProximaCall {
   semConvidadoDoCliente?: boolean
 }
 
-/** Status que contam como compromisso de pé. */
-const ATIVOS = new Set(["scheduled", "confirmed", "rescheduled"])
+/**
+ * Status que contam como compromisso de pé.
+ *
+ * O enum `meeting_status` do banco tem exatamente quatro valores —
+ * scheduled, completed, cancelled, no_show (conferido em produção 08/09) —
+ * e só o primeiro é um compromisso futuro. Os outros três descrevem uma
+ * reunião que já teve desfecho.
+ *
+ * A lista é permissiva de propósito nas BORDAS: um status novo que o banco
+ * ganhe e este arquivo não conheça cai fora, e a loja aparece como "sem call
+ * marcada" — visível e corrigível. O inverso (aceitar tudo que não seja
+ * cancelado) faria uma reunião `no_show` valer como próxima call.
+ */
+const ATIVOS = new Set(["scheduled"])
 
 function ehFutura(iso: string, agora: Date): boolean {
   const t = new Date(iso).getTime()

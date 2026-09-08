@@ -2,6 +2,11 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import {
+  resolverProximaCall,
+  type ProximaCall,
+  type ReuniaoDaLoja,
+} from "@/lib/meetings/proxima-call"
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -11,9 +16,21 @@ export async function OPTIONS(request: NextRequest) {
  * GET /api/cs-crm/calls-pipeline
  *
  * Pipeline de call mensal do Customer Success (6 etapas).
- * Etapas derivadas dos campos existentes em store_feedback_calls:
+ *
+ * A "próxima call" tem DUAS origens e elas não valem o mesmo: uma reunião
+ * AGENDADA (existe evento, o convite saiu) ou uma data PREVISTA pela cadência
+ * (`next_call_date`, que o trigger calcula a partir da última call). Até
+ * set/2026 a rota só conhecia a segunda e a etapa 2 se chamava "presumido
+ * enviado convite" — ninguém sabia, olhando o board, se o cliente tinha sido
+ * convidado. Agora cada item carrega `origem`, e `counts.presumidas` diz
+ * quantas lojas a tela mostrava como marcadas sem reunião nenhuma por trás.
+ *
+ * A previsão CONTINUA aparecendo (marcada como previsão): hoje quase nenhuma
+ * reunião tem loja vinculada, e trocar uma pela outra esvaziaria o board.
+ *
+ * Etapas derivadas de store_feedback_calls + meetings:
  *  1. A marcar             — store ativa sem call há > 30d nem next_call_date
- *  2. Aguardando            — next_call_date 4-30d (presumido enviado convite)
+ *  2. Aguardando            — próxima call em 4-30d
  *  3. Agendadas             — next_call_date 1-3d
  *  4. Hoje                  — next_call_date hoje OU conducted_at hoje
  *  5. Pós-call pendente     — conducted_at 1-3d sem action_items
@@ -78,6 +95,35 @@ export async function GET(request: NextRequest) {
       duration_minutes: number | null
     }>
 
+    // Reuniões agendadas por loja. Enriquecimento: se a coluna store_id ou a
+    // tabela não estiverem lá (migration atrasada), o board segue com a
+    // previsão — que é como ele sempre funcionou.
+    const reunioesByStore = new Map<string, ReuniaoDaLoja[]>()
+    try {
+      const { data: rows } = await admin
+        .from("meetings")
+        .select("id, title, scheduled_at, status, store_id, participants:meeting_participants(participant_type)")
+        .not("store_id", "is", null)
+        .gte("scheduled_at", now.toISOString())
+        .order("scheduled_at", { ascending: true })
+        .limit(500)
+      for (const r of rows ?? []) {
+        const storeId = r.store_id as string
+        const ps = (r.participants ?? []) as Array<{ participant_type: string }>
+        const arr = reunioesByStore.get(storeId) ?? []
+        arr.push({
+          id: r.id as string,
+          title: r.title as string | null,
+          scheduled_at: r.scheduled_at as string,
+          status: r.status as string,
+          tem_convidado_do_cliente: ps.some((p) => p.participant_type === "contact"),
+        })
+        reunioesByStore.set(storeId, arr)
+      }
+    } catch {
+      // silencioso de propósito: o board existia antes das reuniões
+    }
+
     // Agrupa calls por store
     const callsByStore = new Map<string, typeof calls>()
     for (const c of calls) {
@@ -98,6 +144,11 @@ export async function GET(request: NextRequest) {
       next_call_date: string | null
       action_items: string | null
       duration_minutes: number | null
+      /** 'agendada' = reunião com convite; 'prevista' = conta da cadência. */
+      origem?: ProximaCall["origem"]
+      meeting_id?: string
+      /** Reunião marcada, mas sem ninguém do cliente convidado. */
+      sem_convidado_do_cliente?: boolean
     }
 
     const stages: Record<string, PipelineItem[]> = {
@@ -118,6 +169,12 @@ export async function GET(request: NextRequest) {
           (c.next_call_date && new Date(c.next_call_date) >= todayStart && new Date(c.next_call_date) <= todayEnd) ||
           (c.conducted_at && new Date(c.conducted_at) >= todayStart && new Date(c.conducted_at) <= todayEnd),
       )
+
+      const proxima = resolverProximaCall({
+        reunioes: reunioesByStore.get(store.id),
+        nextFeedbackDate: upcomingCall?.next_call_date ?? null,
+        agora: now,
+      })
 
       const baseItem: PipelineItem = {
         id: store.id,
@@ -161,22 +218,29 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      if (upcomingCall) {
-        const dateLeft = new Date(upcomingCall.next_call_date!).getTime() - Date.now()
-        const daysLeft = dateLeft / 86_400_000
-        if (daysLeft <= 3) {
-          stages.agendadas!.push({
-            ...baseItem,
-            call_id: upcomingCall.id,
-            next_call_date: upcomingCall.next_call_date,
-          })
-        } else if (daysLeft <= 30) {
-          stages.aguardando!.push({
-            ...baseItem,
-            call_id: upcomingCall.id,
-            next_call_date: upcomingCall.next_call_date,
-          })
+      if (proxima.quando) {
+        // A reunião real vence a previsão (resolverProximaCall já decidiu);
+        // a origem viaja para a tela poder dizer qual das duas é.
+        const daysLeft = (new Date(proxima.quando).getTime() - now.getTime()) / 86_400_000
+        const item: PipelineItem = {
+          ...baseItem,
+          call_id: upcomingCall?.id ?? null,
+          next_call_date: proxima.quando,
+          origem: proxima.origem,
+          ...(proxima.meetingId ? { meeting_id: proxima.meetingId } : {}),
+          ...(proxima.semConvidadoDoCliente ? { sem_convidado_do_cliente: true } : {}),
         }
+        if (daysLeft <= 3) {
+          stages.agendadas!.push(item)
+          continue
+        }
+        if (daysLeft <= 30) {
+          stages.aguardando!.push(item)
+          continue
+        }
+        // Além de 30 dias a loja não some do board: cai em "a marcar", que é
+        // onde alguém age. Antes ela sumia das seis etapas em silêncio.
+        stages.a_marcar!.push(item)
         continue
       }
 
@@ -207,6 +271,11 @@ export async function GET(request: NextRequest) {
         hoje: stages.hoje!.length,
         pos_call_pendente: stages.pos_call_pendente!.length,
         finalizadas: stages.finalizadas!.length,
+        // O número que justifica esta mudança: lojas que o board mostrava
+        // como tendo próxima call sem nenhuma reunião marcada por trás.
+        presumidas: Object.values(stages)
+          .flat()
+          .filter((i) => i.origem === "prevista").length,
       },
       total: stores.length,
     })
