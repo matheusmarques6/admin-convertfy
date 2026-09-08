@@ -137,6 +137,15 @@ export interface AssembledStats {
   unshelled: string[]
   /** Blocos de CSS resgatados do `<head>` das variantes e reinjetados. */
   stylesInlined: number
+  /**
+   * Seções cuja calha tinha recuo horizontal, zerado no encaixe. Fora do
+   * documento aquele recuo é invisível; dentro da célula de 600px ele soma
+   * à largura do container e estica o email — em 08/09 três blocos com
+   * calhas de 0, 28 e 40px produziram um `.email-container` de 680px, com
+   * cada bloco centralizado numa largura diferente. Contagem, não alarme:
+   * é o boilerplate padrão de email.
+   */
+  guttersNeutralized: string[]
   /** Blocos esperados, na ordem — insumo do self-check de marcadores. */
   expected: ExpectedBlock[]
 }
@@ -229,6 +238,7 @@ export function assembleDocument(
   const expected: ExpectedBlock[] = []
   const wrappedUnknown: string[] = []
   const unshelled: string[] = []
+  const guttersNeutralized: string[] = []
   // O CSS do <head> de cada variante precisa sobreviver ao desembrulho: é
   // onde vive o @media dela. Dedup por conteúdo — variantes da mesma origem
   // repetem o mesmo bloco, e duplicar CSS só engorda o email.
@@ -264,6 +274,7 @@ export function assembleDocument(
     }
     if (fit.kind === "wrapped_unknown") wrappedUnknown.push(section)
     if (fit.unshelled) unshelled.push(section)
+    if (fit.gutterNeutralized) guttersNeutralized.push(section)
     for (const css of fit.styles ?? []) styles.add(css)
     const marker = `${i}:${section}`
     rows.push(
@@ -286,6 +297,7 @@ export function assembleDocument(
       chars: normalized.html.length,
       wrappedUnknown,
       unshelled,
+      guttersNeutralized,
       stylesInlined: styles.size,
       expected,
     },

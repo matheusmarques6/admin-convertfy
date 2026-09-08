@@ -10,13 +10,25 @@
  *    pro layout mobile. Um iframe com viewport de exatamente 600px DISPARA
  *    o media query (`<=`) e o preview renderiza a versão celular empilhada.
  *    Clients desktop reais (Gmail/Outlook web) têm viewport muito maior que
- *    o container de 600px do email. Correção: quando `baseWidth >= 600`
- *    (modo desktop), o iframe ganha um viewport com folga
- *    (`baseWidth + DESKTOP_GUTTER`) — o email mantém a própria max-width,
- *    centralizado, com as calhas de fundo visíveis como num client real, e
- *    os media queries mobile NÃO disparam. Abaixo de 600 é simulação mobile
- *    intencional: o viewport é exatamente a largura pedida para DISPARAR os
- *    media queries.
+ *    o container de 600px do email. Correção em duas partes: o iframe ganha
+ *    um viewport com folga (`baseWidth + DESKTOP_GUTTER`), que dá as calhas
+ *    de fundo como num client real, e as media queries mobile são
+ *    NEUTRALIZADAS no documento.
+ *
+ *    A folga sozinha não bastava, e é o tipo de defeito que ninguém liga ao
+ *    preview: o email montado concatena variantes de origens diferentes,
+ *    cada uma com o seu breakpoint, e qualquer um entre 601 e 680px dispara
+ *    dentro do iframe e NÃO dispararia no client (viewport de ~1000px). O
+ *    resultado é um bloco na versão celular ao lado de outro na versão
+ *    desktop — cada seção com uma largura, um email "com a formatação
+ *    errada" que está correto no destino. Aumentar a folga não resolve
+ *    (breakpoint de 768px é comum) e encolhe o preview; então, em modo
+ *    desktop, `max-width:Npx` no prelúdio da media query vira
+ *    `max-width:0px` — a regra continua válida e nunca casa. Mesmo
+ *    mecanismo do preview de bloco (`buildEmailPreviewDoc`).
+ *
+ *    Abaixo de 600 é simulação mobile intencional: o viewport é exatamente
+ *    a largura pedida E as media queries ficam intactas para DISPARAR.
  *
  * 2. **Scroll horizontal em colunas estreitas**: medimos a largura
  *    disponível (ResizeObserver) e aplicamos `transform: scale` pra encaixar
@@ -28,7 +40,8 @@
  * interno (uso em cards compactos).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { neutralizeMobileMediaQueries } from "@/lib/email-workspace/email-preview-doc"
 import {
   REGION_ATTR,
   moverIndice,
@@ -36,9 +49,9 @@ import {
 } from "@/lib/agents/html/block-regions"
 import { FONT_ATTR } from "@/lib/agents/typography/annotate"
 
-// Folga de viewport no modo desktop. Precisa ser maior que a diferença entre
-// o breakpoint mobile mais alto usado nos emails gerados (620px) e a largura
-// padrão do email (600px), com margem.
+// Folga de viewport no modo desktop: dá as calhas de fundo dos dois lados,
+// como num client real. Não é mais ela que impede o media query mobile de
+// disparar — quem faz isso é o `neutralizeMobileMediaQueries` (ver abaixo).
 const DESKTOP_GUTTER = 80
 
 // Abaixo disso o slider está simulando celular — media queries DEVEM disparar.
@@ -416,6 +429,14 @@ export function ScaledEmailFrame({
 
   const viewportWidth =
     baseWidth < MOBILE_SIM_THRESHOLD ? baseWidth : baseWidth + DESKTOP_GUTTER
+  // Modo desktop: sem as media queries mobile (ver o cabeçalho). Só o
+  // documento do iframe muda — o `html` do prop segue intacto, e é ele que
+  // a edição e o salvamento usam.
+  const shownHtml = useMemo(
+    () =>
+      baseWidth < MOBILE_SIM_THRESHOLD ? html : neutralizeMobileMediaQueries(html),
+    [html, baseWidth],
+  )
   const scale = Math.min(1, avail / viewportWidth)
   const scaledHeight = contentHeight * scale
   const boxHeight =
@@ -445,7 +466,7 @@ export function ScaledEmailFrame({
           <iframe
             ref={iframeRef}
             title="email-render-preview"
-            srcDoc={html}
+            srcDoc={shownHtml}
             sandbox="allow-same-origin"
             onLoad={() => {
               measureHeight()

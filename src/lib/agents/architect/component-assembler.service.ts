@@ -2045,6 +2045,10 @@ export async function assembleStoreReference(
       // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro
       // numa célula e o defeito só aparecia como erro do agente de hero.
       variants_unshelled: assembled.stats.unshelled,
+      // Calhas cujo recuo horizontal foi zerado no encaixe: sem isto o
+      // recuo somava ao container e o email saía com 656/680px em vez de
+      // 600 — cada bloco numa largura diferente (incidente 08/09).
+      gutters_neutralized: assembled.stats.guttersNeutralized,
       fonts_normalized: assembled.stats.fontsNormalized,
       weights_normalized: assembled.stats.weightsNormalized,
       reference_source: source,

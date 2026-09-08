@@ -12,6 +12,7 @@ import {
   auditEmailWidth,
   classifyEmailRoot,
   enforceEmailWidth,
+  neutralizeGutterPadding,
 } from "./email-width"
 
 // Anatomia real das variantes: body com o boilerplate `width:100%`, calha
@@ -216,5 +217,176 @@ describe("regras de largura dentro de @media", () => {
   it(".body (classe usada pelas variantes) também conta como body", () => {
     const r = enforceEmailWidth('<style>.body { width:100%; }</style><table width="600"></table>')
     expect(r.html).toContain(".body { width:600px; }")
+  })
+})
+
+/**
+ * A calha com recuo horizontal.
+ *
+ * Anatomia: `<table width="100%">` (calha) → `<td align="center"
+ * style="padding:…">` → `<table width="600">` (container). Na peça solta o
+ * padding é invisível; dentro da célula de 600px do email montado ele SOMA
+ * ao container e estica o documento (medido em 08/09: calhas de 0/28/40px
+ * → `.email-container` de 680px, cada bloco numa largura diferente).
+ */
+function comCalha(paddingDoTd: string, dentroDoTd = ""): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEE;">
+<tr><td align="center" style="${paddingDoTd}">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;"><tr><td>miolo</td></tr></table>${dentroDoTd}
+</td></tr></table>`
+}
+
+describe("neutralizeGutterPadding", () => {
+  it("zera só o horizontal do atalho, mantendo o vertical", () => {
+    const r = neutralizeGutterPadding(comCalha("padding:28px 28px;"))
+    expect(r.changed).toBe(true)
+    expect(r.html).toContain("padding:28px 0;")
+    expect(r.changes).toEqual([
+      { kind: "gutterpad", from: "padding:28px 28px", to: "padding:28px 0" },
+    ])
+  })
+
+  it("atalho de 1, 3 e 4 valores: o vertical de cada lado sobrevive", () => {
+    expect(neutralizeGutterPadding(comCalha("padding:24px")).html).toContain(
+      "padding:24px 0",
+    )
+    expect(
+      neutralizeGutterPadding(comCalha("padding:10px 20px 30px")).html,
+    ).toContain("padding:10px 0 30px")
+    expect(
+      neutralizeGutterPadding(comCalha("padding:10px 20px 30px 40px")).html,
+    ).toContain("padding:10px 0 30px 0")
+  })
+
+  it("padding-left/right vão a zero; top/bottom não são tocados", () => {
+    const r = neutralizeGutterPadding(
+      comCalha("padding-top:16px;padding-left:24px;padding-right:24px;"),
+    )
+    expect(r.html).toContain("padding-top:16px")
+    expect(r.html).toContain("padding-left:0")
+    expect(r.html).toContain("padding-right:0")
+  })
+
+  it("é idempotente — calha já sem recuo volta intacta", () => {
+    const uma = neutralizeGutterPadding(comCalha("padding:28px 28px;")).html
+    const duas = neutralizeGutterPadding(uma)
+    expect(duas.changed).toBe(false)
+    expect(duas.html).toBe(uma)
+    expect(neutralizeGutterPadding(comCalha("padding:20px 0;")).changed).toBe(false)
+  })
+
+  it("calha com o container em 600 declarado no style também é reconhecida", () => {
+    const html = comCalha("padding:0 32px;").replace(
+      'width="600" cellpadding="0" cellspacing="0" style="width:600px',
+      'cellpadding="0" cellspacing="0" style="width:600px',
+    )
+    expect(neutralizeGutterPadding(html).html).toContain("padding:0 0")
+  })
+
+  // ── O que NÃO é calha ───────────────────────────────────────────────
+  //
+  // Num container de 600px o padding do `<td>` é o recuo do TEXTO. Zerá-lo
+  // colaria a copy na borda — é o oposto do conserto.
+
+  it("container de 600 com padding no td é CONTEÚDO: não toca", () => {
+    const container = `<table width="600" style="width:600px;max-width:600px;">
+<tr><td style="padding:40px 32px;">texto da copy</td></tr></table>`
+    expect(neutralizeGutterPadding(container).changed).toBe(false)
+  })
+
+  it("célula com algo ao lado do container não é calha", () => {
+    const r = neutralizeGutterPadding(comCalha("padding:28px 28px;", "<p>legenda</p>"))
+    expect(r.changed).toBe(false)
+  })
+
+  it("calha com duas linhas não é calha de centralização", () => {
+    const duas = `<table width="100%"><tr><td style="padding:0 30px;">
+<table width="600" style="width:600px;"><tr><td>a</td></tr></table>
+</td></tr><tr><td>rodapé</td></tr></table>`
+    expect(neutralizeGutterPadding(duas).changed).toBe(false)
+  })
+
+  it("coluna interna estreita dentro da célula não conta como container", () => {
+    const coluna = `<table width="100%"><tr><td style="padding:0 30px;">
+<table width="320" style="width:320px;"><tr><td>a</td></tr></table>
+</td></tr></table>`
+    expect(neutralizeGutterPadding(coluna).changed).toBe(false)
+  })
+
+  it("<tbody> explícito é transparente", () => {
+    const comTbody = comCalha("padding:18px 36px;")
+      .replace("<tr><td align", "<tbody><tr><td align")
+      .replace("</td></tr></table>", "</td></tr></tbody></table>")
+    expect(neutralizeGutterPadding(comTbody).html).toContain("padding:18px 0")
+  })
+
+  it("tabela dentro de bloco MSO não desalinha a profundidade", () => {
+    const mso = `<!--[if mso]><table width="600"><tr><td><![endif]-->
+${comCalha("padding:22px 44px;")}
+<!--[if mso]></td></tr></table><![endif]-->`
+    expect(neutralizeGutterPadding(mso).html).toContain("padding:22px 0")
+  })
+
+  it("HTML truncado não é reescrito", () => {
+    const truncado = '<table width="100%"><tr><td style="padding:0 30px;"><table width="600">'
+    expect(neutralizeGutterPadding(truncado).changed).toBe(false)
+  })
+})
+
+describe("enforceEmailWidth + calha", () => {
+  it("o documento completo sai com a calha em 600 e sem recuo horizontal", () => {
+    const doc = `<!DOCTYPE html><html><head><style>body{width:100%}</style></head><body>
+${comCalha("padding:32px 24px;")}
+</body></html>`
+    const r = enforceEmailWidth(doc)
+    expect(r.html).toContain("padding:32px 0")
+    expect(r.html).toContain('<table role="presentation" width="600"')
+    expect(r.changes.map((c) => c.kind)).toContain("gutterpad")
+  })
+
+  it("a auditoria reprova o recuo da calha — o container em 600 não basta", () => {
+    // Calha JÁ em 600 (o caso da biblioteca depois da varredura): o motivo
+    // do 100% não se aplica mais e o que sobra é o recuo, que era
+    // exatamente o ponto cego — `container === 600` devolvia "ok".
+    const calha600 = comCalha("padding:0 28px;").replace(
+      'width="100%"',
+      'width="600" style="width:600px;max-width:600px;"',
+    )
+    const a = auditEmailWidth(calha600)
+    expect(a.container).toBe(600)
+    expect(a.ok).toBe(false)
+    expect(a.reason).toContain("calha")
+    // E aprova depois do conserto.
+    expect(auditEmailWidth(enforceEmailWidth(calha600).html).ok).toBe(true)
+  })
+})
+
+describe("neutralizeGutterPadding — cellpadding da calha", () => {
+  it("vai a zero e o vertical migra para o td", () => {
+    const html = comCalha("").replace(
+      '<table role="presentation" width="100%" cellpadding="0"',
+      '<table role="presentation" width="100%" cellpadding="20"',
+    )
+    const r = neutralizeGutterPadding(html)
+    expect(r.changed).toBe(true)
+    expect(r.html).toContain('width="100%" cellpadding="0"')
+    expect(r.html).toContain("padding:20px 0;")
+    // A tabela de dentro não é mexida.
+    expect(r.html).toContain('width="600" cellpadding="0"')
+  })
+
+  it("com padding no style da célula, o cellpadding só é zerado", () => {
+    const html = comCalha("padding:12px 30px;").replace(
+      '<table role="presentation" width="100%" cellpadding="0"',
+      '<table role="presentation" width="100%" cellpadding="16"',
+    )
+    const r = neutralizeGutterPadding(html)
+    expect(r.html).toContain('width="100%" cellpadding="0"')
+    expect(r.html).toContain("padding:12px 0;")
+    expect(r.html).not.toContain("padding:16px")
+  })
+
+  it("cellpadding zero não gera mudança", () => {
+    expect(neutralizeGutterPadding(comCalha("padding:0 0;")).changed).toBe(false)
   })
 })

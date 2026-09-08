@@ -49,6 +49,15 @@ describe("neutralizeMobileMediaQueries", () => {
     const css = "@media (prefers-color-scheme: dark) { body { background:#000 } }"
     expect(neutralizeMobileMediaQueries(css)).toBe(css)
   })
+  it("breakpoint ACIMA de 600 também é neutralizado", () => {
+    // É o caso que a folga de viewport do preview de email não cobria: o
+    // documento montado junta variantes de origens diferentes e um
+    // breakpoint de 640/700/768px dispara dentro do iframe de 680px sem
+    // disparar no client real. Um bloco em versão celular ao lado de outro
+    // em desktop é o "cada seção com uma largura".
+    const css = "<style>@media screen and (max-width:768px){.a{width:100%}}</style>"
+    expect(neutralizeMobileMediaQueries(css)).toContain("(max-width:0px)")
+  })
   it("documento completo do preview também é neutralizado", () => {
     const html =
       "<!DOCTYPE html><html><head><style>@media (max-width:600px){.a{display:none}}</style></head><body></body></html>"

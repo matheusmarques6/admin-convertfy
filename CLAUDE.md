@@ -2636,6 +2636,54 @@ A varredura **preserva o hash do renderizado quando ele estava em dia** com
 o html antigo (senão 25 exemplos virariam "desatualizados" sem mudar de
 significado) e normaliza também `html_tagged`.
 
+**O container em 600 não bastava: a calha somava por fora** (incidente
+08/09, Hero Boxers). Sintoma: "a formatação está errada, não está em
+600px". As variantes estavam certas — container em 600 —, mas cada uma traz
+a própria calha de boilerplate (`<table width="100%">` → `<td
+align="center" style="padding:…">` → container). Na peça SOLTA aquele
+padding é invisível, porque a calha ocupa a janela do cliente; dentro da
+célula de 600px do email montado ela vira uma tabela e o padding **soma**
+ao container — e a tabela não encolhe abaixo do próprio conteúdo, então
+quem cede é o `.email-container`, que estica. Medido em Chromium: calhas de
+0, 28 e 40px → container de **680px**, `scrollWidth` 712 num viewport de
+680 (o preview cortava a direita) e cada bloco centralizado numa largura
+diferente. Depois: 600px exatos, todo bloco em x=40. `auditEmailWidth`
+dizia "ok" o tempo todo — achava o container em 600 e não olhava para fora
+dele.
+
+`neutralizeGutterPadding` (`email-width.ts`, puro) zera **só o horizontal**
+da calha: o vertical é ritmo entre seções, o fundo é banda de desenho, e o
+padding de dentro do container é o recuo do TEXTO — zerá-lo colaria a copy
+na borda. Daí a régua estreita de "isto é calha": tabela de nível raiz que
+ocupa o bloco, com UMA linha, UMA célula, e nessa célula nada além de uma
+tabela que declara 560–640. `cellpadding` da calha também vai a zero (o
+atributo pega as laterais), com o vertical migrando para o `<td>` quando
+ele não declara padding. Calha feita de `<div>` NÃO é reconhecida — limite
+declarado, não esquecimento.
+
+Roda em DOIS pontos, de propósito: dentro de `enforceEmailWidth` (salvar,
+editor, varredura — a biblioteca sai canônica e a auditoria passa a
+reprovar) e no **encaixe** (`fitFragment`), porque variante gravada antes
+desta regra continua no banco e o email montado não pode depender de
+alguém ter clicado no botão da varredura. Fica no `fitFragment`, e não em
+cada chamador, porque montagem e enxerto precisam do MESMO fragmento: se só
+a montagem normalizasse, o `graftHeroVariant` compararia a região montada
+com a variante crua, não veria igualdade e reenxertaria a versão com recuo.
+Telemetria: `gutters_neutralized` no run do Montador (`AssembledStats
+.guttersNeutralized`).
+
+**O preview desktop mentia junto** (`ScaledEmailFrame`): a folga de
+viewport (600 + 80 = 680) existia para não disparar o `@media (max-width:
+620px)` do shell, mas o documento montado concatena variantes de origens
+diferentes e **qualquer breakpoint entre 601 e 680px disparava dentro do
+iframe sem disparar no client** (viewport de ~1000px) — um bloco na versão
+celular ao lado de outro em desktop, "cada seção com uma largura", num
+email correto no destino. Aumentar a folga não resolve (768px é comum) e
+encolhe o preview: em modo desktop as media queries mobile são
+NEUTRALIZADAS (`max-width:Npx` → `0px` no prelúdio), mesmo mecanismo do
+`buildEmailPreviewDoc`. Abaixo de 600px o slider é simulação de celular e
+elas ficam intactas para disparar.
+
 ---
 
 ## Objeções: Catalogador (macro) e Seletor (micro) (set/2026, migration 20261116)

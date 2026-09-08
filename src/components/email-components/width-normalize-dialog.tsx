@@ -201,11 +201,16 @@ export function WidthNormalizeDialog({
         <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>
           <div style={{ fontSize: 12.5, color: C.g500, marginBottom: 12 }}>
             Todo bloco tem de declarar {width}px — é o que o Montador, o
-            enxerto e o preview assumem. A normalização corrige três coisas:
-            container com largura errada (598, 620), tabela de nível raiz em{" "}
-            <code>100%</code> e <code>body &#123; width:100% &#125;</code> no
-            CSS. Coluna interna e tabela <code>100%</code> aninhada NÃO são
-            tocadas — ali o 100% quer dizer &ldquo;preenche a célula&rdquo;.
+            enxerto e o preview assumem. A normalização corrige quatro
+            coisas: container com largura errada (598, 620), tabela de nível
+            raiz em <code>100%</code>, <code>body &#123; width:100% &#125;</code>{" "}
+            no CSS e o recuo <strong>horizontal</strong> da calha — dentro da
+            célula de {width}px do email montado ele soma ao container e
+            estica o documento (o email saía com 680px). O recuo vertical da
+            calha, o padding de dentro do container (que é o recuo do texto),
+            coluna interna e tabela <code>100%</code> aninhada NÃO são
+            tocados — ali o 100% quer dizer &ldquo;preenche a
+            célula&rdquo;.
           </div>
 
           {error && (
