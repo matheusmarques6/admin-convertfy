@@ -54,6 +54,7 @@ import {
   projetarRascunho,
 } from "./execucao-manual"
 import type { ExecutionRow, RunDetailPayload } from "./studio-data"
+import { friendlyModelError } from "@/lib/ai/convertia/model-errors"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -524,6 +525,62 @@ function CopyMergeFieldTable({ campos }: { campos: CampoMergeRow[] }) {
   )
 }
 
+/**
+ * O erro do nó, traduzido.
+ *
+ * Incidente 08/09: o Estruturador e o Curador morreram em `OpenRouter HTTP
+ * 402: {"error":{"message":"This request would exceed your available
+ * credits given your current in-flight requests…` e a tela mostrava esse
+ * JSON cru — a mesma armadilha que fez trocar de modelo três vezes na
+ * ConvertIA achando que o defeito era do modelo (o 402 já dizia o que
+ * fazer: pôr crédito). `friendlyModelError` existia e era usada só no
+ * chat.
+ *
+ * O cru FICA, embaixo: quem depura precisa da resposta do provedor, e
+ * esconder o original é como se perde a confiança na tradução.
+ */
+function ErroDoNo({ raw }: { raw: string }) {
+  const amigavel = friendlyModelError(raw)
+  const traduziu = amigavel.code !== "unknown"
+  return (
+    <div
+      style={{
+        margin: "12px 16px 0",
+        padding: "9px 12px",
+        borderRadius: 8,
+        background: C.negBg,
+        border: `1px solid ${C.negBorder}`,
+        fontSize: 12,
+        color: "#991B1B",
+        fontFamily: F.sans,
+        lineHeight: 1.5,
+      }}
+    >
+      {traduziu ? (
+        <>
+          <div style={{ fontWeight: 600 }}>{amigavel.message}</div>
+          {amigavel.hint && (
+            <div style={{ marginTop: 3, opacity: 0.9 }}>{amigavel.hint}</div>
+          )}
+          <div
+            style={{
+              marginTop: 7,
+              fontFamily: F.mono,
+              fontSize: 10.5,
+              opacity: 0.7,
+              wordBreak: "break-all",
+            }}
+          >
+            {raw}
+          </div>
+        </>
+      ) : (
+        raw
+      )}
+    </div>
+  )
+}
+
 export function NodeRunPanel({
   exec,
   nodeKey,
@@ -714,23 +771,7 @@ export function NodeRunPanel({
           : null}
       </div>
 
-      {run.err && (
-        <div
-          style={{
-            margin: "12px 16px 0",
-            padding: "9px 12px",
-            borderRadius: 8,
-            background: C.negBg,
-            border: `1px solid ${C.negBorder}`,
-            fontSize: 12,
-            color: "#991B1B",
-            fontFamily: F.sans,
-            lineHeight: 1.5,
-          }}
-        >
-          {run.err}
-        </div>
-      )}
+      {run.err && <ErroDoNo raw={run.err} />}
 
       {rascunho && onRascunho && (
         <div style={{ padding: "12px 16px 0" }}>
