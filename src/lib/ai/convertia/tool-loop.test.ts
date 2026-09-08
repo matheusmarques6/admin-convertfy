@@ -334,3 +334,83 @@ describe("runToolLoop", () => {
     expect(h.modelCalls).toHaveLength(3)
   })
 })
+
+describe("runToolLoop — prazo da tool (o turno tem relógio, a tool também)", () => {
+  it("tool que passa do prazo vira erro estruturado e o turno RESPONDE", async () => {
+    // O incidente de 08/09: a tool de imagem podia levar 300s dentro de um
+    // turno de 280s. O loop não tinha prazo nenhum, a função morria no teto
+    // do serverless e a conversa ficava com a pergunta sem resposta
+    // ("This operation was aborted", 231s, 1 rodada, 2 tools).
+    vi.useFakeTimers()
+    try {
+      const h = harness(
+        [calls([["imagem", { prompt: "x" }]]), final("Gerei o resto; a imagem ficou pendente.")],
+        {
+          budget: { startedAt: 1_000_000, totalMs: 100_000, minRoundMs: 10_000 },
+          // Nunca resolve — é o corpo pendurado do provedor de imagem.
+          tools: { imagem: { execute: () => new Promise(() => {}) } },
+        },
+      )
+      const p = runToolLoop(h.deps)
+      // prazo = totalMs - minRoundMs = 90s
+      await vi.advanceTimersByTimeAsync(90_100)
+      const r = await p
+
+      expect(r.status).toBe("success")
+      expect(r.fullText).toContain("pendente")
+      // O modelo RECEBEU o motivo, em vez de o turno sumir.
+      const conteudoDaTool = h.modelCalls[1].messages.find((m) => m.role === "tool")?.content
+      expect(String(conteudoDaTool)).toContain("timeout")
+      expect(String(conteudoDaTool)).toContain("Não repita esta chamada agora")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("estouro de prazo NÃO é retentado — não sobrou tempo, por definição", async () => {
+    // Repetir a mesma tool longa é exatamente o que matava o turno.
+    vi.useFakeTimers()
+    try {
+      let chamadas = 0
+      const h = harness(
+        [calls([["imagem", { prompt: "x" }]]), final("ok")],
+        {
+          budget: { startedAt: 1_000_000, totalMs: 100_000, minRoundMs: 10_000 },
+          tools: {
+            imagem: {
+              execute: () => {
+                chamadas += 1
+                return new Promise(() => {})
+              },
+            },
+          },
+        },
+      )
+      const p = runToolLoop(h.deps)
+      await vi.advanceTimersByTimeAsync(90_100)
+      await p
+      expect(chamadas).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("a tool recebe o prazo no ctx para poder encurtar o próprio relógio", async () => {
+    // Sem isto o `fetch` da imagem seguiria aberto depois de o loop
+    // desistir, segurando o processo até o teto do serverless.
+    let deadlineRecebido: number | undefined
+    const h = harness([calls([["rapida", {}]]), final("ok")], {
+      budget: { startedAt: 1_000_000, totalMs: 100_000, minRoundMs: 10_000 },
+      tools: {
+        rapida: {
+          execute: async (_a, ctx) => {
+            deadlineRecebido = ctx.deadlineAt
+            return { content: "pronto" }
+          },
+        },
+      },
+    })
+    await runToolLoop(h.deps)
+    expect(deadlineRecebido).toBe(1_000_000 + 90_000)
+  })
+})

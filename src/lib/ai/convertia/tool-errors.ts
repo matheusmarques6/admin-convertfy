@@ -56,6 +56,21 @@ const HINTS: Record<ToolErrorCode, string> = {
   unknown: "Erro não classificado — relate a mensagem ao usuário sem concluir que a operação não existe.",
 }
 
+/**
+ * A tool estourou o relógio do TURNO (não o dela). Carrega o erro já
+ * classificado porque quem o criou sabe o prazo e o nome da tool —
+ * re-derivar isso do texto no `classifyToolError` perderia o `hint`, que
+ * é o que impede o modelo de chamar a mesma tool de novo sem tempo.
+ */
+export class ToolTimeoutError extends Error {
+  readonly structured: StructuredToolError
+  constructor(structured: StructuredToolError) {
+    super(structured.message)
+    this.name = "ToolTimeoutError"
+    this.structured = structured
+  }
+}
+
 /** Serializa para o modelo (o content da tool). */
 export function toolErrorContent(err: StructuredToolError): string {
   return JSON.stringify(
@@ -103,6 +118,7 @@ export function parseRetryAfter(value: string | null | undefined, now = Date.now
  * por padrões de mensagem (HTTP 429 do MCP, AbortError).
  */
 export function classifyToolError(err: unknown): StructuredToolError {
+  if (err instanceof ToolTimeoutError) return err.structured
   const e = (err ?? {}) as {
     name?: string
     message?: string

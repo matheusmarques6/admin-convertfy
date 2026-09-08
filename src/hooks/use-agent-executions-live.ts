@@ -29,7 +29,14 @@ import type {
   AgentExecutionsPayload,
 } from "@/types/agent-executions"
 
-export type LiveStatus = "live" | "reconnecting" | "polling"
+/**
+ * `conectando` é o estado INICIAL, e existe porque o selo não pode dizer
+ * "ao vivo" antes de a conexão abrir. Começando em `live` a tela afirmava
+ * o que ainda não sabia: SSE que nunca abre só vira `reconnecting` no
+ * primeiro evento de erro, e SSE que abre e fica calado (o caso normal,
+ * ocioso) é indistinguível de SSE que não existe.
+ */
+export type LiveStatus = "conectando" | "live" | "reconnecting" | "polling"
 
 const RECONNECT_WINDOW_MS = 30_000
 const RECONNECT_THRESHOLD = 3
@@ -121,7 +128,7 @@ export function useAgentExecutionsLive(
   limit = 30,
 ): UseAgentExecutionsLiveResult {
   const [executions, setExecutions] = useState<AgentExecution[]>([])
-  const [status, setStatus] = useState<LiveStatus>("live")
+  const [status, setStatus] = useState<LiveStatus>("conectando")
   const [lastEventAt, setLastEventAt] = useState<number | null>(null)
 
   const errorTimestamps = useRef<number[]>([])

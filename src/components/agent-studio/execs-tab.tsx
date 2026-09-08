@@ -109,6 +109,7 @@ function ExecStatusText({ e }: { e: ExecutionRow }) {
  */
 function LiveBadge({ status }: { status: LiveStatus }) {
   const map: Record<LiveStatus, { c: string; bg: string; b: string; t: string }> = {
+    conectando: { c: C.g500, bg: C.g100, b: C.border, t: "conectando" },
     live: { c: C.pos, bg: C.posBg, b: C.posBorder, t: "ao vivo" },
     reconnecting: { c: C.warn, bg: C.warnBg, b: C.warnBorder, t: "reconectando" },
     polling: { c: C.g500, bg: C.g100, b: C.border, t: "a cada 5s" },
@@ -117,11 +118,13 @@ function LiveBadge({ status }: { status: LiveStatus }) {
   return (
     <span
       title={
-        status === "live"
-          ? "Os nós acendem no instante em que o agente começa. Um step de LLM não reporta progresso interno — fica “rodando” até terminar."
-          : status === "reconnecting"
-            ? "Conexão ao vivo caiu; tentando de novo."
-            : "Sem conexão ao vivo — atualizando pela listagem a cada 5s."
+        status === "conectando"
+          ? "Abrindo a conexão ao vivo…"
+          : status === "live"
+            ? "Os nós acendem no instante em que o agente começa. Ocioso, não trafega nada — “ao vivo” é a conexão, não movimento na tela."
+            : status === "reconnecting"
+              ? "Conexão ao vivo caiu; tentando de novo."
+              : "Sem conexão ao vivo — atualizando pela listagem a cada 5s."
       }
       style={{
         display: "inline-flex",
@@ -1218,7 +1221,8 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
                     border: `1px solid ${C.border}`,
                   }}
                 >
-                  Clique em um nó para ver entrada, prompt, saída e custo
+                  Clique em um nó para ver entrada, prompt, saída e custo — e
+                  para desativar, pinar ou rodar só ele nesta execução
                 </span>
               </div>
             }
