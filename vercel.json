@@ -148,6 +148,10 @@
       "schedule": "35 */6 * * *"
     },
     {
+      "path": "/api/cron/store-platform-profile",
+      "schedule": "50 5 * * 1"
+    },
+    {
       "path": "/api/cron/vault-sync",
       "schedule": "12,42 * * * *"
     },

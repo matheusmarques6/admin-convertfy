@@ -44,12 +44,13 @@ export async function fetchOmnisendCampaignReports(
   apiKey: string,
   startDate: string,
   endDate: string,
-  tzOffset: string = "-03:00",
+  /** Fuso IANA da loja ("Europe/Berlin") ou um offset pronto ("-03:00"). */
+  tzOffsetOuFuso: string = "-03:00",
 ): Promise<OmnisendCampaignReport[] | null> {
   // dateRange.to e EXCLUSIVO no fuso da brand (confirmado pelo suporte
   // Omnisend 2026-05-18). Pra "Apr 1..30" mandamos from=Apr 1 00:00 e
   // to=May 1 00:00 — ambos no mesmo offset da loja, batendo com dashboard.
-  const { from, to } = omnisendDateRange(startDate, endDate, tzOffset)
+  const { from, to } = omnisendDateRange(startDate, endDate, tzOffsetOuFuso)
 
   try {
     const resp = await omnisendRequest<ReportsResponse>(

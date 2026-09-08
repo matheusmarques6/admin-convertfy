@@ -25,7 +25,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { fetchOmnisendCampaignReports } from "@/lib/integrations/omnisend/reports-api"
-import { offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
+import { fusoDaLoja } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ReportSnapshot")
@@ -637,16 +637,20 @@ export async function fetchSnapshotSources(params: {
     try {
       const creds = await getStoreCredentials(storeId)
       if (creds.omnisend_api_key) {
-        const account = (reportRes?.account ?? {}) as Json
-        const storeCurrency =
-          (account.currency as string | undefined) ??
-          (cachedSummary?.currency as string | undefined) ??
-          "BRL"
+        // O fuso da LOJA fatia a janela. Era derivado da moeda, o que
+        // ignorava horário de verão e tratava a Europa inteira como um
+        // fuso só — o recorte saía deslocado do painel do Omnisend.
+        const { data: fusoRow } = await admin
+          .from("client_stores")
+          .select("timezone")
+          .eq("id", storeId)
+          .maybeSingle()
+        const { tz } = fusoDaLoja((fusoRow?.timezone as string | null) ?? null)
         reportsByDate = await fetchOmnisendCampaignReports(
           creds.omnisend_api_key,
           periodStart,
           periodEnd,
-          offsetForCurrency(storeCurrency),
+          tz,
         )
       }
     } catch {

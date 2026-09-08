@@ -24,6 +24,7 @@ import { handleCorsPreFlight } from "@/lib/cors"
 import { STORE_LANGUAGE_CODES } from "@/lib/i18n/store-language"
 import { COUNTRY_VALUES, PLATFORM_VALUES } from "@/lib/constants/onboarding"
 import { STORE_CURRENCY_VALUES } from "@/lib/constants/currencies"
+import { ehFusoValido } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StorePatch")
@@ -42,6 +43,17 @@ const patchSchema = z.object({
   store_url: z.string().trim().max(300).nullable().optional(),
   platform: z.enum(PLATFORM_VALUES).nullable().optional(),
   currency: z.enum(STORE_CURRENCY_VALUES).nullable().optional(),
+  // Lista ABERTA de propósito (ao contrário da moeda): quem preenche na
+  // prática é a plataforma, e ela pode devolver um IANA fora do atalho
+  // que a tela oferece. A régua é o runtime reconhecer o fuso — gravar
+  // um inválido faria o relatório cair no assumido em silêncio.
+  timezone: z
+    .string()
+    .trim()
+    .max(64)
+    .refine((tz) => ehFusoValido(tz), "fuso horário desconhecido (use o formato IANA, ex. Europe/Warsaw)")
+    .nullable()
+    .optional(),
   niche: z.string().max(240).nullable().optional(),
   language: z.enum(STORE_LANGUAGE_CODES).nullable().optional(),
   country: z.enum(COUNTRY_VALUES).nullable().optional(),
@@ -141,15 +153,49 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await admin
-      .from("client_stores")
-      .update(updateData)
-      .eq("id", id)
-      .select(
-        "id, store_name, store_url, platform, niche, language, country, countries, currency, " +
-          "mrr_cents, contract_start_date, contract_end_date, alert_revenue_threshold",
-      )
-      .single()
+    // Edição humana carimba a procedência. É o que faz a sincronia com a
+    // plataforma PARAR de sobrescrever este valor: quem corrigiu à mão
+    // tinha um motivo, e a auditoria mostra a divergência em vez de
+    // apagá-la na próxima rodada.
+    if (parsed.data.currency !== undefined) {
+      updateData.currency_source = "manual"
+      updateData.currency_synced_at = new Date().toISOString()
+    }
+    if (parsed.data.timezone !== undefined) {
+      updateData.timezone_source = "manual"
+    }
+
+    const COLUNAS_RETORNO =
+      "id, store_name, store_url, platform, niche, language, country, countries, currency, " +
+      "mrr_cents, contract_start_date, contract_end_date, alert_revenue_threshold"
+
+    async function gravar(dados: Record<string, unknown>, colunas: string) {
+      return admin.from("client_stores").update(dados).eq("id", id).select(colunas).single()
+    }
+
+    let { data, error } = await gravar(
+      updateData,
+      `${COLUNAS_RETORNO}, timezone, currency_source, timezone_source, currency_synced_at`,
+    )
+
+    // Sem a migration 20261123 as colunas de fuso/procedência não existem.
+    // O resto da edição (nome, URL, MRR…) não pode falhar por causa disso.
+    if (error && /timezone|currency_source|currency_synced_at/.test(error.message || "")) {
+      const semProcedencia = { ...updateData }
+      for (const k of ["timezone", "timezone_source", "currency_source", "currency_synced_at"]) {
+        delete semProcedencia[k]
+      }
+      if (parsed.data.timezone !== undefined) {
+        throw new AppError(
+          "O fuso da loja precisa da migration 20261123_store_timezone_moeda.",
+          422,
+          "validation-error",
+        )
+      }
+      if (Object.keys(semProcedencia).length > 0) {
+        ;({ data, error } = await gravar(semProcedencia, COLUNAS_RETORNO))
+      }
+    }
 
     if (error) {
       // Plataforma fora do enum do banco (migration 20261113 adiciona

@@ -3230,5 +3230,66 @@ sugerida e as regras de sugestão de coleção
 (`transcricoes_regras`, configuráveis sem deploy) são OFERECIDAS por botão
 no estado vazio da árvore.
 
+## Moeda e fuso da loja vêm da plataforma (set/2026, migration 20261123)
+
+Sintoma: a moeda de várias lojas estava errada e a tela de Setup não
+deixava consertar. Quatro causas empilhadas, todas silenciosas.
+
+**1. O comentário era falso.** `omnisend-sync.service.ts` dizia "Omnisend
+nao expoe currency via API" e por isso a moeda dependia de alguém digitar.
+`GET /v5/brands/current` devolve `{currency, timezone, website}` desde
+sempre — confirmado em 08/09 contra a conta da Luxe Lift (`GBP`,
+`America/Sao_Paulo`). Enquanto acreditamos no comentário, dezenas de lojas
+ficaram no default `BRL` e valor em euro entrou no dashboard sem conversão.
+
+**2. A lista de moedas era pequena demais para o erro ser corrigível.**
+Tinha 11 códigos, sem PLN nem DKK: Lena Warszawa (lenawarszawa.pl) estava
+em EUR e Bryn Grill (-dk) também porque **não havia o que escolher**. Agora
+são 36 (`STORE_CURRENCIES`), e a lista segue FECHADA — o câmbio
+(`exchange-rate.service`) precisa de ISO 4217 que ele saiba converter, então
+código fora dela vira AVISO, nunca gravação (`isStoreCurrency`).
+
+**3. O offset do relatório era adivinhado pela MOEDA.** `offsetForCurrency`
+mapeava `EUR → "+01:00"` — Berlim e Lisboa no mesmo fuso, e offset FIXO,
+sem horário de verão. Trocado por `offsetForTimezone(iana, data)`, que usa
+o ICU do runtime (`timeZoneName: "longOffset"`) e resolve o DST PELA DATA.
+`omnisendDateRange` resolve o offset **por ponta**: janela que atravessa a
+virada (out/2026 na Europa) sai `from +02:00` / `to +01:00` — usar um só
+faria o mês ganhar ou perder uma hora exatamente na fronteira comparada
+com o painel.
+
+**4. O fuso do sync vinha do `country`, que está errado na base.** 53 das
+63 lojas estão como 'BR' (o default nunca sobrescrito), incluindo as `.pl`,
+`.de` e `-dk`: toda loja europeia era fatiada à meia-noite de São Paulo.
+`resolveStoreTimezone` agora prefere `client_stores.timezone` e só cai no
+mapa por país quando ele falta.
+
+**Onde mora cada coisa**: a DECISÃO é pura
+(`lib/stores/platform-profile.ts`, 9 testes) — código fora da lista não
+grava, fuso que o runtime não reconhece não grava, plataforma calada não
+APAGA o que existe, e `*_source = 'manual'` vence a plataforma (a
+divergência é reportada, não sobrescrita; `forcar` é o pedido explícito da
+tela). O I/O é `store-platform-profile.service.ts`, em SÉRIE por causa do
+rate limit por chave. Entradas: `POST /api/stores/platform-profile-sync`
+(botão "Conferir com a plataforma", por loja ou todas), cron semanal
+`/api/cron/store-platform-profile` (50 5 * * 1) e o auto-conserto dentro do
+sync quando a moeda está VAZIA.
+
+**A auditoria era circular** e por isso não denunciava nada: comparava
+`client_stores.currency` com `store_revenue_summary.currency`, que o sync
+COPIA do primeiro para loja Omnisend — Lena aparecia "OK" em EUR. O eixo
+agora é a PROCEDÊNCIA: moeda que ninguém conferiu sai como
+`nunca-conferido`, não como OK; `reportedCurrency` só é exibido para
+Klaviyo, que é quem de fato reporta moeda própria. A tela
+(`/admin/tools/currency-audit`) mostra fuso, procedência e data, e
+"Sem fuso" é um contador próprio.
+
+**Edição humana carimba `manual`**: o PATCH da loja grava
+`currency_source='manual'` / `timezone_source='manual'`, e é isso que faz
+a sincronia parar de sobrescrever. O campo de fuso aceita **qualquer IANA
+válido** (lista aberta, `STORE_TIMEZONES` é só o atalho da tela) porque
+quem preenche na prática é a plataforma — recusar o que já está gravado
+faria o select discordar do banco.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

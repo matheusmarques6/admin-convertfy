@@ -33,6 +33,7 @@ import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { PLATFORMS, COUNTRIES } from "@/lib/constants/onboarding"
 import { currencySymbol } from "@/lib/constants/currencies"
+import { timezoneLabel } from "@/lib/constants/timezones"
 import { languageCodeToLabel } from "@/lib/i18n/store-language"
 import { Section, Badge, Btn, KV, C, TNUM, ChannelIcon } from "./_primitives"
 import { StoreSetupEditDialog } from "./store-setup-edit-dialog"
@@ -44,6 +45,10 @@ interface SetupData {
   country?: string | null
   language?: string | null
   currency?: string | null
+  currency_source?: string | null
+  currency_synced_at?: string | null
+  timezone?: string | null
+  timezone_source?: string | null
   niche?: string | null
   mrr_cents?: number | null
   contract_start_date?: string | null
@@ -76,6 +81,13 @@ export function TabSetup({ storeId }: { storeId: string }) {
   const clientLink = typeof window !== "undefined"
     ? `${window.location.origin}/cliente/onboarding`
     : "https://app.convertfy.me/cliente/onboarding"
+
+  /** " (Omnisend · 08/09)" — de onde veio o valor, para quem lê a ficha. */
+  const procedencia = (fonte?: string | null, quando?: string | null) => {
+    if (!fonte) return ""
+    const data = quando ? ` · ${new Date(quando).toLocaleDateString("pt-BR")}` : ""
+    return ` (${fonte}${data})`
+  }
 
   const formatMRR = (cents?: number | null) =>
     cents ? `R$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"
@@ -177,9 +189,26 @@ export function TabSetup({ storeId }: { storeId: string }) {
           <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} />
           <KV
             label="Moeda"
-            value={data.currency ? `${data.currency} · ${currencySymbol(data.currency)}` : "—"}
+            value={
+              data.currency
+                ? `${data.currency} · ${currencySymbol(data.currency)}${procedencia(data.currency_source, data.currency_synced_at)}`
+                : "—"
+            }
             mono
             mute={!data.currency}
+          />
+          {/* O fuso corta a janela do relatório. Sem ele o sistema assume
+              America/Sao_Paulo e o total diverge do painel da plataforma —
+              por isso o campo diz que está assumindo em vez de ficar vazio. */}
+          <KV
+            label="Fuso horário"
+            value={
+              data.timezone
+                ? `${timezoneLabel(data.timezone)} · ${data.timezone}${procedencia(data.timezone_source, null)}`
+                : "— (assumindo America/Sao_Paulo)"
+            }
+            mono
+            mute={!data.timezone}
           />
           <KV label="Nicho" value={data.niche ?? "—"} mute={!data.niche} />
         </Section>

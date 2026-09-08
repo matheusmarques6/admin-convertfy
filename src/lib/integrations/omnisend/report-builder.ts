@@ -16,20 +16,31 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
 import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
-import { omnisendDateRange, offsetForCurrency } from "@/lib/integrations/omnisend/timezone"
+import { fusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
 import { logger } from "@/lib/logger"
 
-async function fetchStoreCurrencyForReport(storeId: string): Promise<{ currency: string }> {
+/**
+ * Moeda e FUSO da loja. O fuso é o que fatia a janela do relatório: antes
+ * o offset era adivinhado a partir da moeda, o que dava o mesmo "+01:00"
+ * para Berlim e Lisboa e ignorava horário de verão. Agora vem do IANA que
+ * o Omnisend informa em `/brands/current`.
+ */
+async function fetchStoreCurrencyForReport(
+  storeId: string,
+): Promise<{ currency: string; timezone: string | null }> {
   try {
     const admin = createAdminClient()
     const { data } = await admin
       .from("client_stores")
-      .select("currency")
+      .select("currency, timezone")
       .eq("id", storeId)
       .maybeSingle()
-    return { currency: (data?.currency as string) || "BRL" }
+    return {
+      currency: (data?.currency as string) || "BRL",
+      timezone: (data?.timezone as string | null) ?? null,
+    }
   } catch {
-    return { currency: "BRL" }
+    return { currency: "BRL", timezone: null }
   }
 }
 
@@ -709,12 +720,21 @@ async function buildFromLiveFetch(
 ): Promise<OmnisendReportResponse> {
   // Datas precisam ir no fuso da brand pra bater com dashboard Omnisend
   // (confirmado pelo suporte 2026-05-18). `to` e EXCLUSIVO no fuso da loja.
-  const { currency: storeCurrency } = await fetchStoreCurrencyForReport(store.storeId)
-  const tzOffset = offsetForCurrency(storeCurrency)
+  const { timezone: storeTimezone } = await fetchStoreCurrencyForReport(store.storeId)
+  const { tz, assumido } = fusoDaLoja(storeTimezone)
+  if (assumido) {
+    // Sem fuso cadastrado o recorte continua saindo, mas fica registrado
+    // que foi assumido — número apresentado como certo sem base é o que
+    // fazia a divergência com o painel do Omnisend passar despercebida.
+    logger.child("OmnisendReport").warn("loja sem fuso cadastrado — assumindo o padrão", {
+      storeId: store.storeId,
+      assumido: tz,
+    })
+  }
   const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
     dateRange.startDateStr,
     dateRange.endDateStr,
-    tzOffset,
+    tz,
   )
   const result = await syncOmnisendForStore({
     storeId: store.storeId,
