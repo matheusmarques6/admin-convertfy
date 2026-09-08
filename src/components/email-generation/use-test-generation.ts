@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react"
 import useSWR from "swr"
 
 import {
+  aceitaBatchDoClaim,
   canRecoverAfterInterrupt,
   isNetworkFailure,
   isTimeoutMarker,
@@ -102,6 +103,14 @@ export function useTestGeneration() {
   const [result, setResult] = useState<TestResult | null>(null)
   const [steps, setSteps] = useState<RunStep[]>([])
   const [pollInterval, setPollInterval] = useState(0)
+  /**
+   * Procurando o batch do claim enquanto a fase 1 síncrona roda (ver o
+   * effect adiante). `batchIgnorado` é o batch que o email JÁ tinha antes
+   * do disparo — sem ele, um claim pendente de uma geração velha faria a
+   * timeline acompanhar o batch errado nos primeiros segundos.
+   */
+  const [awaitingClaim, setAwaitingClaim] = useState(false)
+  const [batchIgnorado, setBatchIgnorado] = useState<string | null>(null)
   /** Último modo disparado — recorta a projeção do canvas por nós. */
   const [lastMode, setLastMode] = useState<TestRunMode>("default")
 
@@ -270,6 +279,39 @@ export function useTestGeneration() {
     }
   }, [selectedStoreId, selectedEmailId, selectedFlowId])
 
+  /**
+   * Acompanhar a fase 1 AO VIVO.
+   *
+   * No "Pipeline completo" a fase 1 é síncrona (~5 min) e o `batchId` só era
+   * setado quando o POST voltava. Até lá a chave do SWR de status ficava
+   * null e a timeline não perguntava o estado NENHUMA vez: os agentes iam
+   * fechando no servidor e a tela só se preenchia de uma vez no fim (print
+   * de 08/09 — 4m58s com os 17 em spinner).
+   *
+   * O claim grava `generation_batch_id` ANTES da fase 1 exatamente para
+   * cobrir essa janela (`test-generation.service`, "CLAIM antes da fase 1").
+   * Então procuramos o batch desde já, com a MESMA função do recovery de
+   * timeout — ela exige `auto_phase2_relaxed === true`, que é a prova de que
+   * o servidor pegou o trabalho.
+   */
+  useEffect(() => {
+    if (!awaitingClaim || batchId != null) return
+    let cancelado = false
+    const procurar = async () => {
+      const achado = await recoverBatchIdAfterTimeout()
+      if (cancelado || !aceitaBatchDoClaim(achado, batchIgnorado)) return
+      setBatchId(achado as string)
+      setPollInterval(2000)
+      setAwaitingClaim(false)
+    }
+    void procurar()
+    const t = setInterval(() => void procurar(), 3000)
+    return () => {
+      cancelado = true
+      clearInterval(t)
+    }
+  }, [awaitingClaim, batchId, batchIgnorado, recoverBatchIdAfterTimeout])
+
   const handleGenerate = useCallback(
     async (phase2Only = false, fullPipeline = false) => {
       if (
@@ -293,6 +335,15 @@ export function useTestGeneration() {
           : "default"
       setLastMode(mode)
       setSteps(expectedSteps(mode))
+
+      // Só o "Pipeline completo" tem claim ANTES da fase 1 — nos outros
+      // modos o batch é gravado no fim de uma fase 1 curta, e procurá-lo
+      // seria requisição à toa. Guarda o batch atual do email para não
+      // confundir claim pendente de geração anterior com o desta.
+      if (fullPipeline) {
+        setBatchIgnorado(await recoverBatchIdAfterTimeout())
+        setAwaitingClaim(true)
+      }
 
       try {
         const res = await fetch(
@@ -413,6 +464,9 @@ export function useTestGeneration() {
         })
       } finally {
         setGenerating(false)
+        // O POST voltou (ou falhou): quem manda agora é o batch da resposta
+        // — ou o recovery do catch. Procurar mais seria concorrer com eles.
+        setAwaitingClaim(false)
       }
     },
     [
@@ -465,6 +519,8 @@ export function useTestGeneration() {
   }, [])
 
   // Selects com reset encadeado (trocar loja limpa flow/email/execução).
+  // `awaitingClaim` entra junto: a busca do claim é POR EMAIL, e trocar a
+  // seleção no meio dela faria a timeline adotar o batch de outro email.
   const selectStore = useCallback((v: string) => {
     setSelectedStoreId(v)
     setSelectedFlowId("")
@@ -472,6 +528,7 @@ export function useTestGeneration() {
     setResult(null)
     setBatchId(null)
     setPollInterval(0)
+    setAwaitingClaim(false)
   }, [])
   const selectFlow = useCallback((v: string) => {
     setSelectedFlowId(v)
@@ -479,12 +536,14 @@ export function useTestGeneration() {
     setResult(null)
     setBatchId(null)
     setPollInterval(0)
+    setAwaitingClaim(false)
   }, [])
   const selectEmail = useCallback((v: string) => {
     setSelectedEmailId(v)
     setResult(null)
     setBatchId(null)
     setPollInterval(0)
+    setAwaitingClaim(false)
   }, [])
 
   const hasRun = Boolean(result || generating || statusInfo)

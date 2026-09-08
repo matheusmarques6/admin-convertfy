@@ -5,6 +5,7 @@ import {
   TEST_AGENT_LABELS,
   TEST_BASE_AGENT_KEYS,
   TEST_CONDITIONAL_AGENT_KEYS,
+  aceitaBatchDoClaim,
   canRecoverAfterInterrupt,
   isNetworkFailure,
   computeStale,
@@ -359,5 +360,35 @@ describe("sincronia com o mapa do Estúdio", () => {
     const esperado = doGrafo.filter((a) => !condicionais.includes(a))
     const fora = esperado.filter((a) => !base.includes(a))
     expect(fora, `fora de TEST_BASE_AGENT_KEYS: ${fora.join(", ")}`).toEqual([])
+  })
+})
+
+/**
+ * 08/09: no "Pipeline completo" a timeline ficava com os 17 agentes em
+ * spinner durante os ~5 min da fase 1 — o polling só ligava quando o POST
+ * voltava. Agora a tela procura o batch do claim desde o disparo, e esta é
+ * a régua que impede adotar o batch errado.
+ */
+describe("aceitaBatchDoClaim", () => {
+  it("aceita o batch novo quando o email não tinha nenhum", () => {
+    expect(aceitaBatchDoClaim("batch-novo", null)).toBe(true)
+    expect(aceitaBatchDoClaim("batch-novo", undefined)).toBe(true)
+  })
+
+  it("aceita quando o batch achado difere do que havia no disparo", () => {
+    expect(aceitaBatchDoClaim("batch-novo", "batch-velho")).toBe(true)
+  })
+
+  // O claim de uma geração anterior que travou sobrevive no email. Adotá-lo
+  // mostraria runs de outra execução — e, se ela já estivesse terminada, a
+  // timeline anunciaria "pronto" para um email que mal começou.
+  it("RECUSA o batch que o email já carregava no disparo", () => {
+    expect(aceitaBatchDoClaim("batch-velho", "batch-velho")).toBe(false)
+  })
+
+  it("recusa ausência de batch", () => {
+    expect(aceitaBatchDoClaim(null, null)).toBe(false)
+    expect(aceitaBatchDoClaim(undefined, "batch-velho")).toBe(false)
+    expect(aceitaBatchDoClaim("", null)).toBe(false)
   })
 })
