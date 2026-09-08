@@ -63,6 +63,16 @@ const log = logger.child("CuradorShadow")
 
 const SHADOW_TOP_N = 1
 
+/**
+ * O que entra no lugar de um bloco que a decisão do Estruturador substitui.
+ *
+ * Exportada porque a ENTRADA da run (a aba do Estúdio) precisa dizer a mesma
+ * coisa que o prompt: card mostrando o texto do outline enquanto o modelo
+ * recebeu "(omitido…)" faz quem lê concluir que o Curador leu aquilo.
+ */
+export const BLOCO_OMITIDO_PELO_ESTRUTURADOR =
+  "(omitido — a decisão do Estruturador em <decisao_do_estruturador> substitui este bloco)"
+
 /** Modelo do shadow (e candidato do flip). Env sobrepõe sem deploy de config. */
 export const CURADOR_SHADOW_MODEL =
   process.env.CURADOR_SHADOW_MODEL?.trim() || "anthropic/claude-sonnet-4.6"
@@ -570,7 +580,7 @@ export async function runCuradorShadow(
     }
 
     const estruturadorOn = p.estruturadorOn === true
-    const OMITIDO = "(omitido — a decisão do Estruturador em <decisao_do_estruturador> substitui este bloco)"
+    const OMITIDO = BLOCO_OMITIDO_PELO_ESTRUTURADOR
     const lacunasBlock = buildLacunasBlock(p.vault, p.liveSections)
     const vars: Record<string, string> = {
       ...p.baseVars,

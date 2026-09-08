@@ -64,6 +64,7 @@ import {
 } from "./curador-vault"
 import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
+  BLOCO_OMITIDO_PELO_ESTRUTURADOR,
   measureProtocolViolations,
   rank1ByBlock,
   runCuradorShadow,
@@ -617,6 +618,14 @@ export interface AssembleReferenceInput {
   outlineToneHint: string
   /** "O e-mail não deve" da aba Arquitetura (uma restrição por linha). */
   outlineRestricoes?: string
+  /**
+   * Quantas posições do blueprint GLOBAL (a linha que a aba Arquitetura
+   * edita) têm `purpose` escrito. Só para a Entrada da run: com o
+   * Estruturador decidindo a sequência, a Arquitetura não é consultada, e
+   * "0 de 6" fazia parecer que a aba estava vazia — quando o que houve foi
+   * ela não ser lida. Ausente = não informado pelo caller.
+   */
+  intencoesNaArquitetura?: number
   // Template de referência curado global (email_reference_templates) p/ este
   // flow×email — guia de estrutura/estilo para a escolha das variantes (NÃO é
   // copiado). "" quando não há curado. Independe do papel de fallback que a
@@ -655,6 +664,43 @@ export interface AssembleReferenceInput {
 //   (guard de reuso do generate.service; só com force=false).
 // "llm" = legado: reference gravada pelo Montador LLM antes do CM-2.
 export type ReferenceSource = "llm" | "code" | "global" | "none" | "store"
+
+/**
+ * O que o card "Outline" da Entrada mostra.
+ *
+ * Com o Estruturador decidindo, o bloco `<outline>` chega ao modelo como
+ * `BLOCO_OMITIDO_PELO_ESTRUTURADOR` — mostrar o objetivo do banco fazia quem
+ * lê a run concluir que o Curador tinha lido aquele texto. (No welcome-1 o
+ * `objective` é o 1º parágrafo da nota de intenção, copiado à mão em 02/09,
+ * o que tornava a confusão ainda mais convincente.)
+ */
+export function valorDoOutline(estruturadorOn: boolean, objective: string): string {
+  if (!estruturadorOn) return objective || "(sem objetivo)"
+  return `${BLOCO_OMITIDO_PELO_ESTRUTURADOR} — o objetivo e a diretriz de email_outline_templates voltam a valer com o Estruturador off`
+}
+
+/**
+ * O que o card "Intenções por bloco (Arquitetura)" mostra.
+ *
+ * Com o Estruturador ligado a sequência é DELE e a base do outline não entra
+ * (`posicoes ?? structureBase`), então nenhuma posição carrega `intencao` e o
+ * contador dava sempre "0 de N" — lido como "a aba está vazia", quando o que
+ * houve foi ela não ser consultada. Quem via o zero ia preencher a
+ * Arquitetura, trabalho sem efeito nenhum.
+ */
+export function valorDasIntencoesPorBloco(
+  estruturadorOn: boolean,
+  intencoesNaEstrutura: number,
+  posicoes: number,
+  intencoesNaArquitetura?: number,
+): string {
+  if (!estruturadorOn) return `${intencoesNaEstrutura} de ${posicoes} posições`
+  const naAba =
+    intencoesNaArquitetura == null
+      ? ""
+      : ` (a linha global tem ${intencoesNaArquitetura} intenção(ões) escrita(s))`
+  return `não consultada — a sequência é do Estruturador${naAba}; a Arquitetura vale com ele off`
+}
 
 /**
  * A <sequencia_do_email> que os dois Curadores leem. `componente` é o
@@ -1161,7 +1207,7 @@ export async function assembleStoreReference(
     { rotulo: "Loja", cls: "loja", valor: `${input.brandName} — ${fieldOrMissing(input.nicho)}` },
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · ${input.structure.length} posições` },
     { rotulo: "Catálogo da biblioteca", cls: "biblioteca", valor: `${catalog.total} variantes · ${catalog.types.length} tipos · sha8 ${catalogSha8}` },
-    { rotulo: "Outline", cls: "curadoria", valor: input.outlineObjective || "(sem objetivo)" },
+    { rotulo: "Outline", cls: "curadoria", valor: valorDoOutline(estruturadorOn, input.outlineObjective) },
     {
       rotulo: "Sequência do email",
       cls: estruturadorOn ? "upstream" : "sistema",
@@ -1171,7 +1217,16 @@ export async function assembleStoreReference(
     },
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
-    { rotulo: "Intenções por bloco (Arquitetura)", cls: "curadoria", valor: `${intencoesHumanas} de ${input.structure.length} posições` },
+    {
+      rotulo: "Intenções por bloco (Arquitetura)",
+      cls: "curadoria",
+      valor: valorDasIntencoesPorBloco(
+        estruturadorOn,
+        intencoesHumanas,
+        input.structure.length,
+        input.intencoesNaArquitetura,
+      ),
+    },
     { rotulo: "Decisão do Estruturador", cls: "upstream", valor: estruturadorOn ? "servida — saída completa (diagnóstico, posições, fio, fontes, descartes)" : "(sem decisão nesta geração)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.perfilMarca.length.toLocaleString("pt-BR")} chars (sem o review de anúncios)` },
     {
@@ -1598,7 +1653,7 @@ export async function assembleStoreReference(
       cls: "upstream",
       valor: `${finalistsJson.length.toLocaleString("pt-BR")} chars — SAÍDA do Curador + output_schema da biblioteca`,
     },
-    { rotulo: "Outline", cls: "curadoria", valor: input.outlineObjective || "(sem objetivo)" },
+    { rotulo: "Outline", cls: "curadoria", valor: valorDoOutline(estruturadorOn, input.outlineObjective) },
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
     { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
     {

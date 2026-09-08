@@ -551,6 +551,10 @@ export async function generateBlueprintAndReference(
     revisoes,
     topProducts,
     outlineObjective: outline?.objective ?? "",
+    // Só para a Entrada da run: quantas posições da aba Arquitetura têm
+    // intenção escrita. Com o Estruturador on essa base não é consultada, e
+    // sem o número o card dizia "0 de N" como se a aba estivesse vazia.
+    intencoesNaArquitetura: blocosGlobais.filter((b) => (b.purpose ?? "").trim()).length,
     // Com Estruturador consumido, o fio narrativo dele guia o Montador no
     // lugar da diretriz genérica do outline (os papéis já vão por bloco via
     // structure.label).
