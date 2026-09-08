@@ -639,18 +639,6 @@ export async function runCuradorShadow(
       },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
       { rotulo: "Catálogo + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
-      ...(p.catalogComExtras.divergentes.length > 0
-        ? [
-            {
-              rotulo: "Vault × banco",
-              cls: "biblioteca" as const,
-              valor: `${p.catalogComExtras.divergentes.length} variante(s) em que a prosa do vault descreve outra peça: ${p.catalogComExtras.divergentes
-                .slice(0, 5)
-                .map((d) => d.slug)
-                .join(", ")}`,
-            },
-          ]
-        : []),
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
       {
@@ -812,13 +800,6 @@ export async function runCuradorShadow(
         })),
         invalid_ids: ranking?.invalidIds ?? [],
         ids_por_apelido: ranking?.resolvedByAlias ?? [],
-        // A contradição que era SILENCIOSA: `toEntry` sobrepõe a prosa do
-        // vault ao cadastro do banco e o prompt diz que o vault vence. Onde
-        // as duas descrevem peças diferentes, o Curador decidia sobre uma e
-        // o pipeline montava a outra. Agora as duas viajam no catálogo e o
-        // par fica registrado aqui, com o slug e o id para consertar no
-        // Obsidian.
-        catalogo_divergente: p.catalogComExtras.divergentes,
         protocol_violations: violations,
         repeticoes,
         live_violations: p.liveViolations,
@@ -850,20 +831,6 @@ export async function runCuradorShadow(
       liveViolations: p.liveViolations.length,
       agreementPct: comparaveis > 0 ? Math.round((iguais / comparaveis) * 100) : null,
     })
-
-    // A tentativa de mexer na sequência é ALTA: o guard já a desarmou, mas
-    // ela diz que o prompt parou de ser obedecido — e é assim que se
-    // descobre antes de virar email torto.
-    if (p.catalogComExtras.divergentes.length > 0) {
-      log.warn("curador_vault.catalogo_divergente", {
-        storeId: p.storeId,
-        total: p.catalogComExtras.divergentes.length,
-        variantes: p.catalogComExtras.divergentes
-          .slice(0, 10)
-          .map((d) => `${d.slug}:${d.similaridade}`),
-        hint: "o doc do vault e a linha do banco descrevem peças diferentes — conferir o variant_id da nota no Obsidian",
-      })
-    }
 
     if (divergencia) {
       log.warn("curador_vault.estrutura_divergente", {

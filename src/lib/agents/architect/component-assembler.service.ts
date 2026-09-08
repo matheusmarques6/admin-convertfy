@@ -28,6 +28,7 @@
  */
 
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
+import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
 import type { AlvoParaMedicao } from "./curador-shadow"
 import crypto from "crypto"
 
@@ -595,6 +596,17 @@ export interface AssembleReferenceInput {
   perfilMarca: string
   /** Alvo do toque renderizado (Seletor, set/2026) — ausente = texto de ausência declarada. */
   alvo?: string | null
+  /**
+   * A nota de intenção deste email foi servida a ESTES prompts?
+   *
+   * `false` quando o Seletor decidiu um alvo: ele leu a nota inteira e a
+   * devolveu traduzida em `<alvo>` (trabalhos fixos, veículos, proibições).
+   * Servi-la de novo é a mesma informação duas vezes, uma crua competindo
+   * com a tipada — a mesma regra que o Estruturador já segue
+   * (`intencaoParaOPrompt`). Não dá para deduzir do campo `alvo` acima: ele
+   * é sempre string não-vazia (sem alvo vem o texto de ausência declarada).
+   */
+  intencaoServida?: boolean
   /** O que o medidor de veto precisa do alvo (aliviador pedido + proibições). */
   alvoMedicao?: AlvoParaMedicao | null
   /**
@@ -904,7 +916,10 @@ function resumoProdutos(produtos: ReadonlyArray<TopProduct>): string {
 
 const LOJA = { cls: "loja" as const, rotulo: "Dados da loja — client_stores" }
 
-function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin> {
+function editorialOrigins(
+  estruturadorOn: boolean,
+  intencaoServida: boolean,
+): Record<string, SegmentOrigin> {
   return {
     brand_name: LOJA,
     nicho: LOJA,
@@ -922,7 +937,15 @@ function editorialOrigins(estruturadorOn: boolean): Record<string, SegmentOrigin
       rotulo: "O e-mail NÃO deve — aba Arquitetura",
     },
     intencao_flow: { cls: "vault", rotulo: "Intenção do flow — email_intents" },
-    intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
+    // Com alvo, esta var não leva a nota e sim o ponteiro que diz onde a
+    // informação está — texto NOSSO, não conteúdo do vault. Rotulá-lo como
+    // vault seria a mentira que a proveniência existe para impedir.
+    intencao_email: intencaoServida
+      ? { cls: "vault", rotulo: "Intenção DESTE email — email_intents" }
+      : {
+          cls: "sistema",
+          rotulo: "Intenção DESTE email — não servida (o alvo do Seletor a traduz)",
+        },
     estruturador_decisao: { cls: "upstream", rotulo: "Decisão do Estruturador — saída completa (JSON)" },
     briefing_marca: {
       cls: "loja",
@@ -1085,10 +1108,13 @@ export async function assembleStoreReference(
       input.intencaoFlow,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    intencao_email: clampPromptText(
-      input.intencaoEmail,
-      "(não catalogada — siga o outline e o perfil da marca)",
-    ),
+    intencao_email:
+      input.intencaoServida === false
+        ? INTENCAO_NAO_SERVIDA
+        : clampPromptText(
+            input.intencaoEmail,
+            "(não catalogada — siga o outline e o perfil da marca)",
+          ),
     // Decisão do Estruturador (só no modo 'on' com run ok). SEM o clamp de
     // 4000 do clampPromptText: é a saída COMPLETA em JSON (~10k chars na
     // Innova) e cortá-la a 4000 deixaria o Curador sem as posições finais,
@@ -1168,7 +1194,10 @@ export async function assembleStoreReference(
     .slice(0, 8)
 
   const estruturadorOn = Boolean(input.estruturadorDecisao?.trim())
-  const origins = editorialOrigins(estruturadorOn)
+  const origins = editorialOrigins(
+    estruturadorOn,
+    input.intencaoServida !== false,
+  )
 
   // Proveniência: user via helper (fail-open p/ template custom com {{#}});
   // system = [regras agente] + [catálogo por ref+sha8] + [regras agente] —
@@ -1216,7 +1245,17 @@ export async function assembleStoreReference(
         : "derivada do outline por código",
     },
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
-    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
+    // Com alvo a nota não entra — e ausência não é entrada. Ver
+    // `intencaoServida`.
+    ...(input.intencaoServida === false
+      ? []
+      : [
+          {
+            rotulo: "Intenção deste email (vault)",
+            cls: "vault" as const,
+            valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)",
+          },
+        ]),
     {
       rotulo: "Intenções por bloco (Arquitetura)",
       cls: "curadoria",
@@ -1271,7 +1310,11 @@ export async function assembleStoreReference(
     system_sha8: chooserSystemSha8,
     // Critérios editoriais servidos nesta run (auditoria do Estúdio).
     has_intencao_flow: Boolean(input.intencaoFlow?.trim()),
-    has_intencao_email: Boolean(input.intencaoEmail?.trim()),
+    // O que ENTROU no prompt, não o que existe no vault: com alvo a nota
+    // fica com o Seletor.
+    has_intencao_email:
+      input.intencaoServida !== false && Boolean(input.intencaoEmail?.trim()),
+    intencao_servida: input.intencaoServida !== false,
     // Posições com intenção escrita na Arquitetura (02/09) — a âncora que
     // o papel do Curador tem de servir.
     intencoes_humanas: intencoesHumanas,
@@ -1600,10 +1643,13 @@ export async function assembleStoreReference(
       input.intencaoFlow,
       "(não catalogada — siga o outline e o perfil da marca)",
     ),
-    intencao_email: clampPromptText(
-      input.intencaoEmail,
-      "(não catalogada — siga o outline e o perfil da marca)",
-    ),
+    intencao_email:
+      input.intencaoServida === false
+        ? INTENCAO_NAO_SERVIDA
+        : clampPromptText(
+            input.intencaoEmail,
+            "(não catalogada — siga o outline e o perfil da marca)",
+          ),
     estruturador_decisao:
       input.estruturadorDecisao?.trim() ||
       "(sem decisão do Estruturador nesta geração — siga o outline)",
@@ -1655,7 +1701,17 @@ export async function assembleStoreReference(
     },
     { rotulo: "Outline", cls: "curadoria", valor: valorDoOutline(estruturadorOn, input.outlineObjective) },
     { rotulo: "Intenção do flow (vault)", cls: "vault", valor: input.intencaoFlow?.trim() ? "servida" : "(não catalogada)" },
-    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)" },
+    // Com alvo a nota não entra — e ausência não é entrada. Ver
+    // `intencaoServida`.
+    ...(input.intencaoServida === false
+      ? []
+      : [
+          {
+            rotulo: "Intenção deste email (vault)",
+            cls: "vault" as const,
+            valor: input.intencaoEmail?.trim() ? "servida" : "(não catalogada)",
+          },
+        ]),
     {
       rotulo: "Decisão do Estruturador",
       cls: "upstream",

@@ -547,6 +547,12 @@ export async function generateBlueprintAndReference(
     // ser o critério.
     alvo: renderAlvo(alvo, ALVO_AUSENTE_CURADOR),
     alvoMedicao: alvoParaMedicao(alvo),
+    // A nota de intenção é insumo do SELETOR: com alvo, ele já a leu inteira
+    // e a devolveu traduzida em <alvo> — servi-la de novo ao Montador e ao
+    // Curador é a mesma informação duas vezes, uma crua competindo com a
+    // tipada. Sem alvo (Seletor desligado) ela volta inteira: a regra é a
+    // mesma do Estruturador, e desligar o Seletor nunca regride.
+    intencaoServida: alvo == null,
     vocabulario: resolveVocabulario(store as PesquisaFields),
     revisoes,
     topProducts,

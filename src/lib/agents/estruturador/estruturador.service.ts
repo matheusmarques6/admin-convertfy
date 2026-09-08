@@ -469,13 +469,19 @@ export async function runEstruturador(
     { rotulo: "Loja", cls: "loja", valor: input.brandName },
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars do dossiê (com Ads) · ${input.topProducts.length} produto(s)` },
-    {
-      rotulo: "Intenção deste email (vault)",
-      cls: "vault",
-      valor: intencaoServida
-        ? resumo(intencaoEmail)
-        : `não servida ao Estruturador — o alvo do Seletor a traduz (o Seletor a recebe inteira: ${intencaoEmail.length.toLocaleString("pt-BR")} chars)`,
-    },
+    // A intenção é insumo do SELETOR. Com alvo, ela não entra aqui — e o que
+    // não entra não é listado como entrada: a linha "não servida" ocupava a
+    // tela descrevendo uma ausência. Em qual regime a run rodou continua
+    // legível em `input_vars.intencao_servida`.
+    ...(intencaoServida
+      ? [
+          {
+            rotulo: "Intenção deste email (vault)",
+            cls: "vault" as const,
+            valor: resumo(intencaoEmail),
+          },
+        ]
+      : []),
     {
       rotulo: "Alvo do toque (Seletor)",
       cls: "upstream",

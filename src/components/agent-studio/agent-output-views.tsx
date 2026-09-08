@@ -131,17 +131,6 @@ export function CuradorRankingView({ output }: { output: unknown }) {
     | { total?: number; detalhe?: string }
     | null
     | undefined
-  // Variantes em que a prosa do vault e o cadastro do banco descrevem
-  // peças diferentes. O catálogo passou a servir as duas descrições; aqui a
-  // contradição vira linha visível, com o slug para consertar no Obsidian.
-  const catalogoDivergente = asArray<{
-    slug?: string
-    variant_id?: string
-    name?: string
-    vault?: string
-    banco?: string
-    similaridade?: number
-  }>(o.catalogo_divergente)
   const modo = typeof o.curador_vault_mode === "string" ? o.curador_vault_mode : null
   const ehShadow = o.shadow === true
   // Consultas ao Obsidian sob demanda (02/09): cada chamada de ferramenta,
@@ -234,43 +223,7 @@ export function CuradorRankingView({ output }: { output: unknown }) {
             tone="info"
           />
         )}
-        {catalogoDivergente.length > 0 && (
-          <OutPill
-            text={`${catalogoDivergente.length} variante(s) com vault × banco divergentes`}
-            tone="warn"
-          />
-        )}
       </div>
-
-      {catalogoDivergente.length > 0 && (
-        <OutSection title="Vault e banco descrevem peças diferentes">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {catalogoDivergente.map((d, i) => (
-              <OutItem key={d.variant_id ?? i}>
-                <div style={{ ...OUT_BODY, fontWeight: 700, color: "#B91C1C" }}>
-                  {d.slug ?? "?"} → {d.name ?? d.variant_id ?? "?"}
-                  {typeof d.similaridade === "number" && (
-                    <span style={{ ...TNUM, fontWeight: 400, color: C.g500 }}>
-                      {" "}· semelhança {d.similaridade}
-                    </span>
-                  )}
-                </div>
-                <div style={{ ...OUT_BODY, color: C.g500, marginTop: 3, fontFamily: F.sans }}>
-                  <b>vault:</b> {d.vault}
-                </div>
-                <div style={{ ...OUT_BODY, color: C.g500, marginTop: 2, fontFamily: F.sans }}>
-                  <b>banco:</b> {d.banco}
-                </div>
-              </OutItem>
-            ))}
-          </div>
-          <div style={{ ...OUT_BODY, color: C.g500, marginTop: 6 }}>
-            O HTML montado é o da linha do BANCO. As duas descrições vão no
-            catálogo para o Curador não decidir sobre uma peça e receber
-            outra — o conserto é o `variant_id` da nota no Obsidian.
-          </div>
-        </OutSection>
-      )}
 
       {divergente?.detalhe && (
         <OutSection title="O que ele tentou mudar na sequência (e foi desarmado)">
