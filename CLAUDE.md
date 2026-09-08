@@ -3959,5 +3959,59 @@ podem reivindicar as mesmas lojas. Assinatura do Asaas **sem espelho local**
 não tem onde gravar o vínculo (a FK aponta para a tabela local): o botão manda
 para o diálogo, que cria o espelho, em vez de falhar em silêncio.
 
+## RLS round 5B aplicado: o portal sai do banco interno (set/2026, migrations 20261130-31)
+
+Aplicado em produção com medição antes/depois. As 53 tabelas que ainda tinham
+`TO authenticated USING (true)` passaram a `is_org_member()`, mantendo o mesmo
+comando de cada policy.
+
+**Por que isso é seguro, e não uma aposta:**
+
+- **Nunca afrouxa.** A policy que sai é MAIS permissiva que a que entra
+  (`true` ⊇ `is_org_member()`), então nenhum controle fino é anulado. O caso
+  que me preocupava — `clients`, com "Access clients by permission" — **não
+  estava na lista**: ele não tem policy frouxa.
+- **Nunca restringe para membro.** Membro passa em `is_org_member()`.
+- **A ordem elimina a janela**: cria a nova ANTES de dropar a antiga. Policies
+  permissivas são OR, então entre os dois passos a cobertura só aumenta.
+  Dropar primeiro abriria um instante sem acesso.
+- **Cobre INSERT**, cujo `true` mora em `with_check` e não em `qual` — filtrar
+  só por `qual` deixaria a porta de escrita aberta.
+
+**A prova foi medida, não suposta**: as contagens que um membro enxerga nas 54
+tabelas foram capturadas antes e depois e são **idênticas, item a item**
+(comparação por diff, não a olho). Escrita testada em `tags`,
+`crm_quick_replies`, `store_feedback_calls` e `email_generation_settings` —
+INSERT, UPDATE e DELETE, incluindo a policy de INSERT que só tinha
+`WITH CHECK`. Anon: zero em tudo. Portal: zero no banco interno.
+
+Estado final: `anon_aberto = 0`, `authenticated_true = 0`, `sem_rls = 0`,
+formulário público e `tracking_lookups` intactos. As 17 tabelas com RLS ligada
+e nenhuma policy são as 14 que já eram assim + os 3 backups fechados no 5A —
+o 5B não criou nenhuma.
+
+### A recursão de `pipeline_members` (migration 20261130)
+
+Descoberta porque **bloqueava a verificação**: `pm_select` fazia
+`EXISTS (SELECT 1 FROM pipeline_members ...)` dentro da policy de
+`pipeline_members`, e a subconsulta reaplica a policy — `42P17: infinite
+recursion`. Levava junto `pipelines` e `pipeline_stages`, que fazem EXISTS
+nesta tabela.
+
+**Latente, não ativo**: todas as leituras no código usam `createAdminClient`
+(service role), que bypassa RLS — por isso ninguém tropeçou nisso. Consertado
+pelo padrão da casa (`is_pipeline_member`/`is_pipeline_owner` SECURITY DEFINER
+com `search_path` fixo), preservando a semântica. Sem isso, a policy estouraria
+no dia em que alguém lesse com a chave do usuário.
+
+### Um achado de DADOS, não de código
+
+`mathemaxs@gmail.com` é ao mesmo tempo **usuário do portal e membro ativo da
+org** (papel `implementacao`) — por isso enxerga a base inteira. Não é falha do
+RLS: `is_org_member()` está certo, a conta é que acumula os dois papéis. Os
+outros dois usuários do portal estão corretamente fechados. Se essa conta é de
+cliente, ela não deveria estar em `org_members`; se é do time, o acesso ao
+portal é que deveria sair.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
