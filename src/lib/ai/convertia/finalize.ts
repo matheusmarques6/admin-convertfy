@@ -97,6 +97,10 @@ export async function finalizeTurn(input: FinalizeInput): Promise<FinalizeOutput
     ...(result.errorMessage ? { error: result.errorMessage } : {}),
     ...(state.pendingConfirmation ? { pending_confirmation: state.pendingConfirmation } : {}),
     ...(result.modelFallback ? { model_fallback: result.modelFallback } : {}),
+    // Só grava quando houve: zero é o normal e poluiria todo turno. Um
+    // número aqui é a recuperação de uma recusa transitória do provedor
+    // — sem ele, o turno que insistiu 9s passa por modelo lento.
+    ...(result.retriesDoModelo > 0 ? { model_retries: result.retriesDoModelo } : {}),
     continuation: continuationJobId
       ? { job_id: continuationJobId, status: "queued", reason: "orçamento de tempo do turno esgotado" }
       : null,

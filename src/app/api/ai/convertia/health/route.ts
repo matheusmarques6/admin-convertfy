@@ -25,8 +25,8 @@ import { assertCanManagePrompts } from "@/lib/services/prompt-management.service
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { checarSaldo, ultimoSaldo } from "@/lib/ai/convertia/provider-balance"
 import { notifyCreditsExhausted } from "@/lib/agents/generation-notify.service"
-import { syncKnowledge } from "@/lib/ai/convertia/knowledge-sync"
-import { embeddingsAvailable } from "@/lib/ai/convertia/knowledge-embeddings"
+import { embedPending, syncKnowledge } from "@/lib/ai/convertia/knowledge-sync"
+import { EMBEDDING_MODEL, embedTexts, embeddingsAvailable } from "@/lib/ai/convertia/knowledge-embeddings"
 import { friendlyModelError } from "@/lib/ai/convertia/model-errors"
 import { buscarNaWeb, escolherProvedor } from "@/lib/ai/web/web-search"
 
@@ -206,8 +206,34 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (body.acao === "testar_embeddings") {
+      // Uma chamada REAL de embedding, com a chave deste deploy. É o que
+      // responde "por que as notas estão sem vetor?" — antes disto a
+      // causa morria num log.warn e a tela só sabia dizer quantas
+      // faltavam. Custa um texto curto e não grava nada.
+      const r = await embedTexts(["teste de embedding da base de conhecimento"])
+      return successResponse(request, {
+        embeddings: r.vectors
+          ? { ok: true as const, modelo: EMBEDDING_MODEL, dimensoes: r.vectors[0]?.length ?? 0 }
+          : { ok: false as const, modelo: EMBEDDING_MODEL, motivo: r.error, amigavel: friendlyModelError(r.error).message },
+      })
+    }
+
+    if (body.acao === "embedar_pendentes") {
+      // O conserto pela tela quando a causa era transitória: processa as
+      // notas sem vetor e devolve quantas entraram, quantas faltavam e
+      // por que parou, se parou.
+      const r = await embedPending(admin)
+      return successResponse(request, {
+        embed: {
+          ...r,
+          amigavel: r.error ? friendlyModelError(r.error).message : null,
+        },
+      })
+    }
+
     throw new AppError(
-      "Ação desconhecida. Use 'checar_saldo', 'sincronizar_vault' ou 'testar_busca'.",
+      "Ação desconhecida. Use 'checar_saldo', 'sincronizar_vault', 'testar_busca', 'testar_embeddings' ou 'embedar_pendentes'.",
       400,
       "validation",
     )

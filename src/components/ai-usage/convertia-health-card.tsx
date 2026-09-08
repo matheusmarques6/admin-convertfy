@@ -109,11 +109,23 @@ export function ConvertiaHealthCard() {
   const { data, error, mutate } = useSWR<Saude>("/api/ai/convertia/health", fetcher, {
     refreshInterval: 120_000,
   })
-  const [busy, setBusy] = useState<null | "saldo" | "vault" | "busca">(null)
+  const [busy, setBusy] = useState<null | "saldo" | "vault" | "busca" | "embed" | "embedar">(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  const acao = async (acaoNome: "checar_saldo" | "sincronizar_vault" | "testar_busca") => {
-    setBusy(acaoNome === "checar_saldo" ? "saldo" : acaoNome === "testar_busca" ? "busca" : "vault")
+  const acao = async (
+    acaoNome: "checar_saldo" | "sincronizar_vault" | "testar_busca" | "testar_embeddings" | "embedar_pendentes",
+  ) => {
+    setBusy(
+      acaoNome === "checar_saldo"
+        ? "saldo"
+        : acaoNome === "testar_busca"
+          ? "busca"
+          : acaoNome === "testar_embeddings"
+            ? "embed"
+            : acaoNome === "embedar_pendentes"
+              ? "embedar"
+              : "vault",
+    )
     setMsg(null)
     try {
       const r = await fetch("/api/ai/convertia/health", {
@@ -125,11 +137,22 @@ export function ConvertiaHealthCard() {
       if (!r.ok) throw new Error((j as { error?: string }).error || `HTTP ${r.status}`)
       const payload = (j?.data ?? j) as Record<string, unknown>
       if (acaoNome === "sincronizar_vault") {
-        const s = payload.sync as { status?: string; filesTotal?: number; upserted?: number; embedded?: number; error?: string }
+        const s = payload.sync as {
+          status?: string
+          filesTotal?: number
+          upserted?: number
+          embedded?: number
+          embedPending?: number
+          embedError?: string | null
+          error?: string
+        }
         setMsg(
           s?.status === "error"
             ? `Sync falhou: ${s.error}`
-            : `Sync ${s?.status}: ${s?.filesTotal ?? 0} arquivos, ${s?.upserted ?? 0} gravadas, ${s?.embedded ?? 0} vetorizadas.`,
+            : // "synced, 0 vetorizadas" era lido como sucesso; a falha do
+              // embedding não aparecia em lugar nenhum.
+              `Sync ${s?.status}: ${s?.filesTotal ?? 0} arquivos, ${s?.upserted ?? 0} gravadas, ${s?.embedded ?? 0} vetorizadas.` +
+              (s?.embedError ? ` Embeddings pararam em ${s.embedded ?? 0}/${s.embedPending ?? 0}: ${s.embedError}` : ""),
         )
       } else if (acaoNome === "testar_busca") {
         const b = payload.busca as
@@ -139,6 +162,26 @@ export function ConvertiaHealthCard() {
           b.ok
             ? `Busca OK via ${b.provedor}: ${b.total} resultado(s). 1º — ${b.amostra[0]?.titulo ?? "sem título"}`
             : `Busca falhou: ${b.motivo}`,
+        )
+      } else if (acaoNome === "testar_embeddings") {
+        const e = payload.embeddings as
+          | { ok: true; modelo: string; dimensoes: number }
+          | { ok: false; modelo: string; motivo: string | null; amigavel: string }
+        setMsg(
+          e.ok
+            ? `Embeddings OK (${e.modelo}, ${e.dimensoes} dimensões). Pode vetorizar as notas.`
+            : // O motivo CRU junto: é o que diz se é crédito, chave ou o
+              // provedor recusando o modelo — três consertos diferentes.
+              `Embeddings falharam: ${e.amigavel} — ${e.motivo ?? "sem detalhe"}`,
+        )
+      } else if (acaoNome === "embedar_pendentes") {
+        const e = payload.embed as { embedded: number; pending: number; error: string | null; amigavel: string | null }
+        setMsg(
+          e.error
+            ? `Vetorizou ${e.embedded} de ${e.pending} e parou: ${e.amigavel} — ${e.error}`
+            : e.pending === 0
+              ? "Nenhuma nota pendente: todas já têm vetor."
+              : `Vetorizou ${e.embedded} de ${e.pending} notas.`,
         )
       } else {
         const s = payload.saldo as { situacao?: string; saldoUsd?: number | null; erro?: string | null }
@@ -344,11 +387,47 @@ export function ConvertiaHealthCard() {
           )}
         </div>
         {data.base.notas_sem_vetor > 0 && (
-          <p className="mt-1 text-[11.5px] text-amber-600 dark:text-amber-400">
-            {data.base.notas_sem_vetor} sem embedding — a busca por significado está desligada, só o
-            texto responde.
-            {!data.embeddings_configurados && " (OPENROUTER_API_KEY não configurada)"}
-          </p>
+          <div className="mt-1">
+            <p className="text-[11.5px] text-amber-600 dark:text-amber-400">
+              {data.base.notas_sem_vetor} sem embedding — a busca por significado está desligada, só
+              o texto responde.
+              {!data.embeddings_configurados && " (OPENROUTER_API_KEY não configurada)"}
+            </p>
+            {data.embeddings_configurados && (
+              <>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => void acao("testar_embeddings")}
+                    disabled={busy !== null}
+                    className="inline-flex h-6 items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.1] px-2 text-[11px] font-medium text-slate-700 dark:text-white/75 disabled:opacity-50"
+                  >
+                    {busy === "embed" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-3 w-3" />
+                    )}
+                    Testar embeddings
+                  </button>
+                  <button
+                    onClick={() => void acao("embedar_pendentes")}
+                    disabled={busy !== null}
+                    className="inline-flex h-6 items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.1] px-2 text-[11px] font-medium text-slate-700 dark:text-white/75 disabled:opacity-50"
+                  >
+                    {busy === "embedar" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Vetorizar as {data.base.notas_sem_vetor} pendentes
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400 dark:text-white/40">
+                  A chave estar configurada não quer dizer que o embedding funcione: o teste faz uma
+                  chamada real e mostra a recusa do provedor, que antes morria no log.
+                </p>
+              </>
+            )}
+          </div>
         )}
         {data.vault ? (
           <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">

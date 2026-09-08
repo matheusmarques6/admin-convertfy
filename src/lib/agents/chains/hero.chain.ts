@@ -31,6 +31,7 @@ import {
 } from "../shared/prompt-provenance"
 import { HERO_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+import { corteDeRaciocinio, modeloTemVisao } from "../model-capabilities"
 import { withUsage, type StepUsage } from "./step-usage"
 import type { RenderedKind } from "../shared/rendered-classify"
 import { imageUrlsIn } from "../shared/rendered-image"
@@ -267,12 +268,17 @@ export interface InvokeHeroResult {
 // ── Espelho visual (story CM-8) ────────────────────────────────────────
 
 /**
- * Modelo do fallback visual. Precisa de VISÃO e de rota pelo OpenRouter (o
- * caminho Anthropic-direto recusa anexo — ver format-invoke).
+ * Modelo do fallback visual, para quando o CONFIGURADO não enxerga.
  *
- * Escolha: o mesmo Sonnet 4.6 que o `qa-vision.chain` já usa em produção
- * para avaliar imagem de hero. Visão comprovada nesse exato tipo de
- * conteúdo, e não introduz um provedor novo na cadeia.
+ * O mesmo Sonnet 4.6 que o `qa-vision.chain` já usa em produção para
+ * avaliar imagem de hero: visão comprovada nesse exato tipo de conteúdo, e
+ * não introduz um provedor novo na cadeia.
+ *
+ * Até 08/09 ele rodava SEMPRE que havia mockup, e por isso a hero era o
+ * único agente do flow que ignorava a troca de modelo do banco: trocado o
+ * pipeline para Fable, ela seguia em Sonnet sem nada na tela dizer por quê.
+ * Trocar de modelo é para quem não tem visão, não para todo mundo — e o
+ * Fable tem. Agora a troca só acontece quando é preciso.
  */
 export const HERO_VISION_MODEL = "anthropic/claude-sonnet-4.6"
 
@@ -337,9 +343,17 @@ export function decideHeroVision(
   const images = imageUrlsIn(input.renderedHtml)
   if (images.length === 0) return none("sem_imagem")
 
+  // Precedência do modelo que roda com a imagem anexada:
+  //   1. override do settings — decisão humana explícita, vence sempre;
+  //   2. o CONFIGURADO, quando enxerga — é o modelo que o operador escolheu
+  //      no banco, e trocá-lo sem necessidade era o que mantinha a hero fora
+  //      da troca de modelo do flow;
+  //   3. HERO_VISION_MODEL — resgate para modelo cego (Kimi, GLM) e para o
+  //      Anthropic-direto, que lança ao receber anexo.
+  const configuradoEnxerga = modeloTemVisao(configuredModel)
   return {
     used: true,
-    model: override?.trim() || HERO_VISION_MODEL,
+    model: override?.trim() || (configuradoEnxerga ? configuredModel : HERO_VISION_MODEL),
     reason: "mockup_com_imagem",
     images,
   }
@@ -663,11 +677,16 @@ export async function invokeHeroChain(input: {
       : null
 
   if (vision.used) {
-    log.warn("hero.vision_fallback", {
+    // `warn` só quando o modelo REALMENTE trocou — anexar imagem ao modelo
+    // configurado é o caminho normal, não um desvio a investigar.
+    const trocou = vision.model !== config.model
+    const detalhe = {
       configured: config.model,
       running: vision.model,
       images: vision.images.length,
-    })
+    }
+    if (trocou) log.warn("hero.vision_fallback", detalhe)
+    else log.info("hero.vision_inline", detalhe)
   }
 
   const t0 = Date.now()
@@ -680,10 +699,10 @@ export async function invokeHeroChain(input: {
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Hero Section",
     // Kimi K3 tem reasoning always-on — sem o corte a hero volta a
-    // estourar timeout pensando. FORMAT_OPS_REASONING=on re-liga.
-    ...(process.env.FORMAT_OPS_REASONING === "on"
-      ? {}
-      : { reasoning: { enabled: false } }),
+    // estourar timeout pensando. O corte segue o MODELO QUE RODA
+    // (`vision.model`), não o configurado: com espelho visual eles diferem.
+    // FORMAT_OPS_REASONING=on re-liga.
+    ...corteDeRaciocinio(vision.model),
     ...(vision.images.length > 0 ? { images: vision.images } : {}),
   })
 

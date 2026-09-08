@@ -82,10 +82,18 @@ export async function buscarTrechos(
     // semântica ficou indisponível.
     opts.incluirSemantica === false
       ? Promise.resolve(null)
-      : embedQuery(t).catch((e) => {
-          log.warn("embedding da busca falhou", { erro: e instanceof Error ? e.message : String(e) })
-          return null
-        }),
+      : embedQuery(t)
+          .then((r) => {
+            // `embedQuery` não lança mais: a causa vem no resultado. Sem
+            // desembrulhar aqui, o objeto (sempre truthy) passaria por
+            // "tem vetor" e iria como texto JSON para a RPC.
+            if (!r.vector) log.warn("embedding da busca falhou", { erro: r.error })
+            return r.vector
+          })
+          .catch((e) => {
+            log.warn("embedding da busca falhou", { erro: e instanceof Error ? e.message : String(e) })
+            return null
+          }),
   ])
 
   if (exataRes.error) {
