@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getSessionUser } from "@/lib/services/admin-auth.service"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
-import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
+import { ValorBRL } from "@/components/money/valor-brl"
 import { PageHeader } from "@/components/ui/page-header"
 import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabsV2 } from "@/components/stores/v2/store-detail-tabs-v2"
@@ -213,9 +214,13 @@ export default async function StoreDetailPage({
   const klavRevenue = Number(rs?.klaviyo_total_revenue) || 0
   const omnRevenue = Number(rs?.omnisend_total_revenue) || 0
   const revenueLocal = storeRevenue || (klavRevenue + omnRevenue)
-  const revenueBRL = revenueLocal > 0 && storeCurrency !== "BRL"
-    ? await convertToBRL(revenueLocal, storeCurrency)
-    : revenueLocal
+  // Detalhada para trazer a COTAÇÃO: o hero mostra real, e o hover
+  // precisa poder dizer "US$ 4.100 × 5,1262 = R$ 21.017, cotação de
+  // 08/09". Sem a taxa, o número em real não é conferível.
+  const conv = revenueLocal > 0 && storeCurrency !== "BRL"
+    ? await convertToBRLDetailed(revenueLocal, storeCurrency)
+    : null
+  const revenueBRL = conv ? conv.valueBRL : revenueLocal
 
   // Resolve client + CSM (owner do cliente) pro hero
   const clientObj = store.clients
@@ -234,9 +239,21 @@ export default async function StoreDetailPage({
   const heroKpis = [
     {
       label: "Receita 30d",
-      value: revenueBRL > 0
-        ? `R$ ${revenueBRL.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-        : "—",
+      value:
+        revenueBRL > 0 ? (
+          <ValorBRL
+            semCentavos
+            valorBRL={revenueBRL}
+            valorOriginal={revenueLocal}
+            moeda={storeCurrency}
+            taxa={conv?.rate}
+            dataDaTaxa={conv?.rateDate}
+            taxaAproximada={conv?.rateApproximate}
+            naoConvertido={conv ? !conv.converted : false}
+          />
+        ) : (
+          "—"
+        ),
     },
     {
       label: "Pedidos 30d",

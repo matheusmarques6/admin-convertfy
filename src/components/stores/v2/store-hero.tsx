@@ -13,6 +13,7 @@
  *  KPIs com label uppercase 10.5px + valor 22px tnum + delta colorido
  */
 
+import type { ReactNode } from "react"
 import { ExternalLink, Calendar, Sparkles } from "lucide-react"
 import { Avatar, Badge, C, ChannelIcon, HealthRing, StoreLogo, TNUM } from "./_primitives"
 import { StoreLanguagePopover } from "./store-language-popover"
@@ -20,7 +21,8 @@ import { StoreCountryPopover } from "./store-country-popover"
 
 interface KpiDelta {
   label: string
-  value: string
+  /** ReactNode: a Receita passa um valor com tooltip de conversão. */
+  value: ReactNode
   delta?: string
   tone?: "pos" | "neg" | "info" | "neut"
 }

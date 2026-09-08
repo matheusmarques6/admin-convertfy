@@ -11,7 +11,7 @@
  *  - count badge circular brand quando ativa
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStoreBasics } from "@/lib/hooks/use-store-overview"
@@ -71,7 +71,9 @@ interface StoreDetailTabsV2Props {
     clients?: { id: string; name: string } | null
   }
   cmName?: string | null
-  kpis?: Array<{ label: string; value: string; delta?: string; tone?: "pos" | "neg" | "info" | "neut" }>
+  // `value` é ReactNode (não string) porque a Receita passa um valor com
+  // tooltip de conversão — o número em real precisa carregar a origem.
+  kpis?: Array<{ label: string; value: ReactNode; delta?: string; tone?: "pos" | "neg" | "info" | "neut" }>
 }
 
 export function StoreDetailTabsV2({ store, cmName, kpis = [] }: StoreDetailTabsV2Props) {

@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import useSWR, { useSWRConfig } from "swr"
 import { cn } from "@/lib/utils"
+import { ValorBRLTotal } from "@/components/money/valor-brl"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import {
   DateControl,
@@ -222,7 +223,16 @@ export function OpsDashboard({ userName }: { userName: string }) {
   )
   // Mesma chave das tabelas de Lojas/Clientes — SWR dedupe, 1 request só.
   const { data: overview } = useSWR<{
-    stores: Array<{ clientName: string; storeName: string; totalRevenueBRL: number }>
+    stores: Array<{
+      clientName: string
+      storeName: string
+      totalRevenueBRL: number
+      // Moeda e valor original: um total consolidado em real que soma
+      // lojas em EUR, USD e BRL precisa poder dizer de onde veio.
+      currency?: string
+      totalRevenueLocal?: number
+      fxDegraded?: boolean
+    }>
   }>(`/api/dashboard/stores-overview?${q}`, fetchJson, SWR_OPTS)
 
   const hr = new Date().getHours()
@@ -237,7 +247,16 @@ export function OpsDashboard({ userName }: { userName: string }) {
     if (!overview) return null
     const total = overview.stores.reduce((s, r) => s + (r.totalRevenueBRL || 0), 0)
     const clientes = new Set(overview.stores.map((r) => r.clientName || r.storeName)).size
-    return { total, clientes, media: clientes > 0 ? total / clientes : 0 }
+    // As parcelas por moeda que formam o total — é o que o hover abre.
+    const parcelas = overview.stores
+      .filter((r) => (r.totalRevenueBRL || 0) !== 0)
+      .map((r) => ({
+        moeda: r.currency,
+        valorOriginal: r.totalRevenueLocal ?? r.totalRevenueBRL,
+        valorBRL: r.totalRevenueBRL,
+        naoConvertido: r.fxDegraded,
+      }))
+    return { total, clientes, media: clientes > 0 ? total / clientes : 0, parcelas }
   })()
 
   return (
@@ -405,7 +424,13 @@ export function OpsDashboard({ userName }: { userName: string }) {
           />
           <OpsKpi
             label="Faturamento total"
-            value={faturamento ? fmtBRLCompact(faturamento.total) : "—"}
+            value={
+              faturamento ? (
+                <ValorBRLTotal compacto valorBRL={faturamento.total} parcelas={faturamento.parcelas} />
+              ) : (
+                "—"
+              )
+            }
             sub="soma das lojas ativas no período"
             onClick={() => setAudit("faturamento")}
           />

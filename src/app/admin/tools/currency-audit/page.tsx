@@ -28,6 +28,7 @@ import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { Badge } from "@/components/ui/badge"
 import { ROUTES } from "@/lib/routes"
 import { useToast } from "@/lib/hooks/use-toast"
+import { ValorBRL } from "@/components/money/valor-brl"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -59,6 +60,7 @@ interface AuditRow {
   storeRevenueLocal: number
   storeRevenueBRL: number | null
   conversionRatio: number | null
+  fxRateDate: string | null
   hint: string
 }
 
@@ -105,11 +107,6 @@ const TONE_CLASS: Record<string, string> = {
   danger: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300",
   neutral: "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
 }
-
-const fmtBRL = (v: number | null) =>
-  v == null
-    ? "—"
-    : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v)
 
 const fmtLocal = (v: number, code: string | null) => {
   try {
@@ -342,7 +339,18 @@ export default function CurrencyAuditPage() {
                               : "—"}
                           </td>
                           <td className="px-4 py-3 text-right font-mono tabular-nums text-gray-900 dark:text-white">
-                            {fmtBRL(s.storeRevenueBRL)}
+                            {s.storeRevenueBRL == null ? (
+                              "—"
+                            ) : (
+                              <ValorBRL
+                                valorBRL={s.storeRevenueBRL}
+                                valorOriginal={s.storeRevenueLocal}
+                                moeda={s.reportedCurrency || s.configuredCurrency}
+                                taxa={s.conversionRatio}
+                                dataDaTaxa={s.fxRateDate}
+                                semCentavos
+                              />
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
                             <button

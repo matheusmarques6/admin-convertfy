@@ -27,9 +27,7 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("CurrencyAudit")
+import { convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
 
 export const dynamic = "force-dynamic"
 
@@ -58,7 +56,10 @@ export interface StoreCurrencyAudit {
   status: StatusMoeda
   storeRevenueLocal: number
   storeRevenueBRL: number | null
+  /** REAIS por 1 unidade da moeda (EUR → 5.9589). */
   conversionRatio: number | null
+  /** Dia da cotação usada (YYYY-MM-DD). */
+  fxRateDate: string | null
   hint: string
 }
 
@@ -137,23 +138,6 @@ export async function GET(request: NextRequest) {
     const summaryMap = new Map<string, SummaryRow>()
     for (const s of summaries || []) summaryMap.set(s.store_id, s)
 
-    // Cotações atuais (1 BRL = X estrangeira) — só carregadas se alguma
-    // loja tiver receita em moeda estrangeira para converter.
-    let rates: Record<string, number> | null = null
-    async function loadRates(): Promise<Record<string, number> | null> {
-      if (rates) return rates
-      try {
-        const res = await fetch("https://open.er-api.com/v6/latest/BRL", {
-          signal: AbortSignal.timeout(5000),
-        })
-        const json = (await res.json()) as { result: string; rates: Record<string, number> }
-        if (json.result === "success") rates = json.rates
-      } catch (e) {
-        log.warn("[CurrencyAudit] Failed to fetch rates", { e })
-      }
-      return rates
-    }
-
     const results: StoreCurrencyAudit[] = await Promise.all(
       stores.map(async (s) => {
         const client = Array.isArray(s.clients) ? s.clients[0] : s.clients
@@ -178,19 +162,19 @@ export async function GET(request: NextRequest) {
 
         let storeRevBRL: number | null = null
         let conversionRatio: number | null = null
+        let fxRateDate: string | null = null
         const effectiveCurrency = reported || configured || "BRL"
 
+        // Usa o MESMO serviço de câmbio do dashboard (cache em memória +
+        // banco). Esta rota tinha um `fetch` próprio da API de cotação:
+        // além de uma chamada externa a mais por auditoria, ela podia
+        // divergir do número que o dashboard mostrava para a mesma loja.
         if (storeRevLocal > 0) {
-          if (effectiveCurrency === "BRL") {
-            storeRevBRL = storeRevLocal
-            conversionRatio = 1
-          } else {
-            const r = await loadRates()
-            const rateFromBRL = r?.[effectiveCurrency]
-            if (rateFromBRL && rateFromBRL > 0) {
-              storeRevBRL = Math.round((storeRevLocal / rateFromBRL) * 100) / 100
-              conversionRatio = 1 / rateFromBRL
-            }
+          const conv = await convertToBRLDetailed(storeRevLocal, effectiveCurrency)
+          if (conv.converted) {
+            storeRevBRL = conv.valueBRL
+            conversionRatio = conv.rate ?? 1
+            fxRateDate = conv.rateDate ?? null
           }
         }
 
@@ -236,6 +220,7 @@ export async function GET(request: NextRequest) {
           storeRevenueLocal: storeRevLocal,
           storeRevenueBRL: storeRevBRL,
           conversionRatio,
+          fxRateDate,
           hint,
         }
       }),

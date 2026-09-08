@@ -5,7 +5,7 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
-import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
@@ -28,6 +28,14 @@ interface StoreRevenue {
   flowRevenue: number
   /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
   currency: string
+  /** REAIS por 1 unidade da moeda (EUR → 5.9589). null = não convertido. */
+  fxRate: number | null
+  /** Dia da cotação usada (YYYY-MM-DD). */
+  fxRateDate: string | null
+  /** A cotação não é do dia do faturamento — é a mais próxima que existe. */
+  fxRateApproximate: boolean
+  /** Câmbio indisponível: os campos "BRL" desta loja estão na moeda original. */
+  fxDegraded: boolean
   /** Total da loja convertido pra BRL */
   totalRevenueBRL: number
   /** Atribuido convertido pra BRL */
@@ -107,12 +115,16 @@ async function buildStoreBreakdown(rows: Array<{
     // attributed se nao houver Shopify conectado (loja "email-only").
     const totalRev = Number(s.store_total_revenue || 0) || attributedRev
 
-    const [totalBRL, attributedBRL, campaignBRL, flowBRL] = await Promise.all([
-      convertToBRL(totalRev, currency),
+    // A 1a usa a variante detalhada para trazer a COTAÇÃO usada (e o
+    // flag de câmbio degradado). Como as quatro usam a mesma moeda, a
+    // taxa da 1a vale para as quatro.
+    const [totalConv, attributedBRL, campaignBRL, flowBRL] = await Promise.all([
+      convertToBRLDetailed(totalRev, currency),
       convertToBRL(attributedRev, currency),
       convertToBRL(campaignRev, currency),
       convertToBRL(flowRev, currency),
     ])
+    const totalBRL = totalConv.valueBRL
 
     return {
       storeId: s.store_id,
@@ -125,6 +137,13 @@ async function buildStoreBreakdown(rows: Array<{
       campaignRevenue: campaignRev,
       flowRevenue: flowRev,
       currency,
+      // A cotação usada, para a tela poder mostrar a conta no hover.
+      fxRate: totalConv.rate ?? null,
+      fxRateDate: totalConv.rateDate ?? null,
+      fxRateApproximate: totalConv.rateApproximate ?? false,
+      // Câmbio indisponível: o "BRL" desta loja está na moeda original e
+      // entra no total somando euro com real. Tem de aparecer.
+      fxDegraded: currency !== "BRL" && !totalConv.converted,
       totalRevenueBRL: totalBRL,
       attributedRevenueBRL: attributedBRL,
       campaignRevenueBRL: campaignBRL,

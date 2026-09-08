@@ -28,13 +28,15 @@ import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { useToast } from "@/lib/hooks/use-toast"
-import { COUNTRIES, PLATFORMS } from "@/lib/constants/onboarding"
+import { COUNTRIES_BY_REGION, PLATFORMS } from "@/lib/constants/onboarding"
 import { STORE_CURRENCIES } from "@/lib/constants/currencies"
 import { STORE_TIMEZONES } from "@/lib/constants/timezones"
 import {
@@ -273,10 +275,18 @@ export function StoreSetupEditDialog({ storeId, open, section, initial, onOpenCh
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>— (não definido)</SelectItem>
-                    {COUNTRIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
-                      </SelectItem>
+                    {/* Agrupado por região: a lista passou de 15 para ~50
+                        países, e corrida ela seria pior de usar que a
+                        lista curta que existia antes. */}
+                    {COUNTRIES_BY_REGION.map((g) => (
+                      <SelectGroup key={g.regiao}>
+                        <SelectLabel>{g.regiao}</SelectLabel>
+                        {g.paises.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
