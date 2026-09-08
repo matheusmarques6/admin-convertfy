@@ -28,6 +28,7 @@ import { notifyCreditsExhausted } from "@/lib/agents/generation-notify.service"
 import { syncKnowledge } from "@/lib/ai/convertia/knowledge-sync"
 import { embeddingsAvailable } from "@/lib/ai/convertia/knowledge-embeddings"
 import { friendlyModelError } from "@/lib/ai/convertia/model-errors"
+import { buscarNaWeb, escolherProvedor } from "@/lib/ai/web/web-search"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -127,6 +128,10 @@ export async function GET(request: NextRequest) {
       saldo,
       // Sem chave nem adianta olhar embedding: é a explicação, não o sintoma.
       embeddings_configurados: embeddingsAvailable(),
+      // Qual provedor de busca está VALENDO. A variável pode existir no
+      // Vercel e não ter chegado a este deploy — sem isto, a única forma de
+      // saber se a busca ligou é perguntar à IA e torcer.
+      busca_web: { provedor: escolherProvedor() },
       turnos: {
         janela_dias: JANELA_DIAS,
         total: totalTurnos,
@@ -183,7 +188,29 @@ export async function POST(request: NextRequest) {
       return successResponse(request, { sync: result })
     }
 
-    throw new AppError("Ação desconhecida. Use 'checar_saldo' ou 'sincronizar_vault'.", 400, "validation")
+    if (body.acao === "testar_busca") {
+      // Busca REAL, com a chave que está valendo neste deploy — é o único
+      // teste que responde "a variável chegou?". Gasta 1 crédito do
+      // provedor (a UI avisa) e não grava nada: quem registra consulta é o
+      // turno da IA, e teste ali sujaria a contagem de lacunas.
+      const r = await buscarNaWeb("convertfy email marketing", { limite: 3 })
+      return successResponse(request, {
+        busca: r.ok
+          ? {
+              ok: true as const,
+              provedor: r.provedor,
+              total: r.resultados.length,
+              amostra: r.resultados.map((x) => ({ titulo: x.titulo, url: x.url })),
+            }
+          : { ok: false as const, motivo: r.motivo, naoConfigurado: Boolean(r.naoConfigurado) },
+      })
+    }
+
+    throw new AppError(
+      "Ação desconhecida. Use 'checar_saldo', 'sincronizar_vault' ou 'testar_busca'.",
+      400,
+      "validation",
+    )
   } catch (error) {
     return errorResponse(request, error, "convertia-health-post")
   }

@@ -7,9 +7,18 @@
  * ordem abaixo, e trocar de fornecedor é trocar a variável no Vercel.
  *
  *   1. TAVILY_API_KEY   — feito para LLM: devolve o conteúdo já extraído
- *                         junto do resultado (1.000 buscas/mês grátis).
- *   2. BRAVE_SEARCH_API_KEY — índice próprio, 2.000 buscas/mês grátis.
- *   3. SERPER_API_KEY   — resultados do Google (2.500 grátis na entrada).
+ *                         junto do resultado (1.000 buscas/mês grátis,
+ *                         depois ~US$ 8/1.000).
+ *   2. BRAVE_SEARCH_API_KEY — índice próprio (~US$ 4–5/1.000; o plano
+ *                         gratuito de 2.000/mês saiu para contas novas em
+ *                         fev/2026 — hoje entra US$ 5 de crédito mensal).
+ *   3. SERPER_API_KEY   — resultados do Google, 2.500 grátis na entrada e
+ *                         US$ 0,30–1,00/1.000 depois. É o mais barato.
+ *
+ * A vantagem do Tavily (conteúdo já extraído) rende pouco AQUI: o
+ * `normalizarResultados` corta o trecho em 800 caracteres de qualquer
+ * jeito, e quem lê a página inteira é o `web_abrir`. Por isso o barato
+ * não sai caro nesta arquitetura.
  *
  * Sem nenhuma chave a tool NÃO devolve lista vazia: diz que a busca não
  * está configurada e qual variável criar. Vazio silencioso seria lido
@@ -115,9 +124,10 @@ export async function buscarNaWeb(
       naoConfigurado: true,
       motivo:
         "A busca na web ainda não está configurada nesta instalação. Um administrador precisa criar " +
-        "uma das variáveis no Vercel: TAVILY_API_KEY (recomendada, 1.000 buscas/mês grátis), " +
-        "BRAVE_SEARCH_API_KEY (2.000/mês) ou SERPER_API_KEY. Diga isso ao usuário — a ferramenta de " +
-        "abrir página (web_abrir) continua funcionando com uma URL conhecida.",
+        "uma das variáveis no Vercel: SERPER_API_KEY (recomendada — resultados do Google, 2.500 " +
+        "buscas grátis na entrada e a partir de US$ 0,30/1.000), TAVILY_API_KEY (1.000/mês grátis) " +
+        "ou BRAVE_SEARCH_API_KEY. Diga isso ao usuário — a ferramenta de abrir página (web_abrir) " +
+        "continua funcionando com uma URL conhecida.",
     }
   }
 
