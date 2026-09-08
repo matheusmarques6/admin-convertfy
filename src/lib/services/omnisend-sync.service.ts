@@ -37,6 +37,7 @@ import {
 } from "@/lib/integrations/omnisend/client"
 import { ehFusoValido } from "@/lib/integrations/omnisend/timezone"
 import { isStoreCurrency } from "@/lib/constants/currencies"
+import { COUNTRY_TIMEZONE } from "@/lib/constants/onboarding"
 
 const log = logger.child("OmnisendSync")
 
@@ -1514,33 +1515,6 @@ export async function syncOmnisendForStore(params: {
   }
 }
 
-// País (ISO-2, client_stores.country) -> IANA timezone. Usado pra alinhar a
-// janela do sync ao painel do Omnisend, que agrega em 00:00 do fuso da loja
-// (nao 00:00 UTC). Sem isso, a fronteira da janela captura pedidos de mais/
-// menos (~1% no total da loja). Default America/Sao_Paulo (maioria e BR).
-const COUNTRY_TIMEZONE: Record<string, string> = {
-  BR: "America/Sao_Paulo",
-  US: "America/New_York",
-  PT: "Europe/Lisbon",
-  ES: "Europe/Madrid",
-  IT: "Europe/Rome",
-  FR: "Europe/Paris",
-  DE: "Europe/Berlin",
-  GB: "Europe/London",
-  UK: "Europe/London",
-  IE: "Europe/Dublin",
-  NL: "Europe/Amsterdam",
-  BE: "Europe/Brussels",
-  CH: "Europe/Zurich",
-  AT: "Europe/Vienna",
-  AR: "America/Argentina/Buenos_Aires",
-  MX: "America/Mexico_City",
-  CL: "America/Santiago",
-  CO: "America/Bogota",
-  PE: "America/Lima",
-  UY: "America/Montevideo",
-  PY: "America/Asuncion",
-}
 
 /**
  * IANA timezone da loja para cortar a janela do sync.

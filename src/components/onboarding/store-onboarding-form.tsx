@@ -21,10 +21,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { COUNTRIES_BY_REGION } from "@/lib/constants/onboarding"
 import { toast } from "@/lib/hooks/use-toast"
 
 interface StoreOnboardingFormProps {
@@ -53,13 +56,6 @@ const SHIPPING_TYPES = [
   { value: "free", label: "Frete Grátis" },
   { value: "fixed", label: "Frete Fixo" },
   { value: "custom", label: "Personalizado" },
-]
-
-const COUNTRIES = [
-  { value: "BR", label: "Brasil" },
-  { value: "PT", label: "Portugal" },
-  { value: "US", label: "Estados Unidos" },
-  { value: "OTHER", label: "Outro" },
 ]
 
 const LANGUAGES = [
@@ -443,8 +439,16 @@ export function StoreOnboardingForm({
                 <Select value={formData.country} onValueChange={(v) => updateField("country", v)}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {COUNTRIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    {/* Lista CANÔNICA (era uma cópia local com 4 países):
+                        loja polonesa ou dinamarquesa não tinha o que
+                        escolher e caía em "Outro". */}
+                    {COUNTRIES_BY_REGION.map((g) => (
+                      <SelectGroup key={g.regiao}>
+                        <SelectLabel>{g.regiao}</SelectLabel>
+                        {g.paises.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>

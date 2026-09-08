@@ -31,7 +31,7 @@ import { StoreMcpPanel } from "@/components/stores/store-mcp-panel"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { useStoreBasics } from "@/lib/hooks/use-store-overview"
-import { PLATFORMS, COUNTRIES } from "@/lib/constants/onboarding"
+import { PLATFORMS, countryLabel } from "@/lib/constants/onboarding"
 import { currencySymbol } from "@/lib/constants/currencies"
 import { timezoneLabel } from "@/lib/constants/timezones"
 import { languageCodeToLabel } from "@/lib/i18n/store-language"
@@ -66,7 +66,7 @@ export function TabSetup({ storeId }: { storeId: string }) {
   const data = (overview?.store ?? {}) as SetupData
   const [edit, setEdit] = useState<"loja" | "contrato" | null>(null)
   const platformLabel = PLATFORMS.find((p) => p.value === data.platform)?.label ?? data.platform
-  const countryLabel = COUNTRIES.find((c) => c.value === data.country)?.label ?? data.country
+  const paisLabel = countryLabel(data.country)
   const languageLabel = languageCodeToLabel(data.language) ?? data.language
   // Enquanto a ficha não chegou, o dialog abriria com todos os campos em
   // branco e o operador editaria contra um estado que não é o do banco.
@@ -201,7 +201,7 @@ export function TabSetup({ storeId }: { storeId: string }) {
           <KV label="Nome" value={data.store_name ?? "—"} mute={!data.store_name} loading={carregando} />
           <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} loading={carregando} />
           <KV label="Plataforma" value={platformLabel ?? "—"} mute={!data.platform} loading={carregando} />
-          <KV label="País" value={countryLabel ?? "—"} mute={!data.country} loading={carregando} />
+          <KV label="País" value={paisLabel ?? "—"} mute={!data.country} loading={carregando} />
           <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} loading={carregando} />
           <KV
             label="Moeda"

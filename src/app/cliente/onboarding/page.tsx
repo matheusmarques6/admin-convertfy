@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
 import Image from "next/image"
@@ -15,7 +15,7 @@ import { Icon } from "@/components/ui/icon"
 import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
 import { CpfCnpjInput } from "@/components/ui/cpf-cnpj-input"
 import { OnboardingStepper } from "@/components/onboarding/stepper"
-import { PLATFORMS, COUNTRIES, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES, SHOPIFY_SCOPES } from "@/lib/constants/onboarding"
+import { PLATFORMS, COUNTRIES, COUNTRIES_BY_REGION, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES, SHOPIFY_SCOPES } from "@/lib/constants/onboarding"
 
 // ── Step identity system ──
 
@@ -475,8 +475,14 @@ export default function PublicOnboardingPage() {
                   <Select value={formData.country} onValueChange={(v) => updateField("country", v)}>
                     <SelectTrigger><SelectValue placeholder="Selecione o pais" /></SelectTrigger>
                     <SelectContent>
-                      {COUNTRIES.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      {/* Agrupado por região — a lista tem ~50 países. */}
+                      {COUNTRIES_BY_REGION.map((g) => (
+                        <SelectGroup key={g.regiao}>
+                          <SelectLabel>{g.regiao}</SelectLabel>
+                          {g.paises.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
