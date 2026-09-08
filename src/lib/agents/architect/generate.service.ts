@@ -31,6 +31,8 @@ import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
+import { contextoDaExecucao } from "../execucao/execution.service"
+import { gateFor } from "../execucao/overrides"
 import { ALVO_AUSENTE_CURADOR, alvoParaMedicao, renderAlvo } from "../objecoes/alvo-render"
 import { loadObjectionTarget } from "../objecoes/seletor.service"
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
@@ -113,6 +115,51 @@ export async function generateBlueprintAndReference(
     return { referenceSource: "global" }
   }
 
+  // Resolve o EMAIL desta geração. A fase 1 opera por (loja × flow × número),
+  // mas as runs precisam do email_id/flow_id — sem eles a telemetria fica
+  // invisível na UI (a aba Execuções resolve runs POR EMAIL, e os 4 agentes
+  // daqui gravavam 100% com email_id NULL → nós "pulado" à toa e tela vazia
+  // durante a janela do n8n). Best-effort: loja sem o email seedado segue
+  // com null, comportamento antigo — telemetria nunca bloqueia geração.
+  const { data: emailRows } = await admin
+    .from("email_flow_emails")
+    .select("id, flow_id, flow:email_flows!inner(store_id, flow_type)")
+    .eq("flow.store_id", input.storeId)
+    .eq("flow.flow_type", input.flowType)
+    .eq("number", input.emailNumber)
+    .limit(1)
+  const emailRow = (emailRows?.[0] ?? null) as
+    | { id: string; flow_id: string }
+    | null
+  const emailId = emailRow?.id ?? null
+  const flowId = emailRow?.flow_id ?? null
+
+  // ── Overrides desta execução (migration 20261129) ──────────────────
+  //
+  // Sem execução manual viva o contexto é `producao` e todo gate abaixo é
+  // neutro: ligar a feature não muda o caminho de produção.
+  const execucao = await contextoDaExecucao(emailId)
+  const gate = (node: string) => gateFor(node, execucao.overrides, execucao.mode)
+
+  // Fase 1 PINADA = "a referência gravada serve".
+  //
+  // É o que faz "rodar só a Tipografia" custar a Tipografia em vez dos
+  // ~220s da fase 1: o atalho `overridesSoEsteNo` pina todos os nós
+  // anteriores, e aqui isso curto-circuita a regeração MESMO com
+  // `force=true` — o botão de teste manda force para não reusar, e o pin é
+  // mais específico do que o botão. A rota que cria a execução já conferiu
+  // que a referência e o blueprint existem (`verificarPins`), então isto
+  // não é aposta.
+  if (gate("assembler_chooser").pinned && gate("blueprint").pinned) {
+    log.info("architect.fase1_pinada", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      executionId: execucao.executionId,
+    })
+    return { referenceSource: "store" }
+  }
+
   // Parâmetros globais do pipeline (aba Configurações). Lidos ANTES do guard
   // de reuso porque o modo do Estruturador muda a decisão de reusar: em 'on'
   // a estrutura é regerada a cada geração (decisão 6 do ADR
@@ -152,7 +199,12 @@ export async function generateBlueprintAndReference(
   // linha (`consumido=true`), fire-and-forget. Sem alvo, os agentes
   // recebem ausência declarada e voltam ao comportamento anterior.
   let alvo: AlvoDoEmail | null = null
-  if (seletorMode === "on") {
+  // Seletor desativado NESTA execução: o alvo não desce, e Estruturador e
+  // Curador recebem ausência declarada (`alvo-render.ts`) — exatamente o
+  // que acontece com `seletor_mode='off'`. É a degradação que a régua
+  // promete em DEGRADACAO.seletor.
+  const seletorLigado = seletorMode === "on" && !gate("seletor").disabled
+  if (seletorLigado) {
     try {
       const target = await loadObjectionTarget(input.storeId, input.flowType, input.emailNumber)
       if (target) {
@@ -215,24 +267,6 @@ export async function generateBlueprintAndReference(
     }
   }
 
-  // Resolve o EMAIL desta geração. A fase 1 opera por (loja × flow × número),
-  // mas as runs precisam do email_id/flow_id — sem eles a telemetria fica
-  // invisível na UI (a aba Execuções resolve runs POR EMAIL, e os 4 agentes
-  // daqui gravavam 100% com email_id NULL → nós "pulado" à toa e tela vazia
-  // durante a janela do n8n). Best-effort: loja sem o email seedado segue
-  // com null, comportamento antigo — telemetria nunca bloqueia geração.
-  const { data: emailRows } = await admin
-    .from("email_flow_emails")
-    .select("id, flow_id, flow:email_flows!inner(store_id, flow_type)")
-    .eq("flow.store_id", input.storeId)
-    .eq("flow.flow_type", input.flowType)
-    .eq("number", input.emailNumber)
-    .limit(1)
-  const emailRow = (emailRows?.[0] ?? null) as
-    | { id: string; flow_id: string }
-    | null
-  const emailId = emailRow?.id ?? null
-  const flowId = emailRow?.flow_id ?? null
 
   const [storeRes, briefingRes, productsRes, outlineRes, refTemplateHtml, brandRes, intentsRes, blocosGlobais] = await Promise.all([
     admin
@@ -406,7 +440,9 @@ export async function generateBlueprintAndReference(
   // estrutura é a do outline e a marca precisa dizer isso.
   let estruturadorStatus: EstruturadorStatus =
     estruturadorMode === "on" ? "falhou" : "desligado"
-  if (estruturadorMode === "off") {
+  const estruturadorDesligado =
+    estruturadorMode === "off" || gate("estruturador").disabled
+  if (estruturadorDesligado) {
     // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
     // nas telas (mapa e aba Teste): sem run nenhuma, a linha dele fica
     // "pendente" para sempre e parece travada — quando a verdade é que o

@@ -50,6 +50,24 @@ export type AgentExecutionRun = ExecutionAgentRun & {
   created_at: string
 }
 
+/**
+ * A execução MANUAL viva deste e-mail, quando há uma (migration 20261129).
+ *
+ * Fica no payload da listagem porque é a mesma pergunta que o operador faz
+ * olhando o canvas: "esta peça está sob teste, e o que foi mexido nela?".
+ * Produção não tem linha de execução por decisão — ver
+ * `agents/execucao/execution.service.ts`.
+ */
+export interface ExecucaoManualResumo {
+  id: string
+  status: "running" | "paused"
+  /** Onde parou, quando o `stop_after` pegou. */
+  stopped_at_node: string | null
+  /** `{disabled, pinned, stop_after, start_from}` — contrato em overrides.ts. */
+  overrides: Record<string, unknown>
+  started_at: string
+}
+
 export interface AgentExecution {
   email_id: string
   email_name: string
@@ -67,6 +85,8 @@ export interface AgentExecution {
   flow_type_label: string
   cost_cents: number
   runs: AgentExecutionRun[]
+  /** Execução manual viva, se houver. */
+  manual: ExecucaoManualResumo | null
 }
 
 export interface AgentExecutionsPayload {

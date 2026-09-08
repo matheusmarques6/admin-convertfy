@@ -154,6 +154,15 @@ import {
   extractHeroBySentinels,
 } from "./html/hero-locator"
 import {
+  contextoDaExecucao,
+  pausarExecucao,
+} from "./execucao/execution.service"
+import {
+  deveParar,
+  gateFor,
+  resumirOverrides,
+} from "./execucao/overrides"
+import {
   graftHeroVariant,
   normalizeFonts,
   type GraftStatus,
@@ -2282,6 +2291,13 @@ async function runFormattingChain(p: {
     }
   | { status: "failed" }
   | { status: "out_of_budget" }
+  /**
+   * A execução manual parou onde o operador pediu (`stop_after`). O e-mail
+   * fica em `rendering` com o estágio persistido — igual ao
+   * `out_of_budget` —, mas a execução está `paused` e o watchdog não pode
+   * re-entrar.
+   */
+  | { status: "paused"; node: string }
 > {
   const admin = createAdminClient()
   const {
@@ -2295,7 +2311,41 @@ async function runFormattingChain(p: {
     routeT0,
     budgetMs,
   } = p
-  const ids = { storeId, flowId, emailId, triggeredBy, batchId }
+  // Execução MANUAL viva deste e-mail, se houver. Sem ela o contexto é
+  // `producao` e todo gate abaixo é neutro — ligar overrides não muda
+  // nada no caminho de produção, por construção.
+  const execucao = await contextoDaExecucao(emailId)
+  const ids = {
+    storeId,
+    flowId,
+    emailId,
+    triggeredBy,
+    batchId,
+    executionId: execucao.executionId,
+  }
+
+  /**
+   * O toggle GLOBAL da aba Editor combinado com o override DESTA execução.
+   *
+   * Os dois desligam o mesmo step, mas por motivos diferentes, e o motivo
+   * vai para a run: "agent_disabled" é decisão de configuração,
+   * "pinado nesta execução" é decisão de quem está testando. Sem a
+   * distinção, um pin apareceria no log como se alguém tivesse desligado o
+   * agente para todo mundo.
+   */
+  const gateDoStep = (
+    node: FormatAgent,
+    config: Parameters<typeof resolveAgentSwitch>[0],
+  ) => {
+    const global = resolveAgentSwitch(config)
+    const ov = gateFor(node, execucao.overrides, execucao.mode)
+    return {
+      config: global.config,
+      disabled: global.disabled || ov.disabled,
+      motivo: global.disabled ? "agent_disabled" : ov.motivo,
+      pinned: ov.pinned,
+    }
+  }
 
   /**
    * Marca o email como falho por um motivo qualquer. Extraído do `failStep`
@@ -2368,11 +2418,18 @@ async function runFormattingChain(p: {
   // ── Toggles da aba Agentes ─────────────────────────────────────────
   // Agente DESATIVADO tem o step pulado (run 'skipped', HTML inalterado) —
   // o toggle passa a ser kill-switch de verdade, sem migration nem env.
-  const heroSwitch = resolveAgentSwitch(ctx.heroConfig)
-  const textSwitch = resolveAgentSwitch(ctx.textFormatConfig)
-  const imageFmtSwitch = resolveAgentSwitch(ctx.imageFormatConfig)
-  const colorSwitch = resolveAgentSwitch(ctx.colorFormatConfig)
-  const typographySwitch = resolveAgentSwitch(ctx.typographyConfig)
+  const heroSwitch = gateDoStep("hero_section", ctx.heroConfig)
+  const textSwitch = gateDoStep("text_format", ctx.textFormatConfig)
+  const imageFmtSwitch = gateDoStep("image_format", ctx.imageFormatConfig)
+  const colorSwitch = gateDoStep("color_format", ctx.colorFormatConfig)
+  const typographySwitch = gateDoStep("typography", ctx.typographyConfig)
+  if (execucao.mode === "manual") {
+    log.info("phase2.fmt.execucao_manual", {
+      emailId,
+      executionId: execucao.executionId,
+      overrides: resumirOverrides(execucao.overrides),
+    })
+  }
   const disabledAgents = (
     [
       ["hero_section", heroSwitch],
@@ -2388,22 +2445,43 @@ async function runFormattingChain(p: {
     log.info("phase2.fmt.agents_disabled", { emailId, disabledAgents })
   }
 
-  /** Registra o step pulado por toggle (visível no drill-down dos logs). */
-  const logStepDisabled = async (agent: FormatAgent, html: string) => {
+  /** Registra o step pulado por toggle ou por override desta execução. */
+  const logStepDisabled = async (
+    agent: FormatAgent,
+    html: string,
+    motivo = "agent_disabled",
+  ) => {
     await logGenerationRun({
       ...ids,
       agent,
       status: "skipped",
-      model: "disabled",
+      model: motivo === "agent_disabled" ? "disabled" : "pinado",
       inputVars: { input_html_len: html.length, input_sha8: sha8(html) },
       parsedOutput: {
-        reason: "agent_disabled",
+        reason: motivo,
         output_html_len: html.length,
         output_sha8: sha8(html),
       },
       costCents: 0,
       durationMs: 0,
     }).catch(() => {})
+  }
+
+  /**
+   * A execução para DEPOIS deste nó?
+   *
+   * Devolve `paused`, não `success`: o e-mail fica em `rendering` com o
+   * estágio persistido, exatamente como no `out_of_budget` — a diferença é
+   * que o watchdog NÃO pode re-entrar, senão parar de propósito e sair para
+   * almoçar devolve a execução morta.
+   */
+  const pararAqui = async (node: FormatAgent): Promise<boolean> => {
+    if (!deveParar(node, execucao.overrides, execucao.mode)) return false
+    if (execucao.executionId) {
+      await pausarExecucao(execucao.executionId, node)
+    }
+    log.info("phase2.fmt.pausada_no_no", { emailId, node })
+    return true
   }
 
   // O strip dos marcadores deixou de ser ETAPA da cadeia e virou fronteira
@@ -2759,7 +2837,7 @@ async function runFormattingChain(p: {
     // Desativado: segue com a reference (enxerto incluso, se houve) sem o
     // LLM da hero. Os placeholders da região vão intactos pro merge.
     currentHtml = fmtCtx.referenceHtml
-    await logStepDisabled("hero_section", currentHtml)
+    await logStepDisabled("hero_section", currentHtml, heroSwitch.motivo ?? "agent_disabled")
     await persistStage(currentHtml, "hero")
     stage = "hero"
   }
@@ -3023,6 +3101,8 @@ async function runFormattingChain(p: {
     stage = "hero"
   }
 
+  if (await pararAqui("hero_section")) return { status: "paused", node: "hero_section" }
+
   // ── STEP 2 — FORMATAÇÃO DE TEXTO ───────────────────────────────────
   // Views por bloco do QA (F5) — extraídas ANTES do strip dos marcadores
   // cfy:block. Vazio no resume pós-strip (o QA cai no fallback por content).
@@ -3031,7 +3111,7 @@ async function runFormattingChain(p: {
   // fica como está (o strip final limpa o que sobrou) — nenhum LLM toca o
   // texto.
   if (stage === "hero" && textSwitch.disabled) {
-    await logStepDisabled("text_format", currentHtml)
+    await logStepDisabled("text_format", currentHtml, textSwitch.motivo ?? "agent_disabled")
     await persistStage(currentHtml, "text")
     stage = "text"
   }
@@ -3135,9 +3215,11 @@ async function runFormattingChain(p: {
     stage = "text"
   }
 
+  if (await pararAqui("text_format")) return { status: "paused", node: "text_format" }
+
   // ── STEP 3 — FORMATAÇÃO DE IMAGEM ──────────────────────────────────
   if (stage === "text" && imageFmtSwitch.disabled) {
-    await logStepDisabled("image_format", currentHtml)
+    await logStepDisabled("image_format", currentHtml, imageFmtSwitch.motivo ?? "agent_disabled")
     await persistStage(currentHtml, "image")
     stage = "image"
   }
@@ -3337,6 +3419,8 @@ async function runFormattingChain(p: {
     stage = "image"
   }
 
+  if (await pararAqui("image_format")) return { status: "paused", node: "image_format" }
+
   // ── STEP 3.5 — TIPOGRAFIA (FAIL-OPEN) ──────────────────────────────
   // A copy já está no documento; aqui só se decide ONDE o email rompe a
   // tipografia. O agente não vê o HTML: recebe o INVENTÁRIO das declarações
@@ -3349,7 +3433,7 @@ async function runFormattingChain(p: {
   // hierarquia nenhuma. Base de conhecimento (especialista, 03/09) em
   // docs/email-generation/agente-tipografia.md.
   if (typographySwitch.disabled) {
-    await logStepDisabled("typography", currentHtml)
+    await logStepDisabled("typography", currentHtml, typographySwitch.motivo ?? "agent_disabled")
   } else {
     const inputHtml = currentHtml
     const config = toChainConfig(typographySwitch.config, "typography")
@@ -3504,9 +3588,11 @@ async function runFormattingChain(p: {
     }
   }
 
+  if (await pararAqui("typography")) return { status: "paused", node: "typography" }
+
   // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────
   if (colorSwitch.disabled) {
-    await logStepDisabled("color_format", currentHtml)
+    await logStepDisabled("color_format", currentHtml, colorSwitch.motivo ?? "agent_disabled")
   } else {
     const inputHtml = currentHtml
     const config = toChainConfig(colorSwitch.config, "color_format")
@@ -3707,6 +3793,8 @@ async function runFormattingChain(p: {
     }
   }
 
+  if (await pararAqui("color_format")) return { status: "paused", node: "color_format" }
+
   // ── STEP 5 — FUNDO NO TAMANHO DECLARADO (código; FAIL-OPEN) ────────
   // O fundo de um elemento tem de ter o tamanho que ele declara. A
   // `welcome - hero section 5` põe `background-size:598px 1217px` num td
@@ -3828,7 +3916,7 @@ async function runFormattingChain(p: {
 
 export async function runPhase2HtmlQa(
   params: RunPhase2Params,
-): Promise<{ status: "ready" | "failed" | "skipped" }> {
+): Promise<{ status: "ready" | "failed" | "skipped" | "paused" }> {
   const { storeId, emailId, triggeredBy, relaxedBrandCheck } = params
   const admin = createAdminClient()
   // Relógio da invocação — o Refinador (Step 2.5) pula quando o orçamento
@@ -3929,6 +4017,15 @@ export async function runPhase2HtmlQa(
   if (fmtResult.status === "out_of_budget") {
     log.warn("phase2.html_qa.out_of_budget", { emailId })
     return { status: "skipped" }
+  }
+  // Parada PEDIDA (stop_after de uma execução manual). Não é erro nem
+  // desistência: o HTML do ponto está persistido e a execução ficou
+  // `paused`, esperando quem a disparou. O e-mail segue em `rendering` de
+  // propósito — é o que permite retomar de onde parou — e é o status
+  // `paused` da execução que diz ao watchdog para não varrer.
+  if (fmtResult.status === "paused") {
+    log.info("phase2.html_qa.pausada", { emailId, node: fmtResult.node })
+    return { status: "paused" }
   }
   // O QA e os checks determinísticos julgam o EMAIL, não o andaime: o
   // documento chega da cadeia com os marcadores de bloco (a fronteira de

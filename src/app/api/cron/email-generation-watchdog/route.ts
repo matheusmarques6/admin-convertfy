@@ -66,6 +66,37 @@ const COPY_TIMEOUT_MIN = Number(process.env.WATCHDOG_COPY_TIMEOUT_MIN ?? 15)
 // ≈ 14min mesmo com o budget dinâmico cortando antes), 25min cobre a cadeia
 // inteira com folga e continua pegando fase 2 genuinamente morta.
 const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 25)
+
+/**
+ * E-mails cuja execucao MANUAL esta pausada de proposito (migration
+ * 20261129).
+ *
+ * Nenhum front do watchdog pode toca-los: `stop_after` deixa o e-mail em
+ * `rendering` com o estagio persistido — do lado de fora e indistinguivel
+ * de geracao travada, e a distincao esta no status da EXECUCAO, nao no do
+ * e-mail.
+ *
+ * Fail-open com lista VAZIA: sem a migration (ou com o banco fora) o
+ * watchdog volta ao comportamento de sempre. Devolver "tudo pausado" no
+ * erro seria pior — desligaria o watchdog inteiro por causa de uma
+ * ferramenta de teste.
+ */
+async function emailsComExecucaoPausada(): Promise<string[]> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("email_generation_executions")
+      .select("email_id")
+      .eq("mode", "manual")
+      .eq("status", "paused")
+      .limit(200)
+    if (error) throw error
+    return (data ?? []).map((r: { email_id: string }) => r.email_id)
+  } catch (err) {
+    log.warn("watchdog.pausadas_indisponivel", { err })
+    return []
+  }
+}
 const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ?? 3)
 // Bug 2 split: `image_done` e `rendering` sao estados intermediarios.
 // Se ficarem parados alem do threshold, o `after()` que deveria continuar o
@@ -380,9 +411,15 @@ async function timeoutPhase2(): Promise<number> {
     },
   ] as const
 
+  // Execucao manual PAUSADA de proposito nao e geracao travada: o operador
+  // pediu `stop_after` e o e-mail fica em `rendering` com o estagio
+  // persistido, esperando ele. Sem esta excecao, parar no no X e sair para
+  // almocar devolve a execucao marcada failed:timeout_phase2.
+  const pausados = await emailsComExecucaoPausada()
+
   let total = 0
   for (const u of updates) {
-    const { data, error } = await admin
+    let q = admin
       .from("email_flow_emails")
       .update({
         status: "failed",
@@ -392,6 +429,8 @@ async function timeoutPhase2(): Promise<number> {
       })
       .eq("status", u.status)
       .lt(u.column, phase2ThresholdIso)
+    if (pausados.length > 0) q = q.not("id", "in", `(${pausados.join(",")})`)
+    const { data, error } = await q
       .select("id, generation_batch_id")
       .limit(MAX_PHASE2_TIMEOUT_PER_RUN)
 
@@ -758,12 +797,20 @@ async function redispatchStaleImageDone(): Promise<{ dispatched: number }> {
     now - PHASE2_TIMEOUT_MIN * 60_000,
   ).toISOString()
 
-  const { data, error } = await admin
+  // Mesma excecao do Front 3: retomar uma execucao PAUSADA de proposito
+  // desfaria o `stop_after` — o operador voltaria do almoco com a cadeia
+  // andada ate o fim, e sem entender por que.
+  const pausados = await emailsComExecucaoPausada()
+  let listagem = admin
     .from("email_flow_emails")
     .select("id, generation_batch_id")
     .in("status", ["image_done", "rendering"])
     .lt("rendering_started_at", staleThresholdIso)
     .gte("rendering_started_at", timeoutThresholdIso)
+  if (pausados.length > 0) {
+    listagem = listagem.not("id", "in", `(${pausados.join(",")})`)
+  }
+  const { data, error } = await listagem
     .order("rendering_started_at", { ascending: true })
     .limit(MAX_PHASE2_TIMEOUT_PER_RUN)
 

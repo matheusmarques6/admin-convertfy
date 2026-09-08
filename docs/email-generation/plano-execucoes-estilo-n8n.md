@@ -136,65 +136,135 @@ olha a lista é "isto está vivo?", não "quero atualizar?". O que ele
 protegia — a lista se mexer embaixo do que se está lendo — virou **seleção
 explícita** no primeiro carregamento, não congelamento do dado.
 
-### 5.2 — Execução como entidade ⬜ PENDENTE
+### 5.2 — Execução como entidade ✅ ENTREGUE (migration 20261129)
 
-`email_generation_executions` (id, email_id, batch_id, `mode`
-manual|producao, `triggered_by`, snapshot dos modos e dos
-`agent_config_id`, status, custo, `paused_at`, `stop_after`) +
-`email_generation_runs.execution_id`. A lista da esquerda passa a ser de
-execuções, não de e-mails, e §3.1 deixa de existir.
+`email_generation_executions` (store, flow, email, batch, `mode`
+manual|producao, `triggered_by`, `overrides`, `config_snapshot`, status,
+`stopped_at_node`, timestamps) + `email_generation_runs.execution_id`
+(nullable — as ~40 mil runs anteriores não têm execução, e inventar uma
+seria fabricar histórico).
 
-O snapshot dos `agent_config_id` é o que permite o marcador de **sujo** do
-n8n: run cujo `agent_config_id` difere da config ativa hoje é uma saída que
-não representa mais o prompt em vigor.
+**Só o modo MANUAL grava linha, e isso é decisão, não atalho.** Produção não
+pode ter override por construção (`gateFor` devolve gate neutro em
+`mode='producao'`, sempre), então a linha seria telemetria pura — e a de
+produção já existe (runs, status do e-mail, batch). O custo de gravá-la é
+real: uma execução de produção atravessa cron → n8n → webhook → rota de
+fase 2, e teria de ser FECHADA em cinco saídas (sucesso, erro, watchdog,
+cobertura insuficiente, budget estourado). Linha `running` órfã é o estado
+zumbi que este repo já pagou caro. Aqui a única linha viva é a que um humano
+criou e um humano vê.
 
-### 5.3 — Overrides por execução ⬜ PENDENTE
+**Consequência declarada:** a lista da esquerda continua agrupando produção
+por e-mail (§3.1 segue valendo para o histórico de produção). O que ela
+ganhou é o selo da execução manual viva, o que ela mudou, e o botão de
+cancelar.
 
-`overrides` na execução: `{ disabled: [...], pinned: {...}, stop_after }`.
-Os pontos de leitura já existem (`resolveAgentSwitch`, `*_mode` de
-`email_generation_settings`) e passam a ler *override-da-execução →
-global*, com override **ignorado** quando `mode='producao'`.
+Invariantes no banco: índice único parcial `uniq_ege_manual_viva` (uma
+execução manual viva por e-mail — duas pessoas testando o mesmo e-mail com
+overrides diferentes produziriam um HTML que não corresponde a nenhuma das
+duas, então o segundo disparo toma 409), trigger de `updated_at` com
+`clock_timestamp()` (não `now()`, que é o início da transação), RPC
+`email_execution_manual_viva` com predicados LITERAIS, e RLS `TO
+authenticated` com escopo por org — a tabela nasce fechada em vez de nascer
+com o débito das irmãs (`email_generation_runs` ainda é
+`TO authenticated USING (true)`).
 
-**A régua de degradação, por nó.** Desativar um step que reescreve HTML é
-trivial: segue o HTML do step anterior (é o que o `resolveAgentSwitch` já
-faz). Desativar um nó da fase 1 não tem "passa adiante", e a decisão é
-**recusar o disparo antes de gastar**, dizendo o que falta:
+### 5.3 — Overrides por execução ✅ ENTREGUE
 
-| Nó desativado | Sem pin da saída |
-|---|---|
-| Seletor | Roda: sem alvo, todos recebem ausência declarada (`alvo-render.ts`) |
-| Estruturador | Roda: a sequência volta a ser a da aba Arquitetura |
-| Curador | **Recusa** — sem variante não há montagem, e `coberturaSuficiente` apaga a referência |
-| Montador | Roda: já é `off` por padrão (migration 20261107) |
-| Blueprint | **Recusa** — sem `fields[]` a copy não tem endereço e o merge ancora zero |
-| Copy (n8n) | **Recusa** — sem copy os placeholders chegam crus ao e-mail |
-| Steps de HTML | Roda: segue o HTML anterior |
-| QA / QA Vision | Roda: e-mail sai sem o selo de qualidade |
+`{disabled, pinned, stop_after, start_from}` no `overrides` da execução.
+Régua e gate no módulo PURO `agents/execucao/overrides.ts`, usado pela TELA
+e pelo SERVIDOR: a tela explica antes de gastar, o servidor garante que
+ninguém contorna por `curl`.
 
-A recusa é a lição do incidente 07/09: a premissa "cai no template global,
-que tem hero" é **falsa** (o global do welcome-1 tem 21.314 chars, zero
-placeholders e nenhum marcador `cfy:hero`), então deixar rodar para
-descobrir custa a fase 1 inteira e termina em `hero_failed` garantido.
+**A linha dura vive numa função:** `gateFor(node, overrides, mode)` devolve
+gate NEUTRO quando `mode !== 'manual'`. Não consulta intenção, consulta
+modo — vale para override gravado por engano, por corrida ou por um `curl`
+com o modo errado.
 
-### 5.4 — Pin e execução parcial ⬜ PENDENTE
+**A régua de degradação por nó** (`DEGRADACAO`) tem três valores:
+`passa_adiante` (o step seguinte usa a entrada — o que o
+`resolveAgentSwitch` já fazia), `roda_degradado` (segue com menos, e o
+motivo diz o quê) e `recusa`. As quatro recusas são Curador, Blueprint,
+Copy e Dispatch: a premissa "cai no template global, que tem hero" é FALSA
+(o global do welcome-1 tem 21.314 chars, zero placeholders e nenhum
+marcador `cfy:hero`), então deixar rodar para descobrir custa a fase 1
+inteira e termina em `hero_failed` de qualquer jeito. Um teste garante que
+**todo** nó do grafo tem degradação declarada — nó novo sem entrada reprova
+em vez de aparecer na tela sem explicação.
 
-Pin = copiar `parsed_output`/`raw_output` de uma run para o override da
-próxima execução manual. Escopo v1: **pipeline inteiro**, fase 1 incluída —
-é o que elimina os ~220s de qualquer teste e o que torna possível desativar
-um nó da fase 1.
+**Pin destrava a recusa**, e é a única coisa que destrava: desativar o
+Curador é lacuna; pinar o Curador é dizer "a referência gravada serve".
 
-Os três modos: `stop_after: X` (roda e para), "rodar só X" (tudo antes
-pinado + `stop_after: X`), "retomar de X" (parte do estado que já existe).
+Onde os gates entram: fase 2 no `runFormattingChain` (combinados com o
+toggle global do Editor — e o motivo vai para a run, `agent_disabled` ×
+`pinado`, senão um pin apareceria no log como se alguém tivesse desligado o
+agente para todo mundo); fase 1 no `generateBlueprintAndReference` (Seletor,
+Estruturador e o curto-circuito de fase 1 pinada, que é o que faz "rodar só
+a Tipografia" custar a Tipografia em vez de ~220s).
 
-**O watchdog precisa mudar junto.** Ele hoje varre geração parada em
-`rendering`/`qa_running` e marca `failed`. Execução manual **pausada de
-propósito** não pode ser varrida — senão você para no nó X, sai para
-almoçar e volta com a execução morta.
+### 5.4 — Pin e execução parcial ✅ ENTREGUE
+
+**Pin = "não execute; a saída gravada vale".** Para a fase 1 é o artefato
+persistido (`store_email_references`, `store_email_blueprints`); para a copy
+é o conteúdo de `email_blocks`; para os steps de HTML é o HTML do estágio.
+Repor o `parsed_output` de uma run ARBITRÁRIA (o "edit output data" do n8n)
+ficou de fora: exigiria escrever de volta nos artefatos, e escrever artefato
+a partir de run velha é como se inventa divergência entre o que a tela
+mostra e o que o pipeline leu.
+
+**Pin sem artefato é tão fatal quanto desativar sem pin,** e a régua pura
+não pode ver isso — ela sabe que "pinar o Blueprint" declara que o blueprint
+existe, mas não pode conferir. Daí a segunda régua, com I/O
+(`verificarPins`): pinar referência, blueprint ou copy que não existem é
+recusado; `start_from` sem HTML persistido também, porque a cadeia trata
+"estágio sem HTML" como estado inconsistente e RECOMEÇA do zero — o pedido
+seria ignorado em silêncio.
+
+Os três modos: `stop_after` (roda e para), "rodar só X"
+(`overridesSoEsteNo`: pina tudo antes + `stop_after` + `start_from`) e
+"retomar de X" (`start_from` traduzido para `html_pipeline_stage`, o resume
+que a cadeia já tinha). Um teste garante que o atalho **nunca** produz
+override que o servidor recusa — senão o botão existiria para falhar.
+
+**O watchdog aprendeu a respeitar a pausa.** `stop_after` deixa o e-mail em
+`rendering` com o estágio persistido: de fora é indistinguível de geração
+travada, e a distinção está no status da EXECUÇÃO. Os dois fronts que
+tocavam esses e-mails (o sweep de `timeout_phase2` e a retomada in-process)
+agora excluem os pausados — sem isso, parar no nó X e sair para almoçar
+devolvia a execução `failed:timeout_phase2`. Fail-open com lista vazia:
+sem a migration o watchdog volta ao comportamento de sempre.
+
+**Na tela:** o painel do nó ganhou "Nesta execução" (Desativar · Pinar ·
+Parar aqui · Rodar só este), o rascunho pinta no canvas quem não vai rodar
+ANTES do disparo (reusa o status `pulado` em vez de inventar um sexto), e a
+barra de disparo mostra o resumo e as recusas nó a nó — com o botão
+desabilitado enquanto houver recusa. Desativar e pinar são exclusivos na
+tela: os dois impedem o nó de rodar, e mostrar os dois selos faria o
+operador não saber qual valeu.
+
+**Duas chamadas no disparo, de propósito:** `POST
+/api/admin/agents/executions/manual` grava a execução e o estágio de
+retomada, e devolve qual disparo fazer; o disparo é o que JÁ EXISTE
+(`generate-email`, com fase 1 síncrona, split interno da fase 2 e fallback
+sem `INTERNAL_SECRET`). Reimplementá-lo criaria um segundo caminho que
+divergiria do primeiro na primeira mudança. O runner encontra a execução
+sozinho pelo `email_id` — nenhum parâmetro novo atravessa as três fronteiras
+de processo.
 
 ## 6. Fora de escopo, declarado
 
 - Editar o pipeline no canvas (reordenar steps, tirar agente do fluxo). O
   pipeline é **código** — a ordem está no `phase2-runner`, não em dado.
-- Pin editável à mão (o "edit output data" do n8n) — v2.
+- Pin editável à mão e pin de run ARBITRÁRIA (o "edit output data" do n8n).
 - Pin/desativação por **slot** do agente de imagem (ele agrega ~16 runs).
 - Separar "gasto com teste" de "gasto com cliente" nos painéis de custo.
+- Linha de execução para o modo **produção** (e, com ela, a lista da
+  esquerda keyed por execução em vez de por e-mail) — ver §5.2.
+- Marcador de **nó sujo** do n8n: o `config_snapshot` já guarda o
+  `agent_config_id` por agente, então o dado existe; falta a tela comparar
+  com a config ativa e marcar a run cuja saída não representa mais o prompt
+  em vigor.
+- `start_from` com granularidade maior que os três degraus de
+  `html_pipeline_stage`: retomar da Tipografia e retomar das Cores caem no
+  mesmo ponto ('image'), e isso está documentado em `ESTAGIO_ANTES` em vez
+  de fingido.

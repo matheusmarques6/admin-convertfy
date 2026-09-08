@@ -25,13 +25,17 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { flowTypeLabel, type PipelineAgentKey } from "@/lib/agents/agent-visual"
+import { logger } from "@/lib/logger"
 import {
   EM_VOO,
   type AgentExecution,
+  type ExecucaoManualResumo,
   type ExecutionBucket,
 } from "@/types/agent-executions"
 
 /** Status terminais de sucesso — `approved`/`live` são do epic Klaviyo. */
+const log = logger.child("AgentExecucoes")
+
 const SUCCESS_STATUSES = ["ready", "approved", "live"] as const
 const ERROR_STATUSES = ["failed"] as const
 
@@ -150,12 +154,47 @@ export async function fetchAgentExecutions(
   const emails = (data ?? []) as unknown as EmailRow[]
   if (emails.length === 0) return []
 
+  const emailIdsResolvidos = emails.map((e) => e.id)
+
   const runsByEmail = new Map<string, LatestRunRow[]>()
   const { data: runData, error: runErr } = await admin.rpc(
     "agent_studio_latest_runs",
-    { p_email_ids: emails.map((e) => e.id) },
+    { p_email_ids: emailIdsResolvidos },
   )
   if (runErr) throw runErr
+
+  // Execuções manuais vivas destes e-mails. Uma query para o lote (o
+  // índice parcial `uniq_ege_manual_viva` garante no máximo uma por
+  // e-mail), e fail-open: sem a migration 20261129 a coluna `manual` sai
+  // null e a aba funciona como antes.
+  const manualPorEmail = new Map<string, ExecucaoManualResumo>()
+  try {
+    const { data: manuais, error: manualErr } = await admin
+      .from("email_generation_executions")
+      .select("id, email_id, status, stopped_at_node, overrides, started_at")
+      .eq("mode", "manual")
+      .in("status", ["running", "paused"])
+      .in("email_id", emailIdsResolvidos)
+    if (manualErr) throw manualErr
+    for (const m of (manuais ?? []) as Array<{
+      id: string
+      email_id: string
+      status: string
+      stopped_at_node: string | null
+      overrides: Record<string, unknown> | null
+      started_at: string
+    }>) {
+      manualPorEmail.set(m.email_id, {
+        id: m.id,
+        status: m.status === "paused" ? "paused" : "running",
+        stopped_at_node: m.stopped_at_node,
+        overrides: m.overrides ?? {},
+        started_at: m.started_at,
+      })
+    }
+  } catch (err) {
+    log.warn("execucoes.manuais_indisponiveis", { err })
+  }
   for (const r of (runData ?? []) as LatestRunRow[]) {
     const list = runsByEmail.get(r.email_id) ?? []
     list.push(r)
@@ -194,6 +233,7 @@ export async function fetchAgentExecutions(
       flow_type_label: flowTypeLabel(e.flow?.flow_type),
       cost_cents: runs.reduce((s, r) => s + (r.cost_cents ?? 0), 0),
       runs,
+      manual: manualPorEmail.get(e.id) ?? null,
     } satisfies AgentExecution
   })
 

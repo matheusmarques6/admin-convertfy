@@ -86,6 +86,10 @@ import {
   __buildUserMessageForTest as buildUserMessage,
   __extractUsageForTest as extractUsage,
 } from "./image.chain"
+import {
+  IMAGE_MODEL_PRIMARIO,
+  IMAGE_MODEL_SECUNDARIO,
+} from "@/lib/agents/image/model-policy"
 
 describe("generateEmailImage — resize via sharp", () => {
   beforeEach(() => {
@@ -593,7 +597,11 @@ describe("generateEmailImage — retry em falha transitória", () => {
     const err = await generateEmailImage("prompt", "store-1").catch(
       (e: unknown) => e,
     )
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 2 no primário (tentativa + retry) + 1 no fallback de MODELO: corpo
+    // vazio é falha de provedor, então antes de desistir a chain tenta o
+    // outro modelo. O fallback é UMA tentativa só — o primário já gastou
+    // as dele, e o que falta aqui é outro modelo, não mais insistência.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(String(err)).toContain("empty body")
     expect(String(err)).toContain("status=200")
     // a mensagem NÃO termina no antigo snippet vazio
@@ -940,6 +948,10 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
       tokensOutput: 9,
       costCents: 4.12, // 0.0412 USD → centavos
       refsSent: refs,
+      // Qual modelo REALMENTE gerou. Sem este campo a telemetria diria
+      // "gpt-5.4-image-2" numa imagem feita pelo Gemini quando o fallback
+      // de provedor agisse, e comparar os dois viraria ficção.
+      modelUsed: IMAGE_MODEL_PRIMARIO,
     })
   })
 
@@ -1014,6 +1026,7 @@ describe("generateEmailImage — onMeta (instrumentação opt-in)", () => {
       tokensOutput: 9,
       costCents: 4.12, // 0.0412 USD → centavos
       refsSent: [],
+      modelUsed: IMAGE_MODEL_PRIMARIO,
     })
     // body legacy (string content)
     const [, init] = fetchMock.mock.calls[0]
@@ -1158,5 +1171,87 @@ describe("generateEmailImage — REGRESSÃO caminho de email (single ref, sem on
         ],
       },
     ])
+  })
+})
+
+describe("generateEmailImage — fallback de modelo (GPT Image 2 → Gemini)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.OPENROUTER_API_KEY = "test-key"
+    sharpToBufferMock.mockResolvedValue(Buffer.from("resized"))
+    uploadMock.mockResolvedValue({ data: { path: "p" }, error: null })
+    getPublicUrlMock.mockReturnValue({ data: { publicUrl: "https://cdn/img.png" } })
+    createSignedUrlMock.mockResolvedValue({ data: { signedUrl: "https://cdn/img.png" }, error: null })
+  })
+
+  /** Corpo degenerado em whitespace: 200 OK e nenhuma imagem — o defeito
+   *  do gpt-5.4-image-2 que fez o email da Luxe Lift sair sem hero. */
+  const corpoDeLoopDeWhitespace = () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => "application/json" },
+    text: async () => " ".repeat(5000),
+  } as unknown as Response)
+
+  const corpoComImagem = () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ message: { content: `data:image/png;base64,${TINY_PNG_B64}` } }],
+    }),
+  } as unknown as Response)
+
+  function modelosChamados(fetchMock: ReturnType<typeof vi.fn>): string[] {
+    return fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse((init as RequestInit).body as string).model as string,
+    )
+  }
+
+  it("loop de whitespace no primário → gera pelo Gemini em vez de devolver nada", async () => {
+    // O caso que motivou a arquitetura: antes, o bloco ficava sem imagem e
+    // o agente de hero removia a linha inteira.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(corpoDeLoopDeWhitespace())
+      .mockResolvedValueOnce(corpoDeLoopDeWhitespace())
+      .mockResolvedValue(corpoComImagem())
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const onMeta = vi.fn()
+    const url = await generateEmailImage("P", "store-1", { onMeta })
+
+    expect(url).toBe("https://cdn/img.png")
+    const usados = modelosChamados(fetchMock)
+    expect(usados[0]).toBe(IMAGE_MODEL_PRIMARIO)
+    expect(usados[usados.length - 1]).toBe(IMAGE_MODEL_SECUNDARIO)
+    // A telemetria tem de dizer QUEM gerou, não quem foi pedido.
+    expect(onMeta.mock.calls[0][0].modelUsed).toBe(IMAGE_MODEL_SECUNDARIO)
+  })
+
+  it("recusa por política de conteúdo NÃO troca de modelo", async () => {
+    // O segundo recusaria igual, depois de cobrar o tempo — e a mensagem
+    // que explica o motivo real sumiria no caminho.
+    const recusa = {
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      text: async () =>
+        "I can't generate images depicting real people's faces. Please describe a fictional subject instead.",
+    } as unknown as Response
+    const fetchMock = vi.fn().mockResolvedValue(recusa)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(generateEmailImage("P", "store-1")).rejects.toThrow(/real people/i)
+    expect(new Set(modelosChamados(fetchMock))).toEqual(new Set([IMAGE_MODEL_PRIMARIO]))
+  })
+
+  it("o secundário não volta para o primário", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(corpoDeLoopDeWhitespace())
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(
+      generateEmailImage("P", "store-1", { model: IMAGE_MODEL_SECUNDARIO }),
+    ).rejects.toThrow()
+    expect(new Set(modelosChamados(fetchMock))).toEqual(new Set([IMAGE_MODEL_SECUNDARIO]))
   })
 })

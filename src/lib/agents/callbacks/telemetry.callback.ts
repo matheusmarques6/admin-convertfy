@@ -45,6 +45,15 @@ export interface LogGenerationRunParams {
   errorStack?: string
   /** Nº da retentativa (0 = primeira). A UI de logs mostra em "Retries". */
   retryCount?: number
+  /**
+   * Execução MANUAL a que este run pertence (migration 20261129).
+   *
+   * Ausente em produção de propósito: só o modo manual grava linha de
+   * execução (ver `agents/execucao/execution.service.ts`), então a coluna
+   * fica NULL na esmagadora maioria dos runs e a aba segue agrupando
+   * produção por e-mail.
+   */
+  executionId?: string | null
 }
 
 // Preço público por MILHÃO de tokens (USD), com chaves NORMALIZADAS
@@ -148,6 +157,16 @@ function asUuidOrNull(value: string | null | undefined): string | null {
   return value && UUID_RE.test(value) ? value : null
 }
 
+/** 42703 (undefined_column) / PGRST204 falando de `execution_id`. */
+function semColunaDeExecucao(error: {
+  code?: string
+  message?: string
+}): boolean {
+  const code = error.code ?? ""
+  if (code !== "42703" && code !== "PGRST204") return false
+  return (error.message ?? "").includes("execution_id")
+}
+
 /**
  * Persiste um run de geração no banco. Retorna o run_id.
  */
@@ -182,13 +201,32 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     error_message: params.errorMessage ?? null,
     error_stack: params.errorStack ?? null,
     retry_count: params.retryCount ?? 0,
+    execution_id: params.executionId ?? null,
   }
 
-  const { data, error } = await admin
+  let { data, error } = await admin
     .from("email_generation_runs")
     .insert(insert)
     .select("id")
     .single()
+
+  // Coluna `execution_id` ausente (migration 20261129 não aplicada neste
+  // ambiente): retry SEM ela. Sem este degrade, uma coluna que só serve à
+  // execução manual apagaria a telemetria INTEIRA — é o incidente do
+  // `copy_fit` ao contrário: lá o CHECK derrubou o run e a linha de log
+  // dizia só "insert_failed"; aqui seria uma coluna, e o silêncio seria o
+  // mesmo. Telemetria nunca deve depender de feature de teste.
+  if (error && semColunaDeExecucao(error)) {
+    log.warn("telemetry.execution_id_ausente", { agent: params.agent })
+    const { execution_id: _ignorado, ...semExecucao } = insert
+    const retry = await admin
+      .from("email_generation_runs")
+      .insert(semExecucao)
+      .select("id")
+      .single()
+    data = retry.data
+    error = retry.error
+  }
 
   if (error) {
     // 23514 = check_violation. Na prática só há um jeito de cair aqui: o

@@ -200,8 +200,13 @@ export interface ExecutionAgentRun {
 
 export type ExecutionBucket = "success" | "error" | "running"
 
-/** Ordem topológica da linha principal — usada para derivar aguardando/pulado. */
-const MAIN_ORDER = [
+/**
+ * Ordem topológica da linha principal — usada para derivar
+ * aguardando/pulado no canvas e, desde set/2026, para ordenar os overrides
+ * por execução (`agents/execucao/overrides.ts`): "parar depois de X" e
+ * "rodar só X" precisam saber quem vem antes de quem.
+ */
+export const MAIN_ORDER = [
   "trigger",
   "seletor",
   "estruturador",

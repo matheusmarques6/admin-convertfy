@@ -36,6 +36,7 @@ function exec(
     flow_type: "welcome",
     flow_type_label: "Welcome",
     cost_cents: 0,
+    manual: null,
     runs: runs.map((r) => ({
       run_id: `${id}-${r.agent}`,
       agent: r.agent as AgentExecution["runs"][number]["agent"],
