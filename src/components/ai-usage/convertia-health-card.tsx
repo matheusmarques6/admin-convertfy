@@ -18,6 +18,7 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  Globe,
   HelpCircle,
   Loader2,
   RefreshCw,
@@ -37,6 +38,7 @@ interface Saude {
     checadoEm: string
   } | null
   embeddings_configurados: boolean
+  busca_web: { provedor: "tavily" | "brave" | "serper" | null }
   turnos: {
     janela_dias: number
     total: number
@@ -107,11 +109,11 @@ export function ConvertiaHealthCard() {
   const { data, error, mutate } = useSWR<Saude>("/api/ai/convertia/health", fetcher, {
     refreshInterval: 120_000,
   })
-  const [busy, setBusy] = useState<null | "saldo" | "vault">(null)
+  const [busy, setBusy] = useState<null | "saldo" | "vault" | "busca">(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  const acao = async (acaoNome: "checar_saldo" | "sincronizar_vault") => {
-    setBusy(acaoNome === "checar_saldo" ? "saldo" : "vault")
+  const acao = async (acaoNome: "checar_saldo" | "sincronizar_vault" | "testar_busca") => {
+    setBusy(acaoNome === "checar_saldo" ? "saldo" : acaoNome === "testar_busca" ? "busca" : "vault")
     setMsg(null)
     try {
       const r = await fetch("/api/ai/convertia/health", {
@@ -128,6 +130,15 @@ export function ConvertiaHealthCard() {
           s?.status === "error"
             ? `Sync falhou: ${s.error}`
             : `Sync ${s?.status}: ${s?.filesTotal ?? 0} arquivos, ${s?.upserted ?? 0} gravadas, ${s?.embedded ?? 0} vetorizadas.`,
+        )
+      } else if (acaoNome === "testar_busca") {
+        const b = payload.busca as
+          | { ok: true; provedor: string; total: number; amostra: Array<{ titulo: string }> }
+          | { ok: false; motivo: string }
+        setMsg(
+          b.ok
+            ? `Busca OK via ${b.provedor}: ${b.total} resultado(s). 1º — ${b.amostra[0]?.titulo ?? "sem título"}`
+            : `Busca falhou: ${b.motivo}`,
         )
       } else {
         const s = payload.saldo as { situacao?: string; saldoUsd?: number | null; erro?: string | null }
@@ -234,6 +245,44 @@ export function ConvertiaHealthCard() {
             </a>
           </p>
         )}
+      </div>
+
+      {/* ── Busca na internet ─────────────────────────────────────── */}
+      <div className="mt-2 rounded-[6px] border border-slate-100 dark:border-white/[0.06] px-3 py-2.5">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-white/40">
+            Busca na internet
+          </span>
+          {data.busca_web.provedor ? (
+            <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> {data.busca_web.provedor}
+            </span>
+          ) : (
+            <span className="text-[13px] font-semibold text-amber-600 dark:text-amber-400">
+              não configurada
+            </span>
+          )}
+          <button
+            onClick={() => void acao("testar_busca")}
+            disabled={busy !== null}
+            className="inline-flex h-6 items-center gap-1 rounded-[6px] border border-slate-200 dark:border-white/[0.1] px-2 text-[11px] font-medium text-slate-700 dark:text-white/75 disabled:opacity-50"
+          >
+            {busy === "busca" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />}
+            Testar busca
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-500 dark:text-white/50">
+          {data.busca_web.provedor
+            ? // A variável pode existir no Vercel e não ter entrado neste deploy —
+              // por isso o botão faz uma busca DE VERDADE, e não uma checagem de env.
+              "O provedor acima é o que está valendo neste deploy. O teste faz uma busca real (gasta 1 crédito) e mostra o 1º resultado."
+            : "Nenhuma das variáveis está preenchida (SERPER_API_KEY, TAVILY_API_KEY ou BRAVE_SEARCH_API_KEY). O web_abrir — ler uma URL que você colar — funciona mesmo assim."}
+        </p>
+        <p className="mt-1 text-[11px] text-slate-400 dark:text-white/40">
+          O conector &ldquo;Internet&rdquo; nasce <strong>desligado</strong> no chat: ligado por
+          padrão, gastaria rodada procurando fora o que o vault responde melhor. Ligue no menu
+          &ldquo;+&rdquo; da conversa.
+        </p>
       </div>
 
       {/* ── Turnos com erro ───────────────────────────────────────── */}

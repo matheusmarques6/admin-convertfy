@@ -2985,7 +2985,15 @@ aleatório valer tanto quanto a doutrina escrita.
 
 **Busca por provedor plugável** (`web-search.ts`): `TAVILY_API_KEY` →
 `BRAVE_SEARCH_API_KEY` → `SERPER_API_KEY`, o primeiro configurado vence;
-trocar de fornecedor é trocar variável, não código. Chave em branco NÃO conta
+trocar de fornecedor é trocar variável, não código. **Em produção roda o
+Serper** (set/2026): US$ 0,30–1,00/1.000 contra ~US$ 8/1.000 do Tavily, e
+a vantagem do Tavily — conteúdo já extraído — rende pouco aqui porque
+`normalizarResultados` corta o trecho em 800 caracteres de qualquer jeito
+e quem lê a página inteira é o `web_abrir`. O `limite` é capado em 10
+porque acima disso o Serper cobra 2 créditos. Conferir se a chave entrou
+NO DEPLOY (não só no projeto do Vercel) é o bloco "Busca na internet" do
+card ConvertIA · Saúde: mostra o provedor vigente e o botão faz uma busca
+real — checar variável de ambiente passaria com chave expirada. Chave em branco NÃO conta
 como configurada (variável criada e deixada vazia é o erro de deploy mais
 comum, e escolheria um provedor que responde 401 em toda busca). Sem nenhuma
 chave a tool DIZ que a busca não está configurada e qual variável criar —
