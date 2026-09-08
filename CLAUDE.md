@@ -4013,5 +4013,71 @@ outros dois usuários do portal estão corretamente fechados. Se essa conta é d
 cliente, ela não deveria estar em `org_members`; se é do time, o acesso ao
 portal é que deveria sair.
 
+## Assinatura duplicada: três escritores, nenhuma chave em comum (set/2026, migration 20261132)
+
+Relatado: vincular loja no perfil do cliente duplicava a assinatura, e
+criar o onboarding às vezes duplicava também. Medido em 08/09 — não era
+corrida de clique, eram **dias** de diferença: Frederico (R$ 10.000 pelo
+onboarding em 28/08 + R$ 10.000 pelo fechamento em 31/08) e João Paulo
+(R$ 3.500 em 02/09 + R$ 3.500 em 03/09).
+
+Três caminhos gravam em `client_subscriptions` e **nenhum compartilha
+chave com os outros**: `createOnboarding` e `POST
+/api/client-subscriptions` fazem "existe? senão insere" pelo
+`asaas_subscription_id`; o **fechamento da venda** (`POST
+/api/crm/deals/[id]/billing`) não checava NADA e ainda gravava a linha
+**sem** `asaas_subscription_id` — então o merge do GET (que só funde
+pelo id) mostrava DOIS cards para uma assinatura só, com o MRR em dobro.
+São as cinco linhas "Assinatura — <cliente>" de Camila, Danilo,
+Frederico, João Paulo e Thiago; quatro delas de clientes que têm
+`asaas_customer_id`, isto é, com a assinatura viva do outro lado.
+
+**A chave da idempotência do fechamento é a VENDA**, não o valor:
+`client_subscriptions.source_deal_id` com índice único parcial. O valor
+não serve — o JMJC tem duas assinaturas legítimas de R$ 3.500 (MRR
+7.000) para três lojas Boxer Shop e João Paulo tem duas de R$ 3.500 para
+duas lojas; reusar por valor faria a segunda venda não gerar receita
+nenhuma, e **receita que some ninguém vê**, enquanto a duplicada ao
+menos aparece na tela. Índice único também em `asaas_subscription_id`
+(global, não por cliente: a assinatura do Asaas pertence a um cliente
+só, e o par esconderia o espelho gravado sob o cliente errado). É o
+mesmo remédio da 20261119 em `invoices.asaas_id`, e aqui ele é ainda
+mais necessário porque o `.maybeSingle()` dos dois escritores **estoura**
+com duplicata (PGRST116): uma vez duplicado, vincular loja e criar
+onboarding falhavam para sempre.
+
+**Checar antes sem tratar o conflito depois é o padrão que duplicou.**
+Os três caminhos agora tratam 23505 re-selecionando e ADOTANDO o que
+passou primeiro. O billing degrada com `42703/PGRST204/PGRST205` (a
+migration deste repo é aplicada à mão e escorrega): grava sem a coluna e
+loga — a venda fecha, a idempotência volta quando a migration rodar. A
+régua de "coluna ausente" é **só por CÓDIGO**: casar a mensagem por
+`source_deal_id` pegaria também o 23505 do índice, cuja resposta é a
+oposta. A 1ª mensalidade só é emitida com a assinatura NOVA — na
+reaproveitada, cobraria o mês duas vezes.
+
+**As linhas antigas não são apagadas por código.** Quatro das cinco têm
+cobrança emitida, e assinatura com cobrança não pode sumir por um
+clique. `suspeitasDeDuplicata` (`assinatura-duplicada.ts`, puro, 18
+testes) aponta a suspeita no card e o operador confirma; confirmar grava
+o `asaas_subscription_id` no espelho (`PATCH` da rota) e o merge funde
+os dois a partir dali — não apaga nada. O critério é **exclusivo nos
+dois lados**: só aponta quando uma local órfã e uma do Asaas se
+correspondem sozinhas em valor E ciclo. Duas órfãs de R$ 3.500
+disputando a mesma do Asaas não apontam nada — escolher no chute faria
+fundir a assinatura da loja errada, e ciclo diferente (o "Plano
+Trimestral" × "Assinatura — Frederico" mensal, ambos R$ 10.000) mudaria
+o que o cliente paga por ano.
+
+**O WonDealDialog passou a olhar o financeiro**: ele abre com
+"assinatura mensal" pré-marcada e não consultava nada, então quem fecha
+a venda de um cliente que já paga mensalidade não tinha como saber pela
+tela — foi assim que as duas duplicatas caras nasceram.
+`avisoDeAssinaturaExistente` é AVISO, não bloqueio: cliente que compra a
+segunda loja precisa mesmo da segunda assinatura, e ali o valor idêntico
+é a regra, não a exceção. Conta a lista MERGEADA (locais + Asaas sem
+espelho), senão deixaria de avisar justamente quem tem a assinatura viva
+no Asaas e ainda sem espelho.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

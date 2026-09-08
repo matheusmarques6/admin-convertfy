@@ -174,7 +174,8 @@ export async function createOnboarding(
         const subName = resolvedPlan ?? asaasName
         const subValue = resolvedMrr ?? asaasValue
         const todayDate = new Date().toISOString().split("T")[0]
-        const { data: inserted } = await admin
+        let inserted: { id: string } | null = null
+        const ins = await admin
           .from("client_subscriptions")
           .insert({
             client_id: opts.clientId,
@@ -190,6 +191,26 @@ export async function createOnboarding(
           })
           .select("id")
           .single()
+        inserted = (ins.data as { id: string } | null) ?? null
+        // Corrida: outro escritor criou o espelho entre o SELECT acima e
+        // este INSERT (o fechamento da venda e este service rodam em
+        // requisições diferentes, minutos ou dias apart). O índice único
+        // da migration 20261132 recusa, e aqui a resposta certa é ADOTAR
+        // o espelho que existe — não duplicar, nem falhar o onboarding.
+        if (!inserted && ins.error?.code === "23505") {
+          const { data: concorrente } = await admin
+            .from("client_subscriptions")
+            .select("id, name, value")
+            .eq("asaas_subscription_id", asaasId)
+            .maybeSingle()
+          if (concorrente) {
+            inserted = { id: concorrente.id as string }
+            if (!resolvedPlan && concorrente.name) resolvedPlan = concorrente.name as string
+            if (resolvedMrr === null || resolvedMrr === undefined)
+              resolvedMrr = Number(concorrente.value)
+            log.info("espelho da assinatura já criado por outro caminho", { asaasId })
+          }
+        }
         if (inserted?.id) {
           resolvedSubscriptionId = inserted.id as string
           if (!resolvedPlan) resolvedPlan = subName

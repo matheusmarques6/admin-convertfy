@@ -9,6 +9,7 @@ import {
   parseStoreIds,
 } from "@/lib/services/subscription-stores"
 import { logger } from "@/lib/logger"
+import { suspeitasDeDuplicata } from "@/lib/financial/assinatura-duplicada"
 
 const log = logger.child("ClientSubscriptions")
 
@@ -175,10 +176,27 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 5. Espelho local que nasceu SEM `asaas_subscription_id` (o
+    //    fechamento da venda fazia isso até a migration 20261132) não é
+    //    fundido pelo merge acima — a mesma mensalidade aparece duas
+    //    vezes, com o MRR dobrado. Aponta a suspeita para o card poder
+    //    oferecer o vínculo; nunca funde sozinho.
+    const suspeitas = suspeitasDeDuplicata(localSubs, asaasOnlyExtra)
+    const suspeitaPorLocal = new Map(suspeitas.map((s) => [s.localId, s]))
+
     return successResponse(request, {
       subscriptions: [
-        ...localSubs.map((s) => ({ ...s, store_ids: storeIdsBySub[s.id] ?? [] })),
-        ...asaasOnlyExtra.map((s) => ({ ...s, store_ids: [] as string[] })),
+        ...localSubs.map((s) => ({
+          ...s,
+          store_ids: storeIdsBySub[s.id] ?? [],
+          duplicate_of: suspeitaPorLocal.get(s.id)
+            ? {
+                asaas_subscription_id: suspeitaPorLocal.get(s.id)!.asaasId,
+                name: suspeitaPorLocal.get(s.id)!.asaasNome,
+              }
+            : null,
+        })),
+        ...asaasOnlyExtra.map((s) => ({ ...s, store_ids: [] as string[], duplicate_of: null })),
       ],
     })
   } catch (error) {
@@ -237,17 +255,32 @@ export async function POST(request: NextRequest) {
       subscriptionData.asaas_subscription_id = asaas_subscription_id
     }
 
-    // Assinatura do Asaas que ainda não tinha stub local (o sync cria
-    // depois): reusa o stub existente em vez de duplicar.
-    let data: Record<string, unknown> | null = null
-    if (subscriptionData.asaas_subscription_id) {
+    // Assinatura do Asaas que ainda não tinha espelho local (o sync cria
+    // depois): reusa o que existe em vez de duplicar.
+    //
+    // A busca é pelo `asaas_subscription_id` SOZINHO, não pelo par com
+    // o cliente: uma assinatura do Asaas pertence a um cliente só, e
+    // buscar pelo par esconderia o espelho gravado sob o cliente errado
+    // — o insert então bateria no índice único da migration 20261132 e
+    // o erro não explicaria nada.
+    const asaasId = subscriptionData.asaas_subscription_id as string | undefined
+    async function findEspelho(): Promise<Record<string, unknown> | null> {
+      if (!asaasId) return null
       const { data: existing } = await admin
         .from("client_subscriptions")
         .select("*")
-        .eq("client_id", client_id)
-        .eq("asaas_subscription_id", subscriptionData.asaas_subscription_id as string)
+        .eq("asaas_subscription_id", asaasId)
         .maybeSingle()
-      if (existing) data = existing as Record<string, unknown>
+      return (existing as Record<string, unknown> | null) ?? null
+    }
+
+    let data = await findEspelho()
+    if (data && data.client_id !== client_id) {
+      throw new AppError(
+        "Esta assinatura do Asaas já está vinculada a outro cliente.",
+        409,
+        "conflict",
+      )
     }
     if (!data) {
       const { data: inserted, error } = await supabase
@@ -255,8 +288,23 @@ export async function POST(request: NextRequest) {
         .insert(subscriptionData)
         .select()
         .single()
-      if (error) throw error
-      data = inserted as Record<string, unknown>
+      // Corrida com o onboarding ou com o fechamento da venda, que
+      // gravam o mesmo espelho: adota o que passou primeiro.
+      if (error?.code === "23505") {
+        data = await findEspelho()
+        if (!data) throw error
+        if (data.client_id !== client_id) {
+          throw new AppError(
+            "Esta assinatura do Asaas já está vinculada a outro cliente.",
+            409,
+            "conflict",
+          )
+        }
+      } else if (error) {
+        throw error
+      } else {
+        data = inserted as Record<string, unknown>
+      }
     }
 
     const linked = await linkSubscriptionStores(admin, data.id as string, storeIds)
@@ -307,10 +355,40 @@ export async function PATCH(request: NextRequest) {
     await requireOrgRoles(user.id, FINANCIAL_REPORT_ROLES)
 
     const body = await request.json()
-    const { id } = body
+    const { id, asaas_subscription_id } = body
 
     if (!id) {
       throw new AppError("id is required", 400)
+    }
+
+    // Resolver a duplicata: o operador confirmou que este espelho local
+    // é a assinatura X do Asaas. Gravar o id funde os dois cards no
+    // merge do GET — é o conserto das linhas que o fechamento criou sem
+    // vínculo (Camila, Danilo, Frederico, João Paulo, Thiago).
+    if (typeof asaas_subscription_id === "string" && asaas_subscription_id.trim()) {
+      const alvo = asaas_subscription_id.trim()
+      const admin = createAdminClient()
+      const { data: dono } = await admin
+        .from("client_subscriptions")
+        .select("id")
+        .eq("asaas_subscription_id", alvo)
+        .maybeSingle()
+      if (dono && dono.id !== id) {
+        throw new AppError(
+          "Esta assinatura do Asaas já está vinculada a outra assinatura local.",
+          409,
+          "conflict",
+        )
+      }
+      const { data: linked, error: lErr } = await admin
+        .from("client_subscriptions")
+        .update({ asaas_subscription_id: alvo, payment_method: "asaas" })
+        .eq("id", id)
+        .select()
+        .single()
+      if (lErr) throw lErr
+      log.info("Subscription linked to Asaas", { subscription_id: id, asaas: alvo })
+      return successResponse(request, { success: true, subscription: linked })
     }
 
     const { data, error } = await supabase

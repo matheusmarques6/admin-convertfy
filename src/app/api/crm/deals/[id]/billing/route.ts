@@ -44,6 +44,75 @@ async function insertCharge(
   return res
 }
 
+/**
+ * Códigos de "esta coluna/tabela não existe" — a migration 20261132 é
+ * aplicada à mão neste repo e escorrega. Sem a coluna, o fechamento tem
+ * de continuar funcionando (perdendo só a idempotência), nunca dar 500.
+ */
+function isMissingSourceDeal(err: { code?: string } | null): boolean {
+  if (!err) return false
+  // Só pelo CÓDIGO. Casar a mensagem por "source_deal_id" pegaria também
+  // o 23505 do índice único (que a cita) — e a resposta ali é a oposta:
+  // reusar o que existe, nunca reinserir sem o vínculo.
+  return err.code === "42703" || err.code === "PGRST204" || err.code === "PGRST205"
+}
+
+/** A assinatura que ESTA venda já gerou, se houver. */
+async function findSubscriptionOfDeal(
+  admin: ReturnType<typeof createAdminClient>,
+  dealId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("client_subscriptions")
+    .select("id")
+    .eq("source_deal_id", dealId)
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    if (!isMissingSourceDeal(error)) {
+      log.warn("[Billing] busca da assinatura da venda falhou", { dealId, error: error.message })
+    }
+    return null
+  }
+  return (data?.id as string | undefined) ?? null
+}
+
+/**
+ * Insere a assinatura do fechamento.
+ *
+ * Duas degradações, nesta ordem:
+ *  - 23505 no índice único por venda: outra requisição inseriu entre a
+ *    busca e o insert (double-click, retry do navegador). Re-seleciona
+ *    em vez de estourar — checar antes sem tratar o conflito depois é
+ *    justamente o padrão que duplicou `invoices` na 20261119.
+ *  - coluna inexistente: grava sem ela. A venda fecha; a idempotência
+ *    volta quando a migration rodar.
+ */
+async function insertSubscription(
+  admin: ReturnType<typeof createAdminClient>,
+  row: Record<string, unknown>,
+  dealId: string,
+): Promise<{ id: string }> {
+  let res = await admin.from("client_subscriptions").insert(row).select("id").single()
+
+  if (res.error?.code === "23505") {
+    const existing = await findSubscriptionOfDeal(admin, dealId)
+    if (existing) {
+      log.info("[Billing] assinatura já criada por requisição concorrente", { dealId })
+      return { id: existing }
+    }
+  }
+  if (res.error && isMissingSourceDeal(res.error)) {
+    const { source_deal_id: _ignored, ...semColuna } = row
+    log.warn("[Billing] migration 20261132 pendente — assinatura sem vínculo com a venda", {
+      dealId,
+    })
+    res = await admin.from("client_subscriptions").insert(semColuna).select("id").single()
+  }
+  if (res.error) throw res.error
+  return { id: res.data.id as string }
+}
+
 export const dynamic = "force-dynamic"
 
 const PAYMENT_METHODS = ["pix_direto", "asaas", "boleto", "cartao", "wise"] as const
@@ -157,9 +226,24 @@ export async function POST(
 
     if (parsed.subscription) {
       const s = parsed.subscription
-      const { data: sub, error } = await admin
-        .from("client_subscriptions")
-        .insert({
+      // A VENDA é a chave de idempotência (migration 20261132).
+      //
+      // Este insert era cru, e reabrir o dialog — ou fechar a venda de
+      // um cliente que já tinha mensalidade — criava uma assinatura a
+      // mais: foi assim que nasceram as duplicatas de Frederico
+      // (R$ 10.000 duas vezes) e João Paulo (R$ 3.500 duas vezes).
+      //
+      // O valor não serviria como chave: o JMJC tem DUAS assinaturas
+      // legítimas de R$ 3.500 para lojas diferentes, e reusar por valor
+      // faria a segunda venda não gerar receita nenhuma — erro pior,
+      // porque receita que some ninguém vê.
+      const reaproveitada = await findSubscriptionOfDeal(admin, id)
+
+      if (reaproveitada) {
+        subscriptionId = reaproveitada
+        summary.push("assinatura desta venda reaproveitada")
+      } else {
+        const sub = await insertSubscription(admin, {
           client_id: clientId,
           name: s.name?.trim() || `Assinatura — ${deal.title}`.slice(0, 160),
           value: s.value,
@@ -169,34 +253,35 @@ export async function POST(
           start_date: new Date().toISOString().split("T")[0],
           next_due_date: s.next_due_date,
           notes: `Gerada no fechamento do negócio "${deal.title}"`,
-        })
-        .select("id")
-        .single()
-      if (error) throw error
-      subscriptionId = sub.id
+          source_deal_id: id,
+        }, id)
+        subscriptionId = sub.id
+        summary.push(`assinatura mensal de R$ ${s.value}`)
 
-      // 1ª mensalidade já entra no contas-a-receber — sem ela a
-      // assinatura existe mas nada aparece pra cobrar.
-      const { data: firstCharge, error: cErr } = await insertCharge(admin, {
-        client_id: clientId,
-        subscription_id: sub.id,
-        description: `1ª mensalidade — ${deal.title}`.slice(0, 240),
-        value: s.value,
-        due_date: s.next_due_date,
-        payment_method: s.payment_method,
-        status: "pending",
-        charge_type: "subscription",
-        reference_months: [s.next_due_date.slice(0, 7)],
-      })
-      if (cErr) {
-        log.warn("[Billing] assinatura criada mas 1ª mensalidade falhou", {
-          subscriptionId,
-          error: cErr.message,
+        // 1ª mensalidade já entra no contas-a-receber — sem ela a
+        // assinatura existe mas nada aparece pra cobrar. Só na
+        // assinatura NOVA: emiti-la de novo na reaproveitada cobraria
+        // o cliente duas vezes pelo mesmo mês.
+        const { data: firstCharge, error: cErr } = await insertCharge(admin, {
+          client_id: clientId,
+          subscription_id: sub.id,
+          description: `1ª mensalidade — ${deal.title}`.slice(0, 240),
+          value: s.value,
+          due_date: s.next_due_date,
+          payment_method: s.payment_method,
+          status: "pending",
+          charge_type: "subscription",
+          reference_months: [s.next_due_date.slice(0, 7)],
         })
-      } else {
-        chargeIds.push(firstCharge.id)
+        if (cErr) {
+          log.warn("[Billing] assinatura criada mas 1ª mensalidade falhou", {
+            subscriptionId,
+            error: cErr.message,
+          })
+        } else {
+          chargeIds.push(firstCharge.id)
+        }
       }
-      summary.push(`assinatura mensal de R$ ${s.value}`)
     }
 
     if (parsed.charge) {

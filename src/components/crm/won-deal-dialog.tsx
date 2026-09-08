@@ -23,6 +23,7 @@ import {
   normalizeInterval,
   numberToCents,
 } from "@/lib/services/crm-deal-products"
+import { avisoDeAssinaturaExistente } from "@/lib/financial/assinatura-duplicada"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -50,6 +51,17 @@ interface DealPayload {
     client?: { id: string; name: string; email?: string | null; phone?: string | null; company?: string | null } | null
     lead?: { name: string; email?: string | null; phone?: string | null; company?: string | null } | null
   }
+}
+
+interface SubsPayload {
+  subscriptions?: Array<{
+    id: string
+    name?: string | null
+    value: number | string
+    cycle?: string | null
+    status?: string | null
+    asaas_subscription_id?: string | null
+  }>
 }
 
 interface ItemsPayload {
@@ -87,6 +99,19 @@ export function WonDealDialog({
   const deal = dealData?.deal
   const items = useMemo(() => itemsData?.items ?? [], [itemsData])
   const totals = useMemo(() => dealTotals(items), [items])
+
+  // As assinaturas que o cliente JÁ tem.
+  //
+  // Este dialog abre com "assinatura mensal" pré-marcada e não olhava o
+  // financeiro: quem fecha a venda de um cliente que já paga mensalidade
+  // não tinha como saber pela tela. Foi assim que nasceram as duplicatas
+  // de Frederico (R$ 10.000 duas vezes) e João Paulo (R$ 3.500 duas
+  // vezes) — dias depois de a assinatura existir.
+  const clientId = deal?.client?.id ?? null
+  const { data: subsData } = useSWR<SubsPayload>(
+    open && clientId ? `/api/client-subscriptions?client_id=${clientId}` : null,
+    fetcher,
+  )
 
   // Dados do cliente (pré-preenchidos do cliente/lead)
   const [name, setName] = useState("")
@@ -165,6 +190,19 @@ export function WonDealDialog({
   // Onboarding marcado exige o nome da loja (o campo tem asterisco):
   // sem ele a API criaria a loja FALLBACK genérica — exatamente o que
   // este dialog existe pra evitar.
+  // Aviso, não bloqueio: cliente que compra a segunda loja PRECISA de
+  // uma segunda assinatura, e nesse caso o valor idêntico é a regra.
+  const avisoAssinatura = useMemo(() => {
+    if (!wantSub) return null
+    const valor = centsToNumber(subCents)
+    if (!(valor > 0)) return null
+    // A lista do GET já vem mergeada (locais + Asaas sem espelho), e é
+    // ela que o operador vê no financeiro. Filtrar só as locais deixaria
+    // de avisar justamente quem tem a assinatura viva no Asaas e ainda
+    // sem espelho — o caso em que a nova linha nasce duplicando a tela.
+    return avisoDeAssinaturaExistente(subsData?.subscriptions ?? [], valor)
+  }, [wantSub, subCents, subsData])
+
   const onboardingValid = !wantOnboarding || storeName.trim().length > 0
   const canSubmit =
     !saving &&
@@ -440,6 +478,19 @@ export function WonDealDialog({
                     onChange={(e) => setSubDue(e.target.value)}
                     aria-label="Primeiro vencimento da assinatura"
                   />
+                </div>
+              )}
+              {avisoAssinatura && (
+                <div
+                  className="mb-3 ml-6 rounded-[6px] border px-2.5 py-2"
+                  style={{
+                    borderColor: "#FCD34D",
+                    background: "#FFFBEB",
+                    fontSize: 12,
+                    color: "#92400E",
+                  }}
+                >
+                  {avisoAssinatura}
                 </div>
               )}
 
