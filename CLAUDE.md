@@ -1292,6 +1292,26 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
+**Responder pelo CELULAR marca a conversa como lida** (set/2026,
+migration 20261128). O atendente respondia o cliente pelo WhatsApp do
+aparelho e a conversa seguia não lida no admin: "Breno Neves" com
+`unread_count = 14` e "Lucas" com 3, os dois com a última mensagem
+outbound e `sent_by_kind = 'system'` (a marca do fromMe da Evolution).
+O `CASE` do trigger `crm_messages_update_thread` incrementava no inbound
+e, em todo o resto, MANTINHA o valor — quem zerava era só
+`POST /threads/[id]/read`, ou seja, abrir a conversa no admin, caminho
+que responder pelo celular nunca percorre. O webhook já cobria metade
+(`clearCrmThreadNotifications` no fromMe), então divergiam justamente as
+duas coisas que a doc diz espelharem uma à outra: sino limpo e badge
+aceso na mesma conversa. Agora outbound de `agent`/`system` zera.
+**Automação NÃO zera** — fluxo automático responder não é alguém ter
+lido, e zerar ali esconderia mensagem por olhar. `is_historical` fora
+(importação traz outbound aos milhares) e a guarda
+`created_at >= last_message_at` é a mesma do `GREATEST`: mensagem fora
+de ordem não pode apagar não-lida mais recente que ela. Custo ZERO em
+escrita — o trigger já fazia esse UPDATE, muda só o valor de uma coluna,
+nenhum evento de realtime a mais.
+
 **Foto de perfil do contato — a fila não pode travar no topo**
 (set/2026, migration 20261125). Sintoma: inbox só com iniciais, 56 das
 61 conversas sem foto E sem tentativa registrada. A causa imediata NÃO
