@@ -10,6 +10,11 @@
  * Aqui a tentativa é PERSISTIDA em `contact_avatar_checked_at`: quem não
  * tem foto é tentado no máximo uma vez por semana, e a lista deixa de
  * escrever no banco para responder um GET.
+ *
+ * Entra na fila quem não tem foto E quem tem uma foto de CDN de terceiro
+ * (a URL da Meta vence — as duas gravadas em produção venceram em
+ * 31/08/2026). O serviço espelha no nosso Storage; foto espelhada não
+ * volta para a fila.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -17,6 +22,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { logger } from "@/lib/logger"
 import { ensureThreadAvatar } from "@/lib/services/crm-contact-avatar.service"
+import { CONVERTIA_IMAGE_ROUTE } from "@/lib/ai/convertia-image-url"
+import { canaisElegiveisParaAvatar } from "@/lib/crm/avatar-elegibilidade"
 
 const log = logger.child("CronCrmAvatarBackfill")
 
@@ -35,10 +42,27 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
     const cutoff = new Date(Date.now() - RETRY_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
+    // Canais que HOJE conseguem entregar uma foto. Sem este filtro, um
+    // canal desconectado (54 das 59 conversas em produção) ocupa o lote
+    // inteiro sendo pulado e o Instagram nunca é alcançado.
+    const { data: canais, error: erroCanais } = await admin
+      .from("crm_channels")
+      .select("id, type, provider, config")
+      .eq("is_active", true)
+    if (erroCanais) throw erroCanais
+
+    const elegiveis = canaisElegiveisParaAvatar(canais ?? [])
+
+    if (elegiveis.length === 0) {
+      return NextResponse.json({ success: true, checked: 0, filled: 0, skipped: 0, elegiveis: 0 })
+    }
+
     const { data: threads, error } = await admin
       .from("crm_threads")
-      .select("id, contact_external_id, contact_avatar_url, channel_id")
-      .is("contact_avatar_url", null)
+      .select("id, org_id, contact_external_id, contact_avatar_url, channel_id")
+      .in("channel_id", elegiveis)
+      // Aspas: o `.` é separador de campo no `or()` do PostgREST.
+      .or(`contact_avatar_url.is.null,contact_avatar_url.not.like."${CONVERTIA_IMAGE_ROUTE}%"`)
       .not("contact_external_id", "like", "comment:%")
       .or(`contact_avatar_checked_at.is.null,contact_avatar_checked_at.lt.${cutoff}`)
       .order("last_message_at", { ascending: false })
@@ -46,11 +70,18 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     let filled = 0
+    let skipped = 0
     for (const thread of threads ?? []) {
-      const url = await ensureThreadAvatar(admin, thread)
+      const { url, tentou } = await ensureThreadAvatar(admin, thread)
       if (url) filled++
-      // Marca a tentativa mesmo sem foto: contato com perfil privado não
-      // pode ser re-tentado a cada rodada.
+      // Marca a tentativa só quando a origem foi de fato consultada:
+      // contato com perfil privado não pode ser re-tentado a cada
+      // rodada, mas canal desconectado tem de voltar à fila assim que
+      // religar — senão a foto apareceria uma semana depois.
+      if (!tentou) {
+        skipped++
+        continue
+      }
       await admin
         .from("crm_threads")
         .update({ contact_avatar_checked_at: new Date().toISOString() })
@@ -59,7 +90,13 @@ export async function GET(request: NextRequest) {
 
     if (filled > 0) log.info("avatares preenchidos", { filled, checked: threads?.length ?? 0 })
 
-    return NextResponse.json({ success: true, checked: threads?.length ?? 0, filled })
+    return NextResponse.json({
+      success: true,
+      checked: threads?.length ?? 0,
+      filled,
+      skipped,
+      elegiveis: elegiveis.length,
+    })
   } catch (error) {
     log.error("backfill de avatar falhou", error)
     return NextResponse.json(

@@ -11,6 +11,8 @@
  * fica aqui por robustez, sem UI dedicada.
  */
 
+import { useEffect, useState } from "react"
+
 /** Brand indigo do design (mesma família do hero do dashboard). */
 export const INBOX_BRAND = "#4E62D8"
 
@@ -141,7 +143,11 @@ export function InboxAvatar({
   avatarUrl?: string | null
   size?: number
 }) {
-  if (avatarUrl) {
+  // Reseta ao trocar de contato: o mesmo nó é reusado entre threads.
+  const [quebrada, setQuebrada] = useState(false)
+  useEffect(() => setQuebrada(false), [avatarUrl])
+
+  if (avatarUrl && !quebrada) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -149,6 +155,9 @@ export function InboxAvatar({
         alt=""
         className="rounded-full object-cover"
         style={{ width: size, height: size, border: "1px solid var(--ops-border)", flexShrink: 0 }}
+        // Foto de CDN de terceiro vence (a do IG carrega `oe=`): sem
+        // isto, a URL morta vira ícone quebrado — pior que as iniciais.
+        onError={() => setQuebrada(true)}
       />
     )
   }
