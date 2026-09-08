@@ -177,6 +177,8 @@ export async function POST(request: NextRequest) {
       continue
     }
     outcome.canais++
+    // Prova de vida do webhook (throttled) — é o que o card de Canais lê.
+    await carimbarChamadaDaMeta(admin, channel)
 
     // ── DMs ──
     for (const ev of entry.messaging || []) {
@@ -248,27 +250,74 @@ export async function POST(request: NextRequest) {
  * objeto `instagram` e o ID da PÁGINA no objeto `page` — os dois chegam
  * dependendo de como o app está montado, e só o primeiro era procurado.
  */
+interface CanalDoEvento {
+  id: string
+  org_id: string
+  external_id: string
+  config: Record<string, unknown> | null
+}
+
 async function resolveChannel(
   admin: ReturnType<typeof createAdminClient>,
   entryId: string,
-): Promise<{ id: string; org_id: string; external_id: string } | null> {
+): Promise<CanalDoEvento | null> {
+  const cols = "id, org_id, external_id, config"
   const { data: byAccount } = await admin
     .from("crm_channels")
-    .select("id, org_id, external_id")
+    .select(cols)
     .eq("type", "instagram")
     .eq("external_id", entryId)
     .eq("is_active", true)
     .maybeSingle()
-  if (byAccount) return byAccount
+  if (byAccount) return byAccount as CanalDoEvento
 
   const { data: byPage } = await admin
     .from("crm_channels")
-    .select("id, org_id, external_id")
+    .select(cols)
     .eq("type", "instagram")
     .eq("config->>facebook_page_id", entryId)
     .eq("is_active", true)
     .maybeSingle()
-  return byPage ?? null
+  return (byPage as CanalDoEvento | null) ?? null
+}
+
+/**
+ * Carimba `config.last_webhook_at` — a prova de que a Meta chegou aqui.
+ *
+ * O campo era LIDO pelo card de Canais e escrito em lugar nenhum, então
+ * todo canal do Instagram exibia "Assinado, mas a Meta NUNCA chamou
+ * este servidor" para sempre — inclusive os dois que vinham recebendo
+ * DMs desde 13/08. Diagnóstico que acusa falha onde não há é pior que
+ * diagnóstico nenhum: manda procurar defeito no painel da Meta.
+ *
+ * Com THROTTLE de 5 min: o card só precisa de "recebendo, e a última
+ * foi há pouco", não do instante exato. Sem ele, seria um UPDATE por
+ * mensagem no caminho quente da ingestão. `crm_channels` está fora da
+ * publication do realtime, então esta escrita não acorda aba nenhuma.
+ */
+const CARIMBO_THROTTLE_MS = 5 * 60 * 1000
+
+async function carimbarChamadaDaMeta(
+  admin: ReturnType<typeof createAdminClient>,
+  canal: CanalDoEvento,
+): Promise<void> {
+  try {
+    const anterior = canal.config?.last_webhook_at
+    if (typeof anterior === "string") {
+      const t = Date.parse(anterior)
+      if (Number.isFinite(t) && Date.now() - t < CARIMBO_THROTTLE_MS) return
+    }
+    await admin
+      .from("crm_channels")
+      .update({ config: { ...(canal.config ?? {}), last_webhook_at: new Date().toISOString() } })
+      .eq("id", canal.id)
+  } catch (err) {
+    // Telemetria nunca derruba ingestão (regra do trigger fail-open).
+    log.warn("[Instagram] carimbo do webhook falhou", {
+      channelId: canal.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 // ─── Handlers ────────────────────────────────────────────────────
