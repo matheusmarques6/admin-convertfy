@@ -3395,5 +3395,83 @@ divergirem. A ficha (`tab-setup`) mostra "Países" com o principal e o
 resto resumido; o popover do hero ganhou os mesmos presets e a lista
 agrupada por região.
 
+## Reunião com cliente passa a avisar o cliente (set/2026, migration 20261125)
+
+A integração com o Google Calendar já era substancial — OAuth por
+colaborador **e** conta central da org (`user_google_tokens`, tokens
+AES-256-GCM), `resolveSyncAccount` mandando toda reunião para a agenda
+central (cada participante vira attendee e a vê na própria agenda),
+Google Meet automático, `sendUpdates: "all"`, watch + webhook push, cron
+horário com RSVP e retry, e o trigger que ao concluir reunião com loja
+atualiza `last_feedback_date` e grava em `store_feedback_calls`.
+
+**O buraco era o cliente.** `buildGoogleEvent` montava os attendees com os
+MEMBROS participantes + `meetings.guest_emails` — uma lista de texto
+digitada à mão. `crm_contacts` (que tem `email`, `is_primary` e
+`store_id`) nunca era lida. Marcar "reunião com o cliente X" **não
+mandava nada para o cliente X** a menos que alguém lembrasse de digitar o
+endereço; e nenhum email nosso existia — o Resend tinha templates de
+portal e senha, nenhum de reunião.
+
+`meeting_participants` ganhou o tipo **`contact`** (participant_id =
+`crm_contacts.id`). O contato vira participante de verdade: entra como
+attendee (recebe o convite nativo), tem o RSVP sincronizado de volta por
+`syncRsvpFromGoogle`, e a reunião sabe QUEM foi convidado por id, não por
+string. `guest_emails` continua para o convidado avulso que não é
+contato cadastrado.
+
+**Os dois canais disparam, de propósito**: o convite do Google traz o
+botão de aceitar e o evento na agenda; o email da Convertfy
+(`meeting-invite-email.service`, Resend) traz a marca, a loja e o horário
+no fuso da reunião, e chega quando o convite cai no spam. Mesma razão de
+pixel + CAPI nos eventos de conversão. O email vai **só para o lado do
+cliente** — membro já tem o evento na agenda, e um segundo email por
+reunião ensina o time a ignorar a caixa. Envio em SÉRIE (limite por
+segundo do Resend) e **depois** do sync, porque é ali que o link do Meet
+nasce. `await`, nunca `void`: promise solta morre quando o serverless
+congela o processo depois do `return`.
+
+**Regras nos módulos puros** (`lib/meetings/`, 36 testes):
+
+- `chaveDeEmail` **não** remove ponto nem `+tag` — só o Gmail os ignora, e
+  tratar `joao.silva@` e `joaosilva@` como o mesmo endereço em outro
+  provedor faria a gente DEIXAR DE convidar alguém. Deduplicar de menos
+  custa um email repetido; deduplicar demais custa um convidado ausente.
+- `contatoSugerido`: primário **da loja** vence primário do cliente
+  (feedback de uma loja é com quem cuida dela, não com o dono do grupo);
+  contato sem email nunca é sugerido — marcado, daria a impressão de que
+  o convite vai sair.
+- `montarConvidados`: membro > contato > externo no mesmo email, para o
+  consultor que é membro E está em `crm_contacts` entrar UMA vez, com o
+  nome que temos. O endereço vai ao Google como foi digitado; a caixa
+  baixa serve só para comparar.
+- `formato.ts`: data/hora no fuso IANA da reunião (`Intl` resolve o DST
+  pela data — offset fixo não resolve), com a sigla do fuso, porque a
+  carteira tem loja na Polônia e na Dinamarca e "15:00" sozinho é ambíguo.
+
+**Degradação sem a migration**: enum sem `contact` devolve 22P02 e
+`vincularContatos` cai para `guest_emails` — o cliente é convidado do
+mesmo jeito, perdendo o vínculo com o id e o RSVP. O PUT filtra
+`participant_type` em JS de propósito: `.eq("participant_type","contact")`
+também estoura 22P02 e a edição inteira falharia por migration pendente.
+
+**Na tela**: seção "Convidados do cliente" no diálogo, primário
+pré-marcado, contato sem email desabilitado com o motivo, e o rodapé que
+diz "Ninguém do cliente será avisado desta reunião" quando nada está
+marcado — convidar cliente em silêncio é o erro caro aqui, e não avisar
+também. Trocar de cliente descarta a seleção anterior (o 422 da rota não
+explicaria que a causa foi a troca). O toast diz quantos emails saíram e
+fica destrutivo quando algum falhou. Remarcar reenvia; cancelar não
+(mandar "reunião confirmada" de uma reunião cancelada é pior que nada).
+
+**O que ficou de fora, e é a fase seguinte**: `meetings.deal_id` (a
+agenda comercial mostra `crm_deal_activities.due_at`, o hub mostra
+`meetings` — dois calendários que não se falam), `store_feedback_calls.
+meeting_id` (a idempotência do trigger compara texto de notas +
+timestamp), botão "Agendar" na loja / carteira / negócio, as pipelines de
+CS lendo `meetings` em vez de presumir pela data
+(`/api/cs-crm/calls-pipeline` comenta literalmente "presumido enviado
+convite") e o painel de agenda por colaborador.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

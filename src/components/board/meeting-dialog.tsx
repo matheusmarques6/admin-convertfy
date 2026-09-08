@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X, Globe, AlertTriangle, ExternalLink } from "lucide-react"
+import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X, Globe, AlertTriangle, ExternalLink, Mail } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
@@ -42,6 +42,7 @@ import { toast } from "@/lib/hooks/use-toast"
 import { MEETING_DURATION_OPTIONS, MEETING_STATUS_OPTIONS } from "@/lib/constants/board"
 import { GoogleSyncBadge, MeetingJoinButton, RetrySyncButton } from "@/components/meetings/google-sync-badge"
 import { ParticipantRsvpStatus } from "@/components/meetings/participant-rsvp-status"
+import { contatoSugerido, type ContatoDoCliente } from "@/lib/meetings/convidados"
 import type { Meeting, MeetingStatus, MeetingParticipant, MeetingResponseStatus } from "@/types"
 
 interface UserProfile {
@@ -136,6 +137,15 @@ export function MeetingDialog({
   const [createGoogleMeet, setCreateGoogleMeet] = useState(hasGoogleCalendar)
   const [guestEmails, setGuestEmails] = useState<string[]>([])
   const [guestInput, setGuestInput] = useState("")
+  // Contatos do cliente: quem, do lado de lá, recebe o convite.
+  const [clientContacts, setClientContacts] = useState<ContatoDoCliente[]>([])
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([])
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactsError, setContactsError] = useState<string | null>(null)
+  // Guarda a escolha do usuário: só sugerimos o contato primário enquanto
+  // ele não mexeu na lista — sugestão que volta sozinha depois de alguém
+  // desmarcar é a UI decidindo por cima da pessoa.
+  const [contactsTouched, setContactsTouched] = useState(false)
 
   const addGuest = () => {
     const email = guestInput.trim().toLowerCase()
@@ -161,6 +171,85 @@ export function MeetingDialog({
     },
   })
 
+  const selectedClientId = watch("client_id") || ""
+
+  // Contatos do cliente escolhido. Sem cliente não há a quem convidar, e a
+  // lista some — deixá-la na tela sugeriria que alguém vai receber.
+  useEffect(() => {
+    if (!open || !selectedClientId) {
+      setClientContacts([])
+      setContactsError(null)
+      setContactsLoading(false)
+      return
+    }
+
+    let cancelado = false
+    setContactsLoading(true)
+    setContactsError(null)
+
+    fetch(`/api/crm/contacts?client_id=${encodeURIComponent(selectedClientId)}`, {
+      credentials: "include",
+    })
+      .then(async (r) => {
+        const json = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(json?.error || "Não foi possível carregar os contatos")
+        return json
+      })
+      .then((json) => {
+        if (cancelado) return
+        setClientContacts((json?.contacts as ContatoDoCliente[]) || [])
+      })
+      .catch((err: Error) => {
+        if (cancelado) return
+        // Erro fica visível: a lista vazia por falha é indistinguível de
+        // "este cliente não tem contatos", e as duas pedem ação diferente.
+        setClientContacts([])
+        setContactsError(err.message)
+      })
+      .finally(() => {
+        if (!cancelado) setContactsLoading(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [open, selectedClientId])
+
+  // Trocar de cliente descarta a seleção anterior: contato do cliente A não
+  // pode viajar para a reunião do cliente B (a rota recusaria com 422, e um
+  // erro no salvar não explica que a causa foi a troca de cliente).
+  const clienteAnteriorRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!open) {
+      clienteAnteriorRef.current = null
+      return
+    }
+    if (clienteAnteriorRef.current === null) {
+      clienteAnteriorRef.current = selectedClientId
+      return
+    }
+    if (clienteAnteriorRef.current !== selectedClientId) {
+      clienteAnteriorRef.current = selectedClientId
+      setSelectedContactIds([])
+      setContactsTouched(false)
+    }
+  }, [open, selectedClientId])
+
+  // Sugere o contato primário — uma vez, e só até a pessoa mexer na lista.
+  useEffect(() => {
+    if (contactsTouched || clientContacts.length === 0) return
+    if (selectedContactIds.length > 0) return
+    const sugerido = contatoSugerido(clientContacts)
+    if (sugerido) setSelectedContactIds([sugerido.id])
+  }, [clientContacts, contactsTouched, selectedContactIds.length])
+
+  const toggleContact = (id: string) => {
+    setContactsTouched(true)
+    setSelectedContactIds((atual) =>
+      atual.includes(id) ? atual.filter((c) => c !== id) : [...atual, id],
+    )
+  }
+
   // Reset form when dialog opens/closes or meeting changes
   useEffect(() => {
     if (open) {
@@ -180,10 +269,18 @@ export function MeetingDialog({
         setScheduledDate(date)
         setScheduledTime(format(date, "HH:mm"))
 
+        // Contatos do cliente já convidados (participant_type 'contact').
+        setSelectedContactIds(
+          (meeting.participants || [])
+            .filter((p) => p.participant_type === "contact")
+            .map((p) => p.participant_id),
+        )
+        setContactsTouched(true)
+
         // Load existing participants (excluding organizer)
         if (meeting.participants) {
           const existingParticipants = meeting.participants
-            .filter(p => !p.is_organizer)
+            .filter(p => !p.is_organizer && p.participant_type !== "contact")
             .map(p => {
               if (p.participant_type === "org_member" && p.org_member) {
                 return {
@@ -218,6 +315,9 @@ export function MeetingDialog({
         setSelectedParticipants([])
         setGuestEmails([])
         setGuestInput("")
+        setSelectedContactIds([])
+        setContactsTouched(false)
+        setContactsError(null)
         setTimezone(getBrowserTimezone())
         setCreateGoogleMeet(hasGoogleCalendar)
         if (initialDate) {
@@ -266,6 +366,7 @@ export function MeetingDialog({
         create_google_meet: createGoogleMeet,
         participants: selectedParticipants.map(p => ({ id: p.id, type: p.type })),
         guest_emails: guestEmails,
+        contacts: selectedContactIds,
         ...(isEditing ? { status } : {}),
       }
 
@@ -281,9 +382,23 @@ export function MeetingDialog({
         throw new Error(result.error || "Erro ao salvar")
       }
 
+      // O envio ao cliente é o ponto da feature — quem agenda precisa saber
+      // se saiu, e principalmente quando NÃO saiu.
+      const convite = result.convite_email as
+        | { enviados: number; falhas: number }
+        | undefined
+      const parteEmail = convite
+        ? convite.falhas > 0
+          ? ` ${convite.enviados} email(s) enviado(s), ${convite.falhas} falhou(aram).`
+          : convite.enviados > 0
+            ? ` ${convite.enviados} email(s) de confirmação enviado(s) ao cliente.`
+            : ""
+        : ""
+
       toast({
+        ...(convite && convite.falhas > 0 ? { variant: "destructive" as const } : {}),
         title: isEditing ? "Reunião atualizada" : "Reunião agendada",
-        description: result.message,
+        description: `${result.message}${parteEmail}`,
       })
 
       onSuccess(result.meeting)
@@ -461,6 +576,78 @@ export function MeetingDialog({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Membros selecionados verão a reunião em seus calendários
+                  </p>
+                </div>
+              )}
+
+              {/* Convidados do lado do cliente */}
+              {selectedClientId && (
+                <div className="grid gap-2">
+                  <Label className="flex items-center gap-2">
+                    <Icon icon={Mail} size={16} />
+                    Convidados do cliente
+                  </Label>
+
+                  {contactsLoading && (
+                    <p className="text-xs text-muted-foreground">Carregando contatos...</p>
+                  )}
+
+                  {contactsError && (
+                    <p className="text-xs text-destructive">{contactsError}</p>
+                  )}
+
+                  {!contactsLoading && !contactsError && clientContacts.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Este cliente ainda não tem contatos cadastrados. Use
+                      &quot;Convidados externos&quot; abaixo para convidar por email.
+                    </p>
+                  )}
+
+                  {clientContacts.length > 0 && (
+                    <div className="rounded-md border">
+                      <ScrollArea className="max-h-[132px]">
+                        <div className="p-2 space-y-1">
+                          {clientContacts.map((contato) => {
+                            const semEmail = !contato.email
+                            const marcado = selectedContactIds.includes(contato.id)
+                            return (
+                              <label
+                                key={contato.id}
+                                className={cn(
+                                  "flex items-center gap-2 rounded px-2 py-1.5 text-sm",
+                                  semEmail
+                                    ? "opacity-60"
+                                    : "cursor-pointer hover:bg-muted",
+                                )}
+                              >
+                                <Checkbox
+                                  checked={marcado}
+                                  disabled={semEmail}
+                                  onCheckedChange={() => toggleContact(contato.id)}
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  <span className="font-medium">{contato.name}</span>
+                                  {contato.is_primary && (
+                                    <span className="ml-1 text-xs text-muted-foreground">
+                                      (principal)
+                                    </span>
+                                  )}
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    {contato.email || "sem email cadastrado"}
+                                  </span>
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    {selectedContactIds.length > 0
+                      ? "Recebem o convite do Google e um email de confirmação da Convertfy."
+                      : "Ninguém do cliente será avisado desta reunião."}
                   </p>
                 </div>
               )}

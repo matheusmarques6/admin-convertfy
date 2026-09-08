@@ -99,7 +99,11 @@ export interface Invoice {
 
 // Meeting Types
 export type MeetingStatus = "scheduled" | "completed" | "cancelled" | "no_show"
-export type MeetingParticipantType = "profile" | "org_member"
+/**
+ * 'contact' = pessoa do lado do cliente (crm_contacts). Entra como attendee
+ * no evento do Google e tem o RSVP sincronizado de volta, igual a um membro.
+ */
+export type MeetingParticipantType = "profile" | "org_member" | "contact"
 export type MeetingResponseStatus = "pending" | "accepted" | "declined" | "tentative"
 export type MeetingUrlSource = "manual" | "google_meet" | "external"
 export type GoogleSyncStatus = "synced" | "pending" | "error" | "not_connected"

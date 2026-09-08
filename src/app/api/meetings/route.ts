@@ -5,6 +5,13 @@ import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { TaskAutomationService } from "@/lib/services/task-automation.service"
 import { syncMeetingToGoogle } from "@/lib/services/google-calendar-sync.service"
+import { sendMeetingInviteEmails } from "@/lib/services/meeting-invite-email.service"
+import {
+  normalizarIdsDeContato,
+  validarContatosDoCliente,
+  vincularContatos,
+} from "@/lib/meetings/participantes.service"
+import { externosNaoCobertos } from "@/lib/meetings/convidados"
 
 const log = logger.child("Meetings")
 
@@ -179,6 +186,18 @@ export async function POST(request: NextRequest) {
 
     const timezone = body.timezone || "America/Sao_Paulo"
 
+    // Contatos do cliente convidados na tela. Validados ANTES do insert:
+    // recusar depois deixaria uma reunião órfã no banco e no Google.
+    const contactIds = normalizarIdsDeContato(body.contacts)
+    const contatos = await validarContatosDoCliente(contactIds, body.client_id || null)
+
+    // Um contato escolhido na lista e também digitado como convidado externo
+    // é a mesma pessoa: entra uma vez só, pelo caminho do contato.
+    const guestEmails = externosNaoCobertos(
+      Array.isArray(body.guest_emails) ? body.guest_emails : [],
+      contatos.filter((c) => c.email).map((c) => ({ email: c.email as string })),
+    )
+
     const { data: meeting, error: insertError } = await adminClient
       .from("meetings")
       .insert({
@@ -193,7 +212,7 @@ export async function POST(request: NextRequest) {
         status: "scheduled",
         meeting_url: body.meeting_url || null,
         notes: body.notes || null,
-        guest_emails: Array.isArray(body.guest_emails) ? body.guest_emails : [],
+        guest_emails: guestEmails,
         timezone,
       })
       .select(`
@@ -236,6 +255,24 @@ export async function POST(request: NextRequest) {
 
       if (participantsError) {
         log.error("[Meetings] Error adding participants:", participantsError)
+      }
+    }
+
+    // Contatos do cliente. Degrada para guest_emails quando o banco ainda
+    // não conhece o tipo 'contact' — o cliente é convidado de todo jeito.
+    let contatosDegradados = false
+    if (contatos.length > 0) {
+      const vinculo = await vincularContatos(meeting.id, contatos)
+      contatosDegradados = vinculo.degradado
+      if (vinculo.emailsParaFallback.length > 0) {
+        const somados = externosNaoCobertos(
+          [...guestEmails, ...vinculo.emailsParaFallback],
+          [],
+        )
+        await adminClient
+          .from("meetings")
+          .update({ guest_emails: somados })
+          .eq("id", meeting.id)
       }
     }
 
@@ -341,6 +378,23 @@ export async function POST(request: NextRequest) {
       googleSyncWarning = syncError instanceof Error ? syncError.message : "Google Calendar sync failed"
     }
 
+    // Confirmação da Convertfy para o lado do cliente. Roda DEPOIS do sync
+    // porque é ali que o link do Meet é gerado e gravado — antes, o email
+    // sairia sem o link. Await, nunca `void`: promise solta morre quando o
+    // serverless congela o processo depois do return (foi assim que os
+    // eventos de conversão da Meta se perderam).
+    let conviteEmail: Awaited<ReturnType<typeof sendMeetingInviteEmails>> | undefined
+    try {
+      conviteEmail = await sendMeetingInviteEmails(meeting.id)
+    } catch (emailError) {
+      // A reunião já existe e já está no Google. Falha de email é relatada,
+      // nunca desfaz o agendamento.
+      log.warn("Falha ao enviar confirmação por email", {
+        meetingId: meeting.id,
+        error: emailError instanceof Error ? emailError.message : String(emailError),
+      })
+    }
+
     // Auto-create board tasks for participants (non-blocking)
     {
       const orgId = await resolveOrgId(supabase, user.id)
@@ -390,6 +444,13 @@ export async function POST(request: NextRequest) {
       meeting: transformedMeeting,
       message: "Reunião agendada com sucesso",
       ...(googleSyncWarning ? { google_sync_warning: googleSyncWarning } : {}),
+      ...(conviteEmail ? { convite_email: conviteEmail } : {}),
+      ...(contatosDegradados
+        ? {
+            contatos_warning:
+              "Os contatos foram convidados por email, mas sem vínculo com o cadastro: aplique a migration 20261125.",
+          }
+        : {}),
     }, { status: 201 })
   } catch (error) {
     return errorResponse(request, error, "Meetings")
