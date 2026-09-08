@@ -359,3 +359,66 @@ export interface PropostaSlide {
   titulo: string
   corpo?: string
 }
+
+// ── Estúdio: referências (exemplos que a ConvertIA lê) ──────────────────
+
+export type ReferenciaOrigem = "instagram" | "upload"
+
+export type ReferenciaTranscricao = "pendente" | "lida" | "erro"
+
+/** Um slide da referência: a imagem (Storage) e a copy lida dele. */
+export interface ReferenciaSlide {
+  ordem: number
+  imagemUrl: string
+  tipo?: FrameTipo
+  titulo?: string
+  corpo?: string
+}
+
+/** Métricas do post real (null quando a referência veio por upload). */
+export interface ReferenciaMetricas {
+  reach: number | null
+  saved: number | null
+  shares: number | null
+  follows: number | null
+  comments: number | null
+}
+
+/**
+ * Carrossel-exemplo. É o que separa "escrever pela regra" de "escrever
+ * como a casa escreve": a IA recebe a copy por slide, a legenda e o
+ * porquê — nunca a imagem, que só serve à tela.
+ */
+export interface Referencia {
+  id: string
+  nome: string
+  origem: ReferenciaOrigem
+  igMediaId: string | null
+  permalink: string | null
+  slides: ReferenciaSlide[]
+  legenda: string | null
+  palavraChave: string | null
+  pilar: Pilar | null
+  molde: MoldeKey | null
+  porQueFunciona: string[]
+  metricas: ReferenciaMetricas | null
+  /** 1..3 — quais entram primeiro quando há mais referências do que cabe. */
+  peso: 1 | 2 | 3
+  ativa: boolean
+  transcricao: ReferenciaTranscricao
+  transcricaoErro: string | null
+  criadoEm: string
+  atualizadoEm: string
+}
+
+/** Carrossel real do Instagram ainda não importado como referência. */
+export interface ReferenciaCandidata {
+  igMediaId: string
+  perfil: string
+  headline: string
+  slides: number | null
+  thumb: string | null
+  permalink: string | null
+  publicadoEm: string
+  metricas: ReferenciaMetricas
+}

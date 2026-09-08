@@ -3098,6 +3098,70 @@ com jszip e `legenda.txt`. Fontes self-hosted em `public/fonts` (a exportação
 precisa da URL). Id de DOM em componente SSR-ável vem de `useId` — com
 `Date.now()` o id divergia na hidratação e a exportação não achava o frame.
 
+## Estúdio — Referências: a ConvertIA passa a ver carrossel bom (set/2026, migration 20261133)
+
+Medido antes de escrever: o Estúdio tinha **0 documentos, 0 brand kits, 0
+templates e 0 agendamentos** em produção (nunca usado), e a IA escrevia
+carrosséis só com REGRA (pilares, moldes, limites, compliance) — nunca tinha
+visto um carrossel bom da casa. O material existia: 9 carrosséis reais em
+`conteudo_ig_media` com legenda e métricas (o melhor com 23 salvamentos e
+19 compartilhamentos). Os que o time gosta chegam por upload. "Transformar
+em modelo" tem DOIS sentidos e o usuário pediu os dois: referência de
+CONTEÚDO (esta fase) e layout visual novo (fase seguinte, só para o que os 5
+tipos de frame não reproduzem).
+
+**Tabela `conteudo_referencias`** (RLS `TO authenticated` + escopo por org):
+slides (imagens no Storage, com prefixo `ref-` para ficarem FORA das
+sugestões de Mídia), copy transcrita por slide, legenda, `por_que_funciona`,
+pilar/molde/palavra-chave, `peso` 1..3, `ativa`, `transcricao`
+pendente|lida|erro. `ig_media_id` liga ao post real com SET NULL (apagar o
+cache do Instagram não apaga o que alguém curou) e UNIQUE parcial por
+(org, ig_media_id): importar o mesmo post duas vezes é clique duplo.
+
+**Duas entradas** (`conteudo-referencias.service.ts`): importar do Instagram
+(`GET /api/conteudo/referencias/candidatos` lista os CAROUSEL_ALBUM ainda não
+importados por salvamentos; `POST .../importar` lê os filhos via Graph
+`/{media}/children`, regrava cada slide no Storage porque a URL do CDN da
+Meta expira, e carrega as métricas reais) e upload (`POST
+/api/conteudo/referencias` com `slidesUrls` vindas do upload `kind=referencia`).
+Nos dois casos a IA TRANSCREVE (`transcrever_referencia`, saída validada por
+schema: tipo/título/corpo por slide + por que funciona + pilar/molde
+sugeridos). Falha vira `transcricao='erro'` com a mensagem na ficha e o
+botão "Ler de novo" — a referência não some, o humano vê o porquê. Copy
+editada à mão marca `lida`: referência sem copy nenhuma não é utilizável.
+
+**Como entra no prompt** (`lib/conteudo/referencias.ts`, puro, 12 testes) —
+três regras que erram em silêncio:
+
+1. **Exemplo de ESTILO, nunca fonte de dado.** As referências carregam
+   números de OUTROS posts. O bloco diz em cima e embaixo que não são dado
+   deste carrossel — sem isso a IA "cita" um resultado alheio, e o system
+   prompt que proíbe inventar número não pega, porque o número foi servido.
+2. **Seleção por afinidade, não por ordem de cadastro**: mesmo molde (+100)
+   > mesmo pilar (+40) > peso do humano (×10) > salvamentos. A rota deriva o
+   contexto de `gerar_estrutura` pelo template (`ST_MOLDE_KEY`) e, nas
+   outras ações, pelo `resumo` do documento.
+3. **Teto em itens (4) E em caracteres (7000)**: quatro referências de 10
+   slides já são 6–8 mil chars; sem teto o exemplo engole o pedido e o
+   modelo repete a referência em vez de escrever a pauta.
+
+`executarIA` recebe `blocoReferencias` e prepende só nas ações de escrita
+(`ACOES_COM_REFERENCIAS`); a leitura de inspiração e a transcrição não
+recebem. Carregar referências é fail-open na rota — sem tabela ou sem
+referência, a IA escreve como antes. **Sem referência utilizável, nada entra**
+(bloco vazio, não "nenhuma referência"). O rodapé do chat do editor mostra
+"N ref." / "sem ref." para o operador saber em qual regime a resposta saiu.
+
+**Na home** (`referencias.tsx`, seção acima de "Meus templates"): cards com
+selo (Em uso / Lendo… / Falhou / Desativada / Sem copy), diálogo com abas "Do
+seu Instagram" e "Enviar slides", ficha com copy por slide ao lado da imagem,
+por que funciona, pilar/molde/kw/peso/ativa.
+
+**Ficou de fora, de propósito**: layout visual a partir da referência (fase 2,
+depende dos carrosséis que o usuário vai mandar), smoke e2e do Estúdio
+(`e2e/smoke-conteudo.spec.ts`), e a métrica "leads/molde" do dashboard — que
+só existe depois de classificar os 87 posts (0 classificados hoje).
+
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
 **Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o

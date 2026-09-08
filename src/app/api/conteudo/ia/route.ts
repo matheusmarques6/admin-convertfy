@@ -9,7 +9,7 @@
  */
 
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { withTiming } from "@/lib/api/with-timing"
@@ -18,14 +18,32 @@ import { rewriteStorageImageSrc } from "@/lib/ai/convertia-image-url"
 import { generateEmailImage } from "@/lib/agents/chains/image.chain"
 import { modelosParaVariacoes } from "@/lib/agents/image/model-policy"
 import { aspectInstructionForPrompt } from "@/lib/agents/image/aspect-ratio"
-import { entradaImagemSchema, entradaSchema } from "@/lib/conteudo/ia/schemas"
+import { entradaImagemSchema, entradaSchema, type EntradaIA } from "@/lib/conteudo/ia/schemas"
 import { executarIA, IaJsonInvalidoError } from "@/lib/conteudo/ia/service"
+import { blocoDeReferencias, selecionarReferencias, type ContextoSelecao } from "@/lib/conteudo/referencias"
+import { ST_MOLDE_KEY } from "@/lib/conteudo/templates"
+import { listarReferencias } from "@/lib/services/conteudo-referencias.service"
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 120
 
 const log = logger.child("ConteudoIARoute")
+
+/**
+ * Molde e pilar do pedido, para escolher as referências mais parecidas.
+ * `gerar_estrutura` traz os dois; as outras ações trazem o resumo do
+ * documento, que declara "molde <nome>" — lê-se dali.
+ */
+function contextoDaEntrada(e: EntradaIA): ContextoSelecao {
+  if (e.acao === "gerar_estrutura") return { molde: ST_MOLDE_KEY[e.templateNome] ?? null, pilar: e.pilar ?? null }
+  if ("resumo" in e && typeof e.resumo === "string") {
+    const m = /molde ([^·\n]+)/.exec(e.resumo)
+    const nome = m?.[1]?.trim()
+    return { molde: nome ? (ST_MOLDE_KEY[nome] ?? null) : null }
+  }
+  return {}
+}
 
 async function handlePost(request: NextRequest) {
   try {
@@ -63,8 +81,23 @@ async function handlePost(request: NextRequest) {
       throw new AppError(`Pedido inválido: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, 400)
     }
 
+    // Referências da casa: as ações que ESCREVEM recebem os exemplos de
+    // estilo antes do pedido. Fail-open — sem tabela ou sem referência o
+    // comportamento é o de sempre. É o que separa "escrever pela regra" de
+    // "escrever como a casa escreve".
+    let blocoReferencias = ""
     try {
-      const r = await executarIA(parsed.data, { signal: request.signal })
+      const orgId = await resolveOrgId(user.id)
+      const admin = createAdminClient()
+      const todas = await listarReferencias(admin, orgId)
+      const sel = selecionarReferencias(todas, contextoDaEntrada(parsed.data))
+      blocoReferencias = blocoDeReferencias(sel)
+    } catch (e) {
+      log.warn("conteudo_ia.referencias_indisponiveis", { erro: (e as Error).message })
+    }
+
+    try {
+      const r = await executarIA(parsed.data, { signal: request.signal, blocoReferencias })
       return successResponse(request, { dados: r.dados, meta: { modelo: r.modelo, ms: r.ms, custo_usd: r.custoUsd, tentativas: r.tentativas } })
     } catch (e) {
       if (e instanceof IaJsonInvalidoError) {

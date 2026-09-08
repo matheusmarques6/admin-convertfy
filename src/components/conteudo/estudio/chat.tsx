@@ -23,6 +23,7 @@ import { getTemplate } from "@/lib/conteudo/templates"
 import type { PropostaSlide } from "@/lib/conteudo/types"
 import { TNUM } from "../ui"
 import type { EditorApi } from "./editor-types"
+import { useReferencias } from "./use-estudio-data"
 
 interface Msg {
   de: "eu" | "ia"
@@ -58,6 +59,9 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
   const endRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
+  // O que a ConvertIA de fato lê antes de escrever — o editor mostra, para
+  // que ninguém ache que ela "sabe" o estilo da casa sem referência nenhuma.
+  const { utilizaveis: refs } = useReferencias()
 
   useEffect(() => {
     if (endRef.current) endRef.current.scrollTop = endRef.current.scrollHeight
@@ -311,8 +315,8 @@ export function Chat({ api, anexosIniciais }: { api: EditorApi; anexosIniciais?:
             <button type="button" onClick={() => fileRef.current?.click()} title="Anexar imagem de inspiração" className="inline-flex h-[26px] items-center gap-1.5 rounded-[7px] border border-[var(--ops-border)] px-2 text-[10.5px] font-medium text-[var(--ops-sec)] hover:bg-[var(--ops-hover)]">
               <Icon icon={ImageIcon} customSize={12} /> Inspiração
             </button>
-            <span className="ml-1 text-[10px] text-[var(--ops-mut)]">
-              contexto: {tpl.nome} · {doc.frames.length} frames
+            <span className="ml-1 text-[10px] text-[var(--ops-mut)]" title={refs ? "Referências da casa que entram no pedido como exemplo de estilo" : "Sem referência: a ConvertIA escreve só pela regra. Adicione em Estúdio → Referências."}>
+              contexto: {tpl.nome} · {doc.frames.length} frames · {refs ? `${refs} ref.` : "sem ref."}
             </span>
             <span className="flex-1" />
             <button type="button" onClick={() => void enviar()} disabled={(!txt.trim() && !anexos.length) || pensando} aria-label="Enviar" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--ops-accent)] text-[var(--ops-on-accent)] disabled:opacity-40">
