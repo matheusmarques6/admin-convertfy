@@ -24,6 +24,7 @@ import {
   extractJson,
   type AgentInvokeConfig,
 } from "./llm-invoke"
+import { RespostaVaziaError } from "../resposta-vazia"
 import { renderImageTemplate } from "../image/template-renderer"
 import {
   buildSegmentedPrompt,
@@ -404,7 +405,12 @@ async function generateSubjectHint(input: {
     : {
         model: DEFAULT_SUBJECT_MODEL,
         temperature: 0.7,
-        max_tokens: 400,
+        // A saída útil é ~200 tokens (máximo medido em 30 dias: 213), mas o
+        // teto também paga o RACIOCÍNIO quando o modelo pensa por padrão —
+        // e a troca de modelo é um UPDATE no banco, sem deploy e sem
+        // ninguém reler esta linha. Com 400 o Fable consumia tudo pensando
+        // e devolvia vazio (08/09).
+        max_tokens: 4000,
         system_prompt: DEFAULT_SUBJECT_SYSTEM,
         user_template: DEFAULT_SUBJECT_USER,
       }
@@ -536,6 +542,21 @@ async function generateSubjectHint(input: {
       renderedPrompt,
       promptSegments,
       inputSummary,
+      // Resposta vazia por teto já custou a chamada inteira — sem isto o
+      // gasto do assunto que NÃO saiu some da telemetria (08/09: a run
+      // marcava 0/0 tokens depois de 16s de raciocínio pago).
+      ...(err instanceof RespostaVaziaError
+        ? {
+            tokensInput: err.tokensInput,
+            tokensOutput: err.tokensOutput,
+            costCents: resolveCostCents({
+              model: config.model,
+              tokensInput: err.tokensInput,
+              tokensOutput: err.tokensOutput,
+              costUsd: err.costUsd,
+            }),
+          }
+        : {}),
       durationMs: Date.now() - t0,
     }).catch(() => {})
     return null

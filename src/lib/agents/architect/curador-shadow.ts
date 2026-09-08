@@ -74,8 +74,30 @@ export const BLOCO_OMITIDO_PELO_ESTRUTURADOR =
   "(omitido — a decisão do Estruturador em <decisao_do_estruturador> substitui este bloco)"
 
 /** Modelo do shadow (e candidato do flip). Env sobrepõe sem deploy de config. */
-export const CURADOR_SHADOW_MODEL =
-  process.env.CURADOR_SHADOW_MODEL?.trim() || "anthropic/claude-sonnet-4.6"
+/**
+ * Último recurso quando ninguém disse qual modelo usar.
+ *
+ * Até 08/09 esta constante era a ÚNICA fonte: o Curador do vault ignorava
+ * `email_agent_configs` e rodava sempre em Sonnet. Trocado o flow inteiro
+ * para Fable, ele foi um dos dois agentes que não mudaram, e a telemetria
+ * mostrava um modelo que ninguém tinha escolhido — sem nada na tela ligando
+ * uma coisa à outra. O Curador LEGADO, que lê a config, mudou junto: os
+ * dois compartilham o `agent_type` e divergiam no modelo.
+ *
+ * Precedência hoje: env > config do agente `assembler_chooser` > isto.
+ */
+export const CURADOR_SHADOW_MODEL_FALLBACK = "anthropic/claude-sonnet-4.6"
+
+/**
+ * Override sem deploy, para ensaiar um modelo sem tocar no banco. Vence a
+ * config justamente por ser o mais explícito dos três.
+ */
+const CURADOR_SHADOW_MODEL_ENV = process.env.CURADOR_SHADOW_MODEL?.trim() || null
+
+/** Resolve o modelo do Curador do vault. Puro fora da leitura do env. */
+export function resolverModeloDoCurador(daConfig?: string | null): string {
+  return CURADOR_SHADOW_MODEL_ENV || daConfig?.trim() || CURADOR_SHADOW_MODEL_FALLBACK
+}
 
 // ── Prompt do contrato AMPLIADO (o prompt do flip, ensaiado no shadow) ───
 
@@ -531,6 +553,15 @@ export interface CuradorShadowParams {
    * site antigo não mudar de comportamento por omissão.
    */
   modo?: "shadow" | "on"
+  /**
+   * Modelo vindo de `email_agent_configs` (agent_type `assembler_chooser`),
+   * já resolvido pelo caller. Ausente → env, senão o fallback.
+   *
+   * Só o MODELO viaja: prompt, temperatura e teto continuam sendo os do
+   * vault, que são outro contrato — a linha do banco guarda os do Curador
+   * legado, e servi-los aqui trocaria o agente por outro.
+   */
+  modelo?: string | null
   /** Violações medidas sobre o rank-1 do Curador VIVO (comparação). */
   liveViolations: ProtocolViolation[]
   /**
@@ -567,12 +598,14 @@ export async function runCuradorShadow(
   p: CuradorShadowParams,
 ): Promise<CuradorVaultResultado | null> {
   const modo = p.modo ?? "shadow"
+  // Fora do try: o catch grava a run de erro e precisa do mesmo modelo.
+  const modelo = resolverModeloDoCurador(p.modelo)
   const t0 = Date.now()
   let runId = ""
   try {
     const momento = momentoDoEmail(p.flowType, p.emailNumber)
     const config: AgentInvokeConfig = {
-      model: CURADOR_SHADOW_MODEL,
+      model: modelo,
       temperature: 0.2,
       max_tokens: 8192,
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
@@ -634,8 +667,8 @@ export async function runCuradorShadow(
         cls: "sistema",
         valor:
           modo === "on"
-            ? `${CURADOR_SHADOW_MODEL} · protocolo do vault · saída CONSUMIDA pelo pipeline`
-            : `${CURADOR_SHADOW_MODEL} · contrato ampliado (ensaio) — saída NÃO consumida`,
+            ? `${modelo} · protocolo do vault · saída CONSUMIDA pelo pipeline`
+            : `${modelo} · contrato ampliado (ensaio) — saída NÃO consumida`,
       },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
       { rotulo: "Catálogo + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
@@ -866,7 +899,7 @@ export async function runCuradorShadow(
         batchId: p.batchId,
         agent: "assembler_chooser",
         status: "error",
-        model: CURADOR_SHADOW_MODEL,
+        model: modelo,
         errorMessage: `shadow: ${msg}`,
         parsedOutput: { shadow: modo === "shadow", curador_vault_mode: modo },
         durationMs: Date.now() - t0,

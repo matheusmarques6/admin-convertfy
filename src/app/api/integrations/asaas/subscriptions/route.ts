@@ -7,6 +7,10 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { validateMonetaryValue } from "@/lib/schemas/common"
 import { linkSubscriptionStores } from "@/lib/services/subscription-stores"
 import { logger } from "@/lib/logger"
+import {
+  decidirCriacaoNoAsaas,
+  explicarDuplicataAsaas,
+} from "@/lib/financial/asaas-assinatura-duplicada"
 
 const log = logger.child("AsaasSubscriptions")
 
@@ -87,6 +91,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { clientId, value, cycle, billingType, nextDueDate, description, storeIds } = body
+    // Só quando o operador VIU a assinatura existente e disse que esta é
+    // outra (segunda loja, por exemplo). Nunca default.
+    const confirmarDuplicada = body?.confirmar_duplicada === true
 
     validateMonetaryValue(value)
     const stores: string[] = Array.isArray(storeIds)
@@ -113,9 +120,65 @@ export async function POST(request: NextRequest) {
     }
 
     const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
-    const subscription = await asaas.createSubscription({
-      customer: asaasCustomerId, billingType, value, nextDueDate, cycle, description,
-    })
+
+    // A duplicata que COBRA. Esta chamada criava no Asaas sem checar nada,
+    // e o provedor não deduplica: um clique a mais — ou um F5 que reenvia
+    // — assinava o cliente duas vezes. Foi assim que a EP Negócios ficou
+    // com duas de R$ 2.497 ativas, sem nenhuma linha local por trás.
+    //
+    // Fail-open na CONSULTA: se a listagem falhar, cria (era o
+    // comportamento de sempre). Recusar a venda porque um GET caiu é pior
+    // que o risco de duplicar, e a régua nunca some da tela — o card
+    // mostra as duas.
+    let subscription: Awaited<ReturnType<typeof asaas.createSubscription>> | null = null
+    if (!confirmarDuplicada) {
+      try {
+        const { data: existentes } = await asaas.listSubscriptions({
+          customer: asaasCustomerId,
+          limit: 100,
+        })
+        const decisao = decidirCriacaoNoAsaas(existentes ?? [], { value, cycle, description })
+
+        if (decisao.acao === "reusar") {
+          // Criada há minutos: não existe decisão de negócio tomada duas
+          // vezes nessa janela. Segue com a que já existe.
+          log.warn("[Asaas] criação de assinatura duplicada evitada", {
+            clientId,
+            subscriptionId: decisao.existente.id,
+          })
+          subscription = {
+            id: decisao.existente.id,
+            customer: asaasCustomerId,
+            value: Number(decisao.existente.value),
+            nextDueDate: decisao.existente.nextDueDate ?? nextDueDate,
+            status: decisao.existente.status ?? "ACTIVE",
+          }
+        } else if (decisao.acao === "confirmar") {
+          throw new AppError(explicarDuplicataAsaas(decisao.existente), 409, "conflict")
+        }
+      } catch (err) {
+        if (err instanceof AppError) throw err
+        log.warn("[Asaas] checagem de duplicata falhou — seguindo com a criação", {
+          clientId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    if (!subscription) {
+      subscription = await asaas.createSubscription({
+        customer: asaasCustomerId,
+        billingType,
+        value,
+        nextDueDate,
+        cycle,
+        description,
+        // O espelho de faturas acha o dono do pagamento por aqui
+        // (`resolveClientForPayment`), e sem isso ele depende do
+        // `asaas_customer_id` em custom_fields.
+        externalReference: clientId,
+      })
+    }
 
     // Stub local IMEDIATO (o sync criaria o mesmo depois, idempotente
     // por asaas_subscription_id) — é o que permite vincular as lojas

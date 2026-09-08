@@ -4091,5 +4091,151 @@ segunda loja precisa mesmo da segunda assinatura, e ali o valor idêntico
 espelho), senão deixaria de avisar justamente quem tem a assinatura viva
 no Asaas e ainda sem espelho.
 
+### O quarto escritor: a duplicata que COBRA (08/09)
+
+O usuário mostrou a EP Negócios Digital com DOIS cards de R$ 2.497 —
+depois da correção acima. Medido: **zero linhas em
+`client_subscriptions` para esse cliente**. A lista da tela é
+`localSubscriptions` + `subscriptions` do Asaas, então dois cards com
+zero locais só podem ser **duas assinaturas no próprio Asaas**.
+
+`POST /api/integrations/asaas/subscriptions` chamava
+`asaas.createSubscription` **sem checar nada**, e o provedor não
+deduplica. A chamada leva segundos, o botão não travava de verdade e um
+F5 reenviava: o cliente passa a ser cobrado duas vezes por ciclo. As
+duplicatas locais eram feias na tela; esta sai na fatura de quem
+comprou uma assinatura só.
+
+`decidirCriacaoNoAsaas` (`asaas-assinatura-duplicada.ts`, puro, 18
+testes) separa por TEMPO, porque recusar tudo seria pior: a segunda loja
+de um cliente custa quase sempre o MESMO que a primeira (o JMJC tem duas
+de R$ 3.500), e recusar em silêncio faria a venda nova não ser cobrada.
+
+- **`reusar`** — idêntica (valor + ciclo + descrição sem acento/caixa)
+  criada há menos de 10 min: não existe decisão de negócio tomada duas
+  vezes nessa janela, é clique duplo ou retry. Segue com a que existe.
+- **`confirmar`** — idêntica mais antiga: 409 com a data, e o diálogo
+  "Criar mesmo assim" diz que passa a cobrar em dobro. Sem `dateCreated`
+  também cai aqui — afirmar recência que não se tem reusaria uma
+  assinatura que deveria nascer.
+- **`criar`** — nada parecido. Cancelada no Asaas não bloqueia; status
+  ausente conta como ATIVA (ignorá-la liberaria a duplicata).
+
+A **consulta** é fail-open (listagem que cai não pode recusar a venda),
+mas a criação não: `confirmar_duplicada` só vem de um clique humano. Duas
+armadilhas fechadas junto: `listSubscriptions` não filtrava por
+`customer` (traria a conta inteira) e `onClick={handleCreateSubscription}`
+passaria o EVENTO como `confirmarDuplicada` — truthy, e a checagem nunca
+rodaria. O POST passa `externalReference: clientId`, que é como
+`resolveClientForPayment` acha o dono do pagamento.
+
+**Nota de método**: o `execute_sql` do MCP devolve só o ÚLTIMO statement.
+Duas queries num envio fazem a primeira sumir sem erro — foi o que quase
+me fez concluir que o cliente não existia.
+
+### O card duplicado ERA o vínculo (08/09) — a tela somava duas fontes
+
+O relato original era literal e eu demorei a ouvi-lo: **vincular loja
+duplicava a assinatura**. Não era corrida, nem escritor a mais — é que
+`client-financial.tsx` lê DUAS fontes independentes (`client_subscriptions`
+pelo Supabase e a lista crua do Asaas por `useAsaasSubscriptions`) e
+renderizava as duas inteiras, `localSubscriptions.map()` seguido de
+`subscriptions.map()`, **sem nenhum filtro entre elas**.
+
+Enquanto a assinatura existia só no Asaas era um card. No instante em que
+alguém clicava "Vincular lojas", `handleLinkStores` criava a linha local
+— corretamente, porque é onde o vínculo mora: a FK de
+`client_subscription_stores` aponta para `client_subscriptions` — e a
+MESMA assinatura passava a ocupar dois cards. No print da EP Negócios os
+dois se distinguem: o esquerdo diz "Asaas (Automático)" sem id (é o
+local, que usa `paymentMethodLabels`), o direito mostra "ID Asaas" (é o
+do provedor).
+
+**O merge por `asaas_subscription_id` já existia — no
+`GET /api/client-subscriptions`, que esta tela não usa.** Agora a mesma
+regra roda aqui: a linha local VENCE (é ela que carrega lojas,
+classificação e notas) e a do provedor é descartada da lista. O card
+local ganhou a linha "ID Asaas", senão o dado sumiria junto com o card
+do Asaas.
+
+Conserta três sintomas de uma vez, porque todos liam a mesma variável:
+o card repetido, o "Assinaturas (2)" e o MRR de R$ 4.994 (= 2.497 × 2,
+somado em `activeSubsValue` = Asaas + locais). E vale para qualquer
+origem do espelho — vínculo, onboarding, fechamento da venda ou o sync —
+não só para o clique que expôs o defeito.
+
+**Lição**: mesma entidade vinda de duas fontes precisa do merge em TODA
+leitura, não só na que foi escrita primeiro. Um endpoint mergeado não
+protege a tela que fala direto com as duas pontas.
+
+**Reproduzido e medido (08/09, 22:37)**: criar assinatura pelo perfil do
+cliente (Ricardo Lacerda, Plano Mensal R$ 3.500) gravou **UMA linha
+correta**, com `asaas_subscription_id = sub_nx3acxf97wuc96j7` — e a tela
+mostrou duas. Prova de que o defeito é de LEITURA, não de escrita: o
+banco estava certo o tempo todo. Vale para todo caminho que cria o
+espelho, e o POST de assinatura Asaas cria um por construção, então
+"criar assinatura" duplicava a tela mesmo sem ninguém vincular loja.
+A regra saiu do componente para `assinaturasAsaasSemEspelho`
+(`assinatura-duplicada.ts`, puro), com esse caso como teste de
+regressão.
+
+## ConvertIA — as três perdas silenciosas (set/2026)
+
+Medido antes de escrever código: das **27 respostas do assistente, 7
+falharam (26%)** e **124 das 124 notas ativas estavam sem embedding**.
+Nenhuma das três causas aparecia em tela.
+
+**1. O 402 mais comum NÃO é falta de crédito.** Quatro das sete falhas
+eram `in_flight_budget_exhausted` com o saldo em **US$ 5,45, situação
+"ok"**. O OpenRouter RESERVA o custo máximo de cada chamada em voo
+(prompt + max_tokens no preço do modelo), então com saldo curto e
+modelo caro a segunda chamada é recusada enquanto a primeira não
+liquida — a mensagem do provedor diz "retry after in-flight requests
+settle". `friendlyModelError` casava os dois 402 na mesma regra e
+respondia "os créditos acabaram, recarregue", mandando fazer a coisa
+errada numa conta com saldo. Agora são códigos distintos:
+`credits_in_flight` (esperar) e `no_credits` (recarregar, com o link).
+O teste que fixava o comportamento antigo foi corrigido junto — teste
+que congela o erro é o que faz ele sobreviver.
+
+**2. A chamada ao MODELO não tinha retry** (as tools tinham desde a
+v3). `callWith` tratava só o slug desconhecido; qualquer outro erro
+era `throw` e matava o turno. `chamarComRetry` repete o transitório
+(in-flight, 429, 5xx, timeout) até 2× com backoff — o in-flight começa
+em **3s** porque 1s não faz a chamada anterior liquidar — e a espera
+sai do orçamento restante MENOS o mínimo de uma rodada, então insistir
+nunca custa a resposta. **Não repete a tentativa que já escreveu na
+tela**: 402/429/5xx são recusados no cabeçalho, antes do primeiro
+token, mas um timeout no meio do stream deixou texto no state e
+repetir duplicaria o parágrafo para quem está lendo.
+`meta.model_retries` grava a recuperação (ausente quando zero) — sem
+ele, o turno que insistiu 9s passa por lentidão do modelo.
+
+**3. A base inteira sem busca semântica, reportada como sucesso.** Três
+camadas conspiravam: `embedTexts` engolia a causa em `log.warn` e
+devolvia `null` (indistinguível de "nada a fazer"); `embedPending`
+parava no primeiro lote falho e o sync reportava `status:"synced"` com
+`embedded: 0`, que se lê como sucesso; e o aviso "só a busca por
+palavras rodou" estava atrás de `!embeddingsAvailable()`, que só olha
+se a CHAVE existe — e a chave é a mesma do chat, sempre existe. **O
+aviso era impossível de disparar justamente no caso real**, então a
+ConvertIA respondia de full-text degradado como se estivesse inteira.
+Agora toda saída carrega a causa (`{vectors, error}`,
+`{embedded, pending, error}`, `embedError` no sync separado de `error`
+— trazer as notas pode dar certo e a semântica ficar fora do ar) e o
+aviso depende de a semântica ter **rodado**, não de a chave existir.
+Resposta 200 sem nenhum vetor utilizável conta como falha; vetor fora
+de 1536 dimensões já era descartado, mas em silêncio. O parâmetro
+`dimensions` saiu: 1536 é o nativo do modelo, então não muda o
+resultado e só acrescenta uma forma de um dos provedores que servem o
+modelo recusar a chamada.
+
+**Regra derivada, que vale para os três**: "a chave está configurada"
+nunca é prova de que o subsistema funciona — é a mesma lição da chave
+em branco do Serper. Onde a resposta importa, o botão faz a chamada
+REAL e mostra a recusa crua ("Testar embeddings" e "Vetorizar as N
+pendentes" no card de saúde, no padrão do "Testar busca"). Antes, a
+única forma de investigar isto era por SQL e console.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

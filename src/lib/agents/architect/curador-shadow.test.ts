@@ -7,6 +7,8 @@ import {
   parseCuradorVaultOutput,
   rank1ByBlock,
   repeticoesPermitidas,
+  resolverModeloDoCurador,
+  CURADOR_SHADOW_MODEL_FALLBACK,
 } from "./curador-shadow"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
@@ -367,5 +369,26 @@ describe("template do Curador do vault — decisão do Estruturador, lacunas e �
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("no máximo 4 consultas")
     // A justificativa por posição continua obrigatória.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
+  })
+})
+
+
+/**
+ * 08/09: trocado o flow inteiro para Fable, o Curador do vault continuou em
+ * Sonnet — era o único dos dois lados do mesmo `agent_type` que não lia
+ * `email_agent_configs`. O modelo vinha de uma constante e a telemetria
+ * mostrava uma escolha que ninguém tinha feito.
+ */
+describe("resolverModeloDoCurador", () => {
+  it("a config do agente vence o fallback in-code", () => {
+    expect(resolverModeloDoCurador("anthropic/claude-fable-5.1")).toBe(
+      "anthropic/claude-fable-5.1",
+    )
+  })
+
+  it("sem config, o fallback in-code segura", () => {
+    for (const v of [null, undefined, "", "   "]) {
+      expect(resolverModeloDoCurador(v)).toBe(CURADOR_SHADOW_MODEL_FALLBACK)
+    }
   })
 })

@@ -105,7 +105,10 @@ import {
   resolverLojasDaAssinatura,
   type VinculoDeLojas,
 } from "@/lib/financial/lojas-da-assinatura"
-import { suspeitasDeDuplicata } from "@/lib/financial/assinatura-duplicada"
+import {
+  assinaturasAsaasSemEspelho,
+  suspeitasDeDuplicata,
+} from "@/lib/financial/assinatura-duplicada"
 
 interface ClientFinancialProps {
   clientId: string
@@ -810,9 +813,34 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     () => (paymentsData?.payments as Payment[]) || [],
     [paymentsData],
   )
-  const subscriptions: Subscription[] = useMemo(
+  const subscriptionsDoAsaas: Subscription[] = useMemo(
     () => (subscriptionsData?.subscriptions as Subscription[]) || [],
     [subscriptionsData],
+  )
+
+  /**
+   * A duplicação de VERDADE: vincular loja fazia nascer o segundo card.
+   *
+   * Esta tela lê DUAS fontes independentes — `client_subscriptions` pelo
+   * Supabase e a lista crua do Asaas — e renderizava as duas inteiras,
+   * uma embaixo da outra. Enquanto a assinatura existia só no Asaas era
+   * um card; no instante em que alguém clicava "Vincular lojas", o
+   * `handleLinkStores` criava a linha local (é onde o vínculo mora — a FK
+   * de `client_subscription_stores` aponta para `client_subscriptions`) e
+   * a MESMA assinatura passava a aparecer duas vezes, com o MRR em dobro.
+   *
+   * O merge por `asaas_subscription_id` já existia, mas só dentro do
+   * `GET /api/client-subscriptions` — que esta tela não usa. Aqui a
+   * mesma regra: a linha local VENCE, porque é ela que carrega lojas,
+   * classificação e notas; a do provedor vira o `asaas_subscription_id`
+   * mostrado no card local.
+   *
+   * Vale para qualquer origem do espelho (vínculo, onboarding,
+   * fechamento da venda ou o sync), não só para o clique que expôs isto.
+   */
+  const subscriptions: Subscription[] = useMemo(
+    () => assinaturasAsaasSemEspelho(localSubscriptions, subscriptionsDoAsaas),
+    [subscriptionsDoAsaas, localSubscriptions],
   )
   const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
   const isLoading = paymentsLoading
@@ -851,6 +879,15 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     [localSubscriptions, subscriptions],
   )
   const [fundindo, setFundindo] = useState<string | null>(null)
+  /**
+   * O 409 da rota do Asaas: já existe assinatura ativa idêntica.
+   *
+   * Não é erro — é uma decisão que só quem está vendendo pode tomar
+   * (segunda loja custa o mesmo que a primeira). Guarda a mensagem para
+   * o diálogo de confirmação; criar mesmo assim passa a cobrar o cliente
+   * duas vezes por ciclo, então o caminho tem de ser explícito.
+   */
+  const [duplicataAsaas, setDuplicataAsaas] = useState<string | null>(null)
 
   const error = paymentsError
     ? "Erro ao carregar dados financeiros"
@@ -1085,7 +1122,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     }
   }
 
-  async function handleCreateSubscription() {
+  async function handleCreateSubscription(confirmarDuplicada = false) {
     if (!subscriptionForm.name || subscriptionForm.value <= 0) {
       toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o nome e o valor" })
       return
@@ -1104,10 +1141,22 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             description: subscriptionForm.name,
             billingType: subscriptionForm.billingType,
             storeIds: subscriptionForm.storeIds,
+            confirmar_duplicada: confirmarDuplicada,
           }),
         })
         const result = await response.json()
+        if (response.status === 409) {
+          // Assinatura idêntica já ativa no Asaas: pergunta em vez de
+          // criar a segunda cobrança em silêncio.
+          const raw = result.error
+          setDuplicataAsaas(
+            (typeof raw === "string" ? raw : raw?.message) ??
+              "Este cliente já tem uma assinatura ativa idêntica no Asaas.",
+          )
+          return
+        }
         if (response.ok && result.subscription) {
+          setDuplicataAsaas(null)
           toast({
             title: "Assinatura criada",
             description:
@@ -2512,6 +2561,17 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span className="text-muted-foreground">Próximo vencimento</span>
                         <span>{new Date(sub.next_due_date).toLocaleDateString("pt-BR")}</span>
                       </div>
+                      {sub.asaas_subscription_id && (
+                        // O card do provedor não é mais renderizado quando
+                        // esta linha o espelha — sem esta linha o id sumiria
+                        // da tela junto com ele.
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">ID Asaas</span>
+                          <span className="max-w-[160px] truncate font-mono text-[10px]">
+                            {sub.asaas_subscription_id}
+                          </span>
+                        </div>
+                      )}
                       <SubscriptionStoresRow
                         vinculo={resolverVinculo(sub.id, sub.status)}
                         storeNameById={storeNameById}
@@ -3259,11 +3319,42 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               Cancelar
             </Button>
             <Button
-              onClick={handleCreateSubscription}
+              // Arrow, não a referência direta: onClick passa o EVENTO
+              // como 1º argumento, e ele cairia em `confirmarDuplicada`
+              // como truthy — a checagem de duplicata nunca rodaria.
+              onClick={() => handleCreateSubscription()}
               disabled={isCreating || subscriptionForm.value === 0}
             >
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assinatura idêntica já ativa no Asaas: decisão do operador,
+          porque a segunda loja de um cliente costuma custar o mesmo que
+          a primeira — e criar de novo cobra o cliente em dobro. */}
+      <Dialog open={duplicataAsaas !== null} onOpenChange={(open) => !open && setDuplicataAsaas(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assinatura parecida já existe</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-muted-foreground">{duplicataAsaas}</p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDuplicataAsaas(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={isCreating}
+              onClick={() => {
+                setDuplicataAsaas(null)
+                handleCreateSubscription(true)
+              }}
+            >
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Criar mesmo assim
             </Button>
           </DialogFooter>
         </DialogContent>

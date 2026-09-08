@@ -14,6 +14,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 import { invokeAgent, type AgentInvokeConfig } from "./llm-invoke"
+import { RespostaVaziaError } from "../resposta-vazia"
 
 const fetchMock = vi.fn()
 
@@ -83,7 +84,13 @@ describe("invokeAgent — reasoning por agente (OpenRouter)", () => {
     expect(body.temperature).toBe(0.4)
   })
 
-  it("resposta vazia com finish_reason length chega ao chamador com os números", async () => {
+  // Antes o vazio VOLTAVA com os números e o caller fazia `JSON.parse("")`
+  // — a run gravava "Unexpected end of JSON input" e a causa se perdia.
+  // Aconteceu duas vezes (copy_fit 5d7396b5 e subject 08/09). Agora sobe um
+  // erro que DIZ a causa, e os números continuam acessíveis nele: a chamada
+  // foi paga, e perder o custo no erro é a armadilha que o `withUsage` dos
+  // chains da fase 2 já cobre.
+  it("resposta vazia por teto vira erro que diz a causa, com os números", async () => {
     fetchMock.mockResolvedValueOnce(
       resposta({
         choices: [{ message: { content: "" }, finish_reason: "length" }],
@@ -94,14 +101,15 @@ describe("invokeAgent — reasoning por agente (OpenRouter)", () => {
         },
       }),
     )
-    const r = await invokeAgent(config({ max_tokens: 1500 }), { x: "1" })
-    expect(r).toEqual({
-      raw: "",
-      tokensInput: 3117,
-      tokensOutput: 1500,
-      costUsd: 0,
-      finishReason: "length",
-      reasoningTokens: 1500,
-    })
+    const err = await invokeAgent(config({ max_tokens: 1500 }), { x: "1" }).then(
+      () => null,
+      (e: unknown) => e as RespostaVaziaError,
+    )
+    expect(err).toBeInstanceOf(RespostaVaziaError)
+    expect(err!.message).toContain("aumente max_tokens")
+    expect(err!.tokensInput).toBe(3117)
+    expect(err!.tokensOutput).toBe(1500)
+    expect(err!.finishReason).toBe("length")
+    expect(err!.reasoningTokens).toBe(1500)
   })
 })

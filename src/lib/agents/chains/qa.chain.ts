@@ -48,6 +48,7 @@ import {
   startGenerationRun,
 } from "../callbacks/telemetry.callback"
 import { invokeOpenRouter, isOpenRouterModel } from "../openrouter-invoke"
+import { corteDeRaciocinio } from "../model-capabilities"
 import { deriveFieldNature } from "../shared/component-dimensions"
 import { isAttrToken } from "../html/attr-token-vocabulary"
 import { runQaVisionCheck } from "./qa-vision.chain"
@@ -486,10 +487,9 @@ async function invokeWithTimeout(
       timeoutMs: getQaTimeoutMs(),
       title: "Convertfy Admin QA",
       // Veredito curto em JSON — sem thinking (Kimi K3/GLM são reasoning
-      // always-on). FORMAT_OPS_REASONING=on re-liga.
-      ...(process.env.FORMAT_OPS_REASONING === "on"
-        ? {}
-        : { reasoning: { enabled: false } }),
+      // always-on). Só em quem aceita: o Fable recusa a chamada inteira.
+      // FORMAT_OPS_REASONING=on re-liga.
+      ...corteDeRaciocinio(model),
     })
     return or.text
   }
