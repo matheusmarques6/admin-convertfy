@@ -136,7 +136,7 @@ olha a lista é "isto está vivo?", não "quero atualizar?". O que ele
 protegia — a lista se mexer embaixo do que se está lendo — virou **seleção
 explícita** no primeiro carregamento, não congelamento do dado.
 
-### 5.2 — Execução como entidade ✅ ENTREGUE (migration 20261128)
+### 5.2 — Execução como entidade ✅ ENTREGUE (migration 20261129)
 
 `email_generation_executions` (store, flow, email, batch, `mode`
 manual|producao, `triggered_by`, `overrides`, `config_snapshot`, status,

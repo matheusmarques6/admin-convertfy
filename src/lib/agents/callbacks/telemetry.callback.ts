@@ -46,7 +46,7 @@ export interface LogGenerationRunParams {
   /** Nº da retentativa (0 = primeira). A UI de logs mostra em "Retries". */
   retryCount?: number
   /**
-   * Execução MANUAL a que este run pertence (migration 20261128).
+   * Execução MANUAL a que este run pertence (migration 20261129).
    *
    * Ausente em produção de propósito: só o modo manual grava linha de
    * execução (ver `agents/execucao/execution.service.ts`), então a coluna
@@ -210,7 +210,7 @@ export async function logGenerationRun(params: LogGenerationRunParams): Promise<
     .select("id")
     .single()
 
-  // Coluna `execution_id` ausente (migration 20261128 não aplicada neste
+  // Coluna `execution_id` ausente (migration 20261129 não aplicada neste
   // ambiente): retry SEM ela. Sem este degrade, uma coluna que só serve à
   // execução manual apagaria a telemetria INTEIRA — é o incidente do
   // `copy_fit` ao contrário: lá o CHECK derrubou o run e a linha de log

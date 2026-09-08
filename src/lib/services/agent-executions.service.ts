@@ -165,7 +165,7 @@ export async function fetchAgentExecutions(
 
   // Execuções manuais vivas destes e-mails. Uma query para o lote (o
   // índice parcial `uniq_ege_manual_viva` garante no máximo uma por
-  // e-mail), e fail-open: sem a migration 20261128 a coluna `manual` sai
+  // e-mail), e fail-open: sem a migration 20261129 a coluna `manual` sai
   // null e a aba funciona como antes.
   const manualPorEmail = new Map<string, ExecucaoManualResumo>()
   try {

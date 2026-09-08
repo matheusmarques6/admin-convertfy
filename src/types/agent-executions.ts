@@ -51,7 +51,7 @@ export type AgentExecutionRun = ExecutionAgentRun & {
 }
 
 /**
- * A execução MANUAL viva deste e-mail, quando há uma (migration 20261128).
+ * A execução MANUAL viva deste e-mail, quando há uma (migration 20261129).
  *
  * Fica no payload da listagem porque é a mesma pergunta que o operador faz
  * olhando o canvas: "esta peça está sob teste, e o que foi mexido nela?".

@@ -69,7 +69,7 @@ const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 25)
 
 /**
  * E-mails cuja execucao MANUAL esta pausada de proposito (migration
- * 20261128).
+ * 20261129).
  *
  * Nenhum front do watchdog pode toca-los: `stop_after` deixa o e-mail em
  * `rendering` com o estagio persistido — do lado de fora e indistinguivel

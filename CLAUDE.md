@@ -1293,7 +1293,7 @@ quando o contato manda várias seguidas — documentado no módulo).
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
 **Responder pelo CELULAR marca a conversa como lida** (set/2026,
-migration 20261128). O atendente respondia o cliente pelo WhatsApp do
+migration 20261129). O atendente respondia o cliente pelo WhatsApp do
 aparelho e a conversa seguia não lida no admin: "Breno Neves" com
 `unread_count = 14` e "Lucas" com 3, os dois com a última mensagem
 outbound e `sent_by_kind = 'system'` (a marca do fromMe da Evolution).
@@ -3710,7 +3710,7 @@ Executado com acesso ao banco de produção. O que a medição revelou muda o
 que estava escrito acima.
 
 **1. O trigger da ponte reunião→carteira NUNCA existiu neste banco**
-(migration 20261128). A
+(migration 20261129). A
 migration 20260415 criava `trg_sync_meeting_to_store_feedback`; só a FUNÇÃO
 estava lá. Concluir uma reunião com loja nunca alimentou
 `last_feedback_date` nem `store_feedback_calls` — a ponte estava morta desde
@@ -3836,7 +3836,7 @@ SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
 erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
 quatro dias sem gravar run porque o CHECK não tinha o valor).
 
-## Execução manual: desativar, pinar e parar onde quiser (set/2026, migration 20261128)
+## Execução manual: desativar, pinar e parar onde quiser (set/2026, migration 20261129)
 
 Camadas B/C/D do plano. `email_generation_executions` (mode manual|producao,
 `overrides`, `config_snapshot`, status, `stopped_at_node`) +
