@@ -1292,6 +1292,29 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
+**Foto de perfil do contato — a fila não pode travar no topo**
+(set/2026, migration 20261125). Sintoma: inbox só com iniciais, 56 das
+61 conversas sem foto E sem tentativa registrada. A causa imediata NÃO
+era bug: o canal Evolution ficou deslogado de 04/08 a 08/09 14:35, e
+`canalPodeEntregarFoto` corretamente o mantinha fora do lote — o log do
+PostgREST mostra as rodadas filtrando só os dois canais de Instagram.
+O que estava errado é o que aconteceria com o canal de volta: o desfecho
+era BINÁRIO. Erro do provedor (timeout, 5xx, número inexistente no
+WhatsApp) devolvia "não tentei" e não carimbava nada; com o lote em
+`last_message_at DESC LIMIT 20`, as mesmas conversas do topo voltariam
+em toda rodada e a cauda nunca seria alcançada. **Carimbar a falha
+sozinho não resolve**: quem falha continua com `checked_at` nulo e
+voltaria ao topo junto de quem nunca foi tentado — por isso a ordem
+começa por `failed_at NULLS FIRST` (`ORDEM_DA_FILA` em `avatar-fila.ts`,
+puro, 13 testes). `contact_avatar_failed_at` separa "a origem respondeu
+que não há foto" (7 dias) de "a chamada falhou" (1 hora): sem a
+separação, ou a falha queima uma semana, ou trava a fila. O serviço
+devolve `motivo` TIPADO por saída — "filled: 0" não distingue canal
+deslogado de contato sem foto, e as duas pedem ações opostas; o cron
+responde e loga o breakdown. Lote 60 com orçamento de 240s e cadência de
+2h (era 20 a cada 6h: a base levava ~18h para ser coberta uma vez, então
+quem religava o número via as fotos no dia seguinte).
+
 ## Inbox — recuperação de custo no banco (set/2026, migrations 20261120-23)
 
 O inbox sufocou um Postgres pequeno com **59 conversas e 238 mensagens**.

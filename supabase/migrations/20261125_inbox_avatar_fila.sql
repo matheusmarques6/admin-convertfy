@@ -33,8 +33,8 @@ COMMENT ON COLUMN crm_threads.contact_avatar_failed_at IS
   'inclusive "este contato não tem foto". Janela de re-tentativa curta.';
 
 -- A fila é: sem foto nossa, não é comentário, fora das duas janelas.
--- Índice pela ORDEM da fila (checked_at NULLS FIRST, depois recência)
--- para o lote não varrer a tabela inteira a cada rodada.
+-- Índice pela ORDEM da fila (failed_at e checked_at NULLS FIRST, depois
+-- recência) para o lote não varrer a tabela inteira a cada rodada.
 CREATE INDEX IF NOT EXISTS idx_crm_threads_avatar_fila
   ON crm_threads (contact_avatar_failed_at NULLS FIRST, contact_avatar_checked_at NULLS FIRST, last_message_at DESC)
   WHERE contact_external_id NOT LIKE 'comment:%';
