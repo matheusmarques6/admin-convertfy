@@ -4133,5 +4133,40 @@ rodaria. O POST passa `externalReference: clientId`, que é como
 Duas queries num envio fazem a primeira sumir sem erro — foi o que quase
 me fez concluir que o cliente não existia.
 
+### O card duplicado ERA o vínculo (08/09) — a tela somava duas fontes
+
+O relato original era literal e eu demorei a ouvi-lo: **vincular loja
+duplicava a assinatura**. Não era corrida, nem escritor a mais — é que
+`client-financial.tsx` lê DUAS fontes independentes (`client_subscriptions`
+pelo Supabase e a lista crua do Asaas por `useAsaasSubscriptions`) e
+renderizava as duas inteiras, `localSubscriptions.map()` seguido de
+`subscriptions.map()`, **sem nenhum filtro entre elas**.
+
+Enquanto a assinatura existia só no Asaas era um card. No instante em que
+alguém clicava "Vincular lojas", `handleLinkStores` criava a linha local
+— corretamente, porque é onde o vínculo mora: a FK de
+`client_subscription_stores` aponta para `client_subscriptions` — e a
+MESMA assinatura passava a ocupar dois cards. No print da EP Negócios os
+dois se distinguem: o esquerdo diz "Asaas (Automático)" sem id (é o
+local, que usa `paymentMethodLabels`), o direito mostra "ID Asaas" (é o
+do provedor).
+
+**O merge por `asaas_subscription_id` já existia — no
+`GET /api/client-subscriptions`, que esta tela não usa.** Agora a mesma
+regra roda aqui: a linha local VENCE (é ela que carrega lojas,
+classificação e notas) e a do provedor é descartada da lista. O card
+local ganhou a linha "ID Asaas", senão o dado sumiria junto com o card
+do Asaas.
+
+Conserta três sintomas de uma vez, porque todos liam a mesma variável:
+o card repetido, o "Assinaturas (2)" e o MRR de R$ 4.994 (= 2.497 × 2,
+somado em `activeSubsValue` = Asaas + locais). E vale para qualquer
+origem do espelho — vínculo, onboarding, fechamento da venda ou o sync —
+não só para o clique que expôs o defeito.
+
+**Lição**: mesma entidade vinda de duas fontes precisa do merge em TODA
+leitura, não só na que foi escrita primeiro. Um endpoint mergeado não
+protege a tela que fala direto com as duas pontas.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

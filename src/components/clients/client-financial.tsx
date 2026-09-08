@@ -810,10 +810,39 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     () => (paymentsData?.payments as Payment[]) || [],
     [paymentsData],
   )
-  const subscriptions: Subscription[] = useMemo(
+  const subscriptionsDoAsaas: Subscription[] = useMemo(
     () => (subscriptionsData?.subscriptions as Subscription[]) || [],
     [subscriptionsData],
   )
+
+  /**
+   * A duplicação de VERDADE: vincular loja fazia nascer o segundo card.
+   *
+   * Esta tela lê DUAS fontes independentes — `client_subscriptions` pelo
+   * Supabase e a lista crua do Asaas — e renderizava as duas inteiras,
+   * uma embaixo da outra. Enquanto a assinatura existia só no Asaas era
+   * um card; no instante em que alguém clicava "Vincular lojas", o
+   * `handleLinkStores` criava a linha local (é onde o vínculo mora — a FK
+   * de `client_subscription_stores` aponta para `client_subscriptions`) e
+   * a MESMA assinatura passava a aparecer duas vezes, com o MRR em dobro.
+   *
+   * O merge por `asaas_subscription_id` já existia, mas só dentro do
+   * `GET /api/client-subscriptions` — que esta tela não usa. Aqui a
+   * mesma regra: a linha local VENCE, porque é ela que carrega lojas,
+   * classificação e notas; a do provedor vira o `asaas_subscription_id`
+   * mostrado no card local.
+   *
+   * Vale para qualquer origem do espelho (vínculo, onboarding,
+   * fechamento da venda ou o sync), não só para o clique que expôs isto.
+   */
+  const subscriptions: Subscription[] = useMemo(() => {
+    const espelhadas = new Set(
+      localSubscriptions
+        .map((l) => l.asaas_subscription_id)
+        .filter((id): id is string => Boolean(id)),
+    )
+    return subscriptionsDoAsaas.filter((s) => !espelhadas.has(s.id))
+  }, [subscriptionsDoAsaas, localSubscriptions])
   const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
   const isLoading = paymentsLoading
 
@@ -2533,6 +2562,17 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span className="text-muted-foreground">Próximo vencimento</span>
                         <span>{new Date(sub.next_due_date).toLocaleDateString("pt-BR")}</span>
                       </div>
+                      {sub.asaas_subscription_id && (
+                        // O card do provedor não é mais renderizado quando
+                        // esta linha o espelha — sem esta linha o id sumiria
+                        // da tela junto com ele.
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">ID Asaas</span>
+                          <span className="max-w-[160px] truncate font-mono text-[10px]">
+                            {sub.asaas_subscription_id}
+                          </span>
+                        </div>
+                      )}
                       <SubscriptionStoresRow
                         vinculo={resolverVinculo(sub.id, sub.status)}
                         storeNameById={storeNameById}
