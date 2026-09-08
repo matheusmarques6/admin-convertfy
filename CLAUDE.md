@@ -1292,6 +1292,26 @@ quando o contato manda várias seguidas — documentado no módulo).
 
 **SMS**: nada implementado — bloqueado na escolha de provedor.
 
+**Responder pelo CELULAR marca a conversa como lida** (set/2026,
+migration 20261128). O atendente respondia o cliente pelo WhatsApp do
+aparelho e a conversa seguia não lida no admin: "Breno Neves" com
+`unread_count = 14` e "Lucas" com 3, os dois com a última mensagem
+outbound e `sent_by_kind = 'system'` (a marca do fromMe da Evolution).
+O `CASE` do trigger `crm_messages_update_thread` incrementava no inbound
+e, em todo o resto, MANTINHA o valor — quem zerava era só
+`POST /threads/[id]/read`, ou seja, abrir a conversa no admin, caminho
+que responder pelo celular nunca percorre. O webhook já cobria metade
+(`clearCrmThreadNotifications` no fromMe), então divergiam justamente as
+duas coisas que a doc diz espelharem uma à outra: sino limpo e badge
+aceso na mesma conversa. Agora outbound de `agent`/`system` zera.
+**Automação NÃO zera** — fluxo automático responder não é alguém ter
+lido, e zerar ali esconderia mensagem por olhar. `is_historical` fora
+(importação traz outbound aos milhares) e a guarda
+`created_at >= last_message_at` é a mesma do `GREATEST`: mensagem fora
+de ordem não pode apagar não-lida mais recente que ela. Custo ZERO em
+escrita — o trigger já fazia esse UPDATE, muda só o valor de uma coluna,
+nenhum evento de realtime a mais.
+
 **Foto de perfil do contato — a fila não pode travar no topo**
 (set/2026, migration 20261125). Sintoma: inbox só com iniciais, 56 das
 61 conversas sem foto E sem tentativa registrada. A causa imediata NÃO
@@ -3648,7 +3668,8 @@ INSERT — quebrando kanban e telas.
 Executado com acesso ao banco de produção. O que a medição revelou muda o
 que estava escrito acima.
 
-**1. O trigger da ponte reunião→carteira NUNCA existiu neste banco.** A
+**1. O trigger da ponte reunião→carteira NUNCA existiu neste banco**
+(migration 20261128). A
 migration 20260415 criava `trg_sync_meeting_to_store_feedback`; só a FUNÇÃO
 estava lá. Concluir uma reunião com loja nunca alimentou
 `last_feedback_date` nem `store_feedback_calls` — a ponte estava morta desde
@@ -3708,6 +3729,77 @@ O round 5A foi aplicado. Depois dele: `anon_aberto = 0`, `tabelas_sem_rls =
 
 **Ainda aberto**: o round 5B (as 61 policies `TO authenticated USING(true)`,
 que exigem avaliação tabela a tabela) e o painel de agenda por colaborador.
+---
+---
+
+## Execuções ao vivo no Estúdio, e o caminho até a execução parcial (set/2026, migration 20261127)
+
+Pedido: a aba Execuções (`/admin/agents/studio?tab=execs`) em **tempo real
+de fato**, e poder **entrar numa execução, desativar o que quiser e testar
+até onde quiser** — como no n8n. Pesquisa do modelo do n8n, decisões
+tomadas e o estado de cada camada em
+`docs/email-generation/plano-execucoes-estilo-n8n.md`.
+
+**O dado do "rodando" já existia; a tela é que era lenta.** O
+`startGenerationRun` grava a linha com `status:'running'` ANTES de invocar
+o modelo, e o SSE de runs (`/api/sse/admin/agents/runs`) já entrega em 2s —
+mas a aba lia SWR a 10s. Baixar o intervalo do SWR era a saída errada: a
+listagem filtra com `.or("generation_batch_id.not.is.null, status.in.(…)")`
+e o único índice de `email_flow_emails (updated_at DESC)`
+(`idx_efe_generated_recent`) é **parcial** em `generation_batch_id IS NOT
+NULL` — um OR não é servido por ele, e repetir isso de 2 em 2s por aba é o
+padrão que custou 372 min de CPU no incidente do inbox.
+
+Então o SSE faz **duas perguntas**: `agent_studio_executions_delta` (só
+ids, três pernas `UNION ALL`, uma por índice — e-mail com batch, e-mail em
+voo pelo novo `idx_efe_em_voo_updated`, run mexida) e, só quando a resposta
+é não-vazia, `fetchAgentExecutions({emailIds})`. **Conexão ociosa: duas
+varreduras de índice a cada 2s e zero byte no cliente.** O delta ordena
+**ASC** de propósito: o consumidor tem teto por volta, e cortar pelos mais
+NOVOS deixaria mudança antiga atrás do cursor para sempre; o cursor avança
+só até o que foi enviado, menos 1ms (o delta compara com `>`, e duas
+mudanças no mesmo milissegundo em lados opostos do corte perderiam a
+segunda — reenviar é inofensivo, o upsert do cliente é idempotente).
+
+**A armadilha da reconciliação, com teste dedicado:** um evento de RUN
+**não move o `updated_at` do e-mail**, só a lista de runs. Desempatar por
+`updated_at` — como o `useAgentRunsLive` faz — descartaria em silêncio
+justamente o evento que acende o nó. Daí `execRecency` =
+`max(updated_at, maior created_at das runs)`; o upsert do SSE é
+autoritativo (uma conexão, ordem garantida) e empate contra o snapshot REST
+vai para o snapshot: com o SSE morto nenhum evento local chega, a recência
+local nunca passa a do snapshot e o fallback assume sozinho. Execução que o
+SSE trouxe e a janela do snapshot não cobre é preservada, senão pisca.
+
+O tipo da execução mora em `types/agent-executions.ts` e quem monta é
+`lib/services/agent-executions.service.ts`, para REST e SSE — dois
+montadores divergiriam e apareceriam como "o nó mudou de status sozinho".
+`EM_VOO` é a lista de status em voo e é **SYNC com o predicado literal** do
+índice e da perna 2 do delta.
+
+O checkbox "Auto refresh" saiu: ligava um poll de 10s, e a pergunta de quem
+olha a lista é "isto está vivo?". O que ele protegia — a lista se mexer
+embaixo de quem lê — virou **seleção explícita** no primeiro carregamento
+(com `?? executions[0]`, geração nova entrando no topo trocava a execução
+aberta). **Limite declarado:** não existe progresso DENTRO de um step — uma
+chamada de LLM não reporta nada entre começo e fim, então o nó fica
+"rodando" por 30–240s sem fração, e barra ali seria medida inventada.
+
+**Decisões para as camadas seguintes** (execução como entidade, overrides
+por execução, pin): linha dura manual × produção (produção ignora pin e
+desativação, como no n8n); desativar vale para TODOS os nós, mas o disparo
+é **recusado antes de gastar** quando falta insumo sem "passa adiante"
+(Curador, Blueprint, Copy) — a premissa "cai no template global, que tem
+hero" é FALSA (o global do welcome-1 tem zero placeholders e nenhum
+marcador `cfy:hero`), então deixar rodar para descobrir custa a fase 1 e
+termina em `hero_failed` garantido; os três modos parciais (parar em X,
+rodar só X, retomar de X); pin do pipeline INTEIRO, fase 1 incluída (a fase
+1 leva ~220s — sem pin, "testar até onde eu quiser" é impagável); grafo
+segue em CÓDIGO, só operável. O watchdog terá de respeitar execução manual
+pausada, senão parar no nó X e sair para almoçar devolve a execução morta.
+
+---
+
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

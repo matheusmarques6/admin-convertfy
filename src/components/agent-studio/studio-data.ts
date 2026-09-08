@@ -11,7 +11,6 @@ import type {
   PromptSegment,
 } from "@/lib/agents/shared/prompt-provenance"
 import type { PipelineAgentKey } from "@/lib/agents/agent-visual"
-import type { ExecutionAgentRun } from "@/lib/agents/studio-graph"
 
 export interface LogsPayload {
   window_days: number
@@ -44,28 +43,17 @@ export interface LogsPayload {
   by_day: Array<{ day: string; runs: number; cost_cents: number; cost_usd: number }>
 }
 
-export interface ExecutionRow {
-  email_id: string
-  email_name: string
-  email_number: number
-  email_status: string
-  bucket: "success" | "error" | "running"
-  failure_reason: string | null
-  updated_at: string
-  ready_at: string | null
-  failed_at: string | null
-  store_id: string | null
-  store_name: string
-  flow_id: string | null
-  flow_type: string | null
-  flow_type_label: string
-  cost_cents: number
-  runs: Array<ExecutionAgentRun & { model: string | null; created_at: string }>
-}
-
-export interface ExecutionsPayload {
-  executions: ExecutionRow[]
-}
+/**
+ * A execução vive em `@/types/agent-executions` desde set/2026: o mesmo
+ * objeto é montado pela listagem REST e pelo SSE do tempo real
+ * (`agent-executions.service.ts`), e um tipo por camada deixaria as duas
+ * divergirem em silêncio. Os nomes antigos seguem exportados daqui porque
+ * é por eles que as abas importam.
+ */
+export type {
+  AgentExecution as ExecutionRow,
+  AgentExecutionsPayload as ExecutionsPayload,
+} from "@/types/agent-executions"
 
 export interface PromptRowLite {
   id: string

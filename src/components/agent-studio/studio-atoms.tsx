@@ -39,6 +39,8 @@ export function StudioSpinStyle() {
     <style>{`
       @keyframes cf-studio-spin { to { transform: rotate(360deg); } }
       .cf-studio-spin { animation: cf-studio-spin 0.8s linear infinite; }
+      @keyframes cf-studio-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+      .cf-studio-pulse { animation: cf-studio-pulse 1.6s ease-in-out infinite; }
     `}</style>
   )
 }
