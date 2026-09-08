@@ -2078,6 +2078,27 @@ top 5 com preço/link), intenção deste email, `<secoes_disponiveis>` (só
 nomes), estruturas dos outros emails, orientação do COO, revisão humana.
 Ele NÃO recebe variantes, lacunas nem intenções por bloco.
 
+**A nota de intenção só viaja quando NÃO há alvo** (08/09,
+`intencaoParaOPrompt`). Com o Seletor ligado ela é redundante: ele a lê
+INTEIRA e a devolve traduzida — os quatro anti-objetivos da nota do
+welcome-1 aparecem LITERALMENTE no `proibido_neste_toque` do alvo, os dois
+trabalhos viram `trabalhos_fixos`, "aposta na objeção dominante, uma só"
+vira o `criterio_de_selecao` e o contexto do momento vira a `razao`. Servir
+a nota de novo é a mesma informação duas vezes, uma crua competindo com a
+tipada. No lugar dela vai `INTENCAO_NAO_SERVIDA`, que diz onde a informação
+está e proíbe procurá-la — bloco que some em silêncio faz o modelo caçar o
+que não recebeu (lição do `exige` e do `momento`), então as três menções
+operacionais do system (FALLBACK, VALIDAÇÃO, `text_only`) foram reescritas
+com a condição declarada, e a VALIDAÇÃO passou a conferir contra trabalhos
+fixos/veículos/proibições do alvo. **Sem alvo a nota volta inteira** —
+desligar o Seletor nunca regride. `intencao_servida` no `input_vars` diz em
+qual regime a run rodou, e a Entrada mantém a linha "Intenção deste email"
+explicando que não foi servida (senão some da tela sem motivo). **Custo
+declarado**: dos 5 itens da checklist de saída da nota, 4 têm equivalente no
+alvo e "noção da faixa de preço e do tipo de produto" NÃO — é o que
+justificava a posição `products`; nenhum campo foi inventado no alvo para
+compensar.
+
 O **Curador do vault** (`curador-shadow.ts`, o vigente) NÃO decide
 estrutura nem reescreve papel: a função dele é ENCONTRAR na biblioteca os
 blocos cuja anatomia realiza o papel decidido pelo Estruturador em cada

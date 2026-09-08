@@ -197,17 +197,17 @@ Como decidir:
 - Se <decisao_de_objecao> vier com modo "manutencao_de_confianca" ou "fechamento_de_ciclo", não há objeção a atacar. O diagnóstico passa a ser: qual promessa está sendo paga (ou qual prazo está sendo soado) e que sequência entrega isso sem argumentar de novo.
 - Se <decisao_de_objecao> vier com modo "varredura_de_objecoes", a peça é VÁRIAS razões curtas escaneáveis de naturezas diferentes — não um argumento encadeado. A estrutura precisa refletir isso (lista, cards, blocos curtos), não uma narrativa longa.
 - <decisao_de_objecao> traz "veículos" com "insumo disponível": NUNCA posicione uma seção para um veículo com insumo false — ela nasceria vazia. Insumo "parcial" pede posição curta.
-- FALLBACK: só quando <decisao_de_objecao> declarar ausência (Seletor desligado ou sem alvo), o diagnóstico volta a ser seu: identifique em <perfil_da_marca> a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar — e preencha "diagnostico.objecao_dominante".
+- FALLBACK: só quando <decisao_de_objecao> declarar ausência (Seletor desligado ou sem alvo), o diagnóstico volta a ser seu: identifique em <perfil_da_marca> a objeção dominante da categoria e cruze com o que a intenção deste email manda atacar — e preencha "diagnostico.objecao_dominante". É NESSE caso, e só nele, que <email> traz a nota de intenção inteira: com alvo, a intenção já vem traduzida no alvo e a nota não é servida (não a procure).
 - SELEÇÃO: escolha a(s) referência(s) cujo MECANISMO serve a essa objeção. O nicho da amostra é irrelevante — o que transfere é o mecanismo. Você PODE fundir referências; cada pedaço precisa citar de onde veio e por quê.
 - TRADUÇÃO: mantenha o papel de cada posição ("o pivô que troca desconto por razão"); troque o conteúdo do papel pela realidade da loja. Padrões transferíveis (cupom 2× com papéis distintos) ficam; a renderização da amostra (a foto, a categoria) sai.
 - POSIÇÃO NO ARCO: respeite a progressão — compressão, rotação de voz. Antes de posicionar um bloco defensivo pergunte: neste toque, o leitor já tem essa dúvida? Se não tem, o bloco a cria.
-- VALIDAÇÃO: confira sua estrutura contra a checklist da intenção do email ("Quando ela termina de ler...") e contra os anti-objetivos.
+- VALIDAÇÃO: confira sua estrutura contra o que <decisao_de_objecao> exige deste toque — os "trabalhos fixos" (cada um precisa de posição que o realize), os "veículos" com insumo disponível e o "proibido neste toque" (que restringe a REDAÇÃO, não elimina posição). Quando a nota de intenção estiver servida (fallback sem alvo), confira também contra a checklist dela ("Quando ela termina de ler...") e contra os anti-objetivos.
 
 Restrições de construção:
 - Use SOMENTE seções listadas em <secoes_disponiveis>. NUNCA emita "header" nem "cta": o papel do header vai para a PRIMEIRA posição da sua sequência (seja ela qual for); o papel de um cta isolado vai para a posição ANTERIOR a ele.
 - As contagens de posições em <progressao_observada> contam as seções ANTES da absorção. Desconte as posições header/cta DA REFERÊNCIA correspondente — referência sem header nem cta mantém a contagem original.
 - Se uma seção CENTRAL da referência não está em <secoes_disponiveis> (ex.: offer), RE-PROJETE o papel dela numa seção construível — preservando o MECANISMO, não só as palavras. Se o papel da seção original depende de isolamento visual (bloco destacado que funciona como interrupção), a re-projeção só vale numa variante que preserve esse isolamento. Prazo e cupom soltos num parágrafo não re-projetam o bloco: destroem o dispositivo. Se nenhuma variante preserva o mecanismo, registre em "descartes" e NÃO force.
-- "text_only" só é válido quando a intenção deste email ou sua referência pedem QUEBRA DE FORMATO — é dispositivo de encerramento cujo valor depende de todos os toques desenhados que vieram antes. NUNCA use "text_only" como saída para biblioteca insuficiente: um flow que quebra o formato cedo não tem como quebrá-lo no fim.
+- "text_only" só é válido quando a referência escolhida — ou a nota de intenção, quando servida — pede QUEBRA DE FORMATO — é dispositivo de encerramento cujo valor depende de todos os toques desenhados que vieram antes. NUNCA use "text_only" como saída para biblioteca insuficiente: um flow que quebra o formato cedo não tem como quebrá-lo no fim.
 - NUNCA indique posição que exige mais produtos do que a loja tem (os produtos estão em <perfil_da_marca>).
 - Cada email deste flow precisa de composição PRÓPRIA: NUNCA repita a sequência de outro email listado em <estruturas_dos_outros_emails>. Repetir a estrutura que VOCÊ já decidiu para ESTE mesmo email numa geração anterior é legítimo — se ela continua sendo a certa, mantenha-a.
 - Estrutura diferente não basta: o ARGUMENTO também não se repete. Uma objeção listada em <objecoes_ja_atacadas> só volta com profundidade maior — e a estrutura precisa refletir isso (afirmação vira mecanismo, mecanismo vira voz de terceiro).
@@ -217,6 +217,37 @@ Restrições de construção:
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
 {"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"..."}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
 Toda posição exige "referencia" E "porque". Posição sem os dois é inválida.`
+
+/**
+ * O que entra no lugar da nota de intenção quando o Seletor entregou alvo.
+ *
+ * A nota (1.731 chars no welcome-1) já é lida INTEIRA pelo Seletor, que roda
+ * antes e a devolve traduzida: os anti-objetivos dela viram
+ * `proibido_neste_toque` — literalmente, palavra por palavra —, os dois
+ * trabalhos viram `trabalhos_fixos` e a instrução de qual objeção atacar vira
+ * o alvo. Servi-la de novo aqui é a mesma informação duas vezes, uma crua e
+ * uma tipada, e a crua compete com a tipada.
+ *
+ * A frase FICA no lugar da nota em vez de o bloco sumir: prompt que perde um
+ * bloco em silêncio faz o modelo procurar o que não recebeu (é a lição do
+ * `exige` e do `momento`). Sem alvo, a nota volta inteira — é o fallback que
+ * o system declara, e desligar o Seletor nunca pode regredir o Estruturador.
+ */
+export const INTENCAO_NAO_SERVIDA =
+  "(a nota de intenção deste email NÃO é servida aqui: o Seletor a leu inteira e o que ela manda fazer chega traduzido em <decisao_de_objecao> — trabalhos fixos, veículos e proibições deste toque. Não procure a nota nem a cite.)"
+
+/**
+ * O que vai no `{{intencao_email}}`: a nota, ou a declaração de que ela não
+ * veio. A regra mora aqui, e não no meio da montagem das vars, porque é ela
+ * que um teste tem de travar — "com alvo a nota não viaja" é a mudança
+ * inteira.
+ */
+export function intencaoParaOPrompt(
+  nota: string,
+  alvo: unknown | null | undefined,
+): string {
+  return alvo ? INTENCAO_NAO_SERVIDA : nota
+}
 
 export const DEFAULT_ESTRUTURADOR_USER = `<perfil_da_marca>
 - marca: {{brand_name}}

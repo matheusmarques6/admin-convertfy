@@ -58,6 +58,7 @@ import {
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
   DEFAULT_ESTRUTURADOR_USER,
+  intencaoParaOPrompt,
   normalizarOutput,
   type EstruturadorOutput,
   type MaterialDoFlow,
@@ -114,7 +115,10 @@ export const USER_ORIGINS: Record<string, SegmentOrigin> = {
   top_products: { cls: "loja", rotulo: "Top 5 produtos — store_top_products (nome, preço e link)" },
   flow_type: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
   email_number: { cls: "sistema", rotulo: "Identidade do email — pipeline" },
-  intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents" },
+  // Com alvo, esta var não leva a nota e sim a declaração de ausência
+  // (INTENCAO_NAO_SERVIDA) — a origem segue sendo o vault porque é a nota que
+  // ela substitui, e é lá que se lê o que o Seletor traduziu.
+  intencao_email: { cls: "vault", rotulo: "Intenção DESTE email — email_intents (só no fallback sem alvo)" },
   // Alvo do toque (set/2026): SAÍDA do Seletor — a objeção-alvo deixa de
   // ser decisão deste agente e vira tradução.
   decisao_de_objecao: { cls: "upstream", rotulo: "Alvo do toque — SAÍDA do Seletor (store_email_objection_targets)" },
@@ -181,7 +185,6 @@ export interface RunEstruturadorResult {
 
 async function loadMaterial(flowType: string): Promise<{
   material: MaterialDoFlow
-  intencaoEmail: string | null
   refsServidas: string[]
   aprendizadosServidos: string[]
   vaultCommitSha: string | null
@@ -217,12 +220,6 @@ async function loadMaterial(flowType: string): Promise<{
       referencias: refs.map((r) => ({ slug: r.slug as string, body: r.body_md as string })),
       aprendizados: learnings.map((l) => ({ slug: l.slug as string, body: l.body_md as string })),
     },
-    intencaoEmail:
-      (intents.find((i) => i.email_number != null) as { body_md?: string } | undefined) == null
-        ? null
-        : ((intents.find(
-            (i) => (i.email_number as number | null) != null,
-          ) as { body_md: string } | undefined)?.body_md ?? null),
     refsServidas: refs.map((r) => r.slug as string),
     aprendizadosServidos: learnings.map((l) => l.slug as string),
     vaultCommitSha: (stateRes.data?.last_commit_sha as string | null) ?? null,
@@ -445,13 +442,17 @@ export async function runEstruturador(
     ? irmas.map((e) => `- ${e.rotulo}: [${e.seq.join(", ")}]`).join("\n")
     : "(nenhum outro email deste flow tem estrutura decidida ainda)"
 
+  // A nota de intenção só viaja quando NÃO há alvo (ver INTENCAO_NAO_SERVIDA):
+  // com alvo ela chega traduzida, e a nota crua competiria com a versão tipada.
+  const intencaoServida = !input.alvo
+
   const userVars: Record<string, string> = {
     brand_name: input.brandName,
     top_products: renderTopProducts(input.topProducts),
     pesquisa: input.pesquisa || "(sem pesquisa)",
     flow_type: input.flowType,
     email_number: String(input.emailNumber),
-    intencao_email: intencaoEmail,
+    intencao_email: intencaoParaOPrompt(intencaoEmail, input.alvo ?? null),
     decisao_de_objecao: renderAlvo(input.alvo ?? null, ALVO_AUSENTE_ESTRUTURADOR),
     objecoes_ja_atacadas: renderObjecoesJaAtacadas(input.alvo ?? null),
     secoes_disponiveis: secoesTexto,
@@ -468,7 +469,13 @@ export async function runEstruturador(
     { rotulo: "Loja", cls: "loja", valor: input.brandName },
     { rotulo: "Email", cls: "sistema", valor: `${input.flowType} #${input.emailNumber} · modo ${input.mode}` },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${input.pesquisa.length.toLocaleString("pt-BR")} chars do dossiê (com Ads) · ${input.topProducts.length} produto(s)` },
-    { rotulo: "Intenção deste email (vault)", cls: "vault", valor: resumo(intencaoEmail) },
+    {
+      rotulo: "Intenção deste email (vault)",
+      cls: "vault",
+      valor: intencaoServida
+        ? resumo(intencaoEmail)
+        : `não servida ao Estruturador — o alvo do Seletor a traduz (o Seletor a recebe inteira: ${intencaoEmail.length.toLocaleString("pt-BR")} chars)`,
+    },
     {
       rotulo: "Alvo do toque (Seletor)",
       cls: "upstream",
@@ -507,6 +514,9 @@ export async function runEstruturador(
     model: config.model,
     inputVars: {
       modo: input.mode,
+      // Mede a mudança de 08/09: com alvo a nota não viaja. Se a sequência
+      // piorar, é aqui que se vê em qual regime a run rodou.
+      intencao_servida: intencaoServida,
       refs_servidas: carga.refsServidas,
       aprendizados_servidos: carga.aprendizadosServidos,
       vault_commit_sha: carga.vaultCommitSha,

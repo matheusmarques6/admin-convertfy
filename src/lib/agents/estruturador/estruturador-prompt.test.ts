@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { DEFAULT_ESTRUTURADOR_SYSTEM, normalizarOutput } from "./estruturador-prompt"
+import {
+  DEFAULT_ESTRUTURADOR_SYSTEM,
+  INTENCAO_NAO_SERVIDA,
+  intencaoParaOPrompt,
+  normalizarOutput,
+} from "./estruturador-prompt"
 
 /**
  * Sem validador de conteúdo (02/09): `normalizarOutput` só garante a FORMA
@@ -51,5 +56,43 @@ describe("normalizarOutput", () => {
     expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("<secoes_disponiveis>")
     expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("<perfil_da_marca>")
     expect(DEFAULT_ESTRUTURADOR_SYSTEM).not.toContain("capacidade_da_biblioteca")
+  })
+})
+
+/**
+ * 08/09: a nota de intenção sai do prompt quando o Seletor entregou alvo —
+ * ele a lê inteira e a devolve traduzida (os anti-objetivos da nota são,
+ * literalmente, o `proibido_neste_toque` do alvo).
+ */
+describe("a nota de intenção só viaja sem alvo", () => {
+  const NOTA = "# Welcome 1\n\n## O que este email deve fazer\n\nEntregar o cupom."
+
+  it("com alvo, o prompt recebe a declaração de ausência — não a nota", () => {
+    const v = intencaoParaOPrompt(NOTA, { modo: "quebra_de_objecao" })
+    expect(v).toBe(INTENCAO_NAO_SERVIDA)
+    expect(v).not.toContain("Entregar o cupom")
+  })
+
+  it("sem alvo, a nota volta inteira (desligar o Seletor não regride)", () => {
+    expect(intencaoParaOPrompt(NOTA, null)).toBe(NOTA)
+    expect(intencaoParaOPrompt(NOTA, undefined)).toBe(NOTA)
+  })
+
+  // A lição do `exige` e do `momento`: tirar o dado sem tirar a regra faz o
+  // modelo procurar o que não recebeu.
+  it("a declaração proíbe procurar a nota e aponta onde a informação está", () => {
+    expect(INTENCAO_NAO_SERVIDA).toContain("<decisao_de_objecao>")
+    expect(INTENCAO_NAO_SERVIDA).toMatch(/não procure/i)
+  })
+
+  it("as três menções do system deixaram de pedir a nota incondicionalmente", () => {
+    // VALIDAÇÃO passou a conferir contra o alvo.
+    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("trabalhos fixos")
+    // As menções que restam declaram a condição (fallback / quando servida).
+    for (const trecho of DEFAULT_ESTRUTURADOR_SYSTEM.split("\n").filter((l) =>
+      /intenção deste email|nota de intenção/i.test(l),
+    )) {
+      expect(trecho, trecho).toMatch(/fallback|servida|ausência/i)
+    }
   })
 })
