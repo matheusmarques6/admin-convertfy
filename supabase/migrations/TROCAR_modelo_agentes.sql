@@ -122,6 +122,72 @@ SELECT agent_type, model FROM email_agent_configs
 
 
 -- ─────────────────────────────────────────────
+-- 6. Trocar todo o FLOW DE GERAÇÃO DE E-MAIL
+-- ─────────────────────────────────────────────
+-- A lista é EXPLÍCITA (whitelist), não um "todos menos". Assim agente
+-- novo criado depois não entra numa troca em massa sem alguém decidir.
+--
+-- OS 16 DO FLOW, na ordem em que rodam:
+--   fase 1  seletor · estruturador · assembler_chooser (Curador) ·
+--           assembler (Montador) · blueprint · subject
+--   fase 2  copy · copy_fit · merge_verifier · hero_section ·
+--           text_format · image_format · typography · color_format · qa
+--   apoio   catalogador (1× por pesquisa, alimenta o Seletor)
+--
+-- FORA, e cada um por um motivo diferente:
+--   `image`  — é o único do flow que chama modelo de GERAÇÃO DE IMAGEM.
+--              Apontá-lo para um LLM de texto não degrada: para de gerar
+--              imagem. Trocar esse exige escolher outro modelo de imagem,
+--              e vale a nota do topo (config e execução divergem hoje).
+--   `campaign_*` (5) — módulo de campanhas, outro produto.
+--   `component_tagger`, `component_test` — biblioteca de componentes,
+--              rodam no cadastro da variante, não na geração.
+
+-- 6a. PRÉVIA — o de/para, sem gravar. Rode e leia antes do UPDATE.
+WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)   -- ← EDITE AQUI
+SELECT c.agent_type,
+       c.model AS de,
+       d.model AS para,
+       c.max_tokens,
+       CASE WHEN c.max_tokens > 16384 THEN 'CONFIRA o teto do destino' END AS atencao
+  FROM email_agent_configs c CROSS JOIN destino d
+ WHERE c.is_active = true
+   AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+                        'blueprint','subject','copy','copy_fit','merge_verifier',
+                        'hero_section','text_format','image_format','typography',
+                        'color_format','qa','catalogador')
+ ORDER BY c.max_tokens DESC;
+
+-- 6b. O UPDATE. Mesma lista da prévia — o que apareceu ali é o que muda.
+-- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)  -- ← EDITE AQUI
+-- UPDATE email_agent_configs c
+--    SET model = d.model
+--   FROM destino d
+--  WHERE c.is_active = true
+--    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+--                         'blueprint','subject','copy','copy_fit','merge_verifier',
+--                         'hero_section','text_format','image_format','typography',
+--                         'color_format','qa','catalogador')
+-- RETURNING c.agent_type, c.model, c.max_tokens;
+
+-- 6c. Se o destino tiver teto de saída MENOR que o pedido atual, baixe
+-- junto: modelo que não aceita o teto recusa a chamada inteira, e a
+-- geração morre no step. Passam de 16k hoje: text_format (65536),
+-- copy (20480). Troque 16384 pelo teto real do modelo escolhido.
+-- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model, 16384 AS teto)
+-- UPDATE email_agent_configs c
+--    SET model = d.model,
+--        max_tokens = LEAST(c.max_tokens, d.teto)
+--   FROM destino d
+--  WHERE c.is_active = true
+--    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+--                         'blueprint','subject','copy','copy_fit','merge_verifier',
+--                         'hero_section','text_format','image_format','typography',
+--                         'color_format','qa','catalogador')
+-- RETURNING c.agent_type, c.model, c.max_tokens;
+
+
+-- ─────────────────────────────────────────────
 -- 5. Depois de trocar: a run diz a verdade
 -- ─────────────────────────────────────────────
 -- `email_generation_runs.model` guarda o que foi REALMENTE usado.
