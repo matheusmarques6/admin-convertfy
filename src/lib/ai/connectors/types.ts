@@ -52,6 +52,18 @@ export interface ConnectorToolContext {
   /** Loja selecionada na conversa (null = visão geral da org). */
   storeId: string | null
   workspace: "operacional" | "comercial"
+  /**
+   * Instante (epoch ms) em que a tool DEVE ter terminado — é o relógio do
+   * TURNO, não desta chamada.
+   *
+   * Existe porque a tool de imagem podia levar 300 s sozinha dentro de um
+   * turno de 280 s: o loop desistia, mas o `fetch` seguia aberto segurando
+   * o processo, e a função morria no teto do serverless sem gravar
+   * resposta nenhuma (incidente 08/09, `This operation was aborted` com
+   * 231 s e 1 rodada). Tool longa DEVE encurtar o próprio relógio por
+   * aqui; ignorar é aceitar que o turno morra sem resposta.
+   */
+  deadlineAt?: number
 }
 
 export interface ConnectorTool {

@@ -87,11 +87,19 @@ export function buildImagemConnector(opts: {
       const folder = ctx.storeId ?? `org-${ctx.orgId}`
       const fullPrompt = `${prompt}\n\n${aspectInstructionForPrompt(aspect)}`
 
+      // O relógio aqui é o do TURNO, não o do pipeline de email. O teto
+      // de leitura do corpo é 300 s e o turno inteiro tem 280 s: sem
+      // encurtar, UMA imagem consome o turno e a resposta nunca é
+      // escrita (incidente 08/09). Margem de 8 s para o upload e o
+      // resize caberem depois que o modelo devolve.
+      const restanteMs = ctx.deadlineAt ? ctx.deadlineAt - Date.now() - 8_000 : undefined
+
       const storageUrl = await generateEmailImage(fullPrompt, folder, {
         aspect,
         mode: referenceUrl ? "product_ref" : "text2img",
         ...(referenceUrl ? { referenceImageUrl: referenceUrl } : {}),
         model: OPENROUTER_IMAGE_MODEL,
+        ...(restanteMs && restanteMs > 0 ? { budgetMs: restanteMs } : {}),
         onMeta: (m) => opts.onCost?.(m.costCents, m.tokensInput, m.tokensOutput),
       })
 
