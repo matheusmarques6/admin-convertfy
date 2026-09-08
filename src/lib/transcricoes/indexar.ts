@@ -124,9 +124,15 @@ export async function gerarEmbeddings(
   let ok = 0
   for (let i = 0; i < chunks.length; i += LOTE_EMBEDDING) {
     const fatia = chunks.slice(i, i + LOTE_EMBEDDING)
-    const vetores = await embedTexts(fatia.map((c) => textoParaEmbedding(c)))
+    const { vectors: vetores, error: erroEmbedding } = await embedTexts(fatia.map((c) => textoParaEmbedding(c)))
     if (!vetores) {
-      log.warn("embeddings indisponíveis; a busca cai para full-text", { pendentes: chunks.length - ok })
+      // A causa entra no log: "indisponíveis" sozinho não distingue
+      // chave ausente de recusa do provedor, e as duas pedem ações
+      // opostas.
+      log.warn("embeddings indisponíveis; a busca cai para full-text", {
+        pendentes: chunks.length - ok,
+        causa: erroEmbedding,
+      })
       break
     }
     for (let j = 0; j < fatia.length; j++) {

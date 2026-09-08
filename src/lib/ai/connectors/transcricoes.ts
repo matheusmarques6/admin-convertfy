@@ -137,7 +137,7 @@ const buscar: ConnectorTool = {
     }
 
     if (embeddingsAvailable() && achados.size < limite) {
-      const vetor = await embedQuery(query)
+      const { vector: vetor } = await embedQuery(query)
       if (vetor) {
         const { data } = await ctx.admin.rpc("transcricoes_busca_semantica", {
           query_embedding: JSON.stringify(vetor),

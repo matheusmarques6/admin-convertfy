@@ -12,8 +12,9 @@
  *   1. checa orçamento de tempo e cancelamento;
  *   2. escolhe o modelo (roteamento por rodada: barato para consultar,
  *      forte para escrever e responder);
- *   3. chama o modelo com cache de prompt; aplica o guard "consulte
- *      antes de responder" (nudge) e o fallback de slug desconhecido;
+ *   3. chama o modelo com cache de prompt, repetindo erro transitório
+ *      do provedor dentro do orçamento; aplica o guard "consulte antes
+ *      de responder" (nudge) e o fallback de slug desconhecido;
  *   4. sem tool calls → resposta final; com → executa cada tool com
  *      retry/backoff em erro transitório, gate de confirmação em ação
  *      destrutiva, digest para a memória de consulta e telemetria.
@@ -42,6 +43,7 @@ import {
   toolErrorContent,
   type StructuredToolError,
 } from "./tool-errors"
+import { modelRetryDelayMs } from "./model-errors"
 import { digestToolOutput } from "./consult-memory"
 import { TurnTelemetry } from "./telemetry"
 import type { PendingConfirmation, TurnEvent, TurnSource, TurnStatus } from "./types"
@@ -128,10 +130,19 @@ export interface ToolLoopResult {
   resumable: boolean
   nextRound: number
   modelFallback: { requested: string; used: string } | null
+  /**
+   * Chamadas ao modelo repetidas por erro transitório neste turno.
+   * Zero é o normal; um número que sobe é o sinal de que o provedor
+   * está recusando (saldo reservado, taxa, instabilidade) — sem isso a
+   * recuperação some, e o turno lento passa por lentidão do modelo.
+   */
+  retriesDoModelo: number
 }
 
 const MAX_TOOL_RETRIES = 2
 const DEFAULT_MAX_TOOL_RETRY_WAIT_MS = 8_000
+/** Tentativas EXTRA por rodada quando o provedor recusa por algo transitório. */
+const MAX_MODEL_RETRIES = 2
 
 function defaultId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
@@ -153,6 +164,8 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
   const requestedModel = deps.model
   let model = deps.model
   let modelFallback: ToolLoopResult["modelFallback"] = null
+  /** Quantas vezes uma chamada ao modelo foi repetida por erro transitório. */
+  let retriesDoModelo = 0
   let fullText = ""
   let status: TurnStatus = "success"
   let errorMessage: string | null = null
@@ -405,7 +418,7 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
       const holdDeltas = nudgePending || useCheap
       let held = ""
 
-      const callWith = (m: string) =>
+      const callWith = (m: string, marcarEmissao?: () => void) =>
         deps.callModel({
           model: m,
           messages,
@@ -417,15 +430,55 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
           signal: deps.cancelSignal,
           onDelta: holdDeltas
             ? (text) => {
+                marcarEmissao?.()
                 held += text
               }
-            : appendDelta,
+            : (text) => {
+                marcarEmissao?.()
+                appendDelta(text)
+              },
         })
+
+      /**
+       * A mesma chamada, repetindo erro TRANSITÓRIO do provedor. Só as
+       * tools tinham retry; a chamada ao modelo lançava e matava o
+       * turno inteiro — e 4 das 7 falhas medidas em 08/09 eram 402
+       * `in_flight_budget_exhausted`, que o próprio provedor descreve
+       * como espera ("retry after in-flight requests settle") e que
+       * acontecia com o saldo em US$ 5,45.
+       *
+       * Não repete quem já escreveu na tela: o 402/429/5xx é recusado
+       * no cabeçalho da resposta, antes do primeiro token, mas um
+       * timeout no meio do stream deixou texto no state — repetir ali
+       * duplicaria o parágrafo para quem está lendo.
+       *
+       * A espera sai do orçamento restante do turno (menos o mínimo de
+       * uma rodada), então insistir nunca custa a resposta.
+       */
+      const chamarComRetry = async (m: string): Promise<ChatStreamResult> => {
+        for (let tentativa = 0; ; tentativa++) {
+          let emitiu = false
+          try {
+            return await callWith(m, () => {
+              emitiu = true
+            })
+          } catch (err) {
+            if (deps.isCancelled() || (isAbort(err) && deps.cancelSignal?.aborted)) throw err
+            const espera =
+              emitiu || tentativa >= MAX_MODEL_RETRIES
+                ? null
+                : modelRetryDelayMs(err, tentativa, Math.max(0, remaining() - deps.budget.minRoundMs))
+            if (espera == null) throw err
+            retriesDoModelo++
+            await sleep(espera)
+          }
+        }
+      }
 
       let result: ChatStreamResult
       let roundModel = activeModel
       try {
-        result = await callWith(activeModel)
+        result = await chamarComRetry(activeModel)
       } catch (err) {
         if (deps.isCancelled() || (isAbort(err) && deps.cancelSignal?.aborted)) {
           cancelledNow()
@@ -440,7 +493,7 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
         roundModel = fb.model
         if (holdDeltas) held += fb.notice
         else appendDelta(fb.notice)
-        result = await callWith(fb.model)
+        result = await chamarComRetry(fb.model)
       }
 
       const isFinal = result.finishReason !== "tool_calls" || result.toolCalls.length === 0
@@ -463,7 +516,7 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
       if (useCheap && (isFinal || wantsWrite)) {
         telemetry.setLastOutcome("rerouted")
         held = ""
-        const strong = await callWith(model).catch((err) => {
+        const strong = await chamarComRetry(model).catch((err) => {
           if (deps.isCancelled()) return null
           throw err
         })
@@ -573,5 +626,5 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
     state.progress.length = 0
   }
 
-  return { status: finalStatus, fullText, model, errorMessage, resumable, nextRound: round, modelFallback }
+  return { status: finalStatus, fullText, model, errorMessage, resumable, nextRound: round, modelFallback, retriesDoModelo }
 }

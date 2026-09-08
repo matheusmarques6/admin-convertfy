@@ -44,6 +44,15 @@ export interface KnowledgeSyncResult {
   upserted: number
   deactivated: number
   embedded: number
+  /** Notas que ainda estavam sem vetor quando a rodada de embedding começou. */
+  embedPending?: number
+  /**
+   * Por que os embeddings não terminaram. Separado de `error` de
+   * propósito: o sync pode ter trazido as notas com sucesso e ainda
+   * assim deixar a busca semântica fora do ar — foi o que aconteceu
+   * com as 124 notas, e o `status: "synced"` escondia isso.
+   */
+  embedError?: string | null
   skipped: Array<{ path: string; motivo: string }>
   durationMs: number
   error?: string
@@ -117,8 +126,18 @@ export async function syncKnowledge(opts: {
     if (!opts.force && sameBase && stateRes.data?.last_commit_sha === sha) {
       // no-op de commit — mas embeddings pendentes (chave configurada
       // depois do sync) ainda podem ser feitos
-      const embedded = await embedPending(admin)
-      return done({ status: "noop", commitSha: sha, filesTotal: 0, upserted: 0, deactivated: 0, embedded, skipped: [] })
+      const emb = await embedPending(admin)
+      return done({
+        status: "noop",
+        commitSha: sha,
+        filesTotal: 0,
+        upserted: 0,
+        deactivated: 0,
+        embedded: emb.embedded,
+        embedPending: emb.pending,
+        embedError: emb.error,
+        skipped: [],
+      })
     }
 
     const tree = await gh<{ tree: Array<{ path: string; type: string }>; truncated: boolean }>(
@@ -205,7 +224,8 @@ export async function syncKnowledge(opts: {
       if (!error) deactivated++
     }
 
-    const embedded = await embedPending(admin)
+    const emb = await embedPending(admin)
+    const embedded = emb.embedded
 
     const { count: total } = await admin.from("ai_knowledge_notes").select("id", { count: "exact", head: true })
     const { count: activeCount } = await admin.from("ai_knowledge_notes").select("id", { count: "exact", head: true }).eq("is_active", true)
@@ -226,8 +246,28 @@ export async function syncKnowledge(opts: {
       embedded_total: embeddedCount ?? 0,
       skipped,
     })
-    log.info("knowledge sync done", { trigger: opts.trigger, sha: sha.slice(0, 8), files: files.length, upserted, deactivated, embedded })
-    return done({ status: "synced", commitSha: sha, filesTotal: files.length, upserted, deactivated, embedded, skipped })
+    log.info("knowledge sync done", {
+      trigger: opts.trigger,
+      sha: sha.slice(0, 8),
+      files: files.length,
+      upserted,
+      deactivated,
+      embedded,
+      // Sem esta linha o log dizia "done" com 0 embedados e 124 pendentes.
+      embed_pendentes: emb.pending,
+      embed_erro: emb.error,
+    })
+    return done({
+      status: "synced",
+      commitSha: sha,
+      filesTotal: files.length,
+      upserted,
+      deactivated,
+      embedded,
+      embedPending: emb.pending,
+      embedError: emb.error,
+      skipped,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.error("knowledge sync failed", { trigger: opts.trigger, error: msg })
@@ -236,24 +276,48 @@ export async function syncKnowledge(opts: {
   }
 }
 
-/** Embeda notas ativas sem vetor (ou com modelo antigo). Devolve quantas. */
-export async function embedPending(admin: SupabaseClient, limit = 200): Promise<number> {
-  if (!embeddingsAvailable()) return 0
+export interface EmbedPendingResult {
+  /** Notas que ganharam vetor agora. */
+  embedded: number
+  /** Notas que estavam pendentes quando a rodada começou. */
+  pending: number
+  /**
+   * Por que parou, quando parou por erro. É o campo que faltava: sem
+   * ele, "0 embedados" com 124 pendentes era indistinguível de "nada a
+   * fazer", e foi assim que a base inteira ficou sem busca semântica
+   * sem ninguém notar.
+   */
+  error: string | null
+}
+
+/** Embeda notas ativas sem vetor (ou com modelo antigo). */
+export async function embedPending(admin: SupabaseClient, limit = 200): Promise<EmbedPendingResult> {
+  if (!embeddingsAvailable()) {
+    return { embedded: 0, pending: 0, error: "OPENROUTER_API_KEY não configurada" }
+  }
   const { data, error } = await admin
     .from("ai_knowledge_notes")
     .select("id, title, tags, body_md, embedding_model")
     .eq("is_active", true)
     .or(`embedding.is.null,embedding_model.neq.${EMBEDDING_MODEL}`)
     .limit(limit)
-  if (error || !data || data.length === 0) return 0
+  if (error) return { embedded: 0, pending: 0, error: `consulta de pendentes: ${error.message}` }
+  if (!data || data.length === 0) return { embedded: 0, pending: 0, error: null }
   let n = 0
+  let falha: string | null = null
   const BATCH = 32
   for (let i = 0; i < data.length; i += BATCH) {
     const slice = data.slice(i, i + BATCH)
-    const vectors = await embedTexts(
+    const { vectors, error: embedError } = await embedTexts(
       slice.map((r) => embeddingInput({ title: r.title, tags: (r.tags as string[]) ?? [], body: r.body_md })),
     )
-    if (!vectors) break
+    if (!vectors) {
+      // Para no primeiro lote que falha (martelar o provedor recusando
+      // não ajuda), mas a causa sobe com o resultado.
+      falha = embedError ?? "o provedor não devolveu vetores"
+      break
+    }
+    if (embedError) falha = embedError
     for (let j = 0; j < slice.length; j++) {
       const v = vectors[j]
       if (!v) continue
@@ -262,7 +326,9 @@ export async function embedPending(admin: SupabaseClient, limit = 200): Promise<
         .update({ embedding: JSON.stringify(v), embedding_model: EMBEDDING_MODEL, embedded_at: new Date().toISOString() })
         .eq("id", slice[j].id)
       if (!e) n++
+      else falha = falha ?? `gravação do vetor: ${e.message}`
     }
   }
-  return n
+  if (falha) log.warn("embeddings pendentes não concluídos", { pendentes: data.length, embedados: n, causa: falha })
+  return { embedded: n, pending: data.length, error: falha }
 }

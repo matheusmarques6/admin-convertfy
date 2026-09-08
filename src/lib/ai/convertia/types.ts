@@ -93,5 +93,7 @@ export interface AssistantMessageMeta {
   continuation?: { job_id: string; status: "queued" | "running" | "done" | "failed"; reason?: string } | null
   /** Fallback de modelo aplicado neste turno. */
   model_fallback?: { requested: string; used: string } | null
+  /** Chamadas repetidas por erro transitório do provedor (ausente = nenhuma). */
+  model_retries?: number
   feedback?: { rating?: string } | null
 }

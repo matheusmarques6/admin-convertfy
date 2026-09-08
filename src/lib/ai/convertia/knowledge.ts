@@ -313,9 +313,17 @@ export function buildConhecimentoConnector(
       const results = new Map<string, Record<string, unknown> & { _score: number }>()
 
       // semântica
-      let semantic = 0
+      /**
+       * A busca por significado rodou de fato? É diferente de "a chave
+       * existe". O aviso abaixo checava `!embeddingsAvailable()`, e a
+       * chave SEMPRE existe (é a mesma do chat), então ele era
+       * impossível de disparar justamente no caso real: chave presente,
+       * embeddings falhando, 124 notas sem vetor e a resposta saindo de
+       * full-text como se estivesse tudo certo.
+       */
+      let semanticaRodou = false
       if (embeddingsAvailable()) {
-        const vec = await embedQuery(query)
+        const { vector: vec } = await embedQuery(query)
         if (vec) {
           const { data, error } = await admin.rpc("ai_knowledge_search", {
             query_embedding: JSON.stringify(vec),
@@ -323,8 +331,8 @@ export function buildConhecimentoConnector(
             folder_prefix: pasta,
           })
           if (!error) {
+            semanticaRodou = true
             for (const r of (data ?? []) as Array<NoteRow & { similarity: number }>) {
-              semantic++
               results.set(r.path, { ...slim(r), similaridade: Math.round(r.similarity * 100) / 100, _score: r.similarity })
             }
           }
@@ -361,10 +369,10 @@ export function buildConhecimentoConnector(
       }
       return {
         content: toolJson({
-          busca: semantic > 0 ? "semântica + texto" : "texto",
+          busca: semanticaRodou ? "semântica + texto" : "texto",
           // Sem esta linha, um resultado pobre por falta de embedding parece
           // "a base não tem" — e a base tem, só não foi procurada direito.
-          ...(semantic === 0 && !embeddingsAvailable() ? { aviso: TEXTO_SEM_SEMANTICA } : {}),
+          ...(semanticaRodou ? {} : { aviso: TEXTO_SEM_SEMANTICA }),
           notas: list,
         }),
         summary: `${list.length} nota${list.length === 1 ? "" : "s"}`,
