@@ -109,6 +109,26 @@ describe("decideHeroVision", () => {
     expect(d.model).toBe(KIMI)
   })
 
+  // 08/09: a hero era o único agente do flow que ignorava a troca de modelo
+  // do banco. Trocado o pipeline inteiro para Fable, ela seguia em Sonnet —
+  // porque trocava de modelo por precaução, mesmo com o configurado
+  // enxergando tão bem quanto o resgate.
+  it("configurado que enxerga anexa a imagem e NÃO troca de modelo", () => {
+    const FABLE = "anthropic/claude-fable-5.1"
+    const d = decideHeroVision(FABLE, { kind: "mockup", renderedHtml: mockup })
+    expect(d.used).toBe(true)
+    expect(d.model).toBe(FABLE)
+    expect(d.model).not.toBe(HERO_VISION_MODEL)
+    expect(d.images).toEqual(["https://cdn/hero.png"])
+  })
+
+  // Sem "/" o modelo roteia pelo SDK da Anthropic, que LANÇA ao receber
+  // anexo — enxergar não basta, precisa da rota que aceita a URL.
+  it("Anthropic-direto cai no resgate mesmo sendo Claude", () => {
+    const d = decideHeroVision("claude-opus-4-7", { kind: "mockup", renderedHtml: mockup })
+    expect(d.model).toBe(HERO_VISION_MODEL)
+  })
+
   it("override no settings vence o default in-code", () => {
     const d = decideHeroVision(KIMI, {
       kind: "mockup",

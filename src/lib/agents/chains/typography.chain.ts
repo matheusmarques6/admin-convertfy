@@ -30,6 +30,7 @@ import {
 } from "../shared/prompt-provenance"
 import { TYPOGRAPHY_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+import { corteDeRaciocinio } from "../model-capabilities"
 import { withUsage } from "./step-usage"
 import type { TypographyDecision, SegundaFonte, TypographyOp } from "../typography/rules"
 
@@ -296,7 +297,7 @@ export async function invokeTypographyChain(input: {
     temperature: config.temperature,
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Typography",
-    ...(process.env.FORMAT_OPS_REASONING === "on" ? {} : { reasoning: { enabled: false } }),
+    ...corteDeRaciocinio(config.model),
   })
 
   // O consumo vai grudado no erro de parse: a chamada já foi paga, e este

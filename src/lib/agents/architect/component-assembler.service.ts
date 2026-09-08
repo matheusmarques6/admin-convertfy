@@ -1355,6 +1355,10 @@ export async function assembleStoreReference(
       emailId: input.emailId,
       flowId: input.flowId,
       baseVars: chooserVars,
+      // O MODELO da config (`assembler_chooser`) — o Curador do vault
+      // rodava numa constante e era um dos dois agentes que ignoravam a
+      // troca de modelo do banco.
+      modelo: chooserConfig.model,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1578,6 +1582,10 @@ export async function assembleStoreReference(
       emailId: input.emailId,
       flowId: input.flowId,
       baseVars: chooserVars,
+      // O MODELO da config (`assembler_chooser`) — o Curador do vault
+      // rodava numa constante e era um dos dois agentes que ignoravam a
+      // troca de modelo do banco.
+      modelo: chooserConfig.model,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,

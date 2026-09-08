@@ -32,6 +32,7 @@ import {
 } from "../shared/prompt-provenance"
 import { COLOR_FORMAT_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
+import { corteDeRaciocinio } from "../model-capabilities"
 import { parseOps, type FormatOp } from "../html/apply-patches"
 import { withUsage } from "./step-usage"
 
@@ -211,10 +212,9 @@ export async function invokeColorFormatChain(input: {
     timeoutMs: timeoutMs(),
     title: "Convertfy Admin Color Format",
     // Step mecânico (output = JSON pequeno de ops): thinking do GLM só
-    // adiciona minutos. FORMAT_OPS_REASONING=on re-liga sem deploy.
-    ...(process.env.FORMAT_OPS_REASONING === "on"
-      ? {}
-      : { reasoning: { enabled: false } }),
+    // adiciona minutos. Mas o corte vale SÓ para quem aceita — mandá-lo ao
+    // Fable derruba a chamada com 400. FORMAT_OPS_REASONING=on re-liga.
+    ...corteDeRaciocinio(config.model),
   })
 
   // parseOps lança OpsParseError (retryable; 2ª falha → fail-open no runner).
