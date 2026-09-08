@@ -4168,5 +4168,16 @@ não só para o clique que expôs o defeito.
 leitura, não só na que foi escrita primeiro. Um endpoint mergeado não
 protege a tela que fala direto com as duas pontas.
 
+**Reproduzido e medido (08/09, 22:37)**: criar assinatura pelo perfil do
+cliente (Ricardo Lacerda, Plano Mensal R$ 3.500) gravou **UMA linha
+correta**, com `asaas_subscription_id = sub_nx3acxf97wuc96j7` — e a tela
+mostrou duas. Prova de que o defeito é de LEITURA, não de escrita: o
+banco estava certo o tempo todo. Vale para todo caminho que cria o
+espelho, e o POST de assinatura Asaas cria um por construção, então
+"criar assinatura" duplicava a tela mesmo sem ninguém vincular loja.
+A regra saiu do componente para `assinaturasAsaasSemEspelho`
+(`assinatura-duplicada.ts`, puro), com esse caso como teste de
+regressão.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

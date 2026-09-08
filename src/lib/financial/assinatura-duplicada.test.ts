@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  assinaturasAsaasSemEspelho,
   avisoDeAssinaturaExistente,
   suspeitasDeDuplicata,
   type AssinaturaAsaas,
@@ -161,5 +162,49 @@ describe("avisoDeAssinaturaExistente", () => {
     expect(
       avisoDeAssinaturaExistente([local({ id: "a", status: "cancelled" })], 3500),
     ).toBeNull()
+  })
+})
+
+describe("assinaturasAsaasSemEspelho", () => {
+  it("caso medido em 08/09: espelho local esconde a do provedor", () => {
+    // Ricardo Lacerda — criar a assinatura pelo perfil do cliente gravou
+    // UMA linha correta e a tela mostrava DOIS cards.
+    const restantes = assinaturasAsaasSemEspelho(
+      [{ asaas_subscription_id: "sub_nx3acxf97wuc96j7" }],
+      [{ id: "sub_nx3acxf97wuc96j7", value: 3500 }],
+    )
+    expect(restantes).toEqual([])
+  })
+
+  it("assinatura do Asaas sem espelho continua na lista", () => {
+    // Sem isto ela sumiria da tela e ninguém saberia que existe.
+    const restantes = assinaturasAsaasSemEspelho(
+      [{ asaas_subscription_id: "sub_a" }],
+      [{ id: "sub_a" }, { id: "sub_b" }],
+    )
+    expect(restantes.map((s) => s.id)).toEqual(["sub_b"])
+  })
+
+  it("linha local sem vínculo não esconde nada", () => {
+    const restantes = assinaturasAsaasSemEspelho(
+      [{ asaas_subscription_id: null }, { asaas_subscription_id: undefined }],
+      [{ id: "sub_a" }],
+    )
+    expect(restantes.map((s) => s.id)).toEqual(["sub_a"])
+  })
+
+  it("sem linhas locais, a lista do Asaas passa inteira", () => {
+    const doAsaas = [{ id: "sub_a" }, { id: "sub_b" }]
+    expect(assinaturasAsaasSemEspelho([], doAsaas)).toEqual(doAsaas)
+  })
+
+  it("duas locais espelhando duas do Asaas escondem as duas", () => {
+    // Cliente multi-loja: cada assinatura tem o seu espelho, e nenhuma
+    // pode aparecer em dobro.
+    const restantes = assinaturasAsaasSemEspelho(
+      [{ asaas_subscription_id: "sub_a" }, { asaas_subscription_id: "sub_b" }],
+      [{ id: "sub_a" }, { id: "sub_b" }],
+    )
+    expect(restantes).toEqual([])
   })
 })

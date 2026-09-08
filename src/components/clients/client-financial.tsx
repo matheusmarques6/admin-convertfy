@@ -105,7 +105,10 @@ import {
   resolverLojasDaAssinatura,
   type VinculoDeLojas,
 } from "@/lib/financial/lojas-da-assinatura"
-import { suspeitasDeDuplicata } from "@/lib/financial/assinatura-duplicada"
+import {
+  assinaturasAsaasSemEspelho,
+  suspeitasDeDuplicata,
+} from "@/lib/financial/assinatura-duplicada"
 
 interface ClientFinancialProps {
   clientId: string
@@ -835,14 +838,10 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
    * Vale para qualquer origem do espelho (vínculo, onboarding,
    * fechamento da venda ou o sync), não só para o clique que expôs isto.
    */
-  const subscriptions: Subscription[] = useMemo(() => {
-    const espelhadas = new Set(
-      localSubscriptions
-        .map((l) => l.asaas_subscription_id)
-        .filter((id): id is string => Boolean(id)),
-    )
-    return subscriptionsDoAsaas.filter((s) => !espelhadas.has(s.id))
-  }, [subscriptionsDoAsaas, localSubscriptions])
+  const subscriptions: Subscription[] = useMemo(
+    () => assinaturasAsaasSemEspelho(localSubscriptions, subscriptionsDoAsaas),
+    [subscriptionsDoAsaas, localSubscriptions],
+  )
   const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
   const isLoading = paymentsLoading
 
