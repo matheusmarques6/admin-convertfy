@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error
     const itens: AssetItem[] = (data ?? [])
       .filter((o) => o.name && /\.(png|jpe?g|webp)$/i.test(o.name))
+      // Slides de referência (`ref-`) não são sugestão de mídia para um
+      // carrossel novo — são o exemplo que a IA lê.
+      .filter((o) => !o.name.startsWith("ref-"))
       .map((o) => ({ path: `${prefixo}/${o.name}`, nome: o.name, criadoEm: o.created_at ?? null }))
       .filter((o) => isConvertiaImagePath(o.path))
       .map((o): AssetItem => ({

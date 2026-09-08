@@ -15,6 +15,7 @@ import type { PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { Biblioteca, type Caminho } from "./biblioteca"
 import { NovoFlow, type CriacaoResultado } from "./novo-flow"
+import { ReferenciasSecao } from "./referencias"
 import { useBrandKits, useDocumentos, useMeusTemplates, usePerfis, usePostsPublicados } from "./use-estudio-data"
 
 const CAMINHOS: Caminho[] = ["template", "ia", "inspiracao"]
@@ -137,6 +138,7 @@ export function EstudioHome() {
         onExcluirTemplate={excluirTemplate}
         onDuplicar={duplicar}
         onRenomear={renomear}
+        referencias={<ReferenciasSecao perfis={perfis} />}
         onBrandKit={() => {
           const primeiro = docs?.[0]
           if (primeiro) abrir(primeiro.id, "brandkit")

@@ -85,6 +85,17 @@ export const entradaSchema = z.discriminatedUnion("acao", [
     acao: z.literal("analisar_inspiracao"),
     imagens: z.array(z.string().max(4_000_000)).min(1).max(12),
   }),
+  /**
+   * Lê um carrossel-referência: copy por slide (não só a estrutura, como
+   * `analisar_inspiracao`), por que funciona, pilar/molde. É o que vira
+   * exemplo de estilo nos pedidos seguintes.
+   */
+  z.object({
+    acao: z.literal("transcrever_referencia"),
+    imagens: z.array(z.string().max(4_000_000)).min(1).max(12),
+    legenda: z.string().max(4000).optional(),
+    nome: z.string().max(200).optional(),
+  }),
 ])
 
 /** Geração de imagem (não passa pelo LLM de texto — tratada à parte na rota). */
@@ -166,6 +177,25 @@ export const saidaInspiracaoSchema = z.object({
   templateSugerido: z.string().optional(),
 })
 
+export const saidaTranscricaoSchema = z.object({
+  nome: z.string().min(1).max(200),
+  slides: z
+    .array(
+      z.object({
+        ordem: z.number().int().min(1).max(20),
+        tipo: frameTipo,
+        titulo: z.string().max(400).optional(),
+        corpo: z.string().max(1200).optional(),
+      }),
+    )
+    .min(1)
+    .max(20),
+  porQueFunciona: z.array(z.string().min(1).max(300)).min(1).max(6),
+  pilar: z.enum(["Case", "Educacional", "Bastidor", "Benchmark"]).optional(),
+  molde: z.enum(["Turbo", "MEC", "Benchmark", "Lista", "Bastidor"]).optional(),
+  palavraChave: z.string().max(40).optional(),
+})
+
 export type SaidaEstrutura = z.infer<typeof saidaEstruturaSchema>
 export type SaidaFrame = z.infer<typeof saidaFrameSchema>
 export type SaidaHeadlines = z.infer<typeof saidaHeadlinesSchema>
@@ -174,6 +204,7 @@ export type SaidaCorrigir = z.infer<typeof saidaCorrigirSchema>
 export type SaidaDistribuir = z.infer<typeof saidaDistribuirSchema>
 export type SaidaChat = z.infer<typeof saidaChatSchema>
 export type SaidaInspiracao = z.infer<typeof saidaInspiracaoSchema>
+export type SaidaTranscricao = z.infer<typeof saidaTranscricaoSchema>
 
 export type SaidaPorAcao = {
   gerar_estrutura: SaidaEstrutura
@@ -184,6 +215,7 @@ export type SaidaPorAcao = {
   distribuir: SaidaDistribuir
   chat: SaidaChat
   analisar_inspiracao: SaidaInspiracao
+  transcrever_referencia: SaidaTranscricao
 }
 
 export const SAIDA_SCHEMA: { [K in keyof SaidaPorAcao]: z.ZodType<SaidaPorAcao[K]> } = {
@@ -195,4 +227,5 @@ export const SAIDA_SCHEMA: { [K in keyof SaidaPorAcao]: z.ZodType<SaidaPorAcao[K
   distribuir: saidaDistribuirSchema,
   chat: saidaChatSchema,
   analisar_inspiracao: saidaInspiracaoSchema,
+  transcrever_referencia: saidaTranscricaoSchema,
 }

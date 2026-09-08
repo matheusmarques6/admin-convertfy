@@ -7,7 +7,7 @@
 
 import { PROMPTS_PRONTOS, type PromptPronto } from "./config"
 import { ST_TEMPLATES } from "./templates"
-import type { Agendado, BrandKit, DashboardData, Documento, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Template } from "./types"
+import type { Agendado, BrandKit, DashboardData, Documento, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Referencia, ReferenciaCandidata, Template } from "./types"
 
 export class ConteudoApiError extends Error {
   status: number
@@ -115,7 +115,7 @@ export async function getAssets(limit = 60): Promise<AssetItem[]> {
 }
 
 /** Sobe uma imagem e devolve a URL servida pelo admin (não expira). */
-export async function uploadImagem(file: File, kind: "slide" | "avatar" = "slide"): Promise<{ url: string; path: string }> {
+export async function uploadImagem(file: File, kind: "slide" | "avatar" | "referencia" = "slide"): Promise<{ url: string; path: string }> {
   const fd = new FormData()
   fd.append("file", file)
   fd.append("kind", kind)
@@ -208,4 +208,51 @@ export async function agendarDocumento(entrada: { documentoId: string; perfil: s
 
 export async function desagendarDocumento(documentoId: string): Promise<void> {
   await api(`/api/conteudo/agenda?documentoId=${encodeURIComponent(documentoId)}`, { method: "DELETE" })
+}
+
+// ── Estúdio: referências (exemplos que a ConvertIA lê) ──────────────────
+
+export async function getReferencias(): Promise<Referencia[]> {
+  const r = await api<{ referencias: Referencia[] }>(`/api/conteudo/referencias`)
+  return r.referencias
+}
+
+/** Carrosséis reais do Instagram que ainda não viraram referência. */
+export async function getCandidatosReferencia(): Promise<ReferenciaCandidata[]> {
+  const r = await api<{ candidatos: ReferenciaCandidata[] }>(`/api/conteudo/referencias/candidatos`)
+  return r.candidatos
+}
+
+/** Importa um post real: lê os slides na Meta, guarda e transcreve (até ~1 min). */
+export async function importarReferencia(igMediaId: string): Promise<Referencia> {
+  const r = await api<{ referencia: Referencia }>(`/api/conteudo/referencias/importar`, { method: "POST", body: JSON.stringify({ igMediaId }) })
+  return r.referencia
+}
+
+/** Referência a partir de slides enviados (URLs do upload com kind=referencia). */
+export async function criarReferenciaUpload(entrada: { nome?: string; slidesUrls: string[]; legenda?: string | null }): Promise<Referencia> {
+  const r = await api<{ referencia: Referencia }>(`/api/conteudo/referencias`, { method: "POST", body: JSON.stringify(entrada) })
+  return r.referencia
+}
+
+export interface PatchReferenciaEntrada {
+  retranscrever?: boolean
+  nome?: string
+  slides?: Array<{ ordem: number; tipo?: string; titulo?: string; corpo?: string }>
+  legenda?: string | null
+  palavraChave?: string | null
+  pilar?: string | null
+  molde?: string | null
+  porQueFunciona?: string[]
+  peso?: 1 | 2 | 3
+  ativa?: boolean
+}
+
+export async function patchReferencia(id: string, patch: PatchReferenciaEntrada): Promise<Referencia> {
+  const r = await api<{ referencia: Referencia }>(`/api/conteudo/referencias/${id}`, { method: "PATCH", body: JSON.stringify(patch) })
+  return r.referencia
+}
+
+export async function deleteReferencia(id: string): Promise<void> {
+  await api(`/api/conteudo/referencias/${id}`, { method: "DELETE" })
 }

@@ -137,6 +137,19 @@ Responda com JSON: {"texto": string, "acao": {"tipo": string, "label": string} o
         texto: `As imagens em anexo são os slides de um carrossel de referência (na ordem). Leia a ESTRUTURA (não o conteúdo): para cada slide, classifique o tipo entre capa, dado, texto, prova, lista, mec, cta e descreva o layout em poucas palavras (ex.: "imagem full + título 2 linhas", "número gigante + apoio serif", "citação sobre foto escura"). Marque slotImagem quando o slide depende de fotografia. Estime a fidelidade (0 a 100) com que os moldes da casa reproduzem essa estrutura e sugira o molde mais próximo (molde-turbo, molde-benchmark, molde-lista, molde-mec ou molde-bastidor).
 Responda com JSON: {"frames": [{"tipo": string, "descricao": string, "slotImagem": boolean}], "fidelidade": number, "observacoes": string, "templateSugerido": string}`,
       }
+    case "transcrever_referencia":
+      return {
+        imagens: e.imagens,
+        texto: `As imagens em anexo são os slides de um carrossel que o time da Convertfy considera BOM (na ordem). Ele vai virar referência de estilo para os próximos carrosséis. Faça a leitura completa:
+1. Transcreva a COPY de cada slide, fiel ao que está escrito (título e texto de apoio, separados). Não resuma, não corrija, não invente o que não está legível — deixe o campo vazio.
+2. Classifique cada slide entre capa, dado, texto, prova, lista, mec, cta.
+3. Diga em 3 a 5 bullets curtos POR QUE a peça funciona (gancho da capa, ritmo, tipo de prova, como fecha no CTA) — é o que a próxima geração vai imitar.
+4. Sugira pilar (Case, Educacional, Bastidor, Benchmark) e molde (Turbo, MEC, Benchmark, Lista, Bastidor) mais próximos, e a palavra-chave do comment gate se houver.
+5. "nome" = a headline da capa.
+${e.legenda ? `Legenda publicada com o post (use para entender o fechamento e a palavra-chave):\n"""\n${e.legenda}\n"""` : ""}
+${e.nome ? `Nome de trabalho informado: "${e.nome}".` : ""}
+Responda com JSON: {"nome": string, "slides": [{"ordem": number, "tipo": string, "titulo": string, "corpo": string}], "porQueFunciona": [string], "pilar": string opcional, "molde": string opcional, "palavraChave": string opcional}`,
+      }
   }
 }
 
@@ -148,12 +161,27 @@ export interface ResultadoIA<K extends keyof SaidaPorAcao> {
   tentativas: number
 }
 
+/** Ações que ESCREVEM copy — só elas recebem as referências de estilo. */
+const ACOES_COM_REFERENCIAS = new Set<EntradaIA["acao"]>(["gerar_estrutura", "preencher_frame", "headlines", "legenda", "distribuir", "chat"])
+
 export async function executarIA<K extends keyof SaidaPorAcao>(
   entrada: Extract<EntradaIA, { acao: K }>,
-  opts: { model?: string; signal?: AbortSignal } = {},
+  opts: {
+    model?: string
+    signal?: AbortSignal
+    /**
+     * Bloco de referências da casa (`blocoDeReferencias`), já renderizado.
+     * Vai ANTES do pedido nas ações que escrevem copy; vazio = comportamento
+     * de antes. Quem carrega do banco é a rota — este módulo não faz I/O.
+     */
+    blocoReferencias?: string
+  } = {},
 ): Promise<ResultadoIA<K>> {
   const model = opts.model ?? CONTEUDO_IA_MODEL
-  const { texto, imagens } = instrucaoDaAcao(entrada)
+  const instrucao = instrucaoDaAcao(entrada)
+  const usaReferencias = Boolean(opts.blocoReferencias) && ACOES_COM_REFERENCIAS.has(entrada.acao)
+  const texto = usaReferencias ? `${opts.blocoReferencias}\n\n---\n\n${instrucao.texto}` : instrucao.texto
+  const imagens = instrucao.imagens
   const schema = SAIDA_SCHEMA[entrada.acao]
 
   const conteudoUsuario: string | ChatContentPart[] = imagens?.length
@@ -173,7 +201,7 @@ export async function executarIA<K extends keyof SaidaPorAcao>(
     const r = await streamOpenRouterChat({
       model,
       messages: mensagens,
-      maxTokens: entrada.acao === "gerar_estrutura" ? 6000 : 3000,
+      maxTokens: entrada.acao === "gerar_estrutura" || entrada.acao === "transcrever_referencia" ? 6000 : 3000,
       temperature: entrada.acao === "headlines" ? 0.8 : 0.5,
       timeoutMs: 90_000,
       signal: opts.signal,
@@ -186,7 +214,7 @@ export async function executarIA<K extends keyof SaidaPorAcao>(
       if (!parsed.success) {
         throw new IaJsonInvalidoError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "))
       }
-      log.info("conteudo_ia.ok", { acao: entrada.acao, model, ms: Date.now() - inicio, custo, tentativa })
+      log.info("conteudo_ia.ok", { acao: entrada.acao, model, ms: Date.now() - inicio, custo, tentativa, referencias: usaReferencias })
       return { dados: parsed.data as SaidaPorAcao[K], modelo: model, ms: Date.now() - inicio, custoUsd: custo, tentativas: tentativa }
     } catch (e) {
       ultimoErro = e as Error

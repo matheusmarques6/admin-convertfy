@@ -6,7 +6,7 @@
  * templates (prévia REAL renderizada da estrutura salva).
  */
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { ChevronRight, Columns3, Image as ImageIcon, Instagram, MoreHorizontal, Palette, Plus, Search, Sparkles, Trash2 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -52,9 +52,11 @@ interface Props {
   onDuplicar: (id: string) => Promise<void>
   onRenomear: (id: string, nome: string) => Promise<void>
   onBrandKit: () => void
+  /** Seção "Referências" (carrosséis-exemplo que a ConvertIA lê), montada pela home. */
+  referencias?: ReactNode
 }
 
-export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, onAbrir, onNovo, onCriarTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit }: Props) {
+export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, onAbrir, onNovo, onCriarTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit, referencias }: Props) {
   const [fPerfil, setFPerfil] = useState<string>("todos")
   const [fStatus, setFStatus] = useState<"todos" | DocStatus>("todos")
   const [q, setQ] = useState("")
@@ -278,6 +280,8 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
             })}
           </div>
         )}
+
+        {referencias}
 
         <div className="flex items-baseline gap-2.5">
           <SectionTitle title="Meus templates" hint="criados a partir de inspirações do time" />

@@ -11,8 +11,14 @@ import useSWR from "swr"
 import {
   criarDocumento,
   criarMeuTemplate,
+  criarReferenciaUpload,
   deleteDocumento,
+  deleteReferencia,
   excluirMeuTemplate,
+  getCandidatosReferencia,
+  getReferencias,
+  importarReferencia,
+  patchReferencia,
   getAssets,
   getBrandKits,
   getDashboard,
@@ -22,8 +28,10 @@ import {
   saveBrandKit,
   saveDocumento,
   usarMeuTemplate,
+  type PatchReferenciaEntrada,
 } from "@/lib/conteudo/data"
-import { PERFIL_CONSOLIDADO, type BrandKit, type Documento, type MeuTemplate, type Perfil, type PerfilEditavel, type Post } from "@/lib/conteudo/types"
+import { utilizavel } from "@/lib/conteudo/referencias"
+import { PERFIL_CONSOLIDADO, type BrandKit, type Documento, type MeuTemplate, type Perfil, type PerfilEditavel, type Post, type Referencia } from "@/lib/conteudo/types"
 
 const SWR_OPTS = { revalidateOnFocus: false, shouldRetryOnError: false }
 
@@ -124,4 +132,64 @@ export function useAssets() {
 
 export function perfilPorId(perfis: Perfil[] | null | undefined, id: string | null | undefined): Perfil | undefined {
   return perfis?.find((p) => p.id === id)
+}
+
+/**
+ * Referências da org. `utilizaveis` é o que a ConvertIA de fato lê (ativa +
+ * transcrita + com copy) — é esse número que o editor mostra, não o total.
+ */
+export function useReferencias() {
+  const { data, error, isLoading, mutate } = useSWR("conteudo:referencias", getReferencias, SWR_OPTS)
+  const substituir = useCallback(
+    (ref: Referencia) => mutate((lista) => (lista ?? []).some((r) => r.id === ref.id) ? (lista ?? []).map((r) => (r.id === ref.id ? ref : r)) : [ref, ...(lista ?? [])], { revalidate: false }),
+    [mutate],
+  )
+  const importar = useCallback(
+    async (igMediaId: string) => {
+      const ref = await importarReferencia(igMediaId)
+      await substituir(ref)
+      return ref
+    },
+    [substituir],
+  )
+  const criarDeUpload = useCallback(
+    async (entrada: { nome?: string; slidesUrls: string[]; legenda?: string | null }) => {
+      const ref = await criarReferenciaUpload(entrada)
+      await substituir(ref)
+      return ref
+    },
+    [substituir],
+  )
+  const atualizar = useCallback(
+    async (id: string, patch: PatchReferenciaEntrada) => {
+      const ref = await patchReferencia(id, patch)
+      await substituir(ref)
+      return ref
+    },
+    [substituir],
+  )
+  const excluir = useCallback(
+    async (id: string) => {
+      await deleteReferencia(id)
+      await mutate((lista) => (lista ?? []).filter((r) => r.id !== id), { revalidate: false })
+    },
+    [mutate],
+  )
+  const lista = data ?? null
+  return {
+    referencias: lista,
+    utilizaveis: (lista ?? []).filter(utilizavel).length,
+    error: error as Error | undefined,
+    isLoading,
+    importar,
+    criarDeUpload,
+    atualizar,
+    excluir,
+    recarregar: () => mutate(),
+  }
+}
+
+export function useCandidatosReferencia(ativo: boolean) {
+  const { data, error, isLoading, mutate } = useSWR(ativo ? "conteudo:referencias-candidatos" : null, getCandidatosReferencia, SWR_OPTS)
+  return { candidatos: data ?? null, error: error as Error | undefined, isLoading, recarregar: () => mutate() }
 }
