@@ -28,15 +28,15 @@ import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { useToast } from "@/lib/hooks/use-toast"
-import { COUNTRIES_BY_REGION, PLATFORMS } from "@/lib/constants/onboarding"
+import { PLATFORMS } from "@/lib/constants/onboarding"
+import { sanitizarPaises } from "@/lib/stores/mercados"
+import { CountryMultiSelect } from "./country-multi-select"
 import { STORE_CURRENCIES } from "@/lib/constants/currencies"
 import { STORE_TIMEZONES } from "@/lib/constants/timezones"
 import {
@@ -49,6 +49,7 @@ export interface StoreSetupEditable {
   store_url?: string | null
   platform?: string | null
   country?: string | null
+  countries?: string[] | null
   language?: string | null
   currency?: string | null
   timezone?: string | null
@@ -78,7 +79,10 @@ function toForm(initial: StoreSetupEditable) {
     store_name: initial.store_name ?? "",
     store_url: initial.store_url ?? "",
     platform: initial.platform ?? NONE,
-    country: initial.country ?? NONE,
+    // Lista ordenada — `countries[0]` é o principal e vira `country`.
+    countries: sanitizarPaises(
+      initial.countries?.length ? initial.countries : [initial.country],
+    ),
     language: languageLabelToCode(initial.language) ?? NONE,
     currency: initial.currency ?? NONE,
     timezone: initial.timezone ?? NONE,
@@ -114,7 +118,11 @@ export function StoreSetupEditDialog({ storeId, open, section, initial, onOpenCh
     if (form.store_name !== base.store_name) out.store_name = form.store_name.trim()
     if (form.store_url !== base.store_url) out.store_url = form.store_url.trim() || null
     if (form.platform !== base.platform) out.platform = opt(form.platform)
-    if (form.country !== base.country) out.country = opt(form.country)
+    if (form.countries.join(",") !== base.countries.join(",")) {
+      // Só `countries` viaja: a rota espelha `country = countries[0]`.
+      // Mandar os dois abriria espaço para eles discordarem.
+      out.countries = form.countries.length ? form.countries : null
+    }
     if (form.language !== base.language) out.language = opt(form.language)
     if (form.currency !== base.currency) out.currency = opt(form.currency)
     if (form.timezone !== base.timezone) out.timezone = opt(form.timezone)
@@ -267,29 +275,15 @@ export function StoreSetupEditDialog({ storeId, open, section, initial, onOpenCh
                   Corta a janela dos relatórios. Vem da plataforma de e-mail quando conectada.
                 </p>
               </div>
-              <div className="space-y-1.5">
-                <Label>País principal</Label>
-                <Select value={form.country} onValueChange={(v) => set("country", v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>— (não definido)</SelectItem>
-                    {/* Agrupado por região: a lista passou de 15 para ~50
-                        países, e corrida ela seria pior de usar que a
-                        lista curta que existia antes. */}
-                    {COUNTRIES_BY_REGION.map((g) => (
-                      <SelectGroup key={g.regiao}>
-                        <SelectLabel>{g.regiao}</SelectLabel>
-                        {g.paises.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>
-                            {c.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Ocupa a linha inteira: loja multi-país precisa de espaço
+                  para os presets e a lista, e um select de uma linha era
+                  justamente o que forçava escolher um país só. */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Países onde a loja vende</Label>
+                <CountryMultiSelect
+                  selecionados={form.countries}
+                  onChange={(paises) => set("countries", paises)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Idioma</Label>

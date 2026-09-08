@@ -32,6 +32,7 @@ import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { useStoreBasics } from "@/lib/hooks/use-store-overview"
 import { PLATFORMS, countryLabel } from "@/lib/constants/onboarding"
+import { resumoDePaises, sanitizarPaises } from "@/lib/stores/mercados"
 import { currencySymbol } from "@/lib/constants/currencies"
 import { timezoneLabel } from "@/lib/constants/timezones"
 import { languageCodeToLabel } from "@/lib/i18n/store-language"
@@ -43,6 +44,7 @@ interface SetupData {
   store_url?: string | null
   platform?: string | null
   country?: string | null
+  countries?: string[] | null
   language?: string | null
   currency?: string | null
   currency_source?: string | null
@@ -66,7 +68,15 @@ export function TabSetup({ storeId }: { storeId: string }) {
   const data = (overview?.store ?? {}) as SetupData
   const [edit, setEdit] = useState<"loja" | "contrato" | null>(null)
   const platformLabel = PLATFORMS.find((p) => p.value === data.platform)?.label ?? data.platform
-  const paisLabel = countryLabel(data.country)
+  // Loja multi-país: a ficha mostrava só o principal e dava a entender
+  // que a loja vendia para um lugar só.
+  const paises = sanitizarPaises(
+    data.countries?.length ? data.countries : [data.country],
+  )
+  const paisLabel =
+    paises.length > 1
+      ? `${countryLabel(paises[0])} + ${paises.length - 1} · ${resumoDePaises(paises.slice(1), countryLabel as (c: string) => string, 3)}`
+      : countryLabel(data.country)
   const languageLabel = languageCodeToLabel(data.language) ?? data.language
   // Enquanto a ficha não chegou, o dialog abriria com todos os campos em
   // branco e o operador editaria contra um estado que não é o do banco.
@@ -201,7 +211,12 @@ export function TabSetup({ storeId }: { storeId: string }) {
           <KV label="Nome" value={data.store_name ?? "—"} mute={!data.store_name} loading={carregando} />
           <KV label="URL" value={data.store_url?.replace(/^https?:\/\//, "").replace(/\/$/, "") ?? "—"} mono mute={!data.store_url} loading={carregando} />
           <KV label="Plataforma" value={platformLabel ?? "—"} mute={!data.platform} loading={carregando} />
-          <KV label="País" value={paisLabel ?? "—"} mute={!data.country} loading={carregando} />
+          <KV
+            label={paises.length > 1 ? "Países" : "País"}
+            value={paisLabel ?? "—"}
+            mute={!data.country}
+            loading={carregando}
+          />
           <KV label="Idioma" value={languageLabel ?? "—"} mute={!data.language} loading={carregando} />
           <KV
             label="Moeda"

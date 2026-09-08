@@ -3356,5 +3356,44 @@ gravação oportunista é **await, nunca `void`** — promise solta em
 serverless morre quando o processo congela depois da resposta (a mesma
 armadilha que perdeu os eventos de conversão da Meta).
 
+## Loja multi-país e presets de mercado (set/2026)
+
+`client_stores.countries` (TEXT[]) e o espelho `country = countries[0]`
+**já existiam** — e o PATCH já os mantinha em sincronia. O que faltava era
+a TELA: o diálogo de edição oferecia um Select único, então quem vende
+para cinco países escolhia um e perdia os outros. (Havia um popover
+multi-país no hero da loja, mas escondido atrás de um badge e sem
+presets.)
+
+**A ordem carrega significado.** `countries[0]` é o que vira `country`, e
+é `country` que alimenta o mapa país→fuso do sync. Por isso o principal
+aparece marcado com estrela e tem ação própria ("tornar principal") —
+sem ela, trocar o principal exigiria desmarcar tudo e remarcar na ordem
+certa, regra que ninguém adivinharia. Um `Set` resolveria a duplicidade e
+destruiria essa informação; daí lista ordenada em `lib/stores/mercados.ts`
+(puro, 18 testes).
+
+**Presets** (`PRESETS_DE_MERCADO`): Big Five, América do Norte, LATAM,
+União Europeia, Zona do euro, DACH, Benelux, Nórdicos, Ibéria, Reino
+Unido e Irlanda, Oceania, Golfo. Regras que os testes fixam:
+
+- **O rótulo declara os membros** ("Big Five — EUA, Reino Unido, Canadá,
+  Austrália e Nova Zelândia"): é jargão de dropshipping, não é o G5 nem
+  os cinco maiores países, e preset que o operador não sabe o que contém
+  ele aplica errado.
+- **Aplicar preset NÃO troca o principal** — os que faltam entram no FIM.
+  Aplicar Big Five numa loja brasileira não pode torná-la americana.
+- **Preset ativo = todos os membros marcados, mesmo com extras.** Big
+  Five + Brasil segue aceso; exigir exclusividade apagaria o chip assim
+  que alguém somasse um país e a tela pareceria ter esquecido a ação.
+- **Nada esvazia a seleção**: desmarcar o último país (ou remover o único
+  preset) é ignorado — loja sem país é pior que loja com país sobrando, e
+  um clique que zera tudo em silêncio é armadilha.
+
+Só `countries` viaja no PATCH; mandar os dois abriria espaço para
+divergirem. A ficha (`tab-setup`) mostra "Países" com o principal e o
+resto resumido; o popover do hero ganhou os mesmos presets e a lista
+agrupada por região.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
