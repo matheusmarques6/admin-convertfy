@@ -282,25 +282,26 @@ ANALYZE crm_webhook_events;
 -- ALTER PUBLICATION pega ShareUpdateExclusiveLock na tabela. Com
 -- lock_timeout ele falha rápido em vez de travar — basta reaplicar.
 --
--- `client_onboardings` está na publication e NENHUM hook do front a
--- assina (conferido em src/hooks/use-realtime-*.ts): todo INSERT/UPDATE
--- nela passava pelo poller do Realtime sem destinatário.
+-- REVERTIDO EM 08/09/2026 — a remoção de `client_onboardings` saiu daqui.
+--
+-- O erro: conferi as assinaturas em `src/hooks/use-realtime-*.ts` DESTA
+-- branch e concluí que ninguém assinava a tabela. Mas quem roda em
+-- produção é a `main`, e lá `use-realtime-onboarding.ts` assina
+-- `client_onboardings` por postgres_changes. Aplicada no banco de
+-- produção, a remoção deixou a tela de onboarding sem atualização
+-- automática — e em SILÊNCIO, porque o canal continua "SUBSCRIBED":
+-- a subscrição não falha, só nunca chega evento. O `realtimeConnected`
+-- do hook segue true, então nem o polling de fallback liga.
+-- Corrigido em produção com ALTER PUBLICATION ... ADD TABLE.
+--
+-- Regra derivada: tirar tabela da publication é decisão sobre o código
+-- QUE ESTÁ NO AR, não sobre o que está na branch. Conferir contra
+-- `origin/main` (ou a ref que produção serve) antes, e nunca aplicar
+-- num banco cujo deploy está atrás do código que a migration acompanha.
 --
 -- As demais (crm_threads, crm_messages, notifications, report_jobs,
 -- store_revenue_summary, deals, pipeline_stages, onboardings,
--- task_deliverables) TÊM assinante hoje — saem só quando o cliente
--- migrar para Broadcast (fase 4).
-SET lock_timeout = '10s';
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_publication_tables
-     WHERE pubname = 'supabase_realtime' AND tablename = 'client_onboardings'
-  ) THEN
-    EXECUTE 'ALTER PUBLICATION supabase_realtime DROP TABLE client_onboardings';
-  END IF;
-END;
-$$;
+-- task_deliverables) TÊM assinante — saem só quando o cliente migrar
+-- para Broadcast (fase 4), e aí valendo a mesma regra.
 
 RESET lock_timeout;
