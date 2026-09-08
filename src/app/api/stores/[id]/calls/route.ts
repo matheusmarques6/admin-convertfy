@@ -29,6 +29,10 @@ import {
   previousMonth,
   type CallForCoverage,
 } from "@/lib/services/call-coverage"
+import {
+  resolverProximaCall,
+  type ReuniaoDaLoja,
+} from "@/lib/meetings/proxima-call"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoreCalls")
@@ -112,7 +116,7 @@ export async function GET(
     // Cobertura mensal: que mês ficou sem alinhamento/relatório
     const { data: storeRow } = await admin
       .from("client_stores")
-      .select("contract_start_date, created_at")
+      .select("contract_start_date, created_at, client_id, store_name")
       .eq("id", id)
       .maybeSingle()
     const coverage = computeCallCoverage({
@@ -121,12 +125,64 @@ export async function GET(
         (storeRow?.contract_start_date as string) ?? (storeRow?.created_at as string) ?? null,
     })
 
+    // A próxima call de VERDADE: reunião agendada vinculada a esta loja.
+    // Sem isto a tela mostra `next_call_date` — uma previsão calculada pela
+    // cadência — com a mesma cara de um compromisso com convite enviado.
+    // `deal_id` e `meeting_id` só existem após a migration 20261126, e a
+    // coluna store_id em meetings pode faltar em ambiente atrasado: degrada
+    // para "só a previsão" em vez de derrubar a aba inteira.
+    let reunioes: ReuniaoDaLoja[] = []
+    try {
+      const { data: rows, error: mErr } = await admin
+        .from("meetings")
+        .select("id, title, scheduled_at, status, participants:meeting_participants(participant_type)")
+        .eq("store_id", id)
+        .gte("scheduled_at", now)
+        .order("scheduled_at", { ascending: true })
+        .limit(20)
+      if (mErr) {
+        if (!MISSING_SCHEMA.has(mErr.code)) throw mErr
+      } else {
+        reunioes = (rows ?? []).map((r) => {
+          const ps = (r.participants ?? []) as Array<{ participant_type: string }>
+          return {
+            id: r.id as string,
+            title: r.title as string | null,
+            scheduled_at: r.scheduled_at as string,
+            status: r.status as string,
+            tem_convidado_do_cliente: ps.some((p) => p.participant_type === "contact"),
+          }
+        })
+      }
+    } catch (err) {
+      // Reunião é enriquecimento: a aba Calls existia antes dela e continua
+      // funcionando sem. Falhar aqui não pode custar o histórico da loja.
+      log.warn("Falha ao ler reuniões da loja", {
+        storeId: id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    const proximaCall = resolverProximaCall({
+      reunioes,
+      nextFeedbackDate: (upcomingCall?.next_call_date as string) ?? null,
+    })
+
     return successResponse(request, {
       calls,
       upcoming_call_date: (upcomingCall?.next_call_date as string) ?? null,
       next_meeting_agenda: agenda,
       coverage,
       fathom_ready: fathomReady,
+      proxima_call: proximaCall,
+      reunioes_agendadas: reunioes,
+      // Contexto para o botão "Agendar call" abrir o diálogo já preenchido —
+      // sem isto quem agenda teria de reencontrar o cliente numa lista.
+      store_context: {
+        store_id: id,
+        store_name: (storeRow?.store_name as string) ?? null,
+        client_id: (storeRow?.client_id as string) ?? null,
+      },
     })
   } catch (error) {
     return errorResponse(request, error, "StoreCalls")

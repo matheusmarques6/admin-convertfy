@@ -3481,5 +3481,96 @@ CS lendo `meetings` em vez de presumir pela data
 (`/api/cs-crm/calls-pipeline` comenta literalmente "presumido enviado
 convite") e o painel de agenda por colaborador.
 
+## Fase 2 das reuniões: previsão deixa de se passar por agendamento (set/2026, migration 20261126)
+
+Medido no banco antes de escrever qualquer código: das **18 reuniões
+existentes, ZERO têm loja ou cliente vinculado** (14 vieram do import do
+Google, 4 do admin) e **zero estão agendadas para o futuro** — a última é
+de julho. Ou seja, o gargalo não era a leitura, era a ENTRADA: ligar as
+pipelines de CS a `meetings` mostraria zero em tudo. A ordem da fase 2
+inverteu por causa desse número.
+
+**O que a tela dizia e não era**: carteira, "próximas calls" do CS e a aba
+Calls da loja liam `client_stores.next_feedback_date` / `next_call_date` —
+uma data que o trigger CALCULA a partir da última call — e a mostravam com
+a mesma cara de um compromisso marcado. A etapa 2 de
+`/api/cs-crm/calls-pipeline` chega a se chamar "Aguardando (presumido
+enviado convite)". Ninguém sabia, olhando, se o cliente tinha sido
+convidado.
+
+`proxima-call.ts` (puro, 14 testes) separa as duas coisas com a palavra:
+**"Agendada"** (reunião existe, convite saiu) × **"Prevista pela cadência"**
+(é uma conta) × "Sem call marcada". Regras que não podem regredir:
+
+- **Previsão nunca some da tela.** Sem reunião, a previsão continua
+  aparecendo — marcada como previsão. Trocar uma pela outra às cegas
+  esvaziaria a carteira no dia do deploy, porque hoje nenhuma reunião tem
+  loja.
+- **Previsão VENCIDA não é "próxima call"** — é atraso, e chamá-la de
+  próxima esconderia justamente a loja que precisa de atenção.
+- Entre duas reuniões futuras vence a mais próxima; cancelada e concluída
+  não contam; `precisaAgendar` é true também na previsão, porque previsão
+  não avisa ninguém.
+- `tem_convidado_do_cliente === undefined` (a origem não informou) NÃO vira
+  "sem convidado": afirmar isso seria inventar.
+
+**A entrada**: botão "Agendar call" na aba Calls da loja → deep-link
+`/admin/meetings?agendar=1&client_id=&store_id=&titulo=`, que abre o mesmo
+diálogo da fase 1 já preenchido (e portanto já sugerindo o contato do
+cliente). A loja NÃO tem select no formulário de propósito: quem agenda a
+partir da ficha de uma loja já a conhece, e pedir de novo abre espaço para
+escolher a errada. Na edição, `store_id` preserva o que estava — mandar
+null apagaria o vínculo com a carteira em silêncio. O contexto vive em
+estado, não no searchParams, porque a URL é limpa logo após abrir.
+
+**Migration 20261126**: `meetings.deal_id` (SET NULL — apagar o negócio não
+pode apagar a reunião que aconteceu) e `store_feedback_calls.meeting_id`
+com índice ÚNICO PARCIAL. Esse índice substitui a idempotência por TEXTO do
+trigger `sync_meeting_to_store_feedback`, que comparava
+`notes IS NOT DISTINCT FROM ...` + `conducted_at`: editar a nota e
+reconcluir duplicava o registro, e duas calls no mesmo segundo com a mesma
+nota faziam a segunda sumir. O trigger virou FAIL-OPEN (regra da casa desde
+o 20261066): concluir uma reunião não pode dar 500 porque o histórico de CS
+falhou. O backfill só casa onde o par (loja, instante) identifica UMA
+reunião — vínculo errado é pior que nenhum, porque faria a próxima
+conclusão pular a gravação.
+
+A leitura de reuniões na rota de calls é **enriquecimento**: envolvida em
+try/catch e com `MISSING_SCHEMA`, porque a aba existia antes dela e não
+pode quebrar por migration atrasada.
+
+## RLS: o round4 nunca rodou, e agora se sabe por quê (set/2026)
+
+Ele cita `wise_reconciliations`, **tabela que não existe neste banco**. O
+SQL Editor roda tudo em UMA transação, então o 42P01 abortava o script
+inteiro e NADA era aplicado — por isso as policies continuaram `USING(true)`
+por meses. `APPLY_MANUALLY_fix_rls_round5a_fechar_anon.sql` não depende de
+nenhuma tabela existir: onde ela falta, pula.
+
+Medido em produção em 08/09: **17 tabelas com `FOR ALL TO PUBLIC
+USING(true) WITH CHECK(true)`** (TO PUBLIC inclui `anon`, e a anon key está
+no JS do browser: leitura E escrita abertas em `client_charges`,
+`client_subscriptions`, `crm_leads` com 301 linhas, `crm_contacts`,
+`crm_ad_accounts`) e **8 tabelas SEM RLS nenhuma**, que é pior — entre elas
+`auth_events` e `client_monthly_reports`.
+
+**A forma da policy é `TO authenticated USING (is_org_member())`, não
+`USING (true)`**: há 16 usuários em `auth.users` e **5 não são membros da
+org** (3 do portal do cliente), então fechar só em `authenticated` deixaria
+o CLIENTE ler o CRM inteiro. Não escopa por org de propósito — há uma org,
+ninguém em duas, e 16 leads com `org_id` NULL sumiriam da tela.
+
+**Só cria policy onde a remoção deixaria a tabela descoberta.**
+`client_charges` e `client_subscriptions` já têm `ALL` para authenticated —
+ali a TO PUBLIC é lixo legado e basta removê-la, preservando "Portal users
+can view own client_charges" (o cliente vê as próprias faturas). Tratar em
+bloco afrouxaria controle fino que já existe (`clients` tem "Access clients
+by permission").
+
+**As 61 `TO authenticated USING(true)` ficaram para o 5B** porque a
+simulação mostrou que, tratadas em bloco, `deals`/`pipelines`/`automations`
+ficariam só com SELECT e `client_briefings`/`store_feedback_calls` só com
+INSERT — quebrando kanban e telas.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

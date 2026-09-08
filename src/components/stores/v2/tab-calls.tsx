@@ -11,6 +11,12 @@ import {
 
 const fetcher = (url: string) => fetch(url, { credentials: "include" }).then((r) => r.json())
 
+import {
+  precisaAgendar,
+  rotuloDaProximaCall,
+  type ProximaCall,
+} from "@/lib/meetings/proxima-call"
+
 interface Call {
   id: string
   conducted_at: string
@@ -38,6 +44,9 @@ interface CallsPayload {
   }
   /** Meses fechados sem alinhamento registrado. */
   coverage?: { missing: string[]; covered: string[] }
+  /** Reunião agendada de verdade × data prevista pela cadência. */
+  proxima_call?: ProximaCall
+  store_context?: { store_id: string; store_name: string | null; client_id: string | null }
 }
 
 function moneyBRL(n: number | null): string {
@@ -69,6 +78,23 @@ export default function TabCalls({ storeId }: { storeId: string }) {
   const upcoming = payload?.upcoming_call_date ?? null
   const agenda = payload?.next_meeting_agenda
   const missing = payload?.coverage?.missing ?? []
+  // Fallback para o payload antigo (rota sem a migration/deploy novo): sem
+  // `proxima_call`, a previsão continua sendo mostrada — como previsão.
+  const proximaCall: ProximaCall = payload?.proxima_call ?? {
+    origem: upcoming ? "prevista" : "nenhuma",
+    quando: upcoming,
+  }
+  const quando = proximaCall.quando
+  const ctx = payload?.store_context
+
+  // Link para o hub de reuniões já com o contexto desta loja. É a entrada que
+  // faltava: registrar call olha para trás, agendar olha para frente — e sem
+  // agendar por aqui a "próxima call" nunca deixa de ser uma previsão.
+  const linkAgendar = ctx?.client_id
+    ? `/admin/meetings?agendar=1&client_id=${encodeURIComponent(ctx.client_id)}` +
+      `&store_id=${encodeURIComponent(ctx.store_id)}` +
+      (ctx.store_name ? `&titulo=${encodeURIComponent(`Call de alinhamento — ${ctx.store_name}`)}` : "")
+    : null
 
   const [showNewForm, setShowNewForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -161,12 +187,23 @@ export default function TabCalls({ storeId }: { storeId: string }) {
       <Section
         title="Próxima call"
         right={
-          <Btn variant="primary" size="sm" onClick={() => setShowNewForm(!showNewForm)}>
-            {showNewForm ? "Cancelar" : "+ Registrar call"}
-          </Btn>
+          <div style={{ display: "flex", gap: 8 }}>
+            {linkAgendar && precisaAgendar(proximaCall) && (
+              <a href={linkAgendar} style={{ textDecoration: "none" }}>
+                <Btn variant="primary" size="sm">Agendar call</Btn>
+              </a>
+            )}
+            <Btn
+              variant={precisaAgendar(proximaCall) ? "ghost" : "primary"}
+              size="sm"
+              onClick={() => setShowNewForm(!showNewForm)}
+            >
+              {showNewForm ? "Cancelar" : "+ Registrar call"}
+            </Btn>
+          </div>
         }
       >
-        {upcoming ? (
+        {quando ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               style={{
@@ -182,28 +219,40 @@ export default function TabCalls({ storeId }: { storeId: string }) {
               }}
             >
               <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>
-                {new Date(upcoming).toLocaleDateString("pt-BR", { month: "short" }).slice(0, 3)}
+                {new Date(quando).toLocaleDateString("pt-BR", { month: "short" }).slice(0, 3)}
               </div>
               <div style={{ fontSize: 18, fontWeight: 700, ...TNUM, lineHeight: 1 }}>
-                {new Date(upcoming).getDate()}
+                {new Date(quando).getDate()}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.g900 }}>
-                {new Date(upcoming).toLocaleDateString("pt-BR", {
+                {new Date(quando).toLocaleDateString("pt-BR", {
                   weekday: "long",
                   day: "2-digit",
                   month: "long",
                 })}
               </div>
               <div style={{ fontSize: 12, color: C.g500 }}>
-                {new Date(upcoming).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                {new Date(quando).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                {" · "}
+                {rotuloDaProximaCall(proximaCall)}
               </div>
+              {proximaCall.origem === "prevista" && (
+                <div style={{ fontSize: 11, color: C.g500, marginTop: 2 }}>
+                  Data calculada pela cadência — ninguém foi convidado ainda.
+                </div>
+              )}
+              {proximaCall.semConvidadoDoCliente && (
+                <div style={{ fontSize: 11, color: C.warn, marginTop: 2 }}>
+                  Reunião marcada, mas sem ninguém do cliente convidado.
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <div style={{ color: C.g500, fontSize: 13 }}>
-            Nenhuma call agendada. Defina &quot;Próxima call&quot; ao registrar uma nova.
+            Nenhuma call marcada nem prevista.
           </div>
         )}
 
