@@ -259,7 +259,7 @@ Regras de seleção:
   - <mesmo_email_em_outras_lojas>: as variantes que ESTE mesmo email recebeu em OUTRAS lojas recentes. Busque VARIEDADE quando houver alternativa igualmente adequada à marca e ao objetivo.
   - Adequação à marca e ao objetivo SEMPRE vence a memória.
 - HERO É ÚNICA: no máximo UMA posição do email pode receber variante da seção "hero" — é a abertura, e o email só tem uma. Para as demais posições, indique variantes de outra forma, mesmo que a anatomia da hero pareça servir.
-- Duas posições do mesmo tipo (dois blocos de corpo, por exemplo) podem receber as mesmas indicações. Rankeie cada posição pelo mérito dela: quem garante variedade dentro do email é a etapa seguinte, não você.
+- Duas posições do mesmo tipo (dois blocos de corpo, por exemplo) podem receber as mesmas indicações. Rankeie cada posição pelo mérito dela. Repetir a MESMA variante em duas posições é permitido fora de "hero" e "products" — a etapa seguinte NÃO vai desfazer, então indique o que é melhor para cada posição sem tentar forçar variedade.
 - Se a descrição estiver vazia, decida pelo nome e pelos demais metadados.
 - Não invente variant_id: use apenas ids presentes em <biblioteca>.
 
@@ -362,7 +362,7 @@ O que só você vê: o schema de output de cada finalista — os campos que aque
 Como decidir:
 - PADRÃO: fique com a 1ª indicação do Curador. Ela é o mérito daquela posição avaliada isoladamente. Você só sai dela por uma das razões abaixo.
 - Quando <decisao_do_estruturador> trouxer uma decisão, o \`label\` de cada posição é o PAPEL que ela cumpre no arco — avalie os finalistas contra ele: a razão de CONJUNTO se mede pelo fio narrativo (as posições precisam conversar na ordem decidida) e a de VIABILIDADE pelo que o papel exige dos dados da loja. Finalista que não consegue CUMPRIR o papel é caso de viabilidade, mesmo sendo o rank 1. <intencao> protege o contrato do flow na escolha final (ex.: regra "sem desconto neste toque" derruba variante com slot de cupom obrigatório).
-- Razão de CONJUNTO: duas posições ficariam com a mesma variante, ou com variantes de linguagem visual idêntica (mesma faixa, mesma anatomia); o email ficaria monótono ou desequilibrado na densidade; abertura e fechamento não conversam.
+- Razão de CONJUNTO: duas posições de "hero" ou de "products" ficariam com a mesma variante (essas duas seções precisam ser únicas — a hero por exigência do enxerto, o feed porque repetiria a mesma grade de produtos); o email ficaria desequilibrado na densidade; abertura e fechamento não conversam. Fora dessas duas seções, variante repetida NÃO é motivo de desvio: repetir o mesmo corpo, a mesma oferta ou o mesmo CTA é composição legítima.
 - Razão de VIABILIDADE: o schema do 1º exige dado que esta loja não tem (campo obrigatório de cupom sem oferta no contexto, mais slots de produto do que <top_products>) e o 2º ou o 3º resolve.
 - Razão de HISTÓRICO: <memoria> mostra que a 1ª indicação já ocupou posição equivalente no email anterior desta loja, ou vem se repetindo em outras lojas, e existe finalista igualmente adequada.
 - Razão de MARCA: o 1º choca com <perfil_marca> (anatomia que esta marca não usa) ou com <vocabulario> (a orientacao_copy dele exige o registro que a marca proíbe), e um finalista resolve.
@@ -1688,7 +1688,7 @@ export async function assembleStoreReference(
   // Aqui o fallback é LEGÍTIMO, ao contrário do Curador: o ranking já é uma
   // composição válida, avaliada posição por posição. Erro do Montador degrada
   // para o rank 1, nunca derruba o email.
-  decisions = parseAssemblerChoices({ raw: asmRaw, ranking: rankingByBlock })
+  decisions = parseAssemblerChoices({ raw: asmRaw, ranking: rankingByBlock, sections })
   const escolhidoPorPosicao = decisionMap(decisions)
 
   // ── Uma hero por email ──────────────────────────────────────────────

@@ -21,6 +21,7 @@
 
 import { extractJson } from "./llm-invoke"
 import type { RankedChoice } from "./curator-ranking.parser"
+import { podeRepetir } from "./repeticao"
 
 export interface AssemblerDecision {
   block_index: number
@@ -64,12 +65,18 @@ export interface ParseChoicesInput {
   raw: string
   /** Finalistas por posição, na ordem de preferência do Curador. */
   ranking: Map<number, RankedChoice[]>
+  /**
+   * Seção de cada posição. Sem ela o dedupe não roda: desfazer repetição
+   * sem saber a seção é o comportamento antigo, que trocava escolha
+   * legítima de corpo por uma alternativa pior.
+   */
+  sections?: readonly string[]
 }
 
 export function parseAssemblerChoices(
   input: ParseChoicesInput,
 ): ParsedAssemblerChoices {
-  const { raw, ranking } = input
+  const { raw, ranking, sections } = input
 
   const out: ParsedAssemblerChoices = {
     decisions: [],
@@ -151,7 +158,7 @@ export function parseAssemblerChoices(
     out.desvios.push(decision)
   }
 
-  dedupeDecisions(out, ranking)
+  dedupeDecisions(out, ranking, sections ?? [])
   return out
 }
 
@@ -175,17 +182,27 @@ export function parseAssemblerChoices(
  * e-mail com variante de outro tipo ou com posição vazia. O caso vai para
  * `dedupSemAlternativa`, que é o sinal de que o Curador não está entregando
  * finalistas variados o bastante.
+ *
+ * 07/09: a regra generalizou demais. Só `hero` e `products` precisam ser
+ * únicos (ver `repeticao.ts`) — repetir um corpo, uma oferta ou um CTA é
+ * composição legítima, e trocá-la aqui rebaixava a escolha do Curador em
+ * nome de uma variedade que ninguém pediu. Fora dessas duas seções o
+ * dedupe não age e nada é registrado.
  */
 function dedupeDecisions(
   out: ParsedAssemblerChoices,
   ranking: Map<number, RankedChoice[]>,
+  sections: readonly string[],
 ): void {
   const usados = new Set<string>()
   for (const decision of out.decisions) {
+    const section = sections[decision.block_index] ?? ""
     if (!usados.has(decision.variant_id)) {
       usados.add(decision.variant_id)
       continue
     }
+    // Repetição permitida nesta seção: fica como o Curador rankeou.
+    if (podeRepetir(section)) continue
     const finalists = ranking.get(decision.block_index) ?? []
     const alternativa = finalists.find((f) => !usados.has(f.variant_id))
     if (!alternativa) {

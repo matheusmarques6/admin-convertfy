@@ -6,6 +6,7 @@ import {
   measureProtocolViolations,
   parseCuradorVaultOutput,
   rank1ByBlock,
+  repeticoesPermitidas,
 } from "./curador-shadow"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
@@ -95,6 +96,64 @@ describe("measureProtocolViolations", () => {
       sectionByBlock: sec([[0, "body"]]),
     })
     expect(v).toEqual([])
+  })
+
+  // 07/09: repetir a mesma variante é composição legítima fora de hero e
+  // do feed de produtos. Acusar violação ali contaminava a contagem que a
+  // gente lê para julgar o Curador.
+  it("mesma variante em duas posições de body NÃO é violação", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
+      extras,
+      sectionByBlock: sec([[0, "body"], [1, "body"]]),
+    })
+    expect(v).toEqual([])
+  })
+
+  it("mesma variante em duas posições de products É violação", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
+      extras,
+      sectionByBlock: sec([[0, "products"], [1, "products"]]),
+    })
+    expect(v.some((x) => x.tipo === "variante_repetida" && x.block_index === 1)).toBe(true)
+  })
+
+  it("a seção é normalizada — ' Products ' conta como products", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
+      extras,
+      sectionByBlock: sec([[0, " Products "], [1, "PRODUCTS"]]),
+    })
+    expect(v.some((x) => x.tipo === "variante_repetida")).toBe(true)
+  })
+})
+
+describe("repeticoesPermitidas", () => {
+  const sec = (pairs: Array<[number, string]>) => new Map(pairs)
+
+  it("agrupa a repetição legítima por variante e seção", () => {
+    const r = repeticoesPermitidas({
+      rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"], [2, "v-outra"], [3, "v-ok"]]),
+      sectionByBlock: sec([[0, "body"], [1, "body"], [2, "offer"], [3, "Body"]]),
+    })
+    expect(r).toEqual([{ variant_id: "v-ok", section: "body", blocks: [0, 1, 3] }])
+  })
+
+  it("hero e products ficam fora — lá a repetição é violação, não registro", () => {
+    const r = repeticoesPermitidas({
+      rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
+      sectionByBlock: sec([[0, "hero"], [1, "hero"]]),
+    })
+    expect(r).toEqual([])
+  })
+
+  it("variante que aparece uma vez só não vira registro", () => {
+    const r = repeticoesPermitidas({
+      rank1ByBlock: new Map([[0, "a"], [1, "b"]]),
+      sectionByBlock: sec([[0, "body"], [1, "body"]]),
+    })
+    expect(r).toEqual([])
   })
 })
 

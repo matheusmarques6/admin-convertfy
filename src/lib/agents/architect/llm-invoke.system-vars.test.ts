@@ -76,7 +76,9 @@ describe("auditoria dos system prompts do architect", () => {
     // semente saiu junto com o pré-filtro (o catálogo precisa ser estável).
     expect(DEFAULT_CHOOSER_SYSTEM).toContain("alfabética")
     expect(DEFAULT_CHOOSER_SYSTEM).toContain("NÃO carrega julgamento")
-    // Variedade dentro do email é decisão do Montador, não do Curador.
-    expect(DEFAULT_CHOOSER_SYSTEM).toContain("quem garante variedade")
+    // 07/09: variedade deixou de ser objetivo. O Curador rankeia cada
+    // posição pelo mérito dela e repetir é permitido fora de hero/products.
+    expect(DEFAULT_CHOOSER_SYSTEM).toContain("Repetir a MESMA variante")
+    expect(DEFAULT_CHOOSER_SYSTEM).not.toContain("quem garante variedade")
   })
 })

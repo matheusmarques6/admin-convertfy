@@ -17,8 +17,8 @@ const ranking = new Map<number, RankedChoice[]>([
   [2, [{ variant_id: "f1" }]],
 ])
 
-const parse = (raw: string, r = ranking) =>
-  parseAssemblerChoices({ raw, ranking: r })
+const parse = (raw: string, r = ranking, sections?: string[]) =>
+  parseAssemblerChoices({ raw, ranking: r, sections })
 
 describe("parseAssemblerChoices", () => {
   it("lê as decisões e separa os desvios", () => {
@@ -182,17 +182,22 @@ describe("dedup entre posições", () => {
   // saiu com o mesmo componente duas vezes seguidas. O Curador é instruído
   // a não se preocupar com repetição e o Montador só evita como exceção —
   // quando não reconhece, ninguém corrige.
-  const doisCorpos = new Map<number, RankedChoice[]>([
+  //
+  // 07/09: a correção só vale onde a unicidade é requisito — `hero` e
+  // `products` (ver `repeticao.ts`). Por isso os cenários abaixo são de
+  // dois feeds de produtos, não de dois corpos: repetir corpo é legítimo.
+  const doisFeeds = new Map<number, RankedChoice[]>([
     [0, [{ variant_id: "b1" }, { variant_id: "b2" }, { variant_id: "b3" }]],
     [1, [{ variant_id: "b1" }, { variant_id: "b2" }, { variant_id: "b3" }]],
   ])
+  const PRODUCTS = ["products", "products"]
 
   it("a segunda posição cai para o próximo finalista livre", () => {
     const raw = JSON.stringify([
       { block_index: 0, variant_id: "b1", rank: 1 },
       { block_index: 1, variant_id: "b1", rank: 1 },
     ])
-    const r = parse(raw, doisCorpos)
+    const r = parse(raw, doisFeeds, PRODUCTS)
     expect(decisionMap(r)).toEqual(
       new Map([
         [0, "b1"],
@@ -208,7 +213,7 @@ describe("dedup entre posições", () => {
       { block_index: 0, variant_id: "b3", rank: 3, motivo: "abre melhor" },
       { block_index: 1, variant_id: "b3", rank: 3, motivo: "idem" },
     ])
-    const r = parse(raw, doisCorpos)
+    const r = parse(raw, doisFeeds, PRODUCTS)
     expect(r.decisions[0].variant_id).toBe("b3")
     expect(r.dedup[0]).toEqual({ block_index: 1, de: "b3", para: "b1" })
   })
@@ -220,7 +225,7 @@ describe("dedup entre posições", () => {
       { block_index: 0, variant_id: "b3", rank: 3, motivo: "abre melhor" },
       { block_index: 1, variant_id: "b3", rank: 3, motivo: "idem" },
     ])
-    const r = parse(raw, doisCorpos)
+    const r = parse(raw, doisFeeds, PRODUCTS)
     const segunda = r.decisions.find((d) => d.block_index === 1)
     expect(segunda).toEqual({ block_index: 1, variant_id: "b1", rank: 1 })
     expect(r.desvios.map((d) => d.block_index)).toEqual([0])
@@ -236,7 +241,7 @@ describe("dedup entre posições", () => {
       { block_index: 0, variant_id: "b1", rank: 1 },
       { block_index: 1, variant_id: "b1", rank: 1 },
     ])
-    const r = parse(raw, semSaida)
+    const r = parse(raw, semSaida, PRODUCTS)
     expect(decisionMap(r)).toEqual(
       new Map([
         [0, "b1"],
@@ -252,7 +257,7 @@ describe("dedup entre posições", () => {
       { block_index: 0, variant_id: "b1", rank: 1 },
       { block_index: 1, variant_id: "b1", rank: 1 },
     ])
-    const r = parse(raw, doisCorpos)
+    const r = parse(raw, doisFeeds, PRODUCTS)
     expect(r.decisions.find((d) => d.block_index === 1)?.rank).toBe(2)
   })
 
@@ -262,7 +267,7 @@ describe("dedup entre posições", () => {
       { block_index: 1, variant_id: "b1", rank: 1 },
       { block_index: 2, variant_id: "f1", rank: 1 },
     ])
-    const r = parse(raw)
+    const r = parse(raw, ranking, ["hero", "body", "footer"])
     expect(r.dedup).toEqual([])
     expect(r.dedupSemAlternativa).toEqual([])
   })
@@ -270,7 +275,7 @@ describe("dedup entre posições", () => {
   it("também desfaz repetição criada pelo fallback do rank 1", () => {
     // JSON ilegível → tudo cai no rank 1; com o mesmo rank 1 nas duas
     // posições, o fallback FABRICA a repetição.
-    const r = parse("nao sou json", doisCorpos)
+    const r = parse("nao sou json", doisFeeds, PRODUCTS)
     expect(r.malformed).toBe(true)
     expect(decisionMap(r)).toEqual(
       new Map([
@@ -278,5 +283,41 @@ describe("dedup entre posições", () => {
         [1, "b2"],
       ]),
     )
+  })
+
+  // 07/09: fora de hero/products a repetição é escolha, não defeito.
+  it("dois corpos com a mesma variante ficam como o Curador rankeou", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, variant_id: "b1", rank: 1 },
+      { block_index: 1, variant_id: "b1", rank: 1 },
+    ])
+    const r = parse(raw, doisFeeds, ["body", "body"])
+    expect(decisionMap(r)).toEqual(
+      new Map([
+        [0, "b1"],
+        [1, "b1"],
+      ]),
+    )
+    expect(r.dedup).toEqual([])
+    expect(r.dedupSemAlternativa).toEqual([])
+  })
+
+  it("duas heroes com a mesma variante continuam sendo desfeitas", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, variant_id: "b1", rank: 1 },
+      { block_index: 1, variant_id: "b1", rank: 1 },
+    ])
+    const r = parse(raw, doisFeeds, ["hero", "hero"])
+    expect(r.dedup).toEqual([{ block_index: 1, de: "b1", para: "b2" }])
+  })
+
+  it("sem `sections` o dedupe não age — não dá para saber a seção", () => {
+    const raw = JSON.stringify([
+      { block_index: 0, variant_id: "b1", rank: 1 },
+      { block_index: 1, variant_id: "b1", rank: 1 },
+    ])
+    const r = parse(raw, doisFeeds)
+    expect(r.dedup).toEqual([])
+    expect(decisionMap(r).get(1)).toBe("b1")
   })
 })

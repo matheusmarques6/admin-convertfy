@@ -40,6 +40,7 @@ import {
   type ToolCallLog,
 } from "./llm-invoke"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
+import { normalizarSecao, podeRepetir } from "./repeticao"
 import {
   conformarEstrutura,
   resumoDaDivergencia,
@@ -99,6 +100,8 @@ Como decidir, na ordem:
 O eixo \`momento\` foi APOSENTADO (07/09). O catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 — está SUPERADO: ignore. Se topar com o campo numa nota lida por ferramenta, ele não vale.
 
 Regras que continuam valendo do Curador atual: <perfil_marca> ancora identidade; <objecoes> é o que trava a compra (é o critério do eixo objecao só quando <alvo> declara ausência); <vocabulario> é literal; produtos cruzam com product_slots (nunca exigir mais produtos/links do que a loja tem); <memoria> é sinal, nunca regra; HERO É ÚNICA (no máximo uma posição com variante de hero); não invente variant_id.
+
+REPETIR A MESMA VARIANTE EM DUAS POSIÇÕES É PERMITIDO (07/09), menos em "hero" e em "products" — a hero porque a fase 2 enxerta UMA região, o feed porque repetiria a mesma grade de produtos na mesma peça. Nas demais seções, escolha para cada posição o bloco que melhor realiza o papel dela: se for o mesmo das duas vezes, indique o mesmo. Não gaste critério buscando variedade, e não rebaixe o encaixe para evitar repetição — nenhuma etapa posterior vai desfazer a repetição, e a variedade não é um objetivo em si. Onde o protocolo do vault ou uma nota de seção pedirem variedade dentro da peça, está SUPERADO para fora de hero/products.
 
 O OUTPUT SAI JUSTIFICADO — a decisão tem que ser auditável sem reler o catálogo:
 - \`papeis\`: UMA frase por posição dizendo COMO a variante escolhida realiza o papel decidido pelo Estruturador (qual parte da anatomia entrega o quê). Não é lugar de reescrever o papel nem de propor outra sequência. Sem decisão do Estruturador, aí sim é o papel derivado da intenção.
@@ -387,12 +390,18 @@ export function measureProtocolViolations(p: {
 
     const prev = seenVariant.get(variantId)
     if (prev !== undefined) {
-      out.push({
-        block_index: block,
-        variant_id: variantId,
-        tipo: "variante_repetida",
-        detalhe: `mesma variante no rank 1 das posições ${prev} e ${block}`,
-      })
+      // Só hero e feed de produtos precisam ser únicos (ver `repeticao.ts`).
+      // Nas demais seções repetir é composição legítima: acusar violação
+      // ali contaminaria a contagem que a gente lê para julgar o Curador.
+      // A repetição permitida sai por `repeticoesPermitidas`, como registro.
+      if (!podeRepetir(section)) {
+        out.push({
+          block_index: block,
+          variant_id: variantId,
+          tipo: "variante_repetida",
+          detalhe: `mesma variante no rank 1 das posições ${prev} e ${block} (seção ${normalizarSecao(section) || "?"} exige variante única)`,
+        })
+      }
     } else {
       seenVariant.set(variantId, block)
     }
@@ -423,6 +432,38 @@ export function measureProtocolViolations(p: {
     }
   }
   return out
+}
+
+/** Repetição legítima (fora de hero/products): registro, não violação. */
+export interface RepeticaoPermitida {
+  variant_id: string
+  section: string
+  blocks: number[]
+}
+
+/**
+ * As repetições que a regra PERMITE, para a telemetria.
+ *
+ * Elas continuam visíveis — repetir o mesmo corpo três vezes pode ser
+ * pobreza de biblioteca, e é isso que a curadoria precisa enxergar —, só
+ * não contam como quebra de protocolo.
+ */
+export function repeticoesPermitidas(p: {
+  rank1ByBlock: Map<number, string>
+  sectionByBlock: Map<number, string>
+}): RepeticaoPermitida[] {
+  const porVariante = new Map<string, RepeticaoPermitida>()
+  for (const [block, variantId] of p.rank1ByBlock) {
+    const section = p.sectionByBlock.get(block) ?? ""
+    if (!podeRepetir(section)) continue
+    const chave = `${variantId}|${normalizarSecao(section)}`
+    const atual = porVariante.get(chave)
+    if (atual) atual.blocks.push(block)
+    else porVariante.set(chave, { variant_id: variantId, section: normalizarSecao(section), blocks: [block] })
+  }
+  return Array.from(porVariante.values())
+    .filter((r) => r.blocks.length > 1)
+    .map((r) => ({ ...r, blocks: r.blocks.sort((a, b) => a - b) }))
 }
 
 /** rank-1 por posição a partir do byBlock do parser. */
@@ -681,6 +722,9 @@ export async function runCuradorShadow(
       sectionByBlock,
       alvo: p.alvoMedicao ?? null,
     })
+    // Repetir a mesma variante fora de hero/products é permitido (07/09) —
+    // fica como registro para a curadoria ver quando é pobreza de acervo.
+    const repeticoes = repeticoesPermitidas({ rank1ByBlock: shadowRank1, sectionByBlock })
 
     // Concordância rank-1 com o vivo, nas posições comparáveis (mesma
     // estrutura por índice — estrutura adaptada zera a base de comparação).
@@ -766,6 +810,7 @@ export async function runCuradorShadow(
         // Obsidian.
         catalogo_divergente: p.catalogComExtras.divergentes,
         protocol_violations: violations,
+        repeticoes,
         live_violations: p.liveViolations,
         live_rank1_agreement: {
           comparaveis,

@@ -23,6 +23,7 @@ import { fitFragment } from "../html/fragment-fit"
 // enxerto); é genérica e vale para o documento inteiro.
 import { normalizeFonts } from "../html/hero-graft"
 import type { AssemblySlot } from "./component-assembler.service"
+import { normalizarSecao } from "./repeticao"
 
 // ── Marcadores de bloco ────────────────────────────────────────────────
 // SYNC: mesmo formato replicado em html/hero-locator.ts e
@@ -167,7 +168,7 @@ export interface AssembleDocumentInput {
  */
 const SECAO_HERO = "hero"
 
-const ehHero = (section: string) => section.trim().toLowerCase() === SECAO_HERO
+const ehHero = (section: string) => normalizarSecao(section) === SECAO_HERO
 
 /**
  * A montagem cobriu o bastante para valer como referência do email?

@@ -2724,6 +2724,26 @@ tabela; roda no `buildProtocoloBlock` e no `buildSecaoNotasBlock`. Os dois
 prompts ainda declaram a precedência ("o eixo foi APOSENTADO… o passo 5 está
 SUPERADO"), porque as ferramentas de vault podem ler a nota crua.
 
+**Repetir a mesma variante é permitido fora de `hero` e `products`**
+(07/09, `repeticao.ts`). Vinha do incidente Luxe Lift (23/08, posições 2 e 3
+idênticas) uma regra que generalizou demais: `dedupeDecisions` trocava a
+escolha em QUALQUER seção e `measureProtocolViolations` acusava
+`variante_repetida` em todas — repetir um corpo, uma oferta ou um CTA é
+composição legítima, e desfazer isso rebaixava o encaixe rankeado pelo
+Curador em nome de uma variedade que ninguém pediu. Só duas seções seguem
+únicas, por motivos distintos: `hero` porque `locateHeroRegion` recusa por
+ambiguidade e a peça morre em `hero_failed`; `products` porque o feed puxa
+os mesmos `top_products` e a MESMA grade apareceria duas vezes. Fora delas
+a repetição vira **registro** (`repeticoes[]` no `parsed_output` do
+`assembler_chooser`), nunca violação — contar acerto como erro corrompe a
+contagem que a gente lê para julgar o Curador. `podeRepetir(section)` é a
+fonte única (com `normalizarSecao`, que o `ehHero` da montagem também usa)
+e seção desconhecida PERMITE: inventar restrição sobre nome que não
+conhecemos é o erro que o módulo desfaz. `dedupeDecisions` só age quando o
+caller passa `sections` — sem saber a seção, não desfaz nada. Os prompts
+dos dois Curadores deixaram de pedir variedade e declaram a precedência
+sobre as notas do vault, como no `momento`.
+
 **Ponte de vocabulário** (`aliviador-bridge.ts`): o eixo `objecao` das
 notas do vault tem 11 valores próprios; risco×aliviador do alvo →
 `eixo_objecao_equivalente`, e cada variante ganha `aliviador`/
