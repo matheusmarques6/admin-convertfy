@@ -71,3 +71,6 @@ logs/
 # AIOS framework core (large, external)
 .aios-core/
 supabase/.temp/
+
+# Levantamento gerado pelo DIAGNOSTICO_orfaos_storage.sql — derivado, refaça em vez de versionar
+orfaos-storage-emails.csv
