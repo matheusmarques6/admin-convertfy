@@ -3157,6 +3157,19 @@ selo (Em uso / Lendo… / Falhou / Desativada / Sem copy), diálogo com abas "Do
 seu Instagram" e "Enviar slides", ficha com copy por slide ao lado da imagem,
 por que funciona, pilar/molde/kw/peso/ativa.
 
+**Primeira referência entrou à mão** (08/09): o usuário mandou 5 slides do
+carrossel "8% dos clientes fazem 41% do faturamento" pelo chat — imagem que
+chega no chat não tem como subir para o Storage daqui, então a linha foi
+gravada por SQL com a copy transcrita e o "por que funciona" escritos à
+mão, `imagemUrl` vazia. A tela já tolerava slide sem imagem, mas não havia
+como ANEXAR depois: a ficha ganhou "Enviar imagem" por slide e o PATCH
+aceita `imagemUrl` **só onde não existe** e só se o caminho for do Storage
+desta org com prefixo `ref-` (o que o upload da tela acabou de gravar) —
+trocar imagem existente continua fora, a transcrição foi feita sobre ela.
+A anatomia visual desse formato (par itálico-serif + negrito, card com
+kpi_grid/print/conta à mão, anotação manuscrita com seta, pílula) está em
+`docs/conteudo/formatos/editorial-convertfy.md` para a fase 2.
+
 **Ficou de fora, de propósito**: layout visual a partir da referência (fase 2,
 depende dos carrosséis que o usuário vai mandar), smoke e2e do Estúdio
 (`e2e/smoke-conteudo.spec.ts`), e a métrica "leads/molde" do dashboard — que

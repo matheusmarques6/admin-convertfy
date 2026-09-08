@@ -238,7 +238,8 @@ export async function criarReferenciaUpload(entrada: { nome?: string; slidesUrls
 export interface PatchReferenciaEntrada {
   retranscrever?: boolean
   nome?: string
-  slides?: Array<{ ordem: number; tipo?: string; titulo?: string; corpo?: string }>
+  /** `imagemUrl` só é aceita para slide que ainda não tem imagem (URL do upload kind=referencia). */
+  slides?: Array<{ ordem: number; tipo?: string; titulo?: string; corpo?: string; imagemUrl?: string }>
   legenda?: string | null
   palavraChave?: string | null
   pilar?: string | null

@@ -21,7 +21,7 @@ const frameTipo = z.enum(["capa", "dado", "texto", "prova", "lista", "mec", "cta
 const patchSchema = z.object({
   retranscrever: z.boolean().optional(),
   nome: z.string().min(1).max(200).optional(),
-  slides: z.array(z.object({ ordem: z.number().int().min(1).max(20), tipo: frameTipo.optional(), titulo: z.string().max(400).optional(), corpo: z.string().max(1200).optional() })).max(20).optional(),
+  slides: z.array(z.object({ ordem: z.number().int().min(1).max(20), tipo: frameTipo.optional(), titulo: z.string().max(400).optional(), corpo: z.string().max(1200).optional(), imagemUrl: z.string().max(600).optional() })).max(20).optional(),
   legenda: z.string().max(4000).nullable().optional(),
   palavraChave: z.string().max(40).nullable().optional(),
   pilar: z.enum(["Case", "Educacional", "Bastidor", "Benchmark"]).nullable().optional(),
