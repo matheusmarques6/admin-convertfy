@@ -52,7 +52,7 @@
 --   mesma chamada. A run agora grava quem REALMENTE gerou
 --   (`imgMeta.modelUsed`) — antes gravava o modelo pedido, então uma
 --   imagem feita pelo fallback aparecia como se o primário tivesse
---   funcionado. Numa peça gerada AGORA, a consulta 5 diz a verdade.
+--   funcionado. Numa peça gerada AGORA, a consulta 8 diz a verdade.
 -- ============================================================
 
 
@@ -121,95 +121,8 @@ SELECT agent_type, model FROM email_agent_configs
 -- RETURNING agent_type, model;
 
 
--- ─────────────────────────────────────────────
--- 6. Trocar todo o FLOW DE GERAÇÃO DE E-MAIL
--- ─────────────────────────────────────────────
--- A lista é EXPLÍCITA (whitelist), não um "todos menos". Assim agente
--- novo criado depois não entra numa troca em massa sem alguém decidir.
---
--- OS 16 DO FLOW, na ordem em que rodam:
---   fase 1  seletor · estruturador · assembler_chooser (Curador) ·
---           assembler (Montador) · blueprint · subject
---   fase 2  copy · copy_fit · merge_verifier · hero_section ·
---           text_format · image_format · typography · color_format · qa
---   apoio   catalogador (1× por pesquisa, alimenta o Seletor)
---
--- FORA, e cada um por um motivo diferente:
---   `image`  — é o único do flow que chama modelo de GERAÇÃO DE IMAGEM.
---              Apontá-lo para um LLM de texto não degrada: para de gerar
---              imagem. Trocar esse exige escolher outro modelo de imagem,
---              e vale a nota do topo (config e execução divergem hoje).
---   `campaign_*` (5) — módulo de campanhas, outro produto.
---   `component_tagger`, `component_test` — biblioteca de componentes,
---              rodam no cadastro da variante, não na geração.
-
--- 6a. PRÉVIA — o de/para, sem gravar. Rode e leia antes do UPDATE.
-WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)   -- ← EDITE AQUI
-SELECT c.agent_type,
-       c.model AS de,
-       d.model AS para,
-       c.max_tokens,
-       CASE WHEN c.max_tokens > 16384 THEN 'CONFIRA o teto do destino' END AS atencao
-  FROM email_agent_configs c CROSS JOIN destino d
- WHERE c.is_active = true
-   AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
-                        'blueprint','subject','copy','copy_fit','merge_verifier',
-                        'hero_section','text_format','image_format','typography',
-                        'color_format','qa','catalogador')
- ORDER BY c.max_tokens DESC;
-
--- 6b. O UPDATE. Mesma lista da prévia — o que apareceu ali é o que muda.
--- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)  -- ← EDITE AQUI
--- UPDATE email_agent_configs c
---    SET model = d.model
---   FROM destino d
---  WHERE c.is_active = true
---    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
---                         'blueprint','subject','copy','copy_fit','merge_verifier',
---                         'hero_section','text_format','image_format','typography',
---                         'color_format','qa','catalogador')
--- RETURNING c.agent_type, c.model, c.max_tokens;
-
--- 6c. Se o destino tiver teto de saída MENOR que o pedido atual, baixe
--- junto: modelo que não aceita o teto recusa a chamada inteira, e a
--- geração morre no step. Passam de 16k hoje: text_format (65536),
--- copy (20480). Troque 16384 pelo teto real do modelo escolhido.
--- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model, 16384 AS teto)
--- UPDATE email_agent_configs c
---    SET model = d.model,
---        max_tokens = LEAST(c.max_tokens, d.teto)
---   FROM destino d
---  WHERE c.is_active = true
---    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
---                         'blueprint','subject','copy','copy_fit','merge_verifier',
---                         'hero_section','text_format','image_format','typography',
---                         'color_format','qa','catalogador')
--- RETURNING c.agent_type, c.model, c.max_tokens;
-
-
--- ─────────────────────────────────────────────
--- 5. Depois de trocar: a run diz a verdade
--- ─────────────────────────────────────────────
--- `email_generation_runs.model` guarda o que foi REALMENTE usado.
--- Se aqui aparecer o modelo antigo, a config não foi lida (agente
--- errado, linha inativa, ou o chain tem modelo fixo em código).
-SELECT agent, model, status, created_at
-  FROM email_generation_runs
- WHERE created_at > now() - interval '2 hours'
- ORDER BY created_at DESC
- LIMIT 20;
-
-
--- ─────────────────────────────────────────────
--- Rollback
--- ─────────────────────────────────────────────
--- Não há histórico de troca de modelo: a coluna é sobrescrita e a
--- consulta 1 é o único registro do estado anterior. GUARDE a saída dela
--- antes de mexer — é o seu rollback.
-
-
 -- ═════════════════════════════════════════════════════════════
--- 6. Menu: uma linha por agente, com o modelo VIGENTE ao lado
+-- 5. Menu: uma linha por agente, com o modelo VIGENTE ao lado
 -- ═════════════════════════════════════════════════════════════
 -- Medido em produção em 08/09. Descomente a linha do agente, troque o
 -- modelo e rode. A ordem é a do pipeline.
@@ -268,9 +181,75 @@ SELECT agent, model, status, created_at
 -- campaign_architect   hoje gpt-5-1  ← forma inválida, ver nota do topo
 -- UPDATE email_agent_configs SET model = 'MODELO_NOVO' WHERE agent_type = 'campaign_architect'  AND is_active = true RETURNING agent_type, model;
 
+-- ─────────────────────────────────────────────
+-- 6. Trocar todo o FLOW DE GERAÇÃO DE E-MAIL
+-- ─────────────────────────────────────────────
+-- A lista é EXPLÍCITA (whitelist), não um "todos menos". Assim agente
+-- novo criado depois não entra numa troca em massa sem alguém decidir.
+--
+-- OS 16 DO FLOW, na ordem em que rodam:
+--   fase 1  seletor · estruturador · assembler_chooser (Curador) ·
+--           assembler (Montador) · blueprint · subject
+--   fase 2  copy · copy_fit · merge_verifier · hero_section ·
+--           text_format · image_format · typography · color_format · qa
+--   apoio   catalogador (1× por pesquisa, alimenta o Seletor)
+--
+-- FORA, e cada um por um motivo diferente:
+--   `image`  — é o único do flow que chama modelo de GERAÇÃO DE IMAGEM.
+--              Apontá-lo para um LLM de texto não degrada: para de gerar
+--              imagem. Trocar esse exige escolher outro modelo de imagem,
+--              e vale a nota do topo sobre o fallback de provedor.
+--   `campaign_*` (5) — módulo de campanhas, outro produto.
+--   `component_tagger`, `component_test` — biblioteca de componentes,
+--              rodam no cadastro da variante, não na geração.
+
+-- 6a. PRÉVIA — o de/para, sem gravar. Rode e leia antes do UPDATE.
+WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)   -- ← EDITE AQUI
+SELECT c.agent_type,
+       c.model AS de,
+       d.model AS para,
+       c.max_tokens,
+       CASE WHEN c.max_tokens > 16384 THEN 'CONFIRA o teto do destino' END AS atencao
+  FROM email_agent_configs c CROSS JOIN destino d
+ WHERE c.is_active = true
+   AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+                        'blueprint','subject','copy','copy_fit','merge_verifier',
+                        'hero_section','text_format','image_format','typography',
+                        'color_format','qa','catalogador')
+ ORDER BY c.max_tokens DESC;
+
+-- 6b. O UPDATE. Mesma lista da prévia — o que apareceu ali é o que muda.
+-- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model)  -- ← EDITE AQUI
+-- UPDATE email_agent_configs c
+--    SET model = d.model
+--   FROM destino d
+--  WHERE c.is_active = true
+--    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+--                         'blueprint','subject','copy','copy_fit','merge_verifier',
+--                         'hero_section','text_format','image_format','typography',
+--                         'color_format','qa','catalogador')
+-- RETURNING c.agent_type, c.model, c.max_tokens;
+
+-- 6c. Se o destino tiver teto de saída MENOR que o pedido atual, baixe
+-- junto: modelo que não aceita o teto recusa a chamada inteira, e a
+-- geração morre no step. Passam de 16k hoje: text_format (65536),
+-- copy (20480). Troque 16384 pelo teto real do modelo escolhido.
+-- WITH destino AS (SELECT 'anthropic/claude-sonnet-4.6'::text AS model, 16384 AS teto)
+-- UPDATE email_agent_configs c
+--    SET model = d.model,
+--        max_tokens = LEAST(c.max_tokens, d.teto)
+--   FROM destino d
+--  WHERE c.is_active = true
+--    AND c.agent_type IN ('seletor','estruturador','assembler_chooser','assembler',
+--                         'blueprint','subject','copy','copy_fit','merge_verifier',
+--                         'hero_section','text_format','image_format','typography',
+--                         'color_format','qa','catalogador')
+-- RETURNING c.agent_type, c.model, c.max_tokens;
+
+
 
 -- ═════════════════════════════════════════════════════════════
--- 7. Atalhos por grupo
+-- 7. Atalhos por SUB-grupo
 -- ═════════════════════════════════════════════════════════════
 
 -- Toda a cadeia de formatação de uma vez (7a–7d + tipografia). CONFIRA o
@@ -286,6 +265,26 @@ SELECT agent, model, status, created_at
 --    AND agent_type IN ('seletor','estruturador','assembler_chooser','assembler','blueprint','subject')
 -- RETURNING agent_type, model;
 
--- NUNCA inclua `image`/`campaign_image` num atalho junto de agentes de
+-- Para o flow INTEIRO de uma vez, use a seção 6 (whitelist + prévia).
+-- E nunca inclua `image`/`campaign_image` num atalho junto de agentes de
 -- texto: modelo sem saída de imagem faz o bloco sair sem foto, e o
 -- agente de hero remove a linha do slot vazio.
+-- ─────────────────────────────────────────────
+-- 8. Depois de trocar: a run diz a verdade
+-- ─────────────────────────────────────────────
+-- `email_generation_runs.model` guarda o que foi REALMENTE usado.
+-- Se aqui aparecer o modelo antigo, a config não foi lida (agente
+-- errado, linha inativa, ou o chain tem modelo fixo em código).
+SELECT agent, model, status, created_at
+  FROM email_generation_runs
+ WHERE created_at > now() - interval '2 hours'
+ ORDER BY created_at DESC
+ LIMIT 20;
+
+
+-- ─────────────────────────────────────────────
+-- Rollback
+-- ─────────────────────────────────────────────
+-- Não há histórico de troca de modelo: a coluna é sobrescrita e a
+-- consulta 1 é o único registro do estado anterior. GUARDE a saída dela
+-- antes de mexer — é o seu rollback.
