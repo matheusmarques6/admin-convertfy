@@ -8,10 +8,22 @@
  * (Fable, Kimi…) achando que era o modelo, quando o 402 já dizia
  * exatamente o que fazer: colocar crédito. O erro real estava gravado em
  * `meta.error` e em lugar nenhum da tela.
+ *
+ * Medição 08/09: dos 7 turnos com erro, **4 eram 402
+ * `in_flight_budget_exhausted`** com o saldo em US$ 5,45 e situação
+ * "ok" — ou seja, NÃO era falta de crédito. O OpenRouter RESERVA o
+ * custo máximo de cada chamada em voo (prompt + max_tokens no preço do
+ * modelo), então com saldo curto e um modelo caro a segunda chamada é
+ * recusada enquanto a primeira não liquida — a própria mensagem diz
+ * "Retry after in-flight requests settle". Mandar recarregar a conta
+ * ali é mandar fazer a coisa errada: o que resolve é esperar (ou uma
+ * resposta mais curta). Os dois 402 são doenças diferentes e por isso
+ * têm códigos diferentes.
  */
 
 export type ModelErrorCode =
   | "no_credits"
+  | "credits_in_flight"
   | "unauthorized"
   | "rate_limited"
   | "timeout"
@@ -39,9 +51,18 @@ export function friendlyModelError(raw: unknown): FriendlyModelError {
   const lower = text.toLowerCase()
   const status = httpStatus(text)
 
+  // O in-flight vem ANTES: também é 402, mas é espera, não recarga.
+  if (/in_flight_budget|in-flight requests|in flight requests/.test(lower)) {
+    return {
+      code: "credits_in_flight",
+      message:
+        "O provedor recusou por saldo reservado: a chamada anterior ainda não liquidou. Não é falta de crédito nem o modelo.",
+      hint: "Tente de novo em alguns segundos. Se repetir, use um modelo mais barato ou aumente o saldo para dar folga às chamadas simultâneas.",
+    }
+  }
   if (
     status === 402 ||
-    /available credits|insufficient credits|openrouter_credits|in_flight_budget|weight_exceeds_budget/.test(lower)
+    /available credits|insufficient credits|openrouter_credits|weight_exceeds_budget/.test(lower)
   ) {
     return {
       code: "no_credits",
@@ -95,4 +116,40 @@ export function friendlyModelError(raw: unknown): FriendlyModelError {
 export function friendlyModelErrorText(raw: unknown): string {
   const f = friendlyModelError(raw)
   return f.hint ? `${f.message} ${f.hint}` : f.message
+}
+
+/**
+ * Códigos em que repetir a chamada tem chance real de dar certo.
+ *
+ * `no_credits`, `unauthorized` e `prompt_too_long` não entram: repetir
+ * gasta o orçamento do turno para tomar exatamente a mesma recusa.
+ * `unknown` também fica de fora — sem saber o que falhou, insistir é
+ * torcer, e o custo é do usuário.
+ */
+const RETRYABLE: ReadonlySet<ModelErrorCode> = new Set<ModelErrorCode>([
+  "credits_in_flight",
+  "rate_limited",
+  "timeout",
+  "unavailable",
+])
+
+export function isRetryableModelError(raw: unknown): boolean {
+  return RETRYABLE.has(friendlyModelError(raw).code)
+}
+
+/**
+ * Espera antes de repetir a chamada ao modelo, ou null quando não vale
+ * (erro definitivo, ou a espera não cabe em `maxWaitMs`).
+ *
+ * O in-flight começa mais alto de propósito: o que ele espera é a
+ * chamada ANTERIOR liquidar no provedor, e 1s quase nunca basta —
+ * repetir cedo demais só reproduz o mesmo 402. Jitter porque duas abas
+ * que falham no mesmo segundo voltariam juntas.
+ */
+export function modelRetryDelayMs(raw: unknown, attempt: number, maxWaitMs: number): number | null {
+  const { code } = friendlyModelError(raw)
+  if (!RETRYABLE.has(code)) return null
+  const base = code === "credits_in_flight" ? 3000 * 2 ** attempt : 1000 * 2 ** attempt
+  const withJitter = base + Math.round(Math.random() * 250)
+  return withJitter <= maxWaitMs ? withJitter : null
 }

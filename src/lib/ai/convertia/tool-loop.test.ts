@@ -50,7 +50,7 @@ interface Harness {
 }
 
 function harness(
-  script: Array<ChatStreamResult | Error | ((input: StreamChatInput) => ChatStreamResult)>,
+  script: Array<ChatStreamResult | Error | ((input: StreamChatInput) => ChatStreamResult | Error)>,
   opts: Partial<Omit<ToolLoopDeps, "tools">> & {
     tools?: Record<string, Partial<ToolEntry["tool"]> & { execute: ToolEntry["tool"]["execute"] }>
   } = {},
@@ -412,5 +412,66 @@ describe("runToolLoop — prazo da tool (o turno tem relógio, a tool também)",
     })
     await runToolLoop(h.deps)
     expect(deadlineRecebido).toBe(1_000_000 + 90_000)
+  })
+})
+
+describe("retry da chamada ao modelo", () => {
+  const IN_FLIGHT = () =>
+    new Error(
+      'OpenRouter HTTP 402: {"error":{"message":"This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle.","metadata":{"reason":"in_flight_budget_exhausted"}}}',
+    )
+
+  it("402 in-flight é esperado e repetido — o turno responde em vez de morrer", async () => {
+    const h = harness([IN_FLIGHT(), final("respondi na segunda")])
+    const r = await runToolLoop(h.deps)
+    expect(r.status).toBe("success")
+    expect(r.fullText).toBe("respondi na segunda")
+    expect(r.retriesDoModelo).toBe(1)
+    expect(h.modelCalls).toHaveLength(2)
+  })
+
+  it("insiste no máximo duas vezes e então desiste com o erro do provedor", async () => {
+    const h = harness([IN_FLIGHT(), IN_FLIGHT(), IN_FLIGHT()])
+    const r = await runToolLoop(h.deps)
+    expect(r.status).toBe("error")
+    expect(r.errorMessage).toContain("in-flight")
+    expect(r.retriesDoModelo).toBe(2)
+    expect(h.modelCalls).toHaveLength(3)
+  })
+
+  it("erro definitivo não é repetido: chave recusada falha na primeira", async () => {
+    const h = harness([new Error("OpenRouter HTTP 401: No auth credentials found"), final("nunca chega")])
+    const r = await runToolLoop(h.deps)
+    expect(r.status).toBe("error")
+    expect(r.retriesDoModelo).toBe(0)
+    expect(h.modelCalls).toHaveLength(1)
+  })
+
+  it("não repete o que já escreveu na tela — repetir duplicaria o parágrafo", async () => {
+    const h = harness([
+      (input) => {
+        input.onDelta?.("primeiro parágrafo")
+        return new Error("OpenRouter HTTP 503: overloaded")
+      },
+      final(" e o resto"),
+    ])
+    const r = await runToolLoop(h.deps)
+    expect(r.status).toBe("error")
+    expect(r.retriesDoModelo).toBe(0)
+    expect(h.modelCalls).toHaveLength(1)
+    // o trecho emitido continua uma vez só no que foi para o cliente
+    const texto = h.events.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text).join("")
+    expect(texto).toBe("primeiro parágrafo")
+  })
+
+  it("a espera não cabe no orçamento restante: desiste em vez de estourar o turno", async () => {
+    const h = harness([IN_FLIGHT(), final("nunca chega")], {
+      // sobra pouco além do mínimo de uma rodada — não há espaço para esperar
+      budget: { startedAt: 1_000_000, totalMs: 10_500, minRoundMs: 10_000 },
+    })
+    const r = await runToolLoop(h.deps)
+    expect(r.status).toBe("error")
+    expect(r.retriesDoModelo).toBe(0)
+    expect(h.modelCalls).toHaveLength(1)
   })
 })
