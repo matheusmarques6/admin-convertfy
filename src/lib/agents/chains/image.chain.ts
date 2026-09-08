@@ -429,6 +429,17 @@ export async function generateEmailImage(
      */
     systemPrompt?: string
     /**
+    /**
+     * Teto de tempo do CHAMADOR para esta geração inteira, em ms.
+     *
+     * O pipeline de email tem 760 s por email e pode esperar os 300 s do
+     * teto de leitura; o chat da ConvertIA tem 280 s para o turno TODO, e
+     * ali uma imagem que demora 300 s não é lentidão, é o turno morto sem
+     * resposta. Quem sabe do relógio é o chamador — por isso ele manda, em
+     * vez de o motor adivinhar. Ausente = comportamento do pipeline.
+     */
+    budgetMs?: number
+    /**
      * Modelo de imagem a usar no OpenRouter. Default: `OPENROUTER_IMAGE_MODEL`
      * (constante). Config-driven: callers que carregam o agente do DB
      * (`email_agent_configs.model`) passam o valor pra cá — ex.: o pipeline de
@@ -487,6 +498,14 @@ export async function generateEmailImage(
   // Captura de usage só roda quando `onMeta` existe (opt-in). `lastUsage` é
   // preenchido dentro do fetch da última tentativa bem-sucedida e reportado
   // após o retry resolver.
+  /**
+   * Quanto do orçamento do CHAMADOR ainda sobra, contado do início da
+   * geração. Sem `budgetMs` devolve Infinity — o pipeline de email fica
+   * exatamente como estava.
+   */
+  const tetoDoChamador = (inicio: number) =>
+    options?.budgetMs != null ? Math.max(1_000, options.budgetMs - (Date.now() - inicio)) : Infinity
+
   let lastUsage = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
   // Refs EFETIVAMENTE enviadas na tentativa bem-sucedida. Difere de `refs` quando
   // o fallback de multimodal-unsupported reenvia SEM imagens (text2img) — aí
@@ -589,7 +608,10 @@ export async function generateEmailImage(
     // o do fetch morreu quando chegaram os headers.
     const rawText = await readTextWithTimeout(
       res,
-      OPENROUTER_IMAGE_BODY_TIMEOUT_MS,
+      // O teto do CHAMADOR vence quando é mais curto: no chat da ConvertIA
+      // o turno inteiro tem menos tempo que estes 300 s, e esperar o teto
+      // do pipeline ali significa turno morto sem resposta.
+      Math.min(OPENROUTER_IMAGE_BODY_TIMEOUT_MS, tetoDoChamador(t0)),
       attemptT0,
     )
     const ms = Date.now() - attemptT0
@@ -770,8 +792,18 @@ export async function generateEmailImage(
     // default) — o remédio mataria o paciente. Por isso ele é UMA
     // tentativa (o primário já gastou as dele; o que falta aqui é outro
     // modelo, não mais insistência) e só quando ainda sobra tempo.
-    if (gasto > FALLBACK_ORCAMENTO_MS) {
-      log.warn("image.model.fallback_sem_orcamento", { storeId, de: model, gastoMs: gasto })
+    // Dois tetos, e vale o MENOR. O do pipeline (360 s) é grande demais
+    // para o chat, onde o turno inteiro tem 280 s: sem o teto do chamador
+    // o fallback tentaria um segundo modelo sem tempo de terminar, e o
+    // remédio derrubaria o turno que ele existe para salvar.
+    const tetoFallback = Math.min(FALLBACK_ORCAMENTO_MS, options?.budgetMs ?? Infinity)
+    if (gasto > tetoFallback || tetoDoChamador(t0) < 20_000) {
+      log.warn("image.model.fallback_sem_orcamento", {
+        storeId,
+        de: model,
+        gastoMs: gasto,
+        tetoMs: tetoFallback,
+      })
       throw err
     }
     log.warn("image.model.fallback", {

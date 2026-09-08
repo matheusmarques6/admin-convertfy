@@ -35,7 +35,13 @@ import {
   defersDecision,
   describeToolArgs,
 } from "@/lib/ai/convertia-chat-heuristics"
-import { classifyToolError, retryDelayMs, toolErrorContent, type StructuredToolError } from "./tool-errors"
+import {
+  classifyToolError,
+  retryDelayMs,
+  ToolTimeoutError,
+  toolErrorContent,
+  type StructuredToolError,
+} from "./tool-errors"
 import { digestToolOutput } from "./consult-memory"
 import { TurnTelemetry } from "./telemetry"
 import type { PendingConfirmation, TurnEvent, TurnSource, TurnStatus } from "./types"
@@ -155,6 +161,40 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
   let round = deps.startRound ?? 0
 
   const remaining = () => deps.budget.totalMs - (clock() - deps.budget.startedAt)
+
+  /**
+   * Piso do prazo de uma tool. Com o orçamento quase no fim, cortar em
+   * "0 s" transformaria toda tool em erro instantâneo; 8 s ainda dá para
+   * uma consulta de banco terminar, e a checagem de "sem tempo para
+   * começar" logo acima já barra o caso sem saída.
+   */
+  const MIN_PRAZO_TOOL_MS = 8_000
+
+  /**
+   * Corta a espera no prazo e devolve erro ESTRUTURADO — o modelo lê
+   * "demorou demais" e segue com o que tem, em vez de o turno inteiro
+   * morrer sem resposta. `timeout` é retryable no `retryDelayMs`, mas o
+   * teto de espera é o próprio orçamento restante: estourado o prazo, não
+   * sobra tempo e o retry não dispara. A promise abandonada continua em
+   * segundo plano (não dá para abortar trabalho de terceiro daqui) — por
+   * isso o `deadlineAt` no ctx, que é o pedido para ela se encurtar.
+   */
+  function comPrazo<T>(p: Promise<T>, ms: number, tool: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([
+      p.finally(() => clearTimeout(timer)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const err: StructuredToolError = {
+            code: "timeout",
+            message: `A ferramenta ${tool} passou de ${Math.round(ms / 1000)}s e o turno precisa responder.`,
+            hint: "Não repita esta chamada agora. Responda com o que já tem e diga ao usuário que esta parte ficou pendente.",
+          }
+          reject(new ToolTimeoutError(err))
+        }, ms)
+      }),
+    ])
+  }
 
   const appendDelta = (text: string) => {
     state.roundText += text
@@ -280,12 +320,27 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
     let retries = 0
     for (;;) {
       try {
-        const r = await entry.tool.execute(args, deps.toolCtx)
+        // A tool corre contra o relógio do TURNO, não contra o próprio.
+        // Sem isto uma geração de imagem (até 300 s) come o turno de 280 s
+        // inteiro: o `finalize` não chega a rodar e a função morre no teto
+        // do serverless SEM gravar resposta — foi o `This operation was
+        // aborted` de 08/09 (231 s, 1 rodada, 2 tools). O prazo é passado
+        // ao ctx para a tool poder encurtar o próprio fetch, e imposto
+        // aqui porque tool que ignora o prazo não pode derrubar o turno.
+        const prazoMs = Math.max(MIN_PRAZO_TOOL_MS, remaining() - deps.budget.minRoundMs)
+        const r = await comPrazo(
+          entry.tool.execute(args, { ...deps.toolCtx, deadlineAt: clock() + prazoMs }),
+          prazoMs,
+          call.function.name,
+        )
         return finish(r.content, r.summary ?? null, null, retries)
       } catch (err) {
         const structured = classifyToolError(err)
+        // Estouro do PRAZO DO TURNO nunca é retentado: por definição não
+        // sobrou tempo, e repetir a mesma tool longa é exatamente o que
+        // matava o turno. Erro de provedor (429/5xx) segue com retry.
         const wait =
-          retries < MAX_TOOL_RETRIES
+          retries < MAX_TOOL_RETRIES && !(err instanceof ToolTimeoutError)
             ? retryDelayMs(structured, retries, Math.min(maxToolWait, remaining() - deps.budget.minRoundMs))
             : null
         if (wait != null && !deps.isCancelled()) {
