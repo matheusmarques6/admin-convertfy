@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import {
   Area,
@@ -100,6 +100,11 @@ import { centsToReais } from "@/lib/currency"
 import { CurrencyInput } from "@/components/ui/currency-input"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import {
+  explicarVinculo,
+  resolverLojasDaAssinatura,
+  type VinculoDeLojas,
+} from "@/lib/financial/lojas-da-assinatura"
 
 interface ClientFinancialProps {
   clientId: string
@@ -240,40 +245,75 @@ function MonthChips({
  * atribuir — por isso o aviso e o botão.
  */
 function SubscriptionStoresRow({
-  storeIds,
+  vinculo,
   storeNameById,
-  clientStoreCount,
   onLink,
+  onConfirmar,
+  confirmando,
 }: {
-  storeIds: string[]
+  vinculo: VinculoDeLojas
   storeNameById: Record<string, string>
-  clientStoreCount: number
   onLink: () => void
+  onConfirmar?: () => void
+  confirmando?: boolean
 }) {
+  const inferido = vinculo.origem === "inferido"
+  const mostrar = inferido ? vinculo.storeIds : vinculo.storeIds
+
   return (
     <div className="flex justify-between gap-2 pt-1.5 mt-1.5 border-t border-dashed border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
       <span className="text-muted-foreground shrink-0">Lojas</span>
       <span className="flex flex-wrap justify-end gap-1 min-w-0">
-        {storeIds.length > 0 ? (
-          storeIds.map((id) => (
-            <span
-              key={id}
-              className="inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-medium rounded-[4px] bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.06)] text-gray-700 dark:text-[#EAEDF3]"
-            >
-              <Store className="h-3 w-3" />
-              {storeNameById[id] ?? "Loja"}
-            </span>
-          ))
+        {mostrar.length > 0 ? (
+          <>
+            {mostrar.map((id) => (
+              <span
+                key={id}
+                className={cn(
+                  "inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-medium rounded-[4px]",
+                  inferido
+                    ? // Tracejado porque ainda NÃO é vínculo: é o que o sistema
+                      // deduziu das lojas do cliente, à espera de confirmação.
+                      "border border-dashed border-[#C4B5FD] text-[#5B21B6] dark:text-[#DDD6FE] dark:border-[rgba(221,214,254,0.4)]"
+                    : "bg-[#F3F4F6] dark:bg-[rgba(255,255,255,0.06)] text-gray-700 dark:text-[#EAEDF3]",
+                )}
+              >
+                <Store className="h-3 w-3" />
+                {storeNameById[id] ?? "Loja"}
+              </span>
+            ))}
+            {inferido && (
+              <button
+                type="button"
+                onClick={onConfirmar}
+                disabled={confirmando}
+                className="text-[11px] font-medium text-[#4E62D8] underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                {confirmando ? "Confirmando..." : "Confirmar"}
+              </button>
+            )}
+            {inferido && (
+              <button
+                type="button"
+                onClick={onLink}
+                className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+              >
+                editar
+              </button>
+            )}
+          </>
         ) : (
           <button
             type="button"
             onClick={onLink}
             className={cn(
-              "text-[11px] font-medium underline-offset-2 hover:underline",
-              clientStoreCount > 1 ? "text-[#92400E] dark:text-[#FCD34D]" : "text-[#4E62D8]",
+              "text-[11px] font-medium underline-offset-2 hover:underline text-right",
+              vinculo.candidatas.length > 0
+                ? "text-[#92400E] dark:text-[#FCD34D]"
+                : "text-[#4E62D8]",
             )}
           >
-            {clientStoreCount > 1 ? "Sem loja — vincular" : "Vincular loja"}
+            {explicarVinculo(vinculo)}
           </button>
         )}
       </span>
@@ -652,6 +692,66 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   } | null>(null)
   const [isLinking, setIsLinking] = useState(false)
   const activeStores = useMemo(() => clientStores.filter((s) => s.is_active !== false), [clientStores])
+
+  // Assinatura em confirmação (para o botão virar "Confirmando...").
+  const [confirmandoVinculo, setConfirmandoVinculo] = useState<string | null>(null)
+
+  /**
+   * Quantas assinaturas LOCAIS ativas o cliente tem. É essa contagem que
+   * decide se a inferência vale: `client_subscription_stores` referencia
+   * `client_subscriptions`, então são elas que podem reivindicar as mesmas
+   * lojas e dobrar a mensalidade na carteira.
+   */
+  const totalAssinaturasAtivas = useMemo(
+    () => localSubscriptions.filter((s) => s.status === "active").length,
+    [localSubscriptions],
+  )
+
+  const resolverVinculo = useCallback(
+    (localId: string | null, status?: string | null): VinculoDeLojas =>
+      resolverLojasDaAssinatura({
+        explicitos: localId ? storeIdsBySub[localId] : [],
+        lojasDoCliente: activeStores.map((st) => ({
+          id: st.id,
+          store_name: st.store_name,
+          is_active: st.is_active,
+        })),
+        assinaturasDoCliente: totalAssinaturasAtivas,
+        status,
+      }),
+    [storeIdsBySub, activeStores, totalAssinaturasAtivas],
+  )
+
+  /**
+   * Grava a inferência. Só daqui ela vira vínculo de verdade — a derivação
+   * sozinha nunca escreve, para o onboarding poder mandar depois sem
+   * disputar com um backfill.
+   */
+  const confirmarVinculo = useCallback(
+    async (localId: string, storeIds: string[]) => {
+      setConfirmandoVinculo(localId)
+      try {
+        const res = await fetch(`/api/client-subscriptions/${localId}/stores`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store_ids: storeIds }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json?.error || "Não foi possível vincular")
+        setStoreIdsBySub((atual) => ({ ...atual, [localId]: storeIds }))
+        toast({ title: "Lojas vinculadas", description: "A carteira já reflete a mensalidade." })
+      } catch (err) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao vincular",
+          description: err instanceof Error ? err.message : "Tente novamente",
+        })
+      } finally {
+        setConfirmandoVinculo(null)
+      }
+    },
+    [],
+  )
   const storeNameById = useMemo(
     () => Object.fromEntries(clientStores.map((s) => [s.id, s.store_name])) as Record<string, string>,
     [clientStores],
@@ -2322,9 +2422,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span>{new Date(sub.next_due_date).toLocaleDateString("pt-BR")}</span>
                       </div>
                       <SubscriptionStoresRow
-                        storeIds={storeIdsBySub[sub.id] ?? []}
+                        vinculo={resolverVinculo(sub.id, sub.status)}
                         storeNameById={storeNameById}
-                        clientStoreCount={activeStores.length}
+                        confirmando={confirmandoVinculo === sub.id}
+                        onConfirmar={() =>
+                          confirmarVinculo(sub.id, resolverVinculo(sub.id, sub.status).storeIds)
+                        }
                         onLink={() =>
                           setLinkTarget({
                             localId: sub.id,
@@ -2332,7 +2435,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                             name: sub.name,
                             value: Number(sub.value),
                             cycle: sub.cycle,
-                            storeIds: storeIdsBySub[sub.id] ?? [],
+                            // Abre já com as candidatas marcadas: sem isto o
+                            // operador teria de garimpar as lojas no select,
+                            // que é a dor que esta mudança resolve.
+                            storeIds:
+                              storeIdsBySub[sub.id]?.length
+                                ? storeIdsBySub[sub.id]
+                                : resolverVinculo(sub.id, sub.status).candidatas,
                           })
                         }
                       />
@@ -2418,23 +2527,50 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         <span className="text-[10px] font-mono truncate max-w-[160px]">{sub.id}</span>
                       </div>
                       <SubscriptionStoresRow
-                        storeIds={
-                          storeIdsBySub[
-                            localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? ""
-                          ] ?? []
-                        }
+                        vinculo={resolverVinculo(
+                          localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? null,
+                          sub.status,
+                        )}
                         storeNameById={storeNameById}
-                        clientStoreCount={activeStores.length}
-                        onLink={() =>
+                        confirmando={
+                          confirmandoVinculo ===
+                          localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id
+                        }
+                        onConfirmar={() => {
+                          const localId = localSubscriptions.find(
+                            (l) => l.asaas_subscription_id === sub.id,
+                          )?.id
+                          // Assinatura do Asaas sem espelho local não tem onde
+                          // gravar o vínculo (a FK aponta para
+                          // client_subscriptions): manda para o diálogo, que
+                          // cria o espelho, em vez de falhar em silêncio.
+                          if (!localId) {
+                            setLinkTarget({
+                              localId: null,
+                              asaasId: sub.id,
+                              name: sub.description || "Assinatura Asaas",
+                              value: Number(sub.value),
+                              cycle: sub.cycle,
+                              storeIds: resolverVinculo(null, sub.status).candidatas,
+                            })
+                            return
+                          }
+                          confirmarVinculo(localId, resolverVinculo(localId, sub.status).storeIds)
+                        }}
+                        onLink={() => {
+                          const localId =
+                            localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? null
                           setLinkTarget({
-                            localId: localSubscriptions.find((l) => l.asaas_subscription_id === sub.id)?.id ?? null,
+                            localId,
                             asaasId: sub.id,
                             name: sub.description || "Assinatura Asaas",
                             value: Number(sub.value),
                             cycle: sub.cycle,
-                            storeIds: [],
+                            storeIds: localId && storeIdsBySub[localId]?.length
+                              ? storeIdsBySub[localId]
+                              : resolverVinculo(localId, sub.status).candidatas,
                           })
-                        }
+                        }}
                       />
                     </div>
                   </CardContent>

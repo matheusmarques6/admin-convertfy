@@ -19,9 +19,10 @@
  */
 
 import { useMemo, useState } from "react"
+import { filtrarCarteira } from "@/lib/cs/filtrar-carteira"
 import Link from "next/link"
 import useSWR from "swr"
-import { Settings2, SlidersHorizontal, X } from "lucide-react"
+import { Search, Settings2, SlidersHorizontal, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { ScoreRulesDialog } from "./score-rules-dialog"
@@ -202,8 +203,14 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const [busca, setBusca] = useState("")
+
   const stages = data?.stages ?? []
-  const cards = useMemo(() => data?.cards ?? [], [data])
+  const todosOsCards = useMemo(() => data?.cards ?? [], [data])
+  // A busca filtra os cards MANTENDO as colunas: a etapa é a informação
+  // desta tela (o estado da conta), então achatar em lista destruiria o que
+  // se foi olhar.
+  const cards = useMemo(() => filtrarCarteira(todosOsCards, busca), [todosOsCards, busca])
   const selCard = sel ? cards.find((c) => c.deal_id === sel) ?? null : null
 
   // ── Ações (rotas existentes) ─────────────────────────────────────
@@ -430,7 +437,9 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
                 Gestão de Carteira
               </h2>
               <span className="text-[11.5px]" style={{ color: "var(--ops-mut)", ...TNUM }}>
-                {cards.length} lojas
+                {busca.trim()
+                  ? `${cards.length} de ${todosOsCards.length} lojas`
+                  : `${cards.length} lojas`}
               </span>
             </div>
             <div className="mt-[3px] truncate text-[11.5px]" style={{ color: "var(--ops-sec)" }}>
@@ -438,6 +447,41 @@ export function CarteiraBoard({ pipelineId, onBack }: { pipelineId?: string; onB
             </div>
           </div>
           <div className="mt-3.5 flex shrink-0 items-center gap-2">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 h-[13px] w-[13px] -translate-y-1/2"
+                style={{ color: "var(--ops-mut)" }}
+              />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                onKeyDown={(e) => {
+                  // Escape limpa: com 63 lojas, apagar à mão para voltar ao
+                  // board inteiro é atrito a cada consulta.
+                  if (e.key === "Escape") setBusca("")
+                }}
+                placeholder="Buscar loja, cliente ou CSM"
+                aria-label="Buscar na carteira"
+                className="h-[30px] w-[210px] rounded-[8px] border pl-[30px] pr-7 text-[11.5px] outline-none focus:w-[260px]"
+                style={{
+                  borderColor: "var(--ops-border)",
+                  background: "var(--ops-card)",
+                  color: "var(--ops-title)",
+                  transition: "width .15s ease",
+                }}
+              />
+              {busca && (
+                <button
+                  type="button"
+                  onClick={() => setBusca("")}
+                  aria-label="Limpar busca"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  style={{ color: "var(--ops-mut)" }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setRulesOpen(true)}
               className="inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border px-3 text-[11.5px] font-medium"

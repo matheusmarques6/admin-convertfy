@@ -3801,5 +3801,48 @@ pausada, senão parar no nó X e sair para almoçar devolve a execução morta.
 ---
 
 
+## Assinatura infere as lojas do cliente, e a carteira ganha busca (set/2026)
+
+**Busca na Gestão de Carteira** (`filtrar-carteira.ts`, puro, 11 testes): 63
+lojas em sete colunas de kanban e nenhum jeito de achar uma. A busca casa
+**loja, cliente e CSM** — os três jeitos de procurar a mesma conta — e cada
+palavra do termo precisa aparecer em ALGUM dos campos, então "jmjc uk" acha
+"Boxer Shop UK" do cliente JMJC e a ordem não importa. Exigir a frase inteira
+num campo só faria uma busca natural (cliente + loja) não achar nada. Filtra
+**mantendo as colunas**: a etapa é a informação daquela tela, achatar em lista
+destruiria o que se foi olhar. O contador vira "N de 63 lojas" com busca ativa
+— senão o board filtrado parece a carteira inteira. Termo vazio devolve a
+MESMA referência do array, para não re-renderizar o board a cada tecla.
+
+**Vínculo assinatura→lojas** (`lojas-da-assinatura.ts`, puro, 15 testes). A
+tela dizia "Sem loja — vincular" com a resposta no banco ao lado: o cliente
+tem lojas ativas e a assinatura cobre alguma. Três decisões:
+
+- **É derivação de LEITURA, nunca gravação.** A inferência não vira linha em
+  `client_subscription_stores` sozinha — é calculada na hora e marcada como
+  inferida (chip TRACEJADO, não sólido). Assim o vínculo explícito, feito à
+  mão hoje ou **pelo onboarding amanhã**, sempre vence, sem ninguém precisar
+  desfazer o que um backfill teria gravado. Era o pedido: não deixar
+  definitivo.
+- **Só infere sozinha com UMA assinatura ativa.** Medido em 08/09: das 7
+  assinaturas sem vínculo, **nenhuma** é o caso trivial de uma loja — seis têm
+  múltiplas. João Paulo Lima tem DUAS assinaturas e duas lojas; o JMJC tem
+  **MRR de R$ 7.000 em duas assinaturas de 3.500** para três lojas Boxer Shop.
+  Dar "todas as lojas do cliente" a cada assinatura contaria a mensalidade
+  DUAS VEZES na carteira — e receita inflada é o erro que ninguém percebe
+  olhando, porque o número continua plausível. Qual plano paga qual loja é
+  decisão de negócio.
+- **Calar-se não é o mesmo que não ajudar.** Onde a inferência não vale,
+  `candidatas` segue trazendo as lojas do cliente e o diálogo abre com elas
+  MARCADAS. O trabalho vira revisar, não garimpar num select — que era a dor.
+  Assinatura encerrada não sugere nem candidata: um clique de "confirmar" numa
+  assinatura que não corre mais é convite ao erro.
+
+A contagem que decide é a de assinaturas **locais** ativas, porque
+`client_subscription_stores` referencia `client_subscriptions` — são elas que
+podem reivindicar as mesmas lojas. Assinatura do Asaas **sem espelho local**
+não tem onde gravar o vínculo (a FK aponta para a tabela local): o botão manda
+para o diálogo, que cria o espelho, em vez de falhar em silêncio.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
