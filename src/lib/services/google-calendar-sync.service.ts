@@ -115,11 +115,13 @@ async function resolveParticipantEmails(
   // Collect IDs by type
   const profileIds: string[] = []
   const orgMemberIds: string[] = []
+  const contactIds: string[] = []
 
   for (const p of participants) {
     if (p.email) continue // already has email
     if (p.participant_type === "profile") profileIds.push(p.participant_id)
     else if (p.participant_type === "org_member") orgMemberIds.push(p.participant_id)
+    else if (p.participant_type === "contact") contactIds.push(p.participant_id)
   }
 
   // Batch-fetch profile emails
@@ -155,6 +157,19 @@ async function resolveParticipantEmails(
     }
   }
 
+  // Batch-fetch contact emails (pessoas do lado do cliente)
+  const contactEmailMap = new Map<string, { email: string; name: string | null }>()
+
+  if (contactIds.length > 0) {
+    const { data: contacts } = await adminClient
+      .from("crm_contacts")
+      .select("id, email, name")
+      .in("id", contactIds)
+    for (const c of contacts || []) {
+      if (c.email) contactEmailMap.set(c.id, { email: c.email, name: c.name })
+    }
+  }
+
   // Build attendees list
   for (const p of participants) {
     let email = p.email || null
@@ -169,6 +184,12 @@ async function resolveParticipantEmails(
         }
       } else if (p.participant_type === "org_member") {
         const resolved = orgMemberEmailMap.get(p.participant_id)
+        if (resolved) {
+          email = resolved.email
+          displayName = resolved.name
+        }
+      } else if (p.participant_type === "contact") {
+        const resolved = contactEmailMap.get(p.participant_id)
         if (resolved) {
           email = resolved.email
           displayName = resolved.name
@@ -932,6 +953,7 @@ async function resolveParticipantEmailsForRsvp(
   // Collect participant IDs that need email resolution
   const profileIdsToResolve: string[] = []
   const orgMemberIdsToResolve: string[] = []
+  const contactIdsToResolve: string[] = []
 
   for (const p of participants) {
     if (p.email) {
@@ -940,6 +962,7 @@ async function resolveParticipantEmailsForRsvp(
       result.push({ ...p, resolvedEmail: null })
       if (p.participant_type === "profile") profileIdsToResolve.push(p.participant_id)
       else if (p.participant_type === "org_member") orgMemberIdsToResolve.push(p.participant_id)
+      else if (p.participant_type === "contact") contactIdsToResolve.push(p.participant_id)
     }
   }
 
@@ -966,6 +989,18 @@ async function resolveParticipantEmailsForRsvp(
       if (prof?.email) {
         emailMap.set(`org_member:${om.id}`, (prof as { email: string }).email)
       }
+    }
+  }
+
+  // Contatos do cliente: sem isto o RSVP de quem realmente decide a reuniao
+  // (o cliente) nunca voltaria do Google.
+  if (contactIdsToResolve.length > 0) {
+    const { data: contacts } = await adminClient
+      .from("crm_contacts")
+      .select("id, email")
+      .in("id", contactIdsToResolve)
+    for (const c of contacts || []) {
+      if (c.email) emailMap.set(`contact:${c.id}`, c.email)
     }
   }
 

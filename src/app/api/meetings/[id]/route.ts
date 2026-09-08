@@ -4,6 +4,14 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { syncMeetingToGoogle, updateGoogleEvent, deleteGoogleEvent } from "@/lib/services/google-calendar-sync.service"
+import { sendMeetingInviteEmails } from "@/lib/services/meeting-invite-email.service"
+import {
+  normalizarIdsDeContato,
+  validarContatosDoCliente,
+  vincularContatos,
+  type ContatoValidado,
+} from "@/lib/meetings/participantes.service"
+import { externosNaoCobertos } from "@/lib/meetings/convidados"
 
 const log = logger.child("Meetings")
 
@@ -131,13 +139,26 @@ export async function PUT(
     // Verify meeting belongs to user's org (include fields needed for sync decision)
     const { data: existingMeeting, error: fetchErr } = await adminClient
       .from("meetings")
-      .select("id, google_event_id, user_id, scheduled_at, status")
+      .select("id, google_event_id, user_id, scheduled_at, status, client_id")
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
 
     if (fetchErr || !existingMeeting) {
       throw new AppError("Reunião não encontrada", 404)
+    }
+
+    // Contatos resolvidos antes do updateData: guest_emails precisa ser
+    // deduplicado contra eles (o POST já faz isso, e sem o mesmo tratamento
+    // aqui bastava editar a reunião para recriar o attendee duplicado).
+    const clientIdAlvo =
+      body.client_id !== undefined ? body.client_id || null : existingMeeting.client_id
+    let contatosDoPut: ContatoValidado[] = []
+    if (body.contacts !== undefined) {
+      contatosDoPut = await validarContatosDoCliente(
+        normalizarIdsDeContato(body.contacts),
+        clientIdAlvo,
+      )
     }
 
     // Build update object with only provided fields
@@ -151,7 +172,12 @@ export async function PUT(
     if (body.status !== undefined) updateData.status = body.status
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
-    if (body.guest_emails !== undefined) updateData.guest_emails = Array.isArray(body.guest_emails) ? body.guest_emails : []
+    if (body.guest_emails !== undefined) {
+      updateData.guest_emails = externosNaoCobertos(
+        Array.isArray(body.guest_emails) ? body.guest_emails : [],
+        contatosDoPut.filter((c) => c.email).map((c) => ({ email: c.email as string })),
+      )
+    }
     if (body.completion_notes !== undefined) updateData.completion_notes = body.completion_notes
     if (body.timezone !== undefined) updateData.timezone = body.timezone
 
@@ -240,6 +266,36 @@ export async function PUT(
       }
     }
 
+    // Contatos do cliente: mesma regra de substituição da lista. O cliente
+    // que saiu da reunião precisa sair do evento — senão continua recebendo
+    // a atualização de uma reunião que não é mais dele.
+    if (body.contacts !== undefined) {
+      const desejados = new Set(contatosDoPut.map((c) => c.id))
+
+      // Filtra o tipo em JS de propósito: `.eq("participant_type", "contact")`
+      // também estoura 22P02 enquanto o enum não tiver o valor, e aí a
+      // edição inteira falharia por causa de uma migration pendente.
+      const { data: todos } = await adminClient
+        .from("meeting_participants")
+        .select("id, participant_id, participant_type")
+        .eq("meeting_id", id)
+      const atuais = (todos || []).filter((p) => p.participant_type === "contact")
+
+      const remover = atuais.filter((p) => !desejados.has(p.participant_id))
+      if (remover.length > 0) {
+        await adminClient
+          .from("meeting_participants")
+          .delete()
+          .in("id", remover.map((p) => p.id))
+      }
+
+      const jaVinculados = new Set(atuais.map((p) => p.participant_id))
+      const adicionar = contatosDoPut.filter((c) => !jaVinculados.has(c.id))
+      if (adicionar.length > 0) {
+        await vincularContatos(id, adicionar)
+      }
+    }
+
     // Reschedule: reset response_status to 'pending' if scheduled_at changed
     const isRescheduled = body.scheduled_at !== undefined &&
       body.scheduled_at !== existingMeeting.scheduled_at
@@ -282,6 +338,22 @@ export async function PUT(
           google_sync_error: syncError instanceof Error ? syncError.message : "Google Calendar sync failed",
         })
         .eq("id", id)
+    }
+
+    // Remarcou → o cliente precisa saber. O convite do Google já sai
+    // atualizado (sendUpdates: "all"); este é o email da Convertfy com o
+    // horário novo. Cancelamento não reenvia: mandar "reunião confirmada"
+    // para uma reunião cancelada é pior que não mandar nada.
+    let conviteEmail: Awaited<ReturnType<typeof sendMeetingInviteEmails>> | undefined
+    if (isRescheduled && !isCancelling) {
+      try {
+        conviteEmail = await sendMeetingInviteEmails(id)
+      } catch (emailError) {
+        log.warn("Falha ao reenviar confirmação após remarcar", {
+          meetingId: id,
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+        })
+      }
     }
 
     // Fetch updated meeting with participants
@@ -337,7 +409,11 @@ export async function PUT(
       })),
     }
 
-    return successResponse(request, { meeting: transformedMeeting, message: "Reunião atualizada com sucesso" })
+    return successResponse(request, {
+      meeting: transformedMeeting,
+      message: "Reunião atualizada com sucesso",
+      ...(conviteEmail ? { convite_email: conviteEmail } : {}),
+    })
   } catch (error) {
     return errorResponse(request, error, "Meetings")
   }
