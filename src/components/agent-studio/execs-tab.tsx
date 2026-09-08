@@ -11,7 +11,7 @@
  *   - fase 1 via POST /api/admin/stores/[id]/generate-blueprints.
  */
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import { Copy as CopyIcon, X, Zap } from "lucide-react"
 
@@ -38,7 +38,11 @@ import {
   InputSummaryView,
   PromptProvenanceView,
 } from "./prompt-provenance-view"
-import type { ExecutionRow, ExecutionsPayload, RunDetailPayload } from "./studio-data"
+import {
+  useAgentExecutionsLive,
+  type LiveStatus,
+} from "@/hooks/use-agent-executions-live"
+import type { ExecutionRow, RunDetailPayload } from "./studio-data"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -85,19 +89,64 @@ function ExecStatusText({ e }: { e: ExecutionRow }) {
   )
 }
 
+/**
+ * Selo do tempo real. Substituiu o checkbox "Auto refresh" (set/2026): ele
+ * ligava e desligava um poll de 10s, e a pergunta que o operador fazia
+ * olhando para a lista não era "quero atualizar?" — era "isto está vivo?".
+ * O que ele protegia (a lista se mexer embaixo do que se está lendo) passou
+ * a ser resolvido pela seleção explícita, não por congelar o dado.
+ */
+function LiveBadge({ status }: { status: LiveStatus }) {
+  const map: Record<LiveStatus, { c: string; bg: string; b: string; t: string }> = {
+    live: { c: C.pos, bg: C.posBg, b: C.posBorder, t: "ao vivo" },
+    reconnecting: { c: C.warn, bg: C.warnBg, b: C.warnBorder, t: "reconectando" },
+    polling: { c: C.g500, bg: C.g100, b: C.border, t: "a cada 5s" },
+  }
+  const s = map[status]
+  return (
+    <span
+      title={
+        status === "live"
+          ? "Os nós acendem no instante em que o agente começa. Um step de LLM não reporta progresso interno — fica “rodando” até terminar."
+          : status === "reconnecting"
+            ? "Conexão ao vivo caiu; tentando de novo."
+            : "Sem conexão ao vivo — atualizando pela listagem a cada 5s."
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "1px 7px",
+        borderRadius: 4,
+        background: s.bg,
+        border: `1px solid ${s.b}`,
+        fontSize: 10.5,
+        fontWeight: 600,
+        color: s.c,
+        fontFamily: F.sans,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span
+        className={status === "live" ? "cf-studio-pulse" : undefined}
+        style={{ width: 5, height: 5, borderRadius: "50%", background: s.c }}
+      />
+      {s.t}
+    </span>
+  )
+}
+
 function ExecList({
   executions,
   active,
   onPick,
-  autoRefresh,
-  onAutoRefresh,
+  liveStatus,
   loading,
 }: {
   executions: ExecutionRow[]
   active: string | null
   onPick: (id: string) => void
-  autoRefresh: boolean
-  onAutoRefresh: (v: boolean) => void
+  liveStatus: LiveStatus
   loading: boolean
 }) {
   return (
@@ -124,25 +173,7 @@ function ExecList({
         <span style={{ fontSize: 13.5, fontWeight: 600, color: C.g900, fontFamily: F.sans }}>
           Execuções
         </span>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 11,
-            color: C.g500,
-            fontFamily: F.sans,
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => onAutoRefresh(e.target.checked)}
-            style={{ accentColor: C.brand, margin: 0 }}
-          />
-          Auto refresh
-        </label>
+        <LiveBadge status={liveStatus} />
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
         {executions.map((e) => {
@@ -852,18 +883,27 @@ export function NodeRunPanel({
 export function ExecutionsTab({ positions }: { positions: Positions }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [nodeKey, setNodeKey] = useState<string | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
   const [rerunning, setRerunning] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null)
 
-  const { data, isLoading, mutate } = useSWR<ExecutionsPayload>(
-    "/api/admin/agents/executions?limit=30",
-    fetcher,
-    { refreshInterval: autoRefresh ? 10000 : 0 },
-  )
-  const executions = useMemo(() => data?.executions ?? [], [data])
-  const exec =
-    executions.find((e) => e.email_id === activeId) ?? executions[0] ?? null
+  const {
+    executions,
+    status: liveStatus,
+    isLoading,
+    refresh,
+  } = useAgentExecutionsLive(30)
+
+  // A seleção é EXPLÍCITA a partir do primeiro carregamento. Com o fallback
+  // `?? executions[0]`, uma geração nova entrando no topo trocava a
+  // execução aberta embaixo de quem estava lendo o painel — o preço de a
+  // lista ter virado tempo real.
+  useEffect(() => {
+    if (activeId == null && executions.length > 0) {
+      setActiveId(executions[0].email_id)
+    }
+  }, [activeId, executions])
+
+  const exec = executions.find((e) => e.email_id === activeId) ?? null
 
   const runs = useMemo(
     () => (exec ? projectRuns(exec.runs, exec.bucket) : null),
@@ -915,7 +955,7 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
               ? "Fase 2 disparada — acompanhe o status na lista."
               : "Pipeline completo disparado — copy nova via n8n.",
       })
-      void mutate()
+      refresh()
     } catch (e) {
       setNotice({ ok: false, msg: e instanceof Error ? e.message : "Erro ao reexecutar" })
     } finally {
@@ -933,8 +973,7 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
           setNodeKey(null)
           setNotice(null)
         }}
-        autoRefresh={autoRefresh}
-        onAutoRefresh={setAutoRefresh}
+        liveStatus={liveStatus}
         loading={isLoading}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
