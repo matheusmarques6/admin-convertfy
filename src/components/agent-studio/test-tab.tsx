@@ -22,6 +22,7 @@ import { projectLiveTest } from "@/lib/agents/studio-graph"
 import type { ExecutionRow } from "./studio-data"
 import { FlowCanvas, defaultPositions, type Positions } from "./flow-canvas"
 import { NodeRunPanel } from "./execs-tab"
+import { friendlyModelError } from "@/lib/ai/convertia/model-errors"
 import { Spinner, StudioBtn } from "./studio-atoms"
 import { TestStepsView } from "./test-steps-view"
 
@@ -148,11 +149,19 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
     )
     if (runs.length === 0) return null
     const s = t.statusInfo?.summary
+    const comErro = runs.filter((r) => r.status === "error")
     return {
       concluidos: runs.filter(
         (r) => r.status === "success" || r.status === "skipped",
       ).length,
-      comErro: runs.filter((r) => r.status === "error").length,
+      comErro: comErro.length,
+      // A CAUSA, não só a contagem. Em 08/09 três agentes morreram em
+      // `HTTP 402 … would exceed your available credits` e a faixa dizia
+      // apenas "0 agentes concluídos": a tela de logs (que guarda a
+      // mensagem) sabia mais que a tela onde a pessoa estava olhando.
+      causa: comErro.length
+        ? friendlyModelError(comErro[comErro.length - 1].error_message)
+        : null,
       tokens: s?.tokensTotal ?? 0,
       custoCents: s?.totalCost ?? 0,
       duracaoMs: s?.totalDuration ?? 0,
@@ -369,7 +378,9 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
                   {(resumo.duracaoMs / 1000).toFixed(1)}s somados nos agentes
                 </span>
               )}
-              {t.isTerminalStatus && t.batchId && (
+              {/* O link vale RODANDO também: clicar em Gerar troca o batch e
+                  apaga da faixa a rodada que morreu — só os logs guardam. */}
+              {t.batchId && (
                 <a
                   href={`/admin/settings/email-generation-logs?batch=${t.batchId}`}
                   style={{ color: C.brand }}
@@ -377,6 +388,19 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
                   Ver logs completos
                 </a>
               )}
+            </div>
+          )}
+          {resumo?.causa && (
+            <div
+              style={{
+                fontSize: 11.5,
+                color: C.neg,
+                fontFamily: F.sans,
+                lineHeight: 1.45,
+              }}
+            >
+              {resumo.causa.message}
+              {resumo.causa.hint ? ` — ${resumo.causa.hint}` : ""}
             </div>
           )}
           {t.result?.relaxedBrand && (
