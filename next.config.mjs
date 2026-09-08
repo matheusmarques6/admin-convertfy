@@ -167,6 +167,12 @@ const nextConfig = {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "media-src 'self' data: blob:",
+      // Worker do pdf.js (leitura de PDF anexado na ConvertIA). O arquivo é
+      // servido da NOSSA origem, mas o pdf.js pode instanciá-lo por blob:.
+      // Sem esta linha o CSP cai no `default-src` e, no dia em que virar
+      // enforcement, anexar PDF quebra sem erro visível — o mesmo que
+      // aconteceria com os players do módulo Transcrições.
+      "worker-src 'self' blob:",
       [
         "connect-src 'self'",
         "https://*.supabase.co wss://*.supabase.co",

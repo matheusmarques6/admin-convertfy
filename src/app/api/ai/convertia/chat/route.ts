@@ -68,6 +68,14 @@ import { buildMemoriaConnector, loadApprovedMemories } from "@/lib/ai/convertia/
 import { KNOWLEDGE_CONNECTOR_KEY, loadKnowledgeForPrompt } from "@/lib/ai/convertia/knowledge"
 import { blocoTranscricoes, buildTranscricoesConnector } from "@/lib/ai/connectors/transcricoes"
 import type { PendingConfirmation, TurnSource } from "@/lib/ai/convertia/types"
+import {
+  formatarBytes,
+  MAX_ANEXOS,
+  MAX_TEXTO_CHARS,
+  ORCAMENTO_PAYLOAD,
+  pesoTotal,
+  TETO_POR_IMAGEM,
+} from "@/lib/ai/convertia/anexos"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ConvertiaChat")
@@ -102,10 +110,10 @@ const CHEAP_MODEL = "moonshotai/kimi-k3"
 const attachmentSchema = z.object({
   name: z.string().max(140),
   mime: z.string().max(100),
-  /** Imagem: data URL completa (data:image/...;base64,...). Máx ~2,8MB. */
-  data_url: z.string().max(2_900_000).optional(),
-  /** Arquivo de texto (html/csv/md/txt/json): conteúdo cru. Máx 300KB. */
-  text: z.string().max(300_000).optional(),
+  /** Imagem: data URL completa. O cliente já reduz — ver `anexos.ts`. */
+  data_url: z.string().max(TETO_POR_IMAGEM).optional(),
+  /** Texto extraído (txt/csv/docx/pdf/planilha). Limite = contexto do modelo. */
+  text: z.string().max(MAX_TEXTO_CHARS + 500).optional(),
 })
 
 const bodySchema = z.object({
@@ -116,7 +124,24 @@ const bodySchema = z.object({
   store_id: z.string().uuid().nullable().optional(),
   connectors: z.array(z.string().max(50)).max(20).default([]),
   skills: z.array(z.string().uuid()).max(20).default([]),
-  attachments: z.array(attachmentSchema).max(3).default([]),
+  /**
+   * O teto por arquivo não basta: dez de 400 KB estouram o corpo que um
+   * de 3 MB não estoura. O `superRefine` mede o CONJUNTO — a mesma conta
+   * que o cliente faz, aqui como rede (o cliente pode estar desatualizado).
+   */
+  attachments: z
+    .array(attachmentSchema)
+    .max(MAX_ANEXOS)
+    .default([])
+    .superRefine((lista, ctx) => {
+      const peso = pesoTotal(lista)
+      if (peso > ORCAMENTO_PAYLOAD) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Os anexos somam ${formatarBytes(peso)}, acima do teto de ${formatarBytes(ORCAMENTO_PAYLOAD)} por mensagem.`,
+        })
+      }
+    }),
   /** Modo análise profunda: plano → coleta ampla → análise completa. */
   deep: z.boolean().default(false),
   /** Roteamento por rodada: modelo barato consulta, o forte responde. */
