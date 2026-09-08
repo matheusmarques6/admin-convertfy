@@ -63,10 +63,14 @@ export async function GET(request: NextRequest) {
 
     return successResponse(request, {
       contacts: contacts ?? [],
-      // Email do cadastro do cliente, quando existe. Não é um contato — é o
-      // endereço da conta. A tela oferece como último recurso quando o
-      // cliente ainda não tem nenhum contato cadastrado.
+      // Email do cadastro do cliente. NÃO é um detalhe de fallback: medido em
+      // 08/09, `crm_contacts` tem ZERO linhas e `clients.email` cobre 54 dos
+      // 55 clientes — todas as 63 lojas ativas têm cliente com email. Sem
+      // oferecer isto, a tela diria "nenhum contato cadastrado" em 100% dos
+      // casos, com o endereço a uma coluna de distância, e quem agenda
+      // redigitaria à mão o que o banco já sabe.
       client_email: client.email ?? null,
+      client_name: client.name ?? null,
       store_id: storeId ?? null,
     })
   } catch (error) {

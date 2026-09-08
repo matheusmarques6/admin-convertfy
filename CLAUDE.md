@@ -3643,5 +3643,71 @@ simulação mostrou que, tratadas em bloco, `deals`/`pipelines`/`automations`
 ficariam só com SELECT e `client_briefings`/`store_feedback_calls` só com
 INSERT — quebrando kanban e telas.
 
+## Fase 3: o convite chega ao cliente, e o SQL foi aplicado (set/2026)
+
+Executado com acesso ao banco de produção. O que a medição revelou muda o
+que estava escrito acima.
+
+**1. O trigger da ponte reunião→carteira NUNCA existiu neste banco.** A
+migration 20260415 criava `trg_sync_meeting_to_store_feedback`; só a FUNÇÃO
+estava lá. Concluir uma reunião com loja nunca alimentou
+`last_feedback_date` nem `store_feedback_calls` — a ponte estava morta desde
+sempre, sem erro em lugar nenhum, e a 20261126 (que recria só a função) não
+teria consertado. Criado e testado de verdade: reunião → conclusão → 1 call
+gravada, concluir de novo NÃO duplica (o índice único parcial funciona), a
+loja recebe a data; tudo dentro de transação com ROLLBACK.
+
+**2. `crm_contacts` está VAZIA (0 linhas), e isso quebrava a fase 1.** A
+seção "Convidados do cliente" diria "nenhum contato cadastrado" em **100%
+dos casos**, com o endereço a uma coluna de distância: `clients.email` cobre
+**54 dos 55 clientes** e **todas as 63 lojas ativas** têm cliente com email.
+Agora o email do CADASTRO é oferecido como convidável (pré-marcado quando
+não há contatos) e viaja como convidado externo — não tem id de
+`crm_contacts`, então fingir que é um contato seria mentira de proveniência.
+Medido depois: **63 de 63 lojas ativas passam a ter alguém para convidar**;
+antes, 0.
+
+**3. As pipelines de CS pararam de presumir.** `calls-pipeline` e
+`cs-painel/proximas-calls` resolvem a próxima call por `resolverProximaCall`
+e cada item carrega `origem` ('agendada' × 'prevista') + `meeting_id`;
+`counts.presumidas` conta as que a tela mostrava como marcadas sem reunião
+por trás. Duas correções de borda que a leitura expôs: loja com previsão
+além de 30 dias **sumia das seis etapas em silêncio** (agora cai em "a
+marcar", que é onde alguém age), e `proximas-calls` exigia
+`next_feedback_date NOT NULL`, então loja com reunião de verdade e sem
+previsão **ficava fora do painel**.
+
+**4. `ATIVOS` listava status que não existem.** O enum `meeting_status` tem
+exatamente quatro valores — `scheduled`, `completed`, `cancelled`,
+`no_show` — e o módulo aceitava `confirmed`/`rescheduled`. Não era bug
+(`scheduled` é o único ativo e estava coberto), mas fazia o próximo leitor
+supor um fluxo de confirmação que não existe. A lista é permissiva nas
+BORDAS de propósito: status novo que este arquivo não conheça cai fora e a
+loja aparece como "sem call marcada" — visível e corrigível; o inverso faria
+um `no_show` valer como próxima call.
+
+**O retrato da carteira, medido**: das 63 lojas ativas, **61 não têm call
+marcada nem prevista**, 2 têm só previsão e **zero têm reunião agendada**.
+É o número que a tela escondia atrás da palavra "agendada".
+
+### RLS aplicado e verificado nos três papéis
+
+O round 5A foi aplicado. Depois dele: `anon_aberto = 0`, `tabelas_sem_rls =
+0`, nenhuma tabela do CRM sem cobertura. Provado assumindo cada papel:
+
+- **anon** (a chave pública do browser): `crm_leads` devolvia **301 linhas**,
+  agora devolve **0**; idem `crm_contacts`, `client_charges`,
+  `crm_ad_accounts`, `auth_events`, `client_monthly_reports`.
+- **membro da org**: continua vendo 100% do que existe (301 leads, 6
+  cobranças, 3 produtos) — zero regressão.
+- **usuário do portal**: 0 leads, 0 produtos. Fora do banco interno, que era
+  o motivo de a policy ser `is_org_member()` e não `USING (true)`.
+- Formulário público e `tracking_lookups` intactos (3 policies TO PUBLIC
+  preservadas), e "Portal users can view own client_charges" de pé — o
+  cliente segue vendo as PRÓPRIAS faturas.
+
+**Ainda aberto**: o round 5B (as 61 policies `TO authenticated USING(true)`,
+que exigem avaliação tabela a tabela) e o painel de agenda por colaborador.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
