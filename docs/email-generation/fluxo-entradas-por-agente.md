@@ -491,7 +491,7 @@ foto que já cobre o box → `sem_ajuste`. Falha por box é fail-open.
 
 ## 14 · QA
 
-Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vazios, hrefs), `runSchemaChecks` (`max_len`/required vs fields v2 — só `nature='copy'`), `runGlobalDocChecks` (placeholders/tokens sobrando, img sem src, contagem vs blueprint), `computeRenderChecks` (unsubscribe, alts, contraste WCAG). O **veredito LLM** só roda com `EMAIL_QA_ENABLED=true` (**default OFF** — email vai a `ready` direto com issues informativas). Com QA ligado: `passed` = nenhuma issue ≥ `EMAIL_QA_BLOCK_SEVERITY` (default high), computado em **código**.
+Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vazios, hrefs), `runSchemaChecks` (`max_len`/required vs fields v2 — só `nature='copy'`), `runGlobalDocChecks` (placeholders/tokens sobrando, img sem src, contagem vs blueprint), `computeRenderChecks` (unsubscribe, alts, contraste WCAG). O veredito LLM usa `EMAIL_QA_MODE=off|shadow|enforce` (**default OFF**). `shadow` executa o QA, persiste issues e segue para `ready`; `enforce` aplica `EMAIL_QA_BLOCK_SEVERITY` (default high). `EMAIL_QA_ENABLED=true` permanece como alias legado de `enforce`.
 
 **Modelo (LLM)**: `moonshotai/kimi-k3` · T 0.2 · max 1500 · timeout 60s (+1 retry de reformatação).
 
@@ -502,6 +502,7 @@ Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vaz
 | `blocks_json` | `email_blocks.content` (copy esperada) | upstream |
 | `briefing_json` / `brand_json` | `store_briefings.*` / `store_brand_identity.*` | loja |
 | `blueprint_objective` | blueprint efetivo | upstream |
+| `advisor_max_notes` | busca semântica + full-text na base ativa `Advisors/Max`; até 3 notas relevantes, com teto de contexto e proveniência | vault |
 | `MERGE_TAGS_INSTRUCTION` | apêndice fixo in-code (nunca flagar merge tags de ESP) | agente |
 
 **Saídas**: `email_flow_emails.qa_issues` + status terminal (`ready` / `failed: qa_failed`).
