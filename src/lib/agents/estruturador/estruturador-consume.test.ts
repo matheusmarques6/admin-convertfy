@@ -4,6 +4,7 @@ import {
   DECISAO_MAX_CHARS,
   decisaoCompletaParaCurador,
   estruturaParaPosicoes,
+  projetarNosSlots,
 } from "./estruturador-consume"
 import { clampStructure } from "../architect/outline-sections"
 import type { EstruturadorOutput } from "./estruturador-prompt"
@@ -228,5 +229,82 @@ describe("arbitrarCampos + requisitos no blueprint (09/09)", () => {
     // Desalinhado: nada é aplicado, nem requisitos.
     const r2 = aplicarEstruturadorNoBlueprint(bp, ["só um"], "fio", [req])
     expect(r2.blocks[0].fields?.some((x) => x.omitir)).toBe(false)
+  })
+})
+
+// O caso Hero Boxers (09/09, welcome 1): a biblioteca não tinha `products`
+// com 2 slots e preço, a posição caiu, e 6 papéis chegaram para 5 blocos —
+// `aplicarEstruturadorNoBlueprint` recusou o lote INTEIRO e a copy saiu do
+// `copy_guidance` da variante (pitch de gift card com "SHOP 10% OFF" numa
+// loja sem incentivo).
+describe("projetarNosSlots (09/09)", () => {
+  const slots = [
+    { kind: "variant" },
+    { kind: "variant" },
+    { kind: "variant" },
+    { kind: "variant" },
+    { kind: "missing" }, // products: zero candidatas
+    { kind: "variant" },
+  ]
+
+  it("descarta a posição sem variante e mantém as outras NA ORDEM", () => {
+    const papeis = ["hero", "origem", "competencia", "confianca", "produtos", "footer"]
+    const r = projetarNosSlots(papeis, slots)
+    expect(r.itens).toEqual(["hero", "origem", "competencia", "confianca", "footer"])
+    expect(r.descartados).toEqual([4])
+  })
+
+  it("o resultado passa no guard de comprimento e o papel cola na posição certa", () => {
+    const papeis = ["hero", "origem", "competencia", "confianca", "produtos", "footer"]
+    const blueprint = {
+      blocks: [
+        { purpose: "forma hero" },
+        { purpose: "forma body" },
+        { purpose: "forma body" },
+        { purpose: "forma body" },
+        { purpose: "forma footer" },
+      ],
+    }
+    // Sem a projeção: 6 papéis × 5 blocos → nenhum papel entra.
+    const semProjecao = aplicarEstruturadorNoBlueprint(blueprint, papeis, "fio")
+    expect(semProjecao.blocks.every((b) => b.purpose.startsWith("forma"))).toBe(true)
+
+    const comProjecao = aplicarEstruturadorNoBlueprint(
+      blueprint,
+      projetarNosSlots(papeis, slots).itens,
+      "fio",
+    )
+    expect(comProjecao.blocks.map((b) => b.purpose.split("\n")[0])).toEqual([
+      "hero",
+      "origem",
+      "competencia",
+      "confianca",
+      "footer",
+    ])
+  })
+
+  it("requisitos seguem os papéis pelo mesmo índice", () => {
+    const requisitos = [{ cta: true }, null, null, null, { preco: true }, null]
+    expect(projetarNosSlots(requisitos, slots).itens).toEqual([
+      { cta: true },
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it("sem slots, ou contagem divergente, devolve a lista intacta — o guard decide", () => {
+    const papeis = ["a", "b", "c"]
+    expect(projetarNosSlots(papeis, null).itens).toEqual(papeis)
+    expect(projetarNosSlots(papeis, [{ kind: "variant" }]).itens).toEqual(papeis)
+    expect(projetarNosSlots(papeis, null).descartados).toEqual([])
+  })
+
+  it("todas as posições com variante: nada muda e nada é descartado", () => {
+    const papeis = ["a", "b"]
+    const r = projetarNosSlots(papeis, [{ kind: "variant" }, { kind: "variant" }])
+    expect(r.itens).toEqual(papeis)
+    expect(r.descartados).toEqual([])
   })
 })

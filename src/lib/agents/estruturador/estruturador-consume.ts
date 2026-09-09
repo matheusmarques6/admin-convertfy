@@ -132,6 +132,56 @@ export function arbitrarCampos<F extends { key: string; required?: boolean; natu
   })
 }
 
+/**
+ * Projeta o que foi decidido POR POSIÇÃO sobre as posições que de fato
+ * viraram bloco no e-mail (módulo puro).
+ *
+ * O Estruturador decide N posições; o Curador encontra variante para
+ * algumas delas. A posição sem variante NÃO vira bloco — `matchFromSlots`
+ * (deterministic-blueprint.builder) só enxerga `kind: "variant"` —, então
+ * papéis e requisitos, que vêm indexados pela sequência do Estruturador,
+ * ficam mais longos que `blocks` e `aplicarEstruturadorNoBlueprint` recusa
+ * o lote INTEIRO (é a guarda de "papel errado é pior que papel nenhum").
+ *
+ * Foi o que aconteceu na Hero Boxers (09/09, welcome 1): a biblioteca não
+ * tinha `products` com 2 slots e preço, a posição caiu, 6 papéis chegaram
+ * para 5 blocos e NENHUM colou. O n8n recebeu como purpose o
+ * `copy_guidance` cru das variantes — o da body-3 é um pitch de gift card,
+ * o da hero-2 diz "CTA: verbo + oferta (SHOP 10% OFF)" — e escreveu um
+ * e-mail de cupom para uma loja sem incentivo confirmado.
+ *
+ * Aqui o alinhamento é recuperado pela ÚNICA informação que o descarte
+ * preserva: o índice da posição. Recusar segue sendo o comportamento
+ * quando nem isso bate (o guard de comprimento continua a última linha de
+ * defesa).
+ */
+export interface ProjecaoNosSlots<T> {
+  /** Um item por slot com variante, na ordem em que viram bloco. */
+  itens: T[]
+  /** Índices (na sequência do Estruturador) das posições que não viraram bloco. */
+  descartados: number[]
+}
+
+export function projetarNosSlots<T>(
+  porPosicao: ReadonlyArray<T>,
+  slots: ReadonlyArray<{ kind: string }> | null | undefined,
+): ProjecaoNosSlots<T> {
+  const lista = [...porPosicao]
+  // Sem slots, ou contagem que não corresponde à sequência decidida, não há
+  // como saber QUEM caiu — devolver a lista intacta deixa o guard de
+  // comprimento decidir, que é o comportamento anterior a esta função.
+  if (!slots || slots.length !== lista.length) {
+    return { itens: lista, descartados: [] }
+  }
+  const itens: T[] = []
+  const descartados: number[] = []
+  slots.forEach((s, i) => {
+    if (s.kind === "variant") itens.push(lista[i])
+    else descartados.push(i)
+  })
+  return { itens, descartados }
+}
+
 export function aplicarEstruturadorNoBlueprint<
   B extends { purpose: string; fields?: Array<{ key: string; required?: boolean; nature?: string; type?: string }> },
   T extends { blocks: B[]; fio_narrativo?: string | null },

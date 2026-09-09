@@ -4114,21 +4114,16 @@ export async function runPhase2HtmlQa(
     })
   }
 
-  // Checks determinísticos + contrato do bloco, carregados UMA vez para os
-  // dois caminhos (com e sem o agente de QA).
-  //
-  // Reconstruído depois do merge do PR #20, que apagou este bloco e deixou
-  // três usos de `deterministicIssues` sem definição — a branch não
-  // compilava. Reposto como estava: o bloqueio determinístico é
-  // OBRIGATÓRIO e não olha `EMAIL_QA_MODE`, que governa o agente por
-  // modelo. São coisas diferentes — este gate é código, não custa nada e
-  // trata do que ninguém deveria publicar (copy da hero perdida ou
-  // inventada, placeholder cru, oferta sem incentivo).
+  // O gate determinístico é obrigatório e independe do agente por modelo.
+  // Carrega também o contrato uma única vez, para os dois caminhos.
   const { data: checkBlocks } = await admin
     .from("email_blocks")
     .select("block_type, content, fields")
     .eq("email_id", emailId)
     .order("position", { ascending: true })
+  // Contrato do bloco (max_len estourado, obrigatório vazio) é WARNING: o
+  // e-mail existe e o designer decide. Quem bloqueia são os checks de
+  // conteúdo e de render, que marcam `blocking` na própria issue.
   const schemaIssues = runSchemaChecks(
     (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
       block_type: (b.block_type as string) ?? "unknown",
@@ -4145,19 +4140,17 @@ export async function runPhase2HtmlQa(
     ...computeRenderChecks(finalHtml),
     ...schemaIssues,
   ]
-  const blockingIssues = deterministicIssues.filter((issue) => issue.disposition === "blocking")
+  const blockingIssues = deterministicIssues.filter(
+    (issue) => issue.disposition === "blocking",
+  )
   if (blockingIssues.length > 0) {
-    await admin
-      .from("email_flow_emails")
-      .update({
-        status: "failed",
-        failed_at: new Date().toISOString(),
-        failure_reason: "qa_failed",
-        qa_issues: deterministicIssues,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", emailId)
-      .eq("status", "rendering")
+    await admin.from("email_flow_emails").update({
+      status: "failed",
+      failed_at: new Date().toISOString(),
+      failure_reason: "qa_failed",
+      qa_issues: deterministicIssues,
+      updated_at: new Date().toISOString(),
+    }).eq("id", emailId).eq("status", "rendering")
     await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
     log.warn("phase2.qa.deterministic_blocked", {

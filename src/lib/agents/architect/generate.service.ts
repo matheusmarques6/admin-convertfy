@@ -41,6 +41,7 @@ import {
   combinarIntencaoComPapel,
   estruturaParaPosicoes,
   decisaoCompletaParaCurador,
+  projetarNosSlots,
   type PosicaoEstruturada,
 } from "../estruturador/estruturador-consume"
 import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
@@ -646,9 +647,36 @@ export async function generateBlueprintAndReference(
   const papeisCombinados = intencoesPorPosicao.map((intencao, i) =>
     combinarIntencaoComPapel(intencao, papeisDoAgente[i] ?? null),
   )
-  const papeisFinais = papeisCombinados.some((x) => x)
+  const papeisPorPosicao = papeisCombinados.some((x) => x)
     ? papeisCombinados.map((x) => x ?? "")
     : null
+  const requisitosPorPosicao = posicoes ? posicoes.map((p) => p.requisitos ?? null) : null
+
+  // Posição sem variante na biblioteca NÃO vira bloco (matchFromSlots só
+  // enxerga `kind: "variant"`), então papel e requisito, indexados pela
+  // sequência do Estruturador, chegariam mais longos que `blocks` e o
+  // consumidor recusaria o lote INTEIRO. Foi assim que a Hero Boxers
+  // (09/09) perdeu os 6 papéis por causa de UMA posição de products sem
+  // candidata, e a copy saiu do `copy_guidance` da variante — um pitch de
+  // gift card com "SHOP 10% OFF" numa loja sem incentivo.
+  const projPapeis = projetarNosSlots(papeisPorPosicao ?? [], slots)
+  const projRequisitos = projetarNosSlots(requisitosPorPosicao ?? [], slots)
+  const papeisFinais = papeisPorPosicao ? projPapeis.itens : null
+  const requisitosFinais = requisitosPorPosicao ? projRequisitos.itens : null
+  const posicoesDescartadas = projPapeis.descartados.length > 0 ? projPapeis.descartados : projRequisitos.descartados
+  if (posicoesDescartadas.length > 0) {
+    log.warn("architect.posicoes_sem_variante", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      // A seção vem da estrutura decidida: é ela que diz o que o e-mail
+      // deixou de ter (o slot descartado não carrega mais essa informação).
+      descartadas: posicoesDescartadas.map((i) => ({
+        block_index: i,
+        section: structure[i]?.section ?? null,
+      })),
+    })
+  }
   if (intencoesPorPosicao.some(Boolean)) {
     log.info("architect.intencoes_por_bloco", {
       storeId: input.storeId,
@@ -688,8 +716,13 @@ export async function generateBlueprintAndReference(
     // origem, não o encanamento.
     papeisPorPosicao: papeisFinais,
     // 09/09: requisitos tipados alinhados aos papéis (viajam dentro das
-    // posições, então o clamp não os desalinha).
-    requisitosPorPosicao: posicoes ? posicoes.map((p) => p.requisitos ?? null) : null,
+    // posições, então o clamp não os desalinha) — e, desde a Hero Boxers,
+    // projetados nos slots que viraram bloco.
+    requisitosPorPosicao: requisitosFinais,
+    posicoesDescartadas: posicoesDescartadas.map((i) => ({
+      block_index: i,
+      section: structure[i]?.section ?? null,
+    })),
     intencoesHumanas: intencoesPorPosicao.filter(Boolean).length,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,
