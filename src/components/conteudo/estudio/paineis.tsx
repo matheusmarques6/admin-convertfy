@@ -13,6 +13,7 @@ import { Icon } from "@/components/ui/icon"
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
+import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia, familiaDe } from "@/lib/conteudo/familias"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
@@ -405,11 +406,11 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
 function CamposOpcionais({ api }: { api: EditorApi }) {
   const { doc, ativo } = api
   const f = doc.frames[ativo]
-  if (!f || f.tipo === "cta") return null
-  const OPCIONAIS: Array<[Campo, string, string]> = [
-    ["gancho", "Gancho", "a linha que prepara"],
-    ["anotacao", "Anotação", "e é aqui que trava"],
-  ]
+  if (!f) return null
+  // Só o que ESTE tipo de slide sabe desenhar — oferecer o resto criaria
+  // campo que o operador preenche e nunca vê na tela.
+  const OPCIONAIS = camposOpcionaisDoTipo(f.tipo).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
+  if (OPCIONAIS.length === 0) return null
   const alternar = (campo: Campo, guia: string) => {
     const tem = f.campos.includes(campo)
     api.set(

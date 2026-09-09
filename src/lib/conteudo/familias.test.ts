@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import { FAMILIAS, aplicarFamilia, familiaDe, fundoPadraoDaFamilia, tracoDe } from "./familias"
-import { novoDocumento } from "./documento"
+import { adicionarFrame, novoDocumento, trocarTemplate, trocarTipoFrame } from "./documento"
+import { validarDocumento } from "@/lib/services/conteudo-documentos.service"
+import { aceitaCampoOpcional, camposOpcionaisDoTipo } from "./campos"
+import { getTemplate } from "./templates"
 import { partesDestacadas, temDestaque, textoLimpo } from "./rich"
 import { camposExcedidos } from "./limites"
 import { clarear } from "./brand"
@@ -118,5 +121,75 @@ describe("cor legível no fundo escuro", () => {
     expect(clarear("#8C5A2B", 0.55)).toBe("#CBB5A0")
     expect(clarear("gradiente", 0.5)).toBe("gradiente")
     expect(clarear("#8C5A2B", 5)).toBe("#FFFFFF")
+  })
+})
+
+describe("campos opcionais do slide", () => {
+  const comOpcionais = (tipo: DocFrame["tipo"]): DocFrame => ({
+    frameId: "f1",
+    tipo,
+    label: "Slide",
+    slotsImagem: 0,
+    campos: ["titulo", "corpo", "gancho", "anotacao"],
+    textos: { titulo: "T", corpo: "C", gancho: "o que ninguém olha", anotacao: "é aqui que trava" },
+    imagens: {},
+  })
+
+  it("só oferece o campo onde o renderer o desenha", () => {
+    expect(camposOpcionaisDoTipo("texto")).toEqual(["gancho", "anotacao"])
+    expect(camposOpcionaisDoTipo("capa")).toEqual(["gancho"])
+    expect(camposOpcionaisDoTipo("prova")).toEqual(["gancho"])
+    expect(camposOpcionaisDoTipo("cta")).toEqual([])
+    expect(aceitaCampoOpcional("capa", "anotacao")).toBe(false)
+  })
+
+  it("trocar o TIPO do slide não apaga o que o operador escreveu", () => {
+    const base = doc()
+    const d: Documento = { ...base, frames: base.frames.map((f, i) => (i === 2 ? comOpcionais(f.tipo) : f)) }
+    const trocado = trocarTipoFrame(d, 2, "lista")
+    expect(trocado.frames[2].campos).toContain("gancho")
+    expect(trocado.frames[2].textos.gancho).toBe("o que ninguém olha")
+    expect(trocado.frames[2].textos.anotacao).toBe("é aqui que trava")
+  })
+
+  it("o campo que o tipo NOVO não desenha fica para trás em vez de virar fantasma", () => {
+    const base = doc()
+    const d: Documento = { ...base, frames: base.frames.map((f, i) => (i === 2 ? comOpcionais(f.tipo) : f)) }
+    const trocado = trocarTipoFrame(d, 2, "prova")
+    expect(trocado.frames[2].campos).toContain("gancho")
+    expect(trocado.frames[2].campos).not.toContain("anotacao")
+  })
+
+  it("trocar o TEMPLATE carrega gancho e anotação junto com o texto", () => {
+    const base = doc()
+    const alvo = base.frames.findIndex((f) => f.tipo === "texto")
+    const d: Documento = { ...base, frames: base.frames.map((f, i) => (i === alvo ? comOpcionais("texto") : f)) }
+    const { doc: novo } = trocarTemplate(d, getTemplate("molde-benchmark"))
+    const texto = novo.frames.find((f) => f.tipo === "texto")!
+    expect(texto.campos).toContain("gancho")
+    expect(texto.textos.gancho).toBe("o que ninguém olha")
+  })
+})
+
+describe("frame novo herda a identidade do documento", () => {
+  it("slide adicionado num carrossel Editorial nasce bege, não azul", () => {
+    const d = aplicarFamilia(doc(), "editorial")
+    const comNovo = adicionarFrame(d)
+    const id = comNovo.frames[comNovo.frames.length - 2].frameId
+    expect(comNovo.fundoPorFrame[id]).toBe(FAMILIAS.editorial.fundoClaro)
+    const padrao = adicionarFrame(doc())
+    expect(padrao.fundoPorFrame[padrao.frames.at(-2)!.frameId]).toBe(FAMILIAS.padrao.fundoClaro)
+  })
+
+  it("o documento inteiro sobrevive à validação da rota de salvamento", () => {
+    const base = aplicarFamilia(doc(), "editorial")
+    const comCampos: Documento = {
+      ...base,
+      frames: base.frames.map((f, i) => (i === 2 ? { ...f, campos: [...f.campos, "gancho" as const], textos: { ...f.textos, gancho: "o que ninguém olha" } } : f)),
+    }
+    const salvo = validarDocumento(JSON.parse(JSON.stringify(comCampos)))
+    expect(salvo.familia).toBe("editorial")
+    expect(salvo.frames[2].textos.gancho).toBe("o que ninguém olha")
+    expect(salvo.cores.hook).toBe(FAMILIAS.editorial.cores.hook)
   })
 })
