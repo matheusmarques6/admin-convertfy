@@ -386,8 +386,15 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     </div>
   )
 
+  // Via B, modo "slide inteiro": o modelo desenhou o slide com o texto e a
+  // marca; escrever por cima duplicaria a copy. A imagem ocupa tudo e o
+  // rodapé de marca some — o prompt já pediu o rodapé ao modelo.
+  const slideInteiro = f.imagemModo === "completo" && Boolean(img)
+
   let body: ReactNode
-  if (f.tipo === "capa") {
+  if (slideInteiro) {
+    body = imgSlot({ inset: 0 })
+  } else if (f.tipo === "capa") {
     body = (
       <>
         {imgSlot({ inset: 0 }, "linear-gradient(180deg, rgba(4,19,102,0.05) 0%, rgba(4,19,102,0.35) 45%, rgba(4,19,102,0.95) 100%)")}
@@ -501,7 +508,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   return (
     <div id={domId} data-frame={f.frameId} style={{ width: S(W), height: S(H), background: bg, position: "relative", overflow: "hidden", flexShrink: 0, fontFamily: FONTE_META }}>
       {body}
-      {brandRow}
+      {!slideInteiro && brandRow}
       {zonas && (
         <>
           <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: S(off + 150), background: `repeating-linear-gradient(135deg, ${SLIDE.zona} 0 8px, transparent 8px 16px)`, borderBottom: `2px dashed ${SLIDE.zonaLinha}`, pointerEvents: "none" }}>

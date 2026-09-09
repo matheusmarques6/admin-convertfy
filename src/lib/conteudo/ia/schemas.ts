@@ -208,6 +208,12 @@ export const entradaImagemSchema = z.object({
   prompt: z.string().min(3).max(1500),
   aspecto: z.enum(["4:5", "9:16", "1:1"]).optional(),
   quantidade: z.number().int().min(1).max(4).optional(),
+  /**
+   * Via B. `hibrido` (e o legado sem modo) = só o visual, a rota reforça
+   * "sem texto na imagem". `completo` = slide inteiro pelo modelo, texto
+   * incluído — é o ÚNICO modo em que a rota não acrescenta essa proibição.
+   */
+  modo: z.enum(["hibrido", "completo"]).optional(),
 })
 
 export type EntradaImagem = z.infer<typeof entradaImagemSchema>

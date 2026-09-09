@@ -60,7 +60,16 @@ async function handlePost(request: NextRequest) {
       const orgId = await resolveOrgId(user.id)
       const aspect = img.data.aspecto ?? "4:5"
       const n = img.data.quantidade ?? 1
-      const prompt = `${img.data.prompt.trim()}\n\nEstética editorial premium, sem texto na imagem, sem marcas d'água, paleta com azuis profundos e neutros, luz natural.\n${aspectInstructionForPrompt(aspect)}`
+      // Só o modo "completo" (slide inteiro pelo modelo) dispensa a
+      // proibição de texto: nele o prompt do construtor já lista a copy
+      // exata e as fontes. Nos demais, o sufixo é a rede de segurança —
+      // um prompt editado à mão que esqueça de proibir texto ainda sai
+      // sem letras, e o renderer segue dono da tipografia.
+      const sufixo =
+        img.data.modo === "completo"
+          ? "Renderize como um slide finalizado: todo texto listado nítido e legível, nenhum outro texto além dele, sem marcas d'água."
+          : "Estética editorial premium, sem texto na imagem, sem marcas d'água, paleta com azuis profundos e neutros, luz natural."
+      const prompt = `${img.data.prompt.trim()}\n\n${sufixo}\n${aspectInstructionForPrompt(aspect)}`
       try {
         // Duas variações = uma do GPT Image 2 e uma do Gemini, mesmo
         // prompt — é comparação entre modelos, não duas tentativas do

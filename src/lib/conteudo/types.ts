@@ -281,7 +281,21 @@ export interface DocFrame {
   imagens: { slot1?: ImagemSlot }
   oculto?: boolean
   variante?: VarianteLayout
+  /**
+   * Via B — prompt de imagem deste slide, editável. Ausente = o construtor
+   * (`prompt-slide.ts`) sugere um a partir da copy, do papel e da marca.
+   */
+  promptImagem?: string
+  /**
+   * `hibrido` (padrão): a imagem é só o visual e o renderer coloca a copy.
+   * `completo`: o modelo desenhou o slide inteiro, texto incluído — o
+   * renderer mostra a imagem full-bleed e não escreve nada por cima.
+   */
+  imagemModo?: ModoImagem
 }
+
+/** Como a imagem gerada entra no slide (via B). */
+export type ModoImagem = "hibrido" | "completo"
 
 export interface BrandKit {
   brandName: string

@@ -8,6 +8,7 @@
  */
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
 import type {
   BrandKit,
@@ -213,7 +214,13 @@ export function trocarTemplate(doc: Documento, novo: Template): ResultadoTroca {
       textos: Object.fromEntries(
         nf.campos.map((c) => [c, old.textos[c] ?? base.textos[c] ?? ""]),
       ),
-      imagens: nf.slotsImagem ? old.imagens : {},
+      // Imagem da via B sobrevive à troca: no slide inteiro ela É o slide
+      // (não depende de slot); no híbrido o frame novo ganha o slot se o
+      // tipo tiver lugar para ele. Prompt e modo seguem junto.
+      ...(old.imagemModo && old.imagens.slot1 && (old.imagemModo === "completo" || aceitaHibrido(nf.tipo))
+        ? { imagens: old.imagens, imagemModo: old.imagemModo, slotsImagem: (nf.slotsImagem || old.imagemModo === "hibrido" ? 1 : 0) as 0 | 1 }
+        : { imagens: nf.slotsImagem ? old.imagens : {} }),
+      promptImagem: old.promptImagem,
       variante: old.variante,
     }
   })
