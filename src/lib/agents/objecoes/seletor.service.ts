@@ -389,7 +389,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   }
 
   // 2 falhas → alvo sintético com lacuna (nunca alvo inventado) + run error.
-  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas)
+  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas, input.catalogo)
   const row = await persistTarget({
     storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
     catalogSha8: input.catalogSha8, target: sintetico, consumido: input.mode === "on", runId,

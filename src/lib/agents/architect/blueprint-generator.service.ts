@@ -42,6 +42,7 @@ import {
   type MatchResult,
 } from "./deterministic-blueprint.builder"
 import type { AssemblySlot } from "./component-assembler.service"
+import type { RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
 
 /**
@@ -114,6 +115,10 @@ export interface GeneratedBlock {
   variant_id?: string | null
   variant_name?: string | null
   fields?: BlueprintFieldV2[]
+  // 09/09: papel e requisitos do Estruturador como campos próprios (ver
+  // `aplicarEstruturadorNoBlueprint`); `fields[].omitir` nasce aqui.
+  papel?: string | null
+  requisitos?: RequisitosDaPosicao | null
 }
 
 export interface GeneratedBlueprint {
@@ -295,6 +300,8 @@ export interface GenerateBlueprintInput {
   // reference): sobrescreve o purpose do bloco correspondente nas DUAS rotas
   // antes do upsert. O fio persiste no blueprint (fio_narrativo).
   papeisPorPosicao?: string[] | null
+  /** Requisitos tipados por posição, alinhados a `papeisPorPosicao` (09/09). */
+  requisitosPorPosicao?: Array<RequisitosDaPosicao | null> | null
   /** Posições cujo papel começa pela intenção humana da Arquitetura (02/09). */
   intencoesHumanas?: number
   fioNarrativo?: string | null
@@ -580,11 +587,19 @@ export function blocosParaTelemetria(
     position: i + 1,
     type: b.type,
     label: b.label,
-    papel: (b.purpose ?? "").split("\n")[0] || null,
+    papel: b.papel ?? ((b.purpose ?? "").split("\n")[0] || null),
     needs_image: b.needs_image === true,
     campos: (b.fields ?? []).length,
     variant_name: b.variant_name ?? null,
+    // 09/09: campos que a arbitragem papel × forma tirou do contrato.
+    omitidos: (b.fields ?? []).filter((f) => f.omitir).map((f) => ({ key: f.key, motivo: f.omitir_motivo ?? "" })),
+    requisitos: b.requisitos ?? null,
   }))
+}
+
+/** Papéis vieram mas não foram aplicados por desalinhamento (ver `aplicarEstruturadorNoBlueprint`). */
+export function papeisNaoAplicados(blueprint: GeneratedBlueprint, papeis: string[] | null | undefined): boolean {
+  return (papeis?.length ?? 0) > 0 && papeis!.length !== blueprint.blocks.length
 }
 
 /** Resumo compacto das orientações de copy das variantes casadas (p/ o subject). */
@@ -740,6 +755,7 @@ async function generateDeterministicBlueprint(
       blueprint,
       input.papeisPorPosicao ?? [],
       input.fioNarrativo ?? "",
+      input.requisitosPorPosicao ?? null,
     )
   }
 
@@ -758,6 +774,8 @@ async function generateDeterministicBlueprint(
     parsedOutput: {
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
+      papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source: "ai",
       blueprint_path: "deterministic",
@@ -966,6 +984,7 @@ async function generateLlmBlueprint(
       blueprint,
       input.papeisPorPosicao ?? [],
       input.fioNarrativo ?? "",
+      input.requisitosPorPosicao ?? null,
     )
   }
 
@@ -1008,6 +1027,8 @@ async function generateLlmBlueprint(
     parsedOutput: {
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
+      papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source,
       // Rota do blueprint híbrido + motivo do fallback pro LLM.

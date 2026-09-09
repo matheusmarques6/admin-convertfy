@@ -230,6 +230,28 @@ export interface LacunaDoSeletor {
   detalhe?: string | null
 }
 
+/**
+ * Decisão de incentivo copiada do CATÁLOGO por código (09/09) — o modelo
+ * não decide isso. `existe:false` obriga hero, assunto, outline e n8n a
+ * não escrever oferta; `null` = não se sabe.
+ */
+export interface IncentivoDoAlvo {
+  existe: boolean | null
+  codigo: string | null
+  valor: string | null
+}
+
+/**
+ * Contradição interna do alvo (09/09): o tratamento pede um dado que este
+ * toque proíbe afirmar ("plain-language return policy" × "não afirmar
+ * política de devolução — não encontrado na pesquisa"). Não é lacuna (o
+ * alvo existe); é o dado que falta na loja — alimenta a ficha operacional.
+ */
+export interface ContradicaoDoAlvo {
+  motivo: string
+  detalhe: string
+}
+
 export interface AlvoDoEmail {
   modo: ModoDoToque
   trabalhos_fixos: TrabalhoFixo[]
@@ -245,6 +267,11 @@ export interface AlvoDoEmail {
   alerta_de_lastro: string | null
   razao: string
   lacuna: LacunaDoSeletor | null
+  // ── 09/09 — opcionais porque alvos gravados antes não os têm ─────────
+  incentivo?: IncentivoDoAlvo
+  /** Fatos que PODEM ser usados, cada um com a origem entre parênteses. */
+  insumos_permitidos?: string[]
+  contradicoes?: ContradicaoDoAlvo[]
 }
 
 // ── Helpers de domínio ──────────────────────────────────────────────────

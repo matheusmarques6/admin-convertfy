@@ -14,6 +14,7 @@
  * fora do vocabulário é descartado e listado em `desconhecidos` (telemetria).
  */
 
+import { dedupePorChave } from "./texto"
 import {
   ALIVIADORES,
   MODOS_SEM_OBJECAO,
@@ -295,7 +296,7 @@ export function parseIntentContract(
   }
 
   const proibicoesDaNota = arr(f.proibicoes).map(str).filter(Boolean)
-  const proibicoes = Array.from(new Set([...proibicoesDaNota, ...proibicoesDoCatalogo]))
+  const proibicoes = dedupePorChave([...proibicoesDaNota, ...proibicoesDoCatalogo])
   if (proibicoes.length > 0) {
     marca("proibicoes", proibicoesDaNota.length > 0 ? "nota" : "catalogo")
   }

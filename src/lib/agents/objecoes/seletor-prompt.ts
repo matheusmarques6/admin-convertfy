@@ -65,7 +65,9 @@ Modos: ${MODOS.join(" | ")}. Além do modo, a intenção pode declarar \`trabalh
 
 11. ALIVIADOR é vocabulário fechado (${ALIVIADORES.join(", ")}): \`aliviador_pedido\` é o do catálogo para aquela objeção — não troque por um "equivalente". Só \`aliviadores_admissiveis\` do contrato podem entrar; os vetados nunca.
 
-12. PROIBIÇÕES. \`proibido_neste_toque\` reúne as proibições do contrato (repita-as) mais as que a sua escolha cria (ex.: escolheu garantia → "não prometer prazo de devolução que a política não cita").
+12. PROIBIÇÕES. \`proibido_neste_toque\` reúne as proibições do contrato (repita-as) mais as que a sua escolha cria (ex.: escolheu garantia → "não prometer prazo de devolução que a política não cita"). UMA proibição por regra, no idioma da loja — não repita a mesma regra em dois idiomas nem em duas redações.
+
+13. INSUMOS PERMITIDOS. \`insumos_permitidos\` lista os FATOS que a copy PODE usar neste toque, cada um com a origem entre parênteses: "checkout Shopify (pesquisa: plataforma)", "fibra de bambu (produto: descrição)", "corte acima do abdômen (pesquisa: diferencial)". Só fato que está no contexto — sem origem, não entra. É o "sim" que acompanha o "não": quem escreve precisa saber o que PODE dizer, não só o que não pode. O incentivo NÃO é decidido por você — o sistema copia do catálogo.
 
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
 
@@ -78,6 +80,7 @@ Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
  "angulo_do_tratamento":[{"ordem":1,"veiculo":"origem_da_marca","papel":"por que a marca existe","insumo_disponivel":true}],
  "suspeita_a_antecipar":"string ou null",
  "proibido_neste_toque":["..."],
+ "insumos_permitidos":["fato (origem)"],
  "alerta_de_lastro":null,
  "razao":"uma frase",
  "lacuna":null}`

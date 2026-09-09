@@ -98,12 +98,20 @@ describe("decisaoCompletaParaCurador", () => {
   })
 })
 
+type BlocoDeTeste = {
+  type: string
+  purpose: string
+  papel?: string | null
+  requisitos?: unknown
+  fields?: Array<{ key: string; type: string; required: boolean; omitir?: boolean; omitir_motivo?: string }>
+}
+
 describe("aplicarEstruturadorNoBlueprint", () => {
   const bp = (): {
     objective: string
     messaging: string
     fio_narrativo?: string | null
-    blocks: Array<{ type: string; purpose: string }>
+    blocks: BlocoDeTeste[]
   } => ({
     objective: "obj",
     messaging: "msg",
@@ -117,8 +125,9 @@ describe("aplicarEstruturadorNoBlueprint", () => {
   it("papel vira 1ª linha do purpose e a diretiva original vira Forma", () => {
     const r = aplicarEstruturadorNoBlueprint(bp(), ["Abrir o arco", "O pivô", "Saída"], "fio")
     expect(r.blocks[0].purpose).toBe(
-      "Abrir o arco\n\nForma (variante): Diretiva da variante hero",
+      "Abrir o arco\n\nForma (variante, subordinada ao papel): Diretiva da variante hero",
     )
+    expect(r.blocks[0].papel).toBe("Abrir o arco")
     // Bloco sem purpose original: papel puro, sem sufixo vazio.
     expect(r.blocks[1].purpose).toBe("O pivô")
     expect(r.fio_narrativo).toBe("fio")
@@ -148,7 +157,7 @@ describe("aplicarEstruturadorNoBlueprint", () => {
 })
 
 // ── Intenção humana (Arquitetura) × papel do agente (02/09) ─────────────
-import { combinarIntencaoComPapel, requisitosDaDecisao } from "./estruturador-consume"
+import { arbitrarCampos, combinarIntencaoComPapel, requisitosDaDecisao } from "./estruturador-consume"
 
 describe("combinarIntencaoComPapel", () => {
   it("intenção vem PRIMEIRO; o papel do agente entra embaixo como detalhe", () => {
@@ -175,5 +184,49 @@ describe("requisitosDaDecisao (09/09)", () => {
     expect(requisitosDaDecisao('{"x":1}')).toEqual([])
     // decisão truncada pelo teto de chars ainda tenta o JSON legível
     expect(requisitosDaDecisao(json + "\n(… decisão truncada)")).toHaveLength(2)
+  })
+})
+
+describe("arbitrarCampos + requisitos no blueprint (09/09)", () => {
+  const f = (key: string, extra: Record<string, unknown> = {}) => ({ key, type: "text_short", required: false, ...extra })
+  const heroFields = [f("headline_l1"), f("coupon_line"), f("cta_label"), f("hero_flatlay_kit", { type: "image" })]
+
+  it("o caso da Hero Boxers: cupom e CTA negados saem do contrato; imagem e headline ficam", () => {
+    const r = arbitrarCampos(heroFields, { cupom: false, cta: false, n_itens: null, preco: null, avaliacao: null, campos: [], imagem: null, exige: [] })
+    expect(r.map((x) => [x.key, x.omitir ?? false])).toEqual([
+      ["headline_l1", false],
+      ["coupon_line", true],
+      ["cta_label", true],
+      ["hero_flatlay_kit", false],
+    ])
+    expect(r[1].omitir_motivo).toContain("cupom negado")
+  })
+
+  it("item além do máximo é omitido; required omitido declara incompatibilidade dura; sem requisito nada muda", () => {
+    const fields = [f("product_1_name"), f("product_2_name"), f("product_3_name", { required: true }), f("product_cta_label_3")]
+    const r = arbitrarCampos(fields, { cupom: null, cta: null, n_itens: { min: 2, max: 2 }, preco: null, avaliacao: null, campos: [], imagem: null, exige: [] })
+    expect(r.filter((x) => x.omitir).map((x) => x.key)).toEqual(["product_3_name", "product_cta_label_3"])
+    expect(r[2].omitir_motivo).toContain("incompatibilidade dura")
+    expect(arbitrarCampos(fields, null)).toBe(fields)
+  })
+
+  it("aplicarEstruturadorNoBlueprint grava papel, requisitos e os campos omitidos por posição", () => {
+    const bp: { objective: string; messaging: string; blocks: BlocoDeTeste[] } = {
+      objective: "o",
+      messaging: "m",
+      blocks: [
+        { type: "hero", purpose: "Forma hero", fields: heroFields },
+        { type: "footer", purpose: "Rodapé" },
+      ],
+    }
+    const req = { cupom: false, cta: false, n_itens: null, preco: null, avaliacao: null, campos: [], imagem: null, exige: [] }
+    const r = aplicarEstruturadorNoBlueprint(bp, ["Apresenta a marca", "Fecha"], "fio", [req, null])
+    expect(r.blocks[0].requisitos).toEqual(req)
+    expect(r.blocks[0].fields?.filter((x) => x.omitir).map((x) => x.key)).toEqual(["coupon_line", "cta_label"])
+    expect(r.blocks[1].requisitos).toBeUndefined()
+    expect(r.blocks[1].papel).toBe("Fecha")
+    // Desalinhado: nada é aplicado, nem requisitos.
+    const r2 = aplicarEstruturadorNoBlueprint(bp, ["só um"], "fio", [req])
+    expect(r2.blocks[0].fields?.some((x) => x.omitir)).toBe(false)
   })
 })

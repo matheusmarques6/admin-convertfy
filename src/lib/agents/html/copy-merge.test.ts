@@ -884,3 +884,34 @@ describe("heroTextoInventado (09/09)", () => {
     expect(heroTextoInventado(regiao, frag, valores)).toEqual(["Free shipping on everything"])
   })
 })
+
+describe("copyMergeByExample — campo omitido pela arbitragem (09/09)", () => {
+  const html = `<!-- cfy:block:0:hero:start --><table><tr><td>The right fit</td></tr><tr><td>Use code: [WELCOME-CODE]</td></tr><tr><td><a href="#">SHOP NOW</a></td></tr></table><!-- cfy:block:0:hero:end -->`
+  const fields = [
+    { key: "headline", type: "text_short", example: "The right fit" },
+    { key: "coupon_line", type: "text_short", example: "Use code: [WELCOME-CODE]", omitir: true },
+    { key: "cta_label", type: "text_short", example: "SHOP NOW", omitir: true },
+  ]
+  it("a linha do cupom some e o CTA é esvaziado mesmo que o n8n tenha mandado valor", () => {
+    const r = copyMergeByExample(html, [
+      { block_id: "b0", block_type: "hero", fields, content: { headline: "Fits your real body", coupon_line: "Use code: HERO10", cta_label: "SHOP 10% OFF" } },
+    ])
+    expect(r.html).toContain("Fits your real body")
+    expect(r.html).not.toContain("HERO10")
+    expect(r.html).not.toContain("[WELCOME-CODE]")
+    expect(r.html).not.toContain("SHOP 10% OFF")
+    expect(r.html).not.toContain("SHOP NOW")
+    expect(r.report.omitidos.map((o) => [o.key, o.linha_removida])).toEqual([
+      ["coupon_line", true],
+      ["cta_label", true],
+    ])
+    expect(r.report.exemplos_limpos).toEqual([])
+  })
+  it("sem a flag, o example do cupom FICA (o defeito de antes) — a flag é o que muda", () => {
+    const r = copyMergeByExample(html, [
+      { block_id: "b0", block_type: "hero", fields: fields.map((f) => ({ ...f, omitir: false })), content: { headline: "X" } },
+    ])
+    expect(r.html).toContain("[WELCOME-CODE]")
+    expect(r.report.omitidos).toEqual([])
+  })
+})
