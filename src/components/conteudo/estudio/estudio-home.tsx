@@ -31,13 +31,15 @@ export function EstudioHome() {
   const { kits } = useBrandKits()
   const { perfis } = usePerfis()
   const posts = usePostsPublicados()
-  const [novo, setNovo] = useState<{ caminho?: Caminho | null; perfil?: PerfilEditavel; meuTemplateId?: string; modoTemplate?: boolean } | null>(null)
+  const [novo, setNovo] = useState<{ caminho?: Caminho | null; perfil?: PerfilEditavel; meuTemplateId?: string; modoTemplate?: boolean; pauta?: string } | null>(null)
 
   useEffect(() => {
     const n = params.get("novo")
     const p = params.get("perfil")
     if (params.get("criar-template")) setNovo({ modoTemplate: true })
-    else if (n) setNovo({ caminho: CAMINHOS.includes(n as Caminho) ? (n as Caminho) : null, perfil: p ?? undefined })
+    // `pauta` vem do Banco de Ideias ("Criar carrossel"): a ideia já entra
+    // escrita no caminho IA, em vez de o operador copiar e colar o título.
+    else if (n) setNovo({ caminho: CAMINHOS.includes(n as Caminho) ? (n as Caminho) : null, perfil: p ?? undefined, pauta: params.get("pauta") ?? undefined })
   }, [params])
 
   const fecharNovo = useCallback(() => {
@@ -152,6 +154,7 @@ export function EstudioHome() {
           perfilInicial={novo.perfil}
           meuTemplateInicial={novo.meuTemplateId ?? null}
           modoTemplate={novo.modoTemplate}
+          promptInicial={novo.pauta}
           posts={posts}
           perfis={perfis ?? []}
           meusTemplates={meus}

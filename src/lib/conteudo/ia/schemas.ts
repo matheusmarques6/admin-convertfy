@@ -210,6 +210,44 @@ export const entradaSchema = z.discriminatedUnion("acao", [
     legenda: z.string().max(4000).optional(),
     nome: z.string().max(200).optional(),
   }),
+  /**
+   * Assuntos em alta do painel de Reels. Entra o que a busca na internet
+   * devolveu (a rota faz a busca; este módulo não faz I/O) e o contexto da
+   * casa; sai uma lista com "como usar" ligado ao negócio.
+   */
+  /**
+   * Classifica uma ideia crua do banco: funil, formato, tags, molde, score
+   * e por que ela rende. Uma chamada curta — é o que roda quando alguém
+   * anota uma linha e aperta Enter.
+   */
+  z.object({
+    acao: z.literal("classificar_ideia"),
+    titulo: z.string().min(3).max(300),
+    contexto: z.string().max(2000).optional(),
+  }),
+  /**
+   * Pautas novas para o banco de ideias. Recebe o que JÁ está no banco (não
+   * repetir) e a lacuna da semana por funil — é o que separa "me dá ideias"
+   * de "me dá o que falta para fechar a semana".
+   */
+  z.object({
+    acao: z.literal("pautas"),
+    perfil: perfilSchema,
+    contexto: z.string().max(2000).optional(),
+    jaTem: z.array(z.string().max(300)).max(40).optional(),
+    /** ["topo: faltam 2", "fundo: falta 1"] — vazio = sem foco de funil. */
+    lacunas: z.array(z.string().max(60)).max(3).optional(),
+    quantidade: z.number().int().min(1).max(8).optional(),
+  }),
+  z.object({
+    acao: z.literal("trends"),
+    perfil: perfilSchema,
+    /** Nicho/negócio da casa, para o "como usar" não sair genérico. */
+    contexto: z.string().max(2000).optional(),
+    /** Assuntos que já estão no painel — não repetir. */
+    jaTem: z.array(z.string().max(200)).max(30).optional(),
+    quantidade: z.number().int().min(1).max(8).optional(),
+  }),
 ])
 
 /** Geração de imagem (não passa pelo LLM de texto — tratada à parte na rota). */
@@ -348,6 +386,54 @@ export type SaidaChat = z.infer<typeof saidaChatSchema>
 export type SaidaInspiracao = z.infer<typeof saidaInspiracaoSchema>
 export type SaidaTranscricao = z.infer<typeof saidaTranscricaoSchema>
 
+export const saidaTrendsSchema = z.object({
+  assuntos: z
+    .array(
+      z.object({
+        titulo: z.string().min(1).max(120),
+        score: z.number().int().min(0).max(100),
+        dificuldade: z.enum(["facil", "medio", "dificil"]),
+        categoria: z.enum(["viral", "venda", "educativo"]),
+        comoUsar: z.string().min(1).max(400),
+        /** A URL do resultado de busca que sustenta o assunto. */
+        fonteUrl: z.string().max(500).optional(),
+      }),
+    )
+    .min(1)
+    .max(8),
+})
+export type SaidaTrends = z.infer<typeof saidaTrendsSchema>
+
+export const saidaPautasSchema = z.object({
+  pautas: z
+    .array(
+      z.object({
+        titulo: z.string().min(5).max(300),
+        funil: z.enum(["topo", "meio", "fundo"]),
+        formato: z.enum(["Carrossel", "Reels", "Vídeo", "Imagem"]),
+        pilar: z.enum(["Case", "Educacional", "Bastidor", "Benchmark"]).optional(),
+        tags: z.array(z.string().min(1).max(40)).max(4),
+        molde: z.string().max(60).optional(),
+        score: z.number().int().min(0).max(100),
+        porQue: z.string().min(1).max(400),
+      }),
+    )
+    .min(1)
+    .max(8),
+})
+export type SaidaPautas = z.infer<typeof saidaPautasSchema>
+
+export const saidaClassificarIdeiaSchema = z.object({
+  funil: z.enum(["topo", "meio", "fundo"]),
+  formato: z.enum(["Carrossel", "Reels", "Vídeo", "Imagem"]),
+  pilar: z.enum(["Case", "Educacional", "Bastidor", "Benchmark"]).optional(),
+  tags: z.array(z.string().min(1).max(40)).max(4),
+  molde: z.string().max(60).optional(),
+  score: z.number().int().min(0).max(100),
+  porQue: z.string().min(1).max(400),
+})
+export type SaidaClassificarIdeia = z.infer<typeof saidaClassificarIdeiaSchema>
+
 export type SaidaPorAcao = {
   triagem: SaidaTriagem
   ajustar_headline: SaidaAjustarHeadline
@@ -362,6 +448,9 @@ export type SaidaPorAcao = {
   chat: SaidaChat
   analisar_inspiracao: SaidaInspiracao
   transcrever_referencia: SaidaTranscricao
+  trends: SaidaTrends
+  pautas: SaidaPautas
+  classificar_ideia: SaidaClassificarIdeia
 }
 
 export const SAIDA_SCHEMA: { [K in keyof SaidaPorAcao]: z.ZodType<SaidaPorAcao[K]> } = {
@@ -378,4 +467,7 @@ export const SAIDA_SCHEMA: { [K in keyof SaidaPorAcao]: z.ZodType<SaidaPorAcao[K
   chat: saidaChatSchema,
   analisar_inspiracao: saidaInspiracaoSchema,
   transcrever_referencia: saidaTranscricaoSchema,
+  trends: saidaTrendsSchema,
+  pautas: saidaPautasSchema,
+  classificar_ideia: saidaClassificarIdeiaSchema,
 }

@@ -41,6 +41,14 @@ export interface Perfil {
   ativo: boolean
   /** Meta de publicações por semana (config do canal). */
   metaSemanal: number
+  /**
+   * Dias da semana em que ESTE perfil publica (0 = domingo), definidos por
+   * alguém. Vazio = ninguém definiu, e o calendário deriva da meta — a
+   * diferença aparece na tela como "sugerido", nunca como promessa.
+   */
+  cadenciaDias: number[]
+  /** HH:MM do slot; null = padrão da casa. */
+  cadenciaHora: string | null
   seguidores: number | null
   /** Erro da última leitura da Graph API (token expirado etc.). */
   erro: string | null
@@ -385,6 +393,72 @@ export interface Documento {
 }
 
 // ── Estúdio: motor editorial ────────────────────────────────────────────
+
+// ── Banco de ideias, pipeline de Reels e assuntos em alta ───────────────
+// (migration 20261136). Os tipos do domínio moram nos módulos puros
+// `ideias/banco.ts`, `reels/pipeline.ts` e `calendario/slots.ts`; aqui
+// ficam só as formas que atravessam a rota.
+
+export interface ReelRoteiroBloco {
+  /** gancho | contexto | virada | prova | cta */
+  papel: string
+  texto: string
+  segundos?: number | null
+}
+
+export interface Reel {
+  id: string
+  titulo: string
+  funil: EtapaFunil
+  etapa: import("./reels/pipeline").EtapaReel
+  tema: string | null
+  formato: string | null
+  duracaoS: number | null
+  score: number | null
+  roteiro: ReelRoteiroBloco[]
+  responsavelId: string | null
+  responsavelNome: string | null
+  canalId: string | null
+  agendadoPara: string | null
+  publicadoEm: string | null
+  /**
+   * Métricas do post real quando publicado (nunca digitadas). `views` e
+   * `alcance` são medidas diferentes e cada uma pode faltar sozinha — a
+   * Meta não entrega o mesmo conjunto para todo tipo de mídia.
+   */
+  metricas: { views: number | null; alcance: number | null; permalink: string | null } | null
+  /**
+   * Mídia do Instagram correspondente. O calendário usa isto para NÃO
+   * mostrar a mesma publicação duas vezes (uma como post da conta, outra
+   * como card do pipeline) — o post real vence, porque tem métrica.
+   */
+  igMediaId: string | null
+  posicao: number
+  ideiaId: string | null
+  criadoEm: string
+}
+
+export interface Trend {
+  id: string
+  titulo: string
+  score: number
+  dificuldade: "facil" | "medio" | "dificil"
+  categoria: "viral" | "venda" | "educativo"
+  comoUsar: string
+  fonte: "web" | "manual"
+  fonteUrl: string | null
+  fonteTitulo: string | null
+  geradoEm: string
+}
+
+/** O estado da fonte de trends — a tela DIZ de onde o painel veio. */
+export interface TrendsStatus {
+  /** Nunca gerado = null. */
+  geradoEm: string | null
+  /** Provedor de busca configurado no ambiente (null = não configurado). */
+  buscaConfigurada: boolean
+  total: number
+}
 
 export type EixoNarrativo = "mercado" | "cases" | "noticias" | "cultura" | "produto"
 

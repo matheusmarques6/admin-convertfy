@@ -7,7 +7,9 @@
 
 import { PROMPTS_PRONTOS, type PromptPronto } from "./config"
 import { ST_TEMPLATES } from "./templates"
-import type { Agendado, BrandKit, DashboardData, Documento, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Referencia, ReferenciaCandidata, Template } from "./types"
+import type { Agendado, BrandKit, DashboardData, Documento, EtapaFunil, Formato, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Reel, Referencia, ReferenciaCandidata, Template, Trend, TrendsStatus } from "./types"
+import type { Ideia } from "./ideias/banco"
+import type { EtapaReel, ProgressoFunil } from "./reels/pipeline"
 
 export class ConteudoApiError extends Error {
   status: number
@@ -81,6 +83,19 @@ export async function getPerfis(refresh = false): Promise<Perfil[]> {
 
 export async function setMetaSemanal(perfil: PerfilEditavel, metaSemanal: number): Promise<Perfil> {
   const r = await api<{ perfil: Perfil }>(`/api/conteudo/perfis/${perfil}`, { method: "PATCH", body: JSON.stringify({ metaSemanal }) })
+  return r.perfil
+}
+
+/**
+ * Cadência do perfil: em que dias da semana ele publica e a que hora. Lista
+ * de dias VAZIA devolve o calendário ao modo "sugerido pela meta" — e a tela
+ * diz qual dos dois está valendo.
+ */
+export async function setCadencia(perfil: PerfilEditavel, e: { dias?: number[]; hora?: string | null }): Promise<Perfil> {
+  const r = await api<{ perfil: Perfil }>(`/api/conteudo/perfis/${perfil}`, {
+    method: "PATCH",
+    body: JSON.stringify({ cadenciaDias: e.dias, cadenciaHora: e.hora }),
+  })
   return r.perfil
 }
 
@@ -311,4 +326,120 @@ export async function ligarCommentGate(e: LigarCommentGateEntrada): Promise<Comm
       reply: e.resposta,
     }),
   })
+}
+
+// ── Banco de ideias ─────────────────────────────────────────────────────
+
+export async function getIdeias(): Promise<Ideia[]> {
+  const r = await api<{ ideias: Ideia[] }>(`/api/conteudo/ideias`)
+  return r.ideias ?? []
+}
+
+export interface NovaIdeia {
+  titulo: string
+  funil?: EtapaFunil | null
+  formato?: Formato | null
+  tags?: string[]
+  fonte?: Ideia["fonte"]
+  fonteDetalhe?: string | null
+  trendId?: string | null
+  /** false pula a ConvertIA (anotação crua, sem score). */
+  classificar?: boolean
+}
+
+/** Devolve `classificada: false` quando a IA falhou — a ideia entrou crua. */
+export async function criarIdeia(e: NovaIdeia): Promise<{ ideia: Ideia; classificada: boolean }> {
+  return api<{ ideia: Ideia; classificada: boolean }>(`/api/conteudo/ideias`, { method: "POST", body: JSON.stringify(e) })
+}
+
+/**
+ * A ConvertIA propõe pautas e elas já entram no banco. `lacunas` (o que
+ * falta fechar na semana) vem do pipeline de Reels — sem elas, é o "gerar
+ * ideias" solto do banco.
+ */
+export async function gerarIdeias(opts: { lacunas?: string[]; quantidade?: number } = {}): Promise<Ideia[]> {
+  const r = await api<{ ideias: Ideia[] }>(`/api/conteudo/ideias/gerar`, { method: "POST", body: JSON.stringify(opts) })
+  return r.ideias ?? []
+}
+
+export async function patchIdeia(
+  id: string,
+  campos: Partial<Pick<Ideia, "titulo" | "funil" | "formato" | "tags" | "molde" | "status">>,
+): Promise<Ideia> {
+  const r = await api<{ ideia: Ideia }>(`/api/conteudo/ideias/${id}`, { method: "PATCH", body: JSON.stringify(campos) })
+  return r.ideia
+}
+
+export async function deleteIdeia(id: string): Promise<void> {
+  await api(`/api/conteudo/ideias/${id}`, { method: "DELETE" })
+}
+
+/** Alterna o voto. A contagem vem do COUNT do servidor, não do número da tela + 1. */
+export async function votarIdeia(id: string): Promise<{ votos: number; votei: boolean }> {
+  return api<{ votos: number; votei: boolean }>(`/api/conteudo/ideias/${id}/voto`, { method: "POST" })
+}
+
+export async function enviarIdeiaParaReels(id: string): Promise<string> {
+  const r = await api<{ reelId: string }>(`/api/conteudo/ideias/${id}/enviar-reels`, { method: "POST" })
+  return r.reelId
+}
+
+// ── Pipeline de Reels ───────────────────────────────────────────────────
+
+export async function getReels(): Promise<{ reels: Reel[]; progresso: ProgressoFunil[] }> {
+  const r = await api<{ reels: Reel[]; progresso: ProgressoFunil[] }>(`/api/conteudo/reels`)
+  return { reels: r.reels ?? [], progresso: r.progresso ?? [] }
+}
+
+export interface NovoReel {
+  titulo: string
+  funil: EtapaFunil
+  etapa?: EtapaReel
+  tema?: string | null
+  formato?: string | null
+  duracaoS?: number | null
+}
+
+export async function criarReel(e: NovoReel): Promise<string> {
+  const r = await api<{ id: string }>(`/api/conteudo/reels`, { method: "POST", body: JSON.stringify(e) })
+  return r.id
+}
+
+export type PatchReel = Partial<
+  Pick<Reel, "titulo" | "funil" | "etapa" | "tema" | "formato" | "duracaoS" | "score" | "roteiro" | "responsavelId" | "canalId" | "agendadoPara" | "posicao">
+>
+
+export async function patchReel(id: string, campos: PatchReel): Promise<void> {
+  await api(`/api/conteudo/reels/${id}`, { method: "PATCH", body: JSON.stringify(campos) })
+}
+
+export async function deleteReel(id: string): Promise<void> {
+  await api(`/api/conteudo/reels/${id}`, { method: "DELETE" })
+}
+
+// ── Assuntos em alta ────────────────────────────────────────────────────
+//
+// O status viaja junto do dado de propósito: o painel diz QUANDO a rodada
+// foi feita e se a busca na internet está configurada. Sem isso, uma lista
+// de três dias atrás parece o que está em alta agora.
+
+export async function getTrends(): Promise<{ trends: Trend[]; status: TrendsStatus }> {
+  return api<{ trends: Trend[]; status: TrendsStatus }>(`/api/conteudo/trends`)
+}
+
+export interface TrendsGeradas {
+  trends: Trend[]
+  status: TrendsStatus
+  /** Links que a IA citou fora do que a busca serviu (removidos antes de gravar). */
+  fontes_descartadas: number
+  /** Por que a rodada saiu sem fato externo, quando foi o caso. */
+  busca_indisponivel: string | null
+}
+
+export async function gerarTrends(): Promise<TrendsGeradas> {
+  return api<TrendsGeradas>(`/api/conteudo/trends`, { method: "POST" })
+}
+
+export async function arquivarTrend(id: string): Promise<void> {
+  await api(`/api/conteudo/trends/${id}`, { method: "DELETE" })
 }

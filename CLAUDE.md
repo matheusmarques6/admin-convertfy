@@ -4848,5 +4848,84 @@ Diagnóstico e plano em `docs/email-generation/diagnostico-vault-vs-advisor-max.
   é read-only — este é o caminho que sobrou.
 - Casos A/B do diagnóstico viraram `curador-casos.test.ts`.
 
+## Reels, Ideias e Calendário: o módulo Conteúdo fecha o ciclo (set/2026, migration 20261136)
+
+As três telas que eram `ConteudoEmBreve` viraram produto, ligadas às mesmas
+tabelas que o Dashboard e o Estúdio já usavam. Quatro tabelas novas
+(`conteudo_ideias`, `conteudo_ideia_votos`, `conteudo_reels`,
+`conteudo_trends`), todas com RLS `TO authenticated` + escopo por org e
+`atualizado_em` por `clock_timestamp()`.
+
+**Banco de Ideias** (`/admin/conteudo/ideias`). A anotação rápida é o
+coração: quem tem a ideia está no meio de outra coisa — escreve, aperta
+Enter, e a ConvertIA classifica DEPOIS (funil, formato, tags, molde, score,
+"por que"). **Classificação que falha não perde a ideia**: ela entra crua, a
+tela avisa que ficou sem score e o card mostra o traço. Regras em
+`lib/conteudo/ideias/banco.ts` (puro, 8 testes): **score da IA e voto do
+time são julgamentos DIFERENTES** e a tela ordena por um ou por outro —
+somá-los num "score final" apagaria justamente onde a máquina e o time
+discordam; ideia não avaliada vai para o FIM da ordenação, nunca some; a
+busca casa cada palavra no título OU numa tag (quem procura "carrinho viral"
+lembra de meio título e meia hashtag). Voto é **COUNT do servidor**, nunca
+`votos + 1` no cliente. Do drawer saem as três saídas: pipeline de Reels,
+"agendar direto" (vai para o pipeline já em `agendado`, com data) e
+"criar carrossel com esta pauta" (`?novo=ia&pauta=` abre o Estúdio com a
+pauta escrita — `promptInicial` no NovoFlow).
+
+**Pipeline de Reels** (`/admin/conteudo/reels`). Kanban de 6 etapas
+(ideias → roteiro → gravar → editar → agendado → publicado) com arrasto
+otimista e revert de verdade. `lib/conteudo/reels/pipeline.ts` (puro, 9
+testes): a meta semanal por funil (topo 2, meio 2, fundo 1) **conta o que
+SAIU** — publicado ou agendado DENTRO da semana —, nunca o backlog; card
+parado em "gravar" há três semanas não é publicação feita, e contá-lo é o
+jeito mais fácil de a meta mentir. `posicaoEntre` é fracionária: soltar
+entre dois cards grava o ponto médio, sem reescrever a coluna. **A data de
+publicação só é carimbada na ENTRADA em "publicado"** (o serviço lê a etapa
+atual antes): sem isso, reordenar um card já publicado — o arrasto manda a
+mesma etapa com posição nova — reescreveria a data para hoje e a semana
+passaria a contar uma publicação antiga. As métricas do card publicado saem
+do POST REAL (`conteudo_ig_media` pelo `ig_media_id`); views e alcance são
+medidas diferentes e cada uma pode faltar sozinha, então nenhuma substitui a
+outra. Sem vínculo, o traço com o motivo.
+
+**"Em alta" não é API de trends** (`conteudo-trends.service.ts`). Não existe
+integração com TikTok aqui: o painel é ConvertIA + busca na internet, e cada
+`fonteUrl` é conferida contra o que a busca serviu (`verificarFontes`, o
+mesmo módulo da triagem) — link inventado é removido antes de gravar, porque
+assunto "em alta" com fonte falsa é pior que painel vazio. O rodapé diz
+quando a rodada foi feita e, sem provedor de busca configurado, diz isso em
+vez de deixar a lista parecer conferida. Arquivar um assunto o marca
+`ativo=false` em vez de apagar: é o título gravado que impede a rodada
+seguinte de propor o mesmo tema de novo. A aba "Planejar com IA" é o MESMO
+motor com um pedido diferente — as lacunas da semana entram no prompt
+(ação `pautas`), então ele propõe o que FALTA fechar.
+
+**Calendário** (`/admin/conteudo/calendario`), mês ou semana, com três
+coisas na mesma grade: publicado (mídias da conta), agendado (carrossel do
+Estúdio e reel do pipeline) e os **slots vazios**. O slot é o único item da
+tela que não existe no banco, e por isso o mais fácil de estragar: é uma
+PROMESSA, e promessa inventada faz o operador ignorar promessa e fato. Daí
+`lib/conteudo/calendario/slots.ts` (puro, 9 testes): **cadência definida por
+alguém vence sempre**; sem ela a meta semanal vira sugestão ESPALHADA pela
+semana (`diasSugeridos` usa `floor`, então 2/semana é seg+qui e não seg+sex,
+que deixaria metade da semana vazia), e a tela rotula qual dos dois casos é.
+Dia passado não gera slot; dia que já tem post daquele perfil também não; e
+a tela ainda limita o desenho a 14 dias à frente — mais adiante o tracejado
+é ruído que esconde o que tem algo. A cadência virou editável
+(`crm_channels.config.conteudo.cadencia_dias/hora` pelo PATCH que já existia
+em `/api/conteudo/perfis/[id]`).
+
+**O post real vence o card do pipeline** quando são a mesma publicação
+(`Reel.igMediaId` × `Post.id`): sem essa deduplicação, o reel publicado
+aparecia duas vezes no mesmo dia e o contador de publicados contava em
+dobro — defeito que só apareceu ao RENDERIZAR a tela com dados, não nos
+testes.
+
+*As telas foram verificadas renderizando de verdade* (esbuild + shims de
+SWR/Next/dnd + Tailwind local + Chromium): foi assim que apareceram a
+duplicata acima, o "Setembro De 2026" do `capitalize`, o "0 items" em inglês
+e o mês inteiro coberto de slots.
+
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

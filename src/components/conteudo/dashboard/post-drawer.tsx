@@ -187,7 +187,7 @@ function DrawerBody({ post, perfil, onClose, onClassificado }: { post: Post; per
         ) : (
           leads.leads.slice(0, 8).map((l, i) => (
             <Link key={l.threadId} href={`${ROUTES.ADMIN.INBOX}?thread=${l.threadId}`} className={cn("flex items-center gap-2.5 px-3 py-[9px] hover:bg-[var(--ops-hover)]", i > 0 && "border-t border-[var(--ops-border)]")}>
-              <CtAvatar perfil={{ id: l.threadId, nome: l.nome, handle: l.handle, cor: "#6B7280", avatar: l.avatar, canal: "instagram", ativo: true, metaSemanal: 0, seguidores: null, erro: null }} size={26} />
+              <CtAvatar perfil={{ nome: l.nome, handle: l.handle, cor: "#6B7280", avatar: l.avatar }} size={26} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[12px] font-medium text-[var(--ops-title)]">{l.nome}</span>
                 <span className="block text-[10.5px] text-[var(--ops-mut)]">

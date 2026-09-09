@@ -2,6 +2,9 @@
  * GET /api/conteudo/perfis — perfis do módulo Conteúdo (= canais Instagram
  * da org), com handle, foto servida pelo admin, seguidores e meta semanal.
  * `?refresh=1` força a leitura do perfil na Graph API.
+ *
+ * A cadência (dias + hora) e a meta semanal são editadas em
+ * `PATCH /api/conteudo/perfis/[id]`.
  */
 
 import { NextRequest } from "next/server"
@@ -29,3 +32,4 @@ async function handleGet(request: NextRequest) {
 }
 
 export const GET = withTiming("conteudo-perfis", handleGet, { slowMs: 8_000 })
+
