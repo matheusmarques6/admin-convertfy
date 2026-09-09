@@ -170,6 +170,10 @@
     {
       "path": "/api/cron/asaas-sync",
       "schedule": "25 */2 * * *"
+    },
+    {
+      "path": "/api/cron/vault-lacunas-propostas",
+      "schedule": "35 7 * * *"
     }
   ]
 }

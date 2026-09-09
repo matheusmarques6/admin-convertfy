@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
     await assertCanManagePrompts(admin, user.id)
 
-    const [stateRes, runsRes, intentsRes, refsRes, learningsRes, docsRes, variantsRes] = await Promise.all([
+    const [stateRes, runsRes, intentsRes, refsRes, learningsRes, docsRes, variantsRes, propostasRes] = await Promise.all([
       admin.from("vault_sync_state").select("*").eq("id", "default").maybeSingle(),
       admin.from("vault_sync_runs").select("*").order("created_at", { ascending: false }).limit(10),
       admin.from("email_intents")
@@ -60,6 +60,13 @@ export async function GET(request: NextRequest) {
       admin.from("email_component_variants")
         .select("id, name, block_type, description, when_use, when_not_use, objectives, tones, density, product_slots, copy_guidance, long_description")
         .eq("is_active", true),
+      // Lacunas propostas pela telemetria (09/09). Descartadas ficam fora;
+      // copiadas continuam visíveis (marcadas) até a nota chegar pelo sync.
+      admin.from("vault_propostas")
+        .select("id, chave, violacao, secao, path_sugerido, markdown, ocorrencias, primeira_vez, ultima_vez, exemplos, status, updated_at")
+        .neq("status", "descartada")
+        .order("ocorrencias", { ascending: false })
+        .limit(50),
     ])
 
     // Higiene: a mesma medida de divergência que a geração usa (buildCatalog),
@@ -98,6 +105,8 @@ export async function GET(request: NextRequest) {
       structure_refs: refsRes.data ?? [],
       learnings: learningsRes.data ?? [],
       higiene,
+      // Tabela ausente (migration 20261135) → lista vazia, nunca erro.
+      propostas: propostasRes.error ? [] : (propostasRes.data ?? []),
       configured: Boolean(process.env.VAULT_REPO && process.env.VAULT_GITHUB_TOKEN),
     })
   } catch (error) {
