@@ -253,7 +253,7 @@ function primeiraFraseDaDescricao(texto: string): string {
   const limpa = texto.replace(/\s+/g, " ").trim()
   if (!limpa) return "(sem descrição)"
   const fim = limpa.search(/[.!?](\s|$)/)
-  const frase = fim > 20 ? limpa.slice(0, fim + 1) : limpa
+  const frase = fim >= 0 ? limpa.slice(0, fim + 1) : limpa
   if (frase.length <= ENXUTO_DESC_MAX) return frase
   const corte = frase.lastIndexOf(" ", ENXUTO_DESC_MAX)
   return `${frase.slice(0, corte > 60 ? corte : ENXUTO_DESC_MAX).trimEnd()}…`

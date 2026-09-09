@@ -66,6 +66,7 @@ import {
   type ContratoResumo,
   type EliminacaoDaPosicao,
 } from "../shared/field-roles"
+import { executorRestritoAFinalistas } from "./curador-vault-tools"
 
 const log = logger.child("CuradorShadow")
 
@@ -174,7 +175,7 @@ Você decide pelo protocolo, pelos eixos e pelos metadados. Você NÃO recebe o 
 </protocolo_de_selecao>
 
 <biblioteca>
-Catálogo completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. \`description\`, \`quando_usar\` e \`quando_nao_usar\` descrevem a peça que será REALMENTE montada — é o cadastro do sistema, e é ele que vale. Variantes com o campo \`vault\` trazem, ALÉM disso, os eixos do protocolo (objecao/registro/paleta/papel_na_peca + registro_vetado), \`peso\` e \`convivencia\`: o vault acrescenta o que o sistema não tem, nunca o contradiz.
+Índice compacto, agrupado por tipo de seção. Cada linha contém somente variant_id, título, seção (no cabeçalho), primeira frase, requisitos estruturais e eixos resumidos. A primeira frase e os requisitos vêm do cadastro do sistema, e ele é a fonte de verdade; os eixos do vault acrescentam contexto, nunca o contradizem. A ordem é alfabética e NÃO carrega julgamento.
 {{catalogo}}
 </biblioteca>
 
@@ -187,7 +188,7 @@ Como decidir, na ordem:
 1. LER A PROPOSTA DO ESTRUTURADOR: <decisao_do_estruturador> é o critério DOMINANTE por posição. Para cada posição de <estrutura_do_email>, extraia do \`estrutura[].papel\` (com \`adaptacao\` e \`porque\`) o que a ANATOMIA do bloco precisa ter para realizar aquele papel — quantos produtos mostra, se leva cupom em texto real, se tem depoimento com nome e nota, se isola em fundo contrastante, se abre ou fecha a peça, quantos itens de lista, se pede foto de uso real. É contra ISSO que as variantes são medidas. O \`fio_narrativo\` diz como as posições se ligam: as escolhas têm de conversar entre si (peso, convivência, linguagem visual) e com o arco. Os \`descartes\` dizem o que foi tirado de propósito — não recoloque o dispositivo por outra via (ex.: CTA isolado descartado não volta como body de CTA pesado). A objeção dominante do \`diagnostico\` é o alvo do eixo \`objecao\`. A sequência é FIXA. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Papel vence memória e preferência estética; marca e viabilidade (produtos/dados) continuam vetos.
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
-   <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
+   Selecione primeiro as poucas finalistas pelo índice e chame \`selecionar_finalistas\`. Só depois use \`ler_nota\`, exclusivamente para abrir as notas completas dessas finalistas. Não use \`listar_pasta\`; no máximo 4 consultas.
 2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
@@ -767,12 +768,12 @@ export async function runCuradorShadow(
     const systemVars = {
       protocolo: buildProtocoloBlock(p.vault),
       convivencias: buildConvivenciaBlock(p.vault),
-      catalogo: p.catalogComExtras.json,
+      catalogo: p.catalogComExtras.enxuto,
     }
 
     const catalogSha8 = crypto
       .createHash("sha256")
-      .update(p.catalogComExtras.json)
+      .update(p.catalogComExtras.enxuto)
       .digest("hex")
       .slice(0, 8)
     const systemResolvido = interpolateSystem(config.system_prompt, systemVars)
@@ -853,10 +854,16 @@ export async function runCuradorShadow(
     // Com ferramentas o modelo pode consultar o Obsidian antes de responder;
     // cada consulta fica em `consultas` (telemetria) e os tokens somam todas
     // as voltas.
+    const acessoFinalistas = p.ferramentas
+      ? executorRestritoAFinalistas(
+          p.ferramentas.executar,
+          p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => ({ variant_id: v.variant_id, slug: v.vault?.slug }))),
+        )
+      : null
     const res = p.ferramentas
       ? await invokeAgentWithTools(config, vars, systemVars, {
           tools: p.ferramentas.tools,
-          executar: p.ferramentas.executar,
+          executar: acessoFinalistas!.executar,
           maxCalls: p.ferramentas.maxCalls ?? 4,
           // Resposta sem JSON → uma volta a mais pedindo só o JSON, com o
           // histórico. Antes disso a resposta ia direto para
@@ -962,6 +969,16 @@ export async function runCuradorShadow(
         lacunas_servidas: p.vault.lacunas.length,
         consultou_vault: res.consultas.length > 0,
         consultas_ao_vault: res.consultas,
+        variantes_inicialmente_candidatas: p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => v.variant_id)),
+        finalistas_registradas: Array.from(acessoFinalistas?.finalistas ?? []),
+        notas_abertas: Array.from(acessoFinalistas?.notasAbertas ?? []),
+        tamanhos_segmentos: (promptSegments ?? []).map((s) => ({ rotulo: s.rotulo, parte: s.parte ?? null, chars: s.chars })),
+        reducao_catalogo: {
+          chars_catalogo_integral: p.catalogComExtras.json.length,
+          chars_indice_compacto: p.catalogComExtras.enxuto.length,
+          chars_reduzidos: Math.max(0, p.catalogComExtras.json.length - p.catalogComExtras.enxuto.length),
+          tokens_estimados_reduzidos: Math.ceil(Math.max(0, p.catalogComExtras.json.length - p.catalogComExtras.enxuto.length) / 4),
+        },
         voltas: res.voltas,
         fallback_sem_ferramentas: res.fallback_sem_ferramentas,
         // A estrutura VIGENTE (a da arquitetura, com os papéis casados) e,

@@ -65,7 +65,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { listarPasta, lerNota } from "./curador-vault-tools"
+import { executorRestritoAFinalistas, listarPasta, lerNota } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -128,5 +128,22 @@ describe("ferramentas do vault — variante desativada não é servida", () => {
   it("pasta sem nota devolve texto, não erro", async () => {
     const saida = await listarPasta("componentes/inexistente")
     expect(saida).toContain("nenhuma nota sincronizada")
+  })
+})
+
+describe("leitura sob demanda das finalistas", () => {
+  it("bloqueia notas antes da seleção e notas que não pertencem às finalistas", async () => {
+    const base = vi.fn(async (_nome: string, args: Record<string, unknown>) => `nota: ${args.caminho}`)
+    const acesso = executorRestritoAFinalistas(base, [
+      { variant_id: "v1", slug: "hero-1" },
+      { variant_id: "v2", slug: "hero-2" },
+    ])
+
+    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-1.md" })).toContain("somente nota")
+    await acesso.executar("selecionar_finalistas", { variant_ids: ["v1"] })
+    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-2.md" })).toContain("somente nota")
+    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-1.md" })).toContain("nota: componentes/hero-1.md")
+    expect(base).toHaveBeenCalledTimes(1)
+    expect(Array.from(acesso.notasAbertas)).toEqual(["v1"])
   })
 })
