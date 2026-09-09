@@ -3,7 +3,10 @@ import { describe, it, expect } from "vitest"
 import {
   buildCatalogVaultExtras,
   buildConvivenciaBlock,
+  buildDoutrinaBlock,
   buildEstruturasRefResumo,
+  buildJulgamentoBlock,
+  secoesDaDoutrina,
   buildIndiceDoVault,
   buildLacunasBlock,
   renderIndiceDoVault,
@@ -306,6 +309,48 @@ describe("lacunas da biblioteca", () => {
     expect(b).toContain("Lacuna geral · tags-do-banco-contradizem-a-prosa")
     expect(b).not.toContain("reviews-sem-foto")
     expect(buildLacunasBlock(indexVaultDocs([]), ["hero"])).toContain("nenhuma lacuna registrada")
+  })
+})
+
+// 09/09 — kinds novos. Os dois blocos existem para o outro lado (prompts
+// dos agentes) consumir; aqui só se garante que indexam e que a ausência
+// é declarada, nunca vazia.
+describe("julgamento e doutrina", () => {
+  it("julgamento indexa como nota única e ausência é declarada", () => {
+    const k = indexVaultDocs([doc({ kind: "julgamento", slug: "_julgamento", body_md: "# Régua\nexige × proibição é veto" })])
+    expect(k.julgamento?.slug).toBe("_julgamento")
+    expect(buildJulgamentoBlock(k)).toContain("é veto")
+    expect(buildJulgamentoBlock(emptyCuradorVaultKnowledge())).toContain("sem nota de julgamento")
+  })
+
+  it("doutrina roteia por `secao`, inclui as gerais e declara ausência", () => {
+    const k = indexVaultDocs([
+      doc({ kind: "doutrina", slug: "hero-promessa", frontmatter: { secao: "hero", fonte: "Curso A" }, body_md: "uma promessa por hero" }),
+      doc({ kind: "doutrina", slug: "assunto-curto", frontmatter: { secao: ["assunto"], fonte: "Curso B" }, body_md: "assunto de até 40" }),
+      doc({ kind: "doutrina", slug: "tom-geral", frontmatter: { fonte: "Curso C" }, body_md: "fala com uma pessoa" }),
+    ])
+    expect(k.doutrinas).toHaveLength(3)
+    expect(secoesDaDoutrina(k.doutrinas[2])).toEqual(["geral"])
+
+    const hero = buildDoutrinaBlock(k, "hero")
+    expect(hero).toContain("hero-promessa (fonte: Curso A)")
+    expect(hero).toContain("tom-geral")
+    expect(hero).not.toContain("assunto-curto")
+    // A específica vem antes da geral.
+    expect(hero.indexOf("hero-promessa")).toBeLessThan(hero.indexOf("tom-geral"))
+
+    expect(buildDoutrinaBlock(k, "geral")).not.toContain("hero-promessa")
+    expect(buildDoutrinaBlock(k, "products")).toContain("tom-geral")
+    expect(buildDoutrinaBlock(emptyCuradorVaultKnowledge(), "hero")).toContain("sem doutrina para a seção hero")
+    expect(buildDoutrinaBlock(emptyCuradorVaultKnowledge(), "geral")).toContain("sem doutrina geral")
+  })
+
+  it("teto de 3 notas por seção", () => {
+    const k = indexVaultDocs(
+      ["a", "b", "c", "d"].map((s) => doc({ kind: "doutrina", slug: `hero-${s}`, frontmatter: { secao: "hero", fonte: "X" }, body_md: s })),
+    )
+    const b = buildDoutrinaBlock(k, "hero")
+    expect(b.match(/## Doutrina/g)).toHaveLength(3)
   })
 })
 

@@ -52,6 +52,18 @@ export interface CuradorVaultKnowledge {
    * então o sync gravava e nenhum agente lia: o loader não pedia o kind.
    */
   lacunas: VaultDocRow[]
+  /**
+   * `componentes/_julgamento.md` (09/09) — a régua da casa: o que é veto,
+   * o que é desempate, o que pesa contra. Uma nota, servida INTEIRA ao
+   * Curador e ao Estruturador. Null enquanto o vault não a tiver.
+   */
+  julgamento: VaultDocRow | null
+  /**
+   * `componentes/doutrina/<slug>.md` (09/09) — doutrina de curso, com
+   * `fonte` obrigatória e `secao` no frontmatter (hero, assunto, copy…
+   * ou `geral`). Roteada por seção para a fase 2.
+   */
+  doutrinas: VaultDocRow[]
   /** `${eixo}/${slug}` → nota (ex.: "momento/welcome-1"). */
   eixos: Map<string, VaultDocRow>
   total: number
@@ -130,6 +142,8 @@ export function emptyCuradorVaultKnowledge(): CuradorVaultKnowledge {
     convivencias: [],
     requisitos: [],
     lacunas: [],
+    julgamento: null,
+    doutrinas: [],
     eixos: new Map(),
     total: 0,
   }
@@ -158,6 +172,12 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
       case "lacuna":
         k.lacunas.push(r)
         break
+      case "julgamento":
+        k.julgamento = r
+        break
+      case "doutrina":
+        k.doutrinas.push(r)
+        break
       case "eixo":
         if (r.grupo) k.eixos.set(`${r.grupo}/${r.slug}`, r)
         break
@@ -171,6 +191,7 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
   k.convivencias.sort((a, b) => a.slug.localeCompare(b.slug))
   k.requisitos.sort((a, b) => a.slug.localeCompare(b.slug))
   k.lacunas.sort((a, b) => a.slug.localeCompare(b.slug))
+  k.doutrinas.sort((a, b) => a.slug.localeCompare(b.slug))
   return k
 }
 
@@ -185,7 +206,7 @@ export async function loadCuradorVaultKnowledge(): Promise<CuradorVaultKnowledge
       .from("email_vault_docs")
       .select("kind, grupo, slug, variant_id, frontmatter, body_md")
       .eq("is_active", true)
-      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo", "lacuna"])
+      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo", "lacuna", "julgamento", "doutrina"])
     if (error) {
       log.warn("load_failed", { error: error.message })
       return emptyCuradorVaultKnowledge()
@@ -311,6 +332,69 @@ export function buildProtocoloBlock(k: CuradorVaultKnowledge): string {
     return "(vault de componentes não sincronizado — siga as regras de seleção abaixo e os metadados do catálogo)"
   }
   return clamp(semMomento(k.protocolo.body_md), 24_000)
+}
+
+/** Teto do julgamento no prompt — o mesmo do sync (`JULGAMENTO_MAX_CHARS`). */
+const JULGAMENTO_PROMPT_MAX = 8_000
+/** Teto de cada doutrina no prompt — o mesmo do sync (`DOUTRINA_MAX_CHARS`). */
+const DOUTRINA_PROMPT_MAX = 6_000
+/** Doutrinas por seção: acima disso o bloco vira segundo catálogo. */
+const DOUTRINA_MAX_NOTAS = 3
+
+/**
+ * A régua da casa, inteira. Ausência é DECLARADA — o modelo que recebe um
+ * bloco vazio sem explicação sai procurando a regra em outro lugar (lição
+ * do `exige` e do `momento`).
+ */
+export function buildJulgamentoBlock(k: CuradorVaultKnowledge): string {
+  if (!k.julgamento) return "(sem nota de julgamento no vault — aplique só o protocolo e os metadados do catálogo)"
+  return clamp(k.julgamento.body_md, JULGAMENTO_PROMPT_MAX)
+}
+
+/** A(s) seção(ões) que uma doutrina declara servir; `geral` quando não declara. */
+export function secoesDaDoutrina(doc: VaultDocRow): string[] {
+  const fm = doc.frontmatter
+  for (const key of ["secao", "seção", "secoes", "section"]) {
+    const v = fm[key]
+    if (typeof v === "string" && v.trim()) return [v.trim().toLowerCase()]
+    if (Array.isArray(v)) {
+      const out = v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().toLowerCase())
+      if (out.length > 0) return out
+    }
+  }
+  return ["geral"]
+}
+
+/**
+ * Doutrina da seção pedida + as `geral`, cada uma com a fonte no título.
+ * `secao: "geral"` devolve só as gerais. Teto de 3 notas e 6k cada: é
+ * apoio à decisão, não um segundo catálogo. Ausência declarada.
+ */
+export function buildDoutrinaBlock(k: CuradorVaultKnowledge, secao: string | "geral"): string {
+  const alvo = secao.trim().toLowerCase() || "geral"
+  const escolhidas = k.doutrinas.filter((d) => {
+    const s = secoesDaDoutrina(d)
+    return s.includes(alvo) || (alvo !== "geral" && s.includes("geral"))
+  })
+  if (escolhidas.length === 0) {
+    return alvo === "geral"
+      ? "(sem doutrina geral no vault)"
+      : `(sem doutrina para a seção ${alvo} no vault)`
+  }
+  // Específica da seção antes da geral: a que fala desta peça pesa mais.
+  const ordenadas = [...escolhidas].sort((a, b) => {
+    const ea = secoesDaDoutrina(a).includes(alvo) ? 0 : 1
+    const eb = secoesDaDoutrina(b).includes(alvo) ? 0 : 1
+    return ea - eb || a.slug.localeCompare(b.slug)
+  })
+  return ordenadas
+    .slice(0, DOUTRINA_MAX_NOTAS)
+    .map((d) => {
+      const fonte = typeof d.frontmatter.fonte === "string" ? d.frontmatter.fonte.trim() : ""
+      const titulo = fonte ? `## Doutrina · ${d.slug} (fonte: ${fonte})` : `## Doutrina · ${d.slug}`
+      return `${titulo}\n${clamp(d.body_md, DOUTRINA_PROMPT_MAX)}`
+    })
+    .join("\n\n")
 }
 
 export function buildConvivenciaBlock(k: CuradorVaultKnowledge): string {
