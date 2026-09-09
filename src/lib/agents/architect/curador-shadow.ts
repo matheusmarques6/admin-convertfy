@@ -65,6 +65,7 @@ import {
   type ContratoResumo,
   type EliminacaoDaPosicao,
 } from "../shared/field-roles"
+import { executorRestritoAFinalistas } from "./curador-vault-tools"
 
 const log = logger.child("CuradorShadow")
 
@@ -1090,6 +1091,16 @@ export async function runCuradorShadow(
         lacunas_servidas: p.vault.lacunas.length,
         consultou_vault: res.consultas.length > 0,
         consultas_ao_vault: res.consultas,
+        variantes_inicialmente_candidatas: p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => v.variant_id)),
+        finalistas_registradas: Array.from(acessoFinalistas?.finalistas ?? []),
+        notas_abertas: Array.from(acessoFinalistas?.notasAbertas ?? []),
+        tamanhos_segmentos: (promptSegments ?? []).map((s) => ({ rotulo: s.rotulo, parte: s.parte ?? null, chars: s.chars })),
+        reducao_catalogo: {
+          chars_catalogo_integral: p.catalogComExtras.json.length,
+          chars_indice_compacto: p.catalogComExtras.enxuto.length,
+          chars_reduzidos: Math.max(0, p.catalogComExtras.json.length - p.catalogComExtras.enxuto.length),
+          tokens_estimados_reduzidos: Math.ceil(Math.max(0, p.catalogComExtras.json.length - p.catalogComExtras.enxuto.length) / 4),
+        },
         voltas: res.voltas,
         fallback_sem_ferramentas: res.fallback_sem_ferramentas,
         // A estrutura VIGENTE (a da arquitetura, com os papéis casados) e,

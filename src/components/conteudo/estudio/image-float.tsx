@@ -27,7 +27,10 @@ export function ImageFloat({ api }: { api: EditorApi }) {
   const frame = i >= 0 ? doc.frames[i] : null
   const img = frame?.imagens.slot1
   if (!frame || !img) return null
-  const fluxo = frame.tipo === "texto" || frame.tipo === "lista" || frame.tipo === "mec"
+  // No "slide inteiro" (via B) a imagem é o frame todo: os sliders de
+  // tamanho do slot não teriam efeito nenhum e só enganariam quem arrasta.
+  const slideInteiro = frame.imagemModo === "completo"
+  const fluxo = !slideInteiro && (frame.tipo === "texto" || frame.tipo === "lista" || frame.tipo === "mec")
 
   const patch = (p: Partial<ImagemSlot>, final: boolean) => {
     const fn = (d: typeof doc) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: { ...(x.imagens.slot1 ?? img), ...p } } } : x)) })
@@ -62,7 +65,7 @@ export function ImageFloat({ api }: { api: EditorApi }) {
         <button
           type="button"
           onClick={() => {
-            api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: {} } : x)) }), `Imagem removida · ${frame.label}`)
+            api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: {}, imagemModo: undefined } : x)) }), `Imagem removida · ${frame.label}`)
             api.setImgSel(null)
           }}
           className="h-[30px] rounded-lg border border-[var(--ops-neg)]/40 px-[11px] text-[11.5px] font-medium text-[var(--ops-neg)] hover:bg-[var(--ops-hover)]"

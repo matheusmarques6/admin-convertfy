@@ -153,6 +153,6 @@ analisar_inspiracao, transcrever_referencia, gerar_imagem).
 ## Ordem revisada
 
 1. **Motor editorial** — FEITO em 09/09 (ver seção no CLAUDE.md) (maior ganho de qualidade por hora): triagem → 10 headlines com padrão/gatilho/veredito + diagnóstico → espinha dorsal → copy a partir da espinha → revisão 7 parâmetros + filtro anti-slop puro (testes) + títulos ancorados + 2 blocos por slide. Tabelas de padrão/gatilho ADAPTADAS ao e-commerce, editáveis. UI: passos com aprovação no caminho "100% com IA"; botões "Headlines" (10, com diagnóstico da atual) e "Revisar copy" no editor.
-2. **Via B**: `promptImagem` por frame, construtor, Copiar/Gerar, híbrido default, sugestão automática pelo preenchimento real.
+2. **Via B** — FEITO em 09/09 (ver seção no CLAUDE.md): `promptImagem` + `imagemModo` por frame, construtor puro (`lib/conteudo/prompt-slide.ts`, 15 testes), painel "Prompt do slide" no editor com Copiar/Gerar (2 variações, GPT Image 2 × Gemini), híbrido como padrão, modo "slide inteiro" explícito (rota `gerar_imagem` com `modo`; renderer full-bleed sem texto), sugestão automática pelo preenchimento real (< 60% e sem imagem). O "frame `gerado`" previsto virou `imagemModo: "completo"` no frame existente — não precisou de tipo novo.
 3. **Famílias visuais** Editorial + Alternado, presets de brand kit, moldes Tendência e Previsão com `arco`.
 4. **Loop**: CTA → automação da palavra-chave; classificação por padrão de headline; evidências e busca web na triagem.

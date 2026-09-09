@@ -8,6 +8,7 @@
  */
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
 import type {
   BrandKit,
@@ -213,7 +214,13 @@ export function trocarTemplate(doc: Documento, novo: Template): ResultadoTroca {
       textos: Object.fromEntries(
         nf.campos.map((c) => [c, old.textos[c] ?? base.textos[c] ?? ""]),
       ),
-      imagens: nf.slotsImagem ? old.imagens : {},
+      // Imagem da via B sobrevive à troca: no slide inteiro ela É o slide
+      // (não depende de slot); no híbrido o frame novo ganha o slot se o
+      // tipo tiver lugar para ele. Prompt e modo seguem junto.
+      ...(old.imagemModo && old.imagens.slot1 && (old.imagemModo === "completo" || aceitaHibrido(nf.tipo))
+        ? { imagens: old.imagens, imagemModo: old.imagemModo, slotsImagem: (nf.slotsImagem || old.imagemModo === "hibrido" ? 1 : 0) as 0 | 1 }
+        : { imagens: nf.slotsImagem ? old.imagens : {} }),
+      promptImagem: old.promptImagem,
       variante: old.variante,
     }
   })
@@ -421,10 +428,19 @@ export function contarPalavras(texto: string): number {
   return texto.trim().split(/\s+/).filter(Boolean).length
 }
 
+/**
+ * O frame exibe imagem? Slot do template OU imagem já aplicada — na via B
+ * o "slide inteiro" ocupa frames que o template criou sem slot (dado, CTA),
+ * e ignorá-los faria a imagem existir no canvas e sumir do painel de Mídia.
+ */
+export function aceitaImagem(f: Pick<DocFrame, "slotsImagem" | "imagens">): boolean {
+  return f.slotsImagem > 0 || Boolean(f.imagens.slot1)
+}
+
 export function slotsDeImagem(doc: Documento): { total: number; cheios: number; semSlot: number[] } {
-  const total = doc.frames.filter((f) => f.slotsImagem > 0).length
-  const cheios = doc.frames.filter((f) => f.slotsImagem > 0 && f.imagens.slot1).length
-  const semSlot = doc.frames.map((f, i) => (f.slotsImagem === 0 ? i + 1 : -1)).filter((i) => i > 0)
+  const total = doc.frames.filter(aceitaImagem).length
+  const cheios = doc.frames.filter((f) => Boolean(f.imagens.slot1)).length
+  const semSlot = doc.frames.map((f, i) => (aceitaImagem(f) ? -1 : i + 1)).filter((i) => i > 0)
   return { total, cheios, semSlot }
 }
 

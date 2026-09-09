@@ -70,7 +70,7 @@ import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
 import { computeContentChecks } from "./html/content-checks"
-import { incentivoExisteDoCatalogo } from "./objecoes/incentivo"
+import { incentivoDoCatalogo, incentivoExisteDoCatalogo } from "./objecoes/incentivo"
 import {
   runQaAgent,
   runSchemaChecks,
@@ -649,6 +649,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     // Decisão de incentivo da loja (Catalogador, `objection_catalog.incentivo.existe`):
     // `false` liga o check `oferta_sem_incentivo`; `null` = desconhecido.
     incentivoExiste: incentivoExisteDoCatalogo(storeData?.objection_catalog),
+    incentivoCodigo: incentivoDoCatalogo(storeData?.objection_catalog).codigo,
   }
 }
 
@@ -4093,12 +4094,14 @@ export async function runPhase2HtmlQa(
     ...fmtResult.heroCopyAceita.map((valor) => ({
       type: "hero_copy_perdida" as const,
       severity: "high" as const,
+      disposition: "blocking" as const,
       message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. A região do merge ficou no lugar do acabamento do agente — confira a hero antes de aprovar.`,
       location: "hero",
     })),
     ...fmtResult.heroInventado.map((texto) => ({
       type: "hero_copy_inventada" as const,
       severity: "high" as const,
+      disposition: "blocking" as const,
       message: `O agente de hero escreveu "${texto.slice(0, 80)}", que não existia na copy. O fragmento foi descartado e a região do merge ficou no lugar.`,
       location: "hero",
     })),
@@ -4106,10 +4109,10 @@ export async function runPhase2HtmlQa(
 
   // Checks de CONTEÚDO por código (09/09): oferta sem incentivo,
   // placeholder entre colchetes, texto de exemplo da biblioteca, parágrafo
-  // repetido. Rodam nos DOIS caminhos — com o gate desligado só persistem;
-  // ligado, `high` reprova junto com o agente.
+  // repetido. Rodam sempre e bloqueiam antes do QA configurável por modelo.
   const contentIssues: QaIssue[] = computeContentChecks(finalHtml, {
     incentivoExiste: ctx.incentivoExiste ?? null,
+    incentivoCodigo: ctx.incentivoCodigo ?? null,
   })
   if (contentIssues.length > 0) {
     log.warn("phase2.qa.content_checks_issues", {
@@ -4119,11 +4122,53 @@ export async function runPhase2HtmlQa(
     })
   }
 
+  // O gate determinístico é obrigatório e independe do agente por modelo.
+  // Carrega também o contrato uma única vez, para os dois caminhos.
+  const { data: checkBlocks } = await admin
+    .from("email_blocks")
+    .select("block_type, content, fields")
+    .eq("email_id", emailId)
+    .order("position", { ascending: true })
+  const schemaIssues = runSchemaChecks(
+    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+      block_type: (b.block_type as string) ?? "unknown",
+      content: (b.content as Record<string, unknown>) ?? {},
+    })),
+    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+      type: (b.block_type as string) ?? "unknown",
+      fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
+    })),
+  ).map((issue) => ({ ...issue, disposition: "warning" as const }))
+  const deterministicIssues: QaIssue[] = [
+    ...heroCopyIssues,
+    ...contentIssues,
+    ...computeRenderChecks(finalHtml),
+    ...schemaIssues,
+  ]
+  const blockingIssues = deterministicIssues.filter(
+    (issue) => issue.disposition === "blocking",
+  )
+  if (blockingIssues.length > 0) {
+    await admin.from("email_flow_emails").update({
+      status: "failed",
+      failed_at: new Date().toISOString(),
+      failure_reason: "qa_failed",
+      qa_issues: deterministicIssues,
+      updated_at: new Date().toISOString(),
+    }).eq("id", emailId).eq("status", "rendering")
+    await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    log.warn("phase2.qa.deterministic_blocked", {
+      emailId,
+      blocking: blockingIssues.map((issue) => issue.type),
+    })
+    return { status: "failed" }
+  }
+
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
-  // sem qa_failed. As checagens DETERMINISTICAS (computeRenderChecks — sem
-  // LLM) continuam rodando: NAO bloqueiam, so persistem issues informativos
-  // em qa_issues pra dar visibilidade de formatacao ao designer.
+  // sem custo do modelo. O gate determinístico obrigatório já rodou acima;
+  // aqui persistimos os warnings restantes para revisão do designer.
   // Claim atomico `rendering -> ready` mantem idempotencia.
   if (!isQaEnabled()) {
     // Contrato do bloco: copy estourando `max_len` e campo obrigatório
@@ -4136,30 +4181,7 @@ export async function runPhase2HtmlQa(
     //
     // A fonte é o `fields` do PRÓPRIO bloco (migration 20261065, "o bloco
     // é o schema"), não o blueprint pareado por índice.
-    const { data: checkBlocks } = await admin
-      .from("email_blocks")
-      .select("block_type, content, fields")
-      .eq("email_id", emailId)
-      .order("position", { ascending: true })
-    const contratoBlocks = (checkBlocks ?? []).map(
-      (b: Record<string, unknown>) => ({
-        block_type: (b.block_type as string) ?? "unknown",
-        content: (b.content as Record<string, unknown>) ?? {},
-      }),
-    )
-    const schemaIssues = runSchemaChecks(
-      contratoBlocks,
-      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
-        type: (b.block_type as string) ?? "unknown",
-        fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
-      })),
-    )
-    const renderIssues = [
-      ...heroCopyIssues,
-      ...contentIssues,
-      ...computeRenderChecks(finalHtml),
-      ...schemaIssues,
-    ]
+    const renderIssues = deterministicIssues
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -4299,15 +4321,14 @@ export async function runPhase2HtmlQa(
   // double-check redundante.
   // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
   // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
-  const contentReprova = contentIssues.some((i) => i.severity === "high")
-  if (!qaResult.passed || contentReprova) {
+  if (!qaResult.passed) {
     await admin
       .from("email_flow_emails")
       .update({
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+        qa_issues: [...deterministicIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4324,7 +4345,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+      qa_issues: [...deterministicIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)
@@ -4350,5 +4371,3 @@ export async function runPhase2InBackground(
     await runPhase2HtmlQa(params)
   }
 }
-
-

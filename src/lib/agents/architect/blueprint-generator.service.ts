@@ -44,6 +44,7 @@ import {
 import type { AssemblySlot } from "./component-assembler.service"
 import type { RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
+import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 /**
  * Por que a estrutura deste email é (ou não é) a do Estruturador.
@@ -436,6 +437,14 @@ async function generateSubjectHint(input: {
     top_products: input.topProductNames.join(", "),
   }
 
+  // Mantém o prompt aprovado editável intacto e acrescenta apenas a nota
+  // versionada de assunto (nunca o corpus inteiro do vault).
+  const approvedSystemPrompt = config.system_prompt
+  const effectiveConfig = {
+    ...config,
+    system_prompt: withDoctrine(approvedSystemPrompt, "subject"),
+  }
+
   // Proveniência: o system do Assunto não tem var (100% agente); o user é
   // plain-var. Até 26/08 esta run não gravava prompt NENHUM — passa a gravar.
   const segUser = buildSegmentedPrompt(config.user_template, vars, SUBJECT_ORIGINS, {
@@ -449,10 +458,11 @@ async function generateSubjectHint(input: {
       {
         cls: "agente" as const,
         rotulo: "Template do agente",
-        texto: config.system_prompt,
-        chars: config.system_prompt.length,
+        texto: approvedSystemPrompt,
+        chars: approvedSystemPrompt.length,
         parte: "system" as const,
       },
+      doctrinePromptSegment("subject"),
     ],
     segUser.segments,
   )
@@ -484,7 +494,7 @@ async function generateSubjectHint(input: {
   })
 
   try {
-    const res = await invokeAgent(config, vars)
+    const res = await invokeAgent(effectiveConfig, vars)
     const json = JSON.parse(extractJson(res.raw)) as Record<string, unknown>
     const subjectHint =
       typeof json.subject_hint === "string" && json.subject_hint.trim()

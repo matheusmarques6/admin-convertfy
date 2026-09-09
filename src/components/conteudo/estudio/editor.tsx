@@ -22,6 +22,7 @@ import {
   Feather,
   History,
   Image as ImageIcon,
+  ImagePlus,
   Instagram,
   LayoutTemplate,
   Megaphone,
@@ -56,6 +57,7 @@ import { Frame, alturaFrame, type SelImagem, type SelTexto } from "./frame"
 import { FramesPanel } from "./frames-panel"
 import { ImageFloat } from "./image-float"
 import { PainelEditorial } from "./editorial-panel"
+import { PainelPromptSlide } from "./prompt-slide-panel"
 import { AgendarModal, BrandKitModal, ExportModal, PreviewModal } from "./modais"
 import {
   PainelAssistente,
@@ -73,10 +75,10 @@ import {
 import { Thumb } from "./thumb"
 import { useEditor } from "./use-editor"
 
-type PainelKey = "editorial" | "template" | "assistente" | "globais" | "texto" | "midia" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
+type PainelKey = "editorial" | "template" | "assistente" | "globais" | "texto" | "midia" | "prompt" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
 
 const GRUPOS: Array<[string, PainelKey[]]> = [
-  ["Conteúdo", ["editorial", "template", "assistente", "texto", "midia"]],
+  ["Conteúdo", ["editorial", "template", "assistente", "texto", "midia", "prompt"]],
   ["Marca", ["globais", "cores", "fundo", "gradiente", "ctas"]],
   ["Saída", ["proporcao", "historico"]],
 ]
@@ -88,6 +90,7 @@ const PAINEIS: Record<PainelKey, [string, LucideIcon]> = {
   globais: ["Campos globais", Store],
   texto: ["Texto", Type],
   midia: ["Mídia", ImageIcon],
+  prompt: ["Prompt do slide", ImagePlus],
   cores: ["Cores globais", Palette],
   fundo: ["Fundo", LayoutTemplate],
   gradiente: ["Gradiente", Waves],
@@ -263,6 +266,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
     globais: <PainelGlobais api={api} />,
     texto: <PainelTexto api={api} />,
     midia: <PainelMidia api={api} />,
+    prompt: <PainelPromptSlide api={api} />,
     cores: <PainelCores api={api} />,
     fundo: <PainelFundo api={api} />,
     gradiente: <PainelGradiente api={api} />,
