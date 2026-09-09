@@ -46,6 +46,12 @@ import { renderImagePrompt } from "../chains/image.chain"
 import { deriveColorRoles } from "@/lib/agents/html/color-roles"
 import { deriveShotArchetype } from "./shot-archetype"
 import { buildImageSlots } from "./build-image-slots"
+import {
+  avisoDeCorDeReferencia,
+  paletaPorPapel,
+  traduzirCoresDoBrief,
+  type TrocaDeCor,
+} from "./cores-da-marca"
 import type { AspectKey } from "./aspect-ratio"
 import type { ImageMode } from "./mode-resolution"
 
@@ -237,9 +243,26 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // Briefing do fotógrafo DESTE bloco: sai da variante que o Montador casou
   // a ele. É input principal do prompt — nicho, posicionamento e paleta
   // passam a ser contexto de apoio.
-  const photoDirection = (
+  const photoDirectionCru = (
     input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
   ).trim()
+  // 09/09: o cadastro das variantes descreve a arte com os hex da PEÇA DE
+  // REFERÊNCIA e os nomeia com o papel da paleta ("#2A4439 (cor
+  // primária)"). Como a direção é a fonte principal do prompt, o modelo
+  // obedecia a ela: os selos da `body 3` saíram salmão/verde nas DUAS
+  // lojas do dia, nenhuma com essas cores. Traduz quando a loja tem a cor
+  // do papel; quando não tem — 14 das 20 lojas não têm nenhuma —, o hex
+  // fica mas deixa de ser apresentado como identidade da marca.
+  const paletaDaMarca = paletaPorPapel(
+    brand?.colors_primary ?? null,
+    brand?.colors_secondary ?? null,
+  )
+  const trocasDeCor: TrocaDeCor[] = []
+  const referenciaSemCor: Array<{ hex: string; papel: string }> = []
+  const direcaoTraduzida = traduzirCoresDoBrief(photoDirectionCru, paletaDaMarca)
+  const photoDirection = direcaoTraduzida.texto
+  trocasDeCor.push(...direcaoTraduzida.trocas)
+  referenciaSemCor.push(...direcaoTraduzida.semCorDaLoja)
   // 09/09: a intenção VISUAL decidida pelo Estruturador para esta posição
   // (`requisitos.imagem`, gravada no bloco do blueprint). Entra ACIMA da
   // direção da variante: no batch 644d86c5 o Estruturador pediu "uso real
@@ -259,10 +282,42 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // vêm do content inteiro e os irmãos de imagem entram como
   // `outras_imagens_deste_bloco` (a segunda foto sabe o que a primeira
   // mostra).
-  const imageSlots = buildImageSlots(bpBlock?.fields, input.blockContent, {
+  // O `image_spec` de cada campo cita os mesmos hex da referência ("círculo
+  // chapado em #D88B71 (cor secundária)"), então passa pela MESMA tradução
+  // antes de virar `especificidade` no IMAGE_SLOTS.
+  const camposTraduzidos = (bpBlock?.fields ?? []).map((f) => {
+    const spec = (f as { image_spec?: string | null }).image_spec
+    if (!spec || !spec.includes("#")) return f
+    const t = traduzirCoresDoBrief(spec, paletaDaMarca)
+    trocasDeCor.push(...t.trocas)
+    for (const c of t.semCorDaLoja) referenciaSemCor.push(c)
+    return { ...f, image_spec: t.texto }
+  })
+  const imageSlots = buildImageSlots(camposTraduzidos, input.blockContent, {
     fieldKey: input.fieldKey ?? null,
     anchorKey: input.anchorKey ?? null,
   })
+  // O aviso vai ao PROMPT, não só à telemetria: sem ele o modelo lê
+  // "#D88B71 (cor secundária)" como identidade da marca — foi o que
+  // produziu selos salmão numa loja preta e branca. Anexado à direção
+  // quando ela existe (é lá que a cor aparece) e ao IMAGE_SLOTS quando
+  // não. Sem nenhum dos dois não há onde falar de cor, e o aviso cai.
+  const avisoDeCor = avisoDeCorDeReferencia({
+    texto: "",
+    trocas: [],
+    semCorDaLoja: referenciaSemCor as Array<{
+      hex: string
+      papel: "primaria" | "secundaria" | "terciaria"
+    }>,
+    semPapel: [],
+  })
+  const photoDirectionFinal =
+    avisoDeCor && photoDirection ? `${photoDirection}\n\n${avisoDeCor}` : photoDirection
+  const imageSlotsFinal =
+    avisoDeCor && !photoDirection && imageSlots
+      ? `${imageSlots}\n\n${avisoDeCor}`
+      : imageSlots
+
   const legacyImageBrief =
     bpBlock?.image_brief?.trim() || blueprint?.image_brief?.trim() || ""
 
@@ -280,12 +335,14 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
 
     // Direção fotográfica da variante deste bloco (COMO fotografar).
     // Vazia quando ninguém escreveu — o template omite a seção inteira.
-    PHOTO_DIRECTION: photoDirection,
+    PHOTO_DIRECTION: photoDirectionFinal,
     INTENCAO_VISUAL: intencaoVisual,
     // Boolean-like: o template diz ao modelo que NÃO há direção e que ele
     // compõe só pelo slot — em vez de inventar cena (03/09: sem frase de
     // cena por bloco/flow, sem cenário nem mood derivados por código).
-    PHOTO_DIRECTION_AUSENTE: photoDirection ? "" : "true",
+    // O flag segue a direção ORIGINAL: o aviso de cor não faz uma variante
+    // sem direção passar a ter uma.
+    PHOTO_DIRECTION_AUSENTE: photoDirectionCru ? "" : "true",
     EMAIL_ASSUNTO: blueprint?.subject_hint?.trim() ?? "",
 
     // Perfil da marca (enxuto — tom/persona/diferencial/slogan/restrições
@@ -331,7 +388,16 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     IMAGE_BRIEF: imageSlots ? "" : legacyImageBrief,
     // Seções estruturadas por slot de imagem (schema + slot_note + copy do
     // grupo). Fonte PRIMÁRIA de direção de arte; vazio → cai no IMAGE_BRIEF.
-    IMAGE_SLOTS: imageSlots,
+    IMAGE_SLOTS: imageSlotsFinal,
+    // Telemetria da tradução de cor (09/09) — o template não as referencia;
+    // existem para aparecer na Entrada da run e tornar a lacuna de paleta
+    // COBRÁVEL, em vez de silenciosa.
+    CORES_TRADUZIDAS: trocasDeCor
+      .map((t) => `${t.de}→${t.para} (${t.papel})`)
+      .join(", "),
+    CORES_DE_REFERENCIA: referenciaSemCor
+      .map((c) => `${c.hex} (${c.papel})`)
+      .join(", "),
 
     // Contexto pro switch do template (snake_case porque o template usa
     // {{#case flow_type}}{{#when "welcome"}}... — convencao do parser
@@ -422,6 +488,9 @@ export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   EMAIL_IDEIA: { cls: "upstream", rotulo: "Ideia do email — fio do Estruturador (ou messaging)" },
   // Escrita no cadastro da variante: é a biblioteca dizendo COMO fotografar.
   PHOTO_DIRECTION: { cls: "biblioteca", rotulo: "Direção fotográfica da variante" },
+  // Derivadas por CÓDIGO a partir da paleta da loja × hex do cadastro.
+  CORES_TRADUZIDAS: IMG_CODIGO,
+  CORES_DE_REFERENCIA: IMG_CODIGO,
   INTENCAO_VISUAL: { cls: "upstream", rotulo: "Intenção visual da posição — requisitos.imagem do Estruturador" },
   PHOTO_DIRECTION_AUSENTE: IMG_CODIGO,
   IMAGE_SLOTS: { cls: "biblioteca", rotulo: "Direção de arte por slot — schema da variante" },
