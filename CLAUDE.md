@@ -4101,6 +4101,98 @@ SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
 erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
 quatro dias sem gravar run porque o CHECK não tinha o valor).
 
+## Comment gate: a palavra do carrossel vira automação (set/2026)
+
+O carrossel termina em "comente SEGMENTO e eu te mando no direct" e isso
+era **só texto no slide**. Medido antes de mexer: zero automações com
+gatilho `thread_message_received` no banco, o texto do comentário
+chegando ao dispatcher e **ninguém filtrando por ele**, e o executor sem
+saber responder pelo Instagram (canal de IG caía no ramo da Cloud API do
+WhatsApp e o nó morria em `config_missing`). Quatro camadas, todas
+mudas.
+
+**Filtro por palavra** (`lib/crm/palavra-chave.ts`, puro, 8 testes):
+casa por PALAVRA INTEIRA, sem caixa nem acento — "41" não pode disparar
+em "3410" nem "guia" em "guiaram", porque casar de mais manda mensagem a
+quem não pediu e é assim que a conta é punida. Plural simples entra
+("segmentos" casa "segmento"), outras flexões não; variantes por vírgula
+("SEGMENTO, SEGMENTAR") porque o operador raramente acerta de primeira
+como o público escreve. Sem chave configurada devolve `true`: automação
+sem filtro continua disparando como antes.
+
+**Resposta pelo caminho certo** (`lib/crm/resposta-instagram.ts`, puro):
+comentário → *private reply* endereçada pelo **id do comentário** (a
+resposta cai no direct de quem comentou; uma por comentário, 7 dias);
+direct → DM pelo id do remetente. `sendInstagramMessage` ganhou
+`to_kind`, que escolhe entre `recipient:{comment_id}` e `recipient:{id}`.
+O `to` do nó fica VAZIO de propósito — no Instagram o destinatário vem
+do gatilho, não de um campo digitado.
+
+**O negócio é de quem comentou, não do post.** A thread de comentários é
+agrupada pela MÍDIA (`contact_external_id = "comment:<media>"`): cem
+pessoas comentando caem na MESMA conversa. Como `action_create_deal` é
+idempotente por thread, o post inteiro rendia **um negócio só** e todos
+os outros voltavam `created:false`, calados — e `is_first_message`, que
+contava por thread, dizia "sim" apenas para quem comentou primeiro, então
+com o filtro "só a primeira" ligado o gate atendia UMA pessoa por post.
+Os dois defeitos são invisíveis: nada em log ou tela diz que noventa e
+nove pedidos foram descartados. Os dados de produção já mostravam o caso
+(dois posts com 2 comentários de 2 pessoas diferentes cada).
+
+Agora `donoDoNegocio` (mesmo módulo puro) devolve `thread` (conversa de
+pessoa: o vínculo dela vale) ou `pessoa` (conversa de post: o dono é
+quem comentou), e `garantirThreadDaPessoa`
+(`crm-thread-pessoa.service.ts`) abre a conversa DELA — mesmo espaço de
+identidade do direct, então quando ela responder cai ali e nada duplica.
+Sem `sender_external_id` a ação **recusa com motivo declarado**: um
+negócio para o post inteiro é pior que nenhum. `is_first_message` de
+comentário passou a contar por remetente (`metadata->>sender_id`).
+
+**A resposta enviada é gravada no inbox** (`registrarSaidaNoInstagram`,
+`sent_by_kind: "automation"`): sem isso o direct saía e o atendente via a
+pessoa responder a uma mensagem que, para ele, nunca existiu. Vai na
+conversa da pessoa, dedupe pelo id do comentário (hash do texto só como
+último recurso — a mesma pessoa comentando duas vezes recebe duas
+respostas e as duas têm de aparecer). Falhar ao gravar NÃO derruba o nó:
+a mensagem já saiu.
+
+**Resposta e negócio são ramos PARALELOS do gatilho**, não uma fila. No
+executor um nó que falha interrompe o ramo dele e só ele: em fila, DM
+recusada (janela de 7 dias, pessoa que bloqueou direct) faria o lead
+nunca chegar à pipeline, e pipeline mal configurada calaria a entrega que
+o carrossel prometeu. A resposta vem primeiro na lista de edges porque
+elas são percorridas em ordem e quem comentou está esperando.
+
+**Com palavra-chave, "só a primeira mensagem" sai do filtro**
+(`instagram-automation.ts`): quem já tinha comentado "🔥" no post não
+entraria quando comentasse a palavra — e é justamente essa pessoa que
+pediu. Quem faz o papel de guarda contra spam ali é a palavra.
+`keyword` entra na identidade de `isSameInstagramAutomation`: duas
+automações do mesmo post com palavras diferentes são coisas diferentes.
+Comentário da PRÓPRIA conta é gravado (é histórico) mas não dispara —
+com o gate ligado, o fluxo responderia a si mesmo.
+
+**O gatilho que o builder edita passou a valer** (`automation-trigger.ts`,
+puro, 4 testes). Quem dispara é a COLUNA `automations.trigger`; o nó do
+DAG é o que a tela mostra. O save do builder manda só `{name, dag}`, então
+mexer no canal, no tipo de interação ou na palavra-chave pela tela salvava
+o desenho e **não mudava nada** — sem erro, sem aviso, e só o banco
+contava a verdade. O PATCH agora deriva a coluna do nó quando o corpo traz
+`dag` e não traz `trigger`; desenho sem nó de trigger utilizável mantém o
+que está gravado (apagar desligaria a automação em silêncio). Zero
+automações no banco quando isto entrou — não há dado legado a migrar.
+
+**No Estúdio** (`comment-gate.ts`, puro, 8 testes + `comment-gate-modal`):
+botão "Ligar a automação" embaixo do campo Comment gate, na aba Legenda.
+`impedimentosDoGate` diz o que falta (palavra, perfil, canal fora do
+Instagram) em vez de oferecer um botão que falha; `respostaSugerida` sai
+do CTA do próprio carrossel quando ele entrega algo — "Comente SEGMENTO"
+é o PEDIDO, não a entrega, e cai no texto que nomeia a palavra. O POST é
+a MESMA rota do painel Instagram (`setup-automation`, agora com
+`keyword` e `reply`), então a automação aparece e é editável em
+Automações do CRM: um dono só. `data.ts` ganhou as duas únicas chamadas
+do Estúdio a rotas do CRM, com o motivo declarado.
+
 ## Execução manual: desativar, pinar e parar onde quiser (set/2026, migration 20261129)
 
 Camadas B/C/D do plano. `email_generation_executions` (mode manual|producao,

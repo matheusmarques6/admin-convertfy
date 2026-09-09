@@ -20,6 +20,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { assertThreadInOrg } from "@/lib/crm/inbox-thread-guard"
+import { resolveInstagramSendConfig } from "@/lib/services/instagram-send-config.service"
 import { logger } from "@/lib/logger"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { loadWhatsAppChannel, markChannelAuthError } from "@/lib/whatsapp/channel-config"
@@ -389,56 +390,7 @@ export async function POST(
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-/**
- * Config de envio do Instagram, com auto-cura do vínculo da Página.
- *
- * Canal conectado antes da migração para o caminho da Página não tem
- * `facebook_page_token` no config. Em vez de falhar (e mandar o operador
- * reconectar a conta), descobrimos a Página pelo próprio token e
- * persistimos — a mesma rotina que a importação de conversas usa. Roda
- * só quando o token de Página falta: envio é caminho quente e não pode
- * pagar duas chamadas à Graph API por mensagem.
- */
-async function resolveInstagramSendConfig(
-  admin: ReturnType<typeof createAdminClient>,
-  channel: { id: string; external_id: string | null; config: Record<string, unknown> | null },
-): Promise<InstagramChannelConfig> {
-  const raw = (channel.config ?? {}) as Record<string, unknown>
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null)
 
-  const base: InstagramChannelConfig = {
-    instagram_business_account_id:
-      channel.external_id || str(raw.instagram_business_account_id) || "",
-    access_token: str(raw.access_token) || "",
-    facebook_page_id: str(raw.facebook_page_id),
-    facebook_page_token: str(raw.facebook_page_token),
-  }
-
-  if (base.facebook_page_token || !base.access_token) return base
-
-  try {
-    const healed = await resolveAndHealInstagramChannel(
-      admin,
-      { id: channel.id, external_id: channel.external_id ?? "" },
-      raw,
-      { instagram_business_account_id: base.instagram_business_account_id, access_token: base.access_token },
-    )
-    return {
-      ...base,
-      instagram_business_account_id: healed.config.instagram_business_account_id,
-      facebook_page_id: healed.pageId,
-      facebook_page_token: healed.pageToken,
-    }
-  } catch (err) {
-    // Cura é oportunista: se a Graph API estiver fora do ar, ainda vale
-    // tentar o caminho do IG User com o token do canal.
-    log.warn("[Inbox] auto-cura do canal Instagram falhou no envio", {
-      channelId: channel.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return base
-  }
-}
 
 function isWindowOpen(thread: { is_window_open: boolean | null; window_expires_at: string | null }): boolean {
   if (!thread.is_window_open) return false

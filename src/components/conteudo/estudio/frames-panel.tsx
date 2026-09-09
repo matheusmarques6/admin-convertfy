@@ -9,17 +9,19 @@
  */
 
 import { useState } from "react"
-import { MoreVertical, Plus } from "lucide-react"
+import { MessageCircle, MoreVertical, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { adicionarFrame, contarPalavras, dividirFrame, duplicarFrame, excluirFrame, MIN_FRAMES, reordenarFrames, trocarTipoFrame } from "@/lib/conteudo/documento"
+import { impedimentosDoGate } from "@/lib/conteudo/comment-gate"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import { ST_TIPOS_TROCA, ST_VARIANTES } from "@/lib/conteudo/templates"
 import type { FrameTipo, VarianteLayout } from "@/lib/conteudo/types"
 import { CtLabel, TNUM, inputCls, textareaCls } from "../ui"
 import type { EditorApi } from "./editor-types"
+import { CommentGateModal } from "./comment-gate-modal"
 import { AiBtn } from "./paineis"
 import { Thumb } from "./thumb"
 
@@ -34,7 +36,9 @@ export function FramesPanel({ api }: { api: EditorApi }) {
   const [overIx, setOverIx] = useState<number | null>(null)
   const [gerandoLegenda, setGerandoLegenda] = useState(false)
   const [regenerando, setRegenerando] = useState<string | null>(null)
+  const [gate, setGate] = useState(false)
   const palavras = contarPalavras(doc.legenda)
+  const faltaPraLigarGate = impedimentosDoGate(doc, api.perfil)
 
   const gerarLegenda = async () => {
     setGerandoLegenda(true)
@@ -93,6 +97,26 @@ export function FramesPanel({ api }: { api: EditorApi }) {
           <div>
             <CtLabel>Comment gate</CtLabel>
             <input value={doc.palavraChave} onChange={(e) => api.set({ palavraChave: e.target.value.toUpperCase() })} placeholder="Ex.: 8%" className={inputCls} />
+            {/* A palavra no slide não responde ninguém sozinha: daqui sai
+                a automação que manda o direct e abre o negócio. */}
+            <button
+              type="button"
+              onClick={() => setGate(true)}
+              disabled={faltaPraLigarGate.length > 0}
+              className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--ops-border)] bg-[var(--ops-tile)] px-2 py-1.5 text-[11px] font-medium text-[var(--ops-title)] hover:border-[var(--ops-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Icon icon={MessageCircle} className="h-3.5 w-3.5" />
+              Ligar a automação
+            </button>
+            <div className="mt-1 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+              {faltaPraLigarGate.includes("sem_palavra")
+                ? "Escreva a palavra para poder ligar."
+                : faltaPraLigarGate.includes("sem_perfil")
+                  ? "Escolha o perfil do carrossel em Marca."
+                  : faltaPraLigarGate.length > 0
+                    ? "Disponível só no Instagram."
+                    : "Quem comentar recebe o direct e vira negócio."}
+            </div>
           </div>
           <AiBtn onClick={gerarLegenda} loading={gerandoLegenda}>
             {doc.legenda ? "Regenerar legenda" : "Gerar legenda"}
@@ -271,6 +295,7 @@ export function FramesPanel({ api }: { api: EditorApi }) {
           Adicionar
         </button>
       </div>
+      {gate && <CommentGateModal doc={doc} perfil={api.perfil} onClose={() => setGate(false)} onFeito={(m) => api.avisar(m)} />}
     </aside>
   )
 }

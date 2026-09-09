@@ -36,6 +36,10 @@ const bodySchema = z.object({
   first_message_only: z.boolean().default(true),
   only_this_channel: z.boolean().default(true),
   activate: z.boolean().default(true),
+  /** Comment gate: só dispara quando a mensagem pede esta palavra. */
+  keyword: z.string().trim().max(120).optional().nullable(),
+  /** O que a pessoa recebe no direct. Vazio = a automação não responde. */
+  reply: z.string().trim().max(900).optional().nullable(),
 })
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -92,6 +96,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       eventKind: body.event_kind,
       firstMessageOnly: body.first_message_only,
       onlyThisChannel: body.only_this_channel,
+      keyword: body.keyword,
+      reply: body.reply,
     })
 
     // Já existe uma idêntica? Devolve ela (e ativa se pedido) em vez de
@@ -148,6 +154,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       channelId,
       automationId: createdRow.id,
       event_kind: body.event_kind,
+      keyword: body.keyword ?? null,
+      responde: Boolean(body.reply?.trim()),
       pipeline: pipeline.name,
       active: body.activate,
     })

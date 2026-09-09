@@ -11,6 +11,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { mensagemCasaPalavra } from "@/lib/crm/palavra-chave"
 import { logger } from "@/lib/logger"
 import { executeAutomation } from "./crm-automation-executor.service"
 import type { CrmTriggerType, CrmAutomationContext } from "@/types/crm-automation"
@@ -63,17 +64,23 @@ export async function dispatchTrigger(params: DispatchParams): Promise<void> {
         channel_id?: string
         event_kind?: string
         first_message?: boolean
+        keyword?: string
       }
       const d = params.trigger_data as {
         channel_type?: string
         channel_id?: string
         event_kind?: string
         is_first_message?: boolean
+        message_text?: string | null
       }
       if (f.channel_type && f.channel_type !== d.channel_type) return false
       if (f.channel_id && f.channel_id !== d.channel_id) return false
       if (f.event_kind && f.event_kind !== d.event_kind) return false
       if (f.first_message === true && !d.is_first_message) return false
+      // Comment gate: "comente SEGMENTO e eu te mando no direct". O texto
+      // já viajava no evento e ninguém o consultava — sem este filtro a
+      // automação responde a QUALQUER comentário do post.
+      if (f.keyword && !mensagemCasaPalavra(d.message_text, f.keyword)) return false
     }
     return true
   })

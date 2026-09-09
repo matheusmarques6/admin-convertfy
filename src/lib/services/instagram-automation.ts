@@ -1,3 +1,4 @@
+import { rotuloDasChaves } from "@/lib/crm/palavra-chave"
 /**
  * Automação 1-clique do painel Instagram: interação (DM/comentário) →
  * negócio na pipeline, estilo Datacrazy.
@@ -40,6 +41,18 @@ export interface InstagramAutomationInput {
   firstMessageOnly: boolean
   /** Restringe ao canal escolhido (org pode ter várias contas de IG). */
   onlyThisChannel: boolean
+  /**
+   * Comment gate: só dispara quando a mensagem PEDE esta palavra. É o
+   * "comente SEGMENTO" do carrossel; vazio mantém o comportamento antigo
+   * (qualquer interação).
+   */
+  keyword?: string | null
+  /**
+   * O que a pessoa recebe no direct. Com texto, entra um nó de resposta
+   * ANTES de criar o negócio — sem ele o carrossel promete o direct e
+   * ninguém manda nada.
+   */
+  reply?: string | null
 }
 
 export interface BuiltInstagramAutomation {
@@ -60,10 +73,16 @@ export interface BuiltInstagramAutomation {
 export function buildInstagramAutomation(
   input: InstagramAutomationInput,
 ): BuiltInstagramAutomation {
+  const keywordBruta = (input.keyword ?? "").trim()
+
   const filters: Record<string, unknown> = { channel_type: "instagram" }
   if (input.onlyThisChannel) filters.channel_id = input.channelId
   if (input.eventKind !== "any") filters.event_kind = input.eventKind
-  if (input.firstMessageOnly) filters.first_message = true
+  // Com palavra-chave, "só a primeira mensagem" não protege de nada e
+  // atrapalha: quem já tinha comentado "🔥" no post não entra quando
+  // comenta a palavra, e é justamente essa pessoa que pediu. Quem faz o
+  // papel de guarda contra spam ali é a palavra.
+  if (input.firstMessageOnly && !keywordBruta) filters.first_message = true
 
   const eventText =
     input.eventKind === "message"
@@ -72,12 +91,20 @@ export function buildInstagramAutomation(
         ? "comentário"
         : "DM ou comentário"
 
-  const name = `Instagram → ${input.pipelineName}: ${eventText} vira negócio`
+  const keyword = keywordBruta
+  if (keyword) filters.keyword = keyword
+  const reply = (input.reply ?? "").trim()
+
+  const name = keyword
+    ? `Instagram → comente ${rotuloDasChaves(keyword)}: ${eventText} vira negócio`
+    : `Instagram → ${input.pipelineName}: ${eventText} vira negócio`
   const scopeText = input.onlyThisChannel ? `da conta "${input.channelName}"` : "de qualquer conta"
   const description =
-    `Criada pelo painel Instagram: ${eventText} ${scopeText} cadastra o contato ` +
-    `como negócio na etapa "${input.stageName}" da pipeline "${input.pipelineName}".` +
-    (input.firstMessageOnly ? " Dispara só na primeira mensagem do contato." : "")
+    `Criada pelo painel Instagram: ${eventText} ${scopeText}` +
+    (keyword ? ` pedindo "${rotuloDasChaves(keyword)}"` : "") +
+    ` cadastra o contato como negócio na etapa "${input.stageName}" da pipeline "${input.pipelineName}".` +
+    (reply ? " Antes disso, responde a pessoa no direct." : "") +
+    (input.firstMessageOnly && !keyword ? " Dispara só na primeira mensagem do contato." : "")
 
   return {
     name,
@@ -91,14 +118,37 @@ export function buildInstagramAutomation(
           position: { x: 80, y: 180 },
           config: { trigger_type: "thread_message_received", ...filters },
         },
+        // Resposta e negócio saem do gatilho em RAMOS PARALELOS, não em
+        // fila. No executor um nó que falha interrompe o ramo dele e só
+        // ele: em fila, DM recusada (janela de 7 dias, pessoa que bloqueou
+        // direct) faria o lead nunca chegar à pipeline, e o inverso —
+        // pipeline mal configurada — calaria a entrega que o carrossel
+        // prometeu. As duas coisas são independentes e têm de falhar
+        // sozinhas. A resposta vem primeiro na lista porque as edges são
+        // percorridas em ordem, e quem comentou está esperando.
+        ...(reply
+          ? [
+              {
+                id: "reply-1",
+                type: "action_send_whatsapp",
+                position: { x: 420, y: 90 },
+                // `to` fica de fora: no Instagram o destinatário vem do
+                // gatilho (comentário → private reply; direct → o remetente).
+                config: { channel_id: input.channelId, body_template: reply },
+              },
+            ]
+          : []),
         {
           id: "create-deal-1",
           type: "action_create_deal",
-          position: { x: 420, y: 180 },
+          position: { x: 420, y: reply ? 270 : 180 },
           config: { pipeline_id: input.pipelineId, stage_id: input.stageId },
         },
       ],
-      edges: [{ id: "e-trigger-create-deal", from: "trigger-1", to: "create-deal-1" }],
+      edges: [
+        ...(reply ? [{ id: "e-trigger-reply", from: "trigger-1", to: "reply-1" }] : []),
+        { id: "e-trigger-create-deal", from: "trigger-1", to: "create-deal-1" },
+      ],
     },
   }
 }
@@ -117,7 +167,10 @@ export function isSameInstagramAutomation(
 ): boolean {
   const t = existing.trigger
   if (!t || t.type !== "thread_message_received") return false
-  const keys = ["channel_type", "channel_id", "event_kind", "first_message"] as const
+  // `keyword` entra na identidade: duas automações do MESMO post com
+  // palavras diferentes são coisas diferentes, e sem ela a segunda seria
+  // devolvida como "já existe" e o segundo carrossel nunca responderia.
+  const keys = ["channel_type", "channel_id", "event_kind", "first_message", "keyword"] as const
   for (const k of keys) {
     if ((t[k] ?? null) !== ((built.trigger as Record<string, unknown>)[k] ?? null)) return false
   }

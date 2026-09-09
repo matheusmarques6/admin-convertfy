@@ -11,6 +11,10 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { alvoDaResposta, donoDoNegocio } from "@/lib/crm/resposta-instagram"
+import { garantirThreadDaPessoa } from "./crm-thread-pessoa.service"
+import { sendInstagramMessage } from "./instagram-graph.service"
+import { resolveInstagramSendConfig } from "./instagram-send-config.service"
 import { logger } from "@/lib/logger"
 import type {
   CrmAutomationDAG,
@@ -511,25 +515,66 @@ async function executeNode(
       case "action_send_whatsapp": {
         const cfg = node.config as {
           channel_id: string
-          to: string
+          to?: string
           body_template: string
         }
-        const toResolved = cfg.to.startsWith("$.") ? String(resolvePath(ctx, cfg.to) || "") : cfg.to
-        if (!toResolved) throw new Error("Destinatario vazio")
 
         type ChannelRow = {
+          type: string | null
           provider: string | null
           config: Record<string, unknown> | null
           external_id: string | null
         }
         const { data: channel } = await admin
           .from("crm_channels")
-          .select("provider, config, external_id")
+          .select("type, provider, config, external_id")
           .eq("id", cfg.channel_id)
           .single<ChannelRow>()
         if (!channel) throw new Error(`Channel ${cfg.channel_id} nao encontrado`)
 
         const body = renderTemplate(cfg.body_template, ctx)
+
+        // Instagram tem caminho próprio: o destinatário vem do GATILHO
+        // (comentário → resposta no direct de quem comentou; DM → o
+        // remetente), não de um campo digitado. Antes disso, o canal de
+        // Instagram caía no ramo da Cloud API do WhatsApp e o nó morria
+        // em `config_missing` — o comment gate prometia e não entregava.
+        if (channel.type === "instagram") {
+          const alvo = alvoDaResposta(ctx.trigger_data as Record<string, unknown>)
+          if (alvo.via === null) throw new Error(`Sem destinatário no Instagram: ${alvo.motivo}`)
+          const igConfig = await resolveInstagramSendConfig(admin, {
+            id: cfg.channel_id,
+            external_id: channel.external_id,
+            config: channel.config,
+          })
+          const envio = await sendInstagramMessage(igConfig, {
+            to: alvo.para,
+            to_kind: alvo.via === "private_reply" ? "comment" : "igsid",
+            type: "text",
+            text: { body },
+          })
+          if (!envio.success) throw new Error(envio.error?.message || "Falha no envio pelo Instagram")
+
+          // O que a automação prometeu tem de aparecer no inbox. Sem
+          // gravar, o direct sai e o atendente vê a pessoa responder a
+          // uma mensagem que, para ele, nunca existiu. Na resposta a
+          // comentário a mensagem vai para a conversa DA PESSOA (a de
+          // comentários é do post) — é onde ela vai responder.
+          const registro = await registrarSaidaNoInstagram(admin, {
+            orgId,
+            channelId: cfg.channel_id,
+            thread: ctx.thread as { id?: string; contact_external_id?: string | null } | null,
+            trigger: ctx.trigger_data as Record<string, unknown>,
+            body,
+            messageId: envio.message_id ?? null,
+          })
+
+          output = { message_id: envio.message_id, via: alvo.via, thread_id: registro }
+          break
+        }
+
+        const toResolved = cfg.to?.startsWith("$.") ? String(resolvePath(ctx, cfg.to) || "") : (cfg.to ?? "")
+        if (!toResolved) throw new Error("Destinatario vazio")
         // Dispatch por provider (Cloud API oficial OU Evolution via QR).
         // O adapter cloud usa external_id como phone_number_id fallback.
         const result = await sendTextViaChannel(
@@ -730,14 +775,49 @@ async function executeNode(
             }
           | null
 
-        if (thread?.deal_id) {
-          output = { deal_id: thread.deal_id, created: false, reason: "thread ja tem deal" }
+        // De quem é este negócio. Na conversa de COMENTÁRIOS (que é do
+        // post, não de uma pessoa) o vínculo vai para a conversa de quem
+        // comentou — senão o post inteiro rende um negócio só e o
+        // segundo comentarista volta com `created: false`, calado.
+        const dono = donoDoNegocio(thread, ctx.trigger_data as Record<string, unknown>)
+        if (dono.escopo === null) {
+          output = { created: false, reason: dono.motivo }
+          break
+        }
+
+        let alvo: {
+          id?: string
+          deal_id?: string | null
+          lead_id?: string | null
+          client_id?: string | null
+          assigned_to?: string | null
+          contact_name?: string | null
+        } | null = thread
+
+        if (dono.escopo === "pessoa") {
+          const channelId = (ctx.trigger_data as { channel_id?: string } | null)?.channel_id
+          if (!channelId) {
+            output = { created: false, reason: "sem o canal no gatilho não dá para achar a conversa de quem comentou" }
+            break
+          }
+          alvo = await garantirThreadDaPessoa(admin, {
+            orgId,
+            channelId,
+            externalId: dono.externalId,
+            nome: dono.nome,
+          })
+          if (!alvo) throw new Error("action_create_deal: não consegui abrir a conversa de quem comentou")
+        }
+
+        if (alvo?.deal_id) {
+          output = { deal_id: alvo.deal_id, created: false, reason: "thread ja tem deal" }
           break
         }
 
         const contactName =
-          thread?.contact_name?.trim() ||
-          thread?.contact_external_id ||
+          (dono.escopo === "pessoa" ? dono.nome?.trim() : "") ||
+          alvo?.contact_name?.trim() ||
+          (dono.escopo === "pessoa" ? dono.externalId : thread?.contact_external_id) ||
           "Contato sem nome"
         const channelLabel =
           thread?.channel_type === "instagram"
@@ -756,7 +836,7 @@ async function executeNode(
         // a mensagem do cliente não vira negócio nenhum.
         let ownerId =
           cfg.owner_id ||
-          (thread as { assigned_to?: string | null } | null)?.assigned_to ||
+          alvo?.assigned_to ||
           null
 
         if (!ownerId) {
@@ -806,8 +886,8 @@ async function executeNode(
             position: (maxPos?.position ?? 0) + 10,
             source: thread?.channel_type ? `inbox:${thread.channel_type}` : "inbox",
             tags: cfg.tags ?? [],
-            lead_id: thread?.lead_id ?? null,
-            client_id: thread?.client_id ?? null,
+            lead_id: alvo?.lead_id ?? null,
+            client_id: alvo?.client_id ?? null,
           })
           .select("id")
           .single()
@@ -816,11 +896,11 @@ async function executeNode(
 
         // Amarra a conversa ao negócio: o inbox passa a mostrar o
         // vínculo e a automação não cria outro na próxima mensagem.
-        if (thread?.id) {
+        if (alvo?.id) {
           await admin
             .from("crm_threads")
             .update({ deal_id: created.id })
-            .eq("id", thread.id)
+            .eq("id", alvo.id)
         }
 
         await admin.from("crm_deal_activities").insert({
@@ -901,4 +981,74 @@ async function executeNode(
       duration_ms: Date.now() - t0,
     }
   }
+}
+
+/**
+ * Grava no inbox a mensagem que a automação acabou de mandar pelo
+ * Instagram. Devolve a conversa onde ela ficou, ou null quando não houve
+ * onde gravar.
+ *
+ * Falhar aqui NÃO derruba o nó: a mensagem já saiu, e desfazer não é
+ * possível — perder o registro é ruim, transformar entrega feita em nó
+ * falho (que o executor trata como fluxo interrompido) é pior.
+ */
+async function registrarSaidaNoInstagram(
+  admin: ReturnType<typeof createAdminClient>,
+  args: {
+    orgId: string
+    channelId: string
+    thread: { id?: string; contact_external_id?: string | null } | null
+    trigger: Record<string, unknown>
+    body: string
+    messageId: string | null
+  },
+): Promise<string | null> {
+  try {
+    const dono = donoDoNegocio(args.thread, args.trigger)
+    let threadId: string | null = args.thread?.id ?? null
+
+    if (dono.escopo === "pessoa") {
+      const pessoa = await garantirThreadDaPessoa(admin, {
+        orgId: args.orgId,
+        channelId: args.channelId,
+        externalId: dono.externalId,
+        nome: dono.nome,
+      })
+      threadId = pessoa?.id ?? null
+    } else if (dono.escopo === null) {
+      return null
+    }
+    if (!threadId) return null
+
+    await admin.from("crm_messages").upsert(
+      {
+        thread_id: threadId,
+        org_id: args.orgId,
+        // Sem id do provedor, a chave de dedupe é nossa. Prefere o id
+        // do gatilho (o comentário) a um hash do texto: a mesma pessoa
+        // comentando a palavra duas vezes recebe duas respostas, e as
+        // duas têm de aparecer.
+        external_id:
+          args.messageId ??
+          `automation:${typeof args.trigger?.external_message_id === "string" ? args.trigger.external_message_id : hashCurto(args.body)}`,
+        direction: "outbound",
+        content_type: "text",
+        body: args.body,
+        sent_by_kind: "automation",
+        status: "sent",
+        metadata: { source: "automation" },
+      },
+      { onConflict: "thread_id,external_id", ignoreDuplicates: true },
+    )
+    return threadId
+  } catch (err) {
+    log.error("[Automation] resposta enviada mas não registrada no inbox", err)
+    return null
+  }
+}
+
+function hashCurto(texto: string): string {
+  let h = 0
+  for (let i = 0; i < texto.length; i++) h = (Math.imul(31, h) + texto.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
 }
