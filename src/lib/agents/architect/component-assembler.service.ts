@@ -66,12 +66,21 @@ import {
 import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
   BLOCO_OMITIDO_PELO_ESTRUTURADOR,
+  contratosDoCatalogo,
   measureProtocolViolations,
   rank1ByBlock,
+  renderPreferenciasDoVault,
   runCuradorShadow,
   type CuradorVaultResultado,
+  type PreferenciasDoVault,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
+import { requisitosDaDecisao } from "../estruturador/estruturador-consume"
+import {
+  eliminarPorRequisitos,
+  indiceDeEliminadas,
+  renderEliminadasPorRequisito,
+} from "../shared/field-roles"
 import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
 import { loadOrientacoes } from "../shared/orientacoes-loader"
@@ -253,6 +262,7 @@ Regras de seleção:
 - <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
+- O campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom sem incentivo ativo, grade de 4 quando o papel pede 2, cards sem preço quando o papel pede preço — está FORA, não em último lugar: o slot que ninguém preenche fica no email com o texto de exemplo. Isto é diferente do \`proibido neste toque\`, que só desempata.
 - Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
 - Posição de <sequencia_do_email> com \`intencao\` foi escrita pela pessoa na aba Arquitetura: ela É o papel daquela posição. Rankeie por ela ANTES da intenção geral do email — variante cuja anatomia não entrega a intenção da posição fica atrás, mesmo que sirva ao email como um todo.
 - Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
@@ -338,6 +348,16 @@ Notas de seção do vault para as seções DESTE email — cobertura e CHAVE DE 
 <memoria>
 {{memoria}}
 </memoria>
+
+<eliminadas_por_requisito>
+Variantes que o CÓDIGO já eliminou por posição, cruzando os \`requisitos\` do Estruturador com o \`contrato\` da anatomia (slot de cupom quando a decisão nega cupom, grade maior que o máximo pedido, sem preço quando a decisão exige preço). NÃO as indique para essas posições — indicá-las é ignorar a decisão.
+{{eliminadas_requisito}}
+</eliminadas_por_requisito>
+
+<preferencias_do_vault>
+O Curador do vault (o que lê o protocolo e as notas do Obsidian) rodou antes de você e não conseguiu fechar a resposta. O que ele já tinha decidido está abaixo — parta dele e só divirja com motivo declarado no campo "motivo" da sua escolha. Ausência declarada = você decide sozinho.
+{{preferencias_vault}}
+</preferencias_do_vault>
 
 <sequencia_do_email>
 {{blocks_json}}
@@ -968,6 +988,14 @@ function editorialOrigins(
       cls: "curadoria",
       rotulo: "Revisão humana da estrutura — email_structure_reviews",
     },
+    preferencias_vault: {
+      cls: "upstream",
+      rotulo: "Preferências do Curador do vault — JSON não consumido (fallback)",
+    },
+    eliminadas_requisito: {
+      cls: "upstream",
+      rotulo: "Eliminadas por requisito do Estruturador × contrato da anatomia (código)",
+    },
     vocabulario: {
       cls: "loja",
       rotulo: "Vocabulário literal — client_stores.tone_use_words / tone_avoid_words",
@@ -1032,6 +1060,15 @@ export async function assembleStoreReference(
   const aliasIndex = buildAliasIndex(eligible, vaultExtras)
 
   const blocksJson = sequenciaParaJson(input.structure)
+  // Filtro DURO por requisito do Estruturador × contrato da anatomia
+  // (09/09): a lista vai aos dois Curadores, à telemetria e ao medidor.
+  // Zero código veta a escolha — o prompt proíbe e o medidor registra
+  // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
+  const eliminadasPorRequisito = eliminarPorRequisitos(
+    sections,
+    requisitosDaDecisao(input.estruturadorDecisao),
+    catalog.sections,
+  )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
   const t0 = Date.now()
@@ -1141,6 +1178,10 @@ export async function assembleStoreReference(
       aplicaveisAoEmail(orientacoesCurador, input.flowType, input.emailNumber),
     ),
     revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "curador"),
+    // Preenchido DEPOIS do Curador do vault, quando ele deixa JSON que não
+    // pôde ser consumido; até lá, ausência declarada.
+    preferencias_vault: renderPreferenciasDoVault(null),
+    eliminadas_requisito: renderEliminadasPorRequisito(eliminadasPorRequisito),
     // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
     // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
     top_products: renderTopProducts(input.topProducts),
@@ -1340,6 +1381,9 @@ export async function assembleStoreReference(
   // do kimi roda como sempre, com retry e fail-closed. O custo dobra só
   // nesse caso — que é exatamente quando vale pagar.
   let vaultResultado: CuradorVaultResultado | null = null
+  // Holder, não `let`: a atribuição acontece dentro do callback e o
+  // narrowing do TS não enxerga closure — leria `null` para sempre.
+  const parcialDoVault: { valor: PreferenciasDoVault | null } = { valor: null }
   if (curadorVaultMode === "on") {
     const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
@@ -1359,6 +1403,13 @@ export async function assembleStoreReference(
       // rodava numa constante e era um dos dois agentes que ignoravam a
       // troca de modelo do banco.
       modelo: chooserConfig.model,
+      // O TETO da config também (09/09): o vault fixava 8192 e a config de
+      // 16000 era ignorada — o JSON era cortado e a resposta descartada.
+      maxTokens: chooserRow?.max_tokens ?? null,
+      onParcial: (p) => {
+        parcialDoVault.valor = p
+      },
+      eliminadasPorRequisito,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1412,6 +1463,11 @@ export async function assembleStoreReference(
   let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
+  // O legado só roda quando o vault falhou; se o vault deixou JSON, ele
+  // herda as justificativas em vez de escolher às cegas.
+  if (!vaultResultado && parcialDoVault.valor) {
+    chooserVars.preferencias_vault = renderPreferenciasDoVault(parcialDoVault.valor)
+  }
 
   for (
     let attempt = 1;
@@ -1492,6 +1548,18 @@ export async function assembleStoreReference(
     // Variantes ativas SEM placeholder ficaram fora do pool (pressão de
     // curadoria — ver variantIsFillable).
     candidates_excluded_unfillable: excludedUntagged,
+    // 09/09: o filtro por requisito × contrato e se o rank-1 o ignorou.
+    eliminadas_por_requisito: eliminadasPorRequisito,
+    requisito_violado: (() => {
+      const idx = indiceDeEliminadas(eliminadasPorRequisito)
+      const out: Array<{ block_index: number; variant_id: string; motivo: string }> = []
+      for (const [b, arr] of rankingByBlock) {
+        const id = arr[0]?.variant_id
+        const motivo = id ? idx.get(b)?.get(id) : undefined
+        if (id && motivo) out.push({ block_index: b, variant_id: id, motivo })
+      }
+      return out
+    })(),
   }
 
   // O modelo apontou para fora da seção proposta. Dois sinais diferentes,
@@ -1586,6 +1654,8 @@ export async function assembleStoreReference(
       // rodava numa constante e era um dos dois agentes que ignoravam a
       // troca de modelo do banco.
       modelo: chooserConfig.model,
+      maxTokens: chooserRow?.max_tokens ?? null,
+      eliminadasPorRequisito,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1602,6 +1672,8 @@ export async function assembleStoreReference(
         extras: shadowExtras,
         sectionByBlock: new Map(sections.map((s, i) => [i, s])),
         alvo: input.alvoMedicao ?? null,
+        contratos: contratosDoCatalogo(catalog.sections),
+        eliminadasPorRequisito: indiceDeEliminadas(eliminadasPorRequisito),
       }),
       liveRank1,
     })

@@ -386,6 +386,8 @@ export async function POST(request: NextRequest) {
     // Blocos cuja copy veio embrulhada em `campos`/`fields` — o n8n espelhando
     // a estrutura do payload de ida. Contamos para saber quando o flow migrou.
     const blocksUnwrapped: Array<{ position: number; wrapper: string; keys: number }> = []
+    let omitidosForcados = 0
+    const omitidosPreenchidos: string[] = []
     for (let i = 0; i < body.blocks.length; i++) {
       const b = body.blocks[i]
       // O contrato é `content[key]`. Achata o embrulho ANTES de tudo: a
@@ -411,6 +413,18 @@ export async function POST(request: NextRequest) {
       if (tokensDeCupom.length > 0) {
         if (couponCode) couponTokensResolvidos += tokensDeCupom.length
         else couponSemCodigo.push(...tokensDeCupom.map((k) => `${i}.${k}`))
+      }
+      // Campos OMITIDOS pela arbitragem papel × forma (09/09): não foram
+      // pedidos, mas o n8n pode ter inferido do purpose ("linha do cupom —
+      // o código em bold"). Forçar vazio aqui é o que garante que o merge
+      // remova a linha — o content é a fonte de tudo a jusante.
+      const idxOmit = orderedIds.indexOf(b.block_id)
+      for (const f of orderedFields[idxOmit >= 0 ? idxOmit : i] ?? []) {
+        if (f.omitir !== true) continue
+        const v = cleaned[f.key]
+        if (typeof v === "string" && v.trim()) omitidosPreenchidos.push(`${i}.${f.key}`)
+        cleaned[f.key] = ""
+        omitidosForcados++
       }
       // Compara com o achatado, não com o cru: desembrulhar não é sanitizar.
       if (JSON.stringify(cleaned) !== JSON.stringify(flattened)) blocksSanitized++
@@ -852,6 +866,11 @@ export async function POST(request: NextRequest) {
           taxa_pct: taxaContrato,
           por_bloco: contratoPorBloco,
         },
+        // 09/09: campos omitidos pela arbitragem forçados a vazio, e quantos
+        // o n8n tinha preenchido mesmo sem ver o campo — o contador que diz
+        // se o flow infere copy do purpose.
+        omitidos_forcados: omitidosForcados,
+        ...(omitidosPreenchidos.length > 0 ? { omitidos_preenchidos: omitidosPreenchidos } : {}),
         // Qual formato de envelope chegou. É registro, não alarme: as duas
         // formas são válidas e o callback aceita as duas.
         ...(blocksUnwrapped.length > 0

@@ -8,10 +8,18 @@ import {
   rank1ByBlock,
   repeticoesPermitidas,
   resolverModeloDoCurador,
+  resolverTetoDoCurador,
+  motivoDeRetomada,
+  renderPreferenciasDoVault,
   CURADOR_SHADOW_MODEL_FALLBACK,
+  CURADOR_SHADOW_MAX_TOKENS_MIN,
+  contratosDoCatalogo,
 } from "./curador-shadow"
+import { resumirContrato } from "../shared/field-roles"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
+import { buildCatalog } from "./catalog-builder"
+import { interpolateSystem } from "./llm-invoke"
 import type { CatalogVaultExtra } from "./catalog-builder"
 import type { RankedChoice } from "./curator-ranking.parser"
 
@@ -48,6 +56,18 @@ describe("parseCuradorVaultOutput", () => {
     // 03/09: uma variante por posição — o Montador saiu do caminho.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("uma só, a que encaixa melhor")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("em ordem de preferência")
+  })
+  it("o prompt inicial usa o índice compacto, sem o corpo integral das variantes", () => {
+    const catalogo = buildCatalog([
+      { id: "v1", block_type: "hero", name: "Hero", description: "Primeira frase. SEGREDO_CORPO_COMPLETO", long_description: "NOTA_IMPLEMENTACAO_INTEGRAL", is_active: true } as never,
+      { id: "v2", block_type: "body", name: "Body", description: "Outra primeira frase. OUTRO_CORPO_COMPLETO", when_use: "QUANDO_USAR_INTEGRAL", is_active: true } as never,
+    ])
+    const prompt = interpolateSystem(DEFAULT_CHOOSER_VAULT_SYSTEM, { protocolo: "p", convivencias: "c", catalogo: catalogo.enxuto })
+    expect(prompt).toContain("v1 · Hero")
+    expect(prompt).toContain("v2 · Body")
+    expect(prompt).not.toContain("SEGREDO_CORPO_COMPLETO")
+    expect(prompt).not.toContain("NOTA_IMPLEMENTACAO_INTEGRAL")
+    expect(prompt).not.toContain("QUANDO_USAR_INTEGRAL")
   })
 })
 
@@ -230,7 +250,7 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     // 03/09: o sistema prevalece. O vault acrescenta o que o cadastro não
     // tem; nunca o contradiz — e o modelo não arbitra entre os dois.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("O VAULT VENCE")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("é o cadastro do sistema, e é ele que vale")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("cadastro do sistema")
   })
 
   // Em 01/09 o prompt dizia "Você PODE adaptar a sequência" e o agente cortou
@@ -390,5 +410,97 @@ describe("resolverModeloDoCurador", () => {
     for (const v of [null, undefined, "", "   "]) {
       expect(resolverModeloDoCurador(v)).toBe(CURADOR_SHADOW_MODEL_FALLBACK)
     }
+  })
+})
+
+describe("teto, retomada e preferências do vault (09/09)", () => {
+  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso; env vence tudo", () => {
+    expect(resolverTetoDoCurador(16000)).toBe(16000)
+    expect(resolverTetoDoCurador(2048)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+    expect(resolverTetoDoCurador(null)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+    expect(resolverTetoDoCurador(Number.NaN)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+  })
+
+  it("motivoDeRetomada: prosa e corte pedem retomada; JSON legível não", () => {
+    expect(motivoDeRetomada("Vou trabalhar posição por posição…", "length")).toBe("cortado_antes_do_json")
+    expect(motivoDeRetomada("Vou trabalhar posição por posição…", "stop")).toBe("sem_json")
+    expect(motivoDeRetomada("", "length")).toBe("vazio_por_teto")
+    expect(motivoDeRetomada("   ")).toBe("vazio")
+    // JSON completo com finish_reason length: o corte veio DEPOIS do objeto.
+    expect(motivoDeRetomada('{"papeis":[],"escolhas":[]}', "length")).toBeNull()
+    expect(motivoDeRetomada(OUTPUT)).toBeNull()
+  })
+
+  it("renderPreferenciasDoVault: ausência declarada e posições com justificativa", () => {
+    expect(renderPreferenciasDoVault(null)).toContain("nenhuma")
+    expect(renderPreferenciasDoVault({ posicoes: [] })).toContain("nenhuma")
+    const txt = renderPreferenciasDoVault({
+      posicoes: [
+        { block_index: 0, section: "hero", justificativa: "hero-3 exige cupom → eliminada", escolhas: [{ variant_id: "hero-7", motivo: "sem cupom" }] },
+        { block_index: 1, section: "reviews", justificativa: "", escolhas: [] },
+      ],
+    })
+    expect(txt).toContain("[0] hero: hero-3 exige cupom → eliminada")
+    expect(txt).toContain("  - hero-7 — sem cupom")
+    expect(txt).toContain("[1] reviews\n  - (nenhuma candidata)")
+  })
+
+  it("o template do legado tem o bloco de preferências do vault", () => {
+    expect(DEFAULT_CHOOSER_USER).toContain("<preferencias_do_vault>")
+    expect(DEFAULT_CHOOSER_USER).toContain("{{preferencias_vault}}")
+  })
+})
+
+describe("measureProtocolViolations — contrato_violado (09/09)", () => {
+  const contratos = new Map([
+    ["v-cupom", resumirContrato([{ key: "coupon_line" }, { key: "cta_label" }])],
+    ["v-sem", resumirContrato([{ key: "headline" }, { key: "cta_label" }])],
+  ])
+  const sectionByBlock = new Map([[0, "hero"]])
+  it("loja SEM incentivo + rank-1 com slot de cupom → contrato_violado", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "v-cupom"]]),
+      extras: new Map(),
+      sectionByBlock,
+      alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false },
+      contratos,
+    })
+    expect(v.map((x) => x.tipo)).toEqual(["contrato_violado"])
+    expect(v[0].detalhe).toContain("cupom")
+  })
+  it("sem cupom na anatomia, ou incentivo desconhecido/presente, nada é medido", () => {
+    const base = { rank1ByBlock: new Map([[0, "v-cupom"]]), extras: new Map(), sectionByBlock, contratos }
+    expect(measureProtocolViolations({ ...base, rank1ByBlock: new Map([[0, "v-sem"]]), alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: null } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: true } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false }, contratos: undefined })).toEqual([])
+  })
+  it("os dois prompts ensinam a eliminar por contrato, separado da proibição de redação", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("por CONTRATO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`tem_cupom`")
+    expect(DEFAULT_CHOOSER_SYSTEM).toContain("`contrato`")
+    expect(DEFAULT_CHOOSER_SYSTEM).toContain("está FORA, não em último lugar")
+  })
+  it("contratosDoCatalogo indexa por variant_id", () => {
+    const m = contratosDoCatalogo([{ variantes: [{ variant_id: "a", contrato: resumirContrato([{ key: "coupon_code" }]) }, { variant_id: "b" }] }])
+    expect(m.get("a")?.tem_cupom).toBe(true)
+    expect(m.has("b")).toBe(false)
+  })
+})
+
+describe("eliminadas por requisito (09/09)", () => {
+  it("requisito_violado quando o rank-1 estava na lista de eliminadas da posição", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "h3"], [1, "p9"]]),
+      extras: new Map(),
+      sectionByBlock: new Map([[0, "hero"], [1, "products"]]),
+      eliminadasPorRequisito: new Map([[0, new Map([["h3", "tem slot de cupom e a decisão nega cupom"]])]]),
+    })
+    expect(v).toEqual([{ block_index: 0, variant_id: "h3", tipo: "requisito_violado", detalhe: "tem slot de cupom e a decisão nega cupom" }])
+  })
+  it("os dois templates carregam o bloco de eliminadas", () => {
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<eliminadas_por_requisito>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{eliminadas_requisito}}")
+    expect(DEFAULT_CHOOSER_USER).toContain("{{eliminadas_requisito}}")
   })
 })

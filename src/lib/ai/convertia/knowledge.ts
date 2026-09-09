@@ -247,6 +247,82 @@ function slim(n: NoteRow) {
   }
 }
 
+/** Uma nota como a busca devolve: caminho, título, pasta, tipo, tags, resumo. */
+export type NotaResumida = ReturnType<typeof slim>
+
+export interface BuscaDeConhecimento {
+  notas: Array<NotaResumida & { similaridade?: number }>
+  /** A busca por significado RODOU (não "a chave existe") — ver nota no conector. */
+  semanticaRodou: boolean
+}
+
+/**
+ * O miolo de `conhecimento_buscar` (09/09): semântica via
+ * `ai_knowledge_search` + full-text, mesclados e ordenados. Extraído para
+ * a ferramenta `buscar_doutrina` do Curador de e-mail usar a MESMA busca
+ * que o Advisor Max — dois buscadores divergiriam na primeira mudança e
+ * ninguém saberia por que o Curador "não acha" o que a ConvertIA acha.
+ * Nunca lança por resultado vazio; erro de banco na semântica cai no
+ * full-text, e erro no full-text sobe para quem chama decidir o texto.
+ */
+export async function buscarConhecimento(
+  admin: SupabaseClient,
+  params: { query: string; folderPrefix?: string | null; limit?: number },
+): Promise<BuscaDeConhecimento> {
+  const query = params.query.trim()
+  const limit = Math.min(Math.max(Number(params.limit) || 6, 1), 12)
+  const pasta = params.folderPrefix?.trim().replace(/\/+$/, "") || null
+  const results = new Map<string, NotaResumida & { similaridade?: number; _score: number }>()
+
+  let semanticaRodou = false
+  if (embeddingsAvailable()) {
+    const { vector: vec } = await embedQuery(query)
+    if (vec) {
+      const { data, error } = await admin.rpc("ai_knowledge_search", {
+        query_embedding: JSON.stringify(vec),
+        match_count: limit,
+        folder_prefix: pasta,
+      })
+      if (!error) {
+        semanticaRodou = true
+        for (const r of (data ?? []) as Array<NoteRow & { similarity: number }>) {
+          results.set(r.path, { ...slim(r), similaridade: Math.round(r.similarity * 100) / 100, _score: r.similarity })
+        }
+      }
+    }
+  }
+  // full-text (sempre — completa a semântica e é o fallback)
+  let q = admin
+    .from("ai_knowledge_notes")
+    .select(NOTE_COLS)
+    .eq("is_active", true)
+    .textSearch("search", query, { type: "websearch", config: "portuguese" })
+    .limit(limit)
+  if (pasta) q = q.or(`folder.eq.${pgQuote(pasta)},folder.like.${pgQuote(`${pasta}/%`)}`)
+  const ft = await q
+  if (ft.error) throw new Error(ft.error.message)
+  for (const r of (ft.data ?? []) as NoteRow[]) {
+    const prev = results.get(r.path)
+    if (prev) prev._score += 0.2
+    else results.set(r.path, { ...slim(r), _score: 0.5 })
+  }
+  const notas = [...results.values()]
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit)
+    .map(({ _score, ...rest }) => rest)
+  return { notas, semanticaRodou }
+}
+
+/** Corpo de uma nota por caminho, título ou wikilink — a mesma resolução do `conhecimento_ler`. */
+export async function lerNotaDaBase(
+  admin: SupabaseClient,
+  ref: string,
+): Promise<{ path: string; title: string; body: string } | null> {
+  const n = await findNote(admin, ref)
+  if (!n || typeof n.body_md !== "string") return null
+  return { path: n.path, title: n.title, body: n.body_md }
+}
+
 async function findNote(admin: SupabaseClient, ref: string): Promise<NoteRow | null> {
   const clean = ref.replace(/^\[\[|\]\]$/g, "").split("|")[0].split("#")[0].trim()
   // 1) path exato
@@ -310,9 +386,6 @@ export function buildConhecimentoConnector(
       if (!query) return { content: "Query vazia." }
       const limit = Math.min(Math.max(Number(args.limite) || 6, 1), 12)
       const pasta = typeof args.pasta === "string" && args.pasta.trim() ? args.pasta.trim().replace(/\/+$/, "") : null
-      const results = new Map<string, Record<string, unknown> & { _score: number }>()
-
-      // semântica
       /**
        * A busca por significado rodou de fato? É diferente de "a chave
        * existe". O aviso abaixo checava `!embeddingsAvailable()`, e a
@@ -321,41 +394,7 @@ export function buildConhecimentoConnector(
        * embeddings falhando, 124 notas sem vetor e a resposta saindo de
        * full-text como se estivesse tudo certo.
        */
-      let semanticaRodou = false
-      if (embeddingsAvailable()) {
-        const { vector: vec } = await embedQuery(query)
-        if (vec) {
-          const { data, error } = await admin.rpc("ai_knowledge_search", {
-            query_embedding: JSON.stringify(vec),
-            match_count: limit,
-            folder_prefix: pasta,
-          })
-          if (!error) {
-            semanticaRodou = true
-            for (const r of (data ?? []) as Array<NoteRow & { similarity: number }>) {
-              results.set(r.path, { ...slim(r), similaridade: Math.round(r.similarity * 100) / 100, _score: r.similarity })
-            }
-          }
-        }
-      }
-      // full-text (sempre — completa a semântica e é o fallback)
-      let q = admin
-        .from("ai_knowledge_notes")
-        .select(NOTE_COLS)
-        .eq("is_active", true)
-        .textSearch("search", query, { type: "websearch", config: "portuguese" })
-        .limit(limit)
-      if (pasta) q = q.or(`folder.eq.${pgQuote(pasta)},folder.like.${pgQuote(`${pasta}/%`)}`)
-      const ft = await q
-      for (const r of (ft.data ?? []) as NoteRow[]) {
-        const prev = results.get(r.path)
-        if (prev) prev._score += 0.2
-        else results.set(r.path, { ...slim(r), _score: 0.5 })
-      }
-      const list = [...results.values()]
-        .sort((a, b) => b._score - a._score)
-        .slice(0, limit)
-        .map(({ _score, ...rest }) => rest)
+      const { notas: list, semanticaRodou } = await buscarConhecimento(admin, { query, folderPrefix: pasta, limit })
       if (list.length === 0) {
         // A lacuna é registrada ANTES de responder e sem await bloqueante de
         // erro: é telemetria, não pode virar falha da tool.

@@ -43,11 +43,25 @@ export interface BlueprintBlockField {
   // Comentário HTML (<!-- … -->) do <td>/<tr> que envolve o {{TAG}} de
   // imagem na variante — direção de arte do designer, colada no slot.
   slot_note?: string | null
+  // ── Arbitragem papel × forma (09/09, `arbitrarCampos`) ────────────────
+  // O campo colide com um requisito duro do Estruturador (slot de cupom
+  // quando a decisão nega cupom, CTA negado, item além do máximo). Sai do
+  // payload do n8n, chega vazio ao merge e a linha some. Aditivo:
+  // snapshots antigos não têm a flag e nada muda.
+  omitir?: boolean
+  omitir_motivo?: string
 }
 
 export interface BlueprintBlock {
   type: string
   label: string
+  // Papel narrativo decidido pelo Estruturador, como campo PRÓPRIO (09/09).
+  // Continua colado na 1ª linha do `purpose` (é o que o n8n lê), mas quem
+  // precisa do papel sem a "Forma (variante)" lê daqui.
+  papel?: string | null
+  // Requisitos tipados da posição (cupom/cta/n_itens/preco/avaliacao/
+  // campos/imagem/exige) — a mesma fonte para Curador, n8n, imagem e QA.
+  requisitos?: Record<string, unknown> | null
   // Descrição/intenção do bloco. MESMA chave que `BlueprintBlockDef.purpose`
   // (email-blueprint.ts) — é o que os dados (consts, migrations e a UI)
   // gravam no JSONB `email_blueprints.blocks`. Antes era lido como `hint`
@@ -220,6 +234,9 @@ export type QaIssueType =
   // Agora o email existe e o problema fica marcado na tela — se um dia
   // for perda REAL, o operador vê em vez de receber "failed" sem email.
   | "hero_copy_perdida"
+  // Texto que o agente de hero ESCREVEU sem existir na região nem na copy
+  // do merge (oferta inventada, `[WELCOME-CODE]`). Batch 644d86c5, 08/09.
+  | "hero_copy_inventada"
   // ── Epic AE-15: Image niche-adaptive QA cascade ───────
   // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
   // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:
@@ -233,6 +250,16 @@ export type QaIssueType =
   // max_len do campo / campo required vazio. Custo zero (sem LLM).
   | "copy_excede_max_len"
   | "campo_obrigatorio_vazio"
+  // ── Checks de CONTEÚDO por código (09/09, `html/content-checks.ts`) ──
+  // Rodam com o gate do QA ligado ou não. Nasceram do batch 644d86c5:
+  // oferta inventada em loja sem incentivo, `[WELCOME-CODE]`, `ICON 1` e
+  // parágrafo duplicado chegaram ao e-mail sem um aviso.
+  | "oferta_sem_incentivo"
+  | "placeholder_colchetes"
+  | "texto_de_exemplo"
+  | "paragrafo_repetido"
+  | "codigo_inventado"
+  | "label_generico"
 
 export interface QaIssue {
   type: QaIssueType
@@ -242,6 +269,9 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Resultado do gate determinístico. `blocking` impede `ready`; `warning`
+   * continua visível para revisão, mas não interrompe a fase 2. */
+  disposition?: "warning" | "blocking"
 }
 
 // Resultado do QA agent (story AE-5).

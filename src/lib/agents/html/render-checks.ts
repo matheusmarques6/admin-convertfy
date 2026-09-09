@@ -8,9 +8,8 @@
  * (sem link de unsubscribe, links "#", imagem sem alt, layout sem tabela)
  * chegavam ao designer sem nenhum aviso.
  *
- * Estas checagens são NÃO-BLOQUEANTES: o email continua indo pra `ready`;
- * os issues são persistidos em `email_flow_emails.qa_issues` apenas para
- * dar visibilidade no workspace do designer.
+ * Cada resultado declara se é warning ou blocking. Links sem destino são
+ * bloqueantes; os demais achados continuam disponíveis para revisão.
  */
 
 import type { QaIssue } from "@/types/email-generation"
@@ -45,6 +44,7 @@ export function computeRenderChecks(
     issues.push({
       type: "compliance",
       severity: "medium",
+      disposition: "warning",
       message:
         "Sem link de unsubscribe no HTML — Klaviyo/ESP pode bloquear o envio.",
       location: "footer",
@@ -52,12 +52,15 @@ export function computeRenderChecks(
   }
 
   // 2. Links placeholder href="#" — CTA que não leva a lugar nenhum.
-  const emptyHrefs = html.match(/href\s*=\s*["']#["']/gi)?.length ?? 0
+  const emptyHrefs =
+    html.match(/href\s*=\s*["'](?:\s*|#|javascript:\s*void\s*\(\s*0\s*\))["']/gi)
+      ?.length ?? 0
   if (emptyHrefs > 0) {
     issues.push({
       type: "links_quebrados",
-      severity: "low",
-      message: `${emptyHrefs} link(s) com href="#" (placeholder) — preencher URL antes de publicar.`,
+      severity: "high",
+      disposition: "blocking",
+      message: `${emptyHrefs} link(s) com destino vazio/placeholder — preencher URL antes de publicar.`,
     })
   }
 
@@ -74,6 +77,7 @@ export function computeRenderChecks(
     issues.push({
       type: "links_quebrados",
       severity: "medium",
+      disposition: "blocking",
       message: `${hrefless} botão(ões)/link(s) sem destino — a URL não foi preenchida na geração.`,
     })
   }
@@ -88,6 +92,7 @@ export function computeRenderChecks(
     issues.push({
       type: "alt_text_faltando",
       severity: "low",
+      disposition: "warning",
       message: `${imgsWithoutAlt} imagem(ns) sem atributo alt descritivo.`,
     })
   }
@@ -99,6 +104,7 @@ export function computeRenderChecks(
     issues.push({
       type: "html_invalido",
       severity: "medium",
+      disposition: "warning",
       message:
         'HTML sem <table role="presentation"> — layout não table-based pode quebrar em Outlook/Gmail.',
     })
@@ -117,6 +123,7 @@ export function computeRenderChecks(
     issues.push({
       type: "contraste_baixo",
       severity: "medium",
+      disposition: "warning",
       message:
         `${contraste.length} trecho(s) com contraste abaixo do mínimo legível. ` +
         `Pior caso: texto ${pior.textHex} sobre ${pior.bgHex} ` +

@@ -9,6 +9,7 @@ import {
   applyStructuralFills,
   copyMergeByExample,
   heroCopyPreserved,
+  heroTextoInventado,
   isLogoKey,
   mergeBlocksFromContext,
   type MergeBlock,
@@ -851,5 +852,66 @@ describe("body-4: marca [N] costurada e item órfão", () => {
       motivo: "copy_ausente_limpo",
     })
     expect(r.html).toContain('<span class="mark" style="font-size:15px;"></span>')
+  })
+})
+
+describe("heroTextoInventado (09/09)", () => {
+  const regiao = `<tr><td><h1>The right fit for<br>your real body</h1><p>Welcome to Hero Boxers</p><a href="#">SHOP NOW</a></td></tr>`
+  const valores = ["The right fit for your real body", "Welcome to Hero Boxers", "SHOP NOW"]
+
+  it("o caso do batch 644d86c5: oferta e placeholder que não existiam", () => {
+    const frag = `<tr><td><h1>Here's 10% OFF Your First Order</h1><p>Use code: [WELCOME-CODE]</p><a href="#">SHOP 10% OFF</a></td></tr>`
+    const r = heroTextoInventado(regiao, frag, valores)
+    expect(r).toEqual(["Here's 10% OFF Your First Order", "Use code: [WELCOME-CODE]", "SHOP 10% OFF"])
+  })
+
+  it("fragmento fiel — re-espaçado, entidades, células juntadas, alt — não acusa nada", () => {
+    const frag = `<tr><td><h1>The right fit for your&nbsp;real body</h1><p>Welcome to Hero Boxers SHOP NOW</p><img alt="Welcome to Hero Boxers" src="x.png"/></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual([])
+  })
+
+  it("rótulo curto, merge tag, token de plataforma, número e comentário MSO não contam", () => {
+    const frag = `<tr><td><!--[if mso]><p>Only Outlook</p><![endif]--><p>{{ first_name }}, hi</p><p>NOME_DA_MARCA</p><p>R$ 199</p><p>Ver mais</p><style>.x{}</style></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual([])
+  })
+
+  it("placeholder entre colchetes é inventado mesmo com uma palavra só", () => {
+    expect(heroTextoInventado(regiao, `<tr><td>[CODE]</td></tr>`, valores)).toEqual(["[CODE]"])
+  })
+
+  it("frase nova de 3+ palavras é acusada; frases repetidas entram uma vez", () => {
+    const frag = `<tr><td><p>Free shipping on everything</p><p>Free shipping on everything</p></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual(["Free shipping on everything"])
+  })
+})
+
+describe("copyMergeByExample — campo omitido pela arbitragem (09/09)", () => {
+  const html = `<!-- cfy:block:0:hero:start --><table><tr><td>The right fit</td></tr><tr><td>Use code: [WELCOME-CODE]</td></tr><tr><td><a href="#">SHOP NOW</a></td></tr></table><!-- cfy:block:0:hero:end -->`
+  const fields = [
+    { key: "headline", type: "text_short", example: "The right fit" },
+    { key: "coupon_line", type: "text_short", example: "Use code: [WELCOME-CODE]", omitir: true },
+    { key: "cta_label", type: "text_short", example: "SHOP NOW", omitir: true },
+  ]
+  it("a linha do cupom some e o CTA é esvaziado mesmo que o n8n tenha mandado valor", () => {
+    const r = copyMergeByExample(html, [
+      { block_id: "b0", block_type: "hero", fields, content: { headline: "Fits your real body", coupon_line: "Use code: HERO10", cta_label: "SHOP 10% OFF" } },
+    ])
+    expect(r.html).toContain("Fits your real body")
+    expect(r.html).not.toContain("HERO10")
+    expect(r.html).not.toContain("[WELCOME-CODE]")
+    expect(r.html).not.toContain("SHOP 10% OFF")
+    expect(r.html).not.toContain("SHOP NOW")
+    expect(r.report.omitidos.map((o) => [o.key, o.linha_removida])).toEqual([
+      ["coupon_line", true],
+      ["cta_label", true],
+    ])
+    expect(r.report.exemplos_limpos).toEqual([])
+  })
+  it("sem a flag, o example do cupom FICA (o defeito de antes) — a flag é o que muda", () => {
+    const r = copyMergeByExample(html, [
+      { block_id: "b0", block_type: "hero", fields: fields.map((f) => ({ ...f, omitir: false })), content: { headline: "X" } },
+    ])
+    expect(r.html).toContain("[WELCOME-CODE]")
+    expect(r.report.omitidos).toEqual([])
   })
 })

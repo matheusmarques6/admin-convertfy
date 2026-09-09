@@ -13,6 +13,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { marcarVerificadoPorEdicao } from "@/lib/agents/objecoes/catalogo-regras"
+import { aplicarFichaAoCatalogo, normalizarFicha } from "@/lib/stores/ficha-operacional"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { logger } from "@/lib/logger"
 
@@ -40,6 +41,8 @@ const patchSchema = z.object({
   niche: z.string().nullable().optional(),
   target_audience: z.string().nullable().optional(),
   additional_notes: z.string().nullable().optional(),
+  // Ficha operacional (09/09) — forma livre validada por normalizarFicha.
+  ficha_operacional: z.record(z.string(), z.unknown()).nullable().optional(),
   // Operacao / catalogo
   ticket_medio_cents: z.number().nullable().optional(),
   taxa_conversao: z.number().nullable().optional(),
@@ -149,7 +152,7 @@ export async function PATCH(
   try {
     const { id: storeId } = await params
     const sb = await createClient()
-    await requireAuth(sb)
+    const user = await requireAuth(sb)
     const admin = createAdminClient()
 
     const raw = await request.json()
@@ -204,11 +207,50 @@ export async function PATCH(
       }
     }
 
+    // Ficha operacional (09/09): normaliza, carimba autor/data e aplica ao
+    // catálogo EXISTENTE na hora (verificado + incentivo) — sem esperar o
+    // Catalogador rodar de novo. Fail-open no catálogo.
+    if ("ficha_operacional" in update) {
+      const ficha = normalizarFicha(update.ficha_operacional)
+      update.ficha_operacional = ficha
+        ? { ...ficha, atualizado_em: new Date().toISOString(), atualizado_por: (user as { email?: string | null; id?: string } | null)?.email ?? (user as { id?: string } | null)?.id ?? null }
+        : null
+      try {
+        const { data: row } = await admin
+          .from("client_stores")
+          .select("objection_catalog")
+          .eq("id", storeId)
+          .maybeSingle()
+        const catalogo = (row as { objection_catalog?: unknown } | null)?.objection_catalog
+        if (ficha && catalogo && typeof catalogo === "object") {
+          const r = aplicarFichaAoCatalogo(catalogo as CatalogoDeObjecoes, ficha)
+          if (r.verificadas.length > 0 || r.incentivo_sobrescrito) {
+            update.objection_catalog = r.catalogo
+            update.objection_catalog_updated_at = new Date().toISOString()
+          }
+        }
+      } catch (err) {
+        log.warn("context.ficha_operacional_catalogo_failed", { storeId, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
     const { error } = await admin
       .from("client_stores")
       .update(update)
       .eq("id", storeId)
-    if (error) throw error
+    if (error) {
+      // Coluna ausente (migration 20261134 não aplicada): grava o resto e diz.
+      if ("ficha_operacional" in update && /ficha_operacional/.test(error.message)) {
+        const { ficha_operacional: _f, ...semFicha } = update
+        void _f
+        if (Object.keys(semFicha).length > 0) {
+          const { error: e2 } = await admin.from("client_stores").update(semFicha).eq("id", storeId)
+          if (e2) throw e2
+        }
+        throw new AppError("A coluna ficha_operacional não existe — aplique a migration 20261134_client_stores_ficha_operacional.sql", 422)
+      }
+      throw error
+    }
     return successResponse(request, { updated: true })
   } catch (error) {
     return errorResponse(request, error, "store-context-patch")

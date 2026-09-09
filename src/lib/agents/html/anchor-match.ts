@@ -675,6 +675,10 @@ const EXEMPLO_RE: RegExp[] = [
   /_AQUI\b/i,
   /\bplaceholder\b/i,
   /\b(logo|texto|imagem)\s+here\b/i,
+  // 09/09 (batch 644d86c5): "ICON 1 · ICON 2 · ICON 3" da faixa de selos
+  // do body-3 chegou ao cliente — a variante não tem campo para os selos.
+  /\b(icon|[ií]cone|badge)\s*\d\b/i,
+  /\bname\s+here\b/i,
 ]
 
 export function pareceExemplo(texto: string): boolean {

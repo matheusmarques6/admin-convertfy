@@ -687,6 +687,9 @@ export async function generateBlueprintAndReference(
     // copy_guidance da variante embaixo como "Forma (variante)"): muda a
     // origem, não o encanamento.
     papeisPorPosicao: papeisFinais,
+    // 09/09: requisitos tipados alinhados aos papéis (viajam dentro das
+    // posições, então o clamp não os desalinha).
+    requisitosPorPosicao: posicoes ? posicoes.map((p) => p.requisitos ?? null) : null,
     intencoesHumanas: intencoesPorPosicao.filter(Boolean).length,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,

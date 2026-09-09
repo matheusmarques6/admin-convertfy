@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { RefreshCw, BookOpen, AlertTriangle } from "lucide-react"
+import { RefreshCw, BookOpen, AlertTriangle, Copy, Check, X } from "lucide-react"
 import { C, F } from "./ui/eg-theme"
 import { EGBadge, EGBtn, EGCard, EGNotice, EGSecTitle } from "./ui/eg-atoms"
 
@@ -85,6 +85,25 @@ interface HigieneData {
   notas_orfas: Array<{ slug: string; variant_id: string | null; nome_no_banco: string | null }>
   variantes_sem_nota: Array<{ variant_id: string; name: string; block_type: string }>
 }
+/**
+ * Lacuna da biblioteca proposta pela TELEMETRIA do Curador (09/09): a
+ * mesma violação em 3+ gerações de 14 dias vira rascunho de nota em
+ * `componentes/lacunas/`. O 👎 gera rascunho que ninguém persiste; esta
+ * lista é o caminho que sobrou, porque o admin só LÊ o vault.
+ */
+interface PropostaRow {
+  id: string
+  chave: string
+  violacao: string
+  secao: string | null
+  path_sugerido: string
+  markdown: string
+  ocorrencias: number
+  primeira_vez: string
+  ultima_vez: string
+  exemplos: Array<{ runId: string; storeName: string | null; createdAt: string }>
+  status: "proposta" | "copiada" | "descartada"
+}
 interface VaultData {
   state: SyncState | null
   runs: SyncRun[]
@@ -92,6 +111,7 @@ interface VaultData {
   structure_refs: RefRow[]
   learnings: LearningRow[]
   higiene?: HigieneData
+  propostas?: PropostaRow[]
   configured: boolean
 }
 
@@ -265,6 +285,11 @@ export function VaultTab() {
         <HigieneCard higiene={data.higiene} />
       )}
 
+      {/* Lacunas propostas pela telemetria do Curador */}
+      {(data.propostas?.length ?? 0) > 0 && (
+        <LacunasPropostasCard propostas={data.propostas ?? []} onChanged={load} />
+      )}
+
       {/* Material ativo por flow */}
       {flows.length === 0 ? (
         <EGNotice tone={lastRun?.error ? "neg" : "neut"}>
@@ -364,6 +389,90 @@ function MaterialCol({
  * geração (o cadastro prevalece desde 03/09) — é a lista do que corrigir na
  * nota para o Curador voltar a enxergar os eixos da variante certa.
  */
+function LacunasPropostasCard({ propostas, onChanged }: { propostas: PropostaRow[]; onChanged: () => void }) {
+  const [aberta, setAberta] = useState<string | null>(null)
+  const [copiada, setCopiada] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const marcar = async (id: string, status: PropostaRow["status"]) => {
+    setErro(null)
+    try {
+      const r = await fetch("/api/admin/vault/propostas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`)
+      onChanged()
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const copiar = async (p: PropostaRow) => {
+    try {
+      await navigator.clipboard.writeText(p.markdown)
+      setCopiada(p.id)
+      setTimeout(() => setCopiada((c) => (c === p.id ? null : c)), 2000)
+      if (p.status !== "copiada") await marcar(p.id, "copiada")
+    } catch (e) {
+      setErro(`Não copiou: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  const abertas = propostas.filter((p) => p.status === "proposta").length
+  return (
+    <EGCard>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <EGSecTitle title="Lacunas propostas pela telemetria" />
+        <EGBadge tone={abertas === 0 ? "pos" : "warn"}>
+          {abertas === 0 ? "nenhuma pendente" : `${abertas} para levar ao Obsidian`}
+        </EGBadge>
+      </div>
+      <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 10 }}>
+        A mesma violação do protocolo em 3+ gerações de 14 dias vira rascunho de
+        nota em <code>componentes/lacunas/</code>. Copie, revise no Obsidian e
+        salve com <code>status: aberta</code> — a nota passa a ser servida ao
+        Curador no próximo sync. «Descartar» diz que não é lacuna; o cron não a
+        propõe de novo.
+      </div>
+      {erro && <EGNotice tone="neg">{erro}</EGNotice>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {propostas.map((p) => (
+          <div key={p.id} style={{ borderLeft: `2px solid ${p.status === "copiada" ? C.g300 : C.warn}`, paddingLeft: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: F.mono, fontSize: 12, color: C.g900, fontWeight: 600 }}>{p.path_sugerido}</span>
+              <span style={{ fontFamily: F.sans, fontSize: 11, color: C.g500 }}>
+                {p.violacao.replace(/_/g, " ")} · {p.ocorrencias}× · última {fmtWhen(p.ultima_vez)}
+              </span>
+              {p.status === "copiada" && <EGBadge tone="neut">copiada</EGBadge>}
+              <span style={{ flex: 1 }} />
+              <EGBtn variant="secondary" onClick={() => setAberta(aberta === p.id ? null : p.id)}>
+                {aberta === p.id ? "Fechar" : "Ver rascunho"}
+              </EGBtn>
+              <EGBtn variant="dark" onClick={() => copiar(p)} title="Copia o markdown para colar no Obsidian">
+                {copiada === p.id ? <Check size={12} /> : <Copy size={12} />} Copiar
+              </EGBtn>
+              <EGBtn variant="secondary" onClick={() => marcar(p.id, "descartada")} title="Não é lacuna — some da lista e o cron não propõe de novo">
+                <X size={12} /> Descartar
+              </EGBtn>
+            </div>
+            <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginTop: 2 }}>
+              {p.exemplos.map((e) => e.storeName ?? "loja?").filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+            </div>
+            {aberta === p.id && (
+              <pre style={{ fontFamily: F.mono, fontSize: 11, color: C.g700, background: C.g50, padding: 10, marginTop: 6, whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>
+                {p.markdown}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </EGCard>
+  )
+}
+
 function HigieneCard({ higiene }: { higiene: HigieneData }) {
   const total =
     higiene.divergentes.length +

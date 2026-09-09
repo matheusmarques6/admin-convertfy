@@ -3,7 +3,10 @@ import { describe, it, expect } from "vitest"
 import {
   buildCatalogVaultExtras,
   buildConvivenciaBlock,
+  buildDoutrinaBlock,
   buildEstruturasRefResumo,
+  buildJulgamentoBlock,
+  secoesDaDoutrina,
   buildIndiceDoVault,
   buildLacunasBlock,
   renderIndiceDoVault,
@@ -17,6 +20,7 @@ import {
   indexVaultDocs,
   momentoDoEmail,
   parsePesoRaw,
+  primeiraFrase,
   type VaultDocRow,
 } from "./curador-vault"
 import { buildCatalog } from "./catalog-builder"
@@ -309,6 +313,48 @@ describe("lacunas da biblioteca", () => {
   })
 })
 
+// 09/09 — kinds novos. Os dois blocos existem para o outro lado (prompts
+// dos agentes) consumir; aqui só se garante que indexam e que a ausência
+// é declarada, nunca vazia.
+describe("julgamento e doutrina", () => {
+  it("julgamento indexa como nota única e ausência é declarada", () => {
+    const k = indexVaultDocs([doc({ kind: "julgamento", slug: "_julgamento", body_md: "# Régua\nexige × proibição é veto" })])
+    expect(k.julgamento?.slug).toBe("_julgamento")
+    expect(buildJulgamentoBlock(k)).toContain("é veto")
+    expect(buildJulgamentoBlock(emptyCuradorVaultKnowledge())).toContain("sem nota de julgamento")
+  })
+
+  it("doutrina roteia por `secao`, inclui as gerais e declara ausência", () => {
+    const k = indexVaultDocs([
+      doc({ kind: "doutrina", slug: "hero-promessa", frontmatter: { secao: "hero", fonte: "Curso A" }, body_md: "uma promessa por hero" }),
+      doc({ kind: "doutrina", slug: "assunto-curto", frontmatter: { secao: ["assunto"], fonte: "Curso B" }, body_md: "assunto de até 40" }),
+      doc({ kind: "doutrina", slug: "tom-geral", frontmatter: { fonte: "Curso C" }, body_md: "fala com uma pessoa" }),
+    ])
+    expect(k.doutrinas).toHaveLength(3)
+    expect(secoesDaDoutrina(k.doutrinas[2])).toEqual(["geral"])
+
+    const hero = buildDoutrinaBlock(k, "hero")
+    expect(hero).toContain("hero-promessa (fonte: Curso A)")
+    expect(hero).toContain("tom-geral")
+    expect(hero).not.toContain("assunto-curto")
+    // A específica vem antes da geral.
+    expect(hero.indexOf("hero-promessa")).toBeLessThan(hero.indexOf("tom-geral"))
+
+    expect(buildDoutrinaBlock(k, "geral")).not.toContain("hero-promessa")
+    expect(buildDoutrinaBlock(k, "products")).toContain("tom-geral")
+    expect(buildDoutrinaBlock(emptyCuradorVaultKnowledge(), "hero")).toContain("sem doutrina para a seção hero")
+    expect(buildDoutrinaBlock(emptyCuradorVaultKnowledge(), "geral")).toContain("sem doutrina geral")
+  })
+
+  it("teto de 3 notas por seção", () => {
+    const k = indexVaultDocs(
+      ["a", "b", "c", "d"].map((s) => doc({ kind: "doutrina", slug: `hero-${s}`, frontmatter: { secao: "hero", fonte: "X" }, body_md: s })),
+    )
+    const b = buildDoutrinaBlock(k, "hero")
+    expect(b.match(/## Doutrina/g)).toHaveLength(3)
+  })
+})
+
 describe("índice do Obsidian", () => {
   it("árvore de pastas com contagem, derivada do file_path; raiz e caminho sem pasta ficam fora", () => {
     const idx = buildIndiceDoVault([
@@ -319,7 +365,7 @@ describe("índice do Obsidian", () => {
       "/estruturas/welcome/medicube-ultima-batida.md",
       "_INDEX.md",
     ])
-    expect(idx.pastas).toEqual([
+    expect(idx.pastas.map((p) => ({ pasta: p.pasta, notas: p.notas }))).toEqual([
       { pasta: "componentes/lacunas", notas: 1 },
       { pasta: "componentes/secoes", notas: 2 },
       { pasta: "estruturas/welcome", notas: 2 },
@@ -327,7 +373,63 @@ describe("índice do Obsidian", () => {
     const r = renderIndiceDoVault(idx)
     expect(r).toContain("- componentes/secoes/ (2 notas)")
     expect(r).toContain("- componentes/lacunas/ (1 nota)")
+    // Só caminho, sem corpo: cada nota aparece com "(sem resumo)".
+    expect(r).toContain("  · _hero — (sem resumo)")
     expect(renderIndiceDoVault({ pastas: [] })).toContain("não sincronizado")
+  })
+
+  // 09/09 — o índice passa a dizer DO QUE cada nota trata. Contagem sozinha
+  // não orienta a consulta sob demanda (consultou_vault era 3/8 runs).
+  it("primeiraFrase pula título, tabela, lista, citação e código", () => {
+    const body = [
+      "# Hero 3 — cupom",
+      "",
+      "| eixo | valor |",
+      "- item",
+      "> citação",
+      "```",
+      "codigo aqui",
+      "```",
+      "1. passo",
+      "",
+      "Hero de **captação** com [[cupom-ativo|cupom]] em destaque e CTA único.",
+      "Segunda linha não entra.",
+    ].join("\n")
+    expect(primeiraFrase(body)).toBe("Hero de captação com cupom em destaque e CTA único.")
+    expect(primeiraFrase("# só título\n- só lista")).toBeNull()
+    expect(primeiraFrase(null)).toBeNull()
+    const longa = "palavra ".repeat(60)
+    const r = primeiraFrase(longa)!
+    expect(r.length).toBeLessThanOrEqual(161)
+    expect(r.endsWith("…")).toBe(true)
+  })
+
+  it("índice com corpo lista slug — primeira frase, em ordem de slug", () => {
+    const idx = buildIndiceDoVault([
+      { file_path: "componentes/lacunas/offer-sem-isolamento.md", body_md: "# t\nOferta sem bloco que isole o cupom." },
+      { file_path: "componentes/lacunas/body-sem-prova.md", body_md: "Corpo que prove sem review." },
+      "estruturas/welcome/x.md",
+    ])
+    expect(idx.pastas[0].resumos).toEqual([
+      { slug: "body-sem-prova", resumo: "Corpo que prove sem review." },
+      { slug: "offer-sem-isolamento", resumo: "Oferta sem bloco que isole o cupom." },
+    ])
+    const r = renderIndiceDoVault(idx)
+    expect(r).toContain("- componentes/lacunas/ (2 notas)\n  · body-sem-prova — Corpo que prove sem review.")
+  })
+
+  it("acima do teto, a pasta mais cheia volta a só contagem", () => {
+    const muitas = Array.from({ length: 120 }, (_, i) => ({
+      file_path: `componentes/variantes/body/body-${i}.md`,
+      body_md: `Bloco ${i} ` + "descrição longa o bastante para pesar no índice ".repeat(3),
+    }))
+    const poucas = [{ file_path: "componentes/lacunas/a.md", body_md: "Lacuna curta." }]
+    const r = renderIndiceDoVault(buildIndiceDoVault([...muitas, ...poucas]))
+    expect(r.length).toBeLessThanOrEqual(12_000)
+    expect(r).toContain("- componentes/variantes/body/ (120 notas)")
+    expect(r).not.toContain("body-7 —")
+    // A pasta pequena mantém o resumo.
+    expect(r).toContain("  · a — Lacuna curta.")
   })
 })
 

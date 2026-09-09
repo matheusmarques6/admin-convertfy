@@ -35,6 +35,7 @@ import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { corteDeRaciocinio } from "../model-capabilities"
 import { parseOps, type FormatOp } from "../html/apply-patches"
 import { withUsage } from "./step-usage"
+import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 const log = logger.child("ColorFormatChain")
 
@@ -176,8 +177,9 @@ export async function invokeColorFormatChain(input: {
 }): Promise<InvokeColorFormatResult> {
   const { config, vars } = input
 
-  const systemPrompt =
+  const approvedSystemPrompt =
     config.system_prompt.trim() || DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT
+  const systemPrompt = withDoctrine(approvedSystemPrompt, "color")
   const template = config.user_template.trim() || DEFAULT_COLOR_FORMAT_USER_TEMPLATE
   const userMessage = renderImageTemplate(template, vars)
 
@@ -193,10 +195,11 @@ export async function invokeColorFormatChain(input: {
             {
               cls: "agente" as const,
               rotulo: "Template do agente",
-              texto: systemPrompt,
-              chars: systemPrompt.length,
+              texto: approvedSystemPrompt,
+              chars: approvedSystemPrompt.length,
               parte: "system" as const,
             },
+            doctrinePromptSegment("color"),
           ],
           segUser.segments,
         )

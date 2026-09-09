@@ -131,3 +131,51 @@ describe("candidatasElegiveis, jaAtacadasDe, alvoSintetico", () => {
     expect(alvoSintetico(null, "sem_contrato", null).modo).toBe("quebra_de_objecao")
   })
 })
+
+describe("incentivo, insumos permitidos, dedupe e contradições (09/09)", () => {
+  it("incentivo vem do CATÁLOGO por código; proibições deduplicadas por chave; insumos só com origem", () => {
+    const cat = normalizarCatalogo({
+      ...catalogo,
+      incentivo: { existe: false, valor: null, codigo: null, condicoes: null, prazo: null, campo_de_origem: null, alerta: null },
+    })
+    const { alvo } = normalizarAlvo(
+      {
+        alvos: [{ id: "obj_1", profundidade_de_prova: "afirmacao" }],
+        proibido_neste_toque: ["Urgência artificial!", "não prometer prazo", "Não prometer prazo."],
+        insumos_permitidos: ["checkout Shopify (pesquisa: plataforma)", "fato sem origem", "fibra de bambu (produto)", "Checkout Shopify (pesquisa: plataforma)"],
+        incentivo: { existe: true, codigo: "INVENTADO" },
+      },
+      w1, cat, [],
+    )
+    expect(alvo.incentivo).toEqual({ existe: false, codigo: null, valor: null })
+    expect(alvo.proibido_neste_toque).toEqual(["urgência artificial", "não prometer prazo"])
+    expect(alvo.insumos_permitidos).toEqual(["checkout Shopify (pesquisa: plataforma)", "fibra de bambu (produto)"])
+  })
+
+  it("o caso da Hero Boxers: tratamento pede política de troca e a proibição a nega → contradição, alvo mantido", () => {
+    const cat = normalizarCatalogo({
+      ...catalogo,
+      objecoes: [
+        { objecao: "Nunca ouvi falar, não confio meu cartão", tipo_de_risco: "seguranca", dimensao_confianca: "integridade", aliviador: "seguranca_de_pagamento", tratamento: "secure-payment badge and plain-language return policy", dominante_da_categoria: true, flows_elegiveis: ["welcome"], lastro_operacional: { afirmacao: "x" }, severidade: 5, evidencia: "x", confianca: "alta" },
+      ],
+    })
+    const c = parseIntentContract({ modo: "quebra_de_objecao" })!
+    const { alvo } = normalizarAlvo(
+      { alvos: [{ id: "obj_1", profundidade_de_prova: "afirmacao" }], proibido_neste_toque: ["não afirmar política de devolução — não encontrado na pesquisa"] },
+      c, cat, [],
+    )
+    expect(alvo.alvos).toHaveLength(1)
+    expect(alvo.contradicoes).toHaveLength(1)
+    expect(alvo.contradicoes?.[0]).toMatchObject({ motivo: "tratamento_sem_insumo" })
+    expect(alvo.contradicoes?.[0].detalhe).toContain("política de troca/devolução")
+    expect(alvo.lacuna).toBeNull()
+  })
+
+  it("sem proibição na mesma família não há contradição; alvo sintético carrega o incentivo do catálogo", () => {
+    const { alvo } = normalizarAlvo({ alvos: [{ id: "obj_3", profundidade_de_prova: "afirmacao" }], proibido_neste_toque: ["urgência artificial"] }, w1, catalogo, [])
+    expect(alvo.contradicoes).toEqual([])
+    const cat = normalizarCatalogo({ ...catalogo, incentivo: { existe: true, valor: "10%", codigo: "HERO10" } })
+    expect(alvoSintetico(w1, "seletor_falhou", null, [], cat).incentivo).toEqual({ existe: true, codigo: "HERO10", valor: "10%" })
+    expect(alvoSintetico(w1, "seletor_falhou", null).incentivo).toEqual({ existe: null, codigo: null, valor: null })
+  })
+})

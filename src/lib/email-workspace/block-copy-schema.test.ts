@@ -112,3 +112,26 @@ describe("buildBlockCopySchema", () => {
     expect(s.campos).toEqual({})
   })
 })
+
+describe("omitir, papel e requisitos (09/09)", () => {
+  it("campo omitido pela arbitragem NÃO entra no schema; papel e requisitos entram quando existem", () => {
+    const schema = buildBlockCopySchema(
+      [
+        { key: "headline_l1", type: "text_short", max_len: 40 },
+        { key: "coupon_line", type: "text_short", max_len: 40, omitir: true },
+        { key: "cta_label", type: "text_short", max_len: 20, required: true, omitir: true },
+      ],
+      { variantName: "hero 3", purpose: "p", papel: "Apresenta a marca", requisitos: { cupom: false, cta: false } },
+    )
+    expect(Object.keys(schema.campos)).toEqual(["headline_l1"])
+    expect(schema.obrigatorios).toEqual([])
+    expect(schema.total_campos).toBe(1)
+    expect(schema.papel).toBe("Apresenta a marca")
+    expect(schema.requisitos).toEqual({ cupom: false, cta: false })
+  })
+  it("sem papel/requisitos as chaves não aparecem (aditivo)", () => {
+    const schema = buildBlockCopySchema([{ key: "a", type: "text_short" }], { variantName: null, purpose: null })
+    expect("papel" in schema).toBe(false)
+    expect("requisitos" in schema).toBe(false)
+  })
+})

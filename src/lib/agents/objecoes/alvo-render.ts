@@ -25,6 +25,19 @@ export function renderAlvo(alvo: AlvoDoEmail | null | undefined, ausente: string
   if (alvo.lacuna) {
     linhas.push(`LACUNA: ${alvo.lacuna.motivo}${alvo.lacuna.detalhe ? ` — ${alvo.lacuna.detalhe}` : ""}`)
   }
+  // Decisão de incentivo (09/09) — a instrução POSITIVA que faltava: sem
+  // ela o outline seguia mandando "entregar o incentivo" e a hero
+  // escrevia oferta.
+  if (alvo.incentivo) {
+    const inc = alvo.incentivo
+    linhas.push(
+      inc.existe === false
+        ? "INCENTIVO: sem incentivo ativo — nenhum bloco, campo ou copy de oferta/cupom/percentual neste toque"
+        : inc.existe === true
+          ? `INCENTIVO: ativo${inc.valor ? ` · ${inc.valor}` : ""}${inc.codigo ? ` · código ${inc.codigo}` : ""}`
+          : "INCENTIVO: desconhecido — não afirme oferta nem código",
+    )
+  }
   for (const a of alvo.alvos) {
     const eixos = eixoObjecaoEquivalente(a.tipo_de_risco, a.aliviador_pedido)
     linhas.push(
@@ -45,9 +58,17 @@ export function renderAlvo(alvo: AlvoDoEmail | null | undefined, ausente: string
   }
   if (alvo.suspeita_a_antecipar) linhas.push(`suspeita a antecipar: ${alvo.suspeita_a_antecipar}`)
   if (alvo.alerta_de_lastro) linhas.push(`ALERTA DE LASTRO: ${alvo.alerta_de_lastro}`)
+  if (alvo.insumos_permitidos?.length) {
+    linhas.push("insumos permitidos (fatos que a copy PODE usar, com origem):")
+    for (const i of alvo.insumos_permitidos) linhas.push(`  - ${i}`)
+  }
   if (alvo.proibido_neste_toque.length) {
     linhas.push("proibido neste toque (restrição de REDAÇÃO — não elimina bloco):")
     for (const p of alvo.proibido_neste_toque) linhas.push(`  - ${p}`)
+  }
+  if (alvo.contradicoes?.length) {
+    linhas.push("CONTRADIÇÃO (dado que falta na loja — não invente para resolver):")
+    for (const c of alvo.contradicoes) linhas.push(`  - ${c.detalhe}`)
   }
   if (alvo.razao) linhas.push(`razão: ${alvo.razao}`)
   return linhas.join("\n")
@@ -66,5 +87,9 @@ export function renderObjecoesJaAtacadas(alvo: AlvoDoEmail | null | undefined): 
 export function alvoParaMedicao(alvo: AlvoDoEmail | null | undefined): AlvoParaMedicao | null {
   if (!alvo) return null
   const primaria = alvo.alvos.find((a) => a.primaria) ?? alvo.alvos[0]
-  return { aliviador_pedido: primaria?.aliviador_pedido ?? null, proibicoes: alvo.proibido_neste_toque }
+  return {
+    aliviador_pedido: primaria?.aliviador_pedido ?? null,
+    proibicoes: alvo.proibido_neste_toque,
+    incentivo_existe: alvo.incentivo?.existe ?? null,
+  }
 }

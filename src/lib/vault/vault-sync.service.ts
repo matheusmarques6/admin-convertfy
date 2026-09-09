@@ -273,7 +273,7 @@ export async function syncVault(opts: {
 
       if (n.tipo === "componente_doc") {
         // Vault de componentes (Curador, 31/08) — tabela própria, ativação
-        // própria (isDocActive: catálogo gerado também serve; lacuna nunca).
+        // própria (isDocActive: catálogo gerado e lacuna aberta também servem).
         const kind = n.docKind ?? "outro"
         seen.docs.add(`${kind} ${n.slug}`)
         const { error } = await admin.from("email_vault_docs").upsert(
@@ -287,8 +287,18 @@ export async function syncVault(opts: {
           },
           { onConflict: "kind,slug" },
         )
-        if (error) skipped.push({ path: n.filePath, motivo: `upsert falhou: ${error.message}` })
-        else upserted++
+        if (error) {
+          // 23514 = CHECK de `kind` recusou: a migration que ensina o kind
+          // novo ao banco ainda não rodou (elas são aplicadas à mão e
+          // escorregam). Gravar como `outro` duplicaria a nota sob outro
+          // kind quando a migration rodar — então a nota fica de fora, com o
+          // motivo NOMEADO no card "Notas puladas", em vez de um erro cru.
+          const motivo =
+            error.code === "23514"
+              ? `kind '${kind}' não existe no banco — aplique supabase/migrations/20261134_vault_kinds_julgamento_doutrina.sql e sincronize de novo`
+              : `upsert falhou: ${error.message}`
+          skipped.push({ path: n.filePath, motivo })
+        } else upserted++
       } else if (n.tipo === "intencao" || n.tipo === "progressao") {
         const flow = n.flowType as string
         seen.intents.add(`${flow} ${n.slug}`)

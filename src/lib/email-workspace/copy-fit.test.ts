@@ -7,6 +7,10 @@ import {
   resumoDeEstouros,
   type BlocoComContrato,
   type MotivoDeAlvo,
+  apararNoLimite,
+  ehColunaComparativa,
+  removerTravessao,
+  temParComparativo,
 } from "./copy-fit"
 import type { BlueprintBlockField } from "@/types/email-generation"
 
@@ -589,5 +593,48 @@ describe("motivo ausente", () => {
       ok: false,
       motivo: "ainda_acima_do_limite",
     })
+  })
+})
+
+describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, par comparativo", () => {
+  it("removerTravessao: maiúscula depois vira ponto, minúscula vira vírgula; hífen de palavra fica", () => {
+    expect(removerTravessao("Sits low — rolls down by midmorning").texto).toBe("Sits low, rolls down by midmorning")
+    expect(removerTravessao("Feito no Brasil — Cada peça é única").texto).toBe("Feito no Brasil. Cada peça é única")
+    expect(removerTravessao("— Comece agora").texto).toBe("Comece agora")
+    expect(removerTravessao("Compatível com OBD-II e e-mail")).toEqual({ texto: "Compatível com OBD-II e e-mail", removidos: 0 })
+  })
+  it("apararNoLimite: só excesso pequeno, na fronteira de palavra, sem reticências", () => {
+    expect(apararNoLimite("I'm 54, 38-inch waist, and these are the first boxers that stay put all day long.", 80)).toBe("I'm 54, 38-inch waist, and these are the first boxers that stay put all day.")
+    expect(apararNoLimite("curto", 80)).toBeNull()
+    expect(apararNoLimite("a".repeat(120), 80)).toBeNull()
+    expect(apararNoLimite("uma frase com trinta e poucos chars", 32)).toBe("uma frase com trinta e poucos")
+  })
+  it("par comparativo e coluna comparativa", () => {
+    const fields = [{ key: "column_a_item_6" }, { key: "column_b_item_6" }, { key: "column_a_title" }, { key: "closing_copy" }]
+    expect(temParComparativo("column_b_item_6", fields)).toBe(true)
+    expect(temParComparativo("closing_copy", fields)).toBe(false)
+    expect(ehColunaComparativa("column_a_title", fields)).toBe(true)
+    expect(ehColunaComparativa("closing_copy", fields)).toBe(false)
+  })
+  it("alvosDeEncurtamento: item ausente com par NÃO é alvo; coluna comparativa vira so_codigo; travessão que cabe vira proposta", () => {
+    const f = (key: string, max = 60) => ({ key, label: key, type: "text_short", max_len: max, min_len: null, required: false, example: "", guidance: "", source: "schema" }) as BlueprintBlockField
+    const fields = [f("column_a_item_1"), f("column_a_item_2"), f("column_a_item_3"), f("column_b_item_1"), f("column_b_item_2"), f("column_b_item_3"), f("closing_copy", 40)]
+    const rel = { par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
+    const alvos = alvosDeEncurtamento(
+      [{ id: "b1", position: 2, block_type: "body", fields, content: {
+        column_a_item_1: "High rise, stays in place all day long and more", column_a_item_2: "b", column_a_item_3: "c",
+        column_b_item_1: "Sits low — rolls down", column_b_item_2: "y", column_b_item_3: "",
+        closing_copy: "Feito no Brasil — cada peça é única",
+      } }],
+      { relatorio: rel },
+    )
+    expect(rel.par_comparativo).toEqual(["2.column_b_item_3"])
+    expect(alvos.find((a) => a.key === "column_b_item_3")).toBeUndefined()
+    expect(alvos.find((a) => a.key === "column_b_item_1")?.so_codigo).toBe(true)
+    expect(rel.comparativa_sem_llm).toContain("2.column_b_item_1")
+    const closing = alvos.find((a) => a.key === "closing_copy")!
+    expect(closing.proposta_por_codigo).toBe("Feito no Brasil, cada peça é única")
+    expect(closing.motivos).toEqual(["travessao"])
+    expect(rel.travessao_por_codigo).toEqual(["2.closing_copy"])
   })
 })

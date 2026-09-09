@@ -39,6 +39,8 @@ import type {
 } from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
+import { incentivoDoCatalogo } from "@/lib/agents/objecoes/incentivo"
+import { condicionarOutline, couponCodeEfetivo } from "@/lib/email-workspace/outline-condicional"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import {
@@ -102,6 +104,9 @@ interface BlockSchema {
   variantId: string | null
   variantName: string | null
   purpose: string | null
+  /** Papel e requisitos do Estruturador (09/09) — do bloco do blueprint casado por variant_id. */
+  papel: string | null
+  requisitos: Record<string, unknown> | null
 }
 
 /**
@@ -153,6 +158,8 @@ async function resolveBlockSchemas(
         variantName:
           (byVariant as { variant_name?: string | null } | undefined)?.variant_name ?? null,
         purpose: (byVariant as { purpose?: string | null } | undefined)?.purpose ?? null,
+        papel: (byVariant as { papel?: string | null } | undefined)?.papel ?? null,
+        requisitos: (byVariant as { requisitos?: Record<string, unknown> | null } | undefined)?.requisitos ?? null,
       })
       continue
     }
@@ -171,6 +178,8 @@ async function resolveBlockSchemas(
       variantId,
       variantName: (matched as { variant_name?: string | null } | null)?.variant_name ?? null,
       purpose: (matched as { purpose?: string | null } | null)?.purpose ?? null,
+      papel: (matched as { papel?: string | null } | null)?.papel ?? null,
+      requisitos: (matched as { requisitos?: Record<string, unknown> | null } | null)?.requisitos ?? null,
     })
     if (fields.length > 0 || variantId) {
       backfill.push({ id: b.id, variant_id: variantId, fields })
@@ -422,7 +431,8 @@ export async function dispatchEmailCopyWebhook(
           ticket_medio_cents, taxa_conversao, faturamento_medio_cents,
           margem_media, recorrencia, frete_medio_cents, frete_prazo, frete_cobertura,
           lista_total, lista_engajados_30, lista_engajados_90,
-          lista_crescimento_mensal, sms_consent_pct
+          lista_crescimento_mensal, sms_consent_pct,
+          objection_catalog
         `,
       )
       .eq("id", storeId)
@@ -975,13 +985,19 @@ export async function dispatchEmailCopyWebhook(
   // quando ainda está VAZIO (respeita código já preenchido — manual ou por
   // loja). A variação por idioma/loja é feita depois, na etapa por-loja.
   // Determinístico e best-effort: falhas são logadas, não bloqueiam o dispatch.
+  // Decisão de incentivo da LOJA (Catalogador) vence o cupom genérico do
+  // outline (09/09): `existe:false` → nenhum código é gravado nem enviado;
+  // `existe:true` com código → o da loja; desconhecido → o do outline.
+  const decisaoIncentivo = incentivoDoCatalogo(
+    (storeRes.data as { objection_catalog?: unknown } | null)?.objection_catalog,
+  )
   const couponCodeByEmailId = new Map<string, string>()
   const couponUpdates: Array<{ id: string; content: Record<string, unknown> }> = []
   for (const e of emails) {
     const flow = flowsById.get(e.flow_id)
     if (!flow) continue
     const outline = outlineByKey.get(`${flow.flow_type}:${e.number}`)
-    const code = (outline?.coupon_code ?? "").trim()
+    const code = (couponCodeEfetivo(outline?.coupon_code, decisaoIncentivo) ?? "").trim()
     if (!code) continue
     couponCodeByEmailId.set(e.id, code)
     for (const b of blocksByEmail.get(e.id) ?? []) {
@@ -1055,6 +1071,13 @@ export async function dispatchEmailCopyWebhook(
     label: string | null
     variant_name: string | null
     motivo: "sem_campo_de_copy" | "sem_variante" | "descartado_na_montagem"
+  }> = []
+  const camposOmitidos: Array<{
+    email_number: number
+    position: number
+    type: string
+    key: string
+    motivo: string
   }> = []
 
   // ── O bloco é o schema: resolve o contrato de cada bloco ANTES do envio.
@@ -1243,15 +1266,26 @@ export async function dispatchEmailCopyWebhook(
           // este email não tem cupom no idioma vigente). Já gravado no bloco
           // `coupon`; repetido aqui pra o n8n ter o valor à mão na copy.
           coupon_code: couponCodeByEmailId.get(e.id) ?? null,
-          estrutura_geral: outline
-            ? {
-                objective: outline.objective,
-                guidance: outline.guidance,
-                suggested_blocks: outline.suggested_blocks ?? [],
-                tone_hint: outline.tone_hint,
-                coupon_code: couponCodeByEmailId.get(e.id) ?? null,
-              }
-            : null,
+          // 09/09 (aditivo): a decisão da LOJA que o n8n tem de honrar —
+          // `incentivo.existe:false` = nunca escrever oferta/cupom/percentual.
+          // `insumos_permitidos` vem do alvo do Seletor quando existir.
+          decisao: {
+            incentivo: decisaoIncentivo,
+            insumos_permitidos: alvoByKey.get(key)?.insumos_permitidos ?? [],
+          },
+          estrutura_geral: (() => {
+            // O outline é por FLOW; a decisão de incentivo é por LOJA e vence.
+            const o = condicionarOutline(outline, decisaoIncentivo)
+            return o
+              ? {
+                  objective: o.objective,
+                  guidance: o.guidance,
+                  suggested_blocks: o.suggested_blocks ?? [],
+                  tone_hint: o.tone_hint,
+                  coupon_code: couponCodeByEmailId.get(e.id) ?? null,
+                }
+              : null
+          })(),
           blueprint: bpEffective
             ? {
                 objective: bpEffective.objective,
@@ -1289,8 +1323,21 @@ export async function dispatchEmailCopyWebhook(
               // do payload. Snapshots sem nature derivam do tipo (image →
               // imagem_gerada; resto → copy).
               const fields = allFields.filter(
-                (fld) => deriveFieldNature(fld) === "copy",
+                (fld) => deriveFieldNature(fld) === "copy" && fld.omitir !== true,
               )
+              // 09/09: campos omitidos pela arbitragem papel × forma — o
+              // n8n não os vê; o registro é o que diz o que saiu e por quê.
+              for (const fld of allFields) {
+                if (fld.omitir === true) {
+                  camposOmitidos.push({
+                    email_number: e.number,
+                    position: b.position,
+                    type: b.block_type,
+                    key: fld.key,
+                    motivo: fld.omitir_motivo ?? "",
+                  })
+                }
+              }
               const semExample = fields.filter(
                 (fld) => !(fld.example ?? "").trim(),
               ).length
@@ -1366,6 +1413,9 @@ export async function dispatchEmailCopyWebhook(
                 schema: buildBlockCopySchema(fields, {
                   variantName: resolved?.variantName ?? null,
                   purpose: resolved?.purpose ?? null,
+                  // 09/09: papel e requisitos como campos próprios do schema.
+                  papel: resolved?.papel ?? null,
+                  requisitos: resolved?.requisitos ?? null,
                 }),
               }
               // Bloco sem NENHUM campo de copy sai do payload. Não é
@@ -1713,6 +1763,12 @@ export async function dispatchEmailCopyWebhook(
       // bloco deixaria de ser gerado sem deixar rastro.
       ...(blocosOmitidos.length > 0
         ? { blocos_omitidos: blocosOmitidos.slice(0, 30) }
+        : {}),
+      // 09/09: decisão de incentivo aplicada e campos tirados do contrato
+      // pela arbitragem papel × forma.
+      decisao_incentivo: decisaoIncentivo,
+      ...(camposOmitidos.length > 0
+        ? { campos_omitidos: camposOmitidos.slice(0, 60) }
         : {}),
       // Emails que não foram gerados por não sobrar seção nenhuma (MC-2).
       // Ficam marcados `failed` com `failure_reason='sem_secao_montada'`.

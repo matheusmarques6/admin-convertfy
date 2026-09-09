@@ -89,9 +89,86 @@ export interface AlvoDeEncurtamento {
    * `igual_a_irmao`.
    */
   irmaos?: string[]
+  /**
+   * 09/09: o CÓDIGO já resolveu (travessão trocado por vírgula/ponto e o
+   * texto cabe). O chain aceita sem chamar o modelo.
+   */
+  proposta_por_codigo?: string
+  /**
+   * 09/09: coluna COMPARATIVA — nunca vai ao modelo (é onde o sentido
+   * inverte: "Sits low — rolls down" virou "Low rise, no midday roll" na
+   * coluna dos concorrentes). Só aparar por código, ou manter.
+   */
+  so_codigo?: boolean
 }
 
 const ITEM_DE_LISTA_RE = /^(.*)_item_(\d+)$/i
+const COLUNA_COMPARATIVA_RE = /^(column_|col_|coluna_|vs_|compar)/i
+
+/**
+ * `column_b_item_6` tem par em `column_a_item_6`: mesma linha de uma tabela
+ * comparativa. Item ausente aqui NÃO é para inventar — o copy_fit
+ * preencheu a coluna "Others" com um benefício da Hero (08/09).
+ */
+export function temParComparativo(key: string, fields: ReadonlyArray<{ key: string }>): boolean {
+  const m = ITEM_DE_LISTA_RE.exec(key)
+  if (!m) return false
+  const prefixo = m[1].toLowerCase()
+  const n = m[2]
+  return fields.some((f) => {
+    const fm = ITEM_DE_LISTA_RE.exec(f.key)
+    return !!fm && fm[2] === n && fm[1].toLowerCase() !== prefixo
+  })
+}
+
+/** Coluna comparativa: pelo prefixo da chave ou por ter par em outra coluna. */
+export function ehColunaComparativa(key: string, fields: ReadonlyArray<{ key: string }>): boolean {
+  return COLUNA_COMPARATIVA_RE.test(key) || temParComparativo(key, fields)
+}
+
+/**
+ * Travessão por CÓDIGO (09/09): antes o modelo reescrevia a frase inteira
+ * para tirar um traço, e reescrever é onde o sentido muda. Regra: " — "
+ * seguido de maiúscula vira ". "; senão vira ", ". Traço no início da
+ * frase some. Hífen dentro de palavra (OBD-II) não é travessão.
+ */
+export function removerTravessao(texto: string): { texto: string; removidos: number } {
+  let removidos = 0
+  let out = texto.replace(/^\s*[—–]\s*/, () => {
+    removidos++
+    return ""
+  })
+  out = out.replace(/\s*[—–]\s*(?=\S)/g, (_m, offset: number, str: string) => {
+    removidos++
+    const proximo = str.slice(offset).replace(/^\s*[—–]\s*/, "")[0] ?? ""
+    return /\p{Lu}/u.test(proximo) ? ". " : ", "
+  })
+  out = out.replace(/\s*[—–]\s*$/, () => {
+    removidos++
+    return ""
+  })
+  return { texto: out.replace(/\s{2,}/g, " ").trim(), removidos }
+}
+
+/**
+ * Aparar no limite por código (09/09): corta na última fronteira de palavra
+ * que cabe, sem reticências, só quando o excesso é pequeno (≤ 15%, a mesma
+ * régua do QA `copy_excede_max_len`). Excesso maior devolve null — cortar
+ * metade de um parágrafo foi o plano B que mandou "Plugs directly into any
+ * standard outlet." ao cliente (02/09).
+ */
+export function apararNoLimite(texto: string, max: number, tolerancia = 0.15): string | null {
+  const t = texto.trim()
+  if (!(max > 0) || t.length <= max) return null
+  if (t.length > Math.floor(max * (1 + tolerancia))) return null
+  const corte = t.slice(0, max + 1)
+  const ultimoEspaco = corte.lastIndexOf(" ")
+  if (ultimoEspaco <= 0) return null
+  let out = t.slice(0, ultimoEspaco).replace(/[\s,;:—–\-]+$/g, "")
+  if (!out) return null
+  if (/[.!?]$/.test(t) && !/[.!?]$/.test(out)) out += "."
+  return out.length <= max ? out : null
+}
 
 /**
  * Itens preenchidos da lista a que `key` pertence (mesmo prefixo,
@@ -126,11 +203,21 @@ export function irmaosDeLista(
  * quando o campo cabe no limite: o traço é do jeito que o modelo escreve,
  * não do tamanho da frase.
  */
+export interface RelatorioDeAlvos {
+  /** Item ausente com par em outra coluna — NÃO entra como `ausente`. */
+  par_comparativo: string[]
+  /** Coluna comparativa: alvo marcado `so_codigo` (nunca vai ao modelo). */
+  comparativa_sem_llm: string[]
+  /** Travessão resolvido por código, sem modelo. */
+  travessao_por_codigo: string[]
+}
+
 export function alvosDeEncurtamento(
   blocos: ReadonlyArray<BlocoComContrato>,
-  opts?: { idiomaDaLoja?: string | null },
+  opts?: { idiomaDaLoja?: string | null; relatorio?: RelatorioDeAlvos },
 ): AlvoDeEncurtamento[] {
   const idiomaDaLoja = opts?.idiomaDaLoja ?? null
+  const rel: RelatorioDeAlvos = opts?.relatorio ?? { par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
   const out: AlvoDeEncurtamento[] = []
   blocos.forEach((b, i) => {
     const fields = b.fields ?? []
@@ -156,6 +243,13 @@ export function alvosDeEncurtamento(
         // inventar copy de campo solto.
         const irmaos = irmaosDeLista(f.key, fields, b.content)
         if (irmaos.length < 2) continue
+        // Linha de tabela comparativa: item ausente não se inventa (09/09).
+        // Fica vazio e o merge remove a linha quando as duas células estão
+        // vazias.
+        if (temParComparativo(f.key, fields)) {
+          rel.par_comparativo.push(`${position}.${f.key}`)
+          continue
+        }
         out.push({
           id: `${position}.${f.key}`,
           position,
@@ -184,8 +278,35 @@ export function alvosDeEncurtamento(
       if (tracos > 0) motivos.push("travessao")
       if (idioma.divergente) motivos.push("idioma")
       if (motivos.length === 0) continue
+      const id = `${position}.${f.key}`
+      const limite = max ?? f.max_len
+      // Coluna comparativa (09/09): NUNCA vai ao modelo — reescrever é onde
+      // o sentido inverte. Entra como alvo `so_codigo`: o chain apara ou
+      // mantém, e o registro diz qual.
+      if (ehColunaComparativa(f.key, fields)) {
+        rel.comparativa_sem_llm.push(id)
+        out.push({
+          id, position, block_id: b.id ?? null, type: b.block_type ?? "", key: f.key,
+          label: f.label || f.key, orientacao: f.guidance || "", texto, max: limite,
+          min: f.min_len ?? null, motivos, tracos, so_codigo: true,
+          ...((idiomaDaLoja ?? "").trim() ? { idioma_esperado: (idiomaDaLoja ?? "").trim() } : {}),
+        })
+        continue
+      }
+      // Travessão por CÓDIGO (09/09): se era só o traço e a troca cabe, o
+      // modelo não é chamado. Com estouro/idioma junto, o alvo segue como
+      // antes (o modelo encurta/traduz e o guard cobra o traço).
+      let propostaPorCodigo: string | undefined
+      if (tracos > 0 && motivos.length === 1) {
+        const semTraco = removerTravessao(texto)
+        const cabe = !(limite > 0) || semTraco.texto.length <= limite
+        if (contarTracos(semTraco.texto) === 0 && cabe) {
+          propostaPorCodigo = semTraco.texto
+          rel.travessao_por_codigo.push(id)
+        }
+      }
       out.push({
-        id: `${position}.${f.key}`,
+        id,
         position,
         block_id: b.id ?? null,
         type: b.block_type ?? "",
@@ -193,10 +314,11 @@ export function alvosDeEncurtamento(
         label: f.label || f.key,
         orientacao: f.guidance || "",
         texto,
-        max: max ?? f.max_len,
+        max: limite,
         min: f.min_len ?? null,
         motivos,
         tracos,
+        ...(propostaPorCodigo ? { proposta_por_codigo: propostaPorCodigo } : {}),
         // O idioma da loja viaja em TODO alvo, não só nos de idioma: é ele
         // que o guard usa para recusar a reescrita que trocou de língua —
         // e a troca aconteceu justamente nos alvos de tamanho e travessão

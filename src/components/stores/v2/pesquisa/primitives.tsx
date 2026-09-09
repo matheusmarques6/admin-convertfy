@@ -25,10 +25,12 @@
  * renderEmphasis         · markdown-leve (**negrito**, *itálico*) p/ prosa
  */
 
+import { useEffect, useState } from "react"
 import { ExternalLink, Loader2, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { ROUTES } from "@/lib/routes"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
+import { fichaVazia, type FichaOperacional } from "@/lib/stores/ficha-operacional"
 import { cn } from "@/lib/utils"
 
 // ─── Pull ────────────────────────────────────────────────
@@ -1074,6 +1076,192 @@ export function ObjectionCatalogPanel({
             </div>
           ))}
         </div>
+      </div>
+    </IcpBlock>
+  )
+}
+
+
+// ─── FichaOperacionalCard (09/09) ────────────────────────────────────────
+//
+// Os fatos VERIFICADOS que fazem o e-mail parecer autêntico: incentivo,
+// troca, envio, garantia, prova, pagamento, suporte. Sem eles o Seletor
+// proíbe tudo ("não afirmar política de devolução — não encontrado na
+// pesquisa") e os selos saem vazios. Salvar carimba `verificado` no
+// catálogo na hora; "Regenerar objeções" refaz o catálogo com a ficha.
+
+type FichaForm = {
+  incentivo_existe: "" | "sim" | "nao"
+  incentivo_codigo: string
+  incentivo_valor: string
+  incentivo_condicoes: string
+  incentivo_validade: string
+  troca_prazo_dias: string
+  troca_texto: string
+  envio_prazo: string
+  envio_frete_gratis: string
+  envio_texto: string
+  garantia_texto: string
+  prova_n_reviews: string
+  prova_nota: string
+  prova_fonte: string
+  pagamento_metodos: string
+  pagamento_checkout: string
+  suporte_canal: string
+  suporte_horario: string
+}
+
+function fichaParaForm(f: FichaOperacional | null | undefined): FichaForm {
+  return {
+    incentivo_existe: f?.incentivo ? (f.incentivo.existe ? "sim" : "nao") : "",
+    incentivo_codigo: f?.incentivo?.codigo ?? "",
+    incentivo_valor: f?.incentivo?.valor ?? "",
+    incentivo_condicoes: f?.incentivo?.condicoes ?? "",
+    incentivo_validade: f?.incentivo?.validade ?? "",
+    troca_prazo_dias: f?.troca?.prazo_dias != null ? String(f.troca.prazo_dias) : "",
+    troca_texto: f?.troca?.texto ?? "",
+    envio_prazo: f?.envio?.prazo ?? "",
+    envio_frete_gratis: f?.envio?.frete_gratis_acima ?? "",
+    envio_texto: f?.envio?.texto ?? "",
+    garantia_texto: f?.garantia?.texto ?? "",
+    prova_n_reviews: f?.prova?.n_reviews != null ? String(f.prova.n_reviews) : "",
+    prova_nota: f?.prova?.nota != null ? String(f.prova.nota) : "",
+    prova_fonte: f?.prova?.fonte ?? "",
+    pagamento_metodos: f?.pagamento?.metodos?.join(", ") ?? "",
+    pagamento_checkout: f?.pagamento?.checkout ?? "",
+    suporte_canal: f?.suporte?.canal ?? "",
+    suporte_horario: f?.suporte?.horario ?? "",
+  }
+}
+
+function formParaFicha(v: FichaForm): FichaOperacional {
+  const t = (x: string) => (x.trim() ? x.trim() : null)
+  const n = (x: string) => {
+    const k = Number(x.replace(",", "."))
+    return x.trim() && Number.isFinite(k) ? k : null
+  }
+  return {
+    incentivo:
+      v.incentivo_existe === ""
+        ? null
+        : { existe: v.incentivo_existe === "sim", codigo: t(v.incentivo_codigo), valor: t(v.incentivo_valor), condicoes: t(v.incentivo_condicoes), validade: t(v.incentivo_validade) },
+    troca: { prazo_dias: n(v.troca_prazo_dias), texto: t(v.troca_texto) },
+    envio: { prazo: t(v.envio_prazo), frete_gratis_acima: t(v.envio_frete_gratis), texto: t(v.envio_texto) },
+    garantia: { texto: t(v.garantia_texto) },
+    prova: { n_reviews: n(v.prova_n_reviews), nota: n(v.prova_nota), fonte: t(v.prova_fonte) },
+    pagamento: { metodos: v.pagamento_metodos.split(",").map((x) => x.trim()).filter(Boolean), checkout: t(v.pagamento_checkout) },
+    suporte: { canal: t(v.suporte_canal), horario: t(v.suporte_horario) },
+  }
+}
+
+function FichaInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  wide,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  wide?: boolean
+}) {
+  return (
+    <label className={cn("flex flex-col gap-0.5 min-w-0", wide && "col-span-2")}>
+      <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-7 px-2 rounded border text-[12px] text-slate-800 bg-white"
+        style={{ borderColor: "rgba(0,0,0,0.12)" }}
+      />
+    </label>
+  )
+}
+
+export function FichaOperacionalCard({
+  ficha,
+  sugestao,
+  saving,
+  onSave,
+}: {
+  ficha: FichaOperacional | null | undefined
+  /** Pré-preenchimento a partir do que a loja já tem (frete, devolução). */
+  sugestao?: FichaOperacional | null
+  saving?: boolean
+  onSave: (ficha: FichaOperacional) => Promise<void> | void
+}) {
+  const [form, setForm] = useState<FichaForm>(() => fichaParaForm(ficha ?? sugestao))
+  const [dirty, setDirty] = useState(false)
+  useEffect(() => {
+    if (!dirty) setForm(fichaParaForm(ficha ?? sugestao))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ficha])
+  const set = (k: keyof FichaForm) => (v: string) => {
+    setDirty(true)
+    setForm((f) => ({ ...f, [k]: v }))
+  }
+  const preenchida = !fichaVazia(ficha ?? null)
+  const subtitle = preenchida
+    ? `Verificada${ficha?.atualizado_por ? ` por ${ficha.atualizado_por}` : ""}${ficha?.atualizado_em ? ` em ${new Date(ficha.atualizado_em).toLocaleDateString("pt-BR")}` : ""} — o Catalogador e o Seletor tratam estes fatos como confirmados`
+    : "Sem ficha — política, prazo, garantia e incentivo só entram nos e-mails se estiverem literalmente na pesquisa; sem eles o Seletor proíbe tudo e os selos saem vazios"
+
+  return (
+    <IcpBlock>
+      <IcpBlockHeader
+        title="Ficha operacional"
+        subtitle={subtitle}
+        right={
+          <button
+            onClick={async () => {
+              await onSave(formParaFicha(form))
+              setDirty(false)
+            }}
+            disabled={saving || !dirty}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[11.5px] font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ borderColor: INDIGO.border, color: INDIGO.color, background: INDIGO.bg }}
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {saving ? "Salvando…" : dirty ? "Salvar ficha" : "Salva"}
+          </button>
+        }
+      />
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+        <div className="col-span-2 flex items-center gap-3 text-[12px]">
+          <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">Incentivo ativo</span>
+          {(["sim", "nao", ""] as const).map((opt) => (
+            <label key={opt || "nao_sei"} className="inline-flex items-center gap-1 cursor-pointer">
+              <input type="radio" name="ficha-incentivo" checked={form.incentivo_existe === opt} onChange={() => set("incentivo_existe")(opt)} />
+              {opt === "sim" ? "Sim" : opt === "nao" ? "Não" : "Não sei"}
+            </label>
+          ))}
+        </div>
+        {form.incentivo_existe === "sim" && (
+          <>
+            <FichaInput label="Código" value={form.incentivo_codigo} onChange={set("incentivo_codigo")} placeholder="WELCOME10" />
+            <FichaInput label="Valor" value={form.incentivo_valor} onChange={set("incentivo_valor")} placeholder="10% na 1ª compra" />
+            <FichaInput label="Condições" value={form.incentivo_condicoes} onChange={set("incentivo_condicoes")} placeholder="acima de R$ 150" />
+            <FichaInput label="Validade" value={form.incentivo_validade} onChange={set("incentivo_validade")} placeholder="30 dias após o cadastro" />
+          </>
+        )}
+        <FichaInput label="Troca — prazo (dias)" value={form.troca_prazo_dias} onChange={set("troca_prazo_dias")} placeholder="30" />
+        <FichaInput label="Troca — texto vivo" value={form.troca_texto} onChange={set("troca_texto")} placeholder="troca grátis, sem perguntas" />
+        <FichaInput label="Envio — prazo" value={form.envio_prazo} onChange={set("envio_prazo")} placeholder="2 a 5 dias úteis" />
+        <FichaInput label="Frete grátis acima de" value={form.envio_frete_gratis} onChange={set("envio_frete_gratis")} placeholder="R$ 199" />
+        <FichaInput label="Envio — texto" value={form.envio_texto} onChange={set("envio_texto")} placeholder="rastreio por e-mail" wide />
+        <FichaInput label="Garantia" value={form.garantia_texto} onChange={set("garantia_texto")} placeholder="1 ano contra defeito" wide />
+        <FichaInput label="Nº de avaliações" value={form.prova_n_reviews} onChange={set("prova_n_reviews")} placeholder="370" />
+        <FichaInput label="Nota média" value={form.prova_nota} onChange={set("prova_nota")} placeholder="4.8" />
+        <FichaInput label="Fonte das avaliações" value={form.prova_fonte} onChange={set("prova_fonte")} placeholder="Judge.me / Google" wide />
+        <FichaInput label="Pagamento — métodos" value={form.pagamento_metodos} onChange={set("pagamento_metodos")} placeholder="pix, cartão em 3x" />
+        <FichaInput label="Checkout" value={form.pagamento_checkout} onChange={set("pagamento_checkout")} placeholder="Shopify" />
+        <FichaInput label="Suporte — canal" value={form.suporte_canal} onChange={set("suporte_canal")} placeholder="WhatsApp" />
+        <FichaInput label="Suporte — horário" value={form.suporte_horario} onChange={set("suporte_horario")} placeholder="seg–sex, 9h–18h" />
+      </div>
+      <div className="text-[11px] text-slate-400 mt-2">
+        Só o que está aqui pode ser afirmado nos e-mails como fato. Depois de salvar, &ldquo;Regenerar objeções&rdquo; refaz o catálogo com a ficha.
       </div>
     </IcpBlock>
   )

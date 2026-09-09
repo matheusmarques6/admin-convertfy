@@ -356,3 +356,78 @@ marca, e o email saiu só com o rodapé. `ja_atacadas` diz o que NÃO repetir no
 preenchida = não há objeção declarada (siga o `purpose` dos blocos). O
 `purpose`/`fio_narrativo` do blueprint já carregam a tradução do
 Estruturador para esse alvo.
+
+## v3.1 (set/2026) — `decisao`, `schema.papel/requisitos` e campos omitidos
+
+Três chaves ADITIVAS. Um flow que as ignora continua funcionando; um flow
+que as honra deixa de escrever oferta que a loja não tem.
+
+```jsonc
+"emails": [{
+  "decisao": {
+    "incentivo": { "existe": false, "codigo": null, "valor": null },   // true | false | null (não se sabe)
+    "insumos_permitidos": ["checkout Shopify (pesquisa)", "fibra de bambu (produto)"]
+  },
+  "estrutura_geral": { "guidance": "SEM INCENTIVO ATIVO nesta loja (…): ignore qualquer instrução abaixo de entregar código…", "coupon_code": null, … },
+  "blocks": [{
+    "schema": {
+      "variante": "welcome - hero section 3",
+      "diretriz": "Apresenta a marca…\n\nForma (variante, subordinada ao papel): …",
+      "papel": "Apresenta a marca e nomeia o público",
+      "requisitos": { "cupom": false, "cta": false, "n_itens": null, "preco": null, "avaliacao": null, "campos": [], "imagem": null, "exige": [] },
+      "campos": { "headline_l1": { … } }     // coupon_line e cta_label NÃO estão aqui: foram omitidos
+    }
+  }]
+}]
+```
+
+- **`decisao.incentivo.existe === false`** — nunca escrever cupom, código,
+  percentual ou "use o código", em nenhum campo, nem no assunto. O
+  `coupon_code` do e-mail e o de `estrutura_geral` vêm `null`, e o
+  `guidance` chega prefixado com a ordem. `null` = não se sabe: siga o
+  outline como antes. `true` traz `codigo`/`valor` da loja (vence o do
+  outline).
+- **`schema.papel`** é o papel narrativo decidido pelo Estruturador para
+  a posição; **`schema.requisitos`** é a versão tipada (o que a decisão
+  exige ou nega). `diretriz` continua sendo `papel + Forma (variante)`;
+  quando a forma da variante contradiz o papel, o papel vence.
+- **Campo omitido não aparece em `campos`.** A arbitragem papel × forma
+  (`arbitrarCampos`) marca `omitir` no campo que colide com um requisito
+  duro (slot de cupom com `cupom:false`, CTA com `cta:false`, item além de
+  `n_itens.max`). Devolver a chave assim mesmo não adianta: o callback
+  força `""` e o merge remove a linha (`omitidos` no run `copy_merge`;
+  `omitidos_forcados`/`omitidos_preenchidos` no run `copy`).
+
+## `emails[].doutrina` — doutrina de e-mail por seção (contrato, set/2026)
+
+Chave **aditiva** por email, `null` enquanto o item 2.5 do plano do vault
+(`docs/email-generation/diagnostico-vault-vs-advisor-max.md`) não estiver
+no dispatch. Vem de `buildDoutrinaBlock(k, secao)` (`curador-vault.ts`),
+que lê as notas `componentes/doutrina/<slug>.md` do vault (kind
+`doutrina`, `fonte:` obrigatória, `secao:` no frontmatter) — a doutrina
+de CURSO da casa, roteada pelas seções que compõem o email:
+
+```jsonc
+"doutrina": [
+  {
+    "slug": "hero-uma-promessa",
+    "secao": "hero",                 // hero | body | offer | products | reviews | footer | assunto | geral
+    "fonte": "Curso X — módulo 3",   // de onde a regra veio; sem fonte a nota nem sincroniza
+    "resumo": "Uma promessa por dobra; a segunda vira ruído.",
+    "corpo": "…markdown, até 3.000 chars…"
+  }
+]
+```
+
+Regras que o n8n deve honrar:
+
+- **É doutrina, não dado.** Perde para `alvo` (o Seletor), para o
+  `purpose`/`fio_narrativo` do blueprint e para qualquer dado da loja
+  (`brand`, `icp`, produtos). Serve para fundamentar COMO escrever a seção,
+  nunca para contrariar o que a loja tem ou o que o toque pede.
+- Até **3 notas por seção**, específica antes da geral; `secao: "geral"`
+  vale para todas. Ausência de doutrina para uma seção NÃO é erro — é
+  ausência declarada, e o flow escreve como hoje.
+- A chave não muda o shape de `blocks[]` nem de `fields[]`; um flow que a
+  ignora continua funcionando.
+

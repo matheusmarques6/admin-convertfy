@@ -1,13 +1,19 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import { describe, it, expect } from "vitest"
 import {
   classifyPath,
+  DOUTRINA_MAX_CHARS,
   isVaultHousekeeping,
   isApproved,
+  JULGAMENTO_MAX_CHARS,
   normalizeSecoes,
   parseFrontmatter,
   parseVaultFile,
   resolveWikilinks,
   validateNote,
+  VAULT_DOC_KINDS,
 } from "./vault-parser"
 
 // Frontmatter real do vault (avelmore-inspecao-antecipada).
@@ -253,6 +259,17 @@ describe("classifyPath — componentes/**", () => {
     expect(classifyPath("componentes/_parametros-da-loja.md")?.docKind).toBe("parametros")
     // Nota nova na raiz sincroniza como 'outro' em vez de sumir.
     expect(classifyPath("componentes/_nota-nova.md")?.docKind).toBe("outro")
+    // A régua da casa (09/09) tem nome fixo e kind próprio — servida
+    // inteira, não pode cair em 'outro' e sumir do loader.
+    expect(classifyPath("componentes/_julgamento.md")?.docKind).toBe("julgamento")
+  })
+
+  it("doutrina/<slug>.md é kind próprio sem grupo (a seção vem do frontmatter)", () => {
+    expect(classifyPath("componentes/doutrina/hero-promessa-unica.md")).toEqual({
+      tipo: "componente_doc", flowType: null, slug: "hero-promessa-unica", docKind: "doutrina", docGrupo: null,
+    })
+    // Antes de 09/09 esta pasta devolvia null e a nota era pulada.
+    expect(classifyPath("componentes/doutrina/x.md")).not.toBeNull()
   })
 
   it("secoes/requisitos/convivencia/lacunas em profundidade 3", () => {
@@ -316,16 +333,68 @@ Entrega o cupom de captação. Ver [[_protocolo-de-selecao]].
     expect(docVariantId({})).toBeNull()
   })
 
-  it("ativação: aprovada sempre; catálogo gerado também; lacuna aberta nunca", () => {
+  it("ativação: aprovada sempre; catálogo gerado também; lacuna só aberta", () => {
     expect(isDocActive("variante", { status: "aprovada" })).toBe(true)
     expect(isDocActive("catalogo", { status: "gerado" })).toBe(true)
     expect(isDocActive("variante", { status: "gerado" })).toBe(false)
-    expect(isDocActive("lacuna", { status: "aberta" })).toBe(false)
+    // Lacuna aberta É o estado vigente: exigir `aprovada` deixava as 15
+    // lacunas inativas e o Curador recebia "(nenhuma)" em toda run.
+    expect(isDocActive("lacuna", { status: "aberta" })).toBe(true)
+    // Fechada, ou ainda em rascunho, não é lacuna vigente.
+    for (const status of ["retratada", "observacao", "modelo", "proposta"]) {
+      expect(isDocActive("lacuna", { status })).toBe(false)
+    }
+    // `aberta` não vaza para os outros kinds.
+    expect(isDocActive("variante", { status: "aberta" })).toBe(false)
   })
 
   it("sem status → skipped (contrato mínimo vale para componentes também)", () => {
     const r = parseVaultFile("componentes/requisitos/x.md", "---\ntipo: requisito\n---\ncorpo")
     expect(r.note).toBeNull()
     expect(r.skipped?.motivo).toContain("status")
+  })
+
+  // Julgamento e doutrina entram INTEIROS no prompt: o teto reprova no sync,
+  // onde o card "Notas puladas" diz o porquê, em vez de cortar no runtime.
+  it("julgamento acima do teto é pulado com o tamanho no motivo", () => {
+    const grande = "x".repeat(JULGAMENTO_MAX_CHARS + 1)
+    const r = parseVaultFile("componentes/_julgamento.md", `---\nstatus: aprovada\n---\n${grande}`)
+    expect(r.note).toBeNull()
+    expect(r.skipped?.motivo).toContain(`teto ${JULGAMENTO_MAX_CHARS}`)
+    const ok = parseVaultFile("componentes/_julgamento.md", "---\nstatus: aprovada\n---\nrégua curta")
+    expect(ok.note?.docKind).toBe("julgamento")
+  })
+
+  it("doutrina exige `fonte` e respeita o teto", () => {
+    const semFonte = parseVaultFile("componentes/doutrina/x.md", "---\nstatus: aprovada\nsecao: hero\n---\ncorpo")
+    expect(semFonte.note).toBeNull()
+    expect(semFonte.skipped?.motivo).toContain("fonte")
+    const grande = "x".repeat(DOUTRINA_MAX_CHARS + 1)
+    const r = parseVaultFile("componentes/doutrina/x.md", `---\nstatus: aprovada\nfonte: Curso X\n---\n${grande}`)
+    expect(r.skipped?.motivo).toContain(`teto ${DOUTRINA_MAX_CHARS}`)
+    const ok = parseVaultFile("componentes/doutrina/x.md", "---\nstatus: aprovada\nfonte: Curso X\nsecao: hero\n---\ncorpo")
+    expect(ok.note?.docKind).toBe("doutrina")
+    expect(ok.note?.frontmatter.fonte).toBe("Curso X")
+  })
+
+  // O teto NÃO vale para os outros kinds — o corpo deles é conhecimento
+  // livre e o loader já faz clamp por bloco.
+  it("teto não vaza para variante/secao", () => {
+    const errs = validateNote("componente_doc", { status: "aprovada" }, { slug: "x", docKind: "variante", body: "x".repeat(50_000) })
+    expect(errs).toEqual([])
+  })
+
+  // A lacuna que o mapeamento apontou: kind novo no TypeScript sem
+  // migration sincroniza, toma 23514 e some. O teste lê a migration que
+  // define o CHECK vigente e compara conjunto a conjunto.
+  it("VAULT_DOC_KINDS é o mesmo conjunto do CHECK de email_vault_docs.kind", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "supabase/migrations/20261134_vault_kinds_julgamento_doutrina.sql"),
+      "utf8",
+    )
+    const m = sql.match(/check\s*\(\s*kind\s+in\s*\(([\s\S]*?)\)\s*\)/i)
+    expect(m).not.toBeNull()
+    const doBanco = Array.from(m![1].matchAll(/'([a-z_]+)'/g), (x) => x[1]).sort()
+    expect([...VAULT_DOC_KINDS].sort()).toEqual(doBanco)
   })
 })

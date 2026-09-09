@@ -351,3 +351,19 @@ describe("buildHeroRetryNote — a reclamação do guard chega ao modelo", () =>
     expect(nota).toContain("removing the row")
   })
 })
+
+describe("buildHeroRetryNote — perdido E inventado (09/09)", () => {
+  it("lista o que faltou e o que sobrou em blocos separados", () => {
+    const n = buildHeroRetryNote(["Ver ofertas"], ["Use code: [WELCOME-CODE]"])
+    expect(n).toContain("were MISSING from your fragment")
+    expect(n).toContain("  - Ver ofertas")
+    expect(n).toContain("did NOT exist in the region")
+    expect(n).toContain("  - Use code: [WELCOME-CODE]")
+    expect(n).toContain("no coupon codes")
+  })
+  it("só inventado → sem o bloco de perda", () => {
+    const n = buildHeroRetryNote([], ["SHOP 10% OFF"])
+    expect(n).not.toContain("MISSING")
+    expect(n).toContain("SHOP 10% OFF")
+  })
+})

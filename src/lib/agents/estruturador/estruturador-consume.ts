@@ -13,7 +13,13 @@
  * payload de copy.
  */
 
-import type { EstruturadorOutput } from "./estruturador-prompt"
+import { deriveFieldNature } from "../shared/component-dimensions"
+import { papelDoCampo } from "../shared/field-roles"
+import {
+  normalizarRequisitos,
+  type EstruturadorOutput,
+  type RequisitosDaPosicao,
+} from "./estruturador-prompt"
 
 /** Posição consumível: OutlineSection + papel narrativo completo. */
 export interface PosicaoEstruturada {
@@ -24,6 +30,8 @@ export interface PosicaoEstruturada {
   papel: string
   /** Porquê da posição (embasamento) — entra no resumo servido ao Curador. */
   porque: string
+  /** Requisitos tipados (09/09) — viajam DENTRO da posição, então sobrevivem ao clamp. */
+  requisitos?: RequisitosDaPosicao | null
 }
 
 const LABEL_MAX = 90
@@ -50,6 +58,7 @@ export function estruturaParaPosicoes(
       label: truncateLabel(papelBase) || p.section,
       papel: adaptacao ? `${papelBase} — Adaptação: ${adaptacao}` : papelBase,
       porque: p.porque?.trim() ?? "",
+      requisitos: p.requisitos ?? null,
     }
   })
 }
@@ -88,10 +97,50 @@ export function decisaoCompletaParaCurador(output: EstruturadorOutput): string {
  *
  * Retorna um NOVO objeto — não muta o input.
  */
+/**
+ * Arbitragem papel × forma (09/09). O `purpose` da hero do batch 644d86c5
+ * dizia, no mesmo texto, "sem CTA, sem cupom" (papel) e "linha do cupom —
+ * o código em bold / CTA — verbo + valor" (forma da variante), e os
+ * `fields` traziam `coupon_line` e `cta_label` a preencher. O n8n obedeceu
+ * ao mais concreto: o schema. Aqui o campo que colide com um requisito DURO
+ * é marcado `omitir` — sai do payload, chega vazio ao merge, a linha some.
+ * Campo `required` omitido é incompatibilidade dura (o Curador deveria ter
+ * filtrado): omite do mesmo jeito e o motivo diz.
+ */
+export function arbitrarCampos<F extends { key: string; required?: boolean; nature?: string; type?: string }>(
+  fields: F[],
+  requisitos: RequisitosDaPosicao | null | undefined,
+): Array<F & { omitir?: boolean; omitir_motivo?: string }> {
+  if (!requisitos) return fields
+  return fields.map((f) => {
+    if (deriveFieldNature({ type: f.type ?? "text_short", nature: f.nature ?? null }) !== "copy") return f
+    const p = papelDoCampo(f.key)
+    let motivo: string | null = null
+    if (requisitos.cupom === false && p.cupom) motivo = "cupom negado pela decisão do Estruturador"
+    else if (requisitos.cta === false && p.cta) motivo = "CTA negado pela decisão do Estruturador"
+    else if (
+      requisitos.n_itens &&
+      p.familia &&
+      p.indice != null &&
+      p.indice > requisitos.n_itens.max
+    ) {
+      motivo = `item ${p.indice} acima do máximo de ${requisitos.n_itens.max} pedido pela decisão`
+    }
+    if (!motivo) return f
+    if (f.required === true) motivo += " (campo obrigatório da variante: incompatibilidade dura — o Curador deveria ter filtrado)"
+    return { ...f, omitir: true, omitir_motivo: motivo }
+  })
+}
+
 export function aplicarEstruturadorNoBlueprint<
-  B extends { purpose: string },
+  B extends { purpose: string; fields?: Array<{ key: string; required?: boolean; nature?: string; type?: string }> },
   T extends { blocks: B[]; fio_narrativo?: string | null },
->(blueprint: T, papeis: string[], fioNarrativo: string): T {
+>(
+  blueprint: T,
+  papeis: string[],
+  fioNarrativo: string,
+  requisitosPorPosicao?: Array<RequisitosDaPosicao | null> | null,
+): T {
   // Os papéis vêm por POSIÇÃO da sequência decidida; `blocks` traz só as
   // posições que acharam variante na biblioteca. Quando uma posição cai, os
   // dois arrays deixam de estar alinhados e casar por índice cola o papel
@@ -111,11 +160,22 @@ export function aplicarEstruturadorNoBlueprint<
     fio_narrativo: fioNarrativo.trim() || null,
     blocks: blueprint.blocks.map((b, i) => {
       const papel = papeis[i]?.trim()
-      if (!papel) return b
+      const requisitos = requisitosPorPosicao?.[i] ?? null
+      if (!papel && !requisitos) return b
       const original = b.purpose?.trim()
       return {
         ...b,
-        purpose: original ? `${papel}\n\nForma (variante): ${original}` : papel,
+        ...(papel
+          ? {
+              papel,
+              // "subordinada ao papel": o n8n lê o purpose inteiro, e a forma
+              // da variante ("linha do cupom — o código em bold") não pode
+              // competir com a decisão.
+              purpose: original ? `${papel}\n\nForma (variante, subordinada ao papel): ${original}` : papel,
+            }
+          : {}),
+        ...(requisitos ? { requisitos } : {}),
+        ...(b.fields ? { fields: arbitrarCampos(b.fields, requisitos) } : {}),
       }
     }),
   }
@@ -139,4 +199,26 @@ export function combinarIntencaoComPapel(
   if (i) return i
   if (p) return p
   return null
+}
+
+/**
+ * Extrai os `requisitos` por posição da decisão serializada
+ * (`decisaoCompletaParaCurador`). Fail-open: JSON ilegível ou sem
+ * `estrutura` → lista vazia; posição sem requisito → `null`. É o que o
+ * assembler usa para o filtro duro por contrato (09/09).
+ */
+export function requisitosDaDecisao(json: string | null | undefined): Array<RequisitosDaPosicao | null> {
+  if (!json) return []
+  const start = json.indexOf("{")
+  const end = json.lastIndexOf("}")
+  if (start < 0 || end <= start) return []
+  try {
+    const obj = JSON.parse(json.slice(start, end + 1)) as { estrutura?: unknown }
+    if (!Array.isArray(obj.estrutura)) return []
+    return obj.estrutura.map((p) =>
+      p && typeof p === "object" ? normalizarRequisitos((p as { requisitos?: unknown }).requisitos) : null,
+    )
+  } catch {
+    return []
+  }
 }
