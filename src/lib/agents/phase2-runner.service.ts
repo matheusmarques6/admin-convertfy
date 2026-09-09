@@ -4130,7 +4130,27 @@ export async function runPhase2HtmlQa(
     //
     // A fonte é o `fields` do PRÓPRIO bloco (migration 20261065, "o bloco
     // é o schema"), não o blueprint pareado por índice.
-    const renderIssues = deterministicIssues
+    const { data: checkBlocks } = await admin
+      .from("email_blocks")
+      .select("block_type, content, fields")
+      .eq("email_id", emailId)
+      .order("position", { ascending: true })
+    const schemaIssues = runSchemaChecks(
+      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+        block_type: (b.block_type as string) ?? "unknown",
+        content: (b.content as Record<string, unknown>) ?? {},
+      })),
+      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+        type: (b.block_type as string) ?? "unknown",
+        fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
+      })),
+    )
+    const renderIssues = [
+      ...heroCopyIssues,
+      ...contentIssues,
+      ...computeRenderChecks(finalHtml),
+      ...schemaIssues,
+    ]
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -4279,7 +4299,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...deterministicIssues, ...qaResult.issues],
+        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4304,7 +4324,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...deterministicIssues, ...qaResult.issues],
+      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)

@@ -851,8 +851,12 @@ describe("merge por example — caso-mestre", () => {
         '<table role="presentation"><tr><td>Headline inventada</td></tr></table>',
       mode: "fragment",
     })
+    // `ready`, não `failed`: a perda da hero é ISSUE, não morte do e-mail —
+    // é o contrato do comentário acima e o do QA em sombra. Esta linha já
+    // foi virada duas vezes por merge (gate obrigatório ↔ sombra); quem
+    // quiser que ela reprove tem de mudar o desenho junto, não só o assert.
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("failed")
+    expect(res.status).toBe("ready")
 
     const rs = runsOf("hero_section")
     expect(rs).toHaveLength(2)
