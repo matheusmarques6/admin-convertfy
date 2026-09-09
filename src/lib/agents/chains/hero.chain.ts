@@ -39,6 +39,7 @@ import {
   HERO_SENTINEL_START,
   HERO_SENTINEL_END,
 } from "../html/hero-locator"
+import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 const log = logger.child("HeroChain")
 
@@ -632,11 +633,12 @@ export async function invokeHeroChain(input: {
     images: [],
   }
 
-  const systemPrompt = buildHeroSystemPrompt(
+  const approvedSystemPrompt = buildHeroSystemPrompt(
     config.system_prompt,
     HERO_OUTPUT_CONTRACT,
     vision.used,
   )
+  const systemPrompt = withDoctrine(approvedSystemPrompt, "hero")
   const renderVars: Record<string, string> = {
     ...vars,
     output_contract: HERO_OUTPUT_CONTRACT,
@@ -674,10 +676,11 @@ export async function invokeHeroChain(input: {
             {
               cls: "agente" as const,
               rotulo: "Template do agente",
-              texto: systemPrompt,
-              chars: systemPrompt.length,
+              texto: approvedSystemPrompt,
+              chars: approvedSystemPrompt.length,
               parte: "system" as const,
             },
+            doctrinePromptSegment("hero"),
           ],
           segUser.segments,
           retryNote
