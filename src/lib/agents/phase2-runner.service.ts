@@ -4114,6 +4114,59 @@ export async function runPhase2HtmlQa(
     })
   }
 
+  // Checks determinísticos + contrato do bloco, carregados UMA vez para os
+  // dois caminhos (com e sem o agente de QA).
+  //
+  // Reconstruído depois do merge do PR #20, que apagou este bloco e deixou
+  // três usos de `deterministicIssues` sem definição — a branch não
+  // compilava. Reposto como estava: o bloqueio determinístico é
+  // OBRIGATÓRIO e não olha `EMAIL_QA_MODE`, que governa o agente por
+  // modelo. São coisas diferentes — este gate é código, não custa nada e
+  // trata do que ninguém deveria publicar (copy da hero perdida ou
+  // inventada, placeholder cru, oferta sem incentivo).
+  const { data: checkBlocks } = await admin
+    .from("email_blocks")
+    .select("block_type, content, fields")
+    .eq("email_id", emailId)
+    .order("position", { ascending: true })
+  const schemaIssues = runSchemaChecks(
+    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+      block_type: (b.block_type as string) ?? "unknown",
+      content: (b.content as Record<string, unknown>) ?? {},
+    })),
+    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+      type: (b.block_type as string) ?? "unknown",
+      fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
+    })),
+  ).map((issue) => ({ ...issue, disposition: "warning" as const }))
+  const deterministicIssues: QaIssue[] = [
+    ...heroCopyIssues,
+    ...contentIssues,
+    ...computeRenderChecks(finalHtml),
+    ...schemaIssues,
+  ]
+  const blockingIssues = deterministicIssues.filter((issue) => issue.disposition === "blocking")
+  if (blockingIssues.length > 0) {
+    await admin
+      .from("email_flow_emails")
+      .update({
+        status: "failed",
+        failed_at: new Date().toISOString(),
+        failure_reason: "qa_failed",
+        qa_issues: deterministicIssues,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", emailId)
+      .eq("status", "rendering")
+    await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
+    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+    log.warn("phase2.qa.deterministic_blocked", {
+      emailId,
+      blocking: blockingIssues.map((issue) => issue.type),
+    })
+    return { status: "failed" }
+  }
+
   // ── QA fora do fluxo (EMAIL_QA_MODE=off; default) ────────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem custo do modelo. O gate determinístico obrigatório já rodou acima;

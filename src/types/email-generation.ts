@@ -269,6 +269,12 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Resultado do gate determinístico. Perdido na resolução do merge do
+   * PR #20 (que reescreveu este tipo) enquanto seis arquivos seguiam
+   * gravando o campo — a branch parou de compilar. Quem DECIDE hoje é
+   * `severity` (`high` reprova, mesmo threshold do agente); isto continua
+   * no `qa_issues` como registro auditável da intenção de cada check. */
+  disposition?: "warning" | "blocking"
   /** Evidência auditável usada pelo revisor, sem exigir o campo em runs antigas. */
   evidence?: string
   expected?: string
