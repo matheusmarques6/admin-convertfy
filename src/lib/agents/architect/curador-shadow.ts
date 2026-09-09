@@ -59,7 +59,16 @@ import {
   startGenerationRun,
 } from "@/lib/agents/callbacks/telemetry.callback"
 
+import { conflitoDeContrato, resumirContrato, type ContratoResumo } from "../shared/field-roles"
+
 const log = logger.child("CuradorShadow")
+
+/** `variant_id → contrato` a partir do catálogo servido. */
+export function contratosDoCatalogo(sections: Array<{ variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>): Map<string, ContratoResumo> {
+  const m = new Map<string, ContratoResumo>()
+  for (const s of sections) for (const v of s.variantes) if (v.contrato) m.set(v.variant_id, v.contrato)
+  return m
+}
 
 const SHADOW_TOP_N = 1
 
@@ -99,6 +108,54 @@ export function resolverModeloDoCurador(daConfig?: string | null): string {
   return CURADOR_SHADOW_MODEL_ENV || daConfig?.trim() || CURADOR_SHADOW_MODEL_FALLBACK
 }
 
+/**
+ * Piso do teto de saída. Até 09/09 `max_tokens: 8192` era FIXO no código e a
+ * config do banco (16000) era ignorada: o Sonnet raciocinou 8.327 tokens em
+ * prosa, foi cortado antes do JSON e a resposta certa — que eliminava as
+ * heroes com cupom obrigatório — virou `shadow_json_ilegivel` (batch
+ * 644d86c5). A config passa a valer; o piso protege de config baixa demais.
+ */
+export const CURADOR_SHADOW_MAX_TOKENS_MIN = 8192
+
+function tetoDoEnv(): number | null {
+  const v = Number(process.env.CURADOR_SHADOW_MAX_TOKENS ?? "")
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : null
+}
+
+/** Teto de saída: env > max(piso, config). Puro fora da leitura do env. */
+export function resolverTetoDoCurador(daConfig?: number | null): number {
+  const env = tetoDoEnv()
+  if (env) return env
+  const cfg = typeof daConfig === "number" && Number.isFinite(daConfig) ? Math.floor(daConfig) : 0
+  return Math.max(CURADOR_SHADOW_MAX_TOKENS_MIN, cfg)
+}
+
+/** `CURADOR_SHADOW_RETOMADA=off` desliga a volta de retomada do JSON. */
+export function retomadaLigada(): boolean {
+  return (process.env.CURADOR_SHADOW_RETOMADA ?? "").trim().toLowerCase() !== "off"
+}
+
+/**
+ * O que o modelo recebe quando a resposta final não trouxe o JSON. O
+ * histórico inteiro vai junto (raciocínio, consultas ao vault): o pedido é
+ * fechar o trabalho, não refazê-lo.
+ */
+export const MENSAGEM_RETOMADA_JSON =
+  "Devolva agora APENAS o objeto JSON do formato pedido no system — sem texto antes ou depois, sem markdown — cobrindo TODAS as posições de <estrutura_do_email>. Se a resposta anterior foi cortada, complete-a a partir do que já decidiu. Não consulte mais nada."
+
+/** Prefill do assistant na retomada (só provedores Anthropic aceitam). */
+export const PREFILL_RETOMADA_JSON = '{"papeis"'
+
+/**
+ * Motivo da retomada, ou null quando a resposta serve. JSON legível com
+ * `finish_reason: length` NÃO retoma: o corte veio depois do objeto.
+ */
+export function motivoDeRetomada(raw: string, finishReason?: string): string | null {
+  if (parseCuradorVaultOutput(raw)) return null
+  if (!raw.trim()) return finishReason === "length" || finishReason === "max_tokens" ? "vazio_por_teto" : "vazio"
+  return finishReason === "length" || finishReason === "max_tokens" ? "cortado_antes_do_json" : "sem_json"
+}
+
 // ── Prompt do contrato AMPLIADO (o prompt do flip, ensaiado no shadow) ───
 
 export const DEFAULT_CHOOSER_VAULT_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. A ESTRUTURA do email já está decidida pelo Estruturador — a sequência de seções e o papel de cada posição chegam prontos em <decisao_do_estruturador> e <estrutura_do_email>. A sua função é ENCONTRAR NA BIBLIOTECA os blocos que encaixam perfeitamente em cada posição e conversam com essa proposta: para cada posição, A variante cuja ANATOMIA realiza o papel decidido — uma só, a que encaixa melhor. Você não decide estrutura, não reescreve papel, não discute a sequência.
@@ -125,7 +182,7 @@ Como decidir, na ordem:
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
    <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
-2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
+2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
@@ -350,6 +407,9 @@ export interface ProtocolViolation {
     // alvo / uma escolhida obriga algo proibido neste toque.
     | "aliviador_ausente"
     | "proibicao_violada"
+    // 09/09: o rank-1 obriga (pelo contrato da anatomia) o que a decisão
+    // nega — hoje só o cupom, via `incentivo_existe`.
+    | "contrato_violado"
   detalhe: string
 }
 
@@ -357,6 +417,12 @@ export interface ProtocolViolation {
 export interface AlvoParaMedicao {
   aliviador_pedido: string | null
   proibicoes: readonly string[]
+  /**
+   * Decisão de incentivo da loja (catálogo do Catalogador): `false` = sem
+   * incentivo ativo → variante com slot de cupom é `contrato_violado`.
+   * `null`/ausente = não se sabe, nada é medido.
+   */
+  incentivo_existe?: boolean | null
 }
 
 const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -394,8 +460,16 @@ export function measureProtocolViolations(p: {
   sectionByBlock: Map<number, string>
   /** Alvo do Seletor (opcional — sem ele os dois tipos novos não são medidos). */
   alvo?: AlvoParaMedicao | null
+  /** Contrato por variante (catálogo) — para `contrato_violado`. */
+  contratos?: Map<string, ContratoResumo>
 }): ProtocolViolation[] {
   const out: ProtocolViolation[] = []
+  if (p.alvo && p.contratos && p.alvo.incentivo_existe === false) {
+    for (const [block, variantId] of p.rank1ByBlock) {
+      const motivo = conflitoDeContrato(p.contratos.get(variantId) ?? resumirContrato(null), { cupom: false })
+      if (motivo) out.push({ block_index: block, variant_id: variantId, tipo: "contrato_violado", detalhe: motivo })
+    }
+  }
   if (p.alvo) {
     const pedido = p.alvo.aliviador_pedido
     if (pedido) {
@@ -562,6 +636,17 @@ export interface CuradorShadowParams {
    * legado, e servi-los aqui trocaria o agente por outro.
    */
   modelo?: string | null
+  /**
+   * Teto de saída da config (`assembler_chooser.max_tokens`), já resolvido
+   * pelo caller. Ver `resolverTetoDoCurador`.
+   */
+  maxTokens?: number | null
+  /**
+   * Recebe o que o JSON trouxe quando o resultado NÃO pôde ser consumido
+   * (ids inválidos, escolhas malformadas) — o Curador legado herda as
+   * justificativas em vez de escolher às cegas. Prosa não vira preferência.
+   */
+  onParcial?: (p: PreferenciasDoVault) => void
   /** Violações medidas sobre o rank-1 do Curador VIVO (comparação). */
   liveViolations: ProtocolViolation[]
   /**
@@ -573,6 +658,31 @@ export interface CuradorShadowParams {
   liveRank1: Map<number, string>
   /** Alvo do Seletor para o medidor de veto (aliviador_ausente / proibicao_violada). */
   alvoMedicao?: AlvoParaMedicao | null
+}
+
+/** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
+export interface PreferenciasDoVault {
+  posicoes: Array<{
+    block_index: number
+    section: string
+    justificativa: string
+    escolhas: Array<{ variant_id: string; motivo: string }>
+  }>
+}
+
+/** Bloco `<preferencias_do_vault>` do Curador legado. Puro. */
+export function renderPreferenciasDoVault(p: PreferenciasDoVault | null): string {
+  if (!p || p.posicoes.length === 0) {
+    return "(nenhuma — o Curador do vault não rodou ou não deixou JSON aproveitável)"
+  }
+  return p.posicoes
+    .map((pos) => {
+      const esc = pos.escolhas.length
+        ? pos.escolhas.map((e) => `  - ${e.variant_id}${e.motivo ? ` — ${e.motivo}` : ""}`).join("\n")
+        : "  - (nenhuma candidata)"
+      return `[${pos.block_index}] ${pos.section}${pos.justificativa ? `: ${pos.justificativa}` : ""}\n${esc}`
+    })
+    .join("\n")
 }
 
 /**
@@ -604,10 +714,11 @@ export async function runCuradorShadow(
   let runId = ""
   try {
     const momento = momentoDoEmail(p.flowType, p.emailNumber)
+    const maxTokens = resolverTetoDoCurador(p.maxTokens)
     const config: AgentInvokeConfig = {
       model: modelo,
       temperature: 0.2,
-      max_tokens: 8192,
+      max_tokens: maxTokens,
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
     }
@@ -723,6 +834,19 @@ export async function runCuradorShadow(
           tools: p.ferramentas.tools,
           executar: p.ferramentas.executar,
           maxCalls: p.ferramentas.maxCalls ?? 4,
+          // Resposta sem JSON → uma volta a mais pedindo só o JSON, com o
+          // histórico. Antes disso a resposta ia direto para
+          // `shadow_json_ilegivel` e o legado escolhia sem ver nada.
+          ...(retomadaLigada()
+            ? {
+                retomada: {
+                  precisa: motivoDeRetomada,
+                  mensagem: MENSAGEM_RETOMADA_JSON,
+                  maxTokens,
+                  prefill: PREFILL_RETOMADA_JSON,
+                },
+              }
+            : {}),
         })
       : { ...(await invokeAgent(config, vars, systemVars)), consultas: [] as ToolCallLog[], voltas: 1, fallback_sem_ferramentas: false }
     const parsed = parseCuradorVaultOutput(res.raw)
@@ -746,12 +870,20 @@ export async function runCuradorShadow(
       : null
 
     const sectionByBlock = new Map(sections.map((s, i) => [i, s]))
+    // Posição que o JSON nem MENCIONA (diferente de `escolhas: []`, que é
+    // "sem candidata" declarado): é o rastro de um JSON completo mas
+    // incompleto — o que a retomada tenta fechar.
+    const mencionadas = new Set((parsed?.escolhasDetalhadas ?? []).map((e) => e.block_index))
+    const posicoesSemResposta = parsed
+      ? sections.map((section, i) => ({ block_index: i, section })).filter((x) => !mencionadas.has(x.block_index))
+      : []
     const shadowRank1 = ranking ? rank1ByBlock(ranking.byBlock) : new Map<number, string>()
     const violations = measureProtocolViolations({
       rank1ByBlock: shadowRank1,
       extras: p.extras,
       sectionByBlock,
       alvo: p.alvoMedicao ?? null,
+      contratos: contratosDoCatalogo(p.catalogComExtras.sections),
     })
     // Repetir a mesma variante fora de hero/products é permitido (07/09) —
     // fica como registro para a curadoria ver quando é pobreza de acervo.
@@ -783,11 +915,21 @@ export async function runCuradorShadow(
         : ranking?.malformed
           ? "shadow_escolhas_malformadas"
           : undefined,
-      rawOutput: res.raw.slice(0, 8000),
+      // 32k: é aqui que se lê o raciocínio quando o JSON não veio; 8k
+      // cortava justamente a parte que explicava a eliminação.
+      rawOutput: res.raw.slice(0, 32_000),
       parsedOutput: {
         shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
         curador_vault_mode: modo,
+        finish_reason: res.finishReason ?? null,
+        max_tokens_usado: maxTokens,
+        raw_chars: res.raw.length,
+        voltas_json: res.retomada?.feita ? 1 : 0,
+        retomada_motivo: res.retomada?.motivo ?? null,
+        retomada_erro: res.retomada?.erro ?? null,
+        prefill_usado: res.retomada?.prefill_usado ?? false,
+        posicoes_sem_resposta: posicoesSemResposta,
         // 02/09: a decisão do Estruturador entrou no template do vault (só
         // o legado tinha) e o Curador pode consultar o Obsidian.
         estruturador_consumido: estruturadorOn,
@@ -882,6 +1024,19 @@ export async function runCuradorShadow(
     // tem retry e fail-closed próprios. Devolver um ranking sem posição
     // levaria o assembler ao CuratorFailedError sem ter tentado o fallback.
     if (!parsed || !ranking || ranking.malformed || ranking.byBlock.size === 0) {
+      if (parsed && parsed.escolhasDetalhadas.length > 0 && p.onParcial) {
+        p.onParcial({
+          posicoes: parsed.escolhasDetalhadas.map((e) => ({
+            block_index: e.block_index,
+            section: sectionByBlock.get(e.block_index) ?? "",
+            justificativa: e.justificativa,
+            escolhas: e.escolhas.map((o) => ({
+              variant_id: p.extras.get(o.variant_id)?.slug ?? o.variant_id,
+              motivo: o.motivo,
+            })),
+          })),
+        })
+      }
       return null
     }
     return {

@@ -439,12 +439,54 @@ export interface ToolCallLog {
   erro?: string
 }
 
+/**
+ * Registro da volta de RETOMADA do JSON (09/09). Sempre presente no
+ * resultado quando o caller pediu retomada — `feita:false` diz que a
+ * resposta original serviu (ou que a retomada falhou, com `erro`).
+ */
+export interface RetomadaResultado {
+  feita: boolean
+  /** O prefill do assistant foi enviado e aceito pelo provedor. */
+  prefill_usado: boolean
+  /** Por que a retomada foi pedida (o que o caller viu na resposta). */
+  motivo?: string
+  /** A retomada falhou e a resposta devolvida é a ORIGINAL. */
+  erro?: string
+}
+
 export interface InvokeWithToolsResult extends InvokeResult {
   consultas: ToolCallLog[]
   /** Chamadas ao modelo (1 = não usou ferramenta). */
   voltas: number
   /** O loop falhou e a resposta veio de uma chamada sem ferramentas. */
   fallback_sem_ferramentas: boolean
+  retomada?: RetomadaResultado
+}
+
+/**
+ * Retomada do JSON: uma volta extra, SEM ferramentas, quando a resposta
+ * final não serve (JSON ilegível, prosa, corte por `max_tokens`).
+ *
+ * Por que existe: o Curador do vault respondeu 8.327 tokens de raciocínio
+ * em prosa e foi cortado antes do JSON — a resposta certa foi descartada e
+ * o pipeline caiu num fallback que não vê contrato (batch 644d86c5). Pedir
+ * "agora só o JSON" com o histórico inteiro custa uma chamada e recupera o
+ * trabalho já feito; repetir do zero custaria o loop inteiro de novo e
+ * poderia falhar igual.
+ */
+export interface RetomadaJsonOptions {
+  /** Decide, pela resposta final, se a retomada é necessária. `string` = motivo. */
+  precisa: (raw: string, finishReason?: string) => string | null
+  /** Mensagem de user que pede só o JSON. */
+  mensagem: string
+  /** Teto da volta de retomada. Default = `config.max_tokens`. */
+  maxTokens?: number
+  /**
+   * Prefill do assistant (ex.: `{"papeis"`): só provedores Anthropic aceitam
+   * mensagem assistant final como continuação. Outro provedor → ignorado.
+   * Recusa do provedor → a retomada repete sem prefill.
+   */
+  prefill?: string
 }
 
 export interface InvokeWithToolsOptions {
@@ -452,6 +494,12 @@ export interface InvokeWithToolsOptions {
   executar: (nome: string, args: Record<string, unknown>) => Promise<string>
   /** Teto de execuções de ferramenta por run. Default 4. */
   maxCalls?: number
+  retomada?: RetomadaJsonOptions
+}
+
+/** Provedores que aceitam prefill (mensagem assistant final = continuação). */
+export function aceitaPrefill(model: string): boolean {
+  return /^anthropic\//i.test(model)
 }
 
 interface ChatMessage {
@@ -643,22 +691,74 @@ export async function invokeAgentWithTools(
       costUsd += turn.costUsd
 
       if (turn.toolCalls.length === 0 || toolChoice === "none") {
+        let raw = turn.text
+        let finishReason = turn.finishReason
+        let retomada: RetomadaResultado | undefined
+        const motivo = opts.retomada ? opts.retomada.precisa(turn.text, turn.finishReason) : null
+        if (opts.retomada && motivo) {
+          retomada = { feita: false, prefill_usado: false, motivo }
+          const cfgRetomada: AgentInvokeConfig = {
+            ...resolved,
+            max_tokens: opts.retomada.maxTokens ?? resolved.max_tokens,
+          }
+          const base: ChatMessage[] = [
+            ...messages,
+            turn.assistantMessage,
+            { role: "user", content: opts.retomada.mensagem },
+          ]
+          const prefill = opts.retomada.prefill && aceitaPrefill(config.model) ? opts.retomada.prefill : null
+          const tentativas: Array<{ prefill: string | null }> = prefill
+            ? [{ prefill }, { prefill: null }]
+            : [{ prefill: null }]
+          for (const t of tentativas) {
+            try {
+              const msgs = t.prefill ? [...base, { role: "assistant" as const, content: t.prefill }] : base
+              const volta = await withOpenRouterRetry(
+                () => callOnceWithTools(cfgRetomada, msgs, opts.tools, "none", apiKey),
+                {
+                  onRetry: (err, n) =>
+                    log.warn("openrouter.tools.retomada_retry", {
+                      model: config.model,
+                      attempt: n,
+                      message: (err as Error)?.message,
+                    }),
+                },
+              )
+              voltas++
+              tokensInput += volta.tokensInput
+              tokensOutput += volta.tokensOutput
+              costUsd += volta.costUsd
+              // Com prefill o provedor devolve a CONTINUAÇÃO; se o modelo
+              // ignorou e recomeçou pelo `{`, o prefixo não pode ser colado.
+              raw = t.prefill && !volta.text.trimStart().startsWith("{") ? `${t.prefill}${volta.text}` : volta.text
+              finishReason = volta.finishReason
+              retomada = { feita: true, prefill_usado: !!t.prefill, motivo }
+              break
+            } catch (e) {
+              const erro = e instanceof Error ? e.message : String(e)
+              log.warn("openrouter.tools.retomada_failed", { model: config.model, prefill: !!t.prefill, erro })
+              retomada = { feita: false, prefill_usado: false, motivo, erro }
+            }
+          }
+        }
         log.info("openrouter.tools.done", {
           model: config.model,
           voltas,
           consultas: consultas.length,
           tokensIn: tokensInput,
           tokensOut: tokensOutput,
+          retomada: retomada?.feita ?? false,
         })
         return {
-          raw: turn.text,
+          raw,
           tokensInput,
           tokensOutput,
           costUsd,
-          ...(turn.finishReason ? { finishReason: turn.finishReason } : {}),
+          ...(finishReason ? { finishReason } : {}),
           consultas,
           voltas,
           fallback_sem_ferramentas: false,
+          ...(retomada ? { retomada } : {}),
         }
       }
 
