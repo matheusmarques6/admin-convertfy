@@ -515,3 +515,84 @@ describe("replacementCosturado", () => {
     expect(replacementCosturado("[13]</span> dolor sit amet", "").texto).toBe("</span>")
   })
 })
+
+// ── Enumerador que DISTINGUE (09/09) ────────────────────────────────────
+// Casos reais: `body 3 - bridge features cards` e `produtos 4 - um produto`
+// (section_copy_1/2), `produtos 7` (panel_1_copy/panel_2_copy), `body 2`
+// (um lorem é PREFIXO do outro), `review 2/3` (review_1_title sem número ×
+// review_2_title com) e `review 8` (Buyer Name × " 3 Buyer Name").
+describe("assignTextAnchors — enumerador da arte × enumerador que distingue", () => {
+  it("dois campos numerados: cada um casa a SUA célula e o número some junto", () => {
+    const html = [
+      "<td>1 Lorem ipsum dolor sit amet, consectetur adipiscing elit</td>",
+      "<td>2 Lorem ipsum dolor sit amet, consectetur adipiscing elit</td>",
+    ].join("\n")
+    const index = buildTextIndex(html)
+    const out = withOriginalSlices(
+      html,
+      assignTextAnchors(index, [
+        field("section_copy_1", "1 Lorem ipsum dolor sit amet, consectetur adipiscing elit"),
+        field("section_copy_2", "2 Lorem ipsum dolor sit amet, consectetur adipiscing elit"),
+      ]),
+    )
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[1].desfecho).toBe("ancorado_exemplo")
+    // O range cobre o dígito: ele é substituído pela copy, não sobra no email.
+    expect(out[0].de).toBe("1 Lorem ipsum dolor sit amet, consectetur adipiscing elit")
+    expect(out[1].de).toBe("2 Lorem ipsum dolor sit amet, consectetur adipiscing elit")
+    expect(out[0].extraRanges).toBeUndefined()
+    expect(out[1].extraRanges).toBeUndefined()
+  })
+
+  it("body 2: um lorem é PREFIXO do outro — contenção, não igualdade", () => {
+    const longo = "1 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor"
+    const curto = "2 Lorem ipsum dolor sit amet, consectetur"
+    const html = `<td>${longo}</td>\n<td>${curto}</td>`
+    const index = buildTextIndex(html)
+    const out = withOriginalSlices(
+      html,
+      assignTextAnchors(index, [field("section_copy_1", longo), field("section_copy_2", curto)]),
+    )
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[1].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].de).toBe(longo)
+    expect(out[1].de).toBe(curto)
+  })
+
+  it("review 2: irmão SEM número não perde o lugar para o irmão COM número", () => {
+    const html = [
+      "<td>Ut enim ad minim veniam</td>",
+      "<td>2 Ut enim ad minim veniam</td>",
+    ].join("\n")
+    const index = buildTextIndex(html)
+    const out = withOriginalSlices(
+      html,
+      assignTextAnchors(index, [
+        field("review_1_title", "Ut enim ad minim veniam"),
+        field("review_2_title", "2 Ut enim ad minim veniam"),
+      ]),
+    )
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[1].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].de).toBe("Ut enim ad minim veniam")
+    expect(out[1].de).toBe("2 Ut enim ad minim veniam")
+  })
+
+  it("regressão products-7: UM campo para dois botões continua escrevendo nos dois", () => {
+    const html = [
+      "<td>1 SHOP NOW</td>",
+      "<td>2 SHOP NOW</td>",
+    ].join("\n")
+    const index = buildTextIndex(html)
+    const out = withOriginalSlices(
+      html,
+      assignTextAnchors(index, [field("product_cta_label", "2 shop now")]),
+    )
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    expect(out[0].extraRanges).toHaveLength(1)
+    // Os números da arte são engolidos pelos ranges.
+    expect(out[0].de).toBe("1 SHOP NOW")
+    const extra = out[0].extraRanges![0]
+    expect(html.slice(extra.start, extra.end)).toBe("2 SHOP NOW")
+  })
+})

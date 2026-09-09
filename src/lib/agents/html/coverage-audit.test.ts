@@ -73,13 +73,17 @@ describe("auditVariantCoverage", () => {
     expect(l.ok).toBe(true)
   })
 
-  it("example de um irmão contido no do outro tira a vaga de um", () => {
-    // O defeito real de `body 3` / `produtos 4` / `produtos 7`: a arte
-    // numera os parágrafos ("1 Lorem…", "2 Lorem…") e um dos campos foi
-    // cadastrado SEM o número. Aí não há grupo de idênticos: o example
-    // curto acha as duas ocorrências, o específico já tomou a sua, e um
-    // campo fica sem lugar — na peça, um parágrafo sai repetido e a copy
-    // do outro não entra.
+  it("irmão numerado × irmão sem número: os dois ancoram, o dígito órfão fica à vista", () => {
+    // O defeito real de `body 3` / `produtos 4` / `produtos 7` era ANTES do
+    // 09/09: a arte numera os parágrafos ("1 Lorem…", "2 Lorem…"), o campo
+    // numerado entrava com `enumerador` ligado, casava as DUAS células, a
+    // regra 5 escrevia a mesma copy nas duas e o irmão morria em
+    // `range_ja_tomado`. Hoje o enumerador só é tirado quando ninguém mais
+    // disputa a frase sem número, então cada campo casa a SUA célula.
+    // O que sobra é honesto e continua sendo erro de CADASTRO: o `1 ` da
+    // arte não está no example de `copy_1`, então o range não o cobre e ele
+    // aparece como texto ÓRFÃO — o dígito iria para o e-mail na frente da
+    // copy. A correção é o example espelhar a frase do HTML.
     const l = auditVariantCoverage({
       id: "v-prefixo",
       name: "prefixo",
@@ -89,9 +93,9 @@ describe("auditVariantCoverage", () => {
         { key: "copy_2", example: "2 Lorem ipsum dolor", type: "text_long" },
       ],
     })
-    expect(l.camposComProblema).toHaveLength(1)
-    expect(l.camposComProblema[0].key).toBe("copy_1")
-    expect(l.camposComProblema[0].motivo).toBe("range_ja_tomado")
+    expect(l.camposComProblema).toEqual([])
+    expect(l.ancorados).toBe(2)
+    expect(l.orfaos.map((o) => o.texto)).toEqual(["1"])
   })
 
   it("não conta campo de imagem como copy", () => {
@@ -148,10 +152,13 @@ describe("resumirBiblioteca", () => {
       }),
     ])
     expect(r.variantes).toBe(2)
-    expect(r.variantesOk).toBe(1)
+    expect(r.variantesOk).toBe(2)
     expect(r.camposCopy).toBe(4)
-    expect(r.camposAncorados).toBe(3)
-    expect(r.camposSemLugar).toBe(1)
-    expect(r.porMotivo.range_ja_tomado).toBe(1)
+    // Os quatro ancoram desde o 09/09 (ver o caso do irmão numerado acima);
+    // o que resta da numeração cadastrada pela metade é UM órfão de texto.
+    expect(r.camposAncorados).toBe(4)
+    expect(r.camposSemLugar).toBe(0)
+    expect(r.porMotivo.range_ja_tomado).toBeUndefined()
+    expect(r.orfaosTotal).toBe(1)
   })
 })
