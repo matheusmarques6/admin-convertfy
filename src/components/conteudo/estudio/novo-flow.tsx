@@ -13,15 +13,17 @@ import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
+import { editorialVazio, headlineEscolhida, papeisDosFrames, podeGerarCopy } from "@/lib/conteudo/editorial"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
 import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { BrandKit, Documento, EstruturaDetectada, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
+import type { BrandKit, Documento, Editorial, EstruturaDetectada, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
 import { CtAvatar, CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { Caminho } from "./biblioteca"
+import { EditorialMotor } from "./editorial-motor"
 import { TemplateCard } from "./template-card"
 import { ThumbFit } from "./thumb"
 
@@ -66,6 +68,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
   const [nome, setNome] = useState("")
   const [perfil, setPerfil] = useState<PerfilEditavel>(perfilInicial && perfis.some((p) => p.id === perfilInicial) ? perfilInicial : perfis[0]?.id ?? "")
   const [voz, setVoz] = useState<"marca" | "pessoal">("marca")
+  const [segundaPessoa, setSegundaPessoa] = useState(true)
+  /** Motor editorial do caminho IA: triagem, headlines, espinha (persistem no documento). */
+  const [motor, setMotor] = useState<Editorial | null>(null)
+  const nomeDaHeadline = useRef<string | null>(null)
   const perfilObj = perfis.find((p) => p.id === perfil)
   const [prompt, setPrompt] = useState("")
   const [promptSel, setPromptSel] = useState<number | null>(null)
@@ -155,6 +161,14 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
 
   const kitDoPerfil = useMemo(() => brandKits?.[perfil] ?? brandKitPadrao(perfilObj), [brandKits, perfil, perfilObj])
 
+  // ── motor editorial (caminho IA) ──
+  const promptPronto = promptSel != null ? prompts[promptSel] : null
+  const pautaCompleta = [prompt.trim(), promptPronto?.pauta].filter(Boolean).join("\n\n")
+  const templateIdIa = promptPronto?.tpl ?? (etapa === "meio" ? "molde-lista" : etapa === "fundo" ? "molde-bastidor" : "molde-turbo")
+  const framesIa = useMemo(() => ajustarQuantidadeFrames(novoDocumento("prévia", perfil, templateIdIa, { brandKit: kitDoPerfil }), slides).frames, [perfil, templateIdIa, slides, kitDoPerfil])
+  const editorialIa: Editorial = useMemo(() => ({ ...(motor ?? editorialVazio(pautaCompleta, voz, segundaPessoa)), insumo: pautaCompleta, voz, segundaPessoa }), [motor, pautaCompleta, voz, segundaPessoa])
+  const pelaEspinha = podeGerarCopy(editorialIa)
+
   const docPrevia = useMemo(() => {
     if (!estrutura.length) return null
     const d = documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil })
@@ -194,12 +208,17 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         return
       }
       if (caminho === "ia") {
-        const p = promptSel != null ? prompts[promptSel] : null
-        const templateId = p?.tpl ?? (etapa === "meio" ? "molde-lista" : etapa === "fundo" ? "molde-bastidor" : "molde-turbo")
+        const p = promptPronto
+        const templateId = templateIdIa
         let d = novoDocumento(nome.trim(), perfil, templateId, { brandKit: kit })
         d = ajustarQuantidadeFrames(d, slides)
-        const pauta = [prompt.trim(), p?.pauta].filter(Boolean).join("\n\n")
+        const pauta = pautaCompleta
         const t = getTemplate(templateId)
+        const ed = editorialIa
+        const escolhida = headlineEscolhida(ed)
+        // Pela espinha: a copy é DERIVADA da triagem + headline + espinha aprovadas.
+        // Sem o motor: geração direta da pauta (o caminho rápido continua existindo).
+        const papeis = pelaEspinha ? new Map(papeisDosFrames(d.frames).map((x) => [x.frameId, x.papel])) : null
         const r = await chamarIA({
           acao: "gerar_estrutura",
           nome: nome.trim(),
@@ -209,11 +228,14 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
           etapaFunil: ST_FUNIL[etapa].n,
           objetivoCta: "Comment gate",
           templateNome: t.nome,
-          frames: d.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
+          frames: d.frames.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos, papel: papeis?.get(f.frameId) })),
+          triagem: pelaEspinha ? ed.triagem : undefined,
+          espinha: pelaEspinha ? ed.espinha : undefined,
+          segundaPessoa,
         })
         d = {
           ...d,
-          nome: r.nome?.trim() || d.nome,
+          nome: (pelaEspinha && escolhida ? escolhida.texto : r.nome?.trim()) || d.nome,
           frames: d.frames.map((f) => {
             const x = r.frames.find((y) => y.frameId === f.frameId)
             return x ? { ...f, textos: { ...f.textos, ...x.textos } } : f
@@ -221,8 +243,14 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
           legenda: r.legenda,
           palavraChave: r.palavraChave.toUpperCase(),
           cta: { ...d.cta, texto: `Comente ${r.palavraChave.toUpperCase()}` },
+          editorial: ed,
         }
-        d = comHistorico(d, "Carrossel gerado pela ConvertIA a partir da pauta")
+        // A capa leva a headline ESCOLHIDA, não a que o modelo reescreveu ao gerar a copy.
+        if (pelaEspinha && escolhida && d.frames[0]?.tipo === "capa") {
+          const capa = d.frames[0]
+          d = { ...d, frames: [{ ...capa, textos: { ...capa.textos, titulo: escolhida.texto, ...(escolhida.subtitulo && capa.campos.includes("subtitulo") ? { subtitulo: escolhida.subtitulo } : {}) } }, ...d.frames.slice(1)] }
+        }
+        d = comHistorico(d, pelaEspinha ? "Carrossel gerado pela espinha dorsal (triagem → headline → espinha → copy)" : "Carrossel gerado pela ConvertIA a partir da pauta")
         onCriado({ doc: d, caminho: "ia", anexos: refs.length ? refs : undefined })
         return
       }
@@ -243,7 +271,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
     }
   }
 
-  const botaoLabel = criando ? (caminho === "ia" ? "Gerando…" : "Criando…") : modoTemplate ? "Revisar no editor" : caminho === "ia" ? "Gerar carrossel" : "Criar carrossel"
+  const botaoLabel = criando ? (caminho === "ia" ? "Gerando…" : "Criando…") : modoTemplate ? "Revisar no editor" : caminho === "ia" ? (pelaEspinha ? "Gerar carrossel pela espinha" : "Gerar direto (sem triagem)") : "Criar carrossel"
 
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-[var(--ops-page)]" role="dialog" aria-modal="true" aria-label={modoTemplate ? "Criar template" : "Novo carrossel"}>
@@ -458,6 +486,31 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                 <div className="flex items-center gap-2 rounded-[9px] border border-[var(--ops-border)] bg-[var(--ops-tile)] px-3 py-2.5 text-[11.5px] text-[var(--ops-sec)]">
                   <Icon icon={Sparkles} customSize={14} className="shrink-0 text-[var(--ops-title)]" />A ConvertIA escreve os slides e a legenda só com o que estiver na pauta; número sem fonte sai marcado como [confirmar]. Você revisa no editor antes de exportar.
                 </div>
+                <div className="flex flex-col gap-2 rounded-[11px] border border-[#7C3AED]/40 bg-[var(--ops-card)] p-3.5">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[12.5px] font-semibold text-[var(--ops-title)]">Motor editorial</span>
+                    <span className="text-[11px] text-[var(--ops-sec)]">Triagem → 10 headlines (você escolhe) → espinha dorsal (você aprova) → copy derivada. Opcional: sem ele, “Gerar direto” escreve da pauta.</span>
+                  </div>
+                  <EditorialMotor
+                    editorial={editorialIa}
+                    onChange={(e) => setMotor(e)}
+                    ocultarPauta
+                    contexto={{
+                      perfil: { handle: perfilObj?.handle ?? (kitDoPerfil.brandName || null), nome: perfilObj?.nome ?? kitDoPerfil.brandName2, voz },
+                      templateNome: getTemplate(templateIdIa).nome,
+                      frames: framesIa.map((f) => ({ frameId: f.frameId, tipo: f.tipo, label: f.label, campos: f.campos })),
+                      pilar: promptPronto?.pilar ?? pilar,
+                      etapaFunil: etapa,
+                    }}
+                    onAplicarHeadline={(h) => {
+                      // A headline escolhida vira o nome de trabalho, a menos que o usuário já tenha digitado o dele.
+                      if (!nome.trim() || nome === nomeDaHeadline.current) {
+                        setNome(h.texto)
+                        nomeDaHeadline.current = h.texto
+                      }
+                    }}
+                  />
+                </div>
               </div>
               <div>
                 <CtLabel>Prompts prontos</CtLabel>
@@ -637,6 +690,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                     <select value={voz} onChange={(e) => setVoz(e.target.value as "marca" | "pessoal")} className={cn(selectCls, "bg-[var(--ops-card)]")} aria-label="Voz">
                       <option value="marca">Marca (nós, cases e dados)</option>
                       <option value="pessoal">Pessoal (primeira pessoa, bastidor)</option>
+                    </select>
+                    <select value={segundaPessoa ? "sim" : "nao"} onChange={(e) => setSegundaPessoa(e.target.value === "sim")} className={cn(selectCls, "mt-1.5 bg-[var(--ops-card)]")} aria-label="Segunda pessoa" title="Regra por perfil: o carrossel da casa fala com 'você'; um perfil jornalístico não.">
+                      <option value="sim">“Você” liberado (voz da casa)</option>
+                      <option value="nao">Sem “você” (tom de reportagem)</option>
                     </select>
                   </div>
                 )}

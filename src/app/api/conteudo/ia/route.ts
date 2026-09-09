@@ -36,7 +36,8 @@ const log = logger.child("ConteudoIARoute")
  * documento, que declara "molde <nome>" — lê-se dali.
  */
 function contextoDaEntrada(e: EntradaIA): ContextoSelecao {
-  if (e.acao === "gerar_estrutura") return { molde: ST_MOLDE_KEY[e.templateNome] ?? null, pilar: e.pilar ?? null }
+  if (e.acao === "gerar_estrutura" || e.acao === "espinha") return { molde: ST_MOLDE_KEY[e.templateNome] ?? null, pilar: e.pilar ?? null }
+  if (e.acao === "triagem") return { molde: e.templateNome ? (ST_MOLDE_KEY[e.templateNome] ?? null) : null, pilar: e.pilar ?? null }
   if ("resumo" in e && typeof e.resumo === "string") {
     const m = /molde ([^·\n]+)/.exec(e.resumo)
     const nome = m?.[1]?.trim()

@@ -348,8 +348,112 @@ export interface Documento {
   agenda?: AgendaItem
   /** Mídia do Instagram vinculada quando publicado. */
   publicacao?: { mediaId: string; permalink: string | null; perfil: string }
+  /** Triagem, headlines, espinha e revisão (motor editorial). */
+  editorial?: Editorial
   criadoEm: string
   atualizadoEm: string
+}
+
+// ── Estúdio: motor editorial ────────────────────────────────────────────
+
+export type EixoNarrativo = "mercado" | "cases" | "noticias" | "cultura" | "produto"
+
+export interface Evidencia {
+  /** "A", "B", "C"… */
+  rotulo: string
+  texto: string
+  /** Fonte + ano quando o insumo trouxe; sem fonte o dado sai como [confirmar]. */
+  fonte?: string
+}
+
+/** Leitura do insumo ANTES de qualquer headline — é o contexto que toda ação seguinte recebe. */
+export interface Triagem {
+  transformacao: string
+  friccaoCentral: string
+  anguloDominante: string
+  evidencias: Evidencia[]
+  eixo: EixoNarrativo
+  funil: EtapaFunil
+  /** O que o hook promete e a peça tem de cumprir antes do CTA. */
+  promessa: string
+}
+
+export type VereditoHeadline = "aprovada" | "ressalva" | "reprovada"
+
+export interface HeadlineOpcao {
+  texto: string
+  /** Sub-hook da capa: aprofunda ou tensiona, independente do texto 1. */
+  subtitulo?: string
+  /** id em `PADROES_HEADLINE`. */
+  padrao: string
+  /** ids em `GATILHOS`. */
+  gatilhos: string[]
+  veredito: VereditoHeadline
+  motivo?: string
+}
+
+/** Estrutura narrativa aprovada antes da copy — a copy dos frames é derivada daqui. */
+export interface Espinha {
+  headline: string
+  subtitulo?: string
+  hook: string
+  mecanismo: string
+  prova: string[]
+  aplicacao: string
+  direcao: string
+  /** Virada temática, nunca resumo. */
+  fechamento: string
+}
+
+export type SeveridadeEditorial = "erro" | "aviso"
+
+export interface ViolacaoEditorial {
+  regra: string
+  nome: string
+  trecho: string
+  sugestao: string
+  severidade: SeveridadeEditorial
+  onde: "slide" | "legenda" | "headline"
+  frameId?: string
+  campo?: Campo
+}
+
+export interface NotaParametro {
+  id: string
+  nota: number
+  problemas: string[]
+}
+
+export interface RevisaoSlide {
+  frameId: string
+  nota: number
+  problemas: string[]
+  /** Reescrita proposta pela IA (aplicada só com um clique do humano). */
+  reescrita?: Partial<Record<Campo, string>>
+}
+
+export interface RevisaoEditorial {
+  /** ISO de quando rodou. */
+  em: string
+  parametros: NotaParametro[]
+  slides: RevisaoSlide[]
+  /** Violações detectadas por CÓDIGO (filtro anti-slop), com trecho. */
+  violacoes: ViolacaoEditorial[]
+  aprovado: boolean
+  resumo: string
+}
+
+/** Estado do motor editorial de um carrossel (persistido no documento). */
+export interface Editorial {
+  insumo: string
+  voz: "marca" | "pessoal"
+  /** "você" liberado — regra por PERFIL, nunca global. */
+  segundaPessoa: boolean
+  triagem?: Triagem
+  headlines?: HeadlineOpcao[]
+  headlineEscolhida?: number | null
+  espinha?: Espinha
+  revisao?: RevisaoEditorial
 }
 
 /** Proposta de conteúdo por slide (vinda de "colar texto" ou da IA). */

@@ -3175,6 +3175,63 @@ depende dos carrosséis que o usuário vai mandar), smoke e2e do Estúdio
 (`e2e/smoke-conteudo.spec.ts`), e a métrica "leads/molde" do dashboard — que
 só existe depois de classificar os 87 posts (0 classificados hoje).
 
+## Estúdio — Motor editorial: triagem → headline → espinha → copy → revisão (set/2026)
+
+O "100% com IA" gerava tudo numa chamada a partir da pauta. O material da
+BrandsDecoded (versionado em `docs/conteudo/referencias-editoriais/`) mostrou
+o que faltava: a headline escolhida entre várias e a espinha aprovada ANTES
+da copy. Plano e o mapa recriar × adaptar × complementar em
+`docs/conteudo/plano-templates-duas-vias.md`. Sem migration: o estado vive em
+`Documento.editorial` (o schema do documento é `passthrough`).
+
+**Camada pura** (`lib/conteudo/editorial/`, 18 testes):
+- `padroes.ts`: a TABELA da casa, adaptada ao dono de e-commerce (dado
+  contraintuitivo, morte de X, vilão externo, conta traduzida, marca como
+  âncora, contraste, por que [grupo], investigando, dois-pontos) + 6
+  gatilhos + checklist de rejeição por regex. A RÉGUA é a deles (≥ 1 padrão,
+  ≥ 2 gatilhos, anti-padrão reprova); a tabela é nossa e é hipótese até o
+  loop de dado calibrar. `avaliarHeadline` é o veredito por CÓDIGO — a IA
+  pode se enganar sobre o próprio texto, e o teste garante que todo exemplo
+  da tabela passa no próprio checklist (foi assim que um exemplo meu com
+  "Não é X, é Y" caiu antes de ir para o prompt). `validarContratoCapa`: o
+  subtítulo nunca começa com conectivo e os limites vêm do CANVAS
+  (`ST_LIMITES`), não de contagem fixa — a capa da casa tem 8 palavras.
+- `anti-slop.ts`: o filtro universal com o TRECHO que reprovou (binários,
+  cacoetes, aberturas/fechamentos proibidos, dado sem fonte, travessão,
+  jargão). **Segunda pessoa NÃO é regra global**: entra só quando o perfil
+  não a libera (`segundaPessoa: false`) e como aviso — o carrossel que o
+  time mais gosta é todo em "você", e um teste fixa que a copy da casa passa
+  limpa. Anglicismo numérico só na legenda (título de dado com "3x" é o
+  molde).
+- `revisao.ts`: 7 parâmetros com nota (mínimo 8). Parâmetro que a IA não
+  devolveu entra com 0 (ausência não é aprovação); violação de slop pelo
+  código rebaixa a nota da IA a 5 e dado sem fonte a 6, como o manual.
+- `papeis.ts`: a copy sai DA ESPINHA — capa = headline, CTA = comment gate,
+  meio = hook → mecanismo → prova → aplicação → direção → fechamento,
+  esticado ou cortado pelo número de frames sem nunca cortar os 3 finais
+  enquanto houver 3 (regra "os últimos 3 preparam o CTA").
+- `prompt-bloco.ts`: o bloco do system prompt é GERADO dessas tabelas —
+  regra que o modelo recebe e regra que o código confere são a mesma.
+
+**Ações da IA** (`ia/schemas.ts` + `ia/service.ts`): `triagem`
+(transformação, fricção, ângulo, evidências A/B/C com fonte, eixo, funil,
+promessa), `headlines` (agora 10 objetos `{texto, subtitulo, padrao,
+gatilhos, veredito}`; `modo: diagnosticar` avalia a atual; `resumo` virou
+opcional — quem cria não tem documento), `ajustar_headline` (reescreve UMA
+mantendo as outras; "misturar com a N"), `espinha`, `revisar` (nota por
+parâmetro e por slide + `reescrita` opcional) e `gerar_estrutura` com
+`triagem/espinha/papeis` opcionais (com eles a copy é derivada; sem eles o
+caminho direto continua). Temperatura 0,2 na revisão, 0,8 nas headlines.
+
+**UI** (`editorial-motor.tsx`, um componente para dois lugares): no
+"100% com IA" (bloco "Motor editorial", opcional — o botão vira "Gerar
+carrossel pela espinha" ou "Gerar direto (sem triagem)") e no editor
+(Ajustes → Conteúdo → Motor editorial, `editorial-panel.tsx`), onde ganha
+"Gerar copy pela espinha", "Revisar copy" e "Aplicar reescrita" por slide.
+Escolher a headline aplica na capa e vira o nome; trocar de headline ou
+refazer a triagem invalida o que foi derivado delas. Gerado pela espinha, o
+editor abre nos Ajustes — o passo seguinte é revisar.
+
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
 **Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o

@@ -1,0 +1,5 @@
+export * from "./padroes"
+export * from "./anti-slop"
+export * from "./revisao"
+export * from "./pipeline"
+export * from "./papeis"

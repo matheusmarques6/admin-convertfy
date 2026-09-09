@@ -23,9 +23,98 @@ const textos = z
   })
   .strict()
 
+// ── Motor editorial (tipos compartilhados entre entrada e saída) ─────────
+
+const perfilSchema = z.object({ handle: z.string().max(80).nullable(), nome: z.string().max(120), voz: z.enum(["marca", "pessoal"]).optional() })
+
+export const evidenciaSchema = z.object({ rotulo: z.string().max(4), texto: z.string().min(1).max(600), fonte: z.string().max(200).optional() })
+
+export const triagemSchema = z.object({
+  transformacao: z.string().min(1).max(1200),
+  friccaoCentral: z.string().min(1).max(800),
+  anguloDominante: z.string().min(1).max(600),
+  evidencias: z.array(evidenciaSchema).min(1).max(6),
+  eixo: z.enum(["mercado", "cases", "noticias", "cultura", "produto"]),
+  funil: z.enum(["topo", "meio", "fundo"]),
+  promessa: z.string().min(1).max(400),
+})
+
+export const headlineOpcaoSchema = z.object({
+  texto: z.string().min(3).max(220),
+  subtitulo: z.string().max(220).optional(),
+  padrao: z.string().min(1).max(40),
+  gatilhos: z.array(z.string().min(1).max(30)).min(1).max(4),
+  veredito: z.enum(["aprovada", "ressalva", "reprovada"]),
+  motivo: z.string().max(300).optional(),
+})
+
+export const espinhaSchema = z.object({
+  headline: z.string().min(1).max(220),
+  subtitulo: z.string().max(220).optional(),
+  hook: z.string().min(1).max(900),
+  mecanismo: z.string().min(1).max(1200),
+  prova: z.array(z.string().min(1).max(500)).min(1).max(5),
+  aplicacao: z.string().min(1).max(900),
+  direcao: z.string().min(1).max(700),
+  fechamento: z.string().min(1).max(700),
+})
+
+const limitesCapaSchema = z.object({ titulo: z.number().int().positive().optional(), subtitulo: z.number().int().positive().optional() })
+
+const papelSchema = z.enum(["headline", "hook", "mecanismo", "prova", "aplicacao", "direcao", "fechamento", "cta"])
+
+const frameComPapel = frameContrato.extend({ papel: papelSchema.optional() })
+
+const violacaoLite = z.object({ frameId: z.string().optional(), campo: z.string().optional(), nome: z.string().max(160), trecho: z.string().max(300), sugestao: z.string().max(300) })
+
 // ── Entradas ────────────────────────────────────────────────────────────
 
 export const entradaSchema = z.discriminatedUnion("acao", [
+  /** Passo 1 do motor editorial: leitura do insumo antes de qualquer headline. */
+  z.object({
+    acao: z.literal("triagem"),
+    insumo: z.string().min(10).max(8000),
+    perfil: perfilSchema,
+    pilar: z.string().max(40).optional(),
+    etapaFunil: z.enum(["topo", "meio", "fundo"]).optional(),
+    templateNome: z.string().max(80).optional(),
+  }),
+  /** Reescreve UMA opção (ou mistura duas) mantendo as demais. */
+  z.object({
+    acao: z.literal("ajustar_headline"),
+    opcoes: z.array(headlineOpcaoSchema).min(1).max(12),
+    indice: z.number().int().min(0).max(11),
+    instrucao: z.string().max(400).optional(),
+    misturarCom: z.number().int().min(0).max(11).optional(),
+    triagem: triagemSchema.optional(),
+    limites: limitesCapaSchema.optional(),
+    segundaPessoa: z.boolean().optional(),
+  }),
+  /** Passo 3: estrutura narrativa aprovada antes da copy. */
+  z.object({
+    acao: z.literal("espinha"),
+    triagem: triagemSchema,
+    headline: headlineOpcaoSchema,
+    perfil: perfilSchema,
+    templateNome: z.string().max(80),
+    papeis: z.array(papelSchema).max(30),
+    pilar: z.string().max(40).optional(),
+    segundaPessoa: z.boolean().optional(),
+    /** Espinha anterior + pedido de ajuste (regenerar com direção). */
+    atual: espinhaSchema.optional(),
+    instrucao: z.string().max(600).optional(),
+  }),
+  /** Revisão: 7 parâmetros com nota por peça e por slide, com reescrita opcional. */
+  z.object({
+    acao: z.literal("revisar"),
+    frames: z.array(frameComPapel.extend({ textos })).min(1).max(30),
+    legenda: z.string().max(4000),
+    perfil: perfilSchema,
+    segundaPessoa: z.boolean(),
+    violacoes: z.array(violacaoLite).max(60),
+    espinha: espinhaSchema.optional(),
+    triagem: triagemSchema.optional(),
+  }),
   z.object({
     acao: z.literal("gerar_estrutura"),
     nome: z.string().min(1).max(200),
@@ -37,9 +126,13 @@ export const entradaSchema = z.discriminatedUnion("acao", [
     objetivoCta: z.string().max(60).optional(),
     prova: z.string().max(400).optional(),
     templateNome: z.string().max(80),
-    frames: z.array(frameContrato).min(1).max(30),
+    frames: z.array(frameComPapel).min(1).max(30),
     /** Textos atuais (para regenerar mantendo o que já foi escrito à mão). */
     atuais: z.record(z.string(), textos).optional(),
+    /** Motor editorial: com triagem + espinha a copy é DERIVADA, não inventada da pauta. */
+    triagem: triagemSchema.optional(),
+    espinha: espinhaSchema.optional(),
+    segundaPessoa: z.boolean().optional(),
   }),
   z.object({
     acao: z.literal("preencher_frame"),
@@ -49,10 +142,21 @@ export const entradaSchema = z.discriminatedUnion("acao", [
     /** true = reescrever mesmo que já tenha texto. */
     regenerar: z.boolean().optional(),
   }),
+  /**
+   * Motor de headlines: 10 opções com padrão, gatilhos e veredito. `modo`
+   * "diagnosticar" avalia a atual antes de propor. `resumo` (documento
+   * aberto) OU `triagem` (fluxo novo) dão o contexto.
+   */
   z.object({
     acao: z.literal("headlines"),
-    resumo: z.string().max(8000),
-    atual: z.string().max(300),
+    resumo: z.string().max(8000).optional(),
+    atual: z.string().max(300).optional(),
+    triagem: triagemSchema.optional(),
+    modo: z.enum(["criar", "diagnosticar"]).optional(),
+    quantidade: z.number().int().min(3).max(12).optional(),
+    limites: limitesCapaSchema.optional(),
+    segundaPessoa: z.boolean().optional(),
+    perfil: perfilSchema.optional(),
   }),
   z.object({
     acao: z.literal("legenda"),
@@ -125,7 +229,23 @@ export const saidaEstruturaSchema = z.object({
 
 export const saidaFrameSchema = z.object({ textos })
 
-export const saidaHeadlinesSchema = z.object({ opcoes: z.array(z.string().min(1)).min(3).max(6) })
+export const saidaHeadlinesSchema = z.object({
+  diagnostico: z
+    .object({ padraoAtual: z.string().max(60), forca: z.number().min(0).max(10), problema: z.string().max(400), oportunidade: z.string().max(400) })
+    .optional(),
+  opcoes: z.array(headlineOpcaoSchema).min(3).max(12),
+})
+
+export const saidaTriagemSchema = triagemSchema
+export const saidaAjustarHeadlineSchema = z.object({ opcao: headlineOpcaoSchema })
+export const saidaEspinhaSchema = espinhaSchema
+export const saidaRevisarSchema = z.object({
+  parametros: z.array(z.object({ id: z.string().max(30), nota: z.number(), problemas: z.array(z.string().max(300)).max(8).optional() })).min(1).max(10),
+  slides: z
+    .array(z.object({ frameId: z.string(), nota: z.number(), problemas: z.array(z.string().max(300)).max(6).optional(), reescrita: textos.optional() }))
+    .max(30),
+  resumo: z.string().max(600).optional(),
+})
 
 export const saidaLegendaSchema = z.object({ legenda: z.string().min(20), palavraChave: z.string().min(1) })
 
@@ -196,6 +316,10 @@ export const saidaTranscricaoSchema = z.object({
   palavraChave: z.string().max(40).optional(),
 })
 
+export type SaidaTriagem = z.infer<typeof saidaTriagemSchema>
+export type SaidaAjustarHeadline = z.infer<typeof saidaAjustarHeadlineSchema>
+export type SaidaEspinha = z.infer<typeof saidaEspinhaSchema>
+export type SaidaRevisar = z.infer<typeof saidaRevisarSchema>
 export type SaidaEstrutura = z.infer<typeof saidaEstruturaSchema>
 export type SaidaFrame = z.infer<typeof saidaFrameSchema>
 export type SaidaHeadlines = z.infer<typeof saidaHeadlinesSchema>
@@ -207,6 +331,10 @@ export type SaidaInspiracao = z.infer<typeof saidaInspiracaoSchema>
 export type SaidaTranscricao = z.infer<typeof saidaTranscricaoSchema>
 
 export type SaidaPorAcao = {
+  triagem: SaidaTriagem
+  ajustar_headline: SaidaAjustarHeadline
+  espinha: SaidaEspinha
+  revisar: SaidaRevisar
   gerar_estrutura: SaidaEstrutura
   preencher_frame: SaidaFrame
   headlines: SaidaHeadlines
@@ -219,6 +347,10 @@ export type SaidaPorAcao = {
 }
 
 export const SAIDA_SCHEMA: { [K in keyof SaidaPorAcao]: z.ZodType<SaidaPorAcao[K]> } = {
+  triagem: saidaTriagemSchema,
+  ajustar_headline: saidaAjustarHeadlineSchema,
+  espinha: saidaEspinhaSchema,
+  revisar: saidaRevisarSchema,
   gerar_estrutura: saidaEstruturaSchema,
   preencher_frame: saidaFrameSchema,
   headlines: saidaHeadlinesSchema,

@@ -152,7 +152,7 @@ analisar_inspiracao, transcrever_referencia, gerar_imagem).
 
 ## Ordem revisada
 
-1. **Motor editorial** (maior ganho de qualidade por hora): triagem → 10 headlines com padrão/gatilho/veredito + diagnóstico → espinha dorsal → copy a partir da espinha → revisão 7 parâmetros + filtro anti-slop puro (testes) + títulos ancorados + 2 blocos por slide. Tabelas de padrão/gatilho ADAPTADAS ao e-commerce, editáveis. UI: passos com aprovação no caminho "100% com IA"; botões "Headlines" (10, com diagnóstico da atual) e "Revisar copy" no editor.
+1. **Motor editorial** — FEITO em 09/09 (ver seção no CLAUDE.md) (maior ganho de qualidade por hora): triagem → 10 headlines com padrão/gatilho/veredito + diagnóstico → espinha dorsal → copy a partir da espinha → revisão 7 parâmetros + filtro anti-slop puro (testes) + títulos ancorados + 2 blocos por slide. Tabelas de padrão/gatilho ADAPTADAS ao e-commerce, editáveis. UI: passos com aprovação no caminho "100% com IA"; botões "Headlines" (10, com diagnóstico da atual) e "Revisar copy" no editor.
 2. **Via B**: `promptImagem` por frame, construtor, Copiar/Gerar, híbrido default, sugestão automática pelo preenchimento real.
 3. **Famílias visuais** Editorial + Alternado, presets de brand kit, moldes Tendência e Previsão com `arco`.
 4. **Loop**: CTA → automação da palavra-chave; classificação por padrão de headline; evidências e busca web na triagem.
