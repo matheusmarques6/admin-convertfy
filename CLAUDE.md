@@ -4256,6 +4256,47 @@ A regra saiu do componente para `assinaturasAsaasSemEspelho`
 (`assinatura-duplicada.ts`, puro), com esse caso como teste de
 regressão.
 
+## Espelho do Asaas parado: comissão paga aparecia atrasada (set/2026)
+
+Relatado com print: a carteira dizia "Comissão atrasada" e "Mensalidade
+atrasada" para a Energia Portátil enquanto a aba Financeiro do cliente
+mostrava as mesmas cobranças como Pago/Confirmado. Os dois leem fontes
+diferentes: o Financeiro lista os pagamentos AO VIVO do Asaas; carteira,
+funil e onboarding leem `unified_invoices`, o ESPELHO em `invoices`.
+
+Medido: `integrations.last_sync` = **19/02/2026**; 39 linhas `pending`
+(todas vencidas) contra 12 `paid`; a comissão de junho, paga em 09/08,
+seguia `pending` com `payment_date` nulo; as três mensalidades de R$ 2.497
+nem existiam no espelho. Dois defeitos empilhados:
+
+1. **Nada varria o Asaas.** A única sincronização era o botão manual em
+   Configurações → Integrações, e ela pedia `listPayments({limit: 100})`
+   sem paginar: cobrança fora da primeira página nunca entrava. O webhook
+   não compensou — desde fevereiro nenhum `PAYMENT_RECEIVED` atualizou o
+   espelho, o que sugere webhook não configurado ou recusado na assinatura
+   (conferir no painel do Asaas; o endpoint é `/api/integrations/asaas/webhook`).
+2. **O espelho nasce na classificação** (`ensureAsaasInvoiceMirror`, ao
+   classificar ou marcar pago) com o status DAQUELE momento e nunca mais
+   é relido. A linha criada `pending` fica `pending` — e `isOverdue` da
+   carteira a lê como atrasada assim que vence.
+
+**Correção** (`asaas-sync.service.ts`): varredura PAGINADA por offset
+(`varrerPaginado`, puro, 5 testes) com orçamento de tempo e `truncado`
+declarado, janela de 24 meses de vencimento, update por `asaas_id` que
+PRESERVA a classificação humana (o builder não emite `store_id` nem
+`reference_months`); assinaturas casadas pelo `asaas_subscription_id`
+sozinho (índice único global — por cliente + id inseria a mesma sob outro
+cliente e tomava 23505 a cada rodada) e sem trocar de dono. A rota manual
+e o novo cron `/api/cron/asaas-sync` (minuto 25 das horas pares) chamam a
+MESMA função — a redundância webhook + varredura é a de pixel + CAPI.
+
+**O dado só se corrige com a varredura rodando**: depois do deploy, clicar
+"Sincronizar" no card do Asaas ou esperar o cron. Não há como rodar daqui
+(a chave está cifrada com segredo do ambiente). Pendência consciente: a
+cobrança avulsa (`charge_type = other`, ex.: "Fatura" de R$ 76,60) cai no
+balde de MENSALIDADE da carteira; avulsa vencida vira "mensalidade
+atrasada". Separar exige decidir o que é mensalidade sem classificação.
+
 ## ConvertIA — as três perdas silenciosas (set/2026)
 
 Medido antes de escrever código: das **27 respostas do assistente, 7
