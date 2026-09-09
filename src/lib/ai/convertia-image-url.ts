@@ -59,6 +59,35 @@ export function storagePathFromUrl(url: string): string | null {
 }
 
 /**
+ * O path do objeto a partir de QUALQUER forma de endereço que este módulo
+ * produz ou reconhece: a URL do Storage (assinada, pública, autenticada)
+ * **ou** a rota do admin (`/api/ai/convertia/imagem/<path>`), que é
+ * justamente o que `convertiaImageUrl` devolve — e portanto o que o upload
+ * da tela entrega ao cliente.
+ *
+ * Existe porque a assimetria custou caro: quem SALVA guarda a rota do
+ * admin e quem CONFERE chamava `storagePathFromUrl`, que só entende
+ * Storage. O guard recebia `null`, concluía "isto não é um arquivo nosso"
+ * e descartava a imagem em silêncio — o upload funcionava, o slide
+ * continuava sem foto e nada aparecia em log.
+ */
+export function objectPathFromAnyUrl(url: string): string | null {
+  const doStorage = storagePathFromUrl(url)
+  if (doStorage) return doStorage
+
+  const i = url.indexOf(CONVERTIA_IMAGE_ROUTE)
+  if (i < 0) return null
+  const bruto = url.slice(i + CONVERTIA_IMAGE_ROUTE.length).split(/[?#]/)[0]
+  let path: string
+  try {
+    path = decodeURIComponent(bruto)
+  } catch {
+    path = bruto
+  }
+  return isConvertiaImagePath(path) ? path : null
+}
+
+/**
  * Reescreve o `src` de uma imagem para a rota do admin quando ele
  * aponta para o bucket. É o que conserta o HISTÓRICO: as respostas já
  * salvas carregam a signed URL quebrada, e reescrever na renderização
