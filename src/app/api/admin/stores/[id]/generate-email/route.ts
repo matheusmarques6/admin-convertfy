@@ -14,11 +14,12 @@
 
 import { NextRequest, after } from "next/server"
 import { z } from "zod"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { runTestGeneration } from "@/lib/agents/test-generation.service"
 import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -62,6 +63,7 @@ export async function POST(
     const { id: storeId } = await context.params
     const sb = await createClient()
     const user = await requireAuth(sb)
+    await assertCanManagePrompts(createAdminClient(), user.id)
 
     const body = await request.json()
     const parsed = bodySchema.parse(body)
