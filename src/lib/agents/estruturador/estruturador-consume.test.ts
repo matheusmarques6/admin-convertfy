@@ -98,12 +98,20 @@ describe("decisaoCompletaParaCurador", () => {
   })
 })
 
+type BlocoDeTeste = {
+  type: string
+  purpose: string
+  papel?: string | null
+  requisitos?: unknown
+  fields?: Array<{ key: string; type: string; required: boolean; omitir?: boolean; omitir_motivo?: string }>
+}
+
 describe("aplicarEstruturadorNoBlueprint", () => {
   const bp = (): {
     objective: string
     messaging: string
     fio_narrativo?: string | null
-    blocks: Array<{ type: string; purpose: string }>
+    blocks: BlocoDeTeste[]
   } => ({
     objective: "obj",
     messaging: "msg",
@@ -203,7 +211,7 @@ describe("arbitrarCampos + requisitos no blueprint (09/09)", () => {
   })
 
   it("aplicarEstruturadorNoBlueprint grava papel, requisitos e os campos omitidos por posição", () => {
-    const bp = {
+    const bp: { objective: string; messaging: string; blocks: BlocoDeTeste[] } = {
       objective: "o",
       messaging: "m",
       blocks: [

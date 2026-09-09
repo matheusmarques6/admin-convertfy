@@ -56,6 +56,13 @@ export interface MergeField {
   example?: string | null
   type: string
   nature?: string | null
+  /**
+   * Omitido pela arbitragem papel × forma (09/09): o valor é ignorado e a
+   * linha do example some (ou o texto é esvaziado quando a linha tem mais
+   * conteúdo). Sem a flag, `coupon_line` sem valor deixava "Use code:
+   * [WELCOME-CODE]" no HTML — `pareceExemplo` não o reconhece.
+   */
+  omitir?: boolean | null
 }
 
 /** Bloco de entrada: fields do blueprint casado + content do n8n. */
@@ -151,6 +158,11 @@ export interface CopyMergeReport {
     badge: boolean
     padding_transferido: number | null
   }>
+  /**
+   * Campos omitidos pela arbitragem papel × forma (09/09): a linha foi
+   * removida, ou só o texto esvaziado quando a linha tinha mais conteúdo.
+   */
+  omitidos: Array<{ block_id: string | null; key: string; linha_removida: boolean }>
   /**
    * "por_bloco" = cada campo ancorou dentro da região do próprio bloco
    * (marcadores cfy:block presentes). "global" = documento sem marcadores,
@@ -423,8 +435,10 @@ function itemOrfao(
   html: string,
   range: Range,
   key: string,
+  /** Campo omitido pela arbitragem (09/09): a linha some seja qual for a chave. */
+  forcar = false,
 ): { splices: Splice[]; badge: boolean; padding_transferido: number | null } | null {
-  if (!ITEM_KEY_RE.test(key)) return null
+  if (!forcar && !ITEM_KEY_RE.test(key)) return null
   const row = enclosingRow(html, range.start)
   if (!row) return null
   const textoExemplo = visibleTextOf(html, range)
@@ -485,7 +499,9 @@ export function copyMergeByExample(
   for (const b of blocks) {
     for (const f of b.fields) {
       if (deriveFieldNature(f) !== "copy") continue
-      entries.push({ block: b, field: f, value: copyValueOf(b.content, f.key) })
+      // Omitido: o que o n8n mandou não conta (ele pode ter inferido do
+      // purpose) — o campo entra no casamento só para a linha ser removida.
+      entries.push({ block: b, field: f, value: f.omitir === true ? null : copyValueOf(b.content, f.key) })
     }
   }
 
@@ -555,6 +571,7 @@ export function copyMergeByExample(
   const semLugar: CopyMergeReport["sem_lugar"] = []
   const exemplosLimpos: Array<{ block_id: string | null; key: string; de: string }> = []
   const itensRemovidos: CopyMergeReport["itens_removidos"] = []
+  const omitidos: CopyMergeReport["omitidos"] = []
   const ambiguos: string[] = []
   const skipped: CopyMergeReport["skipped"] = []
   const splices: Array<Splice & { entryIdx: number }> = []
@@ -600,14 +617,17 @@ export function copyMergeByExample(
         // marcador porque o n8n pulou o `column_b_item_6` e este ramo
         // deixava tudo como estava.
         const exemplo = html.slice(a.range.start, a.range.end)
-        if (pareceExemplo(normalizeForMatch(exemplo))) {
+        const omitido = e.field.omitir === true
+        if (omitido || pareceExemplo(normalizeForMatch(exemplo))) {
           // Vazio COM as tags do vão (02/09): esvaziar é trocar texto, e a
           // marca `[N]` fica como span vazio — nunca some o `</span>`.
           const vazio = replacementCosturado(exemplo, "")
           // Item de lista sem copy sai INTEIRO (badge + linha) — o "6"
           // sozinho da coluna "Others" foi ao cliente por este ramo só
           // esvaziar o texto.
-          const removido = itemOrfao(html, a.range, e.field.key)
+          // Omitido remove a LINHA inteira em qualquer chave (não só
+          // `_item_N`), desde que o example seja o único texto dela.
+          const removido = itemOrfao(html, a.range, e.field.key, omitido)
           if (removido) {
             for (const r of removido.splices) splices.push({ ...r, entryIdx: i })
             itensRemovidos.push({
@@ -616,13 +636,14 @@ export function copyMergeByExample(
               badge: removido.badge,
               padding_transferido: removido.padding_transferido,
             })
-            campo.motivo = "item_removido"
-            anchor.motivo = "item_removido"
+            campo.motivo = omitido ? "omitido_linha_removida" : "item_removido"
+            anchor.motivo = campo.motivo
           } else {
             splices.push({ ...a.range, replacement: vazio.texto, entryIdx: i })
-            campo.motivo = "copy_ausente_limpo"
-            anchor.motivo = "copy_ausente_limpo"
+            campo.motivo = omitido ? "omitido_limpo" : "copy_ausente_limpo"
+            anchor.motivo = campo.motivo
           }
+          if (omitido) omitidos.push({ block_id: blockId, key: e.field.key, linha_removida: !!removido })
           for (const extra of a.extraRanges ?? []) {
             splices.push({
               ...extra,
@@ -636,7 +657,7 @@ export function copyMergeByExample(
           if (vazio.tags_mantidas > 0) campo.tags_mantidas = vazio.tags_mantidas
           campo.para = ""
           anchor.applied = true
-          exemplosLimpos.push({ block_id: blockId, key: e.field.key, de: truncate(exemplo) })
+          if (!omitido) exemplosLimpos.push({ block_id: blockId, key: e.field.key, de: truncate(exemplo) })
         } else {
           campo.motivo = "copy_ausente"
           anchor.motivo = "copy_ausente"
@@ -726,6 +747,7 @@ export function copyMergeByExample(
       texto_orfao: textoOrfao,
       exemplos_limpos: exemplosLimpos,
       itens_removidos: itensRemovidos,
+      omitidos,
       escopo: scopes.size > 0 ? "por_bloco" : "global",
       escopo_degradado: escopoDegradado,
     },

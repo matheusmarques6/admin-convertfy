@@ -70,6 +70,7 @@ import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
 import { computeContentChecks } from "./html/content-checks"
+import { incentivoExisteDoCatalogo } from "./objecoes/incentivo"
 import {
   runQaAgent,
   runSchemaChecks,
@@ -651,14 +652,7 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   }
 }
 
-/** Lê `incentivo.existe` do catálogo de objeções. Puro; qualquer forma estranha → null. */
-export function incentivoExisteDoCatalogo(catalogo: unknown): boolean | null {
-  if (!catalogo || typeof catalogo !== "object") return null
-  const inc = (catalogo as { incentivo?: unknown }).incentivo
-  if (!inc || typeof inc !== "object") return null
-  const existe = (inc as { existe?: unknown }).existe
-  return typeof existe === "boolean" ? existe : null
-}
+export { incentivoExisteDoCatalogo }
 
 // ── checkBatchTerminal: chamado apos cada UPDATE final ────────────────
 export async function checkBatchTerminal(

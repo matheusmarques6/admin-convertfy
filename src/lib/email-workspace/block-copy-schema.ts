@@ -42,6 +42,10 @@ export interface BlockCopySchemaField {
 export interface BlockCopySchema {
   variante: string | null
   diretriz: string | null
+  /** Papel narrativo da posição (Estruturador) — 09/09, aditivo. */
+  papel?: string | null
+  /** Requisitos tipados da posição (cupom/cta/n_itens/preco/avaliacao/campos/exige) — 09/09, aditivo. */
+  requisitos?: Record<string, unknown> | null
   total_campos: number
   obrigatorios: string[]
   campos: Record<string, BlockCopySchemaField>
@@ -57,6 +61,8 @@ export interface CopySchemaInputField {
   required?: boolean | null
   example?: string | null
   guidance?: string | null
+  /** Campo omitido pela arbitragem papel × forma (09/09): NÃO entra no schema. */
+  omitir?: boolean | null
 }
 
 function texto(v: unknown): string | null {
@@ -78,7 +84,12 @@ function numeroPositivo(v: unknown): number | null {
  */
 export function buildBlockCopySchema(
   fields: CopySchemaInputField[],
-  meta: { variantName?: string | null; purpose?: string | null },
+  meta: {
+    variantName?: string | null
+    purpose?: string | null
+    papel?: string | null
+    requisitos?: Record<string, unknown> | null
+  },
 ): BlockCopySchema {
   const campos: Record<string, BlockCopySchemaField> = {}
   const obrigatorios: string[] = []
@@ -86,6 +97,9 @@ export function buildBlockCopySchema(
   for (const f of fields) {
     const key = texto(f?.key)
     if (!key || key in campos) continue
+    // Omitido pela arbitragem: o n8n não escreve o que não vê. Pedir
+    // "devolva vazio" seria mais frágil — ele infere do purpose.
+    if (f?.omitir === true) continue
 
     const obrigatorio = f?.required === true
     campos[key] = {
@@ -103,6 +117,8 @@ export function buildBlockCopySchema(
   return {
     variante: texto(meta?.variantName),
     diretriz: texto(meta?.purpose),
+    ...(texto(meta?.papel) ? { papel: texto(meta?.papel) } : {}),
+    ...(meta?.requisitos && typeof meta.requisitos === "object" ? { requisitos: meta.requisitos } : {}),
     total_campos: Object.keys(campos).length,
     obrigatorios,
     campos,
