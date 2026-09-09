@@ -53,6 +53,7 @@ Em uma frase: **briefing confirmado → copy gerada → designer confirma identi
 | 3 | [`03-runbook-operacional.md`](./03-runbook-operacional.md) | **Operador** | Receitas passo-a-passo: "preciso mandar copies pra loja X" |
 | 4 | [`04-payload-reference.md`](./04-payload-reference.md) | Time n8n | Schema completo do payload + contrato do callback |
 | 5 | [`05-troubleshooting.md`](./05-troubleshooting.md) | Suporte, on-call | Status preso, callback não chega, queries de diagnóstico |
+| — | [`qualidade-de-decisao-dos-agentes.md`](./qualidade-de-decisao-dos-agentes.md) | Produto, IA, engenharia | Protocolo de deliberação verificável, crítico seletivo e rollout por métricas |
 
 ## Quick reference
 

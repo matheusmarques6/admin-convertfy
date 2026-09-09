@@ -267,6 +267,13 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Evidência auditável usada pelo revisor, sem exigir o campo em runs antigas. */
+  evidence?: string
+  expected?: string
+  basis?: "store" | "contract" | "advisor_max" | "general" | "deterministic"
+  source_path?: string | null
+  confidence?: number
+  suggested_action?: string
 }
 
 // Resultado do QA agent (story AE-5).
