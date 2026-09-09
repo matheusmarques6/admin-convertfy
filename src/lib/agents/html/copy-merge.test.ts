@@ -644,6 +644,52 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.filled.map((f) => f.token)).toContain("URL_DO_LOGO_AQUI")
   })
 
+  // 09/09: das 4 gerações do dia, NENHUMA tinha um CTA clicável. Dos 12-13
+  // `<a>` de cada e-mail, 2 tinham href (a fonte do Google e o
+  // [unsubscribe_link]); o botão principal saía `<a style="…">FIND YOUR
+  // FIT</a>`, sem destino.
+  it("os tokens de CTA/link/site viram a URL da loja", () => {
+    const html = [
+      '<a href="URL_DO_CTA_AQUI">FIND YOUR FIT</a>',
+      '<a href="URL_CTA_2">SHOP NOW</a>',
+      '<a href="URL_CTA_PRODUTO_1">VER</a>',
+      '<a href="URL_DO_SITE_AQUI">site</a>',
+      '<a href="URL_LINK_3">mais</a>',
+    ].join("\n")
+    const r = applyStructuralFills(html, { storeUrl: "https://heroboxers.com" })
+    expect(r.html).not.toContain("URL_")
+    expect(r.html.match(/href="https:\/\/heroboxers\.com"/g)).toHaveLength(5)
+    expect(r.cleaned).toEqual([])
+  })
+
+  it("rede social e navegação de rodapé NÃO viram a home", () => {
+    // Apontar a home no lugar do Instagram é mentira de destino — pior que
+    // link ausente, que ao menos se vê.
+    const html = [
+      '<a href="URL_INSTAGRAM">IG</a>',
+      '<a href="URL_ABOUT_US">Sobre</a>',
+      '<a href="URL_DO_CTA_AQUI">Comprar</a>',
+    ].join("\n")
+    const r = applyStructuralFills(html, { storeUrl: "https://loja.com" })
+    expect(r.html).toContain('href="URL_INSTAGRAM"')
+    expect(r.html).toContain('href="URL_ABOUT_US"')
+    expect(r.html).toContain('href="https://loja.com"')
+  })
+
+  it("o token de destino só é preenchido em href, nunca em src", () => {
+    const html = '<img src="URL_CTA_1" alt=""><a href="URL_CTA_1">x</a>'
+    const r = applyStructuralFills(html, { storeUrl: "https://loja.com" })
+    expect(r.html).toContain('src="URL_CTA_1"')
+    expect(r.html).toContain('href="https://loja.com"')
+  })
+
+  it("sem storeUrl o comportamento antigo fica de pé", () => {
+    const html = '<a href="URL_DO_CTA_AQUI">Comprar</a>'
+    const r = applyStructuralFills(html, { brandName: "Loja" })
+    expect(r.html).toBe(html)
+    expect(r.cleaned).toContain("URL_DO_CTA_AQUI")
+  })
+
   it("sem logoUrl a linha FICA e o token vai para cleaned (strip limpa depois)", () => {
     const html = '<table><tr><td><img src="URL_DO_LOGO_AQUI" alt=""></td></tr></table>'
     const r = applyStructuralFills(html, { brandName: "Loja" })

@@ -2728,6 +2728,12 @@ async function runFormattingChain(p: {
     const structural = applyStructuralFills(merge.html, {
       brandName: fmtCtx.brandName,
       logoUrl,
+      // Destino dos CTAs (09/09): sem isto o e-mail saía com 10-11 `<a>`
+      // sem href — nenhum caminho para a loja.
+      storeUrl:
+        ((ctx.storeRaw as Record<string, unknown>)?.store_url as
+          | string
+          | undefined) ?? null,
       subject: fmtCtx.emailRow?.subject ?? "",
       preheader: fmtCtx.emailRow?.preheader ?? "",
       logoMarkup: fmtCtx.logoLight,

@@ -36,7 +36,11 @@ import type {
   OrphanTextFragment,
 } from "./anchor-match"
 import { scopeBlocks } from "./block-scope"
-import { isStructuralToken } from "./attr-token-vocabulary"
+import {
+  ehDestinoDaLoja,
+  isStructuralToken,
+  normalizarUrlDaLoja,
+} from "./attr-token-vocabulary"
 import { extractHeroBySentinels, locateHeroRegion } from "./hero-locator"
 import {
   applySplices,
@@ -1062,6 +1066,12 @@ export interface StructuralFillContext {
   brandName?: string | null
   /** URL crua da logo clara (não markup) — preenche src="URL_DO_LOGO_AQUI". */
   logoUrl?: string | null
+  /**
+   * URL da loja — destino dos tokens de CTA/link (`ehDestinoDaLoja`).
+   * Sem ela, o token vai para `cleaned` e o `<a>` fica sem href, como
+   * antes: link para a home é o piso, não uma obrigação.
+   */
+  storeUrl?: string | null
   // Legado {{}} (full-doc): título/preheader/ano/markup do logo.
   subject?: string | null
   preheader?: string | null
@@ -1114,6 +1124,7 @@ export function applyStructuralFills(
   const hero = extractHeroBySentinels(html) ?? locateHeroRegion(html)
   const brandName = (ctx.brandName ?? "").trim()
   const logoUrl = (ctx.logoUrl ?? "").trim()
+  const storeUrl = normalizarUrlDaLoja(ctx.storeUrl)
 
   const splices: Splice[] = []
   const filled: StructuralFillResult["filled"] = []
@@ -1121,6 +1132,7 @@ export function applyStructuralFills(
 
   // ── Tokens de atributo (vocabulário real) ──────────────────────────
   const structuralValue = (token: string): string => {
+    if (ehDestinoDaLoja(token)) return storeUrl
     switch (token) {
       case "URL_DO_LOGO_AQUI":
         return logoUrl
@@ -1133,7 +1145,10 @@ export function applyStructuralFills(
     }
   }
   for (const slot of findAttrSlots(html)) {
-    if (!isStructuralToken(slot.token)) continue
+    // Destino da loja SÓ em href: o mesmo token num `src` seria imagem, e
+    // apontar a home ali quebraria a imagem em vez de consertar o link.
+    const destino = slot.attr === "href" && ehDestinoDaLoja(slot.token)
+    if (!destino && !isStructuralToken(slot.token)) continue
     if (inRange(slot.valueRange.start, hero)) continue
     const value = structuralValue(slot.token)
     if (!value) {

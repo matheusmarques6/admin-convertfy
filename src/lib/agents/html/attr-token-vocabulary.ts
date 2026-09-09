@@ -39,11 +39,10 @@ export const TOKEN_SHAPE = /^[A-Z][A-Z0-9_]{2,}$/
  * `neutralizeDeadLinks` o removia. Link de descadastro sem destino é pior
  * que rodapé ausente, porque a ausência pelo menos dispara o aviso.
  *
- * NÃO cobre os demais tokens de href da biblioteca — CTA
- * (`URL_DO_CTA_AQUI` e família, 60+ ocorrências), site e redes sociais.
- * Aqueles dependem de destino de campanha e de dados da loja que não
- * chegam neste ponto; seguem virando `<a>` sem href, reportados pelo
- * render-checks como "link sem destino".
+ * As redes sociais e a navegação de rodapé (`URL_INSTAGRAM`, `URL_BOOKS`,
+ * `URL_ABOUT_US`…) seguem de fora: dependem de dado que a loja não tem
+ * cadastrado, e apontar a home no lugar do Instagram seria mentira de
+ * destino. Continuam virando `<a>` sem href.
  */
 export const STRUCTURAL_TOKENS = new Set([
   "URL_DO_LOGO_AQUI",
@@ -51,6 +50,39 @@ export const STRUCTURAL_TOKENS = new Set([
   "URL_UNSUBSCRIBE",
   "URL_PREFERENCIAS",
 ])
+
+/**
+ * Token de href que aponta para a LOJA — CTA, link de conteúdo e site.
+ *
+ * Medido em 09/09: das quatro gerações do dia, **nenhuma tinha um único
+ * CTA clicável**. Dos 12–13 `<a>` de cada e-mail, apenas 2 tinham `href`
+ * (a fonte do Google e o `[unsubscribe_link]`); o botão principal saía
+ * como `<a style="…">FIND YOUR FIT</a>`, sem destino. Um welcome sem
+ * caminho para a loja.
+ *
+ * A cadeia era: ninguém preenchia o token → `stripUnresolvedAttrTokens`
+ * esvaziava o href → `neutralizeDeadLinks` removia o atributo (certo, pois
+ * `href=""` navega para a URL do próprio webmail). Cada passo defensável,
+ * o conjunto entregando um e-mail sem link.
+ *
+ * A régua é por FORMA, como o resto deste módulo — lista fechada quebraria
+ * no primeiro slot novo. Inventário de 09/09 sobre as variantes ativas:
+ * 43 tokens de href distintos, e estes 30 apontam para a loja
+ * (`URL_DO_CTA_AQUI` sozinho aparece 36 vezes em 26 variantes).
+ *
+ * **A home não é o destino ideal** — o ideal é a categoria/produto do
+ * bloco. É o piso: um link para a loja vale mais que link nenhum, e a
+ * escolha fina depende de campo de destino no schema da variante, que não
+ * existe ainda.
+ */
+const DESTINO_DA_LOJA =
+  /^URL_(?:DO_)?(?:CTA|LINK|SITE)(?:_[A-Z0-9_]+)?$|^URL_DA_IMAGEM_LINK(?:_AQUI)?$/
+
+export function ehDestinoDaLoja(raw: string): boolean {
+  const t = raw.trim()
+  if (STRUCTURAL_TOKENS.has(t)) return false
+  return DESTINO_DA_LOJA.test(t)
+}
 
 /** Arte fixa da biblioteca — nunca é slot, nunca é tocada. */
 export const FIXED_ART_SRC = /^data:image\//i
@@ -177,4 +209,32 @@ export function isAttrToken(value: string): boolean {
   const v = value.trim()
   if (FIXED_ART_SRC.test(v) || isResidualUrl(v)) return false
   return TOKEN_SHAPE.test(v)
+}
+
+/**
+ * A URL da loja em forma segura para entrar num `href="…"`.
+ *
+ * Devolve "" (o chamador então deixa o token em `cleaned`, e o `<a>` fica
+ * sem href como antes) quando o cadastro não serve: vazio, sem host, ou
+ * com caractere que quebraria o atributo. **Aspa dupla é a que importa**:
+ * o valor é interpolado dentro de `href="…"` e um `"` ali injetaria markup
+ * num documento que vai para o Klaviyo — `neutralizeAngles`, que o splice
+ * aplica, cuida de `<>` e não disso.
+ *
+ * Sem esquema vira `https://` (o cadastro guarda "loja.com.br" com
+ * frequência); `http://` explícito é preservado — corrigir para https uma
+ * loja que só serve http entregaria link quebrado.
+ */
+export function normalizarUrlDaLoja(raw: string | null | undefined): string {
+  const t = (raw ?? "").trim()
+  if (!t) return ""
+  if (/["'<>\s]/.test(t)) return ""
+  const comEsquema = /^https?:\/\//i.test(t) ? t : `https://${t}`
+  try {
+    const u = new URL(comEsquema)
+    if (!u.hostname.includes(".")) return ""
+    return u.toString().replace(/\/$/, "")
+  } catch {
+    return ""
+  }
 }
