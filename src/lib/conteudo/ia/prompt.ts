@@ -7,6 +7,7 @@
  * que a IA escreve é validado por schema antes de encostar no documento.
  */
 
+import { blocoEditorial } from "../editorial/prompt-bloco"
 import { ST_LIMITES } from "../limites"
 import { ST_FUNIL, ST_TEMPLATES } from "../templates"
 import type { Documento, FrameTipo } from "../types"
@@ -74,6 +75,8 @@ ${limitesTexto()}
 - Estrutura: cenário comum → o dado que contradiz (com fonte) → o que muda na prática → o mecanismo em 3 ou 4 linhas → a prova → CTA com comment gate ("comente PALAVRA aqui embaixo que eu te mando no direct").
 - Proibido: travessão (— ou –), emoji, hashtag em bloco, "curte e compartilha", "marque 3 amigos", promessa de resultado financeiro ("garantido", "lucro certo"), "barato"/"de graça", superlativos vazios.
 - Parágrafos curtos separados por linha em branco. Frases com verbo. Máximo 2.200 caracteres.
+
+${blocoEditorial()}
 
 ## Estilo
 Direto, específico, sem adjetivo decorativo, sem jargão de marketing ("alavancar", "disruptivo"). Números em formato brasileiro (R$ 31 mil, 41%, 1 em cada 10). NUNCA invente dados, nomes de clientes, fontes ou resultados: use somente números e provas que vieram na pauta ou nos textos do usuário. Quando o molde pede um dado e ele não foi fornecido, escreva o texto com o marcador [confirmar] no lugar do número (ex.: "[confirmar]% dos clientes…") — o humano preenche antes de publicar.`

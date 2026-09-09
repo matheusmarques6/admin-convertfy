@@ -189,8 +189,8 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
     setHl("loading")
     setErroHl(null)
     try {
-      const r = await chamarIA({ acao: "headlines", resumo: resumoDocumento(doc, api.perfil), atual: doc.frames[0]?.textos.titulo ?? doc.nome })
-      setHl(r.opcoes)
+      const r = await chamarIA({ acao: "headlines", resumo: resumoDocumento(doc, api.perfil), atual: doc.frames[0]?.textos.titulo ?? doc.nome, quantidade: 5, segundaPessoa: doc.editorial?.segundaPessoa ?? true })
+      setHl(r.opcoes.map((o) => o.texto))
     } catch (e) {
       setHl("idle")
       setErroHl(e instanceof Error ? e.message : "A ConvertIA não respondeu.")

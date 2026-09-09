@@ -338,7 +338,7 @@ export async function importarDoInstagram(admin: Admin, orgId: string, userId: s
 
 export interface PatchReferencia {
   nome?: string
-  slides?: Array<{ ordem: number; tipo?: string; titulo?: string; corpo?: string }>
+  slides?: Array<{ ordem: number; tipo?: string; titulo?: string; corpo?: string; imagemUrl?: string }>
   legenda?: string | null
   palavraChave?: string | null
   pilar?: string | null
@@ -361,11 +361,18 @@ export async function atualizarReferencia(admin: Admin, orgId: string, id: strin
   if (patch.peso !== undefined) row.peso = patch.peso
   if (patch.ativa !== undefined) row.ativa = patch.ativa
   if (patch.slides) {
-    // A copy é editável; a IMAGEM nunca vem do cliente — casa por ordem.
+    // A copy é editável; a IMAGEM só entra onde NÃO existe (referência
+    // cadastrada sem slides, ex.: transcrita à mão) e só se for um arquivo
+    // do Storage desta org com o prefixo de referência — ou seja, algo que o
+    // próprio upload da tela acabou de gravar. Trocar imagem existente não
+    // passa por aqui: a transcrição foi feita sobre ela.
     const edit = new Map(patch.slides.map((s) => [s.ordem, s]))
+    const prefixoDaOrg = `stores/org-${orgId}/email-assets/ref-`
     row.slides = atual.slides.map((s) => {
       const e = edit.get(s.ordem)
-      return e ? { ...s, tipo: (e.tipo as ReferenciaSlide["tipo"]) ?? s.tipo, titulo: e.titulo?.trim() || undefined, corpo: e.corpo?.trim() || undefined } : s
+      if (!e) return s
+      const novaImagem = !s.imagemUrl && e.imagemUrl && (storagePathFromUrl(e.imagemUrl) ?? "").startsWith(prefixoDaOrg) ? e.imagemUrl : s.imagemUrl
+      return { ...s, imagemUrl: novaImagem, tipo: (e.tipo as ReferenciaSlide["tipo"]) ?? s.tipo, titulo: e.titulo?.trim() || undefined, corpo: e.corpo?.trim() || undefined }
     })
     // Humano escreveu a copy: a referência passa a ser utilizável mesmo se a IA falhou.
     if (atual.transcricao !== "lida" && (row.slides as ReferenciaSlide[]).some((s) => s.titulo || s.corpo)) {

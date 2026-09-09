@@ -337,7 +337,7 @@ function AdicionarReferenciaDialog({ perfis, onClose, onImportar, onUpload }: { 
 
 function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClose: () => void; onSalvar: (patch: import("@/lib/conteudo/data").PatchReferenciaEntrada) => Promise<void> }) {
   const [nome, setNome] = useState(ref_.nome)
-  const [slides, setSlides] = useState(ref_.slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo ?? "", corpo: s.corpo ?? "" })))
+  const [slides, setSlides] = useState(ref_.slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo ?? "", corpo: s.corpo ?? "", imagemUrl: s.imagemUrl })))
   const [porque, setPorque] = useState(ref_.porQueFunciona.join("\n"))
   const [pilar, setPilar] = useState(ref_.pilar ?? "")
   const [molde, setMolde] = useState(ref_.molde ?? "")
@@ -348,7 +348,7 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
 
   // Transcrição que chega depois de aberta (importação em andamento).
   useEffect(() => {
-    setSlides(ref_.slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo ?? "", corpo: s.corpo ?? "" })))
+    setSlides(ref_.slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo ?? "", corpo: s.corpo ?? "", imagemUrl: s.imagemUrl })))
     setPorque(ref_.porQueFunciona.join("\n"))
     setNome(ref_.nome)
     if (!pilar && ref_.pilar) setPilar(ref_.pilar)
@@ -358,7 +358,24 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
   }, [ref_.transcricao, ref_.atualizadoEm])
 
   const [sl, sc] = selo(ref_)
-  const imagens = useMemo(() => new Map(ref_.slides.map((s) => [s.ordem, s.imagemUrl])), [ref_.slides])
+  const imagens = useMemo(() => new Map(slides.map((s) => [s.ordem, s.imagemUrl])), [slides])
+  const [enviandoImagem, setEnviandoImagem] = useState<number | null>(null)
+  const { toast } = useToast()
+
+  // Referência cadastrada sem imagem (copy escrita à mão): a imagem entra
+  // slide a slide e é gravada junto com o Salvar — o servidor só aceita
+  // onde ainda não há imagem.
+  const enviarImagem = async (ordem: number, file: File) => {
+    setEnviandoImagem(ordem)
+    try {
+      const { url } = await uploadImagem(file, "referencia")
+      setSlides((a) => a.map((x) => (x.ordem === ordem ? { ...x, imagemUrl: url } : x)))
+    } catch (e) {
+      toast({ title: "Não foi possível enviar a imagem", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    } finally {
+      setEnviandoImagem(null)
+    }
+  }
 
   const salvar = async (retranscrever = false) => {
     setSalvando(retranscrever ? "reler" : "salvar")
@@ -366,7 +383,7 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
       await onSalvar({
         retranscrever,
         nome: nome.trim() || ref_.nome,
-        slides: slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo, corpo: s.corpo })),
+        slides: slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo, corpo: s.corpo, imagemUrl: s.imagemUrl || undefined })),
         porQueFunciona: porque.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean),
         pilar: pilar || null,
         molde: molde || null,
@@ -410,9 +427,17 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
           <div className="flex flex-col gap-2">
             {slides.map((s, i) => (
               <div key={s.ordem} className="flex gap-2.5 rounded-lg border border-[var(--ops-border)] bg-[var(--ops-card)] p-2">
-                <div className="h-[90px] w-[72px] shrink-0 overflow-hidden rounded-md bg-[var(--ops-tile)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {imagens.get(s.ordem) && <img src={imagens.get(s.ordem)} alt="" className="h-full w-full object-cover" />}
+                <div className="relative h-[90px] w-[72px] shrink-0 overflow-hidden rounded-md bg-[var(--ops-tile)]">
+                  {imagens.get(s.ordem) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={imagens.get(s.ordem)} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <label className={cn("flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 text-center text-[9.5px] leading-tight text-[var(--ops-mut)] hover:text-[var(--ops-title)]", enviandoImagem === s.ordem && "pointer-events-none opacity-60")}>
+                      <Icon icon={Upload} customSize={12} />
+                      {enviandoImagem === s.ordem ? "Enviando…" : "Enviar imagem"}
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void enviarImagem(s.ordem, f); e.target.value = "" }} />
+                    </label>
+                  )}
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <div className="flex items-center gap-2">

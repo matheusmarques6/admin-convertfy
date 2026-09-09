@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Feather,
   History,
   Image as ImageIcon,
   Instagram,
@@ -54,6 +55,7 @@ import type { EditorApi, ModalEditor } from "./editor-types"
 import { Frame, alturaFrame, type SelImagem, type SelTexto } from "./frame"
 import { FramesPanel } from "./frames-panel"
 import { ImageFloat } from "./image-float"
+import { PainelEditorial } from "./editorial-panel"
 import { AgendarModal, BrandKitModal, ExportModal, PreviewModal } from "./modais"
 import {
   PainelAssistente,
@@ -71,15 +73,16 @@ import {
 import { Thumb } from "./thumb"
 import { useEditor } from "./use-editor"
 
-type PainelKey = "template" | "assistente" | "globais" | "texto" | "midia" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
+type PainelKey = "editorial" | "template" | "assistente" | "globais" | "texto" | "midia" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
 
 const GRUPOS: Array<[string, PainelKey[]]> = [
-  ["Conteúdo", ["template", "assistente", "texto", "midia"]],
+  ["Conteúdo", ["editorial", "template", "assistente", "texto", "midia"]],
   ["Marca", ["globais", "cores", "fundo", "gradiente", "ctas"]],
   ["Saída", ["proporcao", "historico"]],
 ]
 
 const PAINEIS: Record<PainelKey, [string, LucideIcon]> = {
+  editorial: ["Motor editorial", Feather],
   template: ["Template", Columns3],
   assistente: ["Assistente Convertfy", Sparkles],
   globais: ["Campos globais", Store],
@@ -111,7 +114,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
   const ed = useEditor(docInicial, onSalvo)
   const { doc, set, preview } = ed
   const [ativo, setAtivoRaw] = useState(0)
-  const [painel, setPainel] = useState<PainelKey | null>("template")
+  const [painel, setPainel] = useState<PainelKey | null>(abaInicial === "ajustes" ? "editorial" : "template")
   const [aba, setAba] = useState<"ia" | "ajustes">(abaInicial ?? "ia")
   const [sel, setSel] = useState<SelTexto | null>(null)
   const [imgSel, setImgSel] = useState<SelImagem | null>(null)
@@ -254,6 +257,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
   }, [doc.versao])
 
   const painelBody: Record<PainelKey, React.ReactNode> = {
+    editorial: <PainelEditorial api={api} />,
     template: <PainelTemplate api={api} />,
     assistente: <PainelAssistente api={api} />,
     globais: <PainelGlobais api={api} />,

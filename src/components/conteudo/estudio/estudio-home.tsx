@@ -62,7 +62,8 @@ export function EstudioHome() {
         }
       }
       setNovo(null)
-      const q = r.caminho === "template-review" ? "?modo=template" : r.caminho === "ia" ? "?aba=ia" : ""
+      // Gerado pela espinha: abre nos Ajustes com o Motor editorial (o passo seguinte é revisar).
+      const q = r.caminho === "template-review" ? "?modo=template" : r.caminho === "ia" ? (r.doc.editorial?.espinha ? "?aba=ajustes" : "?aba=ia") : ""
       router.push(`${ROUTES.ADMIN.CONTEUDO.ESTUDIO_DOC(r.doc.id)}${q}`)
     } catch (e) {
       toast({ title: "Não foi possível salvar", description: e instanceof Error ? e.message : "Tente de novo.", variant: "destructive" })

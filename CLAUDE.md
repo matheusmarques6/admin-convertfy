@@ -3157,10 +3157,80 @@ selo (Em uso / Lendo… / Falhou / Desativada / Sem copy), diálogo com abas "Do
 seu Instagram" e "Enviar slides", ficha com copy por slide ao lado da imagem,
 por que funciona, pilar/molde/kw/peso/ativa.
 
+**Primeira referência entrou à mão** (08/09): o usuário mandou 5 slides do
+carrossel "8% dos clientes fazem 41% do faturamento" pelo chat — imagem que
+chega no chat não tem como subir para o Storage daqui, então a linha foi
+gravada por SQL com a copy transcrita e o "por que funciona" escritos à
+mão, `imagemUrl` vazia. A tela já tolerava slide sem imagem, mas não havia
+como ANEXAR depois: a ficha ganhou "Enviar imagem" por slide e o PATCH
+aceita `imagemUrl` **só onde não existe** e só se o caminho for do Storage
+desta org com prefixo `ref-` (o que o upload da tela acabou de gravar) —
+trocar imagem existente continua fora, a transcrição foi feita sobre ela.
+A anatomia visual desse formato (par itálico-serif + negrito, card com
+kpi_grid/print/conta à mão, anotação manuscrita com seta, pílula) está em
+`docs/conteudo/formatos/editorial-convertfy.md` para a fase 2.
+
 **Ficou de fora, de propósito**: layout visual a partir da referência (fase 2,
 depende dos carrosséis que o usuário vai mandar), smoke e2e do Estúdio
 (`e2e/smoke-conteudo.spec.ts`), e a métrica "leads/molde" do dashboard — que
 só existe depois de classificar os 87 posts (0 classificados hoje).
+
+## Estúdio — Motor editorial: triagem → headline → espinha → copy → revisão (set/2026)
+
+O "100% com IA" gerava tudo numa chamada a partir da pauta. O material da
+BrandsDecoded (versionado em `docs/conteudo/referencias-editoriais/`) mostrou
+o que faltava: a headline escolhida entre várias e a espinha aprovada ANTES
+da copy. Plano e o mapa recriar × adaptar × complementar em
+`docs/conteudo/plano-templates-duas-vias.md`. Sem migration: o estado vive em
+`Documento.editorial` (o schema do documento é `passthrough`).
+
+**Camada pura** (`lib/conteudo/editorial/`, 18 testes):
+- `padroes.ts`: a TABELA da casa, adaptada ao dono de e-commerce (dado
+  contraintuitivo, morte de X, vilão externo, conta traduzida, marca como
+  âncora, contraste, por que [grupo], investigando, dois-pontos) + 6
+  gatilhos + checklist de rejeição por regex. A RÉGUA é a deles (≥ 1 padrão,
+  ≥ 2 gatilhos, anti-padrão reprova); a tabela é nossa e é hipótese até o
+  loop de dado calibrar. `avaliarHeadline` é o veredito por CÓDIGO — a IA
+  pode se enganar sobre o próprio texto, e o teste garante que todo exemplo
+  da tabela passa no próprio checklist (foi assim que um exemplo meu com
+  "Não é X, é Y" caiu antes de ir para o prompt). `validarContratoCapa`: o
+  subtítulo nunca começa com conectivo e os limites vêm do CANVAS
+  (`ST_LIMITES`), não de contagem fixa — a capa da casa tem 8 palavras.
+- `anti-slop.ts`: o filtro universal com o TRECHO que reprovou (binários,
+  cacoetes, aberturas/fechamentos proibidos, dado sem fonte, travessão,
+  jargão). **Segunda pessoa NÃO é regra global**: entra só quando o perfil
+  não a libera (`segundaPessoa: false`) e como aviso — o carrossel que o
+  time mais gosta é todo em "você", e um teste fixa que a copy da casa passa
+  limpa. Anglicismo numérico só na legenda (título de dado com "3x" é o
+  molde).
+- `revisao.ts`: 7 parâmetros com nota (mínimo 8). Parâmetro que a IA não
+  devolveu entra com 0 (ausência não é aprovação); violação de slop pelo
+  código rebaixa a nota da IA a 5 e dado sem fonte a 6, como o manual.
+- `papeis.ts`: a copy sai DA ESPINHA — capa = headline, CTA = comment gate,
+  meio = hook → mecanismo → prova → aplicação → direção → fechamento,
+  esticado ou cortado pelo número de frames sem nunca cortar os 3 finais
+  enquanto houver 3 (regra "os últimos 3 preparam o CTA").
+- `prompt-bloco.ts`: o bloco do system prompt é GERADO dessas tabelas —
+  regra que o modelo recebe e regra que o código confere são a mesma.
+
+**Ações da IA** (`ia/schemas.ts` + `ia/service.ts`): `triagem`
+(transformação, fricção, ângulo, evidências A/B/C com fonte, eixo, funil,
+promessa), `headlines` (agora 10 objetos `{texto, subtitulo, padrao,
+gatilhos, veredito}`; `modo: diagnosticar` avalia a atual; `resumo` virou
+opcional — quem cria não tem documento), `ajustar_headline` (reescreve UMA
+mantendo as outras; "misturar com a N"), `espinha`, `revisar` (nota por
+parâmetro e por slide + `reescrita` opcional) e `gerar_estrutura` com
+`triagem/espinha/papeis` opcionais (com eles a copy é derivada; sem eles o
+caminho direto continua). Temperatura 0,2 na revisão, 0,8 nas headlines.
+
+**UI** (`editorial-motor.tsx`, um componente para dois lugares): no
+"100% com IA" (bloco "Motor editorial", opcional — o botão vira "Gerar
+carrossel pela espinha" ou "Gerar direto (sem triagem)") e no editor
+(Ajustes → Conteúdo → Motor editorial, `editorial-panel.tsx`), onde ganha
+"Gerar copy pela espinha", "Revisar copy" e "Aplicar reescrita" por slide.
+Escolher a headline aplica na capa e vira o nome; trocar de headline ou
+refazer a triagem invalida o que foi derivado delas. Gerado pela espinha, o
+editor abre nos Ajustes — o passo seguinte é revisar.
 
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
@@ -4242,6 +4312,47 @@ espelho, e o POST de assinatura Asaas cria um por construção, então
 A regra saiu do componente para `assinaturasAsaasSemEspelho`
 (`assinatura-duplicada.ts`, puro), com esse caso como teste de
 regressão.
+
+## Espelho do Asaas parado: comissão paga aparecia atrasada (set/2026)
+
+Relatado com print: a carteira dizia "Comissão atrasada" e "Mensalidade
+atrasada" para a Energia Portátil enquanto a aba Financeiro do cliente
+mostrava as mesmas cobranças como Pago/Confirmado. Os dois leem fontes
+diferentes: o Financeiro lista os pagamentos AO VIVO do Asaas; carteira,
+funil e onboarding leem `unified_invoices`, o ESPELHO em `invoices`.
+
+Medido: `integrations.last_sync` = **19/02/2026**; 39 linhas `pending`
+(todas vencidas) contra 12 `paid`; a comissão de junho, paga em 09/08,
+seguia `pending` com `payment_date` nulo; as três mensalidades de R$ 2.497
+nem existiam no espelho. Dois defeitos empilhados:
+
+1. **Nada varria o Asaas.** A única sincronização era o botão manual em
+   Configurações → Integrações, e ela pedia `listPayments({limit: 100})`
+   sem paginar: cobrança fora da primeira página nunca entrava. O webhook
+   não compensou — desde fevereiro nenhum `PAYMENT_RECEIVED` atualizou o
+   espelho, o que sugere webhook não configurado ou recusado na assinatura
+   (conferir no painel do Asaas; o endpoint é `/api/integrations/asaas/webhook`).
+2. **O espelho nasce na classificação** (`ensureAsaasInvoiceMirror`, ao
+   classificar ou marcar pago) com o status DAQUELE momento e nunca mais
+   é relido. A linha criada `pending` fica `pending` — e `isOverdue` da
+   carteira a lê como atrasada assim que vence.
+
+**Correção** (`asaas-sync.service.ts`): varredura PAGINADA por offset
+(`varrerPaginado`, puro, 5 testes) com orçamento de tempo e `truncado`
+declarado, janela de 24 meses de vencimento, update por `asaas_id` que
+PRESERVA a classificação humana (o builder não emite `store_id` nem
+`reference_months`); assinaturas casadas pelo `asaas_subscription_id`
+sozinho (índice único global — por cliente + id inseria a mesma sob outro
+cliente e tomava 23505 a cada rodada) e sem trocar de dono. A rota manual
+e o novo cron `/api/cron/asaas-sync` (minuto 25 das horas pares) chamam a
+MESMA função — a redundância webhook + varredura é a de pixel + CAPI.
+
+**O dado só se corrige com a varredura rodando**: depois do deploy, clicar
+"Sincronizar" no card do Asaas ou esperar o cron. Não há como rodar daqui
+(a chave está cifrada com segredo do ambiente). Pendência consciente: a
+cobrança avulsa (`charge_type = other`, ex.: "Fatura" de R$ 76,60) cai no
+balde de MENSALIDADE da carteira; avulsa vencida vira "mensalidade
+atrasada". Separar exige decidir o que é mensalidade sem classificação.
 
 ## ConvertIA — as três perdas silenciosas (set/2026)
 
