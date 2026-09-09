@@ -27,6 +27,8 @@
  * pipeline precisa (`normalizarOutput`).
  */
 
+import type { RequisitosDuros } from "../shared/field-roles"
+
 // ── Tipos do material servido ───────────────────────────────────────────
 
 export interface MaterialDoc {
@@ -43,12 +45,96 @@ export interface MaterialDoFlow {
 
 // ── Tipos do output (contrato validado por código) ──────────────────────
 
+/**
+ * Requisitos TIPADOS de uma posição (09/09). Até aqui tudo viajava como
+ * prosa dentro de `papel` — "sem CTA, sem cupom", "cada card com preço e
+ * avaliação", "reduzir a 2–3" — e nenhum agente conseguia VALIDAR a
+ * variante escolhida contra a decisão (batch 644d86c5: 6 de 7 posições
+ * invertidas). Agora o Curador filtra por contrato, o Blueprint omite o
+ * campo que colide e o QA confere. `null`/vazio = indiferente.
+ */
+export interface RequisitosDaPosicao extends RequisitosDuros {
+  cupom: boolean | null
+  cta: boolean | null
+  n_itens: { min: number; max: number } | null
+  preco: boolean | null
+  avaliacao: boolean | null
+  /** O que a copy/anatomia precisa carregar, em vocabulário fechado. */
+  campos: CampoExigido[]
+  /** Intenção VISUAL em uma frase (entra no brief da imagem acima da direção da variante). */
+  imagem: string | null
+  /** Livre e curto — o que não cabe nos campos tipados. */
+  exige: string[]
+}
+
+export const CAMPOS_EXIGIDOS = [
+  "preco",
+  "avaliacao",
+  "nome",
+  "idade",
+  "contexto",
+  "selo_nomeado",
+  "categoria",
+  "mecanismo",
+  "garantia",
+] as const
+export type CampoExigido = (typeof CAMPOS_EXIGIDOS)[number]
+
 export interface EstruturadorPosicao {
   section: string
   papel: string
   referencia: string
   adaptacao?: string
   porque: string
+  requisitos?: RequisitosDaPosicao
+}
+
+const boolOuNull = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
+const intOuNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null
+
+/**
+ * Normaliza `requisitos` de uma posição. FAIL-OPEN: valor inválido vira
+ * `null`/vazio, nunca reprova o output — o Estruturador sem requisito é o
+ * Estruturador de antes. Devolve `null` quando nada foi declarado.
+ */
+export function normalizarRequisitos(raw: unknown): RequisitosDaPosicao | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  let n_itens: RequisitosDaPosicao["n_itens"] = null
+  if (r.n_itens && typeof r.n_itens === "object") {
+    const o = r.n_itens as Record<string, unknown>
+    const min = intOuNull(o.min)
+    const max = intOuNull(o.max)
+    if (min != null || max != null) {
+      const lo = min ?? max ?? 0
+      const hi = max ?? min ?? lo
+      n_itens = { min: Math.min(lo, hi), max: Math.max(lo, hi) }
+    }
+  } else if (typeof r.n_itens === "number") {
+    const n = intOuNull(r.n_itens)
+    if (n != null) n_itens = { min: n, max: n }
+  }
+  const campos = Array.isArray(r.campos)
+    ? r.campos.filter((c): c is CampoExigido => typeof c === "string" && (CAMPOS_EXIGIDOS as readonly string[]).includes(c))
+    : []
+  const exige = Array.isArray(r.exige)
+    ? r.exige.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()).slice(0, 6)
+    : []
+  const out: RequisitosDaPosicao = {
+    cupom: boolOuNull(r.cupom),
+    cta: boolOuNull(r.cta),
+    n_itens,
+    preco: boolOuNull(r.preco),
+    avaliacao: boolOuNull(r.avaliacao),
+    campos: Array.from(new Set(campos)),
+    imagem: typeof r.imagem === "string" && r.imagem.trim() ? r.imagem.trim() : null,
+    exige,
+  }
+  const vazio =
+    out.cupom == null && out.cta == null && !out.n_itens && out.preco == null && out.avaliacao == null &&
+    out.campos.length === 0 && !out.imagem && out.exige.length === 0
+  return vazio ? null : out
 }
 
 export interface EstruturadorDescarte {
@@ -116,6 +202,10 @@ export function normalizarOutput(parsed: unknown): EstruturadorOutput {
         ? { adaptacao: p.adaptacao.trim() }
         : {}),
       porque: typeof p.porque === "string" ? p.porque.trim() : "",
+      ...((): { requisitos?: RequisitosDaPosicao } => {
+        const req = normalizarRequisitos(p.requisitos)
+        return req ? { requisitos: req } : {}
+      })(),
     }))
     .filter((p) => p.section.length > 0 && p.papel.length > 0)
   if (estrutura.length === 0) {
@@ -203,6 +293,13 @@ Como decidir:
 - POSIÇÃO NO ARCO: respeite a progressão — compressão, rotação de voz. Antes de posicionar um bloco defensivo pergunte: neste toque, o leitor já tem essa dúvida? Se não tem, o bloco a cria.
 - VALIDAÇÃO: confira sua estrutura contra o que <decisao_de_objecao> exige deste toque — os "trabalhos fixos" (cada um precisa de posição que o realize), os "veículos" com insumo disponível e o "proibido neste toque" (que restringe a REDAÇÃO, não elimina posição). Quando a nota de intenção estiver servida (fallback sem alvo), confira também contra a checklist dela ("Quando ela termina de ler...") e contra os anti-objetivos.
 
+REQUISITOS por posição (o que a decisão EXIGE ou NEGA, legível por máquina):
+- Cada posição leva "requisitos": {"cupom": true|false|null, "cta": true|false|null, "n_itens": {"min":N,"max":N}|null, "preco": true|false|null, "avaliacao": true|false|null, "campos": [...], "imagem": "uma frase"|null, "exige": ["curto", ...]}. null = indiferente. Declare SÓ o que a decisão exige ou nega — requisito é FILTRO para quem escolhe o bloco (variante que colide é eliminada) e ordem para quem escreve a copy (campo que colide é omitido), não é desejo.
+- "cupom": false quando <decisao_de_objecao> diz que não há incentivo ativo ou quando este toque não entrega oferta — o bloco com slot de cupom fica fora e o campo não é escrito. "cta": false só quando a posição NÃO deve ter botão. "n_itens" para grades e listas (2–3 produtos, 1 depoimento). "preco"/"avaliacao": true quando os cards precisam mostrá-los.
+- "campos" usa vocabulário fechado: preco, avaliacao, nome, idade, contexto, selo_nomeado, categoria, mecanismo, garantia.
+- "imagem": a cena que a foto desta posição precisa mostrar (ex.: "uso real em corpo adulto, não estúdio"). É a instrução de maior peso do agente de imagem.
+- <secoes_disponiveis> diz, por seção, o que a biblioteca TEM (quantas variantes, faixa de itens, quantas mostram preço/avaliação/cupom/CTA). Não exija o que não existe: se exigir, a posição pode ficar sem candidata — prefira ajustar o papel e registrar em "exige" o que faltou.
+
 Restrições de construção:
 - Use SOMENTE seções listadas em <secoes_disponiveis>. NUNCA emita "header" nem "cta": o papel do header vai para a PRIMEIRA posição da sua sequência (seja ela qual for); o papel de um cta isolado vai para a posição ANTERIOR a ele.
 - As contagens de posições em <progressao_observada> contam as seções ANTES da absorção. Desconte as posições header/cta DA REFERÊNCIA correspondente — referência sem header nem cta mantém a contagem original.
@@ -215,7 +312,7 @@ Restrições de construção:
 - Em "descartes", tudo que VOCÊ decidiu não emitir leva "origem": "modelo".
 
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
-{"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"..."}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
+{"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"...","requisitos":{"cupom":null,"cta":null,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":null,"exige":[]}}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
 Toda posição exige "referencia" E "porque". Posição sem os dois é inválida.`
 
 /**

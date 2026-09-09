@@ -4,6 +4,7 @@ import {
   INTENCAO_NAO_SERVIDA,
   intencaoParaOPrompt,
   normalizarOutput,
+  normalizarRequisitos,
 } from "./estruturador-prompt"
 
 /**
@@ -94,5 +95,39 @@ describe("a nota de intenção só viaja sem alvo", () => {
     )) {
       expect(trecho, trecho).toMatch(/fallback|servida|ausência/i)
     }
+  })
+})
+
+describe("requisitos tipados por posição (09/09)", () => {
+  it("normaliza tipos e descarta o inválido sem reprovar; nada declarado → ausente", () => {
+    const r = normalizarRequisitos({
+      cupom: false, cta: "não", n_itens: { min: 3, max: 2 }, preco: true, avaliacao: null,
+      campos: ["preco", "idade", "cor_favorita"], imagem: "  uso real em corpo adulto ", exige: ["2 parágrafos", "", 7],
+    })
+    expect(r).toEqual({
+      cupom: false, cta: null, n_itens: { min: 2, max: 3 }, preco: true, avaliacao: null,
+      campos: ["preco", "idade"], imagem: "uso real em corpo adulto", exige: ["2 parágrafos"],
+    })
+    expect(normalizarRequisitos({ n_itens: 1 })).toMatchObject({ n_itens: { min: 1, max: 1 } })
+    expect(normalizarRequisitos({ cupom: null, campos: [], exige: [] })).toBeNull()
+    expect(normalizarRequisitos("x")).toBeNull()
+    expect(normalizarRequisitos(null)).toBeNull()
+  })
+  it("normalizarOutput carrega requisitos só onde o modelo declarou", () => {
+    const o = normalizarOutput({
+      estrutura: [
+        { section: "hero", papel: "apresenta", requisitos: { cupom: false, cta: false } },
+        { section: "products", papel: "vitrine", requisitos: { n_itens: { min: 2, max: 3 }, campos: ["preco", "avaliacao"] } },
+        { section: "reviews", papel: "prova" },
+      ],
+    })
+    expect(o.estrutura[0].requisitos).toMatchObject({ cupom: false, cta: false })
+    expect(o.estrutura[1].requisitos).toMatchObject({ n_itens: { min: 2, max: 3 }, campos: ["preco", "avaliacao"] })
+    expect(o.estrutura[2].requisitos).toBeUndefined()
+  })
+  it("o system pede requisitos por posição e explica a capacidade das seções", () => {
+    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("REQUISITOS por posição")
+    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain('"requisitos":{"cupom":null')
+    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("Não exija o que não existe")
   })
 })

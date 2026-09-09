@@ -75,6 +75,12 @@ import {
   type PreferenciasDoVault,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
+import { requisitosDaDecisao } from "../estruturador/estruturador-consume"
+import {
+  eliminarPorRequisitos,
+  indiceDeEliminadas,
+  renderEliminadasPorRequisito,
+} from "../shared/field-roles"
 import { garantirHeroUnica } from "./hero-unica"
 import type { TopProduct } from "@/types/email-workspace"
 import { loadOrientacoes } from "../shared/orientacoes-loader"
@@ -342,6 +348,11 @@ Notas de seção do vault para as seções DESTE email — cobertura e CHAVE DE 
 <memoria>
 {{memoria}}
 </memoria>
+
+<eliminadas_por_requisito>
+Variantes que o CÓDIGO já eliminou por posição, cruzando os \`requisitos\` do Estruturador com o \`contrato\` da anatomia (slot de cupom quando a decisão nega cupom, grade maior que o máximo pedido, sem preço quando a decisão exige preço). NÃO as indique para essas posições — indicá-las é ignorar a decisão.
+{{eliminadas_requisito}}
+</eliminadas_por_requisito>
 
 <preferencias_do_vault>
 O Curador do vault (o que lê o protocolo e as notas do Obsidian) rodou antes de você e não conseguiu fechar a resposta. O que ele já tinha decidido está abaixo — parta dele e só divirja com motivo declarado no campo "motivo" da sua escolha. Ausência declarada = você decide sozinho.
@@ -981,6 +992,10 @@ function editorialOrigins(
       cls: "upstream",
       rotulo: "Preferências do Curador do vault — JSON não consumido (fallback)",
     },
+    eliminadas_requisito: {
+      cls: "upstream",
+      rotulo: "Eliminadas por requisito do Estruturador × contrato da anatomia (código)",
+    },
     vocabulario: {
       cls: "loja",
       rotulo: "Vocabulário literal — client_stores.tone_use_words / tone_avoid_words",
@@ -1045,6 +1060,15 @@ export async function assembleStoreReference(
   const aliasIndex = buildAliasIndex(eligible, vaultExtras)
 
   const blocksJson = sequenciaParaJson(input.structure)
+  // Filtro DURO por requisito do Estruturador × contrato da anatomia
+  // (09/09): a lista vai aos dois Curadores, à telemetria e ao medidor.
+  // Zero código veta a escolha — o prompt proíbe e o medidor registra
+  // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
+  const eliminadasPorRequisito = eliminarPorRequisitos(
+    sections,
+    requisitosDaDecisao(input.estruturadorDecisao),
+    catalog.sections,
+  )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
   const t0 = Date.now()
@@ -1157,6 +1181,7 @@ export async function assembleStoreReference(
     // Preenchido DEPOIS do Curador do vault, quando ele deixa JSON que não
     // pôde ser consumido; até lá, ausência declarada.
     preferencias_vault: renderPreferenciasDoVault(null),
+    eliminadas_requisito: renderEliminadasPorRequisito(eliminadasPorRequisito),
     // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
     // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
     top_products: renderTopProducts(input.topProducts),
@@ -1384,6 +1409,7 @@ export async function assembleStoreReference(
       onParcial: (p) => {
         parcialDoVault.valor = p
       },
+      eliminadasPorRequisito,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1522,6 +1548,18 @@ export async function assembleStoreReference(
     // Variantes ativas SEM placeholder ficaram fora do pool (pressão de
     // curadoria — ver variantIsFillable).
     candidates_excluded_unfillable: excludedUntagged,
+    // 09/09: o filtro por requisito × contrato e se o rank-1 o ignorou.
+    eliminadas_por_requisito: eliminadasPorRequisito,
+    requisito_violado: (() => {
+      const idx = indiceDeEliminadas(eliminadasPorRequisito)
+      const out: Array<{ block_index: number; variant_id: string; motivo: string }> = []
+      for (const [b, arr] of rankingByBlock) {
+        const id = arr[0]?.variant_id
+        const motivo = id ? idx.get(b)?.get(id) : undefined
+        if (id && motivo) out.push({ block_index: b, variant_id: id, motivo })
+      }
+      return out
+    })(),
   }
 
   // O modelo apontou para fora da seção proposta. Dois sinais diferentes,
@@ -1617,6 +1655,7 @@ export async function assembleStoreReference(
       // troca de modelo do banco.
       modelo: chooserConfig.model,
       maxTokens: chooserRow?.max_tokens ?? null,
+      eliminadasPorRequisito,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1634,6 +1673,7 @@ export async function assembleStoreReference(
         sectionByBlock: new Map(sections.map((s, i) => [i, s])),
         alvo: input.alvoMedicao ?? null,
         contratos: contratosDoCatalogo(catalog.sections),
+        eliminadasPorRequisito: indiceDeEliminadas(eliminadasPorRequisito),
       }),
       liveRank1,
     })

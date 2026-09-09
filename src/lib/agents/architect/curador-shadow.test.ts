@@ -473,3 +473,20 @@ describe("measureProtocolViolations — contrato_violado (09/09)", () => {
     expect(m.has("b")).toBe(false)
   })
 })
+
+describe("eliminadas por requisito (09/09)", () => {
+  it("requisito_violado quando o rank-1 estava na lista de eliminadas da posição", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "h3"], [1, "p9"]]),
+      extras: new Map(),
+      sectionByBlock: new Map([[0, "hero"], [1, "products"]]),
+      eliminadasPorRequisito: new Map([[0, new Map([["h3", "tem slot de cupom e a decisão nega cupom"]])]]),
+    })
+    expect(v).toEqual([{ block_index: 0, variant_id: "h3", tipo: "requisito_violado", detalhe: "tem slot de cupom e a decisão nega cupom" }])
+  })
+  it("os dois templates carregam o bloco de eliminadas", () => {
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<eliminadas_por_requisito>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{eliminadas_requisito}}")
+    expect(DEFAULT_CHOOSER_USER).toContain("{{eliminadas_requisito}}")
+  })
+})
