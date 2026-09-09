@@ -4101,6 +4101,38 @@ SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
 erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
 quatro dias sem gravar run porque o CHECK não tinha o valor).
 
+## Estúdio — a triagem busca o fato, e a fonte é CONFERIDA (set/2026)
+
+A triagem do motor editorial só aceitava o que estava no insumo: pauta sem
+número saía com `[confirmar]` no slide. Agora ela pode buscar na internet
+antes (`buscarNaWeb`, a mesma infra do conector da ConvertIA — provedor
+plugável, hoje o Serper), e é aí que aparece o risco que este módulo
+existe para fechar: **modelo que recebe resultados de busca escreve URL
+plausível de cabeça**, e fonte inventada é pior que dado nenhum, porque
+parece conferida.
+
+`lib/conteudo/editorial/evidencias.ts` (puro, 8 testes), três regras:
+
+1. **A consulta sai da PAUTA** — palavras com sentido, na ordem, até 12.
+   Pauta longa vira consulta longa e o buscador devolve ruído.
+2. **O bloco servido NUMERA as fontes** e proíbe, nas duas pontas, citar
+   URL fora daquela lista. Ele vai DEPOIS do pedido: a última coisa que o
+   modelo lê antes de responder é a lista fechada. Sem fonte utilizável o
+   bloco é VAZIO — servir cabeçalho vazio convida a inventar.
+3. **`verificarFontes` confere cada citação** contra as URLs realmente
+   servidas (comparação tolerante a www, barra final e caixa — não é sobre
+   digitação). O que não bate perde a fonte e o dado sobrevive marcado para
+   confirmar; a tela DIZ quantos links foram removidos, porque descarte em
+   silêncio é o mesmo que não ter verificado. Fonte que não é URL
+   ("Smile.io, 2024") veio do insumo e continua valendo.
+
+Falha de busca **nunca derruba a triagem**: ela roda como antes e a tela
+explica por que veio sem fato externo. "Não configurado" é traduzido na
+rota — o motivo original é escrito para o modelo da ConvertIA e fala de
+`web_abrir`, que não existe no Estúdio. `evidencia.fonte` subiu de 200 para
+500 caracteres: com URL de caminho longo o schema recusava o JSON inteiro e
+a triagem falhava por causa do endereço de uma evidência.
+
 ## Estúdio — família Alternado: a paleta sai de uma cor só (set/2026)
 
 Terceira família visual (item 3 do plano das duas vias). A `padrao` e a

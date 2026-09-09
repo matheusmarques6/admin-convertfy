@@ -32,7 +32,10 @@ const textos = z
 
 const perfilSchema = z.object({ handle: z.string().max(80).nullable(), nome: z.string().max(120), voz: z.enum(["marca", "pessoal"]).optional() })
 
-export const evidenciaSchema = z.object({ rotulo: z.string().max(4), texto: z.string().min(1).max(600), fonte: z.string().max(200).optional() })
+// `fonte` cabe uma URL inteira (com busca ligada é isso que ela é): em 200
+// caracteres um link com caminho longo estoura, o JSON inteiro é recusado
+// e a triagem falha por causa do endereço de uma evidência.
+export const evidenciaSchema = z.object({ rotulo: z.string().max(4), texto: z.string().min(1).max(600), fonte: z.string().max(500).optional() })
 
 export const triagemSchema = z.object({
   transformacao: z.string().min(1).max(1200),
@@ -83,6 +86,8 @@ export const entradaSchema = z.discriminatedUnion("acao", [
     pilar: z.string().max(40).optional(),
     etapaFunil: z.enum(["topo", "meio", "fundo"]).optional(),
     templateNome: z.string().max(80).optional(),
+    /** Buscar fatos na internet antes de montar as evidências. */
+    buscarNaWeb: z.boolean().optional(),
   }),
   /** Reescreve UMA opção (ou mistura duas) mantendo as demais. */
   z.object({

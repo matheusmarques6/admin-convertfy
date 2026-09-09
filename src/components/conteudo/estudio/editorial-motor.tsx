@@ -20,7 +20,7 @@ import { Check, ChevronDown, RefreshCw, Sparkles, Wand2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { ETAPAS, GATILHOS, PADROES_HEADLINE, PARAMETROS, avaliarHeadline, etapaAtual, headlineEscolhida, indiceDaEtapa, papeisDosFrames, validarContratoCapa, type PapelFrame } from "@/lib/conteudo/editorial"
-import { chamarIA } from "@/lib/conteudo/ia/client"
+import { chamarIA, chamarTriagem } from "@/lib/conteudo/ia/client"
 import { ST_LIMITES } from "@/lib/conteudo/limites"
 import type { Editorial, Espinha, EtapaFunil, HeadlineOpcao, RevisaoEditorial, Triagem, ViolacaoEditorial } from "@/lib/conteudo/types"
 import { CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
@@ -126,6 +126,12 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
   const [erro, setErro] = useState<{ onde: string; msg: string } | null>(null)
   const [ajuste, setAjuste] = useState<{ indice: number; instrucao: string; misturarCom: number | null } | null>(null)
   const [instrucaoEspinha, setInstrucaoEspinha] = useState("")
+  // Buscar fatos na internet é ESCOLHA por triagem: custa uma chamada
+  // externa e nem toda pauta precisa (a que veio de um relatório já tem o
+  // dado). Fica ligado por padrão porque a triagem sem fato externo é a
+  // que produz `[confirmar]` no slide.
+  const [buscar, setBuscar] = useState(true)
+  const [busca, setBusca] = useState<{ fontes: Array<{ titulo: string; url: string }>; indisponivel: string | null; descartadas: number } | null>(null)
   const escolhida = headlineEscolhida(editorial)
   const papeis = useMemo(() => papeisDosFrames(contexto.frames), [contexto.frames])
   const papeisDoMeio = useMemo(() => papeis.map((p) => p.papel).filter((p) => p !== "headline" && p !== "cta") as PapelFrame[], [papeis])
@@ -139,9 +145,10 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
     setOcupado("triagem")
     setErro(null)
     try {
-      const t = await chamarIA({ acao: "triagem", insumo: editorial.insumo, perfil: { ...contexto.perfil, voz: editorial.voz }, pilar: contexto.pilar, etapaFunil: contexto.etapaFunil, templateNome: contexto.templateNome })
+      const r = await chamarTriagem({ acao: "triagem", insumo: editorial.insumo, perfil: { ...contexto.perfil, voz: editorial.voz }, pilar: contexto.pilar, etapaFunil: contexto.etapaFunil, templateNome: contexto.templateNome, buscarNaWeb: buscar })
+      setBusca({ fontes: r.fontes, indisponivel: r.buscaIndisponivel, descartadas: r.fontesDescartadas })
       // Triagem nova invalida headlines e espinha (foram derivadas da anterior).
-      onChange({ ...editorial, triagem: t, headlines: undefined, headlineEscolhida: null, espinha: undefined, revisao: undefined })
+      onChange({ ...editorial, triagem: r.triagem, headlines: undefined, headlineEscolhida: null, espinha: undefined, revisao: undefined })
       setAberta("headline")
     } catch (e) {
       falha("triagem", e)
@@ -263,6 +270,15 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
             </select>
           </div>
         </div>
+        <label className="flex cursor-pointer items-start gap-2 text-[11px] text-[var(--ops-title)]">
+          <input type="checkbox" checked={buscar} onChange={(e) => setBuscar(e.target.checked)} className="mt-0.5 accent-[var(--ops-accent)]" />
+          <span>
+            Buscar fatos na internet
+            <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--ops-mut)]">
+              As evidências ganham fonte com link. Só entra fonte que a busca devolveu — link que a IA inventar é removido antes de chegar aqui.
+            </span>
+          </span>
+        </label>
         {erro?.onde === "triagem" && <Erro msg={erro.msg} onRetry={fazerTriagem} />}
         <Btn prominent icon={Sparkles} loading={ocupado === "triagem"} disabled={editorial.insumo.trim().length < 10} onClick={fazerTriagem}>
           {editorial.triagem ? "Refazer triagem" : "Fazer triagem"}
@@ -296,6 +312,33 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
                 <textarea value={String(editorial.triagem?.[k] ?? "")} onChange={(e) => setTriagem({ [k]: e.target.value } as Partial<Triagem>)} rows={2} className={cn(textareaCls, "mt-1 text-[11.5px]")} />
               </div>
             ))}
+            {busca && (
+              <div className="rounded-[9px] border border-[var(--ops-border)] bg-[var(--ops-tile)] px-2.5 py-2">
+                {busca.indisponivel ? (
+                  <div className="text-[10.5px] leading-relaxed text-[var(--ops-warn)]">
+                    Sem fato externo nesta triagem: {busca.indisponivel}
+                  </div>
+                ) : busca.fontes.length === 0 ? (
+                  <div className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">A busca não devolveu resultado para esta pauta.</div>
+                ) : (
+                  <>
+                    <CtLabel className="mb-1">Fontes consultadas ({busca.fontes.length})</CtLabel>
+                    <div className="flex flex-col gap-1">
+                      {busca.fontes.map((f) => (
+                        <a key={f.url} href={f.url} target="_blank" rel="noopener noreferrer" className="truncate text-[10.5px] text-[var(--ops-accent)] hover:underline" title={f.url}>
+                          {f.titulo}
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {busca.descartadas > 0 && (
+                  <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-warn)]">
+                    {busca.descartadas === 1 ? "1 link citado" : `${busca.descartadas} links citados`} não estava{busca.descartadas === 1 ? "" : "m"} entre as fontes consultadas e foi{busca.descartadas === 1 ? "" : "ram"} removido{busca.descartadas === 1 ? "" : "s"}. O dado ficou, sem fonte — confirme antes de publicar.
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <CtLabel>Evidências</CtLabel>
               <div className="mt-1 flex flex-col gap-1.5">

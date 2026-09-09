@@ -20,9 +20,11 @@ import { modelosParaVariacoes } from "@/lib/agents/image/model-policy"
 import { aspectInstructionForPrompt } from "@/lib/agents/image/aspect-ratio"
 import { entradaImagemSchema, entradaSchema, type EntradaIA } from "@/lib/conteudo/ia/schemas"
 import { executarIA, IaJsonInvalidoError } from "@/lib/conteudo/ia/service"
+import { blocoDeFontes, consultaDaPauta, verificarFontes, type FonteServida } from "@/lib/conteudo/editorial/evidencias"
 import { blocoDeReferencias, selecionarReferencias, type ContextoSelecao } from "@/lib/conteudo/referencias"
 import { ST_MOLDE_KEY } from "@/lib/conteudo/templates"
 import { listarReferencias } from "@/lib/services/conteudo-referencias.service"
+import { buscarNaWeb } from "@/lib/ai/web/web-search"
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
@@ -117,9 +119,55 @@ async function handlePost(request: NextRequest) {
       log.warn("conteudo_ia.referencias_indisponiveis", { erro: (e as Error).message })
     }
 
+    // Triagem com fato externo: a busca roda ANTES do modelo, e as URLs
+    // servidas são a lista fechada contra a qual cada citação é conferida
+    // depois. Fonte inventada é pior que dado nenhum — parece conferida.
+    let fontes: FonteServida[] = []
+    let buscaIndisponivel: string | null = null
+    if (parsed.data.acao === "triagem" && parsed.data.buscarNaWeb) {
+      const consulta = consultaDaPauta(parsed.data.insumo)
+      if (!consulta) {
+        buscaIndisponivel = "A pauta não tem palavras suficientes para uma busca."
+      } else {
+        const r = await buscarNaWeb(consulta, { limite: 6 })
+        if (r.ok) fontes = r.resultados.map((x) => ({ titulo: x.titulo, url: x.url, trecho: x.trecho }))
+        // Falhar a busca NÃO derruba a triagem: ela roda como antes e a
+        // tela diz por que veio sem fonte externa. O motivo de "não
+        // configurado" vem escrito para o MODELO da ConvertIA (fala de
+        // `web_abrir`, que não existe no Estúdio) — aqui ele é traduzido
+        // para quem está olhando a tela.
+        else if (r.naoConfigurado) {
+          buscaIndisponivel = "a busca na internet ainda não está configurada nesta instalação (falta a variável SERPER_API_KEY, TAVILY_API_KEY ou BRAVE_SEARCH_API_KEY no ambiente)."
+        } else buscaIndisponivel = r.motivo
+      }
+    }
+
     try {
-      const r = await executarIA(parsed.data, { signal: request.signal, blocoReferencias })
-      return successResponse(request, { dados: r.dados, meta: { modelo: r.modelo, ms: r.ms, custo_usd: r.custoUsd, tentativas: r.tentativas } })
+      const r = await executarIA(parsed.data, {
+        signal: request.signal,
+        blocoReferencias,
+        blocoFontes: blocoDeFontes(fontes),
+      })
+      let dados = r.dados
+      let fontesDescartadas: string[] = []
+      if (parsed.data.acao === "triagem") {
+        const t = dados as { evidencias?: Array<{ rotulo: string; texto: string; fonte?: string }> }
+        if (Array.isArray(t.evidencias)) {
+          const v = verificarFontes(t.evidencias, fontes)
+          fontesDescartadas = v.descartadas
+          if (v.descartadas.length > 0) {
+            log.warn("conteudo_ia.fonte_inventada", { quantas: v.descartadas.length, urls: v.descartadas })
+          }
+          dados = { ...t, evidencias: v.evidencias } as typeof dados
+        }
+      }
+      return successResponse(request, {
+        dados,
+        fontes: fontes.map((f) => ({ titulo: f.titulo, url: f.url })),
+        busca_indisponivel: buscaIndisponivel,
+        fontes_descartadas: fontesDescartadas.length,
+        meta: { modelo: r.modelo, ms: r.ms, custo_usd: r.custoUsd, tentativas: r.tentativas },
+      })
     } catch (e) {
       if (e instanceof IaJsonInvalidoError) {
         throw new AppError("A ConvertIA respondeu fora do formato esperado. Tente de novo ou use o modo local.", 502)

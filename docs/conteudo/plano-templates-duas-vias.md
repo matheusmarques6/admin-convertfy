@@ -155,4 +155,23 @@ analisar_inspiracao, transcrever_referencia, gerar_imagem).
 1. **Motor editorial** — FEITO em 09/09 (ver seção no CLAUDE.md) (maior ganho de qualidade por hora): triagem → 10 headlines com padrão/gatilho/veredito + diagnóstico → espinha dorsal → copy a partir da espinha → revisão 7 parâmetros + filtro anti-slop puro (testes) + títulos ancorados + 2 blocos por slide. Tabelas de padrão/gatilho ADAPTADAS ao e-commerce, editáveis. UI: passos com aprovação no caminho "100% com IA"; botões "Headlines" (10, com diagnóstico da atual) e "Revisar copy" no editor.
 2. **Via B** — FEITO em 09/09 (ver seção no CLAUDE.md): `promptImagem` + `imagemModo` por frame, construtor puro (`lib/conteudo/prompt-slide.ts`, 15 testes), painel "Prompt do slide" no editor com Copiar/Gerar (2 variações, GPT Image 2 × Gemini), híbrido como padrão, modo "slide inteiro" explícito (rota `gerar_imagem` com `modo`; renderer full-bleed sem texto), sugestão automática pelo preenchimento real (< 60% e sem imagem). O "frame `gerado`" previsto virou `imagemModo: "completo"` no frame existente — não precisou de tipo novo.
 3. **Famílias visuais** — Editorial e **Alternado** FEITAS em 09/09 (ver CLAUDE.md): tokens em `lib/conteudo/familias.ts`, campos `gancho`/`anotacao`, destaque `**x**`, fontes Instrument Serif e Caveat, seletor na criação e no editor; a Alternado traz paleta derivada de UMA cor (`lib/conteudo/paleta.ts`), alternância clara/escura por posição, filete no topo e barra de progresso no lugar do contador. Faltam os moldes Tendência/Previsão com `arco`. O card com sub-variantes (kpi_grid, print, conta à mão) e a seta da anotação continuam fora: dependem do segundo formato, que não chegou.
-4. **Loop**: CTA → automação da palavra-chave FEITO em 09/09 (ver "Comment gate" no CLAUDE.md); faltam a classificação por padrão de headline e as evidências com busca web na triagem.
+4. **Loop**: CTA → automação da palavra-chave FEITO em 09/09 (ver "Comment gate" no CLAUDE.md).
+
+   **Classificação por padrão de headline: medida e DESCARTADA na forma
+   proposta** (09/09). A ideia era derivar o padrão retórico da legenda dos
+   87 posts e cruzar com salvamentos. As legendas em produção não são
+   headlines: dos 12 posts com mais salvamentos, 7 têm como primeira linha
+   "🇦🇪🇦🇪🇦🇪 #dropshipping #marketingdigital #viral" e os melhores são
+   VIDEO, não carrossel. A headline de um carrossel mora na IMAGEM do
+   slide 1, que não temos como texto — só nas referências transcritas.
+   Detectar padrão ali e publicar um ranking seria métrica inventada.
+
+   O caminho honesto é gravar o padrão na CRIAÇÃO (o motor editorial já
+   escolhe a headline sabendo o padrão dela) e ligar pelo
+   `conteudo_ig_media.documento_id`, que já existe. Fica para quando houver
+   carrossel feito no Estúdio publicado: hoje são 0 documentos, e o painel
+   mostraria zero por meses.
+
+   **Evidências com busca na web na triagem: FEITO** em 09/09 (ver "a
+   triagem busca o fato" no CLAUDE.md) — toggle na triagem, fontes na tela
+   e verificação por código de cada URL citada contra as servidas.

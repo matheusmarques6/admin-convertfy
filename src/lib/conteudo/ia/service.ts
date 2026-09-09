@@ -87,7 +87,7 @@ Campos:
 - transformacao: o que mudou, com costura e consequência (2 a 4 frases).
 - friccaoCentral: a tensão REAL do fenômeno (conflito, não só tema) para quem vende online.
 - anguloDominante: a leitura mais forte para o carrossel, em uma frase.
-- evidencias: A), B), C) (até 6) — só o que está no insumo ou é fato verificável; cada uma com "fonte" quando o insumo traz (nome + ano); sem fonte, deixe o campo fora e o dado será marcado [confirmar].
+- evidencias: A), B), C) (até 6) — só o que está no insumo ou nos resultados de busca (quando houver, vêm no fim deste pedido); cada uma com "fonte": a URL INTEIRA de um dos resultados, ou o nome + ano quando o dado veio do insumo. Sem fonte, deixe o campo fora e o dado será marcado [confirmar].
 - eixo: mercado | cases | noticias | cultura | produto.
 - funil: topo (alcançar gente nova) | meio (aquecer quem segue) | fundo (converter).
 - promessa: o que o hook vai prometer e a peça TEM de cumprir antes do CTA.
@@ -305,12 +305,21 @@ export async function executarIA<K extends keyof SaidaPorAcao>(
      * de antes. Quem carrega do banco é a rota — este módulo não faz I/O.
      */
     blocoReferencias?: string
+    /**
+     * Resultados de busca já renderizados (`blocoDeFontes`), servidos SÓ na
+     * triagem. Quem chama a internet é a rota — este módulo não faz I/O.
+     */
+    blocoFontes?: string
   } = {},
 ): Promise<ResultadoIA<K>> {
   const model = opts.model ?? CONTEUDO_IA_MODEL
   const instrucao = instrucaoDaAcao(entrada)
   const usaReferencias = Boolean(opts.blocoReferencias) && ACOES_COM_REFERENCIAS.has(entrada.acao)
-  const texto = usaReferencias ? `${opts.blocoReferencias}\n\n---\n\n${instrucao.texto}` : instrucao.texto
+  const base = usaReferencias ? `${opts.blocoReferencias}\n\n---\n\n${instrucao.texto}` : instrucao.texto
+  // As fontes vão DEPOIS do pedido, coladas nas regras de citação: assim a
+  // última coisa que o modelo lê antes de responder é a lista fechada de
+  // URLs e a proibição de inventar outra.
+  const texto = opts.blocoFontes && entrada.acao === "triagem" ? `${base}\n\n${opts.blocoFontes}` : base
   const imagens = instrucao.imagens
   const schema = SAIDA_SCHEMA[entrada.acao]
 
