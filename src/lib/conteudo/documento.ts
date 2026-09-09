@@ -8,6 +8,9 @@
  */
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { preservarCamposOpcionais } from "./campos"
+import { FAMILIAS, familiaDe, fundoPadraoDaFamilia } from "./familias"
+import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
 import type {
   BrandKit,
@@ -78,6 +81,14 @@ export function textosGuia(tipo: FrameTipo, campos: Campo[]): Partial<Record<Cam
 export function fundoPadrao(tipo: FrameTipo, indice: number): string {
   if (tipo === "capa" || tipo === "cta" || tipo === "prova") return "gradiente"
   return indice % 3 === 0 ? SLIDE.escuro : SLIDE.fundoClaro
+}
+
+/**
+ * Fundo claro do documento — o da FAMÍLIA dele, não o azul da casa. Frame
+ * novo num carrossel Editorial nascia azul no meio de uma peça bege.
+ */
+function fundoClaroDoDoc(doc: Pick<Documento, "familia">): string {
+  return FAMILIAS[familiaDe(doc)].fundoClaro
 }
 
 export function frameDoTemplate(tf: TemplateFrame): DocFrame {
@@ -208,12 +219,23 @@ export function trocarTemplate(doc: Documento, novo: Template): ResultadoTroca {
     if (k >= 0) usados.add(k)
     const base = frameDoTemplate(nf)
     if (!old) return base
+    const opcionais = preservarCamposOpcionais(
+      old,
+      nf.tipo,
+      base.campos,
+      Object.fromEntries(nf.campos.map((c) => [c, old.textos[c] ?? base.textos[c] ?? ""])),
+    )
     return {
       ...base,
-      textos: Object.fromEntries(
-        nf.campos.map((c) => [c, old.textos[c] ?? base.textos[c] ?? ""]),
-      ),
-      imagens: nf.slotsImagem ? old.imagens : {},
+      campos: opcionais.campos,
+      textos: opcionais.textos,
+      // Imagem da via B sobrevive à troca: no slide inteiro ela É o slide
+      // (não depende de slot); no híbrido o frame novo ganha o slot se o
+      // tipo tiver lugar para ele. Prompt e modo seguem junto.
+      ...(old.imagemModo && old.imagens.slot1 && (old.imagemModo === "completo" || aceitaHibrido(nf.tipo))
+        ? { imagens: old.imagens, imagemModo: old.imagemModo, slotsImagem: (nf.slotsImagem || old.imagemModo === "hibrido" ? 1 : 0) as 0 | 1 }
+        : { imagens: nf.slotsImagem ? old.imagens : {} }),
+      promptImagem: old.promptImagem,
       variante: old.variante,
     }
   })
@@ -221,7 +243,7 @@ export function trocarTemplate(doc: Documento, novo: Template): ResultadoTroca {
   const fundoPorFrame = Object.fromEntries(
     novo.frames.map((nf, i) => {
       const antigo = doc.frames[i] ? doc.fundoPorFrame[doc.frames[i].frameId] : undefined
-      return [nf.id, antigo ?? fundoPadrao(nf.tipo, i)]
+      return [nf.id, antigo ?? fundoPadraoDaFamilia(familiaDe(doc), nf.tipo, i)]
     }),
   )
   // Estilos e cores nomeadas seguem por frameId (mesmo id = mesma posição).
@@ -255,7 +277,7 @@ export function duplicarFrame(doc: Documento, i: number): Documento {
     {
       ...doc,
       frames,
-      fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? SLIDE.fundoClaro },
+      fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? fundoClaroDoDoc(doc) },
       estilos: doc.estilos[o.frameId] ? { ...doc.estilos, [id]: doc.estilos[o.frameId] } : doc.estilos,
     },
     `${o.label} duplicado`,
@@ -281,7 +303,7 @@ export function dividirFrame(doc: Documento, i: number): Documento {
   const frames = [...doc.frames]
   frames.splice(i, 1, primeiro, segundo)
   return comHistorico(
-    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? SLIDE.fundoClaro } },
+    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? fundoClaroDoDoc(doc) } },
     `${o.label} dividido em dois`,
   )
 }
@@ -323,7 +345,7 @@ export function adicionarFrame(doc: Documento, tipo: FrameTipo = "texto"): Docum
   const pos = frames.length && frames[frames.length - 1].tipo === "cta" ? frames.length - 1 : frames.length
   frames.splice(pos, 0, nf)
   return comHistorico(
-    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: SLIDE.fundoClaro } },
+    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: fundoClaroDoDoc(doc) } },
     "Frame adicionado",
   )
 }
@@ -343,9 +365,16 @@ export function excluirFrame(doc: Documento, i: number): Documento {
 export function trocarTipoFrame(doc: Documento, i: number, tipo: FrameTipo): Documento {
   const o = doc.frames[i]
   if (!o || o.tipo === tipo) return doc
-  const campos = camposDoTipo(tipo)
-  const guia = textosGuia(tipo, campos)
-  const textos = Object.fromEntries(campos.map((c) => [c, o.textos[c] ?? guia[c] ?? ""]))
+  const base = camposDoTipo(tipo)
+  const guia = textosGuia(tipo, base)
+  // Gancho e anotação não vêm do molde: sem isto, trocar o tipo do slide
+  // apagava em silêncio o que o operador escreveu neles.
+  const { campos, textos } = preservarCamposOpcionais(
+    o,
+    tipo,
+    base,
+    Object.fromEntries(base.map((c) => [c, o.textos[c] ?? guia[c] ?? ""])),
+  )
   return comHistorico(
     { ...doc, frames: doc.frames.map((f, j) => (j === i ? { ...f, tipo, campos, textos } : f)) },
     `${o.label} trocado para ${tipo}`,
@@ -421,10 +450,19 @@ export function contarPalavras(texto: string): number {
   return texto.trim().split(/\s+/).filter(Boolean).length
 }
 
+/**
+ * O frame exibe imagem? Slot do template OU imagem já aplicada — na via B
+ * o "slide inteiro" ocupa frames que o template criou sem slot (dado, CTA),
+ * e ignorá-los faria a imagem existir no canvas e sumir do painel de Mídia.
+ */
+export function aceitaImagem(f: Pick<DocFrame, "slotsImagem" | "imagens">): boolean {
+  return f.slotsImagem > 0 || Boolean(f.imagens.slot1)
+}
+
 export function slotsDeImagem(doc: Documento): { total: number; cheios: number; semSlot: number[] } {
-  const total = doc.frames.filter((f) => f.slotsImagem > 0).length
-  const cheios = doc.frames.filter((f) => f.slotsImagem > 0 && f.imagens.slot1).length
-  const semSlot = doc.frames.map((f, i) => (f.slotsImagem === 0 ? i + 1 : -1)).filter((i) => i > 0)
+  const total = doc.frames.filter(aceitaImagem).length
+  const cheios = doc.frames.filter((f) => Boolean(f.imagens.slot1)).length
+  const semSlot = doc.frames.map((f, i) => (aceitaImagem(f) ? -1 : i + 1)).filter((i) => i > 0)
   return { total, cheios, semSlot }
 }
 

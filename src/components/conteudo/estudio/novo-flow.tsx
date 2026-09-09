@@ -16,11 +16,12 @@ import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
 import { editorialVazio, headlineEscolhida, papeisDosFrames, podeGerarCopy } from "@/lib/conteudo/editorial"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
+import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia } from "@/lib/conteudo/familias"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
 import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { BrandKit, Documento, Editorial, EstruturaDetectada, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
+import type { BrandKit, Documento, Editorial, EstruturaDetectada, FamiliaVisual, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
 import { CtAvatar, CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { Caminho } from "./biblioteca"
 import { EditorialMotor } from "./editorial-motor"
@@ -66,6 +67,9 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
   const [tpl, setTpl] = useState<string | null>(meuTemplateInicial ? null : tplInicial ?? null)
   const [meuTpl, setMeuTpl] = useState<string | null>(meuTemplateInicial ?? null)
   const [nome, setNome] = useState("")
+  // A identidade visual escolhida aqui vale para o documento inteiro; no
+  // editor ela pode ser trocada a qualquer momento sem tocar na copy.
+  const [familia, setFamilia] = useState<FamiliaVisual>("padrao")
   const [perfil, setPerfil] = useState<PerfilEditavel>(perfilInicial && perfis.some((p) => p.id === perfilInicial) ? perfilInicial : perfis[0]?.id ?? "")
   const [voz, setVoz] = useState<"marca" | "pessoal">("marca")
   const [segundaPessoa, setSegundaPessoa] = useState(true)
@@ -182,9 +186,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
     setCriando(true)
     setErro(null)
     const kit = kitDoPerfil
+    const comFamilia = (d: Documento): Documento => aplicarFamilia(d, familia)
     try {
       if (modoTemplate) {
-        const d = documentoDeEstrutura(nomeTpl.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit })
+        const d = comFamilia(documentoDeEstrutura(nomeTpl.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit }))
         d.projeto = "Templates do time"
         onCriado({
           doc: comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`),
@@ -196,13 +201,13 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
       if (caminho === "template" && meuTpl) {
         const m = meusTemplates.find((x) => x.id === meuTpl)
         if (!m) throw new Error("Template do time não encontrado")
-        const d = documentoDeEstrutura(nome.trim(), perfil, m.estrutura, { templateBase: m.templateId, brandKit: kit })
+        const d = comFamilia(documentoDeEstrutura(nome.trim(), perfil, m.estrutura, { templateBase: m.templateId, brandKit: kit }))
         d.frames[0].textos.titulo = nome.trim()
         onCriado({ doc: comHistorico(d, `Criado a partir do template do time "${m.nome}"`), caminho: "template", meuTemplateUsado: m.id })
         return
       }
       if (caminho === "template" && tpl) {
-        const d = novoDocumento(nome.trim(), perfil, tpl, { brandKit: kit })
+        const d = comFamilia(novoDocumento(nome.trim(), perfil, tpl, { brandKit: kit }))
         d.frames[0].textos.titulo = nome.trim()
         onCriado({ doc: d, caminho: "template" })
         return
@@ -210,7 +215,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
       if (caminho === "ia") {
         const p = promptPronto
         const templateId = templateIdIa
-        let d = novoDocumento(nome.trim(), perfil, templateId, { brandKit: kit })
+        let d = comFamilia(novoDocumento(nome.trim(), perfil, templateId, { brandKit: kit }))
         d = ajustarQuantidadeFrames(d, slides)
         const pauta = pautaCompleta
         const t = getTemplate(templateId)
@@ -662,10 +667,21 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
           )}
 
           {caminho && !modoTemplate && (
-            <div className="grid grid-cols-1 gap-3 border-t border-[var(--ops-border)] pt-5 md:grid-cols-[1fr_220px]">
+            <div className="grid grid-cols-1 gap-3 border-t border-[var(--ops-border)] pt-5 md:grid-cols-[1fr_220px_220px]">
               <div>
                 <CtLabel>Nome do carrossel</CtLabel>
                 <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: 8% dos clientes fazem 41% do faturamento" className={cn(inputCls, "h-[42px] bg-[var(--ops-card)] text-[14px] font-medium")} />
+              </div>
+              <div>
+                <CtLabel>Identidade visual</CtLabel>
+                <select value={familia} onChange={(e) => setFamilia(e.target.value as FamiliaVisual)} className={cn(selectCls, "h-[42px] bg-[var(--ops-card)] text-[12.5px]")} aria-label="Identidade visual">
+                  {FAMILIA_OPCOES.map(([k, n]) => (
+                    <option key={k} value={k}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">{FAMILIAS[familia].descricao}</div>
               </div>
               <div>
                 <CtLabel>Perfil</CtLabel>

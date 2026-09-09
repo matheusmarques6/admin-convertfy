@@ -78,6 +78,12 @@ ${limitesTexto()}
 
 ${blocoEditorial()}
 
+## Campos do slide
+Cada frame declara quais campos aceita, e você preenche EXATAMENTE esses — nunca invente campo que o frame não pediu.
+- \`gancho\`: a linha curta em itálico ACIMA do título. Ela prepara a afirmação e não se fecha sozinha ("o que ninguém olha no relatório"); o título é que afirma. Sem ponto final. Só existe onde o frame declarar.
+- \`anotacao\`: um rabisco à mão sobre o slide, como quem circula um número numa folha impressa ("é aqui que trava"). No máximo cinco palavras, minúsculas, sem ponto final.
+- Para destacar até três palavras do corpo, envolva com \`**\` (ex.: "os \`**8%**\` que pagam a conta"). O canvas pinta na cor de destaque. Não use \`**\` no título nem em frase inteira.
+
 ## Estilo
 Direto, específico, sem adjetivo decorativo, sem jargão de marketing ("alavancar", "disruptivo"). Números em formato brasileiro (R$ 31 mil, 41%, 1 em cada 10). NUNCA invente dados, nomes de clientes, fontes ou resultados: use somente números e provas que vieram na pauta ou nos textos do usuário. Quando o molde pede um dado e ele não foi fornecido, escreva o texto com o marcador [confirmar] no lugar do número (ex.: "[confirmar]% dos clientes…") — o humano preenche antes de publicar.`
 

@@ -26,7 +26,11 @@ import { listarReferencias } from "@/lib/services/conteudo-referencias.service"
 import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 120
+// Gerar imagem é o caminho longo: o modelo primário pode ficar minutos sem
+// devolver corpo (loop de whitespace do GPT Image 2, documentado em
+// image/model-policy) e ainda há o fallback para o Gemini. Com 120s a rota
+// morria antes do próprio timeout do gerador e o erro chegava sem causa.
+export const maxDuration = 300
 
 const log = logger.child("ConteudoIARoute")
 
@@ -60,17 +64,33 @@ async function handlePost(request: NextRequest) {
       const orgId = await resolveOrgId(user.id)
       const aspect = img.data.aspecto ?? "4:5"
       const n = img.data.quantidade ?? 1
-      const prompt = `${img.data.prompt.trim()}\n\nEstética editorial premium, sem texto na imagem, sem marcas d'água, paleta com azuis profundos e neutros, luz natural.\n${aspectInstructionForPrompt(aspect)}`
+      // Só o modo "completo" (slide inteiro pelo modelo) dispensa a
+      // proibição de texto: nele o prompt do construtor já lista a copy
+      // exata e as fontes. Nos demais, o sufixo é a rede de segurança —
+      // um prompt editado à mão que esqueça de proibir texto ainda sai
+      // sem letras, e o renderer segue dono da tipografia.
+      const sufixo =
+        img.data.modo === "completo"
+          ? "Renderize como um slide finalizado: todo texto listado nítido e legível, nenhum outro texto além dele, sem marcas d'água."
+          : "Estética editorial premium, sem texto na imagem, sem marcas d'água, paleta com azuis profundos e neutros, luz natural."
+      const prompt = `${img.data.prompt.trim()}\n\n${sufixo}\n${aspectInstructionForPrompt(aspect)}`
       try {
         // Duas variações = uma do GPT Image 2 e uma do Gemini, mesmo
         // prompt — é comparação entre modelos, não duas tentativas do
         // mesmo. Uma só usa o primário. Regra em `image/model-policy`.
-        const urls = await Promise.all(
+        // allSettled, não all: são modelos DIFERENTES no mesmo prompt, então
+        // um recusar (política de conteúdo) ou travar não pode jogar fora a
+        // imagem que o outro já entregou. Só é erro quando nenhuma vem.
+        const resultados = await Promise.allSettled(
           modelosParaVariacoes(n).map((model) =>
             generateEmailImage(prompt, `org-${orgId}`, { aspect, mode: "text2img", model }).then(rewriteStorageImageSrc),
           ),
         )
-        return successResponse(request, { dados: { urls } })
+        const urls = resultados.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []))
+        const falhas = resultados.flatMap((r) => (r.status === "rejected" ? [r.reason as Error] : []))
+        if (urls.length === 0) throw falhas[0] ?? new Error("Nenhuma imagem foi gerada.")
+        if (falhas.length > 0) log.warn("conteudo_ia.imagem_parcial", { pedidas: n, geradas: urls.length, erro: falhas[0]?.message })
+        return successResponse(request, { dados: { urls, pedidas: n } })
       } catch (e) {
         log.warn("conteudo_ia.imagem", { erro: (e as Error).message })
         throw new AppError(friendlyModelErrorText(e), 502)

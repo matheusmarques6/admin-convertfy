@@ -52,6 +52,7 @@ import { corteDeRaciocinio } from "../model-capabilities"
 import { deriveFieldNature } from "../shared/component-dimensions"
 import { isAttrToken } from "../html/attr-token-vocabulary"
 import { runQaVisionCheck } from "./qa-vision.chain"
+import { loadQaAdvisorContext } from "./qa-advisor-context"
 
 const log = logger.child("QaChain")
 
@@ -125,11 +126,15 @@ You are the QA reviewer of an email pipeline. You do NOT see the HTML document �
 - Echo the view's block_id in each issue when the issue points at a block.
 - Merge tags ([unsubscribe_link], {{ first_name }}, *|FNAME|*) are valid dynamic content — never an issue.
 - Be conservative: severity high ONLY for defects that make the email unsendable.
+- Store facts, this email's objective and block contracts outrank Advisor Max doctrine.
+- Advisor Max doctrine is evidence about Convertfy's method, not permission to invent store facts.
+- When an issue relies on Advisor Max, cite the supplied note path in \`source_path\`, set \`basis\` to \`advisor_max\`, and quote/paraphrase the precise criterion in \`evidence\`.
+- Separate a verifiable defect from a stylistic opportunity. Opportunities never receive severity high.
 </rules>
 
 <output_contract>
 Respond with ONLY this JSON — no markdown fences, no commentary:
-{"passed": true, "issues": [{"type": "tom_inconsistente", "severity": "low", "message": "...", "block_id": "uuid-or-null"}]}
+{"passed": true, "issues": [{"type": "tom_inconsistente", "severity": "low", "message": "...", "block_id": "uuid-or-null", "evidence": "...", "expected": "...", "basis": "store|contract|advisor_max|general", "source_path": "Advisors/Max/... or null", "confidence": 0.0, "suggested_action": "..."}]}
 Allowed types: spam_score_alto, links_quebrados, blocos_vazios, tom_inconsistente, claim_nao_coberto, html_invalido, alt_text_faltando, compliance. Severities: low, medium, high.
 </output_contract>`
 
@@ -157,6 +162,14 @@ contrato ausente no documento é achado de QA, não um bloco menor.
 {{brand_json}}
 </brand>
 
+<metodo_convertfy_advisor_max>
+As notas abaixo foram recuperadas por relevância. Precedência: fatos da loja
+> objetivo e restrições deste email > contrato dos blocos > Advisor Max
+> conhecimento geral. A doutrina fundamenta o julgamento, mas não autoriza
+inventar oferta, benefício, prova, garantia ou ativo da loja.
+{{advisor_max_notes}}
+</metodo_convertfy_advisor_max>
+
 Review the views against the expected copy and brand, and emit the JSON verdict now.`
 
 // ── Zod schema do output do LLM ────────────────────────────────────────
@@ -167,6 +180,12 @@ const QaIssueSchema = z.object({
   location: z.string().optional(),
   // F5 (views por bloco): o LLM ecoa o block_id da view apontada.
   block_id: z.string().nullable().optional(),
+  evidence: z.string().optional(),
+  expected: z.string().optional(),
+  basis: z.enum(["store", "contract", "advisor_max", "general", "deterministic"]).optional(),
+  source_path: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  suggested_action: z.string().optional(),
 })
 
 const QaOutputSchema = z.object({
@@ -437,6 +456,7 @@ const QA_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   briefing_json: { cls: "loja", rotulo: "Briefing da loja — store_briefings" },
   brand_json: { cls: "loja", rotulo: "Identidade visual — store_brand_identity" },
   blueprint_objective: { cls: "upstream", rotulo: "Objetivo — blueprint da loja" },
+  advisor_max_notes: { cls: "vault", rotulo: "Doutrina recuperada — Advisor Max" },
 }
 
 // ── Render do user prompt ─────────────────────────────────────────────
@@ -641,6 +661,17 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     config.system_prompt?.trim() || DEFAULT_QA_SYSTEM_PROMPT
   const userTemplate = config.user_template?.trim() || DEFAULT_QA_USER_TEMPLATE
 
+  const advisorContext = await loadQaAdvisorContext(createAdminClient(), {
+    objective: blueprintObjective,
+    blockViews: input.blockViews ?? [],
+    expectedBlocks: blocks,
+  })
+  const advisorTelemetry = {
+    status: advisorContext.status,
+    semantic_search: advisorContext.semanticSearch,
+    sources: advisorContext.sources,
+  }
+
   const renderVars: Record<string, string> = {
     // F5: o LLM recebe as views por bloco no lugar do documento. A chave
     // `html` continua resolvível para prompt customizado LEGADO no DB
@@ -652,13 +683,18 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     briefing_json: JSON.stringify(briefing ?? {}, null, 2),
     brand_json: JSON.stringify(brand ?? {}, null, 2),
     blueprint_objective: blueprintObjective || "",
+    advisor_max_notes: advisorContext.block,
   }
   // Append fixo: merge tags do provedor (Klaviyo, Mailchimp, Omnisend) sao
   // substituidas no envio — nao sao bug. Antes do fix o LLM marcava
   // `[unsubscribe_link]` como links_quebrados/compliance/claim_nao_coberto e
   // bloqueava emails legitimos. Forcado in-code pra nao depender do prompt
   // versionado no DB.
-  const renderedUser = renderTemplate(userTemplate, renderVars)
+  const renderedTemplate = renderTemplate(userTemplate, renderVars)
+  const advisorAppendix = userTemplate.includes("{{advisor_max_notes}}")
+    ? ""
+    : `\n\n<metodo_convertfy_advisor_max>\n${advisorContext.block}\n</metodo_convertfy_advisor_max>`
+  const renderedUser = renderedTemplate + advisorAppendix
   const userPrompt = renderedUser + MERGE_TAGS_INSTRUCTION
 
   // ── Proveniência (migration 20261085) ──
@@ -672,7 +708,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     parte: "user",
   })
   const promptSegments =
-    segUser.segments && segUser.prompt === renderedUser
+    segUser.segments && segUser.prompt === renderedTemplate
       ? concatSegments(
           [
             {
@@ -684,6 +720,17 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
             },
           ],
           segUser.segments,
+          advisorAppendix
+            ? [
+                {
+                  cls: "vault" as const,
+                  rotulo: "Doutrina recuperada — Advisor Max (apêndice compatível)",
+                  texto: advisorAppendix,
+                  chars: advisorAppendix.length,
+                  parte: "user" as const,
+                },
+              ]
+            : null,
           [
             {
               cls: "agente" as const,
@@ -726,6 +773,11 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       rotulo: "Marca e briefing",
       cls: "loja",
       valor: `${brand ? "identidade visual" : "sem identidade"} · ${briefing ? "briefing" : "sem briefing"}`,
+    },
+    {
+      rotulo: "Doutrina do Advisor Max",
+      cls: "vault",
+      valor: `${advisorContext.sources.length} nota(s) · ${advisorContext.status} · busca semântica ${advisorContext.semanticSearch ? "on" : "off"}`,
     },
   ]
 
@@ -801,6 +853,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
         passed: result.passed,
         issues_count: issues.length,
         timeout: aborted,
+        advisor_max: advisorTelemetry,
       },
     }).catch(() => {})
     return result
@@ -889,6 +942,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
         passed: result.passed,
         issues_count: issues.length,
         output_invalid: true,
+        advisor_max: advisorTelemetry,
       },
     }).catch(() => {})
     return result
@@ -1002,6 +1056,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       issues_count: issues.length,
       issues_by_severity: issuesBySeverity,
       vision_ran: visionRan,
+      advisor_max: advisorTelemetry,
       // As issues em si. Iam só para `email_flow_emails.qa_issues`, o que
       // deixava a run com o número e sem o motivo — para saber POR QUE o
       // email reprovou era preciso abrir outra tabela.

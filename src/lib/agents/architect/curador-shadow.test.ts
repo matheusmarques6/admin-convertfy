@@ -14,10 +14,15 @@ import {
   CURADOR_SHADOW_MODEL_FALLBACK,
   CURADOR_SHADOW_MAX_TOKENS_MIN,
   contratosDoCatalogo,
+  parseValidatedShortlist,
+  renderFinalistNotes,
+  restrictRankingToShortlist,
 } from "./curador-shadow"
 import { resumirContrato } from "../shared/field-roles"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
+import { buildCatalog } from "./catalog-builder"
+import { interpolateSystem } from "./llm-invoke"
 import type { CatalogVaultExtra } from "./catalog-builder"
 import type { RankedChoice } from "./curator-ranking.parser"
 
@@ -54,6 +59,118 @@ describe("parseCuradorVaultOutput", () => {
     // 03/09: uma variante por posição — o Montador saiu do caminho.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("uma só, a que encaixa melhor")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("em ordem de preferência")
+  })
+  it("o prompt inicial usa o índice compacto, sem o corpo integral das variantes", () => {
+    const catalogo = buildCatalog([
+      { id: "v1", block_type: "hero", name: "Hero", description: "Primeira frase. SEGREDO_CORPO_COMPLETO", long_description: "NOTA_IMPLEMENTACAO_INTEGRAL", is_active: true } as never,
+      { id: "v2", block_type: "body", name: "Body", description: "Outra primeira frase. OUTRO_CORPO_COMPLETO", when_use: "QUANDO_USAR_INTEGRAL", is_active: true } as never,
+    ])
+    const prompt = interpolateSystem(DEFAULT_CHOOSER_VAULT_SYSTEM, { protocolo: "p", convivencias: "c", catalogo: catalogo.enxuto })
+    expect(prompt).toContain("v1 · Hero")
+    expect(prompt).toContain("v2 · Body")
+    expect(prompt).not.toContain("SEGREDO_CORPO_COMPLETO")
+    expect(prompt).not.toContain("NOTA_IMPLEMENTACAO_INTEGRAL")
+    expect(prompt).not.toContain("QUANDO_USAR_INTEGRAL")
+  })
+})
+
+describe("progressive disclosure do Curador", () => {
+  const typeIndex = new Map([["hero-a", "hero"], ["hero-b", "hero"], ["body-a", "body"]])
+
+  it("valida até três finalistas e nunca aceita id de outra seção", () => {
+    const parsed = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }, { variant_id: "body-a" }, { variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "body-a" }] },
+      ]),
+      sections: ["hero", "body"],
+      typeIndex,
+    })
+    expect(parsed.byBlock.get(0)?.map((x) => x.variant_id)).toEqual(["hero-a", "hero-b"])
+    expect(parsed.byBlock.get(1)?.map((x) => x.variant_id)).toEqual(["body-a"])
+  })
+
+  it("renderiza nota aberta e ausência sem eliminar a finalista", () => {
+    const rendered = renderFinalistNotes([
+      { variant_id: "hero-a", status: "opened", file_path: "componentes/hero-a.md", body: "corpo" },
+      { variant_id: "hero-b", status: "missing", file_path: null, body: null },
+    ])
+    expect(rendered).toContain('variant_id="hero-a"')
+    expect(rendered).toContain("corpo")
+    expect(rendered).toContain('variant_id="hero-b" status="sem_nota_sincronizada"')
+  })
+
+  it("a decisão final não pode mover uma finalista para outra posição da mesma seção", () => {
+    const shortlist = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const final = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const restricted = restrictRankingToShortlist(final, shortlist, 2)
+    expect(restricted.byBlock.has(0)).toBe(false)
+    expect(restricted.byBlock.get(1)?.[0].variant_id).toBe("hero-b")
+    expect(restricted.invalidIds).toContain("hero-b")
+  })
+})
+
+describe("progressive disclosure do Curador", () => {
+  const typeIndex = new Map([["hero-a", "hero"], ["hero-b", "hero"], ["body-a", "body"]])
+
+  it("valida até três finalistas e nunca aceita id de outra seção", () => {
+    const parsed = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }, { variant_id: "body-a" }, { variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "body-a" }] },
+      ]),
+      sections: ["hero", "body"],
+      typeIndex,
+    })
+    expect(parsed.byBlock.get(0)?.map((x) => x.variant_id)).toEqual(["hero-a", "hero-b"])
+    expect(parsed.byBlock.get(1)?.map((x) => x.variant_id)).toEqual(["body-a"])
+  })
+
+  it("renderiza nota aberta e ausência sem eliminar a finalista", () => {
+    const rendered = renderFinalistNotes([
+      { variant_id: "hero-a", status: "opened", file_path: "componentes/hero-a.md", body: "corpo" },
+      { variant_id: "hero-b", status: "missing", file_path: null, body: null },
+    ])
+    expect(rendered).toContain('variant_id="hero-a"')
+    expect(rendered).toContain("corpo")
+    expect(rendered).toContain('variant_id="hero-b" status="sem_nota_sincronizada"')
+  })
+
+  it("a decisão final não pode mover uma finalista para outra posição da mesma seção", () => {
+    const shortlist = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const final = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const restricted = restrictRankingToShortlist(final, shortlist, 2)
+    expect(restricted.byBlock.has(0)).toBe(false)
+    expect(restricted.byBlock.get(1)?.[0].variant_id).toBe("hero-b")
+    expect(restricted.invalidIds).toContain("hero-b")
   })
 })
 
@@ -236,7 +353,7 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     // 03/09: o sistema prevalece. O vault acrescenta o que o cadastro não
     // tem; nunca o contradiz — e o modelo não arbitra entre os dois.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("O VAULT VENCE")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("é o cadastro do sistema, e é ele que vale")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("cadastro do sistema descreve a peça")
   })
 
   // Em 01/09 o prompt dizia "Você PODE adaptar a sequência" e o agente cortou
@@ -322,10 +439,10 @@ describe("rank1ByBlock + blocos da fase 1", () => {
 
 // ── O prompt não pede eliminação por ativo (01/09) ─────────────────────
 describe("prompt do Curador — nada elimina por requisito de ativo", () => {
-  it("o system não tem bloco de requisitos nem a palavra `exige`", () => {
+  it("o system não tem bloco de requisitos não verificáveis", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("<requisitos>")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("{{requisitos}}")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("exige")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Elimine também por CONTRATO")
   })
 
   it("material não elimina e só ativa/schema + capacidade eliminam", () => {
@@ -343,7 +460,7 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("description_no_banco")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("NÃO é eliminada por isso")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("fica ATRÁS")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("nunca o contradiz")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("prevalece sobre prosa divergente do vault")
   })
 })
 
@@ -362,7 +479,7 @@ describe("template do Curador do vault — decisão do Estruturador, lacunas e �
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("decidida pelo Estruturador")
   })
 
-  it("o system faz da decisão o critério dominante, não elimina por lacuna e limita as consultas", () => {
+  it("o system faz da decisão o critério dominante e usa apenas notas das finalistas", () => {
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("critério DOMINANTE por posição")
     // A função é ENCAIXAR blocos na proposta do Estruturador — não decidir
     // estrutura nem reescrever papel (owner, 02/09).
@@ -372,7 +489,8 @@ describe("template do Curador do vault — decisão do Estruturador, lacunas e �
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Sua tarefa é dizer por que cada posição existe")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`descartes`")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("Lacuna NÃO elimina")
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("no máximo 4 consultas")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("notas completas das finalistas")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("no máximo 4 consultas")
     // A justificativa por posição continua obrigatória.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`justificativa` é OBRIGATÓRIA")
   })
