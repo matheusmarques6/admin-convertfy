@@ -13,7 +13,7 @@ import { Icon } from "@/components/ui/icon"
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
-import { aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
+import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import { getTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
@@ -491,7 +491,9 @@ export function PainelMidia({ api }: { api: EditorApi }) {
   }
   const aplicarUrl = (i: number, url: string, label = "Imagem adicionada") => {
     const fr = doc.frames[i]
-    if (!fr || fr.slotsImagem === 0) return
+    // Frame sem slot mas com imagem é o "slide inteiro" da via B: trocar a
+    // imagem dele aqui é legítimo; recusar em silêncio é que não era.
+    if (!fr || !aceitaImagem(fr)) return
     api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
   }
   const enviarArquivo = async (i: number, file: File) => {
@@ -526,20 +528,20 @@ export function PainelMidia({ api }: { api: EditorApi }) {
       <div
         role="button"
         tabIndex={0}
-        onClick={() => f?.slotsImagem && abrirUpload(ativo)}
-        onKeyDown={(e) => e.key === "Enter" && f?.slotsImagem && abrirUpload(ativo)}
+        onClick={() => f && aceitaImagem(f) && abrirUpload(ativo)}
+        onKeyDown={(e) => e.key === "Enter" && f && aceitaImagem(f) && abrirUpload(ativo)}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
           const file = e.dataTransfer.files?.[0]
-          if (file && f?.slotsImagem) void enviarArquivo(ativo, file)
+          if (file && f && aceitaImagem(f)) void enviarArquivo(ativo, file)
         }}
-        className={cn("rounded-[9px] border border-dashed border-[var(--ops-border)] px-2.5 py-4 text-center", f?.slotsImagem ? "cursor-pointer hover:bg-[var(--ops-hover)]" : "opacity-60")}
+        className={cn("rounded-[9px] border border-dashed border-[var(--ops-border)] px-2.5 py-4 text-center", f && aceitaImagem(f) ? "cursor-pointer hover:bg-[var(--ops-hover)]" : "opacity-60")}
       >
         <div className="flex justify-center text-[var(--ops-mut)]">
           <Icon icon={ImageIcon} customSize={18} />
         </div>
-        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f?.slotsImagem ? "Arraste ou clique" : "Este frame não tem slot"}</div>
+        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f && aceitaImagem(f) ? "Arraste ou clique" : "Este frame não tem slot"}</div>
         <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · vai para o Storage da org (≤ 1350px)</div>
       </div>
       <div className="text-[11.5px] font-semibold text-[var(--ops-title)]" style={TNUM}>
@@ -549,7 +551,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
       <div className="grid grid-cols-3 gap-1.5">
         {doc.frames.map(
           (x, i) =>
-            x.slotsImagem > 0 && (
+            aceitaImagem(x) && (
               <button
                 key={x.frameId}
                 type="button"
@@ -568,7 +570,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
             ),
         )}
       </div>
-      {f?.slotsImagem > 0 && (
+      {f && aceitaImagem(f) && (
         <div>
           {label("Banco de imagens da org")}
           {carregandoAssets ? (
@@ -599,7 +601,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
           <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} className={cn(textareaCls, "resize-none text-[11.5px]")} />
           {erro && <div className="text-[11px] text-[var(--ops-neg)]">{erro}</div>}
           {ia === "prompt" && (
-            <AiBtn prominent onClick={gerar} disabled={!prompt.trim() || !f?.slotsImagem}>
+            <AiBtn prominent onClick={gerar} disabled={!prompt.trim() || !f || !aceitaImagem(f)}>
               Gerar 4 opções
             </AiBtn>
           )}
@@ -615,7 +617,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
           {Array.isArray(ia) && (
             <div className="grid grid-cols-2 gap-1.5">
               {ia.map((u) => (
-                <button key={u} type="button" aria-label="Usar imagem gerada" onClick={() => f?.slotsImagem && aplicarUrl(ativo, u, "Imagem gerada pela ConvertIA")} className="aspect-[4/5] rounded-lg border border-[var(--ops-border)] bg-cover bg-center" style={{ backgroundImage: `url(${u})` }} />
+                <button key={u} type="button" aria-label="Usar imagem gerada" onClick={() => f && aceitaImagem(f) && aplicarUrl(ativo, u, "Imagem gerada pela ConvertIA")} className="aspect-[4/5] rounded-lg border border-[var(--ops-border)] bg-cover bg-center" style={{ backgroundImage: `url(${u})` }} />
               ))}
             </div>
           )}

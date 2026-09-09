@@ -14,11 +14,11 @@
  * texto do frame — quem escolhe isso vê o aviso.
  */
 
-import { useEffect, useMemo, useState } from "react"
-import { Copy, RefreshCw } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Copy, RefreshCw, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { slotDeUrl } from "@/lib/conteudo/data"
+import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { papeisDosFrames } from "@/lib/conteudo/editorial"
 import { gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { aceitaHibrido, construirPromptDeSlide, pedeImagem, preenchimento, promptEfetivo, sugerirModo, type ContextoPrompt } from "@/lib/conteudo/prompt-slide"
@@ -52,10 +52,15 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
   }, [referencias, tpl.nome])
 
   const modo: ModoImagem = f ? sugerirModo(f) : "hibrido"
+  // O canvas numera pelos frames VISÍVEIS; o painel tem de dizer o mesmo
+  // número, senão o prompt fala de um slide e a tela mostra outro. Frame
+  // oculto não está no carrossel: cai na posição dele no documento.
+  const posVisivel = f ? visiveis.indexOf(f) : -1
+  const posicao = posVisivel >= 0 ? posVisivel : Math.max(0, doc.frames.indexOf(f as DocFrame))
   const ctx: ContextoPrompt | null = f
     ? {
         frame: f,
-        indice: Math.max(0, visiveis.indexOf(f)),
+        indice: posicao,
         total: Math.max(1, visiveis.length),
         papel: papeis.get(f.frameId) ?? null,
         doc,
@@ -68,8 +73,10 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
 
   const [texto, setTexto] = useState(efetivo?.prompt ?? "")
   const [gerando, setGerando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
   const [urls, setUrls] = useState<string[]>([])
   const [erro, setErro] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   // Troca de slide, de modo ou de copy: o textarea segue o prompt que
   // vale. O que o humano digitou e ainda não salvou (blur) é raro de
@@ -131,16 +138,34 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
     }
   }
 
-  const aplicar = (url: string) => {
+  const aplicar = (url: string, label = "Imagem gerada") => {
     const patch: Partial<DocFrame> = { imagens: { slot1: slotDeUrl(url) }, imagemModo: modo }
     // No híbrido, um frame do template sem slot ganha um: o renderer de
     // texto/lista/mec já desenha o slot quando ele existe.
     if (modo === "hibrido" && f.slotsImagem === 0 && aceitaHibrido(f.tipo)) patch.slotsImagem = 1
-    setFrame(patch, `Imagem gerada · ${f.label}`)
+    setFrame(patch, `${label} · ${f.label}`)
     api.setImgSel({ frameId: f.frameId })
   }
 
-  const pedem = doc.frames.map((x, j) => ({ j, x, p: preenchimento(x) })).filter(({ x }) => pedeImagem(x))
+  // O ciclo que o usuário já faz hoje: copia o prompt, gera no ChatGPT e
+  // volta com o arquivo. Sem este botão ele teria de trocar de painel — e
+  // no painel de Mídia o upload não sabe que a imagem é um slide inteiro.
+  const enviarArquivo = async (file: File) => {
+    setEnviando(true)
+    setErro(null)
+    try {
+      const { url } = await uploadImagem(file, "slide")
+      aplicar(url, "Imagem enviada")
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upload")
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const pedem = doc.frames
+    .map((x, j) => ({ j, x, p: preenchimento(x), n: visiveis.indexOf(x) + 1 }))
+    .filter(({ x }) => pedeImagem(x))
   const opcoesModo = aceitaHibrido(f.tipo) ? MODOS : MODOS.filter(([k]) => k === "completo")
   const slideInteiroAtivo = f.imagemModo === "completo" && Boolean(f.imagens.slot1)
 
@@ -148,7 +173,8 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <div className="text-[11.5px] font-semibold text-[var(--ops-title)]">
-          Slide {i + 1} · {f.label}
+          Slide {posicao + 1} · {f.label}
+          {f.oculto && <span className="ml-1 font-normal text-[var(--ops-mut)]">(oculto)</span>}
         </div>
         <span className="text-[10.5px] text-[var(--ops-mut)]" style={TNUM}>
           {Math.round(preenchimento(f) * 100)}% de texto
@@ -186,6 +212,9 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
           <button type="button" onClick={refazer} className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-[var(--ops-border)] px-[11px] text-[11.5px] font-medium text-[var(--ops-title)] hover:bg-[var(--ops-hover)]">
             <Icon icon={RefreshCw} customSize={13} /> Refazer sugestão
           </button>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={enviando} className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-[var(--ops-border)] px-[11px] text-[11.5px] font-medium text-[var(--ops-title)] hover:bg-[var(--ops-hover)] disabled:opacity-50">
+            <Icon icon={Upload} customSize={13} /> {enviando ? "Enviando…" : "Enviar imagem do ChatGPT"}
+          </button>
         </div>
         <div className="mt-1 text-[10.5px] text-[var(--ops-mut)]">Copie para o ChatGPT Image, ou gere aqui pela API — mesmo prompt nos dois.</div>
       </div>
@@ -218,15 +247,26 @@ export function PainelPromptSlide({ api }: { api: EditorApi }) {
           <div className="text-[10.5px] text-[var(--ops-mut)]">Nenhum: todo slide com lugar para imagem já tem uma ou está cheio de texto.</div>
         ) : (
           <div className="flex flex-wrap gap-1">
-            {pedem.map(({ j, x, p }) => (
+            {pedem.map(({ j, x, p, n }) => (
               <button key={x.frameId} type="button" onClick={() => api.setAtivo(j)} title={`${x.label} · ${Math.round(p * 100)}% de texto, sem imagem`} className={cn("rounded-md border px-2 py-0.5 text-[10.5px] font-medium hover:bg-[var(--ops-hover)]", j === i ? "border-[var(--ops-accent)] text-[var(--ops-title)]" : "border-[var(--ops-border)] text-[var(--ops-mut)]")} style={TNUM}>
-                {j + 1} · {Math.round(p * 100)}%
+                {n} · {Math.round(p * 100)}%
               </button>
             ))}
           </div>
         )}
         <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">Menos de 60% de texto e sem imagem: o slide fica vazio sem ela.</div>
       </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ""
+          if (file) void enviarArquivo(file)
+        }}
+      />
     </div>
   )
 }

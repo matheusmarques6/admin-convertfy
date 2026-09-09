@@ -220,6 +220,8 @@ export type EntradaImagem = z.infer<typeof entradaImagemSchema>
 
 export interface SaidaImagem {
   urls: string[]
+  /** Quantas foram pedidas — menor que `urls.length` significa falha parcial. */
+  pedidas?: number
 }
 
 export type EntradaIA = z.infer<typeof entradaSchema>

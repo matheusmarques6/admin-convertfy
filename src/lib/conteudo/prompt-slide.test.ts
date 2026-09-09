@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import { CORES_PADRAO, GRADIENTE_PADRAO } from "./brand"
 import { construirPromptDeSlide, pedeImagem, preenchimento, promptEfetivo, sugerirModo, type ContextoPrompt } from "./prompt-slide"
 import type { DocFrame, Documento } from "./types"
+import { aceitaImagem, novoDocumento } from "./documento"
+import { validarDocumento } from "@/lib/services/conteudo-documentos.service"
 
 const frame = (over: Partial<DocFrame> & { tipo: DocFrame["tipo"] }): DocFrame => ({
   frameId: over.frameId ?? "f1",
@@ -154,5 +156,30 @@ describe("promptEfetivo", () => {
         expect(p).not.toMatch(/undefined|null/)
       }
     }
+  })
+})
+
+describe("integração com o documento salvo", () => {
+  it("aceitaImagem cobre o slide inteiro em frame que o template criou sem slot", () => {
+    const slot = { url: "u", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 1350 }
+    expect(aceitaImagem(frame({ tipo: "dado" }))).toBe(false)
+    expect(aceitaImagem(frame({ tipo: "dado", imagens: { slot1: slot } }))).toBe(true)
+    expect(aceitaImagem(frame({ tipo: "capa", slotsImagem: 1 }))).toBe(true)
+  })
+
+  it("o documento com prompt e modo sobrevive à validação da rota de salvamento", () => {
+    const base = novoDocumento("Carrossel", "canal-1", "molde-turbo", { agora: new Date("2026-09-09T10:00:00-03:00") })
+    const doc = {
+      ...base,
+      frames: base.frames.map((fr, i) =>
+        i === 1
+          ? { ...fr, promptImagem: "Prompt escrito à mão", imagemModo: "completo" as const, imagens: { slot1: { url: "https://x/y.png", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 1350 } } }
+          : fr,
+      ),
+    }
+    const salvo = validarDocumento(JSON.parse(JSON.stringify(doc)))
+    expect(salvo.frames[1].promptImagem).toBe("Prompt escrito à mão")
+    expect(salvo.frames[1].imagemModo).toBe("completo")
+    expect(salvo.frames[1].imagens.slot1?.url).toBe("https://x/y.png")
   })
 })

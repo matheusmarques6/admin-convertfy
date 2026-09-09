@@ -43,8 +43,9 @@ export function cssFontesEmbutidas(): Promise<string> {
   return cssFontesPromise
 }
 
-async function inlineImagens(root: HTMLElement): Promise<void> {
+async function inlineImagens(root: HTMLElement): Promise<number> {
   const imgs = Array.from(root.querySelectorAll("img"))
+  let perdidas = 0
   await Promise.all(
     imgs.map(async (img) => {
       const src = img.getAttribute("src")
@@ -52,12 +53,17 @@ async function inlineImagens(root: HTMLElement): Promise<void> {
       try {
         img.setAttribute("src", await urlParaDataUrl(src))
       } catch {
-        // imagem inacessível (CORS): sai da exportação em vez de derrubar o frame
+        // imagem inacessível (CORS/timeout): sai da exportação em vez de
+        // derrubar o frame — mas o chamador PRECISA saber. No "slide
+        // inteiro" da via B a imagem é o slide todo, e o silêncio de antes
+        // exportava um arquivo em branco sem ninguém perceber.
         img.remove()
+        perdidas += 1
       }
       img.removeAttribute("crossorigin")
     }),
   )
+  return perdidas
 }
 
 function escaparXml(s: string): string {
@@ -68,11 +74,19 @@ function escaparXml(s: string): string {
  * Renderiza o elemento do frame (já a 1080 de largura) como PNG/JPG.
  * `el` deve estar no DOM (mesmo que fora da tela).
  */
-export async function renderFrameParaBlob(el: HTMLElement, largura: number, altura: number, fmt: FormatoExport): Promise<Blob> {
+export async function renderFrameParaBlob(
+  el: HTMLElement,
+  largura: number,
+  altura: number,
+  fmt: FormatoExport,
+  /** Chamado quando alguma imagem do frame não pôde ser embutida. */
+  onImagensPerdidas?: (n: number) => void,
+): Promise<Blob> {
   const clone = el.cloneNode(true) as HTMLElement
   clone.querySelectorAll("[contenteditable]").forEach((n) => n.removeAttribute("contenteditable"))
   clone.style.outline = "none"
-  await inlineImagens(clone)
+  const perdidas = await inlineImagens(clone)
+  if (perdidas > 0) onImagensPerdidas?.(perdidas)
 
   const style = document.createElement("style")
   style.textContent = await cssFontesEmbutidas()

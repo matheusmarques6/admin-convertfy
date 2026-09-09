@@ -146,10 +146,20 @@ export function ExportModal({ api, onClose, onAgendar }: { api: EditorApi; onClo
 
   const nomeArquivo = (i: number, tipo: string) => `${String(i + 1).padStart(2, "0")}-${tipo}.${ext}`
 
+  // Imagem que não entra no arquivo é perda visível: num slide inteiro (via
+  // B) ela É o slide, e o PNG sairia em branco. O contador vira aviso.
+  const perdidasRef = useRef(0)
   const renderIdx = async (idx: number): Promise<Blob> => {
     const el = document.getElementById(`${prefixo}-${doc.frames[idx].frameId}`)
     if (!el) throw new Error("Frame não renderizado")
-    return renderFrameParaBlob(el, largura, altura, fmt)
+    return renderFrameParaBlob(el, largura, altura, fmt, (n) => {
+      perdidasRef.current += n
+    })
+  }
+  const avisarPerdas = () => {
+    const n = perdidasRef.current
+    perdidasRef.current = 0
+    if (n > 0) setErro(`${n === 1 ? "1 imagem não entrou" : `${n} imagens não entraram`} na exportação (o arquivo não pôde ser lido a tempo). Confira os slides antes de publicar.`)
   }
 
   const baixarUm = async (idx: number, pos: number) => {
@@ -157,6 +167,7 @@ export function ExportModal({ api, onClose, onAgendar }: { api: EditorApi; onClo
     setProgresso(`Gerando ${pos + 1}…`)
     try {
       baixarBlob(await renderIdx(idx), `${slug(doc.nome)}-${nomeArquivo(pos, doc.frames[idx].tipo)}`)
+      avisarPerdas()
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao exportar")
     } finally {
@@ -175,6 +186,7 @@ export function ExportModal({ api, onClose, onAgendar }: { api: EditorApi; onClo
       setProgresso("Compactando…")
       baixarBlob(await zipar(arquivos, legenda), `${slug(doc.nome)}-${doc.proporcaoExport.replace(":", "x")}.zip`)
       api.avisar(`${visiveis.length} frames exportados em ${ext.toUpperCase()}`)
+      avisarPerdas()
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao exportar")
     } finally {
