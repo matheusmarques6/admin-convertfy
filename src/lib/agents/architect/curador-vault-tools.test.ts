@@ -36,6 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({
       const q = {
         _prefixo: null as string | null,
         _path: null as string | null,
+        _ids: null as string[] | null,
         select: () => q,
         eq: (col: string, val: unknown) => {
           if (col === "file_path") q._path = String(val)
@@ -44,6 +45,13 @@ vi.mock("@/lib/supabase/server", () => ({
         like: (_col: string, padrao: string) => {
           q._prefixo = padrao.replace(/%$/, "")
           return q
+        },
+        in: (_col: string, ids: string[]) => {
+          q._ids = ids
+          return Promise.resolve({
+            data: linhas.filter((r) => ids.includes(String(r.variant_id ?? ""))),
+            error: null,
+          })
         },
         order: () => q,
         limit: () =>
@@ -65,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { executorRestritoAFinalistas, listarPasta, lerNota } from "./curador-vault-tools"
+import { listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -131,19 +139,11 @@ describe("ferramentas do vault — variante desativada não é servida", () => {
   })
 })
 
-describe("leitura sob demanda das finalistas", () => {
-  it("bloqueia notas antes da seleção e notas que não pertencem às finalistas", async () => {
-    const base = vi.fn(async (_nome: string, args: Record<string, unknown>) => `nota: ${args.caminho}`)
-    const acesso = executorRestritoAFinalistas(base, [
-      { variant_id: "v1", slug: "hero-1" },
-      { variant_id: "v2", slug: "hero-2" },
-    ])
-
-    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-1.md" })).toContain("somente nota")
-    await acesso.executar("selecionar_finalistas", { variant_ids: ["v1"] })
-    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-2.md" })).toContain("somente nota")
-    expect(await acesso.executar("ler_nota", { caminho: "componentes/hero-1.md" })).toContain("nota: componentes/hero-1.md")
-    expect(base).toHaveBeenCalledTimes(1)
-    expect(Array.from(acesso.notasAbertas)).toEqual(["v1"])
+describe("notas das finalistas em lote", () => {
+  it("deduplica ids e distingue nota aberta de ausente", async () => {
+    const result = await loadFinalistNotes(["id-offer-3", "sem-nota", "id-offer-3"])
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({ variant_id: "id-offer-3", status: "opened" })
+    expect(result[1]).toEqual({ variant_id: "sem-nota", status: "missing", file_path: null, body: null })
   })
 })

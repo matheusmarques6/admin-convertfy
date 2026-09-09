@@ -32,13 +32,12 @@ import {
   type IndiceDoVault,
 } from "./curador-vault"
 import {
+  extractJson,
   interpolateSystem,
   invokeAgent,
-  invokeAgentWithTools,
   type AgentInvokeConfig,
-  type InvokeWithToolsOptions,
-  type ToolCallLog,
 } from "./llm-invoke"
+import { loadFinalistNotes, type FinalistNoteResult } from "./curador-vault-tools"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
 import { normalizarSecao, podeRepetir } from "./repeticao"
 import {
@@ -78,6 +77,78 @@ export function contratosDoCatalogo(sections: Array<{ variantes: Array<{ variant
 }
 
 const SHADOW_TOP_N = 1
+const SHORTLIST_TOP_N = 3
+
+export const DEFAULT_CURADOR_SHORTLIST_SYSTEM = `Você é o Curador de Componentes da Convertfy na etapa de SHORTLIST.
+A estrutura e os papéis já foram decididos. Compare TODAS as variantes do índice compacto e selecione até 3 finalistas por posição. Não escolha a vencedora ainda e não invente ids.
+
+<protocolo>{{protocolo}}</protocolo>
+<indice_compacto>{{catalogo}}</indice_compacto>
+<convivencia>{{convivencias}}</convivencia>
+
+Responda APENAS um array JSON:
+[{"block_index":0,"escolhas":[{"variant_id":"...","motivo":"encaixe e risco principal"}]}]
+
+Inclua toda posição da estrutura. Use escolhas vazias somente quando nenhuma variante da seção sobreviver às restrições.`
+
+/** Shortlist estrita: nunca aceita variante de outra seção como fallback. */
+export function parseValidatedShortlist(input: {
+  raw: string
+  sections: string[]
+  typeIndex: Map<string, string>
+  aliasIndex?: Map<string, string>
+}): ParsedRanking {
+  const parsed = parseCuratorRanking({ ...input, maxPerBlock: SHORTLIST_TOP_N })
+  try {
+    const rawItems = JSON.parse(extractJson(input.raw)) as unknown
+    const mentioned = new Set(
+      Array.isArray(rawItems)
+        ? rawItems.map((item) => item && typeof item === "object" ? (item as { block_index?: unknown }).block_index : null)
+            .filter((v): v is number => typeof v === "number" && Number.isInteger(v))
+        : [],
+    )
+    if (input.sections.some((_, i) => !mentioned.has(i))) parsed.malformed = true
+  } catch {
+    parsed.malformed = true
+  }
+  for (const [block, choices] of parsed.byBlock) {
+    const expected = normalizarSecao(input.sections[block] ?? "")
+    const strict = choices.filter((choice) => normalizarSecao(input.typeIndex.get(choice.variant_id) ?? "") === expected)
+    if (strict.length) parsed.byBlock.set(block, strict)
+    else parsed.byBlock.delete(block)
+  }
+  parsed.emptyBlocks = input.sections.map((_, i) => i).filter((i) => !parsed.byBlock.has(i))
+  return parsed
+}
+
+export function renderFinalistNotes(notes: readonly FinalistNoteResult[]): string {
+  if (notes.length === 0) return "(nenhuma finalista validada)"
+  return notes.map((note) => {
+    if (note.status === "opened") return `<finalista variant_id="${note.variant_id}" caminho="${note.file_path ?? ""}">\n${note.body ?? ""}\n</finalista>`
+    if (note.status === "missing") return `<finalista variant_id="${note.variant_id}" status="sem_nota_sincronizada" />`
+    return `<finalista variant_id="${note.variant_id}" status="erro_de_banco" />`
+  }).join("\n\n")
+}
+
+/** A decisão final só pode consumir ids autorizados NAQUELA posição. */
+export function restrictRankingToShortlist(
+  ranking: ParsedRanking,
+  shortlist: ParsedRanking,
+  positions: number,
+): ParsedRanking {
+  const byBlock = new Map<number, RankedChoice[]>()
+  for (const [block, choices] of ranking.byBlock) {
+    const allowed = new Set((shortlist.byBlock.get(block) ?? []).map((c) => c.variant_id))
+    const valid = choices.filter((choice) => allowed.has(choice.variant_id))
+    if (valid.length) byBlock.set(block, valid)
+    for (const choice of choices) {
+      if (!allowed.has(choice.variant_id)) ranking.invalidIds.push(choice.variant_id)
+    }
+  }
+  ranking.byBlock = byBlock
+  ranking.emptyBlocks = Array.from({ length: positions }, (_, i) => i).filter((i) => !byBlock.has(i))
+  return ranking
+}
 
 /**
  * O que entra no lugar de um bloco que a decisão do Estruturador substitui.
@@ -175,7 +246,7 @@ Você decide pelo protocolo, pelos eixos e pelos metadados. Você NÃO recebe o 
 </protocolo_de_selecao>
 
 <biblioteca>
-Índice compacto, agrupado por tipo de seção. Cada linha contém somente variant_id, título, seção (no cabeçalho), primeira frase, requisitos estruturais e eixos resumidos. A primeira frase e os requisitos vêm do cadastro do sistema, e ele é a fonte de verdade; os eixos do vault acrescentam contexto, nunca o contradizem. A ordem é alfabética e NÃO carrega julgamento.
+Índice compacto completo, agrupado por tipo de seção. Dentro de cada tipo a ordem é alfabética e NÃO carrega julgamento. Cada linha traz identidade, primeira frase, contrato anatômico e eixos resumidos; as notas completas chegam separadamente apenas para as finalistas. O cadastro do sistema descreve a peça que será REALMENTE montada e prevalece sobre prosa divergente do vault.
 {{catalogo}}
 </biblioteca>
 
@@ -188,7 +259,7 @@ Como decidir, na ordem:
 1. LER A PROPOSTA DO ESTRUTURADOR: <decisao_do_estruturador> é o critério DOMINANTE por posição. Para cada posição de <estrutura_do_email>, extraia do \`estrutura[].papel\` (com \`adaptacao\` e \`porque\`) o que a ANATOMIA do bloco precisa ter para realizar aquele papel — quantos produtos mostra, se leva cupom em texto real, se tem depoimento com nome e nota, se isola em fundo contrastante, se abre ou fecha a peça, quantos itens de lista, se pede foto de uso real. É contra ISSO que as variantes são medidas. O \`fio_narrativo\` diz como as posições se ligam: as escolhas têm de conversar entre si (peso, convivência, linguagem visual) e com o arco. Os \`descartes\` dizem o que foi tirado de propósito — não recoloque o dispositivo por outra via (ex.: CTA isolado descartado não volta como body de CTA pesado). A objeção dominante do \`diagnostico\` é o alvo do eixo \`objecao\`. A sequência é FIXA. Não remova, não acrescente, não reordene, não substitua seção nenhuma. Papel vence memória e preferência estética; marca e viabilidade (produtos/dados) continuam vetos.
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
-   Selecione primeiro as poucas finalistas pelo índice e chame \`selecionar_finalistas\`. Só depois use \`ler_nota\`, exclusivamente para abrir as notas completas dessas finalistas. Não use \`listar_pasta\`; no máximo 4 consultas.
+   As notas completas das finalistas foram carregadas pelo sistema em <notas_das_finalistas>. Ausência explícita de nota não elimina uma candidata; reduz apenas a evidência disponível. Você não pode escolher variante fora das finalistas.
 2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
@@ -642,8 +713,6 @@ export interface CuradorShadowParams {
   estruturadorOn?: boolean
   /** Índice de pastas do Obsidian (consulta sob demanda). */
   indiceDoVault?: IndiceDoVault
-  /** Ferramentas de consulta ao vault; ausente = call sem ferramentas. */
-  ferramentas?: Pick<InvokeWithToolsOptions, "tools" | "executar" | "maxCalls">
   /**
    * `on` = este call É o Curador: a saída volta para o pipeline. `shadow` =
    * ensaio em paralelo ao kimi, nada é consumido. Default shadow para o call
@@ -768,25 +837,25 @@ export async function runCuradorShadow(
     const systemVars = {
       protocolo: buildProtocoloBlock(p.vault),
       convivencias: buildConvivenciaBlock(p.vault),
-      catalogo: p.catalogComExtras.enxuto,
+      catalogo: p.catalogComExtras.compact.text,
     }
 
     const catalogSha8 = crypto
       .createHash("sha256")
-      .update(p.catalogComExtras.enxuto)
+      .update(p.catalogComExtras.compact.text)
       .digest("hex")
       .slice(0, 8)
-    const systemResolvido = interpolateSystem(config.system_prompt, systemVars)
+    const systemResolvido = interpolateSystem(DEFAULT_CURADOR_SHORTLIST_SYSTEM, systemVars)
     const segUser = buildSegmentedPrompt(config.user_template, vars, {
       ...p.origins,
       aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
       lacunas_biblioteca: { cls: "vault", rotulo: "Lacunas da biblioteca — email_vault_docs (componentes/lacunas)" },
       indice_vault: { cls: "vault", rotulo: "Índice de pastas do Obsidian — file_path das tabelas do vault" },
     }, { parte: "user" })
-    const segSystem = buildInterpolatedSegments(config.system_prompt, systemVars, {
+    const segSystem = buildInterpolatedSegments(DEFAULT_CURADOR_SHORTLIST_SYSTEM, systemVars, {
       catalogo: {
         cls: "biblioteca",
-        rotulo: `Catálogo da biblioteca — ${p.catalogComExtras.total} variantes + eixos do vault`,
+        rotulo: `Índice compacto da biblioteca — ${p.catalogComExtras.total} variantes`,
         ref: "catalogo",
         sha8: catalogSha8,
       },
@@ -799,7 +868,7 @@ export async function runCuradorShadow(
     )
     const inputSummary: InputSummaryItem[] = [
       {
-        rotulo: modo === "on" ? "Curador (vault)" : "Shadow do Curador",
+        rotulo: modo === "on" ? "Curador (vault) — shortlist" : "Shadow do Curador — shortlist",
         cls: "sistema",
         valor:
           modo === "on"
@@ -807,7 +876,7 @@ export async function runCuradorShadow(
             : `${modelo} · contrato ampliado (ensaio) — saída NÃO consumida`,
       },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
-      { rotulo: "Catálogo + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
+      { rotulo: "Índice compacto + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
       {
@@ -825,7 +894,7 @@ export async function runCuradorShadow(
       {
         rotulo: "Índice do vault (Obsidian)",
         cls: "vault",
-        valor: `${(p.indiceDoVault?.pastas ?? []).length} pasta(s) · consulta sob demanda ${p.ferramentas ? `(até ${p.ferramentas.maxCalls ?? 4})` : "desligada"}`,
+        valor: `${(p.indiceDoVault?.pastas ?? []).length} pasta(s) · notas das finalistas carregadas em lote`,
       },
       ...(p.baseInputSummary ?? []),
     ]
@@ -851,35 +920,62 @@ export async function runCuradorShadow(
       inputSummary,
     })
 
-    // Com ferramentas o modelo pode consultar o Obsidian antes de responder;
-    // cada consulta fica em `consultas` (telemetria) e os tokens somam todas
-    // as voltas.
-    const acessoFinalistas = p.ferramentas
-      ? executorRestritoAFinalistas(
-          p.ferramentas.executar,
-          p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => ({ variant_id: v.variant_id, slug: v.vault?.slug }))),
-        )
-      : null
-    const res = p.ferramentas
-      ? await invokeAgentWithTools(config, vars, systemVars, {
-          tools: p.ferramentas.tools,
-          executar: acessoFinalistas!.executar,
-          maxCalls: p.ferramentas.maxCalls ?? 4,
-          // Resposta sem JSON → uma volta a mais pedindo só o JSON, com o
-          // histórico. Antes disso a resposta ia direto para
-          // `shadow_json_ilegivel` e o legado escolhia sem ver nada.
-          ...(retomadaLigada()
-            ? {
-                retomada: {
-                  precisa: motivoDeRetomada,
-                  mensagem: MENSAGEM_RETOMADA_JSON,
-                  maxTokens,
-                  prefill: PREFILL_RETOMADA_JSON,
-                },
-              }
-            : {}),
-        })
-      : { ...(await invokeAgent(config, vars, systemVars)), consultas: [] as ToolCallLog[], voltas: 1, fallback_sem_ferramentas: false }
+    // Progressive disclosure em duas chamadas. A shortlist vê apenas o
+    // índice; o código valida ids/seções e carrega TODAS as notas em lote.
+    const shortlistCall = await invokeAgent(
+      { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: Math.min(maxTokens, 5000) },
+      vars,
+      systemVars,
+    )
+    const shortlist = parseValidatedShortlist({
+      raw: shortlistCall.raw,
+      sections: p.liveSections,
+      typeIndex: p.typeIndex,
+      aliasIndex: p.aliasIndex,
+    })
+    if (shortlist.malformed || shortlist.byBlock.size === 0) {
+      throw new Error("curador_shortlist_invalida")
+    }
+    const finalistIds = Array.from(new Set(Array.from(shortlist.byBlock.values()).flatMap((choices) => choices.map((c) => c.variant_id))))
+    const finalistNotes = await loadFinalistNotes(finalistIds)
+    const finalVars = { ...vars, finalistas_notas: renderFinalistNotes(finalistNotes) }
+    const finalConfig = {
+      ...config,
+      user_template: `${config.user_template}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
+    }
+    let finalCall = await invokeAgent(finalConfig, finalVars, systemVars)
+    let retomada: { feita: boolean; motivo: string; erro?: string; prefill_usado: boolean } | undefined
+    // Uma retomada curta preserva o comportamento de recuperação do JSON,
+    // sem reabrir ferramentas nem refazer a shortlist.
+    const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
+    if (retomadaLigada() && motivoRetomada) {
+      const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
+      const retry = await invokeAgent(
+        { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
+        retryVars,
+        systemVars,
+      )
+      finalCall = {
+        ...retry,
+        tokensInput: finalCall.tokensInput + retry.tokensInput,
+        tokensOutput: finalCall.tokensOutput + retry.tokensOutput,
+        costUsd: finalCall.costUsd + retry.costUsd,
+      }
+      retomada = { feita: true, motivo: motivoRetomada, prefill_usado: false }
+    }
+    const res = {
+      ...finalCall,
+      tokensInput: shortlistCall.tokensInput + finalCall.tokensInput,
+      tokensOutput: shortlistCall.tokensOutput + finalCall.tokensOutput,
+      costUsd: shortlistCall.costUsd + finalCall.costUsd,
+      consultas: [],
+      voltas: retomada?.feita ? 3 : 2,
+      fallback_sem_ferramentas: false,
+      shortlist,
+      finalistNotes,
+      finalistIds,
+      retomada,
+    }
     const parsed = parseCuradorVaultOutput(res.raw)
     // A sequência é a da ARQUITETURA, sempre. O guard casa os papéis contra
     // ela e registra o que o agente tentou mudar; o `block_index` das
@@ -890,14 +986,16 @@ export async function runCuradorShadow(
     )
     const divergencia = resumoDaDivergencia(conformidade)
     const sections = p.liveSections
+    const finalistTypeIndex = new Map(
+      res.finalistIds.map((id) => [id, p.typeIndex.get(id) ?? ""]),
+    )
     const ranking = parsed
-      ? parseCuratorRanking({
+      ? restrictRankingToShortlist(parseCuratorRanking({
           raw: parsed.escolhasRaw,
           sections,
-          typeIndex: p.typeIndex,
-          aliasIndex: p.aliasIndex,
+          typeIndex: finalistTypeIndex,
           maxPerBlock: SHADOW_TOP_N,
-        })
+        }), res.shortlist, sections.length)
       : null
 
     const sectionByBlock = new Map(sections.map((s, i) => [i, s]))
@@ -951,6 +1049,30 @@ export async function runCuradorShadow(
       // cortava justamente a parte que explicava a eliminação.
       rawOutput: res.raw.slice(0, 32_000),
       parsedOutput: {
+        progressive_disclosure: {
+          initial_variants: p.catalogComExtras.total,
+          finalists: res.finalistIds,
+          notes_opened: res.finalistNotes.filter((n) => n.status === "opened").map((n) => n.variant_id),
+          notes_missing: res.finalistNotes.filter((n) => n.status === "missing").map((n) => n.variant_id),
+          notes_database_error: res.finalistNotes.filter((n) => n.status === "database_error").map((n) => n.variant_id),
+          note_sources: res.finalistNotes.map((n) => ({
+            variant_id: n.variant_id,
+            status: n.status,
+            file_path: n.file_path,
+            chars: n.body?.length ?? 0,
+            sha8: n.body ? crypto.createHash("sha256").update(n.body).digest("hex").slice(0, 8) : null,
+          })),
+          segments: {
+            full_catalog_baseline: { chars: p.catalogComExtras.json.length, tokens_estimated: Math.ceil(p.catalogComExtras.json.length / 4) },
+            compact_index: { chars: p.catalogComExtras.compact.text.length, tokens_estimated: Math.ceil(p.catalogComExtras.compact.text.length / 4) },
+          },
+          reduction: {
+            chars: p.catalogComExtras.json.length - p.catalogComExtras.compact.text.length,
+            percent_chars: p.catalogComExtras.json.length > 0
+              ? Math.round((1 - p.catalogComExtras.compact.text.length / p.catalogComExtras.json.length) * 1000) / 10
+              : 0,
+          },
+        },
         shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
         curador_vault_mode: modo,

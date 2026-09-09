@@ -135,6 +135,59 @@ interface LinhaDeNota {
   variant_id?: string | null
 }
 
+export interface FinalistNoteResult {
+  variant_id: string
+  status: "opened" | "missing" | "database_error"
+  file_path: string | null
+  body: string | null
+  error?: string
+}
+
+/**
+ * Carrega as notas das finalistas em UMA consulta. A shortlist já foi
+ * validada contra o catálogo ativo; por isso o modelo não escolhe caminhos
+ * nem ganha uma ferramenta de navegação na etapa final.
+ */
+export async function loadFinalistNotes(
+  variantIds: readonly string[],
+): Promise<FinalistNoteResult[]> {
+  const ids = Array.from(new Set(variantIds.filter(Boolean)))
+  if (ids.length === 0) return []
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from(TABELA_COMPONENTES)
+    .select("variant_id, file_path, body_md")
+    .eq("is_active", true)
+    .eq("kind", "variante")
+    .in("variant_id", ids)
+
+  if (error) {
+    log.warn("finalist_notes_load_failed", { ids: ids.length, error: error.message })
+    return ids.map((variant_id) => ({
+      variant_id,
+      status: "database_error",
+      file_path: null,
+      body: null,
+      error: error.message,
+    }))
+  }
+
+  const byId = new Map(
+    ((data ?? []) as Array<{ variant_id: string; file_path: string; body_md: string }>).map((row) => [row.variant_id, row]),
+  )
+  return ids.map((variant_id) => {
+    const row = byId.get(variant_id)
+    if (!row) return { variant_id, status: "missing" as const, file_path: null, body: null }
+    const clean = (row.body_md ?? "").trim()
+    return {
+      variant_id,
+      status: "opened" as const,
+      file_path: row.file_path,
+      body: clean.length <= NOTA_MAX_CHARS ? clean : `${clean.slice(0, NOTA_MAX_CHARS)}\n(… nota truncada)`,
+    }
+  })
+}
+
 /**
  * Quais destes ids estão DESATIVADOS na biblioteca.
  *
