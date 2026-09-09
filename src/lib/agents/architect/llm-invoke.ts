@@ -17,7 +17,7 @@ import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
 import {
-  isInsufficientCreditsMessage,
+  ehCreditoEsgotado,
   OpenRouterHttpError,
   OpenRouterMidStreamError,
   parseOpenRouterBody,
@@ -349,7 +349,8 @@ async function callOnceArchitect(
     if (!resp.ok) {
       const errBody = await resp.text().catch(() => "")
       // Sem crédito → alerta CTO (deduplicado). Fire-and-forget.
-      if (resp.status === 402 || isInsufficientCreditsMessage(errBody)) {
+      // In-flight fica FORA: é espera, não recarga.
+      if (ehCreditoEsgotado(resp.status, errBody)) {
         void import("../generation-notify.service")
           .then((m) =>
             m.notifyCreditsExhausted({

@@ -23,6 +23,7 @@ import {
   isOpenRouterModel,
   OpenRouterEmptyBodyError,
   OpenRouterHttpError,
+  ehCreditoEsgotado,
   OpenRouterMidStreamError,
   parseOpenRouterBody,
   withOpenRouterRetry,
@@ -324,6 +325,30 @@ describe("invokeOpenRouter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  // O 402 in-flight NÃO é o 402 acima: é saldo RESERVADO para uma chamada
+  // que ainda não liquidou, e some sozinho em segundos. Tratado como
+  // permanente, derrubou runs em 4 dos 12 batches de 09/09.
+  it("HTTP 402 in-flight → retryable, retenta e recupera", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        textResponse(
+          402,
+          '{"error":{"message":"This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle."}}',
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          choices: [{ message: { content: "liquidou" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+    const out = await invokeOpenRouter(baseInput)
+    expect(out.text).toBe("liquidou")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it("HTTP 503 → retryable, retenta uma vez", async () => {
     const fetchMock = vi
       .fn()
@@ -353,6 +378,55 @@ describe("invokeOpenRouter", () => {
 })
 
 // ── isOpenRouterModel ──────────────────────────────────────────────────
+
+describe("402: crédito esgotado × saldo em voo", () => {
+  const inFlightBody =
+    '{"error":{"message":"This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle.","code":402}}'
+
+  it("in-flight marca a flag e vira retryable; crédito zerado não", () => {
+    const voo = new OpenRouterHttpError({ status: 402, snippet: inFlightBody })
+    expect(voo.inFlight).toBe(true)
+    expect(voo.retryable).toBe(true)
+
+    const zerado = new OpenRouterHttpError({
+      status: 402,
+      snippet: "insufficient credits",
+    })
+    expect(zerado.inFlight).toBe(false)
+    expect(zerado.retryable).toBe(false)
+  })
+
+  it("in-flight NÃO dispara o alerta de crédito esgotado ao CTO", () => {
+    expect(ehCreditoEsgotado(402, inFlightBody)).toBe(false)
+    expect(ehCreditoEsgotado(402, "insufficient credits")).toBe(true)
+    // o caminho da Anthropic chega sem status
+    expect(ehCreditoEsgotado(0, "credit balance is too low")).toBe(true)
+  })
+
+  it("a espera do in-flight começa em 3s, não em 1s", async () => {
+    // 1s não faz a chamada anterior liquidar — a tentativa queima o mesmo
+    // erro e gasta a única retentativa.
+    const esperas: number[] = []
+    const voo = new OpenRouterHttpError({ status: 402, snippet: inFlightBody })
+    const attempt = vi.fn().mockRejectedValueOnce(voo).mockResolvedValue("ok")
+    await withOpenRouterRetry(attempt, {
+      sleep: async (ms) => {
+        esperas.push(ms)
+      },
+    })
+    expect(esperas).toEqual([3000])
+
+    esperas.length = 0
+    const outro = Object.assign(new Error("upstream busy"), { retryable: true })
+    const attempt2 = vi.fn().mockRejectedValueOnce(outro).mockResolvedValue("ok")
+    await withOpenRouterRetry(attempt2, {
+      sleep: async (ms) => {
+        esperas.push(ms)
+      },
+    })
+    expect(esperas).toEqual([1000])
+  })
+})
 
 describe("isOpenRouterModel", () => {
   it("true para id 'vendor/model'", () => {
