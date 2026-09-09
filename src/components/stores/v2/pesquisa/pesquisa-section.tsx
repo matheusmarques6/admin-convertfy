@@ -36,11 +36,13 @@ import {
   StarvingCrowdScorecard,
   UniqueMechanism,
   ObjectionList,
+  FichaOperacionalCard,
   ObjectionCatalogEmpty,
   ObjectionCatalogPanel,
   VocabularyList,
 } from "./primitives"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
+import { fichaSugeridaDaLoja, type FichaOperacional } from "@/lib/stores/ficha-operacional"
 import { EditMarcaModal } from "./editors/edit-marca"
 import { EditLojaModal } from "./editors/edit-loja"
 import { EditIcpModal } from "./editors/edit-icp"
@@ -102,6 +104,11 @@ export interface PesquisaData {
   objection_catalog?: CatalogoDeObjecoes | null
   objection_catalog_source?: "catalogador_v2" | "manual" | "legacy_import" | null
   objection_catalog_updated_at?: string | null
+  /** Ficha operacional verificada pelo time (09/09) — vence a pesquisa no Catalogador. */
+  ficha_operacional?: FichaOperacional | null
+  frete_prazo?: string | null
+  frete_gratis_acima_cents?: number | null
+  devolucao_politica?: string | null
   icp_vocabulary?: {
     type: "Dor" | "Desejo" | "Objeção" | "Marca"
     channel: string
@@ -235,6 +242,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
     }
   }, [initialData, reload])
 
+  const [savingFicha, setSavingFicha] = useState(false)
   const patch = async (update: Partial<PesquisaData>) => {
     setData((prev) => ({ ...prev, ...update }))
     await fetch(`/api/admin/stores/${storeId}/context`, {
@@ -673,6 +681,23 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               hasCatalog={Boolean(data.objection_catalog)}
             />
           )}
+
+          {/* Ficha operacional (09/09): o dado verificado que o Catalogador e o
+              Seletor tratam como fato. Salvar carimba o catálogo existente. */}
+          <FichaOperacionalCard
+            ficha={data.ficha_operacional ?? null}
+            sugestao={fichaSugeridaDaLoja(data)}
+            saving={savingFicha}
+            onSave={async (f) => {
+              setSavingFicha(true)
+              try {
+                await patch({ ficha_operacional: f })
+                await reload()
+              } finally {
+                setSavingFicha(false)
+              }
+            }}
+          />
 
           {/* Sem catálogo: o gesto por loja para rodar o Catalogador. Fica FORA da
               condição do ObjectionList para a loja com só a tese da marca (sem
