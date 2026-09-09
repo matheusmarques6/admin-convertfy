@@ -3,7 +3,7 @@
  * final do email.
  *
  * Contexto: o QA agent (LLM) está DESLIGADO por decisão de produto
- * (EMAIL_QA_ENABLED != 'true' — reprovava emails legítimos). Com isso o
+ * (outrora `EMAIL_QA_ENABLED != 'true'`; agora `EMAIL_QA_MODE=off`). Com isso o
  * pipeline gravava `qa_issues: []` sempre e problemas visíveis de formatação
  * (sem link de unsubscribe, links "#", imagem sem alt, layout sem tabela)
  * chegavam ao designer sem nenhum aviso.

@@ -22,8 +22,6 @@
 
 import { createHash } from "crypto"
 
-import type { SupabaseClient } from "@supabase/supabase-js"
-
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type {
@@ -42,10 +40,8 @@ import type {
 import {
   generateEmailImage,
   DEFAULT_IMAGE_PROMPT_TEMPLATE,
-  renderImagePrompt,
   OPENROUTER_IMAGE_MODEL,
 } from "./chains/image.chain"
-import { renderImageTemplate } from "./image/template-renderer"
 import {
   deriveToneKeys,
   deriveFieldNature,
@@ -76,6 +72,7 @@ import {
   runSchemaChecks,
   type SchemaCheckBlueprintBlock,
 } from "./chains/qa.chain"
+import { getQaMode } from "./chains/qa-mode"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
@@ -107,11 +104,8 @@ import { renderWhitelistForPrompt } from "./refiner/font-whitelist"
 import { pesoNumerico } from "./html/hero-graft"
 import { attachUsage, usageOf } from "./chains/step-usage"
 import {
-  buildSegmentedPrompt,
-  concatSegments,
   type InputSummaryItem,
   type PromptSegment,
-  type SegmentOrigin,
 } from "./shared/prompt-provenance"
 import {
   loadFormatChainContext,
@@ -1985,14 +1979,12 @@ export async function runPhase2Image(
 }
 
 /**
- * QA agent flag. REMOVIDO do fluxo (natural e teste) por decisao de produto:
+ * Modo do QA. `EMAIL_QA_MODE` separa observação de bloqueio; a flag booleana
+ * antiga continua compatível e equivale a `enforce`.
  * o agente vinha reprovando emails legitimos (`qa_failed`) e travando a
- * entrega. Default DESLIGADO. Reativar com `EMAIL_QA_ENABLED=true`.
+ * entrega. Default SHADOW para observar sem bloquear; bloquear
+ * somente com `EMAIL_QA_MODE=enforce` (`EMAIL_QA_ENABLED=true` é legado).
  */
-function isQaEnabled(): boolean {
-  return process.env.EMAIL_QA_ENABLED === "true"
-}
-
 /**
  * Phase 2 — etapa 2 (HTML + QA).
  *
@@ -4119,13 +4111,13 @@ export async function runPhase2HtmlQa(
     })
   }
 
-  // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
+  // ── QA fora do fluxo somente quando EMAIL_QA_MODE=off ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem qa_failed. As checagens DETERMINISTICAS (computeRenderChecks — sem
   // LLM) continuam rodando: NAO bloqueiam, so persistem issues informativos
   // em qa_issues pra dar visibilidade de formatacao ao designer.
   // Claim atomico `rendering -> ready` mantem idempotencia.
-  if (!isQaEnabled()) {
+  if (getQaMode() === "off") {
     // Contrato do bloco: copy estourando `max_len` e campo obrigatório
     // vazio. O check já existia, mas SÓ dentro do agente de QA — com o QA
     // desligado (que é o caso desta loja) ninguém era avisado. Na Luxe
@@ -4300,7 +4292,8 @@ export async function runPhase2HtmlQa(
   // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
   // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
   const contentReprova = contentIssues.some((i) => i.severity === "high")
-  if (!qaResult.passed || contentReprova) {
+  const qaMode = getQaMode()
+  if (qaMode === "enforce" && (!qaResult.passed || contentReprova)) {
     await admin
       .from("email_flow_emails")
       .update({
@@ -4316,6 +4309,14 @@ export async function runPhase2HtmlQa(
     if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
     log.info("phase2.qa.blocked", { emailId, issuesCount: qaResult.issues.length })
     return { status: "failed" }
+  }
+
+  if (qaMode === "shadow" && (!qaResult.passed || contentReprova)) {
+    log.info("phase2.qa.shadow_would_block", {
+      emailId,
+      issuesCount: qaResult.issues.length,
+      contentReprova,
+    })
   }
 
   // ── Sucesso: status='ready' ──────────────────────────────────────────
@@ -4350,5 +4351,3 @@ export async function runPhase2InBackground(
     await runPhase2HtmlQa(params)
   }
 }
-
-

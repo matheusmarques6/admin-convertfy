@@ -80,7 +80,7 @@ flowchart LR
 | Agente | Modelo ativo | T | max_tokens | Observação |
 |---|---|---|---|---|
 | estruturador | `anthropic/claude-sonnet-4.6` | 0.4 | 8192 | seed 4096 já corrigido no banco |
-| assembler_chooser (Curador) | `moonshotai/kimi-k3` | 0.2 | 8192 | catálogo inteiro no system (cacheável) |
+| assembler_chooser (Curador) | `moonshotai/kimi-k3` | 0.2 | 8192 | shortlist por índice compacto + decisão com notas finalistas |
 | assembler (Montador) | `moonshotai/kimi-k3` | 0.3 | 2048 | só escolhe JSON (~500 tokens); default in-code opus‑4.8 é apenas fallback |
 | blueprint (rota LLM) | `moonshotai/kimi-k3` | 0.4 | 8192 | rota determinística grava `model='deterministic'` |
 | subject | `anthropic/claude-sonnet-4.6` | 0.7 | 400 | mini‑LLM da rota determinística |
@@ -91,7 +91,7 @@ flowchart LR
 | text_format | `moonshotai/kimi-k3` | 0.3 | 65536 | quase sempre **pulado** (merge por example) |
 | image_format | `moonshotai/kimi-k3` | — | — | config é só kill‑switch: step é **100% código** |
 | color_format | `moonshotai/kimi-k3` | 0.3 | 16384 | fail‑open |
-| qa | `moonshotai/kimi-k3` | 0.2 | 1500 | LLM desligado por default (`EMAIL_QA_ENABLED`) |
+| qa | `moonshotai/kimi-k3` | 0.2 | 1500 | LLM em observação por default (`EMAIL_QA_MODE=shadow`) |
 | merge_verifier | `moonshotai/kimi-k3` | — | — | **config órfã** — agente morto em 20/08 |
 
 Briefing (etapa 0) não usa `email_agent_configs`: cascata hardcoded `claude-sonnet-4-6` (Anthropic) → `openai/gpt-5.3-chat` (OpenRouter) → template determinístico.
@@ -192,7 +192,7 @@ Decide o **esqueleto** do email (sequência de seções + papel narrativo por po
 
 ## 2 · Curador (`assembler_chooser`)
 
-Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) e rankeia até **3 variantes por posição** (motivo só na 1ª). Decide por nome/descrição/metadados — **nunca vê HTML nem output_schema**. **Fail-closed**: sem ranking utilizável após retry → `CuratorFailedError` (falha visível, sem composição arbitrária).
+Roda em **duas etapas explícitas**: primeiro recebe o índice compacto da biblioteca e seleciona até 3 finalistas por posição; depois o código valida ids/seções, carrega todas as notas dessas finalistas em uma consulta e o modelo escolhe uma vencedora. Nunca vê HTML nem `output_schema` integral. **Fail-closed**: shortlist ou ranking final inutilizável cai no fallback visível, sem composição arbitrária.
 
 **Modelo**: `moonshotai/kimi-k3` · T 0.2 · max 8192 · timeout 240s · retry 1×.
 
@@ -200,11 +200,11 @@ Recebe o **catálogo inteiro** da biblioteca no system (cacheável entre lojas) 
 
 | Entrada | Origem | Classe |
 |---|---|---|
-| `{{catalogo}}` (system) | `buildCatalog` sobre `email_component_variants` ativas e **preenchíveis** (`variantIsFillable`): name, description, quando_usar/não_usar, objectives, tones, density, product_slots, orientação de copy, notas | biblioteca |
+| `{{catalogo}}` (system) | índice compacto tipado de `buildCatalog`: id, título, primeira frase, contrato anatômico e eixos resumidos; campos integrais não entram | biblioteca |
 | `blocks_json` (sequência) | posições do Estruturador (modo on) **ou** `resolveStructure(email_outline_templates.suggested_blocks, email_blueprints.blocks)` + `clampStructure`; posição com **`intencao`** = purpose escrito na aba Arquitetura (`anexarIntencoes`) | upstream / sistema / curadoria |
 | `estruturador_decisao` | saída **completa** do Estruturador em JSON (`decisaoCompletaParaCurador`) — só em modo `on` com run ok. No Curador do **vault** (o vigente) entra no bloco `<decisao_do_estruturador>` e é o critério DOMINANTE por posição; com ela, `<estruturas_de_referencia>` e `<outline>` são omitidos | upstream |
 | `lacunas_biblioteca` (vault) | `email_vault_docs` kind `lacuna` (`componentes/lacunas/*.md`), das seções do email — `buildLacunasBlock`; lacuna pesa contra, não elimina | vault |
-| `indice_vault` (vault) | árvore de pastas do Obsidian derivada do `file_path` das 4 tabelas sincronizadas (`buildIndiceDoVault`) + ferramentas `listar_pasta`/`ler_nota` (`curador-vault-tools.ts`, até 4 consultas por run via `invokeAgentWithTools`); cada consulta fica em `consultas_ao_vault` na telemetria | vault |
+| notas das finalistas | `email_vault_docs` carregado em lote por `variant_id` depois da shortlist validada; nota ausente permanece elegível e é marcada explicitamente | vault |
 | `outline_objective` / `tone_hint` | `email_outline_templates` | curadoria |
 | `outline_guidance` | `fio_narrativo` do Estruturador (on) **ou** `email_outline_templates.guidance` | upstream / curadoria |
 | `intencao_flow` / `intencao_email` | `email_intents` (clamp 4000) | vault |
@@ -491,7 +491,7 @@ foto que já cobre o box → `sem_ajuste`. Falha por box é fail-open.
 
 ## 14 · QA
 
-Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vazios, hrefs), `runSchemaChecks` (`max_len`/required vs fields v2 — só `nature='copy'`), `runGlobalDocChecks` (placeholders/tokens sobrando, img sem src, contagem vs blueprint), `computeRenderChecks` (unsubscribe, alts, contraste WCAG). O **veredito LLM** só roda com `EMAIL_QA_ENABLED=true` (**default OFF** — email vai a `ready` direto com issues informativas). Com QA ligado: `passed` = nenhuma issue ≥ `EMAIL_QA_BLOCK_SEVERITY` (default high), computado em **código**.
+Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vazios, hrefs), `runSchemaChecks` (`max_len`/required vs fields v2 — só `nature='copy'`), `runGlobalDocChecks` (placeholders/tokens sobrando, img sem src, contagem vs blueprint), `computeRenderChecks` (unsubscribe, alts, contraste WCAG). O veredito LLM usa `EMAIL_QA_MODE=off|shadow|enforce` (**default `shadow`**). `shadow` executa o QA, persiste issues e segue para `ready`; `enforce` aplica `EMAIL_QA_BLOCK_SEVERITY` (default high). `EMAIL_QA_ENABLED=true` permanece como alias legado de `enforce`; `false` desliga explicitamente.
 
 **Modelo (LLM)**: `moonshotai/kimi-k3` · T 0.2 · max 1500 · timeout 60s (+1 retry de reformatação).
 
@@ -502,6 +502,7 @@ Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vaz
 | `blocks_json` | `email_blocks.content` (copy esperada) | upstream |
 | `briefing_json` / `brand_json` | `store_briefings.*` / `store_brand_identity.*` | loja |
 | `blueprint_objective` | blueprint efetivo | upstream |
+| `advisor_max_notes` | busca semântica + full-text na base ativa `Advisors/Max`; até 3 notas relevantes, com teto de contexto e proveniência | vault |
 | `MERGE_TAGS_INSTRUCTION` | apêndice fixo in-code (nunca flagar merge tags de ESP) | agente |
 
 **Saídas**: `email_flow_emails.qa_issues` + status terminal (`ready` / `failed: qa_failed`).
@@ -627,4 +628,3 @@ Welcome 1, batch `f576a00f`:
   corte de código. (2) Se ainda faltar, o merge remove o item INTEIRO —
   linha do texto + badge numerado acima — e transfere o `padding-bottom`
   ao item anterior (`itens_removidos` no run, motivo `item_removido`).
-

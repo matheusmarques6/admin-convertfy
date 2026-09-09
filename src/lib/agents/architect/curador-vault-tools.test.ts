@@ -36,6 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({
       const q = {
         _prefixo: null as string | null,
         _path: null as string | null,
+        _ids: null as string[] | null,
         select: () => q,
         eq: (col: string, val: unknown) => {
           if (col === "file_path") q._path = String(val)
@@ -44,6 +45,13 @@ vi.mock("@/lib/supabase/server", () => ({
         like: (_col: string, padrao: string) => {
           q._prefixo = padrao.replace(/%$/, "")
           return q
+        },
+        in: (_col: string, ids: string[]) => {
+          q._ids = ids
+          return Promise.resolve({
+            data: linhas.filter((r) => ids.includes(String(r.variant_id ?? ""))),
+            error: null,
+          })
         },
         order: () => q,
         limit: () =>
@@ -65,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { listarPasta, lerNota } from "./curador-vault-tools"
+import { listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -128,5 +136,14 @@ describe("ferramentas do vault — variante desativada não é servida", () => {
   it("pasta sem nota devolve texto, não erro", async () => {
     const saida = await listarPasta("componentes/inexistente")
     expect(saida).toContain("nenhuma nota sincronizada")
+  })
+})
+
+describe("notas das finalistas em lote", () => {
+  it("deduplica ids e distingue nota aberta de ausente", async () => {
+    const result = await loadFinalistNotes(["id-offer-3", "sem-nota", "id-offer-3"])
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({ variant_id: "id-offer-3", status: "opened" })
+    expect(result[1]).toEqual({ variant_id: "sem-nota", status: "missing", file_path: null, body: null })
   })
 })

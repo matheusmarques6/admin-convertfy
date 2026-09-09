@@ -167,9 +167,9 @@ Mecânica comum aos 4 steps: config própria em `email_agent_configs` (seed
 ## [8] QA (`qa`) — `chains/qa.chain.ts`
 
 - **Determinístico (sempre roda, custo 0)**: `computeRenderChecks` + `runDeterministicChecks` (`html_invalido`, `blocos_vazios`, `links_quebrados`) + `runSchemaChecks` contra os `fields` v2 (`campo_obrigatorio_vazio`, `copy_excede_max_len`). Não bloqueiam por default.
-- **LLM (só com `EMAIL_QA_ENABLED=true`)**: modelo da config (fallback `claude-sonnet-4-6`) · temp 0.2 · 1500 tokens · timeout 60s. Sem config ativa → degrade seguro (`model:'noop'`).
-- **Input (vars)**: `html`, `blocks_json`, `briefing_json`, `brand_json`, `blueprint_objective` + `MERGE_TAGS_INSTRUCTION` appendado sempre in-code (merge tags do provedor NÃO são link quebrado/compliance).
-- **Output**: `QaResult {passed, issues[{type,severity,message,location}], meta}` — 14 issue types; `passed` via `EMAIL_QA_BLOCK_SEVERITY` (default high). `!passed` → `failed: qa_failed`; senão → **`ready`**. Opcional: QA Vision (cap 3 imagens) valida paleta/cena/overlay da hero.
+- **LLM**: `EMAIL_QA_MODE=off|shadow|enforce` (default `shadow`; `EMAIL_QA_ENABLED=true` é alias legado de `enforce`, e `false` desliga). `shadow` executa e registra o veredito sem reprovar; `enforce` aplica o threshold. Modelo da config (fallback `claude-sonnet-4-6`) · temp 0.2 · 1500 tokens · timeout 60s. Sem config ativa → degrade seguro (`model:'noop'`).
+- **Input (vars)**: `html`, `blocks_json`, `briefing_json`, `brand_json`, `blueprint_objective`, views/contratos e `advisor_max_notes`. O QA busca por relevância até 3 notas ativas em `Advisors/Max`, com teto de contexto e falha aberta. Fatos da loja e contratos prevalecem sobre doutrina. `MERGE_TAGS_INSTRUCTION` é appendado sempre in-code (merge tags do provedor NÃO são link quebrado/compliance).
+- **Output**: `QaResult {passed, issues[{type,severity,message,location,evidence,expected,basis,source_path,confidence,suggested_action}], meta}` — os campos de auditoria são opcionais para compatibilidade histórica; `passed` usa `EMAIL_QA_BLOCK_SEVERITY` (default high). Só `enforce` transforma reprovação em `failed: qa_failed`; `shadow` segue para **`ready`**. Opcional: QA Vision (cap 3 imagens) valida paleta/cena/overlay da hero.
 
 ---
 
