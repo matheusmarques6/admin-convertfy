@@ -222,7 +222,14 @@ export const textareaCls =
  * inicial do nome sobre a cor de marcador do canal. `src` sobrescreve (o
  * brand kit do documento pode ter outra foto).
  */
-export function CtAvatar({ perfil, size = 24, src, className }: { perfil: Perfil | null | undefined; size?: number; src?: string | null; className?: string }) {
+/**
+ * Aceita QUALQUER coisa com nome/handle/cor/avatar — não o `Perfil` inteiro:
+ * a lista de reels desenha o avatar do responsável, que é uma pessoa do
+ * time e não um canal do Instagram.
+ */
+export type AvatarLike = Pick<Perfil, "nome" | "handle" | "cor" | "avatar">
+
+export function CtAvatar({ perfil, size = 24, src, className }: { perfil: AvatarLike | null | undefined; size?: number; src?: string | null; className?: string }) {
   const foto = src === undefined ? perfil?.avatar : src
   const nome = perfil?.nome ?? "Perfil"
   if (foto) {
@@ -251,7 +258,7 @@ export function CtCanalDot() {
   )
 }
 
-export function CtAvatarComCanal({ perfil, size = 24 }: { perfil: Perfil | null | undefined; size?: number }) {
+export function CtAvatarComCanal({ perfil, size = 24 }: { perfil: AvatarLike | null | undefined; size?: number }) {
   return (
     <span className="relative inline-flex">
       <CtAvatar perfil={perfil} size={size} />

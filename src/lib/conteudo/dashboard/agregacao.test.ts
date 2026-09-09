@@ -234,7 +234,7 @@ describe("totais, kpis, funil, mix", () => {
   })
 
   it("montarCadencia conta a semana corrente por perfil", () => {
-    const perfis: Perfil[] = [{ id: "c1", nome: "A", handle: null, cor: "#000", avatar: null, canal: "instagram", ativo: true, metaSemanal: 3, seguidores: null, erro: null }]
+    const perfis: Perfil[] = [{ id: "c1", nome: "A", handle: null, cor: "#000", avatar: null, canal: "instagram", ativo: true, metaSemanal: 3, cadenciaDias: [], cadenciaHora: null, seguidores: null, erro: null }]
     expect(montarCadencia(posts, perfis, "2026-09-05")[0]).toEqual({ perfil: "c1", feitos: 2, meta: 3 })
     expect(montarCadencia(posts, perfis, "2026-09-12")[0].feitos).toBe(0)
   })

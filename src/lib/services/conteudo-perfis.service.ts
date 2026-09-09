@@ -32,6 +32,10 @@ export interface ConteudoConfig {
   avatar_path?: string | null
   avatar_fetched_at?: string | null
   meta_semanal?: number
+  /** Dias da semana (0 = domingo) em que este perfil publica. */
+  cadencia_dias?: number[]
+  /** HH:MM do slot. */
+  cadencia_hora?: string
   last_media_sync_at?: string
   last_media_sync_error?: string | null
 }
@@ -77,6 +81,8 @@ export function perfilDoCanal(channel: ChannelRow, indice: number): Perfil {
     canal: "instagram",
     ativo: channel.is_active,
     metaSemanal: typeof cc.meta_semanal === "number" && cc.meta_semanal > 0 ? cc.meta_semanal : META_SEMANAL_PADRAO,
+    cadenciaDias: Array.isArray(cc.cadencia_dias) ? cc.cadencia_dias.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) : [],
+    cadenciaHora: typeof cc.cadencia_hora === "string" && /^\d{2}:\d{2}$/.test(cc.cadencia_hora) ? cc.cadencia_hora : null,
     seguidores: ultimo?.followers ?? cc.profile?.followers ?? null,
     erro: cc.profile_error ?? cc.last_media_sync_error ?? null,
   }

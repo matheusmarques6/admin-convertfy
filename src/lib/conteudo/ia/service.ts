@@ -277,6 +277,60 @@ ${e.legenda ? `Legenda publicada com o post (use para entender o fechamento e a 
 ${e.nome ? `Nome de trabalho informado: "${e.nome}".` : ""}
 Responda com JSON: {"nome": string, "slides": [{"ordem": number, "tipo": string, "titulo": string, "corpo": string}], "porQueFunciona": [string], "pilar": string opcional, "molde": string opcional, "palavraChave": string opcional}`,
       }
+    case "classificar_ideia":
+      return {
+        texto: `Classifique esta ideia de conteúdo para o banco de ideias de quem publica sobre e-commerce e retenção.
+
+Ideia: "${e.titulo}"
+${e.contexto ? `Contexto do negócio:\n"""\n${e.contexto}\n"""` : ""}
+
+- funil: topo (alcançar gente nova), meio (aquecer quem já segue), fundo (converter).
+- formato: Carrossel, Reels, Vídeo ou Imagem — o que a ideia pede, não o que é mais fácil.
+- pilar: Case, Educacional, Bastidor ou Benchmark.
+- tags: até 4, começando com "#", no vocabulário de quem trabalha com loja (#segmentação, #LTV, #carrinho).
+- molde: o formato de gravação/estrutura sugerido em poucas palavras ("Talking head 45s", "Lista com texto na tela").
+- score 0..100: quanto esta ideia rende — gancho, especificidade e chance de virar peça sem depender de dado que ninguém tem.
+- porQue: UMA a três frases dizendo o que faz ela funcionar. Se a ideia é fraca, diga isso em vez de elogiar.
+Responda com JSON: {"funil": string, "formato": string, "pilar": string opcional, "tags": [string], "molde": string opcional, "score": number, "porQue": string}`,
+      }
+    case "pautas":
+      return {
+        texto: `Proponha PAUTAS novas para o banco de ideias de quem publica sobre e-commerce e retenção.
+
+Perfil que publica: ${descreverPerfil(e.perfil)}
+${e.contexto ? `Contexto do negócio:\n"""\n${e.contexto}\n"""` : ""}
+${e.lacunas?.length ? `O que falta fechar esta semana: ${e.lacunas.join(" · ")}. Priorize esses funis.` : ""}
+${e.jaTem?.length ? `Já estão no banco (NÃO repita, nem reescrevendo com outras palavras):\n- ${e.jaTem.join("\n- ")}` : ""}
+
+Regras:
+- ${e.quantidade ?? 5} pautas, da mais forte para a mais fraca.
+- "titulo": a pauta como uma frase que já serve de gancho — específica, com o número ou o recorte dentro dela. "Falar de LTV" não é pauta; "O cliente que compra 3x vale 8x — e ninguém olha pra ele" é.
+- Nada de dado inventado: se a pauta depende de um número, escreva o recorte e deixe o número para quem for gravar confirmar.
+- "funil": topo (alcançar gente nova), meio (aquecer quem já segue), fundo (converter).
+- "formato": o que a pauta pede (Carrossel, Reels, Vídeo, Imagem).
+- "tags": até 4, com "#", no vocabulário de quem toca loja.
+- "molde": como gravar, em poucas palavras ("Talking head 45s", "Lista com texto na tela").
+- "score" 0..100 e "porQue" (uma a três frases dizendo o que faz ela render).
+Responda com JSON: {"pautas": [{"titulo": string, "funil": string, "formato": string, "pilar": string opcional, "tags": [string], "molde": string opcional, "score": number, "porQue": string}]}`,
+      }
+    case "trends":
+      return {
+        texto: `Monte a lista de ASSUNTOS EM ALTA para o painel de Reels de quem publica sobre e-commerce e retenção.
+
+Perfil que publica: ${descreverPerfil(e.perfil)}
+${e.contexto ? `Contexto do negócio:\n"""\n${e.contexto}\n"""` : ""}
+${e.jaTem?.length ? `Já estão no painel (NÃO repita, nem em outras palavras): ${e.jaTem.join(" · ")}` : ""}
+
+Regras:
+- ${e.quantidade ?? 6} assuntos, do mais forte para o mais fraco.
+- "titulo": o formato/assunto em 2 a 4 palavras, como o time chamaria ("Objetos falantes", "Plaquinhas", "POV do cliente").
+- "comoUsar": UMA frase ligando o assunto ao negócio de quem publica — é o que separa tendência de ideia. Ex.: "Deixar o carrinho abandonado 'falar' com o dono da loja".
+- "score" 0..100: quanto rende PARA ESTE perfil (alcance provável × encaixe com o assunto da casa), não popularidade solta.
+- "dificuldade": facil (grava no celular hoje), medio (precisa de roteiro ou arte), dificil (precisa de edição pesada ou convidado).
+- "categoria": viral (alcance), venda (leva à oferta), educativo (ensina o mecanismo).
+- "fonteUrl": copie INTEIRA a URL de um dos resultados de busca servidos, quando houver um que sustente o assunto. Não invente URL; sem resultado que sirva, deixe o campo fora.
+Responda com JSON: {"assuntos": [{"titulo": string, "score": number, "dificuldade": string, "categoria": string, "comoUsar": string, "fonteUrl": string opcional}]}`,
+      }
   }
 }
 
@@ -291,8 +345,8 @@ export interface ResultadoIA<K extends keyof SaidaPorAcao> {
 /** Ações que ESCREVEM copy — só elas recebem as referências de estilo. */
 const ACOES_COM_REFERENCIAS = new Set<EntradaIA["acao"]>(["gerar_estrutura", "preencher_frame", "headlines", "ajustar_headline", "espinha", "legenda", "distribuir", "chat"])
 
-const MAX_TOKENS: Partial<Record<EntradaIA["acao"], number>> = { gerar_estrutura: 6000, transcrever_referencia: 6000, revisar: 7000, headlines: 5000, espinha: 4000, triagem: 3000 }
-const TEMPERATURA: Partial<Record<EntradaIA["acao"], number>> = { headlines: 0.8, ajustar_headline: 0.8, revisar: 0.2, triagem: 0.4 }
+const MAX_TOKENS: Partial<Record<EntradaIA["acao"], number>> = { classificar_ideia: 1200, trends: 2500, pautas: 3500, gerar_estrutura: 6000, transcrever_referencia: 6000, revisar: 7000, headlines: 5000, espinha: 4000, triagem: 3000 }
+const TEMPERATURA: Partial<Record<EntradaIA["acao"], number>> = { classificar_ideia: 0.4, trends: 0.7, pautas: 0.8, headlines: 0.8, ajustar_headline: 0.8, revisar: 0.2, triagem: 0.4 }
 
 export async function executarIA<K extends keyof SaidaPorAcao>(
   entrada: Extract<EntradaIA, { acao: K }>,

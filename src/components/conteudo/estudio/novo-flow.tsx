@@ -45,6 +45,8 @@ interface Props {
   perfilInicial?: PerfilEditavel
   meuTemplateInicial?: string | null
   modoTemplate?: boolean
+  /** Pauta que já vem escrita (ideia enviada do Banco de Ideias). */
+  promptInicial?: string
   posts: Post[]
   perfis: Perfil[]
   meusTemplates: MeuTemplate[]
@@ -62,7 +64,7 @@ const CAMINHOS: Array<[Caminho, string, string, LucideIcon, string]> = [
   ["inspiracao", "A partir de inspiração", "Suba uma referência, vira template fiel", ImageIcon, "#0E7490"],
 ]
 
-export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplateInicial, modoTemplate, posts, perfis, meusTemplates, brandKits, onClose, onCriado }: Props) {
+export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplateInicial, modoTemplate, promptInicial, posts, perfis, meusTemplates, brandKits, onClose, onCriado }: Props) {
   const [caminho, setCaminho] = useState<Caminho | null>(modoTemplate ? "inspiracao" : caminhoInicial ?? null)
   const [tpl, setTpl] = useState<string | null>(meuTemplateInicial ? null : tplInicial ?? null)
   const [meuTpl, setMeuTpl] = useState<string | null>(meuTemplateInicial ?? null)
@@ -77,7 +79,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
   const [motor, setMotor] = useState<Editorial | null>(null)
   const nomeDaHeadline = useRef<string | null>(null)
   const perfilObj = perfis.find((p) => p.id === perfil)
-  const [prompt, setPrompt] = useState("")
+  const [prompt, setPrompt] = useState(promptInicial ?? "")
   const [promptSel, setPromptSel] = useState<number | null>(null)
   const [pilar, setPilar] = useState(PILARES[0])
   const [etapa, setEtapa] = useState<"topo" | "meio" | "fundo">("topo")
