@@ -99,6 +99,54 @@ export function resolverModeloDoCurador(daConfig?: string | null): string {
   return CURADOR_SHADOW_MODEL_ENV || daConfig?.trim() || CURADOR_SHADOW_MODEL_FALLBACK
 }
 
+/**
+ * Piso do teto de saída. Até 09/09 `max_tokens: 8192` era FIXO no código e a
+ * config do banco (16000) era ignorada: o Sonnet raciocinou 8.327 tokens em
+ * prosa, foi cortado antes do JSON e a resposta certa — que eliminava as
+ * heroes com cupom obrigatório — virou `shadow_json_ilegivel` (batch
+ * 644d86c5). A config passa a valer; o piso protege de config baixa demais.
+ */
+export const CURADOR_SHADOW_MAX_TOKENS_MIN = 8192
+
+function tetoDoEnv(): number | null {
+  const v = Number(process.env.CURADOR_SHADOW_MAX_TOKENS ?? "")
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : null
+}
+
+/** Teto de saída: env > max(piso, config). Puro fora da leitura do env. */
+export function resolverTetoDoCurador(daConfig?: number | null): number {
+  const env = tetoDoEnv()
+  if (env) return env
+  const cfg = typeof daConfig === "number" && Number.isFinite(daConfig) ? Math.floor(daConfig) : 0
+  return Math.max(CURADOR_SHADOW_MAX_TOKENS_MIN, cfg)
+}
+
+/** `CURADOR_SHADOW_RETOMADA=off` desliga a volta de retomada do JSON. */
+export function retomadaLigada(): boolean {
+  return (process.env.CURADOR_SHADOW_RETOMADA ?? "").trim().toLowerCase() !== "off"
+}
+
+/**
+ * O que o modelo recebe quando a resposta final não trouxe o JSON. O
+ * histórico inteiro vai junto (raciocínio, consultas ao vault): o pedido é
+ * fechar o trabalho, não refazê-lo.
+ */
+export const MENSAGEM_RETOMADA_JSON =
+  "Devolva agora APENAS o objeto JSON do formato pedido no system — sem texto antes ou depois, sem markdown — cobrindo TODAS as posições de <estrutura_do_email>. Se a resposta anterior foi cortada, complete-a a partir do que já decidiu. Não consulte mais nada."
+
+/** Prefill do assistant na retomada (só provedores Anthropic aceitam). */
+export const PREFILL_RETOMADA_JSON = '{"papeis"'
+
+/**
+ * Motivo da retomada, ou null quando a resposta serve. JSON legível com
+ * `finish_reason: length` NÃO retoma: o corte veio depois do objeto.
+ */
+export function motivoDeRetomada(raw: string, finishReason?: string): string | null {
+  if (parseCuradorVaultOutput(raw)) return null
+  if (!raw.trim()) return finishReason === "length" || finishReason === "max_tokens" ? "vazio_por_teto" : "vazio"
+  return finishReason === "length" || finishReason === "max_tokens" ? "cortado_antes_do_json" : "sem_json"
+}
+
 // ── Prompt do contrato AMPLIADO (o prompt do flip, ensaiado no shadow) ───
 
 export const DEFAULT_CHOOSER_VAULT_SYSTEM = `Você é o Curador de Componentes de email da Convertfy. A ESTRUTURA do email já está decidida pelo Estruturador — a sequência de seções e o papel de cada posição chegam prontos em <decisao_do_estruturador> e <estrutura_do_email>. A sua função é ENCONTRAR NA BIBLIOTECA os blocos que encaixam perfeitamente em cada posição e conversam com essa proposta: para cada posição, A variante cuja ANATOMIA realiza o papel decidido — uma só, a que encaixa melhor. Você não decide estrutura, não reescreve papel, não discute a sequência.
@@ -562,6 +610,17 @@ export interface CuradorShadowParams {
    * legado, e servi-los aqui trocaria o agente por outro.
    */
   modelo?: string | null
+  /**
+   * Teto de saída da config (`assembler_chooser.max_tokens`), já resolvido
+   * pelo caller. Ver `resolverTetoDoCurador`.
+   */
+  maxTokens?: number | null
+  /**
+   * Recebe o que o JSON trouxe quando o resultado NÃO pôde ser consumido
+   * (ids inválidos, escolhas malformadas) — o Curador legado herda as
+   * justificativas em vez de escolher às cegas. Prosa não vira preferência.
+   */
+  onParcial?: (p: PreferenciasDoVault) => void
   /** Violações medidas sobre o rank-1 do Curador VIVO (comparação). */
   liveViolations: ProtocolViolation[]
   /**
@@ -573,6 +632,31 @@ export interface CuradorShadowParams {
   liveRank1: Map<number, string>
   /** Alvo do Seletor para o medidor de veto (aliviador_ausente / proibicao_violada). */
   alvoMedicao?: AlvoParaMedicao | null
+}
+
+/** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
+export interface PreferenciasDoVault {
+  posicoes: Array<{
+    block_index: number
+    section: string
+    justificativa: string
+    escolhas: Array<{ variant_id: string; motivo: string }>
+  }>
+}
+
+/** Bloco `<preferencias_do_vault>` do Curador legado. Puro. */
+export function renderPreferenciasDoVault(p: PreferenciasDoVault | null): string {
+  if (!p || p.posicoes.length === 0) {
+    return "(nenhuma — o Curador do vault não rodou ou não deixou JSON aproveitável)"
+  }
+  return p.posicoes
+    .map((pos) => {
+      const esc = pos.escolhas.length
+        ? pos.escolhas.map((e) => `  - ${e.variant_id}${e.motivo ? ` — ${e.motivo}` : ""}`).join("\n")
+        : "  - (nenhuma candidata)"
+      return `[${pos.block_index}] ${pos.section}${pos.justificativa ? `: ${pos.justificativa}` : ""}\n${esc}`
+    })
+    .join("\n")
 }
 
 /**
@@ -604,10 +688,11 @@ export async function runCuradorShadow(
   let runId = ""
   try {
     const momento = momentoDoEmail(p.flowType, p.emailNumber)
+    const maxTokens = resolverTetoDoCurador(p.maxTokens)
     const config: AgentInvokeConfig = {
       model: modelo,
       temperature: 0.2,
-      max_tokens: 8192,
+      max_tokens: maxTokens,
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
     }
@@ -723,6 +808,19 @@ export async function runCuradorShadow(
           tools: p.ferramentas.tools,
           executar: p.ferramentas.executar,
           maxCalls: p.ferramentas.maxCalls ?? 4,
+          // Resposta sem JSON → uma volta a mais pedindo só o JSON, com o
+          // histórico. Antes disso a resposta ia direto para
+          // `shadow_json_ilegivel` e o legado escolhia sem ver nada.
+          ...(retomadaLigada()
+            ? {
+                retomada: {
+                  precisa: motivoDeRetomada,
+                  mensagem: MENSAGEM_RETOMADA_JSON,
+                  maxTokens,
+                  prefill: PREFILL_RETOMADA_JSON,
+                },
+              }
+            : {}),
         })
       : { ...(await invokeAgent(config, vars, systemVars)), consultas: [] as ToolCallLog[], voltas: 1, fallback_sem_ferramentas: false }
     const parsed = parseCuradorVaultOutput(res.raw)
@@ -746,6 +844,13 @@ export async function runCuradorShadow(
       : null
 
     const sectionByBlock = new Map(sections.map((s, i) => [i, s]))
+    // Posição que o JSON nem MENCIONA (diferente de `escolhas: []`, que é
+    // "sem candidata" declarado): é o rastro de um JSON completo mas
+    // incompleto — o que a retomada tenta fechar.
+    const mencionadas = new Set((parsed?.escolhasDetalhadas ?? []).map((e) => e.block_index))
+    const posicoesSemResposta = parsed
+      ? sections.map((section, i) => ({ block_index: i, section })).filter((x) => !mencionadas.has(x.block_index))
+      : []
     const shadowRank1 = ranking ? rank1ByBlock(ranking.byBlock) : new Map<number, string>()
     const violations = measureProtocolViolations({
       rank1ByBlock: shadowRank1,
@@ -783,11 +888,21 @@ export async function runCuradorShadow(
         : ranking?.malformed
           ? "shadow_escolhas_malformadas"
           : undefined,
-      rawOutput: res.raw.slice(0, 8000),
+      // 32k: é aqui que se lê o raciocínio quando o JSON não veio; 8k
+      // cortava justamente a parte que explicava a eliminação.
+      rawOutput: res.raw.slice(0, 32_000),
       parsedOutput: {
         shadow: modo === "shadow",
         shadow_contract: "v2-justificado",
         curador_vault_mode: modo,
+        finish_reason: res.finishReason ?? null,
+        max_tokens_usado: maxTokens,
+        raw_chars: res.raw.length,
+        voltas_json: res.retomada?.feita ? 1 : 0,
+        retomada_motivo: res.retomada?.motivo ?? null,
+        retomada_erro: res.retomada?.erro ?? null,
+        prefill_usado: res.retomada?.prefill_usado ?? false,
+        posicoes_sem_resposta: posicoesSemResposta,
         // 02/09: a decisão do Estruturador entrou no template do vault (só
         // o legado tinha) e o Curador pode consultar o Obsidian.
         estruturador_consumido: estruturadorOn,
@@ -882,6 +997,19 @@ export async function runCuradorShadow(
     // tem retry e fail-closed próprios. Devolver um ranking sem posição
     // levaria o assembler ao CuratorFailedError sem ter tentado o fallback.
     if (!parsed || !ranking || ranking.malformed || ranking.byBlock.size === 0) {
+      if (parsed && parsed.escolhasDetalhadas.length > 0 && p.onParcial) {
+        p.onParcial({
+          posicoes: parsed.escolhasDetalhadas.map((e) => ({
+            block_index: e.block_index,
+            section: sectionByBlock.get(e.block_index) ?? "",
+            justificativa: e.justificativa,
+            escolhas: e.escolhas.map((o) => ({
+              variant_id: p.extras.get(o.variant_id)?.slug ?? o.variant_id,
+              motivo: o.motivo,
+            })),
+          })),
+        })
+      }
       return null
     }
     return {

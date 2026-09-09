@@ -131,3 +131,79 @@ describe("invokeAgentWithTools", () => {
     expect(r.consultas).toEqual([])
   })
 })
+
+describe("invokeAgentWithTools — retomada do JSON (09/09)", () => {
+  const retomada = {
+    precisa: (raw: string, fr?: string) => (raw.trim().startsWith("{") ? null : fr === "length" ? "cortado" : "sem_json"),
+    mensagem: "só o JSON",
+    maxTokens: 16000,
+    prefill: '{"papeis"',
+  }
+
+  it("resposta em prosa → uma volta a mais sem ferramenta, com prefill, e o raw vem colado", async () => {
+    fetchMock
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: "Vou agora trabalhar posição por posição…" }, "length"))
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: ':[],"escolhas":[]}' }))
+    const r = await invokeAgentWithTools(config(), { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r.raw).toBe('{"papeis":[],"escolhas":[]}')
+    expect(r.voltas).toBe(2)
+    expect(r.retomada).toEqual({ feita: true, prefill_usado: true, motivo: "cortado" })
+    const b = bodies()[1]
+    expect(b.tool_choice).toBe("none")
+    expect(b.max_tokens).toBe(16000)
+    const msgs = b.messages as Array<{ role: string; content: unknown }>
+    // histórico + prosa do modelo + pedido + prefill
+    expect(msgs.map((m) => m.role)).toEqual(["system", "user", "assistant", "user", "assistant"])
+    expect(msgs[3].content).toBe("só o JSON")
+    expect(msgs[4].content).toBe('{"papeis"')
+    // tokens somam as duas voltas
+    expect(r.tokensInput).toBe(200)
+  })
+
+  it("modelo que recomeça pelo `{` apesar do prefill não recebe o prefixo colado", async () => {
+    fetchMock
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: "prosa" }))
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: '{"papeis":[]}' }))
+    const r = await invokeAgentWithTools(config(), { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r.raw).toBe('{"papeis":[]}')
+  })
+
+  it("provedor que recusa o prefill → repete sem prefill; segunda recusa → resposta original, com o erro", async () => {
+    fetchMock
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: "prosa" }))
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => "prefill not supported" })
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: '{"papeis":[]}' }))
+    const r = await invokeAgentWithTools(config(), { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r.raw).toBe('{"papeis":[]}')
+    expect(r.retomada?.prefill_usado).toBe(false)
+    const msgs = bodies()[2].messages as Array<{ role: string }>
+    expect(msgs[msgs.length - 1].role).toBe("user")
+
+    fetchMock.mockReset()
+    fetchMock
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: "prosa" }))
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => "x" })
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => "y" })
+    const r2 = await invokeAgentWithTools(config(), { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r2.raw).toBe("prosa")
+    expect(r2.retomada?.feita).toBe(false)
+    expect(r2.retomada?.erro).toBeTruthy()
+  })
+
+  it("resposta com JSON não retoma; modelo fora da Anthropic não manda prefill", async () => {
+    fetchMock.mockResolvedValueOnce(resposta({ role: "assistant", content: '{"papeis":[]}' }))
+    const r = await invokeAgentWithTools(config(), { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r.voltas).toBe(1)
+    expect(r.retomada).toBeUndefined()
+
+    fetchMock.mockReset()
+    fetchMock
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: "prosa" }))
+      .mockResolvedValueOnce(resposta({ role: "assistant", content: '{"papeis":[]}' }))
+    const kimi = { ...config(), model: "moonshotai/kimi-k3" }
+    const r2 = await invokeAgentWithTools(kimi, { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+    expect(r2.retomada).toEqual({ feita: true, prefill_usado: false, motivo: "sem_json" })
+    const msgs = bodies()[1].messages as Array<{ role: string }>
+    expect(msgs[msgs.length - 1].role).toBe("user")
+  })
+})

@@ -8,7 +8,11 @@ import {
   rank1ByBlock,
   repeticoesPermitidas,
   resolverModeloDoCurador,
+  resolverTetoDoCurador,
+  motivoDeRetomada,
+  renderPreferenciasDoVault,
   CURADOR_SHADOW_MODEL_FALLBACK,
+  CURADOR_SHADOW_MAX_TOKENS_MIN,
 } from "./curador-shadow"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
@@ -390,5 +394,43 @@ describe("resolverModeloDoCurador", () => {
     for (const v of [null, undefined, "", "   "]) {
       expect(resolverModeloDoCurador(v)).toBe(CURADOR_SHADOW_MODEL_FALLBACK)
     }
+  })
+})
+
+describe("teto, retomada e preferências do vault (09/09)", () => {
+  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso; env vence tudo", () => {
+    expect(resolverTetoDoCurador(16000)).toBe(16000)
+    expect(resolverTetoDoCurador(2048)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+    expect(resolverTetoDoCurador(null)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+    expect(resolverTetoDoCurador(Number.NaN)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+  })
+
+  it("motivoDeRetomada: prosa e corte pedem retomada; JSON legível não", () => {
+    expect(motivoDeRetomada("Vou trabalhar posição por posição…", "length")).toBe("cortado_antes_do_json")
+    expect(motivoDeRetomada("Vou trabalhar posição por posição…", "stop")).toBe("sem_json")
+    expect(motivoDeRetomada("", "length")).toBe("vazio_por_teto")
+    expect(motivoDeRetomada("   ")).toBe("vazio")
+    // JSON completo com finish_reason length: o corte veio DEPOIS do objeto.
+    expect(motivoDeRetomada('{"papeis":[],"escolhas":[]}', "length")).toBeNull()
+    expect(motivoDeRetomada(OUTPUT)).toBeNull()
+  })
+
+  it("renderPreferenciasDoVault: ausência declarada e posições com justificativa", () => {
+    expect(renderPreferenciasDoVault(null)).toContain("nenhuma")
+    expect(renderPreferenciasDoVault({ posicoes: [] })).toContain("nenhuma")
+    const txt = renderPreferenciasDoVault({
+      posicoes: [
+        { block_index: 0, section: "hero", justificativa: "hero-3 exige cupom → eliminada", escolhas: [{ variant_id: "hero-7", motivo: "sem cupom" }] },
+        { block_index: 1, section: "reviews", justificativa: "", escolhas: [] },
+      ],
+    })
+    expect(txt).toContain("[0] hero: hero-3 exige cupom → eliminada")
+    expect(txt).toContain("  - hero-7 — sem cupom")
+    expect(txt).toContain("[1] reviews\n  - (nenhuma candidata)")
+  })
+
+  it("o template do legado tem o bloco de preferências do vault", () => {
+    expect(DEFAULT_CHOOSER_USER).toContain("<preferencias_do_vault>")
+    expect(DEFAULT_CHOOSER_USER).toContain("{{preferencias_vault}}")
   })
 })

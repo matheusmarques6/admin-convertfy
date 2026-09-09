@@ -68,8 +68,10 @@ import {
   BLOCO_OMITIDO_PELO_ESTRUTURADOR,
   measureProtocolViolations,
   rank1ByBlock,
+  renderPreferenciasDoVault,
   runCuradorShadow,
   type CuradorVaultResultado,
+  type PreferenciasDoVault,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { garantirHeroUnica } from "./hero-unica"
@@ -338,6 +340,11 @@ Notas de seção do vault para as seções DESTE email — cobertura e CHAVE DE 
 <memoria>
 {{memoria}}
 </memoria>
+
+<preferencias_do_vault>
+O Curador do vault (o que lê o protocolo e as notas do Obsidian) rodou antes de você e não conseguiu fechar a resposta. O que ele já tinha decidido está abaixo — parta dele e só divirja com motivo declarado no campo "motivo" da sua escolha. Ausência declarada = você decide sozinho.
+{{preferencias_vault}}
+</preferencias_do_vault>
 
 <sequencia_do_email>
 {{blocks_json}}
@@ -968,6 +975,10 @@ function editorialOrigins(
       cls: "curadoria",
       rotulo: "Revisão humana da estrutura — email_structure_reviews",
     },
+    preferencias_vault: {
+      cls: "upstream",
+      rotulo: "Preferências do Curador do vault — JSON não consumido (fallback)",
+    },
     vocabulario: {
       cls: "loja",
       rotulo: "Vocabulário literal — client_stores.tone_use_words / tone_avoid_words",
@@ -1141,6 +1152,9 @@ export async function assembleStoreReference(
       aplicaveisAoEmail(orientacoesCurador, input.flowType, input.emailNumber),
     ),
     revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "curador"),
+    // Preenchido DEPOIS do Curador do vault, quando ele deixa JSON que não
+    // pôde ser consumido; até lá, ausência declarada.
+    preferencias_vault: renderPreferenciasDoVault(null),
     // Top 5 produtos com preço e LINK — cruza com product_slots (não indicar
     // bloco de 4 produtos em loja com 2, nem slot que leva a lugar nenhum).
     top_products: renderTopProducts(input.topProducts),
@@ -1340,6 +1354,9 @@ export async function assembleStoreReference(
   // do kimi roda como sempre, com retry e fail-closed. O custo dobra só
   // nesse caso — que é exatamente quando vale pagar.
   let vaultResultado: CuradorVaultResultado | null = null
+  // Holder, não `let`: a atribuição acontece dentro do callback e o
+  // narrowing do TS não enxerga closure — leria `null` para sempre.
+  const parcialDoVault: { valor: PreferenciasDoVault | null } = { valor: null }
   if (curadorVaultMode === "on") {
     const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
@@ -1359,6 +1376,12 @@ export async function assembleStoreReference(
       // rodava numa constante e era um dos dois agentes que ignoravam a
       // troca de modelo do banco.
       modelo: chooserConfig.model,
+      // O TETO da config também (09/09): o vault fixava 8192 e a config de
+      // 16000 era ignorada — o JSON era cortado e a resposta descartada.
+      maxTokens: chooserRow?.max_tokens ?? null,
+      onParcial: (p) => {
+        parcialDoVault.valor = p
+      },
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1412,6 +1435,11 @@ export async function assembleStoreReference(
   let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
+  // O legado só roda quando o vault falhou; se o vault deixou JSON, ele
+  // herda as justificativas em vez de escolher às cegas.
+  if (!vaultResultado && parcialDoVault.valor) {
+    chooserVars.preferencias_vault = renderPreferenciasDoVault(parcialDoVault.valor)
+  }
 
   for (
     let attempt = 1;
@@ -1586,6 +1614,7 @@ export async function assembleStoreReference(
       // rodava numa constante e era um dos dois agentes que ignoravam a
       // troca de modelo do banco.
       modelo: chooserConfig.model,
+      maxTokens: chooserRow?.max_tokens ?? null,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
