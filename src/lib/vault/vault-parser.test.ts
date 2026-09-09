@@ -316,11 +316,19 @@ Entrega o cupom de captação. Ver [[_protocolo-de-selecao]].
     expect(docVariantId({})).toBeNull()
   })
 
-  it("ativação: aprovada sempre; catálogo gerado também; lacuna aberta nunca", () => {
+  it("ativação: aprovada sempre; catálogo gerado também; lacuna só aberta", () => {
     expect(isDocActive("variante", { status: "aprovada" })).toBe(true)
     expect(isDocActive("catalogo", { status: "gerado" })).toBe(true)
     expect(isDocActive("variante", { status: "gerado" })).toBe(false)
-    expect(isDocActive("lacuna", { status: "aberta" })).toBe(false)
+    // Lacuna aberta É o estado vigente: exigir `aprovada` deixava as 15
+    // lacunas inativas e o Curador recebia "(nenhuma)" em toda run.
+    expect(isDocActive("lacuna", { status: "aberta" })).toBe(true)
+    // Fechada, ou ainda em rascunho, não é lacuna vigente.
+    for (const status of ["retratada", "observacao", "modelo", "proposta"]) {
+      expect(isDocActive("lacuna", { status })).toBe(false)
+    }
+    // `aberta` não vaza para os outros kinds.
+    expect(isDocActive("variante", { status: "aberta" })).toBe(false)
   })
 
   it("sem status → skipped (contrato mínimo vale para componentes também)", () => {

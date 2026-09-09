@@ -438,14 +438,27 @@ export function isApproved(fm: Record<string, unknown>): boolean {
 }
 
 /**
- * Ativação das notas de componentes: `aprovada` como as demais, com uma
- * exceção — `_catalogo.md` é GERADO por script (`status: gerado`) e é
- * legítimo servi-lo assim. Lacunas são cidadãs de primeira classe do vault
- * (`status: aberta`) mas NÃO entram no runtime: são worklist humana.
+ * Ativação das notas de componentes: `aprovada` como as demais, com duas
+ * exceções de status que são o estado NATURAL do kind:
+ *
+ * - `_catalogo.md` é GERADO por script (`status: gerado`) e é legítimo
+ *   servi-lo assim.
+ * - Lacuna vive `aberta` — é o que ela é enquanto a biblioteca não a
+ *   fecha. Até 09/09 este gate exigia `aprovada`, então as 15 lacunas do
+ *   vault nasciam inativas e o loader do Curador (que já pedia o kind)
+ *   servia "(nenhuma)" em toda run: o Curador procurava bloco para uma
+ *   posição que o vault SABIA não ter, e a telemetria contava
+ *   `lacunas_servidas: 0` como se não houvesse lacuna. `retratada` (a
+ *   biblioteca fechou), `observacao`, `modelo` e `proposta` seguem fora —
+ *   não são lacuna vigente, e servi-las mandaria o Curador desistir de uma
+ *   posição que tem bloco.
  */
 export function isDocActive(kind: VaultDocKind, fm: Record<string, unknown>): boolean {
   if (isApproved(fm)) return true
-  return kind === "catalogo" && str(fm.status) === "gerado"
+  const status = str(fm.status)
+  if (kind === "catalogo") return status === "gerado"
+  if (kind === "lacuna") return status === "aberta"
+  return false
 }
 
 /** `variant_id` do frontmatter quando é um UUID plausível; senão null. */
