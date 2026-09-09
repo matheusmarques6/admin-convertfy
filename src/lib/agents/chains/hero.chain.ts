@@ -573,14 +573,28 @@ The example may show an older version of the variant. Treat it as a photo of the
  * `email_agent_configs`, e uma var nova ali exigiria migration para um
  * texto que só existe na 2ª tentativa.
  */
-export function buildHeroRetryNote(missing: string[]): string {
-  const lista = missing.map((m) => `  - ${m}`).join("\n")
-  return `<previous_attempt_rejected>
-Your previous answer was REJECTED by an automated check: these sentences, which the deterministic merge had already written into the region, were missing from your fragment.
+export function buildHeroRetryNote(missing: string[], invented: string[] = []): string {
+  const partes: string[] = []
+  if (missing.length > 0) {
+    const lista = missing.map((m) => `  - ${m}`).join("\n")
+    partes.push(`These sentences, which the deterministic merge had already written into the region, were MISSING from your fragment:
 
 ${lista}
 
-Each of them must come back. Keeping a sentence inside an image's alt/title counts as keeping it — swapping a styled wordmark for the logo markup is still correct. What is NOT allowed is dropping the sentence, rewriting it, or removing the row that holds it.
+Each of them must come back. Keeping a sentence inside an image's alt/title counts as keeping it — swapping a styled wordmark for the logo markup is still correct. What is NOT allowed is dropping the sentence, rewriting it, or removing the row that holds it.`)
+  }
+  if (invented.length > 0) {
+    const lista = invented.map((m) => `  - ${m}`).join("\n")
+    partes.push(`These texts appeared in your fragment and did NOT exist in the region nor in the merged copy — you wrote them:
+
+${lista}
+
+Remove them. You never write copy: no offers, no discount percentages, no coupon codes, no placeholders in brackets. If a row has no copy, keep the region's text exactly as it was or remove the row under the <empty_slot_rule>.`)
+  }
+  return `<previous_attempt_rejected>
+Your previous answer was REJECTED by an automated check.
+
+${partes.join("\n\n")}
 </previous_attempt_rejected>`
 }
 
@@ -606,6 +620,8 @@ export async function invokeHeroChain(input: {
    * vazio → a nota de retry é anexada ao fim do user message.
    */
   missingCopy?: string[]
+  /** Textos que o guard `hero_copy_inventada` acusou na tentativa anterior. */
+  inventedCopy?: string[]
 }): Promise<InvokeHeroResult> {
   const { config, vars } = input
 
@@ -635,7 +651,9 @@ export async function invokeHeroChain(input: {
   )
   // No FIM: é a última coisa que o modelo lê antes de responder.
   const missingCopy = (input.missingCopy ?? []).filter((m) => m.trim())
-  const retryNote = missingCopy.length > 0 ? buildHeroRetryNote(missingCopy) : ""
+  const inventedCopy = (input.inventedCopy ?? []).filter((m) => m.trim())
+  const retryNote =
+    missingCopy.length > 0 || inventedCopy.length > 0 ? buildHeroRetryNote(missingCopy, inventedCopy) : ""
   const userMessage = retryNote ? `${rendered}\n\n${retryNote}` : rendered
 
   // ── Proveniência (migration 20261085) ──

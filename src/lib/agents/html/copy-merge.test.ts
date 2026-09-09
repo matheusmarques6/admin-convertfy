@@ -9,6 +9,7 @@ import {
   applyStructuralFills,
   copyMergeByExample,
   heroCopyPreserved,
+  heroTextoInventado,
   isLogoKey,
   mergeBlocksFromContext,
   type MergeBlock,
@@ -851,5 +852,35 @@ describe("body-4: marca [N] costurada e item órfão", () => {
       motivo: "copy_ausente_limpo",
     })
     expect(r.html).toContain('<span class="mark" style="font-size:15px;"></span>')
+  })
+})
+
+describe("heroTextoInventado (09/09)", () => {
+  const regiao = `<tr><td><h1>The right fit for<br>your real body</h1><p>Welcome to Hero Boxers</p><a href="#">SHOP NOW</a></td></tr>`
+  const valores = ["The right fit for your real body", "Welcome to Hero Boxers", "SHOP NOW"]
+
+  it("o caso do batch 644d86c5: oferta e placeholder que não existiam", () => {
+    const frag = `<tr><td><h1>Here's 10% OFF Your First Order</h1><p>Use code: [WELCOME-CODE]</p><a href="#">SHOP 10% OFF</a></td></tr>`
+    const r = heroTextoInventado(regiao, frag, valores)
+    expect(r).toEqual(["Here's 10% OFF Your First Order", "Use code: [WELCOME-CODE]", "SHOP 10% OFF"])
+  })
+
+  it("fragmento fiel — re-espaçado, entidades, células juntadas, alt — não acusa nada", () => {
+    const frag = `<tr><td><h1>The right fit for your&nbsp;real body</h1><p>Welcome to Hero Boxers SHOP NOW</p><img alt="Welcome to Hero Boxers" src="x.png"/></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual([])
+  })
+
+  it("rótulo curto, merge tag, token de plataforma, número e comentário MSO não contam", () => {
+    const frag = `<tr><td><!--[if mso]><p>Only Outlook</p><![endif]--><p>{{ first_name }}, hi</p><p>NOME_DA_MARCA</p><p>R$ 199</p><p>Ver mais</p><style>.x{}</style></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual([])
+  })
+
+  it("placeholder entre colchetes é inventado mesmo com uma palavra só", () => {
+    expect(heroTextoInventado(regiao, `<tr><td>[CODE]</td></tr>`, valores)).toEqual(["[CODE]"])
+  })
+
+  it("frase nova de 3+ palavras é acusada; frases repetidas entram uma vez", () => {
+    const frag = `<tr><td><p>Free shipping on everything</p><p>Free shipping on everything</p></td></tr>`
+    expect(heroTextoInventado(regiao, frag, valores)).toEqual(["Free shipping on everything"])
   })
 })

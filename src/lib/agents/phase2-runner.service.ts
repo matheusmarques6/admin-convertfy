@@ -126,6 +126,7 @@ import {
 import {
   copyMergeByExample,
   heroCopyPreserved,
+  heroTextoInventado,
   isLogoKey,
   mergeBlocksFromContext,
   applyStructuralFills,
@@ -2306,6 +2307,8 @@ async function runFormattingChain(p: {
       qaViews: QaBlockView[]
       /** Copy da hero que o guard reprovou e que seguiu assim mesmo. */
       heroCopyAceita: string[]
+      /** Texto que o agente de hero inventou na última tentativa (a região do merge ficou no lugar). */
+      heroInventado: string[]
     }
   | { status: "failed" }
   | { status: "out_of_budget" }
@@ -2663,6 +2666,8 @@ async function runFormattingChain(p: {
    * email precisa existir para ele ver.
    */
   let heroCopyAceita: string[] = []
+  /** Textos inventados pelo agente de hero na última tentativa (ver `heroTextoInventado`). */
+  let heroInventado: string[] = []
   /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
   let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
     []
@@ -2926,6 +2931,7 @@ async function runFormattingChain(p: {
     // serverless recomeçar entre elas, degrada para o comportamento antigo
     // (`priorErrors` vem do banco, esta lista não).
     let faltantesAnteriores: string[] = []
+    let inventadosAnteriores: string[] = []
 
     const outcome = await executeFormatStep<string>({
       ids,
@@ -2941,6 +2947,7 @@ async function runFormattingChain(p: {
           vars,
           vision: visionDecision,
           missingCopy: faltantesAnteriores,
+          inventedCopy: inventadosAnteriores,
           // A região é trocada pelo fragmento NO MESMO lugar: ele tem de
           // voltar com a mesma fronteira. Em modo marker a região é uma
           // <tr>; em modo tag, uma <table>.
@@ -2959,25 +2966,35 @@ async function runFormattingChain(p: {
             /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoDark)?.[1] ?? "",
           ].filter(Boolean),
         })
-        // ÚLTIMA tentativa: aceita e grita, em vez de matar o email.
+        // Guard D2 (09/09): o que o agente ESCREVEU sem existir. O guard
+        // de perda não pegava `Here's 10% OFF` + `[WELCOME-CODE]` numa
+        // loja sem incentivo — nada tinha sumido, tudo tinha aparecido.
+        const inventado = heroTextoInventado(regionHtml, r.output, heroValues)
+        const reprovado = !preserved.ok || inventado.length > 0
+        // ÚLTIMA tentativa: a REGIÃO DO MERGE fica no lugar, e grita.
         //
-        // O critério contíguo reprovou cinco formas de agente fazendo o
-        // certo e derrubou 5 gerações inteiras (US$ 4,00, 70 runs no lixo)
-        // sem nunca ter pego uma perda real. Com o critério novo
-        // (frasePreservada) isto deve deixar de acontecer — mas se
-        // acontecer, "email com uma linha faltando, marcado em vermelho na
-        // tela" é melhor que "nenhum email e o dinheiro gasto". A primeira
-        // tentativa CONTINUA lançando: o retry cobra do agente.
-        if (!preserved.ok && tentativa >= 1) {
+        // Até 09/09 o fragmento reprovado era ACEITO aqui ("email com uma
+        // linha faltando é melhor que nenhum email") — e foi assim que a
+        // copy do merge saiu trocada por oferta inventada no batch
+        // 644d86c5. A região que o agente recebeu já está enxertada e
+        // mergeada: sem o acabamento do LLM ela é um email correto, com o
+        // texto certo. A primeira tentativa CONTINUA lançando: o retry
+        // cobra do agente, agora com a lista do que faltou E do que sobrou.
+        let heroFallback: "regiao_do_merge" | null = null
+        if (reprovado && tentativa >= 1) {
+          heroFallback = "regiao_do_merge"
           heroCopyAceita = preserved.missing
-          log.error("phase2.fmt.hero_copy_lost_aceito", {
+          heroInventado = inventado
+          log.error("phase2.fmt.hero_guard_fallback_regiao", {
             emailId,
-            valores: preserved.missing,
-            hint: "fragmento aceito na última tentativa — a issue vai para a aba QA do email",
+            perdidos: preserved.missing,
+            inventados: inventado,
+            hint: "última tentativa reprovada — a região do merge ficou no lugar; issues vão para a aba QA",
           })
         }
-        if (!preserved.ok && tentativa < 1) {
+        if (reprovado && tentativa < 1) {
           faltantesAnteriores = preserved.missing
+          inventadosAnteriores = inventado
           // O output CRU e o consumo vão grudados no erro: a chamada foi
           // PAGA e este é o run que mais precisa ser depurado. Sem isso o
           // painel mostra 0 token, $0 e as abas "Prompt"/"Saída" vazias —
@@ -2988,11 +3005,16 @@ async function runFormattingChain(p: {
           // apagou a marca de um que a trocou pelo logo (28/08).
           const salvos =
             preserved.viaAtributo.length + preserved.viaLogo.length
-          const err = new Error(
-            `guard: hero_copy_lost: ${preserved.missing
-              .map((m) => m.slice(0, 60))
-              .join(" | ")}${salvos > 0 ? ` (${salvos} salvo(s) por alt/logo)` : ""}`,
-          ) as Error & { raw?: string }
+          const partes: string[] = []
+          if (preserved.missing.length > 0) {
+            partes.push(
+              `hero_copy_lost: ${preserved.missing.map((m) => m.slice(0, 60)).join(" | ")}${salvos > 0 ? ` (${salvos} salvo(s) por alt/logo)` : ""}`,
+            )
+          }
+          if (inventado.length > 0) {
+            partes.push(`hero_copy_inventada: ${inventado.map((m) => m.slice(0, 60)).join(" | ")}`)
+          }
+          const err = new Error(`guard: ${partes.join(" ; ")}`) as Error & { raw?: string }
           err.raw = r.rawOutput
           throw attachUsage(err, {
             tokensInput: r.tokensInput,
@@ -3016,7 +3038,9 @@ async function runFormattingChain(p: {
             valores: preserved.viaLogo,
           })
         }
-        const next = spliceHero(fmtCtx.referenceHtml, region, r.output)
+        const next = heroFallback
+          ? fmtCtx.referenceHtml
+          : spliceHero(fmtCtx.referenceHtml, region, r.output)
         return {
           value: next,
           tokensInput: r.tokensInput,
@@ -3086,6 +3110,10 @@ async function runFormattingChain(p: {
             ...(heroCopyAceita.length > 0
               ? { hero_copy_perdida: heroCopyAceita }
               : {}),
+            // 09/09: sempre presentes — vazio/null é a prova de que os dois
+            // guards rodaram e o fragmento do agente entrou.
+            hero_fallback: heroFallback,
+            hero_inventado: inventado,
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
             rendered_reference: heroRendered
@@ -3928,7 +3956,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita }
+  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado }
 }
 
 
@@ -4054,12 +4082,20 @@ export async function runPhase2HtmlQa(
   // Copy da hero aceita apesar do guard (última tentativa). Vai para a aba
   // QA do email, que é onde o operador olha — e o email EXISTE para ele
   // olhar, que é a diferença em relação ao comportamento antigo.
-  const heroCopyIssues: QaIssue[] = fmtResult.heroCopyAceita.map((valor) => ({
-    type: "hero_copy_perdida" as const,
-    severity: "high" as const,
-    message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. Confira a hero antes de aprovar.`,
-    location: "hero",
-  }))
+  const heroCopyIssues: QaIssue[] = [
+    ...fmtResult.heroCopyAceita.map((valor) => ({
+      type: "hero_copy_perdida" as const,
+      severity: "high" as const,
+      message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. A região do merge ficou no lugar do acabamento do agente — confira a hero antes de aprovar.`,
+      location: "hero",
+    })),
+    ...fmtResult.heroInventado.map((texto) => ({
+      type: "hero_copy_inventada" as const,
+      severity: "high" as const,
+      message: `O agente de hero escreveu "${texto.slice(0, 80)}", que não existia na copy. O fragmento foi descartado e a região do merge ficou no lugar.`,
+      location: "hero",
+    })),
+  ]
 
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,

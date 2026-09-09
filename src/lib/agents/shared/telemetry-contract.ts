@@ -75,6 +75,8 @@ export const TELEMETRY_CONTRACT: Record<
     hero_report_missing: "o relatório não veio ou veio ilegível; observabilidade perdida sem afetar a entrega",
     rendered_reference: "por que o exemplo de acabamento entrou ou não, com as ressalvas (mockup, stale, document_shell)",
     vision: "se o exemplo foi ANEXADO como imagem e em qual modelo — sem isto o custo do fallback visual sobe sem explicação",
+    hero_fallback: "null quando o fragmento do agente entrou; 'regiao_do_merge' quando a última tentativa perdeu ou inventou copy e a região mergeada ficou no lugar (09/09)",
+    hero_inventado: "textos que o agente escreveu sem existirem na região nem na copy — sempre presente, vazio é a prova de que o guard rodou",
   },
   copy_merge: {
     slots_total: "campos de texto do blueprint processados — o denominador de tudo aqui",

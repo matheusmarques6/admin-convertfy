@@ -220,6 +220,9 @@ export type QaIssueType =
   // Agora o email existe e o problema fica marcado na tela — se um dia
   // for perda REAL, o operador vê em vez de receber "failed" sem email.
   | "hero_copy_perdida"
+  // Texto que o agente de hero ESCREVEU sem existir na região nem na copy
+  // do merge (oferta inventada, `[WELCOME-CODE]`). Batch 644d86c5, 08/09.
+  | "hero_copy_inventada"
   // ── Epic AE-15: Image niche-adaptive QA cascade ───────
   // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
   // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:

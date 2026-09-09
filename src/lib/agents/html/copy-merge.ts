@@ -959,6 +959,72 @@ export function heroCopyPreserved(
   return { ok: missing.length === 0, missing, viaAtributo, viaLogo }
 }
 
+/**
+ * Texto visível que o agente de hero ESCREVEU e que não existia — nem na
+ * região que ele recebeu, nem nos valores do merge. É o outro lado do
+ * `heroCopyPreserved`: aquele pega o que sumiu; este pega o que apareceu.
+ *
+ * Caso real (batch 644d86c5, 08/09): o merge escreveu `The right fit for
+ * your real body`; a hero final tinha `Here's 10% OFF Your First Order` e
+ * `Use code: [WELCOME-CODE]` — copy inventada com oferta que a loja não
+ * tem, e o guard de perda não tinha como acusar, porque só olha para o
+ * que faltou.
+ *
+ * Régua: cada pedaço de texto visível do fragmento (entre tags) precisa
+ * existir na região anterior ou num valor do merge — substring, ou as
+ * palavras em ordem dentro da janela (`frasePreservada`, para o agente
+ * que junta duas células numa). Pedaço com menos de 3 palavras não conta
+ * (rótulos, "OU", preços) — EXCETO placeholder entre colchetes
+ * (`[WELCOME-CODE]`), que é inventado em qualquer tamanho. Merge tags
+ * (`{{ first_name }}`) e tokens de plataforma saem antes da comparação.
+ */
+const PLACEHOLDER_COLCHETES_RE = /\[[A-Z][A-Z0-9 _-]{2,}\]/
+const MERGE_TAG_RE = /\{\{[^}]*\}\}|\{%[^%]*%\}|\*\|[^|]+\|\*/g
+
+function pedacosVisiveis(html: string): string[] {
+  const semInvisiveis = html
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+  return semInvisiveis
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, "\n")
+    .split("\n")
+    .map((t) => t.replace(MERGE_TAG_RE, " ").replace(/\s+/g, " ").trim())
+    .filter((t) => t.length > 0)
+}
+
+export function heroTextoInventado(
+  regionAntes: string,
+  fragment: string,
+  valores: string[],
+): string[] {
+  const regiaoNorm = normalizeForMatch(regionAntes.replace(/<[^>]*>/g, " "))
+  const regiaoAttrs = normalizeForMatch(attributeText(regionAntes))
+  const valoresNorm = valores.map((v) => normalizeForMatch(v)).filter(Boolean)
+  const conhecido = (t: string): boolean => {
+    if (regiaoNorm.includes(t) || regiaoAttrs.includes(t)) return true
+    if (frasePreservada(t, regiaoNorm)) return true
+    return valoresNorm.some((v) => v.includes(t) || frasePreservada(t, v))
+  }
+  const out: string[] = []
+  const vistos = new Set<string>()
+  for (const pedaco of pedacosVisiveis(fragment)) {
+    const placeholder = PLACEHOLDER_COLCHETES_RE.test(pedaco)
+    const t = normalizeForMatch(pedaco)
+    if (!t || vistos.has(t)) continue
+    // Token de plataforma (NOME_DA_MARCA) e número/pontuação pura não são
+    // copy de ninguém.
+    if (/^[A-Z][A-Z0-9_]*$/.test(pedaco) || !/[a-z0-9]/i.test(t)) continue
+    const palavras = t.split(" ").filter(Boolean)
+    if (!placeholder && palavras.length < 3) continue
+    if (conhecido(t)) continue
+    vistos.add(t)
+    out.push(pedaco)
+    if (out.length >= 20) break
+  }
+  return out
+}
+
 // ── Estruturais — posse do CÓDIGO, nunca do LLM ────────────────────────
 //
 // O vocabulário real da biblioteca (inventário F0, 20/08): o logo é
