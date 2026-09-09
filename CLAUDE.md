@@ -3232,6 +3232,125 @@ Escolher a headline aplica na capa e vira o nome; trocar de headline ou
 refazer a triagem invalida o que foi derivado delas. Gerado pela espinha, o
 editor abre nos Ajustes — o passo seguinte é revisar.
 
+## Estúdio — Via B: o prompt de imagem de cada slide (set/2026)
+
+O usuário faz os slides de que mais gosta direto no ChatGPT Image, porque
+"um prompt sem estar engessado" rende algo mais personalizado que um
+template. A via B escreve esse prompt a partir do que o documento JÁ
+sabe e o oferece por slide, editável, com dois destinos para o MESMO
+texto: **Copiar** (cola no ChatGPT — zero custo de API, é o fluxo atual) e
+**Gerar** (rota `gerar_imagem`, 2 variações lado a lado: GPT Image 2 ×
+Gemini, regra que já existia em `image/model-policy`).
+
+**Construtor puro** (`lib/conteudo/prompt-slide.ts`, 15 testes): entra
+frame + posição + papel narrativo do motor editorial (`papeisDosFrames`)
++ cores/brand kit/fundo/proporção do documento + "por que funciona" das
+referências mais afins (`selecionarReferencias` por molde, no CLIENTE).
+Sem papel (documento sem motor editorial) a cena vem do TIPO de frame —
+nunca fica sem cena.
+
+**Híbrido é o padrão, e o motivo é o texto.** Modelo de imagem erra
+acento, troca palavra e não repete a fonte entre slides. No híbrido o
+prompt gera só o VISUAL — proíbe qualquer letra — e diz ONDE o texto vai
+ficar por cima (terço inferior na capa `a`, centro na `b`, metade
+superior/inferior no texto conforme a variante, véu escuro na prova),
+porque foto com detalhe atrás do título some com a copy. O renderer
+escreve a copy com a tipografia da casa: continua editável, consistente
+por construção, e a "cara de ChatGPT" fica onde ajuda. O modo
+**Slide inteiro** (`imagemModo: "completo"`) é opção explícita: o prompt
+leva a copy EXATA entre aspas ("não traduza, não resuma, não acrescente
+uma palavra; se não couber, reduza a fonte, nunca o texto"), as fontes por
+NOME (Barlow Condensed / Georgia itálico / Inter), a anatomia do tipo
+(número de 360 px no dado, barra de progresso e "02 · item de 7" na
+lista, aspas gigantes na prova, pílula do CTA com o texto do botão) e o
+rodapé de marca com o contador "N/M" — para o slide parecer da mesma
+família dos que o renderer desenha. `dado` e `cta` só existem em
+"completo": o renderer deles não tem lugar para imagem, e oferecer híbrido
+ali seria botão que não faz nada.
+
+**O que muda no documento** (sem migration — `documentoSchema` é
+`passthrough`): `DocFrame.promptImagem` (só o EDITADO é gravado; igual ao
+sugerido ou vazio volta a "sugerido", e a sugestão acompanha a copy
+quando ela muda) e `DocFrame.imagemModo`. No híbrido, aplicar a imagem
+num frame que o template criou SEM slot dá `slotsImagem: 1` — o renderer
+de texto/lista/mec já desenha o slot quando ele existe. No completo o
+renderer mostra a imagem full-bleed e NÃO escreve texto nem rodapé
+(`slideInteiro` em `frame.tsx`; o prompt já pediu o rodapé ao modelo) — a
+tela avisa que a copy dos campos deixou de aparecer. `trocarTemplate`
+carrega imagem, prompt e modo: no completo a imagem É o slide, não
+depende de slot; no híbrido o frame novo ganha o slot se o tipo tiver
+lugar.
+
+**A rota só solta a proibição de texto no modo completo**
+(`entradaImagemSchema.modo`). Nos outros, o sufixo "sem texto na imagem"
+continua como rede de segurança: prompt editado à mão que esqueça de
+proibir texto ainda sai sem letras.
+
+**Sugestão automática** (`pedeImagem`): frame visível, com lugar para
+imagem, sem imagem e com menos de 60% do espaço de texto usado
+(`preenchimento` = caracteres escritos sobre a soma dos limites de
+`ST_LIMITES`; campo sem limite fica fora da conta). O painel lista esses
+slides com o percentual, clicáveis — é o "< 60% de preenchimento" do
+material da BrandsDecoded, medido pelo renderer em vez de estimado.
+
+**Ficou de fora, de propósito**: gerar em lote para todos os slides que
+pedem imagem (o custo por clique precisa ficar visível enquanto o
+usuário calibra os prompts) e o layout visual novo a partir de referência
+(fase 3 do plano, famílias Editorial/Alternado).
+
+## Estúdio — Identidade visual: a família Editorial (set/2026)
+
+O molde decide a SEQUÊNCIA dos slides; a **família** decide como eles são
+desenhados. Trocar de família não mexe em uma palavra da copy. Duas hoje:
+`padrao` (a identidade azul que já existia, byte a byte) e `editorial`, o
+formato que o time mais gosta, medido slide a slide em
+`docs/conteudo/formatos/editorial-convertfy.md`.
+
+**Tokens em módulo puro** (`lib/conteudo/familias.ts`, 11 testes): paleta,
+gradiente, fundo claro/escuro, CTA e um `traco` com as cinco fontes por
+papel, caixa e peso do título, raio, inclinação da anotação e o fator do
+gancho. O renderer perdeu toda constante de fonte — quem decide é a
+família, e um teste garante que toda família tem o traço completo.
+
+**Trocar de família não é rolo de tinta**: `aplicarFamilia` só substitui o
+valor que ainda é o DEFAULT da família atual. Cor escolhida a dedo, fundo
+trocado num slide e CTA repintado sobrevivem; o ângulo do gradiente é do
+usuário (ele o edita num slider) e nunca muda. Ida e volta devolve o
+documento à paleta original — é o teste que fixa isso.
+
+**`**palavra**` sai na cor de destaque** (`rich.ts`). Duas consequências
+que os testes travam: o limite de caracteres conta o texto SEM os
+marcadores (senão marcar três palavras encolheria a fonte sem uma letra a
+mais na tela), e **durante a edição o texto vai CRU** — o `contentEditable`
+devolve `textContent`, e renderizar formatado apagaria a marcação no
+primeiro clique. Em fundo escuro a MESMA cor é clareada (`clarear`) em vez
+de uma segunda cor no documento, que o usuário teria de manter em sincronia.
+
+**Dois campos novos, aditivos**: `gancho` (a linha em serif itálica que faz
+PAR com o título — "todo título é um par" é a regra do formato) e
+`anotacao` (o rabisco à mão, inclinado, na cor de destaque). Não vêm no
+molde: o painel Texto tem "Campos deste slide" para ligar e desligar, e
+remover apaga o TEXTO junto (o renderer desenha pelo texto, e deixá-lo
+para trás manteria a linha na tela sem campo na lista). Na Editorial o
+gancho cresce 35% e usa a tinta, não o destaque: com ele pequeno e
+colorido o par vira legenda, que é outra coisa.
+
+**Fontes self-hosted** (`public/fonts`, OFL): Instrument Serif itálica (o
+gancho) e Caveat (a anotação), declaradas em `conteudo-slides.css` **e** na
+lista da exportação — sem elas o PNG sai com a serif do sistema e a peça
+exportada não é a que está na tela.
+
+**Onde se escolhe**: no diálogo de criação (ao lado do nome, com a
+descrição da família) e no editor, painel Marca → Identidade visual. A via
+B lê a família: a direção de arte da Editorial pede matéria impressa (luz
+quente, grão de papel, sombra curta) e o prompt do slide inteiro descreve
+as fontes e a caixa que a família realmente usa.
+
+**Verificado renderizando**: os oito slides das duas famílias foram
+desenhados com `renderToStaticMarkup` e fotografados no Chromium antes e
+depois de cada ajuste. Foi assim que apareceram o gancho pequeno demais e o
+destaque ilegível no fundo escuro — nenhum dos dois quebra teste.
+
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
 **Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o

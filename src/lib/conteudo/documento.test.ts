@@ -69,6 +69,23 @@ describe("trocarTemplate", () => {
     expect(naoCoube).toHaveLength(0)
   })
 
+  it("imagem da via B sobrevive à troca: híbrido ganha slot no tipo com lugar, slide inteiro não depende de slot", () => {
+    const slot = { url: "u", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 900 }
+    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    // f3 (texto, sem slot no Turbo) recebeu imagem híbrida; f2 (dado) virou slide inteiro.
+    d = { ...d, frames: d.frames.map((f) => (f.frameId === "f3" ? { ...f, slotsImagem: 1 as const, imagens: { slot1: slot }, imagemModo: "hibrido" as const, promptImagem: "meu prompt" } : f.frameId === "f2" ? { ...f, imagens: { slot1: slot }, imagemModo: "completo" as const } : f)) }
+    const { doc } = trocarTemplate(d, getTemplate("molde-benchmark"))
+    const texto = doc.frames.find((f) => f.tipo === "texto")!
+    expect(texto.imagens.slot1).toEqual(slot)
+    expect(texto.slotsImagem).toBe(1)
+    expect(texto.imagemModo).toBe("hibrido")
+    expect(texto.promptImagem).toBe("meu prompt")
+    const dado = doc.frames.find((f) => f.tipo === "dado")!
+    expect(dado.imagens.slot1).toEqual(slot)
+    expect(dado.imagemModo).toBe("completo")
+    expect(dado.slotsImagem).toBe(0)
+  })
+
   it("avisa o que não coube (frame escrito sem par no novo template)", () => {
     let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
     d = setTexto(d, "f2", "titulo", "73%") // dado

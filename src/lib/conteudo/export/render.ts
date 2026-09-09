@@ -13,10 +13,16 @@ import { urlParaDataUrl } from "../imagens"
 
 export type FormatoExport = "png" | "jpg"
 
-const FONTES: Array<{ family: string; weight: string; url: string; range?: string }> = [
+const FONTES: Array<{ family: string; weight: string; url: string; range?: string; style?: string }> = [
   { family: "Barlow Condensed", weight: "800", url: "/fonts/barlow-condensed-800-latin.woff2" },
   { family: "Barlow Condensed", weight: "800", url: "/fonts/barlow-condensed-800-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
   { family: "Inter Slides", weight: "100 900", url: "/fonts/inter-variable.woff2" },
+  // Família Editorial: sem elas a exportação cai na serif do sistema e o
+  // PNG sai com tipografia diferente da que está na tela.
+  { family: "Instrument Serif", weight: "400", style: "italic", url: "/fonts/instrument-serif-italic-latin.woff2" },
+  { family: "Instrument Serif", weight: "400", style: "italic", url: "/fonts/instrument-serif-italic-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
+  { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin.woff2" },
+  { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
 ]
 
 let cssFontesPromise: Promise<string> | null = null
@@ -29,7 +35,7 @@ export function cssFontesEmbutidas(): Promise<string> {
       FONTES.map(async (f) => {
         try {
           const data = await urlParaDataUrl(f.url)
-          return `@font-face{font-family:"${f.family}";font-style:normal;font-weight:${f.weight};src:url("${data}") format("woff2");${f.range ? `unicode-range:${f.range};` : ""}}`
+          return `@font-face{font-family:"${f.family}";font-style:${f.style ?? "normal"};font-weight:${f.weight};src:url("${data}") format("woff2");${f.range ? `unicode-range:${f.range};` : ""}}`
         } catch {
           return ""
         }
@@ -43,8 +49,9 @@ export function cssFontesEmbutidas(): Promise<string> {
   return cssFontesPromise
 }
 
-async function inlineImagens(root: HTMLElement): Promise<void> {
+async function inlineImagens(root: HTMLElement): Promise<number> {
   const imgs = Array.from(root.querySelectorAll("img"))
+  let perdidas = 0
   await Promise.all(
     imgs.map(async (img) => {
       const src = img.getAttribute("src")
@@ -52,12 +59,17 @@ async function inlineImagens(root: HTMLElement): Promise<void> {
       try {
         img.setAttribute("src", await urlParaDataUrl(src))
       } catch {
-        // imagem inacessível (CORS): sai da exportação em vez de derrubar o frame
+        // imagem inacessível (CORS/timeout): sai da exportação em vez de
+        // derrubar o frame — mas o chamador PRECISA saber. No "slide
+        // inteiro" da via B a imagem é o slide todo, e o silêncio de antes
+        // exportava um arquivo em branco sem ninguém perceber.
         img.remove()
+        perdidas += 1
       }
       img.removeAttribute("crossorigin")
     }),
   )
+  return perdidas
 }
 
 function escaparXml(s: string): string {
@@ -68,11 +80,19 @@ function escaparXml(s: string): string {
  * Renderiza o elemento do frame (já a 1080 de largura) como PNG/JPG.
  * `el` deve estar no DOM (mesmo que fora da tela).
  */
-export async function renderFrameParaBlob(el: HTMLElement, largura: number, altura: number, fmt: FormatoExport): Promise<Blob> {
+export async function renderFrameParaBlob(
+  el: HTMLElement,
+  largura: number,
+  altura: number,
+  fmt: FormatoExport,
+  /** Chamado quando alguma imagem do frame não pôde ser embutida. */
+  onImagensPerdidas?: (n: number) => void,
+): Promise<Blob> {
   const clone = el.cloneNode(true) as HTMLElement
   clone.querySelectorAll("[contenteditable]").forEach((n) => n.removeAttribute("contenteditable"))
   clone.style.outline = "none"
-  await inlineImagens(clone)
+  const perdidas = await inlineImagens(clone)
+  if (perdidas > 0) onImagensPerdidas?.(perdidas)
 
   const style = document.createElement("style")
   style.textContent = await cssFontesEmbutidas()

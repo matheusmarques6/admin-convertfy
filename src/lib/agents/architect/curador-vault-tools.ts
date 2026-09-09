@@ -49,6 +49,14 @@ export const VAULT_TOOLS: ToolSpec[] = [
   {
     type: "function",
     function: {
+      name: "selecionar_finalistas",
+      description: "Registra as variantes finalistas escolhidas no índice compacto. Faça isto antes de ler notas; ler_nota aceitará somente notas dessas variantes.",
+      parameters: { type: "object", properties: { variant_ids: { type: "array", items: { type: "string" } } }, required: ["variant_ids"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "listar_pasta",
       description:
         "Lista as notas de uma pasta do vault (Obsidian): caminho de cada nota e a primeira linha do corpo. Use o caminho da pasta como aparece em <indice_do_vault>.",
@@ -78,6 +86,41 @@ export const VAULT_TOOLS: ToolSpec[] = [
   },
   buscarDoutrinaTool,
 ]
+
+/** Restringe notas completas ao conjunto explicitamente finalizado. */
+export function executorRestritoAFinalistas(
+  executar: ExecutorDeFerramenta,
+  variantes: ReadonlyArray<{ variant_id: string; slug?: string }>,
+): { executar: ExecutorDeFerramenta; finalistas: Set<string>; notasAbertas: Set<string> } {
+  const permitidas = new Map(variantes.map((v) => [v.variant_id, v.slug]))
+  const finalistas = new Set<string>()
+  const notasAbertas = new Set<string>()
+  return {
+    finalistas,
+    notasAbertas,
+    executar: async (nome, args) => {
+      if (nome === "selecionar_finalistas") {
+        const ids = Array.isArray(args.variant_ids) ? args.variant_ids.map(String) : []
+        const invalidas = ids.filter((id) => !permitidas.has(id))
+        if (!ids.length || invalidas.length) return `erro: finalistas inválidas: ${invalidas.join(", ") || "lista vazia"}`
+        finalistas.clear()
+        for (const id of ids) finalistas.add(id)
+        return `finalistas registradas: ${ids.join(", ")}. Agora leia somente as notas necessárias dessas variantes.`
+      }
+      if (nome === "listar_pasta") return "erro: use o índice compacto, selecione finalistas e então use ler_nota"
+      if (nome === "ler_nota") {
+        const caminho = normalizarCaminho(args.caminho)
+        const id = Array.from(finalistas).find((candidate) => {
+          const slug = permitidas.get(candidate)
+          return Boolean(slug) && (caminho === slug || caminho.endsWith(`/${slug}`) || caminho.endsWith(`/${slug}.md`))
+        })
+        if (!id) return "erro: ler_nota aceita somente nota de variant_id registrada em selecionar_finalistas"
+        notasAbertas.add(id)
+      }
+      return executar(nome, args)
+    },
+  }
+}
 
 const TABELAS = ["email_vault_docs", "email_intents", "email_structure_refs", "email_learnings"] as const
 /** A única tabela com nota de variante — as outras não têm `variant_id`. */

@@ -21,6 +21,8 @@ import {
 import { resumirContrato } from "../shared/field-roles"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
+import { buildCatalog } from "./catalog-builder"
+import { interpolateSystem } from "./llm-invoke"
 import type { CatalogVaultExtra } from "./catalog-builder"
 import type { RankedChoice } from "./curator-ranking.parser"
 
@@ -57,6 +59,68 @@ describe("parseCuradorVaultOutput", () => {
     // 03/09: uma variante por posição — o Montador saiu do caminho.
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("uma só, a que encaixa melhor")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("em ordem de preferência")
+  })
+  it("o prompt inicial usa o índice compacto, sem o corpo integral das variantes", () => {
+    const catalogo = buildCatalog([
+      { id: "v1", block_type: "hero", name: "Hero", description: "Primeira frase. SEGREDO_CORPO_COMPLETO", long_description: "NOTA_IMPLEMENTACAO_INTEGRAL", is_active: true } as never,
+      { id: "v2", block_type: "body", name: "Body", description: "Outra primeira frase. OUTRO_CORPO_COMPLETO", when_use: "QUANDO_USAR_INTEGRAL", is_active: true } as never,
+    ])
+    const prompt = interpolateSystem(DEFAULT_CHOOSER_VAULT_SYSTEM, { protocolo: "p", convivencias: "c", catalogo: catalogo.enxuto })
+    expect(prompt).toContain("v1 · Hero")
+    expect(prompt).toContain("v2 · Body")
+    expect(prompt).not.toContain("SEGREDO_CORPO_COMPLETO")
+    expect(prompt).not.toContain("NOTA_IMPLEMENTACAO_INTEGRAL")
+    expect(prompt).not.toContain("QUANDO_USAR_INTEGRAL")
+  })
+})
+
+describe("progressive disclosure do Curador", () => {
+  const typeIndex = new Map([["hero-a", "hero"], ["hero-b", "hero"], ["body-a", "body"]])
+
+  it("valida até três finalistas e nunca aceita id de outra seção", () => {
+    const parsed = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }, { variant_id: "body-a" }, { variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "body-a" }] },
+      ]),
+      sections: ["hero", "body"],
+      typeIndex,
+    })
+    expect(parsed.byBlock.get(0)?.map((x) => x.variant_id)).toEqual(["hero-a", "hero-b"])
+    expect(parsed.byBlock.get(1)?.map((x) => x.variant_id)).toEqual(["body-a"])
+  })
+
+  it("renderiza nota aberta e ausência sem eliminar a finalista", () => {
+    const rendered = renderFinalistNotes([
+      { variant_id: "hero-a", status: "opened", file_path: "componentes/hero-a.md", body: "corpo" },
+      { variant_id: "hero-b", status: "missing", file_path: null, body: null },
+    ])
+    expect(rendered).toContain('variant_id="hero-a"')
+    expect(rendered).toContain("corpo")
+    expect(rendered).toContain('variant_id="hero-b" status="sem_nota_sincronizada"')
+  })
+
+  it("a decisão final não pode mover uma finalista para outra posição da mesma seção", () => {
+    const shortlist = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const final = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const restricted = restrictRankingToShortlist(final, shortlist, 2)
+    expect(restricted.byBlock.has(0)).toBe(false)
+    expect(restricted.byBlock.get(1)?.[0].variant_id).toBe("hero-b")
+    expect(restricted.invalidIds).toContain("hero-b")
   })
 })
 

@@ -200,7 +200,14 @@ export interface DashboardData {
 
 export type FrameTipo = "capa" | "dado" | "texto" | "prova" | "lista" | "mec" | "cta"
 
-export type Campo = "titulo" | "subtitulo" | "corpo" | "botao"
+export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao"
+
+/**
+ * Identidade visual do documento (paleta, tipografia, forma do CTA). O
+ * molde decide a sequência dos slides; a família decide como eles são
+ * desenhados. Ausente = "padrao" (a identidade azul da casa).
+ */
+export type FamiliaVisual = "padrao" | "editorial"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -281,7 +288,21 @@ export interface DocFrame {
   imagens: { slot1?: ImagemSlot }
   oculto?: boolean
   variante?: VarianteLayout
+  /**
+   * Via B — prompt de imagem deste slide, editável. Ausente = o construtor
+   * (`prompt-slide.ts`) sugere um a partir da copy, do papel e da marca.
+   */
+  promptImagem?: string
+  /**
+   * `hibrido` (padrão): a imagem é só o visual e o renderer coloca a copy.
+   * `completo`: o modelo desenhou o slide inteiro, texto incluído — o
+   * renderer mostra a imagem full-bleed e não escreve nada por cima.
+   */
+  imagemModo?: ModoImagem
 }
+
+/** Como a imagem gerada entra no slide (via B). */
+export type ModoImagem = "hibrido" | "completo"
 
 export interface BrandKit {
   brandName: string
@@ -350,6 +371,8 @@ export interface Documento {
   publicacao?: { mediaId: string; permalink: string | null; perfil: string }
   /** Triagem, headlines, espinha e revisão (motor editorial). */
   editorial?: Editorial
+  /** Identidade visual (paleta + tipografia). Ausente = "padrao". */
+  familia?: FamiliaVisual
   criadoEm: string
   atualizadoEm: string
 }

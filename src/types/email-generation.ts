@@ -258,6 +258,8 @@ export type QaIssueType =
   | "placeholder_colchetes"
   | "texto_de_exemplo"
   | "paragrafo_repetido"
+  | "codigo_inventado"
+  | "label_generico"
 
 export interface QaIssue {
   type: QaIssueType

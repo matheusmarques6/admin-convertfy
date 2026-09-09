@@ -8,6 +8,7 @@
 import { ChatAnthropic } from "@langchain/anthropic"
 import { ChatPromptTemplate } from "@langchain/core/prompts"
 import { StringOutputParser } from "@langchain/core/output_parsers"
+import { withDoctrine } from "../shared/doctrine-packets"
 
 // ── Default prompts ─────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export function createCopyChain(config: CopyChainConfig) {
   })
 
   const prompt = ChatPromptTemplate.fromMessages([
-    ["system", config.system_prompt],
+    ["system", withDoctrine(config.system_prompt, "copy")],
     ["human", config.user_template],
   ])
 

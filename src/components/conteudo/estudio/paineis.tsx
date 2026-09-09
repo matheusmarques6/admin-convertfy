@@ -13,11 +13,13 @@ import { Icon } from "@/components/ui/icon"
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
-import { aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
+import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
+import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia, familiaDe } from "@/lib/conteudo/familias"
+import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
 import { getTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { DocFrame, EstiloTexto, OcultavelGlobal, Proporcao } from "@/lib/conteudo/types"
+import type { Campo, DocFrame, EstiloTexto, OcultavelGlobal, Proporcao } from "@/lib/conteudo/types"
 import { CtAvatar, CtLabel, CtSeg, CtSkel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { EditorApi } from "./editor-types"
 import { useAssets } from "./use-estudio-data"
@@ -395,13 +397,74 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
 
 // ── Texto ───────────────────────────────────────────────────────────────
 
+/**
+ * Campos que não vêm no molde: o GANCHO (a linha em itálico que faz par com
+ * o título, assinatura da identidade Editorial) e a ANOTAÇÃO à mão. Ficam
+ * aqui porque são do slide, não do documento — e sem um lugar visível
+ * ninguém descobriria que existem.
+ */
+function CamposOpcionais({ api }: { api: EditorApi }) {
+  const { doc, ativo } = api
+  const f = doc.frames[ativo]
+  if (!f) return null
+  // Só o que ESTE tipo de slide sabe desenhar — oferecer o resto criaria
+  // campo que o operador preenche e nunca vê na tela.
+  const OPCIONAIS = camposOpcionaisDoTipo(f.tipo).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
+  if (OPCIONAIS.length === 0) return null
+  const alternar = (campo: Campo, guia: string) => {
+    const tem = f.campos.includes(campo)
+    api.set(
+      (d) => ({
+        ...d,
+        frames: d.frames.map((x, j) => {
+          if (j !== ativo) return x
+          if (!tem) return { ...x, campos: [...x.campos, campo], textos: { ...x.textos, [campo]: guia } }
+          // Remover apaga o TEXTO junto: o renderer desenha pelo texto, e
+          // deixá-lo para trás manteria a linha na tela sem campo na lista.
+          const textos = { ...x.textos }
+          delete textos[campo]
+          return { ...x, campos: x.campos.filter((k) => k !== campo), textos }
+        }),
+      }),
+      `${tem ? "Removido" : "Adicionado"}: ${campo === "gancho" ? "gancho" : "anotação"} · ${f.label}`,
+    )
+  }
+  return (
+    <div>
+      {label("Campos deste slide")}
+      <div className="flex flex-wrap gap-1.5">
+        {OPCIONAIS.map(([campo, nome, guia]) => {
+          const tem = f.campos.includes(campo)
+          return (
+            <button
+              key={campo}
+              type="button"
+              onClick={() => alternar(campo, guia)}
+              className={cn(
+                "inline-flex h-[30px] items-center gap-1 rounded-lg border px-[11px] text-[11.5px] font-medium",
+                tem ? "border-[var(--ops-accent)] text-[var(--ops-title)]" : "border-[var(--ops-border)] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]",
+              )}
+            >
+              {tem ? "−" : "+"} {nome}
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">O gancho é a linha em itálico acima do título; a anotação é o rabisco à mão, inclinado, na cor de destaque.</div>
+    </div>
+  )
+}
+
 export function PainelTexto({ api }: { api: EditorApi }) {
   const { doc, sel } = api
   if (!sel) {
     return (
-      <div className="text-[12px] leading-relaxed text-[var(--ops-sec)]">
-        Clique em um texto no slide para editar o estilo.
-        <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Posição vertical, tamanho, peso, alinhamento e cor. Nada sai da grade do template.</div>
+      <div className="flex flex-col gap-2.5">
+        <div className="text-[12px] leading-relaxed text-[var(--ops-sec)]">
+          Clique em um texto no slide para editar o estilo.
+          <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Posição vertical, tamanho, peso, alinhamento e cor. Nada sai da grade do template.</div>
+        </div>
+        <CamposOpcionais api={api} />
       </div>
     )
   }
@@ -467,6 +530,7 @@ export function PainelTexto({ api }: { api: EditorApi }) {
       <button type="button" onClick={() => setE({ escala: undefined, peso: undefined, align: undefined, lh: undefined, cor: undefined, dy: undefined }, "Texto de volta ao padrão")} className="h-[30px] rounded-lg border border-[var(--ops-border)] text-[11.5px] font-medium text-[var(--ops-sec)] hover:bg-[var(--ops-hover)]">
         Voltar ao padrão do template
       </button>
+      <CamposOpcionais api={api} />
     </div>
   )
 }
@@ -491,7 +555,9 @@ export function PainelMidia({ api }: { api: EditorApi }) {
   }
   const aplicarUrl = (i: number, url: string, label = "Imagem adicionada") => {
     const fr = doc.frames[i]
-    if (!fr || fr.slotsImagem === 0) return
+    // Frame sem slot mas com imagem é o "slide inteiro" da via B: trocar a
+    // imagem dele aqui é legítimo; recusar em silêncio é que não era.
+    if (!fr || !aceitaImagem(fr)) return
     api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
   }
   const enviarArquivo = async (i: number, file: File) => {
@@ -526,20 +592,20 @@ export function PainelMidia({ api }: { api: EditorApi }) {
       <div
         role="button"
         tabIndex={0}
-        onClick={() => f?.slotsImagem && abrirUpload(ativo)}
-        onKeyDown={(e) => e.key === "Enter" && f?.slotsImagem && abrirUpload(ativo)}
+        onClick={() => f && aceitaImagem(f) && abrirUpload(ativo)}
+        onKeyDown={(e) => e.key === "Enter" && f && aceitaImagem(f) && abrirUpload(ativo)}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
           const file = e.dataTransfer.files?.[0]
-          if (file && f?.slotsImagem) void enviarArquivo(ativo, file)
+          if (file && f && aceitaImagem(f)) void enviarArquivo(ativo, file)
         }}
-        className={cn("rounded-[9px] border border-dashed border-[var(--ops-border)] px-2.5 py-4 text-center", f?.slotsImagem ? "cursor-pointer hover:bg-[var(--ops-hover)]" : "opacity-60")}
+        className={cn("rounded-[9px] border border-dashed border-[var(--ops-border)] px-2.5 py-4 text-center", f && aceitaImagem(f) ? "cursor-pointer hover:bg-[var(--ops-hover)]" : "opacity-60")}
       >
         <div className="flex justify-center text-[var(--ops-mut)]">
           <Icon icon={ImageIcon} customSize={18} />
         </div>
-        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f?.slotsImagem ? "Arraste ou clique" : "Este frame não tem slot"}</div>
+        <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f && aceitaImagem(f) ? "Arraste ou clique" : "Este frame não tem slot"}</div>
         <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · vai para o Storage da org (≤ 1350px)</div>
       </div>
       <div className="text-[11.5px] font-semibold text-[var(--ops-title)]" style={TNUM}>
@@ -549,7 +615,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
       <div className="grid grid-cols-3 gap-1.5">
         {doc.frames.map(
           (x, i) =>
-            x.slotsImagem > 0 && (
+            aceitaImagem(x) && (
               <button
                 key={x.frameId}
                 type="button"
@@ -568,7 +634,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
             ),
         )}
       </div>
-      {f?.slotsImagem > 0 && (
+      {f && aceitaImagem(f) && (
         <div>
           {label("Banco de imagens da org")}
           {carregandoAssets ? (
@@ -599,7 +665,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
           <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} className={cn(textareaCls, "resize-none text-[11.5px]")} />
           {erro && <div className="text-[11px] text-[var(--ops-neg)]">{erro}</div>}
           {ia === "prompt" && (
-            <AiBtn prominent onClick={gerar} disabled={!prompt.trim() || !f?.slotsImagem}>
+            <AiBtn prominent onClick={gerar} disabled={!prompt.trim() || !f || !aceitaImagem(f)}>
               Gerar 4 opções
             </AiBtn>
           )}
@@ -615,7 +681,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
           {Array.isArray(ia) && (
             <div className="grid grid-cols-2 gap-1.5">
               {ia.map((u) => (
-                <button key={u} type="button" aria-label="Usar imagem gerada" onClick={() => f?.slotsImagem && aplicarUrl(ativo, u, "Imagem gerada pela ConvertIA")} className="aspect-[4/5] rounded-lg border border-[var(--ops-border)] bg-cover bg-center" style={{ backgroundImage: `url(${u})` }} />
+                <button key={u} type="button" aria-label="Usar imagem gerada" onClick={() => f && aceitaImagem(f) && aplicarUrl(ativo, u, "Imagem gerada pela ConvertIA")} className="aspect-[4/5] rounded-lg border border-[var(--ops-border)] bg-cover bg-center" style={{ backgroundImage: `url(${u})` }} />
               ))}
             </div>
           )}
@@ -632,6 +698,49 @@ export function PainelMidia({ api }: { api: EditorApi }) {
           if (file) void enviarArquivo(alvoRef.current, file)
         }}
       />
+    </div>
+  )
+}
+
+// ── Identidade visual (família) ────────────────────────────────────────
+
+export function PainelFamilia({ api }: { api: EditorApi }) {
+  const { doc } = api
+  const atual = familiaDe(doc)
+  return (
+    <div className="flex flex-col gap-2.5">
+      {FAMILIA_OPCOES.map(([key, nome]) => {
+        const fam = FAMILIAS[key]
+        const ativa = key === atual
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => !ativa && api.set((d) => aplicarFamilia(d, key), `Identidade visual: ${nome}`)}
+            className={cn(
+              "flex flex-col gap-2 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
+              ativa ? "border-[var(--ops-accent)] bg-[var(--ops-tile)]" : "border-[var(--ops-border)] hover:bg-[var(--ops-hover)]",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <span className="flex overflow-hidden rounded-[5px] border border-[var(--ops-border)]">
+                {[fam.fundoClaro, fam.cores.hook, fam.cores.destaque, fam.fundoEscuro].map((c) => (
+                  <span key={c} className="h-[18px] w-[18px]" style={{ background: c }} />
+                ))}
+              </span>
+              <span className="text-[12px] font-semibold text-[var(--ops-title)]">{nome}</span>
+              {ativa && <span className="ml-auto text-[10px] font-semibold text-[var(--ops-accent)]">em uso</span>}
+            </div>
+            <span className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">{fam.descricao}</span>
+          </button>
+        )
+      })}
+      <div className="rounded-lg border border-[var(--ops-border)] px-2.5 py-2 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">
+        Trocar de identidade não mexe na copy, e o que você pintou à mão fica como está: só as cores ainda no padrão da identidade anterior são substituídas.
+      </div>
+      <div className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">
+        No corpo do slide, <span className="font-semibold text-[var(--ops-title)]">**palavra**</span> sai na cor de destaque.
+      </div>
     </div>
   )
 }
