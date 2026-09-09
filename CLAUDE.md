@@ -4927,5 +4927,66 @@ duplicata acima, o "Setembro De 2026" do `capitalize`, o "0 items" em inglês
 e o mês inteiro coberto de slots.
 
 
+## Referência vira carrossel editável — e a imagem enviada passa a ser guardada (set/2026)
+
+Dois defeitos numa tela só, relatados juntos: "quando eu subo uma img ele
+não guarda" e "esse template não gerou igual eu quero, quero um template
+editável com base no que enviei".
+
+**A imagem sumia por uma assimetria de ENDEREÇO.** `POST /api/conteudo/upload`
+devolve `convertiaImageUrl(path)` — a ROTA DO ADMIN
+(`/api/ai/convertia/imagem/<path>`) — e o guard do PATCH conferia com
+`storagePathFromUrl`, que só entende URL do **Supabase Storage**. O guard
+recebia `null`, concluía "isto não é arquivo nosso" e descartava a imagem
+**em silêncio**: o upload funcionava, o slide continuava sem foto e nada
+aparecia em log. `objectPathFromAnyUrl` (`convertia-image-url.ts`, puro)
+entende as duas formas e é usada nos três pontos que liam a URL errada —
+incluindo `lerSlide`, o que significa que **"Ler de novo" nunca teve
+imagem para mandar ao modelo** em referência importada. A régua de
+segurança não mudou (o path tem de ser da própria org e ter o prefixo
+`ref-`), e o descarte deixou de ser mudo (`referencia.imagem_recusada`).
+Trocar a imagem existente passou a ser permitido — quem enviou a errada
+precisa poder corrigir, e o "Ler de novo" está ao lado.
+
+**"Usar como modelo"** (botão no card e na ficha) materializa a fase 2 que
+estava declarada como pendente: a referência vira um `Documento` com um
+frame por slide, a copy nos campos certos, a imagem no slot e a identidade
+visual da casa (família `editorial`) por cima. Regras em
+`lib/conteudo/referencia-para-documento.ts` (puro, 15 testes):
+
+- **O tipo transcrito é intenção, não layout.** O nosso `dado` desenha o
+  título como um NÚMERO de 360px (limite de 5 caracteres) e a transcrição
+  marca "dado" em qualquer slide que carregue número — o título dela é uma
+  frase. Copiar o rótulo faz a frase encolher até o piso e sair ilegível:
+  era literalmente o "não gerou como eu queria". `dado` só permanece quando
+  o título cabe como número (`pareceNumeroDeDestaque`, com prefixo de moeda
+  tratado); senão vira `texto`. Sem tipo declarado, a POSIÇÃO decide (capa,
+  meio, CTA) — adivinhar `prova` ou `lista` trocaria o layout inteiro.
+- **A fala e a arte se separam** (`separarCopyEArte`). A transcrição
+  descreve o visual entre colchetes ("[card com 4 métricas… anotação
+  manuscrita: 'esse ninguém sabe']") e carrega a navegação do original
+  ("· DESLIZE →", "botão: NOSSO MÉTODO →"). Isso não é parágrafo: vai para
+  `promptImagem`, a direção de arte da via B, onde vale. Descrição solta
+  depois de "·" é reconhecida por um vocabulário CURTO e fechado (foto,
+  print, card, gráfico, anotação, chip, logo…) — ampliá-lo começaria a
+  comer copy legítima, e o que sai dali não some do documento.
+- **Campo errado some da tela**: capa e CTA desenham `subtitulo`, o meio
+  desenha `corpo`. **A imagem só entra onde há slot** (capa, texto, prova,
+  lista, mec — `dado` e `cta` não desenham foto, o mesmo limite da via B) e
+  o que fica de fora é DITO no toast. A copy nunca é cortada: o canvas
+  encolhe e os campos acima do limite são reportados para revisão.
+
+O mesmo clique guarda a FORMA em "Meus templates" (`estruturaDaReferencia`,
+dedupe por nome) — é o outro sentido de "transformar em modelo": um pede a
+peça pronta para editar, o outro pede a sequência para escrever de novo.
+
+*Verificado renderizando* a referência REAL do banco (os 5 slides do "8%
+dos clientes fazem 41% do faturamento") no Chromium: `capa → texto → prova
+→ texto → texto`, CTA "Comente MÉTODO", nenhuma imagem sem lugar e um
+campo longo sinalizado. Os três slides `dado` da transcrição viraram
+`texto` pela régua acima — no rótulo original teriam saído com a frase
+espremida no lugar do número.
+
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

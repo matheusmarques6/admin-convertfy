@@ -9,18 +9,21 @@
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { preservarCamposOpcionais } from "./campos"
-import { FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
+import { aplicarFamilia, FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
 import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
+import { botaoDoGate, framesDaReferencia, type CampoLongo } from "./referencia-para-documento"
 import type {
   BrandKit,
   Campo,
   DocFrame,
   Documento,
   EstruturaDetectada,
+  FamiliaVisual,
   FrameTipo,
   PerfilEditavel,
   PropostaSlide,
+  Referencia,
   Template,
   TemplateFrame,
 } from "./types"
@@ -173,6 +176,47 @@ export function documentoDeEstrutura(
     fundoPorFrame: Object.fromEntries(frames.map((f, i) => [f.frameId, fundoPadrao(f.tipo, i)])),
     estilos: {},
   }
+}
+
+/**
+ * Documento EDITÁVEL a partir de uma referência: um frame por slide, com a
+ * copy transcrita nos campos que o tipo desenha e a imagem do post no slot
+ * quando há lugar para foto.
+ *
+ * A peça nasce na identidade visual da casa (a família escolhida), não como
+ * cópia da arte original: é isso que a torna editável — trocar uma palavra
+ * redesenha o slide. As imagens da referência entram como conteúdo do slot,
+ * então o operador troca cada uma sem sair do editor.
+ *
+ * Devolve os avisos do módulo puro para a tela dizer o que não coube — a
+ * imagem que ficou de fora e a copy acima do limite confortável.
+ */
+export function documentoDaReferencia(
+  ref: Pick<Referencia, "nome" | "slides" | "legenda" | "palavraChave" | "molde">,
+  perfil: PerfilEditavel,
+  opts: { familia?: FamiliaVisual; brandKit?: BrandKit; agora?: Date } = {},
+): { doc: Documento; imagemSemLugar: number[]; camposLongos: CampoLongo[] } {
+  const agora = opts.agora ?? new Date()
+  const base = novoDocumento(ref.nome, perfil, "molde-benchmark", { brandKit: opts.brandKit, agora })
+  const { frames, imagemSemLugar, camposLongos } = framesDaReferencia(ref.slides)
+
+  const comFrames: Documento = {
+    ...base,
+    frames,
+    fundoPorFrame: Object.fromEntries(frames.map((f, i) => [f.frameId, fundoPadrao(f.tipo, i)])),
+    estilos: {},
+    legenda: ref.legenda ?? "",
+    palavraChave: ref.palavraChave ?? "",
+    cta: { ...base.cta, texto: botaoDoGate(ref.palavraChave, base.cta.texto) },
+    historico: [{ id: novoId("h"), label: `Criado a partir da referência “${ref.nome}”`, ts: carimbo(agora) }],
+  }
+
+  // A família entra pelo caminho normal (`aplicarFamilia` + `ritmoDeFundos`),
+  // não por cores escritas à mão: é o mesmo código que roda quando alguém
+  // troca a identidade no editor, então trocar de volta devolve a peça ao
+  // estado original.
+  const doc = ritmoDeFundos(aplicarFamilia(comFrames, opts.familia ?? "editorial"))
+  return { doc, imagemSemLugar, camposLongos }
 }
 
 /** Ajusta a quantidade de frames (mantém capa e CTA; mexe só no meio). */

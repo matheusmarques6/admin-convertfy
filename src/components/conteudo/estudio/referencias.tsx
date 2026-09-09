@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { BookOpen, Instagram, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from "lucide-react"
+import { BookOpen, Instagram, Layers, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -43,12 +43,25 @@ function selo(r: Referencia): [string, string] {
 
 // ── Seção da home ───────────────────────────────────────────────────────
 
-export function ReferenciasSecao({ perfis }: { perfis: Perfil[] | null }) {
+export function ReferenciasSecao({ perfis, onUsarComoModelo }: { perfis: Perfil[] | null; onUsarComoModelo?: (ref: Referencia) => Promise<void> }) {
   const { referencias, utilizaveis, error, isLoading, importar, criarDeUpload, atualizar, excluir } = useReferencias()
   const [adicionando, setAdicionando] = useState(false)
   const [aberta, setAberta] = useState<Referencia | null>(null)
   const [excluindo, setExcluindo] = useState<Referencia | null>(null)
+  const [usando, setUsando] = useState<string | null>(null)
   const { toast } = useToast()
+
+  const usar = async (r: Referencia) => {
+    if (!onUsarComoModelo) return
+    setUsando(r.id)
+    try {
+      await onUsarComoModelo(r)
+    } catch (e) {
+      toast({ title: "Não foi possível criar o carrossel", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    } finally {
+      setUsando(null)
+    }
+  }
 
   // A ficha aberta acompanha a lista (a transcrição chega depois do clique).
   const abertaAtual = useMemo(() => (aberta ? (referencias ?? []).find((r) => r.id === aberta.id) ?? aberta : null), [aberta, referencias])
@@ -104,6 +117,17 @@ export function ReferenciasSecao({ perfis }: { perfis: Perfil[] | null }) {
                 <button type="button" aria-label="Remover referência" onClick={() => setExcluindo(r)} className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--ops-card)]/90 text-[var(--ops-mut)] opacity-0 transition-opacity hover:text-[var(--ops-neg)] group-hover:opacity-100">
                   <Icon icon={Trash2} customSize={12} />
                 </button>
+                {onUsarComoModelo && (
+                  <button
+                    type="button"
+                    onClick={() => usar(r)}
+                    disabled={usando === r.id}
+                    className="absolute inset-x-2.5 bottom-2.5 inline-flex h-[26px] items-center justify-center gap-1.5 rounded-lg bg-[var(--ops-accent)] text-[11px] font-semibold text-[var(--ops-on-accent)] opacity-0 transition-opacity hover:opacity-95 disabled:opacity-60 group-hover:opacity-100"
+                  >
+                    <Icon icon={Layers} customSize={11} />
+                    {usando === r.id ? "Criando…" : "Usar como modelo"}
+                  </button>
+                )}
               </div>
             )
           })}
@@ -139,6 +163,8 @@ export function ReferenciasSecao({ perfis }: { perfis: Perfil[] | null }) {
         <ReferenciaFicha
           ref_={abertaAtual}
           onClose={() => setAberta(null)}
+          onUsarComoModelo={onUsarComoModelo ? () => usar(abertaAtual) : undefined}
+          usando={usando === abertaAtual.id}
           onSalvar={async (patch) => {
             try {
               await atualizar(abertaAtual.id, patch)
@@ -335,7 +361,19 @@ function AdicionarReferenciaDialog({ perfis, onClose, onImportar, onUpload }: { 
 
 // ── Ficha ───────────────────────────────────────────────────────────────
 
-function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClose: () => void; onSalvar: (patch: import("@/lib/conteudo/data").PatchReferenciaEntrada) => Promise<void> }) {
+function ReferenciaFicha({
+  ref_,
+  onClose,
+  onSalvar,
+  onUsarComoModelo,
+  usando,
+}: {
+  ref_: Referencia
+  onClose: () => void
+  onSalvar: (patch: import("@/lib/conteudo/data").PatchReferenciaEntrada) => Promise<void>
+  onUsarComoModelo?: () => void
+  usando?: boolean
+}) {
   const [nome, setNome] = useState(ref_.nome)
   const [slides, setSlides] = useState(ref_.slides.map((s) => ({ ordem: s.ordem, tipo: s.tipo, titulo: s.titulo ?? "", corpo: s.corpo ?? "", imagemUrl: s.imagemUrl })))
   const [porque, setPorque] = useState(ref_.porQueFunciona.join("\n"))
@@ -427,10 +465,19 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
           <div className="flex flex-col gap-2">
             {slides.map((s, i) => (
               <div key={s.ordem} className="flex gap-2.5 rounded-lg border border-[var(--ops-border)] bg-[var(--ops-card)] p-2">
-                <div className="relative h-[90px] w-[72px] shrink-0 overflow-hidden rounded-md bg-[var(--ops-tile)]">
+                <div className="group/img relative h-[90px] w-[72px] shrink-0 overflow-hidden rounded-md bg-[var(--ops-tile)]">
                   {imagens.get(s.ordem) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={imagens.get(s.ordem)} alt="" className="h-full w-full object-cover" />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imagens.get(s.ordem)} alt="" className="h-full w-full object-cover" />
+                      {/* Trocar é permitido: quem enviou a imagem errada
+                          precisa poder corrigir sem recriar a referência. */}
+                      <label className={cn("absolute inset-x-0 bottom-0 flex cursor-pointer items-center justify-center gap-1 bg-black/60 py-[3px] text-[9.5px] font-semibold text-white opacity-0 transition-opacity group-hover/img:opacity-100", enviandoImagem === s.ordem && "pointer-events-none opacity-100")}>
+                        <Icon icon={Upload} customSize={9} />
+                        {enviandoImagem === s.ordem ? "Enviando…" : "Trocar"}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void enviarImagem(s.ordem, f); e.target.value = "" }} />
+                      </label>
+                    </>
                   ) : (
                     <label className={cn("flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 text-center text-[9.5px] leading-tight text-[var(--ops-mut)] hover:text-[var(--ops-title)]", enviandoImagem === s.ordem && "pointer-events-none opacity-60")}>
                       <Icon icon={Upload} customSize={12} />
@@ -508,6 +555,11 @@ function ReferenciaFicha({ ref_, onClose, onSalvar }: { ref_: Referencia; onClos
           <CtBtn icon={RefreshCw} disabled={Boolean(salvando)} onClick={() => void salvar(true)} title="Pede à ConvertIA para ler os slides de novo (substitui a copy)">
             {salvando === "reler" ? "Lendo…" : "Ler de novo"}
           </CtBtn>
+          {onUsarComoModelo && (
+            <CtBtn icon={Layers} onClick={onUsarComoModelo} disabled={Boolean(salvando) || usando}>
+              {usando ? "Criando…" : "Usar como modelo"}
+            </CtBtn>
+          )}
           <span className="flex-1" />
           <CtBtn onClick={onClose} disabled={Boolean(salvando)}>
             Fechar

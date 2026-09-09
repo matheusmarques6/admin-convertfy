@@ -10,8 +10,9 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/lib/hooks/use-toast"
 import { getPromptsProntos } from "@/lib/conteudo/data"
-import { comHistorico, novoUuid } from "@/lib/conteudo/documento"
-import type { PerfilEditavel } from "@/lib/conteudo/types"
+import { comHistorico, documentoDaReferencia, novoUuid } from "@/lib/conteudo/documento"
+import { estruturaDaReferencia } from "@/lib/conteudo/referencia-para-documento"
+import type { PerfilEditavel, Referencia } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { Biblioteca, type Caminho } from "./biblioteca"
 import { NovoFlow, type CriacaoResultado } from "./novo-flow"
@@ -117,6 +118,40 @@ export function EstudioHome() {
     }
   }
 
+  /**
+   * Referência → carrossel editável. A peça nasce com a sequência, a copy e
+   * as imagens da referência, na identidade visual da casa — é o "template
+   * com base no que enviei": abre no editor e cada palavra é editável.
+   *
+   * O que não coube é DITO no toast (imagem em slide que não desenha foto,
+   * copy acima do limite confortável): sumir em silêncio faria o operador
+   * procurar na tela o que a referência mostrava.
+   */
+  const usarReferencia = async (ref: Referencia) => {
+    const perfil = perfis?.[0]?.id ?? ""
+    const { doc, imagemSemLugar, camposLongos } = documentoDaReferencia(ref, perfil, {
+      brandKit: perfil ? kits?.[perfil] : undefined,
+    })
+    await criar(doc)
+
+    // A FORMA também fica guardada: o mesmo clique deixa a sequência em
+    // "Meus templates" para as próximas peças. Deduplicado por nome —
+    // clicar duas vezes na mesma referência não enche a prateleira.
+    if (!meus.some((m) => m.nome === ref.nome)) {
+      try {
+        await criarMeuTemplate({ nome: ref.nome, templateId: doc.templateId, estrutura: estruturaDaReferencia(ref.slides), usos: 1 })
+      } catch {
+        /* o carrossel já existe; falhar o atalho não pode derrubar o fluxo */
+      }
+    }
+
+    const notas: string[] = []
+    if (imagemSemLugar.length) notas.push(`${imagemSemLugar.length} imagem${imagemSemLugar.length > 1 ? "ns" : ""} de slide sem lugar para foto (dado/CTA)`)
+    if (camposLongos.length) notas.push(`${camposLongos.length} texto${camposLongos.length > 1 ? "s" : ""} acima do limite — o canvas encolhe, revise`)
+    toast({ title: "Carrossel criado a partir da referência", description: notas.join(" · ") || doc.nome })
+    router.push(`${ROUTES.ADMIN.CONTEUDO.ESTUDIO_DOC(doc.id)}?aba=ajustes`)
+  }
+
   const excluirTemplate = async (id: string) => {
     try {
       await excluirMeuTemplate(id)
@@ -141,7 +176,7 @@ export function EstudioHome() {
         onExcluirTemplate={excluirTemplate}
         onDuplicar={duplicar}
         onRenomear={renomear}
-        referencias={<ReferenciasSecao perfis={perfis} />}
+        referencias={<ReferenciasSecao perfis={perfis} onUsarComoModelo={usarReferencia} />}
         onBrandKit={() => {
           const primeiro = docs?.[0]
           if (primeiro) abrir(primeiro.id, "brandkit")

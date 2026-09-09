@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   convertiaImageUrl,
   isConvertiaImagePath,
+  objectPathFromAnyUrl,
   rewriteStorageImageSrc,
   storagePathFromUrl,
 } from "./convertia-image-url"
@@ -86,5 +87,29 @@ describe("convertiaImageUrl / rewrite", () => {
 
   it("ida e volta: a URL da rota volta a ser o path", () => {
     expect(convertiaImageUrl(PATH).endsWith(PATH)).toBe(true)
+  })
+})
+
+describe("objectPathFromAnyUrl", () => {
+  const REF = "stores/org-493b3ca0-b34b-41d9-beae-796e9c7ca3eb/email-assets/ref-e8489a01-fdd3-4d56-82a7-e4d6857f7244.png"
+
+  it("entende a ROTA DO ADMIN — que é o que o upload devolve", () => {
+    // O defeito que isto fecha: quem salvava guardava esta forma e quem
+    // conferia só entendia a do Storage, então a imagem era descartada
+    // sem erro nenhum.
+    expect(objectPathFromAnyUrl(convertiaImageUrl(REF))).toBe(REF)
+    expect(objectPathFromAnyUrl(`https://admin.convertfy.me${convertiaImageUrl(REF)}`)).toBe(REF)
+    expect(objectPathFromAnyUrl(`${convertiaImageUrl(REF)}?v=2`)).toBe(REF)
+  })
+
+  it("continua entendendo o Storage", () => {
+    expect(objectPathFromAnyUrl(`https://x.supabase.co/storage/v1/object/sign/onboarding-visual-assets/${PATH}?token=abc`)).toBe(PATH)
+  })
+
+  it("recusa o que não é asset nosso", () => {
+    expect(objectPathFromAnyUrl("https://cdn.shopify.com/produto.jpg")).toBeNull()
+    // Path fora da árvore de assets não vira caminho por vir na rota certa.
+    expect(objectPathFromAnyUrl("/api/ai/convertia/imagem/../../etc/passwd")).toBeNull()
+    expect(objectPathFromAnyUrl("/api/ai/convertia/imagem/stores/nao-e-uuid/email-assets/a.png")).toBeNull()
   })
 })

@@ -14,7 +14,7 @@ import sharp from "sharp"
 import type { createAdminClient } from "@/lib/supabase/server"
 import { AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { CONVERTIA_IMAGE_BUCKET, convertiaImageUrl, storagePathFromUrl } from "@/lib/ai/convertia-image-url"
+import { CONVERTIA_IMAGE_BUCKET, convertiaImageUrl, objectPathFromAnyUrl } from "@/lib/ai/convertia-image-url"
 import { executarIA } from "@/lib/conteudo/ia/service"
 import type { SaidaTranscricao } from "@/lib/conteudo/ia/schemas"
 import type { Referencia, ReferenciaCandidata, ReferenciaMetricas, ReferenciaSlide } from "@/lib/conteudo/types"
@@ -153,9 +153,15 @@ async function guardarSlide(admin: Admin, orgId: string, refId: string, ordem: n
   return { url: convertiaImageUrl(path), buf }
 }
 
-/** Lê um slide já guardado (URL do admin) como buffer — para re-transcrever. */
+/**
+ * Lê um slide já guardado (URL do admin) como buffer — para re-transcrever.
+ * `objectPathFromAnyUrl` e não `storagePathFromUrl`: o que está gravado é a
+ * ROTA DO ADMIN (foi `guardarSlide` quem escreveu), e a versão que só
+ * entende Storage devolvia null aqui — "Ler de novo" ficava sem imagem
+ * nenhuma para mandar ao modelo.
+ */
 async function lerSlide(admin: Admin, url: string): Promise<Buffer | null> {
-  const path = storagePathFromUrl(url)
+  const path = objectPathFromAnyUrl(url)
   if (!path) return null
   const { data, error } = await admin.storage.from(CONVERTIA_IMAGE_BUCKET).download(path)
   if (error || !data) return null
@@ -361,19 +367,27 @@ export async function atualizarReferencia(admin: Admin, orgId: string, id: strin
   if (patch.peso !== undefined) row.peso = patch.peso
   if (patch.ativa !== undefined) row.ativa = patch.ativa
   if (patch.slides) {
-    // A copy é editável; a IMAGEM só entra onde NÃO existe (referência
-    // cadastrada sem slides, ex.: transcrita à mão) e só se for um arquivo
-    // do Storage desta org com o prefixo de referência — ou seja, algo que o
-    // próprio upload da tela acabou de gravar. Trocar imagem existente não
-    // passa por aqui: a transcrição foi feita sobre ela.
+    // A copy é editável; a IMAGEM só é aceita quando o arquivo é DESTA org
+    // e tem o prefixo de referência — ou seja, algo que o próprio upload da
+    // tela acabou de gravar. Trocar a imagem existente é permitido (quem
+    // enviou a errada precisa poder corrigir); a transcrição feita sobre a
+    // anterior fica desatualizada, e o botão "Ler de novo" está ao lado.
     const edit = new Map(patch.slides.map((s) => [s.ordem, s]))
     const prefixoDaOrg = `stores/org-${orgId}/email-assets/ref-`
+    const recusadas: number[] = []
     row.slides = atual.slides.map((s) => {
       const e = edit.get(s.ordem)
       if (!e) return s
-      const novaImagem = !s.imagemUrl && e.imagemUrl && (storagePathFromUrl(e.imagemUrl) ?? "").startsWith(prefixoDaOrg) ? e.imagemUrl : s.imagemUrl
-      return { ...s, imagemUrl: novaImagem, tipo: (e.tipo as ReferenciaSlide["tipo"]) ?? s.tipo, titulo: e.titulo?.trim() || undefined, corpo: e.corpo?.trim() || undefined }
+      let imagemUrl = s.imagemUrl
+      if (e.imagemUrl && e.imagemUrl !== s.imagemUrl) {
+        if ((objectPathFromAnyUrl(e.imagemUrl) ?? "").startsWith(prefixoDaOrg)) imagemUrl = e.imagemUrl
+        else recusadas.push(s.ordem)
+      }
+      return { ...s, imagemUrl, tipo: (e.tipo as ReferenciaSlide["tipo"]) ?? s.tipo, titulo: e.titulo?.trim() || undefined, corpo: e.corpo?.trim() || undefined }
     })
+    // Descarte silencioso foi o defeito que custou caro aqui: a imagem
+    // sumia sem erro em log nem na tela. Se voltar a acontecer, aparece.
+    if (recusadas.length) log.warn("referencia.imagem_recusada", { id, ordens: recusadas })
     // Humano escreveu a copy: a referência passa a ser utilizável mesmo se a IA falhou.
     if (atual.transcricao !== "lida" && (row.slides as ReferenciaSlide[]).some((s) => s.titulo || s.corpo)) {
       row.transcricao = "lida"
@@ -393,7 +407,7 @@ export async function excluirReferencia(admin: Admin, orgId: string, id: string)
   if (error) throw error
   // As imagens são cópias nossas (ref-<id>-NN): apagar a linha sem apagar os
   // arquivos deixaria lixo no bucket para sempre. Best-effort.
-  const paths = ref.slides.map((s) => storagePathFromUrl(s.imagemUrl)).filter((p): p is string => Boolean(p))
+  const paths = ref.slides.map((s) => objectPathFromAnyUrl(s.imagemUrl)).filter((p): p is string => Boolean(p))
   if (paths.length) {
     const { error: e2 } = await admin.storage.from(CONVERTIA_IMAGE_BUCKET).remove(paths)
     if (e2) log.warn("referencia.slides_nao_removidos", { id, erro: e2.message })
