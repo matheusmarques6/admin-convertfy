@@ -9,6 +9,7 @@ import {
   repeticoesPermitidas,
   resolverModeloDoCurador,
   resolverTetoDoCurador,
+  explicarTetoDoCurador,
   motivoDeRetomada,
   renderPreferenciasDoVault,
   CURADOR_SHADOW_MODEL_FALLBACK,
@@ -71,6 +72,56 @@ describe("parseCuradorVaultOutput", () => {
     expect(prompt).not.toContain("SEGREDO_CORPO_COMPLETO")
     expect(prompt).not.toContain("NOTA_IMPLEMENTACAO_INTEGRAL")
     expect(prompt).not.toContain("QUANDO_USAR_INTEGRAL")
+  })
+})
+
+describe("progressive disclosure do Curador", () => {
+  const typeIndex = new Map([["hero-a", "hero"], ["hero-b", "hero"], ["body-a", "body"]])
+
+  it("valida até três finalistas e nunca aceita id de outra seção", () => {
+    const parsed = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }, { variant_id: "body-a" }, { variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "body-a" }] },
+      ]),
+      sections: ["hero", "body"],
+      typeIndex,
+    })
+    expect(parsed.byBlock.get(0)?.map((x) => x.variant_id)).toEqual(["hero-a", "hero-b"])
+    expect(parsed.byBlock.get(1)?.map((x) => x.variant_id)).toEqual(["body-a"])
+  })
+
+  it("renderiza nota aberta e ausência sem eliminar a finalista", () => {
+    const rendered = renderFinalistNotes([
+      { variant_id: "hero-a", status: "opened", file_path: "componentes/hero-a.md", body: "corpo" },
+      { variant_id: "hero-b", status: "missing", file_path: null, body: null },
+    ])
+    expect(rendered).toContain('variant_id="hero-a"')
+    expect(rendered).toContain("corpo")
+    expect(rendered).toContain('variant_id="hero-b" status="sem_nota_sincronizada"')
+  })
+
+  it("a decisão final não pode mover uma finalista para outra posição da mesma seção", () => {
+    const shortlist = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const final = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const restricted = restrictRankingToShortlist(final, shortlist, 2)
+    expect(restricted.byBlock.has(0)).toBe(false)
+    expect(restricted.byBlock.get(1)?.[0].variant_id).toBe("hero-b")
+    expect(restricted.invalidIds).toContain("hero-b")
   })
 })
 
@@ -518,11 +569,41 @@ describe("resolverModeloDoCurador", () => {
 })
 
 describe("teto, retomada e preferências do vault (09/09)", () => {
-  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso; env vence tudo", () => {
+  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso", () => {
     expect(resolverTetoDoCurador(16000)).toBe(16000)
     expect(resolverTetoDoCurador(2048)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
     expect(resolverTetoDoCurador(null)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
     expect(resolverTetoDoCurador(Number.NaN)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+  })
+
+  // 09/09: a config estava em 16.000, um CURADOR_SHADOW_MAX_TOKENS=5000
+  // esquecido no ambiente a rebaixava, e a run morria dizendo "aumente
+  // max_tokens" — o número que já tinha sido aumentado. O env só levanta.
+  it("o env NUNCA baixa o teto abaixo da config, e a origem é declarada", () => {
+    const original = process.env.CURADOR_SHADOW_MAX_TOKENS
+    try {
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "5000"
+      expect(resolverTetoDoCurador(16000)).toBe(16000)
+      expect(explicarTetoDoCurador(16000)).toEqual({
+        teto: 16000,
+        origem: "config",
+        config: 16000,
+        env: 5000,
+      })
+      // Env MAIOR que a config continua valendo — a alavanca de operação
+      // segue existindo, só perdeu o poder de rebaixar.
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "32000"
+      expect(explicarTetoDoCurador(16000)).toMatchObject({ teto: 32000, origem: "env" })
+      // Env abaixo do piso não derruba o piso.
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "1000"
+      expect(explicarTetoDoCurador(null)).toMatchObject({
+        teto: CURADOR_SHADOW_MAX_TOKENS_MIN,
+        origem: "piso",
+      })
+    } finally {
+      if (original === undefined) delete process.env.CURADOR_SHADOW_MAX_TOKENS
+      else process.env.CURADOR_SHADOW_MAX_TOKENS = original
+    }
   })
 
   it("motivoDeRetomada: prosa e corte pedem retomada; JSON legível não", () => {

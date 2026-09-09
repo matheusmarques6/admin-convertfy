@@ -414,7 +414,10 @@ export function runSchemaChecks(
       // Só campos de COPY são cobrados: imagem é do pipeline (image agent)
       // e asset_fixo é arte intacta da biblioteca — nenhum dos dois recebe
       // valor do n8n (T8, naturezas).
-      if (deriveFieldNature(f) !== "copy") continue
+      // `copy_no_desenho` também é cobrada: a palavra do selo tem de CABER
+      // no desenho, e o max_len é a única régua disso.
+      const natureza = deriveFieldNature(f)
+      if (natureza !== "copy" && natureza !== "copy_no_desenho") continue
       const value = block.content?.[f.key]
 
       if (f.required && (value == null || String(value).trim() === "")) {

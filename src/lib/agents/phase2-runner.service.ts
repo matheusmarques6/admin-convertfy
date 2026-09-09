@@ -4114,53 +4114,7 @@ export async function runPhase2HtmlQa(
     })
   }
 
-  // O gate determinístico é obrigatório e independe do agente por modelo.
-  // Carrega também o contrato uma única vez, para os dois caminhos.
-  const { data: checkBlocks } = await admin
-    .from("email_blocks")
-    .select("block_type, content, fields")
-    .eq("email_id", emailId)
-    .order("position", { ascending: true })
-  // Contrato do bloco (max_len estourado, obrigatório vazio) é WARNING: o
-  // e-mail existe e o designer decide. Quem bloqueia são os checks de
-  // conteúdo e de render, que marcam `blocking` na própria issue.
-  const schemaIssues = runSchemaChecks(
-    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
-      block_type: (b.block_type as string) ?? "unknown",
-      content: (b.content as Record<string, unknown>) ?? {},
-    })),
-    (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
-      type: (b.block_type as string) ?? "unknown",
-      fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
-    })),
-  ).map((issue) => ({ ...issue, disposition: "warning" as const }))
-  const deterministicIssues: QaIssue[] = [
-    ...heroCopyIssues,
-    ...contentIssues,
-    ...computeRenderChecks(finalHtml),
-    ...schemaIssues,
-  ]
-  const blockingIssues = deterministicIssues.filter(
-    (issue) => issue.disposition === "blocking",
-  )
-  if (blockingIssues.length > 0) {
-    await admin.from("email_flow_emails").update({
-      status: "failed",
-      failed_at: new Date().toISOString(),
-      failure_reason: "qa_failed",
-      qa_issues: deterministicIssues,
-      updated_at: new Date().toISOString(),
-    }).eq("id", emailId).eq("status", "rendering")
-    await safeNotifyEmailFailed(storeId, emailId, "qa_failed", batchId || null)
-    if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
-    log.warn("phase2.qa.deterministic_blocked", {
-      emailId,
-      blocking: blockingIssues.map((issue) => issue.type),
-    })
-    return { status: "failed" }
-  }
-
-  // ── QA fora do fluxo (EMAIL_QA_MODE=off; default) ────────────────────
+  // ── QA fora do fluxo somente quando EMAIL_QA_MODE=off ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem custo do modelo. O gate determinístico obrigatório já rodou acima;
   // aqui persistimos os warnings restantes para revisão do designer.
@@ -4176,7 +4130,27 @@ export async function runPhase2HtmlQa(
     //
     // A fonte é o `fields` do PRÓPRIO bloco (migration 20261065, "o bloco
     // é o schema"), não o blueprint pareado por índice.
-    const renderIssues = deterministicIssues
+    const { data: checkBlocks } = await admin
+      .from("email_blocks")
+      .select("block_type, content, fields")
+      .eq("email_id", emailId)
+      .order("position", { ascending: true })
+    const schemaIssues = runSchemaChecks(
+      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+        block_type: (b.block_type as string) ?? "unknown",
+        content: (b.content as Record<string, unknown>) ?? {},
+      })),
+      (checkBlocks ?? []).map((b: Record<string, unknown>) => ({
+        type: (b.block_type as string) ?? "unknown",
+        fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
+      })),
+    )
+    const renderIssues = [
+      ...heroCopyIssues,
+      ...contentIssues,
+      ...computeRenderChecks(finalHtml),
+      ...schemaIssues,
+    ]
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -4325,7 +4299,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...deterministicIssues, ...qaResult.issues],
+        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4350,7 +4324,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...deterministicIssues, ...qaResult.issues],
+      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)

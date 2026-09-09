@@ -341,12 +341,16 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
     expect(email.text_only).toBe(true)
     expect(email.estrutura_geral).toEqual({
       objective: "OUT-OBJ",
-      guidance: "OUT-GUIDE",
+      // A loja da fixture não tem `objection_catalog` → incentivo
+      // DESCONHECIDO, e desde 09/09 desconhecido não promete: o guidance
+      // do outline chega prefixado. O texto original continua embaixo.
+      guidance: expect.stringContaining("OUT-GUIDE"),
       suggested_blocks: ["header", "text", "footer"],
       tone_hint: "caloroso",
       // Este outline de teste não tem coupon_codes → sem cupom no idioma.
       coupon_code: null,
     })
+    expect(email.estrutura_geral?.guidance).toContain("INCENTIVO NÃO CONFIRMADO")
     expect(email.blueprint?.objective).toBe("OBJ-GLOBAL")
   })
 

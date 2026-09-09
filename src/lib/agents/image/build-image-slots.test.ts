@@ -245,3 +245,55 @@ describe("buildImageSlots", () => {
     expect(ancora).not.toContain("papel_neste_grupo")
   })
 })
+
+// Os selos da `body 3` (09/09): o cadastro pedia "a palavra do valor" no
+// centro do círculo e nenhum campo a carregava — o modelo inventava a
+// palavra a cada geração, dentro do pixel.
+describe("texto_no_desenho — a copy do n8n chega ao desenho pelo VALOR", () => {
+  const selos = [
+    f({ key: "seal_1_image", type: "image", image_spec: "círculo chapado, palavra do valor no centro" }),
+    f({ key: "seal_1_center", nature: "copy_no_desenho", max_len: 12 }),
+    f({ key: "seal_1_arc", nature: "copy_no_desenho", max_len: 40 }),
+    f({ key: "seal_2_image", type: "image", image_spec: "mesmo desenho, outra cor" }),
+    f({ key: "seal_2_center", nature: "copy_no_desenho", max_len: 12 }),
+  ]
+  const content = {
+    seal_1_center: "SEM APERTO",
+    seal_1_arc: "BAMBU · CINTURA REAL · DIA INTEIRO",
+    seal_2_center: "TROCA FÁCIL",
+  }
+
+  it("entrega a palavra LITERAL, entre aspas, e proíbe reescrever", () => {
+    const out = buildImageSlots(selos, content, { fieldKey: "seal_1_image" })
+    expect(out).toContain("texto_no_desenho")
+    expect(out).toContain('- seal_1_center: "SEM APERTO"')
+    expect(out).toContain('- seal_1_arc: "BAMBU · CINTURA REAL · DIA INTEIRO"')
+    expect(out).toContain("não traduza, não reescreva")
+  })
+
+  it("cada selo recebe só o texto do PRÓPRIO grupo", () => {
+    const um = buildImageSlots(selos, content, { fieldKey: "seal_1_image" })
+    expect(um).not.toContain("TROCA FÁCIL")
+    const dois = buildImageSlots(selos, content, { fieldKey: "seal_2_image" })
+    expect(dois).toContain('- seal_2_center: "TROCA FÁCIL"')
+    expect(dois).not.toContain("SEM APERTO")
+  })
+
+  // A distinção que justifica a natureza nova: `copy` é escrita POR CIMA
+  // pelo HTML (o pedido é deixar limpo); `copy_no_desenho` é desenhada.
+  it("copy comum continua sendo área a PRESERVAR, não texto a desenhar", () => {
+    const campos = [
+      f({ key: "hero_image", type: "image" }),
+      f({ key: "hero_headline", max_len: 60 }),
+    ]
+    const out = buildImageSlots(campos, { hero_headline: "Feito para durar" })
+    expect(out).toContain("areas_de_texto")
+    expect(out).not.toContain("texto_no_desenho")
+    expect(out).not.toContain("Feito para durar")
+  })
+
+  it("campo marcado mas sem copy escrita não inventa seção", () => {
+    const out = buildImageSlots(selos, { seal_1_center: "   " }, { fieldKey: "seal_1_image" })
+    expect(out).not.toContain("texto_no_desenho")
+  })
+})

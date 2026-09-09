@@ -279,6 +279,7 @@ vi.mock("./html/format-context", () => ({
 }))
 
 import { runPhase2HtmlQa } from "./phase2-runner.service"
+import { runQaAgent } from "./chains/qa.chain"
 import { spliceHero, locateHeroRegion } from "./html/hero-locator"
 import {
   missingProvenance,
@@ -320,6 +321,8 @@ function mockHappyChains() {
 }
 
 function reset(overrides: Row = {}) {
+  delete process.env.EMAIL_QA_MODE
+  delete process.env.EMAIL_QA_ENABLED
   for (const k of Object.keys(h.tables)) delete h.tables[k]
   h.tables.email_flow_emails = [
     {
@@ -347,6 +350,12 @@ function reset(overrides: Row = {}) {
   invokeHeroChain.mockReset()
   invokeTextFormatChain.mockReset()
   invokeColorFormatChain.mockReset()
+  vi.mocked(runQaAgent).mockReset()
+  vi.mocked(runQaAgent).mockResolvedValue({
+    passed: true,
+    issues: [],
+    meta: { model: "qa-test", tokens_input: 0, tokens_output: 0, cost_cents: 0, duration_ms: 0 },
+  })
   buildHeroVars.mockReset()
   buildHeroVars.mockReturnValue({})
   resolveHeroVariant.mockReset()
@@ -842,8 +851,12 @@ describe("merge por example — caso-mestre", () => {
         '<table role="presentation"><tr><td>Headline inventada</td></tr></table>',
       mode: "fragment",
     })
+    // `ready`, não `failed`: a perda da hero é ISSUE, não morte do e-mail —
+    // é o contrato do comentário acima e o do QA em sombra. Esta linha já
+    // foi virada duas vezes por merge (gate obrigatório ↔ sombra); quem
+    // quiser que ela reprove tem de mudar o desenho junto, não só o assert.
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("failed")
+    expect(res.status).toBe("ready")
 
     const rs = runsOf("hero_section")
     expect(rs).toHaveLength(2)
@@ -911,6 +924,7 @@ describe("merge por example — caso-mestre", () => {
     // Luxe Lift 23/08: SEIS campos estouraram o limite e ninguém viu. O
     // check existia, mas só dentro do agente de QA — que nesta loja está
     // desligado. O e-mail saiu com o botão final quebrado em duas linhas.
+    process.env.EMAIL_QA_MODE = "off"
     setupExampleCase()
     h.tables.email_blocks = [
       {
@@ -961,6 +975,24 @@ describe("merge por example — caso-mestre", () => {
     await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
     const issues = (email().qa_issues ?? []) as Array<Record<string, unknown>>
     expect(issues.some((i) => i.type === "copy_excede_max_len")).toBe(false)
+  })
+
+  it("default shadow executa QA e preserva a entrega diante de reprovação", async () => {
+    setupExampleCase()
+    vi.mocked(runQaAgent).mockResolvedValueOnce({
+      passed: false,
+      issues: [{ type: "tom_inconsistente", severity: "high", message: "revisão shadow" }],
+      meta: { model: "qa-test", tokens_input: 1, tokens_output: 1, cost_cents: 0, duration_ms: 1 },
+    })
+
+    const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    expect(runQaAgent).toHaveBeenCalledOnce()
+    expect(res.status).toBe("ready")
+    expect(email().status).toBe("ready")
+    expect(email().qa_issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ message: "revisão shadow" }),
+    ]))
   })
 
   it("guard da hero: fragmento re-espaçado passa (mesma régua do casamento)", async () => {

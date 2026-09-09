@@ -63,15 +63,34 @@ export const FIELD_TYPE_LABELS_PT: Record<ComponentFieldType, string> = {
 /**
  * Naturezas de campo (épico Taguedor): quem produz o valor final.
  * copy = n8n escreve · imagem_gerada = agente de imagem cria ·
- * asset_fixo = arte da biblioteca fica intacta no email final.
+ * asset_fixo = arte da biblioteca fica intacta no email final ·
+ * copy_no_desenho = o n8n escreve e o agente de IMAGEM desenha dentro da
+ * arte — o texto não tem endereço no HTML.
+ *
+ * A quarta nasceu dos selos da `body 3` (09/09): o cadastro pedia três
+ * círculos com "a palavra do valor" no centro e uma frase de atributos no
+ * arco, e nenhum campo carregava essas palavras — o modelo de imagem as
+ * INVENTAVA a cada geração, dentro do pixel, sem revisão possível. O único
+ * caminho que levava texto irmão ao prompt (`areasDeTexto`) manda a forma
+ * e o comprimento ("~126 caracteres"), nunca o conteúdo, porque a função
+ * dele é o contrário: dizer onde NÃO desenhar.
+ *
+ * Marcar `copy` no lugar desta não serve: o merge cobraria endereço no
+ * HTML e a geração acusaria `sem_lugar` para sempre.
  */
-export const FIELD_NATURES = ["copy", "imagem_gerada", "asset_fixo"] as const
+export const FIELD_NATURES = [
+  "copy",
+  "imagem_gerada",
+  "asset_fixo",
+  "copy_no_desenho",
+] as const
 export type ComponentFieldNature = (typeof FIELD_NATURES)[number]
 
 export const FIELD_NATURE_LABELS_PT: Record<ComponentFieldNature, string> = {
   copy: "Copy (n8n)",
   imagem_gerada: "Imagem gerada",
   asset_fixo: "Asset fixo",
+  copy_no_desenho: "Copy desenhada na imagem",
 }
 
 /**

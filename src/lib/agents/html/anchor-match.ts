@@ -518,13 +518,40 @@ export function assignTextAnchors(
   // Mais longo primeiro; empate mantém a ordem de declaração (estável).
   const ordered = [...groupOrder].sort((a, b) => b.length - a.length)
 
+  // Enumerador da ARTE × enumerador que DISTINGUE (09/09). Tirar o "1 "/"2 "
+  // da frase procurada só é seguro quando NENHUM outro campo do bloco disputa
+  // a frase sem número. Em `body 3`, `produtos 4`, `produtos 7`, `body 2`,
+  // `review 2/3` e `review 8` os examples são "1 …" e "2 …": dois campos,
+  // duas células, e o número é a ÚNICA coisa que os separa. Sem esta guarda o
+  // grupo que entrava primeiro casava as DUAS células, a regra 5 ("repetição
+  // é da ARTE") escrevia a mesma copy nas duas e o irmão morria em
+  // `range_ja_tomado` — parágrafo duplicado no email e uma copy perdida.
+  // A comparação é por CONTENÇÃO, não por igualdade: em `body 2` os dois
+  // lorem não são iguais, um é PREFIXO do outro, e a busca sem número
+  // casaria as duas células do mesmo jeito. Desligar o enumerador é o lado
+  // seguro — o example traz o número, o HTML traz o número, o range o cobre
+  // e ele some junto com o lorem na substituição.
+  const semEnum = new Map(
+    groupOrder.map((n) => [n, n.replace(ENUMERADOR_RE, "")] as const),
+  )
+  const disputado = (norm: string): boolean => {
+    const s = semEnum.get(norm)!
+    return groupOrder.some((outro) => {
+      if (outro === norm) return false
+      const t = semEnum.get(outro)!
+      return s.includes(t) || t.includes(s)
+    })
+  }
+
   for (const norm of ordered) {
     const memberIdxs = groups.get(norm)!
     const curto = norm.length < MIN_EXAMPLE_LEN
     const occurrences = findPhraseOccurrencesDetailed(
       index,
       fields[memberIdxs[0]].example,
-      curto ? { fronteira: true } : { enumerador: memberIdxs.length === 1 },
+      curto
+        ? { fronteira: true }
+        : { enumerador: memberIdxs.length === 1 && !disputado(norm) },
     )
     const free = occurrences.filter((o) => !claimed.some((c) => intersects(o, c)))
 
