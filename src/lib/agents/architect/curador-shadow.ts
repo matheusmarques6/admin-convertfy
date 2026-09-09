@@ -65,7 +65,6 @@ import {
   type ContratoResumo,
   type EliminacaoDaPosicao,
 } from "../shared/field-roles"
-import { executorRestritoAFinalistas } from "./curador-vault-tools"
 
 const log = logger.child("CuradorShadow")
 
@@ -1092,8 +1091,6 @@ export async function runCuradorShadow(
         consultou_vault: res.consultas.length > 0,
         consultas_ao_vault: res.consultas,
         variantes_inicialmente_candidatas: p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => v.variant_id)),
-        finalistas_registradas: Array.from(acessoFinalistas?.finalistas ?? []),
-        notas_abertas: Array.from(acessoFinalistas?.notasAbertas ?? []),
         tamanhos_segmentos: (promptSegments ?? []).map((s) => ({ rotulo: s.rotulo, parte: s.parte ?? null, chars: s.chars })),
         reducao_catalogo: {
           chars_catalogo_integral: p.catalogComExtras.json.length,
