@@ -136,6 +136,21 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
   const papeis = useMemo(() => papeisDosFrames(contexto.frames), [contexto.frames])
   const papeisDoMeio = useMemo(() => papeis.map((p) => p.papel).filter((p) => p !== "headline" && p !== "cta") as PapelFrame[], [papeis])
 
+  // O mesmo controle aparece na Pauta e, quando ela está escondida (fluxo
+  // "100% com IA"), na Triagem: sem isso a escolha existia e era invisível
+  // justamente no lugar onde a triagem é disparada.
+  const toggleBusca = (
+    <label className="flex cursor-pointer items-start gap-2 text-[11px] text-[var(--ops-title)]">
+      <input type="checkbox" checked={buscar} onChange={(e) => setBuscar(e.target.checked)} className="mt-0.5 accent-[var(--ops-accent)]" />
+      <span>
+        Buscar fatos na internet
+        <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--ops-mut)]">
+          As evidências ganham fonte com link. Só entra fonte que a busca devolveu — link que a IA inventar é removido antes de chegar aqui.
+        </span>
+      </span>
+    </label>
+  )
+
   const falha = (onde: string, e: unknown) => setErro({ onde, msg: e instanceof Error ? e.message : "A ConvertIA não respondeu." })
   const set = (patch: Partial<Editorial>) => onChange({ ...editorial, ...patch })
 
@@ -270,15 +285,7 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
             </select>
           </div>
         </div>
-        <label className="flex cursor-pointer items-start gap-2 text-[11px] text-[var(--ops-title)]">
-          <input type="checkbox" checked={buscar} onChange={(e) => setBuscar(e.target.checked)} className="mt-0.5 accent-[var(--ops-accent)]" />
-          <span>
-            Buscar fatos na internet
-            <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--ops-mut)]">
-              As evidências ganham fonte com link. Só entra fonte que a busca devolveu — link que a IA inventar é removido antes de chegar aqui.
-            </span>
-          </span>
-        </label>
+        {toggleBusca}
         {erro?.onde === "triagem" && <Erro msg={erro.msg} onRetry={fazerTriagem} />}
         <Btn prominent icon={Sparkles} loading={ocupado === "triagem"} disabled={editorial.insumo.trim().length < 10} onClick={fazerTriagem}>
           {editorial.triagem ? "Refazer triagem" : "Fazer triagem"}
@@ -292,6 +299,7 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
         {!editorial.triagem ? (
           <div className="flex flex-col gap-2">
             <div className="text-[11px] text-[var(--ops-mut)]">A triagem lê o insumo em três camadas (transformação, fricção, ângulo) e lista as evidências com fonte. Tudo é editável depois.</div>
+            {ocultarPauta && toggleBusca}
             <Btn prominent icon={Sparkles} loading={ocupado === "triagem"} disabled={editorial.insumo.trim().length < 10} onClick={fazerTriagem}>
               Fazer triagem
             </Btn>
