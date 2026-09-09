@@ -42,6 +42,7 @@ import { logGenerationRun, resolveCostCents } from "./callbacks/telemetry.callba
 import { runPhase2InBackground } from "./phase2-runner.service"
 import { loadTopProducts } from "./top-products"
 import { loadEffectiveBlueprint } from "./architect/blueprint-loader"
+import { doctrinePromptSegment, withDoctrine } from "./shared/doctrine-packets"
 
 const log = logger.child("CopyChainFallback")
 
@@ -333,6 +334,25 @@ export async function runCopyChainInProcess(
     const userTemplate = cfg?.user_template ?? DEFAULT_COPY_USER_TEMPLATE
 
     const inputVars = buildInputVars(ctx, flowType, emailNumber, blocks)
+    const effectiveSystemPrompt = withDoctrine(systemPrompt, "copy")
+    const renderedInput = JSON.stringify(inputVars, null, 2)
+    const copyPromptSegments = [
+      {
+        cls: "agente" as const,
+        rotulo: "Template do agente",
+        texto: systemPrompt,
+        chars: systemPrompt.length,
+        parte: "system" as const,
+      },
+      doctrinePromptSegment("copy"),
+      {
+        cls: "loja" as const,
+        rotulo: "Entrada estruturada da copy",
+        texto: `\n\n${renderedInput}`,
+        chars: renderedInput.length + 2,
+        parte: "user" as const,
+      },
+    ]
 
     // Proveniência (migration 20261085): este fallback é LLM de verdade
     // (LangChain) e não gravava prompt nenhum — quando a copy do n8n falha e
@@ -378,7 +398,8 @@ export async function runCopyChainInProcess(
         agent: "copy",
         status: "error",
         model,
-        renderedPrompt: `${systemPrompt}\n\n${JSON.stringify(inputVars, null, 2)}`,
+        renderedPrompt: `${effectiveSystemPrompt}\n\n${renderedInput}`,
+        promptSegments: copyPromptSegments,
         inputSummary: fallbackInputSummary,
         rawOutput: rawOutput.slice(0, 2000),
         durationMs: chainDuration,
@@ -438,7 +459,7 @@ export async function runCopyChainInProcess(
 
     // 7. Telemetria do run (fallback=true)
     const tokensInput = Math.ceil(
-      (systemPrompt + JSON.stringify(inputVars)).length / 4,
+      (effectiveSystemPrompt + JSON.stringify(inputVars)).length / 4,
     )
     const tokensOutput = Math.ceil(rawOutput.length / 4)
     const costCents = resolveCostCents({ model, tokensInput, tokensOutput })
@@ -452,7 +473,8 @@ export async function runCopyChainInProcess(
       agentConfigId: cfg?.id,
       status: "success",
       model,
-      renderedPrompt: `${systemPrompt}\n\n${JSON.stringify(inputVars, null, 2)}`,
+      renderedPrompt: `${effectiveSystemPrompt}\n\n${renderedInput}`,
+      promptSegments: copyPromptSegments,
       inputSummary: fallbackInputSummary,
       rawOutput: rawOutput.slice(0, 2000),
       parsedOutput: {

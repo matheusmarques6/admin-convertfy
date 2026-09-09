@@ -33,6 +33,7 @@ import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { corteDeRaciocinio } from "../model-capabilities"
 import { withUsage } from "./step-usage"
 import type { TypographyDecision, SegundaFonte, TypographyOp } from "../typography/rules"
+import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 const log = logger.child("TypographyChain")
 
@@ -263,7 +264,8 @@ export async function invokeTypographyChain(input: {
 }): Promise<InvokeTypographyResult> {
   const { config, vars } = input
 
-  const systemPrompt = config.system_prompt.trim() || DEFAULT_TYPOGRAPHY_SYSTEM_PROMPT
+  const approvedSystemPrompt = config.system_prompt.trim() || DEFAULT_TYPOGRAPHY_SYSTEM_PROMPT
+  const systemPrompt = withDoctrine(approvedSystemPrompt, "typography")
   const template = config.user_template.trim() || DEFAULT_TYPOGRAPHY_USER_TEMPLATE
   const userMessage = renderImageTemplate(template, vars)
 
@@ -279,10 +281,11 @@ export async function invokeTypographyChain(input: {
             {
               cls: "agente" as const,
               rotulo: "Template do agente",
-              texto: systemPrompt,
-              chars: systemPrompt.length,
+              texto: approvedSystemPrompt,
+              chars: approvedSystemPrompt.length,
               parte: "system" as const,
             },
+            doctrinePromptSegment("typography"),
           ],
           segUser.segments,
         )
