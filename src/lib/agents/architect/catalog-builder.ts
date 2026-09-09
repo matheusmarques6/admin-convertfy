@@ -171,6 +171,33 @@ export interface CatalogSection {
   variantes: CatalogEntry[]
 }
 
+/** Entrada estruturada do índice progressivo; o texto do prompt deriva dela. */
+export interface CompactCatalogEntry {
+  variant_id: string
+  section: string
+  title: string
+  note_slug: string | null
+  summary: string
+  requirements: ContratoResumo
+  axes: {
+    objecao: string[]
+    aliviador: string[]
+    profundidade: string | null
+    registro: string[]
+    registro_vetado: string[]
+    paleta: string[]
+    papel_na_peca: string[]
+    peso: string | null
+    convivencia: string[]
+    itens: string | null
+  }
+}
+
+export interface CompactCatalog {
+  entries: CompactCatalogEntry[]
+  text: string
+}
+
 export interface BuildCatalogResult {
   /** JSON que entra no `{{catalogo}}` do system prompt. */
   json: string
@@ -184,6 +211,8 @@ export interface BuildCatalogResult {
    * outro lado (kill-switch `curador_catalogo_mode`, item 2.3 do plano).
    */
   enxuto: string
+  /** Fonte estruturada + render do índice compacto. */
+  compact: CompactCatalog
   sections: CatalogSection[]
   /** Total de variantes no catálogo. */
   total: number
@@ -235,9 +264,11 @@ export function buildCatalog(
   }))
   divergentes.sort((a, b) => a.similaridade - b.similaridade)
 
+  const compact = buildCompactCatalog(sections)
   return {
     json: JSON.stringify(sections, null, 1),
-    enxuto: buildCatalogoEnxuto(sections),
+    enxuto: compact.text,
+    compact,
     sections,
     total: variants.length,
     types,
@@ -274,10 +305,37 @@ function campo(chave: string, valores: ReadonlyArray<string> | string | number |
  * apelidos. Puro; a ordem é a das `sections` (estável, cacheável).
  */
 export function buildCatalogoEnxuto(sections: ReadonlyArray<CatalogSection>): string {
+  return buildCompactCatalog(sections).text
+}
+
+/** Constrói primeiro o contrato tipado; o prompt é apenas sua projeção. */
+export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): CompactCatalog {
+  const entries: CompactCatalogEntry[] = sections.flatMap((sec) =>
+    sec.variantes.map((e) => ({
+      variant_id: e.variant_id,
+      section: sec.section,
+      title: e.name,
+      note_slug: e.vault?.slug ?? null,
+      summary: primeiraFraseDaDescricao(e.description),
+      requirements: e.contrato,
+      axes: {
+        objecao: e.vault?.objecao ?? [],
+        aliviador: e.vault?.aliviador ?? [],
+        profundidade: e.vault?.profundidade ?? null,
+        registro: e.vault?.registro ?? [],
+        registro_vetado: e.vault?.registro_vetado ?? [],
+        paleta: e.vault?.paleta ?? [],
+        papel_na_peca: e.vault?.papel_na_peca ?? [],
+        peso: e.vault?.peso ?? null,
+        convivencia: e.vault?.convivencia ?? [],
+        itens: e.vault?.itens ?? null,
+      },
+    })),
+  )
   const blocos: string[] = []
   for (const sec of sections) {
-    const linhas = sec.variantes.map((e) => {
-      const c = e.contrato
+    const linhas = entries.filter((e) => e.section === sec.section).map((e) => {
+      const c = e.requirements
       const anatomia = [
         c.tem_cupom ? "cupom" : "",
         c.tem_cta ? "cta" : "",
@@ -286,25 +344,25 @@ export function buildCatalogoEnxuto(sections: ReadonlyArray<CatalogSection>): st
         c.tem_credencial ? "credencial" : "",
       ].filter(Boolean)
       const partes = [
-        `${e.variant_id} · ${e.name}${e.vault ? ` [${e.vault.slug}]` : ""} — ${primeiraFraseDaDescricao(e.description)}`,
-        campo("objeção", e.vault?.objecao),
-        campo("aliviador", e.vault?.aliviador),
-        campo("profundidade", e.vault?.profundidade),
-        campo("registro", e.vault?.registro),
-        campo("registro vetado", e.vault?.registro_vetado),
-        campo("paleta", e.vault?.paleta),
-        campo("papel", e.vault?.papel_na_peca),
+        `${e.variant_id} · ${e.title}${e.note_slug ? ` [${e.note_slug}]` : ""} — ${e.summary}`,
+        campo("objeção", e.axes.objecao),
+        campo("aliviador", e.axes.aliviador),
+        campo("profundidade", e.axes.profundidade),
+        campo("registro", e.axes.registro),
+        campo("registro vetado", e.axes.registro_vetado),
+        campo("paleta", e.axes.paleta),
+        campo("papel", e.axes.papel_na_peca),
         campo("anatomia", anatomia),
-        campo("slots", e.product_slots > 0 ? e.product_slots : null),
-        campo("itens", e.vault?.itens),
-        campo("peso", e.vault?.peso),
-        campo("convivência", e.vault?.convivencia),
+        campo("slots", c.itens.product && c.itens.product > 0 ? c.itens.product : null),
+        campo("itens", e.axes.itens),
+        campo("peso", e.axes.peso),
+        campo("convivência", e.axes.convivencia),
       ].filter(Boolean)
       return `- ${partes.join(" | ")}`
     })
     blocos.push(`## ${sec.section} (${sec.variantes.length})\n${linhas.join("\n")}`)
   }
-  return blocos.join("\n\n")
+  return { entries, text: blocos.join("\n\n") }
 }
 
 function toEntry(

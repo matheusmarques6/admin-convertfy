@@ -7,10 +7,11 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { dispatchEmailCopyWebhook } from "@/lib/services/email-copy-webhook.service"
+import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 
 const log = logger.child("DispatchEmailCopies")
 
@@ -30,6 +31,7 @@ export async function POST(
     const { id: storeId } = await context.params
     const sb = await createClient()
     const user = await requireAuth(sb)
+    await assertCanManagePrompts(createAdminClient(), user.id)
 
     const body = await request.json().catch(() => ({}))
     const parsed = bodySchema.parse(body)
