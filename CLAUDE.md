@@ -4517,5 +4517,45 @@ brief (`tabelas_removidas`).
 cobertura-biblioteca.md`: 16 examples + ~14 campos); pendências da ficha
 alimentadas pelas `contradicoes` do Seletor na tela; ligar o QA.
 
+## Vault de e-mail: o que o sync serve (set/2026, migrations 20261134-35)
+
+Diagnóstico e plano em `docs/email-generation/diagnostico-vault-vs-advisor-max.md`
+(por que o Advisor Max acerta com 1 MB de corpus e o Curador erra com
+620 KB: a DISPOSIÇÃO, não o volume). Frente 1 — lado do vault — aplicada:
+
+- **Lacuna aberta é servida.** `isDocActive` exigia `status: aprovada`
+  para todo kind exceto o catálogo gerado; lacuna vive `aberta`, então as
+  15 nasciam inativas e o loader do Curador (que já pedia o kind) servia
+  "(nenhuma lacuna registrada)" em toda run — `lacunas_servidas: 0` como
+  se não houvesse lacuna. `retratada`/`observacao`/`modelo`/`proposta`
+  seguem fora. Vale após sync com `force: true`.
+- **Kinds `julgamento` e `doutrina`** (`_julgamento.md`, régua da casa,
+  servida inteira, teto 8k; `doutrina/<slug>.md`, doutrina de curso com
+  `fonte:` obrigatória e `secao:`, teto 6k). `VaultDocKind` deriva de
+  `VAULT_DOC_KINDS` e **um teste lê a migration e compara com o CHECK** —
+  kind novo sem migration sincronizava, tomava 23514 e sumia; o sync agora
+  nomeia a migration no card "Notas puladas". Blocos
+  `buildJulgamentoBlock`/`buildDoutrinaBlock(k, secao)` com ausência
+  DECLARADA; os prompts que os consomem são a Frente 2 (outra sessão).
+- **Índice do Obsidian com `slug — primeira frase`** por nota
+  (`primeiraFrase` pula título/tabela/lista/citação/código; teto 12k, a
+  pasta mais cheia volta a só contagem). Contagem sozinha não orientava a
+  consulta sob demanda: `consultou_vault` era 3/8 runs.
+- **Catálogo enxuto** (`BuildCatalogResult.enxuto`, ≤ 15k): uma linha por
+  variante com id, slug, primeira frase, eixos e anatomia — dos MESMOS
+  dados do `json` (128k dos 190k chars da chamada), nunca do
+  `_catalogo.md`. Entra no prompt só pelo kill-switch do item 2.3.
+- **`buscar_doutrina`** em `VAULT_TOOLS`: a base do Max
+  (design/copy/flows/doutrina/fundamentos) pela MESMA busca da ConvertIA
+  (`buscarConhecimento`, extraída de `conhecimento_buscar`). Cabeçalho fixo
+  rebaixa a "doutrina de curso" — sem ele o modelo lê como regra da casa.
+- **Lacunas propostas por telemetria** (`vault_propostas`, cron diário
+  `vault-lacunas-propostas`): a mesma violação em 3+ runs de 14 dias vira
+  rascunho de nota em `componentes/lacunas/` (chave normalizada: a
+  proibição fica só com o requisito depois do `×`, senão nunca chega a 3).
+  `descartada` não ressuscita. O 👎 nunca persistiu nada e o token do vault
+  é read-only — este é o caminho que sobrou.
+- Casos A/B do diagnóstico viraram `curador-casos.test.ts`.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

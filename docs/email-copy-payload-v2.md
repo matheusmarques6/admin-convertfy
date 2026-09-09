@@ -397,3 +397,37 @@ que as honra deixa de escrever oferta que a loja não tem.
   `n_itens.max`). Devolver a chave assim mesmo não adianta: o callback
   força `""` e o merge remove a linha (`omitidos` no run `copy_merge`;
   `omitidos_forcados`/`omitidos_preenchidos` no run `copy`).
+
+## `emails[].doutrina` — doutrina de e-mail por seção (contrato, set/2026)
+
+Chave **aditiva** por email, `null` enquanto o item 2.5 do plano do vault
+(`docs/email-generation/diagnostico-vault-vs-advisor-max.md`) não estiver
+no dispatch. Vem de `buildDoutrinaBlock(k, secao)` (`curador-vault.ts`),
+que lê as notas `componentes/doutrina/<slug>.md` do vault (kind
+`doutrina`, `fonte:` obrigatória, `secao:` no frontmatter) — a doutrina
+de CURSO da casa, roteada pelas seções que compõem o email:
+
+```jsonc
+"doutrina": [
+  {
+    "slug": "hero-uma-promessa",
+    "secao": "hero",                 // hero | body | offer | products | reviews | footer | assunto | geral
+    "fonte": "Curso X — módulo 3",   // de onde a regra veio; sem fonte a nota nem sincroniza
+    "resumo": "Uma promessa por dobra; a segunda vira ruído.",
+    "corpo": "…markdown, até 3.000 chars…"
+  }
+]
+```
+
+Regras que o n8n deve honrar:
+
+- **É doutrina, não dado.** Perde para `alvo` (o Seletor), para o
+  `purpose`/`fio_narrativo` do blueprint e para qualquer dado da loja
+  (`brand`, `icp`, produtos). Serve para fundamentar COMO escrever a seção,
+  nunca para contrariar o que a loja tem ou o que o toque pede.
+- Até **3 notas por seção**, específica antes da geral; `secao: "geral"`
+  vale para todas. Ausência de doutrina para uma seção NÃO é erro — é
+  ausência declarada, e o flow escreve como hoje.
+- A chave não muda o shape de `blocks[]` nem de `fields[]`; um flow que a
+  ignora continua funcionando.
+
