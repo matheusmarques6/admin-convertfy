@@ -4412,5 +4412,110 @@ REAL e mostra a recusa crua ("Testar embeddings" e "Vetorizar as N
 pendentes" no card de saúde, no padrão do "Testar busca"). Antes, a
 única forma de investigar isto era por SQL e console.
 
+## A decisão não se perde mais entre um agente e o seguinte (09/09, migrations 20261134-35)
+
+Diagnóstico em `docs/email-generation/diagnostico-agente-a-agente.md` (batch
+`644d86c5`, Hero Boxers Welcome 1): o Estruturador decidiu 7 posições com
+qualidade e o e-mail entregou o oposto em 6. Não era um agente errando —
+era a decisão morrendo na fronteira. O plano executado (12 passos) e o
+que cada um travou:
+
+**Curador do vault** (`curador-shadow.ts`): o teto era `max_tokens: 8192`
+FIXO no código (a config de 16000 era ignorada), o modelo respondeu em
+prosa dentro do loop de ferramentas e caiu em `shadow_json_ilegivel` sem
+segunda chance — a resposta que ELIMINAVA a hero de cupom foi jogada fora
+e o legado escolheu justamente ela. Agora: `resolverTetoDoCurador` (env >
+max(8192, config)); `invokeAgentWithTools` ganhou **retomada** (resposta
+final sem JSON → uma volta a mais, sem ferramentas, com o histórico e
+prefill `{"papeis"` quando o provedor é `anthropic/*`; recusa do prefill
+repete sem ele; falha devolve a original com o erro); JSON não consumível
+vira `<preferencias_do_vault>` no legado. Telemetria: `finish_reason`,
+`voltas_json`, `prefill_usado`, `posicoes_sem_resposta`; raw em 32k.
+
+**Contrato da anatomia** (`shared/field-roles.ts`): medido — NENHUM campo
+da biblioteca é `required:true`, então o contrato é a PRESENÇA do slot
+(hero-3 tem `coupon_line`; sem cupom o example fica no HTML, porque
+`pareceExemplo` não reconhece "Use code: [WELCOME-CODE]"). `resumirContrato`
+(~150 chars) entra em `CatalogEntry.contrato` para os DOIS Curadores;
+`eliminarPorRequisitos` cruza os `requisitos` do Estruturador com o
+contrato e serve `<eliminadas_por_requisito>` (fail-open declarado quando
+zera a seção); `contrato_violado`/`requisito_violado` no medidor.
+
+**Estruturador** (`estruturador-prompt.ts`): `requisitos` TIPADOS por
+posição (`cupom`/`cta`/`n_itens`/`preco`/`avaliacao`/`campos`/`imagem`/
+`exige`, `normalizarRequisitos` fail-open) — uma fonte que Curador,
+Blueprint, n8n, imagem e QA leem. `<secoes_disponiveis>` leva a
+CAPACIDADE por seção (`capacidadePorSecao`): ele não exige o que a
+biblioteca não tem. O prompt vive no CÓDIGO (system vazio no banco).
+
+**Blueprint** (`estruturador-consume.ts`): `arbitrarCampos` marca `omitir`
+no campo que colide com requisito duro (cupom negado, CTA negado, item
+além de `n_itens.max`); `papel` e `requisitos` viram campos PRÓPRIOS do
+bloco; purpose = `papel + "Forma (variante, subordinada ao papel)"`.
+Telemetria `omitidos`, `papeis_nao_aplicados` (o desalinhamento era
+silencioso).
+
+**n8n / callback / merge**: campo `omitir` SAI de `schema.campos` (o n8n
+não escreve o que não vê); o callback força `""` mesmo que ele devolva; o
+merge remove a linha seja qual for a chave (`itemOrfao` forçado) ou
+esvazia o texto — `report.omitidos`. `emails[].decisao` = `{incentivo,
+insumos_permitidos}`; `estrutura_geral` passa por `condicionarOutline`
+(sem incentivo → prefixo SEM INCENTIVO, blocos coupon/offer fora,
+`coupon_code` null; com código da loja → vence o do outline). Doc:
+`docs/email-copy-payload-v2.md` §v3.1. As ops `remove_row`/`set_text`
+continuam MORTAS — omitir é flag no campo, não op.
+
+**Seletor**: `incentivo` copiado do CATÁLOGO por código (o modelo não
+decide), `insumos_permitidos` só com origem entre parênteses,
+proibições deduplicadas por chave (`texto.ts`; 17 → sem dobros),
+`contradicoes` quando o tratamento pede o que uma proibição nega
+(`tratamento_sem_insumo` — alvo mantido, dado que falta declarado).
+`renderAlvo` ganhou INCENTIVO/insumos/CONTRADIÇÃO; `alvoParaMedicao`
+carrega `incentivo_existe`. Campos opcionais: alvos antigos continuam
+válidos.
+
+**Ficha operacional** (`lib/stores/ficha-operacional.ts`, coluna
+`client_stores.ficha_operacional`, card na aba Pesquisa): incentivo,
+troca, envio, garantia, prova, pagamento, suporte — VERIFICADOS pelo
+time. O Catalogador a recebe como `<ficha_operacional_verificada>` (vence
+a pesquisa) e `aplicarFichaAoCatalogo` carimba `lastro_operacional.
+verificado=true` + `campo_de_origem` por família da afirmação e
+sobrescreve `incentivo`; o PATCH de contexto aplica ao catálogo
+existente na hora. **É lacuna de DADO, não de prompt**: sem a ficha o
+Seletor proíbe tudo e os selos saem vazios.
+
+**Hero**: o guard de PERDA já existia (`heroCopyPreserved`); a última
+tentativa ACEITAVA o fragmento reprovado. Agora (a) `heroTextoInventado`
+pega o que o agente ESCREVEU sem existir (oferta, `[WELCOME-CODE]`) e (b)
+última tentativa reprovada → a REGIÃO DO MERGE fica no lugar
+(`hero_fallback: regiao_do_merge`), nunca mais o fragmento errado; issues
+`hero_copy_perdida`/`hero_copy_inventada` (high).
+
+**QA** (`html/content-checks.ts`): quatro checks por código que rodam com
+o gate `EMAIL_QA_ENABLED` ligado OU desligado — `oferta_sem_incentivo`
+(high, só com a decisão conhecida), `placeholder_colchetes` (high),
+`texto_de_exemplo` (medium, `EXEMPLO_RE` agora pega `icon N`), `paragrafo_
+repetido` (medium). Desligado só persistem em `qa_issues`; ligado, `high`
+reprova. **Manter OFF uma semana medindo; ligar depois** (ligado,
+`passed=false` vira `failed`).
+
+**copy_fit**: travessão por CÓDIGO (`removerTravessao`: " — " vira ". "
+antes de maiúscula, ", " senão) — alvo só de traço que cabe não chama o
+modelo; excesso ≤ 15% aparado na última palavra (`apararNoLimite`, sem
+reticências — o review com idade e cintura era descartado por 12 chars);
+coluna COMPARATIVA (`column_*`/par `_item_N`) NUNCA vai ao modelo (é onde
+o sentido inverte) e item ausente com par não é inventado. Limites de
+review em `supabase/migrations/DIAGNOSTICO_max_len.sql` (subir para ~260).
+
+**Imagem**: `INTENCAO_VISUAL` (`requisitos.imagem`) entra ACIMA da
+direção da variante (template in-code + migration 20261135 no template do
+banco, que vence); `blueprint_purpose` = papel; tabela de LAYOUT sai do
+brief (`tabelas_removidas`).
+
+**Ainda aberto**: pular slot de imagem sem endereço no HTML (8 geradas /
+4 mergeadas); a worklist da biblioteca (`docs/email-generation/worklist-
+cobertura-biblioteca.md`: 16 examples + ~14 campos); pendências da ficha
+alimentadas pelas `contradicoes` do Seletor na tela; ligar o QA.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
