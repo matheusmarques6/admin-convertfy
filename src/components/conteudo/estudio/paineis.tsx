@@ -14,7 +14,7 @@ import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gra
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
-import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia, familiaDe } from "@/lib/conteudo/familias"
+import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe } from "@/lib/conteudo/familias"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
@@ -735,6 +735,20 @@ export function PainelFamilia({ api }: { api: EditorApi }) {
           </button>
         )
       })}
+      {atual === "alternado" && (
+        <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
+          <CtLabel>Cor da marca</CtLabel>
+          <div className="flex items-center gap-2">
+            <Swatch cor={corPrimariaDe(doc)} />
+            <div className="flex-1">
+              <CorInput valor={corPrimariaDe(doc)} onValido={(nv) => api.set((d) => aplicarCorPrimaria(d, nv), `Cor da marca: ${nv}`)} />
+            </div>
+          </div>
+          <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+            Desta cor saem o claro, o escuro, os dois fundos, a borda e o gradiente. Ela nunca vira fundo de texto — aparece em palavra-chave, filete do topo e barra de progresso.
+          </div>
+        </div>
+      )}
       <div className="rounded-lg border border-[var(--ops-border)] px-2.5 py-2 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">
         Trocar de identidade não mexe na copy, e o que você pintou à mão fica como está: só as cores ainda no padrão da identidade anterior são substituídas.
       </div>

@@ -21,7 +21,7 @@ import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
-import type { Campo, DocFrame, Documento, EstiloTexto } from "@/lib/conteudo/types"
+import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
 
 export const FRAME_W = 1080
 export const alturaFrame = (doc: Pick<Documento, "proporcaoExport">) => (doc.proporcaoExport === "9:16" ? 1920 : 1350)
@@ -401,6 +401,22 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   }
 
   /** Véu sobre a foto, na cor mais escura do documento (a família decide). */
+  /**
+   * Capa, prova e CTA escreviam em BRANCO fixo: nas duas primeiras
+   * famílias esses três moram no gradiente (escuro) e o branco era certo
+   * por construção. Na Alternado o CTA fecha no claro e a prova pode cair
+   * no claro — e o texto sumia no fundo. Quem manda é o que está mesmo
+   * atrás da letra: com imagem existe o véu escuro; sem imagem, o fundo
+   * do slide.
+   */
+  const comVeu = Boolean(img)
+  const escritaEscura = (tipo: FrameTipo): boolean =>
+    (tipo === "capa" || tipo === "prova") && comVeu ? true : escuro
+  const heroEscuro = escritaEscura(f.tipo)
+  const heroFg = heroEscuro ? "#FFFFFF" : fg
+  const heroFg2 = heroEscuro ? "rgba(255,255,255,0.88)" : fg2
+  const heroGancho = heroEscuro ? "rgba(255,255,255,0.92)" : fg2
+
   const veu = (op: number): string => {
     const h = hex6(doc.gradiente.ate) ?? "041366"
     return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${op})`
@@ -459,9 +475,9 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           }}
         >
           {avatarRow(true)}
-          {gancho(58, "rgba(255,255,255,0.92)", variante === "b" ? "center" : "left")}
-          {T("titulo", { ...cond, fontSize: 104, color: "#fff", textAlign: variante === "b" ? "center" : "left" })}
-          {T("subtitulo", { ...serif, fontSize: 40, color: "rgba(255,255,255,0.88)", marginTop: S(28), lineHeight: 1.3, textAlign: variante === "b" ? "center" : "left" })}
+          {gancho(58, heroGancho, variante === "b" ? "center" : "left")}
+          {T("titulo", { ...cond, fontSize: 104, color: heroFg, textAlign: variante === "b" ? "center" : "left" })}
+          {T("subtitulo", { ...serif, fontSize: 40, color: heroFg2, marginTop: S(28), lineHeight: 1.3, textAlign: variante === "b" ? "center" : "left" })}
         </div>
       </>
     )
@@ -480,10 +496,10 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       <>
         {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.75)} 0%, ${veu(0.92)} 100%)`)}
         <div style={{ position: "absolute", left: S(80), right: S(80), top: "50%", transform: "translateY(-50%)" }}>
-          <div style={{ fontSize: S(200), lineHeight: 0.6, color: "rgba(255,255,255,0.35)", fontFamily: tr.fonteGancho, marginBottom: S(10) }}>“</div>
-          {gancho(52, "rgba(255,255,255,0.92)")}
-          {T("titulo", { ...cond, fontSize: 92, color: "#fff" })}
-          {T("corpo", { ...serif, fontSize: 40, color: "rgba(255,255,255,0.85)", marginTop: S(30), lineHeight: 1.3 })}
+          <div style={{ fontSize: S(200), lineHeight: 0.6, color: heroEscuro ? "rgba(255,255,255,0.35)" : corDestaque, fontFamily: tr.fonteGancho, marginBottom: S(10) }}>“</div>
+          {gancho(52, heroGancho)}
+          {T("titulo", { ...cond, fontSize: 92, color: heroFg })}
+          {T("corpo", { ...serif, fontSize: 40, color: heroFg2, marginTop: S(30), lineHeight: 1.3 })}
         </div>
       </>
     )
@@ -509,8 +525,8 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   } else if (f.tipo === "cta") {
     body = (
       <div style={{ position: "absolute", left: S(80), right: S(80), top: "50%", transform: "translateY(-50%)", textAlign: "center" }}>
-        {T("titulo", { ...cond, fontSize: 112, color: "#fff", textAlign: "center" })}
-        {T("subtitulo", { ...serif, fontSize: 42, color: "rgba(255,255,255,0.88)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
+        {T("titulo", { ...cond, fontSize: 112, color: heroFg, textAlign: "center" })}
+        {T("subtitulo", { ...serif, fontSize: 42, color: heroFg2, marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
         {doc.cta.mostrar && (
           <div
             style={{
@@ -567,11 +583,60 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     )
   }
 
-  const numeroClaro = f.tipo === "capa" || f.tipo === "prova" || f.tipo === "cta" || escuro
+  const numeroClaro = heroEscuro
+
+  // Filete de cor no topo: presente em TODO slide da família que o pede.
+  // É o que costura os nove slides como uma peça só quando o fundo muda
+  // de claro para escuro a cada passo.
+  const filete = tr.barraTopo ? (
+    <div
+      style={{
+        position: "absolute",
+        top: S(off),
+        left: 0,
+        right: 0,
+        height: S(8),
+        background: fundo === "gradiente" ? "rgba(255,255,255,0.20)" : corDestaque,
+      }}
+    />
+  ) : null
+
+  // Barra de progresso no rodapé. SUBSTITUI o "N/M" solto — dizer duas
+  // vezes onde a pessoa está é ruído, e a barra diz o que o número não
+  // diz: que existe um caminho até o fim.
+  const progresso = tr.barraProgresso ? (
+    <div
+      style={{
+        position: "absolute",
+        bottom: S(off + 52),
+        left: S(80),
+        right: S(80),
+        display: "flex",
+        alignItems: "center",
+        gap: S(24),
+      }}
+    >
+      <span style={{ flex: 1, height: S(5), borderRadius: S(3), background: escuro ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.10)", overflow: "hidden", display: "block" }}>
+        <span
+          style={{
+            display: "block",
+            height: "100%",
+            borderRadius: S(3),
+            width: `${Math.round((idx / Math.max(1, total)) * 100)}%`,
+            background: escuro ? "#FFFFFF" : corDestaque,
+          }}
+        />
+      </span>
+      <span style={{ fontSize: S(22), fontWeight: 600, color: numeroClaro ? "rgba(255,255,255,0.55)" : meta, fontFamily: tr.fonteMeta, fontVariantNumeric: "tabular-nums" }}>
+        {idx}/{total}
+      </span>
+    </div>
+  ) : null
 
   return (
     <div id={domId} data-frame={f.frameId} style={{ width: S(W), height: S(H), background: bg, position: "relative", overflow: "hidden", flexShrink: 0, fontFamily: tr.fonteMeta }}>
       {body}
+      {!slideInteiro && filete}
       {!slideInteiro && brandRow}
       {zonas && (
         <>
@@ -583,9 +648,13 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           </div>
         </>
       )}
-      <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-        {idx}/{total}
-      </span>
+      {tr.barraProgresso ? (
+        !slideInteiro && progresso
+      ) : (
+        <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+          {idx}/{total}
+        </span>
+      )}
     </div>
   )
 }

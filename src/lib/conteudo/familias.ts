@@ -15,6 +15,7 @@
  */
 
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
 
 export type { FamiliaVisual }
@@ -50,6 +51,20 @@ export interface TracoFamilia {
   ganchoFator: number
   /** O gancho sai na tinta do texto ou na cor de destaque. */
   ganchoCor: "tinta" | "destaque"
+  /** Filete de cor no topo de todo slide (a "accent bar" do Alternado). */
+  barraTopo: boolean
+  /**
+   * Barra de progresso no rodapé no lugar do "N/M" solto. É o elemento que
+   * diz, no primeiro slide, que existe um caminho até o fim — e por isso
+   * ela substitui o contador, nunca convive com ele.
+   */
+  barraProgresso: boolean
+  /**
+   * A sequência alterna claro e escuro slide a slide. No `padrao` e na
+   * `editorial` o fundo vem do TIPO do slide (capa/prova/CTA no gradiente);
+   * aqui vem da POSIÇÃO, que é o que dá o ritmo do formato.
+   */
+  alternaFundo: boolean
 }
 
 export interface Familia {
@@ -70,6 +85,51 @@ const FONTE_SERIF = "Georgia, 'Times New Roman', serif"
 const FONTE_SANS = "'Inter Slides', Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 const FONTE_SERIF_DISPLAY = "'Instrument Serif', Georgia, 'Times New Roman', serif"
 const FONTE_MANUSCRITA = "'Caveat', 'Segoe Script', cursive"
+
+/**
+ * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
+ * ficar com a cara de cada cliente sem pedir sete campos de cor a quem só
+ * sabe a cor do logo. A primária nunca vira fundo de texto — ela é accent,
+ * filete do topo e preenchimento da barra de progresso.
+ */
+export const COR_PRIMARIA_PADRAO = "#2C6BED"
+
+export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "descricao"> {
+  return {
+    cores: {
+      hook: tintaSobre(p.fundoClaro),
+      destaque: p.primaria,
+      metadado: "#8A8F98",
+      "fundo-bloco": "#FFFFFF",
+    },
+    gradiente: p.gradiente,
+    fundoClaro: p.fundoClaro,
+    fundoEscuro: p.fundoEscuro,
+    cta: { fundo: p.primaria, cor: "#FFFFFF" },
+    traco: {
+      fonteTitulo: FONTE_CONDENSADA,
+      fonteGancho: FONTE_SERIF_DISPLAY,
+      fonteCorpo: FONTE_SANS,
+      fonteMeta: FONTE_SANS,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: true,
+      tituloPeso: 800,
+      tituloTracking: "-0.015em",
+      tituloEntrelinha: 0.94,
+      corpoItalico: false,
+      cta: "botao",
+      // Cartão de canto quase reto: o formato é editorial-técnico, e raio
+      // grande o empurra para "app".
+      raio: 12,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "destaque",
+      barraTopo: true,
+      barraProgresso: true,
+      alternaFundo: true,
+    },
+  }
+}
 
 export const FAMILIAS: Record<FamiliaVisual, Familia> = {
   padrao: {
@@ -97,6 +157,9 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       anotacaoRotacao: -3,
       ganchoFator: 1,
       ganchoCor: "destaque",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
     },
   },
   editorial: {
@@ -133,17 +196,27 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       anotacaoRotacao: -4,
       ganchoFator: 1.35,
       ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
     },
+  },
+  alternado: {
+    key: "alternado",
+    nome: "Alternado",
+    descricao: "Claro e escuro alternados, filete no topo e barra de progresso; paleta derivada de uma cor só.",
+    ...alternadoDaPaleta(paletaDeUmaCor(COR_PRIMARIA_PADRAO)),
   },
 }
 
 export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
   ["padrao", FAMILIAS.padrao.nome],
   ["editorial", FAMILIAS.editorial.nome],
+  ["alternado", FAMILIAS.alternado.nome],
 ]
 
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial"
+  return v === "padrao" || v === "editorial" || v === "alternado"
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {
@@ -154,11 +227,105 @@ export function tracoDe(familia: FamiliaVisual): TracoFamilia {
   return FAMILIAS[familia].traco
 }
 
-/** Fundo padrão de um frame na família: capa, CTA e prova pedem o gradiente. */
-export function fundoPadraoDaFamilia(familia: FamiliaVisual, tipo: FrameTipo, indice: number): string {
+/**
+ * Fundo padrão de um frame na família.
+ *
+ * Nas famílias sem alternância, o fundo vem do TIPO do slide: capa, prova e
+ * CTA no gradiente, o resto claro com um escuro de três em três.
+ *
+ * Na Alternado ele vem da POSIÇÃO, que é o ritmo do formato: capa,
+ * escuro, claro, escuro, claro… O CTA fecha no CLARO (é onde a caixa da
+ * palavra tem contraste) e o slide ANTES dele vai no gradiente — o
+ * respiro de cor antes da chamada. Sem saber o total não dá para achar
+ * esse penúltimo, e aí ele simplesmente não acontece: alternância certa
+ * vale mais que um gradiente no slide errado.
+ */
+export function fundoPadraoDaFamilia(
+  familia: FamiliaVisual,
+  tipo: FrameTipo,
+  indice: number,
+  total?: number,
+): string {
   const f = FAMILIAS[familia]
+  if (f.traco.alternaFundo) {
+    if (tipo === "capa") return "gradiente"
+    if (tipo === "cta") return f.fundoClaro
+    if (total !== undefined && total >= 3 && indice === total - 2) return "gradiente"
+    return indice % 2 === 1 ? f.fundoEscuro : f.fundoClaro
+  }
   if (tipo === "capa" || tipo === "cta" || tipo === "prova") return "gradiente"
   return indice % 3 === 0 ? f.fundoEscuro : f.fundoClaro
+}
+
+/**
+ * Reaplica o ritmo de fundos da família que ALTERNA.
+ *
+ * Na Alternado o fundo é função da POSIÇÃO. Quem insere um slide no meio
+ * desloca todos os seguintes, e sem recalcular a peça fica com dois
+ * escuros colados e o gradiente no slide errado — o ritmo, que é a
+ * identidade do formato, some no primeiro slide adicionado.
+ *
+ * Só o que ainda está num valor PADRÃO da família é recalculado: fundo
+ * pintado à mão continua onde o usuário pôs. Nas outras famílias devolve
+ * o documento intocado (o fundo lá vem do tipo, não da posição), e a
+ * comparação por referência evita re-render à toa.
+ */
+export function ritmoDeFundos(doc: Documento): Documento {
+  const fam = familiaDe(doc)
+  const f = FAMILIAS[fam]
+  if (!f.traco.alternaFundo) return doc
+
+  const ehPadrao = (v: string) => v === f.fundoClaro || v === f.fundoEscuro || v === "gradiente"
+  let mudou = false
+  const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
+  doc.frames.forEach((fr, i) => {
+    const atual = doc.fundoPorFrame[fr.frameId]
+    if (atual !== undefined && !ehPadrao(atual)) return
+    const alvo = fundoPadraoDaFamilia(fam, fr.tipo, i, doc.frames.length)
+    if (alvo !== atual) {
+      fundoPorFrame[fr.frameId] = alvo
+      mudou = true
+    }
+  })
+  return mudou ? { ...doc, fundoPorFrame } : doc
+}
+
+/** A cor de onde a paleta da Alternado é derivada neste documento. */
+export function corPrimariaDe(doc: Pick<Documento, "corPrimaria">): string {
+  return doc.corPrimaria ?? COR_PRIMARIA_PADRAO
+}
+
+/**
+ * Troca a cor da marca (família Alternado): tudo que ainda é derivado da
+ * cor ANTERIOR passa a ser derivado da nova; o que o usuário escolheu a
+ * dedo fica. Sem `doc.corPrimaria` gravada não haveria como saber o que
+ * era derivado na segunda troca — daí o campo existir.
+ */
+export function aplicarCorPrimaria(doc: Documento, cor: string): Documento {
+  const de = alternadoDaPaleta(paletaDeUmaCor(corPrimariaDe(doc)))
+  const p = paletaDeUmaCor(cor)
+  const para = alternadoDaPaleta(p)
+
+  const cores: Record<string, string> = { ...doc.cores }
+  for (const [chave, valorNovo] of Object.entries(para.cores)) {
+    if (doc.cores[chave] === undefined || doc.cores[chave] === de.cores[chave]) cores[chave] = valorNovo
+  }
+
+  const gradiente = mesmoGradiente(doc.gradiente, de.gradiente)
+    ? { ...para.gradiente, angulo: doc.gradiente.angulo }
+    : doc.gradiente
+
+  const fundoPorFrame: Record<string, string> = {}
+  for (const [id, valor] of Object.entries(doc.fundoPorFrame)) {
+    fundoPorFrame[id] = valor === de.fundoClaro ? para.fundoClaro : valor === de.fundoEscuro ? para.fundoEscuro : valor
+  }
+
+  const cta =
+    doc.cta.fundo === de.cta.fundo && doc.cta.cor === de.cta.cor
+      ? { ...doc.cta, fundo: para.cta.fundo, cor: para.cta.cor }
+      : doc.cta
+
+  return { ...doc, corPrimaria: p.primaria, cores, gradiente, fundoPorFrame, cta }
 }
 
 const mesmoGradiente = (a: Gradiente, b: Gradiente): boolean => a.de === b.de && a.meio === b.meio && a.ate === b.ate
@@ -184,10 +351,22 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
 
   const gradiente = mesmoGradiente(doc.gradiente, de.gradiente) ? { ...para.gradiente, angulo: doc.gradiente.angulo } : doc.gradiente
 
-  const fundoPorFrame: Record<string, string> = {}
-  for (const [id, valor] of Object.entries(doc.fundoPorFrame)) {
-    fundoPorFrame[id] = valor === de.fundoClaro ? para.fundoClaro : valor === de.fundoEscuro ? para.fundoEscuro : valor
-  }
+  // O fundo escolhido a dedo sobrevive; o que ainda é padrão da família
+  // antiga vira o padrão da nova. Quando a alternância entra ou sai de
+  // cena, "o padrão da nova" depende da POSIÇÃO — daí recalcular pela
+  // lista de frames em vez de trocar cor por cor.
+  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo
+  const ehPadraoDaAntiga = (v: string) => v === de.fundoClaro || v === de.fundoEscuro || v === "gradiente"
+  const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
+  doc.frames.forEach((f, i) => {
+    const valor = doc.fundoPorFrame[f.frameId]
+    if (valor === undefined) return
+    if (recalcula) {
+      if (ehPadraoDaAntiga(valor)) fundoPorFrame[f.frameId] = fundoPadraoDaFamilia(nova, f.tipo, i, doc.frames.length)
+      return
+    }
+    fundoPorFrame[f.frameId] = valor === de.fundoClaro ? para.fundoClaro : valor === de.fundoEscuro ? para.fundoEscuro : valor
+  })
 
   const cta =
     doc.cta.fundo === de.cta.fundo && doc.cta.cor === de.cta.cor

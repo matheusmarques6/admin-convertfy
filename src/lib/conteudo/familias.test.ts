@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { FAMILIAS, aplicarFamilia, familiaDe, fundoPadraoDaFamilia, tracoDe } from "./familias"
+import { FAMILIAS, aplicarCorPrimaria, aplicarFamilia, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos, tracoDe } from "./familias"
 import { adicionarFrame, novoDocumento, trocarTemplate, trocarTipoFrame } from "./documento"
 import { validarDocumento } from "@/lib/services/conteudo-documentos.service"
 import { aceitaCampoOpcional, camposOpcionaisDoTipo } from "./campos"
@@ -72,14 +72,96 @@ describe("família visual", () => {
     expect(volta.cta).toEqual(base.cta)
   })
 
-  it("capa, prova e CTA usam o gradiente em qualquer família", () => {
+  it("sem alternância, o fundo vem do TIPO: capa, prova e CTA no gradiente", () => {
     for (const key of Object.keys(FAMILIAS) as FamiliaVisual[]) {
+      if (FAMILIAS[key].traco.alternaFundo) continue
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "texto", 1)).toBe(FAMILIAS[key].fundoClaro)
       expect(fundoPadraoDaFamilia(key, "texto", 3)).toBe(FAMILIAS[key].fundoEscuro)
     }
+  })
+
+  it("na Alternado o fundo vem da POSIÇÃO — é o ritmo do formato", () => {
+    const f = FAMILIAS.alternado
+    expect(fundoPadraoDaFamilia("alternado", "capa", 0, 9)).toBe("gradiente")
+    expect(fundoPadraoDaFamilia("alternado", "texto", 1, 9)).toBe(f.fundoEscuro)
+    expect(fundoPadraoDaFamilia("alternado", "texto", 2, 9)).toBe(f.fundoClaro)
+    expect(fundoPadraoDaFamilia("alternado", "prova", 3, 9)).toBe(f.fundoEscuro)
+    // O CTA fecha no claro: é onde a caixa da palavra tem contraste.
+    expect(fundoPadraoDaFamilia("alternado", "cta", 8, 9)).toBe(f.fundoClaro)
+    // O slide ANTES do CTA respira no gradiente…
+    expect(fundoPadraoDaFamilia("alternado", "texto", 7, 9)).toBe("gradiente")
+    // …e sem saber o total, some em vez de cair no slide errado.
+    expect(fundoPadraoDaFamilia("alternado", "texto", 7)).toBe(f.fundoEscuro)
+  })
+
+  it("o ritmo se refaz ao inserir no meio, e o pintado à mão fica", () => {
+    const alt = aplicarFamilia(doc(), "alternado")
+    const idSegundo = alt.frames[1].frameId
+    const escolhido = "#123456"
+    const comMao = { ...alt, fundoPorFrame: { ...alt.fundoPorFrame, [idSegundo]: escolhido } }
+
+    const maior = adicionarFrame(comMao, "texto")
+    // O slide pintado à mão continua com a cor do usuário…
+    expect(maior.fundoPorFrame[idSegundo]).toBe(escolhido)
+    // …e o resto volta a alternar pela POSIÇÃO, sem dois escuros colados.
+    const fundos = maior.frames.map((f, i) => [i, maior.fundoPorFrame[f.frameId]] as const)
+    for (const [i, v] of fundos) {
+      if (v === escolhido) continue
+      expect(v).toBe(fundoPadraoDaFamilia("alternado", maior.frames[i].tipo, i, maior.frames.length))
+    }
+  })
+
+  it("nas famílias sem alternância o ritmo não mexe em nada", () => {
+    const base = doc()
+    expect(ritmoDeFundos(base)).toBe(base)
+  })
+
+  it("a cor da marca re-deriva a paleta da Alternado e preserva o pintado à mão", () => {
+    const alt = aplicarFamilia(doc(), "alternado")
+    const comMao = { ...alt, cores: { ...alt.cores, hook: "#123456" } }
+    const laranja = aplicarCorPrimaria(comMao, "#E2650F")
+
+    expect(laranja.corPrimaria).toBe("#E2650F")
+    expect(laranja.cores.destaque).toBe("#E2650F")
+    // O off-white acompanha a temperatura da cor nova.
+    expect(laranja.fundoPorFrame).not.toEqual(comMao.fundoPorFrame)
+    // O que o usuário pintou fica.
+    expect(laranja.cores.hook).toBe("#123456")
+
+    // Trocar de novo parte da cor GRAVADA, não da cor da casa: sem isso a
+    // segunda troca confundiria o derivado com o escolhido.
+    const verde = aplicarCorPrimaria(laranja, "#0F9D58")
+    expect(verde.cores.destaque).toBe("#0F9D58")
+    expect(verde.cores.hook).toBe("#123456")
+    expect(verde.corPrimaria).toBe("#0F9D58")
+  })
+
+  it("trocar para a Alternado recalcula os fundos padrão e preserva os escolhidos", () => {
+    const base = doc()
+    const escolhido = "#123456"
+    const d: Documento = {
+      ...base,
+      frames: [
+        { ...base.frames[0], frameId: "f1", tipo: "capa" },
+        { ...base.frames[0], frameId: "f2", tipo: "texto" },
+        { ...base.frames[0], frameId: "f3", tipo: "texto" },
+        { ...base.frames[0], frameId: "f4", tipo: "cta" },
+      ],
+      fundoPorFrame: {
+        f1: "gradiente",
+        f2: FAMILIAS.padrao.fundoClaro,
+        f3: escolhido,
+        f4: "gradiente",
+      },
+    }
+    const alt = aplicarFamilia(d, "alternado")
+    expect(alt.fundoPorFrame.f1).toBe("gradiente")
+    expect(alt.fundoPorFrame.f2).toBe(FAMILIAS.alternado.fundoEscuro)
+    expect(alt.fundoPorFrame.f3).toBe(escolhido)
+    expect(alt.fundoPorFrame.f4).toBe(FAMILIAS.alternado.fundoClaro)
   })
 })
 

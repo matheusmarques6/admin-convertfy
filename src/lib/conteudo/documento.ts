@@ -9,7 +9,7 @@
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { preservarCamposOpcionais } from "./campos"
-import { FAMILIAS, familiaDe, fundoPadraoDaFamilia } from "./familias"
+import { FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
 import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
 import type {
@@ -263,7 +263,7 @@ export function reordenarFrames(doc: Documento, de: number, para: number): Docum
   const a = [...doc.frames]
   const [m] = a.splice(de, 1)
   a.splice(para, 0, m)
-  return comHistorico({ ...doc, frames: a }, "Frames reordenados")
+  return comHistorico(ritmoDeFundos({ ...doc, frames: a }), "Frames reordenados")
 }
 
 export function duplicarFrame(doc: Documento, i: number): Documento {
@@ -274,12 +274,12 @@ export function duplicarFrame(doc: Documento, i: number): Documento {
   const frames = [...doc.frames]
   frames.splice(i + 1, 0, copia)
   return comHistorico(
-    {
+    ritmoDeFundos({
       ...doc,
       frames,
       fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? fundoClaroDoDoc(doc) },
       estilos: doc.estilos[o.frameId] ? { ...doc.estilos, [id]: doc.estilos[o.frameId] } : doc.estilos,
-    },
+    }),
     `${o.label} duplicado`,
   )
 }
@@ -303,7 +303,7 @@ export function dividirFrame(doc: Documento, i: number): Documento {
   const frames = [...doc.frames]
   frames.splice(i, 1, primeiro, segundo)
   return comHistorico(
-    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? fundoClaroDoDoc(doc) } },
+    ritmoDeFundos({ ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: doc.fundoPorFrame[o.frameId] ?? fundoClaroDoDoc(doc) } }),
     `${o.label} dividido em dois`,
   )
 }
@@ -345,7 +345,7 @@ export function adicionarFrame(doc: Documento, tipo: FrameTipo = "texto"): Docum
   const pos = frames.length && frames[frames.length - 1].tipo === "cta" ? frames.length - 1 : frames.length
   frames.splice(pos, 0, nf)
   return comHistorico(
-    { ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: fundoClaroDoDoc(doc) } },
+    ritmoDeFundos({ ...doc, frames, fundoPorFrame: { ...doc.fundoPorFrame, [id]: fundoClaroDoDoc(doc) } }),
     "Frame adicionado",
   )
 }
@@ -359,7 +359,7 @@ export function excluirFrame(doc: Documento, i: number): Documento {
   const frames = doc.frames.filter((_, j) => j !== i)
   const { [o.frameId]: _f, ...fundoPorFrame } = doc.fundoPorFrame
   const { [o.frameId]: _e, ...estilos } = doc.estilos
-  return comHistorico({ ...doc, frames, fundoPorFrame, estilos }, `${o.label} excluído`)
+  return comHistorico(ritmoDeFundos({ ...doc, frames, fundoPorFrame, estilos }), `${o.label} excluído`)
 }
 
 export function trocarTipoFrame(doc: Documento, i: number, tipo: FrameTipo): Documento {

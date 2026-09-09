@@ -4101,6 +4101,54 @@ SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
 erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
 quatro dias sem gravar run porque o CHECK não tinha o valor).
 
+## Estúdio — família Alternado: a paleta sai de uma cor só (set/2026)
+
+Terceira família visual (item 3 do plano das duas vias). A `padrao` e a
+`editorial` decidem o fundo pelo TIPO do slide (capa, prova e CTA no
+gradiente); a Alternado decide pela POSIÇÃO — capa, escuro, claro, escuro,
+claro… —, que é o ritmo do formato. O CTA fecha no CLARO (é onde a caixa
+da palavra tem contraste) e o slide ANTES dele vai no gradiente. Sem saber
+o total não dá para achar esse penúltimo, e aí ele simplesmente não
+acontece: alternância certa vale mais que um gradiente no slide errado.
+
+**A paleta inteira sai de UMA cor** (`lib/conteudo/paleta.ts`, puro, 8
+testes), regra do `principios-de-design` da referência: clara (+20% de
+branco), escura (−30%), off-white e quase-preto escolhidos pela
+TEMPERATURA da cor (fundo cinza-azulado sob marca laranja parece erro de
+impressão), borda = fundo claro um passo abaixo, gradiente 165°. A
+primária **nunca vira fundo de texto** — ela é accent em palavra solta,
+filete do topo e preenchimento da barra de progresso; `tintaSobre` devolve
+a cor do texto a partir do fundo, e é ela que o renderer usa.
+
+`doc.corPrimaria` fica GRAVADA (aditivo, o schema é `passthrough`) porque
+é ela que permite trocar de cor DE NOVO sem que a segunda troca confunda o
+derivado com o que o usuário pintou à mão — `aplicarCorPrimaria` compara
+com a paleta da cor anterior, não com a cor da casa.
+
+**Duas peças de chrome novas**, ligadas por flag no traço da família:
+`barraTopo` (o filete de 8px que costura os nove slides quando o fundo
+muda a cada passo) e `barraProgresso`, que **substitui** o "N/M" solto —
+dizer duas vezes onde a pessoa está é ruído, e a barra diz o que o número
+não diz: que existe um caminho até o fim.
+
+**Inserir um slide refaz o ritmo** (`ritmoDeFundos`, chamado por
+adicionar, duplicar, dividir, reordenar e excluir): quem insere no meio
+desloca todos os seguintes, e sem recalcular a peça fica com dois escuros
+colados e o gradiente no slide errado — a identidade do formato sumiria no
+primeiro slide adicionado. Só o que ainda está num valor PADRÃO da família
+é recalculado; fundo pintado à mão continua onde o usuário pôs. Nas outras
+famílias a função devolve o MESMO objeto (o fundo lá vem do tipo, não da
+posição), então não há re-render à toa.
+
+**A verificação renderizando pegou o defeito que nenhum teste pegaria**:
+capa, prova e CTA escreviam em BRANCO FIXO. Nas duas famílias antigas
+esses três moram no gradiente e o branco era certo por construção; na
+Alternado o CTA fecha no claro e a prova pode cair no claro — texto branco
+sobre off-white, ilegível, com todos os testes verdes. Agora quem manda é
+o que está DE FATO atrás da letra: com imagem existe o véu escuro
+(`imgSlot` só desenha o véu quando há imagem — era essa a pegadinha), sem
+imagem vale o fundo do slide.
+
 ## Comment gate: a palavra do carrossel vira automação (set/2026)
 
 O carrossel termina em "comente SEGMENTO e eu te mando no direct" e isso

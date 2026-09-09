@@ -207,7 +207,7 @@ export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "ano
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -373,6 +373,13 @@ export interface Documento {
   editorial?: Editorial
   /** Identidade visual (paleta + tipografia). Ausente = "padrao". */
   familia?: FamiliaVisual
+  /**
+   * Cor da marca da qual a paleta da família Alternado é derivada. Fica
+   * gravada porque é ela que permite trocar de cor DE NOVO sem que a
+   * segunda troca confunda o que era padrão com o que o usuário escolheu
+   * a dedo. Ausente = a cor da casa.
+   */
+  corPrimaria?: string
   criadoEm: string
   atualizadoEm: string
 }
