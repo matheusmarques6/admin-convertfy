@@ -13,10 +13,16 @@ import { urlParaDataUrl } from "../imagens"
 
 export type FormatoExport = "png" | "jpg"
 
-const FONTES: Array<{ family: string; weight: string; url: string; range?: string }> = [
+const FONTES: Array<{ family: string; weight: string; url: string; range?: string; style?: string }> = [
   { family: "Barlow Condensed", weight: "800", url: "/fonts/barlow-condensed-800-latin.woff2" },
   { family: "Barlow Condensed", weight: "800", url: "/fonts/barlow-condensed-800-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
   { family: "Inter Slides", weight: "100 900", url: "/fonts/inter-variable.woff2" },
+  // Família Editorial: sem elas a exportação cai na serif do sistema e o
+  // PNG sai com tipografia diferente da que está na tela.
+  { family: "Instrument Serif", weight: "400", style: "italic", url: "/fonts/instrument-serif-italic-latin.woff2" },
+  { family: "Instrument Serif", weight: "400", style: "italic", url: "/fonts/instrument-serif-italic-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
+  { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin.woff2" },
+  { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
 ]
 
 let cssFontesPromise: Promise<string> | null = null
@@ -29,7 +35,7 @@ export function cssFontesEmbutidas(): Promise<string> {
       FONTES.map(async (f) => {
         try {
           const data = await urlParaDataUrl(f.url)
-          return `@font-face{font-family:"${f.family}";font-style:normal;font-weight:${f.weight};src:url("${data}") format("woff2");${f.range ? `unicode-range:${f.range};` : ""}}`
+          return `@font-face{font-family:"${f.family}";font-style:${f.style ?? "normal"};font-weight:${f.weight};src:url("${data}") format("woff2");${f.range ? `unicode-range:${f.range};` : ""}}`
         } catch {
           return ""
         }

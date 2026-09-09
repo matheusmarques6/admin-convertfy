@@ -17,8 +17,10 @@
  */
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
-import { FONTE_APOIO, FONTE_META, FONTE_TITULO, SLIDE, fundoEscuro, gradienteCss } from "@/lib/conteudo/brand"
+import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
+import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
+import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
 import type { Campo, DocFrame, Documento, EstiloTexto } from "@/lib/conteudo/types"
 
 export const FRAME_W = 1080
@@ -91,14 +93,21 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const total = visiveis.length
   const variante = f.variante ?? "a"
 
-  const cond: EstiloBase = { fontFamily: FONTE_TITULO, fontWeight: 800, textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 0.96 }
-  const serif: EstiloBase = { fontFamily: FONTE_APOIO, fontStyle: "italic", fontWeight: 400 }
+  // A família decide a tipografia e a forma dos elementos; o renderer não
+  // tem mais fonte fixa. `padrao` reproduz exatamente o que existia antes.
+  const tr = tracoDe(familiaDe(doc))
+  const cond: EstiloBase = { fontFamily: tr.fonteTitulo, fontWeight: tr.tituloPeso, textTransform: tr.tituloCaixaAlta ? "uppercase" : "none", letterSpacing: tr.tituloTracking, lineHeight: tr.tituloEntrelinha }
+  const serif: EstiloBase = { fontFamily: tr.fonteCorpo, fontStyle: tr.corpoItalico ? "italic" : "normal", fontWeight: 400 }
+  const ganchoEstilo: EstiloBase = { fontFamily: tr.fonteGancho, fontStyle: "italic", fontWeight: 400, lineHeight: 1.1 }
+  // Destaque legível nos dois fundos: a mesma cor, clareada no escuro.
+  const corDestaque = escuro ? clarear(doc.cores.destaque ?? SLIDE.destaque, 0.55) : (doc.cores.destaque ?? SLIDE.destaque)
+
   const isSel = (campo: Campo) => Boolean(sel && sel.frameId === f.frameId && sel.campo === campo)
 
   const T = (campo: Campo, base: BaseTexto) => {
     const e = est(campo)
     const texto = f.textos[campo] ?? ""
-    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(texto.length, limiteDe(f.tipo, campo))
+    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(textoLimpo(texto).length, limiteDe(f.tipo, campo))
     const cor = e.cor && doc.cores[e.cor] ? doc.cores[e.cor] : base.color
     const on = isSel(campo) && Boolean(interactive)
     const editing = on && Boolean(sel?.editing)
@@ -176,7 +185,20 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
             minHeight: S(sz * 0.9),
           }}
         >
-          {texto}
+          {/* Editando, o texto vai CRU: o contentEditable devolve
+              `textContent`, e formatar aqui apagaria os `**` no primeiro
+              clique. Fora da edição, `**x**` sai na cor de destaque. */}
+          {editing
+            ? texto
+            : partesDestacadas(texto).map((parte, k) =>
+                parte.destaque ? (
+                  <strong key={k} style={{ color: corDestaque, fontWeight: 700 }}>
+                    {parte.texto}
+                  </strong>
+                ) : (
+                  <span key={k}>{parte.texto}</span>
+                ),
+              )}
         </div>
         {on && (
           <>
@@ -199,7 +221,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
                 cursor: "ns-resize",
                 fontSize: 11,
                 fontWeight: 600,
-                fontFamily: FONTE_META,
+                fontFamily: tr.fonteMeta,
                 boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
                 userSelect: "none",
                 whiteSpace: "nowrap",
@@ -239,7 +261,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
               </svg>
             </div>
             {e.escala != null && e.escala !== 100 && (
-              <span style={{ position: "absolute", right: -12, bottom: 14, fontSize: 10.5, fontWeight: 700, color: "#fff", background: SLIDE.selecao, borderRadius: 5, padding: "1px 6px", fontFamily: FONTE_META, zIndex: 3 }}>
+              <span style={{ position: "absolute", right: -12, bottom: 14, fontSize: 10.5, fontWeight: 700, color: "#fff", background: SLIDE.selecao, borderRadius: 5, padding: "1px 6px", fontFamily: tr.fonteMeta, zIndex: 3 }}>
                 {e.escala}%
               </span>
             )}
@@ -262,7 +284,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         color: meta,
         fontSize: S(22),
         fontWeight: 600,
-        fontFamily: FONTE_META,
+        fontFamily: tr.fonteMeta,
         letterSpacing: "0.02em",
       }}
     >
@@ -293,13 +315,13 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
               justifyContent: "center",
               fontSize: S(28),
               fontWeight: 800,
-              fontFamily: FONTE_META,
+              fontFamily: tr.fonteMeta,
             }}
           >
             C
           </span>
         )}
-        <span style={{ fontSize: S(28), fontWeight: 600, color: dark ? "#fff" : doc.cores.hook, fontFamily: FONTE_META }}>{bk.brandName}</span>
+        <span style={{ fontSize: S(28), fontWeight: 600, color: dark ? "#fff" : doc.cores.hook, fontFamily: tr.fonteMeta }}>{bk.brandName}</span>
         {bk.verificado && !oc.verificado && (
           <span style={{ width: S(26), height: S(26), borderRadius: "50%", background: SLIDE.verificado, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             <IconCheck s={S(14)} />
@@ -352,13 +374,13 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           position: "absolute",
           ...style,
           border: `${S(2)}px dashed ${escuro ? "rgba(255,255,255,0.35)" : "rgba(33,55,182,0.3)"}`,
-          borderRadius: S(24),
+          borderRadius: S(tr.raio),
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           color: escuro ? "rgba(255,255,255,0.5)" : "rgba(33,55,182,0.45)",
           fontSize: S(26),
-          fontFamily: FONTE_META,
+          fontFamily: tr.fonteMeta,
           fontWeight: 600,
           cursor: interactive ? "pointer" : "default",
         }}
@@ -373,15 +395,45 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     const lh = img?.alturaSlot ?? 1350
     return (
       <div style={{ flex: 1, position: "relative", minHeight: S(300), marginTop: S(marginTop), marginBottom: S(marginBottom), display: "flex", justifyContent: "center" }}>
-        <div style={{ position: "relative", width: `min(100%, ${S(lw)}px)`, maxHeight: S(lh), flex: 1 }}>{imgSlot({ inset: 0, borderRadius: S(28) })}</div>
+        <div style={{ position: "relative", width: `min(100%, ${S(lw)}px)`, maxHeight: S(lh), flex: 1 }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
       </div>
     )
   }
 
+  /** Véu sobre a foto, na cor mais escura do documento (a família decide). */
+  const veu = (op: number): string => {
+    const h = hex6(doc.gradiente.ate) ?? "041366"
+    return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${op})`
+  }
+
+  /**
+   * Linha de gancho: a serif itálica que faz o "par" com o título. O
+   * tamanho e a cor vêm da família — `cor` é o que usar quando ela pede a
+   * tinta (varia com o fundo do slide).
+   */
+  const gancho = (tamanho: number, cor: string, alinhamento: "left" | "center" = "left") =>
+    (f.textos.gancho ?? "").trim()
+      ? T("gancho", {
+          ...ganchoEstilo,
+          fontSize: tamanho * tr.ganchoFator,
+          color: tr.ganchoCor === "tinta" ? cor : escuro ? "rgba(255,255,255,0.9)" : doc.cores.destaque,
+          textAlign: alinhamento,
+          marginTop: 0,
+        })
+      : null
+
+  /** Anotação à mão, inclinada, na cor de destaque. */
+  const anotacao = (tamanho: number, alinhamento: "left" | "right" = "right") =>
+    (f.textos.anotacao ?? "").trim() ? (
+      <div style={{ marginTop: S(26), textAlign: alinhamento, transform: `rotate(${tr.anotacaoRotacao}deg)`, transformOrigin: alinhamento === "right" ? "right center" : "left center" }}>
+        {T("anotacao", { fontFamily: tr.fonteAnotacao, fontWeight: 600, fontSize: tamanho, color: corDestaque, lineHeight: 1.15, textAlign: alinhamento })}
+      </div>
+    ) : null
+
   const progress = (dark: boolean) => (
     <div style={{ display: "flex", gap: S(8), marginBottom: S(48) }}>
       {visiveis.map((x, i) => (
-        <span key={x.frameId} style={{ flex: 1, height: S(8), borderRadius: S(4), background: i < idx ? (dark ? "#fff" : doc.cores.hook) : dark ? "rgba(255,255,255,0.25)" : "rgba(33,55,182,0.15)" }} />
+        <span key={x.frameId} style={{ flex: 1, height: S(8), borderRadius: S(4), background: i < idx ? (dark ? "#fff" : doc.cores.hook) : dark ? "rgba(255,255,255,0.25)" : veu(0.15) }} />
       ))}
     </div>
   )
@@ -397,7 +449,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   } else if (f.tipo === "capa") {
     body = (
       <>
-        {imgSlot({ inset: 0 }, "linear-gradient(180deg, rgba(4,19,102,0.05) 0%, rgba(4,19,102,0.35) 45%, rgba(4,19,102,0.95) 100%)")}
+        {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.05)} 0%, ${veu(0.35)} 45%, ${veu(0.95)} 100%)`)}
         <div
           style={{
             position: "absolute",
@@ -407,6 +459,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           }}
         >
           {avatarRow(true)}
+          {gancho(58, "rgba(255,255,255,0.92)", variante === "b" ? "center" : "left")}
           {T("titulo", { ...cond, fontSize: 104, color: "#fff", textAlign: variante === "b" ? "center" : "left" })}
           {T("subtitulo", { ...serif, fontSize: 40, color: "rgba(255,255,255,0.88)", marginTop: S(28), lineHeight: 1.3, textAlign: variante === "b" ? "center" : "left" })}
         </div>
@@ -414,18 +467,21 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     )
   } else if (f.tipo === "dado") {
     body = (
-      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 330) }}>
+      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 300) }}>
+        {gancho(52, fg2)}
         {T("titulo", { ...cond, fontSize: 360, color: fg, letterSpacing: "-0.04em", lineHeight: 0.9 })}
         <div style={{ width: S(120), height: S(10), background: escuro ? "#fff" : doc.cores.destaque, margin: `${S(48)}px 0`, borderRadius: S(5) }} />
         {T("corpo", { ...serif, fontSize: 48, color: fg2, lineHeight: 1.3, maxWidth: S(860) })}
+        {anotacao(44)}
       </div>
     )
   } else if (f.tipo === "prova") {
     body = (
       <>
-        {imgSlot({ inset: 0 }, "linear-gradient(180deg, rgba(4,19,102,0.75) 0%, rgba(4,19,102,0.92) 100%)")}
+        {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.75)} 0%, ${veu(0.92)} 100%)`)}
         <div style={{ position: "absolute", left: S(80), right: S(80), top: "50%", transform: "translateY(-50%)" }}>
-          <div style={{ fontSize: S(200), lineHeight: 0.6, color: "rgba(255,255,255,0.35)", fontFamily: FONTE_APOIO, marginBottom: S(10) }}>“</div>
+          <div style={{ fontSize: S(200), lineHeight: 0.6, color: "rgba(255,255,255,0.35)", fontFamily: tr.fonteGancho, marginBottom: S(10) }}>“</div>
+          {gancho(52, "rgba(255,255,255,0.92)")}
           {T("titulo", { ...cond, fontSize: 92, color: "#fff" })}
           {T("corpo", { ...serif, fontSize: 40, color: "rgba(255,255,255,0.85)", marginTop: S(30), lineHeight: 1.3 })}
         </div>
@@ -439,13 +495,15 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         {progress(escuro)}
         <div style={{ display: "flex", alignItems: "center", gap: S(18), marginBottom: S(36) }}>
           <span style={{ ...cond, fontSize: S(140), color: escuro ? "#fff" : doc.cores.destaque, lineHeight: 1 }}>{String(meioIdx).padStart(2, "0")}</span>
-          <span style={{ fontSize: S(24), fontWeight: 700, letterSpacing: "0.2em", color: meta, fontFamily: FONTE_META, textTransform: "uppercase" }}>
+          <span style={{ fontSize: S(24), fontWeight: 700, letterSpacing: "0.2em", color: meta, fontFamily: tr.fonteMeta, textTransform: "uppercase" }}>
             {f.tipo === "mec" ? "papel" : "item"} de {meioTotal}
           </span>
         </div>
+        {gancho(46, fg2)}
         {T("titulo", { ...cond, fontSize: 88, color: fg })}
-        {T("corpo", { fontSize: 40, color: fg2, marginTop: S(34), lineHeight: 1.4, fontFamily: FONTE_META, fontWeight: 500 })}
+        {T("corpo", { fontSize: 40, color: fg2, marginTop: S(34), lineHeight: 1.4, fontFamily: tr.fonteCorpo, fontWeight: 500, fontStyle: tr.corpoItalico ? "italic" : "normal" })}
         {(img || f.slotsImagem > 0) && slotEmFluxo(50)}
+        {anotacao(42)}
       </div>
     )
   } else if (f.tipo === "cta") {
@@ -466,8 +524,12 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
               padding: `${S(30)}px ${S(64)}px`,
               fontSize: S(34),
               fontWeight: 700,
-              fontFamily: FONTE_META,
-              boxShadow: `0 ${S(12)}px ${S(40)}px rgba(0,0,0,0.3)`,
+              fontFamily: tr.fonteMeta,
+              // Pílula: borda fina e nada de sombra — é o traço da família
+              // editorial, onde a peça imita papel, não interface.
+              ...(tr.cta === "pilula"
+                ? { border: `${Math.max(1, S(2))}px solid ${doc.cta.cor}`, letterSpacing: "0.02em" }
+                : { boxShadow: `0 ${S(12)}px ${S(40)}px rgba(0,0,0,0.3)` }),
             }}
           >
             <IconInbox s={S(30)} />
@@ -481,8 +543,10 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     const bloco = (
       <>
         {avatarRow(escuro)}
+        {gancho(52, fg2, variante === "c" ? "center" : "left")}
         {T("titulo", { ...cond, fontSize: 96, color: fg, textAlign: variante === "c" ? "center" : "left" })}
         {T("corpo", { ...serif, fontSize: 42, color: fg2, marginTop: S(36), lineHeight: 1.35, textAlign: variante === "c" ? "center" : "left" })}
+        {anotacao(44, variante === "c" ? "left" : "right")}
       </>
     )
     const imagem = comImg && variante !== "c" && slotEmFluxo(variante === "a" ? 56 : 0, variante === "b" ? 56 : 0)
@@ -506,20 +570,20 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const numeroClaro = f.tipo === "capa" || f.tipo === "prova" || f.tipo === "cta" || escuro
 
   return (
-    <div id={domId} data-frame={f.frameId} style={{ width: S(W), height: S(H), background: bg, position: "relative", overflow: "hidden", flexShrink: 0, fontFamily: FONTE_META }}>
+    <div id={domId} data-frame={f.frameId} style={{ width: S(W), height: S(H), background: bg, position: "relative", overflow: "hidden", flexShrink: 0, fontFamily: tr.fonteMeta }}>
       {body}
       {!slideInteiro && brandRow}
       {zonas && (
         <>
           <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: S(off + 150), background: `repeating-linear-gradient(135deg, ${SLIDE.zona} 0 8px, transparent 8px 16px)`, borderBottom: `2px dashed ${SLIDE.zonaLinha}`, pointerEvents: "none" }}>
-            <span style={{ position: "absolute", left: 12, bottom: 6, fontSize: 11, fontWeight: 700, color: "#fff", background: SLIDE.zonaEtiqueta, borderRadius: 4, padding: "2px 7px", fontFamily: FONTE_META }}>Zona da UI do Instagram · topo</span>
+            <span style={{ position: "absolute", left: 12, bottom: 6, fontSize: 11, fontWeight: 700, color: "#fff", background: SLIDE.zonaEtiqueta, borderRadius: 4, padding: "2px 7px", fontFamily: tr.fonteMeta }}>Zona da UI do Instagram · topo</span>
           </div>
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: S(off + 300), background: `repeating-linear-gradient(135deg, ${SLIDE.zona} 0 8px, transparent 8px 16px)`, borderTop: `2px dashed ${SLIDE.zonaLinha}`, pointerEvents: "none" }}>
-            <span style={{ position: "absolute", left: 12, top: 6, fontSize: 11, fontWeight: 700, color: "#fff", background: SLIDE.zonaEtiqueta, borderRadius: 4, padding: "2px 7px", fontFamily: FONTE_META }}>Legenda, ações e handle · evite texto aqui</span>
+            <span style={{ position: "absolute", left: 12, top: 6, fontSize: 11, fontWeight: 700, color: "#fff", background: SLIDE.zonaEtiqueta, borderRadius: 4, padding: "2px 7px", fontFamily: tr.fonteMeta }}>Legenda, ações e handle · evite texto aqui</span>
           </div>
         </>
       )}
-      <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: FONTE_META, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
         {idx}/{total}
       </span>
     </div>

@@ -87,6 +87,24 @@ export function hex6(c: string | null | undefined): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * Clareia uma cor misturando com branco (0 = igual, 1 = branco).
+ *
+ * A cor de destaque é escolhida para fundo claro; sobre o fundo escuro do
+ * slide ela some. Em vez de uma segunda cor no documento — que o usuário
+ * teria de manter em sincronia — o renderer clareia a mesma cor.
+ */
+export function clarear(cor: string, fracao: number): string {
+  const h = hex6(cor)
+  if (!h) return cor
+  const k = Math.max(0, Math.min(1, fracao))
+  const canal = (i: number) => {
+    const v = parseInt(h.slice(i * 2, i * 2 + 2), 16)
+    return Math.round(v + (255 - v) * k)
+  }
+  return `#${[0, 1, 2].map((i) => canal(i).toString(16).padStart(2, "0")).join("")}`.toUpperCase()
+}
+
 /** Fundo escuro? (gradiente da marca é sempre escuro). */
 export function fundoEscuro(fundo: string): boolean {
   if (fundo === "gradiente") return true

@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation"
 import {
   ChevronDown,
   ChevronLeft,
+  Brush,
   ChevronRight,
   Columns3,
   Feather,
@@ -67,6 +68,7 @@ import {
   PainelGlobais,
   PainelGradiente,
   PainelHistorico,
+  PainelFamilia,
   PainelMidia,
   PainelProporcao,
   PainelTemplate,
@@ -75,11 +77,11 @@ import {
 import { Thumb } from "./thumb"
 import { useEditor } from "./use-editor"
 
-type PainelKey = "editorial" | "template" | "assistente" | "globais" | "texto" | "midia" | "prompt" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
+type PainelKey = "editorial" | "template" | "assistente" | "globais" | "texto" | "midia" | "prompt" | "familia" | "cores" | "fundo" | "gradiente" | "ctas" | "proporcao" | "historico"
 
 const GRUPOS: Array<[string, PainelKey[]]> = [
   ["Conteúdo", ["editorial", "template", "assistente", "texto", "midia", "prompt"]],
-  ["Marca", ["globais", "cores", "fundo", "gradiente", "ctas"]],
+  ["Marca", ["familia", "globais", "cores", "fundo", "gradiente", "ctas"]],
   ["Saída", ["proporcao", "historico"]],
 ]
 
@@ -87,6 +89,7 @@ const PAINEIS: Record<PainelKey, [string, LucideIcon]> = {
   editorial: ["Motor editorial", Feather],
   template: ["Template", Columns3],
   assistente: ["Assistente Convertfy", Sparkles],
+  familia: ["Identidade visual", Brush],
   globais: ["Campos globais", Store],
   texto: ["Texto", Type],
   midia: ["Mídia", ImageIcon],
@@ -263,6 +266,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
     editorial: <PainelEditorial api={api} />,
     template: <PainelTemplate api={api} />,
     assistente: <PainelAssistente api={api} />,
+    familia: <PainelFamilia api={api} />,
     globais: <PainelGlobais api={api} />,
     texto: <PainelTexto api={api} />,
     midia: <PainelMidia api={api} />,

@@ -11,7 +11,10 @@ const frameContrato = z.object({
   frameId: z.string(),
   tipo: frameTipo,
   label: z.string(),
-  campos: z.array(z.enum(["titulo", "subtitulo", "corpo", "botao"])),
+  // `gancho` e `anotacao` são os campos da família Editorial (o par de
+  // título e o rabisco à mão). Só existem no frame que os declara — a IA
+  // preenche o que o contrato do frame pedir, nunca inventa campo.
+  campos: z.array(z.enum(["titulo", "subtitulo", "corpo", "botao", "gancho", "anotacao"])),
 })
 
 const textos = z
@@ -20,6 +23,8 @@ const textos = z
     subtitulo: z.string().optional(),
     corpo: z.string().optional(),
     botao: z.string().optional(),
+    gancho: z.string().optional(),
+    anotacao: z.string().optional(),
   })
   .strict()
 

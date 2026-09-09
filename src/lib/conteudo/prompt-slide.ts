@@ -21,11 +21,12 @@
  * Puro: nada de rede nem de React. Quem grava é o painel do editor.
  */
 
-import { FONTE_APOIO, FONTE_META, FONTE_TITULO, fundoEscuro } from "./brand"
+import { fundoEscuro } from "./brand"
+import { FAMILIAS, familiaDe, tracoDe } from "./familias"
 import type { PapelFrame } from "./editorial/papeis"
 import { PAPEL_LABEL } from "./editorial/papeis"
 import { limiteDe } from "./limites"
-import type { Campo, DocFrame, Documento, FrameTipo, Gradiente, ModoImagem, VarianteLayout } from "./types"
+import type { Campo, DocFrame, Documento, FamiliaVisual, FrameTipo, Gradiente, ModoImagem, VarianteLayout } from "./types"
 
 /** Tipos cujo renderer tem lugar para uma imagem sem cobrir o texto. */
 export const TIPOS_COM_LUGAR_PARA_IMAGEM: FrameTipo[] = ["capa", "texto", "prova", "lista", "mec"]
@@ -83,7 +84,7 @@ export interface ContextoPrompt {
   indice: number
   total: number
   papel?: PapelFrame | null
-  doc: Pick<Documento, "cores" | "brandKit" | "proporcaoExport" | "fundoPorFrame" | "gradiente" | "cta" | "ocultos">
+  doc: Pick<Documento, "cores" | "brandKit" | "proporcaoExport" | "fundoPorFrame" | "gradiente" | "cta" | "ocultos" | "familia">
   templateNome?: string | null
   /** "Por que funciona" das referências mais afins (vira orientação de estilo). */
   porQueFunciona?: string[]
@@ -152,10 +153,20 @@ function areaReservada(tipo: FrameTipo, variante: VarianteLayout): string {
 function paleta(cores: Record<string, string>): string {
   const hook = cores.hook ?? "#2137B6"
   const destaque = cores.destaque ?? "#4E62D8"
-  return `azul profundo ${hook} e ${destaque} como cores de marca, neutros quentes e brancos; nada saturado fora da paleta`
+  return `${hook} e ${destaque} como cores de marca, neutros e brancos; nada saturado fora da paleta`
 }
 
 const ESTILO_BASE = "Estética editorial premium, fotografia real ou 3D fotorrealista, luz natural suave, profundidade de campo, sem cara de banco de imagens, sem pessoas olhando para a câmera, sem marca d'água."
+
+/**
+ * A identidade visual muda a direção de arte, não só a paleta: a família
+ * Editorial imita papel impresso (bege, grão, sombra curta) e uma foto
+ * fria de estúdio brigaria com o resto da peça.
+ */
+const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
+  padrao: "",
+  editorial: "Direção de matéria impressa: luz quente e lateral, fundo bege claro com leve grão de papel, sombras curtas e suaves, objetos reais sobre superfície fosca. Nada de brilho digital, nada de fundo preto.",
+}
 
 function blocoReferencias(porQueFunciona?: string[]): string {
   const itens = (porQueFunciona ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 4)
@@ -190,7 +201,7 @@ function promptHibrido(ctx: ContextoPrompt): string {
     ``,
     areaReservada(frame.tipo, variante),
     ``,
-    `${ESTILO_BASE} Paleta: ${paleta(doc.cores)}.`,
+    `${ESTILO_BASE} ${ESTILO_POR_FAMILIA[familiaDe(doc)]} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
   ]
   const refs = blocoReferencias(ctx.porQueFunciona)
   if (refs) linhas.push(refs.trimEnd())
@@ -200,9 +211,10 @@ function promptHibrido(ctx: ContextoPrompt): string {
 /** Anatomia do tipo de frame, para o modelo desenhar o slide como o renderer desenharia. */
 function anatomia(ctx: ContextoPrompt): string[] {
   const { frame, doc, indice, total } = ctx
-  const titulo = nomeDaFonte(FONTE_TITULO)
-  const apoio = nomeDaFonte(FONTE_APOIO)
-  const meta = nomeDaFonte(FONTE_META)
+  const tr = tracoDe(familiaDe(doc))
+  const titulo = `${nomeDaFonte(tr.fonteTitulo)}${tr.tituloCaixaAlta ? "" : " (caixa normal, não caixa alta)"}`
+  const apoio = nomeDaFonte(tr.fonteGancho)
+  const meta = nomeDaFonte(tr.fonteMeta)
   const t = texto(frame, "titulo")
   const s = texto(frame, "subtitulo")
   const c = texto(frame, "corpo")
@@ -212,7 +224,7 @@ function anatomia(ctx: ContextoPrompt): string[] {
   switch (frame.tipo) {
     case "capa":
       linhas.push(`Capa: fotografia ocupando o slide inteiro com um degradê azul-escuro (#041366) da metade para baixo.`)
-      linhas.push(T(`Título em ${titulo}, peso 800, CAIXA ALTA, branco, ~104 px, alinhado à esquerda no terço inferior`, t))
+      linhas.push(T(`Título em ${titulo}, peso ${tr.tituloPeso}, ${tr.tituloCaixaAlta ? "CAIXA ALTA, " : ""}branco, ~104 px, alinhado à esquerda no terço inferior`, t))
       linhas.push(T(`Subtítulo em ${apoio} itálico, branco a 88%, ~40 px, logo abaixo do título`, s))
       break
     case "dado":
@@ -265,7 +277,7 @@ function rodapeDeMarca(ctx: ContextoPrompt): string {
   if (!oc.avatar && bk.avatar) partes.push("foto de perfil redonda")
   if (!oc.brandName && bk.brandName) partes.push(`"${bk.brandName}"`)
   if (!oc.brandName2 && bk.brandName2) partes.push(`"${bk.brandName2}"`)
-  const esquerda = partes.length ? `à esquerda ${partes.join(", ")} em ${nomeDaFonte(FONTE_META)}` : "à esquerda nada"
+  const esquerda = partes.length ? `à esquerda ${partes.join(", ")} em ${nomeDaFonte(tracoDe(familiaDe(doc)).fonteMeta)}` : "à esquerda nada"
   return `Rodapé: ${esquerda}; à direita o contador "${indice + 1}/${total}"${!oc.copyright && bk.copyright ? ` e "${bk.copyright}"` : ""}, tudo pequeno (~26 px).`
 }
 
@@ -273,7 +285,11 @@ function promptCompleto(ctx: ContextoPrompt): string {
   const { frame, doc, indice, total } = ctx
   const papel = ctx.papel ?? null
   const cena = papel ? CENA_POR_PAPEL[papel] : CENA_POR_TIPO[frame.tipo]
-  const fundo = frame.tipo === "capa" || frame.tipo === "prova" || frame.tipo === "cta" ? "a fotografia descrita abaixo, escurecida" : descreverFundo(doc.fundoPorFrame[frame.frameId], doc.gradiente)
+  const fam = FAMILIAS[familiaDe(doc)]
+  const fundo =
+    frame.tipo === "capa" || frame.tipo === "prova" || frame.tipo === "cta"
+      ? "a fotografia descrita abaixo, escurecida"
+      : `${descreverFundo(doc.fundoPorFrame[frame.frameId], doc.gradiente)} (identidade "${fam.nome}")`
   const linhas = [
     `Desenhe o slide ${indice + 1} de ${total} de um carrossel do Instagram, INTEIRO, ${dimensoes(doc.proporcaoExport)}${ctx.templateNome ? `, molde "${ctx.templateNome}"` : ""}.`,
     ``,
@@ -283,7 +299,7 @@ function promptCompleto(ctx: ContextoPrompt): string {
     `- Fundo: ${fundo}.`,
     `- ${rodapeDeMarca(ctx)}`,
     ``,
-    `Imagem da cena: ${cena}. ${ESTILO_BASE} Paleta: ${paleta(doc.cores)}.`,
+    `Imagem da cena: ${cena}. ${ESTILO_BASE} ${ESTILO_POR_FAMILIA[familiaDe(doc)]} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
     ``,
     `Todo texto deve estar nítido e legível; nenhuma outra palavra, logotipo ou marca d'água além do que está listado.`,
   ]

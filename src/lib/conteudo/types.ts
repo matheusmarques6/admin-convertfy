@@ -200,7 +200,14 @@ export interface DashboardData {
 
 export type FrameTipo = "capa" | "dado" | "texto" | "prova" | "lista" | "mec" | "cta"
 
-export type Campo = "titulo" | "subtitulo" | "corpo" | "botao"
+export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao"
+
+/**
+ * Identidade visual do documento (paleta, tipografia, forma do CTA). O
+ * molde decide a sequência dos slides; a família decide como eles são
+ * desenhados. Ausente = "padrao" (a identidade azul da casa).
+ */
+export type FamiliaVisual = "padrao" | "editorial"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -364,6 +371,8 @@ export interface Documento {
   publicacao?: { mediaId: string; permalink: string | null; perfil: string }
   /** Triagem, headlines, espinha e revisão (motor editorial). */
   editorial?: Editorial
+  /** Identidade visual (paleta + tipografia). Ausente = "padrao". */
+  familia?: FamiliaVisual
   criadoEm: string
   atualizadoEm: string
 }

@@ -3298,6 +3298,59 @@ pedem imagem (o custo por clique precisa ficar visível enquanto o
 usuário calibra os prompts) e o layout visual novo a partir de referência
 (fase 3 do plano, famílias Editorial/Alternado).
 
+## Estúdio — Identidade visual: a família Editorial (set/2026)
+
+O molde decide a SEQUÊNCIA dos slides; a **família** decide como eles são
+desenhados. Trocar de família não mexe em uma palavra da copy. Duas hoje:
+`padrao` (a identidade azul que já existia, byte a byte) e `editorial`, o
+formato que o time mais gosta, medido slide a slide em
+`docs/conteudo/formatos/editorial-convertfy.md`.
+
+**Tokens em módulo puro** (`lib/conteudo/familias.ts`, 11 testes): paleta,
+gradiente, fundo claro/escuro, CTA e um `traco` com as cinco fontes por
+papel, caixa e peso do título, raio, inclinação da anotação e o fator do
+gancho. O renderer perdeu toda constante de fonte — quem decide é a
+família, e um teste garante que toda família tem o traço completo.
+
+**Trocar de família não é rolo de tinta**: `aplicarFamilia` só substitui o
+valor que ainda é o DEFAULT da família atual. Cor escolhida a dedo, fundo
+trocado num slide e CTA repintado sobrevivem; o ângulo do gradiente é do
+usuário (ele o edita num slider) e nunca muda. Ida e volta devolve o
+documento à paleta original — é o teste que fixa isso.
+
+**`**palavra**` sai na cor de destaque** (`rich.ts`). Duas consequências
+que os testes travam: o limite de caracteres conta o texto SEM os
+marcadores (senão marcar três palavras encolheria a fonte sem uma letra a
+mais na tela), e **durante a edição o texto vai CRU** — o `contentEditable`
+devolve `textContent`, e renderizar formatado apagaria a marcação no
+primeiro clique. Em fundo escuro a MESMA cor é clareada (`clarear`) em vez
+de uma segunda cor no documento, que o usuário teria de manter em sincronia.
+
+**Dois campos novos, aditivos**: `gancho` (a linha em serif itálica que faz
+PAR com o título — "todo título é um par" é a regra do formato) e
+`anotacao` (o rabisco à mão, inclinado, na cor de destaque). Não vêm no
+molde: o painel Texto tem "Campos deste slide" para ligar e desligar, e
+remover apaga o TEXTO junto (o renderer desenha pelo texto, e deixá-lo
+para trás manteria a linha na tela sem campo na lista). Na Editorial o
+gancho cresce 35% e usa a tinta, não o destaque: com ele pequeno e
+colorido o par vira legenda, que é outra coisa.
+
+**Fontes self-hosted** (`public/fonts`, OFL): Instrument Serif itálica (o
+gancho) e Caveat (a anotação), declaradas em `conteudo-slides.css` **e** na
+lista da exportação — sem elas o PNG sai com a serif do sistema e a peça
+exportada não é a que está na tela.
+
+**Onde se escolhe**: no diálogo de criação (ao lado do nome, com a
+descrição da família) e no editor, painel Marca → Identidade visual. A via
+B lê a família: a direção de arte da Editorial pede matéria impressa (luz
+quente, grão de papel, sombra curta) e o prompt do slide inteiro descreve
+as fontes e a caixa que a família realmente usa.
+
+**Verificado renderizando**: os oito slides das duas famílias foram
+desenhados com `renderToStaticMarkup` e fotografados no Chromium antes e
+depois de cada ajuste. Foi assim que apareceram o gancho pequeno demais e o
+destaque ilegível no fundo escuro — nenhum dos dois quebra teste.
+
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
 **Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o
