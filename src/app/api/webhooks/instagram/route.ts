@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
         orgId: channel.org_id,
         channelId: channel.id,
         change,
+        igAccountId: channel.external_id,
       })
       if (saved) outcome.comments++
     }
@@ -509,12 +510,42 @@ async function isFirstInboundMessage(
   return (count ?? 0) === 0
 }
 
+/**
+ * "Primeira mensagem" num COMENTÁRIO é a primeira desta PESSOA no post —
+ * não a primeira do post. A conversa de comentários agrupa a mídia, então
+ * a conta por thread respondia "sim" só para quem comentou primeiro: com
+ * o filtro `first_message` ligado, o comment gate atenderia uma pessoa e
+ * ignoraria todas as outras, sem log nenhum dizendo por quê.
+ *
+ * Sem id do remetente não dá para separar as pessoas; aí a resposta é
+ * `false` (não é a primeira), que apenas deixa de disparar quem pediu
+ * "só a primeira" — o contrário mandaria mensagem a quem não pediu.
+ */
+async function isFirstCommentFromSender(
+  admin: ReturnType<typeof createAdminClient>,
+  threadId: string,
+  currentExternalId: string,
+  senderId: string | null,
+): Promise<boolean> {
+  if (!senderId) return false
+  const { count } = await admin
+    .from("crm_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("thread_id", threadId)
+    .eq("direction", "inbound")
+    .eq("metadata->>sender_id", senderId)
+    .neq("external_id", currentExternalId)
+  return (count ?? 0) === 0
+}
+
 async function handleInboundComment(
   admin: ReturnType<typeof createAdminClient>,
   args: {
     orgId: string
     channelId: string
     change: IgCommentChange
+    /** IG User ID da conta, para reconhecer o comentário do próprio dono. */
+    igAccountId?: string | null
   },
 ): Promise<boolean> {
   const { orgId, channelId, change } = args
@@ -570,6 +601,14 @@ async function handleInboundComment(
 
   log.info("[Instagram] inbound comment", { thread_id: threadId, comment_id: v.id })
 
+  // Comentário do PRÓPRIO dono da conta é resposta do time no post, não
+  // interação de público: gravar sim (é histórico), disparar automação
+  // não — com o comment gate ligado, o fluxo responderia a si mesmo.
+  if (args.igAccountId && v.from?.id && v.from.id === args.igAccountId) {
+    log.info("[Instagram] comentário da própria conta — sem automação", { thread_id: threadId, comment_id: v.id })
+    return true
+  }
+
   // Comentário é o "interagiu" do pedido: pode cair numa pipeline
   // diferente da de quem manda direct.
   await dispatchThreadMessage({
@@ -581,8 +620,9 @@ async function handleInboundComment(
     contact_external_id: contactExternalId,
     contact_name: senderName,
     message_text: v.text || null,
-    is_first_message: await isFirstInboundMessage(admin, threadId, v.id),
+    is_first_message: await isFirstCommentFromSender(admin, threadId, v.id, v.from?.id ?? null),
     external_message_id: v.id,
+    sender_external_id: v.from?.id ?? null,
   })
   return true
 }

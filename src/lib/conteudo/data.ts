@@ -257,3 +257,58 @@ export async function patchReferencia(id: string, patch: PatchReferenciaEntrada)
 export async function deleteReferencia(id: string): Promise<void> {
   await api(`/api/conteudo/referencias/${id}`, { method: "DELETE" })
 }
+
+// ── Comment gate: a automação da palavra ────────────────────────────────
+//
+// Estas duas são as ÚNICAS chamadas do Estúdio a rotas do CRM, e é de
+// propósito: a automação mora no CRM (é lá que ela é editada, pausada e
+// auditada), então duplicá-la sob /api/conteudo criaria um segundo dono
+// da mesma coisa. O que não muda é o contrato deste módulo — nenhum
+// componente conhece URL nem formato de resposta.
+
+export interface PipelineDeVendas {
+  id: string
+  name: string
+  stages: Array<{ id: string; name: string; order: number; stage_type?: string | null }>
+}
+
+export async function getPipelinesDeVendas(): Promise<PipelineDeVendas[]> {
+  const r = await api<{ pipelines: PipelineDeVendas[] }>(`/api/crm/pipelines?scope=sales`)
+  return r.pipelines ?? []
+}
+
+export interface LigarCommentGateEntrada {
+  canalId: string
+  palavra: string
+  resposta: string
+  pipelineId: string
+  etapaId: string
+  ativar: boolean
+}
+
+export interface CommentGateLigado {
+  id: string
+  name: string
+  is_active: boolean
+  /** true = já existia uma igual; o Estúdio devolveu ela em vez de duplicar. */
+  already_exists: boolean
+}
+
+export async function ligarCommentGate(e: LigarCommentGateEntrada): Promise<CommentGateLigado> {
+  return api<CommentGateLigado>(`/api/crm/channels/${e.canalId}/instagram/setup-automation`, {
+    method: "POST",
+    body: JSON.stringify({
+      pipeline_id: e.pipelineId,
+      stage_id: e.etapaId,
+      event_kind: "comment",
+      // Com palavra-chave o "só a primeira mensagem" atrapalha (quem já
+      // comentou no post não entraria) — o servidor descarta, mandamos
+      // false para a intenção ficar explícita nos dois lados.
+      first_message_only: false,
+      only_this_channel: true,
+      activate: e.ativar,
+      keyword: e.palavra,
+      reply: e.resposta,
+    }),
+  })
+}

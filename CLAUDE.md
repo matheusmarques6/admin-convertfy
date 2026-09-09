@@ -3232,6 +3232,125 @@ Escolher a headline aplica na capa e vira o nome; trocar de headline ou
 refazer a triagem invalida o que foi derivado delas. Gerado pela espinha, o
 editor abre nos Ajustes — o passo seguinte é revisar.
 
+## Estúdio — Via B: o prompt de imagem de cada slide (set/2026)
+
+O usuário faz os slides de que mais gosta direto no ChatGPT Image, porque
+"um prompt sem estar engessado" rende algo mais personalizado que um
+template. A via B escreve esse prompt a partir do que o documento JÁ
+sabe e o oferece por slide, editável, com dois destinos para o MESMO
+texto: **Copiar** (cola no ChatGPT — zero custo de API, é o fluxo atual) e
+**Gerar** (rota `gerar_imagem`, 2 variações lado a lado: GPT Image 2 ×
+Gemini, regra que já existia em `image/model-policy`).
+
+**Construtor puro** (`lib/conteudo/prompt-slide.ts`, 15 testes): entra
+frame + posição + papel narrativo do motor editorial (`papeisDosFrames`)
++ cores/brand kit/fundo/proporção do documento + "por que funciona" das
+referências mais afins (`selecionarReferencias` por molde, no CLIENTE).
+Sem papel (documento sem motor editorial) a cena vem do TIPO de frame —
+nunca fica sem cena.
+
+**Híbrido é o padrão, e o motivo é o texto.** Modelo de imagem erra
+acento, troca palavra e não repete a fonte entre slides. No híbrido o
+prompt gera só o VISUAL — proíbe qualquer letra — e diz ONDE o texto vai
+ficar por cima (terço inferior na capa `a`, centro na `b`, metade
+superior/inferior no texto conforme a variante, véu escuro na prova),
+porque foto com detalhe atrás do título some com a copy. O renderer
+escreve a copy com a tipografia da casa: continua editável, consistente
+por construção, e a "cara de ChatGPT" fica onde ajuda. O modo
+**Slide inteiro** (`imagemModo: "completo"`) é opção explícita: o prompt
+leva a copy EXATA entre aspas ("não traduza, não resuma, não acrescente
+uma palavra; se não couber, reduza a fonte, nunca o texto"), as fontes por
+NOME (Barlow Condensed / Georgia itálico / Inter), a anatomia do tipo
+(número de 360 px no dado, barra de progresso e "02 · item de 7" na
+lista, aspas gigantes na prova, pílula do CTA com o texto do botão) e o
+rodapé de marca com o contador "N/M" — para o slide parecer da mesma
+família dos que o renderer desenha. `dado` e `cta` só existem em
+"completo": o renderer deles não tem lugar para imagem, e oferecer híbrido
+ali seria botão que não faz nada.
+
+**O que muda no documento** (sem migration — `documentoSchema` é
+`passthrough`): `DocFrame.promptImagem` (só o EDITADO é gravado; igual ao
+sugerido ou vazio volta a "sugerido", e a sugestão acompanha a copy
+quando ela muda) e `DocFrame.imagemModo`. No híbrido, aplicar a imagem
+num frame que o template criou SEM slot dá `slotsImagem: 1` — o renderer
+de texto/lista/mec já desenha o slot quando ele existe. No completo o
+renderer mostra a imagem full-bleed e NÃO escreve texto nem rodapé
+(`slideInteiro` em `frame.tsx`; o prompt já pediu o rodapé ao modelo) — a
+tela avisa que a copy dos campos deixou de aparecer. `trocarTemplate`
+carrega imagem, prompt e modo: no completo a imagem É o slide, não
+depende de slot; no híbrido o frame novo ganha o slot se o tipo tiver
+lugar.
+
+**A rota só solta a proibição de texto no modo completo**
+(`entradaImagemSchema.modo`). Nos outros, o sufixo "sem texto na imagem"
+continua como rede de segurança: prompt editado à mão que esqueça de
+proibir texto ainda sai sem letras.
+
+**Sugestão automática** (`pedeImagem`): frame visível, com lugar para
+imagem, sem imagem e com menos de 60% do espaço de texto usado
+(`preenchimento` = caracteres escritos sobre a soma dos limites de
+`ST_LIMITES`; campo sem limite fica fora da conta). O painel lista esses
+slides com o percentual, clicáveis — é o "< 60% de preenchimento" do
+material da BrandsDecoded, medido pelo renderer em vez de estimado.
+
+**Ficou de fora, de propósito**: gerar em lote para todos os slides que
+pedem imagem (o custo por clique precisa ficar visível enquanto o
+usuário calibra os prompts) e o layout visual novo a partir de referência
+(fase 3 do plano, famílias Editorial/Alternado).
+
+## Estúdio — Identidade visual: a família Editorial (set/2026)
+
+O molde decide a SEQUÊNCIA dos slides; a **família** decide como eles são
+desenhados. Trocar de família não mexe em uma palavra da copy. Duas hoje:
+`padrao` (a identidade azul que já existia, byte a byte) e `editorial`, o
+formato que o time mais gosta, medido slide a slide em
+`docs/conteudo/formatos/editorial-convertfy.md`.
+
+**Tokens em módulo puro** (`lib/conteudo/familias.ts`, 11 testes): paleta,
+gradiente, fundo claro/escuro, CTA e um `traco` com as cinco fontes por
+papel, caixa e peso do título, raio, inclinação da anotação e o fator do
+gancho. O renderer perdeu toda constante de fonte — quem decide é a
+família, e um teste garante que toda família tem o traço completo.
+
+**Trocar de família não é rolo de tinta**: `aplicarFamilia` só substitui o
+valor que ainda é o DEFAULT da família atual. Cor escolhida a dedo, fundo
+trocado num slide e CTA repintado sobrevivem; o ângulo do gradiente é do
+usuário (ele o edita num slider) e nunca muda. Ida e volta devolve o
+documento à paleta original — é o teste que fixa isso.
+
+**`**palavra**` sai na cor de destaque** (`rich.ts`). Duas consequências
+que os testes travam: o limite de caracteres conta o texto SEM os
+marcadores (senão marcar três palavras encolheria a fonte sem uma letra a
+mais na tela), e **durante a edição o texto vai CRU** — o `contentEditable`
+devolve `textContent`, e renderizar formatado apagaria a marcação no
+primeiro clique. Em fundo escuro a MESMA cor é clareada (`clarear`) em vez
+de uma segunda cor no documento, que o usuário teria de manter em sincronia.
+
+**Dois campos novos, aditivos**: `gancho` (a linha em serif itálica que faz
+PAR com o título — "todo título é um par" é a regra do formato) e
+`anotacao` (o rabisco à mão, inclinado, na cor de destaque). Não vêm no
+molde: o painel Texto tem "Campos deste slide" para ligar e desligar, e
+remover apaga o TEXTO junto (o renderer desenha pelo texto, e deixá-lo
+para trás manteria a linha na tela sem campo na lista). Na Editorial o
+gancho cresce 35% e usa a tinta, não o destaque: com ele pequeno e
+colorido o par vira legenda, que é outra coisa.
+
+**Fontes self-hosted** (`public/fonts`, OFL): Instrument Serif itálica (o
+gancho) e Caveat (a anotação), declaradas em `conteudo-slides.css` **e** na
+lista da exportação — sem elas o PNG sai com a serif do sistema e a peça
+exportada não é a que está na tela.
+
+**Onde se escolhe**: no diálogo de criação (ao lado do nome, com a
+descrição da família) e no editor, painel Marca → Identidade visual. A via
+B lê a família: a direção de arte da Editorial pede matéria impressa (luz
+quente, grão de papel, sombra curta) e o prompt do slide inteiro descreve
+as fontes e a caixa que a família realmente usa.
+
+**Verificado renderizando**: os oito slides das duas famílias foram
+desenhados com `renderToStaticMarkup` e fotografados no Chromium antes e
+depois de cada ajuste. Foi assim que apareceram o gancho pequeno demais e o
+destaque ilegível no fundo escuro — nenhum dos dois quebra teste.
+
 ## ConvertIA — Internet e MCP de terceiro (set/2026)
 
 **Conector "Internet"** (`connectors/web.ts`): `web_buscar` + `web_abrir`, o
@@ -3981,6 +4100,98 @@ com o delta. **Lição operacional: migration deste repo é aplicada à mão e
 SLIPPA** — feature nova que dependa de coluna nova tem de degradar com o
 erro NOMEADO, não com silêncio (é a mesma lição do `copy_fit`, que passou
 quatro dias sem gravar run porque o CHECK não tinha o valor).
+
+## Comment gate: a palavra do carrossel vira automação (set/2026)
+
+O carrossel termina em "comente SEGMENTO e eu te mando no direct" e isso
+era **só texto no slide**. Medido antes de mexer: zero automações com
+gatilho `thread_message_received` no banco, o texto do comentário
+chegando ao dispatcher e **ninguém filtrando por ele**, e o executor sem
+saber responder pelo Instagram (canal de IG caía no ramo da Cloud API do
+WhatsApp e o nó morria em `config_missing`). Quatro camadas, todas
+mudas.
+
+**Filtro por palavra** (`lib/crm/palavra-chave.ts`, puro, 8 testes):
+casa por PALAVRA INTEIRA, sem caixa nem acento — "41" não pode disparar
+em "3410" nem "guia" em "guiaram", porque casar de mais manda mensagem a
+quem não pediu e é assim que a conta é punida. Plural simples entra
+("segmentos" casa "segmento"), outras flexões não; variantes por vírgula
+("SEGMENTO, SEGMENTAR") porque o operador raramente acerta de primeira
+como o público escreve. Sem chave configurada devolve `true`: automação
+sem filtro continua disparando como antes.
+
+**Resposta pelo caminho certo** (`lib/crm/resposta-instagram.ts`, puro):
+comentário → *private reply* endereçada pelo **id do comentário** (a
+resposta cai no direct de quem comentou; uma por comentário, 7 dias);
+direct → DM pelo id do remetente. `sendInstagramMessage` ganhou
+`to_kind`, que escolhe entre `recipient:{comment_id}` e `recipient:{id}`.
+O `to` do nó fica VAZIO de propósito — no Instagram o destinatário vem
+do gatilho, não de um campo digitado.
+
+**O negócio é de quem comentou, não do post.** A thread de comentários é
+agrupada pela MÍDIA (`contact_external_id = "comment:<media>"`): cem
+pessoas comentando caem na MESMA conversa. Como `action_create_deal` é
+idempotente por thread, o post inteiro rendia **um negócio só** e todos
+os outros voltavam `created:false`, calados — e `is_first_message`, que
+contava por thread, dizia "sim" apenas para quem comentou primeiro, então
+com o filtro "só a primeira" ligado o gate atendia UMA pessoa por post.
+Os dois defeitos são invisíveis: nada em log ou tela diz que noventa e
+nove pedidos foram descartados. Os dados de produção já mostravam o caso
+(dois posts com 2 comentários de 2 pessoas diferentes cada).
+
+Agora `donoDoNegocio` (mesmo módulo puro) devolve `thread` (conversa de
+pessoa: o vínculo dela vale) ou `pessoa` (conversa de post: o dono é
+quem comentou), e `garantirThreadDaPessoa`
+(`crm-thread-pessoa.service.ts`) abre a conversa DELA — mesmo espaço de
+identidade do direct, então quando ela responder cai ali e nada duplica.
+Sem `sender_external_id` a ação **recusa com motivo declarado**: um
+negócio para o post inteiro é pior que nenhum. `is_first_message` de
+comentário passou a contar por remetente (`metadata->>sender_id`).
+
+**A resposta enviada é gravada no inbox** (`registrarSaidaNoInstagram`,
+`sent_by_kind: "automation"`): sem isso o direct saía e o atendente via a
+pessoa responder a uma mensagem que, para ele, nunca existiu. Vai na
+conversa da pessoa, dedupe pelo id do comentário (hash do texto só como
+último recurso — a mesma pessoa comentando duas vezes recebe duas
+respostas e as duas têm de aparecer). Falhar ao gravar NÃO derruba o nó:
+a mensagem já saiu.
+
+**Resposta e negócio são ramos PARALELOS do gatilho**, não uma fila. No
+executor um nó que falha interrompe o ramo dele e só ele: em fila, DM
+recusada (janela de 7 dias, pessoa que bloqueou direct) faria o lead
+nunca chegar à pipeline, e pipeline mal configurada calaria a entrega que
+o carrossel prometeu. A resposta vem primeiro na lista de edges porque
+elas são percorridas em ordem e quem comentou está esperando.
+
+**Com palavra-chave, "só a primeira mensagem" sai do filtro**
+(`instagram-automation.ts`): quem já tinha comentado "🔥" no post não
+entraria quando comentasse a palavra — e é justamente essa pessoa que
+pediu. Quem faz o papel de guarda contra spam ali é a palavra.
+`keyword` entra na identidade de `isSameInstagramAutomation`: duas
+automações do mesmo post com palavras diferentes são coisas diferentes.
+Comentário da PRÓPRIA conta é gravado (é histórico) mas não dispara —
+com o gate ligado, o fluxo responderia a si mesmo.
+
+**O gatilho que o builder edita passou a valer** (`automation-trigger.ts`,
+puro, 4 testes). Quem dispara é a COLUNA `automations.trigger`; o nó do
+DAG é o que a tela mostra. O save do builder manda só `{name, dag}`, então
+mexer no canal, no tipo de interação ou na palavra-chave pela tela salvava
+o desenho e **não mudava nada** — sem erro, sem aviso, e só o banco
+contava a verdade. O PATCH agora deriva a coluna do nó quando o corpo traz
+`dag` e não traz `trigger`; desenho sem nó de trigger utilizável mantém o
+que está gravado (apagar desligaria a automação em silêncio). Zero
+automações no banco quando isto entrou — não há dado legado a migrar.
+
+**No Estúdio** (`comment-gate.ts`, puro, 8 testes + `comment-gate-modal`):
+botão "Ligar a automação" embaixo do campo Comment gate, na aba Legenda.
+`impedimentosDoGate` diz o que falta (palavra, perfil, canal fora do
+Instagram) em vez de oferecer um botão que falha; `respostaSugerida` sai
+do CTA do próprio carrossel quando ele entrega algo — "Comente SEGMENTO"
+é o PEDIDO, não a entrega, e cai no texto que nomeia a palavra. O POST é
+a MESMA rota do painel Instagram (`setup-automation`, agora com
+`keyword` e `reply`), então a automação aparece e é editável em
+Automações do CRM: um dono só. `data.ts` ganhou as duas únicas chamadas
+do Estúdio a rotas do CRM, com o motivo declarado.
 
 ## Execução manual: desativar, pinar e parar onde quiser (set/2026, migration 20261129)
 

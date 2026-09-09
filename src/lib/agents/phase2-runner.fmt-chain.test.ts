@@ -852,7 +852,7 @@ describe("merge por example — caso-mestre", () => {
       mode: "fragment",
     })
     const res = await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
-    expect(res.status).toBe("ready")
+    expect(res.status).toBe("failed")
 
     const rs = runsOf("hero_section")
     expect(rs).toHaveLength(2)

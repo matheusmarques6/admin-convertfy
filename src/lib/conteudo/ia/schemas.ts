@@ -11,7 +11,10 @@ const frameContrato = z.object({
   frameId: z.string(),
   tipo: frameTipo,
   label: z.string(),
-  campos: z.array(z.enum(["titulo", "subtitulo", "corpo", "botao"])),
+  // `gancho` e `anotacao` são os campos da família Editorial (o par de
+  // título e o rabisco à mão). Só existem no frame que os declara — a IA
+  // preenche o que o contrato do frame pedir, nunca inventa campo.
+  campos: z.array(z.enum(["titulo", "subtitulo", "corpo", "botao", "gancho", "anotacao"])),
 })
 
 const textos = z
@@ -20,6 +23,8 @@ const textos = z
     subtitulo: z.string().optional(),
     corpo: z.string().optional(),
     botao: z.string().optional(),
+    gancho: z.string().optional(),
+    anotacao: z.string().optional(),
   })
   .strict()
 
@@ -208,12 +213,20 @@ export const entradaImagemSchema = z.object({
   prompt: z.string().min(3).max(1500),
   aspecto: z.enum(["4:5", "9:16", "1:1"]).optional(),
   quantidade: z.number().int().min(1).max(4).optional(),
+  /**
+   * Via B. `hibrido` (e o legado sem modo) = só o visual, a rota reforça
+   * "sem texto na imagem". `completo` = slide inteiro pelo modelo, texto
+   * incluído — é o ÚNICO modo em que a rota não acrescenta essa proibição.
+   */
+  modo: z.enum(["hibrido", "completo"]).optional(),
 })
 
 export type EntradaImagem = z.infer<typeof entradaImagemSchema>
 
 export interface SaidaImagem {
   urls: string[]
+  /** Quantas foram pedidas — menor que `urls.length` significa falha parcial. */
+  pedidas?: number
 }
 
 export type EntradaIA = z.infer<typeof entradaSchema>

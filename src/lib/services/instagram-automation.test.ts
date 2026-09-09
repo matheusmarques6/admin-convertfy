@@ -110,3 +110,42 @@ describe("isSameInstagramAutomation", () => {
     ).toBe(false)
   })
 })
+
+describe("comment gate: a palavra é o guarda", () => {
+  it("com palavra, 'só a primeira mensagem' sai do filtro — quem já comentou antes também pede", () => {
+    const built = buildInstagramAutomation({ ...base, eventKind: "comment", keyword: "SEGMENTO", firstMessageOnly: true })
+    expect(built.trigger).not.toHaveProperty("first_message")
+    expect(built.trigger).toMatchObject({ keyword: "SEGMENTO", event_kind: "comment" })
+    expect(built.description).not.toContain("primeira mensagem")
+  })
+
+  it("sem palavra, o filtro de primeira mensagem continua valendo", () => {
+    expect(buildInstagramAutomation(base).trigger).toHaveProperty("first_message", true)
+  })
+
+  it("resposta e negócio são ramos paralelos: um falhar não pode calar o outro", () => {
+    const built = buildInstagramAutomation({ ...base, keyword: "GUIA", reply: "Toma o guia 👇" })
+    expect(built.dag.nodes.map((n) => n.type)).toEqual(["trigger", "action_send_whatsapp", "action_create_deal"])
+    const reply = built.dag.nodes.find((n) => n.type === "action_send_whatsapp")
+    // `to` vazio de propósito: no Instagram o destinatário vem do gatilho.
+    expect(reply?.config).toEqual({ channel_id: "ch-1", body_template: "Toma o guia 👇" })
+    // Os dois saem do gatilho, e a resposta vem primeiro (a ordem das
+    // edges é a ordem de execução, e quem comentou está esperando).
+    expect(built.dag.edges.map((e) => `${e.from}>${e.to}`)).toEqual([
+      "trigger-1>reply-1",
+      "trigger-1>create-deal-1",
+    ])
+  })
+
+  it("sem resposta o fluxo é só o negócio (nada de nó vazio no builder)", () => {
+    const built = buildInstagramAutomation({ ...base, keyword: "GUIA", reply: "   " })
+    expect(built.dag.nodes.map((n) => n.type)).toEqual(["trigger", "action_create_deal"])
+  })
+
+  it("palavras diferentes no mesmo post são automações diferentes", () => {
+    const a = buildInstagramAutomation({ ...base, keyword: "GUIA" })
+    const b = buildInstagramAutomation({ ...base, keyword: "SEGMENTO" })
+    expect(isSameInstagramAutomation({ trigger: a.trigger, dag: a.dag }, b)).toBe(false)
+    expect(isSameInstagramAutomation({ trigger: a.trigger, dag: a.dag }, a)).toBe(true)
+  })
+})

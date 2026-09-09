@@ -491,7 +491,18 @@ foto que já cobre o box → `sem_ajuste`. Falha por box é fail-open.
 
 ## 14 · QA
 
-Híbrido. **Sempre rodam** (código): `runDeterministicChecks` (tags, blocos vazios, hrefs), `runSchemaChecks` (`max_len`/required vs fields v2 — só `nature='copy'`), `runGlobalDocChecks` (placeholders/tokens sobrando, img sem src, contagem vs blueprint), `computeRenderChecks` (unsubscribe, alts, contraste WCAG). O veredito LLM usa `EMAIL_QA_MODE=off|shadow|enforce` (**default `shadow`**). `shadow` executa o QA, persiste issues e segue para `ready`; `enforce` aplica `EMAIL_QA_BLOCK_SEVERITY` (default high). `EMAIL_QA_ENABLED=true` permanece como alias legado de `enforce`; `false` desliga explicitamente.
+Híbrido. **Sempre rodam** (código): `runDeterministicChecks`,
+`runSchemaChecks`, `runGlobalDocChecks` e `computeRenderChecks`.
+Checks determinísticos com `disposition="blocking"` bloqueiam
+independentemente do agente por modelo; checks com
+`disposition="warning"` permanecem informativos.
+
+O veredito LLM usa `EMAIL_QA_MODE=off|shadow|enforce`
+(**default `shadow`**). `shadow` executa o QA, persiste issues e segue
+para `ready`; `enforce` também permite que o veredito do LLM aplique
+`EMAIL_QA_BLOCK_SEVERITY` (default high).
+`EMAIL_QA_ENABLED=true` permanece como alias legado de `enforce`;
+`false` desliga explicitamente.
 
 **Modelo (LLM)**: `moonshotai/kimi-k3` · T 0.2 · max 1500 · timeout 60s (+1 retry de reformatação).
 

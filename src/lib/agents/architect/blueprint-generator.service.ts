@@ -44,6 +44,7 @@ import {
 import type { AssemblySlot } from "./component-assembler.service"
 import type { RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
+import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 /**
  * Por que a estrutura deste email é (ou não é) a do Estruturador.
@@ -302,6 +303,12 @@ export interface GenerateBlueprintInput {
   papeisPorPosicao?: string[] | null
   /** Requisitos tipados por posição, alinhados a `papeisPorPosicao` (09/09). */
   requisitosPorPosicao?: Array<RequisitosDaPosicao | null> | null
+  /**
+   * Posições que o Estruturador decidiu e a biblioteca não cobriu — não
+   * viram bloco (09/09). Só telemetria: sem isto a run mostra 5 blocos e
+   * ninguém sabe que a sequência pedia 6, nem qual seção o e-mail perdeu.
+   */
+  posicoesDescartadas?: Array<{ block_index: number; section: string | null }>
   /** Posições cujo papel começa pela intenção humana da Arquitetura (02/09). */
   intencoesHumanas?: number
   fioNarrativo?: string | null
@@ -436,6 +443,14 @@ async function generateSubjectHint(input: {
     top_products: input.topProductNames.join(", "),
   }
 
+  // Mantém o prompt aprovado editável intacto e acrescenta apenas a nota
+  // versionada de assunto (nunca o corpus inteiro do vault).
+  const approvedSystemPrompt = config.system_prompt
+  const effectiveConfig = {
+    ...config,
+    system_prompt: withDoctrine(approvedSystemPrompt, "subject"),
+  }
+
   // Proveniência: o system do Assunto não tem var (100% agente); o user é
   // plain-var. Até 26/08 esta run não gravava prompt NENHUM — passa a gravar.
   const segUser = buildSegmentedPrompt(config.user_template, vars, SUBJECT_ORIGINS, {
@@ -449,10 +464,11 @@ async function generateSubjectHint(input: {
       {
         cls: "agente" as const,
         rotulo: "Template do agente",
-        texto: config.system_prompt,
-        chars: config.system_prompt.length,
+        texto: approvedSystemPrompt,
+        chars: approvedSystemPrompt.length,
         parte: "system" as const,
       },
+      doctrinePromptSegment("subject"),
     ],
     segUser.segments,
   )
@@ -484,7 +500,7 @@ async function generateSubjectHint(input: {
   })
 
   try {
-    const res = await invokeAgent(config, vars)
+    const res = await invokeAgent(effectiveConfig, vars)
     const json = JSON.parse(extractJson(res.raw)) as Record<string, unknown>
     const subjectHint =
       typeof json.subject_hint === "string" && json.subject_hint.trim()
@@ -691,6 +707,19 @@ async function generateDeterministicBlueprint(
       cls: "upstream",
       valor: input.fioNarrativo?.trim() || "(sem fio — consumidores caem no messaging)",
     },
+    {
+      // A posição descartada some do blueprint sem deixar rastro: a tela
+      // mostra 5 blocos e ninguém sabe que a sequência pedia 6, nem qual
+      // seção o e-mail perdeu. É lacuna de BIBLIOTECA, e é aqui que a
+      // curadoria a vê.
+      rotulo: "Posições sem variante",
+      cls: "sistema",
+      valor: (input.posicoesDescartadas?.length ?? 0) > 0
+        ? `${input.posicoesDescartadas!.length} fora do e-mail: ${input.posicoesDescartadas!
+            .map((p) => `#${p.block_index + 1} ${p.section ?? "?"}`)
+            .join(", ")}`
+        : "nenhuma — toda posição decidida virou bloco",
+    },
   ]
   const runId = await startGenerationRun({
     storeId: input.storeId,
@@ -775,6 +804,7 @@ async function generateDeterministicBlueprint(
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
       papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      posicoes_descartadas: input.posicoesDescartadas ?? [],
       omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source: "ai",
@@ -1028,6 +1058,7 @@ async function generateLlmBlueprint(
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
       papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      posicoes_descartadas: input.posicoesDescartadas ?? [],
       omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source,

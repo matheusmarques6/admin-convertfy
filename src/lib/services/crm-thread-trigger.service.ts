@@ -36,6 +36,12 @@ export interface ThreadMessageEvent {
   /** Primeira mensagem do contato nesta thread. */
   is_first_message?: boolean
   external_message_id?: string | null
+  /**
+   * Quem escreveu, do lado da plataforma. Na thread de COMENTÁRIOS o
+   * `contact_external_id` é o post, não a pessoa — sem este campo a
+   * automação não sabe para quem responder.
+   */
+  sender_external_id?: string | null
 }
 
 /**
@@ -74,10 +80,22 @@ export async function dispatchThreadMessage(
         trigger_type: "thread_message_received",
         trigger_data: {
           thread_id: event.thread_id,
+          channel_id: event.channel_id,
           channel_type: event.channel_type,
           event_kind: event.event_kind ?? "message",
           is_first_message: event.is_first_message ?? false,
           message_text: event.message_text ?? null,
+          // O id do comentário é o destinatário da resposta no direct
+          // (private reply): sem ele no CONTEXTO, a ação de envio só
+          // alcança quem já tinha aberto conversa.
+          external_message_id: event.external_message_id ?? null,
+          contact_external_id: event.contact_external_id ?? null,
+          sender_external_id: event.sender_external_id ?? null,
+          // Quem mandou ESTA mensagem. Na conversa de comentários o
+          // `contact_name` da thread é do último que comentou (o upsert
+          // sobrescreve a cada webhook): confiar nele para nomear o
+          // negócio é corrida esperando acontecer.
+          sender_name: event.contact_name ?? null,
         },
         thread: thread
           ? {

@@ -8,6 +8,7 @@ import { NextRequest } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
+import { triggerDaDag, type DagComTrigger } from "@/lib/crm/automation-trigger"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmAutomationDetail")
@@ -74,7 +75,11 @@ export async function PATCH(
     const body = await request.json()
     const parsed = patchSchema.parse(body)
 
-    // Quando dag muda, incrementa version
+    // Quando dag muda, incrementa version — e o GATILHO acompanha o
+    // desenho. Quem dispara é a coluna `trigger`; o nó do DAG é o que a
+    // tela edita. Sem esta linha, mexer no canal, no tipo de interação
+    // ou na palavra-chave pelo builder salvava o desenho e não mudava
+    // nada do comportamento, sem erro nem aviso.
     const update: Record<string, unknown> = { ...parsed }
     if (parsed.dag) {
       const { data: current } = await admin
@@ -83,6 +88,12 @@ export async function PATCH(
         .eq("id", id)
         .single()
       update.version = (current?.version || 1) + 1
+      if (!parsed.trigger) {
+        const derivado = triggerDaDag(parsed.dag as DagComTrigger)
+        // `null` = desenho sem nó de trigger utilizável; aí o que está
+        // gravado continua valendo (apagar desligaria em silêncio).
+        if (derivado) update.trigger = derivado
+      }
     }
 
     const { error } = await admin.from("automations").update(update).eq("id", id)

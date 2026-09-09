@@ -168,8 +168,14 @@ export async function getInstagramUserProfilePic(
 }
 
 export interface InstagramDirectMessage {
-  /** IG-scoped recipient ID (vem do webhook em entry.messaging[].sender.id). */
+  /**
+   * Destinatário. Com `to_kind: "igsid"` (padrão) é o IG-scoped ID do
+   * contato (webhook, `entry.messaging[].sender.id`); com `"comment"` é o
+   * ID do COMENTÁRIO — a Meta entrega a resposta no direito de quem
+   * comentou (private reply), que é o que o comment gate promete.
+   */
   to: string
+  to_kind?: "igsid" | "comment"
   type: "text" | "image"
   text?: { body: string }
   image?: { url: string }
@@ -188,7 +194,9 @@ export interface SendResult {
  * Endpoint: POST /{ig-user-id}/messages
  *
  * NOTE: Janela de 24h padrao apos ultima mensagem do contato. Mensagens
- * fora dessa janela exigem human_agent tag (nao implementado aqui).
+ * fora dessa janela exigem human_agent tag (nao implementado aqui). A
+ * private reply (`to_kind: "comment"`) tem regra propria: uma resposta
+ * por comentario, dentro de sete dias.
  */
 export async function sendInstagramMessage(
   config: InstagramChannelConfig,
@@ -206,7 +214,9 @@ export async function sendInstagramMessage(
     }
   }
 
-  const body: Record<string, unknown> = { recipient: { id: msg.to } }
+  const body: Record<string, unknown> = {
+    recipient: msg.to_kind === "comment" ? { comment_id: msg.to } : { id: msg.to },
+  }
 
   if (msg.type === "text" && msg.text) {
     body.message = { text: msg.text.body }

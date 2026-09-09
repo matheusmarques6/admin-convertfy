@@ -41,7 +41,7 @@ const NODE_TYPES_PALETTE: Array<{ type: CrmNodeType; label: string; icon: Lucide
   { type: "trigger", label: "Trigger", icon: Zap, color: "var(--crm-warning-fg)" },
   { type: "condition", label: "Condicao", icon: GitBranch, color: "var(--crm-info-fg)" },
   { type: "wait", label: "Esperar", icon: Clock, color: "var(--crm-gray-600)" },
-  { type: "action_send_whatsapp", label: "Enviar WhatsApp", icon: MessageSquare, color: "var(--crm-success-fg)" },
+  { type: "action_send_whatsapp", label: "Responder no canal", icon: MessageSquare, color: "var(--crm-success-fg)" },
   { type: "action_create_activity", label: "Criar atividade", icon: FileText, color: "var(--crm-gray-700)" },
   { type: "action_assign_owner", label: "Atribuir owner", icon: UserCheck, color: "var(--crm-gray-700)" },
   { type: "action_create_deal", label: "Criar negocio", icon: Briefcase, color: "var(--crm-success-fg)" },
@@ -464,6 +464,20 @@ function NodeInspector({
               </Field>
             )}
 
+            <Field label="Palavra-chave (comment gate)">
+              <input
+                className="crm-input w-full"
+                placeholder="SEGMENTO"
+                value={(config.keyword as string) || ""}
+                onChange={(e) => onChange({ keyword: e.target.value || undefined })}
+              />
+              <span className="mt-1 block text-[11px] text-slate-400 dark:text-white/35">
+                Só dispara quando a mensagem PEDE essa palavra (&quot;comente SEGMENTO&quot;). Casa sem
+                acento e sem caixa, aceita o plural e ignora pedaço de palavra. Várias variantes,
+                separadas por vírgula. Vazio = qualquer mensagem.
+              </span>
+            </Field>
+
             <label className="flex cursor-pointer items-start gap-2 text-[12px] text-slate-600 dark:text-white/60">
               <input
                 type="checkbox"
@@ -647,6 +661,10 @@ function NodeInspector({
             value={(config.to as string) || ""}
             onChange={(e) => onChange({ to: e.target.value })}
           />
+          <span className="mt-1 block text-[11px] text-slate-400 dark:text-white/35">
+            No Instagram deixe vazio: quem comentou recebe a resposta no direct e quem mandou
+            direct é respondido na mesma conversa — o destinatário vem do gatilho.
+          </span>
         </Field>
         <Field label="Template do corpo">
           <textarea
@@ -804,7 +822,7 @@ function nodeLabel(type: CrmNodeType, config?: Record<string, unknown>): string 
       }
     }
     case "action_send_whatsapp":
-      return "Enviar WhatsApp"
+      return "Responder no canal"
     case "action_create_activity":
       return `Criar ${(config?.type as string) || "nota"}`
     case "action_assign_owner":
