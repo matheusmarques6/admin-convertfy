@@ -33,6 +33,7 @@ import {
   aceitarReescrita,
   contarTracos,
   type MotivoDeAlvo,
+  apararNoLimite,
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
 } from "@/lib/email-workspace/copy-fit"
@@ -193,7 +194,9 @@ export interface DePara {
   /** Só nos alvos de idioma: o que o detector viu antes e no texto que fica. */
   idioma_antes?: IdiomaDetectado
   idioma_depois?: IdiomaDetectado
-  motivo?: MotivoDeRecusa | "sem_resposta"
+  motivo?: MotivoDeRecusa | "sem_resposta" | "comparativa_mantida"
+  /** 09/09: quem escreveu o texto aceito — o modelo ou o código. */
+  via?: "llm" | "travessao_por_codigo" | "aparado_por_codigo" | null
 }
 
 export interface CopyFitResult {
@@ -424,7 +427,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   })
 
   const aceitas = new Map<string, ReescritaAceita>()
-  const motivos = new Map<string, MotivoDeRecusa | "sem_resposta">()
+  const motivos = new Map<string, MotivoDeRecusa | "sem_resposta" | "comparativa_mantida">()
   let tokensInput = 0
   let tokensOutput = 0
   let custoUsd = 0
@@ -434,9 +437,30 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   // corte do código para o mesmo campo, e a tradução recusada tem de
   // continuar contando — é o número que diz se o prompt está escorregando.
   let traducoesRecusadas = 0
+  const viaCodigo = new Map<string, "travessao_por_codigo" | "aparado_por_codigo">()
 
   try {
-    let pendentes = input.alvos
+    // 09/09 — o que o CÓDIGO resolve não vai ao modelo:
+    //  - `proposta_por_codigo`: travessão trocado e cabe → aceita.
+    //  - `so_codigo` (coluna comparativa): apara no limite ou mantém.
+    const porCodigo: AlvoDeEncurtamento[] = []
+    const paraOModelo: AlvoDeEncurtamento[] = []
+    for (const a of input.alvos) (a.proposta_por_codigo || a.so_codigo ? porCodigo : paraOModelo).push(a)
+    for (const a of porCodigo) {
+      if (a.proposta_por_codigo) {
+        aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: a.proposta_por_codigo })
+        viaCodigo.set(a.id, "travessao_por_codigo")
+        continue
+      }
+      const aparado = a.max > 0 && a.texto.length > a.max ? apararNoLimite(a.texto, a.max) : null
+      if (aparado) {
+        aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: aparado })
+        viaCodigo.set(a.id, "aparado_por_codigo")
+      } else {
+        motivos.set(a.id, "comparativa_mantida")
+      }
+    }
+    let pendentes = paraOModelo
     for (let passada = 0; passada < 2 && pendentes.length > 0; passada++) {
       const varsDaPassada =
         passada === 0
@@ -487,11 +511,24 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       pendentes = aindaFora
     }
 
-    // SEM plano B (02/09): o corte por código ("decepa na última frase que
-    // cabe") mandou "Plugs directly into any standard outlet." ao cliente
-    // no lugar de um parágrafo inteiro — 6 de 8 campos perderam o
-    // argumento. Campo que o modelo não acertou em duas passadas fica
-    // como veio do n8n, contado em `mantidos` com o motivo da recusa.
+    // Plano B ESTREITO (09/09): o corte por código de 02/09 ("decepa na
+    // última frase que cabe") mandou "Plugs directly into any standard
+    // outlet." ao cliente e foi removido. O que volta é só o aparo de
+    // excesso PEQUENO (≤ 15%, última fronteira de palavra, sem reticências)
+    // para o campo que o modelo não acertou em duas passadas — o review
+    // com idade e cintura sobrevivia com uma palavra a menos em vez de
+    // ser descartado inteiro (`ainda_acima_do_limite`, batch 644d86c5).
+    // Excesso maior continua como veio do n8n, contado em `mantidos`.
+    for (const a of pendentes) {
+      if (motivos.get(a.id) !== "ainda_acima_do_limite" && !(a.max > 0 && a.texto.length > a.max)) continue
+      const aparado = apararNoLimite(a.texto, a.max)
+      if (!aparado) continue
+      const veredicto = aceitarReescrita(a.texto, aparado, { max: a.max, min: a.min, motivos: ["max_len"], idiomaEsperado: a.idioma_esperado })
+      if (!veredicto.ok) continue
+      motivos.delete(a.id)
+      aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: aparado })
+      viaCodigo.set(a.id, "aparado_por_codigo")
+    }
 
     const de_para: DePara[] = input.alvos.map((a) => {
       const ok = aceitas.get(a.id)
@@ -517,6 +554,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
             }
           : {}),
         ...(ok ? {} : { motivo: motivos.get(a.id) ?? "sem_resposta" }),
+        via: ok ? (viaCodigo.get(a.id) ?? "llm") : null,
       }
     })
 
@@ -540,6 +578,14 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         corrigidos: aceitas.size,
         mantidos: input.alvos.length - aceitas.size,
         tentativas,
+        // 09/09: o que o código resolveu sem o modelo, e o que ficou de
+        // fora do modelo de propósito (coluna comparativa).
+        por_codigo: {
+          travessao: [...viaCodigo.values()].filter((v) => v === "travessao_por_codigo").length,
+          aparados: [...viaCodigo.values()].filter((v) => v === "aparado_por_codigo").length,
+          comparativas_mantidas: [...motivos.values()].filter((m) => m === "comparativa_mantida").length,
+          para_o_modelo: paraOModelo.length,
+        },
         // Travessão: quantos alvos entraram por ele e quantos sobraram no
         // texto que o cliente vai ler. `depois > 0` é o número que diz se o
         // agente está cumprindo — sem ele a regra viraria fé.
