@@ -49,7 +49,29 @@ describe("renderObjecoesJaAtacadas / alvoParaMedicao", () => {
     expect(renderObjecoesJaAtacadas(null)).toContain("nenhuma")
   })
   it("medição usa o aliviador da primária e as proibições", () => {
-    expect(alvoParaMedicao(alvo)).toEqual({ aliviador_pedido: "reputacao_da_loja", proibicoes: ["urgência artificial"] })
+    expect(alvoParaMedicao(alvo)).toEqual({ incentivo_existe: null, aliviador_pedido: "reputacao_da_loja", proibicoes: ["urgência artificial"] })
     expect(alvoParaMedicao(null)).toBeNull()
+  })
+})
+
+describe("incentivo, insumos e contradições no render (09/09)", () => {
+  it("INCENTIVO e insumos permitidos viram instrução positiva; contradição fica em destaque; medição carrega incentivo_existe", () => {
+    const a: AlvoDoEmail = {
+      ...alvo,
+      incentivo: { existe: false, codigo: null, valor: null },
+      insumos_permitidos: ["checkout Shopify (pesquisa)"],
+      contradicoes: [{ motivo: "tratamento_sem_insumo", detalhe: "o tratamento pede política de troca e este toque proíbe afirmá-la" }],
+    }
+    const t = renderAlvo(a, "x")
+    expect(t).toContain("INCENTIVO: sem incentivo ativo — nenhum bloco, campo ou copy de oferta")
+    expect(t).toContain("insumos permitidos (fatos que a copy PODE usar, com origem):\n  - checkout Shopify (pesquisa)")
+    expect(t).toContain("CONTRADIÇÃO (dado que falta na loja")
+    expect(alvoParaMedicao(a)?.incentivo_existe).toBe(false)
+    expect(renderAlvo({ ...alvo, incentivo: { existe: true, codigo: "HERO10", valor: "10%" } }, "x")).toContain("INCENTIVO: ativo · 10% · código HERO10")
+  })
+  it("alvo gravado antes de 09/09 (sem os campos) renderiza como antes", () => {
+    const t = renderAlvo(alvo, "x")
+    expect(t).not.toContain("INCENTIVO")
+    expect(alvoParaMedicao(alvo)?.incentivo_existe).toBeNull()
   })
 })

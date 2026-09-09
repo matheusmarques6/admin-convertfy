@@ -191,3 +191,10 @@ describe("parseIntentContract — catálogo da loja como fonte", () => {
     expect(b).toContain("riscos_elegiveis=catalogo")
   })
 })
+
+describe("proibições deduplicadas por chave (09/09)", () => {
+  it("nota e catálogo com a mesma regra em redações diferentes → uma só", () => {
+    const c = parseIntentContract({ modo: "quebra_de_objecao", proibicoes: ["Não prometer prazo.", "não prometer prazo", "urgência artificial"] })!
+    expect(c.proibicoes).toEqual(["Não prometer prazo.", "urgência artificial"])
+  })
+})

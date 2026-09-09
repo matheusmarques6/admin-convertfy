@@ -16,6 +16,7 @@
 
 import { aliviadorAdmissivel, type IntentContract } from "./intent-contract"
 import { objecoesElegiveisNoFlow } from "./catalogo-regras"
+import { chaveDeTexto, dedupePorChave } from "./texto"
 import {
   MODOS_SEM_OBJECAO,
   isDimensao,
@@ -28,6 +29,8 @@ import {
   type AlvoObjecao,
   type AnguloDoTratamento,
   type CatalogoDeObjecoes,
+  type ContradicaoDoAlvo,
+  type IncentivoDoAlvo,
   type JaAtacada,
   type ObjecaoCatalogada,
   type Profundidade,
@@ -102,15 +105,27 @@ export function normalizarAlvo(
     avisos.push(`veículo exigido ausente no output, completado por código: ${v}`)
   }
 
-  const proibidas = new Set<string>(contrato.proibicoes)
-  for (const p of arr(o.proibido_neste_toque).map(str).filter(Boolean)) proibidas.add(p)
+  // Dedupe por chave normalizada (09/09): a mesma regra em dois idiomas ou
+  // com pontuação diferente passava pelo Set — 17 proibições, várias em
+  // dobro. A primeira forma (a do contrato) é a que fica.
+  const proibidas = dedupePorChave([
+    ...contrato.proibicoes,
+    ...arr(o.proibido_neste_toque).map(str).filter(Boolean),
+  ])
+  // Insumos PERMITIDOS: só com origem declarada entre parênteses — fato
+  // sem origem é o que o modelo inventa. Teto 12.
+  const insumos = dedupePorChave(
+    arr(o.insumos_permitidos)
+      .map(str)
+      .filter((t) => t.length > 0 && /\(.+\)/.test(t)),
+  ).slice(0, 12)
   const trabalhos = new Set(contrato.trabalhos_fixos)
   for (const t of arr(o.trabalhos_fixos)) if (isTrabalhoFixo(t)) trabalhos.add(t)
 
   const lac = rec(o.lacuna)
   const lacuna = str(lac.motivo) ? { motivo: str(lac.motivo), detalhe: str(lac.detalhe) || null } : null
 
-  return {
+  const resultado: NormalizacaoAlvo = {
     alvo: {
       // Precedência: nota tipada > modo que o modelo adotou lendo a prosa.
       // O contrato só traz `modo` quando a intenção declara (07/09).
@@ -124,13 +139,63 @@ export function normalizarAlvo(
       angulo_do_tratamento: angulos,
       suspeita_a_antecipar: str(o.suspeita_a_antecipar) || null,
       ja_atacadas: [...jaAtacadas],
-      proibido_neste_toque: Array.from(proibidas),
+      proibido_neste_toque: proibidas,
       alerta_de_lastro: str(o.alerta_de_lastro) || null,
       razao: str(o.razao),
       lacuna,
+      // Do CATÁLOGO, por código — o modelo não decide se há incentivo.
+      incentivo: incentivoDoCatalogoNormalizado(catalogo),
+      insumos_permitidos: insumos,
+      contradicoes: [],
     },
     avisos,
   }
+  // Contradição tratamento × proibição, medida depois de montar o alvo.
+  resultado.alvo.contradicoes = detectarContradicoes(resultado.alvo)
+  return resultado
+}
+
+function incentivoDoCatalogoNormalizado(catalogo: CatalogoDeObjecoes): IncentivoDoAlvo {
+  const inc = catalogo.incentivo
+  return {
+    existe: typeof inc?.existe === "boolean" ? inc.existe : null,
+    codigo: inc?.codigo ?? null,
+    valor: inc?.valor ?? null,
+  }
+}
+
+/**
+ * Famílias de dado operacional que um tratamento pode PEDIR e uma
+ * proibição pode NEGAR. É o caso da Hero Boxers (08/09): o tratamento do
+ * alvo pedia "secure-payment badge and plain-language return policy" e a
+ * proibição dizia "não afirmar política de devolução — não encontrado na
+ * pesquisa". O Seletor se contradizia porque o dado não existe.
+ */
+const FAMILIAS_OPERACIONAIS: Array<{ nome: string; re: RegExp }> = [
+  { nome: "política de troca/devolução", re: /\b(devolu|troca|return|refund|exchange)/ },
+  { nome: "prazo de entrega/frete", re: /\b(prazo|entrega|frete|shipping|delivery|envio)/ },
+  { nome: "garantia", re: /\b(garantia|warranty|guarantee)/ },
+  { nome: "cupom/incentivo", re: /\b(cupom|coupon|desconto|discount|incentivo|codigo|code)\b/ },
+  { nome: "avaliações/nota", re: /\b(avalia|review|nota media|rating|estrela|star)/ },
+  { nome: "canal de suporte", re: /\b(suporte|support|atendimento|whatsapp|sac)\b/ },
+]
+
+/** Puro: o tratamento do alvo primário pede o que alguma proibição nega. */
+export function detectarContradicoes(alvo: AlvoDoEmail): ContradicaoDoAlvo[] {
+  const primaria = alvo.alvos.find((a) => a.primaria) ?? alvo.alvos[0]
+  if (!primaria) return []
+  const trat = chaveDeTexto(primaria.tratamento)
+  const out: ContradicaoDoAlvo[] = []
+  for (const fam of FAMILIAS_OPERACIONAIS) {
+    if (!fam.re.test(trat)) continue
+    const proib = alvo.proibido_neste_toque.find((p) => fam.re.test(chaveDeTexto(p)))
+    if (!proib) continue
+    out.push({
+      motivo: "tratamento_sem_insumo",
+      detalhe: `o tratamento pede ${fam.nome} e este toque proíbe afirmá-la ("${proib.slice(0, 80)}") — falta o dado na loja (ficha operacional)`,
+    })
+  }
+  return out
 }
 
 /** Objeções que passam nos filtros checáveis por código (para telemetria e lacuna). */
@@ -260,6 +325,7 @@ export function alvoSintetico(
   motivo: string,
   detalhe: string | null,
   jaAtacadas: readonly JaAtacada[] = [],
+  catalogo: CatalogoDeObjecoes | null = null,
 ): AlvoDoEmail {
   return {
     modo: contrato?.modo ?? "quebra_de_objecao",
@@ -272,9 +338,12 @@ export function alvoSintetico(
     angulo_do_tratamento: [],
     suspeita_a_antecipar: null,
     ja_atacadas: [...jaAtacadas],
-    proibido_neste_toque: contrato?.proibicoes ?? [],
+    proibido_neste_toque: dedupePorChave(contrato?.proibicoes ?? []),
     alerta_de_lastro: null,
     razao: "",
     lacuna: { motivo, detalhe },
+    incentivo: catalogo ? incentivoDoCatalogoNormalizado(catalogo) : { existe: null, codigo: null, valor: null },
+    insumos_permitidos: [],
+    contradicoes: [],
   }
 }

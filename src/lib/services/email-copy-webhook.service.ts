@@ -1271,8 +1271,7 @@ export async function dispatchEmailCopyWebhook(
           // `insumos_permitidos` vem do alvo do Seletor quando existir.
           decisao: {
             incentivo: decisaoIncentivo,
-            insumos_permitidos:
-              (alvoByKey.get(key) as { insumos_permitidos?: string[] } | undefined)?.insumos_permitidos ?? [],
+            insumos_permitidos: alvoByKey.get(key)?.insumos_permitidos ?? [],
           },
           estrutura_geral: (() => {
             // O outline é por FLOW; a decisão de incentivo é por LOJA e vence.
