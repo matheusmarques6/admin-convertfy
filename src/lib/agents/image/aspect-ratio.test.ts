@@ -5,6 +5,7 @@ import {
   blockAspectFromBlueprint,
   imageDimsFromBlueprint,
   resolveAspectForField,
+  aspectMaisProximo,
   aspectInstructionForPrompt,
   dimsInstructionForPrompt,
   isAspectKey,
@@ -366,5 +367,69 @@ describe("dims e aspect POR CAMPO (geração por slot)", () => {
       resolveAspectForField({ fieldAspect: "banana", blockAspect: "1:1" }),
     ).toBe("1:1")
     expect(resolveAspectForField({})).toBe("4:5")
+  })
+})
+
+// ── A geometria do slot manda (09/09) ──────────────────────────────────
+//
+// Quem corta a imagem é o `sharp` com `fit:"cover"` nas dimensões EXATAS
+// do slot. Pedir ao modelo uma proporção e cortar noutra descarta a
+// composição pela borda — medido nas gerações de 09/09.
+describe("aspectMaisProximo e a prioridade das dimensões do slot", () => {
+  /** O que sobra da imagem gerada depois do `cover` no frame do slot. */
+  const aproveitamento = (slot: [number, number], pedido: AspectKey) => {
+    const g = getAspectDimensions(pedido)
+    const [w, h] = slot
+    const escala = Math.max(w / g.width, h / g.height)
+    return (w * h) / (g.width * escala * (g.height * escala))
+  }
+
+  it("paisagem nunca mais é pedida como retrato", () => {
+    // COLUMN_A_TOP da `body 4`: 272×212 vinha como 4:5 e perdia 38% da altura.
+    expect(aspectMaisProximo(272, 212)).toBe("4:3")
+    const antes = aproveitamento([272, 212], "4:5")
+    const depois = aproveitamento([272, 212], "4:3")
+    expect(antes).toBeLessThan(0.65) // sobrava menos de dois terços
+    expect(depois).toBeGreaterThan(0.95)
+  })
+
+  it("a hero de 1196×978 idem", () => {
+    expect(aspectMaisProximo(1196, 978)).toBe("4:3")
+    expect(aproveitamento([1196, 978], "4:5")).toBeLessThan(0.7)
+    expect(aproveitamento([1196, 978], "4:3")).toBeGreaterThan(0.9)
+  })
+
+  it("quadrado e retratos comuns escolhem o próprio", () => {
+    expect(aspectMaisProximo(166, 166)).toBe("1:1") // selos
+    expect(aspectMaisProximo(1200, 1500)).toBe("4:5")
+    expect(aspectMaisProximo(900, 1600)).toBe("9:16")
+  })
+
+  it("slot mais extremo que a lista fica no mais próximo — limite declarado", () => {
+    // PANEL_1_MAIN_PHOTO 314×733 (0,43) é mais estreito que 9:16 (0,5625);
+    // não há proporção suportada abaixo, então o corte permanece.
+    expect(aspectMaisProximo(314, 733)).toBe("9:16")
+  })
+
+  it("as dimensões do slot VENCEM o image_aspect declarado", () => {
+    // O cadastro dizia 4:5 num slot que é paisagem — e o resize corta pela
+    // dimensão, não pelo cadastro. Discordarem é o defeito.
+    expect(
+      resolveAspectForField({
+        slotDims: { width: 272, height: 212 },
+        fieldAspect: "4:5",
+        blockAspect: "9:16",
+      }),
+    ).toBe("4:3")
+  })
+
+  it("sem dimensões, a cascata antiga continua intacta", () => {
+    expect(
+      resolveAspectForField({ slotDims: null, fieldAspect: "9:16", blockAspect: "4:5" }),
+    ).toBe("9:16")
+    expect(
+      resolveAspectForField({ slotDims: { width: 0, height: 0 }, fieldAspect: "1:1" }),
+    ).toBe("1:1")
+    expect(resolveAspectForField({ slotDims: null })).toBe("4:5")
   })
 })

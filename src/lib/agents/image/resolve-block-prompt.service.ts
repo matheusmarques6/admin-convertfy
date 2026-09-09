@@ -356,13 +356,6 @@ export async function resolveBlockPrompt(
   const fieldAspect = ((blk.fields as Array<{ key?: string; image_aspect?: string | null }> | null) ?? []).find(
     (f) => f?.key === fieldKey,
   )?.image_aspect
-  const aspect: AspectKey = resolveAspectForField({
-    fieldAspect: fieldAspect ?? null,
-    blockAspect: blockAspectRaw,
-    blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
-    flowType,
-    emailNumber,
-  })
   // Dims declaradas no schema vencem o aspect tipado. SYNC CONTRACT com
   // phase2-runner.service.ts.
   const customDims = imageDimsFromBlueprint(
@@ -380,6 +373,16 @@ export async function resolveBlockPrompt(
     (blk.block_type as string | undefined) ?? null,
     fieldKey,
   )
+  const aspect: AspectKey = resolveAspectForField({
+    // A GEOMETRIA do slot vence o aspect tipado: é ela que o resize usa
+    // para cortar (09/09). SYNC CONTRACT com phase2-runner.service.ts.
+    slotDims: customDims,
+    fieldAspect: fieldAspect ?? null,
+    blockAspect: blockAspectRaw,
+    blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
+    flowType,
+    emailNumber,
+  })
 
   const multimodalEnabled = process.env.IMAGE_MULTIMODAL_ENABLED === "true"
   // Produto DESTE campo (painel 2 → produto 2), não sempre o primeiro.

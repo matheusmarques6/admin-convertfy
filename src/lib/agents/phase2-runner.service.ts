@@ -1352,32 +1352,6 @@ export async function runPhase2Image(
         )
         const blockAspectIsValid =
           !!blockAspectRaw && isAspectKey(blockAspectRaw)
-        const aspect: AspectKey = resolveAspectForField({
-          // O aspect do SLOT vence: uma variante mistura 9:16 (foto grande)
-          // com 4:5 (miniaturas), e herdar o do bloco gera errado.
-          fieldAspect: slot?.field.image_aspect ?? null,
-          blockAspect: blockAspectRaw,
-          blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
-          flowType: ctx.flowType,
-          emailNumber: ctx.emailNumber,
-        })
-        // AE-12 review C1: source so eh "block"/"blueprint" se o valor era
-        // VALIDO. Caso contrario, caiu na matriz ou default.
-        const aspectSource = blockAspectIsValid
-          ? "block"
-          : blueprintAspectIsValid
-            ? "blueprint"
-            : ctx.flowType === "welcome" && ctx.emailNumber != null
-              ? "matrix"
-              : "default"
-        log.info("phase2.image.aspect_resolved", {
-          emailId,
-          blockId: blk.id,
-          aspect,
-          reserveBottom,
-          source: aspectSource,
-        })
-
         // Dimensões EXATAS declaradas no campo de imagem do schema
         // (image_width × image_height) — prioridade sobre o aspect tipado.
         // Persistidas em blocks[].fields pelo builder (F1). SYNC CONTRACT
@@ -1397,6 +1371,38 @@ export async function runPhase2Image(
           blk.block_type as string | undefined,
           fieldKey,
         )
+
+        const aspect: AspectKey = resolveAspectForField({
+          // O aspect do SLOT vence: uma variante mistura 9:16 (foto grande)
+          // com 4:5 (miniaturas), e herdar o do bloco gera errado.
+          // A GEOMETRIA do slot vence o aspect tipado: é ela que o resize
+          // usa para cortar (09/09).
+          slotDims: customDims,
+          fieldAspect: slot?.field.image_aspect ?? null,
+          blockAspect: blockAspectRaw,
+          blueprintAspect: blueprintAspectRaw as AspectKey | null | undefined,
+          flowType: ctx.flowType,
+          emailNumber: ctx.emailNumber,
+        })
+        // AE-12 review C1: source so eh "block"/"blueprint" se o valor era
+        // VALIDO. Caso contrario, caiu na matriz ou default.
+        const aspectSource = customDims
+          ? "slot_dims"
+          : blockAspectIsValid
+          ? "block"
+          : blueprintAspectIsValid
+            ? "blueprint"
+            : ctx.flowType === "welcome" && ctx.emailNumber != null
+              ? "matrix"
+              : "default"
+        log.info("phase2.image.aspect_resolved", {
+          emailId,
+          blockId: blk.id,
+          aspect,
+          reserveBottom,
+          source: aspectSource,
+        })
+
 
         // ── AE-13: resolve mode (product_ref vs text2img) + fallbacks ──
         const multimodalEnabled =
