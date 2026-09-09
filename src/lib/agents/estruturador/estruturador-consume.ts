@@ -13,7 +13,11 @@
  * payload de copy.
  */
 
-import type { EstruturadorOutput } from "./estruturador-prompt"
+import {
+  normalizarRequisitos,
+  type EstruturadorOutput,
+  type RequisitosDaPosicao,
+} from "./estruturador-prompt"
 
 /** Posição consumível: OutlineSection + papel narrativo completo. */
 export interface PosicaoEstruturada {
@@ -139,4 +143,26 @@ export function combinarIntencaoComPapel(
   if (i) return i
   if (p) return p
   return null
+}
+
+/**
+ * Extrai os `requisitos` por posição da decisão serializada
+ * (`decisaoCompletaParaCurador`). Fail-open: JSON ilegível ou sem
+ * `estrutura` → lista vazia; posição sem requisito → `null`. É o que o
+ * assembler usa para o filtro duro por contrato (09/09).
+ */
+export function requisitosDaDecisao(json: string | null | undefined): Array<RequisitosDaPosicao | null> {
+  if (!json) return []
+  const start = json.indexOf("{")
+  const end = json.lastIndexOf("}")
+  if (start < 0 || end <= start) return []
+  try {
+    const obj = JSON.parse(json.slice(start, end + 1)) as { estrutura?: unknown }
+    if (!Array.isArray(obj.estrutura)) return []
+    return obj.estrutura.map((p) =>
+      p && typeof p === "object" ? normalizarRequisitos((p as { requisitos?: unknown }).requisitos) : null,
+    )
+  } catch {
+    return []
+  }
 }

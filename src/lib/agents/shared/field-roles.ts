@@ -199,3 +199,137 @@ export function filtrarPorRequisitos<T extends { variant_id: string; contrato?: 
   }
   return { elegiveis, eliminadas, zerou: false }
 }
+
+// ── Capacidade da biblioteca por seção (o que o Estruturador pode exigir) ──
+
+export interface CapacidadeDaSecao {
+  variantes: number
+  /** Faixa de itens das variantes que têm grade (null = nenhuma tem). */
+  itens: { min: number; max: number } | null
+  com_preco: number
+  com_avaliacao: number
+  com_cupom: number
+  com_cta: number
+  com_credencial: number
+}
+
+/**
+ * Agrega os contratos por `block_type`. É o que vai em
+ * `<secoes_disponiveis>` do Estruturador: ele passa a saber que a seção
+ * `products` tem grades de 1 a 9 e só UMA variante mostra preço — e não
+ * exige o que a biblioteca não tem (quando exige, é lacuna declarada).
+ */
+export function capacidadePorSecao(
+  variantes: Array<{ block_type: string; output_schema?: unknown }>,
+): Record<string, CapacidadeDaSecao> {
+  const out: Record<string, CapacidadeDaSecao> = {}
+  for (const v of variantes) {
+    const c = resumirContrato(v.output_schema)
+    const cap = (out[v.block_type] ??= {
+      variantes: 0,
+      itens: null,
+      com_preco: 0,
+      com_avaliacao: 0,
+      com_cupom: 0,
+      com_cta: 0,
+      com_credencial: 0,
+    })
+    cap.variantes++
+    if (c.n_itens != null) {
+      cap.itens = cap.itens
+        ? { min: Math.min(cap.itens.min, c.n_itens), max: Math.max(cap.itens.max, c.n_itens) }
+        : { min: c.n_itens, max: c.n_itens }
+    }
+    if (c.tem_preco) cap.com_preco++
+    if (c.tem_avaliacao) cap.com_avaliacao++
+    if (c.tem_cupom) cap.com_cupom++
+    if (c.tem_cta) cap.com_cta++
+    if (c.tem_credencial) cap.com_credencial++
+  }
+  return out
+}
+
+/** Uma linha por seção, em ordem alfabética. Puro. */
+export function renderCapacidade(cap: Record<string, CapacidadeDaSecao>): string {
+  const secoes = Object.keys(cap).filter((k) => cap[k].variantes > 0).sort()
+  if (secoes.length === 0) return "(nenhuma seção com variante ativa na biblioteca)"
+  return secoes
+    .map((k) => {
+      const c = cap[k]
+      const partes = [`${c.variantes} variante${c.variantes === 1 ? "" : "s"}`]
+      if (c.itens) partes.push(c.itens.min === c.itens.max ? `${c.itens.max} itens` : `${c.itens.min}–${c.itens.max} itens`)
+      partes.push(`com preço: ${c.com_preco}`, `com avaliação: ${c.com_avaliacao}`, `com cupom: ${c.com_cupom}`, `com CTA: ${c.com_cta}`)
+      if (c.com_credencial > 0) partes.push(`com credencial do depoente: ${c.com_credencial}`)
+      return `- ${k}: ${partes.join(" · ")}`
+    })
+    .join("\n")
+}
+
+// ── Eliminação por requisito × contrato, posição a posição ─────────────
+
+export interface EliminadaPorRequisito {
+  variant_id: string
+  nome: string
+  motivo: string
+}
+
+export interface EliminacaoDaPosicao {
+  block_index: number
+  section: string
+  eliminadas: EliminadaPorRequisito[]
+  /** O filtro zerou a seção: nada foi eliminado de fato (fail-open) e isto é lacuna de biblioteca. */
+  zerou: boolean
+}
+
+/**
+ * Cruza os `requisitos` do Estruturador (por posição) com o `contrato` das
+ * variantes da seção correspondente do catálogo. Puro. O que sai daqui vai
+ * ao prompt dos dois Curadores (bloco `<eliminadas_por_requisito>`), à
+ * telemetria e ao medidor (`requisito_violado` quando o rank-1 está aqui).
+ */
+export function eliminarPorRequisitos(
+  sections: string[],
+  requisitos: Array<RequisitosDuros | null | undefined>,
+  catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; name?: string; contrato?: ContratoResumo }> }>,
+): EliminacaoDaPosicao[] {
+  const porSecao = new Map(catalogo.map((c) => [c.section, c.variantes]))
+  const out: EliminacaoDaPosicao[] = []
+  sections.forEach((section, i) => {
+    const req = requisitos[i]
+    if (!req) return
+    const candidatas = porSecao.get(section) ?? []
+    if (candidatas.length === 0) return
+    const r = filtrarPorRequisitos(candidatas, req)
+    if (r.eliminadas.length === 0) return
+    const nomes = new Map(candidatas.map((c) => [c.variant_id, c.name ?? c.variant_id]))
+    out.push({
+      block_index: i,
+      section,
+      eliminadas: r.eliminadas.map((e) => ({ variant_id: e.variant_id, nome: nomes.get(e.variant_id) ?? e.variant_id, motivo: e.motivo })),
+      zerou: r.zerou,
+    })
+  })
+  return out
+}
+
+/** Bloco de prompt. Ausência declarada quando não há eliminação. */
+export function renderEliminadasPorRequisito(lista: EliminacaoDaPosicao[]): string {
+  if (lista.length === 0) return "(nenhuma — sem requisito do Estruturador que colida com o contrato de alguma variante)"
+  return lista
+    .map((p) => {
+      const cab = `[${p.block_index}] ${p.section}${p.zerou ? " — ATENÇÃO: o requisito eliminaria TODAS as variantes da seção; nenhuma foi eliminada (lacuna de biblioteca — escolha a menos incompatível e diga na justificativa)" : ""}`
+      const linhas = p.eliminadas.map((e) => `  - ${e.nome} (${e.variant_id}): ${e.motivo}`)
+      return [cab, ...linhas].join("\n")
+    })
+    .join("\n")
+}
+
+/** `block_index → (variant_id → motivo)` para o medidor. */
+export function indiceDeEliminadas(lista: EliminacaoDaPosicao[]): Map<number, Map<string, string>> {
+  const m = new Map<number, Map<string, string>>()
+  for (const p of lista) {
+    if (p.zerou) continue
+    m.set(p.block_index, new Map(p.eliminadas.map((e) => [e.variant_id, e.motivo])))
+  }
+  return m
+}

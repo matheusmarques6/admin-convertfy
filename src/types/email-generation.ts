@@ -220,6 +220,9 @@ export type QaIssueType =
   // Agora o email existe e o problema fica marcado na tela — se um dia
   // for perda REAL, o operador vê em vez de receber "failed" sem email.
   | "hero_copy_perdida"
+  // Texto que o agente de hero ESCREVEU sem existir na região nem na copy
+  // do merge (oferta inventada, `[WELCOME-CODE]`). Batch 644d86c5, 08/09.
+  | "hero_copy_inventada"
   // ── Epic AE-15: Image niche-adaptive QA cascade ───────
   // image_nicho_mismatch: Etapa 1 (gratis) — alt_text vs PRODUTO_HEROI
   // image_paleta_off, image_overlay_reserva_ausente, image_cena_inadequada:
@@ -233,6 +236,14 @@ export type QaIssueType =
   // max_len do campo / campo required vazio. Custo zero (sem LLM).
   | "copy_excede_max_len"
   | "campo_obrigatorio_vazio"
+  // ── Checks de CONTEÚDO por código (09/09, `html/content-checks.ts`) ──
+  // Rodam com o gate do QA ligado ou não. Nasceram do batch 644d86c5:
+  // oferta inventada em loja sem incentivo, `[WELCOME-CODE]`, `ICON 1` e
+  // parágrafo duplicado chegaram ao e-mail sem um aviso.
+  | "oferta_sem_incentivo"
+  | "placeholder_colchetes"
+  | "texto_de_exemplo"
+  | "paragrafo_repetido"
 
 export interface QaIssue {
   type: QaIssueType

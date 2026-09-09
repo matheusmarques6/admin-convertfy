@@ -54,6 +54,7 @@ import {
 import { renderTopProducts } from "../architect/store-context"
 import { ALVO_AUSENTE_ESTRUTURADOR, renderAlvo, renderObjecoesJaAtacadas } from "../objecoes/alvo-render"
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
+import { capacidadePorSecao, renderCapacidade, type CapacidadeDaSecao } from "../shared/field-roles"
 import {
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
@@ -86,6 +87,8 @@ const MAX_ATTEMPTS = 2
 interface CapacidadeBiblioteca {
   porCategoria: Record<string, number>
   produtosDaLoja: number
+  /** Contratos agregados por seção (09/09) — vai ao prompt em <secoes_disponiveis>. */
+  resumo: Record<string, CapacidadeDaSecao>
 }
 
 /** Sequência vigente de um irmão do flow (anti-repetição, informação). */
@@ -123,7 +126,7 @@ export const USER_ORIGINS: Record<string, SegmentOrigin> = {
   // ser decisão deste agente e vira tradução.
   decisao_de_objecao: { cls: "upstream", rotulo: "Alvo do toque — SAÍDA do Seletor (store_email_objection_targets)" },
   objecoes_ja_atacadas: { cls: "upstream", rotulo: "Objeções já atacadas pelos irmãos — alvos vigentes do flow (Seletor)" },
-  secoes_disponiveis: { cls: "sistema", rotulo: "Seções disponíveis — categorias com variante ativa (código)" },
+  secoes_disponiveis: { cls: "sistema", rotulo: "Seções disponíveis — categorias com variante ativa + capacidade por contrato (código)" },
   estruturas_dos_outros_emails: {
     cls: "sistema",
     rotulo: "Anti-repetição — estruturas vigentes dos outros emails do flow",
@@ -260,13 +263,18 @@ async function loadIntencaoDoEmail(flowType: string, emailNumber: number): Promi
 async function loadCapacidade(produtosDaLoja: number): Promise<CapacidadeBiblioteca> {
   const admin = createAdminClient()
   const { data } = await admin.from("email_component_variants")
-    .select("block_type").eq("is_active", true)
+    .select("block_type, output_schema").eq("is_active", true)
   const porCategoria: Record<string, number> = {}
   for (const v of data ?? []) {
     const t = v.block_type as string
     porCategoria[t] = (porCategoria[t] ?? 0) + 1
   }
-  return { porCategoria, produtosDaLoja }
+  // 09/09: o que cada seção TEM (grade, preço, avaliação, cupom, CTA) —
+  // sem isso o Estruturador exigia o que a biblioteca não tinha.
+  const resumo = capacidadePorSecao(
+    (data ?? []).map((v) => ({ block_type: v.block_type as string, output_schema: v.output_schema })),
+  )
+  return { porCategoria, produtosDaLoja, resumo }
 }
 
 /** Sequência (`estrutura[].section`) gravada no parsed_output de uma run. */
@@ -427,15 +435,14 @@ export async function runEstruturador(
   const systemSegments: PromptSegment[] | null =
     sysSeg.prompt === systemResolvido ? sysSeg.segments : null
 
-  // Só os NOMES: o agente precisa saber que seções existem, não quantas
-  // variantes cada uma tem (ele não escolhe variante — o Curador escolhe).
+  // Nomes + CAPACIDADE por seção (09/09): ele não escolhe variante, mas
+  // precisa saber que `products` tem grades de 1 a 9 e só uma mostra
+  // preço — senão os `requisitos` exigem o que não existe.
   const secoesDisponiveis = Object.entries(capacidade.porCategoria)
     .filter(([, n]) => n > 0)
     .map(([k]) => k)
     .sort()
-  const secoesTexto = secoesDisponiveis.length
-    ? secoesDisponiveis.join(", ")
-    : "(nenhuma seção com variante ativa na biblioteca)"
+  const secoesTexto = renderCapacidade(capacidade.resumo)
   // Com o rótulo do email: saber QUAL irmão ocupa a sequência é o que
   // permite ao agente se afastar com intenção, em vez de embaralhar.
   const irmasTexto = irmas.length

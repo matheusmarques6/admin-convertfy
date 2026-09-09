@@ -148,7 +148,7 @@ describe("aplicarEstruturadorNoBlueprint", () => {
 })
 
 // ── Intenção humana (Arquitetura) × papel do agente (02/09) ─────────────
-import { combinarIntencaoComPapel } from "./estruturador-consume"
+import { combinarIntencaoComPapel, requisitosDaDecisao } from "./estruturador-consume"
 
 describe("combinarIntencaoComPapel", () => {
   it("intenção vem PRIMEIRO; o papel do agente entra embaixo como detalhe", () => {
@@ -160,5 +160,20 @@ describe("combinarIntencaoComPapel", () => {
     expect(combinarIntencaoComPapel("  só a intenção ", null)).toBe("só a intenção")
     expect(combinarIntencaoComPapel("", "papel do agente")).toBe("papel do agente")
     expect(combinarIntencaoComPapel(null, "   ")).toBeNull()
+  })
+})
+
+describe("requisitosDaDecisao (09/09)", () => {
+  it("extrai por posição do JSON serializado; posição sem requisito → null; JSON ruim → vazio", () => {
+    const json = JSON.stringify({ estrutura: [{ section: "hero", papel: "x", requisitos: { cupom: false } }, { section: "body", papel: "y" }] })
+    const r = requisitosDaDecisao(json)
+    expect(r).toHaveLength(2)
+    expect(r[0]).toMatchObject({ cupom: false })
+    expect(r[1]).toBeNull()
+    expect(requisitosDaDecisao(null)).toEqual([])
+    expect(requisitosDaDecisao("prosa")).toEqual([])
+    expect(requisitosDaDecisao('{"x":1}')).toEqual([])
+    // decisão truncada pelo teto de chars ainda tenta o JSON legível
+    expect(requisitosDaDecisao(json + "\n(… decisão truncada)")).toHaveLength(2)
   })
 })

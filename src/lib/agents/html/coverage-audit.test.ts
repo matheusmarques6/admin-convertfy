@@ -40,18 +40,21 @@ describe("auditVariantCoverage", () => {
     expect(l.orfaos.map((o) => o.texto)).toEqual(["ICON 1", "ICON 2"])
   })
 
-  it("órfão de selo NÃO é marcado suspeito — a lista crua é o sinal", () => {
-    // Medido: `pareceExemplo("ICON 1")` é false. Por isso o
-    // `texto_orfao_suspeito` da telemetria de produção subestima o
-    // problema (6 num e-mail que tinha 27 órfãos), e por isso `ok` não
-    // pode olhar só o contador de suspeitos: quem decide é a lista.
+  it("órfão de selo passou a ser suspeito (EXEMPLO_RE ampliado em 09/09) — e a lista crua continua sendo o sinal", () => {
+    // Até 09/09 `pareceExemplo("ICON 1")` era false: o
+    // `texto_orfao_suspeito` da telemetria subestimava o problema (6 num
+    // e-mail com 27 órfãos). Texto fixo legítimo segue fora — `ok` olha a
+    // lista, não só o contador.
     const l = auditVariantCoverage({
       ...OK,
-      id: "v-nao-suspeito",
-      html: `<table><tr><td>Title Here</td></tr><tr><td>ICON 1</td></tr><tr><td>SHOP NOW</td></tr></table>`,
+      id: "v-selo",
+      html: `<table><tr><td>Title Here</td></tr><tr><td>ICON 1</td></tr><tr><td>Rua das Flores, 10</td></tr><tr><td>SHOP NOW</td></tr></table>`,
     })
-    expect(l.orfaos).toHaveLength(1)
-    expect(l.orfaos[0].suspeito).toBe(false)
+    expect(l.orfaos.map((o) => [o.texto, o.suspeito])).toEqual([
+      ["ICON 1", true],
+      ["Rua das Flores, 10", false],
+    ])
+    expect(l.ok).toBe(false)
   })
 
   it("irmãos com example IDÊNTICO ancoram os dois, por ordem", () => {

@@ -59,7 +59,13 @@ import {
   startGenerationRun,
 } from "@/lib/agents/callbacks/telemetry.callback"
 
-import { conflitoDeContrato, resumirContrato, type ContratoResumo } from "../shared/field-roles"
+import {
+  conflitoDeContrato,
+  indiceDeEliminadas,
+  resumirContrato,
+  type ContratoResumo,
+  type EliminacaoDaPosicao,
+} from "../shared/field-roles"
 
 const log = logger.child("CuradorShadow")
 
@@ -294,6 +300,11 @@ Pastas do Obsidian sincronizadas (consulta sob demanda, só se quiser conferir u
 {{estruturador_decisao}}
 </decisao_do_estruturador>
 
+<eliminadas_por_requisito>
+Variantes que o CÓDIGO já eliminou por posição, cruzando os \`requisitos\` do Estruturador com o \`contrato\` da anatomia (slot de cupom quando a decisão nega cupom, grade maior que o máximo pedido, sem preço quando a decisão exige preço). NÃO as escolha para essas posições — escolhê-las é ignorar a decisão.
+{{eliminadas_requisito}}
+</eliminadas_por_requisito>
+
 <estrutura_do_email>
 Sequência FIXA deste email, decidida pelo Estruturador (o papel completo de
 cada posição está em <decisao_do_estruturador>). Não remova, não acrescente,
@@ -410,6 +421,9 @@ export interface ProtocolViolation {
     // 09/09: o rank-1 obriga (pelo contrato da anatomia) o que a decisão
     // nega — hoje só o cupom, via `incentivo_existe`.
     | "contrato_violado"
+    // 09/09: o rank-1 estava na lista de eliminadas por requisito do
+    // Estruturador × contrato — o Curador ignorou o filtro.
+    | "requisito_violado"
   detalhe: string
 }
 
@@ -462,8 +476,16 @@ export function measureProtocolViolations(p: {
   alvo?: AlvoParaMedicao | null
   /** Contrato por variante (catálogo) — para `contrato_violado`. */
   contratos?: Map<string, ContratoResumo>
+  /** `block_index → (variant_id → motivo)` das eliminadas por requisito — para `requisito_violado`. */
+  eliminadasPorRequisito?: Map<number, Map<string, string>>
 }): ProtocolViolation[] {
   const out: ProtocolViolation[] = []
+  if (p.eliminadasPorRequisito) {
+    for (const [block, variantId] of p.rank1ByBlock) {
+      const motivo = p.eliminadasPorRequisito.get(block)?.get(variantId)
+      if (motivo) out.push({ block_index: block, variant_id: variantId, tipo: "requisito_violado", detalhe: motivo })
+    }
+  }
   if (p.alvo && p.contratos && p.alvo.incentivo_existe === false) {
     for (const [block, variantId] of p.rank1ByBlock) {
       const motivo = conflitoDeContrato(p.contratos.get(variantId) ?? resumirContrato(null), { cupom: false })
@@ -658,6 +680,8 @@ export interface CuradorShadowParams {
   liveRank1: Map<number, string>
   /** Alvo do Seletor para o medidor de veto (aliviador_ausente / proibicao_violada). */
   alvoMedicao?: AlvoParaMedicao | null
+  /** Eliminadas por requisito do Estruturador × contrato (09/09) — telemetria + medidor. */
+  eliminadasPorRequisito?: EliminacaoDaPosicao[]
 }
 
 /** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
@@ -884,6 +908,7 @@ export async function runCuradorShadow(
       sectionByBlock,
       alvo: p.alvoMedicao ?? null,
       contratos: contratosDoCatalogo(p.catalogComExtras.sections),
+      eliminadasPorRequisito: indiceDeEliminadas(p.eliminadasPorRequisito ?? []),
     })
     // Repetir a mesma variante fora de hero/products é permitido (07/09) —
     // fica como registro para a curadoria ver quando é pobreza de acervo.
@@ -930,6 +955,7 @@ export async function runCuradorShadow(
         retomada_erro: res.retomada?.erro ?? null,
         prefill_usado: res.retomada?.prefill_usado ?? false,
         posicoes_sem_resposta: posicoesSemResposta,
+        eliminadas_por_requisito: p.eliminadasPorRequisito ?? [],
         // 02/09: a decisão do Estruturador entrou no template do vault (só
         // o legado tinha) e o Curador pode consultar o Obsidian.
         estruturador_consumido: estruturadorOn,

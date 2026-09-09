@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { conflitoDeContrato, filtrarPorRequisitos, papelDoCampo, resumirContrato } from "./field-roles"
+import {
+  capacidadePorSecao,
+  conflitoDeContrato,
+  eliminarPorRequisitos,
+  filtrarPorRequisitos,
+  indiceDeEliminadas,
+  papelDoCampo,
+  renderCapacidade,
+  renderEliminadasPorRequisito,
+  resumirContrato,
+} from "./field-roles"
 
 // Schemas REAIS da biblioteca (09/09) — só as chaves importam aqui.
 const campos = (s: string) =>
@@ -103,5 +113,62 @@ describe("conflitoDeContrato + filtrarPorRequisitos", () => {
   it("candidata sem contrato nunca é eliminada", () => {
     const r = filtrarPorRequisitos([{ variant_id: "x" }], { cupom: false })
     expect(r.elegiveis).toHaveLength(1)
+  })
+})
+
+describe("capacidadePorSecao + renderCapacidade (09/09)", () => {
+  const lib = [
+    { block_type: "products", output_schema: PRODUTOS_9 },
+    { block_type: "products", output_schema: PRODUTOS_4 },
+    { block_type: "hero", output_schema: HERO_3 },
+    { block_type: "hero", output_schema: HERO_9 },
+    { block_type: "reviews", output_schema: REVIEW_2 },
+    { block_type: "footer", output_schema: null },
+  ]
+  it("agrega por seção: grade, preço, avaliação, cupom, CTA, credencial", () => {
+    const cap = capacidadePorSecao(lib)
+    expect(cap.products).toMatchObject({ variantes: 2, itens: { min: 4, max: 4 }, com_preco: 1, com_cupom: 0, com_cta: 2 })
+    expect(cap.hero).toMatchObject({ variantes: 2, itens: null, com_cupom: 1, com_cta: 2 })
+    expect(cap.reviews).toMatchObject({ variantes: 1, itens: { min: 2, max: 2 }, com_credencial: 1 })
+    expect(cap.footer).toMatchObject({ variantes: 1, itens: null, com_cta: 0 })
+  })
+  it("renderiza uma linha por seção, em ordem, com ausência declarada", () => {
+    const txt = renderCapacidade(capacidadePorSecao(lib))
+    expect(txt.split("\n")[0]).toBe("- footer: 1 variante · com preço: 0 · com avaliação: 0 · com cupom: 0 · com CTA: 0")
+    expect(txt).toContain("- hero: 2 variantes · com preço: 0 · com avaliação: 0 · com cupom: 1 · com CTA: 2")
+    expect(txt).toContain("- products: 2 variantes · 4 itens ·")
+    expect(txt).toContain("com credencial do depoente: 1")
+    expect(renderCapacidade({})).toContain("nenhuma seção")
+  })
+})
+
+describe("eliminarPorRequisitos + render + índice (09/09)", () => {
+  const catalogo = [
+    { section: "hero", variantes: [
+      { variant_id: "h3", name: "hero section 3", contrato: resumirContrato(HERO_3) },
+      { variant_id: "h9", name: "hero section 9", contrato: resumirContrato(HERO_9) },
+    ] },
+    { section: "products", variantes: [{ variant_id: "p9", name: "produtos 9", contrato: resumirContrato(PRODUTOS_9) }] },
+  ]
+  it("hero sem cupom elimina h3 e mantém h9; posição sem requisito não aparece", () => {
+    const r = eliminarPorRequisitos(["hero", "products"], [{ cupom: false }, null], catalogo)
+    expect(r).toHaveLength(1)
+    expect(r[0]).toMatchObject({ block_index: 0, section: "hero", zerou: false })
+    expect(r[0].eliminadas.map((e) => e.variant_id)).toEqual(["h3"])
+    const txt = renderEliminadasPorRequisito(r)
+    expect(txt).toContain("[0] hero")
+    expect(txt).toContain("  - hero section 3 (h3): tem slot de cupom")
+    expect(indiceDeEliminadas(r).get(0)?.get("h3")).toContain("cupom")
+    expect(indiceDeEliminadas(r).has(1)).toBe(false)
+  })
+  it("requisito que zera a seção é declarado e NÃO entra no índice (fail-open)", () => {
+    const r = eliminarPorRequisitos(["products"], [{ n_itens: { max: 2 } }], catalogo)
+    expect(r[0].zerou).toBe(true)
+    expect(renderEliminadasPorRequisito(r)).toContain("ATENÇÃO")
+    expect(indiceDeEliminadas(r).size).toBe(0)
+  })
+  it("sem requisito nenhum → ausência declarada", () => {
+    expect(eliminarPorRequisitos(["hero"], [], catalogo)).toEqual([])
+    expect(renderEliminadasPorRequisito([])).toContain("nenhuma")
   })
 })
