@@ -59,9 +59,12 @@ export async function GET(request: NextRequest) {
 
     const ref = request.nextUrl.searchParams.get("ref")
     const sha8 = request.nextUrl.searchParams.get("sha8")
-    if (ref !== "catalogo") {
-      throw new ValidationError("Segmento desconhecido. Refs suportados: catalogo")
+    if (ref !== "catalogo" && ref !== "catalogo_enxuto") {
+      throw new ValidationError("Segmento desconhecido. Refs suportados: catalogo, catalogo_enxuto")
     }
+    // 09/09: o catálogo enxuto é montado dos mesmos dados; a run que o
+    // serviu guarda o sha8 DELE, então a comparação é contra o texto certo.
+    const textoDe = (c: ReturnType<typeof buildCatalog>) => (ref === "catalogo_enxuto" ? c.enxuto : c.json)
 
     // O catálogo do Curador pode incluir os eixos do vault de componentes
     // (curador_vault_mode='on', 31/08). A run não diz qual dos dois mundos
@@ -72,22 +75,19 @@ export async function GET(request: NextRequest) {
     let catalog = buildCatalog(eligible)
     const sha8Of = (s: string) =>
       crypto.createHash("sha256").update(s).digest("hex").slice(0, 8)
-    if (sha8 && sha8Of(catalog.json) !== sha8) {
+    if (sha8 && sha8Of(textoDe(catalog)) !== sha8) {
       const vault = await loadCuradorVaultKnowledge()
       const comExtras = buildCatalog(eligible, buildCatalogVaultExtras(vault, eligible))
-      if (sha8Of(comExtras.json) === sha8) catalog = comExtras
+      if (sha8Of(textoDe(comExtras)) === sha8) catalog = comExtras
     }
-    const currentSha8 = crypto
-      .createHash("sha256")
-      .update(catalog.json)
-      .digest("hex")
-      .slice(0, 8)
+    const texto = textoDe(catalog)
+    const currentSha8 = sha8Of(texto)
     const stale = Boolean(sha8) && sha8 !== currentSha8
 
     return successResponse(request, {
       ref,
-      texto: catalog.json,
-      chars: catalog.json.length,
+      texto,
+      chars: texto.length,
       sha8: currentSha8,
       sha8_da_run: sha8 ?? null,
       // true = a biblioteca mudou desde a run; o texto abaixo é o de HOJE.

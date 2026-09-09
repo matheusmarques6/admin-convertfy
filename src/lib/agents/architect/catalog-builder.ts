@@ -174,6 +174,16 @@ export interface CatalogSection {
 export interface BuildCatalogResult {
   /** JSON que entra no `{{catalogo}}` do system prompt. */
   json: string
+  /**
+   * Catálogo ENXUTO (09/09): uma linha por variante, ≤ 15k chars, com os
+   * MESMOS dados do `json` — ids, eixos do vault e contrato da anatomia.
+   * É o índice de títulos do Curador: rankeia por aqui e abre a finalista
+   * por `ler_nota` antes de decidir. O `json` completo tinha 128k dos 190k
+   * chars da chamada (67k tokens) e o modelo lia tudo de todas para
+   * decidir sobre poucas. Quem escolhe qual dos dois entra no prompt é o
+   * outro lado (kill-switch `curador_catalogo_mode`, item 2.3 do plano).
+   */
+  enxuto: string
   sections: CatalogSection[]
   /** Total de variantes no catálogo. */
   total: number
@@ -227,11 +237,74 @@ export function buildCatalog(
 
   return {
     json: JSON.stringify(sections, null, 1),
+    enxuto: buildCatalogoEnxuto(sections),
     sections,
     total: variants.length,
     types,
     divergentes,
   }
+}
+
+/** Corte da descrição na linha enxuta — a primeira frase, até este tamanho. */
+const ENXUTO_DESC_MAX = 110
+
+/** Primeira frase de um texto de cadastro, cortada em fronteira de palavra. */
+function primeiraFraseDaDescricao(texto: string): string {
+  const limpa = texto.replace(/\s+/g, " ").trim()
+  if (!limpa) return "(sem descrição)"
+  const fim = limpa.search(/[.!?](\s|$)/)
+  const frase = fim > 20 ? limpa.slice(0, fim + 1) : limpa
+  if (frase.length <= ENXUTO_DESC_MAX) return frase
+  const corte = frase.lastIndexOf(" ", ENXUTO_DESC_MAX)
+  return `${frase.slice(0, corte > 60 ? corte : ENXUTO_DESC_MAX).trimEnd()}…`
+}
+
+/** `chave: a, b` quando há valor; vazio quando não há — linha sem ruído. */
+function campo(chave: string, valores: ReadonlyArray<string> | string | number | null | undefined): string {
+  if (valores == null || valores === "") return ""
+  if (Array.isArray(valores)) return valores.length ? `${chave}: ${valores.join(", ")}` : ""
+  return `${chave}: ${String(valores)}`
+}
+
+/**
+ * Uma linha por variante, agrupada por seção, montada das MESMAS entradas
+ * que o `json` — nunca do `_catalogo.md` do vault, que pode dizer "ativa"
+ * enquanto o banco diz "inativa" (incidente 07/09). O `variant_id` vem
+ * primeiro porque é o que o parser aceita sem passar pelo índice de
+ * apelidos. Puro; a ordem é a das `sections` (estável, cacheável).
+ */
+export function buildCatalogoEnxuto(sections: ReadonlyArray<CatalogSection>): string {
+  const blocos: string[] = []
+  for (const sec of sections) {
+    const linhas = sec.variantes.map((e) => {
+      const c = e.contrato
+      const anatomia = [
+        c.tem_cupom ? "cupom" : "",
+        c.tem_cta ? "cta" : "",
+        c.tem_preco ? "preço" : "",
+        c.tem_avaliacao ? "avaliação" : "",
+        c.tem_credencial ? "credencial" : "",
+      ].filter(Boolean)
+      const partes = [
+        `${e.variant_id} · ${e.name}${e.vault ? ` [${e.vault.slug}]` : ""} — ${primeiraFraseDaDescricao(e.description)}`,
+        campo("objeção", e.vault?.objecao),
+        campo("aliviador", e.vault?.aliviador),
+        campo("profundidade", e.vault?.profundidade),
+        campo("registro", e.vault?.registro),
+        campo("registro vetado", e.vault?.registro_vetado),
+        campo("paleta", e.vault?.paleta),
+        campo("papel", e.vault?.papel_na_peca),
+        campo("anatomia", anatomia),
+        campo("slots", e.product_slots > 0 ? e.product_slots : null),
+        campo("itens", e.vault?.itens),
+        campo("peso", e.vault?.peso),
+        campo("convivência", e.vault?.convivencia),
+      ].filter(Boolean)
+      return `- ${partes.join(" | ")}`
+    })
+    blocos.push(`## ${sec.section} (${sec.variantes.length})\n${linhas.join("\n")}`)
+  }
+  return blocos.join("\n\n")
 }
 
 function toEntry(
