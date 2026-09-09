@@ -74,17 +74,21 @@ vi.mock("@/lib/logger", () => ({
 // ── Mock LangChain ChatAnthropic ───────────────────────────────────────
 // vi.hoisted garante que chainInvokeMock existe antes dos vi.mock factories
 // (que sao hoisted automaticamente pelo Vitest).
-const { chainInvokeMock, visionCheckMock, fromMessagesMock } = vi.hoisted(
+const { chainInvokeMock, visionCheckMock, fromMessagesMock, advisorContextMock } = vi.hoisted(
   () => ({
     chainInvokeMock: vi.fn(),
     visionCheckMock: vi.fn(),
     fromMessagesMock: vi.fn(),
+    advisorContextMock: vi.fn(),
   }),
 )
 
 // Story AE-15: mock do qa-vision chain. Default: nao chamado (env OFF).
 vi.mock("./qa-vision.chain", () => ({
   runQaVisionCheck: visionCheckMock,
+}))
+vi.mock("./qa-advisor-context", () => ({
+  loadQaAdvisorContext: advisorContextMock,
 }))
 vi.mock("@langchain/anthropic", () => {
   class ChatAnthropic {}
@@ -155,6 +159,13 @@ beforeEach(() => {
   chainInvokeMock.mockReset()
   visionCheckMock.mockReset()
   fromMessagesMock.mockReset()
+  advisorContextMock.mockReset()
+  advisorContextMock.mockResolvedValue({
+    block: "### Clareza da promessa\nFonte: Advisors/Max/copy/clareza.md\nUma promessa dominante.",
+    sources: [{ path: "Advisors/Max/copy/clareza.md", title: "Clareza da promessa", chars: 22 }],
+    semanticSearch: true,
+    status: "loaded",
+  })
   process.env.EMAIL_QA_BLOCK_SEVERITY = "high"
   delete process.env.EMAIL_QA_VISION_ENABLED
   delete process.env.EMAIL_QA_TIMEOUT_MS
@@ -301,6 +312,18 @@ describe("runQaAgent — com config ativo", () => {
     expect(result.issues).toEqual([])
     expect(result.meta.model).toBe("claude-sonnet-4-6")
     expect(chainInvokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("anexa doutrina relevante do Advisor Max mesmo em prompt customizado legado", async () => {
+    chainInvokeMock.mockResolvedValueOnce(JSON.stringify({ passed: true, issues: [] }))
+    await runQaAgent(makeInput())
+
+    expect(advisorContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ objective: "Boas-vindas" }),
+    )
+    const invocation = chainInvokeMock.mock.calls[0][0] as { user: string }
+    expect(invocation.user).toContain("Advisors/Max/copy/clareza.md")
   })
 
   it("retorna passed=false quando Claude reporta issue severity=high", async () => {
