@@ -11,8 +11,8 @@ describe("getQaMode", () => {
     expect(getQaMode({ EMAIL_QA_ENABLED: "true" })).toBe("enforce")
   })
 
-  it("cai para off sem configuração ou com modo inválido", () => {
-    expect(getQaMode({})).toBe("off")
+  it("cai para shadow sem configuração e respeita o desligamento legado explícito", () => {
+    expect(getQaMode({})).toBe("shadow")
     expect(getQaMode({ EMAIL_QA_MODE: "invalid", EMAIL_QA_ENABLED: "false" })).toBe("off")
   })
 })

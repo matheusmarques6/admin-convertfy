@@ -174,6 +174,56 @@ describe("progressive disclosure do Curador", () => {
   })
 })
 
+describe("progressive disclosure do Curador", () => {
+  const typeIndex = new Map([["hero-a", "hero"], ["hero-b", "hero"], ["body-a", "body"]])
+
+  it("valida até três finalistas e nunca aceita id de outra seção", () => {
+    const parsed = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }, { variant_id: "body-a" }, { variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "body-a" }] },
+      ]),
+      sections: ["hero", "body"],
+      typeIndex,
+    })
+    expect(parsed.byBlock.get(0)?.map((x) => x.variant_id)).toEqual(["hero-a", "hero-b"])
+    expect(parsed.byBlock.get(1)?.map((x) => x.variant_id)).toEqual(["body-a"])
+  })
+
+  it("renderiza nota aberta e ausência sem eliminar a finalista", () => {
+    const rendered = renderFinalistNotes([
+      { variant_id: "hero-a", status: "opened", file_path: "componentes/hero-a.md", body: "corpo" },
+      { variant_id: "hero-b", status: "missing", file_path: null, body: null },
+    ])
+    expect(rendered).toContain('variant_id="hero-a"')
+    expect(rendered).toContain("corpo")
+    expect(rendered).toContain('variant_id="hero-b" status="sem_nota_sincronizada"')
+  })
+
+  it("a decisão final não pode mover uma finalista para outra posição da mesma seção", () => {
+    const shortlist = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-a" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const final = parseValidatedShortlist({
+      raw: JSON.stringify([
+        { block_index: 0, escolhas: [{ variant_id: "hero-b" }] },
+        { block_index: 1, escolhas: [{ variant_id: "hero-b" }] },
+      ]),
+      sections: ["hero", "hero"],
+      typeIndex,
+    })
+    const restricted = restrictRankingToShortlist(final, shortlist, 2)
+    expect(restricted.byBlock.has(0)).toBe(false)
+    expect(restricted.byBlock.get(1)?.[0].variant_id).toBe("hero-b")
+    expect(restricted.invalidIds).toContain("hero-b")
+  })
+})
+
 describe("measureProtocolViolations", () => {
   const extras = new Map<string, CatalogVaultExtra>([
     ["v-veta", { slug: "hero-x", convivencia: [] }],
