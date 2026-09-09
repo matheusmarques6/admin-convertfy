@@ -56,7 +56,18 @@ const MEDIDAS: RegExp[] = [
 const FICHA_DE_ARQUIVO =
   /\b(?:ativo\s+final|formato|exportar|gerar\s+em|montagem\s+final|full-bleed|slot\s+de|no\s+slot)\b/i
 /** Tabela: célula separada por TAB, ou markdown com 2+ pipes. */
-const LINHA_DE_TABELA = /	|^\s*\|.*\|.*\|/
+const LINHA_DE_TABELA = /\t|^\s*\|.*\|.*\|/
+/** Linha de tabela de LAYOUT: cabeçalho de layout, ou ≥ 3 células das quais ≥ 2 são medida/ordinal. */
+function ehTabelaDeLayout(linhaJuntada: string): boolean {
+  if (TABELA_DE_LAYOUT.test(linhaJuntada)) return true
+  const celulas = linhaJuntada.split(" — ").map((c) => c.trim()).filter(Boolean)
+  if (celulas.length < 3) return false
+  const medida = celulas.filter((c) => /^#?\d+(?:[.,]\d+)?$|\d\s*(?:px|kb|mb)\b|\d\s*[×x]\s*\d/i.test(c)).length
+  return medida >= 2
+}
+/** Tabela de LAYOUT: cabeçalho "# — Elemento — …" ou células de medida/posição. */
+const TABELA_DE_LAYOUT =
+  /^#\s*—|\b(?:padding|margin|dimens[aã]o|largura|altura|width|height|elemento|posi[cç][aã]o|top|bottom)\b.*—.*\b(?:padding|margin|dimens[aã]o|largura|altura|width|height|px|slot)\b/i
 
 export interface DirecaoSanitizada {
   texto: string
@@ -64,6 +75,8 @@ export interface DirecaoSanitizada {
   linhas_removidas: number
   /** Medidas apagadas de dentro de linhas que ficaram. */
   medidas_removidas: number
+  /** Linhas de tabela de LAYOUT que caíram inteiras (09/09). */
+  tabelas_removidas: number
 }
 
 /** Conta letras de verdade — o que sobra de frase quando a medida sai. */
@@ -94,6 +107,7 @@ export function sanitizePhotoDirection(texto: string): DirecaoSanitizada {
   const mantidas: string[] = []
   let removidas = 0
   let medidas = 0
+  let tabelas = 0
   for (const linhaCrua of linhas) {
     const t = linhaCrua.trim()
     if (!t) {
@@ -102,8 +116,17 @@ export function sanitizePhotoDirection(texto: string): DirecaoSanitizada {
     }
     const tabela = LINHA_DE_TABELA.test(linhaCrua)
     let linha = tabela
-      ? t.split(/	+|\s*\|\s*/).filter(Boolean).join(" — ")
+      ? t.split(/\t+|\s*\|\s*/).filter(Boolean).join(" — ")
       : t
+    // Tabela de LAYOUT (09/09): "# — Elemento — Padding-top — Dimensão" e
+    // as linhas dela foram como direção fotográfica do `seal_1_image` no
+    // batch 644d86c5. Cabeçalho de layout ou linha só de células curtas
+    // com vocabulário de medida não é brief — cai inteira.
+    if (tabela && ehTabelaDeLayout(linha)) {
+      removidas++
+      tabelas++
+      continue
+    }
     let apagouMedida = false
     for (const re of MEDIDAS) {
       const antes = linha
@@ -123,8 +146,8 @@ export function sanitizePhotoDirection(texto: string): DirecaoSanitizada {
     mantidas.push(linha)
   }
   const saida = mantidas.join("\n").replace(/\n{3,}/g, "\n\n").trim()
-  if (!saida) return { texto, linhas_removidas: 0, medidas_removidas: 0 }
-  return { texto: saida, linhas_removidas: removidas, medidas_removidas: medidas }
+  if (!saida) return { texto, linhas_removidas: 0, medidas_removidas: 0, tabelas_removidas: 0 }
+  return { texto: saida, linhas_removidas: removidas, medidas_removidas: medidas, tabelas_removidas: tabelas }
 }
 
 /**

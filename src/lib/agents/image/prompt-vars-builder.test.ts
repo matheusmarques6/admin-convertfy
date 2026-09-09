@@ -95,3 +95,24 @@ describe("BG_COLOR", () => {
     expect(vars.BG_COLOR).not.toBe("#111111")
   })
 })
+
+// 09/09: a cena decidida pelo Estruturador (requisitos.imagem) entra acima
+// da direção da variante; o papel vira o purpose servido ao agente.
+describe("INTENCAO_VISUAL e papel da posição", () => {
+  const base = { brand: null, briefing: null, topProducts: [], storeRaw: {}, blockPurpose: "hero" }
+  it("resolve pelo bloco do blueprint; ausente fica vazia; papel vence o purpose", () => {
+    const blueprint = {
+      blocks: [
+        { type: "hero", variant_id: "v-1", purpose: "Apresenta\n\nForma (variante, subordinada ao papel): flat-lay", papel: "Apresenta a marca em corpo real", requisitos: { imagem: "uso real em corpo adulto, não estúdio" } },
+        { type: "body", variant_id: "v-2", purpose: "Só o purpose" },
+      ],
+    } as never
+    const hero = buildImagePromptVars({ ...base, blueprint, blockPosition: 1, photoDirectionByVariant: { "v-1": "flat-lay em ângulo alto" } })
+    expect(hero.INTENCAO_VISUAL).toBe("uso real em corpo adulto, não estúdio")
+    expect(hero.PHOTO_DIRECTION).toBe("flat-lay em ângulo alto")
+    expect(hero.blueprint_purpose).toBe("Apresenta a marca em corpo real")
+    const body = buildImagePromptVars({ ...base, blueprint, blockPosition: 2 })
+    expect(body.INTENCAO_VISUAL).toBe("")
+    expect(body.blueprint_purpose).toBe("Só o purpose")
+  })
+})

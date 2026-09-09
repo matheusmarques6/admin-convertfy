@@ -240,6 +240,19 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   const photoDirection = (
     input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
   ).trim()
+  // 09/09: a intenção VISUAL decidida pelo Estruturador para esta posição
+  // (`requisitos.imagem`, gravada no bloco do blueprint). Entra ACIMA da
+  // direção da variante: no batch 644d86c5 o Estruturador pediu "uso real
+  // em corpo adulto, não estúdio" e a hero saiu flat-lay porque a direção
+  // da variante (peso 1) dizia flat-lay e o pedido viajava no suporte.
+  const requisitos = (bpBlock as { requisitos?: { imagem?: unknown } | null } | undefined)?.requisitos
+  const intencaoVisual =
+    requisitos && typeof requisitos === "object" && typeof requisitos.imagem === "string"
+      ? requisitos.imagem.trim()
+      : ""
+  // Papel da posição como campo próprio (09/09) — o purpose concatena a
+  // "Forma (variante)", que é prosa de layout, não direção de cena.
+  const papelDaPosicao = ((bpBlock as { papel?: string | null } | undefined)?.papel ?? "").trim()
 
   // Um slot por chamada: o buildImageSlots emite só a seção do campo alvo
   // (`fieldKey`), mas recebe o schema INTEIRO do bloco — as `areas_de_texto`
@@ -268,6 +281,7 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // Direção fotográfica da variante deste bloco (COMO fotografar).
     // Vazia quando ninguém escreveu — o template omite a seção inteira.
     PHOTO_DIRECTION: photoDirection,
+    INTENCAO_VISUAL: intencaoVisual,
     // Boolean-like: o template diz ao modelo que NÃO há direção e que ele
     // compõe só pelo slot — em vez de inventar cena (03/09: sem frase de
     // cena por bloco/flow, sem cenário nem mood derivados por código).
@@ -332,7 +346,8 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // aspect_ratio espelham o que o caller já decidiu via resolvers.
     block_type: input.blockType ?? "",
     block_label: input.blockLabel ?? "",
-    blueprint_purpose: blueprintPurpose,
+    // 09/09: papel do Estruturador quando existe; o purpose (papel + Forma) é fallback.
+    blueprint_purpose: papelDaPosicao || blueprintPurpose,
     image_overlay_reserve_bottom: input.imageOverlayReserveBottom
       ? "true"
       : "false",
@@ -407,6 +422,7 @@ export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   EMAIL_IDEIA: { cls: "upstream", rotulo: "Ideia do email — fio do Estruturador (ou messaging)" },
   // Escrita no cadastro da variante: é a biblioteca dizendo COMO fotografar.
   PHOTO_DIRECTION: { cls: "biblioteca", rotulo: "Direção fotográfica da variante" },
+  INTENCAO_VISUAL: { cls: "upstream", rotulo: "Intenção visual da posição — requisitos.imagem do Estruturador" },
   PHOTO_DIRECTION_AUSENTE: IMG_CODIGO,
   IMAGE_SLOTS: { cls: "biblioteca", rotulo: "Direção de arte por slot — schema da variante" },
   IMAGE_BRIEF: IMG_BLUEPRINT,
