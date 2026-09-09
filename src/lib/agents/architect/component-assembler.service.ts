@@ -66,6 +66,7 @@ import {
 import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
   BLOCO_OMITIDO_PELO_ESTRUTURADOR,
+  contratosDoCatalogo,
   measureProtocolViolations,
   rank1ByBlock,
   renderPreferenciasDoVault,
@@ -255,6 +256,7 @@ Regras de seleção:
 - <vocabulario> é literal: são as palavras que esta marca usa e as que ela não usa. Variante cuja orientacao_copy exige o registro proibido (jargão que está em "Evitar") está fora — não é ajuste de copy, é incompatibilidade de marca.
 - Produtos: cruze product_slots com <top_products>. NUNCA indique variante que exige mais produtos do que a loja tem cadastrado. Produto sem LINK não sustenta slot que precisa levar a uma página de produto.
 - Use orientacao_copy como sinal de viabilidade: bloco que exige dado que a loja não tem (campo de cupom sem oferta no contexto) fica fora.
+- O campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom sem incentivo ativo, grade de 4 quando o papel pede 2, cards sem preço quando o papel pede preço — está FORA, não em último lugar: o slot que ninguém preenche fica no email com o texto de exemplo. Isto é diferente do \`proibido neste toque\`, que só desempata.
 - Use <intencao> como contrato editorial: a intenção do FLOW diz o que a sequência inteira protege; a intenção DESTE email diz o que este toque precisa entregar ao terminar de ser lido. Variante que trai a intenção deste email está fora, mesmo que sirva ao objetivo genérico do outline. Se <intencao> declarar ausência, ignore o critério.
 - Posição de <sequencia_do_email> com \`intencao\` foi escrita pela pessoa na aba Arquitetura: ela É o papel daquela posição. Rankeie por ela ANTES da intenção geral do email — variante cuja anatomia não entrega a intenção da posição fica atrás, mesmo que sirva ao email como um todo.
 - Quando <decisao_do_estruturador> trouxer uma decisão, ela é o critério DOMINANTE por posição: o campo \`componente\` de cada posição de <sequencia_do_email> é o PAPEL que aquela posição cumpre no arco. Escolha a variante cuja ANATOMIA entrega aquele papel — a objeção dominante diz o que a posição precisa provar, o fio narrativo diz como as posições se ligam, e o porquê de cada papel diz o que NÃO pode se perder na escolha. Papel vence memória e vence preferência estética; marca e viabilidade (produtos/dados) continuam vetos absolutos.
@@ -1631,6 +1633,7 @@ export async function assembleStoreReference(
         extras: shadowExtras,
         sectionByBlock: new Map(sections.map((s, i) => [i, s])),
         alvo: input.alvoMedicao ?? null,
+        contratos: contratosDoCatalogo(catalog.sections),
       }),
       liveRank1,
     })

@@ -86,11 +86,24 @@ describe("buildCatalog", () => {
       product_slots: 3,
       orientacao_copy: "headline curta",
       notas_implementacao: "usa VML no Outlook",
+      // 09/09: resumo do que a anatomia obriga (schema vazio → contrato vazio).
+      contrato: {
+        campos_obrigatorios: [],
+        tem_cupom: false,
+        tem_cta: false,
+        tem_preco: false,
+        tem_avaliacao: false,
+        tem_credencial: false,
+        itens: {},
+        n_itens: null,
+        copy: 0,
+        imagens: 0,
+      },
     })
   })
 
-  // O schema é insumo exclusivo do Montador (CM-4): mandá-lo aqui dobraria o
-  // prefixo sem melhorar o ranking.
+  // O schema INTEIRO dobraria o prefixo; o que entra é o `contrato`
+  // (resumo). Examples, guidance e tags continuam fora.
   it("NÃO inclui output_schema nem html", () => {
     const r = buildCatalog([
       v("1", "hero", "H", {
@@ -407,5 +420,28 @@ describe("buildCatalog — momento não viaja", () => {
     expect(r.json).not.toContain("momento")
     expect(r.json).not.toContain("queima-de-estoque")
     expect(r.json).not.toContain("welcome-1")
+  })
+})
+
+describe("contrato da anatomia no catálogo (09/09)", () => {
+  it("cada entrada leva o resumo do output_schema — cupom, CTA, grade — sem o schema inteiro", () => {
+    const v = {
+      id: "h3",
+      block_type: "hero",
+      name: "welcome - hero section 3",
+      html: "<table></table>",
+      is_active: true,
+      output_schema: [
+        { key: "headline_l1", type: "text_short", max_len: 40, required: false, example: "x", guidance: "", label: "" },
+        { key: "coupon_line", type: "text_short", max_len: 40, required: false, example: "Use code: X", guidance: "", label: "" },
+        { key: "cta_label", type: "text_short", max_len: 20, required: false, example: "SHOP", guidance: "", label: "" },
+        { key: "hero_flatlay_kit", type: "image", max_len: 0, required: false, example: "", guidance: "", label: "" },
+      ],
+    } as never
+    const r = buildCatalog([v])
+    expect(r.sections[0].variantes[0].contrato).toMatchObject({ tem_cupom: true, tem_cta: true, copy: 3, imagens: 1 })
+    expect(r.json).toContain('"tem_cupom": true')
+    expect(r.json).not.toContain("output_schema")
+    expect(r.json).not.toContain("Use code: X")
   })
 })

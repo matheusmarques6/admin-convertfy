@@ -13,7 +13,9 @@ import {
   renderPreferenciasDoVault,
   CURADOR_SHADOW_MODEL_FALLBACK,
   CURADOR_SHADOW_MAX_TOKENS_MIN,
+  contratosDoCatalogo,
 } from "./curador-shadow"
+import { resumirContrato } from "../shared/field-roles"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
 import type { CatalogVaultExtra } from "./catalog-builder"
@@ -432,5 +434,42 @@ describe("teto, retomada e preferências do vault (09/09)", () => {
   it("o template do legado tem o bloco de preferências do vault", () => {
     expect(DEFAULT_CHOOSER_USER).toContain("<preferencias_do_vault>")
     expect(DEFAULT_CHOOSER_USER).toContain("{{preferencias_vault}}")
+  })
+})
+
+describe("measureProtocolViolations — contrato_violado (09/09)", () => {
+  const contratos = new Map([
+    ["v-cupom", resumirContrato([{ key: "coupon_line" }, { key: "cta_label" }])],
+    ["v-sem", resumirContrato([{ key: "headline" }, { key: "cta_label" }])],
+  ])
+  const sectionByBlock = new Map([[0, "hero"]])
+  it("loja SEM incentivo + rank-1 com slot de cupom → contrato_violado", () => {
+    const v = measureProtocolViolations({
+      rank1ByBlock: new Map([[0, "v-cupom"]]),
+      extras: new Map(),
+      sectionByBlock,
+      alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false },
+      contratos,
+    })
+    expect(v.map((x) => x.tipo)).toEqual(["contrato_violado"])
+    expect(v[0].detalhe).toContain("cupom")
+  })
+  it("sem cupom na anatomia, ou incentivo desconhecido/presente, nada é medido", () => {
+    const base = { rank1ByBlock: new Map([[0, "v-cupom"]]), extras: new Map(), sectionByBlock, contratos }
+    expect(measureProtocolViolations({ ...base, rank1ByBlock: new Map([[0, "v-sem"]]), alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: null } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: true } })).toEqual([])
+    expect(measureProtocolViolations({ ...base, alvo: { aliviador_pedido: null, proibicoes: [], incentivo_existe: false }, contratos: undefined })).toEqual([])
+  })
+  it("os dois prompts ensinam a eliminar por contrato, separado da proibição de redação", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("por CONTRATO")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("`tem_cupom`")
+    expect(DEFAULT_CHOOSER_SYSTEM).toContain("`contrato`")
+    expect(DEFAULT_CHOOSER_SYSTEM).toContain("está FORA, não em último lugar")
+  })
+  it("contratosDoCatalogo indexa por variant_id", () => {
+    const m = contratosDoCatalogo([{ variantes: [{ variant_id: "a", contrato: resumirContrato([{ key: "coupon_code" }]) }, { variant_id: "b" }] }])
+    expect(m.get("a")?.tem_cupom).toBe(true)
+    expect(m.has("b")).toBe(false)
   })
 })

@@ -21,6 +21,7 @@
  */
 
 import type { EmailComponentVariant } from "@/types/email-generation"
+import { resumirContrato, type ContratoResumo } from "../shared/field-roles"
 
 /**
  * Extras do VAULT de componentes para uma variante (curador-vault, 31/08):
@@ -142,6 +143,12 @@ export interface CatalogEntry {
   product_slots: number
   orientacao_copy: string
   notas_implementacao: string
+  /**
+   * O que a ANATOMIA obriga (09/09): slot de cupom, CTA, preço, avaliação,
+   * tamanho da grade. É o que faltava ao Curador para eliminar a hero de
+   * cupom numa loja sem incentivo — ver `field-roles.ts`.
+   */
+  contrato: ContratoResumo
   /** Presente quando a variante tem nota no vault de componentes. */
   vault?: {
     slug: string
@@ -190,9 +197,12 @@ export interface BuildCatalogResult {
  * Monta o catálogo a partir das variantes ELEGÍVEIS (já filtradas por
  * `is_active` e pelo guard de placeholder — ver `variantHasPlaceholders`).
  *
- * O `output_schema` fica FORA de propósito: é insumo exclusivo do Montador
- * (CM-4), que decide viabilidade de dados. Mandá-lo aqui dobraria o prefixo
- * sem melhorar o ranking.
+ * O `output_schema` INTEIRO fica fora (dobraria o prefixo); o que entra é o
+ * `contrato` — resumo de ~150 chars do que a anatomia obriga. Até 09/09 nem
+ * isso entrava ("insumo exclusivo do Montador"), mas o Montador está
+ * desligado e a viabilidade de dados tinha saído do pipeline junto com ele:
+ * o Curador escolheu hero com `coupon_line` para loja sem incentivo, com o
+ * motivo "sem depender de cupom".
  */
 export function buildCatalog(
   variants: EmailComponentVariant[],
@@ -264,6 +274,7 @@ function toEntry(
     product_slots: v.product_slots ?? 0,
     orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
+    contrato: resumirContrato(v.output_schema),
   }
   if (extra) {
     entry.vault = {

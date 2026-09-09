@@ -59,7 +59,16 @@ import {
   startGenerationRun,
 } from "@/lib/agents/callbacks/telemetry.callback"
 
+import { conflitoDeContrato, resumirContrato, type ContratoResumo } from "../shared/field-roles"
+
 const log = logger.child("CuradorShadow")
+
+/** `variant_id → contrato` a partir do catálogo servido. */
+export function contratosDoCatalogo(sections: Array<{ variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>): Map<string, ContratoResumo> {
+  const m = new Map<string, ContratoResumo>()
+  for (const s of sections) for (const v of s.variantes) if (v.contrato) m.set(v.variant_id, v.contrato)
+  return m
+}
 
 const SHADOW_TOP_N = 1
 
@@ -173,7 +182,7 @@ Como decidir, na ordem:
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
    <indice_do_vault> é o mapa de pastas do Obsidian. Tudo que você precisa já está nesta mensagem; se quiser CONFERIR uma nota específica, use as ferramentas listar_pasta/ler_nota — no máximo 4 consultas, e só quando mudar a decisão.
-2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe).  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
+2.  elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação (passos 3-6) zerou a lista. Se alguma candidata chegou ao passo 7, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: é o caso do passo 9, e o protocolo diz que o resultado nunca é sorteio — desempate pela nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro E NÃO AUTORIZA remover a posição: declare-a com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu — a posição continua na peça, o sistema cai no template global e a lacuna vira sinal para a curadoria da biblioteca.
 
@@ -398,6 +407,9 @@ export interface ProtocolViolation {
     // alvo / uma escolhida obriga algo proibido neste toque.
     | "aliviador_ausente"
     | "proibicao_violada"
+    // 09/09: o rank-1 obriga (pelo contrato da anatomia) o que a decisão
+    // nega — hoje só o cupom, via `incentivo_existe`.
+    | "contrato_violado"
   detalhe: string
 }
 
@@ -405,6 +417,12 @@ export interface ProtocolViolation {
 export interface AlvoParaMedicao {
   aliviador_pedido: string | null
   proibicoes: readonly string[]
+  /**
+   * Decisão de incentivo da loja (catálogo do Catalogador): `false` = sem
+   * incentivo ativo → variante com slot de cupom é `contrato_violado`.
+   * `null`/ausente = não se sabe, nada é medido.
+   */
+  incentivo_existe?: boolean | null
 }
 
 const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -442,8 +460,16 @@ export function measureProtocolViolations(p: {
   sectionByBlock: Map<number, string>
   /** Alvo do Seletor (opcional — sem ele os dois tipos novos não são medidos). */
   alvo?: AlvoParaMedicao | null
+  /** Contrato por variante (catálogo) — para `contrato_violado`. */
+  contratos?: Map<string, ContratoResumo>
 }): ProtocolViolation[] {
   const out: ProtocolViolation[] = []
+  if (p.alvo && p.contratos && p.alvo.incentivo_existe === false) {
+    for (const [block, variantId] of p.rank1ByBlock) {
+      const motivo = conflitoDeContrato(p.contratos.get(variantId) ?? resumirContrato(null), { cupom: false })
+      if (motivo) out.push({ block_index: block, variant_id: variantId, tipo: "contrato_violado", detalhe: motivo })
+    }
+  }
   if (p.alvo) {
     const pedido = p.alvo.aliviador_pedido
     if (pedido) {
@@ -857,6 +883,7 @@ export async function runCuradorShadow(
       extras: p.extras,
       sectionByBlock,
       alvo: p.alvoMedicao ?? null,
+      contratos: contratosDoCatalogo(p.catalogComExtras.sections),
     })
     // Repetir a mesma variante fora de hero/products é permitido (07/09) —
     // fica como registro para a curadoria ver quando é pobreza de acervo.

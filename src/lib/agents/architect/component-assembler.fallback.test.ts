@@ -290,8 +290,12 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
     const systemVars = invokeAgent.mock.calls[0][2] as Record<string, string>
     expect(systemVars.catalogo).toContain("GUIDANCE-COPY")
     expect(systemVars.catalogo).toContain("NOTAS-LAYOUT")
-    // CM-3: o output_schema saiu do Curador — é insumo exclusivo do Montador.
-    expect(systemVars.catalogo).not.toContain('"headline"')
+    // CM-3: o output_schema INTEIRO não vai; desde 09/09 vai o `contrato`
+    // (resumo da anatomia) — a chave `headline` só aparece porque este
+    // fixture a marca `required:true` (campos_obrigatorios).
+    expect(systemVars.catalogo).toContain('"contrato"')
+    expect(systemVars.catalogo).toMatch(/"campos_obrigatorios": \[\s*"headline"/)
+    expect(systemVars.catalogo).not.toContain("output_schema")
     expect(systemVars.catalogo).not.toContain("EXEMPLO-NAO-VAI")
     expect(systemVars.catalogo).not.toContain("GUIDE-CAMPO-NAO-VAI")
     const chooserVars = invokeAgent.mock.calls[0][1] as Record<string, string>
