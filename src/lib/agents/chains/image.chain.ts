@@ -25,7 +25,11 @@ import {
 
 const log = logger.child("ImageChain")
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `CFY_PRIMARY_BRIEF — PHOTOGRAPHIC DIRECTION OF THIS COMPONENT. YOUR MAIN SOURCE.
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = `CFY_PRIMARY_BRIEF — THE SCENE DECIDED FOR THIS POSITION. HIGHEST WEIGHT.
+Decided by the email's structure for this exact position: what the photograph must SHOW (who, doing what, where). The component direction below says how to shoot it; when they disagree on the scene, this line wins. Empty means the structure did not decide a scene: follow the component direction.
+{INTENCAO_VISUAL}
+
+CFY_PRIMARY_BRIEF — PHOTOGRAPHIC DIRECTION OF THIS COMPONENT. YOUR MAIN SOURCE.
 Written for this exact component by the person who designed it. It decides HOW the photograph is made: setting, light, distance, angle, lens feel, whether a person appears and what they do, depth, colour treatment, and which area stays clean for copy. Shoot to satisfy it. Nothing below may contradict it. Empty means no direction was written: then compose from CFY_THIS_FRAME and CFY_SUPPORT only, and do not invent a scene beyond what the slot brief says.
 {PHOTO_DIRECTION}
 

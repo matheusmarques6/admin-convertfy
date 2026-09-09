@@ -183,6 +183,7 @@ describe("sanitizePhotoDirection", () => {
       texto: d,
       linhas_removidas: 0,
       medidas_removidas: 0,
+      tabelas_removidas: 0,
     })
   })
 
@@ -192,6 +193,7 @@ describe("sanitizePhotoDirection", () => {
       texto: d,
       linhas_removidas: 0,
       medidas_removidas: 0,
+      tabelas_removidas: 0,
     })
   })
 
@@ -200,5 +202,27 @@ describe("sanitizePhotoDirection", () => {
     const out = await loadPhotoDirections(admin, [{ variant_id: "v-4" }])
     expect(out["v-4"]).not.toMatch(/Ø|\d\s*px/i)
     expect(out["v-4"]).toContain("Studio photograph")
+  })
+})
+
+// 09/09: a tabela de layout do body-3 ("# — Elemento — Padding-top —
+// Dimensão") foi como direção fotográfica do `seal_1_image`.
+describe("sanitizePhotoDirection — tabela de layout cai inteira", () => {
+  it("cabeçalho e linhas de medida/posição saem; a frase de direção fica", () => {
+    const d = [
+      "Faixa escura com três selos, luz rasante da esquerda.",
+      "#\tElemento\tPadding-top\tDimensão",
+      "1\tSelo 1\t24px\t64 × 64px",
+      "| Elemento | Posição | Largura |",
+    ].join("\n")
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toBe("Faixa escura com três selos, luz rasante da esquerda.")
+    expect(r.tabelas_removidas).toBe(3)
+  })
+  it("tabela de CATEGORIA (adaptação por nicho) continua virando linha", () => {
+    const d = ["Adaptação por categoria:", "Moda\tfoto em corpo real, luz natural", "Casa\tambiente vivido, sem estúdio"].join("\n")
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toContain("Moda — foto em corpo real, luz natural")
+    expect(r.tabelas_removidas).toBe(0)
   })
 })
