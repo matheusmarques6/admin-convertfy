@@ -63,8 +63,8 @@ flows_elegiveis: ${FLOWS_ELEGIVEIS.join(" | ")}
 4. Cubra tipos de risco diferentes. Se a loja concentra em um tipo, diga isso em \`cobertura.lacunas\` em vez de inventar.
 5. \`tratamento\` nomeia MECANISMO, não adjetivo, e aterrissa num aliviador.
 6. O aliviador tem que ser compatível com o tipo de risco.
-7. LASTRO obrigatório em todo tratamento. \`verificado\` sempre false.
-8. NUNCA invente política comercial. Prazo, garantia, frete e devolução só entram se aparecerem literalmente no contexto.
+7. LASTRO obrigatório em todo tratamento. \`verificado\` sempre false — quem carimba é o sistema, a partir da ficha.
+8. NUNCA invente política comercial. Prazo, garantia, frete e devolução só entram se aparecerem literalmente no contexto — e <ficha_operacional_verificada> É contexto de primeira classe: o que está nela foi confirmado pelo time e VENCE a pesquisa quando divergem. Use os valores dela literalmente (dias, código, nota) na afirmação de lastro e no tratamento.
 9. \`evidencia\` cita trecho literal. Sem trecho, \`confianca\` é "baixa".
 10. \`severidade\` 1-5: quantas pessoas trava, não quão difícil é responder.
 
@@ -89,7 +89,7 @@ Se houver um concorrente NOMEÁVEL e específico contra o qual a loja se posicio
 
 ## Regras do incentivo
 
-Registre o cupom ativo, valor, código, condições e prazo — apenas se vierem literalmente do contexto. Sem eles, \`existe: null\` e alerta. Nunca invente percentual ou código.
+Registre o cupom ativo, valor, código, condições e prazo — apenas se vierem literalmente do contexto. A ficha operacional decide quando existe: "NÃO há incentivo ativo" na ficha é \`existe: false\` (não null). Sem ficha e sem menção literal, \`existe: null\` e alerta. Nunca invente percentual ou código.
 
 ## Material anterior
 
@@ -109,6 +109,10 @@ export const DEFAULT_CATALOGADOR_USER = `<loja>
 - marca: {{brand_name}}
 - idioma da loja (as objeções saem nele): {{idioma}}
 </loja>
+
+<ficha_operacional_verificada>
+{{ficha_operacional}}
+</ficha_operacional_verificada>
 
 <perfil_da_marca>
 {{pesquisa}}
@@ -135,6 +139,7 @@ Catalogue o material de argumento desta loja. Responda APENAS o JSON.`
 export const CATALOGADOR_ORIGINS: Record<string, SegmentOrigin> = {
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   idioma: { cls: "loja", rotulo: "Idioma da loja — client_stores.language" },
+  ficha_operacional: { cls: "curadoria", rotulo: "Ficha operacional verificada pelo time — client_stores.ficha_operacional" },
   pesquisa: { cls: "loja", rotulo: "Perfil da marca — Pesquisa & Diagnóstico completa (client_stores)" },
   top_products: { cls: "loja", rotulo: "Top 5 produtos — store_top_products (nome, preço e link)" },
   objecoes_anteriores: { cls: "loja", rotulo: "Objeções anteriores — client_stores.icp_objections (material, não gabarito)" },

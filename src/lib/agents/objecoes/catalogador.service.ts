@@ -44,6 +44,7 @@ import {
   renderVocabularioDaCliente,
 } from "./catalogador-prompt"
 import { normalizarCatalogo, projetarObjecoes, validarCatalogo } from "./catalogo-regras"
+import { aplicarFichaAoCatalogo, fichaParaPrompt, normalizarFicha } from "@/lib/stores/ficha-operacional"
 import type { CatalogoDeObjecoes } from "./vocabulario"
 
 const log = logger.child("Catalogador")
@@ -111,9 +112,13 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     user_template: cfgRow?.user_template?.trim() || DEFAULT_CATALOGADOR_USER,
   }
 
+  // Ficha operacional do time (09/09): o que está nela é VERIFICADO e vence
+  // a pesquisa. Coluna ausente/vazia → ausência declarada no prompt.
+  const ficha = normalizarFicha(s.ficha_operacional)
   const baseVars: Record<string, string> = {
     brand_name: brandName,
     idioma: (s.language as string | null)?.trim() || "pt-BR",
+    ficha_operacional: fichaParaPrompt(ficha),
     pesquisa: pesquisa || "(sem pesquisa)",
     top_products: renderTopProducts(topProducts),
     objecoes_anteriores: renderObjecoesAnteriores(objecoesAnteriores),
@@ -127,6 +132,7 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
 
   const inputSummary: InputSummaryItem[] = [
     { rotulo: "Loja", cls: "loja", valor: brandName },
+    { rotulo: "Ficha operacional", cls: "loja", valor: ficha ? "preenchida pelo time — vence a pesquisa" : "(ausente — nada verificado)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${pesquisa.length.toLocaleString("pt-BR")} chars do dossiê · ${topProducts.length} produto(s)` },
     { rotulo: "Objeções anteriores", cls: "loja", valor: `${objecoesAnteriores.length} cadastrada(s) (material, não gabarito)` },
     { rotulo: "Vocabulário da cliente", cls: "loja", valor: `${Array.isArray(s.icp_vocabulary) ? s.icp_vocabulary.length : 0} quote(s)` },
@@ -188,9 +194,14 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
             : "resposta não é JSON válido",
         )
       }
-      const catalogo = normalizarCatalogo(parsed)
-      const erros = validarCatalogo(catalogo)
+      const catalogoDoModelo = normalizarCatalogo(parsed)
+      const erros = validarCatalogo(catalogoDoModelo)
       if (erros.length > 0) throw new ValidacaoError(erros)
+      // A ficha carimba `verificado` e sobrescreve o incentivo DEPOIS do
+      // validador (o modelo é validado pelo que ele escreveu; a ficha é do
+      // humano e não passa pela régua dele).
+      const fichaAplicada = aplicarFichaAoCatalogo(catalogoDoModelo, ficha)
+      const catalogo = fichaAplicada.catalogo
 
       const objections = projetarObjecoes(catalogo)
       const { error: upErr } = await admin
@@ -217,6 +228,7 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
         inputSummary,
         rawOutput: raw.slice(0, 16000),
         parsedOutput: {
+          ficha_aplicada: { verificadas: fichaAplicada.verificadas, incentivo_sobrescrito: fichaAplicada.incentivo_sobrescrito },
           ...catalogo,
           _validador: {
             retry_count: attempt - 1,
