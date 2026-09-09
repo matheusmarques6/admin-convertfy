@@ -32,19 +32,28 @@ export type VaultNoteTipo =
  * Espelha a árvore do Obsidian; 'outro' cobre nota nova na raiz antes de o
  * código conhecê-la (sincroniza, não some).
  */
-export type VaultDocKind =
-  | "protocolo"
-  | "catalogo"
-  | "inventario"
-  | "parametros"
-  | "casos"
-  | "secao"
-  | "variante"
-  | "eixo"
-  | "requisito"
-  | "convivencia"
-  | "lacuna"
-  | "outro"
+export const VAULT_DOC_KINDS = [
+  "protocolo",
+  "catalogo",
+  "inventario",
+  "parametros",
+  "casos",
+  "secao",
+  "variante",
+  "eixo",
+  "requisito",
+  "convivencia",
+  "lacuna",
+  // 09/09 — `_julgamento.md` (régua da casa, servida inteira) e
+  // `doutrina/<slug>.md` (doutrina de curso roteada por `secao`). A lista
+  // é a MESMA do CHECK em email_vault_docs.kind (migration 20261134) e um
+  // teste lê a migration para conferir — kind novo aqui sem migration
+  // sincroniza, toma 23514 e some da tela.
+  "julgamento",
+  "doutrina",
+  "outro",
+] as const
+export type VaultDocKind = (typeof VAULT_DOC_KINDS)[number]
 
 export interface ParsedNote {
   tipo: VaultNoteTipo
@@ -195,6 +204,7 @@ const COMPONENTES_ROOT_KIND: Record<string, VaultDocKind> = {
   _inventario: "inventario",
   "_parametros-da-loja": "parametros",
   "_casos-de-teste": "casos",
+  _julgamento: "julgamento",
 }
 
 /**
@@ -259,6 +269,10 @@ export function classifyPath(relPath: string): ClassifiedPath | null {
         return { tipo: "componente_doc", flowType: null, slug, docKind: "convivencia", docGrupo: null }
       if (dir === "lacunas")
         return { tipo: "componente_doc", flowType: null, slug, docKind: "lacuna", docGrupo: null }
+      // A seção a que a doutrina serve vem do frontmatter (`secao:`), não
+      // da árvore — uma nota pode valer para "geral".
+      if (dir === "doutrina")
+        return { tipo: "componente_doc", flowType: null, slug, docKind: "doutrina", docGrupo: null }
       return null
     }
     if (allParts.length === 4) {
@@ -361,7 +375,7 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
 export function validateNote(
   tipo: VaultNoteTipo,
   fm: Record<string, unknown>,
-  opts: { slug: string },
+  opts: { slug: string; docKind?: VaultDocKind; body?: string },
 ): string[] {
   const errs: string[] = []
   const status = str(fm.status)
@@ -393,9 +407,30 @@ export function validateNote(
   }
   // componente_doc: deliberadamente permissivo — o vault de componentes tem
   // frontmatters heterogêneos por categoria (variante ≠ eixo ≠ lacuna) e o
-  // corpo é conhecimento livre. Só o `status` (checado acima) é contrato.
+  // corpo é conhecimento livre. Só o `status` (checado acima) é contrato —
+  // com duas exceções que entram INTEIRAS no prompt e por isso têm teto:
+  // o que passa do teto seria cortado em silêncio no runtime, e é melhor
+  // reprovar aqui, onde o card "Notas puladas" mostra o motivo.
+  if (tipo === "componente_doc" && opts.docKind === "julgamento") {
+    const len = opts.body?.length ?? 0
+    if (len > JULGAMENTO_MAX_CHARS)
+      errs.push(`julgamento com ${len} chars (teto ${JULGAMENTO_MAX_CHARS}) — é servido inteiro, encurte`)
+  }
+  if (tipo === "componente_doc" && opts.docKind === "doutrina") {
+    // `fonte` é o que separa doutrina de opinião: sem ela o agente cita
+    // algo que ninguém consegue conferir.
+    if (!str(fm.fonte)) errs.push("doutrina sem `fonte` (curso/nota de origem)")
+    const len = opts.body?.length ?? 0
+    if (len > DOUTRINA_MAX_CHARS)
+      errs.push(`doutrina com ${len} chars (teto ${DOUTRINA_MAX_CHARS}) — vai inteira no prompt da fase 2, encurte`)
+  }
   return errs
 }
+
+/** Teto do corpo de `_julgamento.md`: vai inteiro no system dos dois agentes. */
+export const JULGAMENTO_MAX_CHARS = 8_000
+/** Teto do corpo de cada `doutrina/<slug>.md`: até 3 por seção na fase 2. */
+export const DOUTRINA_MAX_CHARS = 6_000
 
 // ── Nota completa ───────────────────────────────────────────────────────
 
@@ -412,7 +447,7 @@ export function parseVaultFile(relPath: string, content: string): ParseResult {
   if (!hasFrontmatter)
     return { note: null, skipped: { path: relPath, motivo: "sem bloco de frontmatter" } }
 
-  const errs = validateNote(cls.tipo, data, { slug: cls.slug })
+  const errs = validateNote(cls.tipo, data, { slug: cls.slug, docKind: cls.docKind, body })
   if (errs.length > 0)
     return { note: null, skipped: { path: relPath, motivo: errs.join("; ") } }
 
@@ -438,14 +473,27 @@ export function isApproved(fm: Record<string, unknown>): boolean {
 }
 
 /**
- * Ativação das notas de componentes: `aprovada` como as demais, com uma
- * exceção — `_catalogo.md` é GERADO por script (`status: gerado`) e é
- * legítimo servi-lo assim. Lacunas são cidadãs de primeira classe do vault
- * (`status: aberta`) mas NÃO entram no runtime: são worklist humana.
+ * Ativação das notas de componentes: `aprovada` como as demais, com duas
+ * exceções de status que são o estado NATURAL do kind:
+ *
+ * - `_catalogo.md` é GERADO por script (`status: gerado`) e é legítimo
+ *   servi-lo assim.
+ * - Lacuna vive `aberta` — é o que ela é enquanto a biblioteca não a
+ *   fecha. Até 09/09 este gate exigia `aprovada`, então as 15 lacunas do
+ *   vault nasciam inativas e o loader do Curador (que já pedia o kind)
+ *   servia "(nenhuma)" em toda run: o Curador procurava bloco para uma
+ *   posição que o vault SABIA não ter, e a telemetria contava
+ *   `lacunas_servidas: 0` como se não houvesse lacuna. `retratada` (a
+ *   biblioteca fechou), `observacao`, `modelo` e `proposta` seguem fora —
+ *   não são lacuna vigente, e servi-las mandaria o Curador desistir de uma
+ *   posição que tem bloco.
  */
 export function isDocActive(kind: VaultDocKind, fm: Record<string, unknown>): boolean {
   if (isApproved(fm)) return true
-  return kind === "catalogo" && str(fm.status) === "gerado"
+  const status = str(fm.status)
+  if (kind === "catalogo") return status === "gerado"
+  if (kind === "lacuna") return status === "aberta"
+  return false
 }
 
 /** `variant_id` do frontmatter quando é um UUID plausível; senão null. */
