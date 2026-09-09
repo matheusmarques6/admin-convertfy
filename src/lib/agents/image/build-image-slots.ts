@@ -103,6 +103,15 @@ function formaDaArea(f: BlueprintBlockField): string {
  * si nunca sai daqui. Prefixo vazio (key genérico "image") → todos os
  * campos de copy do bloco; foi por esse caminho que o "P.S. Discount code
  * INNOVA10 expires August 31st." chegou ao modelo e virou carimbo.
+ *
+ * **Campo `copy_no_desenho` fica FORA** (09/09). Ele é o oposto exato desta
+ * lista: pertence ao desenho, e quem o serve é `textosNoDesenho`. Sem esta
+ * exclusão o MESMO campo entrava nas duas seções do prompt — "deixe esta
+ * região limpa, sem desenhar nada nela" e "DESENHE estas palavras" — e o
+ * modelo obedecia a primeira. Foi o que esvaziou os três selos da `body 3`
+ * nas gerações de 09/09: círculo chapado, sem o valor no centro nem a frase
+ * no arco. E como `copy_no_desenho` não tem endereço no HTML por definição,
+ * o texto também não era escrito por cima: sumia das DUAS pontas.
  */
 function areasDeTexto(
   imageField: BlueprintBlockField,
@@ -115,6 +124,7 @@ function areasDeTexto(
     if (f.type !== "text_short" && f.type !== "text_long" && f.type !== "number") {
       continue
     }
+    if (deriveFieldNature(f) === "copy_no_desenho") continue
     if (prefix && !f.key.toLowerCase().startsWith(`${prefix}_`)) continue
     const val = copyValue(content[f.key])
     if (!val) continue
