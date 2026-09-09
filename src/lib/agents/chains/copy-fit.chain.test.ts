@@ -383,7 +383,7 @@ describe("runCopyFit", () => {
   // corte por código que cobria isso decepava o parágrafo na última frase
   // que cabia ("Plugs directly into any standard outlet.") — foi removido.
   // O campo fica como veio, com o motivo da recusa.
-  it("modelo erra o teto duas vezes → original mantido, motivo registrado", async () => {
+  it("modelo erra o teto duas vezes com excesso GRANDE → original mantido, motivo registrado", async () => {
     const original =
       "I was skeptical about the FuelSaver Pro. I drove the same commute for three weeks before and three weeks after installing it. My average MPG went from 26.4 to 29.1 on the same route. Not magic — just a measurable difference."
     invokeMock.mockResolvedValue(
@@ -396,7 +396,8 @@ describe("runCopyFit", () => {
           position: 5,
           key: "review_2_quote",
           texto: original,
-          max: 200,
+          // 41% acima: o aparo por código (≤ 15%) NÃO se aplica.
+          max: 150,
           motivos: ["max_len", "travessao"],
           tracos: 1,
           idioma_esperado: "en",
@@ -415,6 +416,45 @@ describe("runCopyFit", () => {
       antes: original,
       depois: null,
     })
+  })
+
+  // 09/09: o review com idade e cintura era descartado inteiro por 12 chars
+  // (`ainda_acima_do_limite`, max 190). Excesso pequeno é aparado na última
+  // palavra que cabe — o específico sobrevive.
+  it("modelo erra o teto duas vezes com excesso PEQUENO → aparado por código, via registrada", async () => {
+    const original =
+      "I'm 54, 38-inch waist, and these are the first boxers that actually stay put through an eight-hour desk day and a long walk home."
+    invokeMock.mockResolvedValue(respostaLLM({ "5.review_2_quote": "x".repeat(250) }))
+    const r = await runCopyFit(
+      entrada([
+        alvo({ id: "5.review_2_quote", position: 5, key: "review_2_quote", texto: original, max: 120, motivos: ["max_len"], tracos: 0, idioma_esperado: "en" }),
+      ]),
+    )
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    expect(r.aceitas).toHaveLength(1)
+    expect(r.aceitas[0].texto.length).toBeLessThanOrEqual(120)
+    expect(r.aceitas[0].texto.startsWith("I'm 54, 38-inch waist")).toBe(true)
+    expect(r.aceitas[0].texto.endsWith("...")).toBe(false)
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect((parsed.por_codigo as Record<string, number>).aparados).toBe(1)
+    expect((parsed.de_para as Array<Record<string, unknown>>)[0]).toMatchObject({ aceito: true, via: "aparado_por_codigo" })
+  })
+
+  it("travessão resolvido por código e coluna comparativa não chamam o modelo", async () => {
+    const r = await runCopyFit(
+      entrada([
+        alvo({ id: "2.closing_copy", position: 2, key: "closing_copy", texto: "Feito no Brasil — cada peça é única", max: 60, motivos: ["travessao"], tracos: 1, proposta_por_codigo: "Feito no Brasil, cada peça é única" }),
+        alvo({ id: "2.column_b_item_1", position: 2, key: "column_b_item_1", texto: "Sits low, rolls down by midmorning each day", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true }),
+        alvo({ id: "2.column_b_item_2", position: 2, key: "column_b_item_2", texto: "Sits low, rolls down by midmorning every single day and never recovers its shape", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true }),
+      ]),
+    )
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(r.aceitas.map((a) => [a.key, a.texto])).toEqual([
+      ["closing_copy", "Feito no Brasil, cada peça é única"],
+      ["column_b_item_1", "Sits low, rolls down by midmorning each"],
+    ])
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.por_codigo).toMatchObject({ travessao: 1, aparados: 1, comparativas_mantidas: 1, para_o_modelo: 0 })
   })
 
   it("o contrato pede alvo abaixo do teto", async () => {
