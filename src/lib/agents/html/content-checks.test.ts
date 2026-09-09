@@ -28,10 +28,10 @@ describe("computeContentChecks — os quatro checks baratos (09/09)", () => {
     expect(por.paragrafo_repetido.message).toContain("Every order is processed")
   })
 
-  it("incentivo desconhecido ou presente → o check de oferta não roda", () => {
-    expect(computeContentChecks(HERO_BOXERS).map((i) => i.type)).not.toContain("oferta_sem_incentivo")
+  it("desconto exige incentivo confirmado; contexto desconhecido também bloqueia", () => {
+    expect(computeContentChecks(HERO_BOXERS).map((i) => i.type)).toContain("oferta_sem_incentivo")
     expect(computeContentChecks(HERO_BOXERS, { incentivoExiste: true }).map((i) => i.type)).not.toContain("oferta_sem_incentivo")
-    expect(computeContentChecks(HERO_BOXERS, { incentivoExiste: null }).map((i) => i.type)).not.toContain("oferta_sem_incentivo")
+    expect(computeContentChecks(HERO_BOXERS, { incentivoExiste: null }).map((i) => i.type)).toContain("oferta_sem_incentivo")
   })
 
   it("e-mail limpo → nada; merge tags e [unsubscribe] não são placeholder", () => {
@@ -47,10 +47,27 @@ describe("computeContentChecks — os quatro checks baratos (09/09)", () => {
   it("oferta em português e cupom também contam", () => {
     const html = `<html><body><p>Ganhe 15% de desconto com o cupom BEMVINDO</p></body></html>`
     const issues = computeContentChecks(html, { incentivoExiste: false })
-    expect(issues.map((i) => i.type)).toEqual(["oferta_sem_incentivo"])
+    expect(issues.map((i) => i.type)).toEqual(["oferta_sem_incentivo", "codigo_inventado"])
   })
 
   it("html vazio → nada", () => {
     expect(computeContentChecks("")).toEqual([])
+  })
+
+  it("[WELCOME-CODE], Link Here e ICON 1 são bloqueantes", () => {
+    const issues = computeContentChecks(`<p>[WELCOME-CODE]</p><a>Link Here</a><span>ICON 1</span>`)
+    expect(issues.map((i) => i.type)).toEqual(expect.arrayContaining([
+      "placeholder_colchetes", "texto_de_exemplo", "label_generico",
+    ]))
+    expect(issues.every((i) => i.disposition === "blocking")).toBe(true)
+  })
+
+  it("código só passa quando coincide com o incentivo confirmado", () => {
+    const html = `<p>Use code: INVENTADO</p>`
+    expect(computeContentChecks(html, { incentivoExiste: true, incentivoCodigo: "REAL10" })
+      .map((i) => i.type)).toContain("codigo_inventado")
+    expect(computeContentChecks(`<p>Use code: REAL10</p>`, {
+      incentivoExiste: true, incentivoCodigo: "REAL10",
+    })).toEqual([])
   })
 })

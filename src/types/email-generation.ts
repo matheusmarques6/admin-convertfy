@@ -258,6 +258,8 @@ export type QaIssueType =
   | "placeholder_colchetes"
   | "texto_de_exemplo"
   | "paragrafo_repetido"
+  | "codigo_inventado"
+  | "label_generico"
 
 export interface QaIssue {
   type: QaIssueType
@@ -267,6 +269,9 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Resultado do gate determinístico. `blocking` impede `ready`; `warning`
+   * continua visível para revisão, mas não interrompe a fase 2. */
+  disposition?: "warning" | "blocking"
 }
 
 // Resultado do QA agent (story AE-5).

@@ -56,7 +56,22 @@ describe("computeRenderChecks", () => {
     const link = issues.find((i) => i.type === "links_quebrados")
     expect(link).toBeDefined()
     expect(link?.message).toContain("2")
-    expect(link?.severity).toBe("low")
+    expect(link?.severity).toBe("high")
+    expect(link?.disposition).toBe("blocking")
+  })
+
+  it("link sem href é bloqueante", () => {
+    const issues = computeRenderChecks(OK_EMAIL.replace(
+      '<a href="https://loja.com/produto">Comprar</a>', '<a>Comprar</a>',
+    ))
+    expect(issues.find((i) => i.type === "links_quebrados")?.disposition).toBe("blocking")
+  })
+
+  it("href vazio é bloqueante", () => {
+    const issues = computeRenderChecks(OK_EMAIL.replace(
+      'href="https://loja.com/produto"', 'href=""',
+    ))
+    expect(issues.find((i) => i.type === "links_quebrados")?.disposition).toBe("blocking")
   })
 
   it("img sem alt (ou alt vazio) → issue alt_text_faltando", () => {
