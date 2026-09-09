@@ -147,10 +147,9 @@ ilegível / ranking vazio) o Curador legado (Kimi,
 
 ### Recebe
 
-**SYSTEM**: protocolo de seleção (vault), convivências (vault), catálogo
-COMPLETO com os eixos do vault fundidos (momento, objeção, registro,
-paleta, papel na peça, peso). `{{catalogo}}` viaja na telemetria como
-`{ref, sha8}`.
+**SYSTEM da shortlist**: protocolo de seleção, convivências e índice compacto
+tipado com identidade, primeira frase, contrato anatômico e eixos resumidos.
+O catálogo integral fica apenas como baseline de telemetria e não é enviado.
 
 **USER** (dieta com o Estruturador ligado):
 
@@ -169,16 +168,13 @@ paleta, papel na peça, peso). `{{catalogo}}` viaja na telemetria como
 
 ### Como roda
 
-`anthropic/claude-sonnet-4.6` via OpenRouter · T 0,2 · 8192 · prompts
-in-code. **Consulta ao Obsidian sob demanda**: ferramentas
-`listar_pasta(pasta)` e `ler_nota(caminho)` (`curador-vault-tools.ts`),
-resolvidas por código contra `email_vault_docs`, `email_intents`,
-`email_structure_refs` e `email_learnings` pelo `file_path`. Teto de 4
-consultas; a volta seguinte vai com `tool_choice: "none"`. Loop em
-`llm-invoke.ts:invokeAgentWithTools` — cada volta reenvia o histórico
-(≈ +US$0,20 e 15-30 s por consulta). Erro na ferramenta vira texto para o
-modelo; erro no loop cai numa chamada sem ferramentas
-(`fallback_sem_ferramentas`).
+`anthropic/claude-sonnet-4.6` via OpenRouter · T 0,2 · prompts in-code. A
+primeira chamada devolve até 3 finalistas por posição; o parser recusa ids
+inventados e variantes de outra seção. O servidor deduplica os ids e carrega
+as notas das finalistas em uma única consulta a `email_vault_docs`. A segunda
+chamada recebe todas as notas encontradas e só pode escolher um id autorizado
+naquela posição. Não há loop de ferramentas nem limite editorial de quatro
+leituras; `maxCalls` permanece apenas na infraestrutura genérica.
 
 ### Devolve (inalterado)
 
@@ -197,9 +193,9 @@ código (`assembleDocument`) → `store_email_references` (html, slot_map) e
 
 ### Telemetria da run (o que o Estúdio mostra)
 
-`estruturador_consumido`, `lacunas_servidas`, **`consultas_ao_vault`**
-(`{ferramenta, argumento, chars, ms, erro?}` na ordem), `consultou_vault`,
-`voltas`, `fallback_sem_ferramentas`, `ranking_justificado`,
+`estruturador_consumido`, `lacunas_servidas`, `progressive_disclosure`
+(variantes iniciais, finalistas, notas abertas/ausentes, hashes e redução do
+índice), `voltas`, `ranking_justificado`,
 `posicoes_sem_variante`, `catalogo_divergente`, `protocol_violations`.
 Tokens e custo somam todas as voltas. Entrada: "Decisão do Estruturador",
 "Lacunas da biblioteca (vault)", "Índice do vault (Obsidian)".

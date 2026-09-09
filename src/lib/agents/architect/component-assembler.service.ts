@@ -63,7 +63,6 @@ import {
   loadMontadorMode,
   type MontadorMode,
 } from "./curador-vault"
-import { VAULT_TOOLS, executarFerramentaDoVault } from "./curador-vault-tools"
 import {
   BLOCO_OMITIDO_PELO_ESTRUTURADOR,
   contratosDoCatalogo,
@@ -1425,7 +1424,6 @@ export async function assembleStoreReference(
       // do vault e índice do Obsidian com consulta sob demanda.
       estruturadorOn,
       indiceDoVault,
-      ferramentas: { tools: VAULT_TOOLS, executar: executarFerramentaDoVault, maxCalls: 4 },
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
       liveViolations: [],

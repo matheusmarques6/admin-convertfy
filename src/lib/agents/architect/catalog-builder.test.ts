@@ -500,4 +500,24 @@ describe("buildCatalogoEnxuto", () => {
     const b = buildCatalog([v("3", "body", "C"), v("2", "hero", "B"), v("1", "hero", "A")])
     expect(a.enxuto).toBe(b.enxuto)
   })
+
+  it("expõe a fonte tipada do índice sem os campos integrais do catálogo", () => {
+    const r = buildCatalog([v("h1", "hero", "Hero cupom", {
+      description: desc,
+      when_use: "texto longo que não pode vazar",
+      copy_guidance: "orientação longa que não pode vazar",
+    })], extras)
+    expect(r.compact.text).toBe(r.enxuto)
+    expect(r.compact.entries).toHaveLength(1)
+    expect(r.compact.entries[0]).toMatchObject({
+      variant_id: "h1",
+      section: "hero",
+      title: "Hero cupom",
+      note_slug: "hero-1-cupom",
+    })
+    expect(r.compact.entries[0].requirements).toBeDefined()
+    expect(JSON.stringify(r.compact.entries[0])).not.toContain("when_use")
+    expect(JSON.stringify(r.compact.entries[0])).not.toContain("copy_guidance")
+    expect(r.compact.text).not.toContain("texto longo que não pode vazar")
+  })
 })
