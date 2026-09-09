@@ -23,6 +23,23 @@ export interface OutlineCondicionavel {
   coupon_code: string | null
 }
 
+/**
+ * Incentivo DESCONHECIDO (`existe: null`) — ninguém confirmou se a loja tem
+ * cupom. Até 09/09 esse caso passava intacto, e o outline do welcome-1
+ * (que manda "entregar o incentivo nos primeiros segundos… quem abriu para
+ * pegar o código") chegava inteiro ao n8n. Junto com ele ia o
+ * `coupon_code` do TEMPLATE — os 8 e-mails do welcome trazem `BEMVINDO10`,
+ * um código genérico em português — e a Hero Boxers, loja inglesa sem
+ * incentivo confirmado, recebeu "Your code. No strings attached".
+ *
+ * Desconhecido não autoriza promessa. É a mesma régua que o catálogo já
+ * aplica ("`incentivo.existe: null` NÃO vira `promessa_a_pagar`"): não se
+ * afirma que a loja NÃO tem (isso seria `false`), só se proíbe prometer o
+ * que ninguém confirmou.
+ */
+export const PREFIXO_INCENTIVO_NAO_CONFIRMADO =
+  "INCENTIVO NÃO CONFIRMADO nesta loja: ninguém verificou se existe cupom, desconto ou frete grátis. Ignore qualquer instrução abaixo de entregar código, percentual ou oferta — não escreva cupom, desconto nem \"use o código\". Desconhecido não autoriza promessa: o contrato deste e-mail é apresentação e prova."
+
 export const PREFIXO_SEM_INCENTIVO =
   "SEM INCENTIVO ATIVO nesta loja (decisão confirmada): ignore qualquer instrução abaixo de entregar código, percentual ou oferta — não escreva cupom, desconto nem \"use o código\". O contrato deste e-mail é apresentação e prova."
 
@@ -33,11 +50,16 @@ export function condicionarOutline<T extends OutlineCondicionavel>(
   decisao: DecisaoDeIncentivo | null | undefined,
 ): T | null {
   if (!outline || !decisao) return outline
-  if (decisao.existe === false) {
+  // `false` (a loja não tem) e `null` (ninguém confirmou) levam ao MESMO
+  // comportamento — não prometer — com prefixos diferentes, porque a
+  // instrução que o modelo lê não pode afirmar o que não se sabe.
+  if (decisao.existe !== true) {
+    const prefixo =
+      decisao.existe === false ? PREFIXO_SEM_INCENTIVO : PREFIXO_INCENTIVO_NAO_CONFIRMADO
     const guidance = (outline.guidance ?? "").trim()
     return {
       ...outline,
-      guidance: guidance ? `${PREFIXO_SEM_INCENTIVO}\n\n${guidance}` : PREFIXO_SEM_INCENTIVO,
+      guidance: guidance ? `${prefixo}\n\n${guidance}` : prefixo,
       suggested_blocks: outline.suggested_blocks
         ? outline.suggested_blocks.filter((b) => !BLOCOS_DE_OFERTA.has(String(b).trim().toLowerCase()))
         : outline.suggested_blocks,
@@ -51,12 +73,26 @@ export function condicionarOutline<T extends OutlineCondicionavel>(
   return outline
 }
 
-/** `coupon_code` efetivo do e-mail: loja decide; sem decisão, o outline. */
+/**
+ * `coupon_code` efetivo do e-mail.
+ *
+ * Só incentivo CONFIRMADO (`existe: true`) entrega código. Com `false` ou
+ * `null` o campo vai vazio — inclusive quando o template do flow tem um:
+ * os 8 outlines do welcome trazem `BEMVINDO10`, e era por essa porta que
+ * um código genérico em português saía numa loja inglesa que ninguém
+ * confirmou ter cupom.
+ *
+ * Confirmado SEM código próprio ainda cai no do template: aí a loja disse
+ * que tem incentivo, e o código do flow é a única fonte que existe.
+ *
+ * `decisao` ausente é o único caso que o módulo não opina (catálogo não
+ * consultado — feature desligada), igual ao `condicionarOutline`.
+ */
 export function couponCodeEfetivo(
   outlineCode: string | null | undefined,
   decisao: DecisaoDeIncentivo | null | undefined,
 ): string | null {
-  if (decisao?.existe === false) return null
-  if (decisao?.existe === true && decisao.codigo) return decisao.codigo
-  return outlineCode ?? null
+  if (!decisao) return outlineCode ?? null
+  if (decisao.existe !== true) return null
+  return decisao.codigo ?? outlineCode ?? null
 }

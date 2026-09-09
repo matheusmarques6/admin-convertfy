@@ -72,15 +72,22 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
     })
   }
 
-  // 2. Oferta sem incentivo (só com a decisão conhecida).
+  // 2. Oferta sem incentivo CONFIRMADO — `false` e `null` reprovam igual,
+  // mas a mensagem não pode afirmar o que não se sabe: "ninguém confirmou"
+  // manda preencher a ficha da loja; "não tem" manda tirar a oferta do
+  // texto. Ler a mensagem errada custa a ação errada.
   if (opts.incentivoExiste !== true) {
     const ofertas = fragmentos.map((f) => f.texto).filter((t) => OFERTA_RE.test(t))
     if (ofertas.length > 0) {
+      const trechos = [...new Set(ofertas)].slice(0, 3).map((t) => `"${t.slice(0, 60)}"`).join(", ")
       issues.push({
         type: "oferta_sem_incentivo",
         severity: "high",
         disposition: "blocking",
-        message: `A loja NÃO tem incentivo ativo e o e-mail promete oferta/cupom: ${[...new Set(ofertas)].slice(0, 3).map((t) => `"${t.slice(0, 60)}"`).join(", ")}.`,
+        message:
+          opts.incentivoExiste === false
+            ? `A loja NÃO tem incentivo ativo e o e-mail promete oferta/cupom: ${trechos}.`
+            : `Ninguém confirmou se esta loja tem incentivo (catálogo com \`existe: null\`) e o e-mail já promete oferta/cupom: ${trechos}. Confirme na ficha operacional antes de aprovar.`,
         location: "html",
       })
     }
