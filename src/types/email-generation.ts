@@ -43,11 +43,25 @@ export interface BlueprintBlockField {
   // Comentário HTML (<!-- … -->) do <td>/<tr> que envolve o {{TAG}} de
   // imagem na variante — direção de arte do designer, colada no slot.
   slot_note?: string | null
+  // ── Arbitragem papel × forma (09/09, `arbitrarCampos`) ────────────────
+  // O campo colide com um requisito duro do Estruturador (slot de cupom
+  // quando a decisão nega cupom, CTA negado, item além do máximo). Sai do
+  // payload do n8n, chega vazio ao merge e a linha some. Aditivo:
+  // snapshots antigos não têm a flag e nada muda.
+  omitir?: boolean
+  omitir_motivo?: string
 }
 
 export interface BlueprintBlock {
   type: string
   label: string
+  // Papel narrativo decidido pelo Estruturador, como campo PRÓPRIO (09/09).
+  // Continua colado na 1ª linha do `purpose` (é o que o n8n lê), mas quem
+  // precisa do papel sem a "Forma (variante)" lê daqui.
+  papel?: string | null
+  // Requisitos tipados da posição (cupom/cta/n_itens/preco/avaliacao/
+  // campos/imagem/exige) — a mesma fonte para Curador, n8n, imagem e QA.
+  requisitos?: Record<string, unknown> | null
   // Descrição/intenção do bloco. MESMA chave que `BlueprintBlockDef.purpose`
   // (email-blueprint.ts) — é o que os dados (consts, migrations e a UI)
   // gravam no JSONB `email_blueprints.blocks`. Antes era lido como `hint`
