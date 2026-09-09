@@ -302,6 +302,12 @@ export interface GenerateBlueprintInput {
   papeisPorPosicao?: string[] | null
   /** Requisitos tipados por posição, alinhados a `papeisPorPosicao` (09/09). */
   requisitosPorPosicao?: Array<RequisitosDaPosicao | null> | null
+  /**
+   * Posições que o Estruturador decidiu e a biblioteca não cobriu — não
+   * viram bloco (09/09). Só telemetria: sem isto a run mostra 5 blocos e
+   * ninguém sabe que a sequência pedia 6, nem qual seção o e-mail perdeu.
+   */
+  posicoesDescartadas?: Array<{ block_index: number; section: string | null }>
   /** Posições cujo papel começa pela intenção humana da Arquitetura (02/09). */
   intencoesHumanas?: number
   fioNarrativo?: string | null
@@ -691,6 +697,19 @@ async function generateDeterministicBlueprint(
       cls: "upstream",
       valor: input.fioNarrativo?.trim() || "(sem fio — consumidores caem no messaging)",
     },
+    {
+      // A posição descartada some do blueprint sem deixar rastro: a tela
+      // mostra 5 blocos e ninguém sabe que a sequência pedia 6, nem qual
+      // seção o e-mail perdeu. É lacuna de BIBLIOTECA, e é aqui que a
+      // curadoria a vê.
+      rotulo: "Posições sem variante",
+      cls: "sistema",
+      valor: (input.posicoesDescartadas?.length ?? 0) > 0
+        ? `${input.posicoesDescartadas!.length} fora do e-mail: ${input.posicoesDescartadas!
+            .map((p) => `#${p.block_index + 1} ${p.section ?? "?"}`)
+            .join(", ")}`
+        : "nenhuma — toda posição decidida virou bloco",
+    },
   ]
   const runId = await startGenerationRun({
     storeId: input.storeId,
@@ -775,6 +794,7 @@ async function generateDeterministicBlueprint(
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
       papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      posicoes_descartadas: input.posicoesDescartadas ?? [],
       omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source: "ai",
@@ -1028,6 +1048,7 @@ async function generateLlmBlueprint(
       blocks: blueprint.blocks.length,
       blocos: blocosParaTelemetria(blueprint),
       papeis_nao_aplicados: papeisNaoAplicados(blueprint, input.papeisPorPosicao),
+      posicoes_descartadas: input.posicoesDescartadas ?? [],
       omitidos_total: blueprint.blocks.reduce((n, b) => n + (b.fields ?? []).filter((f) => f.omitir).length, 0),
       fio_narrativo: blueprint.fio_narrativo ?? null,
       source,
