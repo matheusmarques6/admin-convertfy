@@ -9,6 +9,7 @@ import {
   repeticoesPermitidas,
   resolverModeloDoCurador,
   resolverTetoDoCurador,
+  explicarTetoDoCurador,
   motivoDeRetomada,
   renderPreferenciasDoVault,
   CURADOR_SHADOW_MODEL_FALLBACK,
@@ -568,11 +569,41 @@ describe("resolverModeloDoCurador", () => {
 })
 
 describe("teto, retomada e preferências do vault (09/09)", () => {
-  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso; env vence tudo", () => {
+  it("resolverTetoDoCurador: config vence o piso; abaixo do piso, o piso", () => {
     expect(resolverTetoDoCurador(16000)).toBe(16000)
     expect(resolverTetoDoCurador(2048)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
     expect(resolverTetoDoCurador(null)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
     expect(resolverTetoDoCurador(Number.NaN)).toBe(CURADOR_SHADOW_MAX_TOKENS_MIN)
+  })
+
+  // 09/09: a config estava em 16.000, um CURADOR_SHADOW_MAX_TOKENS=5000
+  // esquecido no ambiente a rebaixava, e a run morria dizendo "aumente
+  // max_tokens" — o número que já tinha sido aumentado. O env só levanta.
+  it("o env NUNCA baixa o teto abaixo da config, e a origem é declarada", () => {
+    const original = process.env.CURADOR_SHADOW_MAX_TOKENS
+    try {
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "5000"
+      expect(resolverTetoDoCurador(16000)).toBe(16000)
+      expect(explicarTetoDoCurador(16000)).toEqual({
+        teto: 16000,
+        origem: "config",
+        config: 16000,
+        env: 5000,
+      })
+      // Env MAIOR que a config continua valendo — a alavanca de operação
+      // segue existindo, só perdeu o poder de rebaixar.
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "32000"
+      expect(explicarTetoDoCurador(16000)).toMatchObject({ teto: 32000, origem: "env" })
+      // Env abaixo do piso não derruba o piso.
+      process.env.CURADOR_SHADOW_MAX_TOKENS = "1000"
+      expect(explicarTetoDoCurador(null)).toMatchObject({
+        teto: CURADOR_SHADOW_MAX_TOKENS_MIN,
+        origem: "piso",
+      })
+    } finally {
+      if (original === undefined) delete process.env.CURADOR_SHADOW_MAX_TOKENS
+      else process.env.CURADOR_SHADOW_MAX_TOKENS = original
+    }
   })
 
   it("motivoDeRetomada: prosa e corte pedem retomada; JSON legível não", () => {

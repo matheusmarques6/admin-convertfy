@@ -199,12 +199,43 @@ function tetoDoEnv(): number | null {
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : null
 }
 
-/** Teto de saída: env > max(piso, config). Puro fora da leitura do env. */
+/** De onde saiu o teto que a chamada usou. */
+export interface TetoDoCurador {
+  teto: number
+  origem: "env" | "config" | "piso"
+  /** O que a config do agente pede (`email_agent_configs.max_tokens`). */
+  config: number | null
+  /** O que `CURADOR_SHADOW_MAX_TOKENS` pede, quando existe. */
+  env: number | null
+}
+
+/**
+ * Teto de saída do Curador: **o MAIOR entre piso, config e env**.
+ *
+ * O env vencia tudo (`if (env) return env`), e isso queimou uma geração em
+ * 09/09: a config do `assembler_chooser` estava em 16.000, um
+ * `CURADOR_SHADOW_MAX_TOKENS=5000` esquecido no ambiente a rebaixava, e a
+ * run morria com "5000 dos 5000 tokens foram para o raciocínio" mandando
+ * aumentar exatamente o número que JÁ tinha sido aumentado. Quem edita a
+ * config na tela não tem como ver a variável de ambiente, e a variável não
+ * está no `.env.example` — não havia onde desconfiar.
+ *
+ * Agora o env só LEVANTA. Baixar o teto abaixo do que a config pede exige
+ * mexer na config, que é onde a pessoa olha.
+ */
 export function resolverTetoDoCurador(daConfig?: number | null): number {
+  return explicarTetoDoCurador(daConfig).teto
+}
+
+/** O mesmo cálculo, com a procedência — vai para a telemetria da run. */
+export function explicarTetoDoCurador(daConfig?: number | null): TetoDoCurador {
   const env = tetoDoEnv()
-  if (env) return env
-  const cfg = typeof daConfig === "number" && Number.isFinite(daConfig) ? Math.floor(daConfig) : 0
-  return Math.max(CURADOR_SHADOW_MAX_TOKENS_MIN, cfg)
+  const cfg =
+    typeof daConfig === "number" && Number.isFinite(daConfig) ? Math.floor(daConfig) : null
+  const teto = Math.max(CURADOR_SHADOW_MAX_TOKENS_MIN, cfg ?? 0, env ?? 0)
+  const origem: TetoDoCurador["origem"] =
+    cfg != null && teto === cfg ? "config" : env != null && teto === env ? "env" : "piso"
+  return { teto, origem, config: cfg, env }
 }
 
 /** `CURADOR_SHADOW_RETOMADA=off` desliga a volta de retomada do JSON. */
@@ -807,7 +838,8 @@ export async function runCuradorShadow(
   let runId = ""
   try {
     const momento = momentoDoEmail(p.flowType, p.emailNumber)
-    const maxTokens = resolverTetoDoCurador(p.maxTokens)
+    const tetoResolvido = explicarTetoDoCurador(p.maxTokens)
+    const maxTokens = tetoResolvido.teto
     const config: AgentInvokeConfig = {
       model: modelo,
       temperature: 0.2,
@@ -913,6 +945,11 @@ export async function runCuradorShadow(
         catalog_sha8: catalogSha8,
         vault_docs: p.vault.total,
         momento,
+        // De onde saiu o teto desta chamada. Sem isto, "resposta vazia —
+        // aumente max_tokens" aponta para um número que já estava alto.
+        teto: tetoResolvido.teto,
+        teto_origem: tetoResolvido.origem,
+        teto_config: tetoResolvido.config,
       },
       renderedPrompt: segUser.segments ? segUser.prompt : undefined,
       promptSegments,
