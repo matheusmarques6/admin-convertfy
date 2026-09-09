@@ -236,6 +236,14 @@ export type QaIssueType =
   // max_len do campo / campo required vazio. Custo zero (sem LLM).
   | "copy_excede_max_len"
   | "campo_obrigatorio_vazio"
+  // ── Checks de CONTEÚDO por código (09/09, `html/content-checks.ts`) ──
+  // Rodam com o gate do QA ligado ou não. Nasceram do batch 644d86c5:
+  // oferta inventada em loja sem incentivo, `[WELCOME-CODE]`, `ICON 1` e
+  // parágrafo duplicado chegaram ao e-mail sem um aviso.
+  | "oferta_sem_incentivo"
+  | "placeholder_colchetes"
+  | "texto_de_exemplo"
+  | "paragrafo_repetido"
 
 export interface QaIssue {
   type: QaIssueType

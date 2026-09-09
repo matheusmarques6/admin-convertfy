@@ -69,6 +69,7 @@ import { pickProductForField } from "./image/product-for-field"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
+import { computeContentChecks } from "./html/content-checks"
 import {
   runQaAgent,
   runSchemaChecks,
@@ -644,7 +645,19 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     heroVisionModel,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
+    // Decisão de incentivo da loja (Catalogador, `objection_catalog.incentivo.existe`):
+    // `false` liga o check `oferta_sem_incentivo`; `null` = desconhecido.
+    incentivoExiste: incentivoExisteDoCatalogo(storeData?.objection_catalog),
   }
+}
+
+/** Lê `incentivo.existe` do catálogo de objeções. Puro; qualquer forma estranha → null. */
+export function incentivoExisteDoCatalogo(catalogo: unknown): boolean | null {
+  if (!catalogo || typeof catalogo !== "object") return null
+  const inc = (catalogo as { incentivo?: unknown }).incentivo
+  if (!inc || typeof inc !== "object") return null
+  const existe = (inc as { existe?: unknown }).existe
+  return typeof existe === "boolean" ? existe : null
 }
 
 // ── checkBatchTerminal: chamado apos cada UPDATE final ────────────────
@@ -4097,6 +4110,21 @@ export async function runPhase2HtmlQa(
     })),
   ]
 
+  // Checks de CONTEÚDO por código (09/09): oferta sem incentivo,
+  // placeholder entre colchetes, texto de exemplo da biblioteca, parágrafo
+  // repetido. Rodam nos DOIS caminhos — com o gate desligado só persistem;
+  // ligado, `high` reprova junto com o agente.
+  const contentIssues: QaIssue[] = computeContentChecks(finalHtml, {
+    incentivoExiste: ctx.incentivoExiste ?? null,
+  })
+  if (contentIssues.length > 0) {
+    log.warn("phase2.qa.content_checks_issues", {
+      emailId,
+      types: contentIssues.map((i) => i.type),
+      incentivoExiste: ctx.incentivoExiste ?? null,
+    })
+  }
+
   // ── QA REMOVIDO do fluxo (EMAIL_QA_ENABLED != 'true') ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem qa_failed. As checagens DETERMINISTICAS (computeRenderChecks — sem
@@ -4134,6 +4162,7 @@ export async function runPhase2HtmlQa(
     )
     const renderIssues = [
       ...heroCopyIssues,
+      ...contentIssues,
       ...computeRenderChecks(finalHtml),
       ...schemaIssues,
     ]
@@ -4274,14 +4303,17 @@ export async function runPhase2HtmlQa(
   // `qaResult.passed` ja embute o threshold de severidade (computado em
   // qa.chain.ts via EMAIL_QA_BLOCK_SEVERITY). Confiar nessa flag evita
   // double-check redundante.
-  if (!qaResult.passed) {
+  // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
+  // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
+  const contentReprova = contentIssues.some((i) => i.severity === "high")
+  if (!qaResult.passed || contentReprova) {
     await admin
       .from("email_flow_emails")
       .update({
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...heroCopyIssues, ...qaResult.issues],
+        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4298,7 +4330,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...heroCopyIssues, ...qaResult.issues],
+      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)
