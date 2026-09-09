@@ -496,11 +496,14 @@ const NATURE_SECTION_TITLE: Record<ComponentFieldNature, string> = {
   copy: "Texto",
   imagem_gerada: "Imagem",
   asset_fixo: "Asset fixo",
+  copy_no_desenho: "Texto desenhado na imagem",
 }
 
 const NATURE_SECTION_HINT: Record<ComponentFieldNature, string> = {
   copy: "O n8n escreve. Vai no payload de copy.",
   imagem_gerada: "O agente de imagem cria, uma por loja.",
   asset_fixo: "Arte da biblioteca — fica como foi desenhada.",
+  copy_no_desenho:
+    "O n8n escreve e o agente de imagem DESENHA dentro da arte (selo, etiqueta). Não ocupa lugar no HTML — o max_len é o que garante que cabe.",
 }
 

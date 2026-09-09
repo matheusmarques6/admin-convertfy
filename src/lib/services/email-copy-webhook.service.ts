@@ -1322,8 +1322,15 @@ export async function dispatchEmailCopyWebhook(
               // são do agente de imagem e asset_fixo fica intacto; ambos fora
               // do payload. Snapshots sem nature derivam do tipo (image →
               // imagem_gerada; resto → copy).
+              // `copy_no_desenho` viaja JUNTO com a copy: quem escreve é o
+              // n8n do mesmo jeito. O que muda é o destino — o agente de
+              // imagem a recebe pelo valor e a desenha na arte, em vez de
+              // ela ganhar endereço no HTML.
               const fields = allFields.filter(
-                (fld) => deriveFieldNature(fld) === "copy" && fld.omitir !== true,
+                (fld) =>
+                  (deriveFieldNature(fld) === "copy" ||
+                    deriveFieldNature(fld) === "copy_no_desenho") &&
+                  fld.omitir !== true,
               )
               // 09/09: campos omitidos pela arbitragem papel × forma — o
               // n8n não os vê; o registro é o que diz o que saiu e por quê.

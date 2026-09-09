@@ -124,6 +124,37 @@ function areasDeTexto(
 }
 
 /**
+ * Texto que a IMAGEM tem de DESENHAR, pelo valor que o n8n escreveu.
+ *
+ * O oposto de `areasDeTexto`: lá o HTML escreve por cima e o pedido é
+ * "deixe limpo"; aqui a palavra faz parte do desenho e precisa chegar
+ * LITERAL. Sem isto o modelo inventava as palavras dos selos da `body 3`
+ * a cada geração, dentro do pixel, sem revisão possível.
+ *
+ * Só campos com natureza `copy_no_desenho`. Quando a key da imagem tem
+ * grupo (`seal_1_image` → `seal_1`), só os irmãos do MESMO grupo entram —
+ * o selo 2 não recebe a palavra do selo 1. Sem grupo, todos os marcados do
+ * bloco entram: a marcação é explícita, quem a põe está dizendo que aquele
+ * texto pertence à arte.
+ */
+function textosNoDesenho(
+  imageField: BlueprintBlockField,
+  fields: BlueprintBlockField[],
+  content: Record<string, unknown>,
+): Array<[string, string]> {
+  const prefix = groupPrefix(imageField.key)
+  const out: Array<[string, string]> = []
+  for (const f of fields) {
+    if (deriveFieldNature(f) !== "copy_no_desenho") continue
+    if (prefix && !f.key.toLowerCase().startsWith(`${prefix}_`)) continue
+    const val = copyValue(content[f.key])
+    if (!val) continue
+    out.push([f.key, val])
+  }
+  return out
+}
+
+/**
  * Bloco IMAGE_SLOTS: uma seção por campo type=image. Vazio ("") quando o
  * bloco não tem campo de imagem (o caller cai no IMAGE_BRIEF legado).
  */
@@ -205,6 +236,13 @@ export function buildImageSlots(
         "areas_de_texto (o HTML escreve estes textos POR CIMA da imagem — deixe estas regiões limpas, sem desenhar nada nelas):",
       )
       for (const [k, v] of grupo) lines.push(`- ${k}: ${v}`)
+    }
+    const noDesenho = textosNoDesenho(f, list, cont)
+    if (noDesenho.length > 0) {
+      lines.push(
+        "texto_no_desenho (DESENHE estas palavras DENTRO da imagem, exatamente como estão entre aspas — não traduza, não reescreva, não abrevie e não invente outras; esta grafia é a que chega ao cliente):",
+      )
+      for (const [k, v] of noDesenho) lines.push(`- ${k}: "${v}"`)
     }
     const anchorKey = (opts?.anchorKey ?? "").trim()
     if (anchorKey && anchorKey !== f.key) {

@@ -483,7 +483,16 @@ export type ComponentFieldType =
 // copy = n8n escreve · imagem_gerada = agente de imagem cria · asset_fixo =
 // arte da biblioteca fica intacta (só texto sobreposto muda, se for campo).
 // Ausente → derivação: type='image' → imagem_gerada; senão copy.
-export type FieldNature = "copy" | "imagem_gerada" | "asset_fixo"
+/**
+ * Quem produz o valor final do campo. `copy_no_desenho` (09/09) é copy que
+ * o n8n escreve e o agente de IMAGEM desenha dentro da arte — não tem
+ * endereço no HTML. Ver FIELD_NATURES em shared/component-dimensions.
+ */
+export type FieldNature =
+  | "copy"
+  | "imagem_gerada"
+  | "asset_fixo"
+  | "copy_no_desenho"
 
 export interface ComponentOutputField {
   key: string
