@@ -4,6 +4,7 @@ import type { EmailComponentVariant } from "@/types/email-generation"
 import {
   buildAliasIndex,
   buildCatalog,
+  buildCatalogoEnxuto,
   buildTypeIndex,
   levantarHigieneDoVault,
   similaridadeDeDescricao,
@@ -443,5 +444,60 @@ describe("contrato da anatomia no catálogo (09/09)", () => {
     expect(r.json).toContain('"tem_cupom": true')
     expect(r.json).not.toContain("output_schema")
     expect(r.json).not.toContain("Use code: X")
+  })
+})
+
+// ── Catálogo enxuto (09/09) ─────────────────────────────────────────────
+//
+// O `json` completo custava 128k dos 190k chars da chamada do Curador. O
+// enxuto é o índice de títulos: uma linha por variante, com os mesmos ids
+// e eixos, para rankear e abrir a finalista por `ler_nota`.
+describe("buildCatalogoEnxuto", () => {
+  const desc =
+    "Hero de captação com cupom em destaque e CTA único, para loja que abre com incentivo. Segunda frase que não entra na linha."
+  const extras = new Map<string, CatalogVaultExtra>([
+    ["h1", { slug: "hero-1-cupom", objecao: ["preco"], registro: ["direto"], paleta: ["clara"], papel_na_peca: ["abre"], peso: "medio · 900px", convivencia: ["offer-2"], aliviador: ["incentivo"], profundidade: "afirmacao" }],
+  ])
+
+  it("uma linha por variante, agrupada por seção, com id, slug e eixos", () => {
+    const r = buildCatalog([v("h1", "hero", "Hero cupom", { description: desc }), v("b1", "body", "Corpo", { description: "Bloco de texto." })], extras)
+    expect(r.enxuto).toBe(buildCatalogoEnxuto(r.sections))
+    expect(r.enxuto).toContain("## hero (1)")
+    expect(r.enxuto).toContain("## body (1)")
+    const linha = r.enxuto.split("\n").find((l) => l.startsWith("- h1"))!
+    expect(linha).toContain("Hero cupom [hero-1-cupom]")
+    expect(linha).toContain("Hero de captação com cupom em destaque e CTA único, para loja que abre com incentivo.")
+    expect(linha).not.toContain("Segunda frase")
+    expect(linha).toContain("objeção: preco")
+    expect(linha).toContain("aliviador: incentivo")
+    expect(linha).toContain("peso: medio · 900px")
+    expect(linha).toContain("convivência: offer-2")
+    // Sem nota no vault: sem os campos do vault, sem ruído de "chave: ".
+    const corpo = r.enxuto.split("\n").find((l) => l.startsWith("- b1"))!
+    expect(corpo).not.toContain("objeção")
+    expect(corpo).toContain("Bloco de texto.")
+  })
+
+  it("todo variant_id do catálogo aparece; contagem por seção bate com sections", () => {
+    // A biblioteca real tem ~50 variantes e nem todas têm nota no vault;
+    // 50 com TODOS os eixos preenchidos é o pior caso plausível.
+    const variants = Array.from({ length: 50 }, (_, i) =>
+      v(`id-${i}`, ["hero", "body", "offer", "products", "reviews", "footer"][i % 6], `Variante ${i}`, { description: desc, product_slots: i % 4 }),
+    )
+    const todasComExtra = new Map<string, CatalogVaultExtra>(
+      variants.map((x) => [x.id, { ...extras.get("h1")!, slug: `nota-${x.id}` }]),
+    )
+    const r = buildCatalog(variants, todasComExtra)
+    for (const x of variants) expect(r.enxuto).toContain(`- ${x.id} ·`)
+    const linhas = r.enxuto.split("\n").filter((l) => l.startsWith("- ")).length
+    expect(linhas).toBe(r.total)
+    for (const sec of r.sections) expect(r.enxuto).toContain(`## ${sec.section} (${sec.variantes.length})`)
+    expect(r.enxuto.length).toBeLessThanOrEqual(15_000)
+  })
+
+  it("é estável: mesma entrada em outra ordem gera o MESMO enxuto", () => {
+    const a = buildCatalog([v("1", "hero", "A"), v("2", "hero", "B"), v("3", "body", "C")])
+    const b = buildCatalog([v("3", "body", "C"), v("2", "hero", "B"), v("1", "hero", "A")])
+    expect(a.enxuto).toBe(b.enxuto)
   })
 })

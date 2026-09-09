@@ -52,6 +52,18 @@ export interface CuradorVaultKnowledge {
    * então o sync gravava e nenhum agente lia: o loader não pedia o kind.
    */
   lacunas: VaultDocRow[]
+  /**
+   * `componentes/_julgamento.md` (09/09) — a régua da casa: o que é veto,
+   * o que é desempate, o que pesa contra. Uma nota, servida INTEIRA ao
+   * Curador e ao Estruturador. Null enquanto o vault não a tiver.
+   */
+  julgamento: VaultDocRow | null
+  /**
+   * `componentes/doutrina/<slug>.md` (09/09) — doutrina de curso, com
+   * `fonte` obrigatória e `secao` no frontmatter (hero, assunto, copy…
+   * ou `geral`). Roteada por seção para a fase 2.
+   */
+  doutrinas: VaultDocRow[]
   /** `${eixo}/${slug}` → nota (ex.: "momento/welcome-1"). */
   eixos: Map<string, VaultDocRow>
   total: number
@@ -130,6 +142,8 @@ export function emptyCuradorVaultKnowledge(): CuradorVaultKnowledge {
     convivencias: [],
     requisitos: [],
     lacunas: [],
+    julgamento: null,
+    doutrinas: [],
     eixos: new Map(),
     total: 0,
   }
@@ -158,6 +172,12 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
       case "lacuna":
         k.lacunas.push(r)
         break
+      case "julgamento":
+        k.julgamento = r
+        break
+      case "doutrina":
+        k.doutrinas.push(r)
+        break
       case "eixo":
         if (r.grupo) k.eixos.set(`${r.grupo}/${r.slug}`, r)
         break
@@ -171,6 +191,7 @@ export function indexVaultDocs(rows: VaultDocRow[]): CuradorVaultKnowledge {
   k.convivencias.sort((a, b) => a.slug.localeCompare(b.slug))
   k.requisitos.sort((a, b) => a.slug.localeCompare(b.slug))
   k.lacunas.sort((a, b) => a.slug.localeCompare(b.slug))
+  k.doutrinas.sort((a, b) => a.slug.localeCompare(b.slug))
   return k
 }
 
@@ -185,7 +206,7 @@ export async function loadCuradorVaultKnowledge(): Promise<CuradorVaultKnowledge
       .from("email_vault_docs")
       .select("kind, grupo, slug, variant_id, frontmatter, body_md")
       .eq("is_active", true)
-      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo", "lacuna"])
+      .in("kind", ["protocolo", "secao", "variante", "convivencia", "requisito", "eixo", "lacuna", "julgamento", "doutrina"])
     if (error) {
       log.warn("load_failed", { error: error.message })
       return emptyCuradorVaultKnowledge()
@@ -311,6 +332,69 @@ export function buildProtocoloBlock(k: CuradorVaultKnowledge): string {
     return "(vault de componentes não sincronizado — siga as regras de seleção abaixo e os metadados do catálogo)"
   }
   return clamp(semMomento(k.protocolo.body_md), 24_000)
+}
+
+/** Teto do julgamento no prompt — o mesmo do sync (`JULGAMENTO_MAX_CHARS`). */
+const JULGAMENTO_PROMPT_MAX = 8_000
+/** Teto de cada doutrina no prompt — o mesmo do sync (`DOUTRINA_MAX_CHARS`). */
+const DOUTRINA_PROMPT_MAX = 6_000
+/** Doutrinas por seção: acima disso o bloco vira segundo catálogo. */
+const DOUTRINA_MAX_NOTAS = 3
+
+/**
+ * A régua da casa, inteira. Ausência é DECLARADA — o modelo que recebe um
+ * bloco vazio sem explicação sai procurando a regra em outro lugar (lição
+ * do `exige` e do `momento`).
+ */
+export function buildJulgamentoBlock(k: CuradorVaultKnowledge): string {
+  if (!k.julgamento) return "(sem nota de julgamento no vault — aplique só o protocolo e os metadados do catálogo)"
+  return clamp(k.julgamento.body_md, JULGAMENTO_PROMPT_MAX)
+}
+
+/** A(s) seção(ões) que uma doutrina declara servir; `geral` quando não declara. */
+export function secoesDaDoutrina(doc: VaultDocRow): string[] {
+  const fm = doc.frontmatter
+  for (const key of ["secao", "seção", "secoes", "section"]) {
+    const v = fm[key]
+    if (typeof v === "string" && v.trim()) return [v.trim().toLowerCase()]
+    if (Array.isArray(v)) {
+      const out = v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().toLowerCase())
+      if (out.length > 0) return out
+    }
+  }
+  return ["geral"]
+}
+
+/**
+ * Doutrina da seção pedida + as `geral`, cada uma com a fonte no título.
+ * `secao: "geral"` devolve só as gerais. Teto de 3 notas e 6k cada: é
+ * apoio à decisão, não um segundo catálogo. Ausência declarada.
+ */
+export function buildDoutrinaBlock(k: CuradorVaultKnowledge, secao: string | "geral"): string {
+  const alvo = secao.trim().toLowerCase() || "geral"
+  const escolhidas = k.doutrinas.filter((d) => {
+    const s = secoesDaDoutrina(d)
+    return s.includes(alvo) || (alvo !== "geral" && s.includes("geral"))
+  })
+  if (escolhidas.length === 0) {
+    return alvo === "geral"
+      ? "(sem doutrina geral no vault)"
+      : `(sem doutrina para a seção ${alvo} no vault)`
+  }
+  // Específica da seção antes da geral: a que fala desta peça pesa mais.
+  const ordenadas = [...escolhidas].sort((a, b) => {
+    const ea = secoesDaDoutrina(a).includes(alvo) ? 0 : 1
+    const eb = secoesDaDoutrina(b).includes(alvo) ? 0 : 1
+    return ea - eb || a.slug.localeCompare(b.slug)
+  })
+  return ordenadas
+    .slice(0, DOUTRINA_MAX_NOTAS)
+    .map((d) => {
+      const fonte = typeof d.frontmatter.fonte === "string" ? d.frontmatter.fonte.trim() : ""
+      const titulo = fonte ? `## Doutrina · ${d.slug} (fonte: ${fonte})` : `## Doutrina · ${d.slug}`
+      return `${titulo}\n${clamp(d.body_md, DOUTRINA_PROMPT_MAX)}`
+    })
+    .join("\n\n")
 }
 
 export function buildConvivenciaBlock(k: CuradorVaultKnowledge): string {
@@ -524,57 +608,145 @@ export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]):
 }
 
 // ── Índice de pastas do Obsidian (consulta sob demanda, 02/09) ──────────
+//
+// 09/09: o índice deixou de ser só contagem. "componentes/variantes/hero/
+// (12 notas)" não diz ao Curador QUAL nota abrir — e `consultou_vault` era
+// 3/8 runs justamente porque abrir uma nota às cegas raramente muda a
+// decisão. Agora cada pasta lista `slug — primeira frase`, que é o que o
+// Advisor Max recebe do catálogo de títulos dele e o que faz a consulta
+// sob demanda valer a chamada.
 
 export interface IndiceDoVault {
-  /** pasta relativa à base do vault → nº de notas sincronizadas. */
-  pastas: Array<{ pasta: string; notas: number }>
+  /** pasta relativa à base do vault → nº de notas sincronizadas + resumo por nota. */
+  pastas: Array<{
+    pasta: string
+    notas: number
+    /** `slug — primeira frase` por nota (aditivo; vazio em índice antigo). */
+    resumos?: Array<{ slug: string; resumo: string | null }>
+  }>
 }
 
-/** Árvore de pastas derivada dos `file_path` sincronizados (puro). */
-export function buildIndiceDoVault(paths: ReadonlyArray<string>): IndiceDoVault {
-  const contagem = new Map<string, number>()
-  for (const raw of paths) {
+/** Entrada do índice: só o caminho, ou o caminho com o corpo para o resumo. */
+export type IndiceDoVaultEntrada = string | { file_path: string; body_md?: string | null }
+
+/** Corte do resumo por nota — uma linha de leitura. */
+const PRIMEIRA_FRASE_MAX = 160
+/** Teto do índice renderizado — passa disso, as pastas mais cheias perdem o resumo. */
+const INDICE_MAX_CHARS = 12_000
+
+/**
+ * A primeira linha de prosa de uma nota (puro): pula título, tabela, lista,
+ * citação e bloco de código, porque nenhum deles diz do que a nota trata —
+ * o título repete o slug e a lista começa no meio do assunto. Corta em 160
+ * chars numa fronteira de palavra. Nota sem prosa devolve null, e o
+ * render diz "(sem resumo)" em vez de inventar um.
+ */
+export function primeiraFrase(bodyMd: string | null | undefined): string | null {
+  if (!bodyMd) return null
+  let emCodigo = false
+  for (const raw of bodyMd.split("\n")) {
+    const linha = raw.trim()
+    if (linha.startsWith("```")) {
+      emCodigo = !emCodigo
+      continue
+    }
+    if (emCodigo || !linha) continue
+    if (/^[#|>\-*`]/.test(linha)) continue
+    if (/^\d+\.\s/.test(linha)) continue
+    // Wikilink/ênfase viram texto: "[[x|y]]" → "y", "**x**" → "x".
+    const limpa = linha
+      .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, "$1")
+      .replace(/\[\[([^\]]+)\]\]/g, "$1")
+      .replace(/[*_`]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+    if (!limpa) continue
+    if (limpa.length <= PRIMEIRA_FRASE_MAX) return limpa
+    const corte = limpa.lastIndexOf(" ", PRIMEIRA_FRASE_MAX)
+    return `${limpa.slice(0, corte > 60 ? corte : PRIMEIRA_FRASE_MAX).trimEnd()}…`
+  }
+  return null
+}
+
+/** Árvore de pastas derivada dos `file_path` sincronizados, com resumo por nota (puro). */
+export function buildIndiceDoVault(entradas: ReadonlyArray<IndiceDoVaultEntrada>): IndiceDoVault {
+  const porPasta = new Map<string, Array<{ slug: string; resumo: string | null }>>()
+  for (const e of entradas) {
+    const raw = typeof e === "string" ? e : e.file_path
     const p = (raw ?? "").replace(/^\/+/, "")
     const partes = p.split("/")
     if (partes.length < 2) continue
     const pasta = partes.slice(0, -1).join("/")
-    contagem.set(pasta, (contagem.get(pasta) ?? 0) + 1)
+    const slug = partes[partes.length - 1].replace(/\.md$/i, "")
+    const resumo = typeof e === "string" ? null : primeiraFrase(e.body_md)
+    const arr = porPasta.get(pasta) ?? []
+    arr.push({ slug, resumo })
+    porPasta.set(pasta, arr)
   }
   return {
-    pastas: Array.from(contagem.entries())
-      .map(([pasta, notas]) => ({ pasta, notas }))
+    pastas: Array.from(porPasta.entries())
+      .map(([pasta, resumos]) => ({
+        pasta,
+        notas: resumos.length,
+        resumos: [...resumos].sort((a, b) => a.slug.localeCompare(b.slug)),
+      }))
       .sort((a, b) => a.pasta.localeCompare(b.pasta)),
   }
 }
 
+/**
+ * Render: pasta com contagem e, embaixo, uma linha por nota. Acima do teto
+ * de 12k as pastas mais cheias voltam a só contagem (o que já era o índice
+ * até 09/09) — a mais cheia é a que mais custa e menos precisa do resumo,
+ * porque o Curador já recebe o catálogo das variantes por outra var.
+ */
 export function renderIndiceDoVault(indice: IndiceDoVault): string {
   if (indice.pastas.length === 0) return "(vault não sincronizado — nada a consultar)"
-  return indice.pastas.map((p) => `- ${p.pasta}/ (${p.notas} nota${p.notas === 1 ? "" : "s"})`).join("\n")
+  const linhaPasta = (p: IndiceDoVault["pastas"][number]) =>
+    `- ${p.pasta}/ (${p.notas} nota${p.notas === 1 ? "" : "s"})`
+  const linhasNotas = (p: IndiceDoVault["pastas"][number]) =>
+    (p.resumos ?? []).map((n) => `  · ${n.slug} — ${n.resumo ?? "(sem resumo)"}`)
+
+  const comResumo = new Set(indice.pastas.filter((p) => (p.resumos?.length ?? 0) > 0).map((p) => p.pasta))
+  const render = () =>
+    indice.pastas
+      .map((p) => (comResumo.has(p.pasta) ? [linhaPasta(p), ...linhasNotas(p)].join("\n") : linhaPasta(p)))
+      .join("\n")
+
+  let out = render()
+  const porTamanho = [...indice.pastas].sort((a, b) => b.notas - a.notas)
+  for (const p of porTamanho) {
+    if (out.length <= INDICE_MAX_CHARS) break
+    if (!comResumo.has(p.pasta)) continue
+    comResumo.delete(p.pasta)
+    out = render()
+  }
+  return out
 }
 
 /**
  * Carrega o índice das 4 tabelas sincronizadas do vault (todas guardam
- * `file_path`). Fail-open → índice vazio.
+ * `file_path` e `body_md`). Fail-open → índice vazio.
  */
 export async function loadIndiceDoVault(): Promise<IndiceDoVault> {
   try {
     const admin = createAdminClient()
     const tabelas = ["email_vault_docs", "email_intents", "email_structure_refs", "email_learnings"] as const
     const resultados = await Promise.all(
-      tabelas.map((t) => admin.from(t).select("file_path").eq("is_active", true)),
+      tabelas.map((t) => admin.from(t).select("file_path, body_md").eq("is_active", true)),
     )
-    const paths: string[] = []
+    const entradas: IndiceDoVaultEntrada[] = []
     for (const r of resultados) {
       if (r.error) {
         log.warn("indice_load_failed", { error: r.error.message })
         continue
       }
       for (const row of r.data ?? []) {
-        const fp = (row as { file_path?: string }).file_path
-        if (typeof fp === "string" && fp) paths.push(fp)
+        const { file_path, body_md } = row as { file_path?: string; body_md?: string | null }
+        if (typeof file_path === "string" && file_path) entradas.push({ file_path, body_md: body_md ?? null })
       }
     }
-    return buildIndiceDoVault(paths)
+    return buildIndiceDoVault(entradas)
   } catch (err) {
     log.warn("indice_load_threw", { error: err instanceof Error ? err.message : String(err) })
     return { pastas: [] }
