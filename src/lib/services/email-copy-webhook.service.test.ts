@@ -350,7 +350,7 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
       // Este outline de teste não tem coupon_codes → sem cupom no idioma.
       coupon_code: null,
     })
-    expect(email.estrutura_geral.guidance).toContain("INCENTIVO NÃO CONFIRMADO")
+    expect(email.estrutura_geral?.guidance).toContain("INCENTIVO NÃO CONFIRMADO")
     expect(email.blueprint?.objective).toBe("OBJ-GLOBAL")
   })
 
