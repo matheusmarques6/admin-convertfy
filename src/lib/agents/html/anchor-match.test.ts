@@ -285,6 +285,31 @@ describe("assignTextAnchors — desempates", () => {
     expect(cta[0].desfecho).toBe("sem_lugar")
   })
 
+  // 10/09, `welcome - hero sectiion 8`: o preheader oculto da variante é o
+  // token `TEXTO_DE_PREHEADER_AQUI`, e "header" é substring dele. A fronteira
+  // de palavra só vale para example de 2–3 chars, então "Header" (6) ancorava
+  // no MIOLO do token — e o texto verdadeiro do hero virava ocorrência extra.
+  it("example não ancora dentro de token da plataforma", () => {
+    const html =
+      '<div style="display:none">TEXTO_DE_PREHEADER_AQUI</div><h1>Header</h1>'
+    const index = buildTextIndex(html)
+    const out = assignTextAnchors(index, [field("headline_l1", "Header")])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+    // O range é o <h1>, não o miolo do preheader — e sem ocorrência extra.
+    expect(html.slice(out[0].range!.start, out[0].range!.end)).toBe("Header")
+    expect(out[0].extraRanges ?? []).toEqual([])
+  })
+
+  // O outro lado da mesma régua: o token INTEIRO continua endereçável — é
+  // assim que `INICIAL_1_AQUI` da `review 8` recebe a letra derivada do nome.
+  it("token da plataforma inteiro segue ancorável", () => {
+    const index = buildTextIndex("<td>INICIAL_1_AQUI</td>")
+    const out = assignTextAnchors(index, [
+      field("review_1_initial", "INICIAL_1_AQUI"),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_exemplo")
+  })
+
   // Preço do incidente: "$64" isolado ancora; o valor real entra no lugar.
   it("preço curto do template é substituível", () => {
     const index = buildTextIndex("<td>De $64 por $59</td>")
