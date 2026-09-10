@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { campanhasNoPeriodo } from "@/lib/reports/periodo"
 import { janelaDoPeriodo } from "@/lib/dashboard/refresh-lote"
+import { lerPaginado } from "@/lib/supabase/paginar"
 
 export interface UnifiedRevenueRow {
   store_id: string
@@ -181,25 +182,36 @@ export async function getUnifiedCampaigns(
   `
   const selectOmnisend = selectKlaviyo
 
+  // PAGINADO, e com ORDEM ESTÁVEL.
+  //
+  // O sync persiste TODAS as campanhas da conta sob o rótulo do período, e
+  // estas consultas vinham sem paginação nenhuma: o PostgREST entrega no
+  // máximo 1.000 linhas e não avisa que cortou. Com 5.734 linhas na tabela,
+  // as cinco rotas do dashboard que chamam esta função podiam estar somando
+  // um subconjunto — e sem `ORDER BY` o subconjunto nem é o mesmo entre
+  // duas chamadas, porque o Postgres não garante ordem sem pedido.
+  //
+  // A ordem também é o que torna a paginação CORRETA: `.range()` sobre uma
+  // consulta sem ordem pode repetir e pular linhas entre as páginas. Por
+  // isso o desempate por `campaign_id` — `store_id` sozinho não é único.
+  const pagina = (tabela: string, cols: string) =>
+    lerPaginado<Record<string, unknown>>((de, ate) => {
+      let q = supabase
+        .from(tabela)
+        .select(cols)
+        .eq("org_id", orgId)
+        .eq("period_label", periodLabel)
+      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
+      return q
+        .order("store_id")
+        .order("campaign_id")
+        .range(de, ate)
+        .returns<Record<string, unknown>[]>()
+    })
+
   const [klaviyoRes, omnisendRes] = await Promise.all([
-    (async () => {
-      let q = supabase
-        .from("klaviyo_campaign_metrics")
-        .select(selectKlaviyo)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
-    (async () => {
-      let q = supabase
-        .from("omnisend_campaign_metrics")
-        .select(selectOmnisend)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
+    pagina("klaviyo_campaign_metrics", selectKlaviyo),
+    pagina("omnisend_campaign_metrics", selectOmnisend),
   ])
 
   // O sync persiste TODAS as campanhas da conta sob o rótulo do período —
@@ -218,8 +230,8 @@ export async function getUnifiedCampaigns(
       janela.fim,
     )
 
-  const klaviyoRows = noPeriodo(dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
-  const omnisendRows = noPeriodo(dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
+  const klaviyoRows = noPeriodo(dedupRows((klaviyoRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
+  const omnisendRows = noPeriodo(dedupRows((omnisendRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
 
   const klaviyo = klaviyoRows.map((r) => ({
     ...mapCampaignRow(r),
@@ -247,10 +259,12 @@ export async function getUnifiedFlows(
     conversion_value, bounced, unsubscribed, fetched_at
   `
 
-  const [klaviyoRes, omnisendRes] = await Promise.all([
-    (async () => {
+  // Paginado e ordenado pela mesma razão das campanhas: o teto de 1.000
+  // linhas do PostgREST é silencioso, e `.range()` sem ordem repete e pula.
+  const pagina = (tabela: string) =>
+    lerPaginado<Record<string, unknown>>((de, ate) => {
       let q = supabase
-        .from("klaviyo_flow_metrics")
+        .from(tabela)
         .select(selectCols)
         .eq("org_id", orgId)
         .eq("period_label", periodLabel)
@@ -260,21 +274,19 @@ export async function getUnifiedFlows(
       if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
       if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
       return q
-    })(),
-    (async () => {
-      let q = supabase
-        .from("omnisend_flow_metrics")
-        .select(selectCols)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
+        .order("store_id")
+        .order("flow_id")
+        .range(de, ate)
+        .returns<Record<string, unknown>[]>()
+    })
+
+  const [klaviyoRes, omnisendRes] = await Promise.all([
+    pagina("klaviyo_flow_metrics"),
+    pagina("omnisend_flow_metrics"),
   ])
 
-  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
-  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+  const klaviyoRows = dedupRows((klaviyoRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+  const omnisendRows = dedupRows((omnisendRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
 
   const klaviyo = klaviyoRows.map((r) => ({
     ...mapFlowRow(r),

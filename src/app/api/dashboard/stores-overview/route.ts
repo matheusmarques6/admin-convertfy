@@ -17,6 +17,7 @@ import {
   type DailyTrendRow,
 } from "@/lib/services/ops-dashboard/portfolio"
 import { logger } from "@/lib/logger"
+import { lerPaginado } from "@/lib/supabase/paginar"
 
 const log = logger.child("StoresOverview")
 
@@ -82,18 +83,31 @@ async function handleGet(request: NextRequest) {
       getUnifiedRevenue(supabase, orgId, [period], storeIds),
       getUnifiedCampaigns(supabase, orgId, period, storeIds),
       getUnifiedFlows(supabase, orgId, period, storeIds, true),
-      supabase
-        .from("store_daily_metrics")
-        .select("store_id, metric_date, delivered, opened")
-        .eq("org_id", orgId)
-        .gte("metric_date", win.from)
-        .lte("metric_date", win.to),
+      // PAGINADO: o PostgREST corta em 1.000 linhas sem avisar, e aqui são
+      // uma linha por loja por dia — 63 lojas × 90 dias ≈ 5.670. Sem
+      // paginar, dois terços da janela sumiam e metade das lojas ganhava
+      // uma seta de tendência calculada sobre outro pedaço de tempo. Um
+      // `.limit()` maior não resolveria: o teto do servidor vence.
+      lerPaginado<DailyTrendRow>((de, ate) =>
+        supabase
+          .from("store_daily_metrics")
+          .select("store_id, metric_date, delivered, opened")
+          .eq("org_id", orgId)
+          .gte("metric_date", win.from)
+          .lte("metric_date", win.to)
+          // A ordem tem de DESEMPATAR: `.range()` sobre consulta sem ordem
+          // total repete e pula linhas entre as páginas, e há uma linha por
+          // loja por dia — só a data não é única.
+          .order("metric_date")
+          .order("store_id")
+          .range(de, ate)
+          .returns<DailyTrendRow[]>(),
+      ),
     ])
     // Trend é enfeite: erro aqui (ex.: migration da tabela pendente) não
-    // pode derrubar a visão inteira — degrada pra null.
-    const trends = dailyQ.error
-      ? new Map<string, "up" | "down" | null>()
-      : computeStoreTrends((dailyQ.data ?? []) as DailyTrendRow[], midDate(win))
+    // pode derrubar a visão inteira — degrada pra null (`lerPaginado`
+    // devolve o que conseguiu ler, marcado como truncado).
+    const trends = computeStoreTrends(dailyQ.linhas, midDate(win))
 
     const revMap = new Map(revenueRows.map((r) => [r.store_id, r]))
     const campByStore = new Map<string, typeof campaignRows>()
