@@ -29,6 +29,26 @@ export interface FormatModelResult {
   tokensOutput: number
   /** Custo real em USD do OpenRouter (`usage.cost`); 0 no caminho Anthropic. */
   costUsd: number
+  /**
+   * Por que o modelo parou, e quanto ele gastou pensando.
+   *
+   * `finishReason === "length"` é a assinatura de RESPOSTA CORTADA no teto:
+   * o parser a jusante vai reclamar de JSON inválido, e a mensagem dele
+   * manda investigar o lugar errado — o modelo sabia responder, não coube.
+   * Ver `truncou()`.
+   */
+  finishReason?: string
+  reasoningTokens?: number
+}
+
+/**
+ * A resposta foi cortada no teto de saída?
+ *
+ * O OpenRouter usa `"length"`; a Anthropic direta usa `"max_tokens"`. Os dois
+ * significam a mesma coisa e nenhum dos dois é erro do parser.
+ */
+export function truncou(finishReason: string | undefined): boolean {
+  return finishReason === "length" || finishReason === "max_tokens"
 }
 
 export async function invokeFormatModel(params: {
@@ -76,6 +96,10 @@ export async function invokeFormatModel(params: {
       tokensInput: or.tokensInput,
       tokensOutput: or.tokensOutput,
       costUsd: or.costUsd,
+      ...(or.finishReason ? { finishReason: or.finishReason } : {}),
+      ...(typeof or.reasoningTokens === "number"
+        ? { reasoningTokens: or.reasoningTokens }
+        : {}),
     }
   }
 
@@ -128,5 +152,7 @@ export async function invokeFormatModel(params: {
     tokensInput: resp.usage.input_tokens,
     tokensOutput: resp.usage.output_tokens,
     costUsd: 0, // Anthropic-direto: sem accounting do OpenRouter.
+    // `stop_reason: "max_tokens"` é o `finish_reason: "length"` daqui.
+    ...(resp.stop_reason ? { finishReason: resp.stop_reason } : {}),
   }
 }

@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Trash2, Check, Plus, Loader2, Ruler } from "lucide-react"
+import { Layers, Trash2, Check, Plus, Loader2, Ruler, ImageOff } from "lucide-react"
 import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
@@ -32,6 +32,7 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { VariantEditor, type VariantDraft } from "./variant-editor"
 import { VariantTestCard } from "./variant-test-card"
+import { Base64ExtractDialog } from "./base64-extract-dialog"
 import { WidthNormalizeDialog } from "./width-normalize-dialog"
 import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
@@ -223,6 +224,7 @@ export function ComponentsWorkspace() {
   const [draft, setDraft] = useState<VariantDraft>(emptyDraft(FIRST_CATEGORY))
   const [saving, setSaving] = useState(false)
   const [widthDialog, setWidthDialog] = useState(false)
+  const [base64Dialog, setBase64Dialog] = useState(false)
 
   const load = useCallback(async (): Promise<EmailComponentVariant[]> => {
     setLoading(true)
@@ -438,7 +440,22 @@ export function ComponentsWorkspace() {
         >
           <Ruler size={15} /> Largura 600px na biblioteca
         </EGBtn>
+        <EGBtn
+          onClick={() => setBase64Dialog(true)}
+          title="Tira as imagens embutidas em base64 do HTML e as põe no Storage"
+        >
+          <ImageOff size={15} /> Imagem embutida
+        </EGBtn>
       </div>
+      <Base64ExtractDialog
+        open={base64Dialog}
+        onClose={() => setBase64Dialog(false)}
+        onApplied={async () => {
+          const list = await load()
+          const v = selectedId ? list.find((x) => x.id === selectedId) : null
+          if (v) setDraft(draftFromVariant(v))
+        }}
+      />
       <WidthNormalizeDialog
         open={widthDialog}
         onClose={() => setWidthDialog(false)}

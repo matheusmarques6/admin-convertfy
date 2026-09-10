@@ -151,6 +151,14 @@ export const ColorFormatPromptVarsSchema = z.object({
   font_heading: z.string(),
   font_body: z.string(),
   pesquisa_full_text: z.string(),
+  // A SEQUÊNCIA do documento — o que o inventário de cores nunca disse. Ele
+  // conta quantas vezes cada cor aparece; estas duas dizem em que ordem as
+  // faixas estão e qual botão pousa em qual delas, que é o que as regras de
+  // ritmo (R2/R3/R5/R6) e a inversão do CTA (C3) exigem para serem
+  // executáveis. Vazias (`[]`) num documento sem marcadores — e o prompt diz
+  // ao agente o que fazer nesse caso.
+  faixas_json: z.string(),
+  ctas_json: z.string(),
   email_name: z.string(),
   subject: z.string(),
 })

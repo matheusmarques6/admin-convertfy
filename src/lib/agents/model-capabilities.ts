@@ -55,6 +55,44 @@ export function aceitaCorteDeRaciocinio(model: string): boolean {
 }
 
 /**
+ * Claude com thinking OPCIONAL — aceita `reasoning: {enabled:false}` sem 400.
+ *
+ * Fable e Mythos ficam FORA: lá o raciocínio é obrigatório e o corte derruba
+ * a chamada. Por isso a regex nomeia as três famílias em vez de casar
+ * `anthropic/` inteiro.
+ */
+const CLAUDE_PENSA_OPCIONALMENTE = /claude-(?:sonnet|opus|haiku)/i
+
+/**
+ * O step é MECÂNICO — produz um JSON pequeno e não melhora pensando?
+ *
+ * Duas perguntas diferentes moram neste módulo, e misturá-las custou um
+ * efeito colateral que um teste pegou: "o modelo pensa por padrão e aceita
+ * corte" (`aceitaCorteDeRaciocinio`) é sobre o MODELO; "este step deve
+ * cortar" é sobre o TRABALHO. O Curador e o Estruturador rodam em Claude e
+ * PRECISAM deliberar — cortá-los junto seria pagar um bug com outro.
+ *
+ * Medido em 10/09 (`color_format`, Boxer Shop): `anthropic/claude-sonnet-5`
+ * gastou 16.384 tokens de saída — o teto EXATO — e devolveu 4.417 chars de
+ * texto. ~14.900 tokens de raciocínio para um JSON de ~1.200. A primeira
+ * tentativa morreu truncada; a segunda passou com 286 tokens de folga, que é
+ * sorte, não margem. O custo é pago duas vezes: no dinheiro e nos 190s por
+ * chamada, que com o retry quase estouram o `PHASE2_CHAIN_BUDGET_MS`.
+ *
+ * Vale para os steps de formatação que emitem ops/plano (cor, imagem,
+ * tipografia) — todos fail-open, ou seja, todos capazes de falhar em
+ * silêncio quando a resposta não cabe.
+ */
+export function corteParaStepMecanico(model: string): {
+  reasoning?: { enabled: false }
+} {
+  if (process.env.FORMAT_OPS_REASONING === "on") return {}
+  return aceitaCorteDeRaciocinio(model) || CLAUDE_PENSA_OPCIONALMENTE.test(model)
+    ? { reasoning: { enabled: false } }
+    : {}
+}
+
+/**
  * O trecho de request que corta o raciocínio, ou nada.
  *
  * Feito para spread direto no corpo da chamada:

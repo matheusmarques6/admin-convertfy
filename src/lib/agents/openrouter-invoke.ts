@@ -477,6 +477,21 @@ export interface OpenRouterInvokeResult {
   tokensOutput: number
   /** Custo real em USD do OpenRouter (`usage.cost`); 0 quando ausente. */
   costUsd: number
+  /**
+   * `finish_reason` cru e tokens de raciocínio. O `callOnce` já devolvia o
+   * `ParsedBody` inteiro — os dois campos CHEGAVAM aqui e morriam neste
+   * tipo, e com eles a única forma de distinguir "o modelo escreveu demais"
+   * de "o modelo pensou demais".
+   *
+   * O que custou descobrir isso (10/09, `color_format` na Boxer Shop): saída
+   * de 16.384 tokens — o teto EXATO — e erro "output sem objeto JSON". A
+   * segunda tentativa passou com 16.098 e gravou 4.417 chars de texto, ou
+   * seja ~1.200 tokens úteis: os outros ~14.900 eram raciocínio invisível.
+   * Sem estes dois campos o diagnóstico foi por subtração, e só porque a run
+   * de sucesso existia para comparar.
+   */
+  finishReason?: string
+  reasoningTokens?: number
 }
 
 export async function invokeOpenRouter(

@@ -125,7 +125,7 @@ function rgbToHex(r: number, g: number, b: number): string | null {
 // Largura a partir da qual um fundo é SEÇÃO, não chip. O container do e-mail
 // tem 600px: 400 é "atravessa a largura", e deixa de fora fundo de botão
 // (~260px), pílula e badge, que não competem com a superfície do bloco.
-const LARGURA_DE_SECAO = 400
+export const LARGURA_DE_SECAO = 400
 
 // `(?!\d|%)` — `width="100%"` é a largura mais comum de e-mail (o wrapper) e
 // sem a guarda ela entraria como 100px: um container que atravessa a tela
@@ -160,7 +160,7 @@ export function declaredWidth(openTag: string): number | null {
  * `>` já ficou para trás. Sem essa guarda, toda cor do bloco de dark mode
  * herdaria a largura do primeiro tag do documento.
  */
-function openTagAt(html: string, idx: number): string | null {
+export function openTagAt(html: string, idx: number): string | null {
   const lt = html.lastIndexOf("<", idx)
   if (lt === -1 || !/[a-zA-Z]/.test(html[lt + 1] ?? "")) return null
   const gt = html.indexOf(">", lt)
@@ -285,6 +285,17 @@ export function applyRecolor(
   from: string,
   to: string,
   where?: ColorContext,
+  /**
+   * Restringe a troca a um trecho do documento — é o que permite ao agente
+   * decidir por LUGAR ("escureça ESTA faixa") e não só por valor. Sem ele o
+   * comportamento é o de sempre: global.
+   *
+   * O filtro é por POSIÇÃO do hit, e não por recorte do html: `contextOf`
+   * precisa do documento inteiro para julgar o papel da ocorrência (ele
+   * olha 60 chars para trás), e cortar o miolo antes faria a primeira
+   * declaração do bloco perder o contexto e cair em "outro".
+   */
+  dentroDe?: { start: number; end: number },
 ): { html: string; replaced: number } {
   const canonical = canonicalHex(from)
   const full = canonical.slice(1) // AABBCC
@@ -330,6 +341,7 @@ export function applyRecolor(
       // Escopo: o papel é julgado no documento ORIGINAL, igual ao
       // inventário que o agente leu.
       if (where && contextOf(html, start) !== where) continue
+      if (dentroDe && (start < dentroDe.start || start >= dentroDe.end)) continue
       hits.push({ start, end: start + m[0].length, replacement: replacementOf(m) })
     }
   }

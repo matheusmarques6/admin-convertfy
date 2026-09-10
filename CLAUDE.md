@@ -5482,8 +5482,103 @@ um pedido a mais.
 daqui — a chave do MCP é da Treuquell e o MCP do Supabase está
 expirado. As duas hipóteses que a auditoria decide num clique são o
 fuso do cadastro divergindo do fuso da brand e o atribuído ter saído
-sem calibração naquela geração. A rota existe; falta a tela que a
-consome.
+sem calibração naquela geração — as duas a um clique no botão
+"Receita".
+
+---
+
+## Cores & Botões decide o RITMO, e põe o CTA que falta (set/2026, migration 20261137)
+
+O `color_format` decidia por VALOR e só sabia escrever por valor: `recolor` é
+global, então num e-mail em que `#FFFFFF` é o fundo de quatro seções **não
+existia op capaz de escurecer uma delas**. As regras de ritmo do guia de cor
+(R2/R3/R5/R6) e a inversão do CTA por faixa (C3) eram inexecutáveis com ou sem
+prompt novo — faltava ferramenta, não instrução.
+
+**O que o agente recebe agora**: além do inventário de cores (que diz QUANTO
+cada cor aparece), `faixas_json` e `ctas_json` — a sequência dos fundos de
+seção na ordem da rolagem e cada botão com a faixa em que pousa.
+`color-faixas.ts` (puro) cruza `locateBlockRegions` (os marcadores `cfy:block`,
+que o runner mantém no documento até a fronteira de saída) com
+`backgroundDeclarations` (já na ordem do documento). **Sem marcadores as listas
+saem VAZIAS** e o prompt manda não decidir ritmo: deduzir a ordem de um
+documento legado é inventar endereço, e op endereçada errado pinta a seção
+errada.
+
+**O que ele devolve**: um `plano_de_cor` — `faixas` (por lugar), `botoes`
+(recolore um existente), `adicionar` (põe onde falta), `valores` (a
+conformidade de sempre), `rodape` e `lacunas`, cada decisão com o seu
+`porque`. Não há mais `{"ops":[…]}`: quem traduz é `plano-de-cor.ts`. Prompt
+antigo gravado no banco continua funcionando — plano vazio + `"ops"` no texto
+cai no caminho legado.
+
+**As armadilhas que os testes travam** (todas apareceram fazendo):
+
+- **`set_fundo` reescreve as DECLARAÇÕES da faixa, não o hex do bloco.** Trocar
+  "todo #FFFFFF daqui" repinta o card branco e o botão branco que moram dentro
+  dela — e desfaz a inversão que o `set_botao` acabou de fazer, que é o par que
+  o C3 exige.
+- **`panelFixes` pula ranges de botão.** Botão que colapsa no fundo da faixa é
+  decisão (faixa escura + botão escuro invertido), não painel colapsado;
+  reerguê-lo para `surface` devolve um retângulo cinza no meio da banda — o
+  defeito que a op existe para evitar, refeito pela guarda logo depois dela.
+- **A linha do `add_cta` carrega o fundo da faixa.** Ela é IRMÃ da linha que
+  pinta o bloco e não herda nada: sem isso o botão pousa no canvas e flutua
+  fora da banda. **Nenhum teste de string pega** — foi o render no Chromium.
+- **O guard `table_count_changed_by_ops`** derrubaria o step a cada CTA
+  inserido (o template embrulha o `<a>` numa tabela). A contagem esperada soma
+  `botoesInseridos`.
+- **Botão × link**: o `<td>` de 600px que pinta a seção não é fundo de botão.
+  Sem a guarda de largura, qualquer link dentro de faixa colorida virava CTA de
+  600px e uma op de cor sobre ele repintaria a seção.
+- **VML**: `set_botao` escreve no `<td>` **e** no `fillcolor` do `v:roundrect`,
+  senão o Outlook segue mostrando a cor antiga — quebra em silêncio, num
+  cliente só.
+- **`ja_aplicado` ≠ `find_not_found`**: cor que uma op de região já tirou do
+  documento é sobreposição benigna, não endereço inventado.
+
+**Adicionar CTA é trabalho DELE** (o nome é Cores & Botões, e a regra da casa é
+que todo bloco tem um). Ele escreve o label; **a URL nunca vem do modelo**:
+`destino` é um enum (`produto_do_bloco` | `cta_principal` | `loja`) e o código
+resolve, com cascata. Sem nenhum destino conhecido o botão não nasce — link
+para lugar nenhum é o erro que não se desfaz depois do envio. A curadoria NÃO
+mudou: `conflitoDeContrato` continua não eliminando variante sem CTA, porque
+eliminar por falta de botão empobrece a escolha (é o erro que já esvaziou uma
+peça) e o botão é adicionável depois.
+
+**A oferta é medida contra o FATO**: label que promete desconto com
+`incentivoExiste !== true` (`false` OU `null`, a régua do
+`oferta_sem_incentivo`) é recusado; label que diz 15% numa peça de 10% é
+recusado com os dois números. O agente escreve, o código confere — em vez de o
+agente ter de caçar qual cupom repetir.
+
+**O conhecimento entra INTEIRO no prompt** (`color-guia.ts`): o guia de
+disposição de cores completo + a doutrina de CTA (as 7 regras do deck do Max,
+os princípios de design, e a regra da casa com a precedência declarada — onde
+o deck diz 2-3 repetições e a casa diz todo bloco, a casa vence). System de
+6.580 → **19.507 chars (~4.877 tokens, US$ 0,015/e-mail)**. Resumir seria
+entregar o resumo do resumo.
+
+Junto vai a **alçada**, que é o que impede o modo de falha que este repo já
+pagou duas vezes (`momento` e `exige`): o guia é a especificação completa e
+boa parte é de outro dono. Ele EXECUTA os passos 1-5 e 7; **registra em
+`lacunas`** R1 (a hero vem enxertada), R4 (não há op de gradiente), R7 (o
+rodapé é decisão da loja), R8 (não há op de raio), o passo 6 (não recebe
+`flow_type`) e o "bloqueia a peça" (ele não reprova nada — o QA decide).
+
+**`color_plano_mode` nasce em `shadow`** (off | shadow | on): o agente decide
+tudo, o plano é gravado em `parsed_output` e **nada de faixa ou botão é
+aplicado**. Com 4.877 tokens de system num Kimi K3 o risco não é o custo, é a
+obediência — e o que se lê no shadow não é "as cores fazem sentido", é se cada
+`porque` **cita a regra do guia**. Decisão certa com justificativa vaga
+significa que ele não está lendo. Falha de leitura do modo também cai em
+shadow: errar para o lado de decidir-e-não-aplicar é barato.
+
+O plano na run é a mudança de auditoria: até aqui a telemetria via o efeito (as
+ops) e nunca o motivo, então "por que este e-mail ficou assim" não tinha
+resposta.
+
+---
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
