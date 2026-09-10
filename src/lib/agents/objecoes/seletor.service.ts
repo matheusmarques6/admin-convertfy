@@ -248,6 +248,11 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     user_template: cfgRow?.user_template?.trim() || DEFAULT_SELETOR_USER,
   }
   const candidatas = candidatasElegiveis(input.catalogo, input.contrato, input.flowType, input.jaAtacadas)
+  // O piso de `n_objecoes` cede ao catálogo (ver validarAlvo). Registrado
+  // aqui porque "o contrato pedia 4 e passou com 3" não pode ser mágica na
+  // telemetria — é o que explica a run aprovada abaixo do contrato.
+  const pisoEfetivo = Math.min(input.contrato.n_objecoes[0], candidatas.length)
+  const riscosDisponiveis = [...new Set(candidatas.map((c) => c.tipo_de_risco).filter(Boolean))]
   const baseVars: Record<string, string> = {
     brand_name: input.brandName,
     flow_type: input.flowType,
@@ -287,6 +292,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       shadow: input.mode !== "on",
       contrato: input.contrato,
       candidatas_elegiveis: candidatas.map((c) => c.id),
+      piso_efetivo: pisoEfetivo,
+      riscos_disponiveis: riscosDisponiveis,
       ja_atacadas: input.jaAtacadas,
       catalog_sha8: input.catalogSha8,
     },
@@ -400,7 +407,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     errorMessage: erros.join("; ").slice(0, 2000) || "seletor_failed",
     renderedPrompt: promptFinal || undefined, promptSegments: segmentsFinal, inputSummary,
     rawOutput: raw.slice(0, 12000) || undefined,
-    parsedOutput: { ...sintetico, _seletor: { shadow: input.mode !== "on", erros, avisos: avisosFinais, candidatas_elegiveis: candidatas.map((c) => c.id), target_id: row?.id ?? null } },
+    parsedOutput: { ...sintetico, _seletor: { shadow: input.mode !== "on", erros, avisos: avisosFinais, candidatas_elegiveis: candidatas.map((c) => c.id), piso_efetivo: pisoEfetivo, riscos_disponiveis: riscosDisponiveis, target_id: row?.id ?? null } },
     tokensInput: tokensIn, tokensOutput: tokensOut,
     costCents: resolveCostCents({ model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd }),
     durationMs: Date.now() - t0, retryCount: MAX_ATTEMPTS - 1,
