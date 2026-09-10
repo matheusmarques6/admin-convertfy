@@ -5348,6 +5348,28 @@ parecer baixo, o eixo a investigar é a **moeda gravada** em
 mesma proporção) — `/admin/tools/currency-audit` mostra a procedência, e
 `fxDegraded` só acusa câmbio que FALHOU, nunca moeda errada.
 
+**A moeda vinha do CACHE, não do cadastro** (relato: "o dólar da Blue Wolf
+não bate"). A matemática estava certa — `valor / rates[moeda]`, com o `rate`
+do tooltip invertido para reais por unidade, que é como se confere. O que
+estava errado era a MOEDA: `store_revenue_summary.currency` é um SNAPSHOT
+que o sync copia de `client_stores` e nunca revisita. Corrigir a moeda no
+cadastro NÃO reescreve as linhas de cache já gravadas, então a tela seguia
+convertendo pela moeda antiga até alguém re-sincronizar aquele período — e
+nada dizia que as duas discordavam. `stores-overview` era o pior caso:
+`rev?.currency || s.currency` preferia explicitamente o cache.
+`moedaDaLinha` (`lib/money/moeda-da-loja.ts`, puro, 5 testes) inverte a
+precedência — cadastro > cache, sem cadastro o cache vale (foi copiado de um
+que existia) — e **declara a divergência**: `currencyStale` vira o selo
+"moeda ⚠" na tabela de lojas, com o de/para no title. Converter pelo valor
+certo ainda pode estar errado no sentido oposto (o número foi gravado por um
+sync que acreditava na outra moeda), então o aviso importa tanto quanto a
+correção.
+
+**Como auditar a conversão, na tela**: passar o mouse sobre qualquer valor da
+tabela "Saúde das Lojas" abre a conta inteira — `US$ 7.400,00 × 5,3850 =
+R$ 39.849,00 · cotação de 09/09/2026`. `/admin/tools/currency-audit` mostra a
+PROCEDÊNCIA da moeda de cada loja (`nunca-conferido` ≠ OK) e o fuso.
+
 **Pendência declarada**: `total-revenue` e `kpi-series` convertem com
 `convertToBRL` (taxa de HOJE), não com `convertToBRLOn` (taxa do dia do
 período). Para uma janela recente a diferença é pequena; para 90 dias, não.

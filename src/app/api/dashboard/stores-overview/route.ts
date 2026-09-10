@@ -18,6 +18,7 @@ import {
 } from "@/lib/services/ops-dashboard/portfolio"
 import { logger } from "@/lib/logger"
 import { lerPaginado } from "@/lib/supabase/paginar"
+import { moedaDaLinha } from "@/lib/money/moeda-da-loja"
 
 const log = logger.child("StoresOverview")
 
@@ -144,7 +145,18 @@ async function handleGet(request: NextRequest) {
       // Currency: prioriza o que veio no revenue row (atualizado no sync),
       // depois client_stores.currency, depois BRL. Nao chamamos Klaviyo
       // Account API aqui — exigiria apiKey e 401 para lojas Omnisend.
-      const currency = rev?.currency || (s.currency as string | undefined) || "BRL"
+      // O CADASTRO vence o cache — a ordem estava invertida.
+      //
+      // `rev.currency` vem de `store_revenue_summary`, um SNAPSHOT que o
+      // sync copia da loja e nunca revisita. Corrigir a moeda no cadastro
+      // não reescreve as linhas já gravadas, então preferir o cache fazia a
+      // tela converter pela moeda ANTIGA até alguém re-sincronizar aquele
+      // período — sem nada dizendo que as duas discordavam.
+      const moedaResolvida = moedaDaLinha(
+        s.currency as string | undefined,
+        rev?.currency,
+      )
+      const currency = moedaResolvida.moeda
 
       // Card "RECEITA TOTAL" reflete a receita TOTAL da loja (de Shopify/
       // Statistics API), nao a receita atribuida a email marketing. Para
@@ -251,6 +263,9 @@ async function handleGet(request: NextRequest) {
         clientId: store.client_id,
         clientName: client?.name || "—",
         currency,
+        /** Cache gravado com outra moeda que o cadastro — precisa re-sincronizar. */
+        currencyStale: moedaResolvida.divergente || undefined,
+        currencyCached: moedaResolvida.moedaDoCache,
         // Health score REAL por loja (0-100), computado pelo cron
         // crm-health-compute (email35/rev30/tickets20/nps15). null quando
         // ainda nao calculado — o front trata como badge neutro.
