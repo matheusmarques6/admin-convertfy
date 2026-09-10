@@ -1,0 +1,651 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Consumo e contratos da fase 2</title>
+<style>
+:root{--bg:#FBFBFA;--card:#FFF;--ink:#1F2328;--mut:#6B7280;--line:#E5E7EB;--code:#F6F7F9}
+@media (prefers-color-scheme:dark){:root{--bg:#0F1115;--card:#171A20;--ink:#E7E9EC;--mut:#9AA1AC;--line:#272B33;--code:#12151A}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-block:40px;padding-left:20px;padding-right:20px}
+.wrap{max-width:940px;margin:0 auto}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+.lead{color:var(--mut);margin:0 0 24px;max-width:70ch}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:40px 0 12px;font-weight:600}
+h4{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:18px 0 8px;font-weight:600}
+code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+code.k{background:transparent;padding:0;color:var(--mut)}
+table{width:100%;min-width:760px;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+table.mini{min-width:600px;font-size:12.5px}
+table.mini td:first-child code{white-space:nowrap}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);padding:9px 10px;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.sm{color:var(--mut);font-size:12.5px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ctr{text-align:center}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.sim,.nao{font-size:11px;padding:1px 7px;border-radius:20px;font-weight:600;white-space:nowrap}
+.sim{background:#EEF2FF;color:#3730A3}.nao{background:#F3F4F6;color:#4B5563}
+@media (prefers-color-scheme:dark){.sim{background:#1E1B4B;color:#C7D2FE}.nao{background:#1F2937;color:#D1D5DB}}
+.selo-mini,.cls{font-size:11px;padding:1px 7px;border-radius:4px;border:1px solid;white-space:nowrap;font-weight:600}
+.carga{font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;vertical-align:1px}
+.carga.g{background:#FEE2E2;color:#991B1B}.carga.m{background:#FEF3C7;color:#92400E}.carga.v{background:#F3F4F6;color:#4B5563}
+@media (prefers-color-scheme:dark){.carga.g{background:#450A0A;color:#FCA5A5}.carga.m{background:#451A03;color:#FCD34D}.carga.v{background:#1F2937;color:#D1D5DB}}
+.rolagem{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.rolaviso{display:none;font-size:12.5px;margin:0 0 8px}
+@media (max-width:820px){.rolaviso{display:block}}
+.no{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin:14px 0}
+.no h3{margin:0 0 12px;font-size:17px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.num-badge,.num{}
+.no h3 .num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;border:1px solid;font-size:12px;font-weight:700;flex:none}
+dl{display:grid;grid-template-columns:140px 1fr;gap:6px 14px;margin:0 0 6px;font-size:13.5px}
+@media (max-width:560px){dl{grid-template-columns:1fr;gap:2px 0}dt{margin-top:8px}}
+dt{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px}
+dd{margin:0}
+.obs{font-size:13.5px;border-left:2px solid var(--line);padding-left:12px;margin:12px 0;color:var(--ink)}
+.selo{font-size:13px;padding:9px 12px;border:1px solid;border-radius:6px;margin:14px 0 4px}
+.aviso{background:#FFFBEB;border:1px solid #FDE68A;color:#78350F;border-radius:8px;padding:16px 18px;margin:0 0 24px;font-size:13.5px}
+@media (prefers-color-scheme:dark){.aviso{background:#2A1F07;border-color:#78350F;color:#FDE68A}}
+.aviso b{color:inherit}
+pre{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:13px;overflow-x:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;margin:10px 0 0;white-space:pre-wrap;word-break:break-word}
+.nota{font-size:13.5px;color:var(--mut);max-width:74ch}
+.mini-nota{margin:8px 0 0}
+ul{padding-left:20px;font-size:14px}li{margin:7px 0}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--mut);font-size:12.5px}
+</style></head><body><div class="wrap">
+
+<h1>Quanto entra, quanto sai</h1>
+<p class="lead">Por agente da fase 2: o tamanho do prompt, o teto de saída e o preço; a <b>procedência de cada var</b> que o prompt carrega; e o formato exato que o parser aceita de volta. São 10 nós — <b>7</b> chamam modelo, e os prompts in-code deles somam <b>39.088 chars</b> antes de uma única variável ser preenchida.</p>
+
+<div class="aviso">
+<b>O custo REAL não foi medido aqui.</b> Ele mora em <code>email_generation_runs</code>, e esta geração não teve acesso ao banco — o conector do Supabase está desconectado nesta sessão. Tudo o que está abaixo sai do <b>código</b>: chars medidos por <code>.length</code>, tetos de <code>FMT_DEFAULTS</code>, preços de <code>PRICING_PER_MTOK</code>. Onde a coluna diz “teto de saída”, é o <b>pior caso</b>, não a média.<br><br>
+Para os números de produção, a query está pronta no fim do documento — e vale ler antes a seção “quatro números que não são medição”, porque somar <code>tokens_input</code> por agente <b>mistura</b> medida real com estimativa.
+</div>
+
+<h2>A tabela, nó a nó</h2>
+<p class="nota rolaviso">Tabela larga — role para o lado para ver todas as colunas.</p>
+<div class="rolagem"><table>
+<thead><tr><th>Nó</th><th>Prompt in-code</th><th>Teto de saída</th><th>Temp.</th><th>Preço/MTok (in/out)</th><th>Teto de saída em $</th><th>Token gravado</th></tr></thead>
+<tbody><tr>
+    <td><span class="dot" style="background:#7C3AED"></span><b>Image</b><br><code class="k">image</code></td>
+    <td class="sm">3.087 chars</td>
+    <td class="sm num">—</td>
+    <td class="sm num">—</td>
+    <td class="sm">—</td>
+    <td class="sm num">—</td>
+    <td><span class="selo-mini" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0">real (regex)</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#0F766E"></span><b>Merge de Copy</b><br><code class="k">copy_merge</code></td>
+    <td class="sm"><span class="nao">código</span></td>
+    <td class="sm num">—</td>
+    <td class="sm num">—</td>
+    <td class="sm">—</td>
+    <td class="sm num">—</td>
+    <td><span class="selo-mini" style="color:#4B5563;background:#F9FAFB;border-color:#E5E7EB">0 — é código</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#D97706"></span><b>Hero Section</b><br><code class="k">hero_section</code></td>
+    <td class="sm">11.213 chars</td>
+    <td class="sm num">16.384</td>
+    <td class="sm num">0,3</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.246</td>
+    <td><span class="selo-mini" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0">real do provedor</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#B45309"></span><b>Formatação de Texto</b><br><code class="k">text_format</code></td>
+    <td class="sm">7.036 chars</td>
+    <td class="sm num">65.536</td>
+    <td class="sm num">0,3</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.983</td>
+    <td><span class="selo-mini" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0">real — quando roda</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#92400E"></span><b>Formatação de Imagem</b><br><code class="k">image_format</code></td>
+    <td class="sm"><span class="nao">código</span></td>
+    <td class="sm num">—</td>
+    <td class="sm num">—</td>
+    <td class="sm">—</td>
+    <td class="sm num">—</td>
+    <td><span class="selo-mini" style="color:#4B5563;background:#F9FAFB;border-color:#E5E7EB">0 — é código</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#0F766E"></span><b>Tipografia</b><br><code class="k">typography</code></td>
+    <td class="sm">6.773 chars</td>
+    <td class="sm num">8.192</td>
+    <td class="sm num">0,2</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.123</td>
+    <td><span class="selo-mini" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0">real do provedor</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#BE185D"></span><b>Cores & Botões</b><br><code class="k">color_format</code></td>
+    <td class="sm">7.837 chars</td>
+    <td class="sm num">16.384</td>
+    <td class="sm num">0,3</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.246</td>
+    <td><span class="selo-mini" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0">real do provedor</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#0F766E"></span><b>Fundo no Tamanho</b><br><code class="k">background_fit</code></td>
+    <td class="sm"><span class="nao">código</span></td>
+    <td class="sm num">—</td>
+    <td class="sm num">—</td>
+    <td class="sm">—</td>
+    <td class="sm num">—</td>
+    <td><span class="selo-mini" style="color:#4B5563;background:#F9FAFB;border-color:#E5E7EB">0 — é código</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#065F46"></span><b>QA</b><br><code class="k">qa</code></td>
+    <td class="sm">3.142 chars</td>
+    <td class="sm num">1.500</td>
+    <td class="sm num">0,2</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.022</td>
+    <td><span class="selo-mini" style="color:#92400E;background:#FFFBEB;border-color:#FDE68A">ESTIMADO — chars ÷ 4</span></td>
+  </tr><tr>
+    <td><span class="dot" style="background:#059669"></span><b>QA Vision</b><br><code class="k">qavision</code></td>
+    <td class="sm">1.149 chars <span class="sm">(inline)</span></td>
+    <td class="sm num">800</td>
+    <td class="sm num">0,2</td>
+    <td class="sm">$3.00 / $15.00</td>
+    <td class="sm num">$0.012</td>
+    <td><span class="selo-mini" style="color:#9A3412;background:#FFF7ED;border-color:#FED7AA">FIXO — 1,5 centavo</span></td>
+  </tr></tbody></table></div>
+<p class="nota">O “prompt in-code” é o piso: é o que o agente carrega <b>antes</b> de qualquer var. Num e-mail real quem domina a entrada é a var grande de cada um — a região da hero, o inventário, as views por bloco —, e ela varia por peça. O maior teto de saída da fase 2 é o do <code>text_format</code>: <b>65.536 tokens</b>, $0.983 se fosse gasto inteiro.</p>
+
+<h2>Nó a nó</h2>
+<section class="no" id="image">
+    <h3><span class="num" style="background:#F3E8FF;color:#7C3AED;border-color:#E0CBFF">1</span>
+      Image <code class="k">image</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd><code>OPENROUTER_IMAGE_MODEL</code> ou a política de <code>image/model-policy.ts</code> — primário <code>openai/gpt-5.4-image-2</code> ($2.50/$15.00 por MTok) · fallback <code>google/gemini-3.1-flash-image</code> ($0.300/$30.00 por MTok)</dd>
+      <dt>Prompt in-code</dt><dd>sem system próprio · user template <b>3.087</b> chars (<code>DEFAULT_IMAGE_PROMPT_TEMPLATE</code>) — ~772 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>não usa <code>FMT_DEFAULTS</code> — o teto é de tempo (90 s/chamada, corpo 300 s)</dd>
+      
+      <dt>Devolve</dt><dd><b>URL</b> assinada do Storage (<code>Promise&lt;string&gt;</code>). Nunca base64 para o caller. A extração tenta, nesta ordem: campo <code>url</code> → <code>data:image/…;base64</code> → <code>b64_json</code>. Corpo vazio ou só whitespace vira <code>OpenRouterMidStreamError</code> retryable.</dd>
+    </dl>
+    <div class="selo" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0"><b>Token gravado: real.</b> <code>extractUsage</code> (image.chain.ts:269) lê <code>prompt_tokens</code>/<code>completion_tokens</code>/<code>cost</code> por <b>regex</b> num recorte de 600 chars a partir de <code>"usage"</code> — nunca <code>JSON.parse</code>, porque o corpo carrega ~5 MB de base64. O custo vai direto para centavos na linha 832, <b>sem passar por <code>resolveCostCents</code></b>: é o USD real do OpenRouter, então a tabela de preço não entra. Quando o provedor não reporta <code>cost</code>, grava <b>zero</b> em vez de estimar.</div>
+    <p class="obs"><code>onMeta</code> é <b>opt-in</b>: sem o callback, o usage nem é extraído. E até 08/09 o runner de e-mail gravava <code>ctx.imageConfig?.model</code> — o modelo <em>pedido</em> —, então imagem feita pelo fallback aparecia como se o primário tivesse funcionado.</p>
+    <h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th></tr></thead>
+  <tbody><tr>
+      <td><code>INTENCAO_VISUAL</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Intenção visual da posição — requisitos.imagem do Estruturador</span></td>
+      <td class="sm">entra ACIMA da direção da variante</td>
+      
+    </tr><tr>
+      <td><code>PHOTO_DIRECTION</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Direção fotográfica da variante</span></td>
+      <td class="sm">a fonte principal da cena</td>
+      
+    </tr><tr>
+      <td><code>IMAGE_SLOTS</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Direção de arte por slot — schema da variante</span></td>
+      <td class="sm">uma seção por campo de imagem</td>
+      
+    </tr><tr>
+      <td><code>IMAGE_BRIEF</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Blueprint do email</span></td>
+      <td class="sm">o que a imagem precisa mostrar</td>
+      
+    </tr><tr>
+      <td><code>EMAIL_IDEIA</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Ideia do email — fio do Estruturador (ou messaging)</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>block_type</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Derivado por código</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>block_label</code> <code>blueprint_purpose</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Blueprint do email</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>brand_name</code></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>primary_colors</code> <code>secondary_colors</code> <code>NEUTRO</code> <code>LOGO_STYLE</code> <span class="sm">(4)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual — store_brand_identity</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>PUBLICO</code> <code>IDIOMA</code> <code>MOEDA</code> <span class="sm">(3)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>BG_COLOR</code></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual — store_brand_identity</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>INSTRUCAO_ADICIONAL</code></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Instrução do operador no bloco</span></td>
+      <td class="sm"></td>
+      
+    </tr></tbody></table></div>
+  
+  </section><section class="no" id="copy_merge">
+    <h3><span class="num" style="background:#F0FDFA;color:#0F766E;border-color:#99F6E4">2</span>
+      Merge de Copy <code class="k">copy_merge</code>
+      <span class="nao">código</span></h3>
+    <p class="obs">É código. A run existe (<code>model: "deterministic"</code>) e grava <b>0 tokens</b>, <b>0 centavos</b> — zero legítimo, indistinguível de zero por falha de captura.</p><dl><dt>Devolve</dt><dd>documento completo, com a copy escrita por splice na âncora <code>example</code> de cada campo. Métricas próprias no run: <code>slots_total</code>, <code>ops_built</code>, <code>merged</code>, <code>left_for_llm</code>, <code>unanchored_keys</code>.</dd></dl>
+  </section><section class="no" id="hero_section">
+    <h3><span class="num" style="background:#FFFBEB;color:#D97706;border-color:#FDE68A">3</span>
+      Hero Section <code class="k">hero_section</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd>config do banco ou <code>moonshotai/kimi-k3</code></dd>
+      <dt>Prompt in-code</dt><dd>system <b>9.892</b> chars (<code>DEFAULT_HERO_SYSTEM_PROMPT</code>) · user template <b>1.321</b> chars (<code>DEFAULT_HERO_USER_TEMPLATE</code>) — ~2.804 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>16.384 tokens · temperatura 0,3 <span class="sm">(<code>FMT_DEFAULTS.hero_section</code>, sobrescrito por <code>max_tokens</code> da config)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.246</b></dd>
+      <dt>Devolve</dt><dd><b>FRAGMENTO</b> entre <code>&lt;CFY_HERO_OUTPUT&gt;</code>…<code>&lt;/CFY_HERO_OUTPUT&gt;</code>. <code>parseHeroFragment</code> exige o wrapper, tira o relatório vazado (com ou sem tags), <b>rejeita documento completo</b> (<code>&lt;!DOCTYPE|&lt;html|&lt;body</code>) e cobra que o fragmento comece em <code>&lt;tr&gt;</code> <b>ou</b> <code>&lt;table&gt;</code> — e que a forma <b>espelhe</b> a da região recebida (<code>heroShapeOf</code>). O splice é por código. O relatório (<code>&lt;CFY_HERO_REPORT&gt;</code>) é <b>opcional por design</b>: ausente não derruba nada.</dd>
+    </dl>
+    <div class="selo" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0"><b>Token gravado: real.</b> Vem de <code>parseOpenRouterBody</code> (<code>openrouter-invoke.ts</code>) pelo <code>format-invoke</code>, com o <code>cost</code> real quando o provedor reporta. É o caminho confiável.</div>
+    
+    <h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th><th>Zod</th></tr></thead>
+  <tbody><tr>
+      <td><code>hero_design_system_block</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Regras de design da variante</span></td>
+      <td class="sm">seção &lt;design_system&gt; pronta</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>brand_name</code> <code>locale</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>color_bg</code> <code>color_text</code> <code>color_heading</code> <code>color_button_bg</code> <code>color_button_text</code> <code>color_accent</code> <span class="sm">(6)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Papéis de cor — deriveColorRoles (código)</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_heading</code> <code>font_heading_weight</code> <code>font_body</code> <code>font_body_weight</code> <span class="sm">(4)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>logo_light</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm">markup do logo inteiro</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>logo_dark</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm">markup do logo inteiro</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>email_name</code> <code>subject</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Email — email_flow_emails</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_source</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Origem da região (library/montador) — código</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_variant_html</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">HTML canônico da variante — email_component_variants</span></td>
+      <td class="sm">vai VAZIA quando a hero foi enxertada</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_variant_rendered_html</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Exemplo renderizado da variante</span></td>
+      <td class="sm">zerada quando o modo visão está em uso</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_variant_schema_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">output_schema da variante</span></td>
+      <td class="sm">JSON indentado</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_content_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Copy da hero — callback do n8n</span></td>
+      <td class="sm">uma entrada por campo da hero</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_pending_json</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Campos que o copy_merge não ancorou</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_image_url</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Imagem gerada — SAÍDA do agente de imagem</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_image_alt</code> <span class="carga v">vazio</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Alt da imagem gerada</span></td>
+      <td class="sm">literal "" no builder, embora o system mande preenchê-la</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>montador_html</code> <span class="carga v">vazio</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Documento do Montador (var legada, vazia desde o CM-5)</span></td>
+      <td class="sm">var LEGADA — o builder não a preenche; vai sempre vazia ao modelo</td>
+      <td class="sm ctr"><b title="no template e fora do contrato">fora</b></td>
+    </tr><tr>
+      <td><code>hero_region_html</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Região da hero — documento montado (Montador + enxerto)</span></td>
+      <td class="sm">o insumo principal do agente</td>
+      <td class="sm ctr">✓</td>
+    </tr></tbody></table></div>
+  <p class="nota mini-nota">No contrato Zod e <b>não</b> no template: <code>hero_variant_design_system</code> <code>output_contract</code> — <code>output_contract</code> é injetada pelo chain no <code>renderVars</code>, depois do builder; <code>hero_variant_design_system</code> é consumida na montagem do bloco de design.</p>
+  </section><section class="no" id="text_format">
+    <h3><span class="num" style="background:#FFFBEB;color:#B45309;border-color:#FDE68A">4</span>
+      Formatação de Texto <code class="k">text_format</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd>config do banco ou <code>moonshotai/kimi-k3</code></dd>
+      <dt>Prompt in-code</dt><dd>system <b>6.044</b> chars (<code>DEFAULT_TEXT_FORMAT_SYSTEM_PROMPT</code>) · user template <b>992</b> chars (<code>DEFAULT_TEXT_FORMAT_USER_TEMPLATE</code>) — ~1.759 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>65.536 tokens · temperatura 0,3 <span class="sm">(<code>FMT_DEFAULTS.text_format</code>, sobrescrito por <code>max_tokens</code> da config)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.983</b></dd>
+      <dt>Devolve</dt><dd>o <b>documento completo</b>, de <code>&lt;!DOCTYPE&gt;</code> a <code>&lt;/html&gt;</code>. <code>textFormatGuard</code> reprova em quatro casos: contagem de tabelas mudou (<code>table_count</code>), documento encolheu abaixo de 90% (<code>shrunk</code>), alguma tag de imagem sumiu (<code>image_tags_dropped</code>) ou as sentinelas da hero se perderam (<code>hero_sentinels_lost</code>). O guard <b>não corrige</b> — quem decide é o runner.</dd>
+    </dl>
+    <div class="selo" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0"><b>Token gravado: real.</b> Mesmo caminho do hero. Só que <b>quase nunca roda</b>: com <code>textFieldsTotal &gt; 0</code> o step grava <code>skipped / merge_por_exemplo</code> com <b>0 tokens</b> e <code>model: "deterministic"</code>. O teto de 65.536 tokens de saída — o maior da fase 2, e o mais caro se um dia voltar — é herança do tempo em que ele reescrevia o documento inteiro.</div>
+    
+    <h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th><th>Zod</th></tr></thead>
+  <tbody><tr>
+      <td><code>brand_name</code> <code>locale</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>color_bg</code> <code>color_text</code> <code>color_heading</code> <code>color_button_bg</code> <code>color_button_text</code> <code>color_accent</code> <span class="sm">(6)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Papéis de cor — deriveColorRoles (código)</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_heading</code> <code>font_heading_weight</code> <code>font_body</code> <code>font_body_weight</code> <span class="sm">(4)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>email_name</code> <code>subject</code> <code>preheader</code> <span class="sm">(3)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Email — email_flow_emails</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>objective</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Objetivo — blueprint da loja</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>messaging</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Direção editorial — blueprint da loja</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>blocks_with_content_json</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Copy por bloco — callback do n8n</span></td>
+      <td class="sm">só os blocos ainda abertos</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>fields_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Contrato de campos — schema das variantes casadas</span></td>
+      <td class="sm">só dos blocos ainda abertos</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>top_products_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Produtos da loja — store_products</span></td>
+      <td class="sm">até cinco, com preço e link</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>html</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Documento — SAÍDA do step anterior (hero)</span></td>
+      <td class="sm">o DOCUMENTO INTEIRO — só este agente ainda o recebe</td>
+      <td class="sm ctr">✓</td>
+    </tr></tbody></table></div>
+  
+  </section><section class="no" id="image_format">
+    <h3><span class="num" style="background:#FFFBEB;color:#92400E;border-color:#FDE68A">5</span>
+      Formatação de Imagem <code class="k">image_format</code>
+      <span class="nao">código</span></h3>
+    <p class="obs">Tem nome de agente e é código desde a 20261044. Grava <b>0 tokens</b>. A entrada em <code>FMT_DEFAULTS</code> (8.192 · temp 0.2) e a de <code>FMT_STEP_TIMEOUT</code> (180 s) sobrevivem sem serem lidas; <code>ImageFormatPromptVarsSchema</code> continua em <code>contract.ts</code> <b>sem nenhum builder</b>.</p><dl><dt>Devolve</dt><dd>documento com as URLs nos tokens, alts limpos, linhas órfãs removidas e overlay corrigido por luminância.</dd></dl>
+  </section><section class="no" id="typography">
+    <h3><span class="num" style="background:#F0FDFA;color:#0F766E;border-color:#99F6E4">6</span>
+      Tipografia <code class="k">typography</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd>config do banco ou <code>moonshotai/kimi-k3</code></dd>
+      <dt>Prompt in-code</dt><dd>system <b>5.961</b> chars (<code>DEFAULT_TYPOGRAPHY_SYSTEM_PROMPT</code>) · user template <b>812</b> chars (<code>DEFAULT_TYPOGRAPHY_USER_TEMPLATE</code>) — ~1.694 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>8.192 tokens · temperatura 0,2 <span class="sm">(<code>FMT_DEFAULTS.typography</code>, sobrescrito por <code>max_tokens</code> da config)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.123</b></dd>
+      <dt>Devolve</dt><dd>JSON tipado — <code>{segunda_fonte, justificativa, ops[]}</code>. Cada op endereça um <b>número de item</b> do inventário: <code>{item, fonte?: "secundaria", peso?, caixa?, tracking?, motivo}</code>. O parser é <b>tolerante</b>: op sem <code>item</code> inteiro é descartada em silêncio, <code>segunda_fonte</code> com <code>classe</code> fora do set vira <code>null</code>. Depois vêm os guards da régua (piso de 16px, teto de 3 rupturas de família, distância 200 entre pesos) e só então o código escreve.</dd>
+    </dl>
+    <div class="selo" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0"><b>Token gravado: real.</b> Mesmo caminho do hero. É o nó mais barato da fase 2 por construção: recebe o inventário numerado em vez do documento, e devolve ops.</div>
+    
+    <p class="obs"><code>TypographyOpHumana</code> (o painel da tela) acrescenta <code>familia</code> e <code>tamanho_px</code>. O agente é <b>fisicamente incapaz</b> de pedi-los: o parser não tem onde colocá-los.</p><h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th><th>Zod</th></tr></thead>
+  <tbody><tr>
+      <td><code>brand_name</code></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_heading</code></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>classe_principal</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Classe da fonte principal — classifyFontFamily (código)</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_heading_weight</code> <code>font_body</code> <code>font_body_weight</code> <span class="sm">(3)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>tom_de_voz</code> <code>posicionamento</code> <code>niche</code> <code>locale</code> <span class="sm">(4)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>hero_com_texto</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Hero com texto embutido — derivado do documento (código)</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_whitelist</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Fontes de display curadas — font-whitelist.ts</span></td>
+      <td class="sm">lista fechada — o que estiver fora é descartado</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>email_name</code> <code>subject</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Email — email_flow_emails</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>inventario_total</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Total de declarações de fonte — código</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>inventario</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Inventário tipográfico do documento — extractTypographyInventory</span></td>
+      <td class="sm">numerado, e entra NO LUGAR do documento</td>
+      <td class="sm ctr">✓</td>
+    </tr></tbody></table></div>
+  
+  </section><section class="no" id="color_format">
+    <h3><span class="num" style="background:#FDF2F8;color:#BE185D;border-color:#FBCFE8">7</span>
+      Cores & Botões <code class="k">color_format</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd>config do banco ou <code>moonshotai/kimi-k3</code></dd>
+      <dt>Prompt in-code</dt><dd>system <b>6.580</b> chars (<code>DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT</code>) · user template <b>1.257</b> chars (<code>DEFAULT_COLOR_FORMAT_USER_TEMPLATE</code>) — ~1.960 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>16.384 tokens · temperatura 0,3 <span class="sm">(<code>FMT_DEFAULTS.color_format</code>, sobrescrito por <code>max_tokens</code> da config)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.246</b></dd>
+      <dt>Devolve</dt><dd>JSON <code>{"ops":[…]}</code>. O vocabulário tipado tem duas ações — <code>recolor {from,to,where?}</code> e <code>replace {find,replace}</code> —, mas o chain <b>filtra só as <code>recolor</code></b>: o agente não vê o documento, então um <code>find</code> dele seria chute. <code>from</code>/<code>to</code> passam por <code>isColorLiteral</code> e <code>where</code> por <code>isColorContext</code>; ação desconhecida derruba o parse (<code>OpsParseError</code>). Aplicação por <code>applyOps</code>, que devolve os <code>skipped</code> com motivo (<code>find_not_found</code>, <code>find_ambiguous</code>, <code>hero_protected</code>, <code>overlapping_edit</code>, <code>contrast_risk</code>).</dd>
+    </dl>
+    <div class="selo" style="color:#065F46;background:#ECFDF5;border-color:#A7F3D0"><b>Token gravado: real.</b> Mesmo caminho do hero.</div>
+    
+    <h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th><th>Zod</th></tr></thead>
+  <tbody><tr>
+      <td><code>brand_name</code> <code>niche</code> <code>locale</code> <span class="sm">(3)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Dados da loja — client_stores</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>font_heading</code> <code>font_body</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>brand_colors</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual aprovada — store_brand_identity</span></td>
+      <td class="sm">cada cor com o papel que exerce</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>color_bg</code> <code>color_text</code> <code>color_heading</code> <code>color_button_bg</code> <code>color_button_text</code> <code>color_accent</code> <code>color_surface</code> <code>color_surface_strong</code> <span class="sm">(8)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Papéis de cor — deriveColorRoles (código)</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>tones</code></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Tons derivados do tom de voz — deriveToneKeys</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>email_name</code> <code>subject</code> <span class="sm">(2)</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Email — email_flow_emails</span></td>
+      <td class="sm"></td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>pesquisa_full_text</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Pesquisa &amp; Diagnóstico — client_stores</span></td>
+      <td class="sm">texto corrido, sem corte</td>
+      <td class="sm ctr">✓</td>
+    </tr><tr>
+      <td><code>color_inventory_json</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#B45309;background:#FFFBEB;border-color:#C27803">sistema</span> <span class="sm">Inventário de cores do documento — extractColorInventory</span></td>
+      <td class="sm">anotado com os pares texto↔fundo; entra NO LUGAR do documento</td>
+      <td class="sm ctr">✓</td>
+    </tr></tbody></table></div>
+  
+  </section><section class="no" id="background_fit">
+    <h3><span class="num" style="background:#F0FDFA;color:#0F766E;border-color:#99F6E4">8</span>
+      Fundo no Tamanho <code class="k">background_fit</code>
+      <span class="nao">código</span></h3>
+    <p class="obs">Fail-open total, sem toggle e fora de <code>FormatAgent</code>. Quando o documento não tem box de fundo, <b>não existe run nenhuma</b> — nem <code>skipped</code>.</p><dl><dt>Devolve</dt><dd>documento com as imagens compostas (faixa chapada + foto no tamanho que o <code>td</code> declara).</dd></dl>
+  </section><section class="no" id="qa">
+    <h3><span class="num" style="background:#ECFDF5;color:#065F46;border-color:#A7F3D0">9</span>
+      QA <code class="k">qa</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd><code>claude-sonnet-4-6</code> (in-code) · temp 0.2 · max 1.500</dd>
+      <dt>Prompt in-code</dt><dd>system <b>2.255</b> chars (<code>DEFAULT_QA_SYSTEM_PROMPT</code>) · user template <b>887</b> chars (<code>DEFAULT_QA_USER_TEMPLATE</code>) — ~786 tokens só de prompt, antes de qualquer var</dd>
+      <dt>Teto de saída</dt><dd>1.500 <span class="sm">(in-code, não <code>FMT_DEFAULTS</code>)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.022</b></dd>
+      <dt>Devolve</dt><dd><code>{passed: boolean, issues: QaIssue[]}</code>, validado por Zod. <code>type</code> é enum fechado (14 valores aceitos do modelo), <code>severity</code> ∈ low|medium|high, e há campos opcionais de rastreio (<code>block_id</code>, <code>basis</code>, <code>confidence</code>). O parse é tolerante em três degraus: objeto direto → primeiro <code>{…}</code> top-level → <code>recuperarJsonTruncado</code>, que fecha o array no último item íntegro. <code>passed</code> não é do modelo: sai de <code>computePassed</code>, que reprova por severidade — e ignora <code>qa_indisponivel</code> de propósito.</dd>
+    </dl>
+    <div class="selo" style="color:#92400E;background:#FFFBEB;border-color:#FDE68A"><b>Token gravado: estimado.</b> <code>tokensInput = Math.ceil((systemPrompt.length + userPrompt.length) / 4)</code> e <code>tokensOutput = Math.ceil(combinedOutput.length / 4)</code> (qa.chain.ts:998-1000). O comentário no código chama isso de <em>fallback quando o LangChain não expõe usage</em> — mas não é fallback: é o <b>único</b> caminho.</div>
+    <p class="obs">O usage <b>real existe e é jogado fora</b>. <code>invokeWithTimeout</code> (:512) declara <code>Promise&lt;string&gt;</code>: no ramo OpenRouter faz <code>return or.text</code> e descarta <code>or.usage</code>; no ramo Anthropic o <code>StringOutputParser</code> descarta o mesmo. O número que chega ao banco tem a mesma coluna, o mesmo tipo e a mesma cara de medição dos outros — e não é medição.</p>
+    <p class="obs"><code>QaIssueType</code> (em <code>types/email-generation.ts</code>) é <b>mais largo</b> que o enum aceito do LLM: <code>qa_indisponivel</code>, <code>contraste_baixo</code>, <code>hero_copy_perdida</code> e <code>hero_copy_inventada</code> só podem ser emitidos por código.</p><h4>O que entra, e de onde vem</h4><div class="rolagem"><table class="mini">
+  <thead><tr><th>var</th><th>origem declarada</th><th>carga</th></tr></thead>
+  <tbody><tr>
+      <td><code>blueprint_objective</code></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Objetivo — blueprint da loja</span></td>
+      <td class="sm"></td>
+      
+    </tr><tr>
+      <td><code>block_views_json</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Views por bloco — texto visível extraído por código</span></td>
+      <td class="sm">o maior insumo do QA</td>
+      
+    </tr><tr>
+      <td><code>block_contracts_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#6D28D9;background:#F5F3FF;border-color:#7C3AED">biblioteca</span> <span class="sm">Contrato dos blocos — schema das variantes</span></td>
+      <td class="sm">campos e limites por bloco</td>
+      
+    </tr><tr>
+      <td><code>blocks_json</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0F766E;background:#F0FDFA;border-color:#0F766E">upstream</span> <span class="sm">Copy esperada — callback do n8n</span></td>
+      <td class="sm">para o QA comparar com o que saiu</td>
+      
+    </tr><tr>
+      <td><code>briefing_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Briefing da loja — store_briefings</span></td>
+      <td class="sm">as seções aprovadas</td>
+      
+    </tr><tr>
+      <td><code>brand_json</code> <span class="carga m">médio</span></td>
+      <td><span class="cls" style="color:#1D4ED8;background:#EFF6FF;border-color:#2563EB">loja</span> <span class="sm">Identidade visual — store_brand_identity</span></td>
+      <td class="sm">paleta, fontes e logos</td>
+      
+    </tr><tr>
+      <td><code>advisor_max_notes</code> <span class="carga g">grande</span></td>
+      <td><span class="cls" style="color:#0E7490;background:#ECFEFF;border-color:#0E7490">vault</span> <span class="sm">Doutrina recuperada — Advisor Max</span></td>
+      <td class="sm">trechos recuperados por busca</td>
+      
+    </tr></tbody></table></div>
+  
+  </section><section class="no" id="qavision">
+    <h3><span class="num" style="background:#ECFDF5;color:#059669;border-color:#A7F3D0">10</span>
+      QA Vision <code class="k">qavision</code>
+      <span class="sim">LLM</span></h3>
+    <dl>
+      <dt>Modelo</dt><dd><code>claude-sonnet-4-6</code> · temp 0.2 · max 800</dd>
+      <dt>Prompt in-code</dt><dd><b>1.149 chars</b> de esqueleto — e não é constante nomeada: é template literal <b>inline</b> dentro da função, com as vars interpoladas em JavaScript. Não tem linha em <code>email_agent_configs</code>, então não é editável pela tela de prompts nem pode ser trocado por migration.</dd>
+      <dt>Teto de saída</dt><dd>800 <span class="sm">(in-code)</span></dd>
+      <dt>Preço/MTok</dt><dd>$3.00 entrada · $15.00 saída — o teto de saída sozinho vale <b>$0.012</b></dd>
+      <dt>Devolve</dt><dd>issues visuais somadas às do QA (três tipos: paleta, reserva de overlay, cena inadequada).</dd>
+    </dl>
+    <div class="selo" style="color:#9A3412;background:#FFF7ED;border-color:#FED7AA"><b>Token gravado: fixo.</b> <code>VISION_COST_CENTS_ESTIMATE = 1.5</code> é uma <b>constante</b>: toda checagem de visão custa o mesmo no relatório, tenha analisado uma imagem ou três. O próprio comentário do arquivo pede para refinar “quando a chain expuser <code>response.usage</code>”.</div>
+    <p class="obs">E não há linha própria: <code>qavision</code> <b>nunca é gravado como <code>agent</code></b> — o bucket é derivado em SQL do <code>parsed_output</code> da run <code>qa</code>. Quem somar <code>cost_cents</code> por agente <b>não vê</b> este custo separado.</p>
+    
+  </section>
+
+<h2>Quatro números que não são medição</h2>
+<p class="nota">As colunas <code>tokens_input</code>, <code>tokens_output</code> e <code>cost_cents</code> de <code>email_generation_runs</code> têm o mesmo tipo e a mesma cara para todos os agentes. Não têm o mesmo significado:</p>
+<ul>
+<li><b><code>qa</code> estima <code>chars ÷ 4</code></b> e <b>descarta o usage real</b> que veio na resposta — <code>invokeWithTimeout</code> devolve <code>Promise&lt;string&gt;</code> e joga fora o <code>usage</code> do OpenRouter e o do LangChain. É o único agente cujo número de entrada é inventado.</li>
+<li><b><code>qavision</code> grava 1,5 centavo fixo</b>, e nem tem linha própria: o bucket é derivado em SQL da run do <code>qa</code>. Somar custo por agente não o enxerga.</li>
+<li><b><code>image</code></b> lê o usage por <b>regex</b> (o corpo tem megabytes de base64) e usa o <b>custo real</b> do OpenRouter direto, sem <code>resolveCostCents</code> — bom, com uma ressalva: provedor que não reporta <code>cost</code> grava <b>zero</b>, e a captura inteira depende do callback <code>onMeta</code> ser passado.</li>
+<li><b><code>copy_merge</code>, <code>image_format</code>, <code>background_fit</code> e o <code>text_format</code> pulado</b> gravam zero com <code>model: "deterministic"</code>. Zero legítimo — indistinguível, na coluna, de zero por falha de captura.</li>
+</ul>
+<p class="nota">E um que atinge todos: <code>finishGenerationRun</code> usa <code>?? 0</code> em <code>tokens_input</code>, <code>tokens_output</code>, <code>cost_cents</code> e <code>duration_ms</code>, enquanto os campos vizinhos usam <code>?? undefined</code> com o comentário explicando por quê (omitir preserva o que o start gravou). Um finish sem usage <b>zera</b> em vez de preservar.</p>
+
+<h2>Onde ler o consumo hoje</h2>
+<ul>
+<li><code>GET /api/admin/email-generation-logs</code> — devolve <code>by_agent</code> com <code>avg_tokens_in</code>/<code>avg_tokens_out</code>: <b>médias</b>, não somas. Responde “quanto costuma custar uma run”, não “quanto este agente gastou”.</li>
+<li><code>GET /api/admin/ai-usage</code> — soma de verdade, mas por <b>feature</b>, não por agente.</li>
+<li>Nenhuma das duas responde “quanto o <code>color_format</code> gastou no mês”. Para isso, a query direta:</li>
+</ul>
+<pre>select agent,
+       count(*)                       as runs,
+       sum(tokens_input)              as tok_in,
+       sum(tokens_output)             as tok_out,
+       round(sum(cost_cents)::numeric, 2) as cents,
+       count(*) filter (where status = 'error')   as erros,
+       count(*) filter (where status = 'skipped') as pulados
+from email_generation_runs
+where created_at &gt;= now() - interval '30 days'
+  and agent in ('image', 'copy_merge', 'hero_section', 'text_format', 'image_format', 'typography', 'color_format', 'background_fit', 'qa', 'qavision')
+group by agent
+order by cents desc;</pre>
+<p class="nota">Lendo o resultado: <code>qa</code> tem número de entrada estimado, <code>qavision</code> não aparece (está dentro do <code>qa</code>), e as linhas com <code>cents = 0</code> podem ser código determinístico <b>ou</b> captura perdida — a coluna não distingue.</p>
+
+<h2>Como a proveniência é garantida</h2>
+<p class="nota">A tabela de vars de cada nó acima não foi transcrita: ela cruza as vars que o <b>template referencia</b> com o mapa <code>*_VAR_ORIGINS</code> que fica declarado <b>ao lado do builder</b> — quem sabe de onde o valor veio é quem o monta, e re-derivar depois é o modo de falha que isso elimina. Var sem origem declarada aparece marcada, exatamente como apareceria no Estúdio.</p>
+<p class="nota">O guard, em produção, é a <b>recomposição</b>: <code>buildSegmentedPrompt</code> devolve <code>{prompt, segments}</code> e cada chain compara o <code>prompt</code> recomposto, byte a byte, com o que realmente vai ao modelo. Divergiu — config antiga com <code>{{#if}}</code>, renderer diferente — grava sem marcação em vez de gravar marcação errada. Três dialetos convivem: <code>{{var}}</code> com helpers (hero, texto, tipografia, cores), <code>{var}</code> (o prompt de imagem in-code) e o renderer estrito do <code>qa</code>.</p>
+
+<h2>O contrato de entrada não derruba nada em produção</h2>
+<p class="nota">Os quatro schemas de <code>html/contract.ts</code> são <b>todos obrigatórios</b> — nenhum <code>.optional()</code> — e <code>validateVars</code> se comporta de dois jeitos: em dev e teste <code>schema.parse</code> <b>lança</b>; em produção é <code>safeParse</code>, e a falha vira <code>log.warn("contract.drift")</code> mais uma entrada num mapa. <b>As vars seguem intactas para o prompt.</b></p>
+<p class="nota">Esse mapa é drenado por <code>takeContractDrift(agent)</code> — chamado para <b>dois</b> dos quatro agentes (<code>typography</code> e <code>color_format</code>). Drift em <code>hero_section</code> ou <code>text_format</code> fica só no log e é apagado do mapa na chamada seguinte, sem nunca chegar à telemetria da run.</p>
+<p class="nota">Duas assimetrias no próprio contrato: <code>ColorFormatPromptVarsSchema</code> valida os <code>color_*</code> como <code>z.string()</code> <b>sem</b> o <code>HEX_RE</code> que o <code>baseIdentity</code> exige dos outros — recebendo os mesmos valores, do mesmo <code>identityVars</code>. E <code>ImageFormatPromptVarsSchema</code> continua no arquivo <b>sem nenhum builder</b>: o agente virou código e o contrato ficou.</p>
+
+<h2>Duas vars que viajam vazias</h2>
+<ul>
+<li><code>montador_html</code> está no <code>DEFAULT_HERO_USER_TEMPLATE</code> e em <code>HERO_VAR_ORIGINS</code>, mas <b>não</b> em <code>buildHeroVars</code> nem no schema Zod. O modelo recebe a tag vazia em <b>todo</b> prompt de hero. Está documentada como legada desde o CM-5 — o que sobrou é o custo de a enviar.</li>
+<li><code>hero_image_alt</code> é literal <code>""</code> no builder, enquanto o system prompt manda o agente preencher o alt a partir dela.</li>
+</ul>
+
+<footer>Gerado a partir do repositório em 10/09/2026. Chars medidos por <code>.length</code> nas constantes <code>DEFAULT_*</code>; tetos e temperatura de <code>chains/format-config.ts</code>; preços de <code>PRICING_PER_MTOK</code> (<code>callbacks/telemetry.callback.ts</code>); vars extraídas dos próprios templates e cruzadas com os mapas <code>*_VAR_ORIGINS</code>; contratos de <code>html/contract.ts</code>. A cobertura é conferida contra <code>PHASE2_KEYS</code> — nó novo ou removido reprova a geração.<br>Onde a config do banco (<code>email_agent_configs</code>) traz <code>model</code>, <code>temperature</code> ou <code>max_tokens</code> próprios, <b>ela vence</b> estes defaults: os números acima são o que roda quando não há config ativa.</footer>
+</div></body></html>
