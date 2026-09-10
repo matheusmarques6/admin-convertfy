@@ -311,6 +311,53 @@ describe("assignImageSlots", () => {
     expect(out[1].slot!.token).toBe("URL_TOPO_COLUNA_B")
   })
 
+  // 09/09, Welcome 1 da Hero Boxers: a `body 3` ocupou as posições 2 e 3,
+  // e os slots URL_SELO_* dos dois blocos caíam no MESMO grupo. O campo do
+  // primeiro escrevia nos dois blocos e os três campos do segundo davam
+  // `sem_lugar`. Medido: 6 selos gerados, 3 no HTML, 3 pagos e jogados fora.
+  it("a MESMA variante em dois blocos: cada um recebe as SUAS imagens", () => {
+    const html = [
+      "<!-- cfy:block:0:body:start -->",
+      '<img src="URL_SELO_1" alt=""><img src="URL_SELO_2" alt="">',
+      "<!-- cfy:block:0:body:end -->",
+      "<!-- cfy:block:1:body:start -->",
+      '<img src="URL_SELO_1" alt=""><img src="URL_SELO_2" alt="">',
+      "<!-- cfy:block:1:body:end -->",
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("seal_1_image", { blockIndice: 0, url: "https://cdn/a1.png" }),
+      imageField("seal_2_image", { blockIndice: 0, url: "https://cdn/a2.png" }),
+      imageField("seal_1_image", { blockIndice: 1, url: "https://cdn/b1.png" }),
+      imageField("seal_2_image", { blockIndice: 1, url: "https://cdn/b2.png" }),
+    ])
+    expect(out.map((a) => a.desfecho)).toEqual([
+      "ancorado_token",
+      "ancorado_token",
+      "ancorado_token",
+      "ancorado_token",
+    ])
+    // e cada campo escreve SÓ no seu bloco — nunca no vizinho
+    for (const a of out) expect(a.groupSlots).toHaveLength(1)
+    expect(out[0].slot!.blockIndice).toBe(0)
+    expect(out[2].slot!.blockIndice).toBe(1)
+  })
+
+  it("token repetido DENTRO do bloco continua sendo UM lugar", () => {
+    // É o caso que o agrupamento existe para servir: espelho MSO e versão
+    // mobile do mesmo slot recebem a mesma URL.
+    const html = [
+      "<!-- cfy:block:0:body:start -->",
+      '<img src="URL_SELO_1" alt=""><img src="URL_SELO_1" alt="">',
+      '<td background="URL_SELO_1"></td>',
+      "<!-- cfy:block:0:body:end -->",
+    ].join("\n")
+    const out = assignImageSlots(slotsOf(html), [
+      imageField("seal_1_image", { blockIndice: 0 }),
+    ])
+    expect(out[0].desfecho).toBe("ancorado_token")
+    expect(out[0].groupSlots).toHaveLength(3)
+  })
+
   it("campo com blockIndice só casa token do MESMO bloco", () => {
     const html = [
       "<!-- cfy:block:0:hero:start -->",

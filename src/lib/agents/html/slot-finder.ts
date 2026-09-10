@@ -9,8 +9,10 @@
  *
  *   - `tip_1_image` (ordinal 1 na key) → token de ordinal 1 do MESMO bloco;
  *   - key sem ordinal → ordem de aparição no bloco;
- *   - `URL_SELO_VERIFICADO` repetido ×3 (mesmo token em três lugares) é UM
- *     grupo — o valor casado preenche todas as ocorrências (groupSlots).
+ *   - `URL_SELO_VERIFICADO` repetido ×3 DENTRO do bloco (mesmo token em três
+ *     lugares) é UM grupo — o valor casado preenche todas as ocorrências
+ *     (groupSlots). Entre blocos DIFERENTES, cada um tem o seu grupo: a
+ *     mesma variante pode entrar duas vezes no e-mail.
  *
  * O que nunca é slot se autodenuncia (attr-token-vocabulary): base64 é arte
  * fixa, URL http real é asset externo, URL_DO_LOGO_AQUI/NOME_DA_MARCA são
@@ -350,8 +352,9 @@ export function keyOrdinal(key: string): number | null {
  * Casa campos `imagem_gerada` com os slots de src. Regras:
  *   - só slots de `src` que NÃO são estruturais (logo/marca são da
  *     plataforma) e não são `alt` (nesta rodada alt só é limpo);
- *   - slots são agrupados por TOKEN: o mesmo token repetido (espelho MSO,
- *     selo ×3) é UM lugar — o casamento preenche o grupo inteiro;
+ *   - slots são agrupados por (BLOCO, TOKEN): o mesmo token repetido
+ *     DENTRO do bloco (espelho MSO, versão mobile) é UM lugar — o
+ *     casamento preenche o grupo inteiro;
  *   - campo com blockIndice só casa token do MESMO bloco;
  *   - key com ordinal → token com o MESMO ordinal; sem ordinal (ou sem
  *     token numerado) → ordem de aparição × ordem de declaração;
@@ -363,35 +366,54 @@ export function assignImageSlots(
   slots: AttrSlot[],
   fields: ImageField[],
 ): ImageAssignment[] {
-  // Grupos por token, restritos a src casável, na ordem da 1ª aparição.
-  const groupsByToken = new Map<string, AttrSlot[]>()
+  // Grupos por (BLOCO, TOKEN), restritos a src casável, na ordem da 1ª
+  // aparição.
+  //
+  // A chave era só o TOKEN, e isso custava imagem paga (09/09): quando a
+  // MESMA variante entra duas vezes no e-mail — a `body 3` ocupou as
+  // posições 2 e 3 do Welcome 1 da Hero Boxers —, os slots `URL_SELO_1`
+  // dos dois blocos caíam no mesmo grupo. O campo do primeiro bloco
+  // escrevia em `groupSlots`, ou seja nos DOIS blocos, e os três campos do
+  // segundo terminavam em `sem_lugar:token_nao_encontrado`. Resultado
+  // medido: 6 selos gerados, 3 no HTML, 3 pagos e descartados (~US$ 0,75
+  // por e-mail), com o bloco repetido exibindo as imagens do vizinho.
+  //
+  // Agrupar por bloco não desfaz o caso que o grupo existe para servir: o
+  // token repetido DENTRO do bloco (espelho MSO, versão mobile) tem o
+  // mesmo `blockIndice` e segue sendo um lugar só.
+  const chaveDoGrupo = (blockIndice: number | null, token: string): string =>
+    `${blockIndice ?? "?"}\u0000${token}`
+  const groupsByKey = new Map<string, AttrSlot[]>()
   for (const s of slots) {
     if (!isImageAttr(s.attr) || isStructuralToken(s.token)) continue
-    const g = groupsByToken.get(s.token)
+    const k = chaveDoGrupo(s.blockIndice, s.token)
+    const g = groupsByKey.get(k)
     if (g) g.push(s)
-    else groupsByToken.set(s.token, [s])
+    else groupsByKey.set(k, [s])
   }
 
   const taken = new Set<string>()
 
   const groupsForBlock = (blockIndice: number | null): string[] =>
-    [...groupsByToken.entries()]
+    [...groupsByKey.entries()]
       .filter(
-        ([token, g]) =>
-          !taken.has(token) &&
+        ([key, g]) =>
+          !taken.has(key) &&
           (blockIndice == null || g[0].blockIndice === blockIndice),
       )
-      .map(([token]) => token)
+      .map(([key]) => key)
 
   return fields.map((field) => {
     const candidates = groupsForBlock(field.blockIndice)
+    const tokenDe = (key: string): string => key.slice(key.indexOf("\u0000") + 1)
 
     // 1º critério: ordinal da key ↔ ordinal do token (tip_1_image → URL_*_1).
     const ord = keyOrdinal(field.key)
     let chosen: string | null = null
     if (ord != null) {
       chosen =
-        candidates.find((t) => parseAttrToken(t)?.ordinal === ord) ?? null
+        candidates.find((k) => parseAttrToken(tokenDe(k))?.ordinal === ord) ??
+        null
     }
     // 2º critério: ordem de aparição (o candidato mais cedo no documento).
     if (!chosen) chosen = candidates[0] ?? null
@@ -400,7 +422,7 @@ export function assignImageSlots(
       return { field, slot: null, groupSlots: [], desfecho: "sem_lugar" as const }
     }
     taken.add(chosen)
-    const group = groupsByToken.get(chosen)!
+    const group = groupsByKey.get(chosen)!
     return {
       field,
       slot: group[0],
