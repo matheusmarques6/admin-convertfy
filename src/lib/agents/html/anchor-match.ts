@@ -184,6 +184,8 @@ interface NodeProjection {
  */
 export interface TextIndex {
   projections: NodeProjection[]
+  /** O HTML de onde as projeções saíram — os ranges endereçam ELE. */
+  source: string
 }
 
 function projectNode(text: string, base: number): NodeProjection {
@@ -323,6 +325,7 @@ export function buildTextIndex(html: string, scope?: Range): TextIndex {
   const projections = nodes.map((n) => projectNode(n.text, n.range.start))
   return {
     projections: [...projections, ...stitchRuns(html, nodes, projections)],
+    source: html,
   }
 }
 
@@ -340,6 +343,40 @@ export interface PhraseOccurrence extends Range {
  */
 /** `"2 SHOP NOW"` → `"SHOP NOW"`; sem enumerador devolve a frase como está. */
 const ENUMERADOR_RE = /^\d{1,2}\s+/
+
+const CHAR_DE_TOKEN = /[A-Za-z0-9_]/
+
+/**
+ * A ocorrência é um PEDAÇO de um token da plataforma?
+ *
+ * 10/09, `welcome - hero sectiion 8`: o campo `headline_l1` tem example
+ * "Header" e a variante carrega um preheader oculto escrito como
+ * `TEXTO_DE_PREHEADER_AQUI`. Normalizado, "header" É substring de
+ * "preheader_aqui" — e a fronteira de palavra só é exigida de example com
+ * 2–3 caracteres, então "Header" (6) passava direto. A âncora PRINCIPAL do
+ * campo virava o miolo do token e o texto verdadeiro do hero era rebaixado a
+ * ocorrência extra; pela regra do campo único, o merge escreveria a headline
+ * nos DOIS lugares e o preheader sairia `TEXTO_DE_PRE<headline>_AQUI`. O
+ * `_AQUI` órfão que sobra do corte era o único sintoma visível.
+ *
+ * O token INTEIRO continua ancorável — é assim que o `INICIAL_1_AQUI` da
+ * `review 8` recebe a letra derivada do nome. O que se recusa é a ocorrência
+ * que CRESCE ao ser expandida sobre caracteres de token, isto é, a substring
+ * própria. A expansão para em `<`, espaço ou pontuação, então nunca atravessa
+ * markup nem cola duas palavras de copy.
+ */
+function fatiaDeTokenDePlataforma(
+  source: string,
+  start: number,
+  end: number,
+): boolean {
+  let i = start
+  while (i > 0 && CHAR_DE_TOKEN.test(source[i - 1]!)) i--
+  let j = end
+  while (j < source.length && CHAR_DE_TOKEN.test(source[j]!)) j++
+  if (i === start && j === end) return false
+  return ehTokenDePlataforma(source.slice(i, j))
+}
 
 export function findPhraseOccurrencesDetailed(
   index: TextIndex,
@@ -390,6 +427,10 @@ export function findPhraseOccurrencesDetailed(
         costurado:
           p.joints != null &&
           p.joints.some((j) => j > startIdx && j < at + phrase.length - 1),
+      }
+      if (fatiaDeTokenDePlataforma(index.source, occ.start, occ.end)) {
+        from = at + 1
+        continue
       }
       const key = `${occ.start}-${occ.end}`
       const prev = byRange.get(key)
