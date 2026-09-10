@@ -11,7 +11,19 @@ const PASSADA_TIMEOUT_MS = 290_000
 /** Passadas encadeadas por clique — o lote continua até zerar a pendência. */
 const MAX_PASSADAS = 6
 /** Espera antes de tentar de novo quando outra passada segura o lock. */
-const ESPERA_LOCK_MS = 6_000
+const ESPERA_LOCK_MS = 10_000
+/**
+ * Quanto tempo insistir enquanto o lock do período está ocupado.
+ *
+ * O lock dura 5 min e sobrevive à função que morre no teto da Vercel, então
+ * um clique podia cair em `alreadyRunning` durante minutos. Com as esperas
+ * contando como passada, o loop gastava 6 × 6 s = 36 s, saía com
+ * `restam = 0` e **sem erro** — a tela não mudava e não dizia nada. Era o
+ * "clico em sincronizar e ele não sincroniza e para de sincronizar".
+ */
+const ESPERA_LOCK_TOTAL_MS = 6 * 60 * 1000
+/** Falhas de rede seguidas antes de desistir do encadeamento. */
+const MAX_FALHAS_SEGUIDAS = 2
 
 interface UseRealtimeRevenueOptions {
   period: string
@@ -65,64 +77,93 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
     // lojas e a tela seguia dizendo "incompleto" sem nada acontecer.
     let restam = 0
     let erro: string | null = null
-    try {
-      for (let passada = 0; passada < MAX_PASSADAS; passada++) {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), PASSADA_TIMEOUT_MS)
-        try {
-          const res = await fetch(refreshUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ period, start, end }),
-            signal: controller.signal,
-          })
-          const data = await res.json().catch(() => ({}))
+    let passada = 0
+    let falhasSeguidas = 0
+    let esperandoLockDesde: number | null = null
 
-          // `res.ok` não era conferido: um 500 caía direto no caminho de
-          // sucesso e a tela revalidava os mesmos números, o que o usuário
-          // vê como "carrega e não puxa a receita".
-          if (!res.ok) {
+    // Uma passada que falha NÃO pode abortar o encadeamento: o `try` envolvia
+    // o `for` inteiro, então a primeira falha de rede — justamente a da
+    // função que morreu no teto da Vercel com metade da carteira feita —
+    // matava as cinco passadas seguintes, e o clique acabava sem ter
+    // sincronizado o resto.
+    while (passada < MAX_PASSADAS) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), PASSADA_TIMEOUT_MS)
+      try {
+        const res = await fetch(refreshUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ period, start, end }),
+          signal: controller.signal,
+        })
+        const data = await res.json().catch(() => ({}))
+
+        // `res.ok` não era conferido: um 500 caía direto no caminho de
+        // sucesso e a tela revalidava os mesmos números, o que o usuário
+        // vê como "carrega e não puxa a receita".
+        if (!res.ok) {
+          erro =
+            typeof data?.error === "string"
+              ? data.error
+              : (data?.error?.message ?? `Falhou (HTTP ${res.status})`)
+          break
+        }
+
+        if (data.alreadyRunning) {
+          // Outra aba (ou o auto-sync da abertura da tela) ainda segura o
+          // lock deste período. Esperar aqui NÃO consome passada — senão o
+          // orçamento de passadas se esgota esperando e o clique termina
+          // sem ter sincronizado nada, em silêncio.
+          esperandoLockDesde ??= Date.now()
+          if (Date.now() - esperandoLockDesde > ESPERA_LOCK_TOTAL_MS) {
             erro =
-              typeof data?.error === "string"
-                ? data.error
-                : (data?.error?.message ?? `Falhou (HTTP ${res.status})`)
+              "Outra sincronização deste período já está em andamento e não terminou. Aguarde um instante e clique de novo."
             break
           }
-
-          if (data.alreadyRunning) {
-            // Outra aba (ou o clique anterior) ainda está sincronizando
-            // este período. Sair aqui apagava o indicador enquanto o
-            // servidor seguia trabalhando: os cards mudavam sozinhos e a
-            // tela dizia "atualizado". Espera e tenta de novo — o lock
-            // libera quando aquela passada termina.
-            setPending((p) => (p > 0 ? p : 1))
-            await new Promise((r) => setTimeout(r, ESPERA_LOCK_MS))
-            continue
-          }
-
-          onDataUpdate()
-          restam = Number(data.storesPending) || 0
-          setPending(restam)
-          if (restam === 0) break
-        } finally {
-          clearTimeout(timeoutId)
+          setPending((p) => (p > 0 ? p : 1))
+          await new Promise((r) => setTimeout(r, ESPERA_LOCK_MS))
+          continue
         }
+
+        esperandoLockDesde = null
+        falhasSeguidas = 0
+        // A passada deu certo: a falha da anterior não vale mais. Sem isso,
+        // um `break` por `restam === 0` logo depois de uma falha deixava a
+        // tela acusando erro numa sincronização que completou.
+        erro = null
+        passada++
+        onDataUpdate()
+        restam = Number(data.storesPending) || 0
+        setPending(restam)
+        if (restam === 0) break
+      } catch (err) {
+        passada++
+        falhasSeguidas++
+        const isAbort = err instanceof Error && err.name === "AbortError"
+        erro = isAbort
+          ? "A sincronização passou do tempo de espera. O servidor continua processando — os números completam sozinhos."
+          : err instanceof Error
+            ? err.message
+            : String(err)
+        // Uma passada pode morrer no teto da função com boa parte da
+        // carteira já gravada. Tentar de novo continua de onde parou (o
+        // frescor pula quem acabou de sincronizar); só duas falhas
+        // seguidas significam que insistir não vai adiantar.
+        if (falhasSeguidas >= MAX_FALHAS_SEGUIDAS) break
+        onDataUpdate()
+        await new Promise((r) => setTimeout(r, ESPERA_LOCK_MS))
+        continue
+      } finally {
+        clearTimeout(timeoutId)
       }
-      if (restam > 0 && !erro) {
-        erro = `Faltaram ${restam} lojas nesta rodada — clique de novo para continuar.`
-      }
-    } catch (err) {
-      const isAbort = err instanceof Error && err.name === "AbortError"
-      erro = isAbort
-        ? "A sincronização passou do tempo de espera. O servidor continua processando — os números completam sozinhos."
-        : err instanceof Error
-          ? err.message
-          : String(err)
-    } finally {
-      if (!erro) setPending(0)
-      setRefreshError(erro)
-      setIsRefreshing(false)
     }
+
+    if (restam > 0 && !erro) {
+      erro = `Faltaram ${restam} lojas nesta rodada — clique de novo para continuar.`
+    }
+    if (!erro) setPending(0)
+    setRefreshError(erro)
+    setIsRefreshing(false)
   }, [period, start, end, isRefreshing, onDataUpdate, refreshUrl])
 
   // Start/stop polling fallback

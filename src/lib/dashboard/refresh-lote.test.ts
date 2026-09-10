@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
+  CONCORRENCIA_PADRAO,
+  FRESCOR_MS,
   comLimite,
   hojeNoFuso,
   janelaDoPeriodo,
@@ -95,6 +97,61 @@ describe("planoDeLote — frescor", () => {
   it("sem carimbo de sincronização, entra (não dá para afirmar frescor)", () => {
     const p = planoDeLote([{ id: "a", temDado: true }], 10, 5, agora)
     expect(p.lote).toHaveLength(1)
+  })
+
+  it("dado que a TELA já considera fresco não é re-buscado", () => {
+    // A tela chama de desatualizado o que passou de 1 h (ADMIN_STALENESS_MS
+    // em /api/dashboard/total-revenue). Com o frescor de 10 min de antes,
+    // uma loja de 30 min voltava para a fila e gastava a cota sem mudar o
+    // veredicto do banner — e as lojas de fato velhas, no fim da fila,
+    // nunca eram alcançadas dentro do orçamento da função.
+    expect(FRESCOR_MS).toBeLessThan(60 * 60_000)
+    expect(FRESCOR_MS).toBeGreaterThanOrEqual(30 * 60_000)
+    const p = planoDeLote(
+      [
+        { id: "meia-hora", temDado: true, sincronizadaEm: min(30) },
+        { id: "duas-horas", temDado: true, sincronizadaEm: min(120) },
+      ],
+      10,
+      5,
+      agora,
+    )
+    expect(p.lote.map((l) => l.id)).toEqual(["duas-horas"])
+    expect(p.jaFrescas).toBe(1)
+  })
+
+  it("dado que veio PELA METADE sobe na fila como falha", () => {
+    // `partial` é a loja cuja plataforma não respondeu às estatísticas: a
+    // receita ficou preservada do sync anterior. Contando como dado bom,
+    // ela caía no peso 2 e a passada terminava antes de alcançá-la — as 5
+    // `partial` de 10/09 seguiam carimbadas às 14:40 enquanto as `ok` já
+    // tinham sido refeitas às 16:03. A rota traduz `partial` em `falhou`.
+    const p = planoDeLote(
+      [
+        { id: "ok-velha", temDado: true, sincronizadaEm: min(120) },
+        { id: "partial", temDado: true, falhou: true, sincronizadaEm: min(120) },
+      ],
+      10,
+      5,
+      agora,
+    )
+    expect(p.lote.map((l) => l.id)).toEqual(["partial", "ok-velha"])
+  })
+})
+
+describe("CONCORRENCIA_PADRAO", () => {
+  it("cabe a carteira inteira no orçamento de uma passada", () => {
+    // Medido em 10/09 com 5 em voo: 25 lojas em ~4 min (≈48 s por onda) e a
+    // função morria no teto de 300 s com metade da carteira por fazer. Como
+    // a idade do dado é a da loja MAIS VELHA, o banner "Desatualizado" ficava
+    // matematicamente inatingível: sempre sobrava alguém com o carimbo de
+    // horas atrás. Uma passada tem de cobrir as 54 lojas.
+    const LOJAS = 54
+    const SEGUNDOS_POR_ONDA = 48
+    const MARGEM = 1.25 // lojas mais lentas que a média
+    const ORCAMENTO_S = 195 // LOOP_DEADLINE_MS da rota
+    const ondas = Math.ceil(LOJAS / CONCORRENCIA_PADRAO)
+    expect(ondas * SEGUNDOS_POR_ONDA * MARGEM).toBeLessThanOrEqual(ORCAMENTO_S)
   })
 })
 

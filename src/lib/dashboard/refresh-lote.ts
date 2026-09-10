@@ -116,7 +116,17 @@ export interface LojaDoLote {
   id: string
   /** Já existe dado desta loja para este período? */
   temDado?: boolean
-  /** O último sync desta loja falhou? */
+  /**
+   * O último sync desta loja não entregou o dado inteiro.
+   *
+   * Vale para `error` E para `partial`: `partial` é a loja cuja plataforma
+   * não respondeu às estatísticas e cuja receita veio preservada do sync
+   * anterior. Enquanto ela contou como dado bom, caía no fim da fila
+   * (peso 2) e a passada acabava antes de chegar nela — medido em
+   * 10/09: as 5 `partial` do dia estavam congeladas em 14:40 enquanto as
+   * `ok` já tinham sido refeitas às 16:03. Dado que veio pela metade é
+   * justamente o que precisa de outra tentativa.
+   */
   falhou?: boolean
   /** Quando esta loja foi sincronizada pela última vez neste período. */
   sincronizadaEm?: string | null
@@ -130,8 +140,15 @@ export interface LojaDoLote {
  * traz número novo e queima a cota — foi o que fez o contador de erro subir
  * a cada clique (2 → 3 → 5 lojas "com erro"), porque a segunda rodada
  * atropelava a primeira e voltava sem receita.
+ *
+ * O valor é **alinhado ao limite de idade da tela** (`ADMIN_STALENESS_MS`,
+ * 1 h em `/api/dashboard/total-revenue`), com margem: re-buscar uma loja
+ * que a tela já considera fresca não muda o veredicto do banner e gasta
+ * cota que falta para as que estão de fato velhas. Com os 10 min de antes,
+ * a segunda passada de um mesmo clique repetia a carteira inteira e as
+ * lojas do fim da fila nunca eram alcançadas.
  */
-export const FRESCOR_MS = 10 * 60 * 1000
+export const FRESCOR_MS = 45 * 60 * 1000
 
 export interface PlanoDeLote<T extends LojaDoLote> {
   /** As lojas desta passada, na ordem em que devem ser processadas. */
@@ -144,10 +161,26 @@ export interface PlanoDeLote<T extends LojaDoLote> {
   concorrencia: number
 }
 
-/** Teto de lojas simultâneas. As chaves são por loja, então o limite de
- *  requisições da plataforma é por conta e não impede o paralelismo; o
- *  teto existe para não estourar memória nem soquetes da função. */
-export const CONCORRENCIA_PADRAO = 5
+/**
+ * Teto de lojas simultâneas.
+ *
+ * As chaves são por loja, então o limite de requisições da plataforma é
+ * por conta e não impede o paralelismo; o teto existe para não estourar
+ * memória nem soquetes da função.
+ *
+ * Medido em 10/09 com 5 em voo: **25 lojas em 4 minutos** (~48 s por
+ * onda), e a função morria no teto de 300 s da Vercel com metade da
+ * carteira por sincronizar — o carimbo mais antigo ficava 1 h 20 atrás e
+ * o banner "Desatualizado" era **matematicamente inatingível**, porque a
+ * idade do dado é a da loja mais velha. Uma passada precisa cobrir a
+ * carteira; é essa a condição para o banner poder sumir.
+ *
+ * 54 lojas com 18 em voo são 3 ondas: ~144 s dentro do orçamento de 195 s,
+ * com folga de 25% para as lojas mais lentas que a média. O teste do módulo
+ * trava essa relação — foi ele que reprovou o palpite anterior de 12 (5
+ * ondas, 240 s: não cabia).
+ */
+export const CONCORRENCIA_PADRAO = 18
 
 /**
  * Quem entra nesta passada e em que ordem.

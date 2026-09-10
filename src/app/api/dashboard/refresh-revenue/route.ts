@@ -43,9 +43,21 @@ export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
 const LOCK_TTL_MS = 5 * 60 * 1000 // 5 minutes
-// Deadline interno: para o loop ~30s antes do maxDuration pra dar tempo
-// de liberar lock + responder antes do Vercel cortar (504).
-const LOOP_DEADLINE_MS = 270_000
+// Deadline interno: para de COMEÇAR loja nova com folga suficiente para a
+// mais lenta ainda terminar, o lock ser liberado e a resposta sair antes de
+// a Vercel cortar em `maxDuration`.
+//
+// Com 270_000 a conta não fechava: o deadline só era conferido ANTES de
+// iniciar cada loja, então uma que começasse em 269 s e levasse 60 s
+// terminava em 329 s — a função morria no teto de 300 s e o `finally` que
+// libera o lock NUNCA rodava. Medido em 10/09: dois locks com
+// `is_running = true` e `finished_at` ANTERIOR ao `started_at`, a marca de
+// quem morreu no meio. O lock então segurava o período por 5 minutos e todo
+// clique nesse intervalo voltava `alreadyRunning` — que é o "clico em
+// sincronizar e não sincroniza".
+const LOOP_DEADLINE_MS = 195_000
+/** Teto por loja. Uma que trave não pode consumir o orçamento da passada. */
+const TIMEOUT_POR_LOJA_MS = 90_000
 
 // ── Lock helpers (reuses cron_locks table) ────────────────────────────────
 
@@ -343,6 +355,32 @@ async function refreshStoreForPeriod(
   }
 }
 
+/**
+ * Corre `fn` com teto de tempo, devolvendo erro em vez de travar o worker.
+ *
+ * Não aborta o trabalho em si (o sync não recebe signal) — o ponto é
+ * libertar o worker: sem isso, uma loja pendurada segura uma das vagas de
+ * concorrência até o fim e leva a função inteira ao teto da Vercel, que é
+ * onde o lock fica preso.
+ */
+async function comTeto(
+  fn: () => Promise<{ status: "ok" | "error"; error?: string }>,
+  ms: number,
+  mensagem: string,
+): Promise<{ status: "ok" | "error"; error?: string }> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<{ status: "ok" | "error"; error?: string }>((resolve) => {
+        timer = setTimeout(() => resolve({ status: "error", error: mensagem }), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 // ── POST Handler ──────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -459,9 +497,16 @@ export async function POST(request: NextRequest) {
           .eq("period_label", period)
           .in("store_id", stores.map((s) => s.id))
         for (const l of linhas ?? []) {
+          const status = l.sync_status as string | null
           jaSincronizadas.set(l.store_id as string, {
-            temDado: l.sync_status !== "error",
-            falhou: l.sync_status === "error",
+            temDado: status !== "error",
+            // `partial` entra junto com `error`: é dado que veio pela
+            // metade (a plataforma não respondeu às estatísticas e a
+            // receita ficou preservada do sync anterior). Contando como
+            // dado bom, ela caía no fim da fila e a passada terminava
+            // antes de alcançá-la — as 5 `partial` de 10/09 seguiam
+            // carimbadas às 14:40 com as `ok` já refeitas às 16:03.
+            falhou: status === "error" || status === "partial",
             sincronizadaEm: (l.fetched_at as string | null) ?? null,
           })
         }
@@ -501,7 +546,11 @@ export async function POST(request: NextRequest) {
           timedOut = true
           return
         }
-        const result = await refreshStoreForPeriod(adminClient, store as StoreRow, period)
+        const result = await comTeto(
+          () => refreshStoreForPeriod(adminClient, store as StoreRow, period),
+          TIMEOUT_POR_LOJA_MS,
+          `Tempo esgotado (${Math.round(TIMEOUT_POR_LOJA_MS / 1000)}s) sincronizando esta loja`,
+        )
         if (result.status === "ok") {
           okCount++
           log.info(`[RefreshRevenue] OK: ${store.store_name}/${period}`)
