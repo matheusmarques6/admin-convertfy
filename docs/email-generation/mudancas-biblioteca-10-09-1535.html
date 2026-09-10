@@ -1,0 +1,912 @@
+<title>O que mudou na biblioteca</title>
+<style>
+:root{
+  --papel:#f7f6f3; --carta:#fffefb; --tinta:#1c1b19; --tinta2:#57534e; --tinta3:#8b857d;
+  --linha:#e3e0d9; --linha2:#efece6; --acento:#1f5f4f;
+  --vaza:#a52a1f; --vaza-bg:#fbecea; --cego:#8a5a05; --cego-bg:#fdf2dd; --duvida:#4a5568; --duvida-bg:#eef0f3;
+  --campo:#3f4a8a; --campo-bg:#ecedf7; --bom:#1f6b46; --bom-bg:#e6f2ea; --aceito:#6b6560; --aceito-bg:#efece6;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --papel:#161614; --carta:#1e1d1a; --tinta:#eeebe4; --tinta2:#aaa49a; --tinta3:#7d766c;
+  --linha:#312e29; --linha2:#262420; --acento:#6fbfa5;
+  --vaza:#ef8b7d; --vaza-bg:#3a1e1a; --cego:#e0ab4c; --cego-bg:#332609; --duvida:#a3aec0; --duvida-bg:#232830;
+  --campo:#9aa4e0; --campo-bg:#1f2138; --bom:#71c79b; --bom-bg:#132a1f; --aceito:#9a938a; --aceito-bg:#262420;
+}}
+:root[data-theme="dark"]{
+  --papel:#161614; --carta:#1e1d1a; --tinta:#eeebe4; --tinta2:#aaa49a; --tinta3:#7d766c;
+  --linha:#312e29; --linha2:#262420; --acento:#6fbfa5;
+  --vaza:#ef8b7d; --vaza-bg:#3a1e1a; --cego:#e0ab4c; --cego-bg:#332609; --duvida:#a3aec0; --duvida-bg:#232830;
+  --campo:#9aa4e0; --campo-bg:#1f2138; --bom:#71c79b; --bom-bg:#132a1f; --aceito:#9a938a; --aceito-bg:#262420;
+}
+*{box-sizing:border-box}
+body{background:var(--papel);color:var(--tinta);
+  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  font-size:14px;line-height:1.5;padding-block:32px;padding-left:20px;padding-right:20px}
+.wrap{max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h2{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3);margin:0 0 10px}
+.sub{color:var(--tinta2);max-width:70ch;margin:8px 0 0}
+.mono,code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--linha);border:1px solid var(--linha);border-radius:5px;overflow:hidden}
+@media (max-width:820px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--carta);padding:14px 16px}
+.tile .n{font-family:"IBM Plex Mono",monospace;font-size:24px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:7px}
+.tile .de{font-size:14px;font-weight:400;color:var(--tinta3);text-decoration:line-through}
+.tile .delta{font-size:12px;font-weight:600;padding:1px 6px;border-radius:3px}
+.dn{background:var(--bom-bg);color:var(--bom)} .up{background:var(--vaza-bg);color:var(--vaza)} .eq{color:var(--tinta3)}
+.tile span.rot{display:block;font-size:11.5px;color:var(--tinta2);margin-top:3px;line-height:1.35}
+.nota{border-left:3px solid var(--acento);background:var(--carta);padding:14px 18px;border-radius:0 5px 5px 0}
+.nota p{margin:0}.nota p+p{margin-top:8px}
+.v{background:var(--carta);border:1px solid var(--linha);border-radius:5px;overflow:hidden}
+.vh{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:12px 16px;border-bottom:1px solid var(--linha2)}
+.vh .nome{font-weight:600}
+.vh .bt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta3)}
+.vh .n{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.badge{font-size:11px;padding:2px 7px;border-radius:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.b-bom{background:var(--bom-bg);color:var(--bom)} .b-vaza{background:var(--vaza-bg);color:var(--vaza)}
+.b-cego{background:var(--cego-bg);color:var(--cego)} .b-duvida{background:var(--duvida-bg);color:var(--duvida)}
+.b-campo{background:var(--campo-bg);color:var(--campo)} .b-aceito{background:var(--aceito-bg);color:var(--aceito)}
+.b-vazio{background:var(--vaza);color:var(--carta);font-weight:600}
+.fila{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--tinta2);font-variant-numeric:tabular-nums}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3);
+  font-weight:600;padding:8px 16px;border-bottom:1px solid var(--linha2);white-space:nowrap}
+td{padding:9px 16px;border-bottom:1px solid var(--linha2);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr.resolvido td{background:var(--bom-bg)}
+tr.resolvido .trecho{text-decoration:line-through;text-decoration-color:var(--tinta3)}
+tr.novo td{background:var(--vaza-bg)}
+.est{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.e-resolvido{color:var(--bom)} .e-novo{color:var(--vaza)} .e-permanece{color:var(--tinta3)}
+.trecho{font-family:"IBM Plex Mono",monospace;font-size:12.5px;word-break:break-word;max-width:36ch}
+.k{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--campo)}
+.diag{max-width:30ch}.acao{color:var(--tinta2);max-width:34ch}
+.arte{display:block;margin-top:5px;font-size:11.5px;color:var(--tinta2)}
+.arte b{font-weight:400;color:var(--tinta3)}
+.arte code{background:var(--linha2);padding:1px 4px;border-radius:3px;white-space:pre-wrap}
+footer{color:var(--tinta2);font-size:12.5px;border-top:1px solid var(--linha);padding-top:18px}
+footer h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--tinta3);margin:0 0 6px}
+footer p{margin:0 0 10px;max-width:76ch}
+details summary{cursor:pointer;font-size:12.5px;color:var(--tinta2);padding:4px 0}
+@media (max-width:720px){.acao{display:none}.vh .n{margin-left:0;width:100%}}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<div class="wrap">
+<header>
+  <h1>O que mudou na biblioteca</h1>
+  <p class="sub">Segunda passada do auditor de cobertura da produção
+  (<span class="mono">auditVariantCoverage</span>) sobre as mesmas 40 variantes ativas,
+  comparada com a de ontem às 14:55. <strong>Cinco variantes foram editadas</strong> desde
+  então; as outras 35 estão idênticas byte a byte.</p>
+</header>
+
+<section class="tiles">
+  <div class="tile"><div class="n">98<span class="de">112</span><span class="delta dn">-14</span></div><span class="rot">itens na fila de curadoria</span></div>
+  <div class="tile"><div class="n" style="color:var(--vaza)">29<span class="de">29</span><span class="delta eq">+0</span></div><span class="rot">textos que o auditor pega</span></div>
+  <div class="tile"><div class="n" style="color:var(--cego)">58<span class="de">61</span><span class="delta dn">-3</span></div><span class="rot">mockup que ele <em>não</em> pega</span></div>
+  <div class="tile"><div class="n" style="color:var(--campo)">4<span class="de">10</span><span class="delta dn">-6</span></div><span class="rot">campos sem lugar no HTML</span></div>
+</section>
+
+<div class="nota">
+  <p><strong>As 35 variantes não editadas saíram idênticas, item a item.</strong>
+  É o controle desta rodada: se alguma delas tivesse mudado, a diferença seria da
+  medição, não da biblioteca — e nada aqui seria confiável. O que mudou, mudou
+  porque alguém editou.</p>
+  <p><strong>Quatro das cinco melhoraram e uma piorou.</strong> A fila caiu de
+  112 para 98. Os campos sem lugar caíram de 10 para
+  4 — <span class="mono">review 7</span> e <span class="mono">review 8</span>
+  levaram nove dos dez.</p>
+</div>
+
+<section>
+  <h2>As cinco que foram mexidas</h2>
+  <section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">review 6</span><span class="bt">reviews</span>
+  
+  <span class="n"><span class="fila">fila 1 → 2</span><span class="badge b-vaza">1 novo</span><span class="badge b-vaza">1 pega</span><span class="badge b-campo">1 campo</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="novo">
+      <td class="est e-novo">novo</td>
+      <td class="trecho">“1 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor lorem”
+        <span class="arte"><b>na arte:</b> <code>“ 1Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor lorem”</code></span></td>
+      <td><span class="k">testimonial_1_quote</span></td>
+      <td class="diag">Só o ESPAÇAMENTO difere</td>
+      <td class="acao">As duas frases são a mesma letra a letra; muda onde o espaço está. Copiar do HTML.</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">&amp;ldquo; 1Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor lorem&amp;rdquo;
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">review 8</span><span class="bt">reviews</span>
+  
+  <span class="n"><span class="fila">fila 12 → 6</span><span class="badge b-bom">6 resolvidos</span><span class="badge b-cego">2 não pega</span><span class="badge b-duvida">4 dúvida</span><span class="badge b-campo">6 campo</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Verified
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Verified
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Verified
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">G
+        </td>
+      <td><span class="k">review_1_initial</span></td>
+      <td class="diag">Example de 1–3 caracteres</td>
+      <td class="acao">Âncora curta casa em qualquer lugar. Usar a frase completa do HTML.</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">K
+        </td>
+      <td><span class="k">review_2_initial</span></td>
+      <td class="diag">Example de 1–3 caracteres</td>
+      <td class="acao">Âncora curta casa em qualquer lugar. Usar a frase completa do HTML.</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">G
+        </td>
+      <td><span class="k">review_3_initial</span></td>
+      <td class="diag">Example de 1–3 caracteres</td>
+      <td class="acao">Âncora curta casa em qualquer lugar. Usar a frase completa do HTML.</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">SHOP NOW
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">3 SHOP NOW
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">SHOP NOW
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho"><i style="color:var(--tinta3)">(vazio)</i>
+        </td>
+      <td><span class="k">review_1_name</span></td>
+      <td class="diag">Example de 1–3 caracteres</td>
+      <td class="acao">Âncora curta casa em qualquer lugar. Usar a frase completa do HTML.</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Shop Now
+        </td>
+      <td><span class="k">review_1_cta_label</span></td>
+      <td class="diag">A frase se repete mais que os campos</td>
+      <td class="acao">O merge não chuta qual ocorrência é qual. Ou criar o campo irmão, ou trocar todas.</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Shop Now
+        </td>
+      <td><span class="k">review_3_cta_label</span></td>
+      <td class="diag">A frase se repete mais que os campos</td>
+      <td class="acao">O merge não chuta qual ocorrência é qual. Ou criar o campo irmão, ou trocar todas.</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">review 7</span><span class="bt">reviews</span>
+  
+  <span class="n"><span class="fila">fila 9 → 3</span><span class="badge b-bom">6 resolvidos</span><span class="badge b-vaza">3 pega</span><span class="badge b-duvida">3 dúvida</span><span class="badge b-campo">3 campo</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">1 Verified Buyer
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">credencial de review sem campo: criar review_N_badge / corrigir o example do nome</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">2 Verified Buyer
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">credencial de review sem campo: criar review_N_badge / corrigir o example do nome</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">3 Verified Buyer
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">credencial de review sem campo: criar review_N_badge / corrigir o example do nome</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Buyer Name
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Buyer Name
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Buyer Name
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho"> Buyer Name	 		 	1 
+        </td>
+      <td><span class="k">review_1_name</span></td>
+      <td class="diag">O example não existe no HTML</td>
+      <td class="acao">Colar no example a frase exata que está na arte.</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho"> Buyer Name	 		 	2 
+        </td>
+      <td><span class="k">review_2_name</span></td>
+      <td class="diag">O example não existe no HTML</td>
+      <td class="acao">Colar no example a frase exata que está na arte.</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho"> Buyer Name	 		 	3 
+        </td>
+      <td><span class="k">review_3_name</span></td>
+      <td class="diag">O example não existe no HTML</td>
+      <td class="acao">Colar no example a frase exata que está na arte.</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">offer 2</span><span class="bt">offer</span>
+  
+  <span class="n"><span class="fila">fila 2 → 0</span><span class="badge b-bom">2 resolvidos</span><span class="badge b-duvida">1 dúvida</span><span class="badge b-campo">1 campo</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">| Grill-Ready
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">Grill-Ready/20 Blend
+        </td>
+      <td><span class="k">offer_price_spec_4</span></td>
+      <td class="diag">O example não existe no HTML</td>
+      <td class="acao">Colar no example a frase exata que está na arte.</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">produto 8 - 4 produtos</span><span class="bt">products</span>
+  
+  <span class="n"><span class="fila">fila 1 → 0</span><span class="badge b-bom">1 resolvido</span><span class="badge b-cego">1 não pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="resolvido">
+      <td class="est e-resolvido">resolvido</td>
+      <td class="trecho">CTA FINAL
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr></tbody>
+  </table></div></section>
+</section>
+
+<section>
+  <h2>O que continua igual — a fila que sobra</h2>
+  <section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">produtos 9 - 4 produtos</span><span class="bt">products</span>
+  
+  <span class="n"><span class="fila">fila 45 → 45</span><span class="badge b-cego">45 não pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Sizes 1:
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-01
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-02
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-03
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-04
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-05
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-06
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-07
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-08
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-09
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T1-10
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Sizes 2:
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-01
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-02
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-03
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-04
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-05
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-06
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-07
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-08
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-09
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T2-10
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Sizes 3:
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-01
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-02
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-03
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-04
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-05
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-06
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-07
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-08
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-09
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T3-10
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Sizes 4:
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-01
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-02
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-03
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-04
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-05
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-06
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-07
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-08
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-09
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">T4-10
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">CTA FINAL
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">body 6 - bridge skin minimalism 101</span><span class="bt">body</span>
+  <span class="badge b-vazio">sem schema</span>
+  <span class="n"><span class="fila">fila 13 → 13</span><span class="badge b-vaza">12 pega</span><span class="badge b-cego">1 não pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">ipsum dolor sit
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">amet, consectetur adipiscing elit, sed do eiusmod tempor,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">ipsum dolor sit
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">amet, consectetur adipiscing elit, sed do eiusmod tempor,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">ipsum dolor sit
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">amet, consectetur adipiscing elit, sed do eiusmod tempor,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">ipsum dolor sit
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">amet, consectetur adipiscing elit, sed do eiusmod tempor,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">SHOP NOW
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">body 7 - bridge FAQ</span><span class="bt">body</span>
+  <span class="badge b-vazio">sem schema</span>
+  <span class="n"><span class="fila">fila 9 → 9</span><span class="badge b-vaza">6 pega</span><span class="badge b-cego">2 não pega</span><span class="badge b-duvida">1 dúvida</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliq
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliq
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet,
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliq
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">texto de diagramação: o bloco precisa de schema (ou o campo existe e o example é o próprio lorem)</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Copy Text Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Shop Now
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">body 9 - key features pilulas</span><span class="bt">body</span>
+  <span class="badge b-vazio">sem schema</span>
+  <span class="n"><span class="fila">fila 8 → 8</span><span class="badge b-cego">8 não pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">EYEBROW TEXT GOES HERE
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">TITLE GOES
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Key Features copy here 1
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Key Features copy here 2
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Key Features copy here 3
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Key Features copy here 4
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Key Features copy here 5
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">FINISH MY ORDER
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">footer 1</span><span class="bt">footer</span>
+  
+  <span class="n"><span class="fila">fila 6 → 6</span><span class="badge b-vaza">6 pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Link Here
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">rótulo de navegação sem campo: criar footer_link_N_label + _url</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">body 8 - cards vidro</span><span class="bt">body</span>
+  <span class="badge b-vazio">sem schema</span>
+  <span class="n"><span class="fila">fila 3 → 3</span><span class="badge b-cego">2 não pega</span><span class="badge b-duvida">1 dúvida</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">TEXT HERE
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">TEXT HERE
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — mockup que a régua de hoje NÃO enxerga</td>
+      <td class="acao">Criar o campo (e é candidato a virar regra do EXEMPLO_RE).</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">Shop for any occasion
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">footer 4 - dark</span><span class="bt">footer</span>
+  <span class="badge b-vazio">sem schema</span>
+  <span class="n"><span class="fila">fila 2 → 2</span><span class="badge b-duvida">2 dúvida</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">CUT SHEETS
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">ABOUT US
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo — a régua não opina; precisa de olho humano</td>
+      <td class="acao">Conferir no editor: é texto fixo da arte ou recheio?</td></tr></tbody>
+  </table></div></section><section class="v" style="margin-bottom:12px">
+  <div class="vh"><span class="nome">welcome - hero sectiion 8</span><span class="bt">hero</span>
+  
+  <span class="n"><span class="fila">fila 1 → 1</span><span class="badge b-vaza">1 pega</span></span></div>
+  <div class="tw"><table>
+    <thead><tr><th>Estado</th><th>Trecho</th><th>Campo</th><th>O problema</th><th class="acao">O que fazer</th></tr></thead>
+    <tbody><tr class="permanece">
+      <td class="est e-permanece">continua</td>
+      <td class="trecho">_AQUI
+        </td>
+      <td><i style="color:var(--tinta3)">texto na arte</i></td>
+      <td class="diag">Sem campo nenhum — o auditor reconhece como mockup</td>
+      <td class="acao">resto de marcador: apagar do HTML da variante</td></tr></tbody>
+  </table></div></section>
+</section>
+
+<section>
+  <h2>Aceitos — fora da fila por decisão sua</h2>
+  <div class="v"><div class="tw"><table>
+    <thead><tr><th>Trecho</th><th>Onde</th><th>Situação</th></tr></thead>
+    <tbody><tr><td class="trecho">[klaviyo dynamic block]</td><td>offer/offer 6</td><td class="diag">Aceito pelo dono — texto fixo legítimo</td></tr><tr><td class="trecho">LOGO HERE</td><td>hero/welcome - hero section 5</td><td class="diag">Aceito pelo dono — o auditor continua marcando, a decisão é de curadoria</td></tr><tr><td class="trecho">LOGO HERE</td><td>hero/welcome - hero section 7</td><td class="diag">Aceito pelo dono — o auditor continua marcando, a decisão é de curadoria</td></tr></tbody>
+  </table></div></div>
+  <p class="sub" style="margin-top:10px"><span class="mono">pareceExemplo</span> continua
+  marcando <span class="mono">LOGO HERE</span> no pipeline — a decisão é de curadoria e não
+  mexe no código. Silenciar a heurística é outra conversa; enquanto não for, esses três
+  aparecem aqui e não na fila. E <span class="mono">Link Here</span> ×6 do
+  <span class="mono">footer 1</span> é outra regra: <strong>continua na fila</strong>.</p>
+</section>
+
+<footer>
+  <h3>Como o diff foi feito</h3>
+  <p>O baseline não foi lido do relatório de ontem: o HTML de ontem foi guardado e
+  <strong>re-auditado agora, com o mesmo código</strong>. Assim toda diferença é da
+  biblioteca, nunca da régua — se o auditor tivesse mudado no meio, as 35 intocadas
+  denunciariam.</p>
+  <p>A chave de comparação é <span class="mono">(variante, tipo, trecho ou campo)</span>.
+  <strong>Resolvido</strong> estava e sumiu · <strong>novo</strong> não estava e apareceu ·
+  o resto permanece.</p>
+  <h3>Onde a leitura exige cuidado</h3>
+  <p>Os trechos em âmbar são mockup que a régua de hoje <em>não</em> enxerga — foram
+  classificados por uma régua <em>proposta</em>, para medir o ponto cego; quem decide se
+  viram regra de <span class="mono">EXEMPLO_RE</span> é quem cuida da biblioteca. Texto fixo
+  legítimo (redes sociais, numeração, horários) foi descontado e não aparece.</p>
+  <p>5 variantes ativas seguem sem <span class="mono">output_schema</span>:
+  <span class="mono">body 6 - bridge skin minimalism 101</span> · <span class="mono">body 7 - bridge FAQ</span> · <span class="mono">body 9 - key features pilulas</span> · <span class="mono">body 8 - cards vidro</span> · <span class="mono">footer 4 - dark</span> — nelas não existe
+  campo nenhum, então toda a arte vai inteira para o cliente.</p>
+</footer>
+</div>
