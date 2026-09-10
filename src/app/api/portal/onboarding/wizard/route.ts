@@ -364,10 +364,10 @@ export async function POST(request: NextRequest) {
 
         await adminClient
           .from("client_stores")
-          .update({
-            shopify_collaborator_code: collaborator_code,
-            updated_at: new Date().toISOString(),
-          })
+          // Sem `updated_at`: `client_stores` não tem essa coluna (é a
+          // única da área que não tem), e o update inteiro tomava 42703 —
+          // o cliente não conseguia salvar o código de colaborador.
+          .update({ shopify_collaborator_code: collaborator_code })
           .eq("id", store_id)
 
         log.info("Wizard step 3 saved", { storeId: store_id })

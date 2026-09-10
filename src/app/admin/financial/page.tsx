@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
+import { InvoicesSemCliente } from "@/components/financial/invoices-sem-cliente"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
@@ -61,6 +62,9 @@ export default function FinancialPage() {
 
         {activeTab === "charges" && (
           <div className="mt-6">
+            {/* Fila de triagem acima da lista: é trabalho a fazer, e some
+                sozinha quando não há cobrança sem dono. */}
+            <InvoicesSemCliente />
             <ChargesManager />
           </div>
         )}

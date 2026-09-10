@@ -90,10 +90,17 @@ export function buildInvoiceRowFromPayment(
   payment: PaymentLike,
   clientId: string | null,
   currentChargeType?: string | null,
+  orgId?: string | null,
 ): Record<string, unknown> {
   const row: Record<string, unknown> = {
     asaas_id: payment.id,
     client_id: clientId,
+    // Sem dono, estes dois são o que torna a linha acionável: `org_id`
+    // porque a org de uma fatura vinha SÓ pelo cliente (sem ele a linha
+    // ficaria fora de todo escopo e de toda tela), e o pagador do Asaas
+    // porque é com ele que um humano decide de quem é na triagem.
+    org_id: orgId ?? undefined,
+    asaas_customer_id: payment.customer ?? undefined,
     amount: payment.value,
     due_date: payment.dueDate,
     payment_date: payment.paymentDate || payment.clientPaymentDate || null,
@@ -140,13 +147,16 @@ export async function ensureAsaasInvoiceMirror(
     return null
   }
 
+  // Sem dono a linha NASCE assim mesmo, para triagem: quem chega aqui
+  // está classificando ou marcando pago um pagamento específico, e
+  // devolver null dava "Fatura ainda não sincronizada localmente" sobre
+  // uma cobrança que existe. `client_id` é anulável desde a 20261137.
   const clientId = await resolveClientForPayment(admin, orgId, payment)
   if (!clientId) {
-    log.warn("payment sem cliente da org", { paymentId, customer: payment.customer })
-    return null
+    log.warn("payment sem dono — entra para triagem", { paymentId, customer: payment.customer })
   }
 
-  const row = buildInvoiceRowFromPayment(payment, clientId)
+  const row = buildInvoiceRowFromPayment(payment, clientId, null, orgId)
   let ins = await admin.from("invoices").insert(row).select("id, client_id").single()
   if (ins.error && isMissingClassificationColumn(ins.error)) {
     ins = await admin.from("invoices").insert(stripClassification(row)).select("id, client_id").single()

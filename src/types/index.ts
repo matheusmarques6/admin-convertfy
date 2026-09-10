@@ -87,8 +87,18 @@ export type PaymentStatus = "pending" | "paid" | "overdue" | "cancelled" | "refu
 
 export interface Invoice {
   id: string
-  client_id: string
+  /**
+   * NULL = cobrança do Asaas cujo pagador ainda não bate com nenhum
+   * cliente (migration 20261137). Ela ENTRA no espelho assim mesmo e
+   * espera na triagem "Sem cliente" do Financeiro — antes o INSERT morria
+   * e o pagamento não entrava em lugar nenhum.
+   */
+  client_id: string | null
   asaas_id?: string
+  /** Pagador no Asaas: é o que torna a fatura sem dono decidível. */
+  asaas_customer_id?: string | null
+  /** Escopo da linha. Sem cliente, é a ÚNICA fonte de org que ela tem. */
+  org_id?: string | null
   amount: number
   due_date: string
   payment_date?: string
