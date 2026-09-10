@@ -17,6 +17,10 @@
  */
 
 import { logger } from "@/lib/logger"
+import {
+  IN_FLIGHT_BASE_DELAY_MS,
+  ehInFlight,
+} from "@/lib/ai/openrouter-in-flight"
 
 const log = logger.child("OpenRouterInvoke")
 
@@ -30,6 +34,19 @@ export function isInsufficientCreditsMessage(msg: string): boolean {
   return /insufficient credits|credit balance.*too low|purchase credits|add more.*credit|\b402\b/i.test(
     msg,
   )
+}
+
+/**
+ * O 402 que MERECE alerta ao CTO: crédito de fato esgotado.
+ *
+ * `isInsufficientCreditsMessage` casa `\b402\b`, então o in-flight — que é
+ * espera de segundos, não falta de dinheiro — disparava "créditos
+ * esgotados" e mandava recarregar uma conta com saldo. Fonte única para os
+ * três pontos que notificam (este arquivo, `llm-invoke`, `format-invoke`).
+ */
+export function ehCreditoEsgotado(status: number, body: string): boolean {
+  if (ehInFlight(body)) return false
+  return status === 402 || isInsufficientCreditsMessage(body)
 }
 
 // ── Erros nomeados ─────────────────────────────────────────────────────
@@ -97,14 +114,24 @@ export class OpenRouterHttpError extends Error {
   readonly retryable: boolean
   readonly status: number
   readonly snippet: string
+  /** 402 por saldo RESERVADO (chamada em voo) — espera, não recarga. */
+  readonly inFlight: boolean
   constructor(ctx: { status: number; snippet: string }) {
     // 5xx + 408 (request timeout) + 429 (rate limit) → transitórios.
     // 402 (sem crédito), 4xx em geral → permanentes.
+    //
+    // A exceção é o 402 `in_flight_budget_exhausted` (09/09): NÃO é falta
+    // de crédito, é saldo reservado para uma chamada que ainda não
+    // liquidou — some sozinho em segundos. Tratado como permanente, ele
+    // derrubou runs em 4 dos 12 batches do dia, incluindo uma geração
+    // inteira. Ver `ai/openrouter-in-flight.ts`.
+    const inFlight = ctx.status === 402 && ehInFlight(ctx.snippet)
     const retryable =
-      ctx.status >= 500 || ctx.status === 408 || ctx.status === 429
+      ctx.status >= 500 || ctx.status === 408 || ctx.status === 429 || inFlight
     super(`OpenRouter HTTP ${ctx.status}: ${ctx.snippet}`)
     this.name = "OpenRouterHttpError"
     this.retryable = retryable
+    this.inFlight = inFlight
     this.status = ctx.status
     this.snippet = ctx.snippet
   }
@@ -372,7 +399,11 @@ export async function withOpenRouterRetry<T>(
       const retryable = (err as { retryable?: boolean }).retryable === true
       if (!retryable || n === retries) throw err
       opts.onRetry?.(err, n)
-      await sleep(baseDelayMs * 2 ** n)
+      // O in-flight espera a chamada ANTERIOR liquidar do lado do
+      // provedor; 1 s não faz isso acontecer e a tentativa queima o mesmo
+      // erro. Os demais transitórios seguem no backoff normal.
+      const base = ehInFlight(err) ? IN_FLIGHT_BASE_DELAY_MS : baseDelayMs
+      await sleep(base * 2 ** n)
     }
   }
   throw lastErr
@@ -504,7 +535,9 @@ async function callOnce(
     if (!resp.ok) {
       const errBody = await resp.text().catch(() => "")
       // Sem crédito → alerta CTO (deduplicado). Fire-and-forget, não bloqueia.
-      if (resp.status === 402 || isInsufficientCreditsMessage(errBody)) {
+      // In-flight fica FORA: é espera, e alerta falso é como se aprende a
+      // ignorar o verdadeiro.
+      if (ehCreditoEsgotado(resp.status, errBody)) {
         void import("./generation-notify.service")
           .then((m) =>
             m.notifyCreditsExhausted({

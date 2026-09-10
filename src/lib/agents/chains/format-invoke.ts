@@ -12,7 +12,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import {
   invokeOpenRouter,
   isOpenRouterModel,
-  isInsufficientCreditsMessage,
+  ehCreditoEsgotado,
 } from "../openrouter-invoke"
 
 export interface FormatChainConfig {
@@ -107,7 +107,7 @@ export async function invokeFormatModel(params: {
     // caminho OpenRouter. Antes o 400 "credit balance is too low" morria
     // silencioso no fallback do step (caso do merge_verifier, 28/07).
     const msg = err instanceof Error ? err.message : String(err)
-    if (isInsufficientCreditsMessage(msg)) {
+    if (ehCreditoEsgotado(0, msg)) {
       void import("../generation-notify.service")
         .then((m) =>
           m.notifyCreditsExhausted({

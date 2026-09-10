@@ -7,6 +7,8 @@
 
 import { describe, expect, it } from "vitest"
 import {
+  ehDestinoDaLoja,
+  normalizarUrlDaLoja,
   FIXED_ART_SRC,
   isAltToken,
   isAttrToken,
@@ -150,5 +152,62 @@ describe("classificação estrutural × alt", () => {
     expect(isAltToken("ALT_PRODUTO_3")).toBe(true)
     expect(isAltToken("NOME_DA_MARCA")).toBe(false)
     expect(isAltToken("URL_DA_IMAGEM_1")).toBe(false)
+  })
+})
+
+describe("ehDestinoDaLoja e normalizarUrlDaLoja (09/09)", () => {
+  it("cobre a família de CTA/link/site do inventário real", () => {
+    for (const t of [
+      "URL_DO_CTA_AQUI",
+      "URL_CTA_1",
+      "URL_CTA_9",
+      "URL_CTA_FINAL",
+      "URL_DO_CTA_FINAL",
+      "URL_CTA_PRIMARIO",
+      "URL_CTA_SECUNDARIO",
+      "URL_CTA_COLECAO",
+      "URL_CTA_PRODUTO_4",
+      "URL_DO_CTA_1_AQUI",
+      "URL_LINK_1",
+      "URL_LINK_6",
+      "URL_DO_SITE_AQUI",
+      "URL_DA_IMAGEM_LINK_AQUI",
+    ]) {
+      expect(ehDestinoDaLoja(t)).toBe(true)
+    }
+  })
+
+  it("rede social, navegação e estruturais ficam de fora", () => {
+    for (const t of [
+      "URL_INSTAGRAM",
+      "URL_FACEBOOK",
+      "URL_TIKTOK",
+      "URL_ABOUT_US",
+      "URL_BOOKS",
+      "URL_UNSUBSCRIBE",
+      "URL_PREFERENCIAS",
+      "URL_DO_LOGO_AQUI",
+      "URL_DA_IMAGEM_1",
+      "ALT_PRODUTO_2",
+    ]) {
+      expect(ehDestinoDaLoja(t)).toBe(false)
+    }
+  })
+
+  it("normaliza o que o cadastro guarda de verdade", () => {
+    expect(normalizarUrlDaLoja("heroboxers.com")).toBe("https://heroboxers.com")
+    expect(normalizarUrlDaLoja(" https://loja.com/ ")).toBe("https://loja.com")
+    // http explícito é preservado: forçar https quebraria loja que só serve http
+    expect(normalizarUrlDaLoja("http://antiga.com")).toBe("http://antiga.com")
+  })
+
+  it("recusa o que quebraria o atributo ou não é URL", () => {
+    // O valor entra em href="…": uma aspa dupla injetaria markup, e
+    // `neutralizeAngles` (que o splice aplica) só cuida de <>.
+    expect(normalizarUrlDaLoja('loja.com" onclick="x')).toBe("")
+    expect(normalizarUrlDaLoja("loja com")).toBe("")
+    expect(normalizarUrlDaLoja("localhost")).toBe("")
+    expect(normalizarUrlDaLoja("")).toBe("")
+    expect(normalizarUrlDaLoja(null)).toBe("")
   })
 })

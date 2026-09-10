@@ -296,4 +296,27 @@ describe("texto_no_desenho — a copy do n8n chega ao desenho pelo VALOR", () =>
     const out = buildImageSlots(selos, { seal_1_center: "   " }, { fieldKey: "seal_1_image" })
     expect(out).not.toContain("texto_no_desenho")
   })
+
+  // Regressão das gerações de 09/09: os três selos da `body 3` saíram
+  // CHAPADOS, sem o valor no centro nem a frase no arco. O mesmo campo
+  // entrava nas DUAS seções do prompt — "deixe esta região limpa, sem
+  // desenhar nada nela" e "DESENHE estas palavras" — e o modelo obedeceu a
+  // primeira. Como `copy_no_desenho` não tem endereço no HTML, o texto
+  // também não era escrito por cima: sumia das duas pontas.
+  it("o MESMO campo nunca aparece nas duas seções", () => {
+    const out = buildImageSlots(selos, content, { fieldKey: "seal_1_image" })
+    const areas = out.slice(out.indexOf("areas_de_texto"), out.indexOf("texto_no_desenho"))
+    expect(areas).not.toContain("seal_1_center")
+    expect(areas).not.toContain("seal_1_arc")
+    // e o pedido de desenhar segue de pé
+    expect(out).toContain('- seal_1_center: "SEM APERTO"')
+  })
+
+  it("um grupo SÓ de copy_no_desenho não abre areas_de_texto vazia", () => {
+    // Sem a exclusão, a seção nascia com os dois campos e a instrução de
+    // deixar limpo — o oposto do que o slot pede.
+    const out = buildImageSlots(selos, content, { fieldKey: "seal_2_image" })
+    expect(out).not.toContain("areas_de_texto")
+    expect(out).toContain('- seal_2_center: "TROCA FÁCIL"')
+  })
 })

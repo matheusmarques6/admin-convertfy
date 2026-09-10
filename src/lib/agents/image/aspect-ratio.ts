@@ -150,19 +150,71 @@ export function imageDimsFromBlueprint(
 }
 
 /**
+ * O aspect da LISTA mais próximo de uma proporção arbitrária.
+ *
+ * A comparação é em LOG da razão: 1200×900 e 900×1200 estão à mesma
+ * distância de um quadrado, e em escala linear a diferença de razão
+ * exageraria o lado paisagem (1,33 dista 0,33 de 1,0 enquanto 0,75 dista
+ * 0,25 do mesmo quadrado). Empate resolve pela ordem de `AspectKey`, que é
+ * estável — nunca por objeto iterado.
+ */
+export function aspectMaisProximo(width: number, height: number): AspectKey {
+  const alvo = Math.log(width / height)
+  let melhor: AspectKey = "4:5"
+  let menorDist = Number.POSITIVE_INFINITY
+  for (const key of Object.keys(DIMENSIONS) as AspectKey[]) {
+    const d = DIMENSIONS[key]
+    const dist = Math.abs(Math.log(d.width / d.height) - alvo)
+    if (dist < menorDist) {
+      menorDist = dist
+      melhor = key
+    }
+  }
+  return melhor
+}
+
+/**
  * Aspect do SLOT, com fallback na cascata do bloco. O `image_aspect` vive no
  * campo desde o épico Taguedor (62 dos 76 campos da biblioteca o declaram),
  * mas até a geração virar por campo ninguém o lia — todo slot herdava o
  * aspect do bloco. Numa variante que mistura 9:16 (foto grande) com 4:5
  * (miniaturas), herdar é gerar errado.
+ *
+ * ── Por que a DIMENSÃO do slot vence tudo (09/09) ─────────────────────
+ *
+ * Quem corta a imagem gerada é `sharp` com `fit:"cover"` nas dimensões
+ * EXATAS do slot (`customDims`). Pedir ao modelo uma proporção e cortar
+ * noutra descarta a composição dele pela borda, e o estrago foi medido:
+ *
+ *   COLUMN_A_TOP   272×212 (paisagem 1,28) pedido em 4:5 (retrato) → −38% da altura
+ *   hero          1196×978 (paisagem 1,22) pedido em 4:5 (retrato) → −35% da altura
+ *   PANEL_1_MAIN   314×733 (0,43)          pedido em 9:16          → −24% da largura
+ *
+ * Os dois piores são paisagem pedida como retrato: o modelo compõe uma
+ * vertical e entregamos a tira do meio. Com o aspect derivado das dims, o
+ * corte do `COLUMN_A_TOP` cai de 38% para ~4%.
+ *
+ * **Limite declarado**: a lista de 8 é o que os modelos de imagem
+ * entregam; slot mais extremo que qualquer um deles (o 314×733) continua
+ * cortando — ali o que falta é proporção suportada, não escolha melhor.
  */
 export function resolveAspectForField(input: {
+  /**
+   * `image_width × image_height` do schema — a geometria REAL do frame.
+   * Vence o `fieldAspect` tipado porque é ela que o resize usa para
+   * cortar; discordarem é o defeito que esta prioridade fecha.
+   */
+  slotDims?: { width: number; height: number } | null
   fieldAspect?: string | null
   blockAspect?: AspectKey | string | null
   blueprintAspect?: AspectKey | string | null
   flowType?: string | null
   emailNumber?: number | null
 }): AspectKey {
+  const d = input.slotDims
+  if (d && d.width > 0 && d.height > 0) {
+    return aspectMaisProximo(d.width, d.height)
+  }
   if (input.fieldAspect && isAspectKey(input.fieldAspect)) {
     return input.fieldAspect
   }
