@@ -138,6 +138,19 @@ export interface OmnisendReportResponse {
     klaviyoAttributedOrders: number
     averageOrderValue: number
     recoveryRate: number
+    /**
+     * De onde veio a receita atribuída.
+     *
+     * Só o número calibrado pela Reports API (send-date) bate com o
+     * painel do Omnisend. Sem calibração ele sai por data do pedido e
+     * fica acima — e era publicado sem nada dizendo isso. Ausente no
+     * caminho de cache, que não sabe como a rodada original correu.
+     */
+    attribution?: {
+      grouping: "send_date" | "event_date"
+      matchesPanel: boolean
+      note: string | null
+    }
   }
   emailPerformance: {
     delivered: number
@@ -922,6 +935,18 @@ async function buildFromLiveFetch(
       klaviyoAttributedOrders: attributedOrders || totalConversions,
       averageOrderValue: storeOrders > 0 ? storeRevenue / storeOrders : 0,
       recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
+      // A procedência viaja com o número. `recoveryRate` acima é o
+      // quociente que o slide publica como "% da loja que veio da
+      // Convertfy" — e ele divide atribuído (send-date) por total
+      // (event-date), dois recortes de tempo diferentes. Isso não é
+      // corrigível somando melhor: é para ser DITO.
+      attribution: d.procedenciaAtribuido
+        ? {
+            grouping: d.procedenciaAtribuido.agrupamento,
+            matchesPanel: d.procedenciaAtribuido.comparavelComOPainel,
+            note: d.procedenciaAtribuido.ressalva,
+          }
+        : undefined,
     },
     emailPerformance: {
       delivered: totalDelivered,

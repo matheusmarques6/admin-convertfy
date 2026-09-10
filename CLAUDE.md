@@ -5374,5 +5374,99 @@ PROCEDÊNCIA da moeda de cada loja (`nunca-conferido` ≠ OK) e o fuso.
 `convertToBRL` (taxa de HOJE), não com `convertToBRLOn` (taxa do dia do
 período). Para uma janela recente a diferença é pequena; para 90 dias, não.
 
+## O número do relatório não batia com o painel (set/2026)
+
+Relatado com print: a Blue Wolf publicou **US$ 51,5 mil** de receita
+atribuída em agosto contra **$51.176,38** no painel do Omnisend, e
+faturamento total **US$ 214,1 mil** contra **$213.193,59**. Perto o
+bastante para parecer certo, longe o bastante para não fechar com nada.
+
+**A API foi medida antes de escrever código** (conta Treuquell, via MCP,
+agosto/2026) — e três afirmações que viviam em comentários deste
+repositório estavam ERRADAS:
+
+- **`month` e `day` somam IGUAL** (21.844,93 nos dois; `week` também).
+  O comentário do sync dizia que bucket diário "conta pedidos a mais na
+  virada de dia" e era por isso que a granularidade era `month`.
+- **Buckets são RECORTADOS pela janela**: 15/08→05/09 devolve 244
+  pedidos em agosto, não o mês inteiro.
+- **Offsets misturados entre `from` e `to` não inflaram nada**, ao
+  contrário do "+56 na Clube Rock" registrado no código. `to` é
+  exclusivo de verdade (31/08 tira exatamente o dia 31), e o campo
+  `interval: "custom"` é ignorado pela Statistics API (ela não o tem).
+
+Ou seja: **a plataforma responde de forma consistente; a divergência era
+nossa.** Duas causas, ambas silenciosas.
+
+**1. Gerar UM relatório disparava TRÊS syncs completos da mesma loja.**
+`fetchSnapshotSources` chamava `report`, `campaigns` e `flows` em
+paralelo, os três com `force_refresh=true`, e cada um roda um
+`syncOmnisendForStore` inteiro — 3 chamadas de analytics cada. **Nove
+chamadas na mesma chave, contra um limite de 10/min e 55/dia por
+brand.** O singleflight (`activeSyncs`) não protegia: cada `fetch` é uma
+invocação serverless separada e o `Map` vive na memória de um processo
+só — as três nunca se enxergam. Agora o `report` roda sozinho com
+`force_refresh` (ele já persiste em `store_revenue_summary` +
+`omnisend_campaign_metrics` + `omnisend_flow_metrics`) e campanhas/flows
+leem o que ele acabou de gravar; se o `report` não voltar, os dois
+pagam o refresh em vez de servir número de outra rodada. Três chamadas
+no total, e os três blocos passam a falar do MESMO sync — antes eram
+três syncs independentes que podiam divergir **dentro do mesmo
+relatório**.
+
+**2. Sem a Reports API, o atribuído sai por outro eixo — e era publicado
+sem marca.** Só o número CALIBRADO pela Reports API (send-date) bate com
+o painel; sem ela o sync cai no Statistics (event-date), que fica acima.
+O código **já sabia** — havia um `log.warn` dizendo que ali o valor
+"pode estar ~2x inflado" — e gravava assim mesmo, sem nada em tela, em
+banco ou no relatório distinguindo esse número do bom. Como a etapa
+falha justamente quando o limite estoura (causa 1), o mesmo relatório
+dava números diferentes a cada geração.
+
+`procedencia.ts` (puro, 12 testes) nomeia isso: `procedenciaDoAtribuido`
+devolve o agrupamento (`send_date`/`event_date`), se ele
+`comparavelComOPainel`, e declara quando o percentual mistura os dois
+eixos — que é o caso do slide "24,07% do faturamento veio da Convertfy",
+atribuído por data de envio sobre total por data do pedido. A
+documentação da Omnisend proíbe essa mistura na letra ("Never combine
+attributed revenue from post_analytics_reports with total revenue from
+this API"); ela **não é corrigível somando melhor** — é para ser DITA. A
+procedência viaja no `revenue.attribution` do relatório e fica congelada
+em `snapshot.atribuicao`, como `period_notes` já fazia com o período.
+
+**`safely` deixou de engolir a causa.** Ele captura rate limit e segue
+com o fallback — correto, um endpoint não pode abortar os outros — mas
+seguia **sem registrar**, e a tela dizia "A plataforma não respondeu às
+estatísticas desta janela. Clique em sincronizar de novo". As ações são
+OPOSTAS: num 429, insistir queima o resto da cota diária e atrasa a
+liberação. Agora cada degradação carrega `causa`
+(`limite_da_plataforma` × `falha_na_chamada`) e `liberaEmMs`, e
+`mensagemDaDegradacao` escreve o texto certo — o limite vence a falha
+comum quando os dois acontecem, e sem prazo informado não se inventa
+prazo.
+
+**Auditar deixou de exigir console** (`POST /api/stores/revenue-audit`,
+`auditoria-receita.ts` puro, 11 testes): para uma loja e uma janela,
+confronta o nosso número com o que a plataforma responde AGORA e mostra
+a memória de cálculo — a janela exata enviada (com offset), o fuso do
+cadastro contra o fuso da brand (o que o painel usa para cortar os
+dias), e o que cada API devolveu. A janela é montada pela MESMA
+`omnisendDateRange` da produção: remontá-la aqui faria a auditoria
+aprovar uma janela que o sync nunca envia — o defeito circular que a
+auditoria de moeda tinha antes de 08/09. O atribuído é confrontado com
+a **Reports** API, não com a Statistics: comparar com a segunda faria a
+auditoria aprovar justamente o número que diverge da tela do cliente.
+Tolerância de 0,1% porque a plataforma reprocessa atribuição entre
+leituras, e apontar isso como defeito ensina a ignorar o aviso de
+verdade. `causasProvaveis` devolve **lista vazia** quando nenhuma causa
+conhecida se aplica — o que é diferente de dizer que está tudo certo.
+
+**Continua em aberto**: a divergência da Blue Wolf não pôde ser fechada
+daqui — a chave do MCP é da Treuquell e o MCP do Supabase está
+expirado. As duas hipóteses que a auditoria decide num clique são o
+fuso do cadastro divergindo do fuso da brand e o atribuído ter saído
+sem calibração naquela geração. A rota existe; falta a tela que a
+consome.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
