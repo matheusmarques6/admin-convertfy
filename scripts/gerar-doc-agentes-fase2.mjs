@@ -113,7 +113,7 @@ const NOS = {
   hero_section: {
     llm: true, modelo: "config do banco ou <code>moonshotai/kimi-k3</code> · pode virar modelo de visão",
     arquivo: "phase2-runner.service.ts:2870 · chains/hero.chain.ts",
-    teto: "180 s no runner (<code>HERO_CHAIN_TIMEOUT_MS</code>) — o chain declara 240 s para o próprio abort",
+    teto: "corta em <b>240 s</b> (o chain) · reserva 180 s no guard de orçamento — <code>HERO_CHAIN_TIMEOUT_MS</code> alinha os dois",
     falha: "fail-closed na 2ª tentativa", reason: "<code>hero_failed</code>",
     pulado: "toggle da aba Agentes ou override da execução manual",
     entra: "região da hero + variante canônica + copy e imagem da hero + logos claro/escuro + fontes e cores (<code>buildHeroVars</code>)",
@@ -123,7 +123,7 @@ const NOS = {
   text_format: {
     llm: true, modelo: "config do banco ou <code>moonshotai/kimi-k3</code>",
     arquivo: "phase2-runner.service.ts:3164 · chains/text-format.chain.ts",
-    teto: "120 s no runner — o chain declara 540 s (herança do modo full-doc)",
+    teto: "corta em <b>540 s</b> (o chain) · reserva 120 s no guard — <code>TEXT_FORMAT_TIMEOUT_MS</code> alinha os dois",
     falha: "fail-closed na 2ª tentativa", reason: "<code>text_format_failed</code>",
     pulado: "<strong>quase sempre</strong> — ver observação",
     entra: "documento inteiro + blocos ainda abertos + fields do blueprint",
@@ -133,7 +133,7 @@ const NOS = {
   image_format: {
     llm: false, modelo: "—",
     arquivo: "phase2-runner.service.ts:3278 · <code>html/image-merge.ts</code> + <code>html/fix-hero-overlay.ts</code>",
-    teto: "não tem — a entrada de 180 s em <code>FMT_STEP_TIMEOUT</code> é código morto",
+    teto: "não tem — a entrada de 180 s em <code>FMT_STEP_TIMEOUT</code> nunca é lida",
     falha: "fail-closed, sem retry", reason: "<code>image_format_failed</code>",
     pulado: "toggle ou override",
     entra: "documento do passo anterior + <code>imageMap</code> (as URLs do agente de imagem)",
@@ -143,7 +143,7 @@ const NOS = {
   typography: {
     llm: true, modelo: "config do banco ou <code>moonshotai/kimi-k3</code>",
     arquivo: "phase2-runner.service.ts:3482 · chains/typography.chain.ts · <code>typography/{inventory,rules,apply}.ts</code>",
-    teto: "120 s no runner — o chain declara 180 s",
+    teto: "corta em <b>180 s</b> (o chain) · reserva 120 s no guard — <code>TYPOGRAPHY_TIMEOUT_MS</code> alinha os dois",
     falha: "<strong>fail-open</strong>", reason: "nenhum — <code>typography_failed</code> existe e nunca é usado",
     pulado: "toggle/override · <strong>inventário vazio</strong> (<code>sem_declaracoes_de_fonte</code>) · <code>out_of_budget</code>",
     entra: "<strong>não recebe o HTML</strong> — recebe o INVENTÁRIO numerado das declarações de fonte, a lista de famílias permitida, o par heading/body da loja e o tom de voz",
@@ -153,7 +153,7 @@ const NOS = {
   color_format: {
     llm: true, modelo: "config do banco ou <code>moonshotai/kimi-k3</code>",
     arquivo: "phase2-runner.service.ts:3651 · chains/color-format.chain.ts · <code>html/color-inventory.ts</code>",
-    teto: "120 s no runner — o chain declara 240 s",
+    teto: "corta em <b>240 s</b> (o chain) · reserva 120 s no guard — <code>COLOR_FORMAT_TIMEOUT_MS</code> alinha os dois",
     falha: "<strong>fail-open</strong>", reason: "nenhum — <code>color_format_failed</code> existe e nunca é usado",
     pulado: "toggle/override · <code>out_of_budget</code>",
     entra: "<strong>não recebe o documento</strong> — recebe o inventário de cores anotado com os pares texto↔fundo, a paleta da marca com papéis, nicho, tons e a pesquisa",
@@ -288,6 +288,8 @@ tr:last-child td{border-bottom:0}
 .sim{background:#EEF2FF;color:#3730A3}.nao{background:#F3F4F6;color:#4B5563}
 @media (prefers-color-scheme:dark){.sim{background:#1E1B4B;color:#C7D2FE}.nao{background:#1F2937;color:#D1D5DB}}
 .rolagem{overflow-x:auto;-webkit-overflow-scrolling:touch}
+h3.sub{font-size:15.5px;margin:26px 0 8px;letter-spacing:-.01em}
+table.mini{min-width:560px;font-size:12.5px}
 .rolaviso{display:none;font-size:12.5px;margin:0 0 8px}
 @media (max-width:820px){.rolaviso{display:block}}
 .no{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin:14px 0}
@@ -316,7 +318,7 @@ footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:v
 
 <h2>Os ${ordemFinal.length} nós, na ordem real</h2>
 <p class="nota rolaviso">Tabela larga — role para o lado para ver todas as colunas.</p>\n<div class="rolagem"><table>
-<thead><tr><th>Nó</th><th>Tipo</th><th>Teto</th><th>Falha</th><th>failure_reason</th><th>Quando é pulado</th></tr></thead>
+<thead><tr><th>Nó</th><th>Tipo</th><th>Corta em</th><th>Falha</th><th>failure_reason</th><th>Quando é pulado</th></tr></thead>
 <tbody>${linhas}</tbody></table></div>
 
 <h2>Nó a nó</h2>
@@ -332,12 +334,31 @@ ${blocos}
 <h2>Divergências declaradas</h2>
 <p class="nota">Código que engana quem lê, e por isso está aqui:</p>
 <ul>
-<li><code>FMT_FAILURE_REASON.color_format</code> e <code>.typography</code> existem e <b>nunca são usados</b> — os dois steps são fail-open e não chamam <code>failStep</code>.</li>
+<li><code>FMT_FAILURE_REASON.color_format</code> e <code>.typography</code> existem e <b>nunca são usados</b> — as duas strings aparecem num único lugar do repositório: a declaração do próprio mapa. <code>failStep</code> é chamado quatro vezes e só com <code>hero_section</code> (2×), <code>text_format</code> e <code>image_format</code>. Ver a seção abaixo.</li>
 <li><code>FMT_STEP_TIMEOUT.image_format</code> (180 s) não vale nada: o step virou código e não passa por <code>executeFormatStep</code>.</li>
-<li>Os <code>DEFAULT_TIMEOUT_MS</code> dentro dos chains (hero 240 s, text 540 s, color 240 s) são <b>maiores</b> que o teto que o runner impõe (180 s / 120 s). O <code>AbortController</code> do chain usa o valor dele; o guard de orçamento usa o do runner — quem corta primeiro é o runner.</li>
 <li><code>background_fit</code> está no grafo, no <code>MAIN_ORDER</code> e no CHECK do banco, mas <b>não</b> em <code>FormatAgent</code>: não tem toggle na aba Agentes nem timeout próprio.</li>
 <li><code>qavision</code> aparece no grafo e no <code>PipelineAgentKey</code>, mas nunca é gravado como <code>agent</code> — é bucket derivado em SQL.</li>
 </ul>
+
+<h2>Duas coisas que a tabela esconde</h2>
+
+<h3 class="sub">1 — <code>FMT_STEP_TIMEOUT</code> não é timeout: é reserva de orçamento</h3>
+<p class="nota"><code>stepTimeoutMs()</code> aparece em <b>dois lugares</b>, os dois dentro do mesmo <code>if</code>: o guard que decide se ainda dá tempo de tentar (<code>remaining &lt; timeout + 30 s</code>). O valor <b>nunca é passado para a chamada</b> e nunca aborta nada. Quem aborta é o <code>AbortController</code> de dentro do chain — que lê a <b>mesma variável de ambiente</b>, com um <b>default diferente</b>:</p>
+<div class="rolagem"><table class="mini">
+<thead><tr><th>agente</th><th>reserva no guard</th><th>abort real do chain</th><th>variável que alinha os dois</th></tr></thead>
+<tbody>
+<tr><td><code>hero_section</code></td><td>180 s</td><td><b>240 s</b></td><td><code>HERO_CHAIN_TIMEOUT_MS</code></td></tr>
+<tr><td><code>text_format</code></td><td>120 s</td><td><b>540 s</b></td><td><code>TEXT_FORMAT_TIMEOUT_MS</code></td></tr>
+<tr><td><code>typography</code></td><td>120 s</td><td><b>180 s</b></td><td><code>TYPOGRAPHY_TIMEOUT_MS</code></td></tr>
+<tr><td><code>color_format</code></td><td>120 s</td><td><b>240 s</b></td><td><code>COLOR_FORMAT_TIMEOUT_MS</code></td></tr>
+</tbody></table></div>
+<p class="nota">Com a variável definida os dois lados concordam por construção. Sem ela a reserva <b>subestima</b> o custo real — e nenhuma das quatro aparece no <code>.env.example</code>.</p>
+<p class="nota">A conta que isso abre, no <code>color_format</code>: o guard o autoriza a começar com <b>150 s</b> restantes (120 de reserva + 30 de folga) e o chain pode gastar <b>240 s</b>. No cron do watchdog — <code>budgetMs</code> 240 s dentro de um <code>maxDuration</code> de 300 s — isso termina em <b>330 s</b>: o runtime corta a função no meio do step. Na rota normal (760 s de orçamento, 800 s de teto) a mesma conta dá <b>850 s</b>.</p>
+<p class="nota">O que acontece depois <b>converge, mas cobra</b>: a run fica <code>running</code> órfã, e <code>countStepErrors</code> só conta <code>error</code> — então a tentativa cortada <b>não conta como tentativa</b>. O watchdog re-entra a cada 5 min e tenta de novo, com uma chamada paga a cada volta; <code>classifyStaleBatch</code> não interrompe, porque cada tentativa cria uma run nova e o batch nunca parece parado. Só em <code>WATCHDOG_STALE_RUN_MIN</code> (20 min) o Front 6 fecha as órfãs como <code>error</code>, a contagem passa de 2 e o fail-open assume. A peça sai correta — depois de ~4 chamadas e 4 ticks do cron.</p>
+
+<h3 class="sub">2 — falhar duas vezes e sair bem são indistinguíveis pelo status</h3>
+<p class="nota">Quando <code>typography</code> ou <code>color_format</code> esgotam as duas tentativas, o e-mail <b>não falha</b> — é o fail-open, e é o desenho certo: cor e tipografia são acabamento, a peça já está completa. Mas a run <code>skipped</code> só é gravada no caso <code>out_of_budget</code>. No caso "o modelo falhou duas vezes" ficam <b>duas runs <code>error</code> e mais nada</b>, e o e-mail segue para <code>ready</code> como qualquer outro. Quem olha o status do e-mail não distingue a peça que passou pelos dois agentes da que saiu com a tipografia e as cores das variantes.</p>
+<p class="nota">É por isso que <code>typography_failed</code> e <code>color_format_failed</code> nunca serão usados enquanto o desenho for esse: eles pressupõem um caminho de reprovação que, de propósito, não existe.</p>
 
 <footer>Gerado a partir do repositório em ${new Date().toLocaleDateString("pt-BR")} — os prompts foram EXTRAÍDOS das constantes <code>DEFAULT_*</code> dos chains, não transcritos. A topologia e a ordem saem de <code>studio-graph.ts</code> (<code>PHASE2_KEYS</code>, <code>MAIN_ORDER</code>); os tetos e motivos de falha, de <code>phase2-runner.service.ts</code> e <code>chains/format-config.ts</code>.<br>Onde o selo diz “o banco vence”, o texto mostrado é o fallback do repo: o prompt ativo mora em <code>email_agent_configs</code> e não foi lido nesta geração.</footer>
 </div></body></html>`
