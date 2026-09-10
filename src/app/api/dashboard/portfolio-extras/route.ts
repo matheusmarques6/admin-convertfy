@@ -19,6 +19,10 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import {
+  COLUNAS_DE_PLATAFORMA,
+  plataformasPresentes,
+} from "@/lib/dashboard/plataformas-da-org"
+import {
   storesWithoutRecentSend,
   summarizeChurn,
   type ChurnedSubRow,
@@ -43,7 +47,9 @@ async function handleGet(request: NextRequest) {
     const [storesQ, subsQ] = await Promise.all([
       admin
         .from("client_stores")
-        .select("id, store_name")
+        // As colunas de credencial entram para decidir QUAIS tabelas de
+        // métrica consultar logo abaixo (ver `plataformasPresentes`).
+        .select(`id, store_name, ${COLUNAS_DE_PLATAFORMA}`)
         .eq("org_id", orgId)
         .eq("is_active", true)
         .limit(500),
@@ -64,26 +70,27 @@ async function handleGet(request: NextRequest) {
     // com o índice de send_time; o complemento são as lojas paradas.
     const recentSenders = new Set<string>()
     if (storeIds.length > 0) {
+      // Só a plataforma que a org USA é consultada: com 54 lojas Omnisend
+      // e nenhuma Klaviyo, a segunda query varria uma tabela vazia em todo
+      // carregamento do dashboard.
+      const plataformas = plataformasPresentes(activeStores)
+      const enviosDe = (tabela: string) =>
+        admin
+          .from(tabela)
+          .select("store_id")
+          .in("store_id", storeIds)
+          .gte("send_time", sendCutoff)
+          .limit(5000)
       const [kQ, oQ] = await Promise.all([
-        admin
-          .from("klaviyo_campaign_metrics")
-          .select("store_id")
-          .in("store_id", storeIds)
-          .gte("send_time", sendCutoff)
-          .limit(5000),
-        admin
-          .from("omnisend_campaign_metrics")
-          .select("store_id")
-          .in("store_id", storeIds)
-          .gte("send_time", sendCutoff)
-          .limit(5000),
+        plataformas.klaviyo ? enviosDe("klaviyo_campaign_metrics") : null,
+        plataformas.omnisend ? enviosDe("omnisend_campaign_metrics") : null,
       ])
       // Loja Omnisend não deve sumir do card por erro na tabela Klaviyo
       // (e vice-versa) — mas erro de schema aqui é fatal mesmo.
-      if (kQ.error) throw kQ.error
-      if (oQ.error) throw oQ.error
-      for (const r of kQ.data ?? []) recentSenders.add(r.store_id as string)
-      for (const r of oQ.data ?? []) recentSenders.add(r.store_id as string)
+      if (kQ?.error) throw kQ.error
+      if (oQ?.error) throw oQ.error
+      for (const r of kQ?.data ?? []) recentSenders.add(r.store_id as string)
+      for (const r of oQ?.data ?? []) recentSenders.add(r.store_id as string)
     }
 
     const silent = storesWithoutRecentSend(activeStores, recentSenders)
