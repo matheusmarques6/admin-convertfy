@@ -34,8 +34,17 @@ import { COLOR_FORMAT_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { corteDeRaciocinio } from "../model-capabilities"
 import { parseOps, type FormatOp } from "../html/apply-patches"
+import { parsePlanoDeCor, type PlanoDeCor } from "../html/plano-de-cor"
 import { withUsage } from "./step-usage"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
+import {
+  ALCADA,
+  CTAS_BLOCO,
+  DOUTRINA_DE_CTA,
+  FAIXAS_E_RITMO,
+  GUIA_DE_COR,
+  OUTPUT_CONTRATO,
+} from "./color-guia"
 
 const log = logger.child("ColorFormatChain")
 
@@ -47,22 +56,22 @@ const timeoutMs = () => {
 }
 
 export const DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT = `<role>
-You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive its COLOR INVENTORY — every color value in the document, with occurrence count and usage contexts (background / color / border / bgcolor / css-var) — plus the store's approved brand palette, fonts and positioning research. Your job: decide WHICH color VALUES must change to conform to the approved identity. Deterministic code swaps each value globally in the real document.
+You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive three readings of it: the COLOR INVENTORY (every color value, with occurrence count and usage context), the BANDS (\`<faixas>\`: the sequence of section backgrounds, in scroll order) and the BUTTONS (\`<ctas>\`: each button with the band it sits in). Plus the store's approved palette, fonts and research.
+
+Your job is no longer only "which values must change". It is three decisions: the RHYTHM of the bands, the COLOR AND PRESENCE of every button, and the value-level conformance to the identity. Deterministic code applies each one — you never write HTML.
 </role>
 
-<ops_vocabulary>
-Respond with ONLY this JSON (no fences, no commentary):
-{"ops":[{"action":"recolor","from":"#6B46C1","to":"#1F1F1F"},{"action":"recolor","from":"#000000","to":"#3D2820","where":"background"}]}
-- "recolor" swaps occurrences of the color "from" (all textual forms: #hex, short #hex, rgb/rgba) for the color "to".
-- "where" (OPTIONAL) restricts the swap to occurrences playing THAT role. Valid values, and the exact same ones the inventory reports: "background", "color", "border", "bgcolor", "css-var", "outro". Omit "where" to swap every occurrence.
-- "from" must be a "valor" from <color_inventory>; "to" must be a palette color (or a functional derivative: pure white/black for contrast).
-- <color_inventory> gives you, per color, how many occurrences sit in each role. Use those counts: a color that is 30x body text and 12x section background is TWO decisions, not one skip.
-- A color used as TEXT also carries "sobre" (which backgrounds it sits on, and how often) and "contraste_min" (its worst contrast ratio in the document). "imagem" under "sobre" means the background there is a PHOTO — leave that text alone, its readability is settled elsewhere.
-- A color used as BACKGROUND may carry "cobre_px": the declared width, in px, of the widest container it fills. It is the only measure of AREA you get, and area is what the reader sees. A section background covering 598px occurs ONCE and outweighs a 1px hairline that occurs 24 times. Entries with a wide "cobre_px" are listed first for that reason. Its absence means the width was not declared on that element, not that the area is small.
-- A color used as BACKGROUND may also carry "dentro_de": which background(s) it sits INSIDE, and how often. That color is a PANEL — a card, a highlight band, a section that has to read as raised off the page. Sending a panel and the background it sits inside to the SAME value erases the panel: it does not look wrong, it stops existing. Check "dentro_de" before every background op.
-- Panels go to <surface>, or to <surface_strong> when the thing they sit inside is already <surface>. Those two ARE palette roles, derived from <bg> for exactly this purpose — reaching for <bg> because it is the only light value you recognise is the mistake this rule exists to stop.
-- Emitting ZERO ops is a legitimate, valued decision when the email already conforms.
-</ops_vocabulary>
+${GUIA_DE_COR}
+
+${DOUTRINA_DE_CTA}
+
+${ALCADA}
+
+${FAIXAS_E_RITMO}
+
+${CTAS_BLOCO}
+
+${OUTPUT_CONTRATO}
 
 <identity_conformance>
 You APPLY the identity — you are not only its guard. The sections below the hero come
@@ -113,7 +122,7 @@ Buttons/CTAs are your special focus:
 </button_rules>
 
 <preservation>
-You change COLOR VALUES ONLY. The applier makes anything else impossible: recolor swaps color literals and nothing more. Do not try to change copy, sizes, fonts or layout — there is no op for that.
+You change COLOR — and, in exactly one case, you ADD a button where a block has none. Nothing else: the applier makes it impossible. Sizes, fonts, layout, images and existing copy have no op. The button you add is built by code from the house template, so you never write markup either: you say WHERE, WHAT IT SAYS and WHERE IT POINTS (from the closed list), and the code writes it.
 </preservation>`
 
 export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
@@ -154,13 +163,37 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{color_inventory_json}}
 </color_inventory>
 
-Apply the identity to the inventory and emit the ops JSON now. Every color carrying a
-brand role (page background, section backgrounds, button backgrounds, headings) should
-end on a <color_roles> value — including the most frequent colors in the document,
-scoped with "where" when they serve more than one role. Emit {"ops":[]} only when the
-document already uses the palette in those roles.`
+<faixas>
+{{faixas_json}}
+</faixas>
+
+<ctas>
+{{ctas_json}}
+</ctas>
+
+Decida agora e devolva o plano. Três coisas, nesta ordem: o RITMO das faixas (R2, R3,
+R5, R6), os BOTÕES — invertendo os que ficaram na faixa errada e criando os que faltam,
+porque todo bloco tem CTA — e a CONFORMIDADE por valor: toda cor que carrega um papel de
+marca (fundo da página, fundo de seção, fundo de botão, títulos) termina num valor de
+<color_roles>, incluindo as mais frequentes, escopadas com "onde" quando servem a mais de
+um papel. Listas vazias só quando a peça já está conforme, o ritmo já lê e nenhum bloco
+está sem botão.`
 
 export interface InvokeColorFormatResult {
+  /**
+   * O plano do agente — a DECISÃO, com o `porque` de cada uma.
+   *
+   * É o que a run guarda: até aqui a telemetria via o efeito (as ops) e
+   * nunca o motivo, então "por que este e-mail ficou assim" não tinha
+   * resposta. `null` quando o output veio no formato antigo (`{"ops":[]}`),
+   * que é o caso de uma config de prompt anterior a esta frente.
+   */
+  plano: PlanoDeCor | null
+  /**
+   * Ops de VALOR do caminho legado. Com `plano` presente, quem traduz é o
+   * runner (`planoParaOps`), que tem as faixas, os botões e o incentivo da
+   * peça — o chain não os tem.
+   */
   ops: FormatOp[]
   tokensInput: number
   tokensOutput: number
@@ -225,24 +258,41 @@ export async function invokeColorFormatChain(input: {
   // não vê o documento, então "replace" de trecho não tem como ser válido.
   // O consumo vai grudado no erro — a chamada já foi paga, e este step é
   // fail-open: sem isso o custo de uma falha silenciosa some de vez.
-  const ops = withUsage(
-    {
-      tokensInput: res.tokensInput,
-      tokensOutput: res.tokensOutput,
-      costUsd: res.costUsd,
-      renderedPrompt: userMessage,
+  // O agente devolve um PLANO. Prompt antigo (config gravada antes desta
+  // frente) devolve `{"ops":[...]}` — o plano sai vazio e o caminho legado
+  // assume, para uma config velha não zerar o passo de cor.
+  const usage = {
+    tokensInput: res.tokensInput,
+    tokensOutput: res.tokensOutput,
+    costUsd: res.costUsd,
+    renderedPrompt: userMessage,
     promptSegments,
-    },
-    () => parseOps(res.text),
-  ).filter((op) => op.action === "recolor")
+  }
+  const plano = withUsage(usage, () => parsePlanoDeCor(res.text))
+  const vazio =
+    (plano.faixas?.length ?? 0) === 0 &&
+    (plano.botoes?.length ?? 0) === 0 &&
+    (plano.adicionar?.length ?? 0) === 0 &&
+    (plano.valores?.length ?? 0) === 0
+  const legado = vazio && /"ops"\s*:/.test(res.text)
+  const ops = legado
+    ? withUsage(usage, () => parseOps(res.text)).filter((op) => op.action === "recolor")
+    : []
 
   log.info("color_format.invoke.success", {
     model: config.model,
     durationMs: Date.now() - t0,
+    formato: legado ? "ops_legado" : "plano",
+    faixas: plano.faixas?.length ?? 0,
+    botoes: plano.botoes?.length ?? 0,
+    adicionar: plano.adicionar?.length ?? 0,
+    valores: plano.valores?.length ?? 0,
+    lacunas: plano.lacunas?.length ?? 0,
     opsCount: ops.length,
   })
 
   return {
+    plano: legado ? null : plano,
     ops,
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,

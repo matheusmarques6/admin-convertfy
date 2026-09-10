@@ -166,6 +166,9 @@ import {
 } from "./html/hero-graft"
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { alvoDaOp, applyOps } from "./html/apply-patches"
+import { extrairCtas, extrairFaixas } from "./html/color-faixas"
+import { planoParaOps } from "./html/plano-de-cor"
+import { aplicaFaixasEBotoes, loadColorPlanoMode } from "./html/color-plano-mode"
 import { colorOccurrenceCount,
   coresForaDaPaleta,
 } from "./html/color-inventory"
@@ -3686,8 +3689,35 @@ async function runFormattingChain(p: {
       inputHtml,
       attempt: async () => {
         const r = await invokeColorFormatChain({ config, vars })
-        const applied = applyOps(inputHtml, r.ops, {
+
+        // O agente devolve um PLANO; quem o traduz em ops é o código, que
+        // tem o que ele não tem: as faixas, os botões e o incentivo real da
+        // peça (é contra ele que um label que promete desconto é medido).
+        const faixas = extrairFaixas(inputHtml)
+        const ctas = extrairCtas(inputHtml, faixas)
+        const modo = await loadColorPlanoMode(storeId)
+        const traducao = r.plano
+          ? planoParaOps(r.plano, {
+              faixas,
+              ctas,
+              incentivo: {
+                existe: ctx.incentivoExiste ?? null,
+                codigo: ctx.incentivoCodigo ?? null,
+              },
+              urlLoja: (storeRaw.url as string) || (storeRaw.store_url as string) || null,
+              fontFamily: fmtCtx.fontBody || null,
+            })
+          : { ops: r.ops, descartes: [] }
+        // Em `shadow` o plano é decidido e GRAVADO, e nada de faixa ou botão
+        // é aplicado: a aparência da peça sai como saía. É a única forma de
+        // ler as decisões antes de deixá-las mexer em e-mail de cliente.
+        const opsParaAplicar = aplicaFaixasEBotoes(modo)
+          ? traducao.ops
+          : traducao.ops.filter((op) => op.action === "recolor" || op.action === "replace")
+        const applied = applyOps(inputHtml, opsParaAplicar, {
           allowHero: true,
+          faixas,
+          ctas,
           // Para onde reerguer um painel que o agente colapsou no próprio
           // fundo. Sem os tons a guarda não roda — e o painel some, que é o
           // comportamento de antes.
@@ -3737,7 +3767,12 @@ async function runFormattingChain(p: {
         // Guard: ops replace não podem quebrar a estrutura (um find/replace
         // que engole um </table> corrompe o documento).
         const count = (s: string) => (s.match(/<table[\s>]/gi) ?? []).length
-        if (count(htmlFinal) !== count(inputHtml)) {
+        // Cada botão inserido traz UMA tabela (o template da casa embrulha o
+        // `<a>` numa tabela de uma célula). Sem contá-los aqui, o guard que
+        // protege contra `replace` corrompendo o documento derrubaria o step
+        // toda vez que o agente pusesse um CTA onde faltava.
+        const esperado = count(inputHtml) + applied.botoesInseridos
+        if (count(htmlFinal) !== esperado) {
           throw new Error("guard: table_count_changed_by_ops")
         }
         return {
@@ -3774,6 +3809,33 @@ async function runFormattingChain(p: {
             ...(contractDrift.length > 0
               ? { contract_drift: contractDrift }
               : {}),
+            // O PLANO, com o `porque` de cada decisão. Até aqui a run
+            // guardava o efeito (as ops) e nunca o motivo, então "por que
+            // este e-mail ficou assim" não tinha resposta. Em `shadow` é o
+            // único registro que existe — nada foi aplicado.
+            color_plano_mode: modo,
+            ...(r.plano ? { plano_de_cor: r.plano } : { formato: "ops_legado" }),
+            ...(traducao.descartes.length > 0
+              ? { plano_descartes: traducao.descartes }
+              : {}),
+            ritmo: {
+              faixas_no_documento: faixas.length,
+              faixas_decididas: r.plano?.faixas?.length ?? 0,
+              faixas_pintadas: applied.faixasPintadas,
+              ctas_no_documento: ctas.length,
+              botoes_recoloridos: applied.botoesRecoloridos,
+              botoes_inseridos: applied.botoesInseridos,
+              // Bloco sem botão é o que a regra da casa cobra. Medido no
+              // documento DEPOIS de aplicar (faixas e botões reextraídos do
+              // resultado, não os da entrada): é o número que diz se o
+              // agente cumpriu, e é ele que sobe para o QA como lacuna.
+              blocos_sem_cta: (() => {
+                const f2 = extrairFaixas(applied.html)
+                const c2 = extrairCtas(applied.html, f2)
+                return f2.filter((f) => !c2.some((c) => c.bloco === f.bloco)).length
+              })(),
+              lacunas: r.plano?.lacunas ?? [],
+            },
             // OPS não medem conformidade: 11 ops que trocam 1 ocorrência
             // cada contavam igual a 11 que trocariam 30, e foi assim que a
             // Luxe Lift saiu com "11 aplicadas" e o email fora da marca.
