@@ -9,6 +9,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { campanhasNoPeriodo } from "@/lib/reports/periodo"
+import { janelaDoPeriodo } from "@/lib/dashboard/refresh-lote"
 
 export interface UnifiedRevenueRow {
   store_id: string
@@ -32,6 +34,8 @@ export interface UnifiedCampaignRow {
   campaign_name?: string | null
   campaign_status?: string | null
   channel?: string | null
+  /** Data de envio — é ela que decide se a campanha é deste período. */
+  send_time?: string | null
   recipients: number
   delivered: number
   opened: number
@@ -171,7 +175,7 @@ export async function getUnifiedCampaigns(
   storeIds?: string[]
 ): Promise<UnifiedCampaignRow[]> {
   const selectKlaviyo = `
-    store_id, campaign_id, campaign_name, campaign_status, channel,
+    store_id, campaign_id, campaign_name, campaign_status, channel, send_time,
     recipients, delivered, opened, clicked, conversions, conversion_rate,
     conversion_value, bounced, unsubscribed, spam_complaints, fetched_at
   `
@@ -198,8 +202,24 @@ export async function getUnifiedCampaigns(
     })(),
   ])
 
-  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
-  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
+  // O sync persiste TODAS as campanhas da conta sob o rótulo do período —
+  // quem corta pelo período é quem lê. Sem este filtro, "Performance do
+  // Email" somava o `delivered` histórico de campanhas antigas e publicava
+  // 3,83 MILHÕES de envios para um único dia, com a taxa de abertura
+  // desabando junto (o numerador é da janela, o denominador não era).
+  // A régua é a mesma do relatório e a da plataforma: entra quem foi
+  // ENVIADA dentro da janela. As cinco rotas do dashboard que chamam esta
+  // função herdam a correção.
+  const janela = janelaDoPeriodo(periodLabel)
+  const noPeriodo = <T extends Record<string, unknown>>(linhas: T[]): T[] =>
+    campanhasNoPeriodo(
+      linhas as Array<T & { send_time?: string | null; campaign_status?: string | null }>,
+      janela.inicio,
+      janela.fim,
+    )
+
+  const klaviyoRows = noPeriodo(dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
+  const omnisendRows = noPeriodo(dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
 
   const klaviyo = klaviyoRows.map((r) => ({
     ...mapCampaignRow(r),
@@ -277,6 +297,7 @@ function mapCampaignRow(r: Record<string, unknown>): Omit<UnifiedCampaignRow, "p
     campaign_name: r.campaign_name as string | null | undefined,
     campaign_status: r.campaign_status as string | null | undefined,
     channel: r.channel as string | null | undefined,
+    send_time: (r.send_time as string | null | undefined) ?? null,
     recipients: Number(r.recipients) || 0,
     delivered: Number(r.delivered) || 0,
     opened: Number(r.opened) || 0,

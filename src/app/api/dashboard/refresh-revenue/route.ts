@@ -25,6 +25,13 @@ import {
   fetchAudienceForStore,
 } from "@/lib/services/klaviyo-sync.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
+import { fusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
+import {
+  CONCORRENCIA_PADRAO,
+  comLimite,
+  janelaDoPeriodo,
+  planoDeLote,
+} from "@/lib/dashboard/refresh-lote"
 import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { upsertSyncResults, upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
 
@@ -218,6 +225,23 @@ async function markStoreSyncError(
   }
 }
 
+/** Fuso IANA da loja — é ele que fatia a janela no painel da plataforma. */
+async function lerFusoDaLoja(
+  supabase: SupabaseClient,
+  storeId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from("client_stores")
+      .select("timezone")
+      .eq("id", storeId)
+      .maybeSingle()
+    return (data?.timezone as string | null) ?? null
+  } catch {
+    return null
+  }
+}
+
 async function refreshStoreForPeriod(
   supabase: SupabaseClient,
   store: StoreRow,
@@ -230,28 +254,28 @@ async function refreshStoreForPeriod(
     const credentials = await getStoreCredentials(store.id, store.org_id ?? undefined)
     const apiKey = credentials.omnisend_api_key
     if (!apiKey) return { status: "error", error: "No Omnisend API key" }
-    // Range custom: o sync Omnisend só entende janela relativa (now−Nd).
-    // Range terminando HOJE vira periodDays exato; range retroativo é
-    // pulado com erro honesto (melhor sem número que número errado).
-    const custom = parseCustomPeriodLabel(period)
-    let days = PERIOD_DAYS[period] ?? 30
-    if (custom) {
-      const today = new Date().toISOString().slice(0, 10)
-      if (custom.endDate < today) {
-        return { status: "error", error: "Omnisend não suporta range retroativo (janela é relativa a hoje)" }
-      }
-      days = Math.max(
-        1,
-        Math.round(
-          (Date.parse(custom.endDate) - Date.parse(custom.startDate)) / 86_400_000,
-        ) + 1,
-      )
-    }
+    // A janela vai EXPLÍCITA para o sync.
+    //
+    // Aqui havia uma recusa: "Omnisend não suporta range retroativo
+    // (janela é relativa a hoje)" — e period personalizado que não
+    // terminasse hoje era pulado sem tentar. A afirmação é falsa:
+    // `syncOmnisendForStore` aceita `startDate`/`endDate` desde sempre
+    // (o builder de campanhas já os passa). Como as 54 lojas desta org
+    // são Omnisend, essa linha recusava a carteira inteira — o dashboard
+    // dizia "1 de 54 lojas com receita" e era exatamente essa frase que
+    // estava gravada em `store_revenue_summary.sync_error`. Piorava com o
+    // fuso: a comparação usava o dia em UTC, então depois das 21h de
+    // Brasília o período de HOJE também virava "retroativo".
+    const janela = janelaDoPeriodo(period)
+    const { tz } = fusoDaLoja(await lerFusoDaLoja(supabase, store.id))
+    const { from, to } = omnisendDateRange(janela.inicio, janela.fim, tz)
     const result = await syncOmnisendForStore({
       storeId: store.id,
       orgId: store.org_id ?? "",
       apiKey,
-      periodDays: days,
+      periodDays: janela.dias,
+      startDate: from,
+      endDate: to,
     })
     if (result.ok && result.data) {
       await upsertOmnisendSyncResults(supabase, { id: store.id, org_id: store.org_id }, result.data, period)
@@ -421,24 +445,57 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Refresh stores sequentially, mas com deadline pra nao estourar
-      // o maxDuration do Vercel (504). Quando atinge deadline, retorna
-      // parcial — proxima request continua dali (idempotente).
+      // Quem JÁ tem dado deste período — a fila começa por quem não tem,
+      // porque loja sem linha é buraco no total, enquanto dado de ontem é
+      // só imprecisão.
+      const jaSincronizadas = new Map<string, { temDado: boolean; falhou: boolean }>()
+      try {
+        const { data: linhas } = await adminClient
+          .from("store_revenue_summary")
+          .select("store_id, sync_status")
+          .eq("period_label", period)
+          .in("store_id", stores.map((s) => s.id))
+        for (const l of linhas ?? []) {
+          jaSincronizadas.set(l.store_id as string, {
+            temDado: l.sync_status !== "error",
+            falhou: l.sync_status === "error",
+          })
+        }
+      } catch {
+        // Sem essa leitura o lote só perde a priorização, não a correção.
+      }
+
+      // Uma passada NÃO cobre a carteira: cada loja é um sync completo da
+      // plataforma, e 54 delas em série (com 1s entre cada) não cabem no
+      // teto da função — o loop antigo parava na primeira e as outras 53
+      // nunca eram tentadas, o que aparecia como "1 de 54 lojas com
+      // receita". Agora roda em paralelo com teto (as chaves são por
+      // loja, então o limite de requisições da plataforma é por conta e
+      // não impede o paralelismo) e o que não coube é DEVOLVIDO como
+      // pendência, para a próxima passada continuar dali.
+      const plano = planoDeLote(
+        stores.map((s) => ({
+          ...(s as StoreRow),
+          temDado: jaSincronizadas.get(s.id)?.temDado ?? false,
+          falhou: jaSincronizadas.get(s.id)?.falhou ?? false,
+        })),
+        stores.length,
+        CONCORRENCIA_PADRAO,
+      )
+
       let okCount = 0
       let errorCount = 0
       let skippedCount = 0
       let timedOut = false
 
-      for (let i = 0; i < stores.length; i++) {
+      await comLimite(plano.lote, plano.concorrencia, async (store) => {
+        // O deadline é conferido por loja, não por bloco: quem já começou
+        // termina, quem não começou vira pendência declarada.
         if (Date.now() - startTime > LOOP_DEADLINE_MS) {
-          skippedCount = stores.length - i
+          skippedCount++
           timedOut = true
-          log.warn(
-            `[RefreshRevenue] Deadline reached at store ${i}/${stores.length}, returning partial.`,
-          )
-          break
+          return
         }
-        const store = stores[i]
         const result = await refreshStoreForPeriod(adminClient, store as StoreRow, period)
         if (result.status === "ok") {
           okCount++
@@ -448,16 +505,12 @@ export async function POST(request: NextRequest) {
           log.warn(`[RefreshRevenue] Error: ${store.store_name}/${period}: ${result.error}`)
           await markStoreSyncError(adminClient, store as StoreRow, period, result.error || "Sync failed")
         }
-
-        // Small delay between stores to respect Klaviyo rate limits
-        if (i < stores.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
-        }
-      }
+      })
 
       const durationMs = Date.now() - startTime
+      const pendentes = skippedCount + plano.restantes
       log.info(
-        `[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} skipped=${skippedCount} duration=${durationMs}ms`,
+        `[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} skipped=${skippedCount} pendentes=${pendentes} duration=${durationMs}ms`,
       )
 
       return NextResponse.json({
@@ -467,6 +520,10 @@ export async function POST(request: NextRequest) {
         storeErrors: errorCount,
         storesSkipped: skippedCount,
         storesInCooldown: cooldownStores.length,
+        // Quantas lojas ainda não foram tentadas nesta janela. O cliente
+        // usa isso para chamar de novo até zerar — sem esse número, a tela
+        // dizia "sincronizado" com dois terços da carteira de fora.
+        storesPending: pendentes,
         timedOut,
         durationMs,
       })

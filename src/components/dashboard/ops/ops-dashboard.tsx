@@ -180,7 +180,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
   // Sessão expirada: desliga realtime + polling + auto-sync (cada poll era
   // mais um 401 no log) e mostra o banner de login.
   const sessionExpired = (revenueError as (Error & { status?: number }) | undefined)?.status === 401
-  const { isRefreshing, triggerRefresh } = useRealtimeRevenue({
+  const { isRefreshing, triggerRefresh, refreshError, pending: syncPending } = useRealtimeRevenue({
     period: period.period,
     start: isoDate(period.start),
     end: isoDate(period.end),
@@ -234,6 +234,17 @@ export function OpsDashboard({ userName }: { userName: string }) {
       fxDegraded?: boolean
     }>
   }>(`/api/dashboard/stores-overview?${q}`, fetchJson, SWR_OPTS)
+
+  // Dias inclusivos do período que está na tela — é o que separa "não há
+  // dado" de "este período não tem série".
+  const diasDoPeriodoSelecionado = Math.max(
+    1,
+    Math.round(
+      (Date.parse(`${isoDate(period.end)}T00:00:00Z`) -
+        Date.parse(`${isoDate(period.start)}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1,
+  )
 
   const hr = new Date().getHours()
   const saud = hr < 12 ? "Bom dia" : hr < 18 ? "Boa tarde" : "Boa noite"
@@ -313,16 +324,27 @@ export function OpsDashboard({ userName }: { userName: string }) {
                 <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
                 <span>
                   Sincronizando <strong>{period.presetLabel ?? "o período"}</strong> com Klaviyo/Omnisend
-                  {revenue ? ` — ${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com dado até agora` : ""}.
+                  {revenue ? ` — ${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com dado até agora` : ""}
+                  {syncPending > 0 ? `, ${syncPending} na fila` : ""}.
                   Os números completam sozinhos conforme as lojas terminam.
                 </span>
               </>
             ) : (
               <>
                 <span className="flex-1">
-                  O cache deste período está incompleto/desatualizado
-                  {revenue ? ` (${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com receita)` : ""} —
-                  os cards podem mostrar menos do que o real.
+                  {refreshError ? (
+                    // A falha do sync ficava só no console: a tela voltava
+                    // ao normal e o usuário via "carrega e não puxa nada".
+                    <>
+                      <strong>A sincronização não completou:</strong> {refreshError}
+                    </>
+                  ) : (
+                    <>
+                      O cache deste período está incompleto/desatualizado
+                      {revenue ? ` (${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com receita)` : ""} —
+                      os cards podem mostrar menos do que o real.
+                    </>
+                  )}
                 </span>
                 <button
                   onClick={() => void triggerRefresh()}
@@ -483,6 +505,12 @@ export function OpsDashboard({ userName }: { userName: string }) {
               />
             ) : !series ? (
               <CollectingState label="Carregando série diária…" />
+            ) : series.atual.length < 2 && diasDoPeriodoSelecionado < 2 ? (
+              // Um gráfico DIÁRIO de um período de um dia não existe: há um
+              // ponto só e não há o que ligar. A mensagem genérica culpava o
+              // sync ("não grava send_time") justamente quando o dado está
+              // lá e a escolha do período é que não rende série.
+              <CollectingState label="Um período de um dia não rende série diária — escolha um intervalo maior para ver a evolução." />
             ) : series.collecting || series.atual.length < 2 ? (
               <CollectingState
                 label={`Sem pontos na janela (diária: ${series.debug?.daily_points ?? 0} · campanhas com send_time: ${series.debug?.fallback_campaign_rows ?? 0}) — se ambos são 0, o sync de campanhas não grava send_time.`}

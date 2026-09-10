@@ -5086,5 +5086,64 @@ de `getTimezoneOffset`, que pergunta o offset de AGORA: relatório de
 janeiro gerado em julho saía uma hora deslocado na Europa e a receita
 migrava de dia. Agora é `offsetForTimezone`, por ponta e pela DATA.
 
+## "Sincronizar agora" recusava a carteira inteira (set/2026)
+
+Relatado com print: o dashboard em 9–9 set diz *"1 de 54 lojas com
+receita"*, clicar em **Sincronizar agora** carrega, dá erro e a receita não
+vem. Medido no banco antes de mexer em código — e o erro estava gravado, em
+português, em `store_revenue_summary.sync_error`:
+
+> `Omnisend não suporta range retroativo (janela é relativa a hoje)`
+
+**A afirmação é FALSA.** `syncOmnisendForStore` aceita `startDate`/`endDate`
+desde sempre e o builder de campanhas já os passa — a rota do dashboard é
+que nunca passou, e recusava a loja sem tentar. Como **as 54 lojas da org
+são Omnisend** (zero Klaviyo), isso recusava 100% da carteira em todo
+período personalizado. É o mesmo padrão do comentário "Omnisend não expõe
+currency via API": uma afirmação errada que virou lei porque ninguém foi
+conferir. Agora a janela viaja explícita (`janelaDoPeriodo` +
+`omnisendDateRange` no fuso da loja) e período retroativo é um período como
+outro qualquer.
+
+**"Hoje" tinha fuso errado**: a checagem usava `new Date().toISOString()`,
+que é o dia em UTC. Depois das 21h de Brasília já é o dia seguinte lá, então
+o período de HOJE também virava "retroativo". `hojeNoFuso` resolve, e um
+teste fixa o caso das 21h30.
+
+**Uma passada nunca cobriu a carteira.** Cada loja é um sync completo da
+plataforma; 54 em SÉRIE, com 1s de pausa entre elas, não cabem nos 270s de
+prazo — o loop parava na primeira e as outras 53 nunca eram tentadas. Era a
+segunda metade do "1 de 54". Agora o lote roda em paralelo com teto
+(`comLimite`, 5 por vez — as chaves são por loja, então o limite de
+requisições da plataforma é por conta e não impede o paralelismo), começa
+por **quem não tem dado** (loja sem linha é buraco no total; dado de ontem é
+só imprecisão) e devolve `storesPending` — o cliente encadeia passadas até
+zerar. Régua em `lib/dashboard/refresh-lote.ts` (puro, 13 testes).
+
+**O erro nunca chegava à tela.** O hook não conferia `res.ok` — um 500 caía
+no caminho de sucesso e revalidava os mesmos números, que é exatamente o
+"carrega e não puxa a receita" — e o `catch` só fazia `console.error`. Agora
+a causa real aparece no banner, e o teto de espera do cliente subiu de 60s
+para os 290s que a rota declara.
+
+**3,83 milhões de envios num único dia** era o mesmo defeito do relatório,
+noutro caminho: `getUnifiedCampaigns` traz todas as linhas do rótulo sem
+olhar `send_time` — nem selecionava a coluna. Medido: **3.751.247 envios e
+6,07% de abertura** (o "6,1%" que aparecia na tela) contra **139.525 e
+12,04%** com a régua. Corrigido na função, que já recebe o `periodLabel` e
+portanto sabe a janela — as cinco rotas do dashboard que a consomem herdam
+a correção.
+
+**O lock do sync colidia entre períodos do mesmo tamanho**: a chave era
+`storeId:periodDays`, então dois personalizados de UM dia (09/09 e 08/09)
+compartilhavam o dedupe e o segundo recebia o resultado do primeiro — dado
+de um dia publicado sob a data de outro, em silêncio. A janela entrou na
+chave.
+
+**O gráfico diário de um período de um dia não existe** — há um ponto só e
+nada a ligar. A tela mostrava "Sem pontos na janela … se ambos são 0, o
+sync de campanhas não grava send_time", culpando o sync com 45 campanhas
+daquele dia no banco. Agora ela diz que o período é que não rende série.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

@@ -1499,7 +1499,13 @@ export async function syncOmnisendForStore(params: {
   startDate?: string
   endDate?: string
 }): Promise<SyncResult<OmnisendSyncData>> {
-  const lockKey = `${params.storeId}:${params.periodDays}`
+  // A janela entra na chave, não só o número de dias: dois períodos
+  // personalizados de UM dia (09/09 e 08/09) têm `periodDays` igual, e com
+  // a chave antiga o segundo recebia, por dedupe, o resultado do primeiro
+  // — dado de um dia publicado sob a data de outro, em silêncio.
+  const lockKey = params.startDate && params.endDate
+    ? `${params.storeId}:${params.startDate.slice(0, 10)}:${params.endDate.slice(0, 10)}`
+    : `${params.storeId}:${params.periodDays}`
   const existing = activeSyncs.get(lockKey)
   if (existing) {
     log.info("Sync already running for store, waiting for result", { storeId: params.storeId })

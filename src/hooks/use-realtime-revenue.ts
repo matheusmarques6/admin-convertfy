@@ -6,6 +6,10 @@ import type { RealtimeChannel } from "@supabase/supabase-js"
 
 const DEBOUNCE_MS = 2000
 const POLLING_INTERVAL_MS = 30_000
+/** Teto de espera por passada (a rota declara 300s). */
+const PASSADA_TIMEOUT_MS = 290_000
+/** Passadas encadeadas por clique — o lote continua até zerar a pendência. */
+const MAX_PASSADAS = 6
 
 interface UseRealtimeRevenueOptions {
   period: string
@@ -26,6 +30,10 @@ interface UseRealtimeRevenueOptions {
  */
 export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled = true, refreshUrl = "/api/dashboard/refresh-revenue" }: UseRealtimeRevenueOptions) {
   const [isRefreshing, setIsRefreshing] = useState(false)
+  /** Causa da última falha, pronta para a tela. Null = correu bem. */
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  /** Lojas que ainda não foram tentadas nesta janela (o lote continua). */
+  const [pending, setPending] = useState(0)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -48,38 +56,63 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
   const triggerRefresh = useCallback(async () => {
     if (isRefreshing) return
     setIsRefreshing(true)
+    setRefreshError(null)
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60_000)
-
+    // O lote não cabe numa chamada: a rota devolve `storesPending` e nós
+    // continuamos até zerar. Sem isso o clique sincronizava um punhado de
+    // lojas e a tela seguia dizendo "incompleto" sem nada acontecer.
+    let restam = 0
+    let erro: string | null = null
     try {
-      const res = await fetch(refreshUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period, start, end }),
-        signal: controller.signal,
-      })
-      const data = await res.json()
+      for (let passada = 0; passada < MAX_PASSADAS; passada++) {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), PASSADA_TIMEOUT_MS)
+        try {
+          const res = await fetch(refreshUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period, start, end }),
+            signal: controller.signal,
+          })
+          const data = await res.json().catch(() => ({}))
 
-      if (data.alreadyRunning) {
-        // Another refresh is in progress — Realtime will notify when done
-        return
+          // `res.ok` não era conferido: um 500 caía direto no caminho de
+          // sucesso e a tela revalidava os mesmos números, o que o usuário
+          // vê como "carrega e não puxa a receita".
+          if (!res.ok) {
+            erro =
+              typeof data?.error === "string"
+                ? data.error
+                : (data?.error?.message ?? `Falhou (HTTP ${res.status})`)
+            break
+          }
+
+          if (data.alreadyRunning) {
+            // Outra aba/pessoa já está sincronizando este período — o
+            // Realtime avisa quando terminar.
+            break
+          }
+
+          onDataUpdate()
+          restam = Number(data.storesPending) || 0
+          setPending(restam)
+          if (restam === 0) break
+        } finally {
+          clearTimeout(timeoutId)
+        }
       }
-
-      // POST completed synchronously — data is already updated
-      // Realtime event will also fire, but debounce handles dedup
-      onDataUpdate()
+      if (restam > 0 && !erro) {
+        erro = `Faltaram ${restam} lojas nesta rodada — clique de novo para continuar.`
+      }
     } catch (err) {
       const isAbort = err instanceof Error && err.name === "AbortError"
-      if (isAbort) {
-        console.warn(
-          "[useRealtimeRevenue] Refresh client-timeout (60s); processamento continua em background via Realtime/polling",
-        )
-      } else {
-        console.error("[useRealtimeRevenue] Refresh failed:", err)
-      }
+      erro = isAbort
+        ? "A sincronização passou do tempo de espera. O servidor continua processando — os números completam sozinhos."
+        : err instanceof Error
+          ? err.message
+          : String(err)
     } finally {
-      clearTimeout(timeoutId)
+      setRefreshError(erro)
       setIsRefreshing(false)
     }
   }, [period, start, end, isRefreshing, onDataUpdate, refreshUrl])
@@ -139,5 +172,9 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
     isRefreshing,
     realtimeConnected,
     triggerRefresh,
+    /** Causa da última falha — a tela DIZ, em vez de só voltar ao normal. */
+    refreshError,
+    /** Lojas ainda não tentadas nesta janela. */
+    pending,
   }
 }
