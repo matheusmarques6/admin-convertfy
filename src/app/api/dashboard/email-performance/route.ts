@@ -22,6 +22,7 @@ import {
 } from "@/lib/services/unified-metrics.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { logger } from "@/lib/logger"
+import { emBRL, taxasPara } from "@/lib/money/converter-lote"
 
 const log = logger.child("DashboardEmailPerf")
 
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
       getUnifiedFlows(supabase, orgId, period, undefined, false),
       supabase
         .from("client_stores")
-        .select("id, store_name, clients(name)")
+        .select("id, store_name, currency, clients(name)")
         .eq("org_id", orgId)
         .limit(1000),
     ])
@@ -57,6 +58,22 @@ export async function GET(request: NextRequest) {
         return [s.id as string, { store: s.store_name as string, client: (client as { name?: string } | null)?.name || "—" }]
       }),
     )
+    // A receita vem na moeda DA LOJA e este card soma 54 delas — libra,
+    // euro, zloty — publicando o resultado com "R$" na frente. Somar uma
+    // libra como um real subestima ~7×, e o total continua plausível.
+    // Converte-se por loja ANTES de agregar; o RPE do card sai do mesmo
+    // número, então ele estava errado pela mesma razão.
+    const moedaDaLoja = new Map<string, string>(
+      (storesQ.data ?? []).map((s) => [
+        s.id as string,
+        ((s as { currency?: string | null }).currency || "BRL") as string,
+      ]),
+    )
+    const taxasFx = await taxasPara(
+      [...new Set([...campaignRows, ...flowRows].map((r) => moedaDaLoja.get(r.store_id)))],
+    )
+    const receitaBRL = (storeId: string, valor: number | null | undefined) =>
+      emBRL(valor, moedaDaLoja.get(storeId), taxasFx)
 
     // Agrega tudo (campaigns + flows do periodo)
     const allRows = [
@@ -69,7 +86,7 @@ export async function GET(request: NextRequest) {
         bounced: c.bounced,
         unsubscribed: c.unsubscribed,
         conversions: c.conversions,
-        revenue: c.conversion_value,
+        revenue: receitaBRL(c.store_id, c.conversion_value),
       })),
       ...flowRows.map((f) => ({
         store_id: f.store_id,
@@ -80,7 +97,7 @@ export async function GET(request: NextRequest) {
         bounced: f.bounced,
         unsubscribed: f.unsubscribed,
         conversions: f.conversions,
-        revenue: f.conversion_value,
+        revenue: receitaBRL(f.store_id, f.conversion_value),
       })),
     ]
 

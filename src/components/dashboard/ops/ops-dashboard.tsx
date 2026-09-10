@@ -76,7 +76,10 @@ interface TotalRevenueData {
   campaignRevenue: number
   flowRevenue: number
   storesCount: number
+  /** Lojas que FATURARAM no período — não é o mesmo que sincronizadas. */
   storesWithRevenue: number
+  /** Lojas cujo sync deu certo, incluindo as que faturaram zero. */
+  storesSynced?: number
   /** "ready" | "stale" | "empty" | "syncing" — postura do cache do período. */
   dataStatus?: string
   isStale?: boolean
@@ -293,11 +296,14 @@ export function OpsDashboard({ userName }: { userName: string }) {
             </div>
           </div>
           <div className="flex-1" />
+          {/* O progresso é de SINCRONIZAÇÃO: loja que faturou zero no dia
+              sincronizou igual, e contá-la como faltante fazia o chip
+              parecer travado em "45/54" para sempre. */}
           <SyncStatusChip
             syncing={isRefreshing || revenue?.isRefreshing === true || revenue?.dataStatus === "syncing"}
             stale={needsSync}
             lastFetchedAt={revenue?.lastFetchedAt ?? null}
-            storesWithRevenue={revenue?.storesWithRevenue}
+            storesSynced={revenue?.storesSynced ?? revenue?.storesWithRevenue}
             storesCount={revenue?.storesCount}
             issues={revenue?.syncIssues?.count ?? 0}
             onSync={() => void triggerRefresh()}
@@ -331,7 +337,9 @@ export function OpsDashboard({ userName }: { userName: string }) {
                 <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
                 <span>
                   Sincronizando <strong>{period.presetLabel ?? "o período"}</strong> com Klaviyo/Omnisend
-                  {revenue ? ` — ${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com dado até agora` : ""}
+                  {revenue
+                    ? ` — ${revenue.storesSynced ?? revenue.storesWithRevenue} de ${revenue.storesCount} lojas sincronizadas`
+                    : ""}
                   {syncPending > 0 ? `, ${syncPending} na fila` : ""}.
                   Os números completam sozinhos conforme as lojas terminam.
                 </span>
@@ -348,8 +356,14 @@ export function OpsDashboard({ userName }: { userName: string }) {
                   ) : (
                     <>
                       O cache deste período está incompleto/desatualizado
-                      {revenue ? ` (${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com receita)` : ""} —
-                      os cards podem mostrar menos do que o real.
+                      {revenue
+                        ? ` (${revenue.storesSynced ?? revenue.storesWithRevenue} de ${revenue.storesCount} lojas sincronizadas${
+                            revenue.storesSynced != null &&
+                            revenue.storesSynced > revenue.storesWithRevenue
+                              ? `, ${revenue.storesWithRevenue} com faturamento no período`
+                              : ""
+                          })`
+                        : ""} — os cards podem mostrar menos do que o real.
                     </>
                   )}
                 </span>
@@ -640,7 +654,7 @@ function SyncStatusChip({
   syncing,
   stale,
   lastFetchedAt,
-  storesWithRevenue,
+  storesSynced,
   storesCount,
   issues = 0,
   onSync,
@@ -648,7 +662,8 @@ function SyncStatusChip({
   syncing: boolean
   stale: boolean
   lastFetchedAt: string | null
-  storesWithRevenue?: number
+  /** Lojas SINCRONIZADAS — inclui as que faturaram zero no período. */
+  storesSynced?: number
   storesCount?: number
   /** Lojas com erro de sync — vira sufixo "· N com erro" no estado verde. */
   issues?: number
@@ -662,8 +677,8 @@ function SyncStatusChip({
   }, [])
 
   const progresso =
-    storesWithRevenue != null && storesCount != null && storesCount > 0
-      ? `${storesWithRevenue}/${storesCount} lojas`
+    storesSynced != null && storesCount != null && storesCount > 0
+      ? `${storesSynced}/${storesCount} lojas`
       : null
 
   const base =
@@ -673,7 +688,7 @@ function SyncStatusChip({
     return (
       <span
         className={cn(base, "border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] text-[var(--ops-warn)]")}
-        title={progresso ? `Sincronizando com Klaviyo/Omnisend — ${progresso} com dado até agora` : "Sincronizando com Klaviyo/Omnisend"}
+        title={progresso ? `Sincronizando com Klaviyo/Omnisend — ${progresso} sincronizadas` : "Sincronizando com Klaviyo/Omnisend"}
         aria-live="polite"
       >
         <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />

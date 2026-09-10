@@ -55,6 +55,8 @@ interface TotalRevenueResponse {
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
+  /** Lojas cujo último sync deu certo — inclui as que faturaram zero. */
+  storesSynced?: number
   topStores: StoreRevenue[]
   bottomStores: StoreRevenue[]
   storeBreakdown: StoreRevenue[]
@@ -166,6 +168,16 @@ function buildResponse(
   const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenueBRL, 0)
   const flowRevenue = storeBreakdown.reduce((sum, s) => sum + s.flowRevenueBRL, 0)
   const storesWithRevenue = storeBreakdown.filter((s) => s.totalRevenueBRL > 0).length
+  // **Sincronizada e sem venda no dia NÃO é loja sem sync.**
+  //
+  // A tela contava só `storesWithRevenue` e escrevia "45 de 54 lojas com
+  // dado até agora": as 9 que faltavam tinham sincronizado com sucesso e
+  // faturado ZERO naquele dia — loja pequena sem venda. O banner então
+  // dizia "o cache está incompleto, os cards podem mostrar menos do que o
+  // real" sobre uma carteira inteiramente sincronizada, e o operador
+  // clicava em sincronizar de novo para sempre. Faturamento zero é
+  // MEDIÇÃO, não lacuna.
+  const storesSynced = storeBreakdown.filter((s) => s.syncStatus !== "error").length
 
   const sorted = [...storeBreakdown].sort((a, b) => b.totalRevenueBRL - a.totalRevenueBRL)
   const topStores = sorted.filter(s => s.totalRevenueBRL > 0).slice(0, 5)
@@ -201,6 +213,8 @@ function buildResponse(
     flowRevenue,
     storesCount,
     storesWithRevenue,
+    /** Lojas cujo último sync deu certo — inclui as que faturaram zero. */
+    storesSynced,
     topStores,
     bottomStores,
     storeBreakdown,
@@ -228,6 +242,7 @@ function emptyResponse(
     flowRevenue: 0,
     storesCount,
     storesWithRevenue: 0,
+    storesSynced: 0,
     topStores: [],
     bottomStores: [],
     storeBreakdown: [],
