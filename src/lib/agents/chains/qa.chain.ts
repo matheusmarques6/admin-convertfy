@@ -212,9 +212,25 @@ export function getQaTimeoutMs(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_QA_TIMEOUT_MS
 }
 
+/** A causa crua do provedor cabe na mensagem sem virar parede de texto. */
+function truncarErro(msg: string): string {
+  const limpo = msg.replace(/\s+/g, " ").trim()
+  return limpo.length > 120 ? `${limpo.slice(0, 117)}…` : limpo
+}
+
 function computePassed(issues: QaIssue[]): boolean {
   const threshold = SEVERITY_ORDER[getBlockingSeverity()]
-  return !issues.some((i) => SEVERITY_ORDER[i.severity] >= threshold)
+  return !issues.some(
+    (i) =>
+      // A falha do REVISOR nunca reprova a peça revisada: `qa_indisponivel`
+      // diz que o QA não rodou (timeout, 402, JSON ilegível), não que o
+      // e-mail tem defeito. Fica fora do cálculo em qualquer threshold —
+      // com o gate em `enforce`, contá-la transformaria um 402 do provedor
+      // em e-mail `failed` com o HTML perfeito. O `passed` passa a refletir
+      // só o que os checks DETERMINÍSTICOS mediram, que é o que de fato
+      // rodou.
+      i.type !== "qa_indisponivel" && SEVERITY_ORDER[i.severity] >= threshold,
+  )
 }
 
 // ── Pre-checks deterministicos ────────────────────────────────────────
@@ -820,9 +836,11 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     log.error("qa.llm_call_failed", { emailId, aborted, error: msg })
 
     const fallbackIssue: QaIssue = {
-      type: "html_invalido",
-      severity: "high",
-      message: aborted ? "qa_timeout" : "qa_llm_error",
+      type: "qa_indisponivel",
+      severity: "medium",
+      message: aborted
+        ? "qa_timeout — o revisor não respondeu no tempo; este e-mail NÃO foi revisado pelo QA."
+        : `qa_llm_error — o revisor falhou (${truncarErro(msg)}); este e-mail NÃO foi revisado pelo QA.`,
       location: "qa",
     }
     const issues = [...deterministicIssues, fallbackIssue]
@@ -905,9 +923,10 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   if (!parsed || !zod || !zod.success) {
     log.warn("qa.output_invalid_fallback", { emailId })
     const fallbackIssue: QaIssue = {
-      type: "html_invalido",
-      severity: "high",
-      message: "qa_output_invalid",
+      type: "qa_indisponivel",
+      severity: "medium",
+      message:
+        "qa_output_invalid — o revisor respondeu fora do formato esperado; este e-mail NÃO foi revisado pelo QA.",
       location: "qa",
     }
     const issues = [...deterministicIssues, fallbackIssue]

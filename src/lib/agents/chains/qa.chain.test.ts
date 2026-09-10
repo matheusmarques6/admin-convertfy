@@ -370,10 +370,29 @@ describe("runQaAgent — com config ativo", () => {
       .mockResolvedValueOnce("ainda nao sou json")
     const result = await runQaAgent(makeInput())
     expect(chainInvokeMock).toHaveBeenCalledTimes(2)
-    expect(result.passed).toBe(false)
-    expect(
-      result.issues.find((i) => i.message === "qa_output_invalid"),
-    ).toBeDefined()
+    // O revisor respondeu fora do formato: o e-mail não foi revisado, mas
+    // também não foi reprovado por isso (10/09).
+    expect(result.passed).toBe(true)
+    const falha = result.issues.find((i) => i.type === "qa_indisponivel")
+    expect(falha?.severity).toBe("medium")
+    expect(falha?.message).toContain("qa_output_invalid")
+  })
+
+  // Guarda da regra: mesmo com o gate apertado ao máximo, a falha do
+  // revisor não pode reprovar a peça. Era isto que transformaria um 402 do
+  // provedor em e-mail `failed` com o HTML perfeito.
+  it("qa_indisponivel não reprova nem com threshold em low", async () => {
+    process.env.EMAIL_QA_BLOCKING_SEVERITY = "low"
+    try {
+      chainInvokeMock
+        .mockResolvedValueOnce("nao sou json")
+        .mockResolvedValueOnce("ainda nao sou json")
+      const result = await runQaAgent(makeInput())
+      expect(result.issues.some((i) => i.type === "qa_indisponivel")).toBe(true)
+      expect(result.passed).toBe(true)
+    } finally {
+      delete process.env.EMAIL_QA_BLOCKING_SEVERITY
+    }
   })
 
   it("aceita JSON envolto em markdown ```json fences", async () => {
@@ -431,15 +450,21 @@ describe("runQaAgent — com config ativo", () => {
       await vi.advanceTimersByTimeAsync(15_500)
       const result = await promise
 
-      expect(result.passed).toBe(false)
+      // 10/09: a falha do REVISOR não reprova a peça revisada. Antes isto
+      // era `html_invalido` + `high` — mandava procurar no HTML um defeito
+      // inexistente e, com o gate em `enforce`, reprovaria um e-mail
+      // correto por timeout do provedor.
+      expect(result.passed).toBe(true)
       expect(
         result.issues.some(
           (i) =>
-            i.message === "qa_timeout" &&
-            i.severity === "high" &&
-            i.type === "html_invalido",
+            i.type === "qa_indisponivel" &&
+            i.severity === "medium" &&
+            i.message.startsWith("qa_timeout") &&
+            i.message.includes("NÃO foi revisado"),
         ),
       ).toBe(true)
+      expect(result.issues.some((i) => i.type === "html_invalido")).toBe(false)
       expect(result.meta.model).toBe("qa-timeout")
     } finally {
       vi.useRealTimers()
