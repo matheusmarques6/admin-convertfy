@@ -5180,5 +5180,89 @@ trabalhando — os números mudavam na cara de quem olhava e o topo dizia
 "Atualizado agora". Agora ele espera o lock (`ESPERA_LOCK_MS`) e continua,
 mantendo o indicador e a fila à vista enquanto o lote não fecha.
 
+## Dashboard: o clique em sincronizar e o custo de carregar (set/2026)
+
+Sintomas relatados em sequência — "clico em sincronizar e ele não
+sincroniza e para de sincronizar", "mesmo re-sincronizando ainda deixa
+loja sem sync", "a taxa média não atualiza com base na data selecionada".
+Sete causas independentes, todas invisíveis, todas medidas em produção
+antes de qualquer linha de código.
+
+**1. A função morria com o cadeado na mão.** `cron_locks` tinha dois
+locks com `is_running = true` e `finished_at` ANTERIOR ao `started_at` —
+a marca de quem foi cortado no meio. O deadline só era conferido ANTES de
+iniciar cada loja: uma que começasse em 269 s e levasse 60 s terminava em
+329 s, além dos 300 s da Vercel, e o `finally` que solta o lock nunca
+rodava. O lock então segurava o período por 5 minutos. Deadline para
+195 s e teto por loja.
+
+**2. Esperar o lock consumia o orçamento de passadas.** Cada volta caía
+em `alreadyRunning`, esperava 6 s e gastava uma das 6 passadas: 36 s
+depois o loop saía com `restam = 0` e **sem erro**. A espera deixou de
+contar como passada (teto de 6 min) e, esgotada, DIZ que outra
+sincronização está em andamento.
+
+**3. Uma falha abortava o encadeamento inteiro** — o `try` envolvia o
+`for`. Agora o tratamento é por passada; passada que dá certo limpa o
+erro da anterior (senão a tela acusava falha numa sincronização que
+completou).
+
+**4. O banner "Desatualizado" era matematicamente inatingível.** A idade
+do dado é a da loja MAIS VELHA e uma passada só cobria parte da carteira:
+27 lojas às 14:40 e 25 às 16:00 — o mais antigo ficava 1 h 20 atrás,
+sempre acima do limite de 1 h. Como `needsSync` dispara auto-sync a cada
+abertura do dashboard, era esse sync automático que segurava o lock
+quando o usuário clicava. **Uma passada tem de cobrir a carteira**:
+concorrência 5 → 18 (54 lojas em 3 ondas, ~144 s dentro dos 195 s, com
+folga de 25%; o teste do módulo reprovou o palpite de 12) e frescor 10 →
+45 min, alinhado ao `ADMIN_STALENESS_MS` da tela — re-buscar loja que a
+tela já considera fresca não muda o veredicto e gasta a cota que falta
+para as velhas. `partial` passou a contar como dado INCOMPLETO (peso de
+falha): no fim da fila, as 5 `partial` seguiam carimbadas às 14:40 com as
+`ok` já refeitas às 16:03.
+
+**5. O teto por loja virou o novo "não sincroniza".** Fixo em 90 s, ele
+marcou como `error` três lojas grandes que sincronizariam bem com mais um
+minuto — "demorou" virando "não sincroniza" na tela. `tetoPorLoja` é **o
+que resta da função** (piso de 90 s): com a fila curta, porque as frescas
+saíram do plano, as poucas lentas recebem quase todo o orçamento.
+
+**6. A "Taxa média Convertfy" ignorava a data.** `kpi-series` lia só os
+quatro rótulos fixos e o cliente só a chamava neles, sem `start`/`end` —
+a única das nove rotas que não passava a janela. Em range personalizado a
+chave do SWR virava `null` e o card seguia com o número da última janela
+fixa. Agora o período selecionado é lido junto com os quatro, e **sem
+faturamento bruto no período a taxa é `null`** ("—"), nunca `0`: zero se
+lê como "o email não trouxe nada" quando a verdade é que a base não foi
+sincronizada.
+
+**7. O GET escrevia na tabela que o realtime observa.** `total-revenue`
+renovava `expires_at` a cada leitura com cache velho: **37.639 chamadas e
+391 s de CPU** no `pg_stat_statements`. `store_revenue_summary` está na
+publication e o dashboard assina — cada escrita acordava todas as abas,
+que revalidavam as nove rotas, e a leitura escrevia de novo. Rodava
+sempre, porque `isStale` era permanentemente verdadeiro (causa 4). Quem
+dependia do carimbo era `/api/stores/control`, que passou a medir a IDADE
+do dado (`fetched_at`, 7 dias): **validade é idade, não um carimbo que
+alguém precisa renovar**.
+
+**Custo de carregar.** O fallback de polling virou um timer reagendado
+com backoff 30 s→5 min e jitter, parado em aba oculta — cada disparo
+revalida as nove rotas, então 30 s fixos eram 18 requisições por minuto
+por aba, e o realtime-js reconecta em intervalos fixos sem jitter (todas
+as abas voltavam juntas). E `plataformasPresentes` (puro, 5 testes)
+impede o dashboard de perguntar pela plataforma que a org não usa: com 54
+lojas Omnisend, nenhuma Klaviyo e `klaviyo_campaign_metrics` com ZERO
+linhas, três rotas varriam uma tabela vazia a cada carregamento
+(`ops-series` quatro vezes — o fallback roda em duas janelas). Lista sem
+as colunas devolve as DUAS plataformas, não nenhuma: select degradado
+concluindo "nenhuma" faria a tela mostrar zero achando que mediu.
+
+**Cache HTTP foi avaliado e RECUSADO** para estas rotas: o dashboard
+precisa refletir a sincronização no instante em que ela termina, e um
+`max-age` faria o browser servir a resposta antiga justamente no
+`revalidate` disparado depois do sync — economia paga com o defeito que
+esta rodada inteira existiu para consertar.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

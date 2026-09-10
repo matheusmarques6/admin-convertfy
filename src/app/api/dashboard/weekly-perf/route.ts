@@ -24,6 +24,10 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import {
+  COLUNAS_DE_PLATAFORMA,
+  plataformasPresentes,
+} from "@/lib/dashboard/plataformas-da-org"
 
 export const dynamic = "force-dynamic"
 
@@ -72,15 +76,24 @@ export async function GET(request: NextRequest) {
       fetched_at: string | null
     }
 
-    type StoreRow = { id: string; org_id: string }
+    type StoreRow = {
+      id: string
+      org_id: string
+      klaviyo_private_key?: string | null
+      klaviyo_api_key?: string | null
+      omnisend_api_key?: string | null
+    }
 
     const { data: orgStores } = await admin
       .from("client_stores")
-      .select("id, org_id")
+      // As colunas de credencial decidem quais tabelas de métrica
+      // consultar abaixo (ver `plataformasPresentes`).
+      .select(`id, org_id, ${COLUNAS_DE_PLATAFORMA}`)
       .eq("org_id", orgId)
       .returns<StoreRow[]>()
 
     const storeIds = (orgStores || []).map((s) => s.id)
+    const plataformas = plataformasPresentes(orgStores)
     if (storeIds.length === 0) {
       return successResponse(request, { weeks: emptyWeeks(weeks, weekStart0), totalsZero: true })
     }
@@ -98,27 +111,26 @@ export async function GET(request: NextRequest) {
     // real em prod — o card ficava vazio com 11M de envios na tela ao
     // lado). O dedup por (store, campaign) abaixo já elimina a
     // multiplicidade entre labels, então filtrar por label só perdia dado.
-    const fetchKlav = admin
-      .from("klaviyo_campaign_metrics")
-      .select(selectCols)
-      .in("store_id", storeIds)
-      .or(sendTimeOrNull)
-      .limit(10000)
-      .returns<CampaignRow[]>()
+    // Só a plataforma que a org USA: com 54 lojas Omnisend e nenhuma
+    // Klaviyo, a consulta ao Klaviyo varria uma tabela vazia em todo
+    // carregamento do dashboard.
+    const daTabela = (tabela: string) =>
+      admin
+        .from(tabela)
+        .select(selectCols)
+        .in("store_id", storeIds)
+        .or(sendTimeOrNull)
+        .limit(10000)
+        .returns<CampaignRow[]>()
 
-    const fetchOmni = admin
-      .from("omnisend_campaign_metrics")
-      .select(selectCols)
-      .in("store_id", storeIds)
-      .or(sendTimeOrNull)
-      .limit(10000)
-      .returns<CampaignRow[]>()
-
-    const [klavRes, omniRes] = await Promise.all([fetchKlav, fetchOmni])
+    const [klavRes, omniRes] = await Promise.all([
+      plataformas.klaviyo ? daTabela("klaviyo_campaign_metrics") : null,
+      plataformas.omnisend ? daTabela("omnisend_campaign_metrics") : null,
+    ])
 
     // Omnisend pode nao existir se migration nao foi aplicada — ignora erro
-    const klavRows = klavRes.data ?? []
-    const omniRows = omniRes.error ? [] : (omniRes.data ?? [])
+    const klavRows = klavRes?.data ?? []
+    const omniRows = omniRes?.error ? [] : (omniRes?.data ?? [])
 
     // Dedup por (store_id, campaign_id) mantendo o sync mais recente. Mesmo
     // com 1 period_label, syncs concorrentes (cron + live) podem gerar 2
