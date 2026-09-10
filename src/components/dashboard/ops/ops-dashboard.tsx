@@ -108,7 +108,8 @@ function friendlySyncError(raw: string): string {
 }
 
 interface KpiSeriesData {
-  rate: number
+  /** `null` = não há faturamento bruto no período; a tela mostra "—". */
+  rate: number | null
   deltas?: Record<string, { value: number | null; label: string }>
 }
 
@@ -147,7 +148,6 @@ function xLabelsFromWindow(win?: { from: string; to: string; days: number }): st
 
 // ── Root ────────────────────────────────────────────────────────────
 
-const KPI_SERIES_PERIODS = new Set(["7d", "15d", "30d", "90d"])
 
 export function OpsDashboard({ userName }: { userName: string }) {
   const [period, setPeriod] = useState<OpsPeriodValue>(defaultOpsPeriod)
@@ -200,8 +200,15 @@ export function OpsDashboard({ userName }: { userName: string }) {
     autoRefreshedFor.current = selectionKey
     void triggerRefresh()
   }, [needsSync, selectionKey, triggerRefresh])
+  // A rota recebe o período INTEIRO (com start/end), como todas as outras.
+  //
+  // Antes ela só era chamada nos quatro rótulos fixos e sem as datas: num
+  // range personalizado a chave virava `null`, a "Taxa média Convertfy" e os
+  // deltas dos três cards de receita ficavam sem fonte e a tela seguia
+  // mostrando o número da última janela fixa aberta — "a taxa não atualiza
+  // com base na data selecionada".
   const { data: kpi } = useSWR<KpiSeriesData>(
-    KPI_SERIES_PERIODS.has(period.period) ? `/api/dashboard/kpi-series?period=${period.period}` : null,
+    `/api/dashboard/kpi-series?${q}`,
     fetchJson,
     SWR_OPTS,
   )
@@ -418,7 +425,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
               Taxa média Convertfy
             </div>
             <div className="mt-2 text-[22px] font-semibold text-white tabular-nums tracking-[-0.01em]">
-              {kpi ? fmtPct(kpi.rate) : "—"}
+              {kpi && kpi.rate != null ? fmtPct(kpi.rate) : "—"}
             </div>
             <div className="mt-0.5 text-[10.5px] text-white/70">
               % da receita das lojas via email

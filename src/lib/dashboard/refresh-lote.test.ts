@@ -6,6 +6,7 @@ import {
   hojeNoFuso,
   janelaDoPeriodo,
   planoDeLote,
+  tetoPorLoja,
 } from "./refresh-lote"
 
 describe("hojeNoFuso", () => {
@@ -184,6 +185,28 @@ describe("planoDeLote", () => {
   it("concorrência nunca passa do tamanho do lote", () => {
     expect(planoDeLote(lojas, 1).concorrencia).toBe(1)
     expect(planoDeLote(lojas, 5, 5).concorrencia).toBe(5)
+  })
+})
+
+describe("tetoPorLoja", () => {
+  const ORCAMENTO = 275_000
+
+  it("com a fila curta, a loja lenta recebe quase todo o orçamento", () => {
+    // É o caso que importa: as frescas saíram do plano e sobraram as três
+    // lojas grandes que estouraram o teto fixo de 90 s na rodada anterior.
+    expect(tetoPorLoja(0, ORCAMENTO)).toBe(ORCAMENTO)
+  })
+
+  it("nunca desce abaixo do piso — teto curto vira erro, não espera", () => {
+    // Um teto apertado transforma "demorou" em sync_status='error', e a tela
+    // passa a dizer "não sincroniza" sobre loja que sincronizaria bem.
+    expect(tetoPorLoja(ORCAMENTO + 60_000, ORCAMENTO)).toBe(90_000)
+    expect(tetoPorLoja(ORCAMENTO - 1_000, ORCAMENTO)).toBe(90_000)
+  })
+
+  it("encolhe conforme a função gasta o próprio tempo", () => {
+    expect(tetoPorLoja(100_000, ORCAMENTO)).toBe(175_000)
+    expect(tetoPorLoja(200_000, ORCAMENTO)).toBe(90_000)
   })
 })
 

@@ -225,6 +225,30 @@ export function planoDeLote<T extends LojaDoLote>(
 }
 
 /**
+ * Quanto tempo uma loja ainda pode levar, dado o que resta da função.
+ *
+ * O teto por loja existe contra travamento real — uma chamada pendurada
+ * segura uma vaga de concorrência e leva a função ao teto da Vercel, que é
+ * onde o lock fica preso. Ele NÃO existe para cortar loja lenta: fazer isso
+ * transforma "demorou" em `sync_status = 'error'` e a tela passa a dizer
+ * "não sincroniza" sobre uma loja que sincronizaria bem com mais um minuto.
+ * Foi o que aconteceu com um teto fixo de 90 s: três lojas grandes viraram
+ * erro na primeira rodada com esse teto no ar.
+ *
+ * Então o teto é **o que sobra da função**, com piso: enquanto houver
+ * orçamento, a loja pode usá-lo. Uma passada com a fila curta (as frescas
+ * já saíram) dá quase tudo para as poucas que restaram — que são justamente
+ * as lentas que falharam antes.
+ */
+export function tetoPorLoja(
+  decorridoMs: number,
+  orcamentoDaFuncaoMs: number,
+  pisoMs = 90_000,
+): number {
+  return Math.max(pisoMs, orcamentoDaFuncaoMs - decorridoMs)
+}
+
+/**
  * Roda `fn` sobre os itens com no máximo `limite` em voo.
  *
  * Cada worker puxa o próximo índice livre, então uma loja lenta não

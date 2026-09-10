@@ -10,6 +10,16 @@ import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-sum
 import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { sanitizeSearch } from "@/lib/utils/sanitize-search"
+/**
+ * Até que idade o cache de receita ainda serve a esta tela (7 dias).
+ *
+ * Folgada de propósito: aqui o número é contexto da loja e a data do último
+ * sync aparece ao lado, então dado de ontem informa e dado nenhum não.
+ */
+function limiteDeIdade(): string {
+  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+}
+
 
 const log = logger.child("StoresControl")
 
@@ -419,6 +429,17 @@ async function handleGet(request: Request) {
       const colsWithOmnisend = "store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, omnisend_total_revenue, omnisend_campaign_revenue, omnisend_flow_revenue, store_total_revenue, currency, sync_status, fetched_at"
       const colsWithoutOmnisend = "store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, sync_status, fetched_at"
 
+      // A validade do dado é a IDADE dele.
+      //
+      // O filtro era `expires_at > agora`, e esse carimbo dependia de um
+      // "touch" que `/api/dashboard/total-revenue` fazia A CADA LEITURA —
+      // 37.639 UPDATEs medidos, numa tabela que o realtime observa, o que
+      // acordava todas as abas e as fazia reler tudo. Tirado o touch, o
+      // carimbo pararia de ser renovado e linhas boas sumiriam desta tela;
+      // medir `fetched_at` mantém o dado à vista sem depender de ninguém
+      // carimbar nada. A janela é folgada de propósito: aqui o dado serve
+      // de contexto da loja, e a tela mostra a data do último sync ao lado.
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let revData: any = await supabase
         .from("store_revenue_summary")
@@ -426,7 +447,7 @@ async function handleGet(request: Request) {
         .eq("period_label", "30d")
         .eq("org_id", orgId)
         .in("store_id", storeIds)
-        .gt("expires_at", new Date().toISOString())
+        .gt("fetched_at", limiteDeIdade())
 
       if (revData.error && /omnisend_/.test(revData.error.message || "")) {
         // Migration omnisend_* nao aplicada — fallback
@@ -436,7 +457,7 @@ async function handleGet(request: Request) {
           .eq("period_label", "30d")
           .eq("org_id", orgId)
           .in("store_id", storeIds)
-          .gt("expires_at", new Date().toISOString())
+          .gt("fetched_at", limiteDeIdade())
       }
 
       if (revData.error) {

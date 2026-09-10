@@ -5,7 +5,17 @@ import { createClient } from "@/lib/supabase/client"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 const DEBOUNCE_MS = 2000
-const POLLING_INTERVAL_MS = 30_000
+/**
+ * Espera inicial do fallback, quando o realtime cai.
+ *
+ * Cada disparo revalida as NOVE rotas do dashboard, então 30 s fixos são 18
+ * requisições por minuto por aba aberta — e o realtime-js reconecta em
+ * [1s, 2s, 5s, 10s] fixos e sem jitter, o que faz todas as abas voltarem
+ * juntas. Daí o backoff com jitter, a mesma lição que o inbox já custou.
+ */
+const POLL_MIN_MS = 30_000
+/** Teto do backoff: aba esquecida aberta não fica batendo de meio em meio minuto. */
+const POLL_MAX_MS = 5 * 60_000
 /** Teto de espera por passada (a rota declara 300s). */
 const PASSADA_TIMEOUT_MS = 290_000
 /** Passadas encadeadas por clique — o lote continua até zerar a pendência. */
@@ -50,7 +60,7 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
   const [pending, setPending] = useState(0)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
@@ -166,19 +176,38 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
     setIsRefreshing(false)
   }, [period, start, end, isRefreshing, onDataUpdate, refreshUrl])
 
-  // Start/stop polling fallback
+  // Fallback do realtime: UM timer reagendado, com backoff e jitter, e
+  // parado enquanto a aba está oculta — ninguém precisa de dado fresco numa
+  // aba que não está à vista, e é justamente a aba esquecida que fica
+  // batendo para sempre.
+  const esperaRef = useRef(POLL_MIN_MS)
   const startPolling = useCallback(() => {
     if (pollingRef.current) return
-    pollingRef.current = setInterval(() => {
-      onDataUpdate()
-    }, POLLING_INTERVAL_MS)
+    const agendar = () => {
+      const jitter = 0.75 + Math.random() * 0.5
+      pollingRef.current = setTimeout(() => {
+        pollingRef.current = null
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+          // Aba oculta: não busca, só reagenda — sem isso o backoff nunca
+          // avança e a aba volta a bater assim que reaparece.
+          agendar()
+          return
+        }
+        onDataUpdate()
+        esperaRef.current = Math.min(POLL_MAX_MS, esperaRef.current * 2)
+        agendar()
+      }, esperaRef.current * jitter)
+    }
+    agendar()
   }, [onDataUpdate])
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
-      clearInterval(pollingRef.current)
+      clearTimeout(pollingRef.current)
       pollingRef.current = null
     }
+    // O realtime voltou: a próxima queda recomeça do intervalo curto.
+    esperaRef.current = POLL_MIN_MS
   }, [])
 
   useEffect(() => {

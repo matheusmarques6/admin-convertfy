@@ -31,6 +31,7 @@ import {
   comLimite,
   janelaDoPeriodo,
   planoDeLote,
+  tetoPorLoja,
 } from "@/lib/dashboard/refresh-lote"
 import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { upsertSyncResults, upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
@@ -56,8 +57,11 @@ const LOCK_TTL_MS = 5 * 60 * 1000 // 5 minutes
 // clique nesse intervalo voltava `alreadyRunning` — que é o "clico em
 // sincronizar e não sincroniza".
 const LOOP_DEADLINE_MS = 195_000
-/** Teto por loja. Uma que trave não pode consumir o orçamento da passada. */
-const TIMEOUT_POR_LOJA_MS = 90_000
+/**
+ * Até quando uma loja em voo ainda cabe na função, deixando margem para
+ * liberar o lock e responder. É daqui que sai o teto de cada loja.
+ */
+const ORCAMENTO_DA_FUNCAO_MS = 275_000
 
 // ── Lock helpers (reuses cron_locks table) ────────────────────────────────
 
@@ -546,10 +550,16 @@ export async function POST(request: NextRequest) {
           timedOut = true
           return
         }
+        // O teto é o que ainda resta da função, não um número fixo: com a
+        // fila curta (as frescas já saíram do plano) as poucas lojas lentas
+        // que sobraram recebem quase todo o orçamento. Um teto fixo de 90 s
+        // marcava como erro três lojas grandes que só precisavam de mais
+        // tempo — "demorou" virava "não sincroniza" na tela.
+        const teto = tetoPorLoja(Date.now() - startTime, ORCAMENTO_DA_FUNCAO_MS)
         const result = await comTeto(
           () => refreshStoreForPeriod(adminClient, store as StoreRow, period),
-          TIMEOUT_POR_LOJA_MS,
-          `Tempo esgotado (${Math.round(TIMEOUT_POR_LOJA_MS / 1000)}s) sincronizando esta loja`,
+          teto,
+          `Demorou mais que o tempo desta rodada (${Math.round(teto / 1000)}s). Clique em sincronizar de novo: com a fila menor esta loja recebe mais tempo.`,
         )
         if (result.status === "ok") {
           okCount++
