@@ -5005,14 +5005,25 @@ fora dele** (a mais antiga de 15/04), somando **3.751.247 envios** — e o
 snapshot publicou **872.858 envios com 2,5% de abertura** para um único
 dia. O número não era "um pouco a mais": o `delivered` de quem está fora
 da janela é o total HISTÓRICO daquela campanha, então o relatório falava
-de outro assunto. `lib/reports/periodo.ts` (puro, 15 testes) é a régua
-única — `campanhaNoPeriodo` exige `sent` + envio na janela, e **campanha
+de outro assunto. `lib/reports/periodo.ts` (puro, 17 testes) é a régua
+única — `campanhaNoPeriodo` exige envio DENTRO da janela, e **campanha
 sem data de envio fica FORA**: assumir que é do período é exatamente o
 erro que trouxe abril para setembro. Aplicada nos dois lados que o
 snapshot lê (o cache, cuja query agora filtra no SQL com um dia de folga
 só para o `limit` não descartar borda, e a lista da API). **Flows não
 entram nessa régua** — são contínuos, não têm data de envio, e filtrar
 por ela apagaria todos.
+
+O corte é por **"não enviou"**, não por "não é `sent`", e quem ensinou
+isso foi o dado: das três campanhas de 09/09, a das 18h estava `started`
+— no ar naquele instante, 35 entregues até o snapshot. Exigir `sent`
+faria a campanha do próprio dia sumir do relatório daquele dia, em
+silêncio, enquanto os envios dela existem e são do período. Só
+`scheduled`, `draft` e `cancelled` ficam fora (nunca enviaram nada);
+status desconhecido decide pela data, porque inventar exclusão sobre um
+nome que não conhecemos apaga dado real. Medido no mesmo relatório:
+**de 872.858 envios com 2,5% de abertura para 139.525 com 12,04%** — as
+três campanhas do dia, numa base de 100 mil leads.
 
 **2. O relatório NASCIA e a tela dizia erro.** O de 09/09 está no banco,
 gravado às 20:19:23, com o alerta na cara do usuário. O insert acontece

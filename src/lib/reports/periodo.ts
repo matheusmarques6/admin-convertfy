@@ -51,12 +51,29 @@ export function statusDaCampanha(c: CampanhaComEnvio): string | null {
 }
 
 /**
+ * Status de quem NUNCA chegou a enviar. Estes são o corte seguro: agendada
+ * e rascunho não têm envio nenhum para atribuir a dia algum, e cancelada
+ * não aconteceu.
+ */
+const NAO_ENVIARAM = new Set(["scheduled", "draft", "cancelled", "canceled"])
+
+/**
  * A campanha pertence ao relatório deste período?
  *
- * `sent` e envio dentro da janela — a mesma régua que o report-builder já
- * aplicava e que o snapshot não aplicava. Campanha sem `send_time` fica
+ * Duas condições: **enviou** e **enviou dentro da janela** — a régua da
+ * plataforma, que agrupa pela data de envio. Campanha sem `send_time` fica
  * FORA: sem a data não há como afirmar que ela é deste período, e assumir
- * que sim é justamente o erro que trouxe abril para dentro de setembro.
+ * que sim é o erro que trouxe abril para dentro de setembro.
+ *
+ * O corte é por "não enviou", não por "não é `sent`". Medido na Blessed
+ * Choice: das três campanhas de 09/09, a das 18h estava `started` — no ar
+ * naquele instante, 35 entregues até o snapshot. Exigir `sent` faria a
+ * campanha do próprio dia sumir do relatório daquele dia, em silêncio, e
+ * os envios dela existem e são do período. Ela entra PARCIAL, que é o que
+ * ela é — e o período que inclui hoje já vem com o aviso de que o dia
+ * ainda está em andamento. Status que este módulo não conhece decide pela
+ * data: inventar exclusão sobre um nome que não conhecemos apaga dado
+ * real, enquanto os três casos que de fato não enviaram estão nomeados.
  *
  * A janela é fechada nos dois lados em dia local (`YYYY-MM-DD`), porque é
  * assim que o usuário escolhe na tela; a hora do envio dentro do dia não
@@ -67,8 +84,8 @@ export function campanhaNoPeriodo(
   inicio: string,
   fim: string,
 ): boolean {
-  const status = (statusDaCampanha(c) ?? "").toLowerCase()
-  if (status && status !== "sent") return false
+  const status = (statusDaCampanha(c) ?? "").toLowerCase().trim()
+  if (NAO_ENVIARAM.has(status)) return false
   const envio = envioDaCampanha(c)
   if (!envio) return false
   const dia = envio.slice(0, 10)

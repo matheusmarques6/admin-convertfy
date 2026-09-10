@@ -21,12 +21,23 @@ describe("campanhaNoPeriodo", () => {
     expect(campanhaNoPeriodo(abril, "2026-09-09", "2026-09-09")).toBe(false)
   })
 
-  it("só conta quem foi enviada de fato", () => {
+  it("quem nunca enviou fica fora", () => {
     const base = { send_time: "2026-09-09T10:00:00Z" }
-    expect(campanhaNoPeriodo({ ...base, campaign_status: "scheduled" }, "2026-09-09", "2026-09-09")).toBe(false)
-    expect(campanhaNoPeriodo({ ...base, campaign_status: "paused" }, "2026-09-09", "2026-09-09")).toBe(false)
-    // Sem status declarado a data decide: o cache antigo não gravava o campo.
-    expect(campanhaNoPeriodo(base, "2026-09-09", "2026-09-09")).toBe(true)
+    for (const s of ["scheduled", "draft", "cancelled", "SCHEDULED"]) {
+      expect(campanhaNoPeriodo({ ...base, campaign_status: s }, "2026-09-09", "2026-09-09")).toBe(false)
+    }
+  })
+
+  it("campanha EM ANDAMENTO no dia entra — parcial é o que ela é", () => {
+    // Caso real: Blessed Choice, 09/09, a campanha das 18h estava `started`
+    // com 35 entregues. Exigir `sent` a fazia sumir do relatório do dia.
+    const emAndamento = { send_time: "2026-09-09T21:00:00Z", campaign_status: "started" }
+    expect(campanhaNoPeriodo(emAndamento, "2026-09-09", "2026-09-09")).toBe(true)
+    expect(campanhaNoPeriodo({ ...emAndamento, campaign_status: "paused" }, "2026-09-09", "2026-09-09")).toBe(true)
+  })
+
+  it("sem status declarado, a data decide — o cache antigo não gravava o campo", () => {
+    expect(campanhaNoPeriodo({ send_time: "2026-09-09T10:00:00Z" }, "2026-09-09", "2026-09-09")).toBe(true)
   })
 
   it("sem data de envio fica FORA — assumir que é do período é o bug", () => {
