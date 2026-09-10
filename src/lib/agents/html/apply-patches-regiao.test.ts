@@ -213,3 +213,34 @@ describe("faixa e botão juntos — a regressão que o plano existe para evitar"
     expect(r.panelFixes).toBe(0)
   })
 })
+
+describe("sobreposição entre op de região e recolor global", () => {
+  it("cor que a op de região já trocou vira ja_aplicado, não find_not_found", () => {
+    // O agente pede as duas: "inverta o botão da faixa 3" e "troque o roxo
+    // pelo preto". Apontam para a mesma declaração. A segunda vira no-op —
+    // e chamar isso de "não encontrado" faria sobreposição benigna parecer
+    // endereço inventado, que é o oposto do que é.
+    const doc = `<table width="600">${bloco(
+      0,
+      "products",
+      `<tr><td width="600" style="background-color:#FFFFFF;">${BOTAO("#6B46C1", "#FFFFFF")}</td></tr>`,
+    )}</table>`
+    const ctx = contexto(doc)
+    const r = applyOps(
+      doc,
+      [
+        { action: "set_botao", cta: ctx.ctas[0].id, fundo: "#111111" },
+        { action: "recolor", from: "#6B46C1", to: "#111111", where: "background" },
+      ],
+      { allowHero: true, ...ctx },
+    )
+    expect(r.botoesRecoloridos).toBe(1)
+    expect(r.skipped.map((s) => s.reason)).toEqual(["ja_aplicado"])
+    expect(r.html).not.toContain("#6B46C1")
+  })
+
+  it("cor que nunca existiu segue como find_not_found", () => {
+    const r = aplicar(DOC, [{ action: "recolor", from: "#ABCDEF", to: "#111111" }])
+    expect(r.skipped[0].reason).toBe("find_not_found")
+  })
+})

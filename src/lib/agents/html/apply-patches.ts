@@ -143,6 +143,12 @@ export interface SkippedOp {
     // para a linha do botão. Não inventar lugar é o que separa inserir de
     // corromper.
     | "sem_ponto_de_insercao"
+    // A cor já saiu do documento por uma op de REGIÃO desta mesma rodada.
+    // Não é erro do agente: ele pediu "inverta o botão da faixa 3" e
+    // "troque o roxo pelo preto", e as duas apontam para a mesma
+    // declaração. Reportar isso como `find_not_found` faria a sobreposição
+    // benigna parecer endereço inventado — que é o oposto do que é.
+    | "ja_aplicado"
 }
 
 export interface ApplyOpsResult {
@@ -389,6 +395,8 @@ export function applyOps(
   let botoesInseridos = 0
   /** Ranges de botão — o conserto de painel abaixo não pode tocá-los. */
   const rangesDeBotao: Range[] = (opts.ctas ?? []).map((c) => c.range)
+  /** Cores que as ops de região tiraram do documento nesta rodada. */
+  const substituidos = new Set<string>()
 
   // Os ranges de `faixas`/`ctas` foram medidos no snapshot que o agente
   // viu. Um `replace` aplicado mudou o tamanho do documento e os invalidou
@@ -400,7 +408,7 @@ export function applyOps(
   for (const { op } of enderecosValidos ? regionais : []) {
     if (op.action === "set_fundo") {
       const faixa = faixaDe.get(op.bloco)
-      if (!faixa || !faixa.editavel || faixa.decls.length === 0) {
+      if (!faixa || !faixa.editavel || !faixa.fundo || faixa.decls.length === 0) {
         skipped.push({ op, reason: "sem_fundo_editavel" })
         continue
       }
@@ -411,6 +419,7 @@ export function applyOps(
       for (const d of [...faixa.decls].sort((a, b) => b.start - a.start)) {
         out = out.slice(0, d.start) + op.para + out.slice(d.end)
       }
+      substituidos.add(canonicalHex(faixa.fundo))
       pintados.add(canonicalHex(op.para))
       faixasPintadas++
       applied++
@@ -450,7 +459,11 @@ export function applyOps(
         skipped.push({ op, reason: "find_not_found" })
         continue
       }
-      if (op.fundo) pintados.add(canonicalHex(op.fundo))
+      if (op.fundo) {
+        pintados.add(canonicalHex(op.fundo))
+        if (cta.fundo) substituidos.add(canonicalHex(cta.fundo))
+      }
+      if (op.label && cta.label) substituidos.add(canonicalHex(cta.label))
       botoesRecoloridos++
       applied++
       continue
@@ -507,7 +520,10 @@ export function applyOps(
 
     const rc = applyRecolor(out, r.from, r.to, r.where)
     if (rc.replaced === 0) {
-      skipped.push({ op: r.op, reason: "find_not_found" })
+      skipped.push({
+        op: r.op,
+        reason: substituidos.has(canonicalHex(r.from)) ? "ja_aplicado" : "find_not_found",
+      })
       continue
     }
     out = rc.html
