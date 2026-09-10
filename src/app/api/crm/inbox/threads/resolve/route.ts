@@ -8,6 +8,12 @@
  *  2. valida posse dos vínculos (deal/client/lead precisam ser da org —
  *     ids de fora são DESCARTADOS em silêncio, só log)
  *  3. sem canal WhatsApp ativo → { thread_id: null, reason: "no_channel" }
+ *  3b. `channel_id` no body (o número escolhido no modal de nova
+ *     conversa) RESTRINGE tudo a esse canal — busca e criação. Sem ele,
+ *     vale o comportamento antigo: procura em todos e cria no primeiro
+ *     ativo. Restringir a busca é o ponto: uma thread do canal A com o
+ *     mesmo telefone não pode ser reusada quando o atendente escolheu
+ *     mandar pelo B, senão a mensagem sai do número errado.
  *  4. procura thread existente pelas variantes do nono dígito
  *  5. achou → backfill de vínculo (deal/client/lead) APENAS se NULL
  *  6. não achou e create!=true → { thread_id: null } (criação lazy —
@@ -15,7 +21,7 @@
  *  7. não achou e create=true → insert puro; race (23505, ex.: webhook
  *     inbound criou a thread no meio) → re-lookup + backfill-só-se-NULL
  *
- * Body: { phone, deal_id?, client_id?, lead_id?, contact_name?, create? }
+ * Body: { phone, channel_id?, deal_id?, client_id?, lead_id?, contact_name?, create? }
  */
 
 import { NextRequest } from "next/server"
@@ -33,6 +39,7 @@ export const dynamic = "force-dynamic"
 
 const resolveSchema = z.object({
   phone: z.string().min(1),
+  channel_id: uuidOptional(),
   deal_id: uuidOptional(),
   client_id: uuidOptional(),
   lead_id: uuidOptional(),
@@ -85,7 +92,21 @@ export async function POST(request: NextRequest) {
         reason: "no_channel",
       })
     }
-    const channelIds = channels.map((c) => c.id as string)
+    let channelIds = channels.map((c) => c.id as string)
+
+    // Canal escolhido: tem de ser um dos ativos da org. Id de fora não é
+    // ignorado em silêncio como os vínculos — ali o pior caso é uma
+    // thread sem deal, aqui seria a mensagem saindo por outro número.
+    if (parsed.channel_id) {
+      if (!channelIds.includes(parsed.channel_id)) {
+        throw new AppError(
+          "Canal inválido ou inativo para esta organização",
+          422,
+          "invalid-channel",
+        )
+      }
+      channelIds = [parsed.channel_id]
+    }
 
     const existing = await findThread(admin, orgId, channelIds, phone)
     if (existing) {

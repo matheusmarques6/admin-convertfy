@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Filter, MessageSquare, Search } from "lucide-react"
+import { AlertTriangle, Filter, MessageSquare, MessageSquarePlus, Search } from "lucide-react"
 import { formatWait, waitingInfo } from "@/lib/services/crm-inbox-sla"
 import { cn } from "@/lib/utils"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
@@ -32,6 +32,10 @@ export interface InboxChannelOption {
   id: string
   type: string
   display_name: string
+  /** `whatsapp_cloud` | `evolution` — decide se dá para INICIAR conversa. */
+  provider?: string | null
+  /** Só do Evolution; `"unknown"` = a config não guardou o estado. */
+  connection_state?: string | null
 }
 
 export interface ChannelCounts {
@@ -76,6 +80,8 @@ interface ConversationListProps {
   noChannelOfType?: string | null
   /** Largura no desktop (330 em containers largos, 296 nos estreitos). */
   width?: number
+  /** Abre o modal de nova conversa. Ausente = botão não aparece. */
+  onNovaConversa?: () => void
 }
 
 export function ConversationList({
@@ -110,6 +116,7 @@ export function ConversationList({
   onLoadMore,
   noChannelOfType = null,
   width = 330,
+  onNovaConversa,
 }: ConversationListProps) {
   const tagRegistry = useTagRegistry()
 
@@ -221,6 +228,11 @@ export function ConversationList({
           >
             <Filter className="h-3 w-3" />
           </IcoBtn>
+          {onNovaConversa && (
+            <IcoBtn title="Iniciar uma conversa nova" onClick={onNovaConversa}>
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            </IcoBtn>
+          )}
         </div>
 
         {/* Segmented por canal */}
