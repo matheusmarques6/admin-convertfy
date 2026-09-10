@@ -5258,6 +5258,48 @@ linhas, três rotas varriam uma tabela vazia a cada carregamento
 as colunas devolve as DUAS plataformas, não nenhuma: select degradado
 concluindo "nenhuma" faria a tela mostrar zero achando que mediu.
 
+**Auditoria do resto do dashboard, rota por rota** — quatro defeitos do
+mesmo feitio: o número aparecia completo e não era.
+
+*O PostgREST corta em 1.000 linhas sem avisar* (HTTP 200, e `.limit()`
+maior não resolve — o teto do servidor vence). O trend por loja lia
+`store_daily_metrics` sem paginar: com 63 lojas × 90 dias são ~5.670
+linhas, então **dois terços da janela sumiam** e metade das lojas ganhava
+uma seta calculada sobre outro pedaço de tempo. `unified-metrics` — o
+serviço de que as CINCO rotas de campanha/flow dependem — não paginava
+nem ordenava, com 5.734 linhas na tabela. `lerPaginado`
+(`lib/supabase/paginar.ts`, puro, 6 testes) devolve `truncado` em vez de
+calar; erro no meio entrega o que veio, marcado, em vez de derrubar o
+card por causa da última página. **A ordem é o que torna a paginação
+correta**, não um detalhe: `.range()` sobre consulta sem ordem TOTAL
+repete e pula linhas — daí o desempate explícito (`store_id` +
+`campaign_id`/`flow_id`; `metric_date` + `store_id`, porque com uma linha
+por loja a data não é única).
+
+*"Valor do pipeline" somava o histórico inteiro*: o filtro era `stage_id
+not is null`, que não seleciona negócio ABERTO — seleciona negócio que
+TEM etapa, ou seja todos, ganhos e perdidos incluídos. Um número que só
+cresce e nunca fecha com o funil.
+
+*Taxa sem denominador saía `0%`*, em oito lugares de `email-performance`
+(mais seis por loja na auditoria). Num período sem envio o card publicava
+"Open Rate 0,0%" e "Deliverability 0,0%" como se tivesse medido — 0% se
+lê como "saiu e ninguém abriu". Agora é `null` e a tela mostra "—"
+(`fmtPct` já tratava; `csvNumber` exporta célula vazia).
+
+*Barra com largura inválida no caso vazio*: `parte / total` com total
+zero dá `Infinity`/`NaN`, e o browser DESCARTA `width: NaN%` — a barra
+some sem erro nenhum, justamente no caso vazio, que é quando alguém está
+olhando para entender por que não há dado.
+
+De passagem: três `<a href="/admin/...">` viravam recarga completa da
+página (e recarregar o dashboard refaz as nove requisições) — agora
+`<Link>`.
+
+**Risco latente declarado**: seis rotas leem `client_stores` com
+`.limit(500)`. Com 63 lojas hoje sobra folga, mas acima de 500 o corte
+volta a ser silencioso.
+
 **Cache HTTP foi avaliado e RECUSADO** para estas rotas: o dashboard
 precisa refletir a sincronização no instante em que ela termina, e um
 `max-age` faria o browser servir a resposta antiga justamente no

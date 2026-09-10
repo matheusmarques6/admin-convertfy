@@ -104,16 +104,16 @@ interface EmailStoreRow {
   clicked: number
   conversions: number
   unsubscribed: number
-  openRate: number
-  clickRate: number
-  ctor: number
-  placedOrderRate: number
-  deliveryRate: number
-  unsubRate: number
+  openRate: number | null
+  clickRate: number | null
+  ctor: number | null
+  placedOrderRate: number | null
+  deliveryRate: number | null
+  unsubRate: number | null
 }
 
 interface EmailPerfAudit {
-  metrics: { openRate: number }
+  metrics: { openRate: number | null }
   storeBreakdown?: EmailStoreRow[]
 }
 

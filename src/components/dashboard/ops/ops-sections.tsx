@@ -60,14 +60,15 @@ export interface CsDashboardData {
 }
 
 interface EmailPerfData {
+  /** Taxa `null` = não houve base no período; a tela mostra "—", nunca 0%. */
   metrics: {
-    openRate: number
-    clickRate: number
-    ctor: number
-    placedOrderRate: number
-    rpe: number
-    deliveryRate: number
-    unsubRate: number
+    openRate: number | null
+    clickRate: number | null
+    ctor: number | null
+    placedOrderRate: number | null
+    rpe: number | null
+    deliveryRate: number | null
+    unsubRate: number | null
   }
   totals: { recipients: number }
   audience: { totalLeads: number; engagedLeads: number }
@@ -166,7 +167,14 @@ export function EmailPerfCard({
         ["Click Rate", fmtPct(data.metrics.clickRate, 2), seriesDeltas?.clickRate, false],
         ["CTOR", fmtPct(data.metrics.ctor), seriesDeltas?.ctor, false],
         ["Placed Order", fmtPct(data.metrics.placedOrderRate, 2), seriesDeltas?.placedOrderRate, false],
-        ["RPE", `R$ ${data.metrics.rpe.toFixed(2).replace(".", ",")}`, seriesDeltas?.rpe, false],
+        [
+          "RPE",
+          data.metrics.rpe != null
+            ? `R$ ${data.metrics.rpe.toFixed(2).replace(".", ",")}`
+            : "—",
+          seriesDeltas?.rpe,
+          false,
+        ],
         ["Deliverability", fmtPct(data.metrics.deliveryRate), seriesDeltas?.deliveryRate, false],
       ]
     : []
