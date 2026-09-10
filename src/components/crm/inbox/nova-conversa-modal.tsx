@@ -26,8 +26,8 @@ import { useMemo, useState } from "react"
 import { Loader2, MessageSquarePlus, Send, X } from "lucide-react"
 import { normalizePhone } from "@/lib/whatsapp/phone"
 import {
+  estadoDaLista,
   explicacaoDoCaminho,
-  motivoDeNenhumCanal,
   separarCanais,
   type CanalParaAbertura,
 } from "@/lib/crm/nova-conversa"
@@ -35,6 +35,8 @@ import { TemplatePickerModal } from "./template-picker-modal"
 
 interface NovaConversaModalProps {
   channels: CanalParaAbertura[]
+  /** Lista ainda chegando — sem isso a tela nega canal que existe. */
+  carregando?: boolean
   onClose: () => void
   /** Thread criada e primeira mensagem enviada — abre a conversa. */
   onCriada: (threadId: string) => void
@@ -46,10 +48,16 @@ const CAMPO: React.CSSProperties = {
   color: "var(--ops-title)",
 }
 
-export function NovaConversaModal({ channels, onClose, onCriada }: NovaConversaModalProps) {
+export function NovaConversaModal({
+  channels,
+  carregando = false,
+  onClose,
+  onCriada,
+}: NovaConversaModalProps) {
   const separados = useMemo(() => separarCanais(channels), [channels])
   const { disponiveis, bloqueados } = separados
-  const avisoSemCanal = motivoDeNenhumCanal(separados)
+  const estado = estadoDaLista(separados, carregando)
+  const semCanal = estado.tipo === "ok" ? null : estado.texto
 
   const [channelId, setChannelId] = useState(disponiveis[0]?.canal.id ?? "")
   const escolhido = disponiveis.find((d) => d.canal.id === channelId) ?? disponiveis[0]
@@ -121,11 +129,53 @@ export function NovaConversaModal({ channels, onClose, onCriada }: NovaConversaM
     }
   }
 
+  /**
+   * Reconfirma o template ANTES de a thread nascer.
+   *
+   * A rota de mensagens valida o template (existe? aprovado? variáveis
+   * batem?) e responde 422 ANTES de gravar a mensagem local — então uma
+   * thread já criada ficaria vazia no topo do inbox, sem prévia e sem
+   * nada que a explique. O picker só lista aprovados e monta os params
+   * pelo `body_variables`, então a única janela que sobra é a Meta
+   * reprovar o template entre carregar a tela e enviar. É essa que esta
+   * releitura fecha; o resíduo (reprovar entre a releitura e o POST) é
+   * milissegundos e aparece como erro na tela.
+   */
+  const templateAindaVale = async (args: {
+    templateName: string
+    language: string
+    params: string[]
+  }): Promise<void> => {
+    const res = await fetch(
+      `/api/crm/whatsapp/templates?channel_id=${escolhido?.canal.id}&approved=1`,
+    )
+    const data = await res.json().catch(() => ({}))
+    // Falha ao reconferir não vira recusa: a lista pode cair por rede e
+    // recusar aqui bloquearia um envio que a rota aceitaria.
+    if (!res.ok) return
+    const lista = Array.isArray(data.templates) ? data.templates : []
+    const achado = lista.find(
+      (t: { name?: string; language?: string; body_variables?: number }) =>
+        t.name === args.templateName && t.language === args.language,
+    )
+    if (!achado) {
+      throw new Error(
+        `O template "${args.templateName}" não está mais aprovado na Meta. Clique em Sincronizar e escolha outro.`,
+      )
+    }
+    if ((achado.body_variables ?? 0) !== args.params.length) {
+      throw new Error(
+        `O template "${args.templateName}" mudou de variáveis na Meta. Clique em Sincronizar e preencha de novo.`,
+      )
+    }
+  }
+
   const enviarTemplate = async (args: {
     templateName: string
     language: string
     params: string[]
   }) => {
+    await templateAindaVale(args)
     const threadId = await garantirThread()
     const res = await fetch(`/api/crm/inbox/threads/${threadId}/messages`, {
       method: "POST",
@@ -190,9 +240,9 @@ export function NovaConversaModal({ channels, onClose, onCriada }: NovaConversaM
           </div>
 
           <div className="flex flex-col gap-3 overflow-y-auto p-4">
-            {avisoSemCanal ? (
+            {semCanal ? (
               <p className="text-[12px] leading-snug" style={{ color: "var(--ops-sec)" }}>
-                {avisoSemCanal}
+                {semCanal}
               </p>
             ) : (
               <>
@@ -324,7 +374,7 @@ export function NovaConversaModal({ channels, onClose, onCriada }: NovaConversaM
             )}
           </div>
 
-          {!avisoSemCanal && (
+          {!semCanal && (
             <div
               className="flex items-center justify-end gap-2 border-t px-4 py-3"
               style={{ borderColor: "var(--ops-border)" }}

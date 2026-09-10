@@ -151,3 +151,29 @@ export function explicacaoDoCaminho(caminho: CaminhoDeAbertura): string {
     ? "Este número envia mensagem livre. A conversa aparece no inbox assim que a primeira mensagem sair."
     : "Este é um número oficial da Meta: a primeira mensagem para quem nunca escreveu só pode ser um template aprovado. Depois que a pessoa responder, a conversa libera texto livre por 24h."
 }
+
+/** O que a tela mostra no lugar da lista de canais. */
+export type EstadoDaLista =
+  | { tipo: "ok" }
+  | { tipo: "carregando"; texto: string }
+  | { tipo: "aviso"; texto: string }
+
+/**
+ * Decide entre "ainda não sei" e "não há canal".
+ *
+ * A lista de canais chega por SWR: no primeiro render ela é VAZIA, e
+ * `motivoDeNenhumCanal` responderia "Nenhum canal conectado" — mandando
+ * configurar o que já está configurado. É a mesma régua do
+ * `connection_state` desconhecido: ausência de informação não é ausência
+ * de canal.
+ *
+ * Com canal já disponível o carregamento não segura nada — o dado que
+ * importa chegou, e travar a tela por causa de uma revalidação em
+ * andamento só atrasaria quem quer mandar mensagem.
+ */
+export function estadoDaLista(sep: CanaisParaAbertura, carregando = false): EstadoDaLista {
+  if (sep.disponiveis.length > 0) return { tipo: "ok" }
+  if (carregando) return { tipo: "carregando", texto: "Carregando os canais conectados…" }
+  const motivo = motivoDeNenhumCanal(sep)
+  return motivo ? { tipo: "aviso", texto: motivo } : { tipo: "ok" }
+}

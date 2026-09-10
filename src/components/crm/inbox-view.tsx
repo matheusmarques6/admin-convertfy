@@ -86,7 +86,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
   const listWidth = !medido || cw >= 1100 ? 330 : 296
   const [ctxOpen, setCtxOpen] = useState(false)
 
-  const { data: channelsData } = useSWR<{
+  const { data: channelsData, isLoading: channelsLoading } = useSWR<{
     channels: Array<InboxChannelOption & { is_active?: boolean }>
   }>("/api/crm/channels", fetcher, { revalidateOnFocus: false })
   const channels = useMemo(
@@ -276,6 +276,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
       {novaConversaAberta && (
         <NovaConversaModal
           channels={channels}
+          carregando={channelsLoading}
           onClose={() => setNovaConversaAberta(false)}
           onCriada={(threadId) => {
             setNovaConversaAberta(false)

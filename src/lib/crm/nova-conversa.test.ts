@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   avaliarCanal,
+  estadoDaLista,
   explicacaoDoCaminho,
   motivoDeNenhumCanal,
   separarCanais,
@@ -122,5 +123,28 @@ describe("explicacaoDoCaminho", () => {
 
   it("o texto do texto livre promete o que acontece depois do envio", () => {
     expect(explicacaoDoCaminho("texto_livre")).toMatch(/inbox/)
+  })
+})
+
+describe("estadoDaLista", () => {
+  it("carregando sem canal é 'não sei ainda' — nunca 'não há canal'", () => {
+    const e = estadoDaLista(separarCanais([]), true)
+    expect(e.tipo).toBe("carregando")
+    expect(e.tipo === "carregando" && e.texto).toMatch(/Carregando/)
+  })
+
+  it("carregando COM canal já é ok: o dado que importa chegou", () => {
+    expect(estadoDaLista(separarCanais([canal()]), true).tipo).toBe("ok")
+  })
+
+  it("terminado sem canal mantém o aviso de hoje", () => {
+    const e = estadoDaLista(separarCanais([]), false)
+    expect(e.tipo).toBe("aviso")
+    expect(e.tipo === "aviso" && e.texto).toMatch(/Nenhum canal conectado/)
+  })
+
+  it("terminado só com Instagram mantém o motivo da plataforma", () => {
+    const e = estadoDaLista(separarCanais([canal({ type: "instagram", provider: null })]), false)
+    expect(e.tipo === "aviso" && e.texto).toMatch(/Instagram não permite iniciar/)
   })
 })
