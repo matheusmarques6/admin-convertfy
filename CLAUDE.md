@@ -5306,5 +5306,51 @@ precisa refletir a sincronização no instante em que ela termina, e um
 `revalidate` disparado depois do sync — economia paga com o defeito que
 esta rodada inteira existiu para consertar.
 
+## Moeda estrangeira somada como real, e "loja sem sync" que vendeu zero (set/2026)
+
+Duas queixas na mesma tela: "ainda tem 10 lojas sem sync mesmo clicando
+em sincronizar" e "o valor de campanha está muito baixo perto da
+realidade". Nenhuma das duas era o que parecia.
+
+**As 10 lojas tinham sincronizado.** `storesWithRevenue` conta
+`totalRevenueBRL > 0` e a tela escrevia "45 de 54 lojas com dado até
+agora": as 9 que faltavam sincronizaram com sucesso e faturaram **ZERO**
+naquele dia — loja pequena sem venda. Medido: 54 de 54 `ok`, 45 com
+faturamento bruto; o "45/54" era exatamente a contagem de quem vendeu. O
+banner então dizia "o cache está incompleto, os cards podem mostrar menos
+do que o real" sobre uma carteira inteira sincronizada, e o operador
+clicava em sincronizar para sempre. **Faturamento zero é MEDIÇÃO, não
+lacuna**: a rota expõe `storesSynced` (linhas sem erro) e a tela separa as
+duas contagens ("N de M sincronizadas, K com faturamento no período").
+
+**Três caminhos somavam moedas diferentes sem converter** e publicavam o
+total com "R$" na frente. Uma libra entrando como um real subestima ~7×,
+um euro ~6×, e **o total continua parecendo plausível** — é o que faz esse
+defeito sobreviver, e foi o que a suspeita do usuário pegou:
+
+- `getEmailDailySeries` (a série do gráfico "Receita atribuída") lia
+  `store_daily_metrics` **sem selecionar `currency`** — a coluna existe e
+  é gravada pelo próprio serviço, no upsert, algumas linhas acima.
+- O fallback por campanhas do mesmo gráfico somava `conversion_value` cru.
+- `email-performance` idem, e o **RPE** do card sai do mesmo número.
+
+`lib/money/converter-lote.ts` (puro, 6 testes) converte **uma vez por
+MOEDA**, não por linha: são poucas moedas distintas e milhares de linhas,
+e `convertToBRL` já tem cache de três camadas. Moeda estrangeira sem taxa
+entra na moeda ORIGINAL em vez de virar zero — perder a linha deixaria o
+total menor ainda, e sem nada dizendo que faltou; `moedasNaoConvertidas`
+existe para a tela poder declarar.
+
+**Os cards de Receita Atribuída/Campanhas/Automações NÃO eram afetados**:
+`total-revenue` já convertia as quatro somas por loja. Se o número deles
+parecer baixo, o eixo a investigar é a **moeda gravada** em
+`client_stores` (loja europeia marcada BRL converte por 1 e subestima na
+mesma proporção) — `/admin/tools/currency-audit` mostra a procedência, e
+`fxDegraded` só acusa câmbio que FALHOU, nunca moeda errada.
+
+**Pendência declarada**: `total-revenue` e `kpi-series` convertem com
+`convertToBRL` (taxa de HOJE), não com `convertToBRLOn` (taxa do dia do
+período). Para uma janela recente a diferença é pequena; para 90 dias, não.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
