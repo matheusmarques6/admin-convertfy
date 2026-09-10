@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+
 import { describe, it, expect } from "vitest"
 
 import {
@@ -15,10 +17,13 @@ import {
   CURADOR_SHADOW_MODEL_FALLBACK,
   CURADOR_SHADOW_MAX_TOKENS_MIN,
   contratosDoCatalogo,
+  consumoDoErro,
+  naEtapa,
   parseValidatedShortlist,
   renderFinalistNotes,
   restrictRankingToShortlist,
 } from "./curador-shadow"
+import { RespostaVaziaError } from "../resposta-vazia"
 import { resumirContrato } from "../shared/field-roles"
 import { buildAprendizadosBlock, renderUsageCounts } from "./curador-vault"
 import { DEFAULT_CHOOSER_SYSTEM, DEFAULT_CHOOSER_USER } from "./component-assembler.service"
@@ -568,6 +573,83 @@ describe("resolverModeloDoCurador", () => {
     for (const v of [null, undefined, "", "   "]) {
       expect(resolverModeloDoCurador(v)).toBe(CURADOR_SHADOW_MODEL_FALLBACK)
     }
+  })
+})
+
+describe("o teto da shortlist (10/09)", () => {
+  // Cinco gerações morreram por um `Math.min(maxTokens, 5000)` na chamada da
+  // shortlist: 09/09 com o Fable (3x curador_shortlist_invalida + 1 resposta
+  // vazia) e 10/09 com o Sonnet 5 (batch ec6077f2). O raciocínio sai do mesmo
+  // orçamento da resposta, gastava os 5.000 e não sobrava token para o JSON —
+  // enquanto o erro mandava aumentar `max_tokens` em `email_agent_configs`,
+  // que já estava em 16.000 e era cortado ali.
+  //
+  // A chamada mora dentro de uma função grande e não exportada, então o teste
+  // é sobre a FONTE: qualquer teto literal reintroduzido ali reprova. É o que
+  // pega a regressão de verdade — o valor certo hoje é uma identidade
+  // (`max_tokens: maxTokens`) e não há função pura para exercitar.
+  it("a chamada da shortlist não carrega teto literal nenhum", () => {
+    const fonte = readFileSync(new URL("./curador-shadow.ts", import.meta.url), "utf-8")
+    const chamada = fonte.slice(
+      fonte.indexOf("const shortlistCall"),
+      fonte.indexOf("const shortlist = parseValidatedShortlist"),
+    )
+    expect(chamada).toContain("max_tokens: maxTokens")
+    expect(chamada).not.toMatch(/Math\.min\s*\(\s*maxTokens/)
+    expect(chamada).not.toMatch(/max_tokens:\s*\d/)
+  })
+
+  it("naEtapa nomeia a chamada que falhou e preserva o erro original", async () => {
+    class ComCusto extends Error {
+      costUsd = 0.04
+    }
+    const erro = await naEtapa("shortlist", async () => {
+      throw new ComCusto("resposta vazia de 'anthropic/claude-sonnet-5'")
+    }).catch((e) => e)
+
+    // O prefixo diz QUAL das duas chamadas do progressive disclosure morreu.
+    expect(erro.message).toBe("shortlist: resposta vazia de 'anthropic/claude-sonnet-5'")
+    // A classe sobrevive: o consumo já pago é resgatado do erro pelo usageOf,
+    // e um wrapper apagaria o custo da falha da telemetria.
+    expect(erro).toBeInstanceOf(ComCusto)
+    expect(erro.costUsd).toBe(0.04)
+  })
+
+  it("naEtapa devolve o valor quando não há falha", async () => {
+    await expect(naEtapa("shortlist", async () => "ok")).resolves.toBe("ok")
+  })
+
+  // A run de erro do batch ec6077f2 gravou 0/0 tokens e $0.000 numa chamada
+  // que gastou os 5.000 do teto pensando. A chamada JÁ FOI PAGA quando o
+  // throw acontece; perder os números faz a falha parecer de graça.
+  it("consumoDoErro resgata o gasto da RespostaVaziaError", () => {
+    const erro = new RespostaVaziaError({
+      model: "anthropic/claude-sonnet-5",
+      maxTokens: 5000,
+      tokensInput: 128_000,
+      tokensOutput: 5000,
+      costUsd: 0.42,
+      finishReason: "length",
+      reasoningTokens: 5000,
+    })
+    expect(consumoDoErro(erro)).toEqual({
+      tokensInput: 128_000,
+      tokensOutput: 5000,
+      costUsd: 0.42,
+    })
+    // O prefixo da etapa não pode custar o resgate — é por isso que naEtapa
+    // muta a mensagem em vez de embrulhar o erro.
+    const prefixado = naEtapa("shortlist", async () => {
+      throw erro
+    }).catch((e) => e)
+    return prefixado.then((e: unknown) => {
+      expect(consumoDoErro(e)).toMatchObject({ costUsd: 0.42 })
+    })
+  })
+
+  it("consumoDoErro devolve null para erro sem consumo — e não inventa zero", () => {
+    expect(consumoDoErro(new Error("curador_shortlist_invalida"))).toBeNull()
+    expect(consumoDoErro("string solta")).toBeNull()
   })
 })
 

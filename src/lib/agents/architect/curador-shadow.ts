@@ -38,6 +38,8 @@ import {
   type AgentInvokeConfig,
 } from "./llm-invoke"
 import { loadFinalistNotes, type FinalistNoteResult } from "./curador-vault-tools"
+import { usageOf } from "@/lib/agents/chains/step-usage"
+import { RespostaVaziaError } from "@/lib/agents/resposta-vazia"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
 import { normalizarSecao, podeRepetir } from "./repeticao"
 import {
@@ -236,6 +238,52 @@ export function explicarTetoDoCurador(daConfig?: number | null): TetoDoCurador {
   const origem: TetoDoCurador["origem"] =
     cfg != null && teto === cfg ? "config" : env != null && teto === env ? "env" : "piso"
   return { teto, origem, config: cfg, env }
+}
+
+/**
+ * Prefixa o erro com a etapa do progressive disclosure.
+ *
+ * As duas chamadas do Curador falham com o MESMO texto — `resposta vazia de
+ * '<modelo>'; N dos N tokens foram para o raciocínio` — e a run guarda uma
+ * string só. Sem o prefixo não dá para saber se o teto que faltou foi o da
+ * shortlist ou o da escolha final, que é exatamente o que decide onde mexer.
+ *
+ * Muta a mensagem em vez de embrulhar num `Error` novo de propósito: a
+ * `RespostaVaziaError` carrega o consumo já pago (`tokensInput`, `costUsd`,
+ * `finishReason`) e o `consumoDoErro` daqui o resgata pela CLASSE. Um wrapper
+ * apagaria o custo da falha da telemetria.
+ */
+export async function naEtapa<T>(etapa: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    if (e instanceof Error) {
+      e.message = `${etapa}: ${e.message}`
+      throw e
+    }
+    throw new Error(`${etapa}: ${String(e)}`)
+  }
+}
+
+/**
+ * O consumo já pago de uma chamada que falhou.
+ *
+ * A run de erro do Curador gravava `0/0` tokens e `$0.000` numa chamada que
+ * tinha gasto os 5.000 tokens do teto pensando (batch ec6077f2). É o mesmo
+ * vazamento que o `step-usage` documenta nos chains da fase 2: o `throw`
+ * acontece depois da chamada paga e antes do `return` que carrega os números.
+ *
+ * Duas fontes porque há dois jeitos de o consumo chegar aqui: grudado no erro
+ * por `attachUsage` (erro de parse) ou nos campos da `RespostaVaziaError`, que
+ * já nasce com eles justamente para não perdê-los.
+ */
+export function consumoDoErro(err: unknown): { tokensInput: number; tokensOutput: number; costUsd: number } | null {
+  const grudado = usageOf(err)
+  if (grudado) return grudado
+  if (err instanceof RespostaVaziaError) {
+    return { tokensInput: err.tokensInput, tokensOutput: err.tokensOutput, costUsd: err.costUsd }
+  }
+  return null
 }
 
 /** `CURADOR_SHADOW_RETOMADA=off` desliga a volta de retomada do JSON. */
@@ -959,6 +1007,10 @@ export async function runCuradorShadow(
         teto: tetoResolvido.teto,
         teto_origem: tetoResolvido.origem,
         teto_config: tetoResolvido.config,
+        // O teto de CADA chamada, porque foram duas e elas divergiam: a run
+        // afirmava 16.000 enquanto a shortlist rodava com 5.000, e era essa
+        // divergência que escondia a causa da resposta vazia.
+        teto_shortlist: maxTokens,
       },
       renderedPrompt: segUser.segments ? segUser.prompt : undefined,
       promptSegments,
@@ -967,10 +1019,21 @@ export async function runCuradorShadow(
 
     // Progressive disclosure em duas chamadas. A shortlist vê apenas o
     // índice; o código valida ids/seções e carrega TODAS as notas em lote.
-    const shortlistCall = await invokeAgent(
-      { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: Math.min(maxTokens, 5000) },
-      vars,
-      systemVars,
+    //
+    // O teto é o MESMO da chamada final. Um `Math.min(maxTokens, 5000)`
+    // morava aqui e derrubou cinco gerações — 09/09 com o Fable, 10/09 com o
+    // Sonnet 5 (batch ec6077f2). O raciocínio sai do mesmo orçamento da
+    // resposta: o modelo gastava os 5.000 pensando e não sobrava token para a
+    // primeira letra do JSON, enquanto o erro mandava aumentar `max_tokens`
+    // em `email_agent_configs` — que já estava em 16.000 e era cortado aqui.
+    // `max_tokens` é TETO, não consumo: cortar não poupa um token quando a
+    // resposta é curta, só quebra quando ela precisa de um a mais.
+    const shortlistCall = await naEtapa("shortlist", () =>
+      invokeAgent(
+        { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: maxTokens },
+        vars,
+        systemVars,
+      ),
     )
     const shortlist = parseValidatedShortlist({
       raw: shortlistCall.raw,
@@ -988,17 +1051,19 @@ export async function runCuradorShadow(
       ...config,
       user_template: `${config.user_template}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
     }
-    let finalCall = await invokeAgent(finalConfig, finalVars, systemVars)
+    let finalCall = await naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars))
     let retomada: { feita: boolean; motivo: string; erro?: string; prefill_usado: boolean } | undefined
     // Uma retomada curta preserva o comportamento de recuperação do JSON,
     // sem reabrir ferramentas nem refazer a shortlist.
     const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
     if (retomadaLigada() && motivoRetomada) {
       const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
-      const retry = await invokeAgent(
-        { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
-        retryVars,
-        systemVars,
+      const retry = await naEtapa("retomada", () =>
+        invokeAgent(
+          { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
+          retryVars,
+          systemVars,
+        ),
       )
       finalCall = {
         ...retry,
@@ -1257,6 +1322,7 @@ export async function runCuradorShadow(
     const msg = err instanceof Error ? err.message : String(err)
     log.warn("shadow.failed", { storeId: p.storeId, flowType: p.flowType, emailNumber: p.emailNumber, error: msg })
     if (runId) {
+      const consumo = consumoDoErro(err)
       await finishGenerationRun(runId, {
         storeId: p.storeId,
         batchId: p.batchId,
@@ -1265,6 +1331,15 @@ export async function runCuradorShadow(
         model: modelo,
         errorMessage: `shadow: ${msg}`,
         parsedOutput: { shadow: modo === "shadow", curador_vault_mode: modo },
+        // A chamada já foi PAGA quando isto roda. Sem os números, o painel de
+        // custo não vê o gasto e a falha parece de graça.
+        ...(consumo
+          ? {
+              tokensInput: consumo.tokensInput,
+              tokensOutput: consumo.tokensOutput,
+              costCents: resolveCostCents({ model: modelo, ...consumo }),
+            }
+          : {}),
         durationMs: Date.now() - t0,
       }).catch(() => {})
     }
