@@ -5348,9 +5348,237 @@ parecer baixo, o eixo a investigar é a **moeda gravada** em
 mesma proporção) — `/admin/tools/currency-audit` mostra a procedência, e
 `fxDegraded` só acusa câmbio que FALHOU, nunca moeda errada.
 
+**A moeda vinha do CACHE, não do cadastro** (relato: "o dólar da Blue Wolf
+não bate"). A matemática estava certa — `valor / rates[moeda]`, com o `rate`
+do tooltip invertido para reais por unidade, que é como se confere. O que
+estava errado era a MOEDA: `store_revenue_summary.currency` é um SNAPSHOT
+que o sync copia de `client_stores` e nunca revisita. Corrigir a moeda no
+cadastro NÃO reescreve as linhas de cache já gravadas, então a tela seguia
+convertendo pela moeda antiga até alguém re-sincronizar aquele período — e
+nada dizia que as duas discordavam. `stores-overview` era o pior caso:
+`rev?.currency || s.currency` preferia explicitamente o cache.
+`moedaDaLinha` (`lib/money/moeda-da-loja.ts`, puro, 5 testes) inverte a
+precedência — cadastro > cache, sem cadastro o cache vale (foi copiado de um
+que existia) — e **declara a divergência**: `currencyStale` vira o selo
+"moeda ⚠" na tabela de lojas, com o de/para no title. Converter pelo valor
+certo ainda pode estar errado no sentido oposto (o número foi gravado por um
+sync que acreditava na outra moeda), então o aviso importa tanto quanto a
+correção.
+
+**Como auditar a conversão, na tela**: passar o mouse sobre qualquer valor da
+tabela "Saúde das Lojas" abre a conta inteira — `US$ 7.400,00 × 5,3850 =
+R$ 39.849,00 · cotação de 09/09/2026`. `/admin/tools/currency-audit` mostra a
+PROCEDÊNCIA da moeda de cada loja (`nunca-conferido` ≠ OK) e o fuso.
+
 **Pendência declarada**: `total-revenue` e `kpi-series` convertem com
 `convertToBRL` (taxa de HOJE), não com `convertToBRLOn` (taxa do dia do
 período). Para uma janela recente a diferença é pequena; para 90 dias, não.
+
+## O número do relatório não batia com o painel (set/2026)
+
+Relatado com print: a Blue Wolf publicou **US$ 51,5 mil** de receita
+atribuída em agosto contra **$51.176,38** no painel do Omnisend, e
+faturamento total **US$ 214,1 mil** contra **$213.193,59**. Perto o
+bastante para parecer certo, longe o bastante para não fechar com nada.
+
+**A API foi medida antes de escrever código** (conta Treuquell, via MCP,
+agosto/2026) — e três afirmações que viviam em comentários deste
+repositório estavam ERRADAS:
+
+- **`month` e `day` somam IGUAL** (21.844,93 nos dois; `week` também).
+  O comentário do sync dizia que bucket diário "conta pedidos a mais na
+  virada de dia" e era por isso que a granularidade era `month`.
+- **Buckets são RECORTADOS pela janela**: 15/08→05/09 devolve 244
+  pedidos em agosto, não o mês inteiro.
+- **Offsets misturados entre `from` e `to` não inflaram nada**, ao
+  contrário do "+56 na Clube Rock" registrado no código. `to` é
+  exclusivo de verdade (31/08 tira exatamente o dia 31), e o campo
+  `interval: "custom"` é ignorado pela Statistics API (ela não o tem).
+
+Ou seja: **a plataforma responde de forma consistente; a divergência era
+nossa.** Duas causas, ambas silenciosas.
+
+**1. Gerar UM relatório disparava TRÊS syncs completos da mesma loja.**
+`fetchSnapshotSources` chamava `report`, `campaigns` e `flows` em
+paralelo, os três com `force_refresh=true`, e cada um roda um
+`syncOmnisendForStore` inteiro — 3 chamadas de analytics cada. **Nove
+chamadas na mesma chave, contra um limite de 10/min e 55/dia por
+brand.** O singleflight (`activeSyncs`) não protegia: cada `fetch` é uma
+invocação serverless separada e o `Map` vive na memória de um processo
+só — as três nunca se enxergam. Agora o `report` roda sozinho com
+`force_refresh` (ele já persiste em `store_revenue_summary` +
+`omnisend_campaign_metrics` + `omnisend_flow_metrics`) e campanhas/flows
+leem o que ele acabou de gravar; se o `report` não voltar, os dois
+pagam o refresh em vez de servir número de outra rodada. Três chamadas
+no total, e os três blocos passam a falar do MESMO sync — antes eram
+três syncs independentes que podiam divergir **dentro do mesmo
+relatório**.
+
+**2. Sem a Reports API, o atribuído sai por outro eixo — e era publicado
+sem marca.** Só o número CALIBRADO pela Reports API (send-date) bate com
+o painel; sem ela o sync cai no Statistics (event-date), que fica acima.
+O código **já sabia** — havia um `log.warn` dizendo que ali o valor
+"pode estar ~2x inflado" — e gravava assim mesmo, sem nada em tela, em
+banco ou no relatório distinguindo esse número do bom. Como a etapa
+falha justamente quando o limite estoura (causa 1), o mesmo relatório
+dava números diferentes a cada geração.
+
+`procedencia.ts` (puro, 12 testes) nomeia isso: `procedenciaDoAtribuido`
+devolve o agrupamento (`send_date`/`event_date`), se ele
+`comparavelComOPainel`, e declara quando o percentual mistura os dois
+eixos — que é o caso do slide "24,07% do faturamento veio da Convertfy",
+atribuído por data de envio sobre total por data do pedido. A
+documentação da Omnisend proíbe essa mistura na letra ("Never combine
+attributed revenue from post_analytics_reports with total revenue from
+this API"); ela **não é corrigível somando melhor** — é para ser DITA. A
+procedência viaja no `revenue.attribution` do relatório e fica congelada
+em `snapshot.atribuicao`, como `period_notes` já fazia com o período.
+
+**`safely` deixou de engolir a causa.** Ele captura rate limit e segue
+com o fallback — correto, um endpoint não pode abortar os outros — mas
+seguia **sem registrar**, e a tela dizia "A plataforma não respondeu às
+estatísticas desta janela. Clique em sincronizar de novo". As ações são
+OPOSTAS: num 429, insistir queima o resto da cota diária e atrasa a
+liberação. Agora cada degradação carrega `causa`
+(`limite_da_plataforma` × `falha_na_chamada`) e `liberaEmMs`, e
+`mensagemDaDegradacao` escreve o texto certo — o limite vence a falha
+comum quando os dois acontecem, e sem prazo informado não se inventa
+prazo.
+
+**Auditar deixou de exigir console** (`POST /api/stores/revenue-audit`,
+`auditoria-receita.ts` puro, 11 testes): para uma loja e uma janela,
+confronta o nosso número com o que a plataforma responde AGORA e mostra
+a memória de cálculo — a janela exata enviada (com offset), o fuso do
+cadastro contra o fuso da brand (o que o painel usa para cortar os
+dias), e o que cada API devolveu. A janela é montada pela MESMA
+`omnisendDateRange` da produção: remontá-la aqui faria a auditoria
+aprovar uma janela que o sync nunca envia — o defeito circular que a
+auditoria de moeda tinha antes de 08/09. O atribuído é confrontado com
+a **Reports** API, não com a Statistics: comparar com a segunda faria a
+auditoria aprovar justamente o número que diverge da tela do cliente.
+Tolerância de 0,1% porque a plataforma reprocessa atribuição entre
+leituras, e apontar isso como defeito ensina a ignorar o aviso de
+verdade. `causasProvaveis` devolve **lista vazia** quando nenhuma causa
+conhecida se aplica — o que é diferente de dizer que está tudo certo.
+
+**Na tela** (`/admin/tools/currency-audit`, botão "Receita" na linha da
+loja, só Omnisend — numa loja Klaviyo o botão só saberia falhar): a
+janela padrão é o **mês anterior completo**, que é a do relatório
+mensal, onde a divergência é reclamada; ela é montada em UTC porque
+`new Date(ano, mes, dia)` é local e num fuso a oeste o dia 1 vira o
+último dia do mês anterior — a janela sairia deslocada justamente na
+ferramenta feita para achar janela deslocada.
+
+*Verificado renderizando* o painel com os números do caso real
+(`renderToStaticMarkup` + a régua de verdade): apareceu **"USD 2.267,00"
+na linha de pedidos** — contagem formatada como dinheiro, com centavos.
+Nenhum teste unitário pegaria, porque o número estava certo. Daí
+`Divergencia.unidade`: contagem sai sem moeda e sem decimal, e **não tem
+"quase igual"** — a tolerância de 0,1% existe para o centavo que a
+plataforma reprocessa entre leituras, e aplicá-la a pedidos esconderia
+um pedido a mais.
+
+**Continua em aberto**: a divergência da Blue Wolf não pôde ser fechada
+daqui — a chave do MCP é da Treuquell e o MCP do Supabase está
+expirado. As duas hipóteses que a auditoria decide num clique são o
+fuso do cadastro divergindo do fuso da brand e o atribuído ter saído
+sem calibração naquela geração — as duas a um clique no botão
+"Receita".
+
+---
+
+## Cores & Botões decide o RITMO, e põe o CTA que falta (set/2026, migration 20261137)
+
+O `color_format` decidia por VALOR e só sabia escrever por valor: `recolor` é
+global, então num e-mail em que `#FFFFFF` é o fundo de quatro seções **não
+existia op capaz de escurecer uma delas**. As regras de ritmo do guia de cor
+(R2/R3/R5/R6) e a inversão do CTA por faixa (C3) eram inexecutáveis com ou sem
+prompt novo — faltava ferramenta, não instrução.
+
+**O que o agente recebe agora**: além do inventário de cores (que diz QUANTO
+cada cor aparece), `faixas_json` e `ctas_json` — a sequência dos fundos de
+seção na ordem da rolagem e cada botão com a faixa em que pousa.
+`color-faixas.ts` (puro) cruza `locateBlockRegions` (os marcadores `cfy:block`,
+que o runner mantém no documento até a fronteira de saída) com
+`backgroundDeclarations` (já na ordem do documento). **Sem marcadores as listas
+saem VAZIAS** e o prompt manda não decidir ritmo: deduzir a ordem de um
+documento legado é inventar endereço, e op endereçada errado pinta a seção
+errada.
+
+**O que ele devolve**: um `plano_de_cor` — `faixas` (por lugar), `botoes`
+(recolore um existente), `adicionar` (põe onde falta), `valores` (a
+conformidade de sempre), `rodape` e `lacunas`, cada decisão com o seu
+`porque`. Não há mais `{"ops":[…]}`: quem traduz é `plano-de-cor.ts`. Prompt
+antigo gravado no banco continua funcionando — plano vazio + `"ops"` no texto
+cai no caminho legado.
+
+**As armadilhas que os testes travam** (todas apareceram fazendo):
+
+- **`set_fundo` reescreve as DECLARAÇÕES da faixa, não o hex do bloco.** Trocar
+  "todo #FFFFFF daqui" repinta o card branco e o botão branco que moram dentro
+  dela — e desfaz a inversão que o `set_botao` acabou de fazer, que é o par que
+  o C3 exige.
+- **`panelFixes` pula ranges de botão.** Botão que colapsa no fundo da faixa é
+  decisão (faixa escura + botão escuro invertido), não painel colapsado;
+  reerguê-lo para `surface` devolve um retângulo cinza no meio da banda — o
+  defeito que a op existe para evitar, refeito pela guarda logo depois dela.
+- **A linha do `add_cta` carrega o fundo da faixa.** Ela é IRMÃ da linha que
+  pinta o bloco e não herda nada: sem isso o botão pousa no canvas e flutua
+  fora da banda. **Nenhum teste de string pega** — foi o render no Chromium.
+- **O guard `table_count_changed_by_ops`** derrubaria o step a cada CTA
+  inserido (o template embrulha o `<a>` numa tabela). A contagem esperada soma
+  `botoesInseridos`.
+- **Botão × link**: o `<td>` de 600px que pinta a seção não é fundo de botão.
+  Sem a guarda de largura, qualquer link dentro de faixa colorida virava CTA de
+  600px e uma op de cor sobre ele repintaria a seção.
+- **VML**: `set_botao` escreve no `<td>` **e** no `fillcolor` do `v:roundrect`,
+  senão o Outlook segue mostrando a cor antiga — quebra em silêncio, num
+  cliente só.
+- **`ja_aplicado` ≠ `find_not_found`**: cor que uma op de região já tirou do
+  documento é sobreposição benigna, não endereço inventado.
+
+**Adicionar CTA é trabalho DELE** (o nome é Cores & Botões, e a regra da casa é
+que todo bloco tem um). Ele escreve o label; **a URL nunca vem do modelo**:
+`destino` é um enum (`produto_do_bloco` | `cta_principal` | `loja`) e o código
+resolve, com cascata. Sem nenhum destino conhecido o botão não nasce — link
+para lugar nenhum é o erro que não se desfaz depois do envio. A curadoria NÃO
+mudou: `conflitoDeContrato` continua não eliminando variante sem CTA, porque
+eliminar por falta de botão empobrece a escolha (é o erro que já esvaziou uma
+peça) e o botão é adicionável depois.
+
+**A oferta é medida contra o FATO**: label que promete desconto com
+`incentivoExiste !== true` (`false` OU `null`, a régua do
+`oferta_sem_incentivo`) é recusado; label que diz 15% numa peça de 10% é
+recusado com os dois números. O agente escreve, o código confere — em vez de o
+agente ter de caçar qual cupom repetir.
+
+**O conhecimento entra INTEIRO no prompt** (`color-guia.ts`): o guia de
+disposição de cores completo + a doutrina de CTA (as 7 regras do deck do Max,
+os princípios de design, e a regra da casa com a precedência declarada — onde
+o deck diz 2-3 repetições e a casa diz todo bloco, a casa vence). System de
+6.580 → **19.507 chars (~4.877 tokens, US$ 0,015/e-mail)**. Resumir seria
+entregar o resumo do resumo.
+
+Junto vai a **alçada**, que é o que impede o modo de falha que este repo já
+pagou duas vezes (`momento` e `exige`): o guia é a especificação completa e
+boa parte é de outro dono. Ele EXECUTA os passos 1-5 e 7; **registra em
+`lacunas`** R1 (a hero vem enxertada), R4 (não há op de gradiente), R7 (o
+rodapé é decisão da loja), R8 (não há op de raio), o passo 6 (não recebe
+`flow_type`) e o "bloqueia a peça" (ele não reprova nada — o QA decide).
+
+**`color_plano_mode` nasce em `shadow`** (off | shadow | on): o agente decide
+tudo, o plano é gravado em `parsed_output` e **nada de faixa ou botão é
+aplicado**. Com 4.877 tokens de system num Kimi K3 o risco não é o custo, é a
+obediência — e o que se lê no shadow não é "as cores fazem sentido", é se cada
+`porque` **cita a regra do guia**. Decisão certa com justificativa vaga
+significa que ele não está lendo. Falha de leitura do modo também cai em
+shadow: errar para o lado de decidir-e-não-aplicar é barato.
+
+O plano na run é a mudança de auditoria: até aqui a telemetria via o efeito (as
+ops) e nunca o motivo, então "por que este e-mail ficou assim" não tinha
+resposta.
+
+---
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

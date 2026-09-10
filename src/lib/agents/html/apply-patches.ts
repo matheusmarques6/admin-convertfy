@@ -33,9 +33,12 @@ import {
   isColorLiteral,
   type ColorContext,
 } from "./color-inventory"
-import { applySplices, type Splice } from "./dom-locator"
+import { applySplices, type Range, type Splice } from "./dom-locator"
 import { auditContrast, backgroundDeclarations } from "./color-contrast"
 import { contrastingText } from "./color-roles"
+import { linhaDeBotao, pontoDeInsercao } from "./cta-template"
+import type { Cta, Faixa } from "./color-faixas"
+import { locateBlockRegions } from "./slot-finder"
 
 export type FormatOp =
   | { action: "replace"; find: string; replace: string; block_id?: string }
@@ -47,8 +50,64 @@ export type FormatOp =
       where?: ColorContext
       block_id?: string
     }
+  /**
+   * Pinta o fundo de UMA faixa. `bloco` é o índice do marcador `cfy:block`.
+   *
+   * Existe porque `recolor` é global por natureza: num e-mail em que
+   * `#FFFFFF` é o fundo de quatro seções, não havia op capaz de escurecer
+   * uma delas — e é disso que o ritmo de faixas depende.
+   */
+  | { action: "set_fundo"; bloco: number; para: string }
+  /** Recolore UM botão (fundo e/ou label), pelo id do mapa de CTAs. */
+  | { action: "set_botao"; cta: string; fundo?: string; label?: string }
+  /**
+   * Insere um botão num bloco que não tem nenhum.
+   *
+   * `href` chega resolvido: o modelo escolhe um destino de um enum fechado
+   * e o código traduz para a URL real. URL nunca é digitada por modelo.
+   */
+  | {
+      action: "add_cta"
+      bloco: number
+      label: string
+      href: string
+      fundo: string
+      corLabel: string
+      radiusPx?: number
+      fontFamily?: string
+    }
+
+// As três últimas NÃO saem de `parseOps`: o modelo devolve um plano, e é o
+// código que o traduz em ops (ver `plano-de-cor.ts`). Assim ele é
+// fisicamente incapaz de mandar inserir markup ou endereçar um bloco que o
+// documento não tem — a mesma razão pela qual `TypographyOpHumana` não
+// existe para o agente de tipografia.
+
 // block_id (opcional): amarra a op ao email_blocks.id de origem — a MESMA
 // chave do callback do n8n. Não muda a aplicação; existe pra telemetria.
+
+/**
+ * O que uma op endereça, em uma linha — para log e telemetria.
+ *
+ * Existe para o call site não precisar conhecer a forma de cada op: a
+ * telemetria do runner lia `op.from` para tudo que não fosse `replace`, e a
+ * primeira op nova quebrou o typecheck ali. Op futura entra aqui, não em
+ * cada lugar que loga.
+ */
+export function alvoDaOp(op: FormatOp): string {
+  switch (op.action) {
+    case "replace":
+      return op.find.slice(0, 60)
+    case "recolor":
+      return op.from
+    case "set_fundo":
+      return `bloco ${op.bloco} → ${op.para}`
+    case "set_botao":
+      return `${op.cta} → ${op.fundo ?? "="}/${op.label ?? "="}`
+    case "add_cta":
+      return `bloco ${op.bloco} + "${op.label.slice(0, 40)}"`
+  }
+}
 
 export class OpsParseError extends Error {
   readonly raw: string
@@ -72,6 +131,24 @@ export interface SkippedOp {
     // mesma cor para o mesmo destino produz texto invisível. A segunda op
     // do par é recusada.
     | "contrast_risk"
+    // Op endereçada a um bloco ou botão que o documento não tem. Descarta
+    // com motivo em vez de aplicar no lugar errado — é o tratamento que
+    // `invalid_ids` recebe no Curador.
+    | "endereco_inexistente"
+    // A faixa não declara fundo de seção: pousa no canvas, e não há hex ali
+    // para uma op trocar. Pintá-la exigiria inserir declaração, que é outra
+    // natureza de mudança.
+    | "sem_fundo_editavel"
+    // O bloco não termina em `</tr>` nem em `</table>`: não há lugar seguro
+    // para a linha do botão. Não inventar lugar é o que separa inserir de
+    // corromper.
+    | "sem_ponto_de_insercao"
+    // A cor já saiu do documento por uma op de REGIÃO desta mesma rodada.
+    // Não é erro do agente: ele pediu "inverta o botão da faixa 3" e
+    // "troque o roxo pelo preto", e as duas apontam para a mesma
+    // declaração. Reportar isso como `find_not_found` faria a sobreposição
+    // benigna parecer endereço inventado — que é o oposto do que é.
+    | "ja_aplicado"
 }
 
 export interface ApplyOpsResult {
@@ -104,6 +181,12 @@ export interface ApplyOpsResult {
    * painel sumido — foi o estado das quatro gerações de 23-24/08.
    */
   panelFixes: number
+  /** Faixas cujo fundo foi repintado (`set_fundo`). */
+  faixasPintadas: number
+  /** Botões recoloridos (`set_botao`), somando o par VML quando existe. */
+  botoesRecoloridos: number
+  /** Botões inseridos (`add_cta`). */
+  botoesInseridos: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -182,6 +265,13 @@ export function applyOps(
      * Ausentes, a guarda de painel não roda — nada para onde reerguer.
      */
     surfaces?: { surface: string; surface_strong: string }
+    /**
+     * A sequência de faixas e os botões, do mesmo snapshot que o agente viu
+     * (`color-faixas.ts`). É o que dá endereço às ops de região; ausentes,
+     * `set_fundo`/`set_botao`/`add_cta` são descartadas com motivo.
+     */
+    faixas?: Faixa[]
+    ctas?: Cta[]
   },
 ): ApplyOpsResult {
   const doc = html
@@ -201,6 +291,15 @@ export function applyOps(
     return start < hero.end && end > hero.start
   }
 
+  // Ops que endereçam um LUGAR. Ficam separadas porque são aplicadas de
+  // trás para frente sobre o documento: cada uma muda o tamanho do texto, e
+  // processar da direita para a esquerda mantém válidos os offsets que
+  // ainda faltam.
+  const regionais: Array<{ op: FormatOp; pos: number }> = []
+  const regioes = new Map(locateBlockRegions(doc).map((b) => [b.indice, b.range]))
+  const faixaDe = new Map((opts.faixas ?? []).map((f) => [f.bloco, f]))
+  const ctaDe = new Map((opts.ctas ?? []).map((c) => [c.id, c]))
+
   for (const op of ops) {
     if (op.action === "recolor") {
       // Global e atômico por natureza; a hero entra de propósito (recolor
@@ -211,6 +310,27 @@ export function applyOps(
         to: op.to,
         ...(op.where ? { where: op.where } : {}),
       })
+      continue
+    }
+    if (op.action === "set_fundo" || op.action === "add_cta") {
+      const regiao = regioes.get(op.bloco)
+      if (!regiao) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      // `add_cta` entra no FIM do bloco e `set_fundo` pinta o começo:
+      // ordenar pelo ponto em que cada uma escreve deixa as duas
+      // conviverem no mesmo bloco sem uma invalidar o offset da outra.
+      regionais.push({ op, pos: op.action === "add_cta" ? regiao.end : regiao.start })
+      continue
+    }
+    if (op.action === "set_botao") {
+      const cta = ctaDe.get(op.cta)
+      if (!cta) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      regionais.push({ op, pos: cta.range.start })
       continue
     }
     const idx = doc.indexOf(op.find)
@@ -260,6 +380,130 @@ export function applyOps(
     (a === "background" && b === "color") || (a === "color" && b === "background")
 
   let out = res.html
+
+  // ── Ops de REGIÃO ──────────────────────────────────────────────────
+  //
+  // Rodam antes dos recolors globais e de trás para frente. O ganho é o que
+  // o `recolor` sozinho não dá: escurecer UMA faixa sem tocar nas outras
+  // três do mesmo hex, e inverter o botão que ficou dentro dela.
+  //
+  // A ordem entre elas importa por um motivo mecânico: cada edição desloca
+  // tudo o que vem depois. Descendo por posição, o que ainda falta processar
+  // está sempre antes do que já foi escrito.
+  let faixasPintadas = 0
+  let botoesRecoloridos = 0
+  let botoesInseridos = 0
+  /** Ranges de botão — o conserto de painel abaixo não pode tocá-los. */
+  const rangesDeBotao: Range[] = (opts.ctas ?? []).map((c) => c.range)
+  /** Cores que as ops de região tiraram do documento nesta rodada. */
+  const substituidos = new Set<string>()
+
+  // Os ranges de `faixas`/`ctas` foram medidos no snapshot que o agente
+  // viu. Um `replace` aplicado mudou o tamanho do documento e os invalidou
+  // — e op de região com offset velho pinta a seção errada. Na prática o
+  // color_format só emite recolor (o chain filtra), então este caminho não
+  // acontece; a guarda existe para o dia em que alguém reabrir o `replace`.
+  const enderecosValidos = out === doc
+  regionais.sort((a, b) => b.pos - a.pos)
+  for (const { op } of enderecosValidos ? regionais : []) {
+    if (op.action === "set_fundo") {
+      const faixa = faixaDe.get(op.bloco)
+      if (!faixa || !faixa.editavel || !faixa.fundo || faixa.decls.length === 0) {
+        skipped.push({ op, reason: "sem_fundo_editavel" })
+        continue
+      }
+      // Reescreve as DECLARAÇÕES da faixa, não todo o hex do bloco. Trocar
+      // "todo #FFFFFF daqui" repintaria o card branco e o botão branco que
+      // moram dentro dela — e desfaria a inversão que o `set_botao` acabou
+      // de fazer, que é o par que o C3 exige.
+      for (const d of [...faixa.decls].sort((a, b) => b.start - a.start)) {
+        out = out.slice(0, d.start) + op.para + out.slice(d.end)
+      }
+      substituidos.add(canonicalHex(faixa.fundo))
+      pintados.add(canonicalHex(op.para))
+      faixasPintadas++
+      applied++
+      continue
+    }
+
+    if (op.action === "set_botao") {
+      const cta = ctaDe.get(op.cta)
+      if (!cta) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      let mexeu = 0
+      if (op.fundo && cta.fundo) {
+        for (const papel of ["background", "bgcolor"] as const) {
+          const rc = applyRecolor(out, cta.fundo, op.fundo, papel, cta.range)
+          out = rc.html
+          mexeu += rc.replaced
+        }
+        // O botão declara a cor DUAS vezes quando vem embrulhado no VML do
+        // Outlook, e a segunda fica FORA do range do elemento. Trocar só a
+        // do `<td>` deixa o Outlook mostrando a cor antiga — quebra em
+        // silêncio, num cliente só.
+        if (cta.vml) {
+          const janela = { start: Math.max(0, cta.range.start - 600), end: cta.range.start }
+          const rc = applyRecolor(out, cta.fundo, op.fundo, undefined, janela)
+          out = rc.html
+          mexeu += rc.replaced
+        }
+      }
+      if (op.label && cta.label) {
+        const rc = applyRecolor(out, cta.label, op.label, "color", cta.range)
+        out = rc.html
+        mexeu += rc.replaced
+      }
+      if (mexeu === 0) {
+        skipped.push({ op, reason: "find_not_found" })
+        continue
+      }
+      if (op.fundo) {
+        pintados.add(canonicalHex(op.fundo))
+        if (cta.fundo) substituidos.add(canonicalHex(cta.fundo))
+      }
+      if (op.label && cta.label) substituidos.add(canonicalHex(cta.label))
+      botoesRecoloridos++
+      applied++
+      continue
+    }
+
+    if (op.action === "add_cta") {
+      const regiao = regioes.get(op.bloco)
+      if (!regiao) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      const at = pontoDeInsercao(out, regiao)
+      if (at == null) {
+        skipped.push({ op, reason: "sem_ponto_de_insercao" })
+        continue
+      }
+      // O fundo da banda vem da FAIXA, não da op: a linha do botão é irmã
+      // da que pinta o bloco e não herda nada dela. Sem isto o botão pousa
+      // no canvas e aparece flutuando fora da faixa.
+      const faixaDestino = faixaDe.get(op.bloco)
+      const linha = linhaDeBotao({
+        label: op.label,
+        href: op.href,
+        fundo: op.fundo,
+        corLabel: op.corLabel,
+        ...(op.radiusPx != null ? { radiusPx: op.radiusPx } : {}),
+        ...(op.fontFamily ? { fontFamily: op.fontFamily } : {}),
+        ...(faixaDestino?.fundo ? { fundoFaixa: faixaDestino.fundo } : {}),
+      })
+      out = out.slice(0, at) + linha + out.slice(at)
+      botoesInseridos++
+      applied++
+      continue
+    }
+  }
+
+  if (!enderecosValidos) {
+    for (const { op } of regionais) skipped.push({ op, reason: "endereco_inexistente" })
+  }
+
   let recoloredOccurrences = 0
   for (const r of recolors) {
     const chaveOrigem = r.from.toUpperCase()
@@ -276,7 +520,10 @@ export function applyOps(
 
     const rc = applyRecolor(out, r.from, r.to, r.where)
     if (rc.replaced === 0) {
-      skipped.push({ op: r.op, reason: "find_not_found" })
+      skipped.push({
+        op: r.op,
+        reason: substituidos.has(canonicalHex(r.from)) ? "ja_aplicado" : "find_not_found",
+      })
       continue
     }
     out = rc.html
@@ -336,6 +583,14 @@ export function applyOps(
         if (a.hex === a.parent.hex) continue
         if (d.hex !== d.parent.hex) continue
         if (!pintados.has(d.hex)) continue
+        // BOTÃO não é painel. Ele colapsa no fundo da faixa por decisão —
+        // faixa escurecida com botão invertido para o mesmo escuro é o
+        // caminho normal do C3 — e reerguê-lo para `surface` devolveria um
+        // retângulo cinza no meio da banda: o defeito que a op `set_botao`
+        // existe para evitar, refeito pela guarda logo depois dela.
+        if (rangesDeBotao.some((r) => d.valueRange.start >= r.start && d.valueRange.start < r.end)) {
+          continue
+        }
         consertos.push({
           ...d.valueRange,
           tom: d.parent.hex === surface ? surfaceStrong : surface,
@@ -391,5 +646,8 @@ export function applyOps(
     pairedTextFixes,
     contrastRemaining,
     panelFixes,
+    faixasPintadas,
+    botoesRecoloridos,
+    botoesInseridos,
   }
 }

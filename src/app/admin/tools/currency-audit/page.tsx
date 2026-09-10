@@ -29,6 +29,8 @@ import { Badge } from "@/components/ui/badge"
 import { ROUTES } from "@/lib/routes"
 import { useToast } from "@/lib/hooks/use-toast"
 import { ValorBRL } from "@/components/money/valor-brl"
+import { RevenueAuditPanel } from "@/components/tools/revenue-audit-panel"
+import type { RevenueAuditResult } from "@/app/api/stores/revenue-audit/route"
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -127,6 +129,34 @@ export default function CurrencyAuditPage() {
   const [period, setPeriod] = useState("30d")
   const [sincronizando, setSincronizando] = useState<string | null>(null)
   const [relatorio, setRelatorio] = useState<RelatorioDaLoja[] | null>(null)
+  const [auditandoReceita, setAuditandoReceita] = useState<string | null>(null)
+  const [auditoriaReceita, setAuditoriaReceita] = useState<RevenueAuditResult | null>(null)
+  // Mês anterior COMPLETO: é a janela do relatório mensal, que é onde a
+  // divergência com o painel aparece e é reclamada.
+  const [janela, setJanela] = useState(mesAnteriorCompleto)
+
+  async function conferirReceita(storeId: string) {
+    setAuditandoReceita(storeId)
+    setAuditoriaReceita(null)
+    try {
+      const res = await fetch("/api/stores/revenue-audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: storeId, start: janela.inicio, end: janela.fim }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || `Falhou (HTTP ${res.status})`)
+      setAuditoriaReceita((body?.data ?? body) as RevenueAuditResult)
+    } catch (e) {
+      toast({
+        title: "Não deu para conferir",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      })
+    } finally {
+      setAuditandoReceita(null)
+    }
+  }
 
   const { data, isLoading, error, mutate } = useSWR<AuditResponse>(
     `/api/stores/currency-audit?period=${period}`,
@@ -217,6 +247,34 @@ export default function CurrencyAuditPage() {
           </button>
         </div>
       </div>
+
+      {/* Janela da conferência de receita. Separada dos chips de período
+          acima, que governam a coluna de faturamento da tabela: aqui o
+          que importa é reproduzir a MESMA janela do relatório mensal,
+          que é onde a divergência com o painel é reclamada. */}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <span>Conferir receita no período de</span>
+        <input
+          type="date"
+          value={janela.inicio}
+          onChange={(e) => setJanela((j) => ({ ...j, inicio: e.target.value }))}
+          className="rounded-[4px] border border-black/[0.08] bg-white px-2 py-1 dark:bg-[#1A1D27] dark:text-gray-100"
+        />
+        <span>até</span>
+        <input
+          type="date"
+          value={janela.fim}
+          onChange={(e) => setJanela((j) => ({ ...j, fim: e.target.value }))}
+          className="rounded-[4px] border border-black/[0.08] bg-white px-2 py-1 dark:bg-[#1A1D27] dark:text-gray-100"
+        />
+        <span className="text-gray-400 dark:text-gray-500">
+          — use o botão “Receita” na linha da loja
+        </span>
+      </div>
+
+      {auditoriaReceita && (
+        <RevenueAuditPanel r={auditoriaReceita} onFechar={() => setAuditoriaReceita(null)} />
+      )}
 
       {error ? (
         <div className="rounded-[6px] border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-900/10 dark:text-red-200">
@@ -369,6 +427,19 @@ export default function CurrencyAuditPage() {
                             >
                               {sincronizando === s.storeId ? "conferindo…" : "Conferir"}
                             </button>
+                            {/* Só Omnisend: a conferência de receita bate contra as
+                                APIs de analytics deles, e oferecer o botão numa loja
+                                Klaviyo seria um clique que só sabe falhar. */}
+                            {s.platform === "omnisend" && (
+                              <button
+                                type="button"
+                                onClick={() => conferirReceita(s.storeId)}
+                                disabled={auditandoReceita !== null}
+                                className="mr-3 text-xs text-gray-600 hover:underline disabled:opacity-50 dark:text-gray-300"
+                              >
+                                {auditandoReceita === s.storeId ? "conferindo…" : "Receita"}
+                              </button>
+                            )}
                             <Link
                               href={ROUTES.ADMIN.STORES.DETAIL(s.storeId)}
                               className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
@@ -445,4 +516,23 @@ function Th({ children, align = "left" }: { children?: React.ReactNode; align?: 
       {children}
     </th>
   )
+}
+
+
+/**
+ * Primeiro e último dia do mês anterior, em YYYY-MM-DD.
+ *
+ * Montado em UTC de propósito: `new Date(ano, mes, dia)` é local, e num
+ * fuso a oeste o dia 1 vira o último dia do mês anterior — a janela
+ * sairia deslocada justamente na ferramenta que existe para achar
+ * janela deslocada.
+ */
+function mesAnteriorCompleto(): { inicio: string; fim: string } {
+  const hoje = new Date()
+  const primeiroDesteMes = Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1)
+  const fim = new Date(primeiroDesteMes)
+  fim.setUTCDate(0) // último dia do mês anterior
+  const inicio = new Date(Date.UTC(fim.getUTCFullYear(), fim.getUTCMonth(), 1))
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { inicio: iso(inicio), fim: iso(fim) }
 }

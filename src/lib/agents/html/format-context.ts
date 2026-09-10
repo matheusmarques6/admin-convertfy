@@ -50,6 +50,7 @@ import {
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
+import { extrairCtas, extrairFaixas } from "./color-faixas"
 // A classificação por nome mora num módulo PURO: a tela de tipografia
 // precisa dela, e importar este arquivo no navegador traria o cliente
 // Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
@@ -587,6 +588,8 @@ export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   niche: LOJA_STORE,
   tones: { cls: "sistema", rotulo: "Tons derivados do tom de voz — deriveToneKeys" },
   color_inventory_json: { cls: "sistema", rotulo: "Inventário de cores do documento — extractColorInventory" },
+  faixas_json: { cls: "sistema", rotulo: "Sequência de faixas do documento — extrairFaixas" },
+  ctas_json: { cls: "sistema", rotulo: "Botões do documento, com a faixa de cada um — extrairCtas" },
   brand_colors: LOJA_BRAND,
   pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
   email_name: EMAIL_ROW,
@@ -736,6 +739,8 @@ export function buildColorFormatVars(
   // como uma linha só e não tinha como saber que estava trocando o fundo
   // debaixo de um texto branco (incidente Luxe Lift, 22/08).
   const inventory = annotateInventoryPairs(html, extractColorInventory(html))
+  const faixas = extrairFaixas(html)
+  const ctas = extrairCtas(html, faixas)
   const vars = {
     brand_name: ctx.brandName,
     niche: extras.niche,
@@ -756,6 +761,12 @@ export function buildColorFormatVars(
     // seguidas, enquanto a hero — que usa este helper — saía certa.
     ...identityVars(ctx),
     pesquisa_full_text: extras.pesquisaFullText,
+    // A sequência do documento. O inventário diz QUANTO cada cor aparece;
+    // isto diz ONDE — e é o que torna executável decidir por faixa em vez de
+    // por valor. Documento sem marcadores devolve `[]`, e o prompt trata o
+    // caso: sem a lista ele não decide ritmo, faz só o trabalho de valor.
+    faixas_json: JSON.stringify(faixas, null, 2),
+    ctas_json: JSON.stringify(ctas, null, 2),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
   }

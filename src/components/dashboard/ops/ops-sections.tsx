@@ -94,6 +94,9 @@ interface StoreOverviewRow {
   fxRateDate?: string | null
   fxRateApproximate?: boolean
   fxDegraded?: boolean
+  /** Cache gravado com outra moeda que a do cadastro — precisa re-sincronizar. */
+  currencyStale?: boolean
+  currencyCached?: string
 }
 
 interface FlowsAggregateData {
@@ -317,6 +320,17 @@ export function StoresHealthTable({ q }: { q: string }) {
                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--ops-neg)] mr-1.5 align-middle" />
                       )}
                       {s.storeName}
+                      {/* Moeda do cache ≠ moeda do cadastro: a conversão usa a
+                          do cadastro, mas o VALOR gravado veio de um sync que
+                          acreditava na outra — quem confere precisa saber. */}
+                      {s.currencyStale && (
+                        <span
+                          className="ml-1.5 align-middle text-[10px] font-medium text-[var(--ops-warn)]"
+                          title={`Cache gravado em ${s.currencyCached ?? "outra moeda"} e o cadastro diz ${s.currency ?? "—"}. Sincronize este período para o valor sair na moeda certa.`}
+                        >
+                          moeda ⚠
+                        </span>
+                      )}
                     </Td>
                     <Td right last={last}>
                       <ValorBRL

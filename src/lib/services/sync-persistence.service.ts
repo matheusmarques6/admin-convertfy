@@ -12,6 +12,7 @@ import type { KlaviyoSyncData, CampaignMetricRow, AudienceItem } from "./klaviyo
 import type { KlaviyoPerformanceData, KlaviyoCampaignItem } from "./klaviyo-performance.service"
 import type { OmnisendSyncData } from "./omnisend-sync.service"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
+import { mensagemDaDegradacao } from "@/lib/integrations/omnisend/procedencia"
 import { logger } from "@/lib/logger"
 
 const PERIOD_DAYS: Record<string, number> = {
@@ -341,9 +342,22 @@ export async function upsertOmnisendSyncResults(
     // sync_source tem CHECK CONSTRAINT restrito a 'cron' | 'live' | 'report'
     // (migration 20260318). "omnisend" viola o check e faz o upsert explodir.
     sync_source: "cron",
-    sync_error: statisticsFalhou
-      ? "A plataforma não respondeu às estatísticas desta janela — a receita do sync anterior foi preservada."
-      : null,
+    // A mensagem sai da CAUSA registrada, não de um texto fixo. Limite
+    // da plataforma e falha de chamada pedem ações opostas, e o texto
+    // antigo mandava "clique de novo" nos dois casos — insistir num
+    // 429 queima o resto da cota diária e atrasa a liberação.
+    //
+    // A ressalva de calibração entra mesmo com `sync_status = 'ok'`: os
+    // números foram medidos (não são lacuna, e re-sincronizar não os
+    // melhora), mas a receita atribuída saiu por data do PEDIDO em vez
+    // de data de ENVIO e não é o mesmo recorte do painel.
+    sync_error:
+      mensagemDaDegradacao(data.degradacoes ?? []) ??
+      (statisticsFalhou
+        ? "A plataforma não respondeu às estatísticas desta janela — a receita do sync anterior foi preservada."
+        : data.procedenciaAtribuido && !data.procedenciaAtribuido.comparavelComOPainel
+          ? data.procedenciaAtribuido.ressalva
+          : null),
     currency: data.currency,
     fetched_at: nowIso,
     expires_at: expiresAt,

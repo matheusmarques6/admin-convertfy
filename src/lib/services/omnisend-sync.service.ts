@@ -36,6 +36,11 @@ import {
   sleep,
 } from "@/lib/integrations/omnisend/client"
 import { ehFusoValido, offsetForTimezone } from "@/lib/integrations/omnisend/timezone"
+import {
+  procedenciaDoAtribuido,
+  type Degradacao,
+  type ProcedenciaDoAtribuido,
+} from "@/lib/integrations/omnisend/procedencia"
 import { isStoreCurrency } from "@/lib/constants/currencies"
 import { COUNTRY_TIMEZONE } from "@/lib/constants/onboarding"
 
@@ -244,6 +249,22 @@ export interface OmnisendSyncData {
    * sincronizam" sobre lojas que sincronizaram bem.
    */
   statisticsOk: boolean
+  /**
+   * Etapas que degradaram nesta rodada, com a CAUSA.
+   *
+   * Limite da plataforma e falha de chamada pedem ações opostas — a
+   * primeira pede espera, a segunda pede nova tentativa — e a mensagem
+   * antiga dizia a segunda coisa nos dois casos.
+   */
+  degradacoes: Degradacao[]
+  /**
+   * De onde veio a receita atribuída e se ela bate com o painel.
+   *
+   * Sem a calibração da Reports API o número sai por data do PEDIDO em
+   * vez de data de ENVIO — o próprio código já dizia num `log.warn` que
+   * ali ele "pode estar ~2x inflado" — e era gravado sem marca nenhuma.
+   */
+  procedenciaAtribuido: ProcedenciaDoAtribuido
 }
 
 export type SyncErrorType = "rate_limit" | "invalid_key" | "permission" | "unknown"
@@ -1695,6 +1716,11 @@ async function doSyncOmnisendForStore(params: {
 }): Promise<SyncResult<OmnisendSyncData>> {
   const { storeId, orgId, apiKey, periodDays } = params
 
+  // O que degradou nesta rodada. Continuar com o fallback é correto —
+  // rate limit num endpoint não pode abortar os outros —, mas seguir
+  // SEM REGISTRAR era o que fazia o número sair pior e ninguém saber.
+  const degradacoes: Degradacao[] = []
+
   // Wrapper: executa uma etapa do sync e retorna fallback se falhar.
   // Rate limits em um endpoint nao podem abortar os outros.
   async function safely<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -1702,6 +1728,11 @@ async function doSyncOmnisendForStore(params: {
       return await fn()
     } catch (err) {
       if (err instanceof OmnisendRateLimitError) {
+        degradacoes.push({
+          etapa: label,
+          causa: "limite_da_plataforma",
+          liberaEmMs: err.retryAfterMs,
+        })
         log.warn(`[OmnisendSync:${label}] rate limited — continuing with fallback`, {
           storeId,
           retryAfterMs: err.retryAfterMs,
@@ -1710,6 +1741,7 @@ async function doSyncOmnisendForStore(params: {
         // Auth / permissao: propagamos pra fora — nao faz sentido continuar sem credencial.
         throw err
       } else {
+        degradacoes.push({ etapa: label, causa: "falha_na_chamada" })
         log.error(`[OmnisendSync:${label}] failed — continuing with fallback`, {
           storeId,
           error: err instanceof Error ? err.message : String(err),
@@ -1899,7 +1931,12 @@ async function doSyncOmnisendForStore(params: {
     let totalCampaignRevenueFinal = statsCampSum
     let totalAutomationRevenueFinal = statsAutoSum
     let totalAttributedRevenueFinal = statsAttributed
+    // Só o número CALIBRADO pela Reports API bate com o painel do
+    // Omnisend (send-date). Sem calibração o valor é o do Statistics
+    // (event-date) e sai por cima — o que era publicado sem marca.
+    let atribuidoCalibrado = false
     if (reportsCampaign > 0 || reportsAutomation > 0) {
+      atribuidoCalibrado = true
       // Fonte primaria: Reports API com filter por marketingActivityType.
       // Bate 1:1 com o dashboard "Marketing activity performance".
       //
@@ -1926,6 +1963,7 @@ async function doSyncOmnisendForStore(params: {
         statsAttributed,
       })
     } else if (reportsAttributed > 0 && statsAttributed > 0) {
+      atribuidoCalibrado = true
       // Fallback: split filtrado vazio. Mantem calibracao por ratio do
       // Statistics API contra total do Reports API.
       const ratio = reportsAttributed / statsAttributed
@@ -2266,6 +2304,10 @@ async function doSyncOmnisendForStore(params: {
         currency,
         reportsTotals: reportsTotalsRaw,
         statisticsOk,
+        degradacoes,
+        procedenciaAtribuido: procedenciaDoAtribuido({
+          reportsRespondeu: atribuidoCalibrado,
+        }),
       },
     }
   } catch (error) {

@@ -6,6 +6,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
 import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate.service"
+import { moedaDaLinha } from "@/lib/money/moeda-da-loja"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
@@ -30,6 +31,10 @@ interface StoreRevenue {
   currency: string
   /** REAIS por 1 unidade da moeda (EUR → 5.9589). null = não convertido. */
   fxRate: number | null
+  /** O cache tem outra moeda que o cadastro — esta loja precisa re-sincronizar. */
+  currencyStale?: boolean
+  /** A moeda gravada no cache, quando discorda do cadastro. */
+  currencyCached?: string
   /** Dia da cotação usada (YYYY-MM-DD). */
   fxRateDate: string | null
   /** A cotação não é do dia do faturamento — é a mais próxima que existe. */
@@ -101,10 +106,20 @@ async function buildStoreBreakdown(rows: Array<{
     const storeData = s.client_stores as unknown as {
       id: string
       store_name: string
+      /** A moeda do CADASTRO — a fonte, contra o snapshot do cache. */
+      currency?: string | null
       client_id: string | null
       clients: { name: string } | null
     }
-    const currency = s.currency || "BRL"
+    // A moeda vem do CADASTRO, não do cache.
+    //
+    // `store_revenue_summary.currency` é um snapshot: o sync copia a moeda
+    // da loja quando roda e nunca mais revisita. Corrigir a moeda no
+    // cadastro não reescreve as linhas já gravadas, então a tela seguia
+    // convertendo pela moeda antiga até alguém re-sincronizar AQUELE
+    // período — e nada dizia que as duas discordavam.
+    const moedaResolvida = moedaDaLinha(storeData.currency, s.currency)
+    const currency = moedaResolvida.moeda
     // klaviyo_total_revenue e omnisend_total_revenue sao o ATRIBUIDO
     // (revenue de email marketing). store_total_revenue e o total REAL
     // da loja (vindo de Shopify ou Statistics totalRevenue). Pra calcular
@@ -139,6 +154,10 @@ async function buildStoreBreakdown(rows: Array<{
       campaignRevenue: campaignRev,
       flowRevenue: flowRev,
       currency,
+      /** O cache foi gravado com outra moeda — esta loja precisa re-sincronizar. */
+      currencyStale: moedaResolvida.divergente || undefined,
+      /** A moeda que está no cache, quando ela discorda do cadastro. */
+      currencyCached: moedaResolvida.moedaDoCache,
       // A cotação usada, para a tela poder mostrar a conta no hover.
       fxRate: totalConv.rate ?? null,
       fxRateDate: totalConv.rateDate ?? null,
@@ -325,7 +344,7 @@ async function handleGet(request: NextRequest) {
         sync_status,
         sync_error,
         fetched_at,
-        client_stores!inner(id, store_name, client_id, clients(name))
+        client_stores!inner(id, store_name, currency, client_id, clients(name))
       `
     const selectLegacy = `
         store_id,
@@ -337,7 +356,7 @@ async function handleGet(request: NextRequest) {
         sync_status,
         sync_error,
         fetched_at,
-        client_stores!inner(id, store_name, client_id, clients(name))
+        client_stores!inner(id, store_name, currency, client_id, clients(name))
       `
 
     async function runQuery(cols: string) {

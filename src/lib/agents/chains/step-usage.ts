@@ -40,6 +40,23 @@ export interface StepUsage {
   promptSegments?: PromptSegment[] | null
   /** A Entrada estruturada do step — vale no erro tanto quanto no sucesso. */
   inputSummary?: InputSummaryItem[] | null
+  /**
+   * A RESPOSTA que o parser rejeitou.
+   *
+   * Faltava, e a falta tem sintoma exato: a run de erro grava
+   * `raw_output = null`, então a única pergunta que importa depois de um
+   * "output sem objeto JSON" — *o que ele respondeu, afinal?* — não tem
+   * onde ser respondida. Foi o caso de 10/09 no `color_format`: para saber
+   * que a resposta tinha vindo truncada foi preciso achar uma run de
+   * SUCESSO do mesmo prompt e comparar tokens com caracteres.
+   *
+   * É a mesma lição do `promptSegments` e do `inputSummary`, um campo
+   * depois: no erro é que o dado vale mais.
+   */
+  rawOutput?: string
+  /** Por que o modelo parou — `length` explica o JSON cortado. */
+  finishReason?: string
+  reasoningTokens?: number
 }
 
 const KEY = "__cfyStepUsage"
@@ -86,6 +103,13 @@ export function usageOf(err: unknown): StepUsage | null {
       : {}),
     ...(Array.isArray(rec.inputSummary)
       ? { inputSummary: rec.inputSummary as InputSummaryItem[] }
+      : {}),
+    ...(typeof rec.rawOutput === "string" ? { rawOutput: rec.rawOutput } : {}),
+    ...(typeof rec.finishReason === "string"
+      ? { finishReason: rec.finishReason }
+      : {}),
+    ...(typeof rec.reasoningTokens === "number"
+      ? { reasoningTokens: rec.reasoningTokens }
       : {}),
   }
 }

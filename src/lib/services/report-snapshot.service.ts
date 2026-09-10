@@ -109,6 +109,17 @@ export interface ReportSnapshotCore {
   }
   campaigns: SnapshotRow[]
   flows: SnapshotRow[]
+  /**
+   * De onde veio a receita atribuída nesta rodada.
+   *
+   * `null` quando o relatório saiu pelo cache (que não sabe como a
+   * rodada original correu) — ausência declarada, não "está tudo bem".
+   */
+  atribuicao: {
+    agrupamento: string | null
+    bate_com_o_painel: boolean
+    ressalva: string | null
+  } | null
 }
 
 // ─── Helpers de presença explícita (F5) ─────────────────────────────────
@@ -476,6 +487,23 @@ export function buildReportSnapshot(params: {
       total_campaigns: totalCampaigns,
       total_flows: totalFlows,
     },
+    // Procedência da receita atribuída, congelada com o snapshot.
+    //
+    // `atribuicao_pct` acima divide receita atribuída por faturamento
+    // total, e as duas podem vir de agrupamentos diferentes (data de
+    // envio × data do pedido). Quem abrir o relatório meses depois
+    // precisa saber em que regime ele foi tirado — do mesmo jeito que
+    // `period_notes` guarda que o dia ainda estava em andamento.
+    atribuicao: (() => {
+      const a = rv && typeof rv === "object" ? (rv as Record<string, unknown>).attribution : null
+      if (!a || typeof a !== "object") return null
+      const o = a as Record<string, unknown>
+      return {
+        agrupamento: typeof o.grouping === "string" ? o.grouping : null,
+        bate_com_o_painel: o.matchesPanel === true,
+        ressalva: typeof o.note === "string" ? o.note : null,
+      }
+    })(),
     email: {
       delivered: totalDelivered,
       opened: totalOpened,
@@ -588,16 +616,51 @@ export async function fetchSnapshotSources(params: {
     log.info("[Snapshot] loja sem Shopify — pulando o fetch da loja", { storeId })
   }
 
-  const results = await Promise.allSettled([
+  // ── UM live-sync por relatório, não três ──────────────────────────────
+  //
+  // Os três endpoints de e-mail rodavam em paralelo, os três com
+  // `force_refresh=true`, e cada um dispara um `syncOmnisendForStore`
+  // COMPLETO — 3 chamadas de analytics cada. Nove chamadas na mesma
+  // chave para montar um relatório, contra um limite de 10 por minuto
+  // e 55 por dia por brand.
+  //
+  // O singleflight do sync (`activeSyncs`) não protegia: cada `fetch`
+  // aqui é uma invocação serverless separada, e o Map vive na memória
+  // de um processo só — as três nunca se enxergam.
+  //
+  // O preço não era só cota. Quando uma das nove batia no limite, a
+  // etapa caía no fallback e a receita atribuída saía SEM a calibração
+  // da Reports API — por data do pedido em vez de data de envio, acima
+  // do painel. Era isso que fazia o mesmo relatório dar números
+  // diferentes a cada geração.
+  //
+  // Agora o `report` roda sozinho com `force_refresh` (ele persiste em
+  // store_revenue_summary + omnisend_campaign_metrics +
+  // omnisend_flow_metrics, mesma rotina do cron) e campanhas/flows leem
+  // o que ele acabou de gravar. Três chamadas de analytics no total, e
+  // os três blocos passam a falar do MESMO sync — antes eram três syncs
+  // independentes, que podiam divergir entre si dentro do mesmo
+  // relatório.
+  const periodParamCache = `period=custom&start_date=${periodStart}&end_date=${periodEnd}`
+
+  const [reportSettled, shopifySettled] = await Promise.allSettled([
     temEmail ? fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}`, "email-report") : Promise.resolve(null),
-    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}`, "email-campaigns") : Promise.resolve(null),
-    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}`, "email-flows") : Promise.resolve(null),
+    // Shopify é outra plataforma e outra cota — segue em paralelo.
     temShopify ? fetchJson(`${origin}/api/integrations/shopify/report?store_id=${storeId}&${periodParam}`, "shopify-report") : Promise.resolve(null),
   ])
-  const reportRes = results[0].status === "fulfilled" ? results[0].value : null
-  const campaignsRes = results[1].status === "fulfilled" ? results[1].value : null
-  const flowsRes = results[2].status === "fulfilled" ? results[2].value : null
-  const shopifyRes = results[3].status === "fulfilled" ? results[3].value : null
+  const reportRes = reportSettled.status === "fulfilled" ? reportSettled.value : null
+  const shopifyRes = shopifySettled.status === "fulfilled" ? shopifySettled.value : null
+
+  // Se o `report` não voltou, o cache não foi renovado e ler sem
+  // `force_refresh` serviria número de outra rodada. Aí vale mais pagar
+  // o refresh nestes dois do que publicar dado de outro momento.
+  const paramDosDetalhes = reportRes ? periodParamCache : periodParam
+  const detalhes = await Promise.allSettled([
+    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${paramDosDetalhes}`, "email-campaigns") : Promise.resolve(null),
+    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${paramDosDetalhes}`, "email-flows") : Promise.resolve(null),
+  ])
+  const campaignsRes = detalhes[0].status === "fulfilled" ? detalhes[0].value : null
+  const flowsRes = detalhes[1].status === "fulfilled" ? detalhes[1].value : null
 
   // Fallback: store_revenue_summary quando report.revenue não vier.
   const cachedSummary = await (async (): Promise<Json | null> => {
