@@ -257,7 +257,7 @@ describe("getBlockingSeverity", () => {
 describe("getQaTimeoutMs", () => {
   it("retorna 60s por default", () => {
     delete process.env.EMAIL_QA_TIMEOUT_MS
-    expect(getQaTimeoutMs()).toBe(60_000)
+    expect(getQaTimeoutMs()).toBe(180_000)
   })
 
   it("lê env var quando numérica positiva", () => {
@@ -267,7 +267,7 @@ describe("getQaTimeoutMs", () => {
 
   it("ignora valor inválido e cai pro default", () => {
     process.env.EMAIL_QA_TIMEOUT_MS = "abc"
-    expect(getQaTimeoutMs()).toBe(60_000)
+    expect(getQaTimeoutMs()).toBe(180_000)
   })
 })
 
@@ -393,6 +393,52 @@ describe("runQaAgent — com config ativo", () => {
     } finally {
       delete process.env.EMAIL_QA_BLOCKING_SEVERITY
     }
+  })
+
+  // Run real de 09/09 19:55: 4.818 caracteres terminando em `, {` — sete
+  // issues INTEIRAS lá dentro (selos vazios, cupom sem confirmação) foram
+  // para o lixo como `qa_output_invalid`. O Fable é reasoning always-on e
+  // divide o max_tokens com o raciocínio.
+  it("veredito CORTADO no meio é remontado no último item íntegro", async () => {
+    const truncado =
+      '{"passed": false, "issues": [' +
+      '{"type":"blocos_vazios","severity":"high","message":"selos vazios"},' +
+      '{"type":"compliance","severity":"medium","message":"cupom sem confirmacao"},' +
+      '{"type":"claim_nao_cob'
+    chainInvokeMock.mockResolvedValueOnce(truncado)
+    const result = await runQaAgent(makeInput())
+
+    // as duas íntegras entram…
+    expect(result.issues.some((i) => i.message === "selos vazios")).toBe(true)
+    expect(result.issues.some((i) => i.message === "cupom sem confirmacao")).toBe(true)
+    // …e a tela diz que a revisão pode estar incompleta
+    const aviso = result.issues.find((i) => i.type === "qa_indisponivel")
+    expect(aviso?.message).toContain("qa_output_truncado")
+    expect(aviso?.severity).toBe("medium")
+    // sem retry: a primeira leitura já rendeu
+    expect(chainInvokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("chave `{` dentro de string não confunde a remontagem", async () => {
+    // As mensagens do QA citam HTML: contar chaves sem respeitar aspas
+    // cortaria no lugar errado.
+    const truncado =
+      '{"passed": false, "issues": [' +
+      '{"type":"html_invalido","severity":"low","message":"achei <td style=\\"{x}\\"> solto"},' +
+      '{"type":"compliance","sever'
+    chainInvokeMock.mockResolvedValueOnce(truncado)
+    const result = await runQaAgent(makeInput())
+    expect(result.issues.some((i) => i.message.includes("solto"))).toBe(true)
+  })
+
+  it("corte antes do primeiro item completo não inventa veredito", async () => {
+    chainInvokeMock
+      .mockResolvedValueOnce('{"passed": false, "issues": [{"type":"comp')
+      .mockResolvedValueOnce('{"passed": false, "issues": [{"type":"comp')
+    const result = await runQaAgent(makeInput())
+    expect(
+      result.issues.some((i) => i.message.includes("qa_output_invalid")),
+    ).toBe(true)
   })
 
   it("aceita JSON envolto em markdown ```json fences", async () => {
