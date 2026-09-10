@@ -278,10 +278,10 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
           channels={channels}
           carregando={channelsLoading}
           onClose={() => setNovaConversaAberta(false)}
-          onCriada={(threadId) => {
+          onAberta={(threadId) => {
             setNovaConversaAberta(false)
-            // A thread nasceu fora do SWR: sem revalidar, ela não está na
-            // lista e a conversa abriria com a barra lateral sem ela.
+            // A conversa nasceu fora do SWR: sem revalidar, ela não está
+            // na lista e o painel abriria com a barra lateral sem ela.
             setActiveThreadId(threadId)
             mutateThreads()
           }}

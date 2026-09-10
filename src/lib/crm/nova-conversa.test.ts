@@ -115,14 +115,17 @@ describe("motivoDeNenhumCanal", () => {
 })
 
 describe("explicacaoDoCaminho", () => {
-  it("o texto do Cloud diz POR QUE só template, senão a restrição parece capricho", () => {
+  it("o Cloud diz POR QUE abre bloqueado — senão a restrição parece defeito nosso", () => {
     const t = explicacaoDoCaminho("template")
-    expect(t).toMatch(/template aprovado/)
+    expect(t).toMatch(/TEMPLATE/)
     expect(t).toMatch(/24h/)
   })
 
-  it("o texto do texto livre promete o que acontece depois do envio", () => {
-    expect(explicacaoDoCaminho("texto_livre")).toMatch(/inbox/)
+  it("o texto livre promete o composer inteiro, que é o motivo de abrir a conversa", () => {
+    const t = explicacaoDoCaminho("texto_livre")
+    for (const recurso of [/texto/i, /imagem/i, /áudio/i, /arquivo/i]) {
+      expect(t).toMatch(recurso)
+    }
   })
 })
 
