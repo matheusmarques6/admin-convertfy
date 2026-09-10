@@ -5461,6 +5461,23 @@ leituras, e apontar isso como defeito ensina a ignorar o aviso de
 verdade. `causasProvaveis` devolve **lista vazia** quando nenhuma causa
 conhecida se aplica — o que é diferente de dizer que está tudo certo.
 
+**Na tela** (`/admin/tools/currency-audit`, botão "Receita" na linha da
+loja, só Omnisend — numa loja Klaviyo o botão só saberia falhar): a
+janela padrão é o **mês anterior completo**, que é a do relatório
+mensal, onde a divergência é reclamada; ela é montada em UTC porque
+`new Date(ano, mes, dia)` é local e num fuso a oeste o dia 1 vira o
+último dia do mês anterior — a janela sairia deslocada justamente na
+ferramenta feita para achar janela deslocada.
+
+*Verificado renderizando* o painel com os números do caso real
+(`renderToStaticMarkup` + a régua de verdade): apareceu **"USD 2.267,00"
+na linha de pedidos** — contagem formatada como dinheiro, com centavos.
+Nenhum teste unitário pegaria, porque o número estava certo. Daí
+`Divergencia.unidade`: contagem sai sem moeda e sem decimal, e **não tem
+"quase igual"** — a tolerância de 0,1% existe para o centavo que a
+plataforma reprocessa entre leituras, e aplicá-la a pedidos esconderia
+um pedido a mais.
+
 **Continua em aberto**: a divergência da Blue Wolf não pôde ser fechada
 daqui — a chave do MCP é da Treuquell e o MCP do Supabase está
 expirado. As duas hipóteses que a auditoria decide num clique são o

@@ -12,9 +12,19 @@
  * rota; aqui só entram números já medidos.
  */
 
+/**
+ * O que a métrica CONTA.
+ *
+ * Sem isto o painel formatava pedidos como dinheiro — "USD 2.267,00
+ * pedidos" —, defeito que só apareceu ao renderizar a tela com os
+ * números do caso real.
+ */
+export type Unidade = "moeda" | "contagem"
+
 /** Uma métrica confrontada. */
 export interface Divergencia {
   metrica: string
+  unidade: Unidade
   /** O que publicamos. `null` = não temos o número. */
   nosso: number | null
   /** O que a plataforma respondeu agora. */
@@ -40,18 +50,34 @@ export function compararMetrica(
   metrica: string,
   nosso: number | null,
   plataforma: number | null,
+  unidade: Unidade = "moeda",
 ): Divergencia {
   if (nosso === null || plataforma === null) {
-    return { metrica, nosso, plataforma, diferenca: null, diferencaPct: null, relevante: false }
+    return {
+      metrica,
+      unidade,
+      nosso,
+      plataforma,
+      diferenca: null,
+      diferencaPct: null,
+      relevante: false,
+    }
   }
   const diferenca = arredondar(nosso - plataforma)
   // Sem base não existe percentual: com a plataforma em zero, qualquer
   // número nosso é "infinitamente" maior, e publicar isso como
   // porcentagem é pior que não publicar. A diferença absoluta decide.
   const diferencaPct = plataforma !== 0 ? diferenca / plataforma : null
+  // Contagem não tem "quase igual": um pedido a mais é um pedido a
+  // mais, e a tolerância existe para o centavo que a plataforma
+  // reprocessa entre leituras.
   const relevante =
-    diferencaPct !== null ? Math.abs(diferencaPct) > TOLERANCIA : Math.abs(diferenca) > 0.01
-  return { metrica, nosso, plataforma, diferenca, diferencaPct, relevante }
+    unidade === "contagem"
+      ? diferenca !== 0
+      : diferencaPct !== null
+        ? Math.abs(diferencaPct) > TOLERANCIA
+        : Math.abs(diferenca) > 0.01
+  return { metrica, unidade, nosso, plataforma, diferenca, diferencaPct, relevante }
 }
 
 function arredondar(n: number): number {

@@ -47,6 +47,25 @@ describe("compararMetrica", () => {
     const d = compararMetrica("Receita atribuída", 0, 0)
     expect(d.relevante).toBe(false)
   })
+
+  it("contagem não tem 'quase igual': um pedido a mais já conta", () => {
+    // A tolerância existe para o centavo que a plataforma reprocessa
+    // entre leituras; aplicá-la a pedidos esconderia divergência real.
+    const d = compararMetrica("Pedidos atribuídos", 502, 515, "contagem")
+    expect(d.unidade).toBe("contagem")
+    expect(d.relevante).toBe(true)
+
+    const quase = compararMetrica("Pedidos da loja", 2268, 2267, "contagem")
+    expect(Math.abs(quase.diferencaPct!)).toBeLessThan(TOLERANCIA)
+    expect(quase.relevante).toBe(true)
+  })
+
+  it("a unidade viaja com a métrica, para a tela não formatar pedido como dinheiro", () => {
+    // Renderizar a tela mostrou "USD 2.267,00" na linha de pedidos —
+    // nenhum teste unitário pegaria, porque o número estava certo.
+    expect(compararMetrica("Receita atribuída", 1, 1).unidade).toBe("moeda")
+    expect(compararMetrica("Pedidos", 1, 1, "contagem").unidade).toBe("contagem")
+  })
 })
 
 describe("causasProvaveis", () => {

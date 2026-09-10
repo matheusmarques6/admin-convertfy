@@ -206,12 +206,13 @@ export async function POST(request: NextRequest) {
         nosso?.faturamentoTotal ?? null,
         porDataDoPedido?.faturamentoTotal ?? null,
       ),
-      compararMetrica("Pedidos da loja", nosso?.pedidos ?? null, porDataDoPedido?.pedidos ?? null),
+      compararMetrica("Pedidos da loja", nosso?.pedidos ?? null, porDataDoPedido?.pedidos ?? null, "contagem"),
       compararMetrica("Receita atribuída", nosso?.receitaAtribuida ?? null, atribuidoDaPlataforma),
       compararMetrica(
         "Pedidos atribuídos",
         nosso?.pedidosAtribuidos ?? null,
         porDataDeEnvio?.pedidosAtribuidos ?? porDataDoPedido?.pedidosAtribuidos ?? null,
+        "contagem",
       ),
     ]
 
