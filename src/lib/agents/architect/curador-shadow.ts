@@ -38,6 +38,7 @@ import {
   type AgentInvokeConfig,
 } from "./llm-invoke"
 import { loadFinalistNotes, type FinalistNoteResult } from "./curador-vault-tools"
+import { tetoDeRelogioDoAgente } from "@/lib/agents/fase1-orcamento"
 import { usageOf } from "@/lib/agents/chains/step-usage"
 import { RespostaVaziaError } from "@/lib/agents/resposta-vazia"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
@@ -893,6 +894,40 @@ export async function runCuradorShadow(
   const modelo = resolverModeloDoCurador(p.modelo)
   const t0 = Date.now()
   let runId = ""
+  /**
+   * Consumo POR CHAMADA (o Curador faz duas: shortlist e escolha).
+   *
+   * A run só guardava a soma, e na falha nem isso: `consumoDoErro` resgata
+   * apenas o erro que subiu — o da escolha —, então a shortlist sumia da
+   * conta. Sem separar, "16.000 dos 16.000 foram para o raciocínio" não diz
+   * se o teto novo precisa ir para a shortlist, para a escolha, ou para as
+   * duas, e a próxima decisão de teto vira chute.
+   */
+  const porChamada: Record<string, { tokens_output: number; tokens_input: number; seg: number }> = {}
+  const medir = async <T extends { tokensInput: number; tokensOutput: number }>(
+    etapa: string,
+    fn: () => Promise<T>,
+  ): Promise<T> => {
+    const inicio = Date.now()
+    try {
+      const r = await fn()
+      porChamada[etapa] = {
+        tokens_input: r.tokensInput,
+        tokens_output: r.tokensOutput,
+        seg: Math.round((Date.now() - inicio) / 1000),
+      }
+      return r
+    } catch (e) {
+      // A chamada que FALHOU é a que mais importa medir: registra o tempo
+      // mesmo sem tokens (o abort corta antes de o corpo chegar).
+      porChamada[etapa] = {
+        tokens_input: 0,
+        tokens_output: 0,
+        seg: Math.round((Date.now() - inicio) / 1000),
+      }
+      throw e
+    }
+  }
   try {
     const momento = momentoDoEmail(p.flowType, p.emailNumber)
     const tetoResolvido = explicarTetoDoCurador(p.maxTokens)
@@ -901,6 +936,12 @@ export async function runCuradorShadow(
       model: modelo,
       temperature: 0.2,
       max_tokens: maxTokens,
+      // O relógio anda junto do teto: a 90 tok/s (medido), 32.000 tokens
+      // pedem ~356s e o global de 240s cortaria antes — o teto viraria só
+      // reserva de crédito em voo. Vale para as DUAS chamadas.
+      ...(tetoDeRelogioDoAgente("assembler_chooser")
+        ? { timeoutMs: tetoDeRelogioDoAgente("assembler_chooser")! }
+        : {}),
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
     }
@@ -1011,6 +1052,7 @@ export async function runCuradorShadow(
         // afirmava 16.000 enquanto a shortlist rodava com 5.000, e era essa
         // divergência que escondia a causa da resposta vazia.
         teto_shortlist: maxTokens,
+        teto_relogio_ms: tetoDeRelogioDoAgente("assembler_chooser"),
       },
       renderedPrompt: segUser.segments ? segUser.prompt : undefined,
       promptSegments,
@@ -1028,11 +1070,13 @@ export async function runCuradorShadow(
     // em `email_agent_configs` — que já estava em 16.000 e era cortado aqui.
     // `max_tokens` é TETO, não consumo: cortar não poupa um token quando a
     // resposta é curta, só quebra quando ela precisa de um a mais.
-    const shortlistCall = await naEtapa("shortlist", () =>
+    const shortlistCall = await medir("shortlist", () =>
+      naEtapa("shortlist", () =>
       invokeAgent(
         { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: maxTokens },
         vars,
         systemVars,
+      ),
       ),
     )
     const shortlist = parseValidatedShortlist({
@@ -1051,7 +1095,9 @@ export async function runCuradorShadow(
       ...config,
       user_template: `${config.user_template}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
     }
-    let finalCall = await naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars))
+    let finalCall = await medir("escolha", () =>
+      naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
+    )
     let retomada: { feita: boolean; motivo: string; erro?: string; prefill_usado: boolean } | undefined
     // Uma retomada curta preserva o comportamento de recuperação do JSON,
     // sem reabrir ferramentas nem refazer a shortlist.
@@ -1159,6 +1205,9 @@ export async function runCuradorShadow(
       // cortava justamente a parte que explicava a eliminação.
       rawOutput: res.raw.slice(0, 32_000),
       parsedOutput: {
+        // Quanto CADA chamada gastou, não só a soma: é o que diz para onde
+        // o teto precisa ir na próxima vez.
+        consumo_por_chamada: porChamada,
         progressive_disclosure: {
           initial_variants: p.catalogComExtras.total,
           finalists: res.finalistIds,
@@ -1330,7 +1379,11 @@ export async function runCuradorShadow(
         status: "error",
         model: modelo,
         errorMessage: `shadow: ${msg}`,
-        parsedOutput: { shadow: modo === "shadow", curador_vault_mode: modo },
+        parsedOutput: {
+          shadow: modo === "shadow",
+          curador_vault_mode: modo,
+          consumo_por_chamada: porChamada,
+        },
         // A chamada já foi PAGA quando isto roda. Sem os números, o painel de
         // custo não vê o gasto e a falha parece de graça.
         ...(consumo

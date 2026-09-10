@@ -149,6 +149,10 @@ export const TETO_DE_RELOGIO_MS: Record<string, number> = {
   seletor: 280_000,
   // teto 32.000 tokens ≈ 356s
   estruturador: 360_000,
+  // teto 32.000 tokens ≈ 356s. O Curador faz DUAS chamadas (shortlist e
+  // escolha) e este relógio vale para cada uma — o que aperta é o orçamento
+  // da fase 1, não este teto.
+  assembler_chooser: 360_000,
 }
 
 /** O teto de relógio deste agente, ou null para usar o global. */

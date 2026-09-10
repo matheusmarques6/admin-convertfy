@@ -132,10 +132,14 @@ export async function emailHasCopy(emailId: string): Promise<boolean> {
  * relógio de cada chamada encolhe junto (`fase1-orcamento.ts`) e a request
  * termina falando, em vez de o gateway matá-la no meio deixando run órfã.
  *
- * 700s de 800: a folga cobre o dispatch ao n8n, o rollback do claim e a
- * resposta. Ajustável sem deploy.
+ * 740s de 800: a folga de 60s cobre o dispatch ao n8n, o rollback do claim
+ * e a resposta. Subiu de 700 quando o Curador foi para o teto de 32.000 —
+ * Seletor 57s + Estruturador 219s medidos, mais até 356s da escolha do
+ * Curador e a shortlist dele, e 30s de Blueprint + Subject. É folga FINA e
+ * está declarado: se o Curador gastar os 32.000 de fato, a fase 1 raspa o
+ * orçamento. Ajustável sem deploy.
  */
-const FASE1_BUDGET_MS = Number(process.env.FASE1_BUDGET_MS ?? 700_000)
+const FASE1_BUDGET_MS = Number(process.env.FASE1_BUDGET_MS ?? 740_000)
 
 export async function runTestGeneration(
   input: TestGenerationInput,

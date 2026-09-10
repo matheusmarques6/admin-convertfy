@@ -220,7 +220,7 @@ export const GERACAO_TIMEOUT_S = 800
  * matá-la calada. Se algum dia os dois se cruzarem, o timeout volta — daí o
  * teste que fixa a desigualdade.
  */
-export const FASE1_BUDGET_S = 700
+export const FASE1_BUDGET_S = 740
 
 
 /** Marcador de timeout de GATEWAY (504/corpo detectado no parse). */
