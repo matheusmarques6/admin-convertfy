@@ -210,7 +210,18 @@ export function isTerminalStatus(statusInfo: {
  * senão a mensagem de timeout passa a mentir o número, como mentia "300s"
  * depois que a janela subiu (08/09).
  */
-export const GERACAO_TIMEOUT_S = 500
+export const GERACAO_TIMEOUT_S = 800
+
+/**
+ * O orçamento INTERNO da fase 1 (`FASE1_BUDGET_MS`), em segundos.
+ *
+ * É a desigualdade `FASE1_BUDGET_S < GERACAO_TIMEOUT_S` que faz o 504 deixar
+ * de acontecer: a fase 1 desiste sozinha, falando, antes de o gateway
+ * matá-la calada. Se algum dia os dois se cruzarem, o timeout volta — daí o
+ * teste que fixa a desigualdade.
+ */
+export const FASE1_BUDGET_S = 700
+
 
 /** Marcador de timeout de GATEWAY (504/corpo detectado no parse). */
 export const TIMEOUT_MARKER = "__timeout__"

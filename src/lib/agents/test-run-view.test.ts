@@ -15,6 +15,7 @@ import {
   isTerminalStatus,
   isTimeoutMarker,
   phaseMessage,
+  FASE1_BUDGET_S,
 } from "./test-run-view"
 
 describe("phaseMessage", () => {
@@ -367,10 +368,24 @@ describe("GERACAO_TIMEOUT_S", () => {
   it("acompanha o maxDuration da rota de geração", () => {
     // Mudou `maxDuration` em generate-email/route.ts? Muda aqui também — o
     // Next exige literal estático lá, então não há como derivar um do outro.
-    expect(GERACAO_TIMEOUT_S).toBe(500)
+    expect(GERACAO_TIMEOUT_S).toBe(800)
   })
 
-  it("é folgado o bastante para a fase 1 medida (280,8s em 08/09)", () => {
-    expect(GERACAO_TIMEOUT_S).toBeGreaterThan(281)
+  // 08/09: 280,8s. 10/09 com o Sonnet 5: Seletor 167,6s + Estruturador 343s
+  // = 510s, que é o 504 que motivou subir a janela.
+  it("é folgado o bastante para a fase 1 medida (510s em 10/09)", () => {
+    expect(GERACAO_TIMEOUT_S).toBeGreaterThan(510)
+  })
+})
+
+describe("as duas janelas da geração", () => {
+  // O 504 de 10/09 (Sonnet 5, fase 1 em 510s numa janela de 500) só deixa de
+  // acontecer enquanto a fase 1 desistir ANTES do gateway. Se algum dia
+  // alguém subir o orçamento sem subir a janela, isto quebra aqui e não em
+  // produção.
+  it("o orçamento da fase 1 é menor que a janela do gateway", () => {
+    expect(FASE1_BUDGET_S).toBeLessThan(GERACAO_TIMEOUT_S)
+    // Folga para o dispatch ao n8n, o rollback do claim e a resposta.
+    expect(GERACAO_TIMEOUT_S - FASE1_BUDGET_S).toBeGreaterThanOrEqual(60)
   })
 })

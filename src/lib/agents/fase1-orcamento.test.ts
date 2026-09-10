@@ -1,0 +1,139 @@
+import { describe, it, expect } from "vitest"
+
+import {
+  TAXA_TOKENS_POR_S,
+  PISO_DE_RELOGIO_MS,
+  msParaGerar,
+  relogioDaChamada,
+  cabeNaJanela,
+  comOrcamentoDeFase1,
+  restanteDoOrcamento,
+} from "./fase1-orcamento"
+
+describe("msParaGerar", () => {
+  // A 90 tok/s medidos, o teto de 48.000 do Estruturador pede 533s numa
+  // chamada — muito além dos 240s do ARCHITECT_INVOKE_TIMEOUT_MS. É esta
+  // conta que mostra que subir o teto sem mexer no relógio troca
+  // truncamento por timeout.
+  it("traduz teto de tokens em tempo pela taxa medida", () => {
+    expect(msParaGerar(48_000)).toBe(Math.ceil((48_000 / TAXA_TOKENS_POR_S) * 1000))
+    expect(msParaGerar(48_000)).toBeGreaterThan(500_000)
+    expect(msParaGerar(24_000)).toBeGreaterThan(260_000)
+  })
+
+  it("entrada sem sentido vale zero, nunca NaN", () => {
+    expect(msParaGerar(0)).toBe(0)
+    expect(msParaGerar(-1)).toBe(0)
+    expect(msParaGerar(Number.NaN)).toBe(0)
+  })
+})
+
+describe("relogioDaChamada", () => {
+  // Sem janela aberta o comportamento é o de ANTES deste módulo: o teto
+  // absoluto sozinho. É o que garante que nada fora da fase 1 muda.
+  it("sem orçamento aberto devolve o teto", () => {
+    expect(relogioDaChamada({ tetoMs: 240_000, restanteMs: null })).toEqual({
+      ms: 240_000,
+      origem: "teto",
+    })
+  })
+
+  it("a janela vence o teto quando é ela que aperta", () => {
+    expect(relogioDaChamada({ tetoMs: 240_000, restanteMs: 90_000 })).toEqual({
+      ms: 90_000,
+      origem: "janela",
+    })
+  })
+
+  it("o teto vence quando a janela é folgada", () => {
+    expect(relogioDaChamada({ tetoMs: 240_000, restanteMs: 700_000 })).toEqual({
+      ms: 240_000,
+      origem: "teto",
+    })
+  })
+
+  // Uma chamada iniciada com 10s de janela não termina; começar só queima
+  // dinheiro e devolve timeout. Zero é o sinal de "não comece".
+  it("abaixo do piso manda não começar", () => {
+    const r = relogioDaChamada({ tetoMs: 240_000, restanteMs: PISO_DE_RELOGIO_MS - 1 })
+    expect(r).toEqual({ ms: 0, origem: "sem_orcamento" })
+  })
+
+  it("janela já estourada (restante negativo) também manda não começar", () => {
+    expect(relogioDaChamada({ tetoMs: 240_000, restanteMs: -5_000 }).ms).toBe(0)
+  })
+})
+
+describe("cabeNaJanela", () => {
+  it("sem orçamento aberto tudo cabe", () => {
+    expect(cabeNaJanela({ custoMs: 999_999, restanteMs: null }).cabe).toBe(true)
+  })
+
+  // A reserva existe para o Curador, que NÃO é pulável: sem ela o Seletor
+  // e o Estruturador comem a janela e a montagem fica sem variante nenhuma.
+  it("a reserva das etapas seguintes é descontada antes da conta", () => {
+    expect(cabeNaJanela({ custoMs: 300_000, restanteMs: 400_000 }).cabe).toBe(true)
+    expect(
+      cabeNaJanela({ custoMs: 300_000, restanteMs: 400_000, reservaMs: 200_000 }).cabe,
+    ).toBe(false)
+  })
+
+  it("o motivo é texto de gente, com os dois números", () => {
+    const r = cabeNaJanela({ custoMs: 300_000, restanteMs: 400_000, reservaMs: 200_000 })
+    expect(r.motivo).toContain("300s")
+    expect(r.motivo).toContain("400s")
+    expect(r.motivo).toContain("200s")
+  })
+
+  it("empate exato cabe", () => {
+    expect(cabeNaJanela({ custoMs: 100_000, restanteMs: 100_000 }).cabe).toBe(true)
+  })
+})
+
+describe("a janela propagada", () => {
+  it("fora do escopo não há janela", () => {
+    expect(restanteDoOrcamento()).toBeNull()
+  })
+
+  it("dentro do escopo o restante encolhe com o tempo", async () => {
+    await comOrcamentoDeFase1(750_000, async () => {
+      const inicio = restanteDoOrcamento()
+      expect(inicio).not.toBeNull()
+      expect(inicio!).toBeGreaterThan(740_000)
+      expect(inicio!).toBeLessThanOrEqual(750_000)
+      // 10s depois, sobra 10s a menos — sem esperar de verdade.
+      const depois = restanteDoOrcamento(Date.now() + 10_000)!
+      expect(inicio! - depois).toBeGreaterThanOrEqual(9_000)
+    })
+  })
+
+  it("atravessa await e chamada aninhada sem passar parâmetro", async () => {
+    async function laNoFundo() {
+      await Promise.resolve()
+      return restanteDoOrcamento()
+    }
+    await comOrcamentoDeFase1(600_000, async () => {
+      expect(await laNoFundo()).not.toBeNull()
+    })
+    expect(await laNoFundo()).toBeNull()
+  })
+
+  // Um escopo aninhado que pedisse mais tempo daria a uma etapa interna
+  // mais janela do que a request inteira tem — o gateway não negocia.
+  it("escopo aninhado nunca estende a janela de fora", async () => {
+    await comOrcamentoDeFase1(100_000, async () => {
+      await comOrcamentoDeFase1(900_000, async () => {
+        expect(restanteDoOrcamento()!).toBeLessThanOrEqual(100_000)
+      })
+    })
+  })
+
+  it("escopo aninhado mais curto vale dentro dele", async () => {
+    await comOrcamentoDeFase1(900_000, async () => {
+      await comOrcamentoDeFase1(50_000, async () => {
+        expect(restanteDoOrcamento()!).toBeLessThanOrEqual(50_000)
+      })
+      expect(restanteDoOrcamento()!).toBeGreaterThan(500_000)
+    })
+  })
+})
