@@ -26,6 +26,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { fetchOmnisendCampaignReports } from "@/lib/integrations/omnisend/reports-api"
 import { fusoDaLoja } from "@/lib/integrations/omnisend/timezone"
+import { campanhasNoPeriodo } from "@/lib/reports/periodo"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ReportSnapshot")
@@ -239,9 +240,19 @@ export function buildReportSnapshot(params: {
   const ep = (reportRes?.emailPerformance ?? null) as Json | null
   const del = (reportRes?.deliverability ?? null) as Json | null
   const account = (reportRes?.account ?? {}) as Json
-  const campaignsList = (
-    (campaignsRes?.campaigns ?? []) as SnapshotRow[]
-  ).slice(0, 10)
+  // A rota de campanhas devolve a conta INTEIRA (o calendário depende
+  // disso). O relatório é do período, e a régua é a da plataforma: entra
+  // quem foi ENVIADA na janela. Sem esse corte, o `delivered` lifetime das
+  // campanhas antigas virava "envios do período" — 872.858 num único dia.
+  const campanhasDaApi = campanhasNoPeriodo(
+    (campaignsRes?.campaigns ?? []) as Array<SnapshotRow & LinhaCacheCampanha>,
+    periodStart,
+    periodEnd,
+  )
+  const campaignsList = campanhasDaApi.slice(0, 10)
+  // Flows NÃO têm data de envio: são contínuos e a janela já foi aplicada
+  // na origem (o desempenho vem medido no período). Filtrar por envio aqui
+  // apagaria todos eles.
   const flowsList = ((flowsRes?.flows ?? []) as SnapshotRow[]).slice(0, 10)
   const cs = (campaignsRes?.summary ?? null) as Json | null
   const fsm = (flowsRes?.summary ?? null) as Json | null
@@ -403,9 +414,9 @@ export function buildReportSnapshot(params: {
   // teto artificial, não contagem).
   const totalCampaigns = firstPresent(
     num(overview, "campaignsInPeriod"),
-    campaignsList.length > 0 && campaignsList.length < 10
-      ? campaignsList.length
-      : null,
+    // `campanhasDaApi` já é a lista do período (não é mais o teto de 10
+    // do slice), então a contagem dela vale como fonte.
+    campanhasDaApi.length > 0 ? campanhasDaApi.length : null,
   )
   const totalFlows = firstPresent(
     num(overview, "liveFlows"),
@@ -493,6 +504,19 @@ export function buildReportSnapshot(params: {
  * AUSENTE (null) — sem isso, zeros de rate-limit passariam como zeros
  * legítimos sob a resolução por presença (F5).
  */
+/** Linha do cache de campanhas, pelo que o snapshot lê dela. */
+interface LinhaCacheCampanha extends Record<string, unknown> {
+  send_time?: string | null
+  campaign_status?: string | null
+}
+
+/** `YYYY-MM-DD` deslocado por N dias, em UTC (sem drift de fuso). */
+function diaDeslocado(dia: string, dias: number): string {
+  const base = Date.parse(`${dia.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(base)) return dia.slice(0, 10)
+  return new Date(base + dias * 86_400_000).toISOString().slice(0, 10)
+}
+
 export async function fetchSnapshotSources(params: {
   origin: string
   cookie: string
@@ -501,9 +525,19 @@ export async function fetchSnapshotSources(params: {
   periodEnd: string
   admin: SupabaseClient
   timeoutMs?: number
+  /** Tempo total que o fan-out pode consumir. Default 210s (de 300 da rota). */
+  budgetMs?: number
 }): Promise<SnapshotSources> {
   const { origin, cookie, storeId, periodStart, periodEnd, admin } = params
-  const timeoutMs = params.timeoutMs ?? 75_000
+  // Orçamento, não constante mágica. Os endpoints internos declaram
+  // `maxDuration = 300`; a rota que os consome declarava 120 e abortava
+  // cada um em 75s — quando o fan-out chegava perto do teto, o runtime
+  // matava a função DEPOIS de o relatório já ter sido gravado, e o
+  // browser via "Failed to fetch" para um relatório que existe. Agora o
+  // fan-out sabe quanto tempo tem e devolve o que conseguiu dentro dele.
+  const deadline = Date.now() + (params.budgetMs ?? 210_000)
+  const restante = () => Math.max(0, deadline - Date.now())
+  const timeoutMs = params.timeoutMs ?? Math.min(120_000, restante())
 
   // IMPORTANTE: endpoints esperam period=custom&start_date=&end_date=.
   // force_refresh=true garante live sync no momento da geração.
@@ -537,11 +571,28 @@ export async function fetchSnapshotSources(params: {
     }
   }
 
+  // Loja sem a credencial da plataforma não é consultada: a chamada
+  // devolveria "não configurado" depois de pagar auth, dispatcher e rede,
+  // e o orçamento é justamente o que estava faltando aqui.
+  const { data: credLinha } = await admin
+    .from("client_stores")
+    .select("shopify_access_token, omnisend_api_key, klaviyo_api_key, klaviyo_private_key")
+    .eq("id", storeId)
+    .maybeSingle()
+  const temShopify = !!credLinha?.shopify_access_token
+  const temEmail =
+    !!credLinha?.omnisend_api_key ||
+    !!credLinha?.klaviyo_api_key ||
+    !!credLinha?.klaviyo_private_key
+  if (!temShopify) {
+    log.info("[Snapshot] loja sem Shopify — pulando o fetch da loja", { storeId })
+  }
+
   const results = await Promise.allSettled([
-    fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}`, "email-report"),
-    fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}`, "email-campaigns"),
-    fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}`, "email-flows"),
-    fetchJson(`${origin}/api/integrations/shopify/report?store_id=${storeId}&${periodParam}`, "shopify-report"),
+    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/report?store_id=${storeId}&${periodParam}`, "email-report") : Promise.resolve(null),
+    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/campaigns?store_id=${storeId}&${periodParam}`, "email-campaigns") : Promise.resolve(null),
+    temEmail ? fetchJson(`${origin}/api/integrations/email-platform/flows?store_id=${storeId}&${periodParam}`, "email-flows") : Promise.resolve(null),
+    temShopify ? fetchJson(`${origin}/api/integrations/shopify/report?store_id=${storeId}&${periodParam}`, "shopify-report") : Promise.resolve(null),
   ])
   const reportRes = results[0].status === "fulfilled" ? results[0].value : null
   const campaignsRes = results[1].status === "fulfilled" ? results[1].value : null
@@ -577,15 +628,31 @@ export async function fetchSnapshotSources(params: {
   // NUNCA filtrar por "30d" aqui — rolling window da cron não cobre o
   // período do relatório (bug 2026-05-18, até 40% de divergência).
   const customPeriodLabel = `custom:${periodStart.slice(0, 10)}:${periodEnd.slice(0, 10)}`
-  const { data: omnisendCampaignRows } = await admin
+  // O sync persiste TODAS as campanhas da conta sob o period_label da
+  // janela — quem corta por período é quem lê. O report-builder já cortava;
+  // este caminho não, e por isso o relatório de um dia saía com o histórico
+  // inteiro (Blessed Choice 09/09/2026: 75 das 78 linhas eram de outros
+  // meses, com `delivered` lifetime). A janela entra no SQL com um dia de
+  // folga em cada ponta só para o `limit` não descartar campanha de borda;
+  // o corte exato é da régua pura logo abaixo.
+  const bordaInicio = `${diaDeslocado(periodStart, -1)}T00:00:00Z`
+  const bordaFim = `${diaDeslocado(periodEnd, 2)}T00:00:00Z`
+  const { data: omnisendCampaignRowsBrutas } = await admin
     .from("omnisend_campaign_metrics")
     .select(
-      "campaign_id, campaign_name, send_time, subject, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate",
+      "campaign_id, campaign_name, campaign_status, send_time, subject, recipients, delivered, opened, clicked, conversions, conversion_value, open_rate, click_rate, bounce_rate",
     )
     .eq("store_id", storeId)
     .eq("period_label", customPeriodLabel)
+    .gte("send_time", bordaInicio)
+    .lt("send_time", bordaFim)
     .order("conversion_value", { ascending: false })
     .limit(20)
+  const omnisendCampaignRows = campanhasNoPeriodo(
+    (omnisendCampaignRowsBrutas ?? []) as LinhaCacheCampanha[],
+    periodStart,
+    periodEnd,
+  )
   const { data: omnisendFlowRows } = await admin
     .from("omnisend_flow_metrics")
     .select(
@@ -596,7 +663,7 @@ export async function fetchSnapshotSources(params: {
     .order("conversion_value", { ascending: false })
     .limit(15)
 
-  const cacheCampaigns: SnapshotRow[] = (omnisendCampaignRows ?? []).map((r) => ({
+  const cacheCampaigns: SnapshotRow[] = omnisendCampaignRows.map((r) => ({
     id: r.campaign_id as string,
     name: r.campaign_name as string,
     sendTime: r.send_time as string,
@@ -633,7 +700,11 @@ export async function fetchSnapshotSources(params: {
   const hasRowRevenue =
     cacheCampaigns.some((c) => c.revenue > 0) ||
     campaignsList.some((c) => Number(c.revenue) > 0)
-  if (!hasRowRevenue && reportRes?.platform === "omnisend") {
+  // Só vale a pena se ainda houver tempo: esta chamada não tinha relógio
+  // nenhum e era a candidata natural a estourar o teto da função DEPOIS
+  // do fan-out já ter consumido o seu.
+  const MIN_PARA_REPORTS_MS = 20_000
+  if (!hasRowRevenue && reportRes?.platform === "omnisend" && restante() > MIN_PARA_REPORTS_MS) {
     try {
       const creds = await getStoreCredentials(storeId)
       if (creds.omnisend_api_key) {
@@ -653,9 +724,20 @@ export async function fetchSnapshotSources(params: {
           tz,
         )
       }
-    } catch {
-      // silent — buildReportSnapshot cai na distribuição proporcional
+    } catch (err) {
+      // buildReportSnapshot cai na distribuição proporcional — mas a razão
+      // fica no log: "receita por campanha estimada" sem motivo declarado
+      // é o que faz ninguém procurar a causa.
+      log.warn("[Snapshot] Reports API per-campaign falhou", {
+        storeId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
+  } else if (!hasRowRevenue && reportRes?.platform === "omnisend") {
+    log.warn("[Snapshot] sem orçamento para a Reports API per-campaign", {
+      storeId,
+      restanteMs: restante(),
+    })
   }
 
   return {

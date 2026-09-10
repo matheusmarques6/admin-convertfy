@@ -410,7 +410,8 @@ export async function GET(request: NextRequest) {
           period,
           customStartDate,
           customEndDate,
-          statusFilter
+          statusFilter,
+          forceRefresh,
         )
         return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {

@@ -378,7 +378,8 @@ export async function GET(request: NextRequest) {
           { storeId, storeName: store.storeName, orgId: store.orgId },
           period,
           customStartDate,
-          customEndDate
+          customEndDate,
+          forceRefresh,
         )
         return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
       } catch (err) {

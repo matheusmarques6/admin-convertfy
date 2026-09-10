@@ -34,6 +34,14 @@ async function persistLiveFetch(storeId: string, orgId: string, period: string, 
 }
 
 const log = logger.child("OmnisendCampaignsFlowsBuilder")
+/** Sentinela de fluxo: "não leia o cache", distinta de uma falha de leitura. */
+class PularCache extends Error {
+  constructor() {
+    super("force_refresh")
+    this.name = "PularCache"
+  }
+}
+
 const CACHE_FRESH_MS = 35 * 60 * 1000
 const STALE_CACHE_MAX_MS = 24 * 60 * 60 * 1000
 
@@ -264,7 +272,17 @@ export async function buildOmnisendCampaignsResponse(
   rawPeriod: string,
   customStartDate?: string | null,
   customEndDate?: string | null,
-  statusFilter?: string | null
+  statusFilter?: string | null,
+  /**
+   * Pula o cache fresco e vai à plataforma.
+   *
+   * A rota aceitava `force_refresh=true` e NÃO repassava — o parâmetro
+   * existia, era documentado ("garante live sync no momento da geração")
+   * e não fazia nada no ramo Omnisend. Quem pedia dado novo (a geração do
+   * relatório, o botão de sincronizar) recebia o cache de até 35 minutos
+   * atrás sem saber.
+   */
+  forceRefresh = false,
 ) {
   // Normaliza period_label antes de qualquer query:
   //   "today"/"yesterday" → "1d"
@@ -275,8 +293,9 @@ export async function buildOmnisendCampaignsResponse(
   const { startDateStr, endDateStr } = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
   const admin = createAdminClient()
 
-  // 1) Cache
+  // 1) Cache (pulado quando quem chamou pediu dado novo)
   try {
+    if (forceRefresh) throw new PularCache()
     const { data: cached } = await admin
       .from("omnisend_campaign_metrics")
       .select("*")
@@ -307,7 +326,11 @@ export async function buildOmnisendCampaignsResponse(
       }
     }
   } catch (err) {
-    log.warn("[Omnisend Campaigns] Cache read failed, falling through", { error: err })
+    if (err instanceof PularCache) {
+      log.info("[Omnisend Campaigns] force_refresh — indo à plataforma", { storeId: store.storeId, period })
+    } else {
+      log.warn("[Omnisend Campaigns] Cache read failed, falling through", { error: err })
+    }
   }
 
   // 2) Tenta cache stale como fallback (ate 24h)
@@ -457,15 +480,22 @@ export async function buildOmnisendFlowsResponse(
   store: StoreCtx,
   rawPeriod: string,
   customStartDate?: string | null,
-  customEndDate?: string | null
+  customEndDate?: string | null,
+  /** Pula o cache fresco — mesmo motivo das campanhas. */
+  forceRefresh = false,
 ) {
   // Idem buildOmnisendCampaignsResponse: normaliza period antes de tudo.
-  const period = normalizePeriodLabel(rawPeriod)
+  // As datas entram na normalização: sem elas, um período personalizado
+  // era gravado e lido sob o rótulo "30d" (o fallback defensivo de
+  // `normalizePeriodLabel`), e o cache de 30 dias respondia a pergunta de
+  // outro período — as campanhas já passavam as datas, os flows não.
+  const period = normalizePeriodLabel(rawPeriod, customStartDate, customEndDate)
   const { startDateStr, endDateStr } = dateRangeForPeriod(rawPeriod, customStartDate, customEndDate)
   const admin = createAdminClient()
 
-  // 1) Cache
+  // 1) Cache (pulado quando quem chamou pediu dado novo)
   try {
+    if (forceRefresh) throw new PularCache()
     const { data: cached } = await admin
       .from("omnisend_flow_metrics")
       .select("*")
@@ -495,7 +525,11 @@ export async function buildOmnisendFlowsResponse(
       }
     }
   } catch (err) {
-    log.warn("[Omnisend Flows] Cache read failed, falling through", { error: err })
+    if (err instanceof PularCache) {
+      log.info("[Omnisend Flows] force_refresh — indo à plataforma", { storeId: store.storeId, period })
+    } else {
+      log.warn("[Omnisend Flows] Cache read failed, falling through", { error: err })
+    }
   }
 
   // 2) Tenta cache stale como fallback (ate 24h)

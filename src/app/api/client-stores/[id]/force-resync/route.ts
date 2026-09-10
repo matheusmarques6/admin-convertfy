@@ -5,11 +5,24 @@
  * valores no overview/relatorio nao batem com a realidade e suspeita-se
  * de cache stale ou linha velha gravada com calculo bugado.
  *
- * Operacoes:
- *  1. DELETE em omnisend_reports_cache (L2 cache 1h)
- *  2. DELETE em omnisend_campaign_metrics + omnisend_flow_metrics
- *  3. DELETE em store_revenue_summary (somente para a loja)
- *  4. Chama sync-email pra repopular tudo
+ * ── O período agora vem de quem clicou (set/2026) ────────────────────
+ *
+ * A rota apagava TODOS os `period_label` da loja e repopulava só o
+ * "30d", fixo no código. Quem estivesse olhando o dashboard em 7 dias,
+ * 90 dias ou num período personalizado clicava em sincronizar e via o
+ * cache do seu período ser apagado sem ser reposto — a tela continuava
+ * igual, ou pior, zerava, e a queixa "não está sincronizando" era
+ * literal: o que foi sincronizado não era o que estava na tela.
+ *
+ * Agora aceita `period` (+ `start_date`/`end_date` quando custom), roda
+ * o sync com a janela pedida e grava sob o rótulo dela. E a limpeza é
+ * ESCOPADA ao período que vai ser reposto: apagar os outros deixava
+ * buraco em tela nenhuma pediu.
+ *
+ * Body (todos opcionais):
+ *   { period?: "1d"|"7d"|"30d"|"90d"|"12m"|"custom",
+ *     start_date?: "YYYY-MM-DD", end_date?: "YYYY-MM-DD",
+ *     all_periods?: boolean }   // limpeza total, o comportamento antigo
  *
  * Returns:
  *   { success, cleared: { reports, campaigns, flows, summary }, sync: {...} }
@@ -26,14 +39,27 @@ import {
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { detectStorePlatform } from "@/lib/services/report-platform.service"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
-import { upsertOmnisendSyncResults } from "@/lib/services/sync-persistence.service"
+import { syncOmnisendForStore, periodLabelToDays } from "@/lib/services/omnisend-sync.service"
+import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
+import { omnisendDateRange, fusoDaLoja } from "@/lib/integrations/omnisend/timezone"
+import { diasDoPeriodo } from "@/lib/reports/periodo"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("StoreForceResync")
 
 export const maxDuration = 120
 export const dynamic = "force-dynamic"
+
+/** Fuso IANA da loja, com o padrão declarado quando ela não tem um. */
+async function fusoDaLojaDoBanco(admin: SupabaseClient, storeId: string): Promise<string> {
+  const { data } = await admin
+    .from("client_stores")
+    .select("timezone")
+    .eq("id", storeId)
+    .maybeSingle()
+  return fusoDaLoja((data?.timezone as string | null) ?? null).tz
+}
 
 export async function POST(
   request: NextRequest,
@@ -57,14 +83,31 @@ export async function POST(
       )
     }
 
-    log.info(`[ForceResync] Starting for store ${storeId}`)
+    // Período pedido pela tela. Sem body, mantém o "30d" histórico —
+    // nenhum chamador antigo quebra.
+    const body = await request.json().catch(() => ({} as Record<string, unknown>))
+    const rawPeriod = typeof body.period === "string" ? body.period : "30d"
+    const startDate = typeof body.start_date === "string" ? body.start_date : null
+    const endDate = typeof body.end_date === "string" ? body.end_date : null
+    const todosOsPeriodos = body.all_periods === true
+    const periodLabel = normalizePeriodLabel(rawPeriod, startDate, endDate)
+    const periodDays =
+      rawPeriod === "custom" && startDate && endDate
+        ? diasDoPeriodo(startDate, endDate)
+        : periodLabelToDays(rawPeriod)
 
-    // 1. Limpa caches em paralelo
+    log.info(`[ForceResync] Starting for store ${storeId}`, { periodLabel, periodDays })
+
+    // 1. Limpa caches em paralelo.
+    //    Escopado ao período que será reposto — apagar os rótulos que este
+    //    sync não vai repopular deixa a tela de OUTRO período sem dado.
+    const escopo = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
+      todosOsPeriodos ? q : q.eq("period_label", periodLabel)
     const [reportsRes, campaignsRes, flowsRes, summaryRes] = await Promise.all([
       admin.from("omnisend_reports_cache").delete().eq("store_id", storeId),
-      admin.from("omnisend_campaign_metrics").delete().eq("store_id", storeId),
-      admin.from("omnisend_flow_metrics").delete().eq("store_id", storeId),
-      admin.from("store_revenue_summary").delete().eq("store_id", storeId),
+      escopo(admin.from("omnisend_campaign_metrics").delete().eq("store_id", storeId)),
+      escopo(admin.from("omnisend_flow_metrics").delete().eq("store_id", storeId)),
+      escopo(admin.from("store_revenue_summary").delete().eq("store_id", storeId)),
     ])
 
     const cleared = {
@@ -83,11 +126,16 @@ export async function POST(
       throw new AppError("Loja sem Omnisend API key configurada", 400)
     }
 
+    const janela =
+      rawPeriod === "custom" && startDate && endDate
+        ? omnisendDateRange(startDate, endDate, (await fusoDaLojaDoBanco(admin, storeId)))
+        : null
     const syncResult = await syncOmnisendForStore({
       storeId,
       orgId,
       apiKey,
-      periodDays: 30,
+      periodDays,
+      ...(janela ? { startDate: janela.from, endDate: janela.to } : {}),
     })
 
     if (!syncResult.ok || !syncResult.data) {
@@ -101,7 +149,7 @@ export async function POST(
       admin,
       { id: storeId, org_id: orgId },
       syncResult.data,
-      "30d",
+      periodLabel,
     )
 
     log.info(`[ForceResync] Done for store ${storeId}`, {
@@ -114,6 +162,7 @@ export async function POST(
     return successResponse(request, {
       success: true,
       cleared,
+      period: { label: periodLabel, days: periodDays },
       sync: {
         platform: "omnisend",
         campaigns: syncResult.data.campaignRows.length,

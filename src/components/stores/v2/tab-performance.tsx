@@ -20,18 +20,36 @@
  */
 
 import { useMemo, useState } from "react"
-import useSWR from "swr"
+import useSWR, { mutate } from "swr"
 import { useRouter } from "next/navigation"
 import {
   DollarSign, Package, BarChart3, Users, Mail, Send, Target, Zap, X,
-  Calendar, ExternalLink, Download, Loader2,
+  Calendar, ExternalLink, Download, Loader2, RefreshCw,
 } from "lucide-react"
 import { useStoreOverview } from "@/lib/hooks/use-store-overview"
 import { Section, Badge, Btn, C, TNUM } from "./_primitives"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-type Range = "7d" | "30d" | "90d" | "1A" | "custom"
+/**
+ * Os rótulos são os CANÔNICOS da API e do banco, não os da tela.
+ *
+ * O chip de 1 ano mandava `period=1A`, que não existe em nenhum mapa de
+ * período (`PERIOD_DAYS[...] ?? 30`) e é recusado pelo CHECK
+ * `valid_period_label` da tabela — selecionar "1A" mostrava trinta dias e
+ * não gravava nada. Zero linhas `12m` em produção até set/2026: o filtro
+ * de um ano nunca funcionou. A tela continua escrevendo "1A"
+ * (`RANGE_LABEL`); quem viaja é `12m`.
+ */
+type Range = "7d" | "30d" | "90d" | "12m" | "custom"
+
+const RANGE_LABEL: Record<Range, string> = {
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "90d",
+  "12m": "1A",
+  custom: "Custom",
+}
 
 interface IntegrationStatus { connected: boolean }
 
@@ -100,7 +118,7 @@ interface CampaignsResponse { campaigns: CampaignRow[]; summary?: { totalRevenue
 interface FlowsResponse { flows: FlowRow[]; summary?: { totalRevenue?: number; liveFlows?: number }; currency?: string }
 
 function rangeDays(r: Range): number {
-  return r === "7d" ? 7 : r === "30d" ? 30 : r === "90d" ? 90 : r === "1A" ? 365 : 30
+  return r === "7d" ? 7 : r === "30d" ? 30 : r === "90d" ? 90 : r === "12m" ? 365 : 30
 }
 
 function fmtCurrency(value: number, currency: string, compact = false): string {
@@ -322,6 +340,12 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       <div className="flex items-center justify-between mb-[18px] gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeChip value={range} onChange={setRange} />
+          <SyncPeriodoButton
+            storeId={storeId}
+            period={range}
+            customStart={customStart}
+            customEnd={customEnd}
+          />
           {range === "custom" && (
             <div
               className="inline-flex items-center gap-1.5 px-2 py-1 rounded-[8px]"
@@ -453,10 +477,86 @@ export function TabPerformance({ storeId }: { storeId: string }) {
 
 // ─── Subcomponents ──────────────────────────────────
 
+/**
+ * Sincroniza O PERÍODO QUE ESTÁ NA TELA.
+ *
+ * O botão "Limpar cache" do topo da página rodava com 30 dias fixos e
+ * apagava o cache de todos os períodos: quem estava em 7 dias, 90 dias ou
+ * num intervalo personalizado sincronizava e não via mudança nenhuma — o
+ * que foi buscado não era o que estava aberto. Aqui o período viaja junto,
+ * e é por isso que este botão mora ao lado do seletor.
+ */
+function SyncPeriodoButton({
+  storeId,
+  period,
+  customStart,
+  customEnd,
+}: {
+  storeId: string
+  period: Range
+  customStart: string
+  customEnd: string
+}) {
+  const [rodando, setRodando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const sincronizar = async () => {
+    setRodando(true)
+    setErro(null)
+    try {
+      const res = await fetch(`/api/client-stores/${storeId}/force-resync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          period === "custom"
+            ? { period: "custom", start_date: customStart, end_date: customEnd }
+            : { period },
+        ),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || j?.data?.success === false) {
+        setErro(j?.error?.message ?? j?.error ?? `Falhou (HTTP ${res.status})`)
+        return
+      }
+      // Revalida só as chaves desta loja — as outras abas não precisam
+      // pagar por um clique aqui.
+      await mutate(
+        (key) => typeof key === "string" && key.includes(storeId),
+        undefined,
+        { revalidate: true },
+      )
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRodando(false)
+    }
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <button
+        onClick={sincronizar}
+        disabled={rodando}
+        title="Busca os dados deste período na plataforma agora"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium rounded-[8px] transition-all disabled:opacity-60"
+        style={{ background: C.white, border: `1px solid ${C.border}`, color: C.g700 }}
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${rodando ? "animate-spin" : ""}`} />
+        {rodando ? "Sincronizando…" : "Sincronizar período"}
+      </button>
+      {erro && (
+        <span className="text-[11.5px]" style={{ color: C.neg }} title={erro}>
+          {erro.length > 48 ? `${erro.slice(0, 48)}…` : erro}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function DateRangeChip({ value, onChange }: { value: Range; onChange: (v: Range) => void }) {
   return (
     <div className="inline-flex p-[3px] rounded-[8px]" style={{ background: C.g50, border: `1px solid ${C.border}` }}>
-      {(["7d", "30d", "90d", "1A", "custom"] as Range[]).map((r) => {
+      {(["7d", "30d", "90d", "12m", "custom"] as Range[]).map((r) => {
         const active = r === value
         return (
           <button
@@ -470,7 +570,7 @@ function DateRangeChip({ value, onChange }: { value: Range; onChange: (v: Range)
             }}
           >
             {r === "custom" && <Calendar className="h-3 w-3" />}
-            {r === "custom" ? "Custom" : r}
+            {RANGE_LABEL[r]}
           </button>
         )
       })}
