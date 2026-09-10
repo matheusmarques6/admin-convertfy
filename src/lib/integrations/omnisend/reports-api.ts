@@ -15,6 +15,7 @@
 import { logger } from "@/lib/logger"
 import { omnisendRequest, OMNISEND_API } from "./client"
 import { omnisendDateRange } from "./timezone"
+import { granularidadeParaJanela } from "@/lib/reports/periodo"
 
 const log = logger.child("OmnisendReportsAPI")
 
@@ -51,6 +52,12 @@ export async function fetchOmnisendCampaignReports(
   // Omnisend 2026-05-18). Pra "Apr 1..30" mandamos from=Apr 1 00:00 e
   // to=May 1 00:00 — ambos no mesmo offset da loja, batendo com dashboard.
   const { from, to } = omnisendDateRange(startDate, endDate, tzOffsetOuFuso)
+  // A Omnisend limita a granularidade pela largura da janela quando o
+  // intervalo é `custom`: 60 dias em `day`, 52 semanas em `week`, 12
+  // meses em `month`. `day` era fixo aqui, então qualquer relatório acima
+  // de 60 dias tomava 400, caía no `catch` e devolvia null — a receita
+  // por campanha simplesmente não era distribuída, sem nada em tela.
+  const granularity = granularidadeParaJanela(startDate, endDate)
 
   try {
     const resp = await omnisendRequest<ReportsResponse>(
@@ -74,7 +81,7 @@ export async function fetchOmnisendCampaignReports(
               ],
               dateRange: { interval: "custom", from, to },
               dimensions: [
-                { name: "timestamp", granularity: "day" },
+                { name: "timestamp", granularity },
                 { name: "marketingActivityID" },
               ],
               filters: [
@@ -98,7 +105,12 @@ export async function fetchOmnisendCampaignReports(
       return []
     }
 
-    return aggregateByActivity(rows)
+    // `byDate` só faz sentido em granularidade diária: acima de 60 dias o
+    // timestamp passa a ser o início da semana/mês, e casar a campanha
+    // pelo dia do envio contra esse bucket produziria atribuição ERRADA —
+    // pior que nenhuma. Sem byDate, quem consome cai na distribuição
+    // proporcional, que ao menos se declara estimativa.
+    return aggregateByActivity(rows, granularity === "day")
   } catch (err) {
     log.warn("[Reports] request failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -107,7 +119,11 @@ export async function fetchOmnisendCampaignReports(
   }
 }
 
-function aggregateByActivity(rows: Array<Record<string, unknown>>): OmnisendCampaignReport[] {
+function aggregateByActivity(
+  rows: Array<Record<string, unknown>>,
+  /** Preenche o mapa por dia (só válido com granularidade diária). */
+  comByDate = true,
+): OmnisendCampaignReport[] {
   const map = new Map<string, OmnisendCampaignReport>()
 
   for (const row of rows) {
@@ -135,7 +151,7 @@ function aggregateByActivity(rows: Array<Record<string, unknown>>): OmnisendCamp
         clicks: 0,
         attributedRevenue: 0,
         attributedOrders: 0,
-        byDate: new Map(),
+        ...(comByDate ? { byDate: new Map<string, number>() } : {}),
       }
       map.set(id, entry)
     }

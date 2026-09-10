@@ -159,12 +159,38 @@ describe("F2 — campanhas do período (não lifetime)", () => {
     expect(snap.kpis.total_campaigns).toBe(10)
   })
 
-  it("lista .slice(0,10) cheia nunca vira contagem (teto artificial)", () => {
+  it("sem overview, conta as campanhas ENVIADAS no período", () => {
     const src = clubeRockSources()
     delete (src.reportRes as Record<string, unknown>).overview
     const snap = build(src)
-    // 10 rows = lista possivelmente truncada → null (ausente), não 10
-    expect(snap.kpis.total_campaigns).toBeNull()
+    // A contagem deixou de sair do `.slice(0,10)` (onde 10 era teto
+    // artificial, não medida) e passou a sair da lista da API filtrada
+    // pelo período — as 10 do fixture foram enviadas em 06/06, dentro
+    // da janela, então 10 é a contagem REAL e não um teto.
+    expect(snap.kpis.total_campaigns).toBe(10)
+  })
+
+  it("campanha enviada fora da janela não conta nem soma", () => {
+    const src = clubeRockSources()
+    delete (src.reportRes as Record<string, unknown>).overview
+    // Uma de abril entra na resposta da API (o sync persiste a conta
+    // inteira) e não pode entrar no relatório de junho — era assim que
+    // 872.858 envios apareciam num relatório de um dia.
+    const lista = (src.campaignsRes as { campaigns: unknown[] }).campaigns
+    lista.push({
+      id: "abril",
+      name: "Campanha de abril",
+      sendTime: "2026-04-15T10:00:00Z",
+      recipients: 500_000,
+      delivered: 500_000,
+      opened: 1,
+      clicked: 0,
+      conversions: 0,
+      revenue: 0,
+    })
+    const snap = build(src)
+    expect(snap.kpis.total_campaigns).toBe(10)
+    expect(snap.campaigns.some((c) => c.id === "abril")).toBe(false)
   })
 
   it("total_flows prefere overview.liveFlows", () => {

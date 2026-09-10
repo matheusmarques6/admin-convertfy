@@ -18,11 +18,19 @@ import {
   buildReportSnapshot,
 } from "@/lib/services/report-snapshot.service"
 import { assertStoreInUserOrg } from "@/lib/api/store-org-guard"
+import { avaliarPeriodo } from "@/lib/reports/periodo"
 
 export const dynamic = "force-dynamic"
-// fetchSnapshotSources usa timeout de 75s por fetch (paralelo) + chamada
-// opcional à Reports API — 120s dá margem, no padrão do resync (90s).
-export const maxDuration = 120
+// Os endpoints que esta rota consome declaram `maxDuration = 300`. Ela
+// declarava 120 e abortava cada fetch em 75s: quando o fan-out se
+// aproximava do teto, o runtime matava a função DEPOIS do insert e o
+// browser recebia "Failed to fetch" para um relatório que existia no
+// banco (medido na Blessed Choice, 09/09/2026 20:19). Agora o teto é o
+// mesmo dos consumidos e o fan-out roda com orçamento declarado, que
+// deixa margem para gravar e responder.
+export const maxDuration = 300
+/** Quanto o fan-out pode consumir dos 300s, deixando folga para gravar. */
+const ORCAMENTO_FANOUT_MS = 210_000
 
 const sectionsSchema = z.object({
   resumo: z.boolean().default(true),
@@ -114,38 +122,29 @@ export async function POST(
     }
     const body = parsed.data
 
+    // O período é validado ANTES de custar uma geração: invertido, no
+    // futuro ou longo demais não produz relatório parcial, produz
+    // relatório de nada. O Zod só garantia "string não vazia", então
+    // 30/09 → 01/09 passava e gerava um snapshot vazio sem explicação.
+    const hoje = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date())
+    const periodo = avaliarPeriodo(body.period_start, body.period_end, hoje)
+    if (!periodo.ok) throw new AppError(periodo.erro ?? "Período inválido", 400)
+
     // Deriva month_label se nao veio
     const ps = new Date(body.period_start + "T12:00:00")
     const monthLabel =
       body.month_label ||
       `${MONTH_LABELS[ps.getMonth()]} ${ps.getFullYear()}`
 
-    // Snapshot real — o módulo compartilhado (report-snapshot.service) faz
-    // o fan-out para os endpoints internos + caches e resolve os KPIs com
-    // presença explícita (F1-F5 da auditoria). Se algo falhar (sem
-    // credencial, rate limit), cai pra snapshot parcial (campos null) pra
-    // nao bloquear a criacao do relatorio.
-    const sources = await fetchSnapshotSources({
-      origin: request.nextUrl.origin,
-      cookie: request.headers.get("cookie") ?? "",
-      storeId,
-      periodStart: body.period_start,
-      periodEnd: body.period_end,
-      admin,
-    })
-    const core = buildReportSnapshot({
-      sources,
-      periodStart: body.period_start,
-      periodEnd: body.period_end,
-    })
-
-    const snapshot = {
-      ...core,
-      tone: body.tone,
-      insights: {},
-    }
-
-    // Pre-flight: existe relatorio do mesmo mes?
+    // Pre-flight ANTES do snapshot: montar o snapshot custa o fan-out
+    // inteiro (minutos, e chamadas contra o limite diário da plataforma).
+    // Descobrir só no fim que já existia relatório daquele mês gastava
+    // tudo isso para responder 409.
     const { data: existing } = await admin
       .from("client_monthly_reports")
       .select("id, status, generated_at")
@@ -168,6 +167,36 @@ export async function POST(
         },
         { status: 409 },
       )
+    }
+
+    // Snapshot real — o módulo compartilhado (report-snapshot.service) faz
+    // o fan-out para os endpoints internos + caches e resolve os KPIs com
+    // presença explícita (F1-F5 da auditoria). Se algo falhar (sem
+    // credencial, rate limit), cai pra snapshot parcial (campos null) pra
+    // nao bloquear a criacao do relatorio.
+    const sources = await fetchSnapshotSources({
+      origin: request.nextUrl.origin,
+      cookie: request.headers.get("cookie") ?? "",
+      storeId,
+      periodStart: body.period_start,
+      periodEnd: body.period_end,
+      admin,
+      budgetMs: ORCAMENTO_FANOUT_MS,
+    })
+    const core = buildReportSnapshot({
+      sources,
+      periodStart: body.period_start,
+      periodEnd: body.period_end,
+    })
+
+    const snapshot = {
+      ...core,
+      tone: body.tone,
+      insights: {},
+      // As ressalvas do período viajam com o snapshot: quem abrir o
+      // relatório meses depois precisa saber que o dia corrente estava em
+      // andamento quando ele foi tirado.
+      period_notes: periodo.avisos,
     }
 
     // Se replace=true e existe, deleta o antigo antes do insert.
@@ -216,7 +245,11 @@ export async function POST(
       }
       throw new AppError(`Erro ao salvar relatório: ${error.message}`, 500)
     }
-    return successResponse(request, { id: data.id, month_label: monthLabel })
+    return successResponse(request, {
+      id: data.id,
+      month_label: monthLabel,
+      avisos: periodo.avisos,
+    })
   } catch (error) {
     return errorResponse(request, error, "store-reports-create")
   }

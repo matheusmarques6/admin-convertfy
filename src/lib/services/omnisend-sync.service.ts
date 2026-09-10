@@ -35,7 +35,7 @@ import {
   getOmnisendBrand,
   sleep,
 } from "@/lib/integrations/omnisend/client"
-import { ehFusoValido } from "@/lib/integrations/omnisend/timezone"
+import { ehFusoValido, offsetForTimezone } from "@/lib/integrations/omnisend/timezone"
 import { isStoreCurrency } from "@/lib/constants/currencies"
 import { COUNTRY_TIMEZONE } from "@/lib/constants/onboarding"
 
@@ -1786,9 +1786,15 @@ async function doSyncOmnisendForStore(params: {
       // do fuso. Antes o caller (buildFromLiveFetch) derivava o offset da
       // currency, que divergia do country em lojas nao-BR. Agora e uniforme.
       const timezone = await resolveStoreTimezone(storeId)
-      const offset = getTimezoneOffset(timezone)
-      startDate = `${params.startDate.slice(0, 10)}T00:00:00${offset}`
-      endDate = `${params.endDate.slice(0, 10)}T00:00:00${offset}`
+      // O offset é resolvido POR PONTA e PELA DATA do período, não pela
+      // data de hoje: `getTimezoneOffset` pergunta o offset de AGORA, e
+      // um relatório de janeiro gerado em julho saía uma hora deslocado
+      // na Europa — o corte da meia-noite caía no dia errado e a receita
+      // migrava de dia. É a mesma regra que `omnisendDateRange` aplica.
+      const inicio = params.startDate.slice(0, 10)
+      const fim = params.endDate.slice(0, 10)
+      startDate = `${inicio}T00:00:00${offsetForTimezone(timezone, inicio)}`
+      endDate = `${fim}T00:00:00${offsetForTimezone(timezone, fim)}`
     } else {
       // Janela = painel "Last N days": inicio em 00:00 do FUSO DA LOJA
       // (hoje-(periodDays-1)) ate AGORA (dia corrente parcial incluido — o

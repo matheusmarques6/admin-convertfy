@@ -4988,5 +4988,92 @@ campo longo sinalizado. Os três slides `dado` da transcrição viraram
 espremida no lugar do número.
 
 
+## Relatório e dashboard: o período era decorativo (set/2026)
+
+Dois sintomas relatados juntos — "gerar relatório dá **Erro de rede: Failed
+to fetch**" e "no dashboard, filtrar outra data que não seja 30 dias não
+sincroniza". Medido no banco antes de escrever qualquer linha, e são quatro
+defeitos independentes, todos silenciosos.
+
+**1. O relatório de um dia trazia o histórico da conta.** A régua da
+plataforma está na documentação da Reports API, na letra: *"Results are
+grouped by the date a campaign was **sent** … This matches how Omnisend
+in-app reports work."* O `report-builder` aplicava esse corte; o
+**snapshot do relatório não**. Medido na Blessed Choice para 09/09 a
+09/09: **78 campanhas** gravadas sob o rótulo do dia, **75 delas enviadas
+fora dele** (a mais antiga de 15/04), somando **3.751.247 envios** — e o
+snapshot publicou **872.858 envios com 2,5% de abertura** para um único
+dia. O número não era "um pouco a mais": o `delivered` de quem está fora
+da janela é o total HISTÓRICO daquela campanha, então o relatório falava
+de outro assunto. `lib/reports/periodo.ts` (puro, 15 testes) é a régua
+única — `campanhaNoPeriodo` exige `sent` + envio na janela, e **campanha
+sem data de envio fica FORA**: assumir que é do período é exatamente o
+erro que trouxe abril para setembro. Aplicada nos dois lados que o
+snapshot lê (o cache, cuja query agora filtra no SQL com um dia de folga
+só para o `limit` não descartar borda, e a lista da API). **Flows não
+entram nessa régua** — são contínuos, não têm data de envio, e filtrar
+por ela apagaria todos.
+
+**2. O relatório NASCIA e a tela dizia erro.** O de 09/09 está no banco,
+gravado às 20:19:23, com o alerta na cara do usuário. O insert acontece
+antes da resposta, então "a conexão caiu" nunca significou "não foi
+criado" — e a tentativa seguinte batia em *"já existe um relatório para
+Setembro 2026"*, sem explicação. A causa é uma incoerência de orçamento:
+os endpoints consumidos declaram `maxDuration = 300`, a rota que os
+consome declarava **120**, abortava cada fetch em 75s e ainda chamava a
+Reports API per-campaign **sem relógio nenhum** — perto do teto o runtime
+matava a função depois do insert. Agora o teto é o mesmo dos consumidos,
+o fan-out roda com **orçamento declarado** (`budgetMs`, 210s dos 300) que
+cada etapa consulta antes de gastar, plataforma sem credencial não é
+consultada (a loja não tem Shopify e o fetch saía assim mesmo), e o
+pre-check de duplicata subiu para **antes** do snapshot — descobrir no
+fim que o relatório já existia gastava o fan-out inteiro para responder
+409. No cliente, `AbortController` com teto próprio e, em falha de rede,
+**a tela pergunta ao servidor se o relatório nasceu** antes de acusar
+erro.
+
+**3. O período nunca foi validado.** O Zod exigia "string não vazia": 30/09
+→ 01/09 passava e gerava um snapshot vazio sem dizer por quê.
+`avaliarPeriodo` recusa invertido, futuro e janela longa demais, e
+**aceita HOJE com aviso** — a documentação diz que só a última hora
+FECHADA está disponível, então o dia corrente é legítimo e parcial ao
+mesmo tempo. Os avisos viajam no snapshot (`period_notes`): quem abrir o
+relatório meses depois precisa saber que o dia ainda estava em andamento
+quando ele foi tirado.
+
+**4. "Não sincroniza" era literal.** Três causas somadas: (a) o chip de
+1 ano mandava `period=1A`, rótulo que **nenhum mapa de período conhece**
+(`PERIOD_DAYS[...] ?? 30`) e que o CHECK `valid_period_label` recusa —
+selecionar 1 ano mostrava trinta dias e não gravava nada; **zero linhas
+`12m` em produção** confirmam que esse filtro nunca funcionou. A tela
+continua escrevendo "1A", quem viaja é `12m`. (b) O botão de sincronizar
+rodava **30 dias fixos** e apagava o cache de TODOS os rótulos: quem
+estava em 7 dias, 90 dias ou num período personalizado via o seu cache
+ser apagado sem ser reposto. Agora a rota aceita o período, limpa só o
+que vai repor, e existe um **"Sincronizar período" ao lado do seletor** —
+é ali que o usuário está quando percebe. (c) `force_refresh=true` era
+aceito, documentado e **ignorado** no ramo Omnisend de campanhas e flows:
+quem pedia dado novo recebia cache de até 35 minutos. Como o relatório
+pede `force_refresh`, é isso que o fazia cair no caminho cacheado, onde
+`deliverability` é null — e sem ela o snapshot soma linhas em vez de usar
+os agregados send-date da Reports API. Junto veio um quarto: os flows
+normalizavam o rótulo **sem as datas**, então período personalizado era
+lido sob "30d" (o fallback defensivo) e o cache de trinta dias respondia
+a pergunta de outro período.
+
+**Granularidade tem teto, e passar dele falhava calado.**
+`fetchOmnisendCampaignReports` pedia `granularity: "day"` sempre; a
+Omnisend aceita no máximo **60 dias** nessa granularidade e devolve 400
+acima disso, que morria num `catch` — relatório de 90 dias ficava sem
+receita por campanha e nada aparecia em tela. `granularidadeParaJanela`
+escolhe pela largura, e **`byDate` só é preenchido em granularidade
+diária**: acima disso o timestamp é o início da semana ou do mês, e casar
+a campanha pelo dia do envio contra esse bucket produziria atribuição
+ERRADA — pior que nenhuma, porque a estimativa proporcional ao menos se
+declara estimativa. No mesmo eixo, o offset do range custom do sync vinha
+de `getTimezoneOffset`, que pergunta o offset de AGORA: relatório de
+janeiro gerado em julho saía uma hora deslocado na Europa e a receita
+migrava de dia. Agora é `offsetForTimezone`, por ponta e pela DATA.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

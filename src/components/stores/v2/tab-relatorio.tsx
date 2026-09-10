@@ -30,6 +30,7 @@ import {
   Plus, X, Zap, Filter, Calendar, Check, Edit3, Send, Layers, Trash2, Loader2,
 } from "lucide-react"
 import { Section, Badge, Btn, Avatar, C, TNUM, StoreLogo } from "./_primitives"
+import { avaliarPeriodo } from "@/lib/reports/periodo"
 
 interface Report {
   id: string
@@ -405,6 +406,44 @@ interface DuplicateConflict {
   month_label: string
 }
 
+/** Hoje em `YYYY-MM-DD` no fuso de quem está olhando a tela. */
+function todayYMD(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** Teto de espera da geração no navegador (a rota declara 300s). */
+const GERACAO_TIMEOUT_MS = 290_000
+
+/**
+ * O relatório deste período já existe no servidor?
+ *
+ * Chamado quando o POST morreu sem resposta. O insert acontece ANTES da
+ * resposta, então "a conexão caiu" não é o mesmo que "não foi criado" —
+ * e tratar como erro fazia o usuário tentar de novo e receber "já existe
+ * um relatório para Setembro 2026" sem entender por quê.
+ */
+async function relatorioRecemCriado(
+  storeId: string,
+  periodStart: string,
+  periodEnd: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/stores/${storeId}/reports`)
+    if (!res.ok) return false
+    const j = await res.json()
+    const lista: Report[] = j?.data?.reports ?? j?.reports ?? []
+    return lista.some(
+      (r) =>
+        String(r.period_start).slice(0, 10) === periodStart.slice(0, 10) &&
+        String(r.period_end).slice(0, 10) === periodEnd.slice(0, 10),
+    )
+  } catch {
+    return false
+  }
+}
+
 function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClose: () => void; onCreated: () => void }) {
   const router = useRouter()
   const now = new Date()
@@ -446,7 +485,18 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
       alert("Selecione o período (início e fim) antes de gerar o relatório.")
       return
     }
+    const check = avaliarPeriodo(periodStart, periodEnd, todayYMD())
+    if (!check.ok) {
+      alert(check.erro ?? "Período inválido.")
+      return
+    }
     setSubmitting(true)
+    // A geração pode levar minutos (fan-out + plataforma). Sem relógio
+    // próprio, o navegador cortava sozinho e a única coisa que sobrava
+    // era "Failed to fetch" — inclusive quando o relatório TINHA sido
+    // gravado do outro lado.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), GERACAO_TIMEOUT_MS)
     try {
       const payload: Record<string, unknown> = {
         period_start: periodStart,
@@ -463,11 +513,18 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       })
       const j = await res.json().catch(() => ({}))
 
       if (res.ok) {
         setDuplicateConflict(null)
+        const avisos: string[] = Array.isArray(j?.data?.avisos)
+          ? j.data.avisos
+          : Array.isArray(j?.avisos)
+            ? j.avisos
+            : []
+        if (avisos.length > 0) alert(avisos.join("\n\n"))
         onCreated()
         onClose()
         return
@@ -487,8 +544,26 @@ function GenerateModal({ storeId, onClose, onCreated }: { storeId: string; onClo
       const msg = j?.error?.message ?? j?.error ?? j?.message ?? `Falha ao gerar (HTTP ${res.status})`
       alert(typeof msg === "string" ? msg : "Falha ao gerar relatório")
     } catch (err) {
-      alert(`Erro de rede: ${err instanceof Error ? err.message : String(err)}`)
+      // A conexão caiu — mas a gravação pode ter acontecido: o servidor
+      // insere o relatório e SÓ ENTÃO responde, então uma resposta perdida
+      // não significa trabalho perdido. Foi o caso real de 09/09/2026: a
+      // tela disse "Erro de rede" para um relatório que estava no banco, e
+      // a tentativa seguinte batia em "já existe". Antes de acusar erro,
+      // perguntamos ao servidor se ele nasceu.
+      const criado = await relatorioRecemCriado(storeId, periodStart, periodEnd)
+      if (criado) {
+        onCreated()
+        onClose()
+        return
+      }
+      const abortou = err instanceof DOMException && err.name === "AbortError"
+      alert(
+        abortou
+          ? "A geração passou do tempo de espera e o relatório não foi criado. Tente de novo — períodos longos e o primeiro relatório do dia demoram mais."
+          : `Erro de rede: ${err instanceof Error ? err.message : String(err)}`,
+      )
     } finally {
+      clearTimeout(timer)
       setSubmitting(false)
     }
   }
