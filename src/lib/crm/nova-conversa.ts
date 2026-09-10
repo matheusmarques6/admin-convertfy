@@ -19,6 +19,12 @@
  * este módulo é a leitura dela do lado da UI, isolada e testável, para que a
  * tela nunca ofereça um caminho que o provedor recusa.
  *
+ * O que o modal faz com isso: abre a CONVERSA no canal escolhido, e o
+ * envio acontece no composer completo do inbox (texto, imagem, áudio,
+ * arquivo, template). Pedir a mensagem dentro do modal limitaria a
+ * primeira mensagem a texto — justamente a que costuma ser um áudio ou
+ * um catálogo.
+ *
  * Módulo PURO — sem I/O, sem React.
  */
 
@@ -140,14 +146,41 @@ export function motivoDeNenhumCanal(sep: CanaisParaAbertura): string | null {
 }
 
 /**
- * O texto que explica ao atendente o que vai acontecer, por caminho.
+ * O que o atendente vai encontrar quando a conversa abrir.
  *
- * O do Cloud precisa dizer POR QUE só template: sem isso a restrição parece
- * capricho do sistema, e a primeira reação é procurar a caixa de texto que
- * "sumiu".
+ * A conversa abre no composer COMPLETO do inbox, então o texto tem de
+ * dizer o que estará disponível lá — e, no Cloud, POR QUE a caixa de
+ * texto aparece bloqueada. Sem isso a restrição parece defeito, e a
+ * primeira reação é procurar o que "sumiu".
  */
 export function explicacaoDoCaminho(caminho: CaminhoDeAbertura): string {
   return caminho === "texto_livre"
-    ? "Este número envia mensagem livre. A conversa aparece no inbox assim que a primeira mensagem sair."
-    : "Este é um número oficial da Meta: a primeira mensagem para quem nunca escreveu só pode ser um template aprovado. Depois que a pessoa responder, a conversa libera texto livre por 24h."
+    ? "A conversa abre pronta para enviar: texto, imagem, áudio, arquivo e respostas rápidas."
+    : "Número oficial da Meta: como ninguém escreveu ainda, a janela de 24h está fechada e a conversa abre com envio de TEMPLATE. Quando a pessoa responder, libera texto, imagem e áudio por 24h."
+}
+
+/** O que a tela mostra no lugar da lista de canais. */
+export type EstadoDaLista =
+  | { tipo: "ok" }
+  | { tipo: "carregando"; texto: string }
+  | { tipo: "aviso"; texto: string }
+
+/**
+ * Decide entre "ainda não sei" e "não há canal".
+ *
+ * A lista de canais chega por SWR: no primeiro render ela é VAZIA, e
+ * `motivoDeNenhumCanal` responderia "Nenhum canal conectado" — mandando
+ * configurar o que já está configurado. É a mesma régua do
+ * `connection_state` desconhecido: ausência de informação não é ausência
+ * de canal.
+ *
+ * Com canal já disponível o carregamento não segura nada — o dado que
+ * importa chegou, e travar a tela por causa de uma revalidação em
+ * andamento só atrasaria quem quer mandar mensagem.
+ */
+export function estadoDaLista(sep: CanaisParaAbertura, carregando = false): EstadoDaLista {
+  if (sep.disponiveis.length > 0) return { tipo: "ok" }
+  if (carregando) return { tipo: "carregando", texto: "Carregando os canais conectados…" }
+  const motivo = motivoDeNenhumCanal(sep)
+  return motivo ? { tipo: "aviso", texto: motivo } : { tipo: "ok" }
 }
