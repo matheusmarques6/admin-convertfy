@@ -171,31 +171,54 @@ lista. Alternativa mínima: escolher da lista o valor **mais próximo** da
 proporção real, em vez do herdado do bloco/flow — já cortaria o erro de
 38 % para ~8 %.
 
-### A5 · A hero foi gerada, paga e jogada fora 🔴
+### A5 · ~~A hero foi gerada, paga e jogada fora~~ — **ERRADO** ✅
 
-**Evidência.** `parsed_output` do `image_format`:
+**Retratado em 10/09.** O item dizia que a hero era gerada e descartada,
+citando três `token_nao_encontrado` do `image_format`:
 
 ```
-1b77a2da  hero_flatlay_kit            → token_nao_encontrado → sem_lugar
-aa6bf304  hero_campanha_monocromatica → token_nao_encontrado → sem_lugar
-4ca1fa5a  section_image_alt           → token_nao_encontrado → sem_lugar
+1b77a2da  hero_flatlay_kit            → sem_lugar
+aa6bf304  hero_campanha_monocromatica → sem_lugar
+4ca1fa5a  section_image_alt           → sem_lugar
 ```
 
-No Innova Bay Welcome 1 a hero levou **240 s** e ~US$ 0,25, e o e-mail
-**abre sem imagem de topo** — começa direto no comparativo (confere com o
-seu print).
+Os três são de campos da HERO, e o `image-merge` **exclui a região da
+hero de propósito** (`image-merge.ts:16` — *"a imagem da hero é posse do
+agente de hero"*). O consumidor dela é outro: `hero_image_url`, via
+`imageMap`, lido pelo agente de hero.
 
-É a pendência já registrada no CLAUDE.md ("pular slot de imagem sem
-endereço no HTML"), agora atingindo a peça mais cara e mais visível.
+Verificado nos três batches: a URL gravada em `content.images` **está no
+HTML final**, e o `hero_report` de cada run diz `imagem: "aplicada"`. A
+hero funciona.
 
-### A6 · Três imagens pagas e descartadas por bloco repetido 🟠
+Dois erros de método meus produziram o item: li `sem_lugar` como perda
+sem checar quem mais consome aquela imagem, e conclui "hero vazia" de um
+`input_vars->>'hero_image_url'` vazio — quando o `input_vars` do
+`hero_section` guarda apenas 4 chaves e essa não é uma delas.
+
+**O que sobrou de verdadeiro** está no A6, e foi corrigido.
+
+**Cai junto o B3** ("sem hero no Innova Bay Welcome 1"), que era
+consequência deste.
+
+### A6 · Três imagens pagas e descartadas por bloco repetido ✅ corrigido
 
 **Evidência.** Hero Boxers: **6 runs de selo** (3 por bloco) e apenas **3
-URLs distintas** no HTML — os dois blocos apontam para as mesmas imagens.
+URLs distintas** no HTML — os dois blocos apontavam para as mesmas.
 
 | geradas com sucesso | usadas no HTML | descartadas |
 |---|---|---|
 | 14 | 11 | **3** (~US$ 0,75) |
+
+**Causa (medida em 10/09).** Os slots eram agrupados por TOKEN apenas.
+Com a `body 3` nas posições 2 e 3, os `URL_SELO_1..3` dos dois blocos
+caíam no MESMO grupo: o campo do primeiro escrevia em `groupSlots` — ou
+seja, nos DOIS blocos — e os três campos do segundo davam
+`sem_lugar:token_nao_encontrado`. O bloco repetido exibia as imagens do
+vizinho.
+
+**Corrigido**: a chave do grupo é `(blockIndice, token)`. Token repetido
+DENTRO do bloco (espelho MSO, versão mobile) segue sendo um lugar só.
 
 ### A7 · `PANEL_2_MAIN_PHOTO` falhou 2× e não houve terceira 🟠
 
@@ -276,9 +299,10 @@ ocorrências em 14 dias** (cron `vault-lacunas-propostas`).
 cuecas, e o `copy_guidance` dela ("o que o vale entrega… CTA nomeia o
 produto") é o que viaja como `purpose` para o n8n escrever a copy.
 
-### B3 · Sem hero no Innova Bay Welcome 1 🔴
+### B3 · ~~Sem hero no Innova Bay Welcome 1~~ — **ERRADO** ✅
 
-Consequência direta do A5 — o e-mail não tem abertura visual.
+Consequência do A5, retratado junto: a hero tem imagem, e ela está no
+HTML final.
 
 ---
 
@@ -503,6 +527,8 @@ Batch `902b757d`. O e-mail fica sem assunto gerado.
 
 Ordenada por (tamanho do estrago) ÷ (custo do conserto):
 
+Status em 10/09 — **6 corrigidos**: A3, A4, A6, C1, D1 e A1.
+
 | # | item | onde | tamanho |
 |---|---|---|---|
 | 1 | **C1** — preencher o href do CTA com a URL da loja | `attr-token-vocabulary` + `applyStructuralFills` | ~20 linhas |
@@ -510,7 +536,7 @@ Ordenada por (tamanho do estrago) ÷ (custo do conserto):
 | 3 | **A4** — proporção do slot em vez da lista fechada | `aspect-ratio.ts` | ~30 linhas |
 | 4 | **D1** — 402 in-flight vira retryable | `openrouter-invoke.ts` | ~15 linhas |
 | 5 | **A1** — hex da referência não vira "cor primária" | builder de imagem **ou** biblioteca | média |
-| 6 | **A5** — slot sem endereço no HTML não gera | `phase2-runner` (buildImageWorklist) | ~20 linhas |
+| 6 | ~~**A5**~~ — diagnóstico errado; o real era o **A6**, feito | `slot-finder` | ✅ |
 | 7 | **D3** — repetir sem `reasoning` quando o provedor exige | `openrouter-invoke.ts` | ~10 linhas |
 | 8 | **B1** — proibir repetição adjacente | `repeticao.ts` | ~10 linhas |
 | 9 | **A8** — exigir `alt` do agente de imagem | prompt + chain | pequena |
