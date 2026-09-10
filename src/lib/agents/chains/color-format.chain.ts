@@ -31,11 +31,11 @@ import {
   type PromptSegment,
 } from "../shared/prompt-provenance"
 import { COLOR_FORMAT_VAR_ORIGINS } from "../html/format-context"
-import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
-import { corteDeRaciocinio } from "../model-capabilities"
-import { parseOps, type FormatOp } from "../html/apply-patches"
+import { invokeFormatModel, truncou, type FormatChainConfig } from "./format-invoke"
+import { corteParaStepMecanico } from "../model-capabilities"
+import { OpsParseError, parseOps, type FormatOp } from "../html/apply-patches"
 import { parsePlanoDeCor, type PlanoDeCor } from "../html/plano-de-cor"
-import { withUsage } from "./step-usage"
+import { attachUsage, withUsage } from "./step-usage"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 import {
   ALCADA,
@@ -202,6 +202,14 @@ export interface InvokeColorFormatResult {
   /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
   promptSegments: PromptSegment[] | null
   rawOutput: string
+  /**
+   * Por que parou e quanto foi raciocínio. Sobem para a run porque a
+   * diferença entre `tokens_output` e o tamanho do texto é o que separa
+   * "escreveu demais" de "pensou demais" — e essa conta, feita à mão,
+   * foi o que revelou o truncamento de 10/09.
+   */
+  finishReason?: string
+  reasoningTokens?: number
 }
 
 export async function invokeColorFormatChain(input: {
@@ -250,7 +258,7 @@ export async function invokeColorFormatChain(input: {
     // Step mecânico (output = JSON pequeno de ops): thinking do GLM só
     // adiciona minutos. Mas o corte vale SÓ para quem aceita — mandá-lo ao
     // Fable derruba a chamada com 400. FORMAT_OPS_REASONING=on re-liga.
-    ...corteDeRaciocinio(config.model),
+    ...corteParaStepMecanico(config.model),
   })
 
   // parseOps lança OpsParseError (retryable; 2ª falha → fail-open no runner).
@@ -267,6 +275,29 @@ export async function invokeColorFormatChain(input: {
     costUsd: res.costUsd,
     renderedPrompt: userMessage,
     promptSegments,
+    // A resposta rejeitada viaja no erro: é a única coisa capaz de
+    // responder "o que ele deu de output" quando o parser recusa.
+    rawOutput: res.text,
+    ...(res.finishReason ? { finishReason: res.finishReason } : {}),
+    ...(typeof res.reasoningTokens === "number"
+      ? { reasoningTokens: res.reasoningTokens }
+      : {}),
+  }
+  // Resposta CORTADA no teto não é JSON malformado: é JSON que não coube.
+  // Sem esta distinção o erro sai como "output sem objeto JSON" e manda
+  // investigar o parser ou o prompt, quando o que falta é orçamento de
+  // saída — foi o que aconteceu em 10/09 e custou uma chamada de 190s.
+  if (truncou(res.finishReason)) {
+    throw attachUsage(
+      new OpsParseError(
+        `resposta truncada no teto de ${config.max_tokens} tokens de saída` +
+          (typeof res.reasoningTokens === "number"
+            ? ` (${res.reasoningTokens} deles em raciocínio)`
+            : "") +
+          " — o modelo não terminou o JSON",
+      ),
+      usage,
+    )
   }
   const plano = withUsage(usage, () => parsePlanoDeCor(res.text))
   const vazio =
@@ -300,5 +331,9 @@ export async function invokeColorFormatChain(input: {
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,
+    ...(res.finishReason ? { finishReason: res.finishReason } : {}),
+    ...(typeof res.reasoningTokens === "number"
+      ? { reasoningTokens: res.reasoningTokens }
+      : {}),
   }
 }

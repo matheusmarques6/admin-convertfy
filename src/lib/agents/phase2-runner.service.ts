@@ -2228,15 +2228,20 @@ async function executeFormatStep<T>(p: {
       // Erros tipados carregam o output CRU (HtmlTruncatedError /
       // HeroOutputInvalidError / OpsParseError) — persistido no run pra o
       // "OUTPUT BRUTO" do painel mostrar ONDE o modelo parou.
+      const usage = usageOf(err)
+      // A resposta rejeitada, por duas portas: alguns erros a carregam em
+      // `.raw`; os demais a trazem no consumo grudado (step-usage). Sem a
+      // segunda, a run de erro grava `raw_output = null` e a pergunta que
+      // mais importa depois de "output sem objeto JSON" — *o que ele
+      // respondeu?* — fica sem resposta no banco. Foi o caso de 10/09.
       const raw =
-        err instanceof Error && typeof (err as { raw?: unknown }).raw === "string"
+        (err instanceof Error && typeof (err as { raw?: unknown }).raw === "string"
           ? ((err as { raw?: string }).raw ?? "")
-          : ""
+          : "") || (usage?.rawOutput ?? "")
       // O modelo respondeu e o parser rejeitou: a chamada foi PAGA. O chain
       // gruda o consumo no erro (step-usage) justamente para o run de erro
       // não fechar com 0 token e $0 — e para o prompt rejeitado ficar
       // disponível, que é o único insumo de debug que importa aqui.
-      const usage = usageOf(err)
       log.error("phase2.fmt.step_error", {
         emailId,
         agent: p.agent,
@@ -3814,6 +3819,14 @@ async function runFormattingChain(p: {
             // este e-mail ficou assim" não tinha resposta. Em `shadow` é o
             // único registro que existe — nada foi aplicado.
             color_plano_mode: modo,
+            // Por que o modelo parou e quanto gastou pensando. Um step
+            // mecânico que gasta 90% da saída em raciocínio é caro e fica a
+            // um empurrão do teto — sem estes dois campos isso só aparece
+            // depois de o JSON vir cortado.
+            ...(r.finishReason ? { finish_reason: r.finishReason } : {}),
+            ...(typeof r.reasoningTokens === "number"
+              ? { reasoning_tokens: r.reasoningTokens }
+              : {}),
             ...(r.plano ? { plano_de_cor: r.plano } : { formato: "ops_legado" }),
             ...(traducao.descartes.length > 0
               ? { plano_descartes: traducao.descartes }
