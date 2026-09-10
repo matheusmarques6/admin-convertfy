@@ -23,6 +23,36 @@ const w1 = parseIntentContract({ modo: "quebra_de_objecao", exige_dominante_da_c
 const w2 = parseIntentContract({ modo: "varredura_de_objecoes", n_objecoes: [2, 3], aliviadores_vetados: ["prova_de_terceiro"] })!
 const w3 = parseIntentContract({ modo: "quebra_de_objecao", profundidade_minima: "mecanismo", permite_reataque: true, veiculos_exigidos: ["origem_da_marca", "economia_do_preco", "operacao_por_pedido"] })!
 const w4 = parseIntentContract({ modo: "confirmacao_por_terceiros" })!
+const w5 = parseIntentContract({ modo: "varredura_de_objecoes", n_objecoes: [4, 5] })!
+
+/** Uma objeção por risco de `obj_N`, para montar catálogos de tamanho variável. */
+function obj(objecao: string, tipo_de_risco: string, aliviador: string) {
+  return { objecao, tipo_de_risco, dimensao_confianca: "competencia", aliviador, tratamento: "t",
+    flows_elegiveis: ["welcome"], lastro_operacional: { afirmacao: "x" }, severidade: 3, evidencia: null, confianca: "media" }
+}
+
+/** A Hero Boxers depois dos filtros: 3 candidatas, e duas delas financeiras. */
+const escasso = normalizarCatalogo({
+  objecoes: [
+    obj("Loja nova, dá para confiar?", "seguranca", "reputacao_da_loja"),
+    obj("Caro para uma peça só", "financeiro", "comparacao_de_categoria"),
+    obj("E se não servir?", "adequacao", "garantia_de_devolucao"),
+    obj("Frete não compensa", "financeiro", "demonstracao_de_mecanismo"),
+  ],
+  veiculos_de_argumento: {}, medos_de_categoria: [],
+})
+
+const farto = normalizarCatalogo({
+  objecoes: [
+    obj("a", "seguranca", "reputacao_da_loja"),
+    obj("b", "financeiro", "comparacao_de_categoria"),
+    obj("c", "adequacao", "garantia_de_devolucao"),
+    obj("d", "desempenho", "demonstracao_de_mecanismo"),
+    obj("e", "tempo", "transparencia_de_politica"),
+    obj("f", "psicologico", "prova_por_volume"),
+  ],
+  veiculos_de_argumento: {}, medos_de_categoria: [],
+})
 
 describe("normalizarAlvo", () => {
   it("modo é do contrato; objeção/tratamento/risco/aliviador saem LITERAIS do catálogo pelo id; proibições do contrato sempre entram", () => {
@@ -63,6 +93,42 @@ describe("validarAlvo", () => {
     expect(erros).toMatch(/obj_1: aliviador "prova_de_terceiro" não é admissível/)
     const mesmoRisco = normalizarAlvo({ alvos: [{ id: "obj_2" }, { id: "obj_3" }] }, w2, catalogo, []).alvo
     expect(validarAlvo(mesmoRisco, w2, catalogo, [], "welcome")).toEqual([])
+  })
+
+  // Regressão da Hero Boxers (geração 7ec77a9b): o welcome-2 pede 4–5
+  // objeções, e depois de tirar a já atacada no #1 a loja tinha 3
+  // candidatas — o Seletor devolveu as três, o máximo possível, e foi
+  // reprovado por aritmética.
+  const jaObj1: JaAtacada[] = [{ id: "obj_1", email_number: 1, profundidade: "afirmacao", via: "primaria" }]
+
+  it("piso de n_objecoes cede ao catálogo: 3 candidatas com contrato 4–5 aprovam 3 alvos", () => {
+    expect(candidatasElegiveis(escasso, w5, "welcome", jaObj1)).toHaveLength(3)
+    const tres = normalizarAlvo({ alvos: [{ id: "obj_2" }, { id: "obj_3" }, { id: "obj_4" }] }, w5, escasso, jaObj1).alvo
+    expect(tres.alvos).toHaveLength(3)
+    expect(validarAlvo(tres, w5, escasso, jaObj1, "welcome")).toEqual([])
+  })
+
+  it("com candidatas de sobra o piso do contrato vale: 3 alvos entre 6 elegíveis reprovam", () => {
+    expect(candidatasElegiveis(farto, w5, "welcome", [])).toHaveLength(6)
+    const tres = normalizarAlvo({ alvos: [{ id: "obj_1" }, { id: "obj_2" }, { id: "obj_3" }] }, w5, farto, []).alvo
+    const erro = validarAlvo(tres, w5, farto, [], "welcome").join("\n")
+    expect(erro).toMatch(/n_objecoes: 3 alvo\(s\) — o contrato pede entre 4 e 5/)
+    expect(erro).not.toMatch(/piso desta loja/)
+  })
+
+  it("o teto continua sendo do contrato, com ou sem escassez", () => {
+    const seis = normalizarAlvo({ alvos: [{ id: "obj_1" }, { id: "obj_2" }, { id: "obj_3" }, { id: "obj_4" }, { id: "obj_5" }, { id: "obj_6" }] }, w5, farto, []).alvo
+    expect(seis.alvos).toHaveLength(6)
+    expect(validarAlvo(seis, w5, farto, [], "welcome").join("\n")).toMatch(/o contrato pede entre 4 e 5/)
+  })
+
+  it("naturezas repetidas só reprovam quando havia natureza sobrando", () => {
+    // 3 candidatas em 2 riscos: repetir financeiro é inevitável.
+    const inevitavel = normalizarAlvo({ alvos: [{ id: "obj_2" }, { id: "obj_3" }, { id: "obj_4" }] }, w5, escasso, jaObj1).alvo
+    expect(validarAlvo(inevitavel, w5, escasso, jaObj1, "welcome")).toEqual([])
+    // Os dois financeiros deixando a adequação de fora: aí é escolha.
+    const evitavel = normalizarAlvo({ alvos: [{ id: "obj_2" }, { id: "obj_4" }] }, w5, escasso, jaObj1).alvo
+    expect(validarAlvo(evitavel, w5, escasso, jaObj1, "welcome").join("\n")).toMatch(/naturezas diferentes: obj_2 e obj_4/)
   })
 
   it("não repetir: sem permite_reataque reprova; com reataque a profundidade tem de subir", () => {

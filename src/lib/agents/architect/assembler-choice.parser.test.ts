@@ -231,8 +231,10 @@ describe("dedup entre posições", () => {
     expect(r.desvios.map((d) => d.block_index)).toEqual([0])
   })
 
-  it("sem finalista livre, a repetição FICA e é registrada", () => {
+  it("sem finalista livre, a posição SAI da peça (10/09)", () => {
     // Posição com uma finalista só: trocar exigiria variante de outro tipo.
+    // Antes a repetida FICAVA; hoje a posição sai. Um bloco a menos é peça
+    // mais curta, o bloco repetido é peça que parece defeito.
     const semSaida = new Map<number, RankedChoice[]>([
       [0, [{ variant_id: "b1" }]],
       [1, [{ variant_id: "b1" }]],
@@ -242,12 +244,7 @@ describe("dedup entre posições", () => {
       { block_index: 1, variant_id: "b1", rank: 1 },
     ])
     const r = parse(raw, semSaida, PRODUCTS)
-    expect(decisionMap(r)).toEqual(
-      new Map([
-        [0, "b1"],
-        [1, "b1"],
-      ]),
-    )
+    expect(decisionMap(r)).toEqual(new Map([[0, "b1"]]))
     expect(r.dedup).toEqual([])
     expect(r.dedupSemAlternativa).toEqual([1])
   })
@@ -286,7 +283,9 @@ describe("dedup entre posições", () => {
   })
 
   // 07/09: fora de hero/products a repetição é escolha, não defeito.
-  it("dois corpos com a mesma variante ficam como o Curador rankeou", () => {
+  it("dois corpos com a mesma variante são desfeitos como qualquer outro", () => {
+    // 10/09: `body` deixou de ser exceção. O caso real que motivou — a
+    // `body 3` nas posições 2 e 3 do Welcome 1 da Hero Boxers.
     const raw = JSON.stringify([
       { block_index: 0, variant_id: "b1", rank: 1 },
       { block_index: 1, variant_id: "b1", rank: 1 },
@@ -295,11 +294,42 @@ describe("dedup entre posições", () => {
     expect(decisionMap(r)).toEqual(
       new Map([
         [0, "b1"],
-        [1, "b1"],
+        [1, "b2"],
       ]),
     )
-    expect(r.dedup).toEqual([])
+    expect(r.dedup).toEqual([{ block_index: 1, de: "b1", para: "b2" }])
     expect(r.dedupSemAlternativa).toEqual([])
+  })
+
+  // O caso REAL de 09/09 (batch 4ca1fa5a): o Curador do vault devolve UMA
+  // variante por posição (SHADOW_TOP_N = 1), então quando ele repete não há
+  // finalista livre para trocar. A `body 3` ficou nas posições 2 e 3 do
+  // Welcome 1 da Hero Boxers, e as 3 imagens do bloco repetido foram
+  // geradas, pagas e descartadas.
+  it("o caso da Hero Boxers: body repetida sem finalista livre sai da peça", () => {
+    const umaSo = new Map<number, RankedChoice[]>([
+      [0, [{ variant_id: "hero-10" }]],
+      [1, [{ variant_id: "body-3" }]],
+      [2, [{ variant_id: "body-3" }]],
+      [3, [{ variant_id: "produtos-7" }]],
+    ])
+    const raw = JSON.stringify([
+      { block_index: 0, variant_id: "hero-10", rank: 1 },
+      { block_index: 1, variant_id: "body-3", rank: 1 },
+      { block_index: 2, variant_id: "body-3", rank: 1 },
+      { block_index: 3, variant_id: "produtos-7", rank: 1 },
+    ])
+    const r = parse(raw, umaSo, ["hero", "body", "body", "products"])
+    // a peça sai com 3 posições, não 4 — e a hero continua de pé, que é o
+    // que `coberturaSuficiente` exige para a referência não ser recusada
+    expect(decisionMap(r)).toEqual(
+      new Map([
+        [0, "hero-10"],
+        [1, "body-3"],
+        [3, "produtos-7"],
+      ]),
+    )
+    expect(r.dedupSemAlternativa).toEqual([2])
   })
 
   it("duas heroes com a mesma variante continuam sendo desfeitas", () => {
@@ -311,13 +341,16 @@ describe("dedup entre posições", () => {
     expect(r.dedup).toEqual([{ block_index: 1, de: "b1", para: "b2" }])
   })
 
-  it("sem `sections` o dedupe não age — não dá para saber a seção", () => {
+  it("sem `sections` o dedupe AGE — a regra não depende mais da seção", () => {
+    // Enquanto `body` podia repetir, não saber a seção obrigava a não agir.
+    // Com a proibição geral (10/09) a seção deixou de ser entrada da
+    // decisão, e a ausência dela não é mais motivo para deixar passar.
     const raw = JSON.stringify([
       { block_index: 0, variant_id: "b1", rank: 1 },
       { block_index: 1, variant_id: "b1", rank: 1 },
     ])
     const r = parse(raw, doisFeeds)
-    expect(r.dedup).toEqual([])
-    expect(decisionMap(r).get(1)).toBe("b1")
+    expect(r.dedup).toEqual([{ block_index: 1, de: "b1", para: "b2" }])
+    expect(decisionMap(r).get(1)).toBe("b2")
   })
 })

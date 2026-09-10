@@ -31,6 +31,8 @@
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
+import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
 import {
   finishGenerationRun,
   resolveCostCents,
@@ -82,6 +84,8 @@ const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
 // 2ª tentativa só para JSON ilegível/truncado (o erro de parse volta ao
 // modelo). Não há mais reprovação de conteúdo.
 const MAX_ATTEMPTS = 2
+/** Teto que o relógio deste agente comporta (360s a ~90 tok/s). */
+const TETO_MAXIMO_ESTRUTURADOR = 32000
 
 /** Seções com variante ativa (contagem por código) + nº de produtos da loja. */
 interface CapacidadeBiblioteca {
@@ -410,7 +414,11 @@ export async function runEstruturador(
     // porquê por posição, mais diagnóstico, fio, fontes e descartes — tudo
     // prosa. A 1ª tentativa da Innova bateu o teto exato (4.096) e veio
     // cortada no meio do JSON.
-    max_tokens: cfgRow?.max_tokens ?? 8192,
+    max_tokens: cfgRow?.max_tokens ?? 32000,
+    // O relógio anda junto do teto: o global de 240s cortaria em ~21k
+    // tokens e a gente trocaria truncamento por timeout, que é a mesma
+    // perda com outro nome.
+    ...(tetoDeRelogioDoAgente("estruturador") ? { timeoutMs: tetoDeRelogioDoAgente("estruturador")! } : {}),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_ESTRUTURADOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_ESTRUTURADOR_USER,
   }
@@ -552,6 +560,14 @@ export async function runEstruturador(
   let userPromptFinal = ""
   let promptSegmentsFinal: PromptSegment[] | null = basePromptSegments
 
+  // Teto por tentativa (truncado sobe, o resto repete igual) e a evidência
+  // do provedor guardada fora do try — no catch ela já teria morrido.
+  let tetoDaVez = config.max_tokens
+  let ultimoFinish: string | null = null
+  let ultimoOut: number | null = null
+  let motivoDaDesistencia: string | null = null
+  const tetosTentados: number[] = []
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       // No retry (só parse ilegível/truncado), o erro volta para o modelo —
@@ -559,7 +575,10 @@ export async function runEstruturador(
       const vars = ultimoErro
         ? { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\nSEU OUTPUT ANTERIOR NÃO PÔDE SER LIDO: ${ultimoErro}` }
         : userVars
-      const res = await invokeAgent(config, vars, systemVars)
+      tetosTentados.push(tetoDaVez)
+      const res = await invokeAgent({ ...config, max_tokens: tetoDaVez }, vars, systemVars)
+      ultimoFinish = res.finishReason ?? null
+      ultimoOut = res.tokensOutput
       raw = res.raw
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
@@ -586,8 +605,8 @@ export async function runEstruturador(
         // isso em vez de "JSON inválido" é a diferença entre ajustar o
         // `max_tokens` e caçar um bug que não existe.
         throw new Error(
-          res.tokensOutput >= config.max_tokens
-            ? `resposta truncada no teto de ${config.max_tokens} tokens de saída — o JSON veio incompleto`
+          res.tokensOutput >= tetoDaVez
+            ? `resposta truncada no teto de ${tetoDaVez} tokens de saída — o JSON veio incompleto`
             : "resposta não é JSON válido",
         )
       }
@@ -615,6 +634,8 @@ export async function runEstruturador(
           produtos_da_loja: capacidade.produtosDaLoja,
           outros_emails_count: irmas.length,
           system_sha8: systemSha8,
+      tetos_tentados: tetosTentados,
+      motivo_da_desistencia: motivoDaDesistencia,
         },
         renderedPrompt: userPromptFinal,
         promptSegments: promptSegmentsFinal,
@@ -675,10 +696,26 @@ export async function runEstruturador(
     } catch (err) {
       ultimoErro = err instanceof Error ? err.message : String(err)
     }
+    const causa = classificarFalha({
+      finishReason: ultimoFinish,
+      tokensOutput: ultimoOut,
+      maxTokens: tetoDaVez,
+      erro: ultimoErro,
+    })
+    const plano = planejarRetentativa({
+      causa, tentativa: attempt, maxAttempts: MAX_ATTEMPTS,
+      tetoAtual: tetoDaVez, tetoMaximo: TETO_MAXIMO_ESTRUTURADOR,
+    })
     log.warn("estruturador.attempt_failed", {
       storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
-      attempt, error: ultimoErro,
+      attempt, error: ultimoErro, causa, repetir: plano.repetir, teto_proximo: plano.maxTokens,
     })
+    if (causa === "timeout") {
+      // Chamada paga cujo corpo nunca foi lido: a run gravaria 0 tokens.
+      ultimoErro = `${ultimoErro ?? "timeout"} · ${avisoDeContaPerdida(tetoDeRelogioDoAgente("estruturador") ?? 240_000)}`
+    }
+    if (!plano.repetir) { motivoDaDesistencia = plano.motivo; break }
+    tetoDaVez = plano.maxTokens
   }
 
   // 2 falhas de parse → run error; o caller segue sem Estruturador (fallback documentado).
@@ -692,7 +729,7 @@ export async function runEstruturador(
     agentConfigId: cfgRow?.id,
     status: "error",
     model: config.model,
-    errorMessage: ultimoErro ?? "estruturador_failed",
+    errorMessage: (motivoDaDesistencia ? `${motivoDaDesistencia} · ${ultimoErro ?? ""}` : ultimoErro) ?? "estruturador_failed",
     inputVars: {
       modo: input.mode,
       refs_servidas: carga.refsServidas,

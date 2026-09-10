@@ -222,6 +222,13 @@ export type QaIssueType =
   | "tom_inconsistente"
   | "claim_nao_coberto"
   | "html_invalido"
+  // O QA NÃO RODOU — timeout, erro do provedor, JSON ilegível. Não é
+  // defeito da peça: é ausência de revisão, e o e-mail segue não revisado.
+  // Antes isto era gravado como `html_invalido` + `high`, o que mandava o
+  // operador procurar no HTML um defeito que não existia e, com o QA em
+  // `enforce`, reprovaria um e-mail correto por falha de infraestrutura.
+  // `computePassed` ignora este tipo de propósito (qa.chain.ts).
+  | "qa_indisponivel"
   | "alt_text_faltando"
   | "compliance"
   // Par texto/fundo abaixo do mínimo AA (luminância WCAG, custo zero).

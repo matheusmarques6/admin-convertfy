@@ -257,7 +257,7 @@ describe("getBlockingSeverity", () => {
 describe("getQaTimeoutMs", () => {
   it("retorna 60s por default", () => {
     delete process.env.EMAIL_QA_TIMEOUT_MS
-    expect(getQaTimeoutMs()).toBe(60_000)
+    expect(getQaTimeoutMs()).toBe(180_000)
   })
 
   it("lê env var quando numérica positiva", () => {
@@ -267,7 +267,7 @@ describe("getQaTimeoutMs", () => {
 
   it("ignora valor inválido e cai pro default", () => {
     process.env.EMAIL_QA_TIMEOUT_MS = "abc"
-    expect(getQaTimeoutMs()).toBe(60_000)
+    expect(getQaTimeoutMs()).toBe(180_000)
   })
 })
 
@@ -370,10 +370,75 @@ describe("runQaAgent — com config ativo", () => {
       .mockResolvedValueOnce("ainda nao sou json")
     const result = await runQaAgent(makeInput())
     expect(chainInvokeMock).toHaveBeenCalledTimes(2)
-    expect(result.passed).toBe(false)
+    // O revisor respondeu fora do formato: o e-mail não foi revisado, mas
+    // também não foi reprovado por isso (10/09).
+    expect(result.passed).toBe(true)
+    const falha = result.issues.find((i) => i.type === "qa_indisponivel")
+    expect(falha?.severity).toBe("medium")
+    expect(falha?.message).toContain("qa_output_invalid")
+  })
+
+  // Guarda da regra: mesmo com o gate apertado ao máximo, a falha do
+  // revisor não pode reprovar a peça. Era isto que transformaria um 402 do
+  // provedor em e-mail `failed` com o HTML perfeito.
+  it("qa_indisponivel não reprova nem com threshold em low", async () => {
+    process.env.EMAIL_QA_BLOCKING_SEVERITY = "low"
+    try {
+      chainInvokeMock
+        .mockResolvedValueOnce("nao sou json")
+        .mockResolvedValueOnce("ainda nao sou json")
+      const result = await runQaAgent(makeInput())
+      expect(result.issues.some((i) => i.type === "qa_indisponivel")).toBe(true)
+      expect(result.passed).toBe(true)
+    } finally {
+      delete process.env.EMAIL_QA_BLOCKING_SEVERITY
+    }
+  })
+
+  // Run real de 09/09 19:55: 4.818 caracteres terminando em `, {` — sete
+  // issues INTEIRAS lá dentro (selos vazios, cupom sem confirmação) foram
+  // para o lixo como `qa_output_invalid`. O Fable é reasoning always-on e
+  // divide o max_tokens com o raciocínio.
+  it("veredito CORTADO no meio é remontado no último item íntegro", async () => {
+    const truncado =
+      '{"passed": false, "issues": [' +
+      '{"type":"blocos_vazios","severity":"high","message":"selos vazios"},' +
+      '{"type":"compliance","severity":"medium","message":"cupom sem confirmacao"},' +
+      '{"type":"claim_nao_cob'
+    chainInvokeMock.mockResolvedValueOnce(truncado)
+    const result = await runQaAgent(makeInput())
+
+    // as duas íntegras entram…
+    expect(result.issues.some((i) => i.message === "selos vazios")).toBe(true)
+    expect(result.issues.some((i) => i.message === "cupom sem confirmacao")).toBe(true)
+    // …e a tela diz que a revisão pode estar incompleta
+    const aviso = result.issues.find((i) => i.type === "qa_indisponivel")
+    expect(aviso?.message).toContain("qa_output_truncado")
+    expect(aviso?.severity).toBe("medium")
+    // sem retry: a primeira leitura já rendeu
+    expect(chainInvokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("chave `{` dentro de string não confunde a remontagem", async () => {
+    // As mensagens do QA citam HTML: contar chaves sem respeitar aspas
+    // cortaria no lugar errado.
+    const truncado =
+      '{"passed": false, "issues": [' +
+      '{"type":"html_invalido","severity":"low","message":"achei <td style=\\"{x}\\"> solto"},' +
+      '{"type":"compliance","sever'
+    chainInvokeMock.mockResolvedValueOnce(truncado)
+    const result = await runQaAgent(makeInput())
+    expect(result.issues.some((i) => i.message.includes("solto"))).toBe(true)
+  })
+
+  it("corte antes do primeiro item completo não inventa veredito", async () => {
+    chainInvokeMock
+      .mockResolvedValueOnce('{"passed": false, "issues": [{"type":"comp')
+      .mockResolvedValueOnce('{"passed": false, "issues": [{"type":"comp')
+    const result = await runQaAgent(makeInput())
     expect(
-      result.issues.find((i) => i.message === "qa_output_invalid"),
-    ).toBeDefined()
+      result.issues.some((i) => i.message.includes("qa_output_invalid")),
+    ).toBe(true)
   })
 
   it("aceita JSON envolto em markdown ```json fences", async () => {
@@ -431,15 +496,21 @@ describe("runQaAgent — com config ativo", () => {
       await vi.advanceTimersByTimeAsync(15_500)
       const result = await promise
 
-      expect(result.passed).toBe(false)
+      // 10/09: a falha do REVISOR não reprova a peça revisada. Antes isto
+      // era `html_invalido` + `high` — mandava procurar no HTML um defeito
+      // inexistente e, com o gate em `enforce`, reprovaria um e-mail
+      // correto por timeout do provedor.
+      expect(result.passed).toBe(true)
       expect(
         result.issues.some(
           (i) =>
-            i.message === "qa_timeout" &&
-            i.severity === "high" &&
-            i.type === "html_invalido",
+            i.type === "qa_indisponivel" &&
+            i.severity === "medium" &&
+            i.message.startsWith("qa_timeout") &&
+            i.message.includes("NÃO foi revisado"),
         ),
       ).toBe(true)
+      expect(result.issues.some((i) => i.type === "html_invalido")).toBe(false)
       expect(result.meta.model).toBe("qa-timeout")
     } finally {
       vi.useRealTimers()

@@ -13,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { corteDeRaciocinio } from "../model-capabilities"
 import { RespostaVaziaError } from "../resposta-vazia"
+import { relogioParaChamada } from "../fase1-orcamento"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
@@ -35,10 +36,44 @@ const log = logger.child("ArchitectLLM")
 // email-dispatch-queue.service.ts). Ajustável sem deploy via env.
 const INVOKE_TIMEOUT_MS = Number(process.env.ARCHITECT_INVOKE_TIMEOUT_MS ?? 240_000)
 
+/**
+ * O relógio DESTA chamada: o menor entre o teto acima e o que resta da
+ * janela da fase 1 (`fase1-orcamento.ts`).
+ *
+ * O teto sozinho não sabe nada da request: uma chamada iniciada aos 700s de
+ * uma janela de 800 pedia 240s que não existiam, e quem pagava era o
+ * gateway — 504, processo morto no meio, run órfã e a fase 1 inteira
+ * perdida. Fora da fase 1 não há janela aberta e vale o teto, exatamente
+ * como antes.
+ *
+ * Zero significa "não comece": o chamador levanta antes de gastar.
+ */
+function relogioDesteInvoke(config?: { timeoutMs?: number }): number {
+  const r = relogioParaChamada(config?.timeoutMs ?? INVOKE_TIMEOUT_MS)
+  if (r.ms <= 0) {
+    throw new Error(
+      "sem orçamento: o que resta da janela da fase 1 não cobre nem o mínimo desta chamada",
+    )
+  }
+  return r.ms
+}
+
 export interface AgentInvokeConfig {
   model: string
   temperature: number
   max_tokens: number
+  /**
+   * Teto de relógio DESTE agente, quando ele difere do global.
+   *
+   * Existe porque `ARCHITECT_INVOKE_TIMEOUT_MS` (240s) não pode subir: é
+   * compartilhado, e o `DISPATCH_TICK_BUDGET_MS` do cron foi dimensionado
+   * por escrito sobre ele (`45s + 240s <= maxDuration 300s`). Agente com
+   * teto de token alto declara o relógio dele aqui — os dois números têm de
+   * andar juntos, senão o teto de token vira só reserva de crédito em voo
+   * (a origem dos `402 in-flight` deste projeto). Ver `TETO_DE_RELOGIO_MS`
+   * em `fase1-orcamento.ts`.
+   */
+  timeoutMs?: number
   system_prompt: string
   user_template: string
   /**
@@ -210,7 +245,7 @@ async function invokeViaAnthropic(
     },
   ]
 
-  const client = new Anthropic({ apiKey, maxRetries: 2, timeout: INVOKE_TIMEOUT_MS })
+  const client = new Anthropic({ apiKey, maxRetries: 2, timeout: relogioDesteInvoke(config) })
   const baseReq = {
     model: config.model,
     max_tokens: config.max_tokens,
@@ -304,7 +339,7 @@ async function callOnceArchitect(
   attempt: number,
 ): Promise<InvokeResult> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), INVOKE_TIMEOUT_MS)
+  const timer = setTimeout(() => ctrl.abort(), relogioDesteInvoke(config))
   const t0 = Date.now()
   try {
     const body: Record<string, unknown> = {
@@ -532,7 +567,7 @@ async function callOnceWithTools(
   apiKey: string,
 ): Promise<OpenRouterToolTurn> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), INVOKE_TIMEOUT_MS)
+  const timer = setTimeout(() => ctrl.abort(), relogioDesteInvoke(config))
   const t0 = Date.now()
   try {
     const body: Record<string, unknown> = {

@@ -4,12 +4,21 @@
  * Gera um email individual usando a pipeline de IA.
  * Body: { flowId, emailId, flowType, emailNumber }
  *
- * maxDuration: 500s — a fase 1 do teste completo (Seletor → Estruturador →
- * Curador → Blueprint) é síncrona e passou de 280s com o Seletor ligado
- * (08/09), contra os 300s de antes: qualquer retry estourava o gateway e o
- * 504 escondia a causa real da falha. 500 exige Fluid Compute (Vercel Pro),
- * o mesmo que as rotas internas da fase 2 já usam em 800 — se o deploy
- * falhar na validação, ligar em Project Settings → Functions.
+ * maxDuration: 800s — a fase 1 do teste completo (Seletor → Estruturador →
+ * Curador → Blueprint) é síncrona. Subiu de 300 para 500 em 08/09 com o
+ * Seletor, e de 500 para 800 em 10/09 com o Sonnet 5: o modelo pensa por
+ * padrão (omitir `thinking` significa o oposto no 4.6 e no 5), o
+ * Estruturador foi de 82s para 343s e a soma passava dos 500 — 504, processo
+ * morto no meio, run órfã e a fase 1 paga jogada fora.
+ *
+ * O número que impede o 504 NÃO é este: é o `FASE1_BUDGET_MS` (700s) do
+ * `test-generation.service.ts`, menor que esta janela de propósito. Quando o
+ * orçamento acaba, o relógio de cada chamada encolhe junto e a request
+ * termina FALANDO. Os 800 são a rede embaixo, não o plano.
+ *
+ * 800 é o mesmo que as rotas internas da fase 2 já usam e exige Fluid
+ * Compute (Vercel Pro) — se o deploy falhar na validação, ligar em Project
+ * Settings → Functions.
  */
 
 import { NextRequest, after } from "next/server"
@@ -24,7 +33,7 @@ import { assertCanManagePrompts } from "@/lib/services/prompt-management.service
 const log = logger.child("GenerateEmail")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 500
+export const maxDuration = 800
 
 const bodySchema = z.object({
   flowId: z.string().uuid(),

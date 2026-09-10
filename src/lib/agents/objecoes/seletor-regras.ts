@@ -240,12 +240,24 @@ export function validarAlvo(
     return erros
   }
 
+  // O piso de `n_objecoes` é escrito à mão no frontmatter da nota e não sabe
+  // nada do catálogo da loja: o welcome-2 pede 4 e a Hero Boxers tinha 3
+  // candidatas (uma já atacada no #1, outra com aliviador inadmissível). O
+  // Seletor devolveu as três — o máximo possível — e foi reprovado por
+  // aritmética, derrubando a geração. O teto continua sendo do contrato; o
+  // piso cede ao que existe.
+  const candidatas = candidatasElegiveis(catalogo, contrato, flowType, jaAtacadas)
   const [min, max] = contrato.n_objecoes
+  const piso = Math.min(min, candidatas.length)
   if (alvo.alvos.length === 0 && !alvo.lacuna && contrato.modo !== "varredura_de_canal") {
     erros.push("nenhum alvo e nenhuma lacuna declarada — se nada sobrevive, devolva `lacuna` com motivo")
   }
-  if (alvo.alvos.length > 0 && (alvo.alvos.length < min || alvo.alvos.length > max)) {
-    erros.push(`n_objecoes: ${alvo.alvos.length} alvo(s) — o contrato pede entre ${min} e ${max}`)
+  if (alvo.alvos.length > 0 && (alvo.alvos.length < piso || alvo.alvos.length > max)) {
+    erros.push(
+      piso < min
+        ? `n_objecoes: ${alvo.alvos.length} alvo(s) — o contrato pede entre ${min} e ${max}, mas só há ${candidatas.length} candidata(s) elegível(is); o piso desta loja é ${piso}`
+        : `n_objecoes: ${alvo.alvos.length} alvo(s) — o contrato pede entre ${min} e ${max}`,
+    )
   }
   if (alvo.alvos.filter((a) => a.primaria).length > 1) erros.push("mais de um alvo marcado como primaria — só um")
 
@@ -292,8 +304,15 @@ export function validarAlvo(
     }
   }
   if (contrato.modo === "varredura_de_objecoes") {
-    for (const [risco, ids] of riscos) {
-      if (ids.length > 1) erros.push(`varredura pede naturezas diferentes: ${ids.join(" e ")} têm o mesmo risco (${risco})`)
+    // Repetir risco só é erro quando havia natureza sobrando: com 3
+    // candidatas em 2 riscos, exigir 3 naturezas reprova o catálogo, não a
+    // escolha. `alcancavel` é o teto real de naturezas distintas.
+    const riscosDisponiveis = new Set(candidatas.map((c) => c.tipo_de_risco).filter(Boolean))
+    const alcancavel = Math.min(alvo.alvos.length, riscosDisponiveis.size)
+    if (riscos.size < alcancavel) {
+      for (const [risco, ids] of riscos) {
+        if (ids.length > 1) erros.push(`varredura pede naturezas diferentes: ${ids.join(" e ")} têm o mesmo risco (${risco})`)
+      }
     }
   }
   if (contrato.exige_dominante_da_categoria && alvo.alvos.length > 0) {

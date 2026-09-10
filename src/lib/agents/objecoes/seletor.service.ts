@@ -16,6 +16,8 @@
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
+import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
 import { loadTopProducts } from "../top-products"
 import { renderTopProducts } from "../architect/store-context"
 import {
@@ -56,6 +58,12 @@ const log = logger.child("Seletor")
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
 const MAX_ATTEMPTS = 2
+/**
+ * Teto de token que o relógio deste agente comporta (280s a ~90 tok/s).
+ * Subir além disto não gera mais nada — só amplia a reserva de crédito que
+ * o OpenRouter faz em voo, que é a origem dos `402 in-flight` do projeto.
+ */
+const TETO_MAXIMO_SELETOR = 24000
 
 export type SeletorMode = "off" | "shadow" | "on"
 
@@ -243,11 +251,19 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   const config: AgentInvokeConfig = {
     model: cfgRow?.model || DEFAULT_MODEL,
     temperature: cfgRow?.temperature ?? 0.2,
-    max_tokens: cfgRow?.max_tokens ?? 4096,
+    max_tokens: cfgRow?.max_tokens ?? 24000,
+    // O relógio anda junto do teto de tokens: sem ele o abort de 240s corta
+    // antes de o teto ser alcançado e a gente troca truncamento por timeout.
+    ...(tetoDeRelogioDoAgente("seletor") ? { timeoutMs: tetoDeRelogioDoAgente("seletor")! } : {}),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_SELETOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_SELETOR_USER,
   }
   const candidatas = candidatasElegiveis(input.catalogo, input.contrato, input.flowType, input.jaAtacadas)
+  // O piso de `n_objecoes` cede ao catálogo (ver validarAlvo). Registrado
+  // aqui porque "o contrato pedia 4 e passou com 3" não pode ser mágica na
+  // telemetria — é o que explica a run aprovada abaixo do contrato.
+  const pisoEfetivo = Math.min(input.contrato.n_objecoes[0], candidatas.length)
+  const riscosDisponiveis = [...new Set(candidatas.map((c) => c.tipo_de_risco).filter(Boolean))]
   const baseVars: Record<string, string> = {
     brand_name: input.brandName,
     flow_type: input.flowType,
@@ -287,6 +303,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       shadow: input.mode !== "on",
       contrato: input.contrato,
       candidatas_elegiveis: candidatas.map((c) => c.id),
+      piso_efetivo: pisoEfetivo,
+      riscos_disponiveis: riscosDisponiveis,
       ja_atacadas: input.jaAtacadas,
       catalog_sha8: input.catalogSha8,
     },
@@ -304,12 +322,25 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   let segmentsFinal = segBase.segments
   let avisosFinais: string[] = []
 
+  // O teto muda ENTRE tentativas: truncado repete com teto maior, e é isso
+  // que separa uma 2ª chamada com chance de uma cópia condenada da 1ª.
+  let tetoDaVez = config.max_tokens
+  // O finishReason morre dentro do try; sem guardá-lo aqui a classificação
+  // no catch fica cega justamente no caso que ela existe para reconhecer.
+  let ultimoFinish: string | null = null
+  let ultimoOut: number | null = null
+  let motivoDaDesistencia: string | null = null
+  const tetosTentados: number[] = []
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const vars = erros.length
       ? { ...baseVars, correcoes: `SEU ALVO ANTERIOR FOI REPROVADO PELO VALIDADOR. Corrija TODOS os pontos:\n${erros.map((e) => `- ${e}`).join("\n")}` }
       : baseVars
     try {
-      const res = await invokeAgent(config, vars)
+      tetosTentados.push(tetoDaVez)
+      const res = await invokeAgent({ ...config, max_tokens: tetoDaVez }, vars)
+      ultimoFinish = res.finishReason ?? null
+      ultimoOut = res.tokensOutput
       raw = res.raw
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
@@ -321,7 +352,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       try {
         parsed = JSON.parse(extractJson(res.raw))
       } catch {
-        throw new Error(res.tokensOutput >= config.max_tokens ? `resposta truncada no teto de ${config.max_tokens} tokens` : "resposta não é JSON válido")
+        throw new Error(res.tokensOutput >= tetoDaVez ? `resposta truncada no teto de ${tetoDaVez} tokens` : "resposta não é JSON válido")
       }
       const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas)
       avisosFinais = avisos
@@ -384,7 +415,28 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       return row
     } catch (err) {
       erros = err instanceof ValidacaoError ? err.erros : [err instanceof Error ? err.message : String(err)]
-      log.warn("seletor.attempt_failed", { storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber, attempt, erros })
+      const causa = classificarFalha({
+        finishReason: ultimoFinish,
+        tokensOutput: ultimoOut,
+        maxTokens: tetoDaVez,
+        erro: err instanceof Error ? err.message : String(err),
+        ehValidacao: err instanceof ValidacaoError,
+      })
+      const plano = planejarRetentativa({
+        causa, tentativa: attempt, maxAttempts: MAX_ATTEMPTS,
+        tetoAtual: tetoDaVez, tetoMaximo: TETO_MAXIMO_SELETOR,
+      })
+      log.warn("seletor.attempt_failed", {
+        storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
+        attempt, erros, causa, repetir: plano.repetir, teto_proximo: plano.maxTokens,
+      })
+      if (causa === "timeout") {
+        // O abort corta antes de ler o corpo: a run gravaria 0 tokens e
+        // $0,00 numa chamada paga. Diz que se perdeu, não afirma zero.
+        erros.push(avisoDeContaPerdida(tetoDeRelogioDoAgente("seletor") ?? 240_000))
+      }
+      if (!plano.repetir) { motivoDaDesistencia = plano.motivo; break }
+      tetoDaVez = plano.maxTokens
     }
   }
 
@@ -397,10 +449,10 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   await finishGenerationRun(runId, {
     storeId: input.storeId, flowId: ref.flowId, emailId: ref.emailId, batchId: input.batchId, triggeredBy: input.triggeredBy,
     agent: "seletor", agentConfigId: cfgRow?.id, status: "error", model: config.model,
-    errorMessage: erros.join("; ").slice(0, 2000) || "seletor_failed",
+    errorMessage: (motivoDaDesistencia ? `${motivoDaDesistencia} · ${erros.join("; ")}` : erros.join("; ")).slice(0, 2000) || "seletor_failed",
     renderedPrompt: promptFinal || undefined, promptSegments: segmentsFinal, inputSummary,
     rawOutput: raw.slice(0, 12000) || undefined,
-    parsedOutput: { ...sintetico, _seletor: { shadow: input.mode !== "on", erros, avisos: avisosFinais, candidatas_elegiveis: candidatas.map((c) => c.id), target_id: row?.id ?? null } },
+    parsedOutput: { ...sintetico, _seletor: { shadow: input.mode !== "on", erros, avisos: avisosFinais, candidatas_elegiveis: candidatas.map((c) => c.id), piso_efetivo: pisoEfetivo, riscos_disponiveis: riscosDisponiveis, target_id: row?.id ?? null }, _retry: { tetos_tentados: tetosTentados, motivo_da_desistencia: motivoDaDesistencia } },
     tokensInput: tokensIn, tokensOutput: tokensOut,
     costCents: resolveCostCents({ model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd }),
     durationMs: Date.now() - t0, retryCount: MAX_ATTEMPTS - 1,

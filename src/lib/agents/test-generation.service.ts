@@ -15,6 +15,7 @@ import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { generateBlueprintAndReference } from "./architect/generate.service"
+import { comOrcamentoDeFase1 } from "./fase1-orcamento"
 import { dispatchEmailCopyWebhook } from "../services/email-copy-webhook.service"
 
 const log = logger.child("TestGeneration")
@@ -123,7 +124,32 @@ export async function emailHasCopy(emailId: string): Promise<boolean> {
   return data.some((b) => blockHasCopy((b as { content: unknown }).content))
 }
 
+/**
+ * Orçamento da fase 1, em ms.
+ *
+ * MENOR que o `maxDuration` da rota de propósito — é a diferença entre os
+ * dois que faz o 504 deixar de acontecer: quando a janela interna acaba, o
+ * relógio de cada chamada encolhe junto (`fase1-orcamento.ts`) e a request
+ * termina falando, em vez de o gateway matá-la no meio deixando run órfã.
+ *
+ * 740s de 800: a folga de 60s cobre o dispatch ao n8n, o rollback do claim
+ * e a resposta. Subiu de 700 quando o Curador foi para o teto de 32.000 —
+ * Seletor 57s + Estruturador 219s medidos, mais até 356s da escolha do
+ * Curador e a shortlist dele, e 30s de Blueprint + Subject. É folga FINA e
+ * está declarado: se o Curador gastar os 32.000 de fato, a fase 1 raspa o
+ * orçamento. Ajustável sem deploy.
+ */
+const FASE1_BUDGET_MS = Number(process.env.FASE1_BUDGET_MS ?? 740_000)
+
 export async function runTestGeneration(
+  input: TestGenerationInput,
+): Promise<TestGenerationResult> {
+  // A janela vale para TUDO que roda aqui dentro — Seletor, Estruturador,
+  // Curador, Blueprint, Subject — sem passar parâmetro por sete assinaturas.
+  return comOrcamentoDeFase1(FASE1_BUDGET_MS, () => runTestGenerationInterno(input))
+}
+
+async function runTestGenerationInterno(
   input: TestGenerationInput,
 ): Promise<TestGenerationResult> {
   const { storeId, flowId, emailId, flowType, emailNumber, batchId, triggeredBy } =

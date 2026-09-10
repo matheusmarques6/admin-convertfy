@@ -57,7 +57,7 @@ import { loadQaAdvisorContext } from "./qa-advisor-context"
 const log = logger.child("QaChain")
 
 // ── Constantes ─────────────────────────────────────────────────────────
-const DEFAULT_QA_TIMEOUT_MS = 60_000
+const DEFAULT_QA_TIMEOUT_MS = 180_000
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 const DEFAULT_MAX_TOKENS = 1500
 const DEFAULT_TEMPERATURE = 0.2
@@ -204,17 +204,39 @@ export function getBlockingSeverity(): QaIssueSeverity {
 
 /**
  * Timeout (ms) da chamada do QA ao LLM. Configurável via
- * EMAIL_QA_TIMEOUT_MS; default 60s. O HTML agent imediatamente antes pode
+ * EMAIL_QA_TIMEOUT_MS; default 180s. O HTML agent imediatamente antes pode
  * levar ~2min — 15s abortava QAs legítimos sobre HTML real + contexto.
+ *
+ * 10/09: de 60s para 180s. Medido nas runs reais com o Fable (reasoning
+ * always-on) sobre HTML de ~55 KB: o ÚNICO sucesso levou **53s** — na
+ * beira do corte — e a run seguinte morreu em `timeout`. Um teto que
+ * decepa a média não protege ninguém: só troca revisão por silêncio. O
+ * orçamento da fase 2 (`PHASE2_CHAIN_BUDGET_MS`, 760s) comporta.
  */
 export function getQaTimeoutMs(): number {
   const raw = Number(process.env.EMAIL_QA_TIMEOUT_MS)
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_QA_TIMEOUT_MS
 }
 
+/** A causa crua do provedor cabe na mensagem sem virar parede de texto. */
+function truncarErro(msg: string): string {
+  const limpo = msg.replace(/\s+/g, " ").trim()
+  return limpo.length > 120 ? `${limpo.slice(0, 117)}…` : limpo
+}
+
 function computePassed(issues: QaIssue[]): boolean {
   const threshold = SEVERITY_ORDER[getBlockingSeverity()]
-  return !issues.some((i) => SEVERITY_ORDER[i.severity] >= threshold)
+  return !issues.some(
+    (i) =>
+      // A falha do REVISOR nunca reprova a peça revisada: `qa_indisponivel`
+      // diz que o QA não rodou (timeout, 402, JSON ilegível), não que o
+      // e-mail tem defeito. Fica fora do cálculo em qualquer threshold —
+      // com o gate em `enforce`, contá-la transformaria um 402 do provedor
+      // em e-mail `failed` com o HTML perfeito. O `passed` passa a refletir
+      // só o que os checks DETERMINÍSTICOS mediram, que é o que de fato
+      // rodou.
+      i.type !== "qa_indisponivel" && SEVERITY_ORDER[i.severity] >= threshold,
+  )
 }
 
 // ── Pre-checks deterministicos ────────────────────────────────────────
@@ -536,7 +558,13 @@ async function invokeWithTimeout(
 }
 
 // ── Parse JSON tolerante ──────────────────────────────────────────────
-function tryParseQaJson(raw: string): unknown | null {
+export interface QaJsonParse {
+  data: unknown | null
+  /** O veredito veio CORTADO e foi remontado no último item íntegro. */
+  recuperado: boolean
+}
+
+function tryParseQaJson(raw: string): QaJsonParse {
   // Remove fences ```json / ``` se presentes
   const cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
@@ -545,7 +573,7 @@ function tryParseQaJson(raw: string): unknown | null {
 
   // Tenta o objeto completo
   try {
-    return JSON.parse(cleaned)
+    return { data: JSON.parse(cleaned), recuperado: false }
   } catch {
     /* fallthrough */
   }
@@ -554,12 +582,78 @@ function tryParseQaJson(raw: string): unknown | null {
   const match = cleaned.match(/\{[\s\S]*\}/)
   if (match) {
     try {
-      return JSON.parse(match[0])
+      return { data: JSON.parse(match[0]), recuperado: false }
     } catch {
       /* noop */
     }
   }
-  return null
+  const salvo = recuperarJsonTruncado(cleaned)
+  return { data: salvo, recuperado: salvo !== null }
+}
+
+/**
+ * Aproveita a análise de um veredito CORTADO no meio.
+ *
+ * O modelo escreve `{"passed": …, "issues": [ {…}, {…}, {…`  e o corte cai
+ * dentro de um objeto. As issues ANTERIORES ao corte estão completas e
+ * são análise legítima — descartá-las porque a última veio pela metade
+ * troca revisão parcial por revisão nenhuma.
+ *
+ * Caso real (run de 09/09, 19:55): 4.818 caracteres terminando em `, {`,
+ * com sete issues inteiras dentro — entre elas os selos vazios da `body 3`
+ * e o cupom sem confirmação. Tudo foi para o lixo como
+ * `qa_output_invalid`.
+ *
+ * O corte acontece porque o Fable é reasoning always-on e divide o
+ * `max_tokens` com o raciocínio; o teto subiu para 16384 no banco, mas a
+ * defesa é aqui — teto é config e config escorrega.
+ *
+ * Fecha o array e o objeto no último item ÍNTEGRO. Devolve `null` quando
+ * não há nem um item completo: aí não há o que aproveitar, e inventar
+ * veredito seria pior que admitir a falha.
+ */
+function recuperarJsonTruncado(cleaned: string): unknown | null {
+  const abre = cleaned.indexOf('"issues"')
+  if (abre === -1) return null
+  const colchete = cleaned.indexOf("[", abre)
+  if (colchete === -1) return null
+
+  // Varre contando chaves, FORA de string, para achar o fim do último
+  // objeto completo do array. Contar sem respeitar aspas quebraria em
+  // qualquer message com `{` — e as mensagens do QA citam HTML.
+  let profundidade = 0
+  let emString = false
+  let escapado = false
+  let fimDoUltimo = -1
+  for (let i = colchete + 1; i < cleaned.length; i++) {
+    const c = cleaned[i]
+    if (escapado) {
+      escapado = false
+      continue
+    }
+    if (c === "\\") {
+      escapado = true
+      continue
+    }
+    if (c === '"') {
+      emString = !emString
+      continue
+    }
+    if (emString) continue
+    if (c === "{") profundidade++
+    else if (c === "}") {
+      profundidade--
+      if (profundidade === 0) fimDoUltimo = i
+    }
+  }
+  if (fimDoUltimo === -1) return null
+
+  const remontado = `${cleaned.slice(0, fimDoUltimo + 1)}]}`
+  try {
+    return JSON.parse(remontado)
+  } catch {
+    return null
+  }
 }
 
 // ── runQaAgent ────────────────────────────────────────────────────────
@@ -820,9 +914,11 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     log.error("qa.llm_call_failed", { emailId, aborted, error: msg })
 
     const fallbackIssue: QaIssue = {
-      type: "html_invalido",
-      severity: "high",
-      message: aborted ? "qa_timeout" : "qa_llm_error",
+      type: "qa_indisponivel",
+      severity: "medium",
+      message: aborted
+        ? "qa_timeout — o revisor não respondeu no tempo; este e-mail NÃO foi revisado pelo QA."
+        : `qa_llm_error — o revisor falhou (${truncarErro(msg)}); este e-mail NÃO foi revisado pelo QA.`,
       location: "qa",
     }
     const issues = [...deterministicIssues, fallbackIssue]
@@ -864,7 +960,8 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   clearTimeout(timeoutHandle)
 
   // ── 5. Parse + Zod validate (com 1 retry) ───────────────────────────
-  let parsed = tryParseQaJson(rawOutput)
+  let leitura = tryParseQaJson(rawOutput)
+  let parsed = leitura.data
   let zod = parsed ? QaOutputSchema.safeParse(parsed) : null
 
   let retryRaw: string | null = null
@@ -884,7 +981,8 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
         retryPrompt,
         retryController.signal,
       )
-      parsed = tryParseQaJson(retryRaw)
+      leitura = tryParseQaJson(retryRaw)
+      parsed = leitura.data
       zod = parsed ? QaOutputSchema.safeParse(parsed) : null
     } catch (err) {
       log.warn("qa.retry_failed", {
@@ -905,9 +1003,10 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   if (!parsed || !zod || !zod.success) {
     log.warn("qa.output_invalid_fallback", { emailId })
     const fallbackIssue: QaIssue = {
-      type: "html_invalido",
-      severity: "high",
-      message: "qa_output_invalid",
+      type: "qa_indisponivel",
+      severity: "medium",
+      message:
+        "qa_output_invalid — o revisor respondeu fora do formato esperado; este e-mail NÃO foi revisado pelo QA.",
       location: "qa",
     }
     const issues = [...deterministicIssues, fallbackIssue]
@@ -954,6 +1053,24 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   // ── 6. Mescla deterministicas + LLM ─────────────────────────────────
   const llmIssues = zod.data.issues
   const issues: QaIssue[] = [...deterministicIssues, ...llmIssues]
+
+  // Veredito CORTADO e remontado: as issues que vieram são análise
+  // legítima, mas a revisão não terminou — e quem lê a tela precisa saber
+  // que a lista pode estar incompleta. Não reprova (é `qa_indisponivel`,
+  // fora do `computePassed`): a revisão parcial vale mais que nenhuma, e
+  // fingir que ela foi inteira é que seria o defeito.
+  if (leitura.recuperado) {
+    log.warn("qa.output_truncado_recuperado", {
+      emailId,
+      issues: llmIssues.length,
+    })
+    issues.push({
+      type: "qa_indisponivel",
+      severity: "medium",
+      message: `qa_output_truncado — o revisor foi cortado no meio da resposta; ${llmIssues.length} ${llmIssues.length === 1 ? "achado foi aproveitado" : "achados foram aproveitados"}, mas a revisão pode estar incompleta.`,
+      location: "qa",
+    })
+  }
 
   // ── 6b. Story AE-15: cascade QA vision (Etapa 2) ────────────────────
   // Dispara somente se feature flag ON E filtro determinístico passou
