@@ -23,6 +23,7 @@ import type { ThreadDetail, ThreadSummary } from "@/types/crm-inbox"
 import { CrmEmptyState } from "./crm-empty-state"
 import { ChatPanel } from "./inbox/chat-panel"
 import { ContextPanel } from "./inbox/context-panel"
+import { NovaConversaModal } from "./inbox/nova-conversa-modal"
 import {
   ConversationList,
   type ChannelCounts,
@@ -95,6 +96,7 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
 
   // initialThreadId = deep-link ?thread=<id> das notificações do sino.
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null)
+  const [novaConversaAberta, setNovaConversaAberta] = useState(false)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
 
   const params = new URLSearchParams()
@@ -268,7 +270,22 @@ export function InboxView({ initialThreadId }: { initialThreadId?: string | null
         onLoadMore={() => setPageSize((n) => n + PAGE_SIZE)}
         noChannelOfType={threadsData?.no_channel_of_type ?? null}
         width={listWidth}
+        onNovaConversa={() => setNovaConversaAberta(true)}
       />
+
+      {novaConversaAberta && (
+        <NovaConversaModal
+          channels={channels}
+          onClose={() => setNovaConversaAberta(false)}
+          onCriada={(threadId) => {
+            setNovaConversaAberta(false)
+            // A thread nasceu fora do SWR: sem revalidar, ela não está na
+            // lista e a conversa abriria com a barra lateral sem ela.
+            setActiveThreadId(threadId)
+            mutateThreads()
+          }}
+        />
+      )}
 
       {/* Painel da conversa — em mobile só aparece quando há thread ativa.
           min-h-0 é essencial: sem ele o container de mensagens (flex-1

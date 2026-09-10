@@ -16,6 +16,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { lerPaginado } from "@/lib/supabase/paginar"
+import { emBRL, taxasPara } from "@/lib/money/converter-lote"
 
 const CAMPAIGN_COLS =
   "store_id, campaign_id, org_id, recipients, delivered, opened, clicked, conversions, conversion_value, bounced, unsubscribed, send_time, fetched_at"
@@ -267,13 +269,31 @@ export async function getEmailDailySeries(
   fromDate: string,
   toDate: string,
 ): Promise<EmailDailyPoint[]> {
-  const { data, error } = await admin
-    .from("store_daily_metrics")
-    .select("metric_date, recipients, delivered, opened, clicked, conversions, conversion_value, bounced, unsubscribed")
-    .eq("org_id", orgId)
-    .gte("metric_date", fromDate)
-    .lte("metric_date", toDate)
-  if (error) throw error
+  // PAGINADO e com a MOEDA.
+  //
+  // Duas coisas erravam em silêncio aqui. (1) O PostgREST corta em 1.000
+  // linhas: são uma por loja por dia, e com 63 lojas × 90 dias sumia a
+  // maior parte da janela. (2) A tabela GRAVA `currency` e este select não
+  // a pedia — a série somava libra, euro e zloty como se fossem reais e
+  // publicava o resultado com "R$" na frente. Somar 1 libra como 1 real
+  // subestima ~7×, e o total continua parecendo plausível.
+  const { linhas: data } = await lerPaginado<Record<string, unknown>>((de, ate) =>
+    admin
+      .from("store_daily_metrics")
+      .select(
+        "store_id, metric_date, currency, recipients, delivered, opened, clicked, conversions, conversion_value, bounced, unsubscribed",
+      )
+      .eq("org_id", orgId)
+      .gte("metric_date", fromDate)
+      .lte("metric_date", toDate)
+      // Ordem TOTAL: `.range()` sem ela repete e pula entre as páginas, e
+      // só a data não é única (uma linha por loja por dia).
+      .order("metric_date")
+      .order("store_id")
+      .range(de, ate)
+      .returns<Record<string, unknown>[]>(),
+  )
+  const taxas = await taxasPara(data.map((r) => r.currency as string | null))
 
   const byDate = new Map<string, EmailDailyPoint>()
   for (const r of data ?? []) {
@@ -298,7 +318,8 @@ export async function getEmailDailySeries(
     p.opened += Number(r.opened) || 0
     p.clicked += Number(r.clicked) || 0
     p.conversions += Number(r.conversions) || 0
-    p.conversion_value += Number(r.conversion_value) || 0
+    // Convertido pela moeda DA LOJA daquela linha, antes de somar.
+    p.conversion_value += emBRL(r.conversion_value as number, r.currency as string, taxas)
     p.bounced += Number(r.bounced) || 0
     p.unsubscribed += Number(r.unsubscribed) || 0
     byDate.set(date, p)

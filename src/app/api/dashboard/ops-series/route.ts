@@ -20,6 +20,7 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getEmailDailySeries } from "@/lib/services/store-daily-metrics.service"
 import { resolveWindow, previousWindow, type DateWindow } from "@/lib/services/ops-dashboard/period-window"
+import { emBRL, taxasPara } from "@/lib/money/converter-lote"
 import {
   COLUNAS_DE_PLATAFORMA,
   plataformasPresentes,
@@ -45,6 +46,7 @@ async function campaignFallback(
   storeIds: string[],
   win: DateWindow,
   plataformas: PlataformasPresentes,
+  moedaDaLoja: Map<string, string>,
 ): Promise<CampaignDailyRow[]> {
   if (storeIds.length === 0) return []
 
@@ -72,7 +74,17 @@ async function campaignFallback(
   ])
   const kRows = (k?.error ? [] : (k?.data ?? [])) as unknown as CampaignDailyRow[]
   const oRows = (o?.error ? [] : (o?.data ?? [])) as unknown as CampaignDailyRow[]
-  return [...kRows, ...oRows]
+  const rows = [...kRows, ...oRows]
+
+  // A receita vem na moeda DA LOJA e o gráfico soma tudo com "R$" na
+  // frente: sem converter, 1 libra entrava como 1 real (~7× menos) e o
+  // total continuava parecendo plausível. Converte-se aqui, antes de
+  // agregar, para o agregador seguir puro e somando uma moeda só.
+  const taxas = await taxasPara(rows.map((r) => moedaDaLoja.get(r.store_id)))
+  return rows.map((r) => ({
+    ...r,
+    conversion_value: emBRL(r.conversion_value, moedaDaLoja.get(r.store_id), taxas),
+  }))
 }
 
 async function handleGet(request: NextRequest) {
@@ -103,14 +115,21 @@ async function handleGet(request: NextRequest) {
         .from("client_stores")
         // As colunas de credencial decidem quais tabelas de métrica valem
         // a pena consultar (ver `plataformasPresentes`).
-        .select(`id, ${COLUNAS_DE_PLATAFORMA}`)
+        .select(`id, currency, ${COLUNAS_DE_PLATAFORMA}`)
         .eq("org_id", orgId)
         .limit(1000)
       const storeIds = (stores ?? []).map((s) => s.id)
       const plataformas = plataformasPresentes(stores)
+      // Moeda por loja: a receita das campanhas vem na moeda da conta.
+      const moedaDaLoja = new Map<string, string>(
+        (stores ?? []).map((s) => [
+          s.id as string,
+          ((s as { currency?: string | null }).currency || "BRL") as string,
+        ]),
+      )
       const [rows, prevRows] = await Promise.all([
-        campaignFallback(admin, storeIds, win, plataformas),
-        campaignFallback(admin, storeIds, prevWin, plataformas),
+        campaignFallback(admin, storeIds, win, plataformas, moedaDaLoja),
+        campaignFallback(admin, storeIds, prevWin, plataformas, moedaDaLoja),
       ])
       fallbackRows = rows.length
       const fallback = dailyPointsFromCampaignRows(rows, win)
