@@ -47,7 +47,11 @@ export interface ParsedAssemblerChoices {
   rankMismatch: number[]
   /** Repetições desfeitas pelo código: a posição trocou de variante. */
   dedup: Array<{ block_index: number; de: string; para: string }>
-  /** Repetição que FICOU — não havia finalista livre naquela posição. */
+  /**
+   * Posições que SAÍRAM da peça: a variante repetia e não havia finalista
+   * livre naquela posição (10/09 — antes a repetida ficava). É o sinal de
+   * que a biblioteca não tem o bloco que a sequência pediu.
+   */
   dedupSemAlternativa: number[]
   /** O JSON não pôde ser lido — tudo caiu no rank 1. */
   malformed: boolean
@@ -195,6 +199,8 @@ function dedupeDecisions(
   sections: readonly string[],
 ): void {
   const usados = new Set<string>()
+  /** Posições que ficaram sem variante — removidas ao fim do laço. */
+  const semVariante: AssemblerDecision[] = []
   for (const decision of out.decisions) {
     const section = sections[decision.block_index] ?? ""
     if (!usados.has(decision.variant_id)) {
@@ -206,7 +212,11 @@ function dedupeDecisions(
     const finalists = ranking.get(decision.block_index) ?? []
     const alternativa = finalists.find((f) => !usados.has(f.variant_id))
     if (!alternativa) {
+      // 10/09: sem alternativa, a posição SAI da peça — antes ela ficava
+      // com a variante repetida. Um bloco a menos é peça mais curta; o
+      // bloco repetido é peça que parece defeito (`repeticao.ts`).
       out.dedupSemAlternativa.push(decision.block_index)
+      semVariante.push(decision)
       continue
     }
     out.dedup.push({
@@ -230,6 +240,11 @@ function dedupeDecisions(
     }
     usados.add(alternativa.variant_id)
   }
+  if (semVariante.length === 0) return
+  // Sai também de `desvios`: a posição não existe mais, então não há como
+  // ela "ter saído do rank 1".
+  out.decisions = out.decisions.filter((d) => !semVariante.includes(d))
+  out.desvios = out.desvios.filter((d) => !semVariante.includes(d))
 }
 
 function indexByBlock(

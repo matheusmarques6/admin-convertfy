@@ -1,29 +1,44 @@
 /**
  * repeticao — a mesma variante pode servir mais de uma posição do e-mail?
  *
- * Até 07/09 a resposta era "nunca": o parser do Montador desfazia a
- * repetição em qualquer seção (`dedupeDecisions`) e o medidor do Curador
- * acusava `variante_repetida` em qualquer par de posições. As duas coisas
- * nasceram do mesmo incidente (Luxe Lift 23/08, posições 2 e 3 idênticas)
- * e generalizaram demais: repetir um bloco de corpo, de oferta ou de CTA é
- * decisão de composição legítima — o e-mail é uma peça, não um catálogo de
- * componentes distintos.
+ * **Não. Nunca, em nenhuma seção** (decisão do dono, 10/09).
  *
- * Duas seções continuam ÚNICAS por peça, e por razões diferentes:
+ * ── O histórico, porque ele explica a regra ───────────────────────────
  *
- * - `hero`: o documento marca a região da hero e `locateHeroRegion` recusa
- *   por ambiguidade quando acha duas — a geração inteira morre em
- *   `hero_failed`. Aqui a unicidade é requisito mecânico da fase 2.
- * - `products`: o feed puxa os mesmos `top_products` da loja. Repetido, o
- *   leitor vê a MESMA grade duas vezes na mesma peça — não é variação de
- *   argumento, é duplicata visível.
+ * Até 07/09 a resposta já era "nunca", vinda do incidente Luxe Lift
+ * (23/08, posições 2 e 3 idênticas). Em 07/09 a regra foi AFROUXADA para
+ * `hero` e `products` apenas, com o argumento de que repetir um corpo, uma
+ * oferta ou um CTA seria composição legítima — e que desfazer a escolha do
+ * Curador rebaixava o encaixe em nome de uma variedade que ninguém pediu.
+ *
+ * O argumento não sobreviveu ao primeiro caso concreto. No Welcome 1 da
+ * Hero Boxers (09/09) a `body 3` ocupou as posições 2 E 3: mesma anatomia,
+ * mesmos três selos, mesmo ritmo visual, coladas uma na outra. O Curador
+ * não escolheu repetir por composição — ele DECLAROU lacuna nas duas
+ * posições ("body 2 festivo e body 4 comparativo vetados no toque 1",
+ * "CTA é lacuna da biblioteca") e repetiu por não ter opção. Ainda custou
+ * três imagens geradas e descartadas.
+ *
+ * A lição: "repetição pode ser composição" é verdade em tese e, na
+ * prática, indistinguível de "a biblioteca não tinha o bloco". Quando as
+ * duas leituras produzem o mesmo pixel, vale a que não entrega peça pobre
+ * ao cliente.
+ *
+ * ── O que acontece quando não há alternativa ──────────────────────────
+ *
+ * A posição fica SEM variante e sai da peça (`dedupeDecisions`), em vez de
+ * receber a repetida. Um bloco a menos é uma peça mais curta; o bloco
+ * repetido é uma peça que parece defeito. A lacuna aparece em
+ * `dedupSemAlternativa` e no `slot_map`, que é onde a curadoria a vê e
+ * pode cobrar o cadastro do bloco que falta.
+ *
+ * Isso NÃO derruba a geração: `coberturaSuficiente` só recusa a referência
+ * quando a sequência pede hero e nenhuma hero entra — peça com hero e
+ * poucas seções é POBRE, não inviável.
  *
  * Puro (zero I/O). Fonte única da normalização de nome de seção, para que
  * o medidor, o parser e a montagem não divirjam sobre o que é "hero".
  */
-
-/** Seções que só podem aparecer UMA vez com a mesma variante na peça. */
-export const SECOES_UNICAS = ["hero", "products"] as const
 
 export function normalizarSecao(section: string): string {
   return section.trim().toLowerCase()
@@ -32,12 +47,14 @@ export function normalizarSecao(section: string): string {
 /**
  * A repetição da mesma variante nesta seção é permitida?
  *
- * Seção desconhecida (string vazia, nome novo) devolve `true`: o padrão é
- * permitir, e inventar restrição sobre nome que não conhecemos foi
- * exatamente o erro que este módulo desfaz.
+ * Sempre `false`. A função existe (em vez de os chamadores simplesmente
+ * assumirem a proibição) para manter UM lugar onde a regra é declarada e
+ * justificada — e para que, se um dia voltar a haver exceção, ela nasça
+ * aqui, com nome e motivo, em vez de espalhada por três módulos.
+ *
+ * O parâmetro é mantido pela mesma razão: a assinatura diz que a decisão é
+ * POR SEÇÃO, mesmo que hoje todas respondam igual.
  */
-export function podeRepetir(section: string): boolean {
-  return !SECOES_UNICAS.includes(
-    normalizarSecao(section) as (typeof SECOES_UNICAS)[number],
-  )
+export function podeRepetir(_section: string): boolean {
+  return false
 }

@@ -620,10 +620,10 @@ export function measureProtocolViolations(p: {
 
     const prev = seenVariant.get(variantId)
     if (prev !== undefined) {
-      // Só hero e feed de produtos precisam ser únicos (ver `repeticao.ts`).
-      // Nas demais seções repetir é composição legítima: acusar violação
-      // ali contaminaria a contagem que a gente lê para julgar o Curador.
-      // A repetição permitida sai por `repeticoesPermitidas`, como registro.
+      // 10/09: NENHUMA seção repete a mesma variante (ver `repeticao.ts`).
+      // A permissão de 07/09 para body/offer/reviews caiu no primeiro caso
+      // concreto — a `body 3` duas vezes seguidas no Welcome 1 da Hero
+      // Boxers, com os mesmos três selos.
       if (!podeRepetir(section)) {
         out.push({
           block_index: block,
@@ -664,7 +664,16 @@ export function measureProtocolViolations(p: {
   return out
 }
 
-/** Repetição legítima (fora de hero/products): registro, não violação. */
+/**
+ * Repetição legítima: registro, não violação.
+ *
+ * **Hoje devolve sempre vazio** — desde 10/09 nenhuma seção permite
+ * repetir (`podeRepetir`), então toda repetição é violação e sai por
+ * `measureProtocolViolations`. A função e o campo `repeticoes` da
+ * telemetria continuam de pé porque o consumidor os lê e porque a
+ * distinção "permitida × violação" volta a existir se um dia nascer uma
+ * exceção — e ela nasceria em `repeticao.ts`, não aqui.
+ */
 export interface RepeticaoPermitida {
   variant_id: string
   section: string

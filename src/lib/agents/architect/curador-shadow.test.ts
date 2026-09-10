@@ -277,13 +277,15 @@ describe("measureProtocolViolations", () => {
   // 07/09: repetir a mesma variante é composição legítima fora de hero e
   // do feed de produtos. Acusar violação ali contaminava a contagem que a
   // gente lê para julgar o Curador.
-  it("mesma variante em duas posições de body NÃO é violação", () => {
+  it("mesma variante em duas posições de body É violação (10/09)", () => {
+    // A permissão de 07/09 caiu no primeiro caso concreto: a `body 3` nas
+    // posições 2 e 3 do Welcome 1 da Hero Boxers, com os mesmos 3 selos.
     const v = measureProtocolViolations({
       rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"]]),
       extras,
       sectionByBlock: sec([[0, "body"], [1, "body"]]),
     })
-    expect(v).toEqual([])
+    expect(v.some((x) => x.tipo === "variante_repetida" && x.block_index === 1)).toBe(true)
   })
 
   it("mesma variante em duas posições de products É violação", () => {
@@ -308,12 +310,13 @@ describe("measureProtocolViolations", () => {
 describe("repeticoesPermitidas", () => {
   const sec = (pairs: Array<[number, string]>) => new Map(pairs)
 
-  it("agrupa a repetição legítima por variante e seção", () => {
+  it("não há mais repetição legítima — a lista é sempre vazia (10/09)", () => {
+    // Toda repetição virou violação e sai por measureProtocolViolations.
     const r = repeticoesPermitidas({
       rank1ByBlock: new Map([[0, "v-ok"], [1, "v-ok"], [2, "v-outra"], [3, "v-ok"]]),
       sectionByBlock: sec([[0, "body"], [1, "body"], [2, "offer"], [3, "Body"]]),
     })
-    expect(r).toEqual([{ variant_id: "v-ok", section: "body", blocks: [0, 1, 3] }])
+    expect(r).toEqual([])
   })
 
   it("hero e products ficam fora — lá a repetição é violação, não registro", () => {

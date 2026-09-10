@@ -1,30 +1,34 @@
 import { describe, it, expect } from "vitest"
 
-import { SECOES_UNICAS, normalizarSecao, podeRepetir } from "./repeticao"
+import { normalizarSecao, podeRepetir } from "./repeticao"
 
 describe("podeRepetir", () => {
-  it("hero e products são as únicas seções fechadas", () => {
-    expect(SECOES_UNICAS).toEqual(["hero", "products"])
-    expect(podeRepetir("hero")).toBe(false)
-    expect(podeRepetir("products")).toBe(false)
-  })
-
-  it("corpo, oferta, reviews, CTA e rodapé podem repetir", () => {
-    for (const s of ["body", "offer", "reviews", "cta", "footer", "header"]) {
-      expect(podeRepetir(s)).toBe(true)
+  // Decisão do dono, 10/09: a mesma variante NÃO se repete na peça, em
+  // seção nenhuma. O caso que a motivou: a `body 3` nas posições 2 e 3 do
+  // Welcome 1 da Hero Boxers — mesma anatomia, mesmos três selos, coladas.
+  it("nenhuma seção repete a mesma variante", () => {
+    for (const s of [
+      "hero",
+      "products",
+      "body",
+      "offer",
+      "reviews",
+      "cta",
+      "footer",
+      "header",
+    ]) {
+      expect(podeRepetir(s)).toBe(false)
     }
   })
 
-  it("normaliza caixa e espaço antes de decidir", () => {
-    expect(podeRepetir(" HERO ")).toBe(false)
-    expect(podeRepetir("Products")).toBe(false)
-    expect(normalizarSecao("  Body ")).toBe("body")
+  it("seção desconhecida ou vazia também não repete", () => {
+    // O padrão inverteu junto: antes o desconhecido permitia.
+    expect(podeRepetir("")).toBe(false)
+    expect(podeRepetir("secao-nova-que-ninguem-cadastrou")).toBe(false)
   })
 
-  // O padrão é PERMITIR: inventar restrição sobre nome de seção que não
-  // conhecemos foi exatamente o erro que este módulo desfaz.
-  it("seção desconhecida ou vazia permite repetição", () => {
-    expect(podeRepetir("")).toBe(true)
-    expect(podeRepetir("secao-nova-que-ninguem-cadastrou")).toBe(true)
+  it("normalizarSecao segue sendo a fonte única de caixa e espaço", () => {
+    expect(normalizarSecao("  Body ")).toBe("body")
+    expect(normalizarSecao(" HERO ")).toBe("hero")
   })
 })
