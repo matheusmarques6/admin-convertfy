@@ -5145,5 +5145,40 @@ nada a ligar. A tela mostrava "Sem pontos na janela … se ambos são 0, o
 sync de campanhas não grava send_time", culpando o sync com 45 campanhas
 daquele dia no banco. Agora ela diz que o período é que não rende série.
 
+### A rodada seguinte (set/2026): o que a correção expôs
+
+Medido depois do deploy: de **1 linha** para **41 lojas `ok`, todas com
+receita**, e o erro "range retroativo" sumiu do banco. Sobraram três
+defeitos que só apareceram com o lote finalmente rodando.
+
+**Cada passada re-sincronizava a carteira inteira.** O lote era
+`planoDeLote(stores, stores.length)` — todas as lojas, sempre —, então o
+segundo clique atropelava o primeiro e a plataforma, que limita **por
+conta** (10/min nas analytics), começava a recusar. Era o contador subindo
+sozinho a cada rodada: **2 → 3 → 5 lojas "com erro"**. Agora quem tem dado
+FRESCO do período (`FRESCOR_MS`, 10 min) sai da fila — buscar de novo não
+traz número diferente e gasta cota. Loja com ERRO entra mesmo fresca: é
+justamente ela que pode ter sido vítima do limite na rodada anterior.
+
+**"Statistics API unavailable" era suposição, não medição.** A régua era
+`revenueCollected = tudo zero → falhou`, e o `safely` devolve o mesmo
+fallback quer a chamada tenha falhado, quer a API tenha respondido zero.
+Num período de UM DIA zero é rotina: das 9 lojas marcadas assim, todas
+estavam zeradas e são pequenas — **Bryn Grill tem 5 leads na base inteira**
+—, e o `total_leads` das nove foi coletado, o que prova que o sync
+funcionou. A tela anunciava "9 lojas não sincronizam" sobre lojas que
+sincronizaram bem. Agora `OmnisendSyncData.statisticsOk` diz se a CHAMADA
+respondeu (sentinela comparada por REFERÊNCIA — a mesma constante só volta
+quando o fallback foi usado), e só a falha real preserva a linha antiga e
+marca `partial`. **Zero medido é gravado**: sem isso a loja que não vendeu
+naquele dia carregaria para sempre a receita de outro período.
+
+**Os cards subiam sozinhos, sem nada dizendo que estava carregando.** Com
+o lock do servidor ativo o cliente recebia `alreadyRunning` e SAÍA do
+loop: `isRefreshing` voltava a false, o banner sumia e o servidor seguia
+trabalhando — os números mudavam na cara de quem olhava e o topo dizia
+"Atualizado agora". Agora ele espera o lock (`ESPERA_LOCK_MS`) e continua,
+mantendo o indicador e a fila à vista enquanto o lote não fecha.
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

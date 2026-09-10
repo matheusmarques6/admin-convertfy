@@ -59,6 +59,45 @@ describe("janelaDoPeriodo", () => {
   })
 })
 
+describe("planoDeLote — frescor", () => {
+  const agora = Date.parse("2026-09-09T12:00:00Z")
+  const min = (n: number) => new Date(agora - n * 60_000).toISOString()
+
+  it("quem sincronizou agora há pouco NÃO é buscado de novo", () => {
+    // A plataforma limita por conta; re-tentar não traz número novo e
+    // queima a cota — era o que fazia o contador de erro subir a cada
+    // clique, com a segunda rodada atropelando a primeira.
+    const p = planoDeLote(
+      [
+        { id: "fresca", temDado: true, sincronizadaEm: min(2) },
+        { id: "velha", temDado: true, sincronizadaEm: min(90) },
+        { id: "nova", temDado: false },
+      ],
+      10,
+      5,
+      agora,
+    )
+    expect(p.lote.map((l) => l.id)).toEqual(["nova", "velha"])
+    expect(p.jaFrescas).toBe(1)
+  })
+
+  it("loja com ERRO entra mesmo fresca — pode ter sido vítima do limite", () => {
+    const p = planoDeLote(
+      [{ id: "a", temDado: true, falhou: true, sincronizadaEm: min(1) }],
+      10,
+      5,
+      agora,
+    )
+    expect(p.lote.map((l) => l.id)).toEqual(["a"])
+    expect(p.jaFrescas).toBe(0)
+  })
+
+  it("sem carimbo de sincronização, entra (não dá para afirmar frescor)", () => {
+    const p = planoDeLote([{ id: "a", temDado: true }], 10, 5, agora)
+    expect(p.lote).toHaveLength(1)
+  })
+})
+
 describe("planoDeLote", () => {
   const lojas = [
     { id: "a", temDado: true },

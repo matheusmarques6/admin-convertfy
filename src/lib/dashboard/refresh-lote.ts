@@ -118,13 +118,28 @@ export interface LojaDoLote {
   temDado?: boolean
   /** O último sync desta loja falhou? */
   falhou?: boolean
+  /** Quando esta loja foi sincronizada pela última vez neste período. */
+  sincronizadaEm?: string | null
 }
+
+/**
+ * Dado sincronizado há menos disto não é re-buscado na mesma sessão.
+ *
+ * A plataforma limita requisições POR CONTA (10/min, 55/dia nas analytics),
+ * e cada loja é um sync completo. Re-tentar quem acabou de sincronizar não
+ * traz número novo e queima a cota — foi o que fez o contador de erro subir
+ * a cada clique (2 → 3 → 5 lojas "com erro"), porque a segunda rodada
+ * atropelava a primeira e voltava sem receita.
+ */
+export const FRESCOR_MS = 10 * 60 * 1000
 
 export interface PlanoDeLote<T extends LojaDoLote> {
   /** As lojas desta passada, na ordem em que devem ser processadas. */
   lote: T[]
   /** Quantas ficaram para a próxima passada. */
   restantes: number
+  /** Quantas foram puladas por já terem dado fresco deste período. */
+  jaFrescas: number
   /** Quantas serão processadas ao mesmo tempo. */
   concorrencia: number
 }
@@ -148,9 +163,22 @@ export function planoDeLote<T extends LojaDoLote>(
   lojas: T[],
   tamanhoDoLote: number,
   concorrencia = CONCORRENCIA_PADRAO,
+  agora = Date.now(),
 ): PlanoDeLote<T> {
+  // Quem tem dado FRESCO deste período sai da fila: buscar de novo não traz
+  // número diferente e gasta a cota da plataforma, que é por conta. Loja com
+  // erro entra mesmo fresca — é justamente ela que pode ter sido vítima do
+  // limite na rodada anterior.
+  const fresca = (l: T): boolean => {
+    if (!l.temDado || l.falhou) return false
+    const t = l.sincronizadaEm ? Date.parse(l.sincronizadaEm) : NaN
+    return Number.isFinite(t) && agora - t < FRESCOR_MS
+  }
+  const pendentes = lojas.filter((l) => !fresca(l))
+  const jaFrescas = lojas.length - pendentes.length
+
   const peso = (l: T): number => (!l.temDado ? 0 : l.falhou ? 1 : 2)
-  const ordenadas = lojas
+  const ordenadas = pendentes
     .map((loja, i) => ({ loja, i }))
     .sort((a, b) => peso(a.loja) - peso(b.loja) || a.i - b.i)
     .map((x) => x.loja)
@@ -158,6 +186,7 @@ export function planoDeLote<T extends LojaDoLote>(
   return {
     lote: ordenadas.slice(0, teto),
     restantes: Math.max(0, ordenadas.length - teto),
+    jaFrescas,
     concorrencia: Math.max(1, Math.min(concorrencia, teto)),
   }
 }

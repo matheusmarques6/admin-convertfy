@@ -290,12 +290,24 @@ export async function upsertOmnisendSyncResults(
   // €371k do Overview. Por isso, quando TODOS os campos de revenue
   // estao zerados, omitimos os campos do payload — o upsert preserva
   // os valores existentes na linha.
-  const revenueCollected = data.totalStoreRevenue > 0
+  const temNumero = data.totalStoreRevenue > 0
     || data.totalAttributedRevenue > 0
     || data.totalOrders > 0
     || data.totalAttributedOrders > 0
+  // `statisticsOk === false` significa que a CHAMADA falhou — só aí os
+  // zeros não são medida e a linha antiga precisa ser preservada. Com a
+  // API respondendo, zero é receita ZERO, o que num período de um dia é
+  // rotina: tratar isso como falha fazia a tela anunciar "N lojas não
+  // sincronizam" sobre lojas que sincronizaram bem, e a mensagem
+  // ("Statistics API unavailable") acusava um problema que não houve.
+  // `undefined` = sync antigo sem a flag: mantém o comportamento anterior.
+  const statisticsFalhou = data.statisticsOk === false
+  const revenueCollected = temNumero || !statisticsFalhou
 
-  const revenueFields = revenueCollected ? {
+  // Preserva a linha antiga SÓ quando a chamada falhou sem trazer número —
+  // zero medido precisa ser gravado, senão a loja que de fato não vendeu
+  // naquele dia carrega para sempre a receita de outro período.
+  const revenueFields = (temNumero || !statisticsFalhou) ? {
     store_total_revenue: data.totalStoreRevenue,
     store_orders: data.totalOrders,
     omnisend_total_revenue: data.totalAttributedRevenue,
@@ -325,11 +337,13 @@ export async function upsertOmnisendSyncResults(
     total_leads: data.totalContacts,
     engaged_leads: engagedCount,
     engagement_rate: engagementRate,
-    sync_status: revenueCollected ? "ok" : "partial",
+    sync_status: statisticsFalhou ? "partial" : "ok",
     // sync_source tem CHECK CONSTRAINT restrito a 'cron' | 'live' | 'report'
     // (migration 20260318). "omnisend" viola o check e faz o upsert explodir.
     sync_source: "cron",
-    sync_error: revenueCollected ? null : "Statistics API unavailable — revenue preserved from previous sync",
+    sync_error: statisticsFalhou
+      ? "A plataforma não respondeu às estatísticas desta janela — a receita do sync anterior foi preservada."
+      : null,
     currency: data.currency,
     fetched_at: nowIso,
     expires_at: expiresAt,

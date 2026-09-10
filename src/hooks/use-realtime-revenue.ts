@@ -10,6 +10,8 @@ const POLLING_INTERVAL_MS = 30_000
 const PASSADA_TIMEOUT_MS = 290_000
 /** Passadas encadeadas por clique — o lote continua até zerar a pendência. */
 const MAX_PASSADAS = 6
+/** Espera antes de tentar de novo quando outra passada segura o lock. */
+const ESPERA_LOCK_MS = 6_000
 
 interface UseRealtimeRevenueOptions {
   period: string
@@ -88,9 +90,14 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
           }
 
           if (data.alreadyRunning) {
-            // Outra aba/pessoa já está sincronizando este período — o
-            // Realtime avisa quando terminar.
-            break
+            // Outra aba (ou o clique anterior) ainda está sincronizando
+            // este período. Sair aqui apagava o indicador enquanto o
+            // servidor seguia trabalhando: os cards mudavam sozinhos e a
+            // tela dizia "atualizado". Espera e tenta de novo — o lock
+            // libera quando aquela passada termina.
+            setPending((p) => (p > 0 ? p : 1))
+            await new Promise((r) => setTimeout(r, ESPERA_LOCK_MS))
+            continue
           }
 
           onDataUpdate()
@@ -112,6 +119,7 @@ export function useRealtimeRevenue({ period, start, end, onDataUpdate, enabled =
           ? err.message
           : String(err)
     } finally {
+      if (!erro) setPending(0)
       setRefreshError(erro)
       setIsRefreshing(false)
     }

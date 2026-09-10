@@ -448,17 +448,21 @@ export async function POST(request: NextRequest) {
       // Quem JÁ tem dado deste período — a fila começa por quem não tem,
       // porque loja sem linha é buraco no total, enquanto dado de ontem é
       // só imprecisão.
-      const jaSincronizadas = new Map<string, { temDado: boolean; falhou: boolean }>()
+      const jaSincronizadas = new Map<
+        string,
+        { temDado: boolean; falhou: boolean; sincronizadaEm: string | null }
+      >()
       try {
         const { data: linhas } = await adminClient
           .from("store_revenue_summary")
-          .select("store_id, sync_status")
+          .select("store_id, sync_status, fetched_at")
           .eq("period_label", period)
           .in("store_id", stores.map((s) => s.id))
         for (const l of linhas ?? []) {
           jaSincronizadas.set(l.store_id as string, {
             temDado: l.sync_status !== "error",
             falhou: l.sync_status === "error",
+            sincronizadaEm: (l.fetched_at as string | null) ?? null,
           })
         }
       } catch {
@@ -478,6 +482,7 @@ export async function POST(request: NextRequest) {
           ...(s as StoreRow),
           temDado: jaSincronizadas.get(s.id)?.temDado ?? false,
           falhou: jaSincronizadas.get(s.id)?.falhou ?? false,
+          sincronizadaEm: jaSincronizadas.get(s.id)?.sincronizadaEm ?? null,
         })),
         stores.length,
         CONCORRENCIA_PADRAO,
@@ -510,7 +515,7 @@ export async function POST(request: NextRequest) {
       const durationMs = Date.now() - startTime
       const pendentes = skippedCount + plano.restantes
       log.info(
-        `[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} skipped=${skippedCount} pendentes=${pendentes} duration=${durationMs}ms`,
+        `[RefreshRevenue] Completed org ${orgId}/${period}: ok=${okCount} error=${errorCount} skipped=${skippedCount} frescas=${plano.jaFrescas} pendentes=${pendentes} duration=${durationMs}ms`,
       )
 
       return NextResponse.json({
@@ -524,6 +529,8 @@ export async function POST(request: NextRequest) {
         // usa isso para chamar de novo até zerar — sem esse número, a tela
         // dizia "sincronizado" com dois terços da carteira de fora.
         storesPending: pendentes,
+        /** Puladas por já terem dado fresco — não são erro nem pendência. */
+        storesFresh: plano.jaFrescas,
         timedOut,
         durationMs,
       })
