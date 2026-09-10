@@ -165,7 +165,7 @@ import {
   type GraftStatus,
 } from "./html/hero-graft"
 import { resolveRenderedReference } from "./shared/rendered-reference"
-import { applyOps } from "./html/apply-patches"
+import { alvoDaOp, applyOps } from "./html/apply-patches"
 import { colorOccurrenceCount,
   coresForaDaPaleta,
 } from "./html/color-inventory"
@@ -3809,8 +3809,7 @@ async function runFormattingChain(p: {
             },
             ops_skipped: applied.skipped.map((s) => ({
               action: s.op.action,
-              target:
-                s.op.action === "replace" ? s.op.find.slice(0, 60) : s.op.from,
+              target: alvoDaOp(s.op),
               ...(s.op.action === "recolor" && s.op.where
                 ? { where: s.op.where }
                 : {}),
