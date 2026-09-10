@@ -5,6 +5,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
 import { getUnifiedRevenue } from "@/lib/services/unified-metrics.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
+import { parseCustomPeriodLabel } from "@/lib/shared/data-status"
 import {
   computeIntersectionDelta,
   computeIntersectionRatioDelta,
@@ -13,8 +14,21 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("KpiSeries")
 
+/** Os quatro rótulos da sparkline — a série de referência, sempre a mesma. */
 const PERIODS = ["7d", "15d", "30d", "90d"] as const
 const PERIOD_DAYS: Record<string, number> = { "7d": 7, "15d": 15, "30d": 30, "90d": 90 }
+
+/** Dias de um rótulo personalizado (`custom:INÍCIO:FIM`), inclusivos. */
+function diasDoRotulo(label: string): number {
+  const c = parseCustomPeriodLabel(label)
+  if (!c) return 30
+  const dias =
+    Math.round(
+      (Date.parse(`${c.endDate}T00:00:00Z`) - Date.parse(`${c.startDate}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1
+  return Math.max(1, dias)
+}
 
 export const dynamic = "force-dynamic"
 
@@ -31,7 +45,17 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("end"),
     )
 
-    const rows = await getUnifiedRevenue(supabase, orgId, PERIODS as unknown as string[])
+    // O período SELECIONADO entra na busca junto com os quatro fixos.
+    //
+    // Antes só os quatro eram lidos, e o cliente por isso só chamava esta
+    // rota em 7d/15d/30d/90d: com um range personalizado na tela, a "Taxa
+    // média Convertfy" e os deltas dos três cards de receita simplesmente
+    // não tinham fonte — o card ficava com o número da última janela fixa
+    // aberta, que é o "não atualiza com base na data selecionada".
+    const periodosParaLer = Array.from(
+      new Set<string>([...PERIODS, selectedPeriod]),
+    )
+    const rows = await getUnifiedRevenue(supabase, orgId, periodosParaLer)
 
     // Currency ja vem do DB (store_revenue_summary.currency). Evitamos chamar
     // Klaviyo Account API aqui: para lojas Omnisend nao ha apiKey Klaviyo
@@ -59,7 +83,7 @@ export async function GET(request: NextRequest) {
       string,
       { total: number; storeTotal: number; campaign: number; flow: number; rateNum: number; rateDen: number }
     > = {}
-    for (const p of PERIODS) byPeriod[p] = { total: 0, storeTotal: 0, campaign: 0, flow: 0, rateNum: 0, rateDen: 0 }
+    for (const p of periodosParaLer) byPeriod[p] = { total: 0, storeTotal: 0, campaign: 0, flow: 0, rateNum: 0, rateDen: 0 }
 
     // Somas POR LOJA por período — insumo do delta por interseção
     // (cards/sparklines continuam usando os agregados byPeriod).
@@ -72,7 +96,7 @@ export async function GET(request: NextRequest) {
       rateDen: Map<string, number>
     }
     const storeMaps: Record<string, StoreMaps> = {}
-    for (const p of PERIODS) {
+    for (const p of periodosParaLer) {
       storeMaps[p] = {
         total: new Map(),
         storeTotal: new Map(),
@@ -123,15 +147,21 @@ export async function GET(request: NextRequest) {
     const sparkFlow = PERIODS.map((p) => Math.round(byPeriod[p].flow))
     // Razão de somas por período (mesma definição do número exibido).
     const periodRate = (p: string) =>
-      byPeriod[p].rateDen > 0
+      byPeriod[p] && byPeriod[p].rateDen > 0
         ? Math.min(100, (byPeriod[p].rateNum / byPeriod[p].rateDen) * 100)
         : 0
     const sparkRate = PERIODS.map((p) => Math.round(periodRate(p)))
     // Taxa agregada do período selecionado (1 casa) — fonte única do número
     // no card "Taxa média da Convertfy".
-    const rateCurrent = Math.round(periodRate(selectedPeriod) * 10) / 10
+    //
+    // Sem faturamento bruto no período NÃO existe taxa: devolve `null` para
+    // o card mostrar "—". Um `0` ali seria lido como "o email não trouxe
+    // nada", quando a verdade é que a base de comparação não foi
+    // sincronizada — o erro caro é o número plausível.
+    const temBase = (byPeriod[selectedPeriod]?.rateDen ?? 0) > 0
+    const rateCurrent = temBase ? Math.round(periodRate(selectedPeriod) * 10) / 10 : null
 
-    const currentDays = PERIOD_DAYS[selectedPeriod] || 30
+    const currentDays = PERIOD_DAYS[selectedPeriod] ?? diasDoRotulo(selectedPeriod)
     const currentMaps = storeMaps[selectedPeriod] || storeMaps["30d"]
     const refMaps = storeMaps["90d"]
     const refDays = 90

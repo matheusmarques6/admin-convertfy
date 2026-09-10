@@ -340,12 +340,16 @@ export function TabPerformance({ storeId }: { storeId: string }) {
       <div className="flex items-center justify-between mb-[18px] gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeChip value={range} onChange={setRange} />
-          <SyncPeriodoButton
-            storeId={storeId}
-            period={range}
-            customStart={customStart}
-            customEnd={customEnd}
-          />
+          {/* A rota de sync só cobre Omnisend hoje (responde 400 para o
+              resto) — botão que só sabe falhar é pior que botão nenhum. */}
+          {status.omnisend?.connected && (
+            <SyncPeriodoButton
+              storeId={storeId}
+              period={range}
+              customStart={customStart}
+              customEnd={customEnd}
+            />
+          )}
           {range === "custom" && (
             <div
               className="inline-flex items-center gap-1.5 px-2 py-1 rounded-[8px]"

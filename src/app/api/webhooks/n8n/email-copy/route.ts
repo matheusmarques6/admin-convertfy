@@ -43,6 +43,7 @@ import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { couponTokenKeys, resolveCouponTokens } from "@/lib/agents/html/coupon-tokens"
+import { derivarIniciais } from "@/lib/agents/html/inicial-do-nome"
 import { isTextOnlyEmail } from "@/lib/agents/architect/blueprint-loader"
 import {
   checkBatchTerminal,
@@ -388,6 +389,7 @@ export async function POST(request: NextRequest) {
     const blocksUnwrapped: Array<{ position: number; wrapper: string; keys: number }> = []
     let omitidosForcados = 0
     const omitidosPreenchidos: string[] = []
+    const iniciaisDerivadas: string[] = []
     for (let i = 0; i < body.blocks.length; i++) {
       const b = body.blocks[i]
       // O contrato é `content[key]`. Achata o embrulho ANTES de tudo: a
@@ -426,6 +428,14 @@ export async function POST(request: NextRequest) {
         cleaned[f.key] = ""
         omitidosForcados++
       }
+      // A inicial do avatar é DERIVADA do nome do mesmo cartão, nunca
+      // digitada — ninguém deveria escrever "G" quando o nome é "Gabriela",
+      // e os dois campos divergirem só apareceria no e-mail pronto. Roda
+      // depois dos omitidos: campo omitido já veio a vazio e o nome dele
+      // também, então a inicial sai vazia junto.
+      iniciaisDerivadas.push(
+        ...derivarIniciais(cleaned).map((d) => `${i}.${d.key}=${d.para || "(vazio)"}`),
+      )
       // Compara com o achatado, não com o cru: desembrulhar não é sanitizar.
       if (JSON.stringify(cleaned) !== JSON.stringify(flattened)) blocksSanitized++
 
@@ -870,6 +880,9 @@ export async function POST(request: NextRequest) {
         // o n8n tinha preenchido mesmo sem ver o campo — o contador que diz
         // se o flow infere copy do purpose.
         omitidos_forcados: omitidosForcados,
+        ...(iniciaisDerivadas.length > 0
+          ? { iniciais_derivadas: iniciaisDerivadas.slice(0, 30) }
+          : {}),
         ...(omitidosPreenchidos.length > 0 ? { omitidos_preenchidos: omitidosPreenchidos } : {}),
         // Qual formato de envelope chegou. É registro, não alarme: as duas
         // formas são válidas e o callback aceita as duas.

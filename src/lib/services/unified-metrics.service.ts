@@ -9,6 +9,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { campanhasNoPeriodo } from "@/lib/reports/periodo"
+import { janelaDoPeriodo } from "@/lib/dashboard/refresh-lote"
+import { lerPaginado } from "@/lib/supabase/paginar"
 
 export interface UnifiedRevenueRow {
   store_id: string
@@ -32,6 +35,8 @@ export interface UnifiedCampaignRow {
   campaign_name?: string | null
   campaign_status?: string | null
   channel?: string | null
+  /** Data de envio — é ela que decide se a campanha é deste período. */
+  send_time?: string | null
   recipients: number
   delivered: number
   opened: number
@@ -171,35 +176,62 @@ export async function getUnifiedCampaigns(
   storeIds?: string[]
 ): Promise<UnifiedCampaignRow[]> {
   const selectKlaviyo = `
-    store_id, campaign_id, campaign_name, campaign_status, channel,
+    store_id, campaign_id, campaign_name, campaign_status, channel, send_time,
     recipients, delivered, opened, clicked, conversions, conversion_rate,
     conversion_value, bounced, unsubscribed, spam_complaints, fetched_at
   `
   const selectOmnisend = selectKlaviyo
 
+  // PAGINADO, e com ORDEM ESTÁVEL.
+  //
+  // O sync persiste TODAS as campanhas da conta sob o rótulo do período, e
+  // estas consultas vinham sem paginação nenhuma: o PostgREST entrega no
+  // máximo 1.000 linhas e não avisa que cortou. Com 5.734 linhas na tabela,
+  // as cinco rotas do dashboard que chamam esta função podiam estar somando
+  // um subconjunto — e sem `ORDER BY` o subconjunto nem é o mesmo entre
+  // duas chamadas, porque o Postgres não garante ordem sem pedido.
+  //
+  // A ordem também é o que torna a paginação CORRETA: `.range()` sobre uma
+  // consulta sem ordem pode repetir e pular linhas entre as páginas. Por
+  // isso o desempate por `campaign_id` — `store_id` sozinho não é único.
+  const pagina = (tabela: string, cols: string) =>
+    lerPaginado<Record<string, unknown>>((de, ate) => {
+      let q = supabase
+        .from(tabela)
+        .select(cols)
+        .eq("org_id", orgId)
+        .eq("period_label", periodLabel)
+      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
+      return q
+        .order("store_id")
+        .order("campaign_id")
+        .range(de, ate)
+        .returns<Record<string, unknown>[]>()
+    })
+
   const [klaviyoRes, omnisendRes] = await Promise.all([
-    (async () => {
-      let q = supabase
-        .from("klaviyo_campaign_metrics")
-        .select(selectKlaviyo)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
-    (async () => {
-      let q = supabase
-        .from("omnisend_campaign_metrics")
-        .select(selectOmnisend)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
+    pagina("klaviyo_campaign_metrics", selectKlaviyo),
+    pagina("omnisend_campaign_metrics", selectOmnisend),
   ])
 
-  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
-  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id")
+  // O sync persiste TODAS as campanhas da conta sob o rótulo do período —
+  // quem corta pelo período é quem lê. Sem este filtro, "Performance do
+  // Email" somava o `delivered` histórico de campanhas antigas e publicava
+  // 3,83 MILHÕES de envios para um único dia, com a taxa de abertura
+  // desabando junto (o numerador é da janela, o denominador não era).
+  // A régua é a mesma do relatório e a da plataforma: entra quem foi
+  // ENVIADA dentro da janela. As cinco rotas do dashboard que chamam esta
+  // função herdam a correção.
+  const janela = janelaDoPeriodo(periodLabel)
+  const noPeriodo = <T extends Record<string, unknown>>(linhas: T[]): T[] =>
+    campanhasNoPeriodo(
+      linhas as Array<T & { send_time?: string | null; campaign_status?: string | null }>,
+      janela.inicio,
+      janela.fim,
+    )
+
+  const klaviyoRows = noPeriodo(dedupRows((klaviyoRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
+  const omnisendRows = noPeriodo(dedupRows((omnisendRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; campaign_id: string; fetched_at?: string }>, "campaign_id"))
 
   const klaviyo = klaviyoRows.map((r) => ({
     ...mapCampaignRow(r),
@@ -227,10 +259,12 @@ export async function getUnifiedFlows(
     conversion_value, bounced, unsubscribed, fetched_at
   `
 
-  const [klaviyoRes, omnisendRes] = await Promise.all([
-    (async () => {
+  // Paginado e ordenado pela mesma razão das campanhas: o teto de 1.000
+  // linhas do PostgREST é silencioso, e `.range()` sem ordem repete e pula.
+  const pagina = (tabela: string) =>
+    lerPaginado<Record<string, unknown>>((de, ate) => {
       let q = supabase
-        .from("klaviyo_flow_metrics")
+        .from(tabela)
         .select(selectCols)
         .eq("org_id", orgId)
         .eq("period_label", periodLabel)
@@ -240,21 +274,19 @@ export async function getUnifiedFlows(
       if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
       if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
       return q
-    })(),
-    (async () => {
-      let q = supabase
-        .from("omnisend_flow_metrics")
-        .select(selectCols)
-        .eq("org_id", orgId)
-        .eq("period_label", periodLabel)
-      if (onlyLive) q = q.in("flow_status", ["live", "enabled", "active"])
-      if (storeIds && storeIds.length > 0) q = q.in("store_id", storeIds)
-      return q
-    })(),
+        .order("store_id")
+        .order("flow_id")
+        .range(de, ate)
+        .returns<Record<string, unknown>[]>()
+    })
+
+  const [klaviyoRes, omnisendRes] = await Promise.all([
+    pagina("klaviyo_flow_metrics"),
+    pagina("omnisend_flow_metrics"),
   ])
 
-  const klaviyoRows = dedupRows((klaviyoRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
-  const omnisendRows = dedupRows((omnisendRes.data || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+  const klaviyoRows = dedupRows((klaviyoRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
+  const omnisendRows = dedupRows((omnisendRes.linhas || []) as Array<Record<string, unknown> & { store_id: string; flow_id: string; fetched_at?: string }>, "flow_id")
 
   const klaviyo = klaviyoRows.map((r) => ({
     ...mapFlowRow(r),
@@ -277,6 +309,7 @@ function mapCampaignRow(r: Record<string, unknown>): Omit<UnifiedCampaignRow, "p
     campaign_name: r.campaign_name as string | null | undefined,
     campaign_status: r.campaign_status as string | null | undefined,
     channel: r.channel as string | null | undefined,
+    send_time: (r.send_time as string | null | undefined) ?? null,
     recipients: Number(r.recipients) || 0,
     delivered: Number(r.delivered) || 0,
     opened: Number(r.opened) || 0,

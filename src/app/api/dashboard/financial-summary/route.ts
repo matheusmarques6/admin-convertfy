@@ -5,6 +5,7 @@ import { decryptCredentialsJson } from "@/lib/crypto"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
+import { lerPaginado } from "@/lib/supabase/paginar"
 
 const log = logger.child("FinancialSummary")
 
@@ -172,14 +173,42 @@ export async function GET(request: NextRequest) {
     // Fetch new deals this month + pipeline value (parallel)
     const firstDayOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
 
-    const [{ data: monthDeals }, { data: allOpenDeals }] = await Promise.all([
-      supabase.from("deals").select("id, value").gte("created_at", firstDayOfMonth),
-      supabase.from("deals").select("value").not("stage_id", "is", null),
+    // "Valor do pipeline" é o que está EM ABERTO.
+    //
+    // O filtro era `stage_id not is null`, que não seleciona negócio aberto:
+    // seleciona negócio que tem etapa, ou seja TODOS — ganhos e perdidos
+    // incluídos. O card somava o histórico inteiro da carteira e o chamava
+    // de pipeline, um número que só cresce e nunca fecha com o funil.
+    //
+    // As duas consultas também vinham sem paginação: o PostgREST entrega no
+    // máximo 1.000 linhas e não avisa que cortou, então a partir do
+    // milésimo negócio a contagem do mês e a soma parariam de crescer sem
+    // nada em tela dizendo por quê.
+    const [dealsDoMes, dealsAbertos] = await Promise.all([
+      lerPaginado<{ id: string }>((de, ate) =>
+        supabase
+          .from("deals")
+          .select("id")
+          .gte("created_at", firstDayOfMonth)
+          // Ordem total: sem ela, `.range()` repete e pula entre páginas.
+          .order("id")
+          .range(de, ate)
+          .returns<{ id: string }[]>(),
+      ),
+      lerPaginado<{ value: number | null }>((de, ate) =>
+        supabase
+          .from("deals")
+          .select("value")
+          .eq("status", "open")
+          .order("id")
+          .range(de, ate)
+          .returns<{ value: number | null }[]>(),
+      ),
     ])
 
     const newDeals = {
-      count: monthDeals?.length || 0,
-      pipelineValue: allOpenDeals?.reduce((sum, d) => sum + (d.value || 0), 0) || 0,
+      count: dealsDoMes.linhas.length,
+      pipelineValue: dealsAbertos.linhas.reduce((sum, d) => sum + (d.value || 0), 0),
     }
 
     const result: FinancialSummaryResponse = {

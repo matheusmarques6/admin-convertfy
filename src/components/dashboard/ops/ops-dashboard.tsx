@@ -76,7 +76,10 @@ interface TotalRevenueData {
   campaignRevenue: number
   flowRevenue: number
   storesCount: number
+  /** Lojas que FATURARAM no período — não é o mesmo que sincronizadas. */
   storesWithRevenue: number
+  /** Lojas cujo sync deu certo, incluindo as que faturaram zero. */
+  storesSynced?: number
   /** "ready" | "stale" | "empty" | "syncing" — postura do cache do período. */
   dataStatus?: string
   isStale?: boolean
@@ -108,7 +111,8 @@ function friendlySyncError(raw: string): string {
 }
 
 interface KpiSeriesData {
-  rate: number
+  /** `null` = não há faturamento bruto no período; a tela mostra "—". */
+  rate: number | null
   deltas?: Record<string, { value: number | null; label: string }>
 }
 
@@ -147,7 +151,6 @@ function xLabelsFromWindow(win?: { from: string; to: string; days: number }): st
 
 // ── Root ────────────────────────────────────────────────────────────
 
-const KPI_SERIES_PERIODS = new Set(["7d", "15d", "30d", "90d"])
 
 export function OpsDashboard({ userName }: { userName: string }) {
   const [period, setPeriod] = useState<OpsPeriodValue>(defaultOpsPeriod)
@@ -180,7 +183,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
   // Sessão expirada: desliga realtime + polling + auto-sync (cada poll era
   // mais um 401 no log) e mostra o banner de login.
   const sessionExpired = (revenueError as (Error & { status?: number }) | undefined)?.status === 401
-  const { isRefreshing, triggerRefresh } = useRealtimeRevenue({
+  const { isRefreshing, triggerRefresh, refreshError, pending: syncPending } = useRealtimeRevenue({
     period: period.period,
     start: isoDate(period.start),
     end: isoDate(period.end),
@@ -200,8 +203,15 @@ export function OpsDashboard({ userName }: { userName: string }) {
     autoRefreshedFor.current = selectionKey
     void triggerRefresh()
   }, [needsSync, selectionKey, triggerRefresh])
+  // A rota recebe o período INTEIRO (com start/end), como todas as outras.
+  //
+  // Antes ela só era chamada nos quatro rótulos fixos e sem as datas: num
+  // range personalizado a chave virava `null`, a "Taxa média Convertfy" e os
+  // deltas dos três cards de receita ficavam sem fonte e a tela seguia
+  // mostrando o número da última janela fixa aberta — "a taxa não atualiza
+  // com base na data selecionada".
   const { data: kpi } = useSWR<KpiSeriesData>(
-    KPI_SERIES_PERIODS.has(period.period) ? `/api/dashboard/kpi-series?period=${period.period}` : null,
+    `/api/dashboard/kpi-series?${q}`,
     fetchJson,
     SWR_OPTS,
   )
@@ -234,6 +244,17 @@ export function OpsDashboard({ userName }: { userName: string }) {
       fxDegraded?: boolean
     }>
   }>(`/api/dashboard/stores-overview?${q}`, fetchJson, SWR_OPTS)
+
+  // Dias inclusivos do período que está na tela — é o que separa "não há
+  // dado" de "este período não tem série".
+  const diasDoPeriodoSelecionado = Math.max(
+    1,
+    Math.round(
+      (Date.parse(`${isoDate(period.end)}T00:00:00Z`) -
+        Date.parse(`${isoDate(period.start)}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1,
+  )
 
   const hr = new Date().getHours()
   const saud = hr < 12 ? "Bom dia" : hr < 18 ? "Boa tarde" : "Boa noite"
@@ -275,11 +296,14 @@ export function OpsDashboard({ userName }: { userName: string }) {
             </div>
           </div>
           <div className="flex-1" />
+          {/* O progresso é de SINCRONIZAÇÃO: loja que faturou zero no dia
+              sincronizou igual, e contá-la como faltante fazia o chip
+              parecer travado em "45/54" para sempre. */}
           <SyncStatusChip
             syncing={isRefreshing || revenue?.isRefreshing === true || revenue?.dataStatus === "syncing"}
             stale={needsSync}
             lastFetchedAt={revenue?.lastFetchedAt ?? null}
-            storesWithRevenue={revenue?.storesWithRevenue}
+            storesSynced={revenue?.storesSynced ?? revenue?.storesWithRevenue}
             storesCount={revenue?.storesCount}
             issues={revenue?.syncIssues?.count ?? 0}
             onSync={() => void triggerRefresh()}
@@ -313,16 +337,35 @@ export function OpsDashboard({ userName }: { userName: string }) {
                 <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
                 <span>
                   Sincronizando <strong>{period.presetLabel ?? "o período"}</strong> com Klaviyo/Omnisend
-                  {revenue ? ` — ${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com dado até agora` : ""}.
+                  {revenue
+                    ? ` — ${revenue.storesSynced ?? revenue.storesWithRevenue} de ${revenue.storesCount} lojas sincronizadas`
+                    : ""}
+                  {syncPending > 0 ? `, ${syncPending} na fila` : ""}.
                   Os números completam sozinhos conforme as lojas terminam.
                 </span>
               </>
             ) : (
               <>
                 <span className="flex-1">
-                  O cache deste período está incompleto/desatualizado
-                  {revenue ? ` (${revenue.storesWithRevenue} de ${revenue.storesCount} lojas com receita)` : ""} —
-                  os cards podem mostrar menos do que o real.
+                  {refreshError ? (
+                    // A falha do sync ficava só no console: a tela voltava
+                    // ao normal e o usuário via "carrega e não puxa nada".
+                    <>
+                      <strong>A sincronização não completou:</strong> {refreshError}
+                    </>
+                  ) : (
+                    <>
+                      O cache deste período está incompleto/desatualizado
+                      {revenue
+                        ? ` (${revenue.storesSynced ?? revenue.storesWithRevenue} de ${revenue.storesCount} lojas sincronizadas${
+                            revenue.storesSynced != null &&
+                            revenue.storesSynced > revenue.storesWithRevenue
+                              ? `, ${revenue.storesWithRevenue} com faturamento no período`
+                              : ""
+                          })`
+                        : ""} — os cards podem mostrar menos do que o real.
+                    </>
+                  )}
                 </span>
                 <button
                   onClick={() => void triggerRefresh()}
@@ -396,7 +439,7 @@ export function OpsDashboard({ userName }: { userName: string }) {
               Taxa média Convertfy
             </div>
             <div className="mt-2 text-[22px] font-semibold text-white tabular-nums tracking-[-0.01em]">
-              {kpi ? fmtPct(kpi.rate) : "—"}
+              {kpi && kpi.rate != null ? fmtPct(kpi.rate) : "—"}
             </div>
             <div className="mt-0.5 text-[10.5px] text-white/70">
               % da receita das lojas via email
@@ -483,6 +526,12 @@ export function OpsDashboard({ userName }: { userName: string }) {
               />
             ) : !series ? (
               <CollectingState label="Carregando série diária…" />
+            ) : series.atual.length < 2 && diasDoPeriodoSelecionado < 2 ? (
+              // Um gráfico DIÁRIO de um período de um dia não existe: há um
+              // ponto só e não há o que ligar. A mensagem genérica culpava o
+              // sync ("não grava send_time") justamente quando o dado está
+              // lá e a escolha do período é que não rende série.
+              <CollectingState label="Um período de um dia não rende série diária — escolha um intervalo maior para ver a evolução." />
             ) : series.collecting || series.atual.length < 2 ? (
               <CollectingState
                 label={`Sem pontos na janela (diária: ${series.debug?.daily_points ?? 0} · campanhas com send_time: ${series.debug?.fallback_campaign_rows ?? 0}) — se ambos são 0, o sync de campanhas não grava send_time.`}
@@ -605,7 +654,7 @@ function SyncStatusChip({
   syncing,
   stale,
   lastFetchedAt,
-  storesWithRevenue,
+  storesSynced,
   storesCount,
   issues = 0,
   onSync,
@@ -613,7 +662,8 @@ function SyncStatusChip({
   syncing: boolean
   stale: boolean
   lastFetchedAt: string | null
-  storesWithRevenue?: number
+  /** Lojas SINCRONIZADAS — inclui as que faturaram zero no período. */
+  storesSynced?: number
   storesCount?: number
   /** Lojas com erro de sync — vira sufixo "· N com erro" no estado verde. */
   issues?: number
@@ -627,8 +677,8 @@ function SyncStatusChip({
   }, [])
 
   const progresso =
-    storesWithRevenue != null && storesCount != null && storesCount > 0
-      ? `${storesWithRevenue}/${storesCount} lojas`
+    storesSynced != null && storesCount != null && storesCount > 0
+      ? `${storesSynced}/${storesCount} lojas`
       : null
 
   const base =
@@ -638,7 +688,7 @@ function SyncStatusChip({
     return (
       <span
         className={cn(base, "border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] text-[var(--ops-warn)]")}
-        title={progresso ? `Sincronizando com Klaviyo/Omnisend — ${progresso} com dado até agora` : "Sincronizando com Klaviyo/Omnisend"}
+        title={progresso ? `Sincronizando com Klaviyo/Omnisend — ${progresso} sincronizadas` : "Sincronizando com Klaviyo/Omnisend"}
         aria-live="polite"
       >
         <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />

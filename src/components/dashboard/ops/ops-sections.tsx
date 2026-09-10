@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react"
+import Link from "next/link"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import { ValorBRL, ValorBRLTotal } from "@/components/money/valor-brl"
@@ -59,14 +60,15 @@ export interface CsDashboardData {
 }
 
 interface EmailPerfData {
+  /** Taxa `null` = não houve base no período; a tela mostra "—", nunca 0%. */
   metrics: {
-    openRate: number
-    clickRate: number
-    ctor: number
-    placedOrderRate: number
-    rpe: number
-    deliveryRate: number
-    unsubRate: number
+    openRate: number | null
+    clickRate: number | null
+    ctor: number | null
+    placedOrderRate: number | null
+    rpe: number | null
+    deliveryRate: number | null
+    unsubRate: number | null
   }
   totals: { recipients: number }
   audience: { totalLeads: number; engagedLeads: number }
@@ -132,6 +134,20 @@ const PHASE_FALLBACK_COLORS = [
 
 // ── Email performance ───────────────────────────────────────────────
 
+/**
+ * Largura de barra em porcentagem, sempre válida.
+ *
+ * `parte / total` com total zero devolve `Infinity` ou `NaN`, e o browser
+ * DESCARTA `width: NaN%` — a barra some sem erro em lugar nenhum, e some
+ * exatamente no caso vazio, que é quando alguém está olhando para entender
+ * por que não há dado. O clamp em 0–100 também evita a barra estourar a
+ * caixa quando a parte passa do total (benchmark superado, por exemplo).
+ */
+function larguraPct(parte: number, total: number): string {
+  if (!Number.isFinite(parte) || !Number.isFinite(total) || total <= 0) return "0%"
+  return `${Math.max(0, Math.min(100, (parte / total) * 100))}%`
+}
+
 export function EmailPerfCard({
   q,
   seriesDeltas,
@@ -151,7 +167,14 @@ export function EmailPerfCard({
         ["Click Rate", fmtPct(data.metrics.clickRate, 2), seriesDeltas?.clickRate, false],
         ["CTOR", fmtPct(data.metrics.ctor), seriesDeltas?.ctor, false],
         ["Placed Order", fmtPct(data.metrics.placedOrderRate, 2), seriesDeltas?.placedOrderRate, false],
-        ["RPE", `R$ ${data.metrics.rpe.toFixed(2).replace(".", ",")}`, seriesDeltas?.rpe, false],
+        [
+          "RPE",
+          data.metrics.rpe != null
+            ? `R$ ${data.metrics.rpe.toFixed(2).replace(".", ",")}`
+            : "—",
+          seriesDeltas?.rpe,
+          false,
+        ],
         ["Deliverability", fmtPct(data.metrics.deliveryRate), seriesDeltas?.deliveryRate, false],
       ]
     : []
@@ -262,9 +285,9 @@ export function StoresHealthTable({ q }: { q: string }) {
       title="Saúde das Lojas"
       hint={data ? `${critical} precisa${critical === 1 ? "" : "m"} de atenção · ${stores.length} de ${data.stores.length}` : undefined}
       right={
-        <a href="/admin/health" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
+        <Link href="/admin/health" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
           Ver todas
-        </a>
+        </Link>
       }
       noPad
     >
@@ -403,7 +426,7 @@ export function FlowsRow({ q }: { q: string }) {
                 <div className="mt-1.5 h-1.5 rounded overflow-hidden bg-[var(--ops-track)]">
                   <div
                     className={cn("h-full rounded", abaixo ? "bg-[var(--ops-neg)]" : "bg-[var(--ops-pos)]")}
-                    style={{ width: `${Math.min(100, (f.rate / f.benchmark) * 100)}%` }}
+                    style={{ width: larguraPct(f.rate, f.benchmark) }}
                   />
                 </div>
                 <div className="flex justify-between mt-2 text-[11px]">
@@ -439,9 +462,9 @@ export function OnboardingCard({ className }: { className?: string }) {
       title="Onboarding"
       hint={data ? `${data.in_progress} em andamento` : undefined}
       right={
-        <a href="/admin/onboarding" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
+        <Link href="/admin/onboarding" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
           Ver board
-        </a>
+        </Link>
       }
     >
       {!data ? (
@@ -480,7 +503,7 @@ export function OnboardingCard({ className }: { className?: string }) {
                       key={p.id}
                       title={`${p.name}: ${p.count}`}
                       style={{
-                        width: `${(p.count / data.in_progress) * 100}%`,
+                        width: larguraPct(p.count, data.in_progress),
                         background: p.color || PHASE_FALLBACK_COLORS[i % PHASE_FALLBACK_COLORS.length],
                       }}
                     />
@@ -559,7 +582,7 @@ export function PortfolioHealthCard({ cs }: { cs?: CsDashboardData }) {
                   key={k}
                   title={`${k}: ${n}`}
                   className="rounded-[3px]"
-                  style={{ width: `${(n / total) * 100}%`, background: c }}
+                  style={{ width: larguraPct(n, total), background: c }}
                 />
               ))}
           </div>
@@ -747,9 +770,9 @@ export function ClientsRevenueTable({ className, q }: { className?: string; q: s
       title="Clientes por Receita"
       hint={data ? `1–${clients.length} de ${totalClients}` : undefined}
       right={
-        <a href="/admin/clients" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
+        <Link href="/admin/clients" className="text-[11.5px] font-medium text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
           Ver todos
-        </a>
+        </Link>
       }
       noPad
     >

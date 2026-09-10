@@ -235,6 +235,15 @@ export interface OmnisendSyncData {
   // de "unicos" recontados por bucket diario da Statistics API). null =
   // fetch falhou/rate-limited (distinto de "API respondeu zeros").
   reportsTotals: OmnisendReportsResult | null
+  /**
+   * A Statistics API respondeu?
+   *
+   * `false` = a chamada falhou (rate limit, timeout) e os zeros abaixo não
+   * são medida. `true` com tudo zero é receita ZERO de verdade — comum num
+   * período de um dia, e acusá-la de falha faz a tela dizer "N lojas não
+   * sincronizam" sobre lojas que sincronizaram bem.
+   */
+  statisticsOk: boolean
 }
 
 export type SyncErrorType = "rate_limit" | "invalid_key" | "permission" | "unknown"
@@ -1499,7 +1508,13 @@ export async function syncOmnisendForStore(params: {
   startDate?: string
   endDate?: string
 }): Promise<SyncResult<OmnisendSyncData>> {
-  const lockKey = `${params.storeId}:${params.periodDays}`
+  // A janela entra na chave, não só o número de dias: dois períodos
+  // personalizados de UM dia (09/09 e 08/09) têm `periodDays` igual, e com
+  // a chave antiga o segundo recebia, por dedupe, o resultado do primeiro
+  // — dado de um dia publicado sob a data de outro, em silêncio.
+  const lockKey = params.startDate && params.endDate
+    ? `${params.storeId}:${params.startDate.slice(0, 10)}:${params.endDate.slice(0, 10)}`
+    : `${params.storeId}:${params.periodDays}`
   const existing = activeSyncs.get(lockKey)
   if (existing) {
     log.info("Sync already running for store, waiting for result", { storeId: params.storeId })
@@ -1805,16 +1820,22 @@ async function doSyncOmnisendForStore(params: {
       endDate = nowInTimezone(timezone)                          // agora, MESMO offset do from (-03:00)
       log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate}]`, { storeId })
     }
+    // A sentinela existe para distinguir "a API respondeu ZERO" de "a
+    // chamada falhou": o `safely` devolve o fallback nos dois casos, e
+    // quem lê depois só via zeros. Comparação por REFERÊNCIA — a mesma
+    // constante só volta se o fallback foi usado.
+    const BREAKDOWN_FALHOU: OmnisendActivityBreakdownResult = {
+      campaigns: new Map(),
+      automations: new Map(),
+      total: { revenue: 0, orders: 0 },
+      engagement: { sent: 0, opened: 0, openedUnique: 0, clicked: 0, clickedUnique: 0, failed: 0 },
+    }
     const activityBreakdown = await safely(
       "activityBreakdown",
       () => fetchOmnisendActivityBreakdown(apiKey, startDate, endDate),
-      {
-        campaigns: new Map(),
-        automations: new Map(),
-        total: { revenue: 0, orders: 0 },
-        engagement: { sent: 0, opened: 0, openedUnique: 0, clicked: 0, clickedUnique: 0, failed: 0 },
-      } as OmnisendActivityBreakdownResult,
+      BREAKDOWN_FALHOU,
     )
+    const statisticsOk = activityBreakdown !== BREAKDOWN_FALHOU
 
     // Aberturas/cliques UNICOS por atividade via Reports API (sem timestamp =
     // consolidado, sem dupla contagem). Usado pra corrigir os FLOWS, onde o
@@ -2244,6 +2265,7 @@ async function doSyncOmnisendForStore(params: {
         engagedSource: "statistics-openedUnique" as const,
         currency,
         reportsTotals: reportsTotalsRaw,
+        statisticsOk,
       },
     }
   } catch (error) {

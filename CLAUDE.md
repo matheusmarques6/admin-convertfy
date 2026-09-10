@@ -5005,14 +5005,25 @@ fora dele** (a mais antiga de 15/04), somando **3.751.247 envios** — e o
 snapshot publicou **872.858 envios com 2,5% de abertura** para um único
 dia. O número não era "um pouco a mais": o `delivered` de quem está fora
 da janela é o total HISTÓRICO daquela campanha, então o relatório falava
-de outro assunto. `lib/reports/periodo.ts` (puro, 15 testes) é a régua
-única — `campanhaNoPeriodo` exige `sent` + envio na janela, e **campanha
+de outro assunto. `lib/reports/periodo.ts` (puro, 17 testes) é a régua
+única — `campanhaNoPeriodo` exige envio DENTRO da janela, e **campanha
 sem data de envio fica FORA**: assumir que é do período é exatamente o
 erro que trouxe abril para setembro. Aplicada nos dois lados que o
 snapshot lê (o cache, cuja query agora filtra no SQL com um dia de folga
 só para o `limit` não descartar borda, e a lista da API). **Flows não
 entram nessa régua** — são contínuos, não têm data de envio, e filtrar
 por ela apagaria todos.
+
+O corte é por **"não enviou"**, não por "não é `sent`", e quem ensinou
+isso foi o dado: das três campanhas de 09/09, a das 18h estava `started`
+— no ar naquele instante, 35 entregues até o snapshot. Exigir `sent`
+faria a campanha do próprio dia sumir do relatório daquele dia, em
+silêncio, enquanto os envios dela existem e são do período. Só
+`scheduled`, `draft` e `cancelled` ficam fora (nunca enviaram nada);
+status desconhecido decide pela data, porque inventar exclusão sobre um
+nome que não conhecemos apaga dado real. Medido no mesmo relatório:
+**de 872.858 envios com 2,5% de abertura para 139.525 com 12,04%** — as
+três campanhas do dia, numa base de 100 mil leads.
 
 **2. O relatório NASCIA e a tela dizia erro.** O de 09/09 está no banco,
 gravado às 20:19:23, com o alerta na cara do usuário. O insert acontece
@@ -5074,6 +5085,272 @@ declara estimativa. No mesmo eixo, o offset do range custom do sync vinha
 de `getTimezoneOffset`, que pergunta o offset de AGORA: relatório de
 janeiro gerado em julho saía uma hora deslocado na Europa e a receita
 migrava de dia. Agora é `offsetForTimezone`, por ponta e pela DATA.
+
+## "Sincronizar agora" recusava a carteira inteira (set/2026)
+
+Relatado com print: o dashboard em 9–9 set diz *"1 de 54 lojas com
+receita"*, clicar em **Sincronizar agora** carrega, dá erro e a receita não
+vem. Medido no banco antes de mexer em código — e o erro estava gravado, em
+português, em `store_revenue_summary.sync_error`:
+
+> `Omnisend não suporta range retroativo (janela é relativa a hoje)`
+
+**A afirmação é FALSA.** `syncOmnisendForStore` aceita `startDate`/`endDate`
+desde sempre e o builder de campanhas já os passa — a rota do dashboard é
+que nunca passou, e recusava a loja sem tentar. Como **as 54 lojas da org
+são Omnisend** (zero Klaviyo), isso recusava 100% da carteira em todo
+período personalizado. É o mesmo padrão do comentário "Omnisend não expõe
+currency via API": uma afirmação errada que virou lei porque ninguém foi
+conferir. Agora a janela viaja explícita (`janelaDoPeriodo` +
+`omnisendDateRange` no fuso da loja) e período retroativo é um período como
+outro qualquer.
+
+**"Hoje" tinha fuso errado**: a checagem usava `new Date().toISOString()`,
+que é o dia em UTC. Depois das 21h de Brasília já é o dia seguinte lá, então
+o período de HOJE também virava "retroativo". `hojeNoFuso` resolve, e um
+teste fixa o caso das 21h30.
+
+**Uma passada nunca cobriu a carteira.** Cada loja é um sync completo da
+plataforma; 54 em SÉRIE, com 1s de pausa entre elas, não cabem nos 270s de
+prazo — o loop parava na primeira e as outras 53 nunca eram tentadas. Era a
+segunda metade do "1 de 54". Agora o lote roda em paralelo com teto
+(`comLimite`, 5 por vez — as chaves são por loja, então o limite de
+requisições da plataforma é por conta e não impede o paralelismo), começa
+por **quem não tem dado** (loja sem linha é buraco no total; dado de ontem é
+só imprecisão) e devolve `storesPending` — o cliente encadeia passadas até
+zerar. Régua em `lib/dashboard/refresh-lote.ts` (puro, 13 testes).
+
+**O erro nunca chegava à tela.** O hook não conferia `res.ok` — um 500 caía
+no caminho de sucesso e revalidava os mesmos números, que é exatamente o
+"carrega e não puxa a receita" — e o `catch` só fazia `console.error`. Agora
+a causa real aparece no banner, e o teto de espera do cliente subiu de 60s
+para os 290s que a rota declara.
+
+**3,83 milhões de envios num único dia** era o mesmo defeito do relatório,
+noutro caminho: `getUnifiedCampaigns` traz todas as linhas do rótulo sem
+olhar `send_time` — nem selecionava a coluna. Medido: **3.751.247 envios e
+6,07% de abertura** (o "6,1%" que aparecia na tela) contra **139.525 e
+12,04%** com a régua. Corrigido na função, que já recebe o `periodLabel` e
+portanto sabe a janela — as cinco rotas do dashboard que a consomem herdam
+a correção.
+
+**O lock do sync colidia entre períodos do mesmo tamanho**: a chave era
+`storeId:periodDays`, então dois personalizados de UM dia (09/09 e 08/09)
+compartilhavam o dedupe e o segundo recebia o resultado do primeiro — dado
+de um dia publicado sob a data de outro, em silêncio. A janela entrou na
+chave.
+
+**O gráfico diário de um período de um dia não existe** — há um ponto só e
+nada a ligar. A tela mostrava "Sem pontos na janela … se ambos são 0, o
+sync de campanhas não grava send_time", culpando o sync com 45 campanhas
+daquele dia no banco. Agora ela diz que o período é que não rende série.
+
+### A rodada seguinte (set/2026): o que a correção expôs
+
+Medido depois do deploy: de **1 linha** para **41 lojas `ok`, todas com
+receita**, e o erro "range retroativo" sumiu do banco. Sobraram três
+defeitos que só apareceram com o lote finalmente rodando.
+
+**Cada passada re-sincronizava a carteira inteira.** O lote era
+`planoDeLote(stores, stores.length)` — todas as lojas, sempre —, então o
+segundo clique atropelava o primeiro e a plataforma, que limita **por
+conta** (10/min nas analytics), começava a recusar. Era o contador subindo
+sozinho a cada rodada: **2 → 3 → 5 lojas "com erro"**. Agora quem tem dado
+FRESCO do período (`FRESCOR_MS`, 10 min) sai da fila — buscar de novo não
+traz número diferente e gasta cota. Loja com ERRO entra mesmo fresca: é
+justamente ela que pode ter sido vítima do limite na rodada anterior.
+
+**"Statistics API unavailable" era suposição, não medição.** A régua era
+`revenueCollected = tudo zero → falhou`, e o `safely` devolve o mesmo
+fallback quer a chamada tenha falhado, quer a API tenha respondido zero.
+Num período de UM DIA zero é rotina: das 9 lojas marcadas assim, todas
+estavam zeradas e são pequenas — **Bryn Grill tem 5 leads na base inteira**
+—, e o `total_leads` das nove foi coletado, o que prova que o sync
+funcionou. A tela anunciava "9 lojas não sincronizam" sobre lojas que
+sincronizaram bem. Agora `OmnisendSyncData.statisticsOk` diz se a CHAMADA
+respondeu (sentinela comparada por REFERÊNCIA — a mesma constante só volta
+quando o fallback foi usado), e só a falha real preserva a linha antiga e
+marca `partial`. **Zero medido é gravado**: sem isso a loja que não vendeu
+naquele dia carregaria para sempre a receita de outro período.
+
+**Os cards subiam sozinhos, sem nada dizendo que estava carregando.** Com
+o lock do servidor ativo o cliente recebia `alreadyRunning` e SAÍA do
+loop: `isRefreshing` voltava a false, o banner sumia e o servidor seguia
+trabalhando — os números mudavam na cara de quem olhava e o topo dizia
+"Atualizado agora". Agora ele espera o lock (`ESPERA_LOCK_MS`) e continua,
+mantendo o indicador e a fila à vista enquanto o lote não fecha.
+
+## Dashboard: o clique em sincronizar e o custo de carregar (set/2026)
+
+Sintomas relatados em sequência — "clico em sincronizar e ele não
+sincroniza e para de sincronizar", "mesmo re-sincronizando ainda deixa
+loja sem sync", "a taxa média não atualiza com base na data selecionada".
+Sete causas independentes, todas invisíveis, todas medidas em produção
+antes de qualquer linha de código.
+
+**1. A função morria com o cadeado na mão.** `cron_locks` tinha dois
+locks com `is_running = true` e `finished_at` ANTERIOR ao `started_at` —
+a marca de quem foi cortado no meio. O deadline só era conferido ANTES de
+iniciar cada loja: uma que começasse em 269 s e levasse 60 s terminava em
+329 s, além dos 300 s da Vercel, e o `finally` que solta o lock nunca
+rodava. O lock então segurava o período por 5 minutos. Deadline para
+195 s e teto por loja.
+
+**2. Esperar o lock consumia o orçamento de passadas.** Cada volta caía
+em `alreadyRunning`, esperava 6 s e gastava uma das 6 passadas: 36 s
+depois o loop saía com `restam = 0` e **sem erro**. A espera deixou de
+contar como passada (teto de 6 min) e, esgotada, DIZ que outra
+sincronização está em andamento.
+
+**3. Uma falha abortava o encadeamento inteiro** — o `try` envolvia o
+`for`. Agora o tratamento é por passada; passada que dá certo limpa o
+erro da anterior (senão a tela acusava falha numa sincronização que
+completou).
+
+**4. O banner "Desatualizado" era matematicamente inatingível.** A idade
+do dado é a da loja MAIS VELHA e uma passada só cobria parte da carteira:
+27 lojas às 14:40 e 25 às 16:00 — o mais antigo ficava 1 h 20 atrás,
+sempre acima do limite de 1 h. Como `needsSync` dispara auto-sync a cada
+abertura do dashboard, era esse sync automático que segurava o lock
+quando o usuário clicava. **Uma passada tem de cobrir a carteira**:
+concorrência 5 → 18 (54 lojas em 3 ondas, ~144 s dentro dos 195 s, com
+folga de 25%; o teste do módulo reprovou o palpite de 12) e frescor 10 →
+45 min, alinhado ao `ADMIN_STALENESS_MS` da tela — re-buscar loja que a
+tela já considera fresca não muda o veredicto e gasta a cota que falta
+para as velhas. `partial` passou a contar como dado INCOMPLETO (peso de
+falha): no fim da fila, as 5 `partial` seguiam carimbadas às 14:40 com as
+`ok` já refeitas às 16:03.
+
+**5. O teto por loja virou o novo "não sincroniza".** Fixo em 90 s, ele
+marcou como `error` três lojas grandes que sincronizariam bem com mais um
+minuto — "demorou" virando "não sincroniza" na tela. `tetoPorLoja` é **o
+que resta da função** (piso de 90 s): com a fila curta, porque as frescas
+saíram do plano, as poucas lentas recebem quase todo o orçamento.
+
+**6. A "Taxa média Convertfy" ignorava a data.** `kpi-series` lia só os
+quatro rótulos fixos e o cliente só a chamava neles, sem `start`/`end` —
+a única das nove rotas que não passava a janela. Em range personalizado a
+chave do SWR virava `null` e o card seguia com o número da última janela
+fixa. Agora o período selecionado é lido junto com os quatro, e **sem
+faturamento bruto no período a taxa é `null`** ("—"), nunca `0`: zero se
+lê como "o email não trouxe nada" quando a verdade é que a base não foi
+sincronizada.
+
+**7. O GET escrevia na tabela que o realtime observa.** `total-revenue`
+renovava `expires_at` a cada leitura com cache velho: **37.639 chamadas e
+391 s de CPU** no `pg_stat_statements`. `store_revenue_summary` está na
+publication e o dashboard assina — cada escrita acordava todas as abas,
+que revalidavam as nove rotas, e a leitura escrevia de novo. Rodava
+sempre, porque `isStale` era permanentemente verdadeiro (causa 4). Quem
+dependia do carimbo era `/api/stores/control`, que passou a medir a IDADE
+do dado (`fetched_at`, 7 dias): **validade é idade, não um carimbo que
+alguém precisa renovar**.
+
+**Custo de carregar.** O fallback de polling virou um timer reagendado
+com backoff 30 s→5 min e jitter, parado em aba oculta — cada disparo
+revalida as nove rotas, então 30 s fixos eram 18 requisições por minuto
+por aba, e o realtime-js reconecta em intervalos fixos sem jitter (todas
+as abas voltavam juntas). E `plataformasPresentes` (puro, 5 testes)
+impede o dashboard de perguntar pela plataforma que a org não usa: com 54
+lojas Omnisend, nenhuma Klaviyo e `klaviyo_campaign_metrics` com ZERO
+linhas, três rotas varriam uma tabela vazia a cada carregamento
+(`ops-series` quatro vezes — o fallback roda em duas janelas). Lista sem
+as colunas devolve as DUAS plataformas, não nenhuma: select degradado
+concluindo "nenhuma" faria a tela mostrar zero achando que mediu.
+
+**Auditoria do resto do dashboard, rota por rota** — quatro defeitos do
+mesmo feitio: o número aparecia completo e não era.
+
+*O PostgREST corta em 1.000 linhas sem avisar* (HTTP 200, e `.limit()`
+maior não resolve — o teto do servidor vence). O trend por loja lia
+`store_daily_metrics` sem paginar: com 63 lojas × 90 dias são ~5.670
+linhas, então **dois terços da janela sumiam** e metade das lojas ganhava
+uma seta calculada sobre outro pedaço de tempo. `unified-metrics` — o
+serviço de que as CINCO rotas de campanha/flow dependem — não paginava
+nem ordenava, com 5.734 linhas na tabela. `lerPaginado`
+(`lib/supabase/paginar.ts`, puro, 6 testes) devolve `truncado` em vez de
+calar; erro no meio entrega o que veio, marcado, em vez de derrubar o
+card por causa da última página. **A ordem é o que torna a paginação
+correta**, não um detalhe: `.range()` sobre consulta sem ordem TOTAL
+repete e pula linhas — daí o desempate explícito (`store_id` +
+`campaign_id`/`flow_id`; `metric_date` + `store_id`, porque com uma linha
+por loja a data não é única).
+
+*"Valor do pipeline" somava o histórico inteiro*: o filtro era `stage_id
+not is null`, que não seleciona negócio ABERTO — seleciona negócio que
+TEM etapa, ou seja todos, ganhos e perdidos incluídos. Um número que só
+cresce e nunca fecha com o funil.
+
+*Taxa sem denominador saía `0%`*, em oito lugares de `email-performance`
+(mais seis por loja na auditoria). Num período sem envio o card publicava
+"Open Rate 0,0%" e "Deliverability 0,0%" como se tivesse medido — 0% se
+lê como "saiu e ninguém abriu". Agora é `null` e a tela mostra "—"
+(`fmtPct` já tratava; `csvNumber` exporta célula vazia).
+
+*Barra com largura inválida no caso vazio*: `parte / total` com total
+zero dá `Infinity`/`NaN`, e o browser DESCARTA `width: NaN%` — a barra
+some sem erro nenhum, justamente no caso vazio, que é quando alguém está
+olhando para entender por que não há dado.
+
+De passagem: três `<a href="/admin/...">` viravam recarga completa da
+página (e recarregar o dashboard refaz as nove requisições) — agora
+`<Link>`.
+
+**Risco latente declarado**: seis rotas leem `client_stores` com
+`.limit(500)`. Com 63 lojas hoje sobra folga, mas acima de 500 o corte
+volta a ser silencioso.
+
+**Cache HTTP foi avaliado e RECUSADO** para estas rotas: o dashboard
+precisa refletir a sincronização no instante em que ela termina, e um
+`max-age` faria o browser servir a resposta antiga justamente no
+`revalidate` disparado depois do sync — economia paga com o defeito que
+esta rodada inteira existiu para consertar.
+
+## Moeda estrangeira somada como real, e "loja sem sync" que vendeu zero (set/2026)
+
+Duas queixas na mesma tela: "ainda tem 10 lojas sem sync mesmo clicando
+em sincronizar" e "o valor de campanha está muito baixo perto da
+realidade". Nenhuma das duas era o que parecia.
+
+**As 10 lojas tinham sincronizado.** `storesWithRevenue` conta
+`totalRevenueBRL > 0` e a tela escrevia "45 de 54 lojas com dado até
+agora": as 9 que faltavam sincronizaram com sucesso e faturaram **ZERO**
+naquele dia — loja pequena sem venda. Medido: 54 de 54 `ok`, 45 com
+faturamento bruto; o "45/54" era exatamente a contagem de quem vendeu. O
+banner então dizia "o cache está incompleto, os cards podem mostrar menos
+do que o real" sobre uma carteira inteira sincronizada, e o operador
+clicava em sincronizar para sempre. **Faturamento zero é MEDIÇÃO, não
+lacuna**: a rota expõe `storesSynced` (linhas sem erro) e a tela separa as
+duas contagens ("N de M sincronizadas, K com faturamento no período").
+
+**Três caminhos somavam moedas diferentes sem converter** e publicavam o
+total com "R$" na frente. Uma libra entrando como um real subestima ~7×,
+um euro ~6×, e **o total continua parecendo plausível** — é o que faz esse
+defeito sobreviver, e foi o que a suspeita do usuário pegou:
+
+- `getEmailDailySeries` (a série do gráfico "Receita atribuída") lia
+  `store_daily_metrics` **sem selecionar `currency`** — a coluna existe e
+  é gravada pelo próprio serviço, no upsert, algumas linhas acima.
+- O fallback por campanhas do mesmo gráfico somava `conversion_value` cru.
+- `email-performance` idem, e o **RPE** do card sai do mesmo número.
+
+`lib/money/converter-lote.ts` (puro, 6 testes) converte **uma vez por
+MOEDA**, não por linha: são poucas moedas distintas e milhares de linhas,
+e `convertToBRL` já tem cache de três camadas. Moeda estrangeira sem taxa
+entra na moeda ORIGINAL em vez de virar zero — perder a linha deixaria o
+total menor ainda, e sem nada dizendo que faltou; `moedasNaoConvertidas`
+existe para a tela poder declarar.
+
+**Os cards de Receita Atribuída/Campanhas/Automações NÃO eram afetados**:
+`total-revenue` já convertia as quatro somas por loja. Se o número deles
+parecer baixo, o eixo a investigar é a **moeda gravada** em
+`client_stores` (loja europeia marcada BRL converte por 1 e subestima na
+mesma proporção) — `/admin/tools/currency-audit` mostra a procedência, e
+`fxDegraded` só acusa câmbio que FALHOU, nunca moeda errada.
+
+**Pendência declarada**: `total-revenue` e `kpi-series` convertem com
+`convertToBRL` (taxa de HOJE), não com `convertToBRLOn` (taxa do dia do
+período). Para uma janela recente a diferença é pequena; para 90 dias, não.
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

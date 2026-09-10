@@ -40,6 +40,13 @@ export function StoreForceResyncAction({ storeId, storeName }: StoreForceResyncA
     try {
       const res = await fetch(`/api/client-stores/${storeId}/force-resync`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Este botão promete limpar o cache INTEIRO da loja — é o que o
+        // rótulo diz e o que ele sempre fez. A rota passou a limpar só o
+        // período pedido (para o "Sincronizar período" da aba Performance
+        // não apagar o cache dos outros), então aqui o escopo total é
+        // declarado em vez de herdado do default.
+        body: JSON.stringify({ all_periods: true, period: "30d" }),
       })
       const data = await res.json()
 

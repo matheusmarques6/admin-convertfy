@@ -22,6 +22,7 @@ import {
 } from "@/lib/services/unified-metrics.service"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { logger } from "@/lib/logger"
+import { emBRL, taxasPara } from "@/lib/money/converter-lote"
 
 const log = logger.child("DashboardEmailPerf")
 
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
       getUnifiedFlows(supabase, orgId, period, undefined, false),
       supabase
         .from("client_stores")
-        .select("id, store_name, clients(name)")
+        .select("id, store_name, currency, clients(name)")
         .eq("org_id", orgId)
         .limit(1000),
     ])
@@ -57,6 +58,22 @@ export async function GET(request: NextRequest) {
         return [s.id as string, { store: s.store_name as string, client: (client as { name?: string } | null)?.name || "—" }]
       }),
     )
+    // A receita vem na moeda DA LOJA e este card soma 54 delas — libra,
+    // euro, zloty — publicando o resultado com "R$" na frente. Somar uma
+    // libra como um real subestima ~7×, e o total continua plausível.
+    // Converte-se por loja ANTES de agregar; o RPE do card sai do mesmo
+    // número, então ele estava errado pela mesma razão.
+    const moedaDaLoja = new Map<string, string>(
+      (storesQ.data ?? []).map((s) => [
+        s.id as string,
+        ((s as { currency?: string | null }).currency || "BRL") as string,
+      ]),
+    )
+    const taxasFx = await taxasPara(
+      [...new Set([...campaignRows, ...flowRows].map((r) => moedaDaLoja.get(r.store_id)))],
+    )
+    const receitaBRL = (storeId: string, valor: number | null | undefined) =>
+      emBRL(valor, moedaDaLoja.get(storeId), taxasFx)
 
     // Agrega tudo (campaigns + flows do periodo)
     const allRows = [
@@ -69,7 +86,7 @@ export async function GET(request: NextRequest) {
         bounced: c.bounced,
         unsubscribed: c.unsubscribed,
         conversions: c.conversions,
-        revenue: c.conversion_value,
+        revenue: receitaBRL(c.store_id, c.conversion_value),
       })),
       ...flowRows.map((f) => ({
         store_id: f.store_id,
@@ -80,7 +97,7 @@ export async function GET(request: NextRequest) {
         bounced: f.bounced,
         unsubscribed: f.unsubscribed,
         conversions: f.conversions,
-        revenue: f.conversion_value,
+        revenue: receitaBRL(f.store_id, f.conversion_value),
       })),
     ]
 
@@ -113,7 +130,11 @@ export async function GET(request: NextRequest) {
       acc.revenue += r.revenue
       byStore.set(r.store_id, acc)
     }
-    const r2 = (v: number) => Math.round(v * 100) / 100
+    // Mesma régua das taxas globais: sem denominador não há taxa. Uma loja
+    // sem envio no período mostrava 0% em todas as colunas da auditoria,
+    // indistinguível de uma loja que enviou e teve desempenho zero.
+    const taxaDaLoja = (num: number, den: number): number | null =>
+      den > 0 ? Math.round((num / den) * 100 * 100) / 100 : null
     const storeBreakdown = [...byStore.entries()]
       .map(([storeId, a]) => {
         const names = storeNames.get(storeId)
@@ -122,12 +143,12 @@ export async function GET(request: NextRequest) {
           storeName: names?.store ?? "—",
           clientName: names?.client ?? "—",
           ...a,
-          openRate: a.delivered > 0 ? r2((a.opened / a.delivered) * 100) : 0,
-          clickRate: a.delivered > 0 ? r2((a.clicked / a.delivered) * 100) : 0,
-          ctor: a.opened > 0 ? r2((a.clicked / a.opened) * 100) : 0,
-          placedOrderRate: a.delivered > 0 ? r2((a.conversions / a.delivered) * 100) : 0,
-          deliveryRate: a.recipients > 0 ? r2((a.delivered / a.recipients) * 100) : 0,
-          unsubRate: a.delivered > 0 ? r2((a.unsubscribed / a.delivered) * 100) : 0,
+          openRate: taxaDaLoja(a.opened, a.delivered),
+          clickRate: taxaDaLoja(a.clicked, a.delivered),
+          ctor: taxaDaLoja(a.clicked, a.opened),
+          placedOrderRate: taxaDaLoja(a.conversions, a.delivered),
+          deliveryRate: taxaDaLoja(a.delivered, a.recipients),
+          unsubRate: taxaDaLoja(a.unsubscribed, a.delivered),
         }
       })
       .sort((a, b) => b.delivered - a.delivered)
@@ -144,14 +165,23 @@ export async function GET(request: NextRequest) {
     // Rates (em percentual 0-100). Ponderados por volume real, nao
     // simples media de rates — ainda mais preciso quando lojas tem
     // tamanhos muito diferentes.
-    const openRate = totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0
-    const clickRate = totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0
-    const ctor = totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0
-    const placedOrderRate = totalDelivered > 0 ? (totalConversions / totalDelivered) * 100 : 0
-    const rpe = totalRecipients > 0 ? totalRevenue / totalRecipients : 0
-    const deliveryRate = totalRecipients > 0 ? (totalDelivered / totalRecipients) * 100 : 0
-    const unsubRate = totalDelivered > 0 ? (totalUnsubs / totalDelivered) * 100 : 0
-    const bounceRate = totalRecipients > 0 ? (totalBounced / totalRecipients) * 100 : 0
+    // **Sem denominador não existe taxa** — devolve `null`, e a tela mostra
+    // "—". Um `0` ali se lê como "os emails saíram e ninguém abriu", quando
+    // a verdade é que não houve envio no período (ou o cache não foi
+    // sincronizado): num período de um dia sem campanha, o card publicava
+    // "Open Rate 0,0%" e "Deliverability 0,0%" como se tivesse medido. É a
+    // mesma armadilha da Taxa média Convertfy, em oito lugares.
+    const taxa = (num: number, den: number): number | null =>
+      den > 0 ? Math.round((num / den) * 100 * 100) / 100 : null
+    const openRate = taxa(totalOpened, totalDelivered)
+    const clickRate = taxa(totalClicked, totalDelivered)
+    const ctor = taxa(totalClicked, totalOpened)
+    const placedOrderRate = taxa(totalConversions, totalDelivered)
+    const rpe =
+      totalRecipients > 0 ? Math.round((totalRevenue / totalRecipients) * 100) / 100 : null
+    const deliveryRate = taxa(totalDelivered, totalRecipients)
+    const unsubRate = taxa(totalUnsubs, totalDelivered)
+    const bounceRate = taxa(totalBounced, totalRecipients)
 
     // Footer: agregados de leads
     const totalLeads = revenueRows.reduce((s, r) => s + (r.total_leads || 0), 0)
@@ -162,21 +192,21 @@ export async function GET(request: NextRequest) {
       campaigns: campaignRows.length,
       flows: flowRows.length,
       totalDelivered,
-      openRate: openRate.toFixed(2),
-      clickRate: clickRate.toFixed(2),
+      openRate: openRate?.toFixed(2) ?? "sem base",
+      clickRate: clickRate?.toFixed(2) ?? "sem base",
     })
 
     return successResponse(request, {
       period,
       metrics: {
-        openRate: Math.round(openRate * 100) / 100,
-        clickRate: Math.round(clickRate * 100) / 100,
-        ctor: Math.round(ctor * 100) / 100,
-        placedOrderRate: Math.round(placedOrderRate * 100) / 100,
-        rpe: Math.round(rpe * 100) / 100,
-        deliveryRate: Math.round(deliveryRate * 100) / 100,
-        bounceRate: Math.round(bounceRate * 100) / 100,
-        unsubRate: Math.round(unsubRate * 100) / 100,
+        openRate,
+        clickRate,
+        ctor,
+        placedOrderRate,
+        rpe,
+        deliveryRate,
+        bounceRate,
+        unsubRate,
       },
       totals: {
         recipients: totalRecipients,

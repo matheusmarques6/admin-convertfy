@@ -55,6 +55,8 @@ interface TotalRevenueResponse {
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
+  /** Lojas cujo último sync deu certo — inclui as que faturaram zero. */
+  storesSynced?: number
   topStores: StoreRevenue[]
   bottomStores: StoreRevenue[]
   storeBreakdown: StoreRevenue[]
@@ -166,6 +168,16 @@ function buildResponse(
   const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenueBRL, 0)
   const flowRevenue = storeBreakdown.reduce((sum, s) => sum + s.flowRevenueBRL, 0)
   const storesWithRevenue = storeBreakdown.filter((s) => s.totalRevenueBRL > 0).length
+  // **Sincronizada e sem venda no dia NÃO é loja sem sync.**
+  //
+  // A tela contava só `storesWithRevenue` e escrevia "45 de 54 lojas com
+  // dado até agora": as 9 que faltavam tinham sincronizado com sucesso e
+  // faturado ZERO naquele dia — loja pequena sem venda. O banner então
+  // dizia "o cache está incompleto, os cards podem mostrar menos do que o
+  // real" sobre uma carteira inteiramente sincronizada, e o operador
+  // clicava em sincronizar de novo para sempre. Faturamento zero é
+  // MEDIÇÃO, não lacuna.
+  const storesSynced = storeBreakdown.filter((s) => s.syncStatus !== "error").length
 
   const sorted = [...storeBreakdown].sort((a, b) => b.totalRevenueBRL - a.totalRevenueBRL)
   const topStores = sorted.filter(s => s.totalRevenueBRL > 0).slice(0, 5)
@@ -201,6 +213,8 @@ function buildResponse(
     flowRevenue,
     storesCount,
     storesWithRevenue,
+    /** Lojas cujo último sync deu certo — inclui as que faturaram zero. */
+    storesSynced,
     topStores,
     bottomStores,
     storeBreakdown,
@@ -228,6 +242,7 @@ function emptyResponse(
     flowRevenue: 0,
     storesCount,
     storesWithRevenue: 0,
+    storesSynced: 0,
     topStores: [],
     bottomStores: [],
     storeBreakdown: [],
@@ -387,18 +402,23 @@ async function handleGet(request: NextRequest) {
     const dataAgeMinutes = oldestFetchedAt ? Math.round(dataAgeMs / 60_000) : -1
     const isStale = dataAgeMs > ADMIN_STALENESS_MS
 
-    // Touch pattern: renew expires_at for valid rows that are expired
-    if (isStale && rows.some(r => r.sync_status === "ok")) {
-      const adminForTouch = createAdminClient()
-      const staleStoreIds = rows.filter(r => r.sync_status === "ok").map(r => r.store_id)
-      Promise.resolve(
-        adminForTouch
-          .from("store_revenue_summary")
-          .update({ expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
-          .eq("period_label", period)
-          .in("store_id", staleStoreIds)
-      ).catch(() => {})
-    }
+    // Aqui havia um "touch pattern": toda leitura com o cache velho fazia um
+    // UPDATE de `expires_at` em massa. Medido no `pg_stat_statements`:
+    // **37.639 chamadas e 391 s de CPU** — disparadas por GET.
+    //
+    // O custo real não é o UPDATE: `store_revenue_summary` está na
+    // publication do realtime, e o dashboard assina essa tabela. Cada
+    // escrita acordava TODAS as abas abertas, que revalidavam as nove rotas
+    // do dashboard, e a leitura de `total-revenue` escrevia de novo — um
+    // laço que se realimentava, e que rodava sempre, porque `isStale` era
+    // permanentemente verdadeiro enquanto a passada de sync não cobria a
+    // carteira. É a regra da casa que o incidente do inbox já tinha
+    // custado caro: **GET não escreve**.
+    //
+    // Quem dependia do carimbo era `/api/stores/control`, que filtrava
+    // `expires_at > agora`. Ele passou a medir a IDADE do dado
+    // (`fetched_at`), que é o que de fato define validade e não precisa de
+    // ninguém renovando — então o touch não tem mais função.
 
     const storeBreakdown = await buildStoreBreakdown(rows)
 

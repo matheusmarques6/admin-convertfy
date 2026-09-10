@@ -20,6 +20,12 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getEmailDailySeries } from "@/lib/services/store-daily-metrics.service"
 import { resolveWindow, previousWindow, type DateWindow } from "@/lib/services/ops-dashboard/period-window"
+import { emBRL, taxasPara } from "@/lib/money/converter-lote"
+import {
+  COLUNAS_DE_PLATAFORMA,
+  plataformasPresentes,
+  type PlataformasPresentes,
+} from "@/lib/dashboard/plataformas-da-org"
 import {
   buildOpsSeries,
   dailyPointsFromCampaignRows,
@@ -39,6 +45,8 @@ async function campaignFallback(
   admin: SupabaseClient,
   storeIds: string[],
   win: DateWindow,
+  plataformas: PlataformasPresentes,
+  moedaDaLoja: Map<string, string>,
 ): Promise<CampaignDailyRow[]> {
   if (storeIds.length === 0) return []
 
@@ -49,25 +57,34 @@ async function campaignFallback(
   // ("30d" etc.), o fallback ainda funciona — o dedup por
   // (store, campaign, fetched_at mais recente) no builder elimina a
   // multiplicidade entre labels.
+  // Só a plataforma que a org USA. Este fallback roda em DUAS janelas
+  // (atual e anterior), então a tabela vazia custava quatro varreduras por
+  // carregamento — a org tem 54 lojas Omnisend e nenhuma Klaviyo.
+  const daTabela = (tabela: string) =>
+    admin
+      .from(tabela)
+      .select(cols)
+      .in("store_id", storeIds)
+      .gte("send_time", `${win.from}T00:00:00Z`)
+      .lte("send_time", `${win.to}T23:59:59Z`)
+      .limit(10000)
   const [k, o] = await Promise.all([
-    admin
-      .from("klaviyo_campaign_metrics")
-      .select(cols)
-      .in("store_id", storeIds)
-      .gte("send_time", `${win.from}T00:00:00Z`)
-      .lte("send_time", `${win.to}T23:59:59Z`)
-      .limit(10000),
-    admin
-      .from("omnisend_campaign_metrics")
-      .select(cols)
-      .in("store_id", storeIds)
-      .gte("send_time", `${win.from}T00:00:00Z`)
-      .lte("send_time", `${win.to}T23:59:59Z`)
-      .limit(10000),
+    plataformas.klaviyo ? daTabela("klaviyo_campaign_metrics") : null,
+    plataformas.omnisend ? daTabela("omnisend_campaign_metrics") : null,
   ])
-  const kRows = (k.error ? [] : (k.data ?? [])) as unknown as CampaignDailyRow[]
-  const oRows = (o.error ? [] : (o.data ?? [])) as unknown as CampaignDailyRow[]
-  return [...kRows, ...oRows]
+  const kRows = (k?.error ? [] : (k?.data ?? [])) as unknown as CampaignDailyRow[]
+  const oRows = (o?.error ? [] : (o?.data ?? [])) as unknown as CampaignDailyRow[]
+  const rows = [...kRows, ...oRows]
+
+  // A receita vem na moeda DA LOJA e o gráfico soma tudo com "R$" na
+  // frente: sem converter, 1 libra entrava como 1 real (~7× menos) e o
+  // total continuava parecendo plausível. Converte-se aqui, antes de
+  // agregar, para o agregador seguir puro e somando uma moeda só.
+  const taxas = await taxasPara(rows.map((r) => moedaDaLoja.get(r.store_id)))
+  return rows.map((r) => ({
+    ...r,
+    conversion_value: emBRL(r.conversion_value, moedaDaLoja.get(r.store_id), taxas),
+  }))
 }
 
 async function handleGet(request: NextRequest) {
@@ -96,13 +113,23 @@ async function handleGet(request: NextRequest) {
       // rota passava de 4s no ApiTiming quando o cron diário está parado.
       const { data: stores } = await admin
         .from("client_stores")
-        .select("id")
+        // As colunas de credencial decidem quais tabelas de métrica valem
+        // a pena consultar (ver `plataformasPresentes`).
+        .select(`id, currency, ${COLUNAS_DE_PLATAFORMA}`)
         .eq("org_id", orgId)
         .limit(1000)
       const storeIds = (stores ?? []).map((s) => s.id)
+      const plataformas = plataformasPresentes(stores)
+      // Moeda por loja: a receita das campanhas vem na moeda da conta.
+      const moedaDaLoja = new Map<string, string>(
+        (stores ?? []).map((s) => [
+          s.id as string,
+          ((s as { currency?: string | null }).currency || "BRL") as string,
+        ]),
+      )
       const [rows, prevRows] = await Promise.all([
-        campaignFallback(admin, storeIds, win),
-        campaignFallback(admin, storeIds, prevWin),
+        campaignFallback(admin, storeIds, win, plataformas, moedaDaLoja),
+        campaignFallback(admin, storeIds, prevWin, plataformas, moedaDaLoja),
       ])
       fallbackRows = rows.length
       const fallback = dailyPointsFromCampaignRows(rows, win)

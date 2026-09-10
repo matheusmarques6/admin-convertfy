@@ -104,16 +104,16 @@ interface EmailStoreRow {
   clicked: number
   conversions: number
   unsubscribed: number
-  openRate: number
-  clickRate: number
-  ctor: number
-  placedOrderRate: number
-  deliveryRate: number
-  unsubRate: number
+  openRate: number | null
+  clickRate: number | null
+  ctor: number | null
+  placedOrderRate: number | null
+  deliveryRate: number | null
+  unsubRate: number | null
 }
 
 interface EmailPerfAudit {
-  metrics: { openRate: number }
+  metrics: { openRate: number | null }
   storeBreakdown?: EmailStoreRow[]
 }
 
@@ -132,7 +132,10 @@ export function EmailAuditDialog({
     fetchJson,
     AUDIT_SWR_OPTS,
   )
-  const rows = data?.storeBreakdown ?? []
+  // `?? []` cria um array NOVO a cada render quando não há dado, e ele é
+  // dependência do useMemo abaixo — sem o memo, a soma era refeita em todo
+  // render enquanto o diálogo carrega.
+  const rows = useMemo(() => data?.storeBreakdown ?? [], [data?.storeBreakdown])
 
   // Recalcula as taxas globais A PARTIR DAS LINHAS (ponderadas por
   // volume) — é a prova de que a lista compõe exatamente o card.
