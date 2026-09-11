@@ -5636,5 +5636,108 @@ saber disso pelo mesmo motivo de `period_notes`.
 
 ---
 
+## O laudo da peça: quatro queixas, quatro causas diferentes (11/09)
+
+Relato do usuário sobre a Hero Boxers welcome 1 (batch de 10/09, `ready`,
+US$ 3,10): "a formatação da imagem ficou errada", "os ícones ficaram
+horríveis", "os CTAs ficaram extremamente pequenos" e "essa cor cinza não
+segue em nada o conhecimento de cor". Nenhuma é o Cores & Botões errando —
+ele rodou com `color_plano_mode = on`, decidiu 2 faixas (manter nas duas,
+citando R3/R5/R6), recoloriu 7 botões, inseriu 3 e registrou 4 lacunas, 17
+ops aplicadas e nenhuma recusada. Método: render do HTML entregue a 600px no
+Chromium + telemetria das 22 runs.
+
+**Os ícones: o prompt pede e proíbe a mesma coisa.** Os três selos do bloco
+`body 3` têm copy no banco ("REAL FIT", "EASY RETURN", "DIRECT BRAND", cada
+um com a frase do arco) e natureza `copy_no_desenho` — o texto não tem
+endereço no HTML, é DESENHADO dentro da imagem. `buildImageSlots` serve isso
+com todas as letras; o mesmo prompt proíbe duas vezes mais abaixo
+(`NEVER render any of this text` no cabeçalho de CFY_THIS_FRAME e
+`No text, letters, numbers…` nas UNIVERSAL RESTRICTIONS). A proibição vence:
+aparece duas vezes, está sob título categórico e é a última coisa lida antes
+de gerar. Saíram três círculos de cor sólida — branco, preto e `#B0C4AB`,
+exatamente os fundos que a direção da variante nomeia, porque sem poder
+escrever aquela foi a única instrução executável. `image/texto-no-desenho.ts`
+(puro) SUBSTITUI as duas frases quando o slot pede letra: apagar trocaria
+"nenhuma letra" por "qualquer letra" e o modelo escreveria a especificidade
+do slot na imagem. A troca é no TEMPLATE, antes de renderizar E de segmentar
+(a proveniência compara os segmentos com o enviado byte a byte), decidida
+dentro de `buildImagePromptWithSegments` — o ponto por onde os dois caminhos
+passam. Vale sobre o template do BANCO sem migration. `Photographic realism`
+NÃO é tocado: `copy_no_desenho` também cobre rótulo sobre foto e o schema
+não separa os dois casos. O comentário em `build-image-slots.ts:108` já
+documentava a METADE disto (o conflito entre `areas_de_texto` e
+`texto_no_desenho`); o conflito com o template global sobreviveu.
+
+**Os CTAs: o template não sabia em que peça entrou.** Medido: os três botões
+inseridos saíram 152×48, 139×48 e 159×48 com 15px; o nativo da mesma peça
+mede 368×59 com 24px, num documento de corpo 24px e título 50px — 41% da
+largura e 62% da altura. A causa era constante em `cta-template.ts`, copiada
+do template de referência, enquanto `ctas_json` já trazia largura e raio de
+cada botão e era lido só para recolorir. `escala-do-botao.ts` (puro) tira
+fonte, peso, respiro e raio dos existentes; **só botão PREENCHIDO define a
+escala** — dos 7 CTAs do caso real 6 são os "Link Here" do rodapé com 18px, e
+a mediana de todos faria o botão novo sair menor ainda. Mediana e não média;
+cada dimensão cai para o padrão sozinha; `origem: padrao` quando não há o que
+medir. Verificado renderizando: 48px → 67px de altura, a mesma do nativo. A
+família passou a sair com pilha de fallback (saía `font-family:Poppins` cru e
+webfont não carrega no Outlook).
+
+**O cinza: a régua estava no eixo errado — e a minha primeira versão
+também.** Contei quantidade (a letra da R2, "no máximo 3 tons") e a peça
+passava: três tons. O usuário corrigiu o eixo: *"seria como se ele
+modificasse as duas cores principais da loja, que foram colocadas na
+identidade visual; aí se ele ver MUITA necessidade, aí ele coloca outra em
+lugares especiais"*. A identidade da Hero Boxers tem EXATAMENTE duas
+principais — `#000000` e `#FFFFFF`, zero secundárias — e os fundos saíram
+`#FFFFFF`, `#E1DEDE`, `#B1B3B6`, com o preto sem aparecer em seção nenhuma.
+Contar quantidade aprova três cinzas estranhos e reprovaria preto, branco e
+um acento da marca. `tonsDeFundo(faixas, aceitas)` mede PROCEDÊNCIA: aceito =
+paleta cadastrada + os papéis derivados (`bg`, `surface`, `surface_strong`) —
+uma loja preto-e-branco precisa de um cinza para separar seções, o que ela
+não precisa é de um cinza QUALQUER. **Fundo de seção não é lugar especial**
+(é a banda que o leitor atravessa inteira), então qualquer estranho ali é
+desvio e a exceção da terceira cor fica para o pontual. A tolerância de 3%
+por canal decide as duas coisas e corrigiu uma afirmação minha: `#E1DEDE`
+está a 5 de distância do `surface_strong` derivado (`#E3E3E3`) — é o mesmo
+cinza e PASSA; o desvio real é só `#B1B3B6`, a 50 de distância, cobrindo o
+bloco de produtos inteiro. É o que o agente escreveu na lacuna dele e não
+fez ("deveria virar #E3E3E3"): deixou de ser lacuna e virou conta, servida
+pronta no prompt e refeita sobre o documento aplicado. **Limite declarado**:
+conta fundo de SEÇÃO, não banda interna — a hero tem uma banda preta de
+230px que o olho lê como tom e esta conta não vê, porque o container do
+bloco é branco e é ele que uma op alcança; contar banda interna faria todo
+card colorido gastar um tom.
+
+**O achado que ninguém pediu: um botão que só o Outlook vê.** No bloco `body`
+o CTA existe APENAS dentro de `<!--[if mso]>`, escrito `DIGITAL GIFT CARD`
+(exemplo de outra peça), com o ramo `<!--[if !mso]>` ao lado VAZIO: o Outlook
+mostra um botão de gift card numa marca de cuecas, o resto não mostra botão
+nenhum. Era invisível para o extrator — botão em comentário condicional não
+existe para o DOM — e foi por isso que o agente leu "bloco sem CTA" e inseriu
+um segundo. `extrairCtas` passou a achar o roundrect ÓRFÃO e marcá-lo
+`somente_outlook`; ele **não** conta como botão presente, de propósito: o
+desenho óbvio (calar a inserção) deixaria o bloco sem CTA para quase todo
+leitor e manteria o botão errado no Outlook. Quem esvaziou o ramo não-Outlook
+não foi determinado — o caminho é comparar o HTML persistido entre estágios
+pelo sha8 encadeado.
+
+**A largura**: o container está em 600px; a exceção é a variante da faixa
+cinza, cadastrada em **598px** — a varredura "Largura 600px na biblioteca"
+existe para isso e continua sem ter sido rodada nessa variante.
+
+**Selo desenhado por código ficou PENDENTE DE MEDIÇÃO, e o número é o
+motivo**: `copy_no_desenho` existe em **uma única variante** da biblioteca
+(`body 3`, usada por 2 blocos em 2 e-mails), e os selos são 6 de 524 runs de
+imagem em 30 dias — **1,1% de US$ 57,13**. Some-se que SVG não renderiza no
+Outlook nem no Gmail: a via "desenhar por código" é PNG composto no servidor,
+e as fontes do repo são `.woff2`, que o renderizador não lê. Como a correção
+das restrições já destrava o texto, a ordem é gerar um e-mail e OLHAR os
+selos antes de construir compositor. As outras duas vias, se a medição
+reprovar: selo em HTML+CSS+VML (círculo por `border-radius`, texto central em
+HTML — perde o arco) ou PNG composto (preserva o arco, exige embarcar `.ttf`).
+
+---
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
