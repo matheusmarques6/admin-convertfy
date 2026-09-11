@@ -29,6 +29,7 @@
 
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
 import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
+import { cabeNaJanela, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
 import type { AlvoParaMedicao } from "./curador-shadow"
 import crypto from "crypto"
 
@@ -1472,6 +1473,19 @@ export async function assembleStoreReference(
     !vaultResultado && attempt <= CHOOSER_MAX_ATTEMPTS;
     attempt++
   ) {
+    // 11/09: o fallback legado rodou as DUAS tentativas com a janela da
+    // fase 1 já vencida (batch 5746f991) e entregou `positions_ranked: 0`.
+    // Tempo que não existe não vira escolha — vira 504 com run órfã, que é
+    // o desfecho que `fase1-orcamento` existe para evitar. O relógio por
+    // chamada já encolhe sozinho; o que faltava era não COMEÇAR.
+    const cabe = cabeNaJanela({
+      custoMs: relogioParaTeto(chooserConfig.max_tokens),
+      restanteMs: restanteDoOrcamento(),
+    })
+    if (!cabe.cabe) {
+      chooserError = `sem orçamento para a tentativa ${attempt} do Curador — ${cabe.motivo}`
+      break
+    }
     attempts = attempt
     try {
       const res = await invokeAgent(chooserConfig, chooserVars, {
