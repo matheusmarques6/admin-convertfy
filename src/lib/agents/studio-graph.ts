@@ -144,6 +144,7 @@ export type NodeRunStatus =
   | "erro"
   | "rodando"
   | "pulado"
+  | "reusado"
   | "aguardando"
 
 export interface NodeRun {
@@ -174,6 +175,12 @@ export const RUN_STYLE: Record<
   erro: { c: "#991B1B", bg: "#FEF2F2", b: "#FECACA", label: "erro" },
   rodando: { c: "#2137B6", bg: "#EEF0FB", b: "#C7CDEF", label: "rodando" },
   pulado: { c: "#6B7280", bg: "#F3F4F6", b: "#E5E7EB", label: "pulado" },
+  // "reusado" NÃO é cinza de propósito: o agente decidiu, a decisão dele
+  // está na peça, e só a execução desta vez foi poupada. Com o mesmo selo de
+  // "pulado" o operador lê que o agente não trabalhou — foi o que aconteceu
+  // em 11/09, quando o Estruturador cedeu a janela ao Curador e a tela disse
+  // só "pulado".
+  reusado: { c: "#1D4ED8", bg: "#EFF6FF", b: "#BFDBFE", label: "reusado" },
   aguardando: { c: "#9CA3AF", bg: "#FFFFFF", b: "#E5E7EB", label: "aguardando" },
 }
 
@@ -196,6 +203,12 @@ export interface ExecutionAgentRun {
   tokens_output: number | null
   retry_count: number | null
   error_message: string | null
+  /**
+   * Quem gravou a run. Só é lido para separar as duas `skipped`: `"reuso"`
+   * (a decisão anterior vale e está na peça) de `"desligado"` (o agente não
+   * rodou nunca). Sem ele as duas viram o mesmo selo cinza.
+   */
+  model?: string | null
 }
 
 export type ExecutionBucket = "success" | "error" | "running"
@@ -229,11 +242,16 @@ export const MAIN_ORDER = [
   "out",
 ] as const
 
-function apiStatusToNode(status: string): NodeRunStatus {
+/**
+ * `model: "reuso"` é o carimbo de quem gravou a run (o Estruturador, quando
+ * cede a janela ao Curador). É o ÚNICO sinal que distingue as duas skipped
+ * — desligado grava `model: "desligado"` — e por isso ele decide o selo.
+ */
+function apiStatusToNode(status: string, model?: string | null): NodeRunStatus {
   if (status === "success") return "sucesso"
   if (status === "error") return "erro"
   if (status === "running") return "rodando"
-  if (status === "skipped") return "pulado"
+  if (status === "skipped") return model === "reuso" ? "reusado" : "pulado"
   return "aguardando"
 }
 
@@ -282,7 +300,7 @@ export function projectRuns(
           ? "erro"
           : failed > 0
             ? "erro"
-            : apiStatusToNode(list[list.length - 1].status),
+            : apiStatusToNode(list[list.length - 1].status, list[list.length - 1].model),
       runId: (withError ?? list[list.length - 1]).run_id,
       // Duração do conjunto: as runs de imagem correm em paralelo, então
       // somar daria um número que ninguém esperou. A maior é a que o
@@ -327,7 +345,7 @@ export function projectRuns(
     }
     if (r) {
       out[key] = {
-        status: apiStatusToNode(r.status),
+        status: apiStatusToNode(r.status, r.model),
         runId: r.run_id,
         durSec: r.duration_ms != null ? r.duration_ms / 1000 : null,
         usd: r.cost_cents != null ? r.cost_cents / 100 : null,
@@ -362,6 +380,8 @@ export interface LiveTestRun {
   id?: string
   agent: string
   status: string
+  /** Distingue skipped por REUSO de skipped por desligado. */
+  model?: string | null
   error_message?: string | null
   duration_ms?: number | null
   tokens_input?: number | null
@@ -458,7 +478,7 @@ export function projectLiveTest(opts: {
         ? "rodando"
         : failed > 0
           ? "erro"
-          : apiStatusToNode(list[list.length - 1].status),
+          : apiStatusToNode(list[list.length - 1].status, list[list.length - 1].model),
       runId: (withError ?? list[list.length - 1]).id,
       // As runs de imagem correm em paralelo: somar duração daria um número
       // que ninguém esperou. A maior é a que o usuário sentiu.
@@ -508,7 +528,7 @@ export function projectLiveTest(opts: {
           ? // Status do email diz que este nó está em curso de novo
             // (retry/nova passada) — o vivo vence a run antiga.
             "rodando"
-          : apiStatusToNode(r.status)
+          : apiStatusToNode(r.status, r.model)
       out[key] = {
         status: st,
         runId: r.id,
