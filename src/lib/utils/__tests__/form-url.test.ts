@@ -1,6 +1,11 @@
 import { describe, it, expect, afterEach, vi } from "vitest"
 
-import { buildFormUrl, buildBriefingUrl, resolveAppBaseUrl } from "../form-url"
+import {
+  buildFormUrl,
+  buildBriefingUrl,
+  buildCrmFormUrl,
+  resolveAppBaseUrl,
+} from "../form-url"
 import { secureToken } from "../secure-token"
 
 const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL
@@ -95,5 +100,18 @@ describe("secureToken", () => {
       expect(n).toBeGreaterThan(700)
       expect(n).toBeLessThan(1300)
     }
+  })
+})
+
+describe("buildCrmFormUrl", () => {
+  it("monta a URL pública do formulário do CRM", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.exemplo.com"
+    expect(buildCrmFormUrl("pagina-de-vendas")).toBe(
+      "https://app.exemplo.com/forms/pagina-de-vendas",
+    )
+  })
+
+  it("aceita base explícita e tira a barra final", () => {
+    expect(buildCrmFormUrl("x", "https://outro.com/")).toBe("https://outro.com/forms/x")
   })
 })

@@ -27,6 +27,12 @@ import {
   sendMetaConversionEvent,
   type MetaServerEvent,
 } from "@/lib/integrations/meta-capi"
+import {
+  descreverErro,
+  ehDuplicada,
+  resumirEnqueue,
+  type DesfechoDaLinha,
+} from "@/lib/tracking/erro-de-fila"
 import type { QualifiedLeadConfig, QualifiedRule } from "@/types/form-tracking"
 
 const log = logger.child("ConversionDispatch")
@@ -373,27 +379,57 @@ export async function enqueueConversionEvents(
       attempts: 0,
     }))
 
-    // `upsert` com ignoreDuplicates: o INSERT em lote é UMA statement, e
-    // um único conflito de UNIQUE (reenvio do mesmo submit) derrubava as
-    // DUAS linhas — o "Lead" era perdido junto com o qualificado, com um
-    // log.warn e nada mais. Agora o que já existe é ignorado e o que é
-    // novo entra.
-    const { data: inserted, error } = await admin
-      .from("crm_conversion_events")
-      .upsert(rows, {
-        onConflict: "submission_id,platform,event_name",
-        ignoreDuplicates: true,
-      })
-      .select("id, form_id, updated_at, attempts, payload")
+    // UMA statement por linha, e nunca mais um `ON CONFLICT`.
+    //
+    // O lote era a origem de dois defeitos seguidos. Primeiro o
+    // `insert([Lead, qualificado])`: um conflito de UNIQUE (reenvio do
+    // mesmo submit) derrubava as DUAS linhas e o "Lead" ia junto.
+    // Depois o remédio — `upsert` com `ignoreDuplicates` — foi PIOR: o
+    // índice de dedupe é PARCIAL (`WHERE submission_id IS NOT NULL`) e o
+    // `on_conflict` do PostgREST não carrega o predicado, então o
+    // Postgres recusava a statement inteira com **42P10** e o código
+    // fazia `log.error` + `return`. Resultado medido em produção: de
+    // 06/08 a 29/08 de 2026, treze cadastros e ZERO eventos — nem o
+    // "Lead" saiu, e nada disso apareceu em tela.
+    //
+    // Inserir linha a linha tolerando 23505 dá a mesma garantia sem
+    // depender do formato do índice: a linha que já existe é ignorada, a
+    // que falha não leva a outra junto, e o código continua correto com
+    // ou sem a migration que desparcializa o índice.
+    const inserted: ConversionRow[] = []
+    const desfechos: Array<{ desfecho: DesfechoDaLinha; erro?: string }> = []
 
-    if (error) {
-      log.error("enqueue.insert_failed", { formId: params.formId, error: error.message })
-      return
+    for (const row of rows) {
+      const { data, error } = await admin
+        .from("crm_conversion_events")
+        .insert(row)
+        .select("id, form_id, updated_at, attempts, payload")
+        .maybeSingle()
+
+      if (!error && data) {
+        inserted.push(data as ConversionRow)
+        desfechos.push({ desfecho: "inserida" })
+      } else if (ehDuplicada(error)) {
+        // Reenvio do mesmo submit: a linha já está na fila e o cron
+        // entrega o que faltar.
+        desfechos.push({ desfecho: "ja_existia" })
+      } else {
+        desfechos.push({ desfecho: "falhou", erro: descreverErro(error) })
+      }
     }
-    if (!inserted || inserted.length === 0) {
-      // Tudo já estava na fila (reenvio) — o cron cuida do resto.
-      return
+
+    const resumo = resumirEnqueue(desfechos)
+    if (resumo.falhas.length > 0) {
+      // O código do Postgres vai no log de propósito: sem ele, a linha
+      // dizia só "insert_failed" e o diagnóstico do 42P10 custou um mês.
+      log.error("enqueue.insert_failed", {
+        formId: params.formId,
+        submissionId: params.submissionId,
+        falhas: resumo.falhas,
+        inseridas: resumo.inseridas,
+      })
     }
+    if (inserted.length === 0) return
 
     let accessToken: string
     try {
@@ -414,7 +450,7 @@ export async function enqueueConversionEvents(
     // handler pode congelar apos a resposta, entao nao seguramos a request
     // esperando o HTTP do Meta — quem garante a entrega e o cron.
     void Promise.allSettled(
-      (inserted ?? []).map((row) => sendConversionRow(admin, row as ConversionRow, formConfig)),
+      inserted.map((row) => sendConversionRow(admin, row, formConfig)),
     )
   } catch (err) {
     log.error("enqueue.unexpected", {

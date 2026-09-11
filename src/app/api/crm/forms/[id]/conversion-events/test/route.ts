@@ -31,6 +31,7 @@ import { logger } from "@/lib/logger"
 import { decrypt } from "@/lib/crypto"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { metaEventName } from "@/lib/tracking/meta-event-name"
+import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import {
   buildMetaServerEvent,
   buildMetaUserData,
@@ -68,12 +69,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const { data: form } = await admin
       .from("crm_forms")
-      .select("id, org_id, name, facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config")
+      .select(
+        "id, org_id, name, slug, facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config",
+      )
       .eq("id", formId)
       .maybeSingle<{
         id: string
         org_id: string
         name: string
+        slug: string
         facebook_pixel_id: string | null
         meta_capi_token: string | null
         meta_test_event_code: string | null
@@ -123,9 +127,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       clientUserAgent: request.headers.get("user-agent") ?? null,
     })
 
+    // `action_source: "website"` sem `event_source_url` é payload
+    // incompleto pela documentação da Meta — e o teste tem de sair com a
+    // MESMA forma do envio real, senão ele valida uma coisa e a produção
+    // manda outra. A URL é a do próprio formulário: é a página em que o
+    // cadastro aconteceria.
+    const eventSourceUrl = buildCrmFormUrl(form.slug)
+
     const event = buildMetaServerEvent({
       eventName,
       eventId,
+      eventSourceUrl,
       eventTime: Math.floor(Date.now() / 1000),
       userData,
       customData: {
@@ -144,21 +156,40 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     })
 
     const received = Number((result.body?.events_received as number | undefined) ?? 0)
-    const ok = result.ok && received >= 1
     const metaError = (result.body?.error ?? null) as Record<string, unknown> | null
+
+    // `messages` é onde a Meta escreve "aceitei, mas…" — payload
+    // incompleto, parâmetro ignorado, campo obsoleto. A rota LIA a
+    // resposta inteira e jogava esse array fora, então um evento aceito
+    // e descartado chegava à tela como sucesso limpo. Quem clica no
+    // botão está justamente tentando descobrir isso.
+    const messages = Array.isArray(result.body?.messages)
+      ? (result.body.messages as unknown[]).map((m) =>
+          typeof m === "string" ? m : JSON.stringify(m),
+        )
+      : []
+
+    const entregue = result.ok && received >= 1
+    const ok = entregue && messages.length === 0
 
     log.info("evento de teste enviado", {
       formId,
       eventName,
       ok,
+      avisos: messages.length,
       status: result.status,
       by: user.id,
     })
 
     return successResponse(request, {
       ok,
+      /** A Meta aceitou o evento (mesmo que com ressalvas). */
+      entregue,
+      /** Ressalvas da Meta. Não vazio = aceito, porém não limpo. */
+      messages,
       event_name: eventName,
       event_id: eventId,
+      event_source_url: eventSourceUrl,
       events_received: received,
       /** Identificador que a Meta usa no suporte dela. */
       fbtrace_id: (result.body?.fbtrace_id as string | undefined) ?? null,

@@ -52,8 +52,13 @@ interface SubmissionTest {
 
 interface TestResult {
   ok: boolean
+  /** A Meta aceitou — pode ter aceitado COM ressalvas (ver `messages`). */
+  entregue?: boolean
+  /** Ressalvas da Meta. Não vazio = aceito, porém não limpo. */
+  messages?: string[]
   event_name: string
   event_id?: string
+  event_source_url?: string
   events_received?: number
   fbtrace_id?: string | null
   http_status?: number
@@ -172,6 +177,23 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
   const [showAll, setShowAll] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
+
+  // Três desfechos, não dois: recusado, aceito COM ressalva e aceito
+  // limpo. O do meio é o que o botão existia para revelar e não
+  // revelava — pintá-lo de vermelho mentiria tanto quanto pintá-lo de
+  // verde, porque o evento realmente chegou.
+  const entregueComRessalva = Boolean(
+    testResult && !testResult.ok && testResult.entregue && (testResult.messages?.length ?? 0) > 0,
+  )
+  const tomDoTeste = entregueComRessalva
+    ? {
+        borda: "var(--crm-warn-border)",
+        fundo: "var(--crm-warn-bg)",
+        texto: "var(--crm-warn)",
+      }
+    : testResult?.ok
+      ? { borda: "var(--crm-pos-border)", fundo: "var(--crm-pos-bg)", texto: "var(--crm-pos)" }
+      : { borda: "var(--crm-neg-border)", fundo: "var(--crm-neg-bg)", texto: "var(--crm-neg)" }
 
   /** Dispara um evento real, com dados fictícios, e mostra a resposta da Meta. */
   const sendTest = async (which: "qualified" | "lead") => {
@@ -336,15 +358,20 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
           <div
             className="flex flex-col gap-1 rounded border px-3 py-2"
             style={{
-              borderColor: testResult.ok ? "var(--crm-pos-border)" : "var(--crm-neg-border)",
-              background: testResult.ok ? "var(--crm-pos-bg)" : "var(--crm-neg-bg)",
-              color: testResult.ok ? "var(--crm-pos)" : "var(--crm-neg)",
+              borderColor: tomDoTeste.borda,
+              background: tomDoTeste.fundo,
+              color: tomDoTeste.texto,
               fontSize: "var(--crm-text-xs)",
             }}
             role="status"
           >
             <span className="flex items-center gap-1.5" style={{ fontWeight: 600 }}>
-              {testResult.ok ? (
+              {entregueComRessalva ? (
+                <>
+                  <AlertTriangle className="h-3.5 w-3.5" />A Meta aceitou &quot;
+                  {testResult.event_name}&quot;, mas com ressalva
+                </>
+              ) : testResult.ok ? (
                 <>
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   A Meta recebeu o evento &quot;{testResult.event_name}&quot;
@@ -365,6 +392,14 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
                 {testResult.error.code ? ` (código ${testResult.error.code})` : ""}
               </span>
             )}
+
+            {/* Aceito com ressalva é o caso que a tela escondia: a rota
+                lia a resposta inteira e descartava `messages`, então o
+                evento que a Meta aceita e depois descarta aparecia aqui
+                como sucesso limpo. */}
+            {(testResult.messages ?? []).map((m, i) => (
+              <span key={i}>{m}</span>
+            ))}
 
             {testResult.ok && testResult.where_to_look && (
               <span style={{ opacity: 0.9 }}>{testResult.where_to_look}</span>

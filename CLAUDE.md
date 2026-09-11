@@ -5634,6 +5634,80 @@ congelado em `snapshot.janela` — `source: "pais"` ou `"padrao"` é fuso
 adivinhado, e quem compara o relatório com o painel meses depois precisa
 saber disso pelo mesmo motivo de `period_notes`.
 
+## LeadQualificado não chegava na Meta: o remédio matou o paciente (set/2026, migration 20261141)
+
+Sintoma relatado: o evento **não chega** no Gerenciador de Eventos, nem
+pelo botão "testar evento". Medido nos dois lados antes de escrever
+código.
+
+**Do lado da Meta** (dataset 694200440166500, via MCP): em 7 dias,
+**só `PageView`, 100% `BROWSER`, ZERO `SERVER`**. `ads_get_dataset_quality`
+lista um único evento, `PageView`.
+
+**Do lado do banco**: 52 cadastros no formulário, **25 linhas em
+`crm_conversion_events`, todas `Lead`, todas `sent`, a última em
+05/08** — e **nenhum `LeadQualificado`, nunca**. Entre 06/08 e 29/08,
+treze cadastros com lead e **zero** linhas na fila.
+
+**Causa única, provada por SQL**: o índice de dedupe é **PARCIAL** —
+`uq_crm_conversion_events_dedup ... WHERE (submission_id IS NOT NULL)`.
+O Postgres só infere um índice parcial quando a statement REPETE o
+predicado, e o `on_conflict=` do PostgREST manda apenas a lista de
+colunas. Toda chamada morria em
+
+```
+42P10: there is no unique or exclusion constraint matching the
+       ON CONFLICT specification
+```
+
+e o enqueue fazia `log.error("enqueue.insert_failed")` + `return`. Nada
+em tela, nada na fila, nem o "Lead".
+
+**O remédio anterior é que criou isto.** O `upsert` com
+`ignoreDuplicates` entrou justamente para consertar "o lote de eventos
+morria junto" (`insert([Lead, qualificado])`, um conflito derrubando as
+duas linhas). Ele trocou uma perda ocasional por uma perda TOTAL. E o
+`LeadQualificado` nunca existiu porque, até 05/08, o `in` comparava com
+`===` cru (o outro defeito documentado acima) — a correção do `===` e o
+`upsert` que a anulou subiram na MESMA janela.
+
+**O conserto não depende de migration**: o enqueue insere **linha a
+linha**, tolerando 23505 e nada mais. Sem `ON CONFLICT`, o formato do
+índice deixa de importar; uma linha que falha não leva a outra junto; e
+o log carrega o **código do Postgres** — foi a ausência dele que fez
+este diagnóstico custar um mês. `erro-de-fila.ts` (puro, 8 testes) é
+quem classifica. A migration 20261141 desparcializa o índice mesmo
+assim: o predicado não impedia nada (NULL já é distinto em índice único
+btree) e só quebrava `ON CONFLICT` — a armadilha sai do banco em vez de
+esperar o próximo.
+
+**A contagem certa não é sobre a fila.** O painel mostrava "0 falhas"
+porque contava as linhas que EXISTEM, e o modo de falha era o oposto:
+elas nunca nasciam. `cobertura-de-eventos.ts` (puro, 12 testes) mede a
+distância entre o formulário e a fila e sobe a lacuna como bloqueio na
+tela. A **janela começa no primeiro evento já enfileirado** para aquele
+formulário: sem esse corte o mesmo form acusava 27 lacunas, das quais 14
+eram cadastros anteriores à integração — alarme falso é como se aprende
+a ignorar o verdadeiro. Com o corte, **13**, que é exatamente o número
+que o 42P10 comeu.
+
+**O botão de teste mandava payload incompleto e escondia a ressalva.**
+Ele montava `action_source: "website"` **sem `event_source_url`** (campo
+exigido pela documentação da Meta nesse modo) — diferente, portanto, do
+envio real, que sempre teve a URL. Pior: a rota lia a resposta inteira e
+**descartava `messages`**, que é onde a Meta escreve "aceitei, mas…", de
+modo que um evento aceito e descartado chegava à tela como sucesso
+limpo. Agora o teste manda a URL pública do formulário
+(`buildCrmFormUrl`), `messages` sobe na resposta, e a tela tem **três**
+desfechos — recusado, aceito COM ressalva (âmbar) e aceito limpo.
+Pintar o do meio de verde ou de vermelho mentiria igual. O envio real
+ganhou o mesmo fallback: `event_source_url` nunca mais é `null`, o que
+importa no formulário EMBUTIDO em iframe, que chega sem referrer.
+
+**O que não dá para recuperar**: a CAPI recusa evento com mais de 7
+dias, então os 13 cadastros de agosto estão perdidos como conversão —
+os leads estão no CRM, o sinal de otimização não.
+
 ---
 
 *Última atualização: Setembro 2026*

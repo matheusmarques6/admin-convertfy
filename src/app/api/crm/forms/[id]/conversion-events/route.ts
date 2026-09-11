@@ -23,6 +23,11 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { diagnoseQualified } from "@/lib/services/conversion-dispatch.service"
+import {
+  avisoDeCobertura,
+  inicioDaJanela,
+  medirCobertura,
+} from "@/lib/tracking/cobertura-de-eventos"
 
 const log = logger.child("FormConversionEvents")
 
@@ -127,13 +132,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
     const { data: subs } = await admin
       .from("crm_form_submissions")
-      .select("id, created_at, answers")
+      .select("id, created_at, answers, lead_id")
       .eq("form_id", formId)
       .order("created_at", { ascending: false })
-      .limit(20)
-      .returns<Array<{ id: string; created_at: string; answers: Record<string, unknown> | null }>>()
+      .limit(100)
+      .returns<
+        Array<{
+          id: string
+          created_at: string
+          answers: Record<string, unknown> | null
+          lead_id: string | null
+        }>
+      >()
 
-    const submissionTests = (subs ?? []).map((s) => {
+    const submissionTests = (subs ?? []).slice(0, 20).map((s) => {
       const d = diagnoseQualified(cfg.qualified_lead, s.answers ?? {}, fields ?? undefined)
       return {
         submission_id: s.id,
@@ -146,6 +158,41 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
     const wouldQualify = submissionTests.filter((t) => t.qualified).length
 
+    // ── Cobertura: cadastro que não virou evento nenhum ──────────────
+    // A contagem por status acima só enxerga linhas que EXISTEM, e o
+    // modo de falha real foi o oposto: o enqueue morria antes de
+    // inserir (42P10 do `ON CONFLICT` contra índice parcial) e a tela
+    // mostrava "0 falhas" enquanto treze cadastros passavam sem evento.
+    // Quem responde "está saindo?" é a distância entre o formulário e a
+    // fila, não a fila sozinha.
+    const idsComEvento = new Set(
+      rows.map((e) => e.submission_id).filter((id): id is string => Boolean(id)),
+    )
+    // A janela começa no PRIMEIRO evento já enfileirado para este
+    // formulário: antes disso o recurso não existia aqui, e cobrar
+    // cadastro de antes seria alarme falso — no formulário medido em
+    // produção, 14 dos 27 "sem evento" eram de maio a julho.
+    const { data: primeiro } = await admin
+      .from("crm_conversion_events")
+      .select("created_at")
+      .eq("form_id", formId)
+      .eq("platform", "meta")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle<{ created_at: string }>()
+
+    const cobertura = medirCobertura(
+      (subs ?? []).map((s) => ({
+        id: s.id,
+        created_at: s.created_at,
+        tem_lead: Boolean(s.lead_id),
+      })),
+      idsComEvento,
+      inicioDaJanela(primeiro?.created_at ?? null),
+    )
+    const avisoCobertura = avisoDeCobertura(cobertura)
+    if (avisoCobertura) blockers.push(avisoCobertura)
+
     return successResponse(request, {
       setup,
       blockers,
@@ -156,6 +203,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         queued: (byStatus.pending ?? 0) + (byStatus.processing ?? 0),
       },
       by_event: byEvent,
+      cobertura,
       recent_events: rows.slice(0, 25),
       qualified_test: {
         submissions_checked: submissionTests.length,
