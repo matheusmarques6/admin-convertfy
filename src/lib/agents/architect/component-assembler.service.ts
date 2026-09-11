@@ -1462,6 +1462,26 @@ export async function assembleStoreReference(
   let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
+
+  // ── Curador do vault falhou com o modo 'on': PARA ────────────────────
+  //
+  // O legado era o substituto, e substituir escondia a falha: em 11/09
+  // (e-mail 6b3a7f42) o vault morreu em `curador_shortlist_invalida` às
+  // 05:54:46, o legado assumiu às 05:55:55 e a geração seguiu até o fim —
+  // blueprint, copy, oito imagens, tudo pago — montando a peça com a
+  // escolha de quem NÃO é o curador vigente. A peça saiu, e saiu ruim.
+  //
+  // Com o modo 'on' o Curador do vault é o titular: ele lê a decisão do
+  // Estruturador, as lacunas e o índice do Obsidian, e o legado não recebe
+  // nada disso. Deixá-lo cobrir a falha entrega uma peça que ninguém
+  // escolheu, e o erro fica no log enquanto o e-mail chega ao cliente.
+  // Falha visível é mais barata que peça ruim entregue.
+  //
+  // Em 'shadow'/'off' nada muda: lá o legado é o titular, não o reserva.
+  if (curadorVaultMode === "on" && !vaultResultado) {
+    throw new CuratorFailedError("curador_vault_falhou")
+  }
+
   // O legado só roda quando o vault falhou; se o vault deixou JSON, ele
   // herda as justificativas em vez de escolher às cegas.
   if (!vaultResultado && parcialDoVault.valor) {
