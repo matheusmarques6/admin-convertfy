@@ -35,7 +35,12 @@ import {
   getOmnisendBrand,
   sleep,
 } from "@/lib/integrations/omnisend/client"
-import { ehFusoValido, offsetForTimezone } from "@/lib/integrations/omnisend/timezone"
+import {
+  ehFusoValido,
+  FUSO_PADRAO,
+  offsetForTimezone,
+  resolverFusoDaLoja,
+} from "@/lib/integrations/omnisend/timezone"
 import {
   procedenciaDoAtribuido,
   type Degradacao,
@@ -1565,7 +1570,7 @@ export async function syncOmnisendForStore(params: {
  * meia-noite de São Paulo, e a diferença aparecia como divergência
  * inexplicada contra o painel do Omnisend.
  */
-async function resolveStoreTimezone(storeId: string): Promise<string> {
+async function resolveStoreTimezone(storeId: string, apiKey?: string): Promise<string> {
   try {
     const admin = createAdminClient()
     const { data } = await admin
@@ -1573,12 +1578,58 @@ async function resolveStoreTimezone(storeId: string): Promise<string> {
       .select("timezone, country")
       .eq("id", storeId)
       .single()
-    const daPlataforma = String(data?.timezone || "").trim()
-    if (ehFusoValido(daPlataforma)) return daPlataforma
-    const country = String(data?.country || "BR").toUpperCase()
-    return COUNTRY_TIMEZONE[country] || "America/Sao_Paulo"
+
+    const resolvido = resolverFusoDaLoja({
+      timezone: data?.timezone as string | null,
+      country: data?.country as string | null,
+      mapaDePais: COUNTRY_TIMEZONE,
+    })
+    if (resolvido.procedencia === "cadastro") return resolvido.tz
+
+    // ── Auto-conserto: fuso vazio é buscado na PLATAFORMA ───────────────
+    //
+    // Sem isto a janela é cortada num fuso adivinhado pelo `country` — e
+    // `country` está errado em boa parte da base. A Blue Wolf é o caso
+    // que motivou: `timezone` NULL, `country = 'US'`, então o corte saía
+    // à meia-noite de Nova York enquanto o painel corta pelo fuso da
+    // CONTA. O número ficava perto do certo e nunca fechava.
+    //
+    // É o mesmo auto-conserto que a moeda já tinha, movido para ANTES da
+    // montagem da janela — aqui a ordem importa, porque é este valor que
+    // define o recorte. Roda uma vez por loja: a resposta é gravada, e na
+    // próxima a procedência já é `cadastro`.
+    if (apiKey) {
+      const brand = await getOmnisendBrand(apiKey, { logTag: "OmnisendSync" }).catch(() => null)
+      const daPlataforma = String(brand?.timezone || "").trim()
+      if (ehFusoValido(daPlataforma)) {
+        await admin
+          .from("client_stores")
+          .update({
+            timezone: daPlataforma,
+            timezone_source: "omnisend",
+            timezone_synced_at: new Date().toISOString(),
+          })
+          .eq("id", storeId)
+        log.info("[OmnisendSync] fuso da loja preenchido pela plataforma", {
+          storeId,
+          timezone: daPlataforma,
+          antes: resolvido.tz,
+          procedenciaAntes: resolvido.procedencia,
+        })
+        return daPlataforma
+      }
+      // A plataforma não informou um fuso utilizável. Seguir com o
+      // palpite é o comportamento antigo; o que muda é que ele fica
+      // DITO, em vez de virar uma divergência sem explicação.
+      log.warn("[OmnisendSync] plataforma não informou fuso — janela cortada num fuso assumido", {
+        storeId,
+        assumido: resolvido.tz,
+        procedencia: resolvido.procedencia,
+      })
+    }
+    return resolvido.tz
   } catch {
-    return "America/Sao_Paulo"
+    return FUSO_PADRAO
   }
 }
 
@@ -1639,7 +1690,7 @@ export async function fetchLiveOmnisendStoreTotals(
   apiKey: string,
   periodDays: number,
 ): Promise<{ totalOrders: number; totalRevenue: number; attributedRevenue: number; attributedOrders: number; startDate: string; endDate: string; rows?: Array<Record<string, number | string>> }> {
-  const timezone = await resolveStoreTimezone(storeId)
+  const timezone = await resolveStoreTimezone(storeId, apiKey)
   const startDate = startOfDayInTimezone(periodDays - 1, timezone)
   const endDate = nowInTimezone(timezone) // mesmo offset do `from` (fuso da loja)
   // Total da loja (Statistics, event-date) + atribuido (Reports API por
@@ -1670,7 +1721,7 @@ export async function debugOmnisendStoreTotals(
   apiKey: string,
   periodDays: number,
 ) {
-  const timezone = await resolveStoreTimezone(storeId)
+  const timezone = await resolveStoreTimezone(storeId, apiKey)
   const startDate = startOfDayInTimezone(periodDays - 1, timezone)
   const endDate = nowInTimezone(timezone)
   const [month, day] = await Promise.all([
@@ -1832,7 +1883,7 @@ async function doSyncOmnisendForStore(params: {
       // periodos regulares. Preserva a parte YYYY-MM-DD e forca 00:00 no offset
       // do fuso. Antes o caller (buildFromLiveFetch) derivava o offset da
       // currency, que divergia do country em lojas nao-BR. Agora e uniforme.
-      const timezone = await resolveStoreTimezone(storeId)
+      const timezone = await resolveStoreTimezone(storeId, apiKey)
       // O offset é resolvido POR PONTA e PELA DATA do período, não pela
       // data de hoje: `getTimezoneOffset` pergunta o offset de AGORA, e
       // um relatório de janeiro gerado em julho saía uma hora deslocado
@@ -1847,7 +1898,7 @@ async function doSyncOmnisendForStore(params: {
       // (hoje-(periodDays-1)) ate AGORA (dia corrente parcial incluido — o
       // painel e vivo/rolando). Ancorar em 00:00 do fuso da loja (nao UTC) e o
       // que faz o total bater com o painel. `to` no MESMO offset do `from`.
-      const timezone = await resolveStoreTimezone(storeId)
+      const timezone = await resolveStoreTimezone(storeId, apiKey)
       startDate = startOfDayInTimezone(periodDays - 1, timezone) // 00:00 de (hoje-(N-1)) no fuso
       endDate = nowInTimezone(timezone)                          // agora, MESMO offset do from (-03:00)
       log.info(`[OmnisendSync] janela ${timezone} [${startDate} .. ${endDate}]`, { storeId })

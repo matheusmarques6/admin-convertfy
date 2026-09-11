@@ -87,6 +87,20 @@ describe("causasProvaveis", () => {
     expect(c[0]).toContain("não tem fuso cadastrado")
   })
 
+  it("o fuso que CORTOU a janela é o comparado, não o do cadastro", () => {
+    // Blue Wolf: cadastro NULL, país 'US' → a janela saiu em New York.
+    // Comparar o cadastro diria só "não tem fuso" e esconderia o corte.
+    const c = causasProvaveis(grande, {
+      ...OK,
+      fusoDoCadastro: null,
+      fusoUsadoNaJanela: "America/New_York",
+      fusoDaBrand: "America/Sao_Paulo",
+    })
+    expect(c[0]).toContain("America/New_York")
+    expect(c[0]).toContain("America/Sao_Paulo")
+    expect(c[0]).toContain("assumido pelo país")
+  })
+
   it("atribuído sem calibração é nomeado", () => {
     const c = causasProvaveis(grande, { ...OK, atribuidoComparavelComOPainel: false })
     expect(c.join(" ")).toContain("data do pedido")

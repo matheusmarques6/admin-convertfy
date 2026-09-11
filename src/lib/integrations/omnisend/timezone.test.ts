@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { fusoDaLoja, offsetForTimezone, omnisendDateRange } from "./timezone"
+import {
+  fusoDaLoja,
+  offsetForTimezone,
+  omnisendDateRange,
+  resolverFusoDaLoja,
+} from "./timezone"
 
 describe("offsetForTimezone", () => {
   it("resolve o horário de verão pela DATA — o que um mapa fixo não faz", () => {
@@ -76,8 +81,62 @@ describe("omnisendDateRange", () => {
 
 describe("fusoDaLoja", () => {
   it("diz quando está ASSUMINDO, para a tela poder avisar", () => {
-    expect(fusoDaLoja("Europe/Berlin")).toEqual({ tz: "Europe/Berlin", assumido: false })
-    expect(fusoDaLoja(null)).toEqual({ tz: "America/Sao_Paulo", assumido: true })
-    expect(fusoDaLoja("   ")).toEqual({ tz: "America/Sao_Paulo", assumido: true })
+    expect(fusoDaLoja("Europe/Berlin")).toEqual({
+      tz: "Europe/Berlin",
+      procedencia: "cadastro",
+      assumido: false,
+    })
+    expect(fusoDaLoja(null)).toEqual({
+      tz: "America/Sao_Paulo",
+      procedencia: "padrao",
+      assumido: true,
+    })
+    expect(fusoDaLoja("   ")).toEqual({
+      tz: "America/Sao_Paulo",
+      procedencia: "padrao",
+      assumido: true,
+    })
+  })
+})
+
+describe("resolverFusoDaLoja", () => {
+  const MAPA = { BR: "America/Sao_Paulo", US: "America/New_York", DE: "Europe/Berlin" }
+
+  it("o cadastro vence, e não é assumido", () => {
+    const r = resolverFusoDaLoja({ timezone: "Europe/Berlin", country: "US", mapaDePais: MAPA })
+    expect(r).toEqual({ tz: "Europe/Berlin", procedencia: "cadastro", assumido: false })
+  })
+
+  it("sem cadastro, o país decide — e fica marcado como assumido", () => {
+    // A Blue Wolf: timezone NULL, country 'US'. O relatório devolvia
+    // America/Sao_Paulo por este mesmo input e o sync devolvia New York.
+    const r = resolverFusoDaLoja({ timezone: null, country: "US", mapaDePais: MAPA })
+    expect(r).toEqual({ tz: "America/New_York", procedencia: "pais", assumido: true })
+  })
+
+  it("sem cadastro e sem país conhecido, o padrão — declarado", () => {
+    const r = resolverFusoDaLoja({ timezone: null, country: "ZZ", mapaDePais: MAPA })
+    expect(r).toEqual({ tz: "America/Sao_Paulo", procedencia: "padrao", assumido: true })
+  })
+
+  it("fuso inválido no cadastro NÃO é usado", () => {
+    // Gravar "Europe/Berlim" não quebra na hora; usar transforma todo
+    // relatório da loja num offset assumido em silêncio.
+    const r = resolverFusoDaLoja({ timezone: "Europe/Berlim", country: "DE", mapaDePais: MAPA })
+    expect(r.tz).toBe("Europe/Berlin")
+    expect(r.procedencia).toBe("pais")
+  })
+
+  it("país em caixa baixa e com espaço ainda casa", () => {
+    expect(resolverFusoDaLoja({ country: " us ", mapaDePais: MAPA }).tz).toBe("America/New_York")
+  })
+
+  it("sem mapa, país nenhum resolve — cai no padrão em vez de lançar", () => {
+    expect(resolverFusoDaLoja({ country: "US" }).procedencia).toBe("padrao")
+  })
+
+  it("fusoDaLoja é o mesmo resolvedor, sem país", () => {
+    expect(fusoDaLoja("Europe/Berlin")).toEqual(resolverFusoDaLoja({ timezone: "Europe/Berlin" }))
+    expect(fusoDaLoja(null).procedencia).toBe("padrao")
   })
 })

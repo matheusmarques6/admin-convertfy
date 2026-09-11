@@ -120,6 +120,15 @@ export interface ReportSnapshotCore {
     bate_com_o_painel: boolean
     ressalva: string | null
   } | null
+  /**
+   * Em que fuso a janela foi cortada nesta rodada.
+   *
+   * `source: "pais"` ou `"padrao"` significa fuso ADIVINHADO — o painel
+   * do Omnisend corta pelo fuso da conta, e um corte noutro fuso desloca
+   * a janela. Quem compara o relatório com o painel meses depois precisa
+   * saber disso, pelo mesmo motivo de `period_notes`.
+   */
+  janela: { fuso: string; procedencia: string } | null
 }
 
 // ─── Helpers de presença explícita (F5) ─────────────────────────────────
@@ -494,6 +503,16 @@ export function buildReportSnapshot(params: {
     // envio × data do pedido). Quem abrir o relatório meses depois
     // precisa saber em que regime ele foi tirado — do mesmo jeito que
     // `period_notes` guarda que o dia ainda estava em andamento.
+    janela: (() => {
+      const w = reportRes && typeof reportRes === "object"
+        ? (reportRes as Record<string, unknown>).window
+        : null
+      if (!w || typeof w !== "object") return null
+      const o = w as Record<string, unknown>
+      return typeof o.timezone === "string" && typeof o.source === "string"
+        ? { fuso: o.timezone, procedencia: o.source }
+        : null
+    })(),
     atribuicao: (() => {
       const a = rv && typeof rv === "object" ? (rv as Record<string, unknown>).attribution : null
       if (!a || typeof a !== "object") return null

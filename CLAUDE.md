@@ -5578,6 +5578,62 @@ O plano na run é a mudança de auditoria: até aqui a telemetria via o efeito (
 ops) e nunca o motivo, então "por que este e-mail ficou assim" não tinha
 resposta.
 
+### O segundo relatório mediu o defeito restante (11/09)
+
+O usuário regerou o relatório da Blue Wolf e o número seguiu em US$ 51,5
+mil. Com o MCP do Supabase de volta, deu para medir em vez de supor — e o
+que a medição diz elimina metade das hipóteses:
+
+- o snapshot novo (11/09 00:05) **tem** `atribuicao`, ou seja o código já
+  estava em produção, e ele diz `bate_com_o_painel: true`: a Reports API
+  respondeu e **a calibração aconteceu**. A causa "atribuído sem
+  calibração" está descartada para este caso;
+- os números exatos: **214.077,62** contra 213.193,59 no painel (+884,03,
+  +0,415%) e **51.526,74** contra 51.176,38 (+350,36, +0,685%);
+- `client_stores` da Blue Wolf: **`timezone` NULL**, `country = 'US'`,
+  `currency_source` NULL — a loja **nunca foi conferida com a
+  plataforma**.
+
+**Havia DUAS resoluções de fuso para a mesma loja, e elas discordavam
+exatamente aí.** `fusoDaLoja(timezone)` — usada pelo relatório, pelo
+dashboard, por campanhas, flows e pela auditoria — devolvia
+`America/Sao_Paulo` com `timezone` NULL; `resolveStoreTimezone`, do sync,
+caía no mapa por país e devolvia `America/New_York`. O relatório montava
+a janela em `-03:00` e o sync a **reescrevia** em `-04:00`; como quem
+escreve por último é o sync, o recorte publicado nunca foi o que o
+relatório calculou. `resolverFusoDaLoja` (puro, 7 testes novos) é a fonte
+única e devolve a **procedência** (`cadastro` | `pais` | `padrao`); o
+`country` entra depois do cadastro e antes do padrão porque erra bastante
+(53 das 63 lojas estão como 'BR'), mas um país errado ainda é melhor
+palpite que ignorar o país de uma loja americana.
+
+**O conserto que faz o número bater sozinho**: o sync já buscava a MOEDA
+na plataforma quando ela estava vazia — agora faz o mesmo com o FUSO, e
+**antes** de montar a janela, porque é ele que define o recorte. Roda uma
+vez por loja (a resposta é gravada com `timezone_source: 'omnisend'`) e,
+quando a plataforma não informa fuso, o palpite fica DITO no log em vez
+de virar divergência sem explicação.
+
+**Honestidade sobre o que isto explica**: deslocar a janela TROCA horas,
+não soma — um fuso errado não produz por construção um excesso nos dois
+números. A diferença medida equivale a ~3,1 horas de faturamento médio
+(884,03 ÷ 286,55/h), compatível com um deslocamento de algumas horas,
+mas **só a comparação com o fuso da conta fecha isso**, e ela exige a
+chave decifrada. Quem responde é o botão "Receita", que agora compara o
+fuso **USADO** (não o cadastrado — comparar o cadastro diria só "não tem
+fuso" e esconderia que o corte saiu em Nova York) com o da conta.
+
+**A chave está cifrada no banco** (`enc:…`, 147 chars), então a API da
+Blue Wolf não pode ser chamada nem daqui nem de dentro do Postgres —
+tentado com `pg_net`, que existe no projeto e evitaria a credencial sair
+do banco: 401/403. O caminho é o botão, que roda no servidor com a chave
+aberta.
+
+O fuso da janela passou a viajar no `window` do relatório e a ficar
+congelado em `snapshot.janela` — `source: "pais"` ou `"padrao"` é fuso
+adivinhado, e quem compara o relatório com o painel meses depois precisa
+saber disso pelo mesmo motivo de `period_notes`.
+
 ---
 
 *Última atualização: Setembro 2026*

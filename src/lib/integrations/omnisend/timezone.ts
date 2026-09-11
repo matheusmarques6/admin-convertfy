@@ -117,12 +117,72 @@ export function ehFusoValido(timezone: string | null | undefined): boolean {
   }
 }
 
+/** De onde saiu o fuso que cortou a janela. */
+export type ProcedenciaDoFuso =
+  /** `client_stores.timezone` — o que a plataforma informou. É o do painel. */
+  | "cadastro"
+  /** Mapa por `country`. País está errado em boa parte da base. */
+  | "pais"
+  /** Nem um nem outro: o padrão da casa. */
+  | "padrao"
+
+export interface FusoResolvido {
+  tz: string
+  procedencia: ProcedenciaDoFuso
+  /** `true` em tudo que não veio do cadastro. */
+  assumido: boolean
+}
+
 /**
- * Fuso a usar e se ele é conhecido. Quem monta o relatório precisa das
- * duas coisas: o valor para calcular e o fato de estar assumindo, para
- * poder DIZER isso em vez de apresentar um recorte como se fosse certo.
+ * O fuso da loja e DE ONDE ele veio — fonte única.
+ *
+ * ── Por que isto virou uma função só (11/09/2026) ─────────────────────
+ *
+ * Existiam DUAS respostas para a mesma pergunta, e elas discordavam
+ * exatamente na loja sem fuso cadastrado:
+ *
+ *  - `fusoDaLoja(timezone)` (relatório, dashboard, campanhas, flows,
+ *    auditoria) devolvia `America/Sao_Paulo` quando `timezone` era NULL;
+ *  - `resolveStoreTimezone` (o sync) caía no mapa por país.
+ *
+ * A Blue Wolf tem `timezone` NULL e `country = 'US'`: o relatório montava
+ * a janela em `-03:00` e o sync a REESCREVIA em `-04:00`. Como quem
+ * escreve por último é o sync, o recorte publicado nunca era o que o
+ * relatório calculou — e nenhum dos dois era necessariamente o do painel,
+ * que corta pelo fuso da conta na Omnisend.
+ *
+ * A ordem é a da confiabilidade da fonte. O `country` entra DEPOIS do
+ * cadastro e antes do padrão: ele erra (53 das 63 lojas estão como 'BR',
+ * incluindo as `.pl`, `.de` e `-dk`), mas um país errado ainda é um
+ * palpite melhor que ignorar o país de uma loja americana.
+ *
+ * PURA. Quem busca o fuso na plataforma é o sync, e é ele que grava.
  */
-export function fusoDaLoja(timezone: string | null | undefined): { tz: string; assumido: boolean } {
-  const tz = (timezone ?? "").trim()
-  return tz ? { tz, assumido: false } : { tz: FUSO_PADRAO, assumido: true }
+export function resolverFusoDaLoja(params: {
+  timezone?: string | null
+  country?: string | null
+  /** Mapa país → IANA. Injetado para o módulo seguir sem I/O. */
+  mapaDePais?: Record<string, string>
+}): FusoResolvido {
+  const doCadastro = (params.timezone ?? "").trim()
+  if (doCadastro && ehFusoValido(doCadastro)) {
+    return { tz: doCadastro, procedencia: "cadastro", assumido: false }
+  }
+
+  const pais = (params.country ?? "").trim().toUpperCase()
+  const doPais = pais ? params.mapaDePais?.[pais] : undefined
+  if (doPais && ehFusoValido(doPais)) {
+    return { tz: doPais, procedencia: "pais", assumido: true }
+  }
+
+  return { tz: FUSO_PADRAO, procedencia: "padrao", assumido: true }
+}
+
+/**
+ * Atalho de um argumento, mantido para os chamadores que só têm o
+ * `timezone` em mãos. Quem tiver o `country` deve chamar
+ * `resolverFusoDaLoja` — senão volta a divergir do sync.
+ */
+export function fusoDaLoja(timezone: string | null | undefined): FusoResolvido {
+  return resolverFusoDaLoja({ timezone })
 }

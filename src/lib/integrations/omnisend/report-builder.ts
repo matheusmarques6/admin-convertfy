@@ -16,7 +16,8 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { syncOmnisendForStore } from "@/lib/services/omnisend-sync.service"
 import { upsertOmnisendSyncResults, normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { OmnisendRateLimitError } from "@/lib/integrations/omnisend/client"
-import { fusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
+import { resolverFusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
+import { COUNTRY_TIMEZONE } from "@/lib/constants/onboarding"
 import { logger } from "@/lib/logger"
 
 /**
@@ -27,20 +28,24 @@ import { logger } from "@/lib/logger"
  */
 async function fetchStoreCurrencyForReport(
   storeId: string,
-): Promise<{ currency: string; timezone: string | null }> {
+): Promise<{ currency: string; timezone: string | null; country: string | null }> {
   try {
     const admin = createAdminClient()
     const { data } = await admin
       .from("client_stores")
-      .select("currency, timezone")
+      .select("currency, timezone, country")
       .eq("id", storeId)
       .maybeSingle()
     return {
       currency: (data?.currency as string) || "BRL",
       timezone: (data?.timezone as string | null) ?? null,
+      // O `country` entra porque o SYNC o usa para resolver o fuso
+      // quando não há `timezone`. Sem ele aqui, o relatório montava a
+      // janela num fuso e o sync a reescrevia noutro.
+      country: (data?.country as string | null) ?? null,
     }
   } catch {
-    return { currency: "BRL", timezone: null }
+    return { currency: "BRL", timezone: null, country: null }
   }
 }
 
@@ -122,6 +127,14 @@ export interface OmnisendReportResponse {
   generatedAt: string
   period: string
   dateRange: { start: string; end: string }
+  /**
+   * Em que fuso a janela foi cortada, e de onde esse fuso veio.
+   *
+   * O painel do Omnisend corta os dias pelo fuso da CONTA. Cortar noutro
+   * fuso desloca a janela e o total não fecha — sem nada na tela dizendo
+   * por quê. Ausente no caminho de cache, que não remonta a janela.
+   */
+  window?: { timezone: string; source: "cadastro" | "pais" | "padrao" }
   account: {
     currency: string
     currencySymbol: string
@@ -733,15 +746,21 @@ async function buildFromLiveFetch(
 ): Promise<OmnisendReportResponse> {
   // Datas precisam ir no fuso da brand pra bater com dashboard Omnisend
   // (confirmado pelo suporte 2026-05-18). `to` e EXCLUSIVO no fuso da loja.
-  const { timezone: storeTimezone } = await fetchStoreCurrencyForReport(store.storeId)
-  const { tz, assumido } = fusoDaLoja(storeTimezone)
+  const { timezone: storeTimezone, country: storeCountry } =
+    await fetchStoreCurrencyForReport(store.storeId)
+  const { tz, assumido, procedencia } = resolverFusoDaLoja({
+    timezone: storeTimezone,
+    country: storeCountry,
+    mapaDePais: COUNTRY_TIMEZONE,
+  })
   if (assumido) {
     // Sem fuso cadastrado o recorte continua saindo, mas fica registrado
     // que foi assumido — número apresentado como certo sem base é o que
     // fazia a divergência com o painel do Omnisend passar despercebida.
-    logger.child("OmnisendReport").warn("loja sem fuso cadastrado — assumindo o padrão", {
+    logger.child("OmnisendReport").warn("loja sem fuso cadastrado — janela num fuso assumido", {
       storeId: store.storeId,
       assumido: tz,
+      procedencia,
     })
   }
   const { from: omnisendStart, to: omnisendEnd } = omnisendDateRange(
@@ -919,6 +938,7 @@ async function buildFromLiveFetch(
     generatedAt: new Date().toISOString(),
     period,
     dateRange: { start: dateRange.startDateStr, end: dateRange.endDateStr },
+    window: { timezone: tz, source: procedencia },
     account: {
       currency,
       currencySymbol: getCurrencySymbol(currency),
