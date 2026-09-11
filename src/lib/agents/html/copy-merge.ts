@@ -1111,7 +1111,7 @@ const LEGACY_STRUCTURAL = new Set([
 ])
 
 /**
- * Preenche por CÓDIGO os tokens estruturais (fora da hero) e devolve o
+ * Preenche por CÓDIGO os tokens estruturais e devolve o
  * relatório. Nunca remove linha — preservação > limpeza. Contexto parcial
  * (loja sem logo) NUNCA derruba: o token fica em `cleaned` pro strip.
  */
@@ -1149,7 +1149,23 @@ export function applyStructuralFills(
     // apontar a home ali quebraria a imagem em vez de consertar o link.
     const destino = slot.attr === "href" && ehDestinoDaLoja(slot.token)
     if (!destino && !isStructuralToken(slot.token)) continue
-    if (inRange(slot.valueRange.start, hero)) continue
+    // A hero é posse do agente no que é JUÍZO VISUAL — o contraste do logo
+    // sobre banda escura é decisão dele, e por isso `URL_DO_LOGO_AQUI` e
+    // `NOME_DA_MARCA` seguem fora daqui dentro da região.
+    //
+    // O DESTINO de um link não é juízo nenhum: o botão leva ao mesmo lugar
+    // esteja ele sobre foto ou sobre branco. A exclusão cobria os dois
+    // porque foi escrita quando o agente REESCREVIA a hero e resolvia os
+    // tokens ele mesmo; desde o enxerto por ID (20261049) a região entra
+    // por código e o agente faz substituição pura — ninguém preenchia o
+    // href, e o código estava proibido de tocar ali.
+    //
+    // Medido em 11/09 (batches b0cdb3eb e 381992d8, Hero Boxers Welcome 1):
+    // os DOIS botões do hero e o link do logo saíram com `URL_CTA_PRIMARIO`,
+    // `URL_CTA_SECUNDARIO` e `URL_DO_SITE_AQUI` literais, o QA reprovou em
+    // `links_quebrados` (high) e a peça não saiu. O merge de copy já escreve
+    // dentro da hero desde D1 (`heroRange`); era só o estrutural que não.
+    if (!destino && inRange(slot.valueRange.start, hero)) continue
     const value = structuralValue(slot.token)
     if (!value) {
       cleanedSet.add(slot.token)
@@ -1225,7 +1241,13 @@ export function applyStructuralFills(
   const jaEditado = (r: Range) =>
     splices.some((sp) => sp.start < r.end && r.start < sp.end)
   for (const node of textNodes(html)) {
-    if (inRange(node.range.start, hero)) continue
+    // Dentro da hero também: `TEXTO_DE_PREHEADER_AQUI` está na arte de 17
+    // variantes ativas e saiu VISÍVEL na hero de 11/09 (batch b0cdb3eb,
+    // issue `blocos_vazios` high). Token literal em SCREAMING_SNAKE na tela
+    // não é decisão estética de ninguém — é o mesmo defeito que a limpeza
+    // já resolve no resto do documento, e a hero não tem motivo para ser
+    // exceção. O `_AQUI` continua sendo a régua, então nenhum campo de copy
+    // (`{{TAG}}`) nem o código do cupom são alcançados.
     if (jaEditado(node.range)) continue
     const texto = node.text.trim()
     if (!TOKEN_SOZINHO.test(texto)) continue

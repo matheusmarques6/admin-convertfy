@@ -709,7 +709,7 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.html).toContain("<td>Loja X</td>")
   })
 
-  it("dentro da hero NADA é tocado (contraste de logo é juízo do agente)", () => {
+  it("dentro da hero o LOGO segue intocado (contraste é juízo do agente)", () => {
     const html = [
       "<table>",
       HERO_SENTINEL_START,
@@ -725,6 +725,52 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.html).toContain('src="URL_DO_LOGO_AQUI"')
     expect(r.html).toContain('alt="NOME_DA_MARCA"')
     expect(r.html).toContain("<td>Loja Y</td>")
+  })
+
+  // 11/09, Hero Boxers Welcome 1 (batches b0cdb3eb e 381992d8): os DOIS
+  // botões do hero saíram com `URL_CTA_PRIMARIO`/`URL_CTA_SECUNDARIO`
+  // literais e o QA reprovou a peça em `links_quebrados` (high). A exclusão
+  // da hero foi escrita quando o agente REESCREVIA a região e resolvia os
+  // tokens; com o enxerto por ID ele faz substituição pura e ninguém
+  // preenchia. Destino de link não tem contraste — não é juízo do agente.
+  it("dentro da hero o DESTINO do link é preenchido", () => {
+    const html = [
+      "<table>",
+      HERO_SENTINEL_START,
+      '<tr><td><a href="URL_CTA_PRIMARIO">SHOP NOW</a></td></tr>',
+      '<tr><td><a href="URL_CTA_SECUNDARIO">Ver mais</a></td></tr>',
+      '<tr><td><img src="URL_DO_LOGO_AQUI" alt=""></td></tr>',
+      HERO_SENTINEL_END,
+      "</table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, {
+      storeUrl: "https://heroboxers.com",
+      logoUrl: "https://cdn/l.png",
+    })
+    expect(r.html.match(/href="https:\/\/heroboxers\.com"/g)).toHaveLength(2)
+    expect(r.html).not.toContain("URL_CTA_")
+    // O logo continua sendo do agente, mesmo agora que o href não é.
+    expect(r.html).toContain('src="URL_DO_LOGO_AQUI"')
+  })
+
+  it("dentro da hero o token literal de texto é limpo", () => {
+    // `TEXTO_DE_PREHEADER_AQUI` está na arte de 17 variantes ativas e saiu
+    // VISÍVEL na hero de 11/09. Token em SCREAMING_SNAKE na tela não é
+    // decisão estética de ninguém.
+    const html = [
+      "<table>",
+      HERO_SENTINEL_START,
+      "<tr><td>TEXTO_DE_PREHEADER_AQUI</td></tr>",
+      "<tr><td>Bem-vindo à Hero Boxers</td></tr>",
+      HERO_SENTINEL_END,
+      "</table>",
+    ].join("\n")
+    const r = applyStructuralFills(html, { brandName: "Hero Boxers" })
+    expect(r.html).not.toContain("TEXTO_DE_PREHEADER_AQUI")
+    expect(r.cleaned).toContain("TEXTO_DE_PREHEADER_AQUI")
+    // Preservação > limpeza: a linha fica, só o token some.
+    expect(r.html).toContain("<tr><td></td></tr>")
+    expect(r.html).toContain("Bem-vindo à Hero Boxers")
   })
 
   it("href do rodapé: URL_UNSUBSCRIBE/URL_PREFERENCIAS viram merge tag do ESP", () => {
@@ -754,7 +800,7 @@ describe("applyStructuralFills — tokens reais da biblioteca", () => {
     expect(r.cleaned).toEqual([])
   })
 
-  it("href de CTA continua FORA do preenchimento estrutural", () => {
+  it("href de CTA sem storeUrl no contexto continua intacto", () => {
     // Destino de campanha não é dado de plataforma: URL_DO_CTA_AQUI segue
     // intacto aqui e vira "link sem destino" no render-checks — deliberado.
     const html = '<table><tr><td><a href="URL_DO_CTA_AQUI">Finalizar pedido</a></td></tr></table>'
