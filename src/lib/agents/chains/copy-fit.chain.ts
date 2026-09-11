@@ -29,11 +29,13 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { classificarFalha, planejarRetentativa } from "../retry-teto"
 import {
   aceitarReescrita,
   contarTracos,
   type MotivoDeAlvo,
   apararNoLimite,
+  socorroPorCodigo,
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
 } from "@/lib/email-workspace/copy-fit"
@@ -86,6 +88,19 @@ const DEFAULT_MODEL = "openai/gpt-5.4-mini"
 // 'low' e orçamento com folga — 13 campos precisam de ~800 tokens de
 // resposta. A migration 20261105 sobe a linha ativa para 6000.
 const DEFAULT_MAX_TOKENS = 6000
+/**
+ * Até onde o teto pode subir numa retentativa por truncamento.
+ *
+ * Subir sem limite estoura o relógio do step (o modelo gera ~90 tok/s) e
+ * infla a reserva de crédito que o OpenRouter faz em voo — que é o outro
+ * jeito de este agente morrer. Daí o teto ABSOLUTO: com a config em 24.000
+ * (11/09), dobrar daria 48.000, e uma resposta desse tamanho leva minutos
+ * que a fase 2 não tem.
+ */
+const TETO_ABSOLUTO = 32000
+function tetoMaximoDe(configurado: number): number {
+  return Math.min(Math.max(configurado * 2, 16000), TETO_ABSOLUTO)
+}
 const REASONING: AgentInvokeConfig["reasoning"] = { effort: "low" }
 
 const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
@@ -439,6 +454,37 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   let traducoesRecusadas = 0
   const viaCodigo = new Map<string, "travessao_por_codigo" | "aparado_por_codigo">()
 
+  /**
+   * Plano B por CÓDIGO para o que o modelo não corrigiu.
+   *
+   * 09/09 — o corte de 02/09 ("decepa na última frase que cabe") mandou
+   * "Plugs directly into any standard outlet." ao cliente e foi removido.
+   * O que volta é o aparo de excesso PEQUENO (≤ 15%, última fronteira de
+   * palavra, sem reticências) e a troca do travessão.
+   *
+   * 11/09 — passou a rodar também no `catch`. O agente morreu na PRIMEIRA
+   * chamada (8000 dos 8000 tokens no raciocínio) e os oito travessões do
+   * e-mail foram ao cliente, porque o traço que o código sabe tirar
+   * esperava por um modelo que nunca respondeu.
+   */
+  const socorrer = (alvos: readonly AlvoDeEncurtamento[]): void => {
+    for (const a of alvos) {
+      if (aceitas.has(a.id) || a.so_codigo) continue
+      const socorro = socorroPorCodigo(a)
+      if (!socorro) continue
+      const veredicto = aceitarReescrita(a.texto, socorro.texto, {
+        max: a.max,
+        min: a.min,
+        motivos: a.motivos,
+        idiomaEsperado: a.idioma_esperado,
+      })
+      if (!veredicto.ok) continue
+      motivos.delete(a.id)
+      aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: socorro.texto })
+      viaCodigo.set(a.id, socorro.via)
+    }
+  }
+
   try {
     // 09/09 — o que o CÓDIGO resolve não vai ao modelo:
     //  - `proposta_por_codigo`: travessão trocado e cabe → aceita.
@@ -461,6 +507,12 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       }
     }
     let pendentes = paraOModelo
+    // O teto da passada, que SOBE quando a falha foi truncamento (11/09).
+    // A regra é a de `retry-teto.ts`, escrita para o Seletor e o
+    // Estruturador e que nunca desceu para cá — e foi aqui que ela fez
+    // falta: `anthropic/claude-sonnet-5` gastou 8000 dos 8000 tokens
+    // pensando, devolveu vazio, e a 2ª passada teria o mesmo teto.
+    let teto = config.max_tokens
     for (let passada = 0; passada < 2 && pendentes.length > 0; passada++) {
       const varsDaPassada =
         passada === 0
@@ -470,13 +522,32 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
               contrato_json: contratoDe(pendentes),
               copy_atual_json: copyAtualDe(pendentes),
             }
-      const res = await invokeAgent(config, varsDaPassada)
-      tentativas++
-      tokensInput += res.tokensInput ?? 0
-      tokensOutput += res.tokensOutput ?? 0
-      custoUsd += res.costUsd ?? 0
+      let res: InvokeResult
+      try {
+        res = await invokeAgent({ ...config, max_tokens: teto }, varsDaPassada)
+        tentativas++
+        tokensInput += res.tokensInput ?? 0
+        tokensOutput += res.tokensOutput ?? 0
+        custoUsd += res.costUsd ?? 0
+      } catch (err) {
+        tentativas++
+        const plano = planejarRetentativa({
+          causa: classificarFalha({
+            erro: err instanceof Error ? err.message : String(err),
+            maxTokens: teto,
+          }),
+          tentativa: passada + 1,
+          maxAttempts: 2,
+          tetoAtual: teto,
+          tetoMaximo: tetoMaximoDe(config.max_tokens),
+        })
+        if (!plano.repetir) throw err
+        log.warn("copy_fit.teto", { emailId: input.emailId, de: teto, para: plano.maxTokens, motivo: plano.motivo })
+        teto = plano.maxTokens
+        continue
+      }
       raw = res.raw
-      const campos = parseCampos(res.raw, res, config.max_tokens)
+      const campos = parseCampos(res.raw, res, teto)
 
       const aindaFora: AlvoDeEncurtamento[] = []
       for (const alvo of pendentes) {
@@ -519,16 +590,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     // com idade e cintura sobrevivia com uma palavra a menos em vez de
     // ser descartado inteiro (`ainda_acima_do_limite`, batch 644d86c5).
     // Excesso maior continua como veio do n8n, contado em `mantidos`.
-    for (const a of pendentes) {
-      if (motivos.get(a.id) !== "ainda_acima_do_limite" && !(a.max > 0 && a.texto.length > a.max)) continue
-      const aparado = apararNoLimite(a.texto, a.max)
-      if (!aparado) continue
-      const veredicto = aceitarReescrita(a.texto, aparado, { max: a.max, min: a.min, motivos: ["max_len"], idiomaEsperado: a.idioma_esperado })
-      if (!veredicto.ok) continue
-      motivos.delete(a.id)
-      aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: aparado })
-      viaCodigo.set(a.id, "aparado_por_codigo")
-    }
+    socorrer(pendentes)
 
     const de_para: DePara[] = input.alvos.map((a) => {
       const ok = aceitas.get(a.id)
@@ -635,6 +697,8 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     return { aceitas: [...aceitas.values()], de_para, rodou: true }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    // O modelo caiu: o que o código resolve sozinho não pode cair junto.
+    socorrer(input.alvos)
     // Fail-open: o que já foi ACEITO nas passadas anteriores vale — descartar
     // correção boa por causa de um erro na retentativa seria pior.
     log.warn("copy_fit.failed", {

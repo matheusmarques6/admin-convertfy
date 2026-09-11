@@ -99,6 +99,19 @@ export interface Cta {
   largura_px: number | null
   radius_px: number | null
   /**
+   * Tipografia e respiro DECLARADOS no `<a>` — a escala real desta peça.
+   *
+   * Existem porque o botão que o agente manda criar nascia com tamanho fixo
+   * do template da casa (15px, padding 14/36) enquanto a peça rodava em
+   * 24px: 41% da largura e 62% da altura do botão nativo, "nem parece um
+   * CTA". O dado para acertar sempre esteve aqui e era lido só para
+   * recolorir. `null` quando o `<a>` não declara.
+   */
+  font_size_px: number | null
+  peso: number | null
+  padding_v: number | null
+  padding_h: number | null
+  /**
    * Existe um `v:roundrect` do Outlook em volta.
    *
    * Importa porque a cor do botão fica declarada DUAS vezes nesse caso, e
@@ -106,6 +119,21 @@ export interface Cta {
    * cor antiga — quebra em silêncio, num cliente só.
    */
   vml: boolean
+  /**
+   * O botão existe SÓ no ramo do Outlook — fora dele o lugar está vazio.
+   *
+   * Encontrado em 11/09 na peça da Hero Boxers: o CTA do bloco `body` vive
+   * apenas dentro de `<!--[if mso]>`, escrito "DIGITAL GIFT CARD" (texto de
+   * exemplo de outra peça), e o ramo `<!--[if !mso]>` ao lado está vazio.
+   * O Outlook mostra um botão de gift card numa marca de cuecas; todo o
+   * resto não mostra botão nenhum.
+   *
+   * Existe para ser DITO, não para calar a inserção: um CTA que 90% dos
+   * leitores não vê não cumpre a regra da casa, e tratá-lo como botão
+   * presente deixaria o bloco sem CTA para quase todo mundo. Ver
+   * `plano-de-cor.ts`, onde ele não entra em `blocosComCta`.
+   */
+  somente_outlook: boolean
   /** Contraste label × fundo do botão; null quando vazado. */
   contraste: number | null
   /** Região do elemento clicável, para o aplicador escopar a troca. */
@@ -127,6 +155,11 @@ const FECHA_LINK = /<\/a\s*>/i
 const LABEL_MAX_CHARS = 60
 /** Quanto olhar para trás atrás do `v:roundrect` que embrulha o botão. */
 const JANELA_VML = 500
+const ROUNDRECT = /<v:roundrect\b[^>]*>/gi
+const ABRE_LINK_UMA = /<a\b[^>]*\bhref\s*=\s*"[^"]*"[^>]*style="[^"]*display\s*:\s*(?:inline-)?block/i
+const TEXTO_VML = /<center\b[^>]*>([\s\S]{0,200}?)<\/center\s*>/i
+const HREF_VML = /\bhref\s*=\s*"([^"]*)"/i
+const FILL_VML = /\bfillcolor\s*=\s*"([^"]*)"/i
 
 function dentro(offset: number, r: Range): boolean {
   return offset >= r.start && offset < r.end
@@ -215,6 +248,22 @@ export function extrairFaixas(html: string): Faixa[] {
  * label também tem teto: texto longo com fundo é uma banda com link, não um
  * CTA.
  */
+const FONT_SIZE_NO_TAG = /font-size\s*:\s*(\d+(?:\.\d+)?)\s*px/i
+const PESO_NO_TAG = /font-weight\s*:\s*(\d{3})/i
+const PADDING_NO_TAG = /padding\s*:\s*([^;"']+)/i
+
+/** "14px 36px" / "14px" / "14px 36px 14px 36px" → [vertical, horizontal]. */
+function padding(tag: string): [number | null, number | null] {
+  const bruto = PADDING_NO_TAG.exec(tag)?.[1]
+  if (!bruto) return [null, null]
+  const n = bruto
+    .trim()
+    .split(/\s+/)
+    .map((v) => (/^(\d+(?:\.\d+)?)px$/i.test(v) ? Number(v.replace(/px/i, "")) : null))
+  if (n.length === 0 || n[0] == null) return [null, null]
+  return [n[0], n.length >= 2 ? n[1] : n[0]]
+}
+
 export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
   const chainAt = buildAncestorChain(html)
   // Uma vez só: o casamento botão↔faixa acontece por offset, e refazer a
@@ -297,7 +346,12 @@ export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
       tipo: fundo ? "preenchido" : "vazado",
       largura_px: largura,
       radius_px: radius ? Number(radius) : null,
+      font_size_px: Number(FONT_SIZE_NO_TAG.exec(proprio)?.[1]) || null,
+      peso: Number(PESO_NO_TAG.exec(proprio)?.[1]) || null,
+      padding_v: padding(proprio)[0],
+      padding_h: padding(proprio)[1],
       vml: /v:roundrect/i.test(html.slice(Math.max(0, abre - JANELA_VML), abre)),
+      somente_outlook: false,
       // Só o par que o botão declara. Botão vazado pousa no fundo da faixa e
       // quem mede aquilo é o inventário — afirmar um contraste inventando o
       // fundo daria um número que ninguém pode conferir.
@@ -306,5 +360,177 @@ export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
     })
   }
 
+  // ── Botões que só existem no Outlook ────────────────────────────────
+  // O padrão da casa é VML + `<a>` lado a lado, e aí o `<a>` já entrou
+  // acima com `vml: true`. O que sobra aqui é o roundrect ÓRFÃO: o par
+  // desapareceu e ninguém percebeu, porque botão dentro de comentário
+  // condicional não existe para o DOM — nem para este extrator, que é como
+  // o Cores & Botões leu "bloco sem CTA" e inseriu um segundo.
+  for (const m of html.matchAll(ROUNDRECT)) {
+    const abre = m.index ?? 0
+    const trecho = html.slice(abre, abre + JANELA_VML)
+    // Par visível por perto → já foi contado pelo `<a>`.
+    if (ABRE_LINK_UMA.test(html.slice(abre, abre + JANELA_VML * 2))) continue
+    const texto = (TEXTO_VML.exec(trecho)?.[1] ?? "").replace(/<[^>]*>/g, "").trim()
+    if (!texto || texto.length > LABEL_MAX_CHARS) continue
+    const faixa = faixas.find((f) => {
+      const r = regioes.get(f.bloco)
+      return r ? dentro(abre, r) : false
+    })
+    n += 1
+    ctas.push({
+      id: `cta${n}`,
+      bloco: faixa?.bloco ?? null,
+      faixa: faixa?.ordem ?? null,
+      texto,
+      href: HREF_VML.exec(m[0])?.[1] ?? "",
+      fundo: hexOu(FILL_VML.exec(m[0])?.[1]),
+      label: null,
+      tipo: "preenchido",
+      largura_px: null,
+      radius_px: null,
+      font_size_px: null,
+      peso: null,
+      padding_v: null,
+      padding_h: null,
+      vml: true,
+      somente_outlook: true,
+      contraste: null,
+      range: { start: abre, end: abre + m[0].length },
+    })
+  }
+
   return ctas
+}
+
+/**
+ * Fundo de seção sai da IDENTIDADE da loja — não de quantos tons cabem.
+ *
+ * A primeira versão desta régua contava até três, que é a letra da R2. A
+ * conta estava no eixo errado, e a peça de 10/09 mostra por quê: a Hero
+ * Boxers tem EXATAMENTE duas cores principais cadastradas — `#000000` e
+ * `#FFFFFF`, zero secundárias — e a peça saiu com fundos `#FFFFFF`,
+ * `#E1DEDE` e `#B1B3B6`. Três tons: passa no teto. E dois deles são cinzas
+ * genéricos herdados de variantes escritas para outras lojas, enquanto o
+ * preto — metade da identidade — não aparece como fundo de seção nenhuma.
+ * Contar quantidade aprova três cinzas estranhos e reprovaria preto, branco
+ * e um acento da marca.
+ *
+ * A regra da casa, na ordem: **os fundos são as cores principais da loja**,
+ * e só com MUITA necessidade entra outra — **em lugar especial**. Fundo de
+ * seção não é lugar especial: é a banda que o leitor atravessa por inteiro,
+ * e uma cor estranha ali veste a peça de outra marca. Por isso QUALQUER
+ * fundo fora da identidade conta como desvio, e a exceção da terceira cor
+ * vale para o que é pontual — um card, um selo, um filete —, que esta
+ * função nem enxerga. Daí `estranhos` ser o número que importa e o teto de
+ * tons virar o limite de trás.
+ *
+ * **O que conta como "da marca"** é a paleta cadastrada MAIS os papéis que
+ * o código deriva dela (`bg`, `surface`, `surface_strong` de
+ * `deriveColorRoles`). Uma loja preto-e-branco precisa de um cinza para
+ * separar seções; o que ela não precisa é de um cinza QUALQUER. Foi
+ * exatamente o que o agente escreveu na lacuna dele e depois não fez:
+ * "#B1B3B6 não é um dos color_roles declarados — registrar para decisão da
+ * loja se deve virar #E3E3E3". Aqui isso deixa de ser lacuna e vira conta.
+ *
+ * **Limite declarado: conta fundo de SEÇÃO, não banda interna.** Medindo a
+ * peça no Chromium aparecem quatro fundos, porque a hero tem uma banda
+ * preta de 230px no topo (onde mora o logo). Ela não entra: o container do
+ * bloco hero é branco, e é ele que uma op alcança. Contar banda interna
+ * faria todo card colorido e todo rodapé escuro de dentro de um bloco
+ * gastarem um tom, e a régua acusaria quase toda peça — alarme que ninguém
+ * consegue atender vira alarme ignorado. A contrapartida honesta é que uma
+ * banda grande o bastante para ler como seção passa despercebida.
+ *
+ * **Foto não é tom.** Faixa cujo fundo é imagem não entra mesmo quando há
+ * cor declarada atrás dela: quem lê vê a foto, e contá-la faria a hero
+ * fotográfica gastar um tom que o leitor não percebe.
+ *
+ * Puro. Lista vazia (documento sem marcadores) devolve zero tons e nada
+ * acusado — sem endereço não há conta a fazer, e acusar ali seria inventar
+ * defeito sobre o que não foi medido.
+ */
+
+/** Teto de trás: mesmo todos sendo da marca, quatro fundos é ruído (R2). */
+export const TETO_DE_TONS = 3
+
+export interface TomDeFundo {
+  hex: string
+  /** Pertence à paleta da loja ou a um papel derivado dela. */
+  da_marca: boolean
+  /** Em quantas faixas este tom aparece. */
+  faixas: number
+}
+
+export interface TonsDeFundo {
+  tons: TomDeFundo[]
+  teto: number
+  /** Mais tons do que o teto de trás. */
+  excede: boolean
+  /** Os fundos que não vêm da identidade — o número que importa. */
+  estranhos: string[]
+  /** Existe fundo de seção fora da identidade. */
+  foraDaIdentidade: boolean
+}
+
+/**
+ * Distância máxima por canal para dois fundos serem o MESMO tom.
+ *
+ * Medido no documento real: a peça usa `#FFFFFF` e `#FDFDFD`, dois brancos
+ * que ninguém distingue, vindos de variantes de origens diferentes.
+ * Contá-los como dois tons faria a régua acusar violação onde não há — e
+ * alarme falso é como se aprende a ignorar o alarme verdadeiro. 8 em 255 é
+ * ~3%: pega o ruído de arredondamento e não junta `#E1DEDE` com `#B1B3B6`
+ * (48 de distância), que são dois cinzas de verdade.
+ *
+ * A mesma tolerância decide se um fundo é da marca: exigir o hex exato
+ * reprovaria o branco que a variante escreveu como `#FDFDFD` sendo o mesmo
+ * branco da identidade.
+ */
+const TOLERANCIA_DE_TOM = 8
+
+function mesmoTom(a: string, b: string): boolean {
+  const rgb = (h: string) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim())
+    if (!m) return null
+    const n = parseInt(m[1], 16)
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  }
+  const x = rgb(a)
+  const y = rgb(b)
+  // Hex que não sabemos ler não é igualado a nada: juntar por engano
+  // esconderia um tom de verdade.
+  if (!x || !y) return a.toUpperCase() === b.toUpperCase()
+  return x.every((v, i) => Math.abs(v - y[i]) <= TOLERANCIA_DE_TOM)
+}
+
+/**
+ * @param aceitas Cores da identidade MAIS os papéis derivados dela. Lista
+ *   vazia = a loja não tem paleta cadastrada: nada é acusado de estranho,
+ *   porque sem identidade não há de onde um fundo divergir.
+ */
+export function tonsDeFundo(faixas: Faixa[], aceitas: string[] = []): TonsDeFundo {
+  const tons: TomDeFundo[] = []
+  for (const f of faixas) {
+    if (f.foto || !f.fundo) continue
+    const hex = f.fundo.toUpperCase()
+    const existente = tons.find((t) => mesmoTom(t.hex, hex))
+    if (existente) {
+      existente.faixas += 1
+      continue
+    }
+    tons.push({
+      hex,
+      da_marca: aceitas.length === 0 || aceitas.some((a) => mesmoTom(a, hex)),
+      faixas: 1,
+    })
+  }
+  const estranhos = tons.filter((t) => !t.da_marca).map((t) => t.hex)
+  return {
+    tons,
+    teto: TETO_DE_TONS,
+    excede: tons.length > TETO_DE_TONS,
+    estranhos,
+    foraDaIdentidade: estranhos.length > 0,
+  }
 }

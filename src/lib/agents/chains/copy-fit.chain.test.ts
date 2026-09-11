@@ -219,10 +219,12 @@ describe("runCopyFit", () => {
     })
   })
 
-  // Sem corte por código (02/09): o traço que sobrevive às duas passadas
-  // fica como veio do n8n, contado em `mantidos` com o motivo — o código
-  // não toca no texto.
-  it("traço que sobrevive às duas passadas mantém o original e registra o motivo", async () => {
+  // 11/09: o traço que sobrevive às duas passadas passa a sair por CÓDIGO.
+  // Antes ele ia ao cliente ("mantidos", com o motivo registrado) e foi
+  // assim que oito travessões chegaram ao e-mail da Hero Boxers quando o
+  // modelo morreu. Trocar " — " por pontuação é determinístico; o corte de
+  // 02/09 que foi removido era outra coisa — decepar a frase.
+  it("traço que sobrevive às duas passadas sai por código", async () => {
     invokeMock.mockResolvedValue(respostaLLM({ "1.body": "Ainda — com traço." }))
     const r = await runCopyFit(
       entrada([
@@ -237,17 +239,71 @@ describe("runCopyFit", () => {
       ]),
     )
     expect(invokeMock).toHaveBeenCalledTimes(2)
-    expect(r.aceitas).toEqual([])
+    expect(r.aceitas).toEqual([
+      { id: "1.body", position: 1, block_id: "b-body", key: "body", texto: "Funciona, e sem risco." },
+    ])
     const out = respostaComResultado().parsedOutput as Record<string, unknown>
     expect(out).toMatchObject({
-      corrigidos: 0,
-      mantidos: 1,
+      corrigidos: 1,
+      mantidos: 0,
       travessoes_antes: 1,
-      travessoes_depois: 1,
+      travessoes_depois: 0,
     })
-    expect(out).not.toHaveProperty("corrigidos_pelo_codigo")
     const dePara = (out.de_para as Array<Record<string, unknown>>)[0]
-    expect(dePara).toMatchObject({ aceito: false, motivo: "traco_permaneceu" })
+    expect(dePara).toMatchObject({ aceito: true, via: "travessao_por_codigo" })
+  })
+
+  // 11/09: a regra do `retry-teto` (escrita para o Seletor e o
+  // Estruturador) desceu para cá. Truncou no teto → a 2ª passada tem teto
+  // MAIOR; repeti-la com o mesmo teto tem ~0% de chance e cobra de novo.
+  it("truncado no teto sobe o teto da retentativa", async () => {
+    invokeMock
+      .mockRejectedValueOnce(
+        new Error("Saída vazia do modelo: max_tokens (8000) consumido pelo raciocínio antes da resposta"),
+      )
+      .mockResolvedValueOnce(respostaLLM({ "1.body": "Funciona sem risco." }))
+
+    const r = await runCopyFit(
+      entrada([alvo({ id: "1.body", key: "body", texto: "Funciona — e sem risco.", max: 120, motivos: ["travessao"], tracos: 1 })]),
+    )
+
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    const tetoDa1a = (invokeMock.mock.calls[0][0] as { max_tokens: number }).max_tokens
+    const tetoDa2a = (invokeMock.mock.calls[1][0] as { max_tokens: number }).max_tokens
+    expect(tetoDa2a).toBeGreaterThan(tetoDa1a)
+    expect(r.aceitas[0].texto).toBe("Funciona sem risco.")
+  })
+
+  it("timeout NÃO sobe o teto — a 2ª chamada morreria igual, mais tarde", async () => {
+    invokeMock.mockRejectedValue(new Error("timeout"))
+    const r = await runCopyFit(entrada([alvo({ id: "1.body", key: "body", texto: "Vai — e volta.", max: 120, motivos: ["travessao"], tracos: 1 })]))
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    // E o socorro por código continua valendo: o traço sai.
+    expect(r.aceitas[0].texto).toBe("Vai, e volta.")
+  })
+
+  // O incidente de 11/09 na fronteira exata: o modelo não respondeu NADA
+  // (8000 dos 8000 tokens no raciocínio) e o `catch` fail-open devolvia só
+  // o que já estivesse aceito — o traço que o código sabe tirar ia junto.
+  it("modelo caindo na primeira chamada não leva o travessão junto", async () => {
+    invokeMock.mockRejectedValue(new Error("resposta vazia de 'anthropic/claude-sonnet-5'; 8000 dos 8000"))
+    const r = await runCopyFit(
+      entrada([
+        alvo({
+          id: "1.body",
+          key: "body",
+          texto: "Funciona — e sem risco.",
+          max: 120,
+          motivos: ["travessao"],
+          tracos: 1,
+        }),
+      ]),
+    )
+    expect(r.rodou).toBe(true)
+    expect(r.erro).toContain("8000")
+    expect(r.aceitas).toEqual([
+      { id: "1.body", position: 1, block_id: "b-body", key: "body", texto: "Funciona, e sem risco." },
+    ])
   })
 
   // Sem entrada no mapa de origens o guard de recomposição zera os segmentos

@@ -45,12 +45,26 @@ import {
 } from "./catalogador-prompt"
 import { normalizarCatalogo, projetarObjecoes, validarCatalogo } from "./catalogo-regras"
 import { aplicarFichaAoCatalogo, fichaParaPrompt, normalizarFicha } from "@/lib/stores/ficha-operacional"
+import { relogioDaChamada, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
+import { classificarFalha, planejarRetentativa } from "../retry-teto"
+import { motivoDaFalha } from "./catalogador-erros"
 import type { CatalogoDeObjecoes } from "./vocabulario"
 
 const log = logger.child("Catalogador")
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
 const MAX_ATTEMPTS = 2
+
+/**
+ * Teto de saída máximo numa retentativa por truncamento.
+ *
+ * A 90 tok/s medidos, 16.384 tokens pedem ~197s — cabe na janela desta rota
+ * quando a 1ª tentativa foi curta, e é `relogioDaChamada` quem corta se não
+ * couber. Acima disso a 2ª tentativa não teria como terminar dentro dos
+ * 300s da função, e subir o teto sem o relógio acompanhar só aumenta a
+ * reserva de crédito que o OpenRouter faz em voo.
+ */
+const TETO_MAXIMO_TOKENS = 16_384
 
 export interface RunCatalogadorInput {
   storeId: string
@@ -65,6 +79,8 @@ export interface RunCatalogadorResult {
   objections: Array<{ objection: string; treatment: string }>
   runId: string | null
   erros?: string[]
+  /** A causa em texto de gente — é o que a rota mostra na tela. */
+  motivo?: string
 }
 
 /** sha8 do catálogo — o alvo do Seletor guarda isto para saber se ficou velho. */
@@ -104,10 +120,16 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     : []
 
   const cfgRow = await loadActiveAgentConfig("catalogador")
+  const maxTokens = cfgRow?.max_tokens ?? 8192
   const config: AgentInvokeConfig = {
     model: cfgRow?.model || DEFAULT_MODEL,
     temperature: cfgRow?.temperature ?? 0.3,
-    max_tokens: cfgRow?.max_tokens ?? 8192,
+    max_tokens: maxTokens,
+    // O relógio sai do teto de tokens, que mora no BANCO e muda sem deploy.
+    // Uma constante aqui envelheceria na primeira troca pela tela — foi
+    // exatamente o que aconteceu: 8.192 virou 12.288 em 04/09 e o relógio
+    // global (240s) seguiu o mesmo, com a rota declarando 120s de função.
+    timeoutMs: relogioParaTeto(maxTokens),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_CATALOGADOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_CATALOGADOR_USER,
   }
@@ -165,8 +187,29 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
   let errosAnteriores: string[] = []
   let promptFinal = ""
   let segmentsFinal = segBase.segments
+  // Por que o loop parou ANTES de esgotar as tentativas. Fica separado de
+  // `errosAnteriores` porque aquilo é a causa da falha do modelo, e
+  // sobrescrevê-la apaga a evidência — foi o que aconteceu na run
+  // 22ea800a (11/09): a tela mostrou "sem orçamento" e a causa real da 1ª
+  // tentativa, que é o que se investiga, não ficou gravada em lugar nenhum.
+  let motivoDeParar: string | null = null
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // A 2ª tentativa é uma chamada inteira ao modelo, e o relógio dela é o
+    // que SOBROU — não o teto do agente. Exigir o teto cheio recusava por
+    // dez segundos uma tentativa que caberia: `relogioDaChamada` devolve
+    // zero só abaixo do piso, e aí ela realmente não vale a pena.
+    if (attempt > 1) {
+      const relogio = relogioDaChamada({
+        tetoMs: config.timeoutMs ?? 0,
+        restanteMs: restanteDoOrcamento(),
+      })
+      if (relogio.ms <= 0) {
+        motivoDeParar = `não sobrou tempo para a 2ª tentativa (menos que o mínimo de uma chamada)`
+        log.warn("catalogador.sem_orcamento_para_retry", { storeId: input.storeId })
+        break
+      }
+    }
     const vars =
       errosAnteriores.length > 0
         ? {
@@ -260,10 +303,57 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
       })
       return { status: "ok", catalogo, objections, runId }
     } catch (err) {
-      errosAnteriores = err instanceof ValidacaoError ? err.erros : [err instanceof Error ? err.message : String(err)]
-      log.warn("catalogador.attempt_failed", { storeId: input.storeId, attempt, erros: errosAnteriores })
+      const ehValidacao = err instanceof ValidacaoError
+      errosAnteriores = ehValidacao ? err.erros : [err instanceof Error ? err.message : String(err)]
+
+      // Repetir a chamada idêntica não conserta o que o teto cortou: o
+      // modelo gasta o orçamento de saída pensando (o Sonnet 5 faz isso) e
+      // a resposta volta VAZIA, em 133s e zero token — foi a run 22ea800a.
+      // `retry-teto` é o módulo da casa para isso e até agora não tinha
+      // descido para este loop.
+      const causa = classificarFalha({
+        maxTokens: config.max_tokens,
+        erro: errosAnteriores.join(" · "),
+        ehValidacao,
+      })
+      const plano = planejarRetentativa({
+        causa,
+        tentativa: attempt,
+        maxAttempts: MAX_ATTEMPTS,
+        tetoAtual: config.max_tokens,
+        tetoMaximo: TETO_MAXIMO_TOKENS,
+      })
+      log.warn("catalogador.attempt_failed", {
+        storeId: input.storeId,
+        attempt,
+        causa,
+        erros: errosAnteriores,
+        proximo_teto: plano.repetir ? plano.maxTokens : null,
+      })
+      if (!plano.repetir) {
+        // Só vira motivo de parada quando ainda HAVIA tentativa sobrando —
+        // senão "tentativas esgotadas" viraria a explicação da falha e
+        // esconderia a causa real, que é o que se lê na tela.
+        if (attempt < MAX_ATTEMPTS) motivoDeParar = plano.motivo
+        break
+      }
+      if (plano.maxTokens !== config.max_tokens) {
+        config.max_tokens = plano.maxTokens
+        config.timeoutMs = relogioParaTeto(plano.maxTokens)
+      }
     }
   }
+
+  // A causa que explica o desfecho, traduzida uma vez e usada nos três
+  // lugares que a leem: a run, o log de custo e a resposta da rota. Sem
+  // isto, a run grava "timeout" e a telemetria não distingue modelo lento
+  // de catálogo reprovado.
+  const motivo = motivoDaFalha(errosAnteriores, {
+    relogioMs: config.timeoutMs ?? 0,
+    maxTokens: config.max_tokens,
+  })
+  // O motivo da PARADA acompanha a causa, nunca a substitui.
+  const mensagem = motivoDeParar ? `${motivo.mensagem} (${motivoDeParar})` : motivo.mensagem
 
   await finishGenerationRun(runId, {
     storeId: input.storeId,
@@ -273,12 +363,12 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     agentConfigId: cfgRow?.id,
     status: "error",
     model: config.model,
-    errorMessage: errosAnteriores.join("; ").slice(0, 2000) || "catalogador_failed",
+    errorMessage: `[${motivo.codigo}] ${mensagem} · cru: ${errosAnteriores.join("; ")}`.slice(0, 2000),
     renderedPrompt: promptFinal || undefined,
     promptSegments: segmentsFinal,
     inputSummary,
     rawOutput: raw.slice(0, 16000) || undefined,
-    parsedOutput: { erros: errosAnteriores },
+    parsedOutput: { erros: errosAnteriores, motivo: motivo.codigo, parou_porque: motivoDeParar, relogio_ms: config.timeoutMs ?? null, teto_final: config.max_tokens },
     tokensInput: tokensIn,
     tokensOutput: tokensOut,
     costCents: resolveCostCents({ model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd }),
@@ -296,7 +386,7 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     storeId: input.storeId,
     errorMessage: errosAnteriores.join("; ").slice(0, 500),
   })
-  return { status: "falhou", catalogo: null, objections: [], runId, erros: errosAnteriores }
+  return { status: "falhou", catalogo: null, objections: [], runId, erros: errosAnteriores, motivo: mensagem }
 }
 
 class ValidacaoError extends Error {

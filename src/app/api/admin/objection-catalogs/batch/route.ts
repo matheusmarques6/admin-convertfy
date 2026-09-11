@@ -3,9 +3,13 @@
  *
  * As lojas que já tinham Pesquisa & Diagnóstico (40 em set/2026) não passam
  * de novo pelo `pesquisa-completa`; o catálogo delas nasce por aqui, UMA
- * loja por chamada (o Catalogador leva ~30–60 s; um loop inteiro estouraria
- * o maxDuration e, pior, uma loja que falha sempre travaria as demais —
- * daí o `exclude_ids` anti-poison, padrão do Taguedor).
+ * loja por chamada (uma loja que falha sempre travaria as demais — daí o
+ * `exclude_ids` anti-poison, padrão do Taguedor).
+ *
+ * O "~30–60 s" que este cabeçalho afirmava era de quando o agente rodava em
+ * sonnet-4.6 com teto de 8.192. Medido em 11/09: 57s, 57s e 102s (esta com
+ * o retry do validador), com o teto já em 12.288 e o modelo em sonnet-5,
+ * que delibera. Uma loja não cabia nos 120s que esta rota declarava.
  *
  *   GET  → { pending: [{id, store_name}], total }  (lojas com pesquisa e sem catálogo)
  *   POST { exclude_ids?: string[], force?: boolean, store_id?: string }
@@ -20,12 +24,16 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, parseAndValidate, requireAuth, successResponse } from "@/lib/api/errors"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { runCatalogador } from "@/lib/agents/objecoes/catalogador.service"
+import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ObjectionCatalogBatch")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 120
+export const maxDuration = 300
+
+/** O que sobra da função depois do agente: gravar, contar e responder. */
+const RESERVA_MS = 25_000
 
 const bodySchema = z.object({
   exclude_ids: z.array(z.string().uuid()).max(500).optional().default([]),
@@ -97,7 +105,9 @@ export async function POST(request: NextRequest) {
     }
     if (!alvo) return successResponse(request, { done: null, remaining: 0 })
 
-    const r = await runCatalogador({ storeId: alvo.id, triggeredBy: user.id })
+    const r = await comOrcamentoDeFase1(maxDuration * 1000 - RESERVA_MS, () =>
+      runCatalogador({ storeId: alvo.id, triggeredBy: user.id }),
+    )
     log.info("batch.store_done", { store_id: alvo.id, status: r.status, objections: r.objections.length })
     return successResponse(request, {
       done: {

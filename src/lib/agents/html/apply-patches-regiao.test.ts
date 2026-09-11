@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { applyOps, type FormatOp } from "./apply-patches"
+import { applyRecolor } from "./color-inventory"
 import { extrairCtas, extrairFaixas } from "./color-faixas"
 
 function bloco(indice: number, tipo: string, miolo: string): string {
@@ -242,5 +243,65 @@ describe("sobreposição entre op de região e recolor global", () => {
   it("cor que nunca existiu segue como find_not_found", () => {
     const r = aplicar(DOC, [{ action: "recolor", from: "#ABCDEF", to: "#111111" }])
     expect(r.skipped[0].reason).toBe("find_not_found")
+  })
+})
+
+describe("a escala atravessa a fronteira — o plano, a op e o HTML", () => {
+  it("o caso real: botão novo herda os 24px da peça, não os 15px da casa", () => {
+    // 11/09 (Hero Boxers). `escalaDoBotao` media 24px/700 a partir do botão
+    // nativo, `planoParaOps` punha isso na op — e o applier copiava campo a
+    // campo sem estes quatro, então o botão saía no padrão da casa. Os dois
+    // módulos puros passavam; a ponte entre eles é que não tinha teste.
+    const r = aplicar(DOC, [
+      {
+        action: "add_cta",
+        bloco: 1,
+        label: "See the fit",
+        href: "https://loja.com",
+        fundo: "#000000",
+        corLabel: "#FFFFFF",
+        radiusPx: 4,
+        fontSizePx: 24,
+        peso: 700,
+        paddingV: 18,
+        paddingH: 56,
+      },
+    ])
+    expect(r.botoesInseridos).toBe(1)
+    expect(r.html).toContain("font-size:24px")
+    expect(r.html).toContain("font-weight:700")
+    expect(r.html).toContain("padding:18px 56px")
+    expect(r.html).not.toContain("font-size:15px")
+  })
+
+  it("sem escala na op, o padrão da casa continua valendo", () => {
+    const r = aplicar(DOC, [
+      { action: "add_cta", bloco: 1, label: "Ver", href: "https://loja.com", fundo: "#000000", corLabel: "#FFFFFF" },
+    ])
+    expect(r.html).toContain("font-size:15px")
+  })
+})
+
+describe("recolor de fundo alcança as DUAS formas", () => {
+  it("o caso real: bgcolor não pode ficar para trás do background-color", () => {
+    // O plano pediu `#E1DEDE → #F2F2F2 where background` e a linha saiu
+    // `bgcolor="#E1DEDE" style="background-color:#F2F2F2"` — o Outlook
+    // mostrando a cor antiga, o resto a nova.
+    const doc = `<table width="600"><tr><td width="600" bgcolor="#E1DEDE" style="background-color:#E1DEDE;">x</td></tr></table>`
+    const r = applyOps(doc, [{ action: "recolor", from: "#E1DEDE", to: "#F2F2F2", where: "background" }], {
+      allowHero: true,
+    })
+    expect(r.html).not.toContain("#E1DEDE")
+    expect(r.html.match(/#F2F2F2/g)).toHaveLength(2)
+  })
+
+  it("cor de TEXTO não é arrastada junto por um recolor de fundo", () => {
+    // No nível do `applyRecolor`, porque o `applyOps` ainda repara o
+    // contraste depois e o reparo mascararia o que este teste mede.
+    const doc = `<td bgcolor="#111111"><p style="color:#111111;">x</p></td>`
+    const r = applyRecolor(doc, "#111111", "#000000", "background")
+    expect(r.replaced).toBe(1)
+    expect(r.html).toContain("color:#111111")
+    expect(r.html).toContain('bgcolor="#000000"')
   })
 })

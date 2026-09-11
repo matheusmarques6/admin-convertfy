@@ -71,3 +71,31 @@ describe("computeContentChecks — os quatro checks baratos (09/09)", () => {
     })).toEqual([])
   })
 })
+
+describe("link_sem_endereco", () => {
+  it("o caso real: os três CTAs do hero apontavam para placeholders", () => {
+    const html = `<a href="URL_DO_SITE_AQUI">logo</a>
+      <a href="URL_CTA_PRIMARIO">ACCESS MY ACCOUNT</a>
+      <a href="URL_CTA_SECUNDARIO">VISIT HELP CENTER</a>`
+    const i = computeContentChecks(html).find((x) => x.type === "link_sem_endereco")
+    expect(i?.severity).toBe("high")
+    expect(i?.message).toContain("URL_CTA_PRIMARIO")
+  })
+
+  it("URL real, âncora, mailto e tel passam", () => {
+    const html = `<a href="https://loja.com/x">a</a><a href="#topo">b</a>
+      <a href="mailto:oi@loja.com">c</a><a href="tel:+5511999">d</a>`
+    expect(computeContentChecks(html).some((x) => x.type === "link_sem_endereco")).toBe(false)
+  })
+
+  it("merge tag do ESP passa em qualquer dialeto — quem preenche é o envio", () => {
+    const html = `<a href="[unsubscribe_link]">sair</a><a href="{{ product_url }}">p</a>
+      <a href="*|ARCHIVE|*">web</a><a href="%%view_email_url%%">v</a>`
+    expect(computeContentChecks(html).some((x) => x.type === "link_sem_endereco")).toBe(false)
+  })
+
+  it("href vazio também é clique morto", () => {
+    const i = computeContentChecks(`<a href="">x</a>`).find((x) => x.type === "link_sem_endereco")
+    expect(i).toBeTruthy()
+  })
+})

@@ -43,6 +43,7 @@ import {
 } from "../shared/prompt-provenance"
 import { renderImageTemplate } from "./template-renderer"
 import { renderImagePrompt } from "../chains/image.chain"
+import { liberarTextoNoDesenho, pedeTextoNoDesenho } from "./texto-no-desenho"
 import { deriveColorRoles } from "@/lib/agents/html/color-roles"
 import { deriveShotArchetype } from "./shot-archetype"
 import { buildImageSlots } from "./build-image-slots"
@@ -540,12 +541,24 @@ export function buildImagePromptWithSegments(input: {
   fallbackDescription?: string | null
   /** Instrução de fidelidade ao produto anexado (modo product_ref). */
   fidelity?: string | null
-}): { prompt: string; segments: PromptSegment[] | null } {
-  const base = input.fromConfig
-    ? renderImageTemplate(input.template, input.vars)
-    : renderImagePrompt(input.template, input.vars)
+}): { prompt: string; segments: PromptSegment[] | null; trocasDeTexto: string[] } {
+  // Slot que PEDE letra desenhada não pode receber a proibição de letra.
+  // A decisão mora aqui, e não em cada chamador, porque este é o ponto por
+  // onde os dois caminhos de imagem passam — o runner da fase 2 e o
+  // `resolve-block-prompt` — e um terceiro chamador herdaria o acerto sem
+  // saber que precisava lembrar. A troca é no TEMPLATE, antes de renderizar
+  // E de segmentar: a proveniência compara os segmentos com o prompt
+  // enviado byte a byte, e reescrever depois faria as duas pontas
+  // divergirem. Ver `image/texto-no-desenho.ts`.
+  const { template, trocas: trocasDeTexto } = pedeTextoNoDesenho(input.vars.IMAGE_SLOTS)
+    ? liberarTextoNoDesenho(input.template)
+    : { template: input.template, trocas: [] as string[] }
 
-  const seg = buildSegmentedPrompt(input.template, input.vars, IMAGE_VAR_ORIGINS, {
+  const base = input.fromConfig
+    ? renderImageTemplate(template, input.vars)
+    : renderImagePrompt(template, input.vars)
+
+  const seg = buildSegmentedPrompt(template, input.vars, IMAGE_VAR_ORIGINS, {
     parte: "user",
     dialeto: input.fromConfig ? "double" : "single",
   })
@@ -589,5 +602,5 @@ export function buildImagePromptWithSegments(input: {
       ? candidato
       : null
 
-  return { prompt, segments }
+  return { prompt, segments, trocasDeTexto }
 }

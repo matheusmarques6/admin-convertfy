@@ -22,6 +22,7 @@
 
 import type { FormatOp } from "./apply-patches"
 import type { Cta, Faixa } from "./color-faixas"
+import { escalaDoBotao } from "./escala-do-botao"
 import { isColorLiteral } from "./color-inventory"
 
 /**
@@ -117,14 +118,6 @@ const PERCENTUAL = /(\d{1,3})\s?%/
 const COLCHETES = /\[[^\]]+\]/
 const LABEL_MAX = 40
 
-/** Raio dominante da peça — o botão novo não estreia um canto (R8). */
-function raioDaPeca(ctas: Cta[]): number | undefined {
-  const raios = ctas.map((c) => c.radius_px).filter((r): r is number => r != null)
-  if (raios.length === 0) return undefined
-  const contagem = new Map<number, number>()
-  for (const r of raios) contagem.set(r, (contagem.get(r) ?? 0) + 1)
-  return [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]
-}
 
 /**
  * O label pode prometer o que promete?
@@ -177,8 +170,16 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
   const descartes: Descarte[] = []
   const porOrdem = new Map(ctx.faixas.map((f) => [f.ordem, f]))
   const idsDeCta = new Set(ctx.ctas.map((c) => c.id))
-  const blocosComCta = new Set(ctx.ctas.map((c) => c.bloco))
-  const raio = raioDaPeca(ctx.ctas)
+  // Botão que só existe no ramo do Outlook NÃO conta como botão presente:
+  // fora dali o lugar está vazio, e tratá-lo como CTA do bloco deixaria a
+  // seção sem botão para quase todo leitor. Ele aparece no `ctas_json` com
+  // `somente_outlook: true` para ser visto, não para calar a inserção.
+  const blocosComCta = new Set(
+    ctx.ctas.filter((c) => !c.somente_outlook).map((c) => c.bloco),
+  )
+  // Escala da peça: o botão novo nasce do tamanho dos botões que já estão
+  // lá, não de uma constante. Ver `escala-do-botao.ts`.
+  const escala = escalaDoBotao(ctx.ctas)
 
   // ── Faixas ───────────────────────────────────────────────────────────
   let pintadas = 0
@@ -266,7 +267,11 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       href,
       fundo: d.fundo,
       corLabel: d.cor_label,
-      ...(raio != null ? { radiusPx: raio } : {}),
+      radiusPx: escala.radiusPx,
+      fontSizePx: escala.fontSizePx,
+      peso: escala.peso,
+      paddingV: escala.paddingV,
+      paddingH: escala.paddingH,
       ...(ctx.fontFamily ? { fontFamily: ctx.fontFamily } : {}),
     })
     // Um botão por bloco: duas entradas para o mesmo bloco no mesmo plano

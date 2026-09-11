@@ -132,14 +132,27 @@ export async function emailHasCopy(emailId: string): Promise<boolean> {
  * relógio de cada chamada encolhe junto (`fase1-orcamento.ts`) e a request
  * termina falando, em vez de o gateway matá-la no meio deixando run órfã.
  *
- * 740s de 800: a folga de 60s cobre o dispatch ao n8n, o rollback do claim
- * e a resposta. Subiu de 700 quando o Curador foi para o teto de 32.000 —
- * Seletor 57s + Estruturador 219s medidos, mais até 356s da escolha do
- * Curador e a shortlist dele, e 30s de Blueprint + Subject. É folga FINA e
- * está declarado: se o Curador gastar os 32.000 de fato, a fase 1 raspa o
- * orçamento. Ajustável sem deploy.
+ * 770s de 800: a folga de 30s cobre o dispatch ao n8n, o rollback do claim
+ * e a resposta. **800 é o teto do `maxDuration` da Vercel** — subir a janela
+ * além dele não dá mais tempo, dá 504 com run órfã, que é exatamente o que
+ * este módulo existe para evitar.
+ *
+ * A conta de 740 não contava a SHORTLIST do Curador. Medido em 11/09
+ * (batch 5746f991, tudo em `anthropic/claude-sonnet-5` com raciocínio):
+ * Seletor 68s + Estruturador 265s + shortlist 154s + escolha 250s = 737s,
+ * antes de Montador, Blueprint, Subject e dispatch. Ou seja, a fase 1
+ * síncrona com os três agentes nesse modelo **não cabe com folga** — os 30s
+ * que sobram são para a resposta, não para uma etapa a mais.
+ *
+ * Enquanto o orçamento for uma request só, a alavanca real não é este
+ * número: é não QUEIMAR a janela (retentativa do Curador agora confere
+ * `cabeNaJanela` antes de começar) e, se a conta seguir estourando, tirar a
+ * fase 1 do caminho síncrono — a fila (`email_dispatch_jobs` + o cron
+ * `email-dispatch-queue`) já existe e não tem teto de request.
+ *
+ * Ajustável sem deploy por `FASE1_BUDGET_MS`.
  */
-const FASE1_BUDGET_MS = Number(process.env.FASE1_BUDGET_MS ?? 740_000)
+const FASE1_BUDGET_MS = Number(process.env.FASE1_BUDGET_MS ?? 770_000)
 
 export async function runTestGeneration(
   input: TestGenerationInput,

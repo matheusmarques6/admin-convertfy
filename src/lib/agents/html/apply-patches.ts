@@ -74,6 +74,11 @@ export type FormatOp =
       fundo: string
       corLabel: string
       radiusPx?: number
+      /** Escala da peça — ver `escala-do-botao.ts`. Ausente = padrão da casa. */
+      fontSizePx?: number
+      peso?: number
+      paddingV?: number
+      paddingH?: number
       fontFamily?: string
     }
 
@@ -490,6 +495,16 @@ export function applyOps(
         fundo: op.fundo,
         corLabel: op.corLabel,
         ...(op.radiusPx != null ? { radiusPx: op.radiusPx } : {}),
+        // A ESCALA da peça (11/09). Ela era medida por `escalaDoBotao`,
+        // viajava na op e morria aqui: o applier copiava campo a campo e
+        // estes quatro não estavam na lista, então o botão nascia com o
+        // padrão da casa (15px) numa peça cujo botão nativo roda em 24px.
+        // Mesmo modo de falha do `usageOf` — o que não é copiado atravessa
+        // em silêncio, e nenhum teste dos dois módulos puros o pega.
+        ...(op.fontSizePx != null ? { fontSizePx: op.fontSizePx } : {}),
+        ...(op.peso != null ? { peso: op.peso } : {}),
+        ...(op.paddingV != null ? { paddingV: op.paddingV } : {}),
+        ...(op.paddingH != null ? { paddingH: op.paddingH } : {}),
         ...(op.fontFamily ? { fontFamily: op.fontFamily } : {}),
         ...(faixaDestino?.fundo ? { fundoFaixa: faixaDestino.fundo } : {}),
       })

@@ -267,6 +267,10 @@ export type QaIssueType =
   | "paragrafo_repetido"
   | "codigo_inventado"
   | "label_generico"
+  // 11/09: os TRÊS CTAs do hero apontavam para `URL_CTA_PRIMARIO` e afins
+  // — href de exemplo da variante, que não é merge tag e por isso nenhum
+  // strip alcança e nenhum ESP preenche.
+  | "link_sem_endereco"
 
 export interface QaIssue {
   type: QaIssueType

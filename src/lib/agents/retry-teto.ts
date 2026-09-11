@@ -59,6 +59,21 @@ export function classificarFalha(input: ClassificarFalhaInput): CausaDaFalha {
   const fr = (input.finishReason ?? "").toLowerCase()
   if (fr === "length" || fr === "max_tokens") return "truncado"
 
+  // A evidência chega como TEXTO quando a exceção atravessa a fronteira:
+  // quem chama do `catch` tem a mensagem, não o `InvokeResult`. Estas três
+  // assinaturas são NOSSAS — `llm-invoke.ts` e `motivoDaSaidaVazia` as
+  // escrevem — e por isso são estáveis. Sem elas, o truncamento que vira
+  // `throw` era classificado como "ilegível" e a retentativa saía com o
+  // mesmo teto: foi o que aconteceu com o `copy_fit` em 11/09.
+  if (
+    erro.includes("finish_reason=length") ||
+    erro.includes("consumido pelo raciocínio") ||
+    erro.includes("consumido pelo raciocinio") ||
+    erro.includes("resposta truncada")
+  ) {
+    return "truncado"
+  }
+
   if (input.ehValidacao) return "validacao"
 
   if (

@@ -37,6 +37,19 @@ export interface BotaoNovo {
   corLabel: string
   /** Raio em px; herda o da peça para não misturar cantos (R8). */
   radiusPx?: number
+  /**
+   * Tipografia e respiro do botão — a ESCALA desta peça.
+   *
+   * Eram constantes, e por isso o botão saía com 15px numa peça cujo corpo
+   * roda em 24px: 41% da largura e 62% da altura do botão nativo, medido no
+   * Chromium em 11/09. Quem mede é `escalaDoBotao`, a partir dos botões
+   * preenchidos que já existem no documento. Ausentes = o padrão da casa,
+   * que vale quando a peça não tem nenhum botão para medir.
+   */
+  fontSizePx?: number
+  peso?: number
+  paddingV?: number
+  paddingH?: number
   /** Família tipográfica da peça. */
   fontFamily?: string
   /**
@@ -53,7 +66,23 @@ export interface BotaoNovo {
 }
 
 const RADIUS_PADRAO = 4
+const FONT_SIZE_PADRAO = 15
+const PESO_PADRAO = 600
+const PADDING_V_PADRAO = 14
+const PADDING_H_PADRAO = 36
 const FONT_PADRAO = "Arial, sans-serif"
+
+/**
+ * Pilha de fallback para a família da peça.
+ *
+ * O template recebia o nome cru ("Poppins") e o escrevia sozinho no
+ * `style`: webfont não carrega no Outlook nem em boa parte do Gmail, e o
+ * label do botão caía no serif do sistema enquanto o resto da peça —
+ * que declara `Poppins, Arial, Helvetica, sans-serif` — caía em Arial.
+ */
+function comFallback(familia: string): string {
+  return /,/.test(familia) ? familia : `${familia}, Arial, Helvetica, sans-serif`
+}
 
 /**
  * Uma `<tr>` autocontida com o botão centralizado.
@@ -64,7 +93,14 @@ const FONT_PADRAO = "Arial, sans-serif"
  */
 export function linhaDeBotao(b: BotaoNovo): string {
   const raio = b.radiusPx ?? RADIUS_PADRAO
-  const fonte = b.fontFamily ?? FONT_PADRAO
+  const fonte = comFallback(b.fontFamily ?? FONT_PADRAO)
+  const corpo = b.fontSizePx ?? FONT_SIZE_PADRAO
+  const peso = b.peso ?? PESO_PADRAO
+  const padV = b.paddingV ?? PADDING_V_PADRAO
+  const padH = b.paddingH ?? PADDING_H_PADRAO
+  // A entrelinha acompanha o corpo: fixá-la em 20px espremia o label de
+  // 24px da peça contra a borda da caixa.
+  const entrelinha = Math.round(corpo * 1.3)
   const banda = b.fundoFaixa
     ? ` bgcolor="${attr(b.fundoFaixa)}" style="background-color:${attr(b.fundoFaixa)};padding:24px 48px 32px 48px;"`
     : ` style="padding:24px 48px 32px 48px;"`
@@ -74,7 +110,7 @@ export function linhaDeBotao(b: BotaoNovo): string {
     `<table role="presentation" cellspacing="0" cellpadding="0" border="0">`,
     `<tr>`,
     `<td align="center" bgcolor="${attr(b.fundo)}" style="background-color:${attr(b.fundo)};border-radius:${raio}px;">`,
-    `<a href="${attr(b.href)}" target="_blank" style="display:inline-block;padding:14px 36px;font-family:${attr(fonte)};font-size:15px;line-height:20px;font-weight:600;color:${attr(b.corLabel)};text-decoration:none;">${texto(b.label)}</a>`,
+    `<a href="${attr(b.href)}" target="_blank" style="display:inline-block;padding:${padV}px ${padH}px;font-family:${attr(fonte)};font-size:${corpo}px;line-height:${entrelinha}px;font-weight:${peso};color:${attr(b.corLabel)};text-decoration:none;">${texto(b.label)}</a>`,
     `</td>`,
     `</tr>`,
     `</table>`,

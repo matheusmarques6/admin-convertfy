@@ -158,6 +158,7 @@ export const ColorFormatPromptVarsSchema = z.object({
   // executáveis. Vazias (`[]`) num documento sem marcadores — e o prompt diz
   // ao agente o que fazer nesse caso.
   faixas_json: z.string(),
+  tons_json: z.string(),
   ctas_json: z.string(),
   email_name: z.string(),
   subject: z.string(),
