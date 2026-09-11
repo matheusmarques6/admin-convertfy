@@ -2445,7 +2445,7 @@ async function runFormattingChain(p: {
   // Execução MANUAL viva deste e-mail, se houver. Sem ela o contexto é
   // `producao` e todo gate abaixo é neutro — ligar overrides não muda
   // nada no caminho de produção, por construção.
-  const execucao = await contextoDaExecucao(emailId)
+  const execucao = await contextoDaExecucao(emailId, batchId)
   const ids = {
     storeId,
     flowId,
@@ -2825,9 +2825,12 @@ async function runFormattingChain(p: {
     })
 
     // Estruturais por CÓDIGO: logo (src="URL_DO_LOGO_AQUI") e marca
-    // (NOME_DA_MARCA em texto/alt) — fora da hero, que é posse do agente
-    // (contraste de logo em banda escura é juízo dele). Os tokens {{}}
-    // seguem como sobrevida do caminho full-doc legado.
+    // (NOME_DA_MARCA em texto/alt) — esses dois fora da hero, que é posse
+    // do agente (contraste de logo em banda escura é juízo dele). O DESTINO
+    // dos links e o token literal de texto entram também dentro da região:
+    // href não tem contraste, e desde o enxerto por ID o agente não
+    // reescreve a hero, então ali ninguém os preenchia (11/09). Os tokens
+    // {{}} seguem como sobrevida do caminho full-doc legado.
     const logoUrl = /src\s*=\s*"([^"]+)"/i.exec(fmtCtx.logoLight)?.[1] ?? ""
     const structural = applyStructuralFills(merge.html, {
       brandName: fmtCtx.brandName,

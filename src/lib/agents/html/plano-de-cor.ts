@@ -242,6 +242,27 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: alvo, motivo: "o bloco já tem botão" })
       continue
     }
+    // A HERO nunca recebe botão inserido, mesmo quando `<ctas>` chega sem
+    // nenhum nela.
+    //
+    // 11/09, Hero Boxers: os dois botões da hero perderam o href no caminho,
+    // `extrairCtas` (que então exigia href) ficou cego e o agente escreveu,
+    // com todas as letras, "a hero é o único bloco em <faixas> sem entrada em
+    // <ctas>" — e inseriu um terceiro botão numa hero que já tinha dois. As
+    // duas causas foram corrigidas na origem; isto é a terceira linha de
+    // defesa, e ela vale por si:
+    //
+    // A hero é ENXERTADA da variante canônica, curada por gente. Hero sem
+    // botão é decisão do designer, não lacuna a preencher aqui — e inserir
+    // `<tr>` dentro da região enxertada briga com o splice das sentinelas.
+    // Se faltar CTA na hero, o lugar de consertar é a variante.
+    if (ctx.faixas.find((f) => f.bloco === d.bloco)?.tipo === "hero") {
+      descartes.push({
+        o_que: alvo,
+        motivo: "a hero vem enxertada da variante — botão nela é decisão da biblioteca",
+      })
+      continue
+    }
     const recusa = recusaDoLabel(d.label ?? "", ctx.incentivo)
     if (recusa) {
       descartes.push({ o_que: `${alvo} ("${(d.label ?? "").slice(0, 40)}")`, motivo: recusa })

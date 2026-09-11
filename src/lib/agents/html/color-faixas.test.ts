@@ -101,6 +101,44 @@ describe("extrairCtas", () => {
     expect(ctas[0].href).toBe("https://loja.com/col")
   })
 
+  // 11/09, Hero Boxers: os dois botões da hero saíram SEM href (o token não
+  // era preenchido ali, o strip esvaziava e o neutralize removia). Com href
+  // obrigatório o extrator ficava cego justamente no botão defeituoso: o
+  // agente leu "a hero é o único bloco sem CTA" e inseriu um TERCEIRO botão
+  // numa hero que já tinha dois.
+  it("botão que PERDEU o href continua sendo botão", () => {
+    const doc = `<table width="600">${bloco(
+      0,
+      "hero",
+      `<tr><td width="600" style="background-color:#FFFFFF;">
+         <table width="330"><tr>
+           <td align="center" width="330" style="background:#000000;">
+             <a style="display:block;padding:14px 36px;color:#FFFFFF;">ACCESS MY ACCOUNT</a>
+           </td></tr></table>
+       </td></tr>`,
+    )}</table>`
+    const faixas = extrairFaixas(doc)
+    const achados = extrairCtas(doc, faixas)
+    expect(achados).toHaveLength(1)
+    expect(achados[0].texto).toBe("ACCESS MY ACCOUNT")
+    expect(achados[0].href).toBe("")
+    expect(achados[0].fundo).toBe("#000000")
+    expect(achados[0].bloco).toBe(0)
+  })
+
+  it("link de texto sem href continua não sendo botão", () => {
+    // A régua que separa link de botão é a CAIXA, não o href — tirar a
+    // exigência de href não pode transformar âncora solta em CTA.
+    const doc = `<table width="600">${bloco(
+      0,
+      "body",
+      `<tr><td width="600" style="background-color:#FFFFFF;">
+         <p style="color:#111111;">Leia <a name="topo">aqui</a> o resto.</p>
+       </td></tr>`,
+    )}</table>`
+    expect(extrairCtas(doc, extrairFaixas(doc))).toHaveLength(0)
+  })
+
   it("botão vazado (só borda) entra como vazado e sem contraste", () => {
     const doc = `<table width="600"><tr>${bloco(
       0,
