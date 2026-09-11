@@ -166,7 +166,7 @@ import {
 } from "./html/hero-graft"
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { alvoDaOp, applyOps } from "./html/apply-patches"
-import { extrairCtas, extrairFaixas } from "./html/color-faixas"
+import { extrairCtas, extrairFaixas, tonsDeFundo } from "./html/color-faixas"
 import { planoParaOps } from "./html/plano-de-cor"
 import { aplicaFaixasEBotoes, loadColorPlanoMode } from "./html/color-plano-mode"
 import { colorOccurrenceCount,
@@ -1336,6 +1336,7 @@ export async function runPhase2Image(
       let promptVars: Record<string, string> | undefined
       let promptWithAspect = ""
       let promptSegments: PromptSegment[] | null = null
+      let trocasDeTexto: string[] = []
       // Run 'running' aberto antes da chamada de imagem (live view).
       let imgRunId = ""
       // Instrumentação opt-in do agente de imagem (tokens + custo real do
@@ -1588,6 +1589,10 @@ export async function runPhase2Image(
         })
         promptWithAspect = montado.prompt
         promptSegments = montado.segments
+        // Quais frases proibitivas saíram do template porque ESTE slot pede
+        // letra desenhada. Sem o registro não há como saber, depois, se o
+        // selo saiu vazio por falta da troca ou apesar dela.
+        trocasDeTexto = montado.trocasDeTexto
 
         imgRunId = await startGenerationRun({
           storeId,
@@ -1754,6 +1759,7 @@ export async function runPhase2Image(
             // `sharp` e não pode ser reimplementado no browser.
             overlayLuminance: overlayLum,
             overlayLight: overlayLum != null ? overlayIsLight(overlayLum) : null,
+            ...(trocasDeTexto.length > 0 ? { trocasDeTexto } : {}),
           },
         })
         return {
@@ -3936,6 +3942,11 @@ async function runFormattingChain(p: {
                 const c2 = extrairCtas(applied.html, f2)
                 return f2.filter((f) => !c2.some((c) => c.bloco === f.bloco)).length
               })(),
+              // A R2 medida no RESULTADO, não no plano. O agente decide
+              // faixa a faixa e cada decisão pode ser boa com a soma errada
+              // — foi assim que a peça de 10/09 saiu com quatro fundos. Só
+              // o documento aplicado responde quantos tons sobraram.
+              tons_de_fundo: tonsDeFundo(extrairFaixas(applied.html)),
               lacunas: r.plano?.lacunas ?? [],
             },
             // OPS não medem conformidade: 11 ops que trocam 1 ocorrência
