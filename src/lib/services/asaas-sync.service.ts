@@ -26,6 +26,11 @@ import type { AsaasService } from "@/lib/integrations/asaas"
 import type { AsaasPayment } from "@/lib/integrations/types"
 import { isMissingClassificationColumn, stripClassification } from "@/lib/services/charge-classification"
 import { buildInvoiceRowFromPayment, resolveClientForPayment } from "@/lib/services/asaas-invoice-mirror"
+import {
+  casarClientes,
+  statusDeAssinatura,
+  type ClienteAsaas,
+} from "@/lib/services/asaas-clientes-match"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasSync")
@@ -128,10 +133,15 @@ export async function syncAsaasPayments(
         .eq("asaas_id", payment.id)
         .maybeSingle<{ id: string; charge_type: string | null }>()
 
+      // Sem dono a fatura ENTRA assim mesmo, para a triagem "Sem cliente"
+      // do Financeiro. O código antigo contava `semCliente` e gravava o
+      // null na linha seguinte: `invoices.client_id` era NOT NULL, o
+      // INSERT morria, e o pagamento não entrava em lugar nenhum — 167
+      // cobranças fora da carteira numa rodada só (10/09/2026).
       const clientId = await resolveClientForPayment(db, orgId, payment)
       if (!clientId) stats.semCliente += 1
 
-      const row = buildInvoiceRowFromPayment(payment, clientId, existente?.charge_type)
+      const row = buildInvoiceRowFromPayment(payment, clientId, existente?.charge_type, orgId)
       const gravar = async (r: Record<string, unknown>) =>
         existente
           ? db.from("invoices").update({ ...r, updated_at: new Date().toISOString() }).eq("id", existente.id)
@@ -177,13 +187,24 @@ export async function syncAsaasSubscriptions(db: SupabaseClient, orgId: string, 
     try {
       const { data: subs } = await asaas.listSubscriptions({ customer: asaasCustomer })
       for (const sub of subs ?? []) {
+        // O CHECK da coluna aceita active|inactive|cancelled. O código
+        // antigo fazia `String(status).toLowerCase()` e `EXPIRED` virava
+        // "expired", que o banco recusa — minúscula não é tradução.
+        const st = statusDeAssinatura(sub.status)
+        if (!st.reconhecido) {
+          log.warn("status de assinatura desconhecido no Asaas", {
+            asaas_subscription_id: sub.id,
+            status_recebido: sub.status,
+            gravado_como: st.status,
+          })
+        }
         const payload = {
           client_id: c.id as string,
           name: sub.description ?? "Assinatura Asaas",
           value: Number(sub.value) || 0,
           cycle: sub.cycle ?? "MONTHLY",
           payment_method: "asaas",
-          status: sub.status === "ACTIVE" ? "active" : String(sub.status ?? "active").toLowerCase(),
+          status: st.status,
           start_date: sub.dateCreated?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
           next_due_date: sub.nextDueDate ?? new Date().toISOString().slice(0, 10),
           asaas_subscription_id: sub.id,
@@ -215,7 +236,108 @@ export async function syncAsaasSubscriptions(db: SupabaseClient, orgId: string, 
   return stats
 }
 
+export interface VincularClientesStats {
+  doAsaas: number
+  vinculados: number
+  porDocumento: number
+  porEmail: number
+  semMatch: number
+  ambiguos: number
+  erros: number
+}
+
+/**
+ * Casa os pagadores do Asaas com os nossos clientes e GRAVA o vínculo.
+ *
+ * `resolveClientForPayment` só acha quem já tem `asaas_customer_id` em
+ * `custom_fields`; quem nunca foi vinculado nunca é achado, e o pagamento
+ * dele fica sem dono para sempre. Este passo fecha isso pelo que o Asaas
+ * sabe do pagador — documento e email — e roda ANTES da varredura de
+ * pagamentos, para que a mesma rodada já resolva o que casar.
+ *
+ * A decisão de casar é PURA (`asaas-clientes-match.ts`, com testes): aqui
+ * só entra o I/O. Nunca casa no empate — atribuir a fatura ao cliente
+ * errado move dinheiro para a carteira de outra pessoa e o número
+ * continua plausível.
+ */
+export async function vincularClientesDoAsaas(
+  db: SupabaseClient,
+  orgId: string,
+  asaas: AsaasService,
+  opts: { orcamentoMs?: number } = {},
+): Promise<VincularClientesStats> {
+  const stats: VincularClientesStats = {
+    doAsaas: 0,
+    vinculados: 0,
+    porDocumento: 0,
+    porEmail: 0,
+    semMatch: 0,
+    ambiguos: 0,
+    erros: 0,
+  }
+  try {
+    const varredura = await varrerPaginado<ClienteAsaas>(
+      (offset, limit) => asaas.listCustomers({ offset, limit }),
+      { orcamentoMs: opts.orcamentoMs },
+    )
+    stats.doAsaas = varredura.itens.length
+
+    const { data: locais, error } = await db
+      .from("clients")
+      .select("id, email, cpf_cnpj, custom_fields")
+      .eq("org_id", orgId)
+    if (error) throw error
+
+    const jaVinculados = new Set(
+      (locais ?? [])
+        .map((c) => (c.custom_fields as Record<string, string> | null)?.asaas_customer_id)
+        .filter(Boolean) as string[],
+    )
+    // Pagador já vinculado não precisa de casamento nenhum.
+    const pendentes = varredura.itens.filter((a) => !jaVinculados.has(a.id))
+
+    const { vincular, sem } = casarClientes(
+      pendentes,
+      (locais ?? []).map((c) => ({
+        id: c.id as string,
+        email: c.email as string | null,
+        cpf_cnpj: c.cpf_cnpj as string | null,
+        asaas_customer_id:
+          (c.custom_fields as Record<string, string> | null)?.asaas_customer_id ?? null,
+      })),
+    )
+    stats.semMatch = sem.filter((s) => s.motivo !== "ambiguo").length
+    stats.ambiguos = sem.filter((s) => s.motivo === "ambiguo").length
+
+    const porId = new Map((locais ?? []).map((c) => [c.id as string, c]))
+    for (const v of vincular) {
+      const atual = (porId.get(v.client_id)?.custom_fields as Record<string, unknown> | null) ?? {}
+      const { error: upErr } = await db
+        .from("clients")
+        .update({ custom_fields: { ...atual, asaas_customer_id: v.asaas_customer_id } })
+        .eq("id", v.client_id)
+      if (upErr) {
+        stats.erros += 1
+        continue
+      }
+      stats.vinculados += 1
+      if (v.criterio === "documento") stats.porDocumento += 1
+      else stats.porEmail += 1
+    }
+    if (stats.vinculados > 0 || stats.ambiguos > 0) {
+      log.info("clientes do Asaas vinculados", { org_id: orgId, ...stats })
+    }
+  } catch (e) {
+    // Vincular é enriquecimento: falhar aqui não pode impedir o espelho
+    // das cobranças, que é o que a carteira lê.
+    stats.erros += 1
+    log.warn("vínculo de clientes do Asaas não rodou", { erro: (e as Error).message })
+  }
+  return stats
+}
+
 export interface RunAsaasSyncResult {
+  clientes: VincularClientesStats
   pagamentos: SyncPagamentosStats
   assinaturas: SyncAssinaturasStats
 }
@@ -237,9 +359,14 @@ export async function runAsaasSync(
   integrationId: string,
   opts: SyncPagamentosOpts = {},
 ): Promise<RunAsaasSyncResult> {
+  // Vincular vem PRIMEIRO: o dono descoberto aqui já é achado pela
+  // varredura de pagamentos logo abaixo, na mesma rodada.
+  const clientes = await vincularClientesDoAsaas(db, orgId, asaas, {
+    orcamentoMs: opts.orcamentoMs ? Math.round(opts.orcamentoMs * 0.25) : undefined,
+  })
   const pagamentos = await syncAsaasPayments(db, orgId, asaas, opts)
   const assinaturas = await syncAsaasSubscriptions(db, orgId, asaas)
   await db.from("integrations").update({ last_sync: new Date().toISOString() }).eq("id", integrationId)
-  log.info("sync concluído", { org_id: orgId, ...pagamentos, assinaturas })
-  return { pagamentos, assinaturas }
+  log.info("sync concluído", { org_id: orgId, clientes, ...pagamentos, assinaturas })
+  return { clientes, pagamentos, assinaturas }
 }
