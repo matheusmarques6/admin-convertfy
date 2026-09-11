@@ -61,6 +61,33 @@ describe("papelDoCampo", () => {
   })
 })
 
+describe("papelDoCampo — preço antigo e prazo (11/09)", () => {
+  // `price_old` é a metade "de" do "de/por"; `price_new` é o preço que uma
+  // decisão com `preco: true` está pedindo. Confundir os dois foi o que
+  // fez a única variante de products com preço da biblioteca ser
+  // descartada inteira, e a seção sumir do e-mail.
+  it("separa o preço riscado do preço vigente", () => {
+    expect(papelDoCampo("price_old").preco_antigo).toBe(true)
+    expect(papelDoCampo("compare_at_price").preco_antigo).toBe(true)
+    expect(papelDoCampo("preco_antigo").preco_antigo).toBe(true)
+    expect(papelDoCampo("price_new").preco_antigo).toBe(false)
+    expect(papelDoCampo("product_1_price").preco_antigo).toBe(false)
+    // Os dois continuam sendo "preço" para quem só pergunta isso.
+    expect(papelDoCampo("price_old").preco).toBe(true)
+    expect(papelDoCampo("price_new").preco).toBe(true)
+  })
+
+  it("reconhece prazo de oferta", () => {
+    expect(papelDoCampo("badge_deadline").prazo).toBe(true)
+    expect(papelDoCampo("expires_at").prazo).toBe(true)
+    expect(papelDoCampo("valid_until").prazo).toBe(true)
+    // `badge_label` sozinho não promete data nenhuma: sem prazo ele vira um
+    // selo comum, e apagá-lo tiraria um rótulo legítimo da peça.
+    expect(papelDoCampo("badge_label").prazo).toBe(false)
+    expect(papelDoCampo("headline").prazo).toBe(false)
+  })
+})
+
 describe("resumirContrato", () => {
   it("hero-3 TEM cupom e CTA (o caso da Hero Boxers); hero-9 não tem cupom", () => {
     const c = resumirContrato(HERO_3)

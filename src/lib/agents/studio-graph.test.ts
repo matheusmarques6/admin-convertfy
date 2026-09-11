@@ -381,3 +381,36 @@ describe("agregação de N runs do mesmo agente", () => {
     expect(out.image.status).toBe("sucesso")
   })
 })
+
+describe("skipped: reuso × desligado", () => {
+  const run = (model: string | null): Parameters<typeof projectRuns>[0][number] => ({
+    run_id: "r1",
+    agent: "estruturador",
+    status: "skipped",
+    duration_ms: 0,
+    cost_cents: 0,
+    tokens_input: 0,
+    tokens_output: 0,
+    retry_count: 0,
+    error_message: null,
+    model,
+  })
+
+  // O caso real (11/09, 05:54): o Estruturador cedeu a janela ao Curador e a
+  // decisão dele de 04:39 foi reusada — mas o canvas dizia "pulado", a mesma
+  // palavra de "não rodou". O operador leu que o agente não trabalhou.
+  it("reuso não é pulado", () => {
+    expect(projectRuns([run("reuso")], "success").estruturador.status).toBe("reusado")
+  })
+
+  it("desligado continua pulado", () => {
+    expect(projectRuns([run("desligado")], "success").estruturador.status).toBe("pulado")
+  })
+
+  // Run antiga, gravada antes de o carimbo existir: sem sinal, o selo
+  // conservador é o de sempre — inventar "reusado" afirmaria trabalho que
+  // não se sabe se aconteceu.
+  it("sem modelo, mantém o selo antigo", () => {
+    expect(projectRuns([run(null)], "success").estruturador.status).toBe("pulado")
+  })
+})

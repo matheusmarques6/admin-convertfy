@@ -21,6 +21,7 @@ import type { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { resolveAndHealInstagramChannel } from "./instagram-activity.service"
 import type { InstagramChannelConfig } from "./instagram-graph.service"
+import { colunasDeInsight, type InsightsDaApi } from "@/lib/conteudo/metricas/sinais"
 
 const log = logger.child("ConteudoIgSync")
 
@@ -188,22 +189,30 @@ function maisAntigaDe(m: RawMedia[]): string | null {
   return m.reduce<string | null>((a, x) => (x.timestamp && (!a || x.timestamp < a) ? x.timestamp : a), null)
 }
 
-export interface MediaInsights {
-  reach: number | null
-  saved: number | null
-  shares: number | null
-  total_interactions: number | null
-  follows: number | null
-  profile_visits: number | null
-  views: number | null
-}
+export type MediaInsights = InsightsDaApi
 
+/**
+ * Conjuntos do mais rico ao mais básico. O primeiro que a Meta aceitar
+ * vence; `#100` ("metric[x] must be one of…") faz descer um degrau.
+ *
+ * `follows` e `profile_visits` FALTAVAM no vídeo, e por isso 0 de 69
+ * Reels tinham a métrica contra 10 de 10 carrosséis — o que tornava
+ * impossível responder "Reels trazem seguidor?". `ig_reels_avg_watch_time`
+ * é o sinal nº 1 de ranking em 2026 e nunca foi pedido.
+ *
+ * Acrescentar campo ao primeiro conjunto é seguro POR CONSTRUÇÃO: se a
+ * Meta recusar, a cascata entrega o conjunto de baixo. O custo de tentar
+ * é uma chamada; o de não tentar é a métrica que decide o formato
+ * principal do perfil.
+ */
 const SETS_FEED = [
   ["reach", "saved", "shares", "total_interactions", "follows", "profile_visits"],
   ["reach", "saved", "shares", "total_interactions"],
   ["reach", "saved"],
 ]
 const SETS_VIDEO = [
+  ["reach", "saved", "shares", "total_interactions", "views", "follows", "profile_visits", "ig_reels_avg_watch_time"],
+  ["reach", "saved", "shares", "total_interactions", "views", "follows"],
   ["reach", "saved", "shares", "total_interactions", "views"],
   ["reach", "saved", "shares"],
   ["reach", "saved"],
@@ -229,7 +238,10 @@ export async function fetchMediaInsights(config: InstagramChannelConfig, mediaId
   for (const set of sets) {
     const res = await graph<{ data?: RawInsight[] }>(config, `/${mediaId}/insights?metric=${set.join(",")}`)
     if (res.ok) {
-      const out: MediaInsights = { reach: null, saved: null, shares: null, total_interactions: null, follows: null, profile_visits: null, views: null }
+      const out: MediaInsights = {
+        reach: null, saved: null, shares: null, total_interactions: null,
+        follows: null, profile_visits: null, views: null, ig_reels_avg_watch_time: null,
+      }
       for (const i of res.data.data ?? []) {
         if (i.name in out) (out as unknown as Record<string, number | null>)[i.name] = valorInsight(i)
       }
@@ -438,10 +450,22 @@ export async function syncChannelConteudo(
     const ttl = idade <= 30 * DIA_MS ? INSIGHTS_TTL_RECENTE_MS : INSIGHTS_TTL_ANTIGO_MS
     if (m.insights_at && agora.getTime() - Date.parse(m.insights_at) < ttl) continue
     const ins = await fetchMediaInsights(config, m.media_id, m.media_type)
+    // `colunasDeInsight` traduz o nome da API para o da coluna — é onde
+    // `ig_reels_avg_watch_time` vira `avg_watch_time_ms`. Espalhar essa
+    // tradução pelo serviço é como a métrica some na fronteira.
     const patch = ins.ok
-      ? { ...ins.data, insights_at: agora.toISOString(), insights_error: null }
+      ? { ...colunasDeInsight(ins.data), insights_at: agora.toISOString(), insights_error: null }
       : { insights_at: agora.toISOString(), insights_error: ins.error.message }
-    const { error } = await admin.from("conteudo_ig_media").update(patch).eq("channel_id", channel.id).eq("media_id", m.media_id)
+
+    let { error } = await admin.from("conteudo_ig_media").update(patch).eq("channel_id", channel.id).eq("media_id", m.media_id)
+
+    // A migration deste repo é aplicada à mão e escorrega. Sem a coluna,
+    // grava o resto em vez de perder a rodada inteira de insights.
+    if (error && /avg_watch_time_ms/.test(error.message)) {
+      const { avg_watch_time_ms: _fora, ...semColuna } = patch as Record<string, unknown>
+      log.warn("conteudo.sync.sem_coluna_watch_time", { channelId: channel.id })
+      ;({ error } = await admin.from("conteudo_ig_media").update(semColuna).eq("channel_id", channel.id).eq("media_id", m.media_id))
+    }
     if (!error && ins.ok) resultado.insights_atualizados++
     if (!ins.ok && ins.error.meta === 190) {
       resultado.ok = false

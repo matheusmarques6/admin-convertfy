@@ -10,6 +10,7 @@ import {
   restanteDoOrcamento,
   relogioParaTeto,
   LATENCIA_BASE_MS,
+  RESERVA_POS_ESTRUTURADOR_MS,
 } from "./fase1-orcamento"
 
 describe("msParaGerar", () => {
@@ -173,5 +174,37 @@ describe("relogioParaTeto", () => {
       ms: 60_000,
       origem: "janela",
     })
+  })
+})
+
+describe("a fase 1 cabe nos três agentes", () => {
+  // A janela real (FASE1_BUDGET_MS, 770s) menos o que o Seletor já gastou
+  // quando o Estruturador é consultado. Número tirado da run de 11/09
+  // 06:21, que dizia "restam 742s".
+  const JANELA_NO_ESTRUTURADOR_MS = 742_000
+  // `relogioParaTeto(32_000)` — o teto do Estruturador em produção.
+  const ESTRUTURADOR_PEDE_MS = 371_000
+
+  // O defeito de 11/09: 742 − 490 = 252 disponíveis contra 371 pedidos. Não
+  // era "cede quando aperta", era nunca caber. O Estruturador parou de rodar
+  // e a tela só dizia "pulado".
+  it("o Estruturador cabe na janela depois da reserva", () => {
+    const r = cabeNaJanela({
+      custoMs: ESTRUTURADOR_PEDE_MS,
+      restanteMs: JANELA_NO_ESTRUTURADOR_MS,
+      reservaMs: RESERVA_POS_ESTRUTURADOR_MS,
+    })
+    expect(r.cabe).toBe(true)
+  })
+
+  // A reserva existe para o Curador, que não tem substituto. Ela precisa
+  // cobrir o pior caso MEDIDO no modelo vigente (97s no sonnet-4.6) mais
+  // Blueprint e Subject — uma reserva menor que isso o cortaria.
+  it("a reserva cobre o Curador medido, com folga", () => {
+    const CURADOR_PIOR_CASO_MS = 97_000
+    const BLUEPRINT_E_SUBJECT_MS = 26_000
+    expect(RESERVA_POS_ESTRUTURADOR_MS).toBeGreaterThan(
+      CURADOR_PIOR_CASO_MS + BLUEPRINT_E_SUBJECT_MS,
+    )
   })
 })

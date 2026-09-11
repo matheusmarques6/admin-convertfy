@@ -468,7 +468,13 @@ describe("Curador — retry e falha", () => {
     expect(config.temperature).toBe(0.5)
   })
 
-  it("posição sem finalista válido é pulada, o resto segue", async () => {
+  // Até 11/09 esta posição era PULADA e o e-mail saía sem o rodapé — com um
+  // footer perfeitamente compatível cadastrado, descartado só porque o
+  // modelo não o citou no ranking. Foi assim que a Hero Boxers perdeu o
+  // feed de produtos, com o Curador escrevendo na justificativa que a
+  // posição "cai no template global" (não cai: `assembleDocument` a pula e
+  // nada é puxado do template).
+  it("posição fora do ranking é resgatada com a variante da seção", async () => {
     h.variants = [
       variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>"),
       variant("f1", "footer", "<tr><td>{{FOOTER_TAGLINE}}</td></tr>"),
@@ -489,6 +495,27 @@ describe("Curador — retry e falha", () => {
       ],
     })
     expect(res.source).toBe("code")
+    expect(res.variantIds).toEqual(["v1", "f1"])
+    expect(res.slots[1].kind).toBe("variant")
+  })
+
+  // O resgate não inventa variante: seção sem NENHUMA candidata continua
+  // pulada, e é essa lacuna que o `slot_map` e a telemetria mostram à
+  // curadoria.
+  it("seção sem candidata nenhuma continua pulada", async () => {
+    h.variants = [variant("v1", "hero", "<tr><td>{{HERO_HEADLINE}}</td></tr>")]
+    invokeAgent.mockResolvedValueOnce({
+      raw: JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "v1" }] }]),
+      tokensInput: 1,
+      tokensOutput: 1,
+    })
+    const res = await assembleStoreReference({
+      ...baseInput,
+      structure: [
+        { section: "hero", label: "Hero" },
+        { section: "footer", label: "Footer" },
+      ],
+    })
     expect(res.variantIds).toEqual(["v1"])
     expect(res.slots[1].kind).toBe("missing")
     expect(res.html).not.toContain("{{FOOTER_TAGLINE}}")

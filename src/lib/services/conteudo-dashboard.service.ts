@@ -183,17 +183,27 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
 
   const desdeAtrib = menosDias(anterior.start, 14)
 
-  const [mediaRes, dailyRes, threadsRes, agendaRes, totalRes, ultimoRes, primeiroRes] = await Promise.all([
+  // `avg_watch_time_ms` é a coluna da migration 20261143. A migration
+  // deste repo é aplicada à mão e escorrega, então o select tem retry sem
+  // ela: o dashboard inteiro cair por causa de uma métrica nova seria
+  // trocar um buraco por um apagão.
+  const COLUNAS_MEDIA_BASE =
+    "channel_id, media_id, media_type, media_product_type, caption, permalink, media_url, thumbnail_url, published_at, children_count, like_count, comments_count, reach, saved, shares, follows, profile_visits, total_interactions, views, pilar, molde, palavra_chave, documento_id, documento:conteudo_documentos(nome)"
+
+  const midiasDoPeriodo = (colunas: string) =>
     admin
       .from("conteudo_ig_media")
-      .select(
-        "channel_id, media_id, media_type, media_product_type, caption, permalink, media_url, thumbnail_url, published_at, children_count, like_count, comments_count, reach, saved, shares, follows, profile_visits, total_interactions, views, pilar, molde, palavra_chave, documento_id, documento:conteudo_documentos(nome)",
-      )
+      .select(colunas)
       .in("channel_id", canalIds)
       .gte("published_at", `${anterior.start}T00:00:00Z`)
       .lte("published_at", `${periodo.end}T23:59:59Z`)
       .order("published_at", { ascending: false })
-      .limit(1000),
+      .limit(1000)
+
+  const [mediaRes, dailyRes, threadsRes, agendaRes, totalRes, ultimoRes, primeiroRes] = await Promise.all([
+    midiasDoPeriodo(`${COLUNAS_MEDIA_BASE}, avg_watch_time_ms`).then((r) =>
+      r.error && /avg_watch_time_ms/.test(r.error.message) ? midiasDoPeriodo(COLUNAS_MEDIA_BASE) : r,
+    ),
     admin.from("conteudo_ig_daily").select("channel_id, day, reach, profile_views, follower_count").in("channel_id", canalIds).gte("day", anterior.start).lte("day", periodo.end),
     admin
       .from("crm_threads")
@@ -263,7 +273,7 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
   if (serieSeg.valores.every((v) => v == null)) avisos.push("Histórico de seguidores ainda em coleta: o gráfico preenche a partir do primeiro snapshot diário.")
 
   const receitaSerie = dias.map((d) => dealsGanhos(d, d).reduce((a, x) => a + (x.value ?? 0), 0))
-  const kpis = montarKpis({ dias, seguidoresFim, seguidoresInicio, serieSeg, atual: totAtual, anterior: totAnt, posts, receitaSerie })
+  const kpis = montarKpis({ dias, seguidoresFim, seguidoresInicio, serieSeg, atual: totAtual, anterior: totAnt, posts, postsAnteriores: postsAnt, receitaSerie })
 
   // Visitas ao perfil: total_value direto da Graph API (não há série por dia).
   let visitas: number | null = null

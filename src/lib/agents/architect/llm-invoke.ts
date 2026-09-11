@@ -17,6 +17,7 @@ import { relogioParaChamada } from "../fase1-orcamento"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
 import { renderImageTemplate } from "../image/template-renderer"
+import { jsonUtilizavel } from "../shared/json-do-modelo"
 import {
   ehCreditoEsgotado,
   OpenRouterHttpError,
@@ -449,7 +450,29 @@ export function extractJson(raw: string): string {
   if (firstOpen > 0) s = s.slice(firstOpen)
   const lastClose = Math.max(s.lastIndexOf("]"), s.lastIndexOf("}"))
   if (lastClose >= 0) s = s.slice(0, lastClose + 1)
-  return s.trim()
+  s = s.trim()
+
+  // O corte do primeiro `{` ao último `}` supõe que a resposta é UM bloco.
+  // Quando o modelo abre com um rascunho, pensa em prosa e fecha com o JSON
+  // bom — o `copy_fit` de 11/09 (run b49b0131) —, esse corte junta tudo num
+  // blob que não parseia, e a resposta correta, já paga, vai para o lixo.
+  //
+  // Só entra em cena quando o corte NÃO parseia: resposta bem-comportada
+  // segue exatamente como antes, sem varredura e sem risco de escolher
+  // outro bloco.
+  if (parseia(s)) return s
+  const melhor = jsonUtilizavel(raw)
+  return melhor ?? s
+}
+
+function parseia(texto: string): boolean {
+  if (!texto) return false
+  try {
+    JSON.parse(texto)
+    return true
+  } catch {
+    return false
+  }
 }
 
 

@@ -108,6 +108,8 @@ import {
 } from "../shared/component-dimensions"
 import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
+import { normalizarSecao } from "./repeticao"
+import { menosIncompativel } from "./resgate-de-posicao"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -1064,9 +1066,10 @@ export async function assembleStoreReference(
   // (09/09): a lista vai aos dois Curadores, à telemetria e ao medidor.
   // Zero código veta a escolha — o prompt proíbe e o medidor registra
   // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
+  const requisitosPorPosicao = requisitosDaDecisao(input.estruturadorDecisao)
   const eliminadasPorRequisito = eliminarPorRequisitos(
     sections,
-    requisitosDaDecisao(input.estruturadorDecisao),
+    requisitosPorPosicao,
     catalog.sections,
   )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
@@ -1462,6 +1465,26 @@ export async function assembleStoreReference(
   let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
+
+  // ── Curador do vault falhou com o modo 'on': PARA ────────────────────
+  //
+  // O legado era o substituto, e substituir escondia a falha: em 11/09
+  // (e-mail 6b3a7f42) o vault morreu em `curador_shortlist_invalida` às
+  // 05:54:46, o legado assumiu às 05:55:55 e a geração seguiu até o fim —
+  // blueprint, copy, oito imagens, tudo pago — montando a peça com a
+  // escolha de quem NÃO é o curador vigente. A peça saiu, e saiu ruim.
+  //
+  // Com o modo 'on' o Curador do vault é o titular: ele lê a decisão do
+  // Estruturador, as lacunas e o índice do Obsidian, e o legado não recebe
+  // nada disso. Deixá-lo cobrir a falha entrega uma peça que ninguém
+  // escolheu, e o erro fica no log enquanto o e-mail chega ao cliente.
+  // Falha visível é mais barata que peça ruim entregue.
+  //
+  // Em 'shadow'/'off' nada muda: lá o legado é o titular, não o reserva.
+  if (curadorVaultMode === "on" && !vaultResultado) {
+    throw new CuratorFailedError("curador_vault_falhou")
+  }
+
   // O legado só roda quando o vault falhou; se o vault deixou JSON, ele
   // herda as justificativas em vez de escolher às cegas.
   if (!vaultResultado && parcialDoVault.valor) {
@@ -1924,11 +1947,38 @@ export async function assembleStoreReference(
     })
   }
 
+  // ── Resgate da posição vazia ────────────────────────────────────────
+  // Posição sem variante SOME do e-mail: `assembleDocument` a pula e nada é
+  // puxado do template curado para a lacuna. O Curador não sabe disso — em
+  // 11/09 ele deixou `products` vazia escrevendo "a posição fica na peça e
+  // cai no template global", e o cliente perguntou onde estava o feed. A
+  // partir daqui, antes de desistir da posição, entra a menos incompatível
+  // da MESMA seção (`menosIncompativel`), com o motivo registrado.
+  const variantesDaSecao = new Map(
+    catalog.sections.map((c) => [normalizarSecao(c.section), c.variantes]),
+  )
+  const jaUsadas = new Set<string>()
+  const resgatadas: Array<{ block_index: number; section: string; variant_id: string; motivo: string; custo: number }> = []
+
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
     const id = chosenById.get(i)
-    const variant = id ? byId.get(id) : undefined
+    let variant = id ? byId.get(id) : undefined
+    if (!variant) {
+      const resgate = menosIncompativel(
+        variantesDaSecao.get(normalizarSecao(section)) ?? [],
+        requisitosPorPosicao[i],
+        section,
+        jaUsadas,
+      )
+      const candidata = resgate ? byId.get(resgate.variant_id) : undefined
+      if (resgate && candidata) {
+        variant = candidata
+        resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+      }
+    }
     if (!variant) return { kind: "missing", section, label }
+    jaUsadas.add(variant.id)
     // A seção sai da VARIANTE, não do outline. O outline e o Estruturador
     // propõem a forma; quem decide é o Curador, e a posição adota a forma
     // escolhida. Manter a seção proposta faria o marcador do documento
@@ -1938,6 +1988,15 @@ export async function assembleStoreReference(
     // diferentes.
     return { kind: "variant", variant, section: variant.block_type, label }
   })
+
+  if (resgatadas.length > 0) {
+    log.warn("assembler.posicao_resgatada", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      resgatadas,
+    })
+  }
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
 
@@ -2132,6 +2191,11 @@ export async function assembleStoreReference(
       // "seções puladas" nos logs.
       blocks_assembled: assembled.stats.blocks,
       blocks_skipped: assembled.stats.skipped,
+      // Posições que o Curador deixou vazias e o código preencheu com a
+      // menos incompatível da seção. Cada linha aqui é uma LACUNA de
+      // biblioteca cobrada: o e-mail saiu inteiro, mas a curadoria deve
+      // uma variante que realize o papel sem concessão.
+      posicoes_resgatadas: resgatadas,
       wrapped_unknown: assembled.stats.wrappedUnknown,
       // Variantes cadastradas como documento completo: a casca foi removida
       // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro

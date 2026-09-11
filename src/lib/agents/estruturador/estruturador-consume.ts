@@ -117,6 +117,15 @@ export function arbitrarCampos<F extends { key: string; required?: boolean; natu
     const p = papelDoCampo(f.key)
     let motivo: string | null = null
     if (requisitos.cupom === false && p.cupom) motivo = "cupom negado pela decisão do Estruturador"
+    // Sem incentivo não existe "de/por" nem contagem regressiva: o campo
+    // ficaria com um desconto e um prazo INVENTADOS. `cupom: false` é o
+    // sinal de "sem oferta" que a decisão já carrega por posição — no caso
+    // que motivou isto (Hero Boxers, products, 11/09) ela dizia, no mesmo
+    // objeto, `cupom: false`, `preco: true` e "sem menção a oferta, código
+    // ou bundle". O preço VIGENTE (`price_new`) não é tocado: é o que a
+    // decisão está pedindo.
+    else if (requisitos.cupom === false && p.preco_antigo) motivo = "preço anterior riscado sem oferta na decisão do Estruturador"
+    else if (requisitos.cupom === false && p.prazo) motivo = "prazo de oferta sem oferta na decisão do Estruturador"
     else if (requisitos.cta === false && p.cta) motivo = "CTA negado pela decisão do Estruturador"
     else if (
       requisitos.n_itens &&

@@ -91,7 +91,13 @@ A estrutura e os papéis já foram decididos. Compare TODAS as variantes do índ
 Responda APENAS um array JSON:
 [{"block_index":0,"escolhas":[{"variant_id":"...","motivo":"encaixe e risco principal"}]}]
 
-Inclua toda posição da estrutura. Use escolhas vazias somente quando nenhuma variante da seção sobreviver às restrições.`
+Inclua toda posição da estrutura.
+
+ANTES de deixar uma posição com \`escolhas\` vazio, saiba o que acontece: a seção DESAPARECE do e-mail. Ela não cai no template global, não há bloco de reserva, não há preenchimento por código — o documento sai com uma seção a menos e o cliente vê o buraco. Não existe "a posição fica na peça": ou você nomeia uma variante, ou a posição some.
+
+Por isso: incompatibilidade DESEMPATA, nunca elimina sozinha. O que a variante deixa de mostrar (preço, avaliação, um item da grade) é restrição de REDAÇÃO — a copy resolve depois, pondo o preço no subtítulo ou deixando o slot extra vazio. O que ela obriga a INVENTAR (slot de cupom sem oferta, preço riscado sem desconto, prazo sem data real) é que é veto de verdade.
+
+Só devolva \`escolhas\` vazio quando TODA variante da seção obrigaria a inventar um dado que a decisão declara inexistente. Havendo qualquer uma que apenas deixe de mostrar algo, escolha-a e diga na justificativa o que falta e quem cobre.`
 
 /** Shortlist estrita: nunca aceita variante de outra seção como fallback. */
 export function parseValidatedShortlist(input: {
