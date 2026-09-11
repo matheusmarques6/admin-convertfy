@@ -5737,6 +5737,102 @@ selos antes de construir compositor. As outras duas vias, se a medição
 reprovar: selo em HTML+CSS+VML (círculo por `border-radius`, texto central em
 HTML — perde o arco) ou PNG composto (preserva o arco, exige embarcar `.ttf`).
 
+
+---
+
+## A geração seguinte: sete queixas, e o QA já sabia de todas (11/09)
+
+Batch `57bf409d`, Hero Boxers welcome 1, 02:57→03:16 UTC. O usuário
+listou: imagem formatada errada, copy com travessão (duas vezes, uma
+delas no review), fundo diferente do fundo do e-mail, copy nada a ver e
+o CTA mini de novo. Medido run a run e no HTML entregue.
+
+**A correção dos selos pegou.** Três das nove runs de imagem gravaram
+`trocasDeTexto: ["never_render","no_text"]` — os selos receberam
+permissão de escrever letra e saíram com REAL FIT / EASY SWAP / DIRECT
+BRAND. Foi a única frente do laudo anterior que já se pode dar por
+resolvida.
+
+**O `copy_fit` morreu na PRIMEIRA chamada** — `resposta vazia de
+'anthropic/claude-sonnet-5'; 8000 dos 8000 tokens foram para o
+raciocínio; finish_reason=length` — e dos 15 alvos só 3 saíram
+corrigidos: os que o código já resolvia antes de qualquer LLM. Os outros
+12 foram ao cliente como vieram, com **oito travessões** e 11 campos
+acima do limite. Três defeitos empilhados, todos corrigidos:
+
+1. **A regra do `retry-teto` nunca desceu para cá.** Ela foi escrita em
+   10/09 para o Seletor e o Estruturador — truncou no teto, a
+   retentativa sobe o teto — e o `copy_fit`, que é onde ela fez falta,
+   repetia com o MESMO teto. Agora sobe até `max(configurado × 2,
+   16000)`. Timeout continua sem subir: a 2ª chamada morreria igual,
+   mais tarde, comendo o orçamento das etapas seguintes.
+2. **`classificarFalha` não lia a mensagem do erro.** Quem chama do
+   `catch` não tem o `InvokeResult`, tem a string — e o truncamento que
+   vira `throw` era lido como "ilegível". As três assinaturas
+   (`finish_reason=length`, `consumido pelo raciocínio`, `resposta
+   truncada`) são NOSSAS, escritas por `llm-invoke` e
+   `motivoDaSaidaVazia`, e por isso estáveis.
+3. **O que o código resolve não pode cair com o modelo.**
+   `socorroPorCodigo` (puro) troca " — " por pontuação e apara excesso
+   pequeno, e passa a rodar no `catch` e nos alvos que o modelo não
+   corrigiu em duas passadas. Não inventa texto: alvo `ausente` (item de
+   lista que o gerador pulou) continua só do modelo — sem ele a linha
+   sai do e-mail pelo merge, que é o desfecho certo. O teste que
+   afirmava o comportamento antigo ("o traço que sobrevive fica como
+   veio") foi corrigido junto: teste que congela o erro é o que faz ele
+   sobreviver.
+
+**O CTA mini tinha causa nova.** A escala JÁ era medida (`ctas_json`
+trazia `font_size_px: 24, peso: 700` do botão nativo) e `planoParaOps`
+JÁ a punha na op — e `apply-patches` montava o botão copiando campo a
+campo, sem os quatro campos da escala. O botão nasceu com o padrão da
+casa, 15px. É o modo de falha do `usageOf`, de novo: **o que não é
+copiado atravessa a fronteira e some**, e os dois módulos puros passam
+verdes porque a ponte entre eles é que não tinha teste.
+
+**"Fundo diferente do fundo do e-mail" é o par `bgcolor` × `style`.** O
+plano pediu `recolor #E1DEDE → #F2F2F2 where background` e a linha do
+botão saiu `bgcolor="#E1DEDE" style="background-color:#F2F2F2"`. Num
+e-mail os dois são a MESMA decisão de fundo escrita duas vezes — o
+atributo para o Outlook, a propriedade para o resto — e `contextOf` os
+separava também na ESCRITA, deixando o documento em dois estados. O
+INVENTÁRIO continua distinguindo (lá é informação: o agente precisa ver
+onde a cor aparece); quem funde é `mesmoPapelDeEscrita`, só para esse
+par. `color`, `border` e `css-var` seguem estritos. Havia um teste
+afirmando o comportamento antigo, com a justificativa na linha de cima:
+era ele que mantinha o defeito vivo.
+
+**"Copy nada a ver" não é a copy — é o HERO INTEIRO.** A variante
+enxertada é de uma peça de SUPORTE: headline "can we help?", botões
+"ACCESS MY ACCOUNT" e "VISIT HELP CENTER". O `copy_merge` fechou 44 de
+44 slots, mas os dois labels voltaram do n8n IDÊNTICOS ao exemplo
+(`de` == `para`) e os hrefs nunca foram preenchidos — os três CTAs do
+hero apontam para `URL_DO_SITE_AQUI`, `URL_CTA_PRIMARIO` e
+`URL_CTA_SECUNDARIO`, e os quatro ícones do rodapé para `URL_FACEBOOK` e
+afins. Esses hrefs não são `{{tag}}` nem `[token]`: **nenhum strip de
+placeholder os alcança e nenhum ESP os preenche**, então chegam ao
+cliente como clique morto na seção mais importante do e-mail. Virou
+check por código (`link_sem_endereco`, high): `enderecoUtil` aceita URL
+real, âncora, `mailto:`/`tel:`/`sms:` e merge tag em qualquer dialeto
+(`{{x}}`, `*|X|*`, `%%x%%`, `[token]`); o resto é clique morto. O
+preheader saiu com `TEXTO_DE_PREHEADER_AQUI` visível, pelo mesmo motivo.
+
+**O QA viu TUDO e o e-mail saiu `ready` assim mesmo.** Em `qa_issues`
+estão as 5 issues `high` (o preheader, os dois grupos de links
+quebrados, o lorem ipsum do bloco de comparação, o "Link Here"), as 11
+de `copy_excede_max_len` e a do review 2 ausente. O gate
+`EMAIL_QA_ENABLED` está OFF: ligado, `passed=false` viraria `failed` e
+esta peça não teria sido entregue. **A semana de medição que a seção do
+laudo previa terminou — o dado está aqui, e o QA acertou em todos os
+pontos que o cliente reclamou depois.**
+
+**Fica como worklist de BIBLIOTECA, não de código**: a variante do hero
+com hrefs de exemplo e copy de página de suporte; o bloco de comparação
+que renderiza o item vazio em vez de ocultar a linha (`[5] dolor sit
+amet` chegou ao cliente com o merge em 44/44 — o texto não é slot, é
+exemplo sem endereço nenhum); os "Link Here" do rodapé; e a variante em
+598px que a varredura "Largura 600px na biblioteca" ainda não alcançou.
+
 ---
 
 *Última atualização: Setembro 2026*
