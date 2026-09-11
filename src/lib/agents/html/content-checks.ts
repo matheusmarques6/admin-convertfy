@@ -42,6 +42,28 @@ const REPETICAO_MIN_CHARS = 60
 const CODIGO_RE = /\b(?:use (?:the )?code|c[oó]digo|cupom|coupon(?: code)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{2,})\b/gi
 const LABEL_GENERICO_RE = /^(?:link here|click here|button|cta|learn more|saiba mais)$/i
 
+/** Todo `href` do documento, com aspas simples ou duplas. */
+const HREF_RE = /href\s*=\s*["']([^"']*)["']/gi
+
+/**
+ * Endereço que de fato leva a algum lugar, ou merge tag que o ESP resolve.
+ *
+ * O que NÃO passa aqui é o href de EXEMPLO da variante da biblioteca —
+ * `URL_CTA_PRIMARIO`, `URL_DO_SITE_AQUI`, `URL_FACEBOOK`. Eles não são
+ * `{{tag}}` nem `[token]`, então nenhum strip de placeholder os alcança e
+ * nenhum merge os preenche: chegam ao cliente como clique morto. Foi o que
+ * aconteceu com os TRÊS CTAs do hero em 11/09 — a seção mais importante do
+ * e-mail, sem um link que funcione.
+ */
+function enderecoUtil(href: string): boolean {
+  const h = href.trim()
+  if (!h) return false
+  // Merge tag do ESP, em qualquer dialeto: {{x}}, *|X|*, %%x%%, [token].
+  if (/^\{\{.+\}\}$/.test(h) || /^\*\|.+\|\*$/.test(h) || /^%%.+%%$/.test(h)) return true
+  if (/^\[[A-Za-z_][A-Za-z0-9 _-]*\]$/.test(h)) return true
+  return /^(?:https?:\/\/|mailto:|tel:|sms:|#)/i.test(h)
+}
+
 function textoVisivel(html: string): string[] {
   // `orphanTextFragments` sem ranges reivindicados = TODOS os textos
   // visíveis, já sem <style>/<script>/comentários, com `suspeito` marcado
@@ -135,6 +157,21 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
       severity: "high",
       disposition: "blocking",
       message: `Label genérico chegou ao e-mail: ${labels.map((t) => `"${t}"`).join(", ")}.`,
+      location: "html",
+    })
+  }
+
+  // 3c. Link que não leva a lugar nenhum.
+  const hrefsMortos = new Set<string>()
+  for (const m of html.matchAll(HREF_RE)) {
+    if (!enderecoUtil(m[1])) hrefsMortos.add(m[1].trim().slice(0, 40))
+  }
+  if (hrefsMortos.size > 0) {
+    issues.push({
+      type: "link_sem_endereco",
+      severity: "high",
+      disposition: "blocking",
+      message: `Link sem endereço real no e-mail: ${[...hrefsMortos].slice(0, 5).map((h) => `"${h}"`).join(", ")}${hrefsMortos.size > 5 ? ` (+${hrefsMortos.size - 5})` : ""} — não é URL nem merge tag de ESP, então ninguém preenche e o clique morre.`,
       location: "html",
     })
   }
