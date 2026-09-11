@@ -149,14 +149,29 @@ const COR_NO_TAG = new RegExp(`(?:^|[;\\s"])color\\s*:\\s*(${HEX_EM_ESTILO})`, "
 const RADIUS_NO_TAG = /border-radius\s*:\s*(\d{1,3})px/i
 const BORDA_NO_TAG = new RegExp(`border(?:-\\w+)?\\s*:[^;"']*?(${HEX_EM_ESTILO})`, "i")
 const IMAGEM_DE_FUNDO = /background(?:-image)?\s*:\s*[^;"']*url\(|(?:^|\s)background\s*=\s*"[^"]+\.(?:jpe?g|png|webp|gif)/i
-const ABRE_LINK = /<a\b[^>]*\bhref\s*=\s*"([^"]*)"[^>]*>/gi
+/**
+ * O `href` é OPCIONAL de propósito.
+ *
+ * 11/09, Hero Boxers Welcome 1: os dois botões da hero saíram
+ * `<a style="display:block;…">ACCESS MY ACCOUNT</a>`, sem href — o token
+ * `URL_CTA_PRIMARIO` não era preenchido dentro da hero, o strip esvaziava e
+ * `neutralizeDeadLinks` removia o atributo (cada passo defensável). Com o
+ * href obrigatório aqui, o extrator ficava cego EXATAMENTE no botão
+ * defeituoso: `<ctas>` saía sem a hero, o agente leu "o único bloco sem CTA"
+ * e inseriu um terceiro botão numa hero que já tinha dois.
+ *
+ * Botão sem destino continua sendo botão na tela, e é o caso em que alguém
+ * precisa enxergá-lo. A causa raiz foi corrigida em `applyStructuralFills`;
+ * isto é o extrator deixando de depender dela.
+ */
+const ABRE_LINK = /<a\b(?:[^>]*\bhref\s*=\s*"([^"]*)")?[^>]*>/gi
 const FECHA_LINK = /<\/a\s*>/i
 /** Label de botão é curto. Acima disso é parágrafo com link, não CTA. */
 const LABEL_MAX_CHARS = 60
 /** Quanto olhar para trás atrás do `v:roundrect` que embrulha o botão. */
 const JANELA_VML = 500
 const ROUNDRECT = /<v:roundrect\b[^>]*>/gi
-const ABRE_LINK_UMA = /<a\b[^>]*\bhref\s*=\s*"[^"]*"[^>]*style="[^"]*display\s*:\s*(?:inline-)?block/i
+const ABRE_LINK_UMA = /<a\b(?:[^>]*\bhref\s*=\s*"[^"]*")?[^>]*style="[^"]*display\s*:\s*(?:inline-)?block/i
 const TEXTO_VML = /<center\b[^>]*>([\s\S]{0,200}?)<\/center\s*>/i
 const HREF_VML = /\bhref\s*=\s*"([^"]*)"/i
 const FILL_VML = /\bfillcolor\s*=\s*"([^"]*)"/i
@@ -340,7 +355,9 @@ export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
       bloco: faixa?.bloco ?? null,
       faixa: faixa?.ordem ?? null,
       texto,
-      href: m[1],
+      // Sem href o grupo é `undefined` — botão que perdeu o destino no
+      // caminho (ver ABRE_LINK). String vazia mantém o tipo e diz a verdade.
+      href: m[1] ?? "",
       fundo,
       label,
       tipo: fundo ? "preenchido" : "vazado",

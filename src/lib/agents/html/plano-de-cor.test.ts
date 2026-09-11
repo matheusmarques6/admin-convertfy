@@ -150,6 +150,18 @@ describe("planoParaOps — botões que faltam", () => {
     expect(r.descartes[0].motivo).toMatch(/nenhum destino disponível/)
   })
 
+  // 11/09, Hero Boxers: os botões da hero perderam o href, o extrator (que
+  // então exigia href) ficou cego, e o agente escreveu "a hero é o único
+  // bloco em <faixas> sem entrada em <ctas>" e inseriu um TERCEIRO botão
+  // numa hero que já tinha dois. As duas causas foram corrigidas na origem;
+  // esta é a terceira linha de defesa, e vale por si: a hero é enxertada da
+  // variante curada, e hero sem botão é decisão do designer.
+  it("a HERO nunca ganha botão inserido, mesmo sem nenhum em <ctas>", () => {
+    const r = planoParaOps({ adicionar: [{ ...base, bloco: 0 }] }, { ...CTX, ctas: [] })
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/enxertada da variante/)
+  })
+
   it("bloco que já tem botão não ganha outro", () => {
     const r = planoParaOps({ adicionar: [{ ...base, bloco: 2 }] }, CTX)
     expect(r.ops).toEqual([])
