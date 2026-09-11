@@ -124,7 +124,7 @@ async function subir(a: DataUriAchado): Promise<string> {
 export async function extrairBase64ParaStorage(
   html: string,
 ): Promise<ExtracaoResultado> {
-  const alvos = extraiveis(encontrarDataUris(html))
+  const alvos = extraiveis(encontrarDataUris(html), html)
   if (alvos.length === 0) {
     return { html, trocados: 0, arquivos: 0, bytes: 0, falhas: [] }
   }
