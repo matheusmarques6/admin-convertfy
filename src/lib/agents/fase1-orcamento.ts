@@ -133,16 +133,20 @@ export function cabeNaJanela(input: {
 export const RESERVA_POS_ESTRUTURADOR_MS = 490_000
 
 /**
- * Reserva para tudo que vem depois do Seletor (Estruturador incluído).
+ * NÃO existe reserva pós-Seletor, e isso é decisão medida — não esquecimento.
  *
- * Eram 380s pela mesma conta antiga. Hoje o que vem depois é o Estruturador
- * (~260s medidos, teto de 371s) mais a reserva acima — mas o Estruturador
- * CEDE quando não cabe (`reuso-da-decisao.ts`), então o que este número
- * precisa garantir é o Curador. Mantido igual à reserva pós-Estruturador
- * por isso: reservar os dois faria o Seletor ser pulado sempre, e ele é
- * quem decide o alvo do toque.
+ * Havia uma constante aqui (380s, depois 490s) que nenhum caller lia: a
+ * mesma armadilha de `cabeNaJanela`, escrita e testada sem estar ligada ao
+ * fluxo. Ligá-la seria PIOR que deixá-la morta. A conta, com os números de
+ * 11/09: o teto do Seletor é 24.000 tokens, que a 90 tok/s mais a latência
+ * base pedem 282s; reservar 490s dos 770 da janela deixa 280s disponíveis.
+ * O Seletor seria pulado em TODA geração por 2 segundos de margem — e sem
+ * ele a peça vai sem alvo do toque, que é o pior desfecho dos três.
+ *
+ * O Seletor custa 65s medidos (6.129 tokens de saída), não é ele que aperta
+ * a janela. Quem cede é o Estruturador, e por `reuso-da-decisao.ts`: a
+ * decisão dele já está gravada e o Curador não tem substituto.
  */
-export const RESERVA_POS_SELETOR_MS = 490_000
 
 /**
  * Teto de relógio por agente da fase 1, em ms.
