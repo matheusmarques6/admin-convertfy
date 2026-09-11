@@ -19,26 +19,12 @@ import { ImageOff, Loader2, X } from "lucide-react"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import { EGBadge, EGBtn, EGNotice } from "@/components/email-generation/ui/eg-atoms"
-
-interface Item {
-  tabela: "email_component_variants" | "store_email_references"
-  id: string
-  rotulo: string
-  html_chars: number
-  total: number
-  extraiveis: number
-  bytesExtraiveis: number
-  charsEconomizados: number
-  ok: boolean
-}
-
-interface Summary {
-  varridos: number
-  com_base64: number
-  arquivos_a_extrair: number
-  bytes: number
-  chars_economizados: number
-}
+import {
+  lerAplicacao,
+  lerPrevia,
+  type Base64PreviaItem as Item,
+  type Base64PreviaSummary as Summary,
+} from "@/lib/email-workspace/base64-extract-resposta"
 
 const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`
 
@@ -62,10 +48,12 @@ export function Base64ExtractDialog({
     setErro(null)
     try {
       const res = await fetch("/api/admin/components/extract-base64")
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Falha ao carregar a prévia")
-      setItems(json.data?.items ?? [])
-      setSummary(json.data?.summary ?? null)
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error ?? `Falha ao carregar a prévia (HTTP ${res.status})`)
+      const previa = lerPrevia(json)
+      if (previa.estado === "nao_entendi") throw new Error(previa.motivo)
+      setItems(previa.items)
+      setSummary(previa.summary)
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e))
     } finally {
@@ -85,17 +73,17 @@ export function Base64ExtractDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ escopo: "ambos" }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Falha ao aplicar")
-      const r = json.data?.resumo
-      const falhas = json.data?.falhas ?? []
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error ?? `Falha ao aplicar (HTTP ${res.status})`)
+      const r = lerAplicacao(json)
+      if (r.naoEntendi) throw new Error("a rota respondeu num formato que não sei ler")
       toast({
-        title: `${r?.itens ?? 0} itens limpos · ${kb(r?.chars_economizados ?? 0)} fora do HTML`,
+        title: `${r.itens} itens limpos · ${kb(r.chars_economizados)} fora do HTML`,
         description:
-          falhas.length > 0
-            ? `${falhas.length} imagem(ns) não subiram e ficaram embutidas: ${falhas[0]?.erro ?? ""}`
-            : `${r?.arquivos ?? 0} arquivo(s) no Storage`,
-        variant: falhas.length > 0 ? "destructive" : undefined,
+          r.falhas.length > 0
+            ? `${r.falhas.length} imagem(ns) não subiram e ficaram embutidas: ${r.falhas[0]?.erro ?? ""}`
+            : `${r.arquivos} arquivo(s) no Storage`,
+        variant: r.falhas.length > 0 ? "destructive" : undefined,
       })
       await carregar()
       await onApplied?.()
@@ -179,9 +167,12 @@ export function Base64ExtractDialog({
             HTML fica com a URL.
           </p>
 
-          {erro && <EGNotice tone="neg">{erro}</EGNotice>}
-
-          {loading ? (
+          {erro ? (
+            <EGNotice tone="neg">
+              Não deu para varrer a biblioteca: {erro}. Isto NÃO quer dizer que
+              está limpa — não foi possível medir.
+            </EGNotice>
+          ) : loading ? (
             <div
               style={{
                 display: "flex",
@@ -198,8 +189,8 @@ export function Base64ExtractDialog({
             </div>
           ) : items.length === 0 ? (
             <EGNotice tone="pos">
-              Nenhuma imagem embutida acima do piso — biblioteca e referências
-              limpas.
+              {summary?.varridos ?? 0} itens varridos, nenhuma imagem embutida
+              acima do piso — biblioteca e referências limpas.
             </EGNotice>
           ) : (
             <>
