@@ -231,6 +231,15 @@ async function markStoreSyncError(
       org_id: store.org_id,
       period_start: periodStart.toISOString(),
       period_end: periodEnd.toISOString(),
+      // NOT NULL sem default: omiti-los fazia o INSERT morrer em 23502 e
+      // o `catch` engolir — a loja ficava fora da contagem e da auditoria,
+      // que é exatamente o que esta função existe para impedir (107 erros
+      // numa carga de dashboard, 10/09/2026). O zero aqui não é zero
+      // medido: vai na MESMA linha que `sync_status: 'error'`, e o
+      // dashboard já lê linha não-`ok` como dado incompleto.
+      total_leads: 0,
+      engaged_leads: 0,
+      store_total_revenue: 0,
       sync_status: "error",
       sync_error: syncError,
       expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),

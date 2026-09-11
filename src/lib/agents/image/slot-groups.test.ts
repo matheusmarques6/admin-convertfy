@@ -268,3 +268,68 @@ describe("buildImageWorklist", () => {
     ).toBe(3)
   })
 })
+
+describe("guard: slot sem endereço no HTML não é gerado", () => {
+  // Medido em 30 dias antes do guard: 122 imagens geradas, pagas e
+  // descartadas pelo merge com `sem_lugar` — US$ 15,94 e 82 minutos do
+  // orçamento da fase de imagem.
+  const blocks = [
+    { id: "b1", position: 1, fields: [img("hero_flatlay_kit")] },
+    {
+      id: "b2",
+      position: 2,
+      fields: [img("seal_1_image"), img("seal_2_image"), img("seal_3_image")],
+    },
+  ]
+  const fieldsOf = (b: (typeof blocks)[number]) => b.fields
+
+  it("sem predicado NADA muda — é o que permite ligar por ambiente", () => {
+    const w = buildImageWorklist(blocks, fieldsOf, 20, selectImageSlots)
+    expect(w.anchors.length + w.dependents.length).toBe(4)
+    expect(w.semEnderecoSkipped).toBe(0)
+    expect(w.semEndereco).toEqual([])
+  })
+
+  it("pula o que não tem endereço e diz quais campos foram", () => {
+    const w = buildImageWorklist(
+      blocks,
+      fieldsOf,
+      20,
+      selectImageSlots,
+      (blk) => String(blk.id) !== "b2",
+    )
+    expect(w.anchors.length + w.dependents.length).toBe(1)
+    expect(w.semEnderecoSkipped).toBe(3)
+    expect(w.semEndereco.map((s) => s.key)).toEqual([
+      "seal_1_image",
+      "seal_2_image",
+      "seal_3_image",
+    ])
+  })
+
+  it("predicado que LANÇA gera — recusar por engano é o erro caro", () => {
+    // Buraco na peça é pior que desperdício: o e-mail sairia sem uma foto
+    // que hoje aparece, e ninguém saberia por quê.
+    const w = buildImageWorklist(blocks, fieldsOf, 20, selectImageSlots, () => {
+      throw new Error("slot-finder explodiu")
+    })
+    expect(w.anchors.length + w.dependents.length).toBe(4)
+    expect(w.semEnderecoSkipped).toBe(0)
+  })
+
+  it("o corte é ANTES do teto — a vaga sobra para quem vai aparecer", () => {
+    // Slot órfão que passasse daqui ocuparia uma vaga do cap e empurraria
+    // para fora um slot com endereço: paga-se pela imagem que não entra e
+    // perde-se a que entraria.
+    const w = buildImageWorklist(
+      blocks,
+      fieldsOf,
+      1,
+      selectImageSlots,
+      (blk) => String(blk.id) !== "b2",
+    )
+    const gerados = [...w.anchors, ...w.dependents].map((x) => x.slot?.field.key)
+    expect(gerados).toEqual(["hero_flatlay_kit"])
+    expect(w.droppedByCap).toBe(0)
+  })
+})

@@ -119,3 +119,42 @@ describe("mime e bytes", () => {
     expect(bytesDeBase64("QQ==")).toBe(1) // "A"
   })
 })
+
+describe("placeholder de slot NÃO é arte — e não pode sair", () => {
+  // A anatomia é a real da variante `review 8`, lida do banco:
+  // <img src="data:image/png;base64,…" width="255" height="318" alt="ALT_FOTO_1A">
+  // O base64 é o xadrez cinza de espera; o alt é o endereço da foto gerada.
+  const placeholder = (alt: string, payload: string) =>
+    `<img src="data:image/png;base64,${payload}" width="255" height="318" alt="${alt}" style="display:block">`
+
+  it("data URI de <img> com alt de token fica embutido", () => {
+    // Extraí-lo trocaria o `src` por uma URL http real, que o vocabulário lê
+    // como ASSET EXTERNO — o slot deixaria de ser reconhecido e as imagens
+    // geradas para ele cairiam em `sem_lugar`.
+    const html = placeholder("ALT_FOTO_1A", b64(4000))
+    expect(encontrarDataUris(html)).toHaveLength(1)
+    expect(extraiveis(encontrarDataUris(html), html)).toHaveLength(0)
+    expect(auditarBase64(html).ok).toBe(true)
+  })
+
+  it("os cinco placeholders da review 8 sobrevivem juntos", () => {
+    const html = ["ALT_FOTO_1A", "ALT_FOTO_1B", "ALT_FOTO_2A", "ALT_FOTO_2B", "ALT_FOTO_3"]
+      .map((a, i) => placeholder(a, b64(4000 + i * 4)))
+      .join("")
+    expect(extraiveis(encontrarDataUris(html), html)).toHaveLength(0)
+  })
+
+  it("mas o ícone de verdade continua saindo — alt comum não protege", () => {
+    // O rodapé traz `<img alt="Instagram">` com o ícone embutido: aquilo é
+    // arte fixa, pesa no Gmail e não renderiza no Outlook. Sai.
+    const html = `<img src="data:image/png;base64,${b64(4000)}" alt="Instagram">`
+    expect(extraiveis(encontrarDataUris(html), html)).toHaveLength(1)
+  })
+
+  it("sem o html a régua não roda — o piso sozinho decide", () => {
+    // Chamada legada (um argumento) mantém o comportamento anterior em vez
+    // de proteger por engano o que ninguém mandou proteger.
+    const html = placeholder("ALT_FOTO_1A", b64(4000))
+    expect(extraiveis(encontrarDataUris(html))).toHaveLength(1)
+  })
+})

@@ -82,6 +82,33 @@ export async function resolveClientForPayment(
 }
 
 /**
+ * A org da fatura, para quem não tem sessão (o webhook do Asaas).
+ *
+ * Com cliente, a org é a dele. Sem cliente — a fatura que vai para a
+ * triagem — não há de onde derivar a não ser da integração que recebe
+ * esses pagamentos: com UMA ativa a resposta é inequívoca; com várias,
+ * escolher seria chutar de quem é o dinheiro, e `org_id` fica nulo (a
+ * triagem lista o nulo de propósito, para a linha nunca sumir).
+ */
+export async function resolveOrgForPayment(
+  db: SupabaseClient,
+  clientId: string | null,
+): Promise<string | null> {
+  if (clientId) {
+    const { data } = await db.from("clients").select("org_id").eq("id", clientId).maybeSingle()
+    if (data?.org_id) return data.org_id as string
+  }
+  const { data: integ } = await db
+    .from("integrations")
+    .select("org_id")
+    .eq("type", "asaas")
+    .eq("is_active", true)
+    .limit(2)
+  if (integ?.length === 1) return integ[0].org_id as string
+  return null
+}
+
+/**
  * Linha de `invoices` para o payment. `currentChargeType` = classificação
  * já gravada (update): assinatura de origem só classifica como
  * `subscription` quando não há classificação manual.
@@ -90,10 +117,17 @@ export function buildInvoiceRowFromPayment(
   payment: PaymentLike,
   clientId: string | null,
   currentChargeType?: string | null,
+  orgId?: string | null,
 ): Record<string, unknown> {
   const row: Record<string, unknown> = {
     asaas_id: payment.id,
     client_id: clientId,
+    // Sem dono, estes dois são o que torna a linha acionável: `org_id`
+    // porque a org de uma fatura vinha SÓ pelo cliente (sem ele a linha
+    // ficaria fora de todo escopo e de toda tela), e o pagador do Asaas
+    // porque é com ele que um humano decide de quem é na triagem.
+    org_id: orgId ?? undefined,
+    asaas_customer_id: payment.customer ?? undefined,
     amount: payment.value,
     due_date: payment.dueDate,
     payment_date: payment.paymentDate || payment.clientPaymentDate || null,
@@ -140,13 +174,16 @@ export async function ensureAsaasInvoiceMirror(
     return null
   }
 
+  // Sem dono a linha NASCE assim mesmo, para triagem: quem chega aqui
+  // está classificando ou marcando pago um pagamento específico, e
+  // devolver null dava "Fatura ainda não sincronizada localmente" sobre
+  // uma cobrança que existe. `client_id` é anulável desde a 20261137.
   const clientId = await resolveClientForPayment(admin, orgId, payment)
   if (!clientId) {
-    log.warn("payment sem cliente da org", { paymentId, customer: payment.customer })
-    return null
+    log.warn("payment sem dono — entra para triagem", { paymentId, customer: payment.customer })
   }
 
-  const row = buildInvoiceRowFromPayment(payment, clientId)
+  const row = buildInvoiceRowFromPayment(payment, clientId, null, orgId)
   let ins = await admin.from("invoices").insert(row).select("id, client_id").single()
   if (ins.error && isMissingClassificationColumn(ins.error)) {
     ins = await admin.from("invoices").insert(stripClassification(row)).select("id, client_id").single()

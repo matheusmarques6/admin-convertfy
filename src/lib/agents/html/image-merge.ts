@@ -86,8 +86,12 @@ function inRange(offset: number, range: Range | null): boolean {
  * Mapa bloco → índice do marcador. A régua vive em `block-scope`, comum ao
  * copy-merge: se os dois casarem bloco↔região de formas diferentes, um
  * escreve texto num bloco e o outro imagem em outro.
+ *
+ * Exportada para o guard da fase de imagem (`image/tem-endereco`), que
+ * pergunta ANTES de gerar o que este módulo responde depois. Os dois têm de
+ * casar bloco↔região igual, pelo mesmo motivo do parágrafo acima.
  */
-function markerIndiceByBlock(
+export function markerIndiceByBlock(
   html: string,
   blocks: MergeBlock[],
 ): Map<MergeBlock, number> {

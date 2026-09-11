@@ -90,9 +90,46 @@ export function encontrarDataUris(html: string): DataUriAchado[] {
   return [...vistos.values()]
 }
 
-/** Os que valem a troca — ver `PISO_PARA_EXTRAIR_CHARS`. */
-export function extraiveis(achados: DataUriAchado[]): DataUriAchado[] {
-  return achados.filter((a) => a.base64.length >= PISO_PARA_EXTRAIR_CHARS)
+/**
+ * Base64 que é PLACEHOLDER de slot, não arte — e por isso não pode sair.
+ *
+ * A `review 8` traz `<img src="data:image/png;base64,…" alt="ALT_FOTO_1A">`
+ * cinco vezes: o base64 é o xadrez cinza de espera e o `alt` é o endereço
+ * onde a imagem GERADA vai entrar. É assim que aquela variante ancora as
+ * cinco fotos mesmo sem um único `src="URL_…"` — `slotsFromBase64Placeholder`
+ * (slot-finder) reconhece o par e promove a `<img>` a slot.
+ *
+ * Extrair esse base64 para o Storage destruiria o par: o `src` viraria uma
+ * URL http real, que o vocabulário lê como ASSET EXTERNO, e os cinco campos
+ * cairiam em `sem_lugar`. Trocaríamos 61 KB de peso por cinco imagens
+ * geradas, pagas e descartadas — e o e-mail passaria a exibir o xadrez
+ * hospedado no nosso Storage como se fosse a foto final.
+ *
+ * A régua é a mesma do slot-finder (`ALT_` prefixado), de propósito: se as
+ * duas divergirem, uma extrai o que a outra precisava.
+ */
+export function base64DeSlot(html: string): Set<string> {
+  const protegidos = new Set<string>()
+  for (const tag of html.matchAll(/<img\b[^>]*>/gi)) {
+    const alt = /\balt\s*=\s*"([^"]*)"/i.exec(tag[0])?.[1]?.trim()
+    if (!alt || !/^ALT_/.test(alt)) continue
+    const b64 = /src\s*=\s*"data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=]+)"/i
+      .exec(tag[0])?.[1]
+    if (b64) protegidos.add(b64)
+  }
+  return protegidos
+}
+
+export function extraiveis(
+  achados: DataUriAchado[],
+  /** O documento, para reconhecer os placeholders de slot. */
+  html?: string,
+): DataUriAchado[] {
+  const protegidos = html ? base64DeSlot(html) : new Set<string>()
+  return achados.filter(
+    (a) =>
+      a.base64.length >= PISO_PARA_EXTRAIR_CHARS && !protegidos.has(a.base64),
+  )
 }
 
 export interface AuditoriaBase64 {
@@ -115,7 +152,7 @@ export interface AuditoriaBase64 {
  */
 export function auditarBase64(html: string, urlChars = 120): AuditoriaBase64 {
   const achados = encontrarDataUris(html)
-  const alvos = extraiveis(achados)
+  const alvos = extraiveis(achados, html)
   const economizados = alvos.reduce(
     (s, a) => s + Math.max(0, a.uri.length - urlChars),
     0,

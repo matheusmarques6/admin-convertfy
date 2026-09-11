@@ -192,7 +192,12 @@ import { buildImagePromptVars } from "./email-generation.service"
 import { buildImagePromptWithSegments } from "./image/prompt-vars-builder"
 import { MAX_AI_IMAGES, selectImageSlots } from "./image/limits"
 import { runSlotWithRetry } from "./image/retry-slot"
-import { flattenGroups, buildImageWorklist } from "./image/slot-groups"
+import {
+  flattenGroups,
+  buildImageWorklist,
+  type TemEndereco,
+} from "./image/slot-groups"
+import { camposComEndereco, chaveDoCampo } from "./image/tem-endereco"
 import {
   overlaySpec,
   measureOverlayLuminance,
@@ -207,6 +212,62 @@ import {
 import { isBrandConfirmed } from "./html/brand-guards"
 
 const log = logger.child("Phase2Runner")
+
+/**
+ * Monta o guard "este campo tem endereço no HTML?" para a fase de imagem.
+ *
+ * Devolve `undefined` — ou seja, NENHUMA mudança de comportamento — em todo
+ * caminho de dúvida: flag desligada, referência ausente, leitura que falhou.
+ * É o mesmo princípio do `podeGerar` lá no módulo puro, um nível acima: o
+ * erro caro não é gerar uma imagem à toa, é recusar a que ia aparecer.
+ *
+ * A referência é o HTML de onde a cadeia de formatação PARTE. A hero ainda
+ * não foi enxertada aqui, e não faz diferença: `camposComEndereco` recorta a
+ * região da hero fora, como o merge faz.
+ */
+async function buildTemEnderecoGuard<
+  B extends { id: unknown; block_type?: unknown; content?: unknown; position?: number | null },
+>(input: {
+  admin: ReturnType<typeof createAdminClient>
+  storeId: string
+  flowType: string | null
+  emailNumber: number | null
+  blocks: readonly B[]
+  fieldsOf: (blk: B) => BlueprintBlockField[]
+}): Promise<TemEndereco<B> | undefined> {
+  if (process.env.IMAGE_SKIP_SEM_ENDERECO !== "on") return undefined
+  const { admin, storeId, flowType, emailNumber, blocks, fieldsOf } = input
+  if (!flowType || emailNumber == null) return undefined
+
+  try {
+    const { data } = await admin
+      .from("store_email_references")
+      .select("html")
+      .eq("store_id", storeId)
+      .eq("flow_type", flowType)
+      .eq("email_number", emailNumber)
+      .maybeSingle()
+    const html = (data as { html?: string | null } | null)?.html
+    if (!html) return undefined
+
+    const paraEndereco = blocks.map((b) => ({
+      block_id: String(b.id),
+      block_type: (b.block_type as string | null) ?? null,
+      position: b.position ?? null,
+      content: (b.content as Record<string, unknown> | null) ?? {},
+      fields: fieldsOf(b),
+    }))
+    const comEndereco = camposComEndereco(html, paraEndereco)
+    return (blk, field) =>
+      comEndereco.has(chaveDoCampo(String(blk.id), field.key))
+  } catch (err) {
+    log.warn("phase2.image.guard_endereco_falhou", {
+      storeId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return undefined
+  }
+}
 
 // ── Fase de imagem: geração por SLOT ──────────────────────────────────
 //
@@ -1752,13 +1813,41 @@ export async function runPhase2Image(
     const slotBlocks = (imageBlocks ?? []).filter(
       (b) => (b.block_type as string) !== "testimonials",
     )
+    // ── Guard: não gerar imagem para slot que não tem onde entrar ─────
+    //
+    // O `output_schema` da variante pede `imagem_gerada` para campos que o
+    // HTML dela às vezes não endereça; a imagem é gerada, paga, e o merge a
+    // descarta com `sem_lugar/token_nao_encontrado`. Medido em 30 dias: 122
+    // imagens nessa situação — US$ 15,94 e 82 minutos do orçamento da fase.
+    //
+    // Quem responde é o `slot-finder`, o MESMO juiz do merge. Ligado por
+    // ambiente: o erro caro aqui não é gastar uma imagem, é RECUSAR uma que
+    // entraria — aí o e-mail sai com buraco onde hoje sai com foto.
+    const temEndereco = await buildTemEnderecoGuard({
+      admin,
+      storeId,
+      flowType: ctx.flowType ?? null,
+      emailNumber: ctx.emailNumber ?? null,
+      blocks: slotBlocks,
+      fieldsOf: (blk) => fieldsForImageBlock(blk, ctx.blueprint),
+    })
+
     const work = buildImageWorklist(
       slotBlocks,
       (blk) => fieldsForImageBlock(blk, ctx.blueprint),
       MAX_AI_IMAGES,
       selectImageSlots,
+      temEndereco,
     )
     const selected = [...work.anchors, ...work.dependents]
+
+    if (work.semEnderecoSkipped > 0) {
+      log.warn("phase2.image.sem_endereco", {
+        emailId,
+        pulados: work.semEnderecoSkipped,
+        campos: work.semEndereco.map((s) => s.key),
+      })
+    }
 
     if (work.droppedByCap > 0) {
       log.warn("phase2.image.capped", {

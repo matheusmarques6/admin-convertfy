@@ -158,7 +158,31 @@ export interface ImageWorklist<B> {
   lockupSkipped: number
   /** Slots que o teto cortou (0 quando nada foi cortado). */
   droppedByCap: number
+  /**
+   * Slots pulados por não existir endereço no HTML — a imagem seria gerada,
+   * paga e descartada no merge (`sem_lugar/token_nao_encontrado`).
+   *
+   * Medido em 30 dias antes do guard: 122 imagens nessa situação, US$ 15,94
+   * e 82 minutos do orçamento da fase. O tempo pesa tanto quanto o dinheiro
+   * — `IMAGE_PHASE_BUDGET_MS` é 600s, e slot órfão gasta o que faltou para
+   * os que iam entrar.
+   */
+  semEnderecoSkipped: number
+  /** Quais campos foram pulados, para virar worklist de curadoria. */
+  semEndereco: Array<{ blockId: string; key: string }>
 }
+
+/**
+ * Existe lugar no HTML para este campo?
+ *
+ * Quem responde é o `slot-finder` — o MESMO juiz que decide o merge depois.
+ * Uma régua paralela divergiria e passaria a recusar imagem que entraria: a
+ * `review 8` não tem um único `src="URL_…"` e mesmo assim ancora as cinco,
+ * porque o token está no `alt` e o `slotsFromBase64Placeholder` o promove.
+ *
+ * Fail-open por contrato: o caller devolve `true` quando não sabe.
+ */
+export type TemEndereco<B> = (blk: B, field: BlueprintBlockField) => boolean
 
 /**
  * Monta a worklist da fase de imagem a partir dos blocos e do teto.
@@ -181,9 +205,33 @@ export function buildImageWorklist<
     slots: T[],
     max: number,
   ) => T[],
+  /**
+   * Guard opcional: o campo tem endereço no HTML?
+   *
+   * Ausente → NADA muda (o comportamento de hoje, por construção). É o que
+   * permite ligá-lo por ambiente e medir antes de deixá-lo valer.
+   */
+  temEndereco?: TemEndereco<B>,
 ): ImageWorklist<B> {
   const all: Array<ImageWorkItem<B>> = []
   let lockupSkipped = 0
+  const semEndereco: Array<{ blockId: string; key: string }> = []
+
+  /**
+   * Fail-open em duas camadas: sem guard, gera; guard que lança, gera.
+   *
+   * O erro caro aqui não é gastar uma imagem — é RECUSAR uma que entraria,
+   * porque aí o e-mail sai com buraco onde hoje sai com foto, e isso é pior
+   * que o desperdício que o guard existe para cortar.
+   */
+  const podeGerar = (blk: B, field: BlueprintBlockField): boolean => {
+    if (!temEndereco) return true
+    try {
+      return temEndereco(blk, field)
+    } catch {
+      return true
+    }
+  }
 
   for (const blk of blocks) {
     const fields = fieldsOf(blk)
@@ -206,6 +254,13 @@ export function buildImageWorklist<
     }
     const order = new Map(fields.map((f, i) => [f.key, i]))
     for (const item of flattenGroups(groups)) {
+      // O corte é ANTES do teto de propósito: slot órfão que passasse daqui
+      // ainda ocuparia uma vaga do `cap`, empurrando para fora um slot que
+      // tem endereço. Cortado aqui, a vaga sobra para quem vai aparecer.
+      if (!podeGerar(blk, item.field)) {
+        semEndereco.push({ blockId: String(blk.id), key: item.field.key })
+        continue
+      }
       all.push({
         blk,
         slot: item,
@@ -232,5 +287,7 @@ export function buildImageWorklist<
     dependents: selected.filter((w) => w.slot?.role === "dependent"),
     lockupSkipped,
     droppedByCap: all.length - selected.length,
+    semEnderecoSkipped: semEndereco.length,
+    semEndereco,
   }
 }

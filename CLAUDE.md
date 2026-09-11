@@ -5487,7 +5487,7 @@ sem calibração naquela geração — as duas a um clique no botão
 
 ---
 
-## Cores & Botões decide o RITMO, e põe o CTA que falta (set/2026, migration 20261137)
+## Cores & Botões decide o RITMO, e põe o CTA que falta (set/2026, migration 20261139)
 
 O `color_format` decidia por VALOR e só sabia escrever por valor: `recolor` é
 global, então num e-mail em que `#FFFFFF` é o fundo de quatro seções **não

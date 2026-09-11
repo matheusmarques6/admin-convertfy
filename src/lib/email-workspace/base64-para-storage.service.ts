@@ -35,7 +35,7 @@ import {
 const log = logger.child("Base64ParaStorage")
 
 /**
- * Bucket PRÓPRIO e PÚBLICO (migration 20261138).
+ * Bucket PRÓPRIO e PÚBLICO (migration 20261140).
  *
  * O `onboarding-visual-assets`, que os outros uploads usam, é PRIVADO —
  * `getPublicUrl` nele devolve um endereço que responde 403, e a troca
@@ -80,7 +80,7 @@ async function garantirBucketPublico(
   const { data, error } = await admin.storage.getBucket(BIBLIOTECA_ASSETS_BUCKET)
   if (error || !data) {
     throw new Error(
-      `bucket '${BIBLIOTECA_ASSETS_BUCKET}' não encontrado — aplique a migration 20261138`,
+      `bucket '${BIBLIOTECA_ASSETS_BUCKET}' não encontrado — aplique a migration 20261140`,
     )
   }
   if (!data.public) {
@@ -124,7 +124,7 @@ async function subir(a: DataUriAchado): Promise<string> {
 export async function extrairBase64ParaStorage(
   html: string,
 ): Promise<ExtracaoResultado> {
-  const alvos = extraiveis(encontrarDataUris(html))
+  const alvos = extraiveis(encontrarDataUris(html), html)
   if (alvos.length === 0) {
     return { html, trocados: 0, arquivos: 0, bytes: 0, falhas: [] }
   }
