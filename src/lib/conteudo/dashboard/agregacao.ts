@@ -6,6 +6,7 @@
  * campo sai `null` e a UI mostra "sem dado".
  */
 
+import { porAlcance, segundosDeWatchTime, sinaisDoPeriodo } from "@/lib/conteudo/metricas/sinais"
 import type { FollowerSnapshot } from "@/lib/services/instagram-followers"
 import { MIX_ALVO } from "../config"
 import { ST_TEMPLATES, moldeKeyDoTemplate } from "../templates"
@@ -47,6 +48,9 @@ export interface MediaRow {
   profile_visits: number | null
   total_interactions: number | null
   views: number | null
+  /** Opcional de propósito: a rota degrada e seleciona sem a coluna
+   *  enquanto a migration 20261143 não tiver rodado no ambiente. */
+  avg_watch_time_ms?: number | null
   pilar: string | null
   molde: string | null
   palavra_chave: string | null
@@ -144,6 +148,10 @@ function ddmm(iso: string): string {
 
 export const fmtInt = (n: number) => Math.round(n).toLocaleString("pt-BR")
 export const fmtMoney = (n: number) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`
+/** Razão em percentual com 2 casas — sends e curtidas por alcance são frações pequenas. */
+export const fmtRazao = (n: number) => `${n.toFixed(2).replace(".", ",")}%`
+/** Segundos com 1 casa. */
+export const fmtSegundos = (n: number) => `${n.toFixed(1).replace(".", ",")} s`
 
 /** "+6,2%" / "−3,1%" / "+0,0%"; null quando a base é zero ou não existe. */
 export function deltaPct(atual: number | null, anterior: number | null): string | null {
@@ -204,6 +212,9 @@ export function mediaParaPost(m: MediaRow, leads: number): Post {
     interacoes: m.total_interactions,
     visitasPerfil: m.profile_visits,
     views: m.views,
+    watchTimeS: segundosDeWatchTime(m.avg_watch_time_ms ?? null),
+    sendsPorAlc: porAlcance(m.shares, m.reach),
+    curtidasPorAlc: porAlcance(m.like_count, m.reach),
     leads,
     slides: m.media_type === "CAROUSEL_ALBUM" ? m.children_count : null,
     legenda: m.caption,
@@ -364,6 +375,44 @@ export function seriePorDia(posts: Post[], dias: string[], pick: (p: Post) => nu
   return out
 }
 
+/**
+ * Série diária de uma RAZÃO (parte ÷ todo), em percentual.
+ *
+ * Soma parte e todo do dia e divide — nunca a média das razões dos posts
+ * daquele dia, pelo mesmo motivo de `sinaisDoPeriodo`. Dia sem denominador
+ * sai 0 porque o sparkline precisa de número; o valor do card, esse sim,
+ * é `null` quando não há alcance.
+ */
+export function serieRazaoPorDia(posts: Post[], dias: string[], parte: (p: Post) => number | null, todo: (p: Post) => number | null): number[] {
+  const idx = new Map(dias.map((d, i) => [d, i]))
+  const num = dias.map(() => 0)
+  const den = dias.map(() => 0)
+  for (const p of posts) {
+    const i = idx.get(diaSp(p.publicadoEm))
+    if (i == null) continue
+    const t = todo(p)
+    if (t == null || t <= 0) continue
+    den[i] += t
+    num[i] += parte(p) ?? 0
+  }
+  return dias.map((_, i) => (den[i] > 0 ? (num[i] / den[i]) * 100 : 0))
+}
+
+/** Série diária da MÉDIA de uma métrica por peça (dia sem peça sai 0). */
+export function serieMediaPorDia(posts: Post[], dias: string[], pick: (p: Post) => number | null): number[] {
+  const idx = new Map(dias.map((d, i) => [d, i]))
+  const soma = dias.map(() => 0)
+  const n = dias.map(() => 0)
+  for (const p of posts) {
+    const i = idx.get(diaSp(p.publicadoEm))
+    const v = pick(p)
+    if (i == null || v == null) continue
+    soma[i] += v
+    n[i]++
+  }
+  return dias.map((_, i) => (n[i] > 0 ? soma[i] / n[i] : 0))
+}
+
 /** Reduz uma série diária a até `n` pontos (soma por bloco) para o sparkline. */
 export function comprimirSerie(serie: number[], n = 10): number[] {
   if (serie.length <= n) return serie
@@ -381,9 +430,13 @@ export function montarKpis(args: {
   atual: Totais
   anterior: Totais
   posts: Post[]
+  /** Posts da janela anterior — base de comparação dos sinais de ranking. */
+  postsAnteriores: Post[]
   receitaSerie: number[]
 }): Kpi[] {
   const { atual, anterior, dias, posts } = args
+  const sinais = sinaisDoPeriodo(posts)
+  const sinaisAnt = sinaisDoPeriodo(args.postsAnteriores)
   const segSerie = comprimirSerie(
     args.serieSeg.valores.map((v) => v ?? 0),
     10,
@@ -417,6 +470,26 @@ export function montarKpis(args: {
       delta: deltaPct(atual.salvamentos, anterior.salvamentos),
       serie: comprimirSerie(seriePorDia(posts, dias, (p) => p.sav)),
       nota: "vs. período anterior",
+    },
+    {
+      label: "Sends ÷ alcance",
+      valor: sinais.sendsPorAlcance == null ? "—" : fmtRazao(sinais.sendsPorAlcance),
+      delta: deltaPct(sinais.sendsPorAlcance, sinaisAnt.sendsPorAlcance),
+      serie: comprimirSerie(serieRazaoPorDia(posts, dias, (p) => p.sh, (p) => p.alc)),
+      nota:
+        sinais.sendsPorAlcance == null
+          ? "sem alcance no período"
+          : `${sinais.postsComAlcance} ${sinais.postsComAlcance === 1 ? "post" : "posts"} com alcance · sinal de alcance novo`,
+    },
+    {
+      label: "Watch time médio",
+      valor: sinais.watchTimeMedioS == null ? "—" : fmtSegundos(sinais.watchTimeMedioS),
+      delta: deltaPct(sinais.watchTimeMedioS, sinaisAnt.watchTimeMedioS),
+      serie: comprimirSerie(serieMediaPorDia(posts, dias, (p) => p.watchTimeS)),
+      nota:
+        sinais.watchTimeMedioS == null
+          ? "só reels reportam watch time"
+          : `média de ${sinais.postsComWatchTime} ${sinais.postsComWatchTime === 1 ? "reel" : "reels"}`,
     },
     {
       label: "Leads do conteúdo",

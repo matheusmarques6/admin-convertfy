@@ -217,7 +217,14 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
   const mix = data?.pilarMix
   const mixKeys = (mix ? Object.keys(mix.real) : []) as Pilar[]
   const desvios = mix && mix.classificados > 0 ? mixKeys.filter((k) => Math.abs((mix.real[k] ?? 0) - (mix.alvo[k] ?? 0)) > 10) : []
-  const kpisTopo = data?.kpis.length ? [data.kpis[4], data.kpis[5], data.kpis[0], data.kpis[1]] : []
+  // Por RÓTULO, nunca por índice: a lista de KPIs cresce (os sinais de
+  // ranking entraram no meio dela) e endereçar por posição faz o card
+  // mostrar outra métrica em silêncio.
+  const kpiPor = (label: string) => data?.kpis.find((k) => k.label === label)
+  const kpisTopo = (["Leads do conteúdo", "Receita atribuída", "Seguidores", "Alcance", "Sends ÷ alcance", "Watch time médio"] as const)
+    .map(kpiPor)
+    .filter((k): k is NonNullable<typeof k> => k != null)
+  const kpisLado = (["Interações", "Salvamentos"] as const).map(kpiPor).filter((k): k is NonNullable<typeof k> => k != null)
   const seg = data?.serieSeguidores.valores ?? []
   const segValidos = seg.filter((v): v is number => v != null)
   const novos = segValidos.length >= 2 ? segValidos[segValidos.length - 1] - segValidos[0] : null
@@ -290,9 +297,9 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
           ) : (
             <>
               {/* 1 · KPIs de negócio */}
-              <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
                 {carregando || !kpisTopo.length
-                  ? [1, 2, 3, 4].map((i) => (
+                  ? [1, 2, 3, 4, 5, 6].map((i) => (
                       <div key={i} className="rounded-[10px] border border-[var(--ops-border)] bg-[var(--ops-card)] px-[18px] py-[17px]">
                         <CtSkel h={10} w="55%" />
                         <div className="h-3" />
@@ -309,9 +316,9 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                   title="Crescimento de seguidores"
                   hint={carregando ? undefined : novos == null ? "coletando snapshots" : `${novos >= 0 ? "+" : ""}${fmtNum(novos)} no período`}
                   right={
-                    data && data.kpis.length > 0 && (
+                    kpisLado.length > 0 && (
                       <div className="hidden gap-3.5 text-[11px] text-[var(--ops-sec)] sm:flex" style={TNUM}>
-                        {[data.kpis[2], data.kpis[3]].map((k) => (
+                        {kpisLado.map((k) => (
                           <span key={k.label}>
                             {k.label} <strong className="font-semibold text-[var(--ops-title)]">{k.valor}</strong>
                           </span>
@@ -523,7 +530,7 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                             <Th>Pilar · molde</Th>
                             <ThSort k="alc">Alcance</ThSort>
                             <ThSort k="sav">Salvam.</ThSort>
-                            <ThSort k="sh">Compart.</ThSort>
+                            <ThSort k="sh">Compart. · %alc</ThSort>
                             <ThSort k="seg">Seguidores</ThSort>
                             <ThSort k="com">Coment.</ThSort>
                             <ThSort k="leads">Leads</ThSort>
@@ -584,6 +591,15 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                                 </Td>
                                 <Td right last={last}>
                                   {num(p.sh)}
+                                  {/* O cru esconde o sinal: 10 sends em 500 de alcance vale mais
+                                      que 20 em 10.000, e é a razão que o ranking lê. Sem
+                                      `whitespace-nowrap` o texto quebra em duas linhas e
+                                      engorda as 88 linhas da tabela. */}
+                                  {p.sendsPorAlc != null && (
+                                    <span className="mt-0.5 block whitespace-nowrap text-[10.5px] text-[var(--ops-mut)]" title="compartilhamentos ÷ alcance">
+                                      {fmtDec(p.sendsPorAlc, 2)}%
+                                    </span>
+                                  )}
                                 </Td>
                                 <Td right last={last} className={cn("font-semibold", p.seg != null && p.seg > 0 ? "text-[var(--ops-pos)]" : "text-[var(--ops-title)]")}>
                                   {p.seg == null ? "—" : `+${fmtNum(p.seg)}`}

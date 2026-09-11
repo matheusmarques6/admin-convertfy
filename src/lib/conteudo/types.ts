@@ -82,6 +82,20 @@ export interface Post {
   interacoes: number | null
   visitasPerfil: number | null
   views: number | null
+  /**
+   * Tempo médio assistido, em SEGUNDOS (a API entrega milissegundos).
+   * É o sinal nº 1 de ranking do Instagram em 2026. `null` quando a
+   * mídia não é Reel ou a métrica não foi entregue.
+   */
+  watchTimeS: number | null
+  /**
+   * Sends ÷ alcance, em percentual — o 2º sinal, e o que mais pesa para
+   * alcançar quem não segue. `null` sem alcance: 0% se leria como
+   * "ninguém compartilhou".
+   */
+  sendsPorAlc: number | null
+  /** Likes ÷ alcance, em percentual — o 3º sinal. */
+  curtidasPorAlc: number | null
   /** Contatos que comentaram e depois abriram conversa no direct. */
   leads: number
   /** Slides do carrossel (null quando não é carrossel). */
@@ -169,7 +183,11 @@ export interface DashboardData {
   perfil: PerfilFiltro
   periodo: { start: string; end: string }
   perfis: Perfil[]
-  /** Ordem fixa: seguidores, alcance, interações, salvamentos, leads, receita. */
+  /**
+   * A lista CRESCE (os sinais de ranking entraram no meio dela), então a
+   * tela endereça por `label`, nunca por índice — endereçar por posição faz
+   * o card mostrar outra métrica em silêncio.
+   */
   kpis: Kpi[]
   serieSeguidores: SerieSeguidores
   posts: Post[]

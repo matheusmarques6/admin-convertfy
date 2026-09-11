@@ -5939,6 +5939,62 @@ responder). O retry por truncamento continua como rede, com teto ABSOLUTO
 de 32.000: dobrar 24.000 daria 48.000, e uma resposta desse tamanho leva
 minutos que a fase 2 não tem.
 
+## Conteúdo — os sinais que o ranking lê (set/2026, migration 20261143)
+
+Medido antes de escrever: das 88 mídias sincronizadas, **88 têm alcance e
+compartilhamentos** e **69 são reels** — o dado do sinal já estava no banco
+e a tela mostrava só o número CRU. Compartilhamento cru esconde justamente
+o que o ranking pondera: 10 sends em 500 de alcance vale mais que 20 em
+10.000. A base inteira dá **0,551% de sends ÷ alcance** e 3,88% de curtidas
+÷ alcance (490 sends sobre 88.895 de alcance).
+
+**Watch time só faltava porque não era PEDIDO.** `ig_reels_avg_watch_time`
+entrou no primeiro conjunto de `SETS_VIDEO`; a coluna
+`conteudo_ig_media.avg_watch_time_ms` guarda o valor **em
+MILISSEGUNDOS**, que é como a API entrega — `segundosDeWatchTime` converte
+na leitura. Gravar já convertido esconderia a unidade da origem e o próximo
+leitor dividiria de novo.
+
+Regras em `lib/conteudo/metricas/sinais.ts` (puro, 19 testes):
+
+- **`porAlcance` devolve `null` sem alcance, nunca 0** — "0% de sends" se lê
+  como "ninguém compartilhou" quando a verdade é que o insight não veio.
+- **A razão do período é soma ÷ soma, jamais média das razões por post**:
+  média de médias dá o mesmo peso ao post de 50 de alcance e ao de 5.000 e
+  descreve uma conta que não existe. Watch time é o oposto — ali a média É
+  por peça ("quanto tempo o espectador típico fica"), post sem a métrica
+  fica FORA em vez de entrar como zero, e `postsComWatchTime` diz sobre
+  quantos a média foi feita.
+- **`taxaDeEngajamento` carrega `completa` e a `formula`**: de um
+  concorrente só se tem curtidas e comentários, então o número sai
+  declaradamente parcial em vez de ser comparado com a mediana de mercado
+  como se fosse a mesma conta. `MEDIANAS_DE_MERCADO` nomeia as fontes
+  (Rival IQ 0,30% · Socialinsider 0,48%) e `contraMercado` devolve `null`
+  sem taxa — dizer "abaixo do mercado" sobre número que não existe é o
+  alarme falso que ensina a ignorar o alarme.
+- **`colunasDeInsight` traduz nome da API → nome da coluna num lugar só.**
+  `ig_reels_avg_watch_time` é o único nome que não serve como coluna, e
+  espalhar essa tradução pelo serviço é como a métrica some na fronteira —
+  o modo de falha do `usageOf`, que copia campo a campo.
+
+**Na tela**: dois KPIs novos ("Sends ÷ alcance" e "Watch time médio", com a
+nota declarando a amostra — `88 posts com alcance`, `média de 12 reels` —
+e `—` quando não há), a razão como sub-linha da coluna Compart. (`%alc` no
+cabeçalho, `whitespace-nowrap`: sem isso o texto quebra em duas linhas e
+engorda as 88 linhas da tabela) e a linha de sinais no drawer do post, FORA
+da grade de tiles, porque tile fixo com "—" gasta espaço para não dizer
+nada.
+
+**A lista de KPIs passou a ser endereçada por RÓTULO.** A tela fazia
+`data.kpis[4]`, e os dois sinais entraram no meio da lista: endereçar por
+posição faz o card mostrar outra métrica em silêncio. O comentário "ordem
+fixa" saiu do tipo.
+
+**Degradação declarada**: `avg_watch_time_ms` é opcional em `MediaRow`, o
+select do dashboard tem retry sem a coluna e o patch do sync a remove
+quando o Postgres reclama dela — a migration deste repo é aplicada à mão e
+escorrega.
+
 ---
 
 *Última atualização: Setembro 2026*

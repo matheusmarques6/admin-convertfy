@@ -14,6 +14,8 @@ import {
   montarCadencia,
   montarFunil,
   montarKpis,
+  serieMediaPorDia,
+  serieRazaoPorDia,
   montarPilarMix,
   seriePorDia,
   serieSeguidores,
@@ -184,10 +186,10 @@ describe("totais, kpis, funil, mix", () => {
     expect(totais(posts, [], []).alcanceFonte).toBe("posts")
   })
 
-  it("montarKpis devolve 6 KPIs com '—' onde falta dado", () => {
+  const kpis = (over: Partial<Parameters<typeof montarKpis>[0]> = {}) => {
     const dias = diasEntre("2026-09-01", "2026-09-05")
     const atual = totais(posts, [], [])
-    const k = montarKpis({
+    return montarKpis({
       dias,
       seguidoresFim: null,
       seguidoresInicio: null,
@@ -195,14 +197,67 @@ describe("totais, kpis, funil, mix", () => {
       atual,
       anterior: { ...atual, alcance: 4000, leads: 2, receita: 0 },
       posts,
+      postsAnteriores: [],
       receitaSerie: dias.map(() => 0),
+      ...over,
     })
-    expect(k).toHaveLength(6)
+  }
+
+  it("montarKpis devolve 8 KPIs com '—' onde falta dado", () => {
+    const k = kpis()
+    expect(k).toHaveLength(8)
     expect(k[0].valor).toBe("—")
     expect(k[1].delta).toBe("+25,0%")
-    expect(k[4].valor).toBe("3")
-    expect(k[5].valor).toBe("R$ 0")
-    expect(k[5].delta).toBeNull()
+    expect(k[6].valor).toBe("3")
+    expect(k[7].valor).toBe("R$ 0")
+    expect(k[7].delta).toBeNull()
+  })
+
+  it("sends ÷ alcance só conta o post que tem alcance, e a nota diz a amostra", () => {
+    const sends = kpis().find((k) => k.label === "Sends ÷ alcance")!
+    // m1: 10 sends sobre 5.000 de alcance. m2 não tem alcance e fica fora.
+    expect(sends.valor).toBe("0,20%")
+    expect(sends.nota).toMatch(/^1 post com alcance/)
+  })
+
+  it("watch time sem a métrica sai '—', nunca zero", () => {
+    const w = kpis().find((k) => k.label === "Watch time médio")!
+    expect(w.valor).toBe("—")
+    expect(w.nota).toMatch(/só reels/)
+  })
+
+  it("watch time médio é por peça e ignora quem não reporta", () => {
+    const comReel = [
+      mediaParaPost(media({ media_id: "r1", avg_watch_time_ms: 8400, media_type: "VIDEO", media_product_type: "REELS" }), 0),
+      mediaParaPost(media({ media_id: "r2", avg_watch_time_ms: 12600, media_type: "VIDEO", media_product_type: "REELS" }), 0),
+      mediaParaPost(media({ media_id: "r3" }), 0),
+    ]
+    const w = kpis({ posts: comReel }).find((k) => k.label === "Watch time médio")!
+    expect(w.valor).toBe("10,5 s")
+    expect(w.nota).toBe("média de 2 reels")
+  })
+
+  it("serieRazaoPorDia soma parte e todo do dia — não é média das razões", () => {
+    const dias = diasEntre("2026-09-02", "2026-09-03")
+    const dois = [
+      // Mesmo dia: 10/1000 e 10/100. Média das razões daria (1 + 10) / 2 = 5,5%;
+      // a conta certa é 20/1100 = 1,82%.
+      mediaParaPost(media({ media_id: "a", reach: 1000, shares: 10 }), 0),
+      mediaParaPost(media({ media_id: "b", reach: 100, shares: 10 }), 0),
+    ]
+    const s = serieRazaoPorDia(dois, dias, (p) => p.sh, (p) => p.alc)
+    expect(s[0]).toBeCloseTo((20 / 1100) * 100, 6)
+    expect(s[1]).toBe(0)
+  })
+
+  it("serieMediaPorDia ignora quem não tem a métrica", () => {
+    const dias = diasEntre("2026-09-02", "2026-09-02")
+    const ps = [
+      mediaParaPost(media({ media_id: "a", avg_watch_time_ms: 8000 }), 0),
+      mediaParaPost(media({ media_id: "b", avg_watch_time_ms: 12000 }), 0),
+      mediaParaPost(media({ media_id: "c" }), 0),
+    ]
+    expect(serieMediaPorDia(ps, dias, (p) => p.watchTimeS)[0]).toBe(10)
   })
 
   it("montarFunil marca webhook sem eventos e insights indisponíveis", () => {

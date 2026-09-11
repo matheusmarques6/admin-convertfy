@@ -78,6 +78,16 @@ function DrawerBody({ post, perfil, onClose, onClassificado }: { post: Post; per
     ["Coment.", fmtNum(post.com), false],
   ]
 
+  /**
+   * Os sinais que o ranking lê. Ficam FORA da grade de tiles de propósito:
+   * watch time só existe em reel e a razão só existe com alcance — um tile
+   * fixo com "—" gastaria espaço para dizer nada, e a grade é de 3 colunas.
+   */
+  const sinais: Array<[string, string]> = []
+  if (post.sendsPorAlc != null) sinais.push(["Sends ÷ alcance", `${post.sendsPorAlc.toFixed(2).replace(".", ",")}%`])
+  if (post.curtidasPorAlc != null) sinais.push(["Curtidas ÷ alcance", `${post.curtidasPorAlc.toFixed(2).replace(".", ",")}%`])
+  if (post.watchTimeS != null) sinais.push(["Watch time médio", `${post.watchTimeS.toFixed(1).replace(".", ",")} s`])
+
   return (
     <div className="relative px-[22px] pb-7 pt-[22px]">
       <button type="button" onClick={onClose} aria-label="Fechar" className="absolute right-4 top-4 flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-[var(--ops-hover)] text-[var(--ops-sec)] hover:text-[var(--ops-title)]">
@@ -117,6 +127,15 @@ function DrawerBody({ post, perfil, onClose, onClassificado }: { post: Post; per
           </div>
         ))}
       </div>
+      {sinais.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--ops-mut)]" style={TNUM}>
+          {sinais.map(([l, v]) => (
+            <span key={l}>
+              {l} <strong className="font-semibold text-[var(--ops-title)]">{v}</strong>
+            </span>
+          ))}
+        </div>
+      )}
       {post.alc == null && <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Insights desta mídia ainda não foram lidos (ou a Meta não os expõe para este tipo de post).</div>}
 
       <div className="mt-[18px] text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ops-mut)]">Classificação da casa</div>
