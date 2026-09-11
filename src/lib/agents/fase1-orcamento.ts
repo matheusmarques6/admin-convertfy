@@ -117,16 +117,32 @@ export function cabeNaJanela(input: {
 }
 
 /**
- * Reserva para o que vem DEPOIS do Estruturador, medido em produção:
- * Curador 116-164s + Blueprint 11s + Subject ~15s, com folga para o
- * dispatch e a resposta. O Curador NÃO é pulável — sem variante nenhuma,
- * `coberturaSuficiente` recusa a montagem e a fase 2 morre em
- * `hero_failed`, que é pior que um 504 porque parece sucesso.
+ * Reserva para o que vem DEPOIS do Estruturador. O Curador NÃO é pulável —
+ * sem variante nenhuma, `coberturaSuficiente` recusa a montagem e a fase 2
+ * morre em `hero_failed`, que é pior que um 504 porque parece sucesso.
+ *
+ * Eram 200s, medidos quando o Curador levava 116-164s. Com
+ * `anthropic/claude-sonnet-5` e raciocínio ele leva **442s** (11/09, batch
+ * 1ea00ba9: shortlist 103s + escolha 339s, e a escolha ainda foi cortada) —
+ * a reserva estava subdimensionada em mais do dobro, e foi assim que o
+ * Estruturador ficou com a janela e o Curador com o resto.
+ *
+ * 490s = 442 do Curador + ~11s de Blueprint + ~15s de Subject + folga para
+ * o dispatch. Trocar o modelo de qualquer um dos dois pede remedir isto.
  */
-export const RESERVA_POS_ESTRUTURADOR_MS = 200_000
+export const RESERVA_POS_ESTRUTURADOR_MS = 490_000
 
-/** Reserva para tudo que vem depois do Seletor (Estruturador incluído). */
-export const RESERVA_POS_SELETOR_MS = 380_000
+/**
+ * Reserva para tudo que vem depois do Seletor (Estruturador incluído).
+ *
+ * Eram 380s pela mesma conta antiga. Hoje o que vem depois é o Estruturador
+ * (~260s medidos, teto de 371s) mais a reserva acima — mas o Estruturador
+ * CEDE quando não cabe (`reuso-da-decisao.ts`), então o que este número
+ * precisa garantir é o Curador. Mantido igual à reserva pós-Estruturador
+ * por isso: reservar os dois faria o Seletor ser pulado sempre, e ele é
+ * quem decide o alvo do toque.
+ */
+export const RESERVA_POS_SELETOR_MS = 490_000
 
 /**
  * Teto de relógio por agente da fase 1, em ms.
